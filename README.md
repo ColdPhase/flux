@@ -49,6 +49,7 @@ welcome. Read [CONTRIBUTING.md](docs/CONTRIBUTING.md) before opening a pull requ
 Discuss substantial features or architecture changes with the maintainers first.
 
 - [Report a bug or propose a feature](https://github.com/ColdPhase/flux/issues/new/choose).
+- [Follow development on the project board](https://github.com/orgs/ColdPhase/projects/1).
 - [Ask a question or discuss an idea](https://github.com/ColdPhase/flux/discussions).
 - [Report a security vulnerability privately](docs/SECURITY.md).
 

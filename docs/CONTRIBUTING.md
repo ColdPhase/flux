@@ -21,6 +21,41 @@ user benefit in an issue or discussion. Wait for maintainer feedback so the work
 fits the direction of the project. Small, clearly scoped fixes can go straight to
 a pull request.
 
+## Follow work on the project board
+
+The [Flux board](https://github.com/orgs/ColdPhase/projects/1) tracks repository
+issues. The cards are the same issues you see in the repository, so descriptions,
+assignees, labels, and conversations stay together.
+
+GitHub Projects uses these built-in automations:
+
+| Event | Issue status on the board |
+| --- | --- |
+| A new open issue is added automatically | Todo |
+| A pull request is linked to resolve the issue | In Progress |
+| The issue is closed, including by merging its resolving PR into `main` | Done |
+
+Todo includes incoming reports and proposals; maintainers still decide which work
+to accept and prioritize. Done reflects a closed issue, so check its closure
+reason to distinguish completed work from declined proposals or duplicates.
+
+When a PR will resolve an issue, put a closing reference in the **PR description**:
+
+```text
+Closes #123
+```
+
+Replace `123` with the actual issue number and target the `main` branch. GitHub
+links the PR to the issue and closes the issue when that PR is merged into
+`main`. For related work that does not resolve an issue, use `Refs #123`; that
+reference does not trigger the same closing workflow.
+
+Open a draft PR while implementing the change, then mark it ready for review
+when it is ready for a maintainer. Both draft and ready PRs keep the linked issue
+In Progress. The card's linked PR shows the PR state; review does not have a
+separate board column. Closing a PR without merging it does not complete the
+issue.
+
 ## Make a change
 
 1. Fork [ColdPhase/flux](https://github.com/ColdPhase/flux) to your GitHub account.
