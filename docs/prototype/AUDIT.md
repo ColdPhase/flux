@@ -1,5 +1,9 @@
 # Flux v8 — audyt i zakres weryfikacji
 
+> Dokument zachowuje wyniki historycznej weryfikacji prototypu. Opisane skrypty,
+> raport i zrzuty z tamtej sesji nie są dołączone do repozytorium; nie stanowią
+> dostępnego tu zestawu testów ani wyniku aktualnego CI.
+
 ## Co było rzeczywistym problemem
 
 v7 przechowywał powiązania, ale ich prezentacja wymagała zrozumienia modelu danych. Podobnie wyglądające linki prowadziły do bardzo różnych materiałów. Zadanie miało kilka pól o podobnym charakterze. Użytkownik nie mógł łatwo przewidzieć, gdzie pojawi się komentarz, blokada albo wynik.
@@ -32,7 +36,7 @@ Rzeczywiste zrzuty sprawdzono wizualnie dla rozmowy, panelu zadania, mapy, agent
 
 ## Wynik końcowy
 
-**41 / 41 scenariuszy zaliczonych. Brak nieobsłużonych wyjątków JavaScript w sprawdzonych przepływach.** Szczegółowe wyniki, rodzaj testu i czas znajdują się w `flux-ux-v8/tests.json`.
+**41 / 41 scenariuszy zaliczonych. Brak nieobsłużonych wyjątków JavaScript w sprawdzonych przepływach.** Historyczny raport wskazywał plik `flux-ux-v8/tests.json` ze szczegółowymi wynikami, rodzajem testu i czasem. Ten plik nie został dołączony do repozytorium.
 
 Najważniejsze grupy: nawigacja do dokładnych materiałów, zachowanie szkicu, jeden komentarz w wielu widokach, blokada i odblokowanie, bieżący wynik, osobisty punkt powrotu, rozdzielone pola czasu, ruch i cofanie mapy, nieprzechodnie sąsiedztwo, komentarz do linii, wzmianki, fragmenty i użycia wiki, kolejność zadanie→mapa z dokładnego źródła, podstawowe tablice, autor AI, nieaktualne propozycje, ekran mobilny i odtworzenie zserializowanego modelu.
 

@@ -6,12 +6,12 @@ Lokalny, interaktywny prototyp UX. Wersja 8 przebudowuje widoczność powiązań
 
 ## Uruchomienie
 
-Otwórz `flux-ux-v8.html` w aktualnej przeglądarce. HTML zawiera style i kod; nie wymaga procesu budowania, konta ani instalacji zależności. Zaczyna się od przykładowej rozmowy projektu **Arduino + AI**. Marketplace ma odrębny skład.
+Otwórz [flux-ux-v8.html](../../flux-ux-v8.html) z głównego katalogu repozytorium w aktualnej przeglądarce. HTML zawiera style i kod; nie wymaga procesu budowania, konta ani instalacji zależności. Zaczyna się od przykładowej rozmowy projektu **Arduino + AI**. Marketplace ma odrębny skład.
 
-Alternatywnie, w katalogu pliku można uruchomić lokalny serwer:
+Alternatywnie, w głównym katalogu repozytorium można uruchomić lokalny serwer:
 
 ```bash
-python -m http.server 8080 --bind 127.0.0.1
+python3 -m http.server 8080 --bind 127.0.0.1
 ```
 
 Następnie otwórz `http://127.0.0.1:8080/flux-ux-v8.html`. Jest to tylko podanie statycznego pliku, nie uruchomienie backendu Fluxa. Nie wystawiaj prototypu jako narzędzia do przechowywania poufnych materiałów.
@@ -72,29 +72,25 @@ Nowy przepływ automatyczny uruchamia się po opublikowaniu wyniku, gdy zadanie 
 
 Przy zastosowaniu sprawdzana jest wersja dokumentu i aktualność źródłowego wyniku. Zmieniony wynik blokuje starą propozycję. Nie ma semantycznego wykrywania sprzeczności, samodzielnego researchu ani nadzoru nad repozytorium.
 
-## Co sprawdzono
+## Sprawdzanie zmian
 
-`flux-ux-v8/tests.json` zawiera wynik **41 scenariuszy, 0 niepowodzeń** w Chromium. Są to testy interakcji, modelu danych i podstawowych regresji. Nie oznaczają pełnego audytu bezpieczeństwa, dostępności, wieloużytkownikowości ani badania skuteczności u osób z ADHD.
+Repozytorium nie zawiera obecnie automatycznego zestawu testów ani procesu
+budowania. Zmiany sprawdzaj ręcznie w przeglądarce, korzystając z przepływu
+opisanego powyżej oraz [zasad współpracy](../CONTRIBUTING.md).
 
-Polityka środowiska testowego blokuje `file://`. Testy oraz zrzuty wykonano przez wczytanie HTML w Playwright i testowy magazyn pamięciowy. Właściwy plik HTML nie zawiera tej podmiany. Zweryfikowano serializację i odtworzenie stanu z testowego magazynu, **nie trwałość natywnego localStorage po zamknięciu pliku**.
+Wcześniejsze materiały opisują 41 scenariuszy sprawdzonych w osobnym środowisku.
+Ich raport i skrypty nie zostały dołączone do tego repozytorium, więc nie są
+aktualną weryfikacją tego repozytorium ani dostępnym tu zestawem testów.
 
-Zrzuty przedstawiają faktyczne ekrany tego HTML-u. Stan z blokadą/wynikiem został uzyskany interakcjami w prototypie.
+## Pliki w repozytorium
 
-## Pliki w pakiecie
+- [flux-ux-v8.html](../../flux-ux-v8.html) — gotowy prototyp ze stylami i skryptami.
+- [README.md](../../README.md) — opis projektu i szybki start po angielsku.
+- [Specyfikacja](SPECIFICATION.md), [changelog](CHANGELOG.md) i
+  [audyt](AUDIT.md) — dokumentacja prototypu.
+- [Zrzut ekranu](images/flux-v8.png) — widok prototypu użyty w głównym README.
 
-- `flux-ux-v8.html` — gotowy prototyp.
-- `README.md`, specyfikacja, CHANGELOG i audyt — dokumentacja.
-- `flux-ux-v8/` — ekrany i raport testów.
-- `source/base-v7.html`, `source/v8.js`, `source/v8.css`, `source/build.py` — baza oraz nowa warstwa.
-- `tools/test_v8.py`, `tools/capture_v8.py` — odtwarzalne testy i zrzuty.
-
-Budowanie nie jest wymagane do używania HTML-u. Do odtworzenia:
-
-```bash
-python source/build.py
-python -m pip install playwright
-python -m playwright install chromium
-python tools/test_v8.py flux-ux-v8.html wyniki-testow
-```
+Budowanie nie jest wymagane do używania HTML-u. Katalogi `source/` i `tools/`
+wspomniane w historycznych materiałach nie są częścią tego repozytorium.
 
 Kod v8 jest warstwą integracyjną nad prototypem v7. Nie należy przedstawiać go jako docelowej architektury produkcyjnej. Przed wdrożeniem potrzebny jest refaktor do wspólnych komend, repozytorium relacji, serwerowej autoryzacji i obsługi współbieżnych zmian.

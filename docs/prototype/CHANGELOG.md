@@ -57,4 +57,7 @@
 
 ## Weryfikacja
 
-41 scenariuszy Chromium — 41 zaliczonych, 0 niepowodzeń. Raport i skrypt są w pakiecie. To nie pełna regresja całej historii prototypu ani badanie z użytkownikami. Ograniczenia wczytania pliku i trwałości magazynu opisuje audyt.
+Historyczna weryfikacja: 41 scenariuszy Chromium — 41 zaliczonych, 0 niepowodzeń.
+Raport i skrypt z tej sesji nie zostały dołączone do repozytorium. To nie pełna
+regresja całej historii prototypu ani badanie z użytkownikami. Ograniczenia
+wczytania pliku i trwałości magazynu opisuje [audyt](AUDIT.md).

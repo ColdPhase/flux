@@ -1,0 +1,35 @@
+name: Feature proposal
+description: Describe a concrete user problem and a possible improvement.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search existing issues and discussions first.
+        Use [Ideas](https://github.com/ColdPhase/flux/discussions/categories/ideas) for open-ended ideas or major changes.
+        A proposal needs maintainer agreement before implementation is expected.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Explain who encounters the problem and give a concrete example.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed behavior
+      description: Describe what a person using Flux would be able to do.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or workarounds
+      description: What other approaches have you considered or tried?
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Optional examples, sketches, related issues, or limitations.
