@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and help
+    url: https://github.com/ColdPhase/flux/discussions/categories/q-a
+    about: Ask a question about trying or contributing to Flux.
+  - name: Ideas and project direction
+    url: https://github.com/ColdPhase/flux/discussions/categories/ideas
+    about: Discuss open-ended ideas and substantial changes before implementation.
+  - name: Report a security vulnerability privately
+    url: https://github.com/ColdPhase/flux/security/advisories/new
+    about: Share vulnerability details privately with the maintainers.

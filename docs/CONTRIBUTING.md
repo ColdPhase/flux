@@ -1,0 +1,85 @@
+# Contributing to Flux
+
+Flux is in early development. The current application is a local HTML prototype
+with a Polish interface. Contributions to usability, accessibility, documentation,
+and reproducible bug fixes are welcome.
+
+## Choose the right place
+
+- Use [Issues](https://github.com/ColdPhase/flux/issues/new/choose) for reproducible
+  bugs and concrete feature proposals. Search existing issues first.
+- Use [Discussions](https://github.com/ColdPhase/flux/discussions) for questions,
+  open-ended ideas, and substantial product or architecture changes.
+- Follow [SECURITY.md](SECURITY.md) to report vulnerabilities privately.
+
+English is preferred for shared documentation and discussions. Polish reports and
+questions are welcome. Be respectful, give constructive feedback, and avoid
+posting personal or confidential information.
+
+Before starting a large change, describe the problem, proposed scope, and expected
+user benefit in an issue or discussion. Wait for maintainer feedback so the work
+fits the direction of the project. Small, clearly scoped fixes can go straight to
+a pull request.
+
+## Make a change
+
+1. Fork [ColdPhase/flux](https://github.com/ColdPhase/flux) to your GitHub account.
+2. Clone your fork and create a branch from the latest `main`:
+
+   ```sh
+   git clone https://github.com/YOUR-USERNAME/flux.git
+   cd flux
+   git remote add upstream https://github.com/ColdPhase/flux.git
+   git fetch upstream
+   git switch -c fix/short-description upstream/main
+   ```
+
+3. Run the prototype with Python 3:
+
+   ```sh
+   python3 -m http.server 8080 --bind 127.0.0.1
+   ```
+
+   Open <http://127.0.0.1:8080/flux-ux-v8.html>. If your Python 3 executable is
+   named `python`, use it instead. You can also open the HTML file directly.
+
+4. Make a focused change. The current UI, styles, and application code live in
+   `flux-ux-v8.html`. Avoid reformatting unrelated parts of this large file.
+5. Run the checks below, commit your changes, and push your branch to your fork.
+6. Open a PR against `ColdPhase/flux:main` and complete the PR template. Use a
+   draft PR if the change is still being developed.
+
+You do not need to join the ColdPhase organization or receive write access to
+contribute through a fork.
+
+## Verify your change
+
+The repository currently has no build step or automated test suite. Verify the
+behavior you changed in a browser and describe your checks in the PR:
+
+- Reproduce the issue before the fix and check the same steps afterward.
+- Check the browser console for new errors.
+- For UI changes, check keyboard use and both a wide and a narrow window. Attach
+  screenshots showing the change.
+- For changes to saved data, use disposable sample data and check export/import
+  and reload behavior. Describe any compatibility impact in the PR.
+- For documentation changes, check that links, file names, and commands match the
+  repository.
+
+The [prototype walkthrough](prototype/README.md) includes a manual scenario you
+can follow. Mention the browser, operating system, and manual checks you used. If
+you could not verify relevant behavior, state that in the PR.
+
+## Review and project decisions
+
+The current maintainers are [@PelikanFix16](https://github.com/PelikanFix16) and
+[@Zamojski5](https://github.com/Zamojski5). Maintainers set project direction,
+review proposals, and decide which changes to merge.
+
+Changes to `main` go through pull requests. A maintainer other than the PR author
+must approve the change and review conversations must be resolved. New commits
+may require another review. Approved changes are merged
+with squash merging.
+
+Please keep each PR focused on one problem. Updating documentation alongside a
+behavior change helps other contributors understand and maintain it.

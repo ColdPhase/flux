@@ -1,0 +1,65 @@
+name: Bug report
+description: Report a reproducible problem in Flux.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search existing issues before reporting. Use sample data in screenshots and logs.
+        For vulnerabilities, use [private reporting](https://github.com/ColdPhase/flux/security/advisories/new).
+        For questions, use [Discussions](https://github.com/ColdPhase/flux/discussions).
+  - type: input
+    id: revision
+    attributes:
+      label: Version or commit
+      description: Include the commit hash if available, or the downloaded file and date.
+      placeholder: "flux-ux-v8.html from main, commit abc1234"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Browser and operating system
+      placeholder: "Firefox 148 on Fedora 42, or Safari on iOS"
+    validations:
+      required: true
+  - type: dropdown
+    id: launch-method
+    attributes:
+      label: How did you open Flux?
+      options:
+        - Opened the HTML file directly
+        - Used a local HTTP server
+        - Another method (describe below)
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include whether you started with fresh sample data or imported existing data.
+      placeholder: |
+        1. Open the prototype with fresh sample data.
+        2. Go to ...
+        3. Click ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Describe what happened and attach screenshots if useful.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console output or additional context
+      description: Optional. Remove tokens, personal data, and private project content.
