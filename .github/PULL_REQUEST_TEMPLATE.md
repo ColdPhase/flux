@@ -1,7 +1,13 @@
 ## What changed and why?
 
-<!-- Describe the user problem and the resulting behavior. Link an issue or
-discussion when relevant; use "Closes #123" only when this PR resolves it. -->
+<!-- Describe the user problem and the resulting behavior. -->
+
+## Related issue
+
+<!-- If this PR resolves an issue, write Closes #123 below (use the actual issue
+number). For a PR targeting main, this links the PR to the issue on the project
+board and closes the issue when merged. For partial work, use Refs #123 instead.
+Remove this section if no issue applies. -->
 
 ## How was it checked?
 
