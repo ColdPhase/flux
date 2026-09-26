@@ -1,0 +1,5 @@
+# Default owners for all files.
+* @PelikanFix16 @mzamojski
+
+# Owners of repository configuration, including this file.
+/.github/ @PelikanFix16 @mzamojski
