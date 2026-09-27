@@ -80,6 +80,7 @@ next request. The API reads these variables (see `.env.example`):
 | `FLUX_SMTP_URL`, `FLUX_MAIL_FROM` | SMTP transport URL (e.g. `smtp://user:pass@mail.example.org:587`) and sender for password reset mail. If unset, password reset answers `503 PASSWORD_RESET_UNAVAILABLE` and `/api/v1/auth/capabilities` reports `unavailable`. |
 | `FLUX_PASSWORD_RESET_TTL_SECONDS` | Reset token lifetime, 60–86400, default 3600. Tokens are single use and stored hashed. |
 | `FLUX_AUTH_RATE_LIMIT` | `true` (default) enables Better Auth's in-memory login rate limit. Only the test script turns it off. |
+| `FLUX_STREAM_HEARTBEAT_MS` | WebSocket stream ping, session revalidation and polling interval in milliseconds (default `25000`, minimum `100`). The test script uses `1000`. See [access policy](access-policy.md#websocket-stream). |
 
 For development, the `dev` Compose profile adds a local mail catcher
 (Mailpit, pinned by digest). Set `FLUX_SMTP_URL=smtp://mailpit:1025` and a

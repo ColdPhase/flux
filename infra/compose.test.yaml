@@ -54,6 +54,8 @@ services:
     image: flux-e2e:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
     environment:
       FLUX_API_URL: http://api:8080
+      FLUX_PUBLIC_ORIGIN: ${FLUX_PUBLIC_ORIGIN:?Set FLUX_PUBLIC_ORIGIN}
+      FLUX_E2E_EVIDENCE_DIR: ${FLUX_E2E_EVIDENCE_DIR:-}
     depends_on:
       api:
         condition: service_healthy

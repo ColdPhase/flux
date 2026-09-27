@@ -52,8 +52,26 @@ async function draft(actor: Person, workspaceId: string, title: string, projectI
   return expect(await actor.browser.request('POST', `/api/v1/workspaces/${workspaceId}/drafts`, { body: projectId ? { title, projectId } : { title } }), 201) as Draft;
 }
 
+/**
+ * If-Match for the actor's current view of a draft. A draft the actor cannot read gets a
+ * placeholder version: authorization is decided before the precondition, so the request
+ * still answers 404/403 and never reveals whether the version matched.
+ */
+async function ifMatch(actor: Person, draftId: string) {
+  const current = await actor.browser.request('GET', `/api/v1/drafts/${draftId}`);
+  return { 'if-match': current.status === 200 ? current.headers.get('etag')! : '"1"' };
+}
+
 async function share(actor: Person, draftId: string, scope: 'private' | 'project' | 'workspace', projectId?: string) {
-  return actor.browser.request('POST', `/api/v1/drafts/${draftId}/share`, { body: projectId ? { scope, projectId } : { scope } });
+  return actor.browser.request('POST', `/api/v1/drafts/${draftId}/share`, { body: projectId ? { scope, projectId } : { scope }, headers: await ifMatch(actor, draftId) });
+}
+
+async function patch(actor: Person, draftId: string, body: Record<string, unknown>) {
+  return actor.browser.request('PATCH', `/api/v1/drafts/${draftId}`, { body, headers: await ifMatch(actor, draftId) });
+}
+
+async function move(actor: Person, draftId: string, body: { projectId: string | null; visibility: string }) {
+  return actor.browser.request('POST', `/api/v1/drafts/${draftId}/move`, { body, headers: await ifMatch(actor, draftId) });
 }
 
 async function drafts(actor: Person, workspaceId: string, query = '') {
@@ -104,7 +122,7 @@ describe('workspace access policy over HTTP', () => {
     expect(await member.browser.request('GET', `/api/v1/drafts/${secret.id}`), 200);
     for (const viewer of [other, admin, owner, guest, outsider]) {
       expect(await viewer.browser.request('GET', `/api/v1/drafts/${secret.id}`), 404, 'private draft read');
-      expect(await viewer.browser.request('PATCH', `/api/v1/drafts/${secret.id}`, { body: { title: 'edited' } }), 404, 'private draft write');
+      expect(await patch(viewer, secret.id, { title: 'edited' }), 404, 'private draft write');
       expect(await share(viewer, secret.id, 'workspace'), 404, 'private draft share');
     }
     const listed = expect(await drafts(other, ws.id), 200) as Page<Draft>;
@@ -154,13 +172,13 @@ describe('workspace access policy over HTTP', () => {
     const spec = await draft(owner, ws.id, 'Export spec', docs.id);
     expect(await share(owner, spec.id, 'project'), 200);
     expect(await other.browser.request('GET', `/api/v1/drafts/${spec.id}`), 200, 'viewer reads');
-    const denied = expect(await other.browser.request('PATCH', `/api/v1/drafts/${spec.id}`, { body: { body: 'viewer edit' } }), 403, 'viewer writes') as { code: string };
+    const denied = expect(await patch(other, spec.id, { body: 'viewer edit' }), 403, 'viewer writes') as { code: string };
     assert.equal(denied.code, 'FORBIDDEN');
     expect(await other.browser.request('POST', `/api/v1/workspaces/${ws.id}/drafts`, { body: { title: 'into docs', projectId: docs.id } }), 403, 'viewer adds to project');
     expect(await share(other, spec.id, 'private'), 403, 'viewer cannot re-share');
     expect(await other.browser.request('GET', `/api/v1/projects/${docs.id}/grants`), 403, 'viewer cannot manage grants');
     await grant(owner, docs.id, other, 'contributor');
-    const edited = expect(await other.browser.request('PATCH', `/api/v1/drafts/${spec.id}`, { body: { body: 'contributor edit' } }), 200) as Draft;
+    const edited = expect(await patch(other, spec.id, { body: 'contributor edit' }), 200) as Draft;
     assert.equal(edited.body, 'contributor edit');
     assert.equal(edited.version, 3);
     const grants = expect(await owner.browser.request('GET', `/api/v1/projects/${docs.id}/grants`), 200) as ProjectGrant[];
@@ -217,8 +235,8 @@ describe('workspace access policy over HTTP', () => {
     const foreign = await project(outsider, second.id, 'Foreign project', 'workspace');
     const local = await project(owner, ws.id, 'Local project', 'workspace');
     const item = await draft(owner, ws.id, 'Stay home', local.id);
-    const move = expect(await owner.browser.request('POST', `/api/v1/drafts/${item.id}/move`, { body: { projectId: foreign.id, visibility: 'project' } }), 422, 'move') as { code: string };
-    assert.equal(move.code, 'CROSS_WORKSPACE');
+    const crossMove = expect(await move(owner, item.id, { projectId: foreign.id, visibility: 'project' }), 422, 'move') as { code: string };
+    assert.equal(crossMove.code, 'CROSS_WORKSPACE');
     expect(await share(owner, item.id, 'project', foreign.id), 422, 'share');
     expect(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/drafts`, { body: { title: 'link', projectId: foreign.id } }), 422, 'create link');
     expect(await member.browser.request('POST', `/api/v1/workspaces/${ws.id}/drafts`, { body: { title: 'link', projectId: foreign.id } }), 404, 'invisible foreign project');
@@ -226,10 +244,10 @@ describe('workspace access policy over HTTP', () => {
     expect(outsiderGrant, 422, 'grant to a non-member');
     const stored = await pool.query('SELECT workspace_id, project_id FROM drafts WHERE id = $1', [item.id]);
     assert.deepEqual(stored.rows[0], { workspace_id: ws.id, project_id: local.id }, 'rejected commands left the draft unchanged');
-    const moved = expect(await owner.browser.request('POST', `/api/v1/drafts/${item.id}/move`, { body: { projectId: null, visibility: 'workspace' } }), 200) as Draft;
+    const moved = expect(await move(owner, item.id, { projectId: null, visibility: 'workspace' }), 200) as Draft;
     assert.equal(moved.projectId, null);
     assert.equal(moved.visibility, 'workspace');
-    expect(await owner.browser.request('POST', `/api/v1/drafts/${item.id}/move`, { body: { projectId: null, visibility: 'project' } }), 400, 'project visibility needs a project');
+    expect(await move(owner, item.id, { projectId: null, visibility: 'project' }), 400, 'project visibility needs a project');
   });
 
   test('removing a membership or a grant applies on the very next request', async () => {
