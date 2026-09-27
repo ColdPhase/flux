@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "pnpm -r --if-present build && tsc -p infra/tsconfig.build.json",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json",
     "lint": "eslint .",
     "test": "tsx --test tests/app/*.test.ts"
   },
@@ -22,6 +22,7 @@
     "@types/pg": "8.15.5",
     "drizzle-orm": "0.45.3",
     "eslint": "9.37.0",
+    "eslint-plugin-react-hooks": "7.1.1",
     "fastify": "5.6.1",
     "playwright": "1.63.0",
     "tsx": "4.20.5",
