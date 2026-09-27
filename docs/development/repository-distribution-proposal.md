@@ -31,14 +31,22 @@ was inferred from repository layout.
 
 ## Current Flux path and coupling map
 
-At `main` `810a207` the root `package.json`, lock, pnpm workspace, TypeScript,
+At `main` `21b7639` the root `package.json`, lock, pnpm workspace, TypeScript,
 ESLint and `.env.example` govern `apps/{web,server,worker}`,
 `packages/{contracts,core,db,agent-runtime,sdk}`, `examples/external-agent`
 and `tests/app`. `infra/Dockerfile` copies the whole repository into `/app`,
 builds the workspace and copies `infra/dist/migrate.js` to its runtime stage.
 `infra/compose.yaml` and `infra/compose.test.yaml` set `build.context: ..`, use
-`infra/Dockerfile`, and run that migration path. `scripts/check_application.sh`
-and `scripts/check_runtime.sh` refer to both Compose files and `tests/app` paths.
+`infra/Dockerfile`, and run that migration path. The root `package.json` build
+script calls `tsc -p infra/tsconfig.build.json`; `infra/migrate.ts` resolves
+`packages/db/migrations` from the process working directory; and
+`apps/server/src/index.ts` resolves `apps/web/dist` from `process.cwd()`.
+`apps/web/scripts/generate-icons.ts` documents Compose and container paths and
+defaults output to `apps/web/public/icons`. `scripts/check_application.sh` and
+`scripts/check_runtime.sh` refer to the Compose files and `tests/app` paths;
+both source `scripts/test_images.sh`, which discovers per-project images from
+`docker compose config --images` for cleanup. Their `cd` to the repository root
+currently supplies the working-directory invariant.
 The root `README.md`, `docs/development/containers.md`, `docs/CONTRIBUTING.md`,
 `.github/workflows/application-checks.yml`, `.dockerignore`, and the layer scan
 in `tests/app/support/architecture.ts` are part of this path contract. The
@@ -59,35 +67,67 @@ worker's worktree.
 Choose this target, subject to independent review:
 
 ```text
-app/                       # the sole pnpm workspace root
+app/                       # the sole pnpm workspace root; image WORKDIR /app
   package.json, pnpm-lock.yaml, pnpm-workspace.yaml
   tsconfig.json, eslint.config.js, .env.example
   apps/{web,server,worker}/
   packages/{contracts,core,db,agent-runtime,sdk}/
   tests/                    # application, browser and architecture checks
   examples/external-agent/  # public client example; license stays Apache-2.0
-  migrations/migrate.ts     # runtime entry point, not deployment configuration
+  tooling/{migrate.ts,tsconfig.build.json}  # migration entry/build; SQL stays packages/db/migrations
 docker/
   Dockerfile                # builds with app/ as context
-  compose.dev.yaml          # source build, isolated development/test data
-  compose.test.yaml
+  compose.source.yaml       # source-built production-mode app for ./flux up
+  compose.dev.yaml          # hot-reload overlay with bind mounts for ./flux dev
+  compose.test.yaml         # test overlay over compose.source.yaml
   compose.yaml              # operator example pulling a release image
-  .env.example              # deployment values, distinct from app dev template
+  .env.example              # sole source for launcher/operator .env
 docs/                       # product, architecture, self-hosting and evidence
-scripts/                    # small repo-level entry points, including #72
+flux                         # root one-command launcher for #72
+scripts/                    # repo-level checks and launcher implementation
 flux-ux-v8.html             # historical design reference until a reviewed link move
 .github/, .agents/, AGENTS.md, README.md, LICENSE
 ```
 
 Place `app/` at the repository root rather than adding another workspace above
 it. Keep package names and import direction from [architecture.md](architecture.md)
-stable. The two environment templates need explicit ownership: app development
-defaults in `app/.env.example`, deployable operator values in
-`docker/.env.example`; #72's launcher writes its chosen deployment `.env` once.
+stable. `app/.env.example` documents application variable names for contributors;
+it is never loaded by Compose or copied to a live `.env`. `docker/.env.example`
+is the sole executable template. The root `./flux` launcher creates
+`docker/.env` once from it with generated secrets, never overwrites it, and
+passes `--env-file docker/.env` explicitly. An intentional shell export may
+override a file value under Compose precedence; the launcher should otherwise
+avoid exporting competing defaults. Operator installation copies the release
+template beside its downloaded Compose file. Neither path loads `app/.env`.
+#76 must check that shared variable names and descriptions stay in sync between
+the two examples; only the Docker template supplies live values.
 No secrets are copied into images. `docker/compose.yaml` must have no `build:`
-stanza and must select a versioned `ghcr.io/coldphase/flux` image. Development
-and test Compose may build the source. One image can run server, worker and the
-one-shot migration entry point at the same revision, as O-002 already requires.
+stanza and must select a versioned `ghcr.io/coldphase/flux` image by digest.
+One image can run server, worker and the one-shot migration entry point at the
+same revision, as O-002 already requires.
+
+| Command or audience | Compose input | Required behavior |
+| --- | --- | --- |
+| `./flux up` and `./flux demo`, including a fresh pre-release clone | `docker/compose.source.yaml` | Build the checked-out source into the production-mode image; migrate, start API/worker and then seed demo only on request. `demo` remains development-only and uses the public API. Does not depend on a published GHCR image. |
+| `./flux dev` | `docker/compose.source.yaml` plus `docker/compose.dev.yaml` | Use the same dependencies and isolated volumes, with source bind mounts (`:z` on SELinux) and hot reload. Do not modify production data. |
+| `scripts/check_application.sh`, `scripts/check_runtime.sh` | `docker/compose.source.yaml` plus `docker/compose.test.yaml` where test services are needed | Build from source with unique Compose project, ports and volumes; preserve `scripts/test_images.sh` image cleanup after each run. Runtime check can use the source file alone for its normal services. |
+| Operator after first accepted release | Downloaded `compose.yaml` plus matching `.env.example` from that GitHub Release | Pull only the image identified by the release digest; no source checkout, compiler or build context. The pre-release repository `docker/compose.yaml` is an example for the future release and is **not** the `./flux up` default. |
+
+For every source-built and operator image, the runtime working directory is the
+application workspace root (`/app` in the container, corresponding to repository
+`app/`). #76 must preserve this invariant for the SQL migration directory and
+static web bundle, including in hot-reload mode, or replace both cwd-relative
+lookups with module-relative paths and test them. The Dockerfile builds with
+`app/` as context, compiles `app/tooling/migrate.ts` via
+`app/tooling/tsconfig.build.json`, copies its output to `tooling/dist`, and runs
+`node tooling/dist/migrate.js`; SQL stays in `packages/db/migrations`. The icon
+script header, build paths, TypeScript includes, `.dockerignore` (now scoped to
+the `app/` build context), and architecture scanner must move with the workspace.
+The scanner must cover `app/tooling/` as an entry-point layer without adding
+new core exemptions. The root `./flux` must use paths relative to its own
+file, so invocation from another shell directory still finds `docker/.env` and
+the selected Compose files. When #76 lands, update the source start example in
+`docs/product/playbook-the-5.md` §6 to this mapping.
 
 Considered alternatives: (1) keep the accepted root pnpm plus `infra/` and only
 repair docs and dependency boundaries: least merge risk, but leaves application
@@ -110,9 +150,12 @@ or application behavior. The `core`/adapter refactor remains #46 work.
 **O-004:** keep the accepted complete-application release gate. Specify one
 explicitly triggered final build from the accepted protected-main SHA, producing
 an OCI image in GHCR for `linux/amd64` and `linux/arm64` (both must be built and
-installed before calling either supported). Publish an immutable `vX.Y.Z` tag,
-record the manifest digest and source SHA, plus an optional convenience tag that
-is never the documented install target. Attach release-matched `compose.yaml`,
+installed before calling either supported). Publish a `vX.Y.Z` tag under a Flux
+**never-retag policy**, record the manifest digest and source SHA, plus an optional
+convenience tag that is never the documented install target. GHCR tag immutability
+is not assumed; the digest is the installation identity. Enable GitHub immutable
+Releases if available and verify the setting before publication. Attach
+release-matched `compose.yaml`,
 `.env.example`, install/upgrade/backup/restore instructions, SHA-256 checksums,
 dependency notices/SBOM and provenance to the GitHub Release. Sign image and
 provenance if the publishing environment supports verified identity; record any
@@ -122,6 +165,10 @@ assets and image, not only a source checkout. Preserve O-002's stopped-writer,
 same-revision migration and consistent PostgreSQL/files backup policy; specify
 the previous image and backup pair for rollback. A forward schema migration is
 not assumed reversible.
+
+Publication of `@flux/contracts`, `@flux/sdk` or other npm packages is outside
+#77 until the dependency and notice review in [licensing.md](../product/licensing.md)
+has its own accepted distribution contract.
 
 Do not include a Helm chart in the first public release. A chart adds values,
 secrets, upgrade hooks, storage and compatibility paths that must be tested for
@@ -147,11 +194,15 @@ manifests become costlier than a chart.
    lock install, build, typecheck, lint, unit/integration and browser checks in
    Docker. Preserve active branches; use a fresh migration branch from current
    main and rebase dependent PRs only with their owners.
-3. **Docker/deployment (#76 with #72):** move Dockerfile and dev/test Compose
-   to `docker/`; relocate migration entry to `app/migrations/migrate.ts` and
-   change runtime command; create pull-only operator Compose. Update
+3. **Docker/deployment (#76 with #72):** move Dockerfile and source/dev/test
+   Compose to `docker/`; relocate migration entry and build config to
+   `app/tooling/` and change runtime command; create pull-only operator Compose.
+   Update
    `scripts/check_application.sh`, `scripts/check_runtime.sh`, README,
-   `docs/development/containers.md`, CI paths, ignore rules and #72's launcher.
+   `scripts/test_images.sh`, the icon-generation instructions,
+   `docs/development/containers.md`, CI paths, ignore rules and root `./flux`.
+   Preserve the `/app` working-directory invariant, the environment templates'
+   separate roles and the command-to-Compose mapping above.
    Confirm `docker compose config`, clean clone build/migrate/start, isolated
    test volumes/ports, restart, persisted data and rollback by restoring the
    pre-move image/config. On unavailable macOS/SELinux hosts, report those
