@@ -6,7 +6,7 @@ Run from the repository root (v8 lives there, so the whole repository is mounted
 
 Writes screenshots/v8-<viewport>.png and screenshots/v8-<viewport>-details.png, and C's
 matching shots for both identity options at the same sizes and states:
-screenshots/c-<identity>-<viewport>[-details][-dark].png (identity: accent, the default, or rail).
+screenshots/c-<identity>-<viewport>[-details][-dark].png (identity: rail, the default, or accent).
 Desktop v8 always shows its context column, so its "details" state opens the
 discussed task from its card; on the phone it opens the context sheet.
 """
@@ -38,7 +38,7 @@ with sync_playwright() as p:
             page.close()
     # C at the same sizes and states, once per identity option, light and dark.
     C = ROOT / "variant-c-calm-messenger.html"
-    for identity in ("accent", "rail"):
+    for identity in ("rail", "accent"):
         for w, h in [(1440, 900), (390, 844)]:
             touch = w <= 1024
             for state in ("", "details"):

@@ -550,7 +550,8 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
 
 /* Touch devices: primary targets are at least 44 CSS px. Kept last so it wins the cascade. */
 @media (pointer: coarse) {
-  .crumbs a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; }
+  .crumbs a { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px; padding: 0 4px; }
+  .link-chip, .btn-sm { min-width: 44px; justify-content: center; }
   .seg button, .composer textarea { min-height: 44px; }
 }
 </style>

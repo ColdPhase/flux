@@ -1,4 +1,4 @@
-"""Render and audit the O-003 variants in Docker Playwright.
+"""Render and audit the O-003 variants in Docker Playwright (light theme, plus a dark-theme text pass for C).
 
 Run from the repository root:
   docker run --rm -v "$PWD/docs/design/proposals/o-003-ui-direction:/work" -w /work \
@@ -17,25 +17,48 @@ ROOT = Path(__file__).resolve().parents[1]
 SHOTS = ROOT / "screenshots"
 VARIANTS = {"a": "variant-a-return-ledger.html", "b": "variant-b-state-board.html",
             "c": "variant-c-calm-messenger.html"}
-# Extra interactive states (URL hash) that are rendered and audited like the default view.
-STATES = {"c": [(1440, 900, "since"), (1440, 900, "result"), (1440, 900, "agent-test"), (1280, 800, "decision"),
-                (1024, 768, "details"), (768, 1024, "nav"), (390, 844, "details"), (390, 844, "sources"),
-                (390, 844, "nav"), (390, 844, "since"), (1440, 900, "details"), (1440, 900, "tasks"),
-                (1440, 900, "map"), (1280, 800, "map-list"), (1024, 768, "docs"), (390, 844, "tasks"),
-                (390, 844, "map"), (360, 780, "docs"), (1440, 900, "capture"), (390, 844, "capture"),
-                # Identity option "rail" (?identity=rail); the default identity "accent" is the plain view.
-                (1440, 900, "rail"), (1280, 800, "rail"), (1440, 900, "rail-details"), (1024, 768, "rail"),
-                (768, 1024, "rail-nav"), (390, 844, "rail"), (390, 844, "rail-nav"), (360, 780, "rail-nav")]}
+# Extra interactive states for C, rendered and audited like the default view. The default identity is "rail"
+# (founder decision, 2026-09-27); a state starting with "accent" uses ?identity=accent. Other names are URL hashes.
+STATES = {"c": [
+    # Shared export (Tide): return, details, views
+    (1440, 900, "since"), (1440, 900, "result"), (1440, 900, "agent-test"), (1280, 800, "decision"),
+    (1024, 768, "details"), (1024, 768, "nav"), (768, 1024, "nav"), (390, 844, "details"), (390, 844, "sources"),
+    (390, 844, "nav"), (360, 780, "nav"), (390, 844, "since"), (1440, 900, "details"), (1440, 900, "tasks"),
+    (1440, 900, "map"), (1280, 800, "map-list"), (1024, 768, "docs"), (390, 844, "tasks"), (390, 844, "map"),
+    (360, 780, "docs"), (1440, 900, "capture"), (390, 844, "capture"),
+    # #44 scenario: DM with Kai -> select messages -> sketch -> new two-person project
+    (1440, 900, "dm"), (1440, 900, "dm-select"), (1440, 900, "dm-sketch"), (1440, 900, "dm-promote"), (1440, 900, "lamp-new"),
+    (768, 1024, "dm-select"), (390, 844, "dm"), (390, 844, "dm-select"), (390, 844, "dm-sketch"), (390, 844, "dm-promote"),
+    (390, 844, "lamp-new"),
+    # Map as a thinking surface: branching sketch, selection, editing, list alternative
+    (1440, 900, "lamp-map"), (1440, 900, "lamp-map-select"), (1440, 900, "lamp-map-edit"), (1280, 800, "lamp-map-list"),
+    (1024, 768, "lamp-map"), (768, 1024, "lamp-map"), (390, 844, "lamp-map"), (390, 844, "lamp-map-select"),
+    (390, 844, "lamp-map-edit"), (390, 844, "lamp-map-list"), (360, 780, "lamp-map"),
+    # #57 personal assistant: reader of Kai's assistant, owner asking, answer, no assistant
+    (1440, 900, "lamp"), (1440, 900, "lamp-ask"), (1440, 900, "lamp-answer"), (1440, 900, "lamp-noai"),
+    (1440, 900, "kai-assistant"), (1440, 900, "lamp-connect"), (768, 1024, "lamp"), (390, 844, "lamp"),
+    (390, 844, "lamp-ask"), (390, 844, "lamp-answer"), (390, 844, "lamp-noai"), (390, 844, "kai-assistant"),
+    # Identity alternative "accent" (?identity=accent)
+    (1440, 900, "accent"), (1280, 800, "accent"), (1024, 768, "accent"), (390, 844, "accent"),
+    (1440, 900, "accent-details"), (390, 844, "accent-details"), (768, 1024, "accent-nav"), (390, 844, "accent-nav"),
+    (360, 780, "accent-nav"), (1440, 900, "accent-lamp-map"), (390, 844, "accent-dm-select")]}
 # Variants that also get the zoom, keyboard-focus and reduced-motion checks with a query string.
-EXTRA_QUERIES = {"c": {"rail": "?identity=rail"}}
+EXTRA_QUERIES = {"c": {"accent": "?identity=accent"}}
+# Dark theme (prefers-color-scheme: dark): text contrast and text size for these states, in both identities.
+DARK_STATES = {"c": [(1440, 900, s) for s in ("", "since", "details", "sources", "agent-test", "map", "tasks", "docs",
+                                              "capture", "dm-select", "dm-sketch", "lamp-map", "dm-promote", "lamp-new", "lamp",
+                                              "lamp-map-select", "lamp-map-edit", "lamp-map-list", "lamp-ask",
+                                              "lamp-answer", "lamp-noai", "kai-assistant", "lamp-connect")]
+                    + [(390, 844, s) for s in ("", "details", "nav", "dm-select", "lamp", "lamp-map", "lamp-ask")]}
+DARK_SHOTS = {"", "lamp", "lamp-map", "dm-select"}
 
 
 def target(state):
-    """URL suffix for a state name: "rail", "rail-<hash>" select ?identity=rail; anything else is a hash."""
-    if state == "rail" or state.startswith("rail-"):
-        rest = state[5:]
-        return "?identity=rail" + (f"#{rest}" if rest else "")
-    return f"#{state}"
+    """URL suffix for a state: "accent" / "accent-<hash>" select ?identity=accent; anything else is a hash."""
+    if state == "accent" or state.startswith("accent-"):
+        rest = state[7:]
+        return "?identity=accent" + (f"#{rest}" if rest else "")
+    return f"#{state}" if state else ""
 
 VIEWPORTS = [(1440, 900), (1280, 800), (1024, 768), (768, 1024), (390, 844), (360, 780)]
 
@@ -64,17 +87,27 @@ TEXT_AUDIT = r"""() => {
   return {contrast_failures: out, small_text: small};
 }"""
 
-TARGET_AUDIT = r"""() => [...document.querySelectorAll('button, a[href], input, select, textarea, [role="button"], [tabindex]:not([tabindex="-1"])')]
-  .filter(e => { const r = e.getBoundingClientRect(); return r.width > 1 && r.height > 1 && !e.closest('[inert]') && !e.classList.contains('skip'); })
+# Accepted criterion (AC-3): on a coarse pointer every primary target is at least 44 x 44 CSS px.
+# Documented exceptions, by selector (reported per state in audit.json as "target_exceptions"):
+TARGET_EXCEPTIONS = {
+    ".ref": (24, "inline reference inside a sentence or evidence line: WCAG 2.5.8 inline exception, 24 x 24 px minimum"),
+    ".skip": (0, "skip link: off-screen and not a touch target; shown only on keyboard focus"),
+}
+TARGET_AUDIT = r"""(ex) => [...document.querySelectorAll('button, a[href], input, select, textarea, [role="button"], [tabindex]:not([tabindex="-1"])')]
+  .filter(e => { const r = e.getBoundingClientRect(), s = getComputedStyle(e);
+    return r.width > 1 && r.height > 1 && !e.closest('[inert]') && s.visibility !== 'hidden' && !e.closest('[hidden]'); })
   .map(e => {
     // A stretched link (.obj-open::after) makes its whole card or row the hit area.
     const area = e.classList.contains('obj-open') ? (e.closest('.card, .orow') || e) : e;
     const r = area.getBoundingClientRect();
-    // Inline references inside sentences use the WCAG 2.5.8 inline exception; they need 24 px, not 44.
-    const need = e.classList.contains('ref') ? 24 : 44;
+    const rule = Object.keys(ex).find(sel => e.matches(sel));
+    const need = rule ? ex[rule] : 44;
     return {label: (e.getAttribute('aria-label') || e.textContent || e.placeholder || e.name || '').trim().replace(/\s+/g,' ').slice(0,30),
-            w: Math.round(r.width), h: Math.round(r.height), need}; })
-  .filter(t => t.h < t.need || t.w < 24)"""
+            w: Math.round(r.width), h: Math.round(r.height), need, exception: rule || null}; })
+  .filter(t => t.w < t.need || t.h < t.need)"""
+EXCEPTION_COUNT = r"""(sels) => Object.fromEntries(sels.map(s => [s, [...document.querySelectorAll(s)].filter(e => {
+  const r = e.getBoundingClientRect(); return r.width > 1 && !e.closest('[inert]') && !e.closest('[hidden]'); }).length]))"""
+EX_NEED = {k: v[0] for k, v in TARGET_EXCEPTIONS.items()}
 
 FOCUS_STATE = r"""() => { const e = document.activeElement; if (!e || e === document.body) return null;
   const r = e.getBoundingClientRect();
@@ -113,7 +146,8 @@ def main():
                     "console_errors": errors,
                     "contrast_failures": text["contrast_failures"],
                     "small_text": text["small_text"],
-                    "touch_targets_under_44": page.evaluate(TARGET_AUDIT) if w <= 1024 else None,
+                    "touch_targets_under_44": page.evaluate(TARGET_AUDIT, EX_NEED) if w <= 1024 else None,
+                    "target_exceptions": page.evaluate(EXCEPTION_COUNT, list(TARGET_EXCEPTIONS)) if w <= 1024 else None,
                 }
                 page.close()
 
@@ -123,7 +157,7 @@ def main():
                 errors = []
                 page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
                 page.goto(url + target(state))
-                page.wait_for_timeout(300)
+                page.wait_for_timeout(400)
                 page.screenshot(path=str(SHOTS / f"{key}-{w}x{h}-{state}.png"))
                 text = page.evaluate(TEXT_AUDIT)
                 entry["viewports"][f"{w}x{h}#{state}"] = {
@@ -131,7 +165,8 @@ def main():
                     "console_errors": errors,
                     "contrast_failures": text["contrast_failures"],
                     "small_text": text["small_text"],
-                    "touch_targets_under_44": page.evaluate(TARGET_AUDIT) if touch else None,
+                    "touch_targets_under_44": page.evaluate(TARGET_AUDIT, EX_NEED) if touch else None,
+                    "target_exceptions": page.evaluate(EXCEPTION_COUNT, list(TARGET_EXCEPTIONS)) if touch else None,
                 }
                 page.close()
 
@@ -201,6 +236,19 @@ def main():
                 page.goto(url + query)
                 extra["reduced_motion_animated_elements"] = page.evaluate(MOTION)
                 page.close()
+            for w, h, state in DARK_STATES.get(key, []):
+                for ident, query in (("rail", ""), ("accent", "?identity=accent")):
+                    touch = w <= 1024
+                    page = browser.new_page(viewport={"width": w, "height": h}, is_mobile=touch, has_touch=touch,
+                                            color_scheme="dark")
+                    page.goto(url + query + (f"#{state}" if state else ""))
+                    page.wait_for_timeout(400)
+                    if state in DARK_SHOTS:
+                        page.screenshot(path=str(SHOTS / f"{key}-dark-{ident}-{w}x{h}{'-' + state if state else ''}.png"))
+                    text = page.evaluate(TEXT_AUDIT)
+                    entry.setdefault("dark", {})[f"{ident} {w}x{h}#{state}"] = {
+                        "contrast_failures": text["contrast_failures"], "small_text": text["small_text"]}
+                    page.close()
         browser.close()
     (ROOT / "audit.json").write_text(json.dumps(report, indent=2) + "\n")
     for key, entry in report.items():
@@ -214,6 +262,10 @@ def main():
               "keyboard:", entry["keyboard"], "focus:", entry["keyboard_focus"]["stops"],
               "no ring:", len(entry["keyboard_focus"]["without_visible_ring"]),
               "motion:", entry["reduced_motion_animated_elements"])
+        if entry.get("dark"):
+            dv = entry["dark"].values()
+            print(" ", key, "dark states:", len(entry["dark"]), "contrast failures:", sum(len(v["contrast_failures"]) for v in dv),
+                  "small text:", sum(len(v["small_text"]) for v in dv))
         for name, extra in entry.get("extra", {}).items():
             print(" ", key, name, "zoom200 overflow:", extra["zoom200_overflow"],
                   "focus:", extra["keyboard_focus"]["stops"], "no ring:", len(extra["keyboard_focus"]["without_visible_ring"]),

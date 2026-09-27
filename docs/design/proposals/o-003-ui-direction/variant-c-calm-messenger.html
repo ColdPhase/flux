@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="boot" data-identity="accent">
+<html lang="en" class="boot" data-identity="rail" data-ai="ready">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
@@ -7,19 +7,24 @@
 <title>Shared export · Tide · Flux (O-003 variant C: Calm messenger)</title>
 <!--
   O-003 variant C — "Calm messenger".
-  Static interface proposal for issue #15. Not an accepted direction.
-  Structure: Slack/Discord (sidebar · conversation · on-demand side panel).
-  Aesthetic: Linear (near-monochrome, one indigo accent, 1px rules, quiet dots).
+  Static interface proposal for issue #15.
+  Structure: Slack/Discord (rail · sidebar · conversation · on-demand side panel).
+  Aesthetic: Linear (near-monochrome, one accent, 1px rules, quiet dots).
   Restraint: Apple Notes / Messages (generous spacing, few elements at once).
-  Scenario content follows brief.md. Internal IDs appear only in the side panel, muted.
-  Hashes for review: #details, #decision, #result, #sources, #agent-test, #agent-review, #capture, #nav, #since, #tasks, #map, #map-list, #docs.
-  Identity (data-identity on <html>, via ?identity=): "accent" (default) is a v8-derived green accent, the Flux
-  mark in the sidebar header and one geometric divider motif; "rail" keeps indigo and adds v8's dark project rail.
+  Scenario content follows brief.md and #44 / #57. Internal IDs appear only in the side panel, muted.
+  Review hashes (Shared export): #details, #decision, #result, #sources, #agent-test, #agent-review, #capture, #nav,
+    #since, #tasks, #map, #map-list, #docs.
+  Review hashes (#44 lamp scenario and #57 assistant states): #dm, #dm-select, #dm-sketch, #dm-promote, #lamp-new,
+    #lamp, #lamp-map, #lamp-map-select, #lamp-map-edit, #lamp-map-list, #lamp-ask, #lamp-answer, #lamp-noai,
+    #kai-assistant, #lamp-connect. ?ai=none shows the no-assistant state anywhere.
+  Identity (data-identity on <html>, via ?identity=): "rail" (default, founder decision 2026-09-27) adds v8's dark
+  project rail and keeps indigo; "accent" is the alternative with a v8-derived green accent and the Flux mark.
 -->
 <script>
-  // Choose the identity option before first paint: ?identity=accent (default) or ?identity=rail.
-  (function () { try { var v = new URLSearchParams(location.search).get('identity');
-    if (v === 'rail' || v === 'accent') document.documentElement.dataset.identity = v; } catch (e) {} })();
+  // Choose the identity and assistant state before first paint: ?identity=rail (default) or ?identity=accent; ?ai=none.
+  (function () { try { var q = new URLSearchParams(location.search), v = q.get('identity');
+    if (v === 'rail' || v === 'accent') document.documentElement.dataset.identity = v;
+    if (q.get('ai') === 'none' || location.hash === '#lamp-noai') document.documentElement.dataset.ai = 'none'; } catch (e) {} })();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -265,7 +270,11 @@ svg { flex: none; }
 [data-identity="rail"] .side-in { width: 232px; }
 [data-identity="rail"] .brand, [data-identity="rail"] .sec-home, [data-identity="rail"] .sec-projects, [data-identity="rail"] .sec-dms { display: none; }
 [data-identity="rail"] .ctx-head { display: flex; }
-[data-identity="rail"] .sec-threads { display: block; }
+/* The sidebar lists what is inside the current place: a project's conversations, or the direct messages. */
+[data-identity="rail"] body[data-place="shared"] .sec-threads[data-for="shared"],
+[data-identity="rail"] body[data-place="lamp"] .sec-threads[data-for="lamp"],
+[data-identity="rail"] body[data-place="dm"] .sec-dms { display: block; }
+body.no-lamp .lamp-link { display: none !important; }
 @media (hover: hover) and (pointer: fine) {
   .rail [data-tip]::after { top: 50%; right: auto; left: calc(100% + 10px); transform: translate(-2px, -50%); }
   .rail [data-tip]:hover::after, .rail [data-tip]:focus-visible::after { transform: translate(0, -50%); }
@@ -342,6 +351,7 @@ svg { flex: none; }
 .state-seg:hover { background: var(--bg-hover); color: var(--text); }
 .state-seg:active { transform: scale(.98); transition-duration: calc(var(--dur-1) / 2); }
 .state-seg.need { color: var(--accent); }
+.state-seg.aud-seg, .state-seg.aud-seg:hover { background: transparent; color: var(--text-3); }
 .state-seg svg { color: var(--text-3); }
 .seg-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .state-sep { flex: none; }
@@ -392,35 +402,6 @@ svg { flex: none; }
 .seg { display: inline-flex; padding: 2px; border-radius: var(--r); background: var(--bg-hover); }
 .seg-b { min-height: 28px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; color: var(--text-3); transition: var(--tr); }
 .seg-b[aria-pressed="true"] { background: var(--bg); color: var(--text); box-shadow: 0 1px 2px rgba(16,17,20,.08), inset 0 0 0 1px var(--line); }
-.flow { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0; }
-.node { position: relative; display: flex; flex-direction: column; }
-.node-b { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 12px 14px; border-radius: var(--r-lg); text-align: left; background: var(--bg-raised); box-shadow: inset 0 0 0 1px var(--line); transition: var(--tr); }
-.node-b:hover { background: var(--bg-hover); box-shadow: inset 0 0 0 1px var(--line-strong); }
-.node-b:active { transform: scale(.985); transition-duration: calc(var(--dur-1) / 2); }
-.node-k { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-3); line-height: 1.4; }
-.node-t { font-size: 14px; font-weight: 500; color: var(--text); line-height: 1.4; }
-.node-s { font-size: 13px; color: var(--text-3); line-height: 1.45; }
-.node.replaced .node-b { box-shadow: inset 0 0 0 1px var(--line); background: transparent; }
-.node.replaced .node-b:hover { background: var(--bg-hover); }
-.node.replaced .node-t { color: var(--text-3); text-decoration: line-through; text-decoration-color: var(--line-strong); }
-.node.now .node-b { box-shadow: inset 0 0 0 1.5px var(--text-3); }
-.node.need .node-s { color: var(--accent); font-weight: 500; }
-/* Edges: a short labelled connector to the next step */
-.edge { display: flex; align-items: center; gap: 8px; min-height: 30px; padding-left: 22px; font-size: 12px; color: var(--text-3); }
-.edge::before { content: ""; width: 1px; align-self: stretch; background: var(--line-strong); }
-@container (min-width: 760px) {
-  .flow.as-map { flex-direction: row; align-items: stretch; }
-  .flow.as-map .node { flex: 1 1 0; min-width: 0; flex-direction: row; align-items: center; }
-  .flow.as-map .node-b { flex: 1; min-width: 0; align-self: stretch; }
-  .flow.as-map .edge { flex-direction: column; justify-content: center; gap: 4px; width: 76px; white-space: nowrap; min-height: 0; padding: 0; flex: none; text-align: center; }
-  .flow.as-map .edge::before { width: 100%; height: 1px; align-self: auto; order: 2; }
-}
-.flow.as-list { gap: 0; }
-.flow.as-list .node-b { box-shadow: none; padding: 10px 8px; margin: 0 -8px; width: calc(100% + 16px); background: transparent; }
-.flow.as-list .node-b:hover { background: var(--bg-hover); }
-.flow.as-list .edge { padding-left: 0; min-height: 0; margin: 0 0 2px; }
-.flow.as-list .edge::before { display: none; }
-
 /* ---------- Since you left ---------- */
 .since { flex: none; border-bottom: 1px solid var(--line); }
 .since-in { max-width: calc(var(--col) + 48px); margin: 0 auto; padding: 0 24px; }
@@ -734,6 +715,195 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
   .p-body { padding: 18px 16px 28px; }
 }
 
+/* ---------- Places: Shared export (project), the DM with Kai, Gesture lamp (project) ---------- */
+.place { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+/* One quiet audience line under a DM or project title: who can see this place. */
+.aud { display: flex; align-items: center; gap: 6px; min-height: 24px; font-size: 13px; color: var(--text-3); white-space: nowrap; overflow: hidden; }
+.aud svg { color: var(--text-3); }
+.title .tav { align-self: center; width: 22px; height: 22px; font-size: 12px; }
+.place:not(.fresh) .fresh-only, .place.fresh .later-only, body.lamp-fresh .lamp-later { display: none !important; }
+.nav a.arrived, .rail-btn.arrived { animation: arrive var(--dur-3) var(--ease-sheet) both; }
+@keyframes arrive { from { opacity: 0; transform: translateX(-8px); } }
+
+/* ---------- Sketch (Map): thoughts, many-to-many links, direct manipulation ---------- */
+:root { --edge: #A6A9B0; }
+@media (prefers-color-scheme: dark) { :root { --edge: #5A5D64; } }
+.sketch { display: flex; flex-direction: column; gap: 10px; }
+.sk-head { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
+.sk-lead { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; font-size: 14px; color: var(--text-2); min-width: 0; }
+.sk-lead b { font-weight: 600; color: var(--text); }
+.sk-aud { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; color: var(--text-3); }
+.sk-head-r { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sk-bar { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; min-height: 40px; padding: 4px; border-radius: var(--r-lg); box-shadow: inset 0 0 0 1px var(--line); background: var(--bg); }
+.sk-bar .btn { min-height: 32px; padding: 0 10px; }
+.sk-bar .btn svg { color: var(--text-3); }
+.sk-bar .btn.add { color: var(--text); }
+.sk-bar .btn.add svg { color: var(--accent); }
+.sk-bar .btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.sk-bar .btn[aria-pressed="true"] svg { color: var(--accent); }
+.sk-bar .btn[aria-disabled="true"] { color: var(--text-3); }
+.sk-bar .btn[aria-disabled="true"]:hover { background: transparent; }
+.sk-div { width: 1px; height: 20px; background: var(--line); margin: 0 4px; flex: none; }
+.sk-status { flex: 1 1 16ch; min-width: 0; padding: 0 8px; font-size: 13px; color: var(--text-3); line-height: 1.4; }
+.sk-status b { font-weight: 500; color: var(--text-2); }
+.sk-status .ok-t { color: var(--ok); }
+.sk-canvas { position: relative; overflow: auto; min-height: 320px; max-height: clamp(380px, calc(100dvh - 290px), 640px); border-radius: var(--r-lg);
+  background-color: var(--bg-side); background-image: radial-gradient(var(--line-strong) 1px, transparent 1.3px); background-size: 20px 20px;
+  box-shadow: inset 0 0 0 1px var(--line); overscroll-behavior: contain; cursor: default; }
+.sk-canvas.panning { cursor: grabbing; }
+.sk-canvas:focus-visible { outline-offset: -2px; }
+.sk-plane { position: relative; min-width: 100%; min-height: 100%; }
+.sk-edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.sk-edges path { fill: none; stroke: var(--edge); stroke-width: 1.5; transition: stroke var(--dur-1) var(--ease-out); }
+.sk-edges path.on { stroke: var(--accent); stroke-width: 2; }
+.sk-edges path.new { stroke-dasharray: 5 4; }
+.sk-el { position: absolute; left: 0; top: 0; padding: 0 5px; border-radius: 4px; background: var(--bg-side); color: var(--text-3); font-size: 12px; line-height: 18px; white-space: nowrap; pointer-events: none; }
+.sk-el.on { color: var(--accent); }
+.sk-node { position: absolute; left: 0; top: 0; width: var(--nw, 184px); display: flex; flex-direction: column; gap: 1px; padding: 9px 12px 10px;
+  border-radius: var(--r-lg); background: var(--bg-raised); text-align: left; touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab;
+  box-shadow: 0 1px 2px rgba(16,17,20,.05), inset 0 0 0 1px var(--line-strong);
+  transition: box-shadow var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out), opacity var(--dur-2) var(--ease-out); }
+.sk-node:hover { box-shadow: 0 1px 2px rgba(16,17,20,.06), inset 0 0 0 1px var(--text-3); }
+.sk-node[aria-pressed="true"] { box-shadow: 0 0 0 3px var(--accent-soft), inset 0 0 0 1.5px var(--accent); }
+.sk-node.dragging { cursor: grabbing; z-index: 3; box-shadow: var(--shadow), inset 0 0 0 1.5px var(--accent); transition: none; }
+.sk-canvas.connecting .sk-node:not([aria-pressed="true"]) { cursor: crosshair; box-shadow: inset 0 0 0 1.5px var(--line-strong), 0 0 0 3px var(--bg-active); }
+.sk-k { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-3); line-height: 1.4; }
+.sk-k svg { flex: none; }
+.sk-t { font-size: 14px; font-weight: 500; color: var(--text); line-height: 1.35; }
+.sk-p { font-size: 12px; color: var(--text-3); line-height: 1.4; margin-top: 3px; }
+.sk-node.k-result .sk-k, .sk-node.need .sk-k { color: var(--accent); }
+.sk-node.k-task { background: var(--bg-raised); }
+.sk-node.replaced { background: var(--bg-side); }
+.sk-node.replaced .sk-t { color: var(--text-3); text-decoration: line-through; text-decoration-color: var(--line-strong); }
+.sk-node.flash { animation: sk-flash 1.1s var(--ease-out) 1; }
+@keyframes sk-flash { 0% { transform: translate(var(--x), var(--y)) scale(1.03); } 100% { transform: translate(var(--x), var(--y)); } }
+.sk-node { transform: translate(var(--x), var(--y)); }
+.sk-plus { position: absolute; left: 0; top: 0; z-index: 4; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
+  background: var(--accent); color: var(--on-accent); box-shadow: var(--shadow); transition: background-color var(--dur-1) var(--ease-out), opacity var(--dur-1) var(--ease-out); }
+.sk-plus:hover { background: var(--accent-hover); }
+.sk-plus:active { transform: scale(.94); }
+.sk-edit { position: absolute; left: 0; top: 0; z-index: 5; font: 500 14px/1.35 var(--font); letter-spacing: -0.006em; padding: 6px 8px; border: 0; border-radius: var(--r);
+  background: var(--bg); color: var(--text); box-shadow: inset 0 0 0 1.5px var(--accent), 0 0 0 3px var(--accent-soft); outline: none; }
+.sk-help { font-size: 12px; color: var(--text-3); line-height: 1.6; }
+.h-coarse { display: none; }
+@media (pointer: coarse) { .h-fine { display: none; } .h-coarse { display: inline; } }
+.sk-help kbd { font: 500 12px/1 var(--font); padding: 1px 5px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--line-strong); color: var(--text-2); }
+.sk-list { list-style: none; margin: 0; padding: 0; }
+.sk-list > li { padding: 6px 0 8px; }
+.sk-list > li + li { border-top: 1px solid var(--line); }
+.sk-li-t { display: flex; align-items: center; gap: 8px; width: calc(100% + 16px); min-height: 32px; margin: 0 -8px; padding: 0 8px; border-radius: var(--r); text-align: left; font-size: 14px; font-weight: 500; color: var(--text); transition: var(--tr); }
+.sk-li-t:hover { background: var(--bg-hover); }
+.sk-li-t[aria-pressed="true"] { background: var(--accent-soft); }
+.sk-li-s, .sk-li-l { display: block; font-size: 13px; color: var(--text-3); line-height: 1.5; }
+.sk-li-l b { font-weight: 500; color: var(--text-2); }
+.sk-li-edit { width: 100%; min-height: 36px; font: 500 14px/1.35 var(--font); padding: 6px 8px; border: 0; border-radius: var(--r); background: var(--bg); color: var(--text); box-shadow: inset 0 0 0 1.5px var(--accent); outline: none; }
+
+/* ---------- DM: select messages, then start a sketch from them ---------- */
+.msel { display: none; }
+.selecting .msg { cursor: pointer; margin: 0 -10px; padding: 6px 10px; border-radius: var(--r-lg); transition: background-color var(--dur-1) var(--ease-out); }
+.selecting .msg:hover { background: var(--bg-hover); }
+.selecting .msg.picked { background: var(--accent-soft); }
+.selecting .msg .av { display: none; }
+.selecting .msg > .msel { display: grid; place-items: center; grid-column: 1; grid-row: 1 / span 2; width: 36px; height: 36px; border-radius: var(--r); color: var(--text-3); }
+.msel i { width: 18px; height: 18px; border-radius: 5px; box-shadow: inset 0 0 0 1.5px var(--text-3); display: grid; place-items: center; transition: var(--tr); }
+.msel i svg { opacity: 0; color: var(--on-accent); transition: opacity var(--dur-1) var(--ease-out); }
+.msel[aria-pressed="true"] i { background: var(--accent); box-shadow: none; }
+.msel[aria-pressed="true"] i svg { opacity: 1; }
+.dm-selbar { flex: none; padding: 10px 24px 16px; padding-bottom: max(16px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
+.dm-selbar-in { max-width: var(--col); margin: 0 auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; }
+.dm-selbar .count { font-size: 14px; font-weight: 500; color: var(--text); margin-right: auto; }
+.dm-selbar .note { flex-basis: 100%; display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-3); }
+.btn.primary[aria-disabled="true"] { background: var(--bg-active); color: var(--text-3); }
+.moved-note { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-3); }
+
+/* ---------- New project from a sketch: exact audience and content before anything is shared ---------- */
+.fld { display: block; font-size: 12px; font-weight: 500; color: var(--text-3); margin: 18px 0 6px; }
+.fld-in { width: 100%; min-height: var(--ctl); padding: 0 10px; border: 0; border-radius: var(--r); background: var(--bg); box-shadow: inset 0 0 0 1px var(--line-strong); font-size: 15px; outline: none; transition: var(--tr); }
+.fld-in:focus { box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 3px var(--accent-soft); }
+.aud-pre { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--r-lg); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.aud-pre .faces { margin: 0; }
+.aud-pre b { display: block; font-size: 15px; font-weight: 600; color: var(--text); line-height: 1.4; }
+.aud-pre span.s { display: block; font-size: 13px; color: var(--text-3); line-height: 1.45; }
+.inc { list-style: none; margin: 0; padding: 0; }
+.inc li { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 10px; padding: 8px 0; font-size: 14px; color: var(--text-2); line-height: 1.5; }
+.inc li + li { border-top: 1px solid var(--line); }
+.inc svg { margin-top: 3px; color: var(--text-3); }
+.inc svg.ok { color: var(--ok); }
+.inc b { font-weight: 500; color: var(--text); }
+
+/* ---------- Personal assistant (#57, consistent with docs/design/personal-ai on PR #64) ---------- */
+[data-ai="none"] .ai-ready, :root:not([data-ai="none"]) .ai-none { display: none !important; }
+.msg.ai .who { font-weight: 600; }
+.msg.ai .role b { font-weight: 500; color: var(--text-2); }
+.asked { margin-top: 2px; color: var(--text-3); font-size: 14px; max-width: 64ch; }
+.asked q { quotes: "“" "”"; color: var(--text-2); }
+.claims { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 6px 12px; margin: 8px 0 0; max-width: 64ch; }
+.claims dt { align-self: start; font-size: 12px; font-weight: 500; color: var(--text-3); line-height: 24px; white-space: nowrap; }
+.claims dd { margin: 0; color: var(--text); line-height: 1.55; }
+.claims dt.k-prop { display: flex; align-items: center; gap: 6px; }
+.claims dt.k-prop::before { content: ""; width: 6px; height: 6px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--text-3); }
+.claims .ref { font-weight: 400; }
+.msg-acts { display: flex; flex-wrap: wrap; gap: 2px; margin: 6px 0 0 -8px; }
+.msg-acts .btn { min-height: 28px; padding: 0 8px; font-size: 13px; }
+.msg-acts .btn svg { color: var(--text-3); }
+.obj.proposal { flex-direction: column; align-items: stretch; gap: 0; max-width: 560px; padding: 14px 16px; }
+.pr-k { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 500; color: var(--text-3); line-height: 1.4; }
+.pr-k .dot.ring { width: 8px; height: 8px; }
+.pr-t { font-size: 15px; font-weight: 600; line-height: 1.4; margin-top: 4px; color: var(--text); }
+.obj.proposal .claims { grid-template-columns: 96px minmax(0, 1fr); font-size: 14px; }
+.pr-effect { margin-top: 12px; font-size: 13px; color: var(--text-3); line-height: 1.5; }
+.pr-effect b { font-weight: 500; color: var(--text-2); }
+.pr-acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.proposal-wait { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; font-size: 13px; color: var(--text-3); }
+.ai-btn { position: relative; }
+.ai-btn .ai-st { position: absolute; right: 7px; top: 7px; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 2px var(--bg); }
+.box .ask-toggle { align-self: flex-end; width: 32px; height: 32px; margin: 0 -2px 0 -8px; color: var(--text-3); }
+.box .ask-toggle[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.ask-bar { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; margin: 0 2px 6px; font-size: 13px; color: var(--text-3); line-height: 1.4; }
+.ask-who { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 0 4px 0 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-weight: 500; }
+.ask-who .icon-btn { width: 22px; height: 22px; color: var(--accent); border-radius: 50%; }
+.ask-who .icon-btn:hover { background: transparent; color: var(--accent-hover); }
+.ask-none-t { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; color: var(--text-2); }
+.ask-none-t .btn { min-height: 26px; }
+.q3 { list-style: none; margin: 0; padding: 0; }
+.q3 li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 2px 10px; padding: 11px 0; }
+.q3 li + li { border-top: 1px solid var(--line); }
+.q3 svg { color: var(--text-3); margin-top: 3px; }
+.q3 b { display: block; font-size: 12px; font-weight: 500; color: var(--text-3); line-height: 1.4; }
+.q3 span { display: block; font-size: 14px; color: var(--text-2); line-height: 1.55; }
+.note-s { font-size: 13px; color: var(--text-3); line-height: 1.55; margin-top: 10px; }
+
+/* ---------- Touch: every primary target is at least 44 × 44 CSS px on a coarse pointer ---------- */
+@media (pointer: coarse) {
+  .btn, .seg-b, .tab, .p-back, .chip, .typing-btn, .state-seg { min-width: 44px; }
+  .btn { min-height: 44px; }
+  .fail .btn, .msg-acts .btn, .sk-bar .btn, .ask-none-t .btn { min-height: 44px; }
+  .sk-plus { width: 44px; height: 44px; }
+  .sk-li-t, .sk-edit, .sk-li-edit { min-height: 44px; }
+  .selecting .msg > .msel { width: 44px; height: 44px; }
+  .selecting .msg { grid-template-columns: 44px minmax(0, 1fr); }
+  .box .ask-toggle { width: 44px; height: 44px; align-self: center; margin: 0 -4px 0 -10px; }
+  .ask-who { min-height: 44px; padding-left: 12px; }
+  .ask-who .icon-btn { width: 44px; height: 44px; }
+  .ids .btn { margin: 0 0 0 auto; }
+  .sys .sys-acts { margin: 0; display: flex; }
+}
+@media (max-width: 640px) {
+  .aud { display: none; }
+  .sk-canvas { height: auto; overflow-x: auto; overflow-y: hidden; }
+  .sk-bar { padding: 2px; }
+  .sk-bar .bl, .sk-div { display: none; }
+  .sk-el:not(.on) { display: none; }
+  .sk-edges path:not(.on) { stroke-opacity: .5; }
+  .sk-status { flex-basis: 100%; order: 9; padding: 2px 8px 4px; }
+  .dm-selbar { padding: 8px 10px 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+  .dm-selbar .btn.primary { order: 3; flex: 1 1 100%; }
+  .dm-selbar .note { order: 4; }
+  .claims, .obj.proposal .claims { grid-template-columns: 92px minmax(0, 1fr); gap: 6px 10px; }
+  .obj.proposal { padding: 12px 14px; }
+  .ask-bar .ask-cost { display: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root { --dur-1: 0ms; --dur-2: 0ms; --dur-3: 0ms; --stagger: 0ms; }
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
@@ -771,6 +941,13 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
     <symbol id="i-chat" viewBox="0 0 16 16"><path d="M3 3.25h10a1 1 0 011 1v6a1 1 0 01-1 1H7.5L4.5 13.5v-2.25H3a1 1 0 01-1-1v-6a1 1 0 011-1z" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round"/></symbol>
     <symbol id="i-capture" viewBox="0 0 16 16"><path d="M9.5 2.75H4a1 1 0 00-1 1v8.5a1 1 0 001 1h8.5a1 1 0 001-1V7" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/><path d="M12 1.75v4.5M9.75 4h4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
     <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+    <symbol id="i-check" viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 16 16"><path d="M1.75 8S4.25 3.5 8 3.5 14.25 8 14.25 8 11.75 12.5 8 12.5 1.75 8 1.75 8z" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round"/><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.4" fill="none"/></symbol>
+    <symbol id="i-map" viewBox="0 0 16 16"><circle cx="4" cy="8" r="2" stroke="currentColor" stroke-width="1.4" fill="none"/><circle cx="12" cy="4" r="2" stroke="currentColor" stroke-width="1.4" fill="none"/><circle cx="12" cy="12" r="2" stroke="currentColor" stroke-width="1.4" fill="none"/><path d="M5.8 7.1l4.4-2.2M5.8 8.9l4.4 2.2" stroke="currentColor" stroke-width="1.4"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 16 16"><path d="M5.5 3.5L2.75 6.25 5.5 9" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 6.25h6.25a3.75 3.75 0 010 7.5H7" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></symbol>
+    <symbol id="i-link" viewBox="0 0 16 16"><circle cx="3.75" cy="12.25" r="1.75" stroke="currentColor" stroke-width="1.4" fill="none"/><circle cx="12.25" cy="3.75" r="1.75" stroke="currentColor" stroke-width="1.4" fill="none"/><path d="M5.2 10.8C7 9 7.5 6 10.8 5.2" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></symbol>
+    <symbol id="i-select" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="11" height="11" rx="2.5" stroke="currentColor" stroke-width="1.4" fill="none"/><path d="M5.5 8.25l1.75 1.75 3.25-3.5" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-flask" viewBox="0 0 16 16"><path d="M6.25 2.5h3.5M6.75 2.5v4L3.2 12.4a.9.9 0 00.78 1.35h8.04a.9.9 0 00.78-1.35L9.25 6.5v-4" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round" stroke-linecap="round"/><path d="M4.6 10h6.8" stroke="currentColor" stroke-width="1.4"/></symbol>
   </defs>
 </svg>
 
@@ -781,18 +958,18 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
     <div class="rail" aria-label="Places">
       <span class="rail-mark" role="img" aria-label="Flux"><svg width="22" height="25" aria-hidden="true"><use href="#i-flux"/></svg></span>
       <button class="rail-btn" type="button" aria-label="Home, 3 need you" data-tip="Home"><svg width="18" height="18" aria-hidden="true"><use href="#i-home"/></svg><span class="rail-badge" aria-hidden="true">3</span></button>
-      <button class="rail-btn" type="button" aria-label="Direct messages, 1 unread" data-tip="Direct messages"><svg width="18" height="18" aria-hidden="true"><use href="#i-chat"/></svg><span class="rail-badge" aria-hidden="true">1</span></button>
+      <button class="rail-btn" type="button" data-place-go="dm" aria-label="Direct messages, 1 unread" data-tip="Direct messages"><svg width="18" height="18" aria-hidden="true"><use href="#i-chat"/></svg><span class="rail-badge" aria-hidden="true">1</span></button>
       <span class="rail-sep" aria-hidden="true"></span>
-      <button class="rail-btn" type="button" aria-current="page" aria-label="Shared export" data-tip="Shared export"><span class="pm p1" aria-hidden="true">S</span></button>
+      <button class="rail-btn" type="button" data-place-go="shared" aria-current="page" aria-label="Shared export" data-tip="Shared export"><span class="pm p1" aria-hidden="true">S</span></button>
       <button class="rail-btn" type="button" aria-label="Guest onboarding" data-tip="Guest onboarding"><span class="pm p2" aria-hidden="true">G</span></button>
-      <button class="rail-btn" type="button" aria-label="Gesture lamp" data-tip="Gesture lamp"><span class="pm p3" aria-hidden="true">L</span></button>
+      <button class="rail-btn lamp-link" type="button" data-place-go="lamp" aria-label="Gesture lamp" data-tip="Gesture lamp"><span class="pm p3" aria-hidden="true">L</span></button>
       <button class="rail-btn" type="button" aria-label="Harbor mobile app" data-tip="Harbor mobile app"><span class="pm p4" aria-hidden="true">H</span></button>
       <button class="rail-btn rail-add" type="button" aria-label="New project" data-tip="New project"><svg width="16" height="16" aria-hidden="true"><use href="#i-plus"/></svg></button>
     </div>
     <div class="side-in">
     <div class="ws">
       <span class="brand"><svg width="18" height="20" aria-hidden="true"><use href="#i-flux"/></svg>flux</span>
-      <span class="ctx-head"><b>Shared export</b><span>Ari, Nia and you</span></span>
+      <span class="ctx-head"><b id="ctx-name">Shared export</b><span id="ctx-aud">Ari, Nia and you</span></span>
       <button class="icon-btn only-narrow" type="button" data-close-nav aria-label="Close sidebar"><svg width="16" height="16"><use href="#i-x"/></svg></button>
     </div>
     <button class="jump" type="button" id="jump"><svg width="15" height="15" aria-hidden="true"><use href="#i-search"/></svg>Jump to…<kbd aria-label="Command K">⌘K</kbd></button>
@@ -803,19 +980,25 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
       </div>
       <div class="nav-sec sec-projects" aria-labelledby="h-proj">
         <div class="nav-h" id="h-proj">Projects</div>
-        <a href="#" aria-current="page" data-nav-close><span class="pm p1" aria-hidden="true">S</span>Shared export<span class="n unread" id="badge-shared">7</span></a>
+        <a href="#" data-place-go="shared" aria-current="page" data-nav-close><span class="pm p1" aria-hidden="true">S</span>Shared export<span class="n unread" id="badge-shared">7</span></a>
         <a href="#"><span class="pm p2" aria-hidden="true">G</span>Guest onboarding<span class="n">2</span></a>
-        <a href="#"><span class="pm p3" aria-hidden="true">L</span>Gesture lamp</a>
+        <a href="#" class="lamp-link" data-place-go="lamp"><span class="pm p3" aria-hidden="true">L</span>Gesture lamp<span class="lock-s"><svg width="12" height="12" aria-hidden="true"><use href="#i-lock"/></svg>2</span></a>
         <a href="#"><span class="pm p4" aria-hidden="true">H</span>Harbor mobile app</a>
       </div>
-      <div class="nav-sec sec-threads" aria-labelledby="h-threads">
+      <div class="nav-sec sec-threads" data-for="shared" aria-labelledby="h-threads">
         <div class="nav-h" id="h-threads">Conversations</div>
         <a href="#" aria-current="page" data-nav-close><svg class="ic" width="16" height="16" aria-hidden="true"><use href="#i-chat"/></svg><span class="seg-t">Guest visibility in exports</span><span class="n unread" id="badge-thread">7</span></a>
         <a href="#"><svg class="ic" width="16" height="16" aria-hidden="true"><use href="#i-chat"/></svg><span class="seg-t">Count of hidden items</span><span class="n">2</span></a>
         <a href="#"><svg class="ic" width="16" height="16" aria-hidden="true"><use href="#i-chat"/></svg><span class="seg-t">40k-row export timing</span></a>
       </div>
+      <div class="nav-sec sec-threads" data-for="lamp" aria-labelledby="h-threads-l">
+        <div class="nav-h" id="h-threads-l">Conversations</div>
+        <a href="#" class="lamp-later" data-thread="later"><svg class="ic" width="16" height="16" aria-hidden="true"><use href="#i-chat"/></svg><span class="seg-t">Camera in low light</span></a>
+        <a href="#" data-thread="fresh"><svg class="ic" width="16" height="16" aria-hidden="true"><use href="#i-chat"/></svg><span class="seg-t">Lamp ideas</span></a>
+      </div>
       <div class="nav-sec sec-dms" aria-labelledby="h-people">
         <div class="nav-h" id="h-people">Direct messages</div>
+        <a href="#" data-place-go="dm"><span class="person-av" aria-hidden="true">K<span class="st"></span></span>Kai<span class="vh">, online</span></a>
         <a href="#"><span class="person-av" aria-hidden="true">N<span class="st"></span></span>Nia<span class="vh">, online</span><span class="n unread" aria-label="1 unread">1</span></a>
         <a href="#"><span class="person-av" aria-hidden="true">A<span class="st away"></span></span>Ari<span class="sub">away until Oct 3</span></a>
       </div>
@@ -830,8 +1013,9 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
 
   <!-- ============ Conversation ============ -->
   <main class="main" id="main">
+    <div class="place" id="place-shared" data-place="shared">
     <header class="top">
-      <button class="icon-btn only-narrow" type="button" id="menu-btn" aria-label="Open sidebar" aria-controls="sidebar" aria-expanded="false" data-tip="Sidebar" data-tip-align="start"><svg width="18" height="18"><use href="#i-menu"/></svg></button>
+      <button class="icon-btn only-narrow menu-btn" type="button" id="menu-btn" aria-label="Open sidebar" aria-controls="sidebar" aria-expanded="false" data-tip="Sidebar" data-tip-align="start"><svg width="18" height="18"><use href="#i-menu"/></svg></button>
       <div class="head-b">
         <div class="title">
           <span class="pm p1" aria-hidden="true">S</span>
@@ -1055,24 +1239,9 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
       </div></div>
     </div>
 
-    <!-- Map: how the current rule came to be; the ordered list is also the accessible alternative -->
+    <!-- Map: a sketch of how the current rule came to be, with its open question and alternatives; the list is the linear alternative -->
     <div class="pane" id="pane-map" role="tabpanel" aria-labelledby="tab-map" tabindex="-1" hidden>
-      <div class="pane-scroll"><div class="pane-in wide">
-        <div class="map-head">
-          <p class="map-lead">From the support report to the result waiting for you.</p>
-          <div class="seg" role="group" aria-label="Show as">
-            <button class="seg-b" type="button" aria-pressed="true" data-maplayout="map">Map</button>
-            <button class="seg-b" type="button" aria-pressed="false" data-maplayout="list">List</button>
-          </div>
-        </div>
-        <ol class="flow as-map" id="flow" aria-label="From source to result">
-          <li class="node"><button class="node-b" type="button" data-open="sources"><span class="node-k">Source</span><span class="node-t">Support report, Halden Co</span><span class="node-s">Redacted PDF · Sep 20</span></button><span class="edge">led to</span></li>
-          <li class="node replaced"><button class="node-b" type="button" data-open="decision"><span class="node-k">Earlier rule · replaced</span><span class="node-t">Include archived items for members</span><span class="node-s">Aug 30 – Sep 22</span></button><span class="edge">replaced by</span></li>
-          <li class="node now"><button class="node-b" type="button" data-open="decision"><span class="node-k"><svg width="12" height="12" aria-hidden="true"><use href="#i-rule"/></svg>Current rule</span><span class="node-t">Exclude items guests can’t open</span><span class="node-s">Accepted Sep 22</span></button><span class="edge">applied in</span></li>
-          <li class="node"><button class="node-b" type="button" data-open="work"><span class="node-k">Work · in progress</span><span class="node-t">Apply the check to export generation</span><span class="node-s">Nia · due Oct 1</span></button><span class="edge">produced</span></li>
-          <li class="node need"><button class="node-b" type="button" data-open="result"><span class="node-k"><span class="dot accent" aria-hidden="true"></span>Result · needs you</span><span class="node-t">Patch and permission tests</span><span class="node-s">Waiting for your review</span></button></li>
-        </ol>
-      </div></div>
+      <div class="pane-scroll"><div class="pane-in wide"><div class="sketch" id="sk-shared"></div></div></div>
     </div>
 
     <!-- Docs: the materials behind the work -->
@@ -1093,6 +1262,247 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
         </section>
       </div></div>
     </div>
+    </div><!-- /place-shared -->
+
+    <!-- ============ Direct message with Kai: private, independent of any project (#44) ============ -->
+    <div class="place" id="place-dm" data-place="dm" hidden>
+    <header class="top">
+      <button class="icon-btn only-narrow menu-btn" type="button" aria-label="Open sidebar" aria-controls="sidebar" aria-expanded="false" data-tip="Sidebar" data-tip-align="start"><svg width="18" height="18"><use href="#i-menu"/></svg></button>
+      <div class="head-b">
+        <div class="title">
+          <span class="av tav" aria-hidden="true">K</span>
+          <h1>Kai Lind</h1><span class="sep" aria-hidden="true">›</span>
+          <span class="topic">Only you two</span>
+        </div>
+        <p class="aud"><svg width="12" height="12" aria-hidden="true"><use href="#i-lock"/></svg>Direct message · only Kai and you · not part of any project</p>
+      </div>
+      <div class="top-right">
+        <button class="btn quiet" type="button" id="dm-select-btn" aria-pressed="false"><svg width="16" height="16" aria-hidden="true"><use href="#i-select"/></svg>Select</button>
+      </div>
+    </header>
+    <div class="views" role="tablist" aria-label="Direct message views">
+      <button class="tab" type="button" role="tab" id="tab-dm-messages" aria-selected="true" aria-controls="pane-dm-messages" data-pane="messages">Messages</button>
+      <button class="tab" type="button" role="tab" id="tab-dm-sketch" aria-selected="false" aria-controls="pane-dm-sketch" data-pane="sketch" tabindex="-1" hidden>Sketch<span class="tab-n" id="dm-sketch-n"></span></button>
+      <span class="views-ind" aria-hidden="true"></span>
+    </div>
+    <div class="pane" id="pane-dm-messages" role="tabpanel" aria-labelledby="tab-dm-messages">
+      <div class="feed-wrap">
+      <div class="feed" id="dm-feed" tabindex="-1">
+        <div class="feed-in" role="log" aria-label="Direct messages with Kai" id="dm-log">
+          <div class="intro">
+            <h2>Kai Lind</h2>
+            <p>Direct message · only Kai and you can read it</p>
+          </div>
+          <div class="day">Sep 16</div>
+          <article class="msg" data-mid="m1" data-seeds="n1,n7">
+            <button class="msel" type="button" aria-pressed="false" aria-label="Select Kai's message, 21:14"><i><svg width="12" height="12" aria-hidden="true"><use href="#i-check"/></svg></i></button>
+            <span class="av" aria-hidden="true">K</span>
+            <div class="meta"><span class="who">Kai</span><time>21:14</time></div>
+            <p class="text">Weekend idea: a desk lamp you control with gestures. Swipe to dim, hold your palm over it to switch it off.</p>
+          </article>
+          <article class="msg" data-mid="m2" data-seeds="n2">
+            <button class="msel" type="button" aria-pressed="false" aria-label="Select your message, 21:16"><i><svg width="12" height="12" aria-hidden="true"><use href="#i-check"/></svg></i></button>
+            <span class="av me-av" aria-hidden="true">J</span>
+            <div class="meta"><span class="who">You</span><time>21:16</time></div>
+            <p class="text">Love it. Camera and hand tracking? A tiny OpenMV board could run that.</p>
+          </article>
+          <article class="msg" data-mid="m3" data-seeds="n3,n5,n6">
+            <button class="msel" type="button" aria-pressed="false" aria-label="Select Kai's message, 21:18"><i><svg width="12" height="12" aria-hidden="true"><use href="#i-check"/></svg></i></button>
+            <span class="av" aria-hidden="true">K</span>
+            <div class="meta"><span class="who">Kai</span><time>21:18</time></div>
+            <p class="text">A camera worries me for a bedside lamp. It has to work in the dark, and nobody wants a camera pointed at their bed. Maybe a ToF distance sensor?</p>
+          </article>
+          <article class="msg" data-mid="m4" data-seeds="n4">
+            <button class="msel" type="button" aria-pressed="false" aria-label="Select your message, 21:21"><i><svg width="12" height="12" aria-hidden="true"><use href="#i-check"/></svg></i></button>
+            <span class="av me-av" aria-hidden="true">J</span>
+            <div class="meta"><span class="who">You</span><time>21:21</time></div>
+            <p class="text">Or 60 GHz radar. It would even see through the lampshade.</p>
+          </article>
+          <article class="msg" data-mid="m5">
+            <button class="msel" type="button" aria-pressed="false" aria-label="Select Kai's message, 21:25"><i><svg width="12" height="12" aria-hidden="true"><use href="#i-check"/></svg></i></button>
+            <span class="av" aria-hidden="true">K</span>
+            <div class="meta"><span class="who">Kai</span><time>21:25</time></div>
+            <p class="text">Unrelated: are you coming to Mira's on Saturday?</p>
+          </article>
+          <article class="msg" data-mid="m6">
+            <button class="msel" type="button" aria-pressed="false" aria-label="Select your message, 21:26"><i><svg width="12" height="12" aria-hidden="true"><use href="#i-check"/></svg></i></button>
+            <span class="av me-av" aria-hidden="true">J</span>
+            <div class="meta"><span class="who">You</span><time>21:26</time></div>
+            <p class="text">Yes! I'll bring the cake.</p>
+          </article>
+          <div class="day">Sep 17</div>
+          <article class="msg" data-mid="m7">
+            <button class="msel" type="button" aria-pressed="false" aria-label="Select Kai's message, 08:40"><i><svg width="12" height="12" aria-hidden="true"><use href="#i-check"/></svg></i></button>
+            <span class="av" aria-hidden="true">K</span>
+            <div class="meta"><span class="who">Kai</span><time>08:40</time></div>
+            <p class="text">Still thinking about the lamp. Let's sketch the options before we buy anything.</p>
+          </article>
+        </div>
+      </div>
+      </div>
+      <form class="composer" id="dm-composer" autocomplete="off">
+        <div class="composer-in">
+          <label class="vh" for="dm-reply">Message Kai</label>
+          <div class="box">
+            <textarea id="dm-reply" rows="1" placeholder="Message Kai…"></textarea>
+            <button class="send" type="submit" aria-label="Send" aria-disabled="true"><svg width="16" height="16" aria-hidden="true"><use href="#i-send"/></svg></button>
+          </div>
+        </div>
+      </form>
+      <div class="dm-selbar" id="dm-selbar" hidden>
+        <div class="dm-selbar-in">
+          <span class="count" id="dm-count" role="status">Choose the messages to sketch from</span>
+          <button class="btn quiet" type="button" id="dm-cancel">Cancel</button>
+          <button class="btn primary" type="button" id="dm-start" aria-disabled="true">Start sketch from these messages</button>
+          <p class="note"><svg width="12" height="12" aria-hidden="true"><use href="#i-lock"/></svg>The sketch stays in this DM, for Kai and you. No project is created.</p>
+        </div>
+      </div>
+    </div>
+    <div class="pane" id="pane-dm-sketch" role="tabpanel" aria-labelledby="tab-dm-sketch" tabindex="-1" hidden>
+      <div class="pane-scroll"><div class="pane-in wide"><div class="sketch" id="sk-dm"></div></div></div>
+    </div>
+    </div><!-- /place-dm -->
+
+    <!-- ============ Gesture lamp: a separate two-person project grown from the DM (#44); personal assistants (#57) ============ -->
+    <div class="place" id="place-lamp" data-place="lamp" hidden>
+    <header class="top">
+      <button class="icon-btn only-narrow menu-btn" type="button" aria-label="Open sidebar" aria-controls="sidebar" aria-expanded="false" data-tip="Sidebar" data-tip-align="start"><svg width="18" height="18"><use href="#i-menu"/></svg></button>
+      <div class="head-b">
+        <div class="title">
+          <span class="pm p3" aria-hidden="true">L</span>
+          <h1>Gesture lamp</h1><span class="sep" aria-hidden="true">›</span>
+          <span class="topic"><span class="later-only">Camera in low light</span><span class="fresh-only">Lamp ideas</span></span>
+        </div>
+        <p class="state" aria-label="Current state">
+          <span class="state-seg aud-seg"><svg width="12" height="12" aria-hidden="true"><use href="#i-lock"/></svg><span class="seg-t">Kai and you</span></span><span class="state-sep" aria-hidden="true">·</span>
+          <button class="state-seg later-only" type="button" data-lamp-pane="tasks"><svg width="12" height="12" aria-hidden="true"><use href="#i-st-review"/></svg><span class="seg-t">Experiment: camera in low light (Kai)</span></button><span class="state-sep later-only" aria-hidden="true">·</span>
+          <button class="state-seg later-only" type="button" data-open="kai-assistant"><svg width="13" height="13" aria-hidden="true"><use href="#i-result"/></svg><span class="seg-t">Result drafted by Kai's assistant</span></button><span class="state-sep later-only" aria-hidden="true">·</span>
+          <button class="state-seg later-only" type="button" data-lamp-pane="map"><svg width="13" height="13" aria-hidden="true"><use href="#i-map"/></svg><span class="seg-t">Next: ToF sensor</span></button>
+          <button class="state-seg fresh-only" type="button" data-place-go="dm"><svg width="13" height="13" aria-hidden="true"><use href="#i-chat"/></svg><span class="seg-t">Made from your DM with Kai · just now</span></button>
+        </p>
+      </div>
+      <div class="top-right">
+        <div class="faces" aria-label="Members: Kai and Jo"><span class="av" aria-hidden="true">K</span><span class="av me-av" aria-hidden="true">J</span></div>
+        <button class="icon-btn ai-btn ai-ready" type="button" data-open="my-assistant" aria-controls="panel" aria-label="Your assistant, ready" data-tip="Your assistant"><svg width="16" height="16" aria-hidden="true"><use href="#i-spark"/></svg><span class="ai-st" aria-hidden="true"></span></button>
+        <button class="icon-btn ai-btn ai-none" type="button" data-open="connect-ai" aria-controls="panel" aria-label="Connect your AI" data-tip="Connect your AI"><svg width="16" height="16" aria-hidden="true"><use href="#i-spark"/></svg></button>
+        <button class="btn quiet details-btn" type="button" data-open="lamp-overview" aria-controls="panel" aria-expanded="false" aria-keyshortcuts="]" data-tip="Toggle details   ]"><svg width="16" height="16" aria-hidden="true"><use href="#i-panel"/></svg>Details</button>
+      </div>
+    </header>
+    <button class="state-btn" type="button" data-open="lamp-overview" aria-controls="panel">
+      <svg width="13" height="13" aria-hidden="true"><use href="#i-lock"/></svg><span class="seg-t">Kai and you<span class="later-only"> · Result drafted · Next: ToF sensor</span><span class="fresh-only"> · Made from your DM with Kai</span></span>
+      <svg width="16" height="16" aria-hidden="true"><use href="#i-chev-r"/></svg>
+    </button>
+    <div class="views" role="tablist" aria-label="Project views">
+      <button class="tab" type="button" role="tab" id="tab-lamp-conversation" aria-selected="true" aria-controls="pane-lamp-conversation" data-pane="conversation">Conversation</button>
+      <button class="tab" type="button" role="tab" id="tab-lamp-map" aria-selected="false" aria-controls="pane-lamp-map" data-pane="map" tabindex="-1">Map<span class="tab-n" id="lamp-map-n"></span></button>
+      <button class="tab" type="button" role="tab" id="tab-lamp-tasks" aria-selected="false" aria-controls="pane-lamp-tasks" data-pane="tasks" tabindex="-1">Tasks<span class="tab-n later-only" aria-label="2 tasks">2</span></button>
+      <span class="views-ind" aria-hidden="true"></span>
+    </div>
+    <div class="pane" id="pane-lamp-conversation" role="tabpanel" aria-labelledby="tab-lamp-conversation">
+      <div class="feed-wrap">
+      <div class="feed" id="lamp-feed" tabindex="-1">
+        <div class="feed-in" role="log" aria-label="Conversation in Gesture lamp" id="lamp-log">
+          <div class="intro">
+            <h2><span class="later-only">Camera in low light</span><span class="fresh-only">Lamp ideas</span></h2>
+            <p><span class="later-only">Started by Kai on Sep 23 · Kai and you</span><span class="fresh-only">Started by you just now · Kai and you</span></p>
+          </div>
+          <div class="day"><span class="later-only">Sep 17</span><span class="fresh-only">Today</span></div>
+          <div class="sys" id="lamp-origin">
+            <span class="sys-ic" aria-hidden="true"><svg width="16" height="16"><use href="#i-lock"/></svg></span>
+            <div>
+              <p><strong>You made this project</strong> from <span id="origin-n">4 messages</span> and the sketch “Lamp ideas” in your DM with Kai. Only Kai and you can see it. The rest of the DM stays private.<span class="time"><span class="later-only">Sep 17</span><span class="fresh-only">just now</span></span></p>
+              <div class="sys-acts"><button class="btn link" type="button" data-lamp-pane="map">Open sketch</button><button class="btn quiet" type="button" data-place-go="dm">Source messages</button></div>
+            </div>
+          </div>
+
+          <div class="day later-only">Sep 25</div>
+          <article class="msg later-only">
+            <span class="av" aria-hidden="true">K</span>
+            <div class="meta"><span class="who">Kai</span><time>18:02</time></div>
+            <p class="text">Ran the camera test in the living room at 5 lux. Hand tracking caught 38% of gestures, and the IR light flickers on the sensor. I think the camera is out for dim rooms.</p>
+            <div class="attach">
+              <button class="obj" type="button" data-open="lamp-result">
+                <span class="obj-ic" aria-hidden="true"><svg width="16" height="16"><use href="#i-result"/></svg></span>
+                <span class="obj-b"><span class="obj-k">Result · experiment “Camera in low light”</span><span class="obj-t">Low-light test: 38% of gestures at 5 lux</span></span>
+                <svg width="16" height="16" aria-hidden="true" style="color:var(--text-3)"><use href="#i-chev-r"/></svg>
+              </button>
+            </div>
+          </article>
+
+          <!-- Someone else's assistant: readable by this conversation's audience; only Kai can continue, retry or accept it. -->
+          <article class="msg ai later-only" id="kai-proposal">
+            <span class="av agent" aria-hidden="true"><svg width="15" height="15"><use href="#i-spark"/></svg></span>
+            <div class="meta"><span class="who">Kai's assistant</span><span class="role">· asked by <b>Kai</b></span><time>18:10</time></div>
+            <p class="asked"><q>Write up the low-light result for our experiment.</q></p>
+            <div class="attach">
+              <div class="obj proposal">
+                <p class="pr-k"><span class="dot ring" aria-hidden="true"></span>Kai's assistant drafted this — proposal</p>
+                <p class="pr-t">Result: the camera can't track gestures below ~10 lux</p>
+                <dl class="claims">
+                  <dt>Fact</dt><dd>38% of gestures caught at 5 lux. <button class="ref" type="button" data-open="lamp-result">Low-light test</button></dd>
+                  <dt>Interpretation</dt><dd>The camera alone won't work in dim bedrooms.</dd>
+                  <dt class="k-prop">Proposal</dt><dd>Finish “Camera in low light” as a negative result and try the ToF sensor next.</dd>
+                </dl>
+                <p class="pr-effect">Kai owns this experiment and decides. Nothing changes until then.</p>
+                <div class="pr-acts"><span class="proposal-wait"><svg width="14" height="14" aria-hidden="true"><use href="#i-st-review"/></svg>Waiting for Kai</span></div>
+              </div>
+            </div>
+            <p class="basis"><span class="b-part"><svg width="13" height="13" aria-hidden="true"><use href="#i-eye"/></svg>From this project only · 2 sources you both can open</span><span class="b-part"><button class="ref" type="button" data-open="kai-assistant">About Kai's assistant</button></span></p>
+            <div class="msg-acts">
+              <button class="btn ai-ready" type="button" id="ask-about"><svg width="14" height="14" aria-hidden="true"><use href="#i-spark"/></svg>Ask my assistant about this</button>
+              <button class="btn" type="button" data-reply-lamp><svg width="14" height="14" aria-hidden="true"><use href="#i-chat"/></svg>Reply</button>
+            </div>
+          </article>
+
+          <div class="day later-only">Sep 26</div>
+          <article class="msg later-only">
+            <span class="av me-av" aria-hidden="true">J</span>
+            <div class="meta"><span class="who">You</span><time>09:40</time></div>
+            <p class="text">Agree: swipe and hold first, fingers later. I ordered a VL53L5CX board, it arrives Tuesday.</p>
+          </article>
+          <div class="day new later-only" id="lamp-today">Today</div>
+          <div id="lamp-end"></div>
+        </div>
+      </div>
+      </div>
+      <form class="composer" id="lamp-composer" autocomplete="off">
+        <div class="composer-in">
+          <div class="ask-bar" id="ask-bar" hidden>
+            <span class="ask-who"><svg width="13" height="13" aria-hidden="true"><use href="#i-spark"/></svg>Your assistant<button class="icon-btn" type="button" id="ask-off" aria-label="Stop asking your assistant"><svg width="12" height="12" aria-hidden="true"><use href="#i-x"/></svg></button></span>
+            <span class="ai-ready" id="ask-note">Answer shown to Kai and you<span class="ask-cost"> · paid by you, about $0.01</span></span>
+            <span class="ask-none-t ai-none" id="ask-none">You haven't connected an assistant. Kai's can't be used for you. <button class="btn link" type="button" data-open="connect-ai">Connect your AI</button></span>
+          </div>
+          <label class="vh" for="lamp-reply">Reply in Gesture lamp</label>
+          <div class="box">
+            <button class="icon-btn ask-toggle" type="button" id="ask-toggle" aria-pressed="false" aria-label="Ask my assistant" data-tip="Ask my assistant   /ai" data-tip-align="start"><svg width="16" height="16" aria-hidden="true"><use href="#i-spark"/></svg></button>
+            <textarea id="lamp-reply" rows="1" placeholder="Reply to Kai…"></textarea>
+            <button class="send" type="submit" aria-label="Send" aria-disabled="true"><svg width="16" height="16" aria-hidden="true"><use href="#i-send"/></svg></button>
+          </div>
+        </div>
+      </form>
+    </div>
+    <div class="pane" id="pane-lamp-map" role="tabpanel" aria-labelledby="tab-lamp-map" tabindex="-1" hidden>
+      <div class="pane-scroll"><div class="pane-in wide"><div class="sketch" id="sk-lamp"></div></div></div>
+    </div>
+    <div class="pane" id="pane-lamp-tasks" role="tabpanel" aria-labelledby="tab-lamp-tasks" tabindex="-1" hidden>
+      <div class="pane-scroll"><div class="pane-in">
+        <section class="group later-only" aria-labelledby="g-lamp-open">
+          <h2 class="group-h" id="g-lamp-open">Open <span>2</span></h2>
+          <ul class="list">
+            <li><button class="item" type="button" data-open="lamp-result">
+              <svg class="st" width="16" height="16" aria-hidden="true"><use href="#i-st-review"/></svg>
+              <span class="item-b"><span class="item-t">Experiment: camera in low light</span><span class="item-s">Kai · investigates Camera, Works in the dark, No camera facing the bed · result drafted</span></span>
+              <span class="item-r">Sep 25</span></button></li>
+            <li><button class="item" type="button" data-lamp-pane="map">
+              <svg class="st" width="16" height="16" aria-hidden="true"><use href="#i-st-progress"/></svg>
+              <span class="item-b"><span class="item-t">Get a VL53L5CX board</span><span class="item-s">You · for the thought “ToF distance sensor” · arrives Tuesday</span></span>
+              <span class="item-r">Sep 30</span></button></li>
+          </ul>
+        </section>
+        <p class="note-s fresh-only">No tasks yet. Work starts when one of you makes it from a thought or a message; thoughts don't have to become tasks.</p>
+      </div></div>
+    </div>
+    </div><!-- /place-lamp -->
   </main>
 
   <!-- ============ Side panel (closed by default) ============ -->
@@ -1104,7 +1514,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
     </div>
     <div class="p-body" id="p-body" tabindex="-1">
 
-      <section data-view="overview" data-title="Details">
+      <section data-view="overview" data-title="Details" data-root>
         <p class="eyebrow">Shared export</p>
         <p class="p-long">Exclude archived items that guests cannot open from CSV and XLSX exports, including items archived after an export was scheduled</p>
         <ul class="rows" style="margin-top:14px">
@@ -1119,7 +1529,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
         <p class="ids">W-1 · C-1 · project Tide/shared-export<button class="btn quiet" type="button" data-copy="flux://tide/shared-export">Copy link</button></p>
       </section>
 
-      <section data-view="capture" data-title="Capture" hidden>
+      <section data-view="capture" data-title="Capture" data-root hidden>
         <p class="eyebrow"><svg width="13" height="13" aria-hidden="true"><use href="#i-lock"/></svg>Only you · private until you share it</p>
         <label class="p-title" for="capture-box" style="display:block">Capture a thought</label>
         <p class="p-lead">Text, a link or an image. Nothing is posted; share it into a project or a direct message later.</p>
@@ -1267,6 +1677,96 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
         <div class="p-acts" data-test-acts><button class="btn primary" type="button" data-resume-test>Resume</button><button class="btn quiet" type="button">Run manually</button></div>
         <p class="ids">agent run · Nia's grant</p>
       </section>
+
+      <!-- New project from the DM sketch: the exact audience and content are previewed before anything is shared (#44). -->
+      <section data-view="promote" data-title="New project" data-root hidden>
+        <p class="eyebrow"><svg width="13" height="13" aria-hidden="true"><use href="#i-lock"/></svg>From your DM with Kai</p>
+        <p class="p-title">Make a project from this sketch</p>
+        <label class="fld" for="promote-name">Name</label>
+        <input class="fld-in" id="promote-name" value="Gesture lamp" autocomplete="off">
+        <p class="fld" id="aud-h">Who can see it</p>
+        <div class="aud-pre" aria-labelledby="aud-h" id="aud-pre">
+          <span class="faces" aria-hidden="true"><span class="av me-av">J</span><span class="av">K</span></span>
+          <span><b>Jo, Kai — only you two</b><span class="s">Nobody else is added. Ari and Nia (Shared export) see nothing, not even that it exists.</span></span>
+        </div>
+        <p class="fld">What goes in</p>
+        <ul class="inc">
+          <li><svg class="ok" width="14" height="14" aria-hidden="true"><use href="#i-check"/></svg><span>The sketch <b>“Lamp ideas”</b> · <span id="pr-thoughts">7 thoughts</span>, with their links</span></li>
+          <li><svg class="ok" width="14" height="14" aria-hidden="true"><use href="#i-check"/></svg><span><b id="pr-msgs">4 messages</b> it came from, copied with “from your DM with Kai” and their times</span></li>
+        </ul>
+        <p class="fld">What stays in your DM</p>
+        <ul class="inc">
+          <li><svg width="14" height="14" aria-hidden="true"><use href="#i-lock"/></svg><span><span id="pr-rest">The other 3 messages</span> and everything you write there later. The DM is not synced to the project.</span></li>
+        </ul>
+        <div class="p-acts"><button class="btn primary" type="button" id="promote-go">Create project</button><button class="btn quiet" type="button" id="promote-cancel">Cancel</button></div>
+      </section>
+
+      <section data-view="lamp-overview" data-title="Details" data-root hidden>
+        <p class="eyebrow"><svg width="13" height="13" aria-hidden="true"><use href="#i-lock"/></svg>Gesture lamp · Kai and you</p>
+        <p class="p-long">A bedside lamp you control with gestures. Separate from your other projects: only Kai and you know it exists.</p>
+        <ul class="rows" style="margin-top:14px">
+          <li><button class="row-btn" type="button" data-place-go="dm"><span class="rb"><span class="row-k">Started from</span><span class="row-t">Your DM with Kai</span><span class="row-s"><span id="ov-origin">4 messages and the sketch “Lamp ideas”</span></span></span><svg class="chev" width="16" height="16" aria-hidden="true"><use href="#i-chev-r"/></svg></button></li>
+          <li class="lamp-later"><button class="row-btn" type="button" data-go="lamp-result"><span class="rb"><span class="row-k">Experiment · Kai</span><span class="row-t">Camera in low light</span><span class="row-s"><span class="dot ring" aria-hidden="true"></span>Result drafted by Kai's assistant · waiting for Kai</span></span><svg class="chev" width="16" height="16" aria-hidden="true"><use href="#i-chev-r"/></svg></button></li>
+          <li class="ai-ready"><button class="row-btn" type="button" data-go="my-assistant"><span class="rb"><span class="row-k">Your assistant</span><span class="row-t">Ready · only you can use it</span><span class="row-s">Answers here are shown to Kai and you</span></span><svg class="chev" width="16" height="16" aria-hidden="true"><use href="#i-chev-r"/></svg></button></li>
+          <li class="ai-none"><button class="row-btn" type="button" data-go="connect-ai"><span class="rb"><span class="row-k">Your assistant</span><span class="row-t">Not connected</span><span class="row-s">Flux works fully without one</span></span><svg class="chev" width="16" height="16" aria-hidden="true"><use href="#i-chev-r"/></svg></button></li>
+        </ul>
+        <p class="ids">project lamp · 2 members<button class="btn quiet" type="button" data-copy="flux://gesture-lamp">Copy link</button></p>
+      </section>
+
+      <section data-view="lamp-result" data-title="Result" hidden>
+        <p class="eyebrow"><svg width="13" height="13" aria-hidden="true"><use href="#i-result"/></svg>Result · experiment “Camera in low light”</p>
+        <p class="p-title">Low-light test: 38% of gestures at 5 lux</p>
+        <p class="p-lead">Kai repeated 20 gestures in the living room at 5 lux with the IR light on. The IR light flickers on the sensor.</p>
+        <div class="p-sec">
+          <h3>Investigates</h3>
+          <p>Camera + hand tracking · Works in the dark · No camera facing the bed</p>
+        </div>
+        <div class="p-sec">
+          <h3>Proposed outcome</h3>
+          <p>Kai's assistant drafted a negative result. Kai owns the experiment and decides; nothing is saved until then.</p>
+        </div>
+        <p class="ids">R-3 · result of W-2</p>
+      </section>
+
+      <!-- Your own assistant: status, the three separate questions, cost. Only the owner sees this. -->
+      <section data-view="my-assistant" data-title="Your assistant" hidden>
+        <p class="eyebrow"><span class="dot ok" aria-hidden="true"></span>Ready · only you can use it</p>
+        <p class="p-title">Your assistant</p>
+        <ul class="q3">
+          <li><svg width="14" height="14" aria-hidden="true"><use href="#i-lock"/></svg><div><b>Who can use it</b><span>Only you. Kai can read the answers you ask for here, but can't ask, retry or pay for it.</span></div></li>
+          <li><svg width="14" height="14" aria-hidden="true"><use href="#i-eye"/></svg><div><b>What it can read and change here</b><span>This project only, within your access. It adds thoughts and edits your drafts when you ask; results, owners and decisions stay proposals.</span></div></li>
+          <li><svg width="14" height="14" aria-hidden="true"><use href="#i-chat"/></svg><div><b>Who sees its answers</b><span>The people in the conversation you ask in: Kai and you.</span></div></li>
+          <li><svg width="14" height="14" aria-hidden="true"><use href="#i-clock"/></svg><div><b>Paid by</b><span>You, personal key · today $0.08 of your $1.00 cap. At the cap it stops; it never switches to another payer.</span></div></li>
+        </ul>
+        <div class="p-acts"><button class="btn line" type="button" data-confirm="Paused">Pause</button><button class="btn quiet" type="button">Disconnect</button></div>
+      </section>
+
+      <!-- Someone else's assistant, seen by a reader: what it did, never its controls, cost or hidden sources. -->
+      <section data-view="kai-assistant" data-title="Kai's assistant" hidden>
+        <p class="eyebrow"><svg width="13" height="13" aria-hidden="true"><use href="#i-lock"/></svg>Kai's assistant · only Kai can use it</p>
+        <p class="p-title">Kai's assistant</p>
+        <p class="p-lead">You can read its answers here and reply to them. You can't retry or continue it, or spend Kai's budget.</p>
+        <div class="p-sec">
+          <dl class="dl">
+            <dt>Asked by</dt><dd>Kai, Sep 25 at 18:10</dd>
+            <dt>Read</dt><dd>2 sources you both can open, from this project only</dd>
+            <dt>Shown to</dt><dd>Kai and you</dd>
+            <dt>Drafted</dt><dd>A proposal. Kai decides.</dd>
+          </dl>
+        </div>
+        <div class="p-acts"><button class="btn line ai-ready" type="button" data-ask-about>Ask my assistant about this</button><button class="btn line ai-none" type="button" data-go="connect-ai">Connect your AI</button></div>
+      </section>
+
+      <section data-view="connect-ai" data-title="Connect your AI" data-root hidden>
+        <p class="eyebrow"><svg width="13" height="13" aria-hidden="true"><use href="#i-spark"/></svg>Not connected</p>
+        <p class="p-title">Connect your AI</p>
+        <p class="p-lead">Flux works fully without AI. An assistant you connect is yours: only you can ask it, and you pay for it. Kai's assistant can't be used for you.</p>
+        <ul class="rows" style="margin-top:14px">
+          <li><button class="row-btn" type="button" data-confirm="Setup started"><span class="rb"><span class="row-t">Claude Code on your computer</span><span class="row-s">Through a personal Flux grant, with your limits</span></span></button></li>
+          <li><button class="row-btn" type="button" aria-disabled="true"><span class="rb"><span class="row-t">Personal API key</span><span class="row-s">Not available yet</span></span></button></li>
+        </ul>
+        <div class="p-acts"><button class="btn quiet" type="button" data-confirm="AI won't be offered">Don't offer AI to me</button></div>
+      </section>
     </div>
   </aside>
 </div>
@@ -1277,7 +1777,8 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
   const $$ = (s, r = document) => [...r.querySelectorAll(s)];
   const root = document.documentElement, body = document.body;
   const panel = $('#panel'), sidebar = $('#sidebar'), scrim = $('#scrim'), main = $('#main');
-  const feed = $('#feed'), detailsBtn = $('#details-btn'), menuBtn = $('#menu-btn'), pBody = $('#p-body');
+  const feed = $('#feed'), detailsBtn = $('#details-btn'), menuBtns = $$('.menu-btn'), pBody = $('#p-body'), skip = $('.skip');
+  const curPlace = () => $('.place:not([hidden])');
   const mqPanelOverlay = matchMedia('(max-width: 980px)'), mqNavDrawer = matchMedia('(max-width: 1180px)');
   const mqPhone = matchMedia('(max-width: 640px)'), reduce = matchMedia('(prefers-reduced-motion: reduce)');
   let panelReturn = null, navReturn = null, current = null, panelState = 'closed', panelAnim = null;
@@ -1323,6 +1824,8 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
     const panelModal = panelState === 'open' && mqPanelOverlay.matches;
     const navModal = body.classList.contains('nav-open') && mqNavDrawer.matches;
     main.inert = panelModal || navModal;
+    // Everything outside the open modal is inert, the skip link included; Tab is also contained below.
+    skip.inert = panelModal || navModal;
     sidebar.inert = panelModal || (mqNavDrawer.matches && !navModal);
     panel.inert = navModal || panelState === 'closing';
     scrim.classList.toggle('on', panelModal || navModal);
@@ -1332,10 +1835,29 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
     else { sidebar.removeAttribute('role'); sidebar.removeAttribute('aria-modal'); }
   }
 
+  // ---- Modal focus containment: Tab and Shift+Tab cycle inside the open sheet or drawer ----
+  const FOCUSABLE = 'a[href], button, input, textarea, select, [tabindex]:not([tabindex="-1"])';
+  const activeModal = () => panel.getAttribute('aria-modal') === 'true' ? panel : sidebar.getAttribute('aria-modal') === 'true' ? sidebar : null;
+  const tabbable = m => $$(FOCUSABLE, m).filter(el => el.tabIndex >= 0 && !el.closest('[inert]') && !el.disabled &&
+    el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden');
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Tab') return;
+    const m = activeModal(); if (!m) return;
+    const f = tabbable(m), a = document.activeElement;
+    if (!f.length) { e.preventDefault(); m.focus({ preventScroll: true }); return; }
+    const first = f[0], last = f[f.length - 1];
+    if (!m.contains(a)) { e.preventDefault(); (e.shiftKey ? last : first).focus(); return; }
+    const after = f.some(x => a !== x && (a.compareDocumentPosition(x) & Node.DOCUMENT_POSITION_FOLLOWING));
+    const before = f.some(x => a !== x && (a.compareDocumentPosition(x) & Node.DOCUMENT_POSITION_PRECEDING) && !x.contains(a));
+    if (e.shiftKey && (a === first || a === m || !before)) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && (a === last || !after)) { e.preventDefault(); first.focus(); }
+  }, true);
+
   // ---- Side panel ----
   // dir: +1 goes deeper (content comes from the right), -1 goes back (from the left), 0 no transition.
   function show(view, focus = true, dir = 0) {
     const next = $(`[data-view="${view}"]`, panel);
+    if (view === 'promote') syncPromote();
     const prev = current && current !== view ? $(`[data-view="${current}"]`, panel) : null;
     current = view;
     const d1 = T('--dur-1'), d2 = T('--dur-2'), moving = !!(prev && !prev.hidden && dir && d2);
@@ -1352,7 +1874,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
     $$('[data-view]', panel).forEach(s => { if (!(moving && s === prev)) s.hidden = s !== next; });
     const title = $('#p-title'), back = $('#p-back');
     title.textContent = next.dataset.title;
-    const wantBack = view !== 'overview' && view !== 'capture'; // a private capture is not a project detail
+    const wantBack = !next.hasAttribute('data-root'); // root views (details, capture, new project, connect) have no Back
     if (back.hidden === wantBack) { back.hidden = !wantBack; if (wantBack && dir) enter(back, { opacity: 0, transform: 'translateX(6px)' }, d2); }
     pBody.scrollTop = 0;
     let done = Promise.resolve();
@@ -1363,7 +1885,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
     if (focus) done.then(() => { if (current === view && panelState === 'open') pBody.focus({ preventScroll: true }); });
   }
   const docked = () => !mqPanelOverlay.matches;
-  const shifting = () => [$('.since-in'), $('.pane:not([hidden]) .feed-in'), $('.pane:not([hidden]) .composer-in'), $('.pane:not([hidden]) .pane-in'), $('.top-right')];
+  const shifting = () => { const P = curPlace(); return [$('.since-in', P), $('.pane:not([hidden]) .feed-in', P), $('.pane:not([hidden]) .composer-in', P), $('.pane:not([hidden]) .pane-in', P), $('.top-right', P)]; };
   const offstage = () => docked() ? { transform: 'translateX(24px)', opacity: 0 }
     : mqPhone.matches ? { transform: 'translateY(100%)', opacity: 1 } : { transform: 'translateX(100%)', opacity: 1 };
 
@@ -1375,7 +1897,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
     panelState = 'open';
     const mutate = () => { panel.classList.remove('leaving'); panel.hidden = false; body.classList.add('panel-open'); current = null; show(view, false, 0); };
     if (docked()) flip(shifting(), mutate); else mutate();
-    detailsBtn.setAttribute('aria-expanded', 'true');
+    $$('.details-btn').forEach(b => b.setAttribute('aria-expanded', 'true'));
     syncInert();
     anim(panel, [offstage(), { transform: 'none', opacity: 1 }], T('--dur-3'), docked() ? '--ease-out' : '--ease-sheet', { fill: 'backwards' })
       .then(() => { if (focus && panelState === 'open') pBody.focus({ preventScroll: true }); });
@@ -1383,7 +1905,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
   function closePanel(restore = true) {
     if (panelState !== 'open') return;
     panelState = 'closing'; body.classList.remove('panel-open');
-    detailsBtn.setAttribute('aria-expanded', 'false');
+    $$('.details-btn').forEach(b => b.setAttribute('aria-expanded', 'false'));
     const to = offstage(), isDocked = docked();
     // Docked: the conversation takes the space back at once (FLIP) while the panel fades out over it.
     if (isDocked) flip(shifting(), () => panel.classList.add('leaving'));
@@ -1399,12 +1921,12 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
   function openNav() {
     if (panelState === 'open' && mqPanelOverlay.matches) closePanel(false);
     navReturn = document.activeElement;
-    body.classList.add('nav-open'); menuBtn.setAttribute('aria-expanded', 'true');
+    body.classList.add('nav-open'); menuBtns.forEach(b => b.setAttribute('aria-expanded', 'true'));
     syncInert();
     sidebar.focus({ preventScroll: true });
   }
   function closeNav(restore = true) {
-    body.classList.remove('nav-open'); menuBtn.setAttribute('aria-expanded', 'false');
+    body.classList.remove('nav-open'); menuBtns.forEach(b => b.setAttribute('aria-expanded', 'false'));
     syncInert();
     if (restore && navReturn && navReturn.isConnected) navReturn.focus({ preventScroll: true });
   }
@@ -1412,9 +1934,15 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
   document.addEventListener('click', e => {
     const open = e.target.closest('[data-open]');
     if (open) {
-      if (open === detailsBtn && panelState === 'open') { closePanel(); return; }
+      if (open.classList.contains('details-btn') && panelState === 'open') { closePanel(); return; }
       openPanel(open.dataset.open, open); return;
     }
+    const pg = e.target.closest('[data-place-go]');
+    if (pg) { e.preventDefault(); goPlace(pg.dataset.placeGo); return; }
+    const lp = e.target.closest('[data-lamp-pane]');
+    if (lp) { if (panelState === 'open' && mqPanelOverlay.matches) closePanel(false); tabsets.lamp.set(lp.dataset.lampPane); return; }
+    if (e.target.closest('[data-ask-about]')) { askAbout(); return; }
+    if (e.target.closest('[data-reply-lamp]')) { $('#lamp-reply').focus(); return; }
     const go = e.target.closest('[data-go]');
     if (go) { show(go.dataset.go, true, 1); return; }
     if (e.target.closest('[data-resume-test]')) { resumeTest(); return; }
@@ -1427,8 +1955,8 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
     if (e.target.closest('[data-nav-close]') && mqNavDrawer.matches) { closeNav(false); }
   });
   $('#p-close').addEventListener('click', () => closePanel());
-  $('#p-back').addEventListener('click', () => show('overview', true, -1));
-  menuBtn.addEventListener('click', () => body.classList.contains('nav-open') ? closeNav() : openNav());
+  $('#p-back').addEventListener('click', () => show(body.dataset.place === 'lamp' ? 'lamp-overview' : 'overview', true, -1));
+  menuBtns.forEach(b => b.addEventListener('click', () => body.classList.contains('nav-open') ? closeNav() : openNav()));
   scrim.addEventListener('click', () => { closePanel(); closeNav(); });
   [mqPanelOverlay, mqNavDrawer].forEach(m => m.addEventListener('change', () => { if (!mqNavDrawer.matches) body.classList.remove('nav-open'); syncInert(); placeInd(false); }));
 
@@ -1444,7 +1972,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
     if (!animate) { ind.offsetWidth; ind.style.transition = ''; }
   }
   nav.addEventListener('click', e => {
-    const a = e.target.closest('a[href="#"]'); if (!a) return;
+    const a = e.target.closest('a[href="#"]'); if (!a || a.dataset.placeGo) return;
     e.preventDefault();
     $$('a[aria-current]', a.closest('.nav-sec').parentElement).forEach(x => { if (x.offsetParent) x.removeAttribute('aria-current'); });
     a.setAttribute('aria-current', 'page'); placeInd();
@@ -1454,59 +1982,62 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
   addEventListener('resize', () => placeInd(false));
   // Rail: one place is current; the marker bar grows beside it.
   $$('.rail-btn:not(.rail-add)').forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.placeGo) return; // goPlace marks the rail
     $$('.rail-btn[aria-current]').forEach(x => x.removeAttribute('aria-current'));
     b.setAttribute('aria-current', 'page');
   }));
 
-  // ---- Project views: one underline slides to the chosen tab; panes slide in from the side they sit on ----
-  const tabs = $$('.views [role="tab"]'), viewsBar = $('.views'), viewsInd = $('.views-ind');
-  const order = tabs.map(t => t.dataset.pane);
-  let pane = 'conversation', feedScroll = null;
-  function placeTabInd(animate = true) {
-    const t = tabs.find(x => x.getAttribute('aria-selected') === 'true'), pad = parseFloat(getComputedStyle(t).paddingLeft) || 0;
-    if (!animate) viewsInd.style.transition = 'none';
-    viewsInd.style.transform = `translateX(${t.offsetLeft + pad}px) scaleX(${Math.max(1, t.offsetWidth - pad * 2)})`;
-    if (!animate) { viewsInd.offsetWidth; viewsInd.style.transition = ''; }
-  }
-  async function setPane(name, focusTab = false) {
-    const tab = tabs.find(t => t.dataset.pane === name);
-    tabs.forEach(t => { const on = t === tab; t.setAttribute('aria-selected', String(on)); t.tabIndex = on ? 0 : -1; });
-    if (focusTab) tab.focus();
-    tab.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: T('--dur-1') ? 'smooth' : 'auto' });
-    placeTabInd();
-    if (name === pane) return;
-    const dir = Math.sign(order.indexOf(name) - order.indexOf(pane)), old = $('#pane-' + pane), next = $('#pane-' + name);
-    if (pane === 'conversation') feedScroll = feed.scrollTop;
-    pane = name;
-    const d1 = T('--dur-1');
-    if (d1) {
-      // Cross-fade: the old pane is lifted out of flow in place while the new one slides in from its side.
-      Object.assign(old.style, { position: 'absolute', top: old.offsetTop + 'px', left: 0, right: 0, height: old.offsetHeight + 'px' });
-      old.inert = true;
-      leave(old, { opacity: 0, transform: `translateX(${-dir * 8}px)` }, d1 * .6).then(a => {
-        if (pane !== old.id.slice(5)) old.hidden = true;
-        old.removeAttribute('style'); old.inert = false; if (a) a.cancel();
-      });
+  // ---- Views (tabs) per place: one underline slides to the chosen tab; panes slide in from the side they sit on ----
+  function Tabs(bar) {
+    const all = $$('[role="tab"]', bar), ind = $('.views-ind', bar), mem = {};
+    const vis = () => all.filter(t => !t.hidden);
+    const paneOf = n => $('#' + all.find(t => t.dataset.pane === n).getAttribute('aria-controls'));
+    let cur = all.find(t => t.getAttribute('aria-selected') === 'true').dataset.pane;
+    function placeInd(animate = true) {
+      const t = all.find(x => x.getAttribute('aria-selected') === 'true');
+      if (!t || !t.offsetParent) return;
+      const pad = parseFloat(getComputedStyle(t).paddingLeft) || 0;
+      if (!animate) ind.style.transition = 'none';
+      ind.style.transform = `translateX(${t.offsetLeft + pad}px) scaleX(${Math.max(1, t.offsetWidth - pad * 2)})`;
+      if (!animate) { ind.offsetWidth; ind.style.transition = ''; }
     }
-    $$('.pane').forEach(p => { if (!(d1 && p === old)) p.hidden = p !== next; });
-    if (name === 'conversation' && feedScroll !== null) feed.scrollTop = feedScroll;
-    enter(next, { opacity: 0, transform: `translateX(${dir * 12}px)` }, T('--dur-2'), { delay: d1 * .5 });
+    function set(name, focusTab = false) {
+      const tab = all.find(t => t.dataset.pane === name);
+      tab.hidden = false;
+      all.forEach(t => { const on = t === tab; t.setAttribute('aria-selected', String(on)); t.tabIndex = on ? 0 : -1; });
+      if (focusTab) tab.focus();
+      if (tab.offsetParent) tab.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: T('--dur-1') ? 'smooth' : 'auto' });
+      placeInd();
+      if (name === cur) return;
+      const dir = Math.sign(vis().indexOf(tab) - vis().findIndex(t => t.dataset.pane === cur)), old = paneOf(cur), next = paneOf(name);
+      const of = $('.feed', old); if (of) mem[cur] = of.scrollTop;
+      const prevName = cur; cur = name;
+      const d1 = T('--dur-1');
+      if (d1 && old.offsetParent) {
+        // Cross-fade: the old pane is lifted out of flow in place while the new one slides in from its side.
+        Object.assign(old.style, { position: 'absolute', top: old.offsetTop + 'px', left: 0, right: 0, height: old.offsetHeight + 'px' });
+        old.inert = true;
+        leave(old, { opacity: 0, transform: `translateX(${-dir * 8}px)` }, d1 * .6).then(a => {
+          if (cur !== prevName) old.hidden = true;
+          old.removeAttribute('style'); old.inert = false; if (a) a.cancel();
+        });
+      } else old.hidden = true;
+      next.hidden = false;
+      const nf = $('.feed', next); if (nf && mem[name] != null) nf.scrollTop = mem[name];
+      enter(next, { opacity: 0, transform: `translateX(${dir * 12}px)` }, T('--dur-2'), { delay: d1 * .5 });
+      bar.dispatchEvent(new CustomEvent('pane', { detail: name }));
+    }
+    all.forEach(t => t.addEventListener('click', () => set(t.dataset.pane)));
+    bar.addEventListener('keydown', e => {
+      const v = vis(), i = v.findIndex(t => t.dataset.pane === cur), k = e.key;
+      const to = k === 'ArrowRight' ? (i + 1) % v.length : k === 'ArrowLeft' ? (i - 1 + v.length) % v.length : k === 'Home' ? 0 : k === 'End' ? v.length - 1 : -1;
+      if (to >= 0) { e.preventDefault(); set(v[to].dataset.pane, true); }
+    });
+    return { set, placeInd, get cur() { return cur; } };
   }
-  tabs.forEach(t => t.addEventListener('click', () => setPane(t.dataset.pane)));
-  viewsBar.addEventListener('keydown', e => {
-    const i = order.indexOf(pane), k = e.key;
-    const to = k === 'ArrowRight' ? (i + 1) % order.length : k === 'ArrowLeft' ? (i - 1 + order.length) % order.length : k === 'Home' ? 0 : k === 'End' ? order.length - 1 : -1;
-    if (to >= 0) { e.preventDefault(); setPane(order[to], true); }
-  });
-  addEventListener('resize', () => placeTabInd(false));
-  // Map ↔ list: the same ordered list, laid out spatially or as plain rows.
-  $$('[data-maplayout]').forEach(b => b.addEventListener('click', () => {
-    const flow = $('#flow'), mode = b.dataset.maplayout;
-    $$('[data-maplayout]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
-    if (flow.classList.contains('as-' + mode)) return;
-    // A layout change, not a movement: a quick swap reads calmer than nodes flying to new places.
-    swap(flow, () => { flow.classList.toggle('as-map', mode === 'map'); flow.classList.toggle('as-list', mode === 'list'); });
-  }));
+  const tabsets = { shared: Tabs($('#place-shared .views')), dm: Tabs($('#place-dm .views')), lamp: Tabs($('#place-lamp .views')) };
+  const setPane = (name, focusTab) => tabsets.shared.set(name, focusTab);
+  addEventListener('resize', () => Object.values(tabsets).forEach(t => t.placeInd(false)));
 
   // ---- Badges: the old number lifts out, the new one rises in ----
   async function setCount(el, n) {
@@ -1696,15 +2227,592 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
   const fullDay = d => d === 'Today' ? 'Today' : new Date(`${d}, 2026 12:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   $$('.day:not(.away), .msg time', feed).forEach(el => { if (el.classList.contains('day')) day = el.textContent.trim(); else el.dataset.tip = `${fullDay(day)} at ${el.textContent}`; });
 
+  // ==================== Places: Shared export, the DM with Kai, Gesture lamp ====================
+  const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const PLACES = {
+    shared: { name: 'Shared export', aud: 'Ari, Nia and you', reply: 'reply', title: 'Shared export · Tide · Flux' },
+    dm: { name: 'Direct messages', aud: 'Only you and each person', reply: 'dm-reply', title: 'Kai Lind · Direct message · Flux' },
+    lamp: { name: 'Gesture lamp', aud: 'Kai and you', reply: 'lamp-reply', title: 'Gesture lamp · Kai and you · Flux' }
+  };
+  let placed = { shared: true };
+  function goPlace(name, { pane, focus = true } = {}) {
+    const P = $('#place-' + name), was = body.dataset.place;
+    if (panelState === 'open') closePanel(false);
+    if (body.classList.contains('nav-open')) closeNav(false);
+    $$('.place').forEach(p => { p.hidden = p !== P; });
+    body.dataset.place = name;
+    const c = PLACES[name];
+    $('#ctx-name').textContent = c.name; $('#ctx-aud').textContent = c.aud;
+    skip.setAttribute('href', '#' + c.reply); skip.textContent = name === 'dm' ? 'Skip to message' : 'Skip to reply';
+    document.title = c.title;
+    $$('.nav a[aria-current]').forEach(a => a.removeAttribute('aria-current'));
+    const lampThread = body.classList.contains('lamp-fresh') ? '[data-thread="fresh"]' : '[data-thread="later"]';
+    ({ shared: ['.sec-projects [data-place-go="shared"]', '.sec-threads[data-for="shared"] a'], dm: ['.sec-dms [data-place-go="dm"]'],
+       lamp: ['.sec-projects [data-place-go="lamp"]', '.sec-threads[data-for="lamp"] ' + lampThread] }[name])
+      .forEach(q => { const a = $(q); if (a) a.setAttribute('aria-current', 'page'); });
+    $$('.rail-btn[aria-current]').forEach(x => x.removeAttribute('aria-current'));
+    const rb = $(`.rail-btn[data-place-go="${name}"]`); if (rb) rb.setAttribute('aria-current', 'page');
+    placeInd(!!was && was !== name);
+    if (pane) tabsets[name].set(pane);
+    tabsets[name].placeInd(false);
+    renderVisibleSketches();
+    if (!placed[name]) { placed[name] = true; const f = $('.feed', P); if (f) f.scrollTop = f.scrollHeight; }
+    if (was && was !== name) enter(P, { opacity: 0, transform: 'translateY(4px)' }, T('--dur-2'));
+    if (focus) { const f = $('.pane:not([hidden]) .feed', P) || $('.pane:not([hidden])', P); if (f) f.focus({ preventScroll: true }); }
+  }
+
+  // ==================== Sketch: a thinking surface ====================
+  // Thoughts are placed freely and linked many-to-many; they are not a pipeline and need not become work.
+  // Pointer: drag to move (the canvas never moves with it), Shift/⌘-click selects several, drag empty space to pan.
+  // Keyboard: Tab to a thought, arrow keys move the selection (Shift: bigger steps), Enter edits, Space adds to the
+  // selection, + adds a connected thought, Esc clears, Ctrl/⌘+Z undoes. List shows the same thoughts in reading order.
+  const PAD = 16, GAP = 14, NW = 184, ROW = 132;
+  const ICON = { task: 'i-flask', result: 'i-result', rule: 'i-rule', source: 'i-doc', question: 'i-alert' };
+  const DM_NODES = [
+    { id: 'n1', k: 'Idea', t: 'Gesture-controlled desk lamp', p: 'From Kai · Sep 16, 21:14', x: 16, y: 176, c: 0.5, py: 0},
+    { id: 'n7', k: 'Idea', t: 'Swipe to dim, hold to switch off', p: 'From Kai · 21:14', x: 16, y: 340, c: 1, py: 320},
+    { id: 'n2', k: 'Option', t: 'Camera + hand tracking', p: 'From you · 21:16', x: 256, y: 40, c: 0, py: 160},
+    { id: 'n3', k: 'Option', t: 'ToF distance sensor', p: 'From Kai · 21:18', x: 256, y: 196, c: 1, py: 160},
+    { id: 'n4', k: 'Option', t: '60 GHz radar through the shade', p: 'From you · 21:21', x: 256, y: 352, c: 0, py: 320},
+    { id: 'n5', k: 'Constraint', t: 'Must work in the dark', p: 'From Kai · 21:18', x: 496, y: 110, c: 0, py: 480},
+    { id: 'n6', k: 'Constraint', t: 'No camera facing the bed', p: 'From Kai · 21:18', x: 496, y: 290, c: 1, py: 480}
+  ];
+  const DM_EDGES = [['n1', 'n2', 'option'], ['n1', 'n3', 'option'], ['n1', 'n4', 'option'], ['n1', 'n7', 'gestures'],
+    ['n5', 'n2', 'risk'], ['n5', 'n3', 'works'], ['n6', 'n2', 'conflicts'], ['n7', 'n3', 'enough?']];
+  const LAMP_EXTRA = [
+    { id: 'n8', kind: 'task', k: 'Experiment · Kai', t: 'Camera in low light', p: 'Tests 3 thoughts · Sep 23', x: 736, y: 40, c: 0.5, py: 640},
+    { id: 'n9', kind: 'result', k: 'Result · negative', t: '38% of gestures at 5 lux', p: 'Kai · Sep 25 · write-up proposed', x: 736, y: 200, c: 0.5, py: 800}
+  ];
+  const LAMP_EDGES = [['n2', 'n8', 'tests'], ['n5', 'n8', 'tests'], ['n6', 'n8', 'tests'], ['n8', 'n9', 'result'], ['n9', 'n3', 'so try']];
+  const SHARED = {
+    nodes: [
+      { id: 's1', kind: 'source', k: 'Source', t: 'Support report, Halden Co', p: 'Redacted PDF · Sep 20', x: 16, y: 200, c: 0, py: 0, open: 'sources' },
+      { id: 's2', cls: 'replaced', k: 'Earlier rule · replaced', t: 'Include archived items for members', p: 'Aug 30 – Sep 22', x: 16, y: 30, c: 1, py: 0, open: 'decision' },
+      { id: 's3', k: 'Idea · Ari', t: 'Check when the file is generated', p: 'Sep 21 · covers late archiving', x: 256, y: 200, c: 0, py: 160},
+      { id: 's4', kind: 'rule', k: 'Current rule', t: 'Exclude items guests can’t open', p: 'Accepted Sep 22', x: 496, y: 30, c: 1, py: 160, open: 'decision' },
+      { id: 's5', kind: 'question', cls: 'need', k: 'Open question · yours', t: 'Tell guests “3 items hidden”?', p: 'Handed to you by Ari · Sep 26', x: 496, y: 340, c: 0.5, py: 640, open: 'handoff' },
+      { id: 's8', kind: 'task', k: 'Work · Nia', t: 'Apply the check to export generation', p: 'In progress · due Oct 1', x: 736, y: 30, c: 0.5, py: 320, open: 'work' },
+      { id: 's9', kind: 'result', cls: 'need', k: 'Result · needs you', t: 'Patch and permission tests', p: '14 passed · 4 not run', x: 736, y: 190, c: 0.5, py: 480, open: 'result' },
+      { id: 's6', k: 'Option · Ari’s lean', t: 'No count for guests', p: 'Members still see it', x: 736, y: 350, c: 0, py: 800},
+      { id: 's7', k: 'Option', t: 'Count for everyone', p: 'Might reveal what exists', x: 736, y: 490, c: 1, py: 800}
+    ],
+    edges: [['s1', 's3', 'led to'], ['s2', 's4', 'replaced by'], ['s3', 's4', 'became'], ['s4', 's8', 'applied in'], ['s8', 's9', 'produced'],
+      ['s9', 's5', 'raised'], ['s4', 's5', 'affects'], ['s5', 's6', 'option'], ['s5', 's7', 'option']]
+  };
+  const clone = o => JSON.parse(JSON.stringify(o));
+  const toEdges = list => list.map(([a, b, l]) => ({ a, b, l }));
+
+  function Sketch(el, cfg) {
+    const uidBase = el.id;
+    el.innerHTML = `
+      <div class="sk-head">
+        <p class="sk-lead"><span>Sketch · <b>${esc(cfg.title)}</b></span><span class="sk-aud"><svg width="12" height="12" aria-hidden="true"><use href="#i-lock"/></svg>${esc(cfg.aud)}</span></p>
+        <div class="sk-head-r">${cfg.head || ''}<div class="seg" role="group" aria-label="Show as"><button class="seg-b" type="button" aria-pressed="true" data-mode="map">Map</button><button class="seg-b" type="button" aria-pressed="false" data-mode="list">List</button></div></div>
+      </div>
+      <div class="sk-bar" role="toolbar" aria-label="Sketch tools">
+        <button class="btn add" type="button" data-act="add"><svg width="14" height="14" aria-hidden="true"><use href="#i-plus"/></svg>Thought</button>
+        <button class="btn" type="button" data-act="connect" aria-pressed="false"><svg width="14" height="14" aria-hidden="true"><use href="#i-link"/></svg>Connect</button>
+        ${cfg.experiment ? '<button class="btn" type="button" data-act="experiment" aria-disabled="true"><svg width="14" height="14" aria-hidden="true"><use href="#i-flask"/></svg>Experiment</button>' : ''}
+        ${cfg.open ? '<button class="btn" type="button" data-act="open" aria-disabled="true"><svg width="14" height="14" aria-hidden="true"><use href="#i-panel"/></svg>Open</button>' : ''}
+        <span class="sk-div" aria-hidden="true"></span>
+        <button class="btn" type="button" data-act="undo" aria-disabled="true" aria-label="Undo"><svg width="14" height="14" aria-hidden="true"><use href="#i-undo"/></svg><span class="bl">Undo</span></button>
+        <p class="sk-status" role="status"></p>
+      </div>
+      <div class="sk-canvas" role="group" aria-label="Sketch: ${esc(cfg.title)}" aria-describedby="${uidBase}-help">
+        <div class="sk-plane"><svg class="sk-edges" aria-hidden="true"></svg><div class="sk-labels" aria-hidden="true"></div>
+          <button class="sk-plus" type="button" hidden><svg width="14" height="14" aria-hidden="true"><use href="#i-plus"/></svg></button></div>
+      </div>
+      <ol class="sk-list" hidden aria-label="Thoughts in ${esc(cfg.title)}"></ol>
+      <p class="sk-help" id="${uidBase}-help"><span class="h-fine">Drag a thought to move it, or drag empty space to pan. With a thought focused: arrow keys move it (Shift for bigger steps), <kbd>Enter</kbd> edits, <kbd>Space</kbd> or Shift-click selects several, <kbd>+</kbd> adds a connected thought, <kbd>Ctrl</kbd>/<kbd>⌘</kbd> <kbd>Z</kbd> undoes.</span><span class="h-coarse">Tap a thought to select it, then drag it. The + adds a connected thought. List shows the same thoughts in order.</span></p>`;
+    const bar = $('.sk-bar', el), canvas = $('.sk-canvas', el), plane = $('.sk-plane', el), svg = $('.sk-edges', el), labels = $('.sk-labels', el);
+    const plus = $('.sk-plus', el), list = $('.sk-list', el), statusEl = $('.sk-status', el), btn = a => $(`[data-act="${a}"]`, bar);
+    let nodes = [], edges = [], sel = [], undo = [], mode = 'map', connectFrom = null, drag = null, suppress = false, editing = null, lastMove = 0, uid = 0;
+    const els = new Map();
+    const node = id => nodes.find(n => n.id === id);
+    const phone = () => mqPhone.matches;
+    const geom = () => { if (!phone()) return { nw: NW }; const cw = canvas.clientWidth || 328, nw = Math.floor((cw - PAD * 2 - GAP) / 2); return { nw, span: cw - PAD * 2 - nw }; };
+    const pos = n => { if (!phone()) return { x: n.x, y: n.y }; const g = geom(); return { x: PAD + n.c * g.span, y: PAD + n.py }; };
+    function setPos(n, x, y) {
+      if (phone()) { const g = geom(); n.c = Math.min(1, Math.max(0, (x - PAD) / g.span)); n.py = Math.max(0, y - PAD); }
+      else { n.x = Math.max(0, Math.round(x)); n.y = Math.max(0, Math.round(y)); }
+    }
+    const rect = n => { const p = pos(n), e = els.get(n.id); return { x: p.x, y: p.y, w: e ? e.offsetWidth : geom().nw, h: e ? e.offsetHeight : 72 }; };
+    const linked = (a, b) => edges.some(e => (e.a === a && e.b === b) || (e.a === b && e.b === a));
+    function status(html) { statusEl.innerHTML = html; }
+    const q = t => `“${esc(t)}”`;
+    function snap(label) { undo.push({ label, s: JSON.stringify({ nodes, edges }) }); if (undo.length > 50) undo.shift(); }
+    function saved(msg) { status(`${msg} · <span class="ok-t">saved</span>`); }
+
+    function nodeHTML(n) {
+      const ic = ICON[n.kind] ? `<svg width="12" height="12" aria-hidden="true"><use href="#${ICON[n.kind]}"/></svg>` : '';
+      return `<span class="sk-k">${ic}${esc(n.k)}</span><span class="sk-t">${esc(n.t)}</span>${n.p ? `<span class="sk-p">${esc(n.p)}</span>` : ''}`;
+    }
+    function render() {
+      if (!el.offsetParent) return;
+      const g = geom();
+      for (const [id, e] of els) if (!node(id)) { e.remove(); els.delete(id); }
+      nodes.forEach(n => {
+        let e = els.get(n.id);
+        if (!e) {
+          e = document.createElement('button'); e.type = 'button'; e.dataset.id = n.id;
+          e.setAttribute('aria-describedby', `${uidBase}-help`); plane.insertBefore(e, plus); els.set(n.id, e);
+        }
+        e.className = `sk-node${n.kind ? ' k-' + n.kind : ''}${n.cls ? ' ' + n.cls : ''}`;
+        const html = nodeHTML(n); if (e.dataset.html !== html) { e.innerHTML = html; e.dataset.html = html; }
+        e.setAttribute('aria-pressed', String(sel.includes(n.id)));
+        e.style.setProperty('--nw', g.nw + 'px');
+      });
+      positions();
+      renderList();
+      const one = sel.length === 1 ? node(sel[0]) : null;
+      btn('undo').setAttribute('aria-disabled', String(!undo.length));
+      btn('connect').setAttribute('aria-pressed', String(!!connectFrom));
+      if (btn('experiment')) btn('experiment').setAttribute('aria-disabled', String(!sel.length));
+      if (btn('open')) btn('open').setAttribute('aria-disabled', String(!(one && one.open)));
+      canvas.classList.toggle('connecting', !!connectFrom);
+      if (cfg.onCount) cfg.onCount(nodes.length);
+    }
+    function positions() {
+      if (!el.offsetParent || mode !== 'map') return;
+      let W = 0, H = 0;
+      nodes.forEach(n => { const e = els.get(n.id), p = pos(n); e.style.setProperty('--x', p.x + 'px'); e.style.setProperty('--y', p.y + 'px'); });
+      const R = new Map(nodes.map(n => [n.id, rect(n)]));
+      R.forEach(r => { W = Math.max(W, r.x + r.w + PAD); H = Math.max(H, r.y + r.h + PAD); });
+      if (phone()) W = Math.min(W, canvas.clientWidth || W);
+      plane.style.width = W + 'px'; plane.style.height = H + 'px';
+      svg.setAttribute('width', W); svg.setAttribute('height', H);
+      let paths = '', labs = '';
+      edges.forEach(ed => {
+        const ra = R.get(ed.a), rb = R.get(ed.b); if (!ra || !rb) return;
+        const A = anchor(ra, rb), B = anchor(rb, ra), k = Math.max(20, Math.hypot(B.x - A.x, B.y - A.y) * .35);
+        const c1 = A.h ? [A.x + A.s * k, A.y] : [A.x, A.y + A.s * k], c2 = B.h ? [B.x + B.s * k, B.y] : [B.x, B.y + B.s * k];
+        const on = sel.includes(ed.a) || sel.includes(ed.b);
+        paths += `<path data-a="${ed.a}" data-b="${ed.b}" class="${on ? 'on' : ''}${ed.fresh ? ' new' : ''}" d="M${A.x},${A.y} C${c1} ${c2} ${B.x},${B.y}"/>`;
+        if (ed.l) {
+          const mx = .125 * A.x + .375 * c1[0] + .375 * c2[0] + .125 * B.x, my = .125 * A.y + .375 * c1[1] + .375 * c2[1] + .125 * B.y;
+          labs += `<span class="sk-el${on ? ' on' : ''}" style="transform:translate(${mx}px,${my}px) translate(-50%,-50%)">${esc(ed.l)}</span>`;
+        }
+      });
+      svg.innerHTML = paths; labels.innerHTML = labs;
+      const p = sel.length ? R.get(sel[sel.length - 1]) : null;
+      plus.hidden = !p || !!editing || !!connectFrom;
+      if (p) {
+        const s = parseFloat(getComputedStyle(plus).width) || 28;
+        const x = phone() ? p.x + p.w / 2 - s / 2 : p.x + p.w + 8, y = phone() ? p.y + p.h + 6 : p.y + p.h / 2 - s / 2;
+        plus.style.transform = `translate(${x}px, ${y}px)`;
+        plus.setAttribute('aria-label', `Add a thought connected to “${node(sel[sel.length - 1]).t}”`);
+      }
+    }
+    function anchor(r, o) {
+      const cx = r.x + r.w / 2, cy = r.y + r.h / 2, dx = o.x + o.w / 2 - cx, dy = o.y + o.h / 2 - cy;
+      // Side anchors when the boxes sit side by side; top/bottom only when they overlap horizontally.
+      if (Math.abs(dx) > (r.w + o.w) / 2 + 8) return { x: dx > 0 ? r.x + r.w : r.x, y: cy, h: true, s: Math.sign(dx) || 1 };
+      return { x: cx, y: dy > 0 ? r.y + r.h : r.y, h: false, s: Math.sign(dy) || 1 };
+    }
+    function renderList() {
+      if (mode !== 'list') return;
+      const order = [...nodes].sort((a, b) => (a.x - b.x) || (a.y - b.y));
+      list.innerHTML = order.map(n => {
+        const ls = edges.filter(e => e.a === n.id || e.b === n.id).map(e => {
+          const o = node(e.a === n.id ? e.b : e.a); return o ? `<b>${esc(o.t)}</b>${e.l ? ` (${esc(e.l)})` : ''}` : '';
+        }).filter(Boolean);
+        return `<li data-id="${n.id}"><button class="sk-li-t" type="button" data-id="${n.id}" aria-pressed="${sel.includes(n.id)}">${esc(n.t)}</button>
+          <span class="sk-li-s">${esc(n.k)}${n.p ? ' · ' + esc(n.p) : ''}</span>${ls.length ? `<span class="sk-li-l">Linked to ${ls.join(', ')}</span>` : ''}</li>`;
+      }).join('');
+    }
+
+    // Selection
+    function describeSel() {
+      if (connectFrom) return;
+      if (!sel.length) status('');
+      else if (sel.length === 1) status(`${q(node(sel[0]).t)} selected`);
+      else status(`<b>${sel.length} thoughts selected</b> · Connect links them${cfg.experiment ? ', Experiment tests them' : ''}`);
+    }
+    function selectOnly(id) { sel = id ? [id] : []; }
+    function toggle(id) { sel = sel.includes(id) ? sel.filter(x => x !== id) : [...sel, id]; }
+    function pickNode(id, e) {
+      if (connectFrom) { connectTo(id); return; }
+      if (e && (e.shiftKey || e.metaKey || e.ctrlKey)) toggle(id); else selectOnly(id);
+      render(); describeSel();
+    }
+
+    // Actions
+    function freeSpot(from) {
+      const g = geom(), taken = nodes.map(rect);
+      const hits = (x, y) => taken.some(r => x < r.x + r.w + 12 && x + g.nw + 12 > r.x && y < r.y + r.h + 12 && y + 84 > r.y);
+      if (phone()) {
+        const x = from ? (pos(from).x > PAD + 4 ? PAD : PAD + g.span) : PAD;
+        let y = from ? pos(from).y + 24 : PAD; while (hits(x, y)) y += 24;
+        return { x, y };
+      }
+      const b = from ? pos(from) : { x: PAD, y: PAD };
+      const tries = from ? [[240, 0], [240, 110], [240, -110], [240, 220], [0, 140], [480, 0], [480, 110]] : [[0, 0]];
+      for (const [dx, dy] of tries) { const x = b.x + dx, y = Math.max(PAD, b.y + dy); if (!hits(x, y)) return { x, y }; }
+      let y = b.y + 140; while (hits(b.x + 240, y)) y += 40; return { x: b.x + 240, y };
+    }
+    function addConnected(parentId, text) {
+      const parent = parentId ? node(parentId) : null;
+      snap('added a thought');
+      const id = cfg.key + '-u' + (++uid), n = { id, k: 'Thought', t: 'New thought', p: 'Added by you · just now', x: 0, y: 0, c: 0, py: 0 };
+      nodes.push(n);
+      const s = freeSpot(parent); setPos(n, s.x, s.y);
+      if (parent) edges.push({ a: parent.id, b: id, l: '', fresh: true });
+      selectOnly(id); render();
+      const e = els.get(id); if (e) { e.classList.remove('flash'); void e.offsetWidth; e.classList.add('flash'); e.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
+      status(parent ? `New thought connected to ${q(parent.t)} · <kbd>Enter</kbd> saves, <kbd>Esc</kbd> keeps “New thought”` : 'New thought · type its text, <kbd>Enter</kbd> saves');
+      edit(id, { isNew: true, parent, text });
+    }
+    function edit(id, { isNew = false, parent = null, text } = {}) {
+      const n = node(id); if (!n) return;
+      if (editing) editing.commit();
+      const inList = mode === 'list', input = document.createElement('input');
+      input.className = inList ? 'sk-li-edit' : 'sk-edit'; input.value = text != null ? text : n.t; input.setAttribute('aria-label', 'Thought text');
+      let host;
+      if (inList) { host = $(`li[data-id="${id}"] .sk-li-t`, list); if (!host) return; host.hidden = true; host.after(input); }
+      else {
+        const r = rect(n), t = $('.sk-t', els.get(id));
+        Object.assign(input.style, { transform: `translate(${r.x + 6}px, ${r.y + (t ? t.offsetTop : 20) - 6}px)`, width: (r.w - 12) + 'px' });
+        plane.append(input);
+      }
+      let done = false;
+      const finish = keep => {
+        if (done) return; done = true;
+        const v = input.value.trim();
+        if (keep && v && v !== n.t) { if (!isNew) snap('edited a thought'); n.t = v; }
+        input.remove(); if (host) host.hidden = false; editing = null;
+        render();
+        const back = inList ? $(`li[data-id="${id}"] .sk-li-t`, list) : els.get(id); if (back) back.focus({ preventScroll: true });
+        if (isNew) saved(parent ? `Added ${q(n.t)}, connected to ${q(parent.t)}` : `Added ${q(n.t)}`);
+        else if (keep && v && v === n.t) saved(`Edited ${q(n.t)}`);
+        else status('Edit cancelled');
+      };
+      editing = { commit: () => finish(true) };
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+        else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
+      });
+      input.addEventListener('blur', () => finish(true));
+      plus.hidden = true;
+      input.focus(); input.select();
+    }
+    function connectTo(id) {
+      const a = connectFrom; connectFrom = null;
+      if (!a || id === a) { render(); status('Connect cancelled'); return; }
+      if (linked(a, id)) { render(); status(`${q(node(a).t)} and ${q(node(id).t)} are already linked`); return; }
+      snap('linked two thoughts');
+      edges.push({ a, b: id, l: '', fresh: true }); sel = [a, id]; render();
+      saved(`Linked ${q(node(a).t)} and ${q(node(id).t)}`);
+    }
+    function connect() {
+      if (sel.length >= 2) {
+        const [a, ...rest] = sel, add = rest.filter(b => !linked(a, b));
+        if (!add.length) { status('These thoughts are already linked'); return; }
+        snap('linked thoughts'); add.forEach(b => edges.push({ a, b, l: '', fresh: true })); render();
+        saved(`Linked ${q(node(a).t)} to ${add.length} ${add.length === 1 ? 'thought' : 'thoughts'}`);
+      } else if (sel.length === 1) {
+        connectFrom = connectFrom ? null : sel[0]; render();
+        status(connectFrom ? `Choose the thought to link to ${q(node(connectFrom).t)} · <kbd>Esc</kbd> cancels` : 'Connect cancelled');
+      } else status('Select a thought first, then Connect');
+    }
+    function experiment() {
+      if (!sel.length) return;
+      snap('started an experiment');
+      const src = sel.map(node), id = cfg.key + '-u' + (++uid);
+      const n = { id, kind: 'task', k: 'Experiment · you', t: 'New experiment', p: `Tests ${src.length} ${src.length === 1 ? 'thought' : 'thoughts'} · just now`, x: 0, y: 0, c: 0, py: 0 };
+      nodes.push(n); const s = freeSpot(src[src.length - 1]); setPos(n, s.x, s.y);
+      src.forEach(t => edges.push({ a: t.id, b: id, l: 'tests', fresh: true }));
+      selectOnly(id); render();
+      saved(`Experiment linked to ${src.length} ${src.length === 1 ? 'thought' : 'thoughts'}; the thoughts stay as they are`);
+      edit(id, { isNew: true });
+    }
+    function doUndo() {
+      const u = undo.pop(); if (!u) { status('Nothing to undo'); return; }
+      const s = JSON.parse(u.s); nodes = s.nodes; edges = s.edges; sel = sel.filter(node); connectFrom = null;
+      render(); status(`Undid: ${u.label}`);
+    }
+    function moveSel(dx, dy, label) {
+      sel.forEach(id => { const n = node(id), p = pos(n); setPos(n, p.x + dx, p.y + dy); });
+      positions();
+      status(`Moved ${sel.length === 1 ? q(node(sel[0]).t) : sel.length + ' thoughts'}${label ? ' ' + label : ''} · <span class="ok-t">saved</span>`);
+    }
+
+    // Toolbar
+    bar.addEventListener('click', e => {
+      const b = e.target.closest('[data-act]'); if (!b || b.getAttribute('aria-disabled') === 'true') return;
+      const a = b.dataset.act;
+      if (a === 'add') addConnected(sel[sel.length - 1] || null);
+      else if (a === 'connect') connect();
+      else if (a === 'experiment') experiment();
+      else if (a === 'undo') doUndo();
+      else if (a === 'open') { const n = node(sel[0]); if (n && n.open) openPanel(n.open, b); }
+    });
+    plus.addEventListener('click', () => addConnected(sel[sel.length - 1]));
+    $$('[data-mode]', el).forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
+    function setMode(m) {
+      if (editing) editing.commit();
+      mode = m; $$('[data-mode]', el).forEach(x => x.setAttribute('aria-pressed', String(x.dataset.mode === m)));
+      canvas.hidden = m !== 'map'; list.hidden = m !== 'list';
+      render(); swap(m === 'map' ? canvas : list, () => {});
+    }
+
+    // Pointer: drag thoughts, pan on empty space (mouse); touch scrolls natively outside thoughts.
+    plane.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;
+      const ne = e.target.closest('.sk-node');
+      if (ne) {
+        if (editing) editing.commit();
+        drag = { id: ne.dataset.id, sx: e.clientX, sy: e.clientY, pid: e.pointerId, moved: false, el: ne };
+        ne.setPointerCapture(e.pointerId);
+      } else if (!e.target.closest('.sk-plus, .sk-edit') && e.pointerType === 'mouse') {
+        drag = { pan: true, sx: e.clientX, sy: e.clientY, sl: canvas.scrollLeft, st: canvas.scrollTop, moved: false, pid: e.pointerId };
+        plane.setPointerCapture(e.pointerId);
+      }
+    });
+    plane.addEventListener('pointermove', e => {
+      if (!drag || e.pointerId !== drag.pid) return;
+      const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+      if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+      if (drag.pan) { drag.moved = true; canvas.classList.add('panning'); canvas.scrollLeft = drag.sl - dx; canvas.scrollTop = drag.st - dy; return; }
+      if (!drag.moved) {
+        drag.moved = true; if (!sel.includes(drag.id)) selectOnly(drag.id);
+        snap('moved ' + (sel.length === 1 ? 'a thought' : 'thoughts'));
+        drag.start = sel.map(id => ({ n: node(id), p: pos(node(id)) }));
+        sel.forEach(id => els.get(id).classList.add('dragging')); render();
+      }
+      drag.start.forEach(({ n, p }) => setPos(n, p.x + dx, p.y + dy));
+      positions();
+    });
+    const endDrag = e => {
+      if (!drag || e.pointerId !== drag.pid) return;
+      const d = drag; drag = null; canvas.classList.remove('panning');
+      if (d.pan) { if (!d.moved && !connectFrom) { sel = []; render(); describeSel(); } return; }
+      if (d.moved) {
+        suppress = true; setTimeout(() => { suppress = false; }, 0);
+        $$('.sk-node.dragging', plane).forEach(x => x.classList.remove('dragging'));
+        render(); moveSel(0, 0);
+      }
+    };
+    plane.addEventListener('pointerup', endDrag); plane.addEventListener('pointercancel', endDrag);
+    plane.addEventListener('click', e => {
+      const ne = e.target.closest('.sk-node'); if (!ne) return;
+      if (suppress) { suppress = false; return; }
+      pickNode(ne.dataset.id, e);
+    });
+    plane.addEventListener('dblclick', e => { const ne = e.target.closest('.sk-node'); if (ne) edit(ne.dataset.id); });
+    plane.addEventListener('keydown', e => {
+      const ne = e.target.closest('.sk-node'); if (!ne) return;
+      const id = ne.dataset.id, k = e.key;
+      if (k === 'Enter') { e.preventDefault(); if (connectFrom) connectTo(id); else edit(id); }
+      else if (k === ' ') { e.preventDefault(); if (connectFrom) connectTo(id); else { toggle(id); render(); describeSel(); } }
+      else if (k === '+' || k === '=') { e.preventDefault(); addConnected(id); }
+      else if (k === 'Escape' && (connectFrom || sel.length)) { e.preventDefault(); e.stopPropagation(); if (connectFrom) { connectFrom = null; status('Connect cancelled'); } else { sel = []; describeSel(); } render(); }
+      else if (k.startsWith('Arrow')) {
+        e.preventDefault();
+        if (!sel.includes(id)) { selectOnly(id); render(); }
+        const step = e.shiftKey ? 48 : 12, v = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[k];
+        if (Date.now() - lastMove > 1000) snap('moved ' + (sel.length === 1 ? 'a thought' : 'thoughts'));
+        lastMove = Date.now(); moveSel(v[0], v[1], 'with the keyboard'); render();
+        ne.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      }
+    });
+    el.addEventListener('keydown', e => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName)) { e.preventDefault(); doUndo(); }
+    });
+    list.addEventListener('click', e => { const b = e.target.closest('.sk-li-t'); if (b) { pickNode(b.dataset.id, e); const nb = $(`.sk-li-t[data-id="${b.dataset.id}"]`, list); if (nb) nb.focus(); } });
+    list.addEventListener('keydown', e => {
+      const b = e.target.closest('.sk-li-t'); if (!b) return;
+      if (e.key === 'Enter') { e.preventDefault(); edit(b.dataset.id); }
+      else if (e.key === ' ' && !connectFrom) { e.preventDefault(); toggle(b.dataset.id); render(); describeSel(); $(`.sk-li-t[data-id="${b.dataset.id}"]`, list).focus(); }
+    });
+
+    const api = {
+      el, render, setMode, status, addConnected, edit,
+      load(d) { nodes = clone(d.nodes); edges = clone(d.edges); sel = []; undo = []; connectFrom = null; els.forEach(e => e.remove()); els.clear(); render(); status(d.status || ''); if (cfg.onCount) cfg.onCount(nodes.length); },
+      select(ids) { sel = ids.slice(); render(); describeSel(); },
+      data: () => clone({ nodes, edges }),
+      focusFirst() { const e = els.get(nodes[0] && nodes[0].id); if (e) e.focus({ preventScroll: true }); }
+    };
+    return api;
+  }
+  const sketches = {
+    shared: Sketch($('#sk-shared'), { key: 's', title: 'How the export rule came to be', aud: 'Ari, Nia and you', open: true }),
+    dm: Sketch($('#sk-dm'), { key: 'd', title: 'Lamp ideas', aud: 'Kai and you, in this DM',
+      head: '<button class="btn line" type="button" id="promote-btn" data-open="promote">Make it a project…</button><span class="moved-note" id="moved-note" hidden>In Gesture lamp · <button class="btn link" type="button" data-place-go="lamp">Open</button></span>',
+      onCount: n => { $('#dm-sketch-n').textContent = n; } }),
+    lamp: Sketch($('#sk-lamp'), { key: 'l', title: 'Lamp ideas', aud: 'Kai and you', experiment: true, onCount: n => { $('#lamp-map-n').textContent = n; } })
+  };
+  const LAMP_LATER = { nodes: [...clone(DM_NODES).map(n => n.id === 'n3' ? { ...n, p: 'Next · board arrives Tuesday' } : n), ...LAMP_EXTRA], edges: toEdges([...DM_EDGES, ...LAMP_EDGES]) };
+  sketches.shared.load({ nodes: SHARED.nodes, edges: toEdges(SHARED.edges) });
+  sketches.lamp.load(LAMP_LATER);
+  function renderVisibleSketches() { Object.values(sketches).forEach(k => k.render()); }
+  $$('.views').forEach(v => v.addEventListener('pane', () => requestAnimationFrame(renderVisibleSketches)));
+  addEventListener('resize', renderVisibleSketches);
+
+  // ==================== DM: select messages → start a sketch → make a project ====================
+  const dmLog = $('#dm-log'), selBtn = $('#dm-select-btn'), selBar = $('#dm-selbar'), dmComposer = $('#dm-composer'), dmStart = $('#dm-start');
+  let selecting = false, dmPicked = [];
+  const pickedMsgs = () => $$('.msg.picked', dmLog);
+  function syncPicked() {
+    const n = pickedMsgs().length;
+    $('#dm-count').textContent = n ? `${n} ${n === 1 ? 'message' : 'messages'} selected` : 'Choose the messages to sketch from';
+    dmStart.setAttribute('aria-disabled', String(!n));
+  }
+  function pick(m, on) { m.classList.toggle('picked', on); $('.msel', m).setAttribute('aria-pressed', String(on)); }
+  function setSelecting(on, focus = true) {
+    selecting = on; dmLog.classList.toggle('selecting', on); selBtn.setAttribute('aria-pressed', String(on));
+    selBar.hidden = !on; dmComposer.hidden = on;
+    if (!on) $$('.msg', dmLog).forEach(m => pick(m, false));
+    syncPicked();
+    if (focus) (on ? $('.msel', dmLog) : selBtn).focus({ preventScroll: true });
+  }
+  selBtn.addEventListener('click', () => setSelecting(!selecting));
+  $('#dm-cancel').addEventListener('click', () => setSelecting(false));
+  dmLog.addEventListener('click', e => {
+    if (!selecting) return; const m = e.target.closest('.msg'); if (!m) return;
+    pick(m, !m.classList.contains('picked')); syncPicked();
+  });
+  function startSketch(focus = true) {
+    const ms = pickedMsgs(); if (!ms.length) return;
+    dmPicked = ms.map(m => m.dataset.mid);
+    const seeds = new Set(ms.flatMap(m => (m.dataset.seeds || '').split(',').filter(Boolean)));
+    const nodes = clone(DM_NODES.filter(n => seeds.has(n.id)));
+    ms.filter(m => !m.dataset.seeds).forEach((m, i) => {
+      const who = $('.who', m).textContent, t = $('.text', m).textContent;
+      nodes.push({ id: 'x' + m.dataset.mid, k: 'Thought', t: t.length > 44 ? t.slice(0, 42) + '…' : t, p: `From ${who === 'You' ? 'you' : who} · ${$('time', m).textContent}`, x: 16 + 240 * (i % 3), y: 500 + 110 * Math.floor(i / 3), c: i % 2, py: ROW * (4 + i) });
+    });
+    const ids = new Set(nodes.map(n => n.id));
+    sketches.dm.load({ nodes, edges: toEdges(DM_EDGES.filter(([a, b]) => ids.has(a) && ids.has(b))) });
+    setSelecting(false, false);
+    tabsets.dm.set('sketch');
+    requestAnimationFrame(() => { sketches.dm.render(); sketches.dm.status(`Started from ${ms.length} ${ms.length === 1 ? 'message' : 'messages'} · <span class="ok-t">saved</span> · only Kai and you see it`); if (focus) sketches.dm.focusFirst(); });
+    announce(`Sketch started from ${ms.length} messages. Only Kai and you see it.`);
+  }
+  dmStart.addEventListener('click', () => { if (dmStart.getAttribute('aria-disabled') !== 'true') startSketch(); });
+  // The promote panel counts exactly what will be shared.
+  const syncPromote = () => {
+    const n = sketches.dm.data().nodes.length, m = dmPicked.length, rest = $$('.msg', dmLog).length - m;
+    $('#pr-thoughts').textContent = `${n} ${n === 1 ? 'thought' : 'thoughts'}`;
+    $('#pr-msgs').textContent = `${m} ${m === 1 ? 'message' : 'messages'}`;
+    $('#pr-rest').textContent = `The other ${rest} ${rest === 1 ? 'message' : 'messages'}`;
+  };
+  $('#promote-cancel').addEventListener('click', () => closePanel());
+  $('#promote-go').addEventListener('click', () => createLamp());
+  function makeFresh() {
+    $('#place-lamp').classList.add('fresh'); body.classList.add('lamp-fresh');
+    sketches.lamp.load(sketches.dm.data().nodes.length ? { ...sketches.dm.data(), status: 'Moved here from your DM with Kai · the thoughts keep their source' } : { nodes: clone(DM_NODES), edges: toEdges(DM_EDGES) });
+    const m = dmPicked.length || 4;
+    $('#origin-n').textContent = `${m} ${m === 1 ? 'message' : 'messages'}`;
+    $('#ov-origin').textContent = `${m} messages and the sketch “Lamp ideas”, just now`;
+  }
+  function createLamp() {
+    const name = $('#promote-name').value.trim() || 'Gesture lamp';
+    closePanel(false);
+    makeFresh();
+    $('#place-lamp h1').textContent = name;
+    const had = body.classList.contains('no-lamp');
+    body.classList.remove('no-lamp');
+    $('#promote-btn').hidden = true; $('#moved-note').hidden = false;
+    goPlace('lamp', { pane: 'conversation' });
+    if (had) $$('.lamp-link').forEach(x => { x.classList.remove('arrived'); void x.offsetWidth; x.classList.add('arrived'); });
+    placeInd(false);
+    announce(`${name} created. Only Kai and you can see it.`);
+  }
+
+  // ==================== Gesture lamp composer: replies, and asking your own assistant (#57) ====================
+  const lampTa = $('#lamp-reply'), lampSend = $('#lamp-composer .send'), askBar = $('#ask-bar'), askToggle = $('#ask-toggle');
+  const lampFeed = $('#lamp-feed'), lampEnd = $('#lamp-end');
+  let asking = false;
+  const hasAI = () => root.dataset.ai !== 'none';
+  function lampSize() { lampTa.style.height = 'auto'; lampTa.style.height = Math.min(lampTa.scrollHeight, 180) + 'px'; }
+  function syncLampSend() { lampSend.setAttribute('aria-disabled', String(!lampTa.value.trim() || (asking && !hasAI()))); }
+  function setAsk(on, focus = true) {
+    asking = on; askToggle.setAttribute('aria-pressed', String(on)); askBar.hidden = !on;
+    lampTa.placeholder = on ? (hasAI() ? 'Ask your assistant…' : 'Connect your AI to ask an assistant') : 'Reply to Kai…';
+    syncLampSend(); if (focus) lampTa.focus({ preventScroll: true });
+  }
+  askToggle.addEventListener('click', () => setAsk(!asking));
+  $('#ask-off').addEventListener('click', () => setAsk(false));
+  lampTa.addEventListener('input', () => {
+    if (/^\/ai\s/.test(lampTa.value)) { lampTa.value = lampTa.value.replace(/^\/ai\s+/, ''); setAsk(true, false); }
+    lampSize(); syncLampSend();
+  });
+  lampTa.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('#lamp-composer').requestSubmit(); }
+    else if ((e.key === 'Escape' || (e.key === 'Backspace' && !lampTa.value)) && asking) { e.preventDefault(); e.stopPropagation(); setAsk(false); }
+  });
+  const lampToEnd = () => lampFeed.scrollTo({ top: lampFeed.scrollHeight, behavior: T('--dur-1') ? 'smooth' : 'auto' });
+  function lampPost(node) {
+    lampEnd.before(node); enter(node, { opacity: 0, transform: 'translateY(10px)' }, T('--dur-2')); lampToEnd();
+  }
+  $('#lamp-composer').addEventListener('submit', e => {
+    e.preventDefault();
+    const v = lampTa.value.trim(); if (!v) return;
+    if (asking && !hasAI()) { announce('Connect your AI to ask an assistant. Your text is kept.'); return; }
+    lampTa.value = ''; lampSize();
+    if (asking) { setAsk(false, false); runAssistant(v); }
+    else {
+      const a = document.createElement('article'); a.className = 'msg';
+      a.innerHTML = '<span class="av me-av" aria-hidden="true">J</span><div class="meta"><span class="who">You</span><time></time></div><p class="text"></p>';
+      $('.text', a).textContent = v; $('time', a).textContent = now(); lampPost(a);
+    }
+    syncLampSend();
+  });
+  async function runAssistant(v) {
+    const w = document.createElement('div'); w.className = 'typing'; w.id = 'ai-working';
+    w.innerHTML = `<span class="av agent" aria-hidden="true"><svg width="14" height="14"><use href="#i-spark"/></svg></span><span class="typing-btn" role="status">Your assistant is reading this conversation and the sketch<span class="dots" aria-hidden="true"><i></i><i></i><i></i></span></span><button class="btn quiet" type="button" id="ai-stop">Stop</button>`;
+    lampPost(w);
+    let stopped = false;
+    $('#ai-stop', w).addEventListener('click', () => { stopped = true; w.remove(); announce('Stopped. Nothing was posted or saved.'); lampTa.focus(); });
+    await wait(T('--dur-3') * 4);
+    if (stopped || !w.isConnected) return;
+    const a = document.createElement('article'); a.className = 'msg ai'; a.id = 'my-answer';
+    a.innerHTML = `<span class="av agent" aria-hidden="true"><svg width="15" height="15"><use href="#i-spark"/></svg></span>
+      <div class="meta"><span class="who">Your assistant</span><span class="role">· asked by <b>you</b></span><time>${now()}</time></div>
+      <p class="asked"><q></q></p>
+      <dl class="claims">
+        <dt>Fact</dt><dd>The camera caught 38% of gestures at 5 lux. <button class="ref" type="button" data-open="lamp-result">Low-light test</button></dd>
+        <dt>Fact</dt><dd>The VL53L5CX ToF board reads 8×8 zones and works in the dark; yours arrives Tuesday.</dd>
+        <dt>Interpretation</dt><dd>8×8 zones are probably enough for swipe and hold, not for counting fingers.</dd>
+        <dt class="k-prop">Proposal</dt><dd>Test swipe and hold on the ToF board before dropping finger gestures.</dd>
+      </dl>
+      <p class="basis"><span class="b-part"><svg width="13" height="13" aria-hidden="true"><use href="#i-eye"/></svg>Used this conversation and the sketch · shown to Kai and you</span></p>
+      <div class="msg-acts"><button class="btn" type="button" data-confirm="Retrying on your connection"><svg width="14" height="14" aria-hidden="true"><use href="#i-undo"/></svg>Retry</button></div>`;
+    $('q', a).textContent = v;
+    w.replaceWith(a); enter(a, { opacity: 0, transform: 'translateY(6px)' }, T('--dur-2')); lampToEnd();
+    announce('Your assistant answered. Kai and you can see it.');
+  }
+  function askAbout() {
+    if (panelState === 'open') closePanel(false);
+    tabsets.lamp.set('conversation');
+    lampTa.value = 'About Kai’s draft: what would change our plan?'; lampSize();
+    setAsk(true);
+  }
+  lampTa.addEventListener('focus', () => setTimeout(lampToEnd, 50));
+  const dmTa = $('#dm-reply'), dmSend = $('#dm-composer .send');
+  dmTa.addEventListener('input', () => { dmTa.style.height = 'auto'; dmTa.style.height = Math.min(dmTa.scrollHeight, 180) + 'px'; dmSend.setAttribute('aria-disabled', String(!dmTa.value.trim())); });
+  dmTa.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); dmComposer.requestSubmit(); } });
+  dmComposer.addEventListener('submit', e => {
+    e.preventDefault(); const v = dmTa.value.trim(); if (!v) return;
+    const a = document.createElement('article'); a.className = 'msg'; a.dataset.mid = 'm' + Date.now();
+    a.innerHTML = '<button class="msel" type="button" aria-pressed="false" aria-label="Select your message"><i><svg width="12" height="12" aria-hidden="true"><use href="#i-check"/></svg></i></button><span class="av me-av" aria-hidden="true">J</span><div class="meta"><span class="who">You</span><time></time></div><p class="text"></p>';
+    $('.text', a).textContent = v; $('time', a).textContent = now(); dmLog.append(a);
+    enter(a, { opacity: 0, transform: 'translateY(10px)' }, T('--dur-2'));
+    dmTa.value = ''; dmTa.dispatchEvent(new Event('input'));
+    $('#dm-feed').scrollTo({ top: $('#dm-feed').scrollHeight, behavior: T('--dur-1') ? 'smooth' : 'auto' });
+  });
+
   // Keyboard: Esc closes the top layer, ] toggles details, ⌘K / Ctrl+K jumps
   document.addEventListener('keydown', e => {
     const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);
     if (e.key === 'Escape') {
       if (panelState === 'open') { closePanel(); e.preventDefault(); }
       else if (body.classList.contains('nav-open')) { closeNav(); e.preventDefault(); }
+      else if (selecting && body.dataset.place === 'dm') { setSelecting(false); e.preventDefault(); }
+      else if (asking && body.dataset.place === 'lamp') { setAsk(false); e.preventDefault(); }
       else if (sinceOpen) { setSince(false); sinceBtn.focus(); }
     } else if (e.key === ']' && !typing && !e.metaKey && !e.ctrlKey) {
-      panelState === 'open' ? closePanel() : openPanel('overview', detailsBtn);
+      const ov = { shared: 'overview', lamp: 'lamp-overview' }[body.dataset.place];
+      if (panelState === 'open') closePanel(); else if (ov) openPanel(ov, $('.place:not([hidden]) .details-btn'));
     } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault(); if (mqNavDrawer.matches) openNav(); $('#jump').focus();
     }
@@ -1712,17 +2820,39 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
 
   // Open at the latest messages, like a messenger — unless that would hide the result
   // waiting for Jo's review. Then the result is anchored and a pill leads to newer messages.
-  place(); placeInd(false); placeTabInd(false); syncInert(); syncSend();
-  if (document.fonts) document.fonts.ready.then(() => { place(); placeInd(false); placeTabInd(false); });
+  body.dataset.place = 'shared';
+  place(); placeInd(false); tabsets.shared.placeInd(false); syncInert(); syncSend();
+  if (document.fonts) document.fonts.ready.then(() => { if (body.dataset.place === 'shared') place(); placeInd(false); Object.values(tabsets).forEach(t => t.placeInd(false)); Object.values(sketches).forEach(k => k.render()); });
 
-  // Review hashes: #details, #capture, #decision, #result, #sources, #agent-test, #agent-review, #nav, #since, #tasks, #map, #map-list, #docs
+  // Review hashes (see the comment at the top of the file).
   const h = location.hash.slice(1);
   const views = { details: 'overview', capture: 'capture', decision: 'decision', result: 'result', sources: 'sources', 'agent-test': 'agent-test', 'agent-review': 'agent-review', handoff: 'handoff' };
+  const ASK = 'Summarize what we know about sensors for dim rooms.';
   if (views[h]) openPanel(views[h], detailsBtn, false);
   else if (h === 'nav' && mqNavDrawer.matches) openNav();
   else if (h === 'since') setSince(true);
   else if (['tasks', 'map', 'docs'].includes(h)) setPane(h);
-  else if (h === 'map-list') { setPane('map'); $('[data-maplayout="list"]').click(); }
+  else if (h === 'map-list') { setPane('map'); sketches.shared.setMode('list'); }
+  else if (/^dm(-|$)/.test(h)) {
+    body.classList.add('no-lamp'); goPlace('dm', { focus: false });
+    if (h !== 'dm') { setSelecting(true, false); ['m1', 'm2', 'm3', 'm4'].forEach(id => pick($(`[data-mid="${id}"]`, dmLog), true)); syncPicked(); }
+    if (h === 'dm-sketch' || h === 'dm-promote') startSketch(false);
+    if (h === 'dm-promote') openPanel('promote', $('#promote-btn'), false);
+  } else if (/^lamp(-|$)/.test(h) || h === 'kai-assistant') {
+    goPlace('lamp', { focus: false });
+    const sub = h.replace(/^lamp-?/, '');
+    if (sub === 'new') makeFresh();
+    if (sub.startsWith('map')) tabsets.lamp.set('map');
+    requestAnimationFrame(() => {
+      if (sub === 'map-list') sketches.lamp.setMode('list');
+      if (sub === 'map-select') sketches.lamp.select(['n2', 'n5', 'n6']);
+      if (sub === 'map-edit') { sketches.lamp.select(['n3']); sketches.lamp.addConnected('n3', 'ToF: swipe + hold only'); }
+    });
+    if (sub === 'ask' || sub === 'noai') { setAsk(true, false); lampTa.value = ASK; lampSize(); syncLampSend(); }
+    if (sub === 'answer') runAssistant(ASK);
+    if (h === 'kai-assistant') openPanel('kai-assistant', $('#kai-proposal .ref[data-open="kai-assistant"]'), false);
+    if (sub === 'connect') openPanel('connect-ai', null, false);
+  }
   // States opened on load appear at rest; motion starts with the first interaction.
   requestAnimationFrame(() => requestAnimationFrame(() => { root.classList.remove('boot'); booting = false; }));
 })();

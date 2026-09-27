@@ -6,42 +6,60 @@
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": null
+        "touch_targets_under_44": null,
+        "target_exceptions": null
       },
       "1280x800": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": null
+        "touch_targets_under_44": null,
+        "target_exceptions": null
       },
       "1024x768": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 14,
+          ".skip": 2
+        }
       },
       "768x1024": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 8,
+          ".skip": 2
+        }
       },
       "390x844": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 8,
+          ".skip": 2
+        }
       },
       "360x780": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 8,
+          ".skip": 2
+        }
       }
     },
     "zoom200": {
@@ -73,42 +91,60 @@
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": null
+        "touch_targets_under_44": null,
+        "target_exceptions": null
       },
       "1280x800": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": null
+        "touch_targets_under_44": null,
+        "target_exceptions": null
       },
       "1024x768": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 6,
+          ".skip": 1
+        }
       },
       "768x1024": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 6,
+          ".skip": 1
+        }
       },
       "390x844": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 6,
+          ".skip": 1
+        }
       },
       "360x780": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 6,
+          ".skip": 1
+        }
       }
     },
     "zoom200": {
@@ -140,238 +176,713 @@
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": null
+        "touch_targets_under_44": null,
+        "target_exceptions": null
       },
       "1280x800": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": null
+        "touch_targets_under_44": null,
+        "target_exceptions": null
       },
       "1024x768": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 2,
+          ".skip": 1
+        }
       },
       "768x1024": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 2,
+          ".skip": 1
+        }
       },
       "390x844": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 2,
+          ".skip": 1
+        }
       },
       "360x780": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 2,
+          ".skip": 1
+        }
       },
       "1440x900#since": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": null
+        "touch_targets_under_44": null,
+        "target_exceptions": null
       },
       "1440x900#result": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": null
+        "touch_targets_under_44": null,
+        "target_exceptions": null
       },
       "1440x900#agent-test": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": null
+        "touch_targets_under_44": null,
+        "target_exceptions": null
       },
       "1280x800#decision": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": null
+        "touch_targets_under_44": null,
+        "target_exceptions": null
       },
       "1024x768#details": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 2,
+          ".skip": 1
+        }
+      },
+      "1024x768#nav": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 0
+        }
       },
       "768x1024#nav": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 0
+        }
       },
       "390x844#details": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 0
+        }
       },
       "390x844#sources": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 0
+        }
       },
       "390x844#nav": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 0
+        }
+      },
+      "360x780#nav": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 0
+        }
       },
       "390x844#since": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 2,
+          ".skip": 1
+        }
       },
       "1440x900#details": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": null
+        "touch_targets_under_44": null,
+        "target_exceptions": null
       },
       "1440x900#tasks": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": null
+        "touch_targets_under_44": null,
+        "target_exceptions": null
       },
       "1440x900#map": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": null
+        "touch_targets_under_44": null,
+        "target_exceptions": null
       },
       "1280x800#map-list": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": null
+        "touch_targets_under_44": null,
+        "target_exceptions": null
       },
       "1024x768#docs": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 1
+        }
       },
       "390x844#tasks": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 1
+        }
       },
       "390x844#map": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 1
+        }
       },
       "360x780#docs": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 1
+        }
       },
       "1440x900#capture": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": null
+        "touch_targets_under_44": null,
+        "target_exceptions": null
       },
       "390x844#capture": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 0
+        }
       },
-      "1440x900#rail": {
+      "1440x900#dm": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": null
+        "touch_targets_under_44": null,
+        "target_exceptions": null
       },
-      "1280x800#rail": {
+      "1440x900#dm-select": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": null
+        "touch_targets_under_44": null,
+        "target_exceptions": null
       },
-      "1440x900#rail-details": {
+      "1440x900#dm-sketch": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": null
+        "touch_targets_under_44": null,
+        "target_exceptions": null
       },
-      "1024x768#rail": {
+      "1440x900#dm-promote": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": null,
+        "target_exceptions": null
       },
-      "768x1024#rail-nav": {
+      "1440x900#lamp-new": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": null,
+        "target_exceptions": null
       },
-      "390x844#rail": {
+      "768x1024#dm-select": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 1
+        }
       },
-      "390x844#rail-nav": {
+      "390x844#dm": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 1
+        }
       },
-      "360x780#rail-nav": {
+      "390x844#dm-select": {
         "horizontal_overflow": false,
         "console_errors": [],
         "contrast_failures": [],
         "small_text": [],
-        "touch_targets_under_44": []
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 1
+        }
+      },
+      "390x844#dm-sketch": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 1
+        }
+      },
+      "390x844#dm-promote": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 0
+        }
+      },
+      "390x844#lamp-new": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 1
+        }
+      },
+      "1440x900#lamp-map": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null,
+        "target_exceptions": null
+      },
+      "1440x900#lamp-map-select": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null,
+        "target_exceptions": null
+      },
+      "1440x900#lamp-map-edit": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null,
+        "target_exceptions": null
+      },
+      "1280x800#lamp-map-list": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null,
+        "target_exceptions": null
+      },
+      "1024x768#lamp-map": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 1
+        }
+      },
+      "768x1024#lamp-map": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 1
+        }
+      },
+      "390x844#lamp-map": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 1
+        }
+      },
+      "390x844#lamp-map-select": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 1
+        }
+      },
+      "390x844#lamp-map-edit": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 1
+        }
+      },
+      "390x844#lamp-map-list": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 1
+        }
+      },
+      "360x780#lamp-map": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 1
+        }
+      },
+      "1440x900#lamp": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null,
+        "target_exceptions": null
+      },
+      "1440x900#lamp-ask": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null,
+        "target_exceptions": null
+      },
+      "1440x900#lamp-answer": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null,
+        "target_exceptions": null
+      },
+      "1440x900#lamp-noai": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null,
+        "target_exceptions": null
+      },
+      "1440x900#kai-assistant": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null,
+        "target_exceptions": null
+      },
+      "1440x900#lamp-connect": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null,
+        "target_exceptions": null
+      },
+      "768x1024#lamp": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 2,
+          ".skip": 1
+        }
+      },
+      "390x844#lamp": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 2,
+          ".skip": 1
+        }
+      },
+      "390x844#lamp-ask": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 2,
+          ".skip": 1
+        }
+      },
+      "390x844#lamp-answer": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 3,
+          ".skip": 1
+        }
+      },
+      "390x844#lamp-noai": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 2,
+          ".skip": 1
+        }
+      },
+      "390x844#kai-assistant": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 0
+        }
+      },
+      "1440x900#accent": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null,
+        "target_exceptions": null
+      },
+      "1280x800#accent": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null,
+        "target_exceptions": null
+      },
+      "1024x768#accent": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 2,
+          ".skip": 1
+        }
+      },
+      "390x844#accent": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 2,
+          ".skip": 1
+        }
+      },
+      "1440x900#accent-details": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null,
+        "target_exceptions": null
+      },
+      "390x844#accent-details": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 0
+        }
+      },
+      "768x1024#accent-nav": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 0
+        }
+      },
+      "390x844#accent-nav": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 0
+        }
+      },
+      "360x780#accent-nav": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 0
+        }
+      },
+      "1440x900#accent-lamp-map": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null,
+        "target_exceptions": null
+      },
+      "390x844#accent-dm-select": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": [],
+        "target_exceptions": {
+          ".ref": 0,
+          ".skip": 1
+        }
       }
     },
     "zoom200": {
@@ -385,34 +896,276 @@
       "without_visible_ring": [],
       "first_stops": [
         "Skip to reply",
-        "Jump to\u2026\u2318K",
-        "Home3",
-        "CapturePrivate",
-        "SShared export7",
-        "GGuest onboarding2",
-        "LGesture lamp",
-        "HHarbor mobile app"
+        "Home, 3 need you",
+        "Direct messages, 1 unread",
+        "Shared export",
+        "Guest onboarding",
+        "Gesture lamp",
+        "Harbor mobile app",
+        "New project"
       ]
     },
     "reduced_motion_animated_elements": 0,
     "extra": {
-      "rail": {
+      "accent": {
         "zoom200_overflow": false,
         "keyboard_focus": {
           "stops": 39,
           "without_visible_ring": [],
           "first_stops": [
             "Skip to reply",
-            "Home, 3 need you",
-            "Direct messages, 1 unread",
-            "Shared export",
-            "Guest onboarding",
-            "Gesture lamp",
-            "Harbor mobile app",
-            "New project"
+            "Jump to\u2026\u2318K",
+            "Home3",
+            "CapturePrivate",
+            "SShared export7",
+            "GGuest onboarding2",
+            "LGesture lamp2",
+            "HHarbor mobile app"
           ]
         },
         "reduced_motion_animated_elements": 0
+      }
+    },
+    "dark": {
+      "rail 1440x900#": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 1440x900#": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 1440x900#since": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 1440x900#since": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 1440x900#details": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 1440x900#details": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 1440x900#sources": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 1440x900#sources": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 1440x900#agent-test": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 1440x900#agent-test": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 1440x900#map": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 1440x900#map": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 1440x900#tasks": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 1440x900#tasks": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 1440x900#docs": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 1440x900#docs": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 1440x900#capture": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 1440x900#capture": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 1440x900#dm-select": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 1440x900#dm-select": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 1440x900#dm-sketch": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 1440x900#dm-sketch": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 1440x900#lamp-map": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 1440x900#lamp-map": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 1440x900#dm-promote": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 1440x900#dm-promote": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 1440x900#lamp-new": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 1440x900#lamp-new": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 1440x900#lamp": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 1440x900#lamp": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 1440x900#lamp-map-select": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 1440x900#lamp-map-select": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 1440x900#lamp-map-edit": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 1440x900#lamp-map-edit": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 1440x900#lamp-map-list": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 1440x900#lamp-map-list": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 1440x900#lamp-ask": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 1440x900#lamp-ask": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 1440x900#lamp-answer": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 1440x900#lamp-answer": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 1440x900#lamp-noai": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 1440x900#lamp-noai": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 1440x900#kai-assistant": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 1440x900#kai-assistant": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 1440x900#lamp-connect": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 1440x900#lamp-connect": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 390x844#": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 390x844#": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 390x844#details": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 390x844#details": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 390x844#nav": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 390x844#nav": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 390x844#dm-select": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 390x844#dm-select": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 390x844#lamp": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 390x844#lamp": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 390x844#lamp-map": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 390x844#lamp-map": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "rail 390x844#lamp-ask": {
+        "contrast_failures": [],
+        "small_text": []
+      },
+      "accent 390x844#lamp-ask": {
+        "contrast_failures": [],
+        "small_text": []
       }
     }
   }
