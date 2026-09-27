@@ -19,7 +19,7 @@ export interface DmRecord {
   createdAt: Date;
   lastMessageAt: Date | null;
   lastMessageBody: string | null;
-  /** Current participants, ordered by when they joined. */
+  /** Current participants, ordered by when they joined, then by name. */
   participants: DmPerson[];
 }
 

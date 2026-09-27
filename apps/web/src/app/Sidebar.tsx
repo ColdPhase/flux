@@ -56,7 +56,7 @@ export function Sidebar({ workspace, projects, directMessages, user, session, on
                     {directMessages.map((dm) => (
                       <li key={dm.id}>
                         <NavLink to={`/dm/${dm.id}`} className="side__item side__dm" onClick={navigate} title={`${dm.title} · ${dm.audience}`}>
-                          <Avatar name={dm.people[0] ?? dm.title} size="sm" /><span className="side__label">{dm.title}</span>
+                          <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} size="sm" /><span className="side__label">{dm.title}</span>
                           {dm.people.length > 1 ? <span className="side__sub" aria-label={`${dm.people.length + 1} people`}>{dm.people.length + 1}</span> : null}
                           {dm.hasNew ? <span className="ui-dot ui-dot--accent side__new"><span className="ui-vh">, new messages</span></span> : null}
                         </NavLink>

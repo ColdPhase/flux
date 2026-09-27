@@ -254,7 +254,7 @@ export function visibleDmsSql(actor: Actor): SQL {
   if (!actor.active || actor.principal.kind !== 'human') return sql`false`;
   const d = schema.dms;
   return and(eq(d.workspaceId, actor.workspaceId),
-    sql`EXISTS (SELECT 1 FROM dm_participants dp WHERE dp.dm_id = ${d.id} AND dp.user_id = ${actor.principal.id})`)!;
+    sql`EXISTS (SELECT 1 FROM dm_participants dp WHERE dp.dm_id = "dms"."id" AND dp.user_id = ${actor.principal.id})`)!;
 }
 
 /**

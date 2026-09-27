@@ -1,4 +1,7 @@
-import { Icon } from '../ui';
+import { useState } from 'react';
+import { useNavigate, useRevalidator } from 'react-router';
+import { leaveDm } from '../api/direct-messages';
+import { Button, Icon } from '../ui';
 import { WorkDetails } from '../work/WorkDetails';
 import type { WorkspaceSummary } from './data';
 import type { DetailsView } from './shellContext';
@@ -13,7 +16,7 @@ export function Details({ view, workspace, placeTitle, dm = null, onBack }: {
   workspace: WorkspaceSummary | null;
   placeTitle: string;
   /** The open direct message (#107): its other people and audience line. */
-  dm?: { people: string[]; audience: string } | null;
+  dm?: { id: string; kind: 'pair' | 'group'; people: string[]; audience: string } | null;
   onBack: () => void;
 }) {
   if (view === 'connect-ai') return <ConnectAi onBack={onBack} />;
@@ -35,6 +38,7 @@ export function Details({ view, workspace, placeTitle, dm = null, onBack }: {
           <h4 id="details-dm-rules">What stays private</h4>
           <p>Replies go to exactly these people. Someone who leaves, or leaves the workspace, stops seeing the conversation at once, including earlier messages.</p>
         </section>
+        <LeaveDm id={dm.id} kind={dm.kind} />
         <p className="details__keys"><kbd>]</kbd> toggles this panel · <kbd>Esc</kbd> closes it</p>
       </div>
     );
@@ -82,5 +86,37 @@ function ConnectAi({ onBack }: { onBack: () => void }) {
         <p>The ✦ button explains this and sends nothing. Your notes and unsent text stay as they are.</p>
       </section>
     </div>
+  );
+}
+
+/** Leaving a DM (#107) ends access at once, so it asks first and says what happens. */
+function LeaveDm({ id, kind }: { id: string; kind: 'pair' | 'group' }) {
+  const navigate = useNavigate();
+  const revalidator = useRevalidator();
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  async function leave() {
+    setBusy(true); setError('');
+    try {
+      await leaveDm(id);
+      navigate('/dm', { replace: true });
+      revalidator.revalidate();
+    } catch { setError('Could not leave. Try again.'); setBusy(false); }
+  }
+  return (
+    <section className="details__sec" aria-labelledby="details-dm-leave">
+      <h4 id="details-dm-leave">Leave</h4>
+      {confirm ? (
+        <div role="group" aria-label="Leave this conversation" className="details__confirm">
+          <p>{kind === 'pair' ? 'You won’t see these messages until you open this conversation again.' : 'You won’t see these messages again unless someone starts a new conversation with you.'}</p>
+          <div className="details__actions">
+            <Button variant="danger" busy={busy} onClick={() => void leave()}>Leave</Button>
+            <Button variant="quiet" onClick={() => setConfirm(false)}>Cancel</Button>
+          </div>
+          {error ? <p role="alert">{error}</p> : null}
+        </div>
+      ) : <Button variant="secondary" onClick={() => setConfirm(true)}>Leave conversation</Button>}
+    </section>
   );
 }

@@ -17,7 +17,9 @@ const users = schema.authUsers;
 type DmRow = typeof d.$inferSelect;
 type MessageRow = typeof m.$inferSelect;
 const activity = sql`coalesce(${d.lastMessageAt}, ${d.createdAt})`;
-const lastBody = sql<string | null>`(SELECT lm.body FROM dm_messages lm WHERE lm.dm_id = ${d.id} ORDER BY lm.sequence DESC LIMIT 1)`;
+// Qualified by hand: Drizzle leaves columns of a single-table select unqualified, and an unqualified
+// `id` inside this subquery would name dm_messages.id.
+const lastBody = sql<string | null>`(SELECT lm.body FROM dm_messages lm WHERE lm.dm_id = "dms"."id" ORDER BY lm.sequence DESC LIMIT 1)`;
 
 export interface NewDmRow {
   id: string; workspaceId: string; kind: 'pair' | 'group'; pairKey: string | null; title: string | null; createdBy: string; participantIds: string[];
@@ -35,7 +37,7 @@ export function dmRows(db: DbExecutor) {
     const byDm = new Map<string, { id: string; name: string }[]>();
     if (!dmIds.length) return byDm;
     const rows = await db.select({ dmId: p.dmId, id: p.userId, name: users.name }).from(p)
-      .innerJoin(users, eq(users.id, p.userId)).where(inArray(p.dmId, dmIds)).orderBy(asc(p.joinedAt), asc(p.userId));
+      .innerJoin(users, eq(users.id, p.userId)).where(inArray(p.dmId, dmIds)).orderBy(asc(p.joinedAt), asc(users.name), asc(p.userId));
     for (const row of rows) byDm.set(row.dmId, [...(byDm.get(row.dmId) ?? []), { id: row.id, name: row.name }]);
     return byDm;
   }

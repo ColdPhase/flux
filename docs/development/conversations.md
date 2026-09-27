@@ -31,7 +31,8 @@ messages by default, in ascending display order. `?limit=1..100` changes the
 window size; `?beforeSequence=<positive integer>` fetches the next older window.
 Use `messagePage.nextBeforeSequence` while `hasMoreBefore` is true. Sequence
 cursors stay stable as new replies arrive. Authorized project refresh events are
-described below. DM and many-to-many links remain outside this slice.
+described below. Direct messages reuse this message model outside projects; see
+[direct-messages.md](direct-messages.md). Many-to-many links remain outside this slice.
 
 Clean start and verification use Docker only:
 

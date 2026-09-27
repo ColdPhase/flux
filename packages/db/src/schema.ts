@@ -445,6 +445,8 @@ export const projectObjectLinks = pgTable('project_object_links', {
 }, (table) => [
   index('project_object_links_to_idx').on(table.toId),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+]);
+
 // Direct messages: private conversations between people of one workspace (migration 0010, issue #107).
 export const dms = pgTable('dms', {
   id: uuid('id').primaryKey(),

@@ -159,6 +159,25 @@ if (existing) {
   } else {
     summary.skipped.push('sketch: this build has no sketch API yet (#69)');
   }
+
+  // A 1:1 direct message (#107): only Ada and Jonas can read it, outside the project.
+  const dmsPath = `/api/v1/workspaces/${ws.id}/dms`;
+  if (await hasRoute(owner.session, dmsPath)) {
+    const dm = await owner.session.expect('POST', dmsPath, { participantIds: [partner.id] });
+    const lines = [
+      [owner, 'Quick one before Thursday: the grant only covers six sensors. Could the school lend us two more?'],
+      [partner, 'I can ask Ms. Novak tomorrow. They have a few ESP32 kits from the robotics club.'],
+      [owner, 'Great. Let us keep it between us until she says yes, so nobody plans around it yet.'],
+      [partner, 'Agreed. I will message you here as soon as I know.'],
+    ];
+    for (const [person, body] of lines) {
+      await person.session.expect('POST', `/api/v1/dms/${dm.id}/messages`, { body, clientMessageId: ids() });
+    }
+    summary.seeded.push(`direct message between ${owner.name} and ${partner.name} with ${lines.length} messages (only they can read it)`);
+    summary.dmId = dm.id;
+  } else {
+    summary.skipped.push('direct message: this build has no direct-message API yet (#107)');
+  }
 }
 
 for (const line of summary.seeded) console.log(`  seeded  ${line}`);

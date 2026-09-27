@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { Link, useLoaderData, useNavigate, useRevalidator, type LoaderFunctionArgs } from 'react-router';
+import { Link, useLoaderData, useRevalidator, type LoaderFunctionArgs } from 'react-router';
 import type { ConversationMessage, Dm, DmPerson, SendDmMessageCommand } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { getDm, leaveDm, olderDmMessages, sendDmMessage } from '../api/direct-messages';
+import { getDm, olderDmMessages, sendDmMessage } from '../api/direct-messages';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { Avatar, Button, Icon } from '../ui';
@@ -67,7 +67,6 @@ function dayLabel(iso: string) {
 
 function DmContent({ initial }: { initial: Dm }) {
   const { me } = useShellData();
-  const navigate = useNavigate();
   const revalidator = useRevalidator();
   const audienceId = useId();
   const hintId = useId();
@@ -83,8 +82,6 @@ function DmContent({ initial }: { initial: Dm }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [gone, setGone] = useState(false);
-  const [confirmLeave, setConfirmLeave] = useState(false);
-  const [leaving, setLeaving] = useState(false);
   const feedRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef(messages);
@@ -196,19 +193,6 @@ function DmContent({ initial }: { initial: Dm }) {
     finally { setOlderBusy(false); }
   }
 
-  async function leave() {
-    setLeaving(true);
-    try {
-      await leaveDm(initial.id);
-      store(draftKey, ''); store(pendingKey, '');
-      revalidator.revalidate();
-      navigate('/dm', { replace: true });
-    } catch (cause) {
-      if (!denied(cause)) setError('Could not leave. Try again.');
-      setLeaving(false);
-    }
-  }
-
   if (gone) return <DmUnavailable />;
   const canSend = draft.trim().length > 0 && !busy;
   const rows = messages.map((message, index) => {
@@ -221,22 +205,18 @@ function DmContent({ initial }: { initial: Dm }) {
     <div className="dm" data-dm-id={dm.id}>
       <div className="dm__feed" ref={feedRef}>
         <div className="dm__in">
-          <header className="dm__head">
-            <span className="dm__faces" aria-hidden="true">
-              {(others.length ? others : [{ id: me.user.id, name: me.user.name }]).slice(0, 3).map((person) => <Avatar key={person.id} name={person.name} size="lg" />)}
-            </span>
-            <div className="dm__who">
-              <h2>{title}</h2>
-              <p><Icon name="lock" size={12} />{audience}<span aria-hidden="true"> · </span>outside any project</p>
-            </div>
-            {confirmLeave ? (
-              <div className="dm__leave" role="group" aria-label="Leave this conversation">
-                <p>{dm.kind === 'pair' ? 'You won’t see these messages until you open this conversation again.' : 'You won’t see these messages again unless someone starts a new conversation with you.'}</p>
-                <Button variant="danger" busy={leaving} onClick={() => void leave()}>Leave</Button>
-                <Button variant="quiet" onClick={() => setConfirmLeave(false)}>Cancel</Button>
+          {olderCursor ? null : (
+            // The start of the conversation: who is in it. The top bar keeps the name and audience in view.
+            <header className="dm__head">
+              <span className="dm__faces" aria-hidden="true">
+                {(others.length ? others : [{ id: me.user.id, name: me.user.name }]).slice(0, 3).map((person) => <Avatar key={person.id} name={person.name} size="lg" />)}
+              </span>
+              <div className="dm__who">
+                <h2>{title}</h2>
+                <p><Icon name="lock" size={12} /> {audience} can read this conversation. It stays outside every project.</p>
               </div>
-            ) : <Button variant="quiet" className="dm__leave-btn" onClick={() => setConfirmLeave(true)}>Leave</Button>}
-          </header>
+            </header>
+          )}
           {olderCursor ? <div className="dm__older"><Button variant="quiet" busy={olderBusy} onClick={() => void loadOlder()}>Show earlier messages</Button></div> : null}
           {messages.length ? (
             <ol className="dm__list" aria-label="Messages">
@@ -257,7 +237,7 @@ function DmContent({ initial }: { initial: Dm }) {
               })}
             </ol>
           ) : (
-            <p className="dm__first">This is the start of your conversation{others.length ? ` with ${others.map((p) => p.name).join(', ')}` : ''}. Only the people named above can read it.</p>
+            <p className="dm__first">No messages yet. Say hello{others.length === 1 ? ` to ${others[0]!.name.split(/\s+/)[0]}` : ''}.</p>
           )}
         </div>
       </div>

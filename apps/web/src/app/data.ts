@@ -15,7 +15,7 @@ export interface WorkspaceSummary { id: string; name: string }
 export interface ProjectSummary { id: string; name: string; workspaceName?: string; hasNew?: boolean }
 /** A private conversation with one or more people, independent of any project. */
 export interface DirectMessageSummary {
-  id: string; workspaceId: string; title: string; people: string[]; participantIds: string[];
+  id: string; workspaceId: string; kind: 'pair' | 'group'; title: string; people: string[]; participantIds: string[];
   /** "Only you and Kai". */
   audience: string; preview: string | null; lastAt: string | null; hasNew?: boolean;
 }
@@ -41,7 +41,7 @@ export async function appLoader({ request }: LoaderFunctionArgs): Promise<ShellD
   const namedProjects = projects.map((project) => ({ ...project, workspaceName: nameCounts.get(project.name)! > 1 ? workspaces.find((space) => space.id === project.workspaceId)?.name : undefined }));
   const dms = await listAllDms(request.signal, workspaces);
   const directMessages = dms.map((dm) => ({
-    id: dm.id, workspaceId: dm.workspaceId, title: dmTitle(dm, me.user.id),
+    id: dm.id, workspaceId: dm.workspaceId, kind: dm.kind, title: dmTitle(dm, me.user.id),
     people: othersIn(dm, me.user.id).map((person) => person.name), participantIds: dm.audience.participantIds,
     audience: audienceLine(dm, me.user.id), preview: dm.lastMessageBody, lastAt: dm.lastMessageAt,
   }));

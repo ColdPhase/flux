@@ -165,7 +165,7 @@ export function AppLayout() {
       </div>
 
       <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title="Details" id="details">
-        <Details view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} />
+        <Details view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} />
       </SidePanel>
     </div>
     </ShellContext.Provider>

@@ -105,6 +105,7 @@ partner_pw=$(printf '%s\n' "$out" | sed -n 's/.*jonas@demo\.flux\.test *\(demo-[
 printf '%s\n' "$out" | grep -q "Flux demo is ready:  $base" || fail "demo did not print the URL"
 printf '%s\n' "$out" | grep -q 'seeded  conversation with 4 messages' || fail "conversation not seeded"
 printf '%s\n' "$out" | grep -Eq 'seeded  sketch|skipped sketch' || fail "sketch neither seeded nor skipped"
+printf '%s\n' "$out" | grep -q 'seeded  direct message between Ada Kowalska and Jonas Berg with 4 messages' || fail "direct message not seeded"
 
 jar="$work/jar"
 sign_in() { # email password -> cookie jar $jar
@@ -132,6 +133,9 @@ printf '%s' "$thread" | grep -q '"source":{"materialId"' || fail "no message cit
 sign_in jonas@demo.flux.test "$partner_pw"
 if api "/api/v1/workspaces/$ws/drafts" | grep -q 'Before Thursday'; then fail "partner can see the owner's private note"; fi
 api "/api/v1/conversations/$conversation" | grep -q 'Moisture first' || fail "partner cannot read the conversation"
+dm=$(printf '%s\n' "$out" | sed -n 's/.*"dmId":"\([^"]*\)".*/\1/p')
+[ -n "$dm" ] || fail "demo did not report the direct message"
+[ "$(api "/api/v1/dms/$dm" | grep -o '"sequence":' | wc -l | tr -d ' ')" = 4 ] || fail "partner does not see the 4 direct messages"
 
 step "A second ./flux demo seeds nothing new"
 "$copy/flux" demo | grep -q 'already exists; nothing new was seeded' || fail "second demo was not idempotent"

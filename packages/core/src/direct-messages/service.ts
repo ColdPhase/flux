@@ -124,19 +124,22 @@ export function createDmUseCases(uow: DmUnitOfWork) {
           await ports.dms.lockPair(workspaceId, pairKey);
           const existing = await ports.dms.findPair(workspaceId, pairKey);
           if (existing) {
-            if (await ports.dms.addParticipant(workspaceId, existing.id, self)) {
-              await ports.dms.bumpVersion(existing.id);
-              await ports.events.record(principal, workspaceId, 'dm.changed.v1', existing.id, { op: 'rejoined' });
-            }
-            return { dm: await detail(ports, await found(ports, existing.id), window), created: false };
+            const rejoined = await ports.dms.addParticipant(workspaceId, existing.id, self);
+            if (rejoined) await ports.dms.bumpVersion(existing.id);
+            const dm = await detail(ports, await found(ports, existing.id), window);
+            // Events are the last statement of a change: the seq lock is held from here to commit.
+            if (rejoined) await ports.events.record(principal, workspaceId, 'dm.changed.v1', existing.id, { op: 'rejoined' });
+            return { dm, created: false };
           }
           const record = await ports.dms.insert({ id: randomUUID(), workspaceId, kind: 'pair', pairKey, title: null, createdBy: self, participantIds: [self, others[0]!] });
+          const dm = await detail(ports, record, window);
           await ports.events.record(principal, workspaceId, 'dm.created.v1', record.id, { kind: 'pair' });
-          return { dm: await detail(ports, record, window), created: true };
+          return { dm, created: true };
         }
         const record = await ports.dms.insert({ id: randomUUID(), workspaceId, kind: 'group', pairKey: null, title: name, createdBy: self, participantIds: [self, ...others] });
+        const dm = await detail(ports, record, window);
         await ports.events.record(principal, workspaceId, 'dm.created.v1', record.id, { kind: 'group' });
-        return { dm: await detail(ports, record, window), created: true };
+        return { dm, created: true };
       });
     },
 
@@ -184,8 +187,9 @@ export function createDmUseCases(uow: DmUnitOfWork) {
         if (typeof expected !== 'number' || !Number.isInteger(expected) || expected < 1) throw new InvalidInputError('expectedVersion must be a positive integer');
         if (dm.version !== expected) throw new VersionConflictError(dm.version, toSummary(dm));
         await ports.dms.rename(dm.id, next);
+        const renamed = toSummary(await found(ports, dm.id));
         await ports.events.record(principal, dm.workspaceId, 'dm.changed.v1', dm.id, { op: 'renamed' });
-        return toSummary(await found(ports, dm.id));
+        return renamed;
       });
     },
 

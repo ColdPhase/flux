@@ -24,9 +24,14 @@ export function dmTitle(dm: Pick<DmSummary, 'participants' | 'title'>, meId: str
   return joinNames(others.map((p) => firstName(p.name)));
 }
 
+/** "Only you and Kai", "Only you, Kai and Lee" from the other people's names. */
+export function audienceOf(names: string[]): string {
+  const first = names.map(firstName);
+  if (!first.length) return 'Only you';
+  return `Only ${joinNames(['you', ...first])}`;
+}
+
 /** The audience line shown in the header and composer: "Only you and Kai". */
 export function audienceLine(dm: Pick<DmSummary, 'participants'>, meId: string): string {
-  const others = othersIn(dm, meId).map((p) => firstName(p.name));
-  if (!others.length) return 'Only you';
-  return `Only you and ${joinNames(others)}`;
+  return audienceOf(othersIn(dm, meId).map((p) => p.name));
 }

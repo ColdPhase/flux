@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
-import type { WorkspaceMember } from '@flux/contracts';
+import { DM_LIMITS, type WorkspaceMember } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { openDm } from '../api/direct-messages';
 import { listWorkspaceMembers } from '../app/conversation-api';
 import { useShellData } from '../app/data';
 import { Avatar, Button, EmptyState, Icon } from '../ui';
-import { DM_LIMITS } from '@flux/contracts';
+import { audienceOf } from './names';
 import './dm.css';
 
 /** Direct messages (#107): the list of conversations with people, outside any project. */
@@ -33,7 +33,7 @@ export function DmIndex() {
         {directMessages.map((dm) => (
           <li key={dm.id}>
             <Link to={`/dm/${dm.id}`} className="dm-index__item">
-              <Avatar name={dm.people[0] ?? dm.title} size="lg" />
+              <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} size="lg" />
               <span className="dm-index__text"><b>{dm.title}</b><span>{dm.preview ?? 'No messages yet'}</span></span>
               {dm.lastAt ? <time dateTime={dm.lastAt}>{new Date(dm.lastAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</time> : null}
             </Link>
@@ -115,7 +115,7 @@ export function NewDm() {
       : current.length >= DM_LIMITS.others ? current : [...current, id]);
   };
   const only = selected.length === 1 ? nameOf(selected[0]!) : '';
-  const audience = selected.length ? `Only you and ${selected.map((id) => nameOf(id).split(/\s+/)[0]).join(', ')}` : 'Choose who can read it';
+  const audience = selected.length ? audienceOf(selected.map(nameOf)) : 'Choose who can read it';
 
   if (direct && !error) {
     return <div className="pane-scroll"><div className="pane-in"><p className="dm-new__opening" role="status">Opening your conversation…</p></div></div>;
