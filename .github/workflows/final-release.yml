@@ -190,25 +190,14 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
-      - name: Start the packaged image in clean Compose volumes
-        env:
-          COMPOSE_PROJECT_NAME: fluxrelease${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          trap 'docker compose --env-file release-assets/.env -f release-assets/compose.yaml down -v --remove-orphans' EXIT
-          python3 scripts/release/write_test_env.py \
-            --source release-assets/.env.example --destination release-assets/.env --port 18081
-          docker compose --env-file release-assets/.env -f release-assets/compose.yaml config --quiet
-          docker compose --env-file release-assets/.env -f release-assets/compose.yaml pull
-          docker compose --env-file release-assets/.env -f release-assets/compose.yaml up -d --wait
-          curl --fail --show-error --silent http://127.0.0.1:18081/api/v1/health
+      - name: Install, back up and restore the packaged image
+        run: bash scripts/release/smoke_artifacts.sh release-assets "$RUNNER_TEMP/flux-smoke" "fluxrelease${{ github.run_id }}" "fluxrestore${{ github.run_id }}"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-assets
           path: |
             release-assets/*
             release-assets/.env.example
-            !release-assets/.env
           if-no-files-found: error
 
   draft:
@@ -233,6 +222,7 @@ jobs:
           RELEASE_VERSION: ${{ needs.candidate.outputs.version }}
           CANDIDATE_SHA: ${{ needs.candidate.outputs.source_sha }}
           IMAGE_DIGEST: ${{ needs.image.outputs.digest }}
+          ACCEPTANCE_ISSUE: ${{ inputs.acceptance_issue }}
         run: |
           set -euo pipefail
           cd release-assets
@@ -244,6 +234,7 @@ jobs:
           OCI image: ghcr.io/coldphase/flux@$IMAGE_DIGEST
           Platforms: linux/amd64, linux/arm64
           Build: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+          Integrated acceptance: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/issues/$ACCEPTANCE_ISSUE
 
           Install with the attached version-matched compose.yaml, .env.example and INSTALL.md.
           This draft requires independent packaged install, upgrade and restore review before publication.
