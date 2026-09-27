@@ -149,6 +149,7 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
 .jump { min-width: 220px; justify-content: space-between; color: var(--text-secondary); font-weight: 500; border-color: var(--border-control); }
 .jump kbd { font-family: var(--font-mono); font-size: 11.5px; border: 1px solid var(--border-control); padding: 1px 4px; border-radius: 2px; }
 .agents-toggle[aria-expanded="true"] { background: var(--surface-inverse); color: var(--text-inverse); }
+.agents-toggle .short { display: none; }
 .agents-toggle .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
 .agents-toggle .sq { width: 8px; height: 8px; border: 1.5px solid currentColor; }
 .avatar {
@@ -157,7 +158,7 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
   font-size: 11px; font-weight: 700; background: var(--surface-sunken); border: 1px solid var(--border-strong);
 }
 .avatar.me { background: var(--surface-inverse); color: var(--text-inverse); }
-.avatar.agent { border-radius: 3px; background: var(--surface-raised); font-family: var(--font-mono); }
+.avatar.bot { border-radius: 3px; background: var(--surface-raised); font-family: var(--font-mono); }
 
 /* ---------- Project header ---------- */
 .project {
@@ -289,7 +290,6 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
 .card.is-selected .sel-tag { display: inline-flex; }
 .sel-tag { display: none; }
 .card.is-linked { border-color: var(--border-strong); border-style: dashed; }
-.card.is-linked .card-top .id::after { content: " · linked"; font-family: var(--font-sans); font-weight: 600; color: var(--text-secondary); }
 [data-filter]:not([data-filter="all"]):not([data-filter="none"]) .card.is-hit,
 [data-filter="all"] .card.changed { outline: 3px solid var(--marker-changed); outline-offset: 0; }
 [data-filter="all"] .card.noexp-change, [data-filter="noexp"] .card.is-hit { outline-color: var(--status-warning); }
@@ -364,30 +364,31 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
 /* ---------- Agents panel ---------- */
 .agents {
   flex: none; border-top: 1px solid var(--border-strong); background: var(--surface-raised);
-  max-height: 46%; overflow: auto;
+  max-height: 40%; overflow: auto;
 }
 .agents-h { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 6px 12px 6px 20px; border-bottom: 1px solid var(--border-subtle); position: sticky; top: 0; background: var(--surface-raised); z-index: 1; }
 .agents-h h2 { margin: 0; font-size: 14px; font-weight: 700; }
-.agents-h .close { margin-left: auto; }
+.agents-h .meta { flex: 1 1 200px; min-width: 0; }
+.agents-h .close { margin-left: auto; flex: none; }
 .agent-list { list-style: none; margin: 0; padding: 0; }
-.agent {
-  display: grid; grid-template-columns: minmax(170px, .8fr) minmax(0, 1.3fr) minmax(0, 1.4fr) auto;
-  gap: 4px 16px; align-items: start;
-  padding: 8px 12px 8px 20px; border-bottom: 1px solid var(--border-subtle);
+.arow {
+  display: grid; grid-template-columns: minmax(210px, .7fr) minmax(0, 1.3fr) minmax(0, 1.4fr) auto;
+  gap: 2px 16px; align-items: start;
+  padding: 6px 12px 6px 20px; border-bottom: 1px solid var(--border-subtle);
 }
-.agent:last-child { border-bottom: 0; }
-.agent .who { display: flex; gap: 8px; align-items: flex-start; }
-.agent .who strong { display: block; font-size: 14px; }
-.agent .state-line { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; }
-.agent .state-line.stopped { color: var(--status-danger); }
-.agent .what { font-size: 13.5px; }
-.agent .what .on { font-size: 12.5px; color: var(--text-secondary); display: block; }
-.agent dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 1px 8px; font-size: 12.5px; }
-.agent dt { color: var(--text-secondary); }
-.agent dd { margin: 0; font-weight: 600; }
-.agent .acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-.agent .nosw { grid-column: 2 / 5; font-size: 12.5px; font-weight: 600; display: flex; gap: 6px; align-items: center; }
-.agent.stopped { background: #FFF8F6; box-shadow: inset 4px 0 0 var(--status-danger); }
+.arow:last-child { border-bottom: 0; }
+.arow .who { display: flex; gap: 8px; align-items: flex-start; }
+.arow .who strong { display: block; font-size: 14px; }
+.arow .state-line { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; }
+.arow .state-line.stopped { color: var(--status-danger); }
+.arow .what { font-size: 13.5px; }
+.arow .what .on { font-size: 12.5px; color: var(--text-secondary); display: block; }
+.arow dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 1px 8px; font-size: 12.5px; }
+.arow dt { color: var(--text-secondary); }
+.arow dd { margin: 0; font-weight: 600; }
+.arow .acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.arow .nosw { margin: 2px 0 0 !important; font-size: 12.5px; font-weight: 600; display: flex; gap: 6px; align-items: center; }
+.arow.stopped { background: #FFF8F6; box-shadow: inset 4px 0 0 var(--status-danger); }
 
 /* ---------- Detail pane ---------- */
 .detail { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--surface-raised); }
@@ -410,6 +411,8 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
 .evidence .link-chip { font-family: var(--font-sans); font-size: 12.5px; }
 .evidence .link-chip .mono { font-size: 12px; }
 .evidence .link-chip.restricted { background: var(--surface-restricted); border-style: solid; }
+.dgrid { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 6px 8px; align-items: baseline; }
+.dgrid h3 { margin: 0; }
 .next { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 13.5px; }
 .next li { display: flex; gap: 6px; align-items: baseline; }
 .next b { min-width: 28px; }
@@ -440,7 +443,7 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
 .composer label { display: block; font-size: 12px; font-weight: 700; margin-bottom: 4px; }
 .composer .box { display: flex; flex-direction: column; border: 1px solid var(--border-control); border-radius: var(--radius); background: #FFFFFF; }
 .composer .box:focus-within { border-color: var(--border-strong); box-shadow: 0 0 0 1px var(--border-strong); }
-.composer textarea { border: 0; resize: none; padding: 7px 9px; min-height: 40px; background: transparent; font-size: 14px; line-height: 1.4; }
+.composer textarea { border: 0; resize: none; padding: 7px 9px; min-height: 34px; background: transparent; font-size: 14px; line-height: 1.4; }
 .composer textarea:focus-visible { outline: none; box-shadow: none; }
 .composer .bar { display: flex; align-items: center; gap: 6px; padding: 4px; }
 .composer .bar .meta { flex: 1; padding-left: 4px; }
@@ -455,10 +458,11 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
   .lane:nth-child(3) .card.in::before, .lane:nth-child(2) .card.out::after { display: none; }
   .jump { min-width: 0; }
   .jump .lbl { display: none; }
-  .agent { grid-template-columns: minmax(150px, .8fr) minmax(0, 1.4fr) auto; }
-  .agent dl { grid-column: 2 / 3; }
-  .agent .acts { grid-column: 3; grid-row: 1; }
-  .agent .nosw { grid-column: 2 / 4; }
+  .arow { grid-template-columns: minmax(190px, .8fr) minmax(0, 1.4fr) auto; }
+  .agents { max-height: 36%; }
+  .arow dl { grid-column: 2 / 3; }
+  .arow .acts { grid-column: 3; grid-row: 1; }
+  .arow .nosw { grid-column: 2 / 4; }
   .project .actions .btn:not(.btn-primary) .long { display: none; }
 }
 
@@ -492,6 +496,7 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
   .crumbs ol { font-size: 14px; }
   .jump { display: none; }
   .agents-toggle .lbl { display: none; }
+  .agents-toggle .short { display: inline; }
   .agents-toggle { padding: 0 10px; }
   .project { padding: 10px 12px; }
   .project h1 { font-size: 17px; }
@@ -512,10 +517,10 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
   .lane + .lane { border-top: 1px solid var(--border-strong); }
   .card.out::after, .card.in::before { display: none; }
   .agents-h { padding: 8px 12px; }
-  .agent { grid-template-columns: minmax(0, 1fr); padding: 10px 12px; gap: 6px; }
-  .agent dl, .agent .acts, .agent .nosw { grid-column: 1; grid-row: auto; }
-  .agent .acts { justify-content: flex-start; }
-  .agent .acts .btn { flex: 1; }
+  .arow { grid-template-columns: minmax(0, 1fr); padding: 10px 12px; gap: 6px; }
+  .arow dl, .arow .acts, .arow .nosw { grid-column: 1; grid-row: auto; }
+  .arow .acts { justify-content: flex-start; }
+  .arow .acts .btn { flex: 1; }
   .detail { width: 100%; border-left: 0; }
   .detail-h { padding: 6px 12px 8px; }
   .dsec, .thread-h { padding-left: 12px; padding-right: 12px; }
@@ -560,9 +565,9 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
       </ol>
     </nav>
     <span class="spacer"></span>
-    <button class="btn jump" type="button"><span class="lbl">Jump to object or person</span><kbd>⌘K</kbd></button>
+    <button class="btn jump" type="button" aria-label="Jump to object or person (Command K)"><span class="lbl">Jump to object or person</span><kbd>⌘K</kbd></button>
     <button class="btn agents-toggle" type="button" aria-expanded="true" aria-controls="agents">
-      <span class="dot" aria-hidden="true"></span><span class="lbl">Agents · 1 running ·</span>
+      <span class="short" aria-hidden="true">Agents</span><span class="dot" aria-hidden="true"></span><span class="lbl">Agents · 1 running ·</span>
       <span class="sq" aria-hidden="true"></span><span class="lbl">1 stopped</span>
       <span class="sr-only">2 agents: 1 running, 1 stopped</span>
     </button>
@@ -581,7 +586,7 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
     </div>
     <div class="actions" role="group" aria-label="Resume work">
       <button class="btn btn-primary" type="button" data-select="R-1">Review R-1</button>
-      <button class="btn" type="button" data-select="W-1">Continue<span class="long">&nbsp;W-1</span></button>
+      <button class="btn" type="button" data-select="W-1">Continue<span class="long">W-1</span></button>
       <button class="btn" type="button">Hand off<span class="long">…</span></button>
     </div>
   </section>
@@ -636,10 +641,10 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
                 <div class="links"><span>links to</span><button class="link-chip" type="button" data-select="D-2">D-2</button></div>
               </li>
               <li class="card out changed" data-id="M-2" data-links="D-2 W-1" data-change="material">
-                <div class="card-top"><span class="id">M-2</span><span class="type">Test output</span><span class="right"><span class="marker">Changed Sep 24</span></span></div>
+                <div class="card-top"><span class="id">M-2</span><span class="type">Test output</span><span class="right"><span class="marker">Changed</span></span></div>
                 <button class="obj-open" type="button" data-select="M-2">Permission test: guest_export_visibility</button>
                 <p class="desc"><span class="mono">14 passed · 2 failed</span> — both failures are items archived after the export was scheduled.</p>
-                <div class="meta">Run by Nia · Sep 24, 16:40</div>
+                <div class="meta">Changed Sep 24 · run by Nia, 16:40</div>
                 <div class="links"><span>links to</span><button class="link-chip" type="button" data-select="D-2">D-2</button><button class="link-chip" type="button" data-select="W-1">W-1</button></div>
               </li>
               <li class="card out missing changed noexp-change" data-id="M-3" data-links="D-1" data-change="material noexp">
@@ -666,19 +671,19 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
             <div class="lane-h"><span class="num">02</span><h3 id="lane-d">Decision</h3><span class="count" aria-label="2 objects">2</span><span class="flow" aria-hidden="true">→</span></div>
             <ul class="lane-b">
               <li class="card in out accepted changed is-selected" data-id="D-2" data-links="M-1 M-2 RX D-1 W-1" data-change="decision">
-                <div class="card-top"><span class="id">D-2</span><span class="badge badge-solid"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Accepted</span><span class="marker current">Current</span><span class="right"><span class="marker">Changed Sep 23</span></span></div>
+                <div class="card-top"><span class="id">D-2</span><span class="badge badge-solid"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Accepted</span><span class="marker current">Current</span><span class="right"><span class="marker">Changed</span></span></div>
                 <button class="obj-open" type="button" data-select="D-2" aria-current="true">Exclude items the guest cannot open from CSV and XLSX exports</button>
                 <p class="desc">Checked when the export runs, not when it is scheduled. Supersedes D-1.</p>
-                <div class="meta">Owner Jo · accepted by Ari, acting · Sep 23</div>
+                <div class="meta">Changed Sep 23 · owner Jo · accepted by Ari, acting</div>
                 <div class="links"><span>evidence</span><button class="link-chip" type="button" data-select="M-1">M-1</button><button class="link-chip" type="button" data-select="M-2">M-2</button><button class="link-chip" type="button" data-select="RX" aria-label="Restricted source">
                   <svg class="i" aria-hidden="true"><use href="#i-lock"/></svg></button><span>· input to</span><button class="link-chip" type="button" data-select="W-1">W-1</button></div>
                 <div class="links"><span>supersedes</span><button class="link-chip" type="button" data-select="D-1"><s>D-1</s></button><span class="sel-tag badge">Selected</span></div>
               </li>
               <li class="card in superseded changed" data-id="D-1" data-links="M-3" data-change="decision">
-                <div class="card-top"><span class="id">D-1</span><span class="badge badge-muted"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg>Superseded</span><span class="right"><span class="marker">Changed Sep 23</span></span></div>
+                <div class="card-top"><span class="id">D-1</span><span class="badge badge-muted"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg>Superseded</span><span class="right"><span class="marker">Changed</span></span></div>
                 <button class="obj-open" type="button" data-select="D-1">Include archived items in exports for members</button>
                 <p class="desc">Replaced by D-2 on Sep 23. Did not cover guests.</p>
-                <div class="meta">Accepted by Jo · Aug 28</div>
+                <div class="meta">Changed Sep 23 · accepted by Jo Aug 28</div>
                 <div class="links"><span>superseded by</span><button class="link-chip" type="button" data-select="D-2">D-2</button><span>· based on</span><button class="link-chip broken" type="button" data-select="M-3">M-3</button></div>
               </li>
             </ul>
@@ -689,9 +694,9 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
             <div class="lane-h"><span class="num">03</span><h3 id="lane-w">Work</h3><span class="count" aria-label="1 object">1</span><span class="flow" aria-hidden="true">→</span></div>
             <ul class="lane-b">
               <li class="card in out changed" data-id="W-1" data-links="D-2 M-2 R-1" data-change="work">
-                <div class="card-top"><span class="id">W-1</span><span class="badge"><svg class="i" aria-hidden="true"><use href="#i-half"/></svg>In progress</span><span class="right"><span class="marker">Changed Sep 22</span></span></div>
+                <div class="card-top"><span class="id">W-1</span><span class="badge"><svg class="i" aria-hidden="true"><use href="#i-half"/></svg>In progress</span><span class="right"><span class="marker">Changed</span></span></div>
                 <button class="obj-open" type="button" data-select="W-1">Check guest access when the export runs, including items archived after scheduling</button>
-                <div class="meta"><span class="avatar" aria-hidden="true" style="width:18px;height:18px;font-size:9px;vertical-align:-4px">Ni</span> Nia · due Sep 30</div>
+                <div class="meta">Changed Sep 22 · assigned to Nia · due Sep 30</div>
                 <div class="links"><span>input</span><button class="link-chip" type="button" data-select="D-2">D-2</button><button class="link-chip" type="button" data-select="M-2">M-2</button><span>· produces</span><button class="link-chip" type="button" data-select="R-1">R-1</button></div>
                 <div class="activity stopped" role="status">
                   <span class="stop-sq" aria-hidden="true"></span>
@@ -706,10 +711,10 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
             <div class="lane-h"><span class="num">04</span><h3 id="lane-r">Result</h3><span class="count" aria-label="2 objects">2</span></div>
             <ul class="lane-b">
               <li class="card in changed" data-id="R-1" data-links="W-1 D-2" data-change="work">
-                <div class="card-top"><span class="id">R-1</span><span class="badge badge-warn"><svg class="i" aria-hidden="true"><use href="#i-clock"/></svg>Awaiting review</span><span class="right"><span class="marker">Changed Sep 25</span></span></div>
+                <div class="card-top"><span class="id">R-1</span><span class="badge badge-warn"><svg class="i" aria-hidden="true"><use href="#i-clock"/></svg>Awaiting review</span><span class="right"><span class="marker">Changed</span></span></div>
                 <button class="obj-open" type="button" data-select="R-1">Run-time export filter + sample CSV and XLSX</button>
                 <p class="desc">Patch and two sample files from the Northwind share. Reviewer: Jo.</p>
-                <div class="meta">Attached by Nia · Sep 25</div>
+                <div class="meta">Changed Sep 25 · attached by Nia</div>
                 <div class="links"><span>from</span><button class="link-chip" type="button" data-select="W-1">W-1</button><span>· meets</span><button class="link-chip" type="button" data-select="D-2">D-2</button></div>
                 <div class="card-actions"><button class="btn btn-sm btn-primary" type="button" data-select="R-1">Review result</button></div>
                 <div class="activity" role="status">
@@ -718,10 +723,10 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
                 </div>
               </li>
               <li class="card changed" data-id="H-1" data-links="R-1 W-1" data-change="work">
-                <div class="card-top"><span class="id">H-1</span><span class="type">Handoff · Ari → Jo</span><span class="right"><span class="marker">Changed Sep 25</span></span></div>
+                <div class="card-top"><span class="id">H-1</span><span class="type">Handoff · Ari → Jo</span><span class="right"><span class="marker">Changed</span></span></div>
                 <button class="obj-open" type="button" data-select="H-1">Ari's handoff: XLSX footer done, CSV notice still open</button>
                 <p class="desc">“I'm out from Sep 26. The footer wording is in R-1's sample XLSX. Open: how CSV tells guests items were left out — see the question in C-1.”</p>
-                <div class="meta">Ari · Sep 25, 18:05</div>
+                <div class="meta">Changed Sep 25 · Ari, 18:05</div>
                 <div class="links"><span>about</span><button class="link-chip" type="button" data-select="R-1">R-1</button><button class="link-chip" type="button" data-select="W-1">W-1</button></div>
               </li>
             </ul>
@@ -773,26 +778,25 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
           <button class="btn btn-sm btn-quiet close" type="button" data-close-agents aria-label="Close agents panel"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg><span>Close</span></button>
         </div>
         <ul class="agent-list">
-          <li class="agent">
-            <div class="who"><span class="avatar agent" aria-hidden="true">RA</span><div><strong>Review agent</strong><span class="state-line"><span class="run-dot" aria-hidden="true" style="margin-top:0"></span>Running · 4 min</span></div></div>
-            <div class="what">Reading sample XLSX (2 of 3 files) and comparing hidden rows against D-2.<span class="on">on <button class="link-chip" type="button" data-select="R-1">R-1</button> · will comment on R-1 only</span></div>
+          <li class="arow">
+            <div class="who"><span class="avatar bot" aria-hidden="true">RA</span><div><strong>Review agent</strong><span class="state-line"><span class="run-dot" aria-hidden="true" style="margin-top:0"></span>Running · 4 min</span></div></div>
+            <div class="what">Reading sample XLSX (2 of 3 files), checking hidden rows against D-2. No edits, no posting in C-1.<span class="on">on <button class="link-chip" type="button" data-select="R-1">R-1</button> · started 09:10</span></div>
             <dl>
-              <dt>Grant</dt><dd>Read R-1, W-1, D-2, M-1, M-2 · comment on R-1 · no edits, no posting in C-1</dd>
+              <dt>Grant</dt><dd>Read R-1, W-1, D-2, M-1, M-2 · comment on R-1 only</dd>
               <dt>Payer</dt><dd>Tide org API — Anthropic</dd>
-              <dt>Authorized</dt><dd>by Jo · Sep 18 · until Sep 30</dd>
+              <dt>Authorized</dt><dd>by Jo · Sep 18, valid until Sep 30</dd>
             </dl>
             <div class="acts"><button class="btn btn-sm btn-danger" type="button"><svg class="i" aria-hidden="true"><use href="#i-stop"/></svg>Stop</button></div>
           </li>
-          <li class="agent stopped">
-            <div class="who"><span class="avatar agent" aria-hidden="true">TA</span><div><strong>Test agent</strong><span class="state-line stopped"><span class="stop-sq" aria-hidden="true" style="margin-top:0"></span>Stopped — Provider limit reached</span></div></div>
-            <div class="what">Ran 9 of 16 permission cases for the run-time check. Partial output kept as a draft on W-1.<span class="on">on <button class="link-chip" type="button" data-select="W-1">W-1</button> · stopped Sep 26, 14:12</span></div>
+          <li class="arow stopped">
+            <div class="who"><span class="avatar bot" aria-hidden="true">TA</span><div><strong>Test agent</strong><span class="state-line stopped"><span class="stop-sq" aria-hidden="true" style="margin-top:0"></span>Stopped — Provider limit reached</span></div></div>
+            <div class="what">9 of 16 permission cases run. Partial output kept as a draft on W-1.<span class="on">on <button class="link-chip" type="button" data-select="W-1">W-1</button> · stopped Sep 26, 14:12</span><p class="nosw" style="margin:0"><svg class="i" aria-hidden="true"><use href="#i-alert"/></svg>No automatic switch to another paid source.</p></div>
             <dl>
               <dt>Grant</dt><dd>Run tests on W-1 branch · write draft on W-1</dd>
-              <dt>Payer</dt><dd>Tide org API — Anthropic · monthly limit reached</dd>
+              <dt>Payer</dt><dd>Tide org API — Anthropic (limit reached)</dd>
               <dt>Authorized</dt><dd>by Nia · Sep 22</dd>
             </dl>
             <div class="acts"><button class="btn btn-sm" type="button" data-select="W-1">Continue manually</button><button class="btn btn-sm" type="button">Resume later</button></div>
-            <p class="nosw" style="margin:0"><svg class="i" aria-hidden="true"><use href="#i-alert"/></svg>No automatic switch to another paid source.</p>
           </li>
         </ul>
       </section>
@@ -817,24 +821,21 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
       <button class="btn btn-sm btn-quiet x" type="button" aria-label="Select nothing" data-select="none"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
     </div>
     <h2 id="detail-title" tabindex="-1">Exclude items the guest cannot open from CSV and XLSX exports</h2>
-    <div class="badges"><span class="badge badge-solid"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Accepted</span><span class="marker current">Current rule</span><span class="marker">Changed Sep 23</span><span class="meta">Owner Jo · accepted by Ari, acting</span></div>
+    <div class="badges"><span class="badge badge-solid"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Accepted</span><span class="marker current">Current rule</span><span class="marker">Changed Sep 23</span><span class="meta">supersedes</span><button class="link-chip" type="button" data-select="D-1" aria-label="Supersedes D-1: Include archived items in exports for members"><s>D-1</s></button><span class="meta">· owner Jo · accepted by Ari, acting</span></div>
   </div>
   <div class="detail-body">
     <div class="dsec">
       <h3>Why it changed</h3>
       <p>M-1 shows a guest received titles of archived items they could not open. D-1 only covered members, and visibility was checked when the export was scheduled, so items archived later slipped through (M-2: 2 failures).</p>
-      <div class="sup"><span class="badge badge-muted">Supersedes</span><button class="link-chip" type="button" data-select="D-1"><s>D-1</s></button><s>Include archived items in exports for members</s></div>
     </div>
-    <div class="dsec">
+    <div class="dsec dgrid">
       <h3>Evidence</h3>
       <div class="evidence">
         <button class="link-chip" type="button" data-select="M-1"><span class="mono">M-1</span> Support report</button>
         <button class="link-chip" type="button" data-select="M-2"><span class="mono">M-2</span> Tests 14/16</button>
         <button class="link-chip restricted" type="button" data-select="RX"><svg class="i" aria-hidden="true"><use href="#i-lock"/></svg>Restricted source</button>
       </div>
-    </div>
-    <div class="dsec">
-      <h3>Who acts next</h3>
+      <h3>Next</h3>
       <ul class="next">
         <li><b>Jo</b><span>review <button class="link-chip" type="button" data-select="R-1">R-1</button> · answer the CSV question below</span></li>
         <li><b>Nia</b><span>finish <button class="link-chip" type="button" data-select="W-1">W-1</button> · Test agent stopped at 9/16</span></li>
@@ -875,8 +876,8 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
   <form class="composer" onsubmit="return false">
     <label for="reply">Reply in C-1 · about D-2</label>
     <div class="box">
-      <textarea id="reply" rows="2" placeholder="Answer the open question or add context…"></textarea>
-      <div class="bar"><button class="btn btn-sm btn-quiet" type="button"><svg class="i" aria-hidden="true"><use href="#i-link"/></svg>Link object</button><span class="meta">Visible to Jo, Ari, Nia · Review agent can't post</span><button class="btn btn-sm btn-primary" type="submit">Send</button></div>
+      <textarea id="reply" rows="1" placeholder="Answer the open question or add context…"></textarea>
+      <div class="bar"><button class="btn btn-sm btn-quiet" type="button"><svg class="i" aria-hidden="true"><use href="#i-link"/></svg>Link object</button><span class="meta">Visible to Jo, Ari, Nia</span><button class="btn btn-sm btn-primary" type="submit">Send</button></div>
     </div>
   </form>
 </template>
