@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { CreateMaterialCommand, MaterialSource, SendMessageCommand, UpdateMaterialCommand } from '@flux/contracts';
+import type { ConversationWindowQuery, CreateMaterialCommand, MaterialSource, SendMessageCommand, UpdateMaterialCommand } from '@flux/contracts';
 import { InvalidInputError } from '../access/errors.js';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -23,6 +23,15 @@ export function uuid(value: unknown, label: string): string {
 export function positiveVersion(value: unknown, label: string): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1) throw new InvalidInputError(`${label} must be a positive integer`);
   return value;
+}
+
+export function normalizeConversationWindow(query: ConversationWindowQuery = {}) {
+  const limit = query.limit === undefined ? 50 : Number(query.limit);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new InvalidInputError('limit must be 1–100');
+  const beforeSequence = query.beforeSequence === undefined ? null : Number(query.beforeSequence);
+  if (beforeSequence !== null && (!Number.isSafeInteger(beforeSequence) || beforeSequence < 1))
+    throw new InvalidInputError('beforeSequence must be a positive integer');
+  return { limit, beforeSequence };
 }
 
 export function optionalUrl(value: unknown): string | null {
@@ -64,11 +73,13 @@ export function normalizeMaterial(command: CreateMaterialCommand) {
 export function normalizeMaterialUpdate(command: UpdateMaterialCommand) {
   if (!command || typeof command !== 'object') throw new InvalidInputError('Material update is required');
   const expectedVersion = positiveVersion(command.expectedVersion, 'expectedVersion');
+  const clientMutationId = uuid(command.clientMutationId, 'clientMutationId');
   const title = command.title === undefined ? undefined : requiredText(command.title, 'Title', 200);
   const body = command.body === undefined ? undefined : optionalBody(command.body);
   const url = command.url === undefined ? undefined : optionalUrl(command.url);
   if (title === undefined && body === undefined && url === undefined) throw new InvalidInputError('Nothing to update');
-  return { expectedVersion, title, body, url };
+  return { clientMutationId, expectedVersion, title, body, url,
+    fingerprint: fingerprint({ expectedVersion, title, body, url }) };
 }
 
 function fingerprint(value: unknown): string {

@@ -59,15 +59,31 @@ describe('project capture and inline conversation', () => {
       clientMutationId: randomUUID(), title: 'Cannot publish someone else draft', body: 'copy',
       sourceDraftId: draft.id, sourceDraftVersion: draft.version,
     } }), 404);
+    const editKey = randomUUID();
+    const edit = { clientMutationId: editKey, expectedVersion: 1, body: 'Camera fails in low light' };
     const v2 = expect(await owner.browser.request('PATCH', `/api/v1/materials/${created.materialId}`,
-      { body: { expectedVersion: 1, body: 'Camera fails in low light' } }), 200) as Material;
+      { body: edit }), 200) as Material;
     assert.equal(v2.version, 2);
+    const repeated = expect(await owner.browser.request('PATCH', `/api/v1/materials/${created.materialId}`,
+      { body: edit }), 200) as Material;
+    assert.equal(repeated.version, 2);
+    assert.equal(repeated.body, v2.body);
     expect(await owner.browser.request('PATCH', `/api/v1/materials/${created.materialId}`,
-      { body: { expectedVersion: 1, body: 'stale overwrite' } }), 409);
+      { body: { ...edit, body: 'reused key for other content' } }), 409);
+    expect(await owner.browser.request('PATCH', `/api/v1/materials/${created.materialId}`,
+      { body: { clientMutationId: randomUUID(), expectedVersion: 1, body: 'stale overwrite' } }), 409);
+    const v3 = expect(await owner.browser.request('PATCH', `/api/v1/materials/${created.materialId}`,
+      { body: { clientMutationId: randomUUID(), expectedVersion: 2, body: 'Sensor alternative' } }), 200) as Material;
+    assert.equal(v3.version, 3);
+    const lateRetry = expect(await owner.browser.request('PATCH', `/api/v1/materials/${created.materialId}`,
+      { body: edit }), 200) as Material;
+    assert.equal(lateRetry.version, 2, 'late retry returns original committed revision');
+    assert.equal((expect(await owner.browser.request('GET', `/api/v1/materials/${created.materialId}`), 200) as Material).version, 3);
     const old = expect(await partner.browser.request('GET', `/api/v1/materials/${created.materialId}/versions/1`), 200) as MaterialVersion;
     assert.equal(old.body, 'Camera privacy');
     const stored = await pool.query('SELECT version, body FROM project_material_versions WHERE material_id = $1 ORDER BY version', [created.materialId]);
-    assert.deepEqual(stored.rows.map((row) => [row.version, row.body]), [[1, 'Camera privacy'], [2, 'Camera fails in low light']]);
+    assert.deepEqual(stored.rows.map((row) => [row.version, row.body]),
+      [[1, 'Camera privacy'], [2, 'Camera fails in low light'], [3, 'Sensor alternative']]);
     const snapshot = await pool.query('SELECT version, body FROM draft_versions WHERE draft_id = $1', [draft.id]);
     assert.equal(snapshot.rows[0].body, 'personal address; camera privacy');
   });
@@ -103,11 +119,22 @@ describe('project capture and inline conversation', () => {
       `/api/v1/conversations/${thread.id}/messages`, { body: { body: `note ${i}`, clientMessageId: randomUUID() } })));
     concurrent.forEach((response) => expect(response, 201));
     expect(await partner.browser.request('PATCH', `/api/v1/materials/${item.materialId}`,
-      { body: { expectedVersion: 1, body: 'Negative: low light failed' } }), 200);
+      { body: { clientMutationId: randomUUID(), expectedVersion: 1, body: 'Negative: low light failed' } }), 200);
     const loaded = expect(await partner.browser.request('GET', `/api/v1/conversations/${thread.id}`), 200) as Conversation;
     assert.deepEqual(loaded.messages.map((m) => m.sequence), [1, 2, 3, 4, 5, 6]);
     assert.deepEqual(loaded.messages[1]?.source, { materialId: item.materialId, version: 1 });
     assert.deepEqual(loaded.messages.map((m) => m.authorId), [owner.id, partner.id, owner.id, owner.id, owner.id, owner.id]);
+    const newest = expect(await partner.browser.request('GET', `/api/v1/conversations/${thread.id}?limit=2`), 200) as Conversation;
+    assert.deepEqual(newest.messages.map((m) => m.sequence), [5, 6]);
+    assert.deepEqual(newest.messagePage, { hasMoreBefore: true, nextBeforeSequence: 5, limit: 2 });
+    const middle = expect(await partner.browser.request('GET',
+      `/api/v1/conversations/${thread.id}?limit=2&beforeSequence=${newest.messagePage.nextBeforeSequence}`), 200) as Conversation;
+    assert.deepEqual(middle.messages.map((m) => m.sequence), [3, 4]);
+    const oldest = expect(await partner.browser.request('GET',
+      `/api/v1/conversations/${thread.id}?limit=2&beforeSequence=${middle.messagePage.nextBeforeSequence}`), 200) as Conversation;
+    assert.deepEqual(oldest.messages.map((m) => m.sequence), [1, 2]);
+    assert.equal(oldest.messagePage.hasMoreBefore, false);
+    expect(await partner.browser.request('GET', `/api/v1/conversations/${thread.id}?limit=101`), 400);
     const stored = await pool.query('SELECT count(*)::int AS count FROM project_messages WHERE conversation_id = $1', [thread.id]);
     assert.equal(stored.rows[0].count, 6);
     const listed = expect(await partner.browser.request('GET', `/api/v1/projects/${project.id}/conversations?limit=10`), 200) as Page<Conversation>;

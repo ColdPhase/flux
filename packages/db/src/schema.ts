@@ -241,6 +241,8 @@ export const projectMaterialVersions = pgTable('project_material_versions', {
   body: text('body').notNull(),
   url: text('url'),
   authorId: text('author_id').notNull(),
+  clientMutationId: uuid('client_mutation_id'),
+  requestFingerprint: text('request_fingerprint'),
   sourceDraftId: uuid('source_draft_id'),
   sourceDraftVersion: integer('source_draft_version'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

@@ -1,15 +1,15 @@
 import type {
-  Conversation, ConversationMessage, ConversationSummary, CreateMaterialCommand, Material,
+  Conversation, ConversationMessage, ConversationSummary, ConversationWindowQuery, CreateMaterialCommand, Material,
   MaterialVersion, Page, PageQuery, SendMessageCommand, UpdateMaterialCommand,
 } from '@flux/contracts';
 import type { Principal } from '../types.js';
-import { normalizeMaterial, normalizeMaterialUpdate, normalizeMessage } from './commands.js';
+import { normalizeConversationWindow, normalizeMaterial, normalizeMaterialUpdate, normalizeMessage } from './commands.js';
 
 /** Storage and current-access boundary. The adapter must authorize before every read and
  * authorize under the write transaction before every mutation or idempotent replay. */
 export interface ConversationPort {
   listConversations(principal: Principal, projectId: string, query?: PageQuery): Promise<Page<ConversationSummary>>;
-  getConversation(principal: Principal, conversationId: string): Promise<Conversation>;
+  getConversation(principal: Principal, conversationId: string, window: ReturnType<typeof normalizeConversationWindow>): Promise<Conversation>;
   createConversation(principal: Principal, projectId: string, input: ReturnType<typeof normalizeMessage>): Promise<Conversation>;
   sendMessage(principal: Principal, conversationId: string, input: ReturnType<typeof normalizeMessage>): Promise<ConversationMessage>;
   listMaterials(principal: Principal, projectId: string, query?: PageQuery): Promise<Page<Material>>;
@@ -23,7 +23,8 @@ export interface ConversationPort {
 export function conversationUseCases(port: ConversationPort) {
   return {
     listConversations: (principal: Principal, projectId: string, query?: PageQuery) => port.listConversations(principal, projectId, query),
-    getConversation: (principal: Principal, conversationId: string) => port.getConversation(principal, conversationId),
+    getConversation: (principal: Principal, conversationId: string, query?: ConversationWindowQuery) =>
+      port.getConversation(principal, conversationId, normalizeConversationWindow(query)),
     createConversation: (principal: Principal, projectId: string, command: SendMessageCommand) =>
       port.createConversation(principal, projectId, normalizeMessage(command)),
     sendMessage: (principal: Principal, conversationId: string, command: SendMessageCommand) =>

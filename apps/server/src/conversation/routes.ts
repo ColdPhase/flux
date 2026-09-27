@@ -1,5 +1,5 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
-import type { CreateMaterialCommand, PageQuery, SendMessageCommand, UpdateMaterialCommand } from '@flux/contracts';
+import type { ConversationWindowQuery, CreateMaterialCommand, PageQuery, SendMessageCommand, UpdateMaterialCommand } from '@flux/contracts';
 import { conversationUseCases, DomainError, type Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { conversationStore } from './store.js';
@@ -8,6 +8,8 @@ interface Options { db: Database; sessions: SessionResolver }
 
 const page = { type: 'object', additionalProperties: false,
   properties: { limit: { type: 'integer' }, offset: { type: 'integer' } } } as const;
+const conversationWindow = { type: 'object', additionalProperties: false,
+  properties: { limit: { type: 'integer' }, beforeSequence: { type: 'integer' } } } as const;
 const source = { type: 'object', required: ['materialId', 'version'], additionalProperties: false,
   properties: { materialId: { type: 'string' }, version: { type: 'integer' } } } as const;
 const send = { type: 'object', required: ['body', 'clientMessageId'], additionalProperties: false,
@@ -16,8 +18,8 @@ const createMaterialBody = { type: 'object', required: ['clientMutationId', 'tit
   properties: { clientMutationId: { type: 'string' }, title: { type: 'string', minLength: 1, maxLength: 200 },
     body: { type: 'string', maxLength: 100_000 }, url: { type: 'string', maxLength: 2048 },
     sourceDraftId: { type: 'string' }, sourceDraftVersion: { type: 'integer' } } } as const;
-const updateMaterialBody = { type: 'object', required: ['expectedVersion'], additionalProperties: false,
-  properties: { expectedVersion: { type: 'integer' }, title: { type: 'string', minLength: 1, maxLength: 200 },
+const updateMaterialBody = { type: 'object', required: ['clientMutationId', 'expectedVersion'], additionalProperties: false,
+  properties: { clientMutationId: { type: 'string' }, expectedVersion: { type: 'integer' }, title: { type: 'string', minLength: 1, maxLength: 200 },
     body: { type: 'string', maxLength: 100_000 }, url: { type: ['string', 'null'], maxLength: 2048 } } } as const;
 
 export async function conversationRoutes(app: FastifyInstance, { db, sessions }: Options) {
@@ -35,8 +37,9 @@ export async function conversationRoutes(app: FastifyInstance, { db, sessions }:
   app.post<{ Params: { projectId: string }; Body: SendMessageCommand }>('/api/v1/projects/:projectId/conversations',
     { schema: { body: send } }, async (request, reply) => reply.code(201).send(
       await store.createConversation(await principal(request), request.params.projectId, request.body)));
-  app.get<{ Params: { conversationId: string } }>('/api/v1/conversations/:conversationId',
-    async (request) => store.getConversation(await principal(request), request.params.conversationId));
+  app.get<{ Params: { conversationId: string }; Querystring: ConversationWindowQuery }>('/api/v1/conversations/:conversationId',
+    { schema: { querystring: conversationWindow } },
+    async (request) => store.getConversation(await principal(request), request.params.conversationId, request.query));
   app.post<{ Params: { conversationId: string }; Body: SendMessageCommand }>('/api/v1/conversations/:conversationId/messages',
     { schema: { body: send } }, async (request, reply) => reply.code(201).send(
       await store.sendMessage(await principal(request), request.params.conversationId, request.body)));

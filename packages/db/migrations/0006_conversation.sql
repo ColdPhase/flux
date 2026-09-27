@@ -60,17 +60,23 @@ CREATE TABLE project_material_versions (
   body text NOT NULL DEFAULT '' CHECK (length(body) <= 100000),
   url text,
   author_id text NOT NULL REFERENCES auth_users(id),
+  client_mutation_id uuid,
+  request_fingerprint text,
   source_draft_id uuid,
   source_draft_version integer,
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (material_id, version),
   UNIQUE (workspace_id, project_id, material_id, version),
   CHECK ((source_draft_id IS NULL) = (source_draft_version IS NULL)),
+  CHECK ((client_mutation_id IS NULL) = (request_fingerprint IS NULL)),
   -- A source draft remains an internal provenance reference. API responses never expose
   -- its title/body or the source id to a recipient without draft.read permission.
   FOREIGN KEY (workspace_id, project_id, material_id) REFERENCES project_materials(workspace_id, project_id, id) ON DELETE CASCADE,
   FOREIGN KEY (workspace_id, source_draft_id) REFERENCES drafts(workspace_id, id)
 );
+CREATE UNIQUE INDEX project_material_edit_retry_idx
+  ON project_material_versions(material_id, author_id, client_mutation_id)
+  WHERE client_mutation_id IS NOT NULL;
 
 CREATE TABLE project_messages (
   id uuid PRIMARY KEY,

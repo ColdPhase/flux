@@ -30,6 +30,20 @@ export interface Conversation {
   createdBy: string;
   createdAt: string;
   messages: ConversationMessage[];
+  messagePage: {
+    /** True when messages with a lower sequence can be fetched. */
+    hasMoreBefore: boolean;
+    nextBeforeSequence: number | null;
+    limit: number;
+  };
+}
+
+/** Stable, newest-first window returned in ascending display order. */
+export interface ConversationWindowQuery {
+  /** 1–100, default 50. */
+  limit?: number;
+  /** Fetch messages with sequence lower than this cursor. */
+  beforeSequence?: number;
 }
 
 export interface ConversationSummary {
@@ -79,6 +93,8 @@ export interface CreateMaterialCommand {
 }
 
 export interface UpdateMaterialCommand {
+  /** UUID reused when retrying this exact edit after a lost response. */
+  clientMutationId: string;
   expectedVersion: number;
   title?: string;
   body?: string;

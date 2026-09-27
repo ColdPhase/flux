@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, lt, sql } from 'drizzle-orm';
 import { schema } from '@flux/db';
 import type {
   Conversation, ConversationMessage, ConversationSummary, Material,
@@ -138,13 +138,18 @@ export function conversationStore(db: Database) {
       return { items, total: count?.total ?? 0, ...page };
     },
 
-    async getConversation(principal: Principal, conversationId: string): Promise<Conversation> {
+    async getConversation(principal: Principal, conversationId: string, window: Parameters<ConversationPort['getConversation']>[2]): Promise<Conversation> {
       const row = await locateConversation(principal, conversationId, db);
-      const rows = await db.select().from(schema.projectMessages).where(eq(schema.projectMessages.conversationId, row.id))
-        .orderBy(asc(schema.projectMessages.sequence));
+      const rows = await db.select().from(schema.projectMessages)
+        .where(and(eq(schema.projectMessages.conversationId, row.id),
+          window.beforeSequence === null ? undefined : lt(schema.projectMessages.sequence, window.beforeSequence)))
+        .orderBy(desc(schema.projectMessages.sequence)).limit(window.limit + 1);
+      const hasMoreBefore = rows.length > window.limit;
+      const messages = rows.slice(0, window.limit).reverse().map(message);
       return { id: row.id, projectId: row.projectId, workspaceId: row.workspaceId,
         audience: { kind: 'project', projectId: row.projectId }, createdBy: row.createdBy,
-        createdAt: row.createdAt.toISOString(), messages: rows.map(message) };
+        createdAt: row.createdAt.toISOString(), messages,
+        messagePage: { hasMoreBefore, nextBeforeSequence: hasMoreBefore ? messages[0]!.sequence : null, limit: window.limit } };
     },
 
     async createConversation(principal: Principal, projectId: string, input: Parameters<ConversationPort['createConversation']>[2]): Promise<Conversation> {
@@ -156,11 +161,10 @@ export function conversationStore(db: Database) {
         if (existing) {
           if (existing.requestFingerprint !== input.fingerprint) throw new ConflictError('This clientMessageId was used for another message', 'IDEMPOTENCY_CONFLICT');
           const row = await locateConversation(principal, existing.conversationId, tx);
-          const messages = await tx.select().from(schema.projectMessages).where(eq(schema.projectMessages.conversationId, row.id))
-            .orderBy(asc(schema.projectMessages.sequence));
           return { id: row.id, projectId: row.projectId, workspaceId: row.workspaceId,
             audience: { kind: 'project' as const, projectId: row.projectId }, createdBy: row.createdBy,
-            createdAt: row.createdAt.toISOString(), messages: messages.map(message) };
+            createdAt: row.createdAt.toISOString(), messages: [message(existing)],
+            messagePage: { hasMoreBefore: false, nextBeforeSequence: null, limit: 50 } };
         }
         await sourceExists(projectId, input.source, tx);
         const [row] = await tx.insert(schema.projectConversations).values({
@@ -169,7 +173,8 @@ export function conversationStore(db: Database) {
         const first = await sendInTransaction(tx, row!, authorId, input);
         return { id: row!.id, projectId, workspaceId: project.workspaceId,
           audience: { kind: 'project' as const, projectId }, createdBy: authorId,
-          createdAt: row!.createdAt.toISOString(), messages: [first] };
+          createdAt: row!.createdAt.toISOString(), messages: [first],
+          messagePage: { hasMoreBefore: false, nextBeforeSequence: null, limit: 50 } };
       });
     },
 
@@ -253,6 +258,15 @@ export function conversationStore(db: Database) {
       return db.transaction(async (tx) => {
         const row = await locateMaterial(principal, materialId, tx, true, true);
         const [locked] = await tx.select().from(schema.projectMaterials).where(eq(schema.projectMaterials.id, row.id)).for('update');
+        const [priorEdit] = await tx.select().from(schema.projectMaterialVersions).where(and(
+          eq(schema.projectMaterialVersions.materialId, row.id), eq(schema.projectMaterialVersions.authorId, authorId),
+          eq(schema.projectMaterialVersions.clientMutationId, input.clientMutationId)));
+        if (priorEdit) {
+          if (priorEdit.requestFingerprint !== input.fingerprint)
+            throw new ConflictError('This clientMutationId was used for another edit', 'IDEMPOTENCY_CONFLICT');
+          // Return the original committed revision even if later edits have advanced the material.
+          return material({ ...locked!, updatedAt: priorEdit.createdAt }, priorEdit, principal);
+        }
         if (!locked || locked.currentVersion !== input.expectedVersion)
           throw new ConflictError('Material changed; refresh before editing', 'STALE_MATERIAL');
         const previous = await currentVersion(locked, tx);
@@ -263,6 +277,7 @@ export function conversationStore(db: Database) {
         const [snapshot] = await tx.insert(schema.projectMaterialVersions).values({
           workspaceId: row.workspaceId, projectId: row.projectId, materialId: row.id,
           version: updated!.currentVersion, ...next, authorId,
+          clientMutationId: input.clientMutationId, requestFingerprint: input.fingerprint,
         }).returning();
         return material(updated!, snapshot!, principal);
       });

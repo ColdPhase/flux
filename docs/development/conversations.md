@@ -15,15 +15,22 @@ HTTP(S) URL, and `clientMutationId`. A private draft can be a provenance source
 with `sourceDraftId` and `sourceDraftVersion`; the caller must explicitly provide
 the selected or redacted public content. The draft is never copied implicitly.
 Only its author sees the source draft reference in material responses. `PATCH
-/api/v1/materials/:id` requires `expectedVersion`, and every edit creates an
-immutable `GET /api/v1/materials/:id/versions/:version` snapshot. A reply cites
-that snapshot even after later edits. Existing draft updates also retain private
-version snapshots in PostgreSQL. They are not public API resources.
+/api/v1/materials/:id` requires `expectedVersion` and `clientMutationId`. Retry
+the exact edit with the same UUID after a lost response: it returns the original
+committed revision, even if a later edit has advanced the material. Reusing that
+UUID for other content returns 409. A fresh edit against an old version returns
+`STALE_MATERIAL` (409). Every edit creates an immutable `GET
+/api/v1/materials/:id/versions/:version` snapshot. A reply cites that snapshot
+even after later edits. Existing draft updates also retain private version
+snapshots in PostgreSQL. They are not public API resources.
 
 Collection reads use `?limit=1..100&offset=0..10000` and count only material in
-the authorized project. The current conversation detail returns its full ordered
-message history; pagination and server events for larger threads remain future
-work. DM and many-to-many links are outside this backend slice.
+the authorized project. `GET /api/v1/conversations/:id` returns the newest 50
+messages by default, in ascending display order. `?limit=1..100` changes the
+window size; `?beforeSequence=<positive integer>` fetches the next older window.
+Use `messagePage.nextBeforeSequence` while `hasMoreBefore` is true. Sequence
+cursors stay stable as new replies arrive. Server events, DM and many-to-many
+links remain outside this backend slice.
 
 Clean start and verification use Docker only:
 
