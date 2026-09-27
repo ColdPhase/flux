@@ -33,7 +33,18 @@ def prepare(
 
     template = compose.read_text(encoding="utf-8")
     images = re.findall(r"^\s*image:\s*(\S+)\s*$", template, re.MULTILINE)
-    if images.count(MARKER) != 3:
+    service_images: dict[str, str] = {}
+    service = ""
+    for line in template.splitlines():
+        header = re.fullmatch(r"  ([a-z][a-z0-9-]*):\s*", line)
+        if header:
+            service = header.group(1)
+        image = re.fullmatch(r"    image:\s*(\S+)\s*", line)
+        if image:
+            service_images[service] = image.group(1)
+    if images.count(MARKER) != 3 or any(
+        service_images.get(name) != MARKER for name in ("api", "worker", "migrate")
+    ):
         raise ValueError("operator Compose must use the image marker for api, worker and migrate")
     if re.search(r"^\s*build\s*:", template, re.MULTILINE):
         raise ValueError("operator Compose must be pull-only")

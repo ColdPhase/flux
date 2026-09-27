@@ -64,6 +64,14 @@ class ReleaseAssetsTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "pull-only"):
             self.build()
 
+    def test_rejects_marker_on_wrong_service(self) -> None:
+        compose = self.sources["compose.yaml"]
+        text = compose.read_text().replace("  api:\n    image: " + MARKER, "  api:\n    image: flux:v1")
+        text += "  unrelated:\n    image: " + MARKER + "\n"
+        compose.write_text(text)
+        with self.assertRaisesRegex(ValueError, "api, worker and migrate"):
+            self.build()
+
     def test_rejects_invalid_identity_and_stale_destination(self) -> None:
         output = self.build()
         with self.assertRaisesRegex(ValueError, "empty"):
