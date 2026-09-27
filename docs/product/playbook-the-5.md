@@ -62,9 +62,11 @@ review stay, but they serve shipping and must not replace it.
     is AGPL-3.0. SDK, contracts and examples are Apache-2.0. Revenue comes from
     services, not closed features.
 12. **Release early and on a predictable rhythm; each release is a communication
-    event** (pp. 291–292). Flux: tag a public v0.1 as soon as the first journey
-    works on a clean install. Then release on a regular rhythm with a changelog.
-    This does not replace the final acceptance rules for the complete application.
+    event** (pp. 291–292). Flux: mark an internal v0.1 checkpoint as soon as the
+    first journey works on a clean install from `main`, with a changelog entry and
+    a short demo. Packaged artifacts and GitHub Releases still follow the accepted
+    final-only boundary in [CI and releases](../agents/ci-and-releases.md). Any
+    earlier public release needs a separate recorded change to that policy.
 13. **Invest in the community and treat contributors as partners** (pp. 290–291).
     Flux: keep CONTRIBUTING accurate, label good first issues, answer quickly and
     keep contributor instructions short.
@@ -90,8 +92,8 @@ review stay, but they serve shipping and must not replace it.
 19. **Complexity kills scaling** (pp. 251–253). Flux: cut anything the first
     journey does not need, including extra services, layers and protocol ceremony.
 20. **One wildly important goal, a few lead measures, a weekly review**
-    (pp. 261–265). Flux: the goal is a runnable v0.1 of the first journey on a clean
-    Compose install. Lead measures are merged PRs with running code and the time
+    (pp. 261–265). Flux: the goal is a runnable v0.1 checkpoint of the first journey on a
+    clean Compose install. Lead measures are merged PRs with running code and the time
     to first run.
 21. **Process polish and infrastructure rebuilds are not results** (pp. 295–297).
     Flux: changes to the agent harness or protocol are not product progress. Fix
