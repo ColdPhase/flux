@@ -58,7 +58,6 @@
 .since-home > .since__why { margin-bottom: 8px; }
 .since-home__place { margin-top: 10px; }
 .since-home__name { margin: 0 0 2px; color: var(--text-3); font-size: var(--fs-xs); font-weight: 600; }
-.since-home__calm { display: flex; align-items: center; gap: 8px; margin: 20px 0 4px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--text-3); font-size: var(--fs-md); }
 
 @media (max-width: 720px) {
   .since__in { padding: 0 16px; }

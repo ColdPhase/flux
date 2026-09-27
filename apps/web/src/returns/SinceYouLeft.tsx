@@ -32,11 +32,15 @@ const VISIT_MS = 30 * 60 * 1000;
  * visit starts after it. `alsoSave` saves the same mark for a narrower place (the open conversation).
  */
 function useReturn(place: ReturnPlace, alsoSave?: ReturnPlace) {
-  const [summary, setSummary] = useState<ReturnSummary | null>(null);
+  const placeKey = place.type === 'home' ? 'home' : `${place.type}:${place.id}`;
+  // Start from what this visit already showed, so switching views never shifts the page later.
+  const [summary, setSummary] = useState<ReturnSummary | null>(() => {
+    const earlier = shown.get(placeKey);
+    return earlier && Date.now() - earlier.at < VISIT_MS ? earlier.summary : null;
+  });
   const [keep, setKeep] = useState<Keep>('idle');
   // "Keep these" must run after the save of this visit, or the save would overwrite it.
   const saving = useRef<Promise<unknown>>(Promise.resolve());
-  const placeKey = place.type === 'home' ? 'home' : `${place.type}:${place.id}`;
   const alsoKey = alsoSave && alsoSave.type !== 'home' ? `${alsoSave.type}:${alsoSave.id}` : '';
   useEffect(() => {
     const controller = new AbortController();
@@ -158,10 +162,8 @@ export function SinceYouLeftLine({ projectId, conversationId }: { projectId: str
 /** Home: the personal return view across the places the person can see now, grouped by place. */
 export function SinceYouLeftHome() {
   const { summary, keep, keepForLater } = useReturn({ type: 'home' });
-  if (!summary || !summary.point.savedAt) return null;
-  if (!summary.items.length) {
-    return <p className="since-home__calm"><Icon name="check" size={14} />Nothing new since {since(summary.point.savedAt)}.</p>;
-  }
+  // Nothing new is not news: Home stays as it was.
+  if (!summary || !summary.point.savedAt || !summary.items.length) return null;
   const groups = new Map<string, { name: string; items: ReturnItem[] }>();
   for (const item of summary.items) {
     const key = item.project?.id ?? 'private';
