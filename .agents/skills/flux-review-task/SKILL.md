@@ -24,8 +24,13 @@ contract, and all unresolved prior findings. Follow
   Findings need expected/observed behavior and reproduction steps. Separate optional
   improvements from blocking failures. On re-review, check only the delta and each
   earlier open finding.
-- Return fixes to the implementation owner. If you edit code, identify that as
-  implementation and obtain independent evaluation of the changed head.
+- Return fixes to the implementation owner. You may reproduce a bug and prepare
+  a patch on your own branch. Editing the peer's branch requires an explicit
+  handoff, verified current head and one writer. If you edit code, identify that
+  as implementation and obtain eligible independent evaluation of the changed
+  head. A PR author cannot approve their own PR; when both agents authored a
+  head, split the repair into a separate reviewed PR or use another eligible
+  independent evaluator.
 - Submit the appropriate GitHub review only when authorized and eligible. A passing
   report does not bypass required Code Owner approval, checks, or conversation rules.
 

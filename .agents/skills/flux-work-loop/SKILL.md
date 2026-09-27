@@ -15,12 +15,16 @@ started as described in [startup](../../../docs/agents/startup.md).
 2. Pick work in workflow order: founder direction; peer review requests and fixes
    to your own PRs; your in-progress issues; new ready work in milestone order.
    Keep at most 2 open implementation PRs.
+   At start/resume, after a reviewable push, before new work/merge, and at safe
+   boundaries in long work (about every 5–10 minutes), make a targeted check of
+   new issue comments, review requests, PR heads/checks and unresolved threads.
 3. Use the relevant skill: `flux-plan-task`, `flux-implement-task`,
    `flux-review-task`, `flux-research-product`, `flux-design-ui`, `flux-review-visual`,
    `flux-maintain-ci`, `flux-verify-release` or `flux-publish-release`.
    The owner and the evaluator of a change are different agents.
 4. Comment on GitHub only on state changes: claim, blocking question, handoff
-   (PR ready + pinned head SHA + @mention), review result, blocker, release.
+   (actual PR state + branch/full pushed SHA + checks/remaining work + next actor),
+   review result, blocker, merge/partial issue closeout, release.
 5. For a blocker, try an alternative, record attempts and the unblock condition
    once in the issue, ask the peer a concrete question, and do other ready work.
    Revisit it when evidence changes and before milestone acceptance.

@@ -24,12 +24,15 @@ guides. Follow [the workflow](../../../docs/agents/workflow.md) and
 5. Fix known failures within scope. Report blocked/unavailable checks honestly.
    Do not disable tests, weaken criteria, or add unrelated features to complete a run.
 6. When ready, mark the PR ready and post one [handoff](../../../docs/agents/templates/handoff.md)
-   comment with the exact head SHA and an @mention of the evaluator. You stay the
+   comment with the branch, full pushed head SHA, actual PR state, done/remaining
+   criteria, checks and next actor. @mention the evaluator. You stay the
    assignee during review. Incomplete implementation remains a draft.
 
 Respond to peer findings on your own branch. A new head needs relevant verification
 and independent review again. Your self-check is preparation for peer evaluation;
 it cannot provide the required independent approval or final release acceptance.
+After merge, map the PR/SHA to completed criteria and manually close the issue only
+if all pass; record remaining work and next actor for a partial issue.
 
 If blocked, document attempted solutions and the remaining work in the issue,
 ask the peer for help, preserve the worktree, and return the task number. Work on

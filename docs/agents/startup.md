@@ -37,6 +37,10 @@ Hubert (Codex):
 ```
 
 The sessions need not start at the same time. Each agent works independently.
+At start or resume, check assigned issues and new comments (including authenticated
+Founder direction), review requests, current PR heads/checks and unresolved
+threads before selecting work. A timestamped handoff describes last known state;
+it is not a live presence signal or an automatic restart promise.
 
 ## Usage limits
 
@@ -48,8 +52,10 @@ unreviewed work because a limit is near.
 
 When the next step depends on the peer (a review, an answer, a merge), do other
 ready work meanwhile: another assigned issue, a review, tests or docs for the
-milestone. If nothing else is ready, re-check GitHub about every 10 minutes, for
-example with a `sleep 600` followed by `gh` queries, or the tool's own scheduling
+milestone. At safe boundaries during a long task, make a brief targeted
+shared-work check about every 5–10 minutes. If nothing else is ready, re-check
+GitHub infrequently, for example with a `sleep 600` followed by `gh` queries,
+or the tool's own scheduling
 feature. Never busy-loop with model calls just to wait, and do not post "still
 waiting" comments.
 
@@ -66,9 +72,10 @@ For a long absence, unassign yourself with a short handoff comment instead.
 Start `/goal` again with the same prompt. The agent first reconciles its own state
 before new work (see `flux-resume-work`):
 
-1. Open issues assigned to its GitHub login and their comments since the pause.
+1. Open issues assigned to its GitHub login and their comments since the pause,
+   including authenticated Founder direction.
 2. Its local worktrees, branches and uncommitted changes; preserve them.
-3. Its open PRs: review results, failing checks, unresolved threads.
+3. Its open PRs: current head, review results, failing checks, unresolved threads.
 4. Review requests addressed to it.
 
 Continue the existing branch/PR rather than recreating work.
