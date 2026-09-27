@@ -1,0 +1,109 @@
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
+import { Outlet, useLocation } from 'react-router';
+import { Button, Drawer, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useSidePanelMode } from '../ui';
+import { useShellData } from './data';
+import { Details } from './Details';
+import { Sidebar } from './Sidebar';
+import { VIEWS, viewIndex } from './views';
+
+function isTyping(target: EventTarget | null) {
+  const el = target as HTMLElement | null;
+  return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
+}
+
+/**
+ * Authenticated frame from direction C: sidebar · header with the view switcher · work area,
+ * and a Details panel that is closed by default. Below 1180px the sidebar is a drawer; the
+ * panel overlays below 980px and becomes a full-screen sheet on the phone.
+ */
+export function AppLayout() {
+  const { me, workspace, projects, directMessages } = useShellData();
+  const location = useLocation();
+  const navDrawer = useMediaQuery(MEDIA.navDrawer);
+  const panelMode = useSidePanelMode();
+  const [navOpen, setNavOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const detailsButtonRef = useRef<HTMLButtonElement>(null);
+  const paneRef = useRef<HTMLDivElement>(null);
+  const previousView = useRef(viewIndex(location.pathname));
+  const drawerTitleId = useId();
+
+  const toggleDetails = useCallback((next?: boolean) => {
+    const open = next ?? !detailsOpen;
+    if (open === detailsOpen) return;
+    if (open) setNavOpen(false);
+    if (panelMode !== 'docked') { setDetailsOpen(open); return; }
+    // Docked: the work area shifts over smoothly instead of jumping (FLIP).
+    const finish = flip([...document.querySelectorAll('[data-shift]')]);
+    flushSync(() => setDetailsOpen(open));
+    finish();
+  }, [detailsOpen, panelMode]);
+
+  // "]" toggles Details, as in the header tooltip.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== ']' || event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target)) return;
+      if (document.getElementById('root')?.inert && !detailsOpen) return;
+      event.preventDefault();
+      toggleDetails();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [toggleDetails, detailsOpen]);
+
+
+  // A new view slides in from the side its tab sits on.
+  useLayoutEffect(() => {
+    const index = viewIndex(location.pathname);
+    const direction = Math.sign(index - previousView.current);
+    previousView.current = index;
+    if (!direction) return;
+    void play(paneRef.current, [{ opacity: 0, transform: `translateX(${direction * 12}px)` }, { opacity: 1, transform: 'none' }], duration('--dur-2'), '--ease-out', { fill: 'backwards' });
+  }, [location.pathname]);
+
+  const sidebarProps = { workspace, projects, directMessages, user: me.user };
+  const place = { crumb: workspace?.name ?? null, title: 'Home', topic: 'Your private notes and where you left off' };
+
+  return (
+    <div className="app">
+      <a className="ui-skip" href="#content">Skip to content</a>
+      {navDrawer ? (
+        <Drawer open={navOpen && navDrawer} onClose={() => setNavOpen(false)} labelledBy={drawerTitleId} id="nav-drawer">
+          <Sidebar {...sidebarProps} onClose={() => setNavOpen(false)} titleId={drawerTitleId} />
+        </Drawer>
+      ) : (
+        <aside className="app__side" aria-label="Sidebar"><Sidebar {...sidebarProps} /></aside>
+      )}
+
+      <div className="app__main">
+        <header className="top">
+          {navDrawer ? (
+            <IconButton icon="menu" label="Open navigation" size={18} aria-expanded={navOpen} aria-controls={navOpen ? 'nav-drawer' : undefined}
+              aria-haspopup="dialog" data-tip-align="start" onClick={() => { setDetailsOpen(false); setNavOpen(true); }} className="top__menu" />
+          ) : null}
+          <div className="top__title">
+            {place.crumb ? <><span className="top__crumb">{place.crumb}</span><span className="top__slash" aria-hidden="true">/</span></> : null}
+            <h1>{place.title}</h1>
+            <span className="top__topic">{place.topic}</span>
+          </div>
+          <div className="top__right" data-shift>
+            <Button ref={detailsButtonRef} variant="quiet" icon="panel" className="top__details" aria-expanded={detailsOpen}
+              aria-controls={detailsOpen ? 'details' : undefined} aria-keyshortcuts="]" data-tip={'Toggle details   ]'}
+              onClick={() => toggleDetails()}>
+              Details
+            </Button>
+          </div>
+        </header>
+        <Tabs className="views" label="Views" items={VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path }))} />
+        <div className="app__pane" id="content" ref={paneRef} tabIndex={-1}>
+          <Outlet />
+        </div>
+      </div>
+
+      <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title="Details" id="details">
+        <Details me={me} workspace={workspace} placeTitle={place.title} />
+      </SidePanel>
+    </div>
+  );
+}

@@ -1,0 +1,95 @@
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { useFetcher } from 'react-router';
+import { Avatar, Icon, Spinner, duration, play, trapTab, useToast } from '../ui';
+import type { FormResult } from '../auth/logic';
+import { setTheme, useTheme, type ThemeChoice } from './theme';
+
+const THEMES: { id: ThemeChoice; label: string; icon: 'monitor' | 'sun' | 'moon' }[] = [
+  { id: 'system', label: 'System', icon: 'monitor' },
+  { id: 'light', label: 'Light', icon: 'sun' },
+  { id: 'dark', label: 'Dark', icon: 'moon' },
+];
+
+/** Account button at the foot of the sidebar; opens a small popover with theme and sign out. */
+export function UserMenu({ name, email }: { name: string; email: string }) {
+  const [open, setOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const popId = useId();
+  const theme = useTheme();
+  const fetcher = useFetcher<FormResult>();
+  const toast = useToast();
+  const signingOut = fetcher.state !== 'idle';
+
+  useEffect(() => {
+    if (fetcher.state === 'idle' && fetcher.data?.formError) toast({ message: fetcher.data.formError, tone: 'danger' });
+  }, [fetcher.state, fetcher.data, toast]);
+
+  useEffect(() => {
+    if (!open) return;
+    const pop = popRef.current;
+    void play(pop, [{ opacity: 0, transform: 'translateY(4px) scale(.98)' }, { opacity: 1, transform: 'none' }], duration('--dur-2'), '--ease-out', { fill: 'backwards' });
+    pop?.querySelector<HTMLElement>('[aria-checked="true"]')?.focus();
+    const onPointer = (event: PointerEvent) => {
+      if (!pop?.contains(event.target as Node) && !buttonRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointer);
+    return () => document.removeEventListener('pointerdown', onPointer);
+  }, [open]);
+
+  const close = (restore = true) => {
+    setOpen(false);
+    if (restore) buttonRef.current?.focus();
+  };
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') { event.stopPropagation(); close(); return; }
+    trapTab(event, popRef.current);
+  };
+
+  const onRadioKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    const index = THEMES.findIndex((item) => item.id === theme);
+    const delta = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0;
+    if (!delta) return;
+    event.preventDefault();
+    const next = THEMES[(index + delta + THEMES.length) % THEMES.length]!;
+    setTheme(next.id);
+    requestAnimationFrame(() => popRef.current?.querySelector<HTMLElement>(`[data-theme-option="${next.id}"]`)?.focus());
+  };
+
+  return (
+    <div className="me">
+      {open ? (
+        <div ref={popRef} id={popId} className="me__pop" role="dialog" aria-label="Account" onKeyDown={onKeyDown}>
+          <div className="me__who">
+            <b>{name}</b>
+            <span>{email}</span>
+          </div>
+          <div className="me__sec">
+            <span className="me__label" id={`${popId}-theme`}>Appearance</span>
+            <div className="seg" role="radiogroup" aria-labelledby={`${popId}-theme`} onKeyDown={onRadioKey}>
+              {THEMES.map((item) => (
+                <button key={item.id} type="button" role="radio" className="seg__b" data-theme-option={item.id}
+                  aria-checked={theme === item.id} tabIndex={theme === item.id ? 0 : -1} onClick={() => setTheme(item.id)}>
+                  <Icon name={item.icon} size={14} />{item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <fetcher.Form method="post" action="/sign-out" className="me__sec me__sec--end">
+            <button type="submit" className="me__item" aria-disabled={signingOut || undefined}>
+              {signingOut ? <Spinner /> : <Icon name="sign-out" />}{signingOut ? 'Signing out…' : 'Sign out'}
+            </button>
+          </fetcher.Form>
+        </div>
+      ) : null}
+      <button ref={buttonRef} type="button" className="me__btn" aria-expanded={open} aria-controls={open ? popId : undefined}
+        aria-haspopup="dialog" onClick={() => (open ? close(false) : setOpen(true))}>
+        <Avatar name={name} tone="me" />
+        <span className="me__text"><b>{name}</b><span>{email}</span></span>
+        <Icon name="chevron-up" className="me__chev" />
+        <span className="ui-vh">, account and sign out</span>
+      </button>
+    </div>
+  );
+}
