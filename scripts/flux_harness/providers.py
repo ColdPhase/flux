@@ -96,12 +96,16 @@ def parse_output(provider, directory):
         except (OSError, ValueError) as error:
             raise HarnessError("Codex did not produce a structured result") from error
     else:
+        # Background subagents make Claude emit one result per resumed turn; use the latest structured one.
         results = [event for event in events if event.get("type") == "result"]
-        if len(results) != 1 or results[0].get("is_error"):
+        structured = [event for event in results if event.get("structured_output") is not None]
+        if not structured or any(event.get("is_error") for event in results):
             raise HarnessError("Claude did not produce a successful result; see the private turn logs")
-        response = results[0]
-        if response.get("permission_denials"):
+        if any(event.get("permission_denials") for event in results):
             raise HarnessError("Claude denied a required action; review the private permission log")
+        if len({event.get("session_id") for event in results}) != 1:
+            raise HarnessError("Claude results span several sessions; see the private turn logs")
+        response = structured[-1]
         result, session = response.get("structured_output"), response.get("session_id")
     if session is not None and not isinstance(session, str):
         raise HarnessError("CLI returned an invalid session ID")
