@@ -76,4 +76,3 @@ export function Sidebar({ workspace, projects, directMessages, user, onClose, ti
     </div>
   );
 }
-
