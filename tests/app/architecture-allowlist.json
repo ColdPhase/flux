@@ -66,6 +66,60 @@
       "import": "pg-boss",
       "issue": "https://github.com/ColdPhase/flux/issues/46",
       "reason": "Manifest counterpart of the source exceptions above; remove each dependency once no core file imports it."
+    },
+    {
+      "file": "packages/core/src/events.ts",
+      "import": "drizzle-orm",
+      "issue": "https://github.com/ColdPhase/flux/issues/46",
+      "reason": "recordEvent writes events and fan-out audience rows with Drizzle (merged in #47 before this rule); move to an EventRepository port with a @flux/db adapter."
+    },
+    {
+      "file": "packages/core/src/events.ts",
+      "import": "@flux/db",
+      "issue": "https://github.com/ColdPhase/flux/issues/46",
+      "reason": "recordEvent writes events and fan-out audience rows with Drizzle (merged in #47 before this rule); move to an EventRepository port with a @flux/db adapter."
+    },
+    {
+      "file": "packages/core/src/idempotency.ts",
+      "import": "drizzle-orm",
+      "issue": "https://github.com/ColdPhase/flux/issues/46",
+      "reason": "runIdempotent stores keys and replays with Drizzle (merged in #47); move storage behind an IdempotencyStore port."
+    },
+    {
+      "file": "packages/core/src/idempotency.ts",
+      "import": "@flux/db",
+      "issue": "https://github.com/ColdPhase/flux/issues/46",
+      "reason": "runIdempotent stores keys and replays with Drizzle (merged in #47); move storage behind an IdempotencyStore port."
+    },
+    {
+      "file": "packages/core/src/jobs/draft-summary.ts",
+      "import": "drizzle-orm",
+      "issue": "https://github.com/ColdPhase/flux/issues/46",
+      "reason": "draft.summarize.v1 use case queries drafts/results and enqueues with pg-boss (merged in #47); split into a pure use case plus repository and JobQueue ports."
+    },
+    {
+      "file": "packages/core/src/jobs/draft-summary.ts",
+      "import": "pg-boss",
+      "issue": "https://github.com/ColdPhase/flux/issues/46",
+      "reason": "draft.summarize.v1 use case queries drafts/results and enqueues with pg-boss (merged in #47); split into a pure use case plus repository and JobQueue ports."
+    },
+    {
+      "file": "packages/core/src/jobs/draft-summary.ts",
+      "import": "@flux/db",
+      "issue": "https://github.com/ColdPhase/flux/issues/46",
+      "reason": "draft.summarize.v1 use case queries drafts/results and enqueues with pg-boss (merged in #47); split into a pure use case plus repository and JobQueue ports."
+    },
+    {
+      "file": "packages/core/src/stream-audience.ts",
+      "import": "drizzle-orm",
+      "issue": "https://github.com/ColdPhase/flux/issues/46",
+      "reason": "per-recipient audience queries use Drizzle (merged in #47); move to a StreamAudienceRepository adapter in @flux/db."
+    },
+    {
+      "file": "packages/core/src/stream-audience.ts",
+      "import": "@flux/db",
+      "issue": "https://github.com/ColdPhase/flux/issues/46",
+      "reason": "per-recipient audience queries use Drizzle (merged in #47); move to a StreamAudienceRepository adapter in @flux/db."
     }
   ]
 }

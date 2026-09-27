@@ -115,6 +115,9 @@ recorded in the allowlist and tracked by [#46](https://github.com/ColdPhase/flux
 | `packages/core/src/access/domain.ts` | `drizzle-orm`, `@flux/db` | Split the workspace, project/grant, agent and draft use cases; move queries and row mapping to `@flux/db` repositories. Keep the current locks and transactions. |
 | `packages/core/src/index.ts` | `drizzle-orm`, `pg-boss`, `@flux/db` | Move the integration-fixture sample use case behind a transaction/outbox port or out of core; leave `index.ts` as exports only. |
 | `packages/core/src/types.ts` | `@flux/db` | Replace the Drizzle-derived `Database`/`Executor` types with a core-owned transaction port. |
+| `packages/core/src/events.ts`, `stream-audience.ts` | `drizzle-orm`, `@flux/db` | Merged in #47 before this rule. Move event recording and the per-recipient audience queries to `@flux/db` repositories behind `EventRepository` and `StreamAudienceRepository` ports. |
+| `packages/core/src/idempotency.ts` | `drizzle-orm`, `@flux/db` | Merged in #47. Put key storage and replay behind an `IdempotencyStore` port. |
+| `packages/core/src/jobs/draft-summary.ts` | `drizzle-orm`, `pg-boss`, `@flux/db` | Merged in #47. Split it into a pure use case plus repository and `JobQueue` ports. |
 | `packages/core/package.json` | `@flux/db`, `drizzle-orm`, `pg-boss` | Remove each dependency when no core file uses it. |
 
 Until the access policy is split, new core modules that call `authorize` import it
