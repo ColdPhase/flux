@@ -57,6 +57,40 @@ class GitHubTests(unittest.TestCase):
             self.assertEqual(github.comments(1), list(range(102)))
             self.assertIn("page=2", api.call_args.args[0])
 
+    def test_transient_read_failure_is_retried(self):
+        github = GitHub("ColdPhase/flux", ROOT)
+        outcomes = [HarnessError('gh exited 1: Get "https://api.github.com/x": net/http: TLS handshake timeout'),
+                    '{"login": "Zamojski5"}']
+
+        def fake(*args, **kwargs):
+            outcome = outcomes.pop(0)
+            if isinstance(outcome, Exception):
+                raise outcome
+            return outcome
+
+        with patch("flux_harness.github.command", side_effect=fake), patch("flux_harness.github.time.sleep"):
+            self.assertEqual(github.api("user")["login"], "Zamojski5")
+        self.assertEqual(outcomes, [])
+
+    def test_writes_and_permanent_failures_are_not_retried(self):
+        github = GitHub("ColdPhase/flux", ROOT)
+        cases = [("POST", HarnessError("gh exited 1: TLS handshake timeout")),
+                 ("GET", HarnessError("gh exited 1: HTTP 404: Not Found"))]
+        for method, error in cases:
+            with patch("flux_harness.github.command", side_effect=error) as call, \
+                    patch("flux_harness.github.time.sleep"):
+                with self.assertRaises(HarnessError):
+                    github.api("repos/x/issues", method, {"body": "x"} if method == "POST" else None)
+                self.assertEqual(call.call_count, 1)
+
+    def test_persistent_transient_read_failure_still_stops(self):
+        github = GitHub("ColdPhase/flux", ROOT)
+        error = HarnessError("gh exited 1: net/http: TLS handshake timeout")
+        with patch("flux_harness.github.command", side_effect=error) as call, patch("flux_harness.github.time.sleep"):
+            with self.assertRaises(HarnessError):
+                github.api("user")
+        self.assertEqual(call.call_count, 3)
+
     def test_timeout_after_successful_post_does_not_duplicate_a_comment(self):
         github = GitHub("ColdPhase/flux", ROOT)
         posted = []

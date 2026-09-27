@@ -103,7 +103,7 @@ model tokens or Actions runs, create no polling comments and cannot approve work
 | --- | --- |
 | Peer publishes `stopped` or `suspended` | Stop the current provider at the next presence check; start no further model turn |
 | Peer machine/process/network disappears | Stop when its heartbeat expires after 180 seconds, detected at the next check |
-| Presence cannot be verified through GitHub | Suspend; never keep spending tokens based on an unknown peer state |
+| Presence cannot be verified through GitHub | Retry a transient read failure twice within seconds; if it persists, suspend and never keep spending tokens based on an unknown peer state |
 | Provider emits no event output for 300 seconds | Terminate the stalled provider and publish suspension so the peer stops too |
 | Both peers are healthy, but tasks are waiting | Poll in Python without model calls; resume only on relevant new task evidence |
 

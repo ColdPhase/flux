@@ -26,6 +26,19 @@ def command(argv, cwd=None, data=None, timeout=60):
     return result.stdout
 
 
+# Network faults and gateway errors that a repeated read can clear.
+TRANSIENT = ("tls handshake timeout", "i/o timeout", "connection reset", "connection refused",
+             "eof", "could not complete", "http 502", "http 503", "http 504",
+             "temporary failure in name resolution", "no such host")
+READ_ATTEMPTS = 3
+READ_BACKOFF_SECONDS = (2, 5)
+
+
+def transient(error):
+    text = str(error).casefold()
+    return any(marker in text for marker in TRANSIENT)
+
+
 class GitHub:
     def __init__(self, repository, cwd):
         self.repository, self.cwd = repository, cwd
@@ -39,10 +52,21 @@ class GitHub:
         argv = ["gh", "api", "--hostname", "github.com", endpoint, "--method", method]
         if data is not None:
             argv += ["--input", "-"]
-        timeout = 30 if self.deadline is None else min(30, self.deadline - time.monotonic())
-        if timeout <= 0:
-            raise HarnessError("Run time limit reached during GitHub reconciliation")
-        result = json.loads(command(argv, self.cwd, json.dumps(data) if data is not None else None, timeout))
+        # Only reads repeat: a write may have committed before its response was lost,
+        # so writes keep reconciling through comment_once and the caller.
+        attempts = READ_ATTEMPTS if method == "GET" else 1
+        for attempt in range(attempts):
+            timeout = 30 if self.deadline is None else min(30, self.deadline - time.monotonic())
+            if timeout <= 0:
+                raise HarnessError("Run time limit reached during GitHub reconciliation")
+            try:
+                output = command(argv, self.cwd, json.dumps(data) if data is not None else None, timeout)
+                break
+            except HarnessError as error:
+                if attempt + 1 >= attempts or not transient(error):
+                    raise
+                time.sleep(READ_BACKOFF_SECONDS[min(attempt, len(READ_BACKOFF_SECONDS) - 1)])
+        result = json.loads(output)
         if isinstance(result, dict) and result.get("errors"):
             raise HarnessError("GitHub returned GraphQL errors; inbox is incomplete")
         return result
