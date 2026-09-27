@@ -11,6 +11,7 @@ import {
 } from '../api/auth';
 import { ApiError, NetworkError } from '../api/client';
 import { signOutDevice } from '../pwa';
+import { resetStream } from '../api/stream';
 
 export type FieldErrors = Partial<Record<'name' | 'email' | 'password' | 'confirm', string>>;
 
@@ -184,5 +185,7 @@ export async function signOutAction(): Promise<FormResult | Response> {
     // fetch rejects with a TypeError when the server can't be reached.
     return { formError: describeAuthError(error instanceof TypeError ? new NetworkError() : error, 'sign-out') };
   }
+  // The event stream's cursor belongs to this account; the next one in this tab starts fresh.
+  resetStream();
   return redirect('/sign-in?notice=signed-out');
 }

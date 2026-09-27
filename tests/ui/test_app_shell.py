@@ -48,8 +48,16 @@ def _pipe(src: socket.socket, dst: socket.socket) -> None:
             pass
 
 
+_FORWARDING: set[str] = set()
+
+
 def start_forwarder(origin: str, upstream: str) -> None:
-    """Listen on the origin's loopback port and forward every connection to the API service."""
+    """Listen on the origin's loopback port and forward every connection to the API service.
+
+    Idempotent per origin, so several test modules in one run share the listener."""
+    if origin in _FORWARDING:
+        return
+    _FORWARDING.add(origin)
     port = urllib.parse.urlsplit(origin).port or 80
     host, _, up_port = upstream.partition(":")
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -496,9 +504,8 @@ class AppShellJourney(unittest.TestCase):
 
         page.keyboard.press("Escape")
         page.goto("/map")
-        page.get_by_role("button", name="New thought").click()
-        expect(page).to_have_url(f"{ORIGIN}/")
-        expect(page.get_by_label("Private note", exact=True)).to_be_focused()
+        # Sketching itself is covered by tests/ui/test_sketches.py (#69).
+        expect(page.get_by_role("button", name="New sketch")).to_be_visible()
 
         narrow = self.page(phone=True, viewport={"width": 360, "height": 780})
         narrow.goto("/tasks")

@@ -245,7 +245,7 @@ export const STREAM_CLOSE_UNAUTHENTICATED = 4401;
 /** 1013: the client read too slowly; reconnect with the last cursor. 1001: server shutdown. */
 export const STREAM_CLOSE_SLOW_CONSUMER = 1013;
 
-export type StreamObjectType = 'workspace' | 'project' | 'draft' | 'agent';
+export type StreamObjectType = 'workspace' | 'project' | 'draft' | 'agent' | 'sketch';
 
 /**
  * One authorized change. It carries identifiers and kind only; the client refetches the
