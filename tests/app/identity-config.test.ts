@@ -30,6 +30,13 @@ describe('identity configuration', () => {
     assert.throws(() => loadIdentityConfig({ FLUX_AUTH_SECRET: base.FLUX_AUTH_SECRET }), /FLUX_PUBLIC_ORIGIN is required/);
     assert.throws(() => loadIdentityConfig({ ...base, FLUX_PUBLIC_ORIGIN: 'https://flux.example.org/app' }), /without path/);
     assert.throws(() => loadIdentityConfig({ ...base, FLUX_PUBLIC_ORIGIN: 'ftp://flux.example.org' }), /http or https/);
+    // Plain http would send session cookies without Secure; only loopback development may use it.
+    for (const origin of ['http://flux.example.org', 'http://10.0.0.5:8080', 'http://192.168.1.20', 'http://127.example.org', 'http://localhost.example.org']) {
+      assert.throws(() => loadIdentityConfig({ ...base, FLUX_PUBLIC_ORIGIN: origin }), /must use https unless it is a loopback/, origin);
+    }
+    for (const origin of ['http://127.0.0.1:8081', 'http://localhost:8081', 'http://[::1]:8081', 'http://127.1.2.3']) {
+      assert.equal(loadIdentityConfig({ ...base, FLUX_PUBLIC_ORIGIN: origin }).publicOrigin, origin, origin);
+    }
     assert.throws(() => loadIdentityConfig({ ...base, FLUX_AUTH_SECRET: 'short' }), /at least 32/);
     assert.throws(() => loadIdentityConfig({ ...base, FLUX_TRUSTED_PROXIES: '10.0.0.0/33' }), /not an IP address/);
     assert.throws(() => loadIdentityConfig({ ...base, FLUX_TRUSTED_PROXIES: 'proxy.internal' }), /not an IP address/);

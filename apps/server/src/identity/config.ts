@@ -27,6 +27,11 @@ function isAddressOrRange(value: string) {
   return /^\d{1,3}$/.test(prefix) && bits <= (family === 4 ? 32 : 128);
 }
 
+function isLoopbackHost(hostname: string) {
+  if (hostname === 'localhost' || hostname === '[::1]') return true;
+  return isIP(hostname) === 4 && hostname.split('.')[0] === '127';
+}
+
 export function parsePublicOrigin(value: string | undefined): string {
   if (!value) throw new Error('FLUX_PUBLIC_ORIGIN is required, e.g. https://flux.example.org');
   let url: URL;
@@ -37,6 +42,10 @@ export function parsePublicOrigin(value: string | undefined): string {
   }
   if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error('FLUX_PUBLIC_ORIGIN must use http or https');
   if (url.origin !== value.replace(/\/$/, '')) throw new Error('FLUX_PUBLIC_ORIGIN must be an origin without path, query or credentials');
+  // Session cookies are only Secure over https, so plain http is limited to local development.
+  if (url.protocol === 'http:' && !isLoopbackHost(url.hostname)) {
+    throw new Error('FLUX_PUBLIC_ORIGIN must use https unless it is a loopback address (localhost, 127.0.0.0/8 or [::1])');
+  }
   return url.origin;
 }
 
