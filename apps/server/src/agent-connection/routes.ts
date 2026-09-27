@@ -1,19 +1,16 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
 import type { CreateAgentConnectionCommand, PageQuery } from '@flux/contracts';
-import { agentConnectionRepository, agentProposalRepository } from '@flux/db';
+import { agentProposalRepository } from '@flux/db';
 import { agentConnectionUseCases, agentProposalUseCases, DomainError, enforce, evaluateProject, recordEvent, type Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
+import { createAgentConnectionStore } from './store.js';
 
 interface Options { db: Database; sessions: SessionResolver }
 
 /** The human review surface uses the same current project policy as conversations. */
 export async function agentProposalRoutes(app: FastifyInstance, { db, sessions }: Options) {
-  const connections = agentConnectionUseCases(agentConnectionRepository(db, {
-    async authorizeProject(agentId, projectId, action, tx) {
-      const checked = enforce(await evaluateProject({ kind: 'agent', id: agentId }, action, projectId, tx, { lock: true }), 'project');
-      return checked.project!.workspaceId;
-    },
-  }));
+  const connectionStore = createAgentConnectionStore(db);
+  const connections = agentConnectionUseCases(connectionStore);
   const store = agentProposalUseCases(agentProposalRepository(db, {
     async authorizeWrite(principal, projectId, tx) {
       const checked = enforce(await evaluateProject(principal, 'project.write', projectId, tx, { lock: true }), 'project');
@@ -45,6 +42,14 @@ export async function agentProposalRoutes(app: FastifyInstance, { db, sessions }
     await connections.revoke((await sessions.requirePrincipal(request)).principal, request.params.connectionId);
     return reply.code(204).send();
   });
+  app.post<{ Params: { connectionId: string } }>('/api/v1/agent-connections/:connectionId/select-for-oauth',
+    async (request, reply) => {
+      const session = await sessions.requirePrincipal(request);
+      const result = await connectionStore.selectForOauth(session.principal.id, session.sessionId, request.params.connectionId);
+      if (result === 'CONNECTION_NOT_FOUND') return reply.code(404).send({ error: 'Connection not found', code: result });
+      if (result === 'ALREADY_SELECTED') return reply.code(409).send({ error: 'A different connection is selected for this session', code: result });
+      return reply.code(204).send();
+    });
   app.get<{ Params: { projectId: string }; Querystring: PageQuery }>('/api/v1/projects/:projectId/agent-proposals',
     { schema: { querystring: { type: 'object', additionalProperties: false,
       properties: { limit: { type: 'integer' }, offset: { type: 'integer' } } } } },

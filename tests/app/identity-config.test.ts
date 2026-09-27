@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { after, describe, test } from 'node:test';
 import Fastify from 'fastify';
 import { createDatabase } from '@flux/db';
 import { loadIdentityConfig, registerIdentity, type IdentityConfig } from '../../apps/server/src/identity/index.js';
 import { originViolation } from '../../apps/server/src/identity/origin.js';
+import { verifiedOauthQuery } from '../../apps/server/src/identity/oauth-query.js';
+import { registerMcpRoute } from '../../apps/server/src/agent-connection/mcp-route.js';
 
 // In-process identity configuration checks with Fastify inject and the Compose database.
 const connectionString = process.env.DATABASE_URL;
@@ -26,6 +28,18 @@ async function app(identity: IdentityConfig, trustProxy: string[] | false = fals
 }
 
 describe('identity configuration', () => {
+  test('consent display rejects modified or expired signed OAuth queries', async () => {
+    const secret = base.FLUX_AUTH_SECRET;
+    const valid = new URLSearchParams({ client_id: 'cli_1', exp: String(Math.floor(Date.now() / 1000) + 120), scope: 'flux.context.read' });
+    valid.set('sig', createHmac('sha256', secret).update(valid.toString()).digest('base64'));
+    assert.equal((await verifiedOauthQuery(valid.toString(), secret))?.get('client_id'), 'cli_1');
+    valid.set('scope', 'flux.proposal.write');
+    assert.equal(await verifiedOauthQuery(valid.toString(), secret), null);
+    const expired = new URLSearchParams({ client_id: 'cli_1', exp: String(Math.floor(Date.now() / 1000) - 1) });
+    expired.set('sig', createHmac('sha256', secret).update(expired.toString()).digest('base64'));
+    assert.equal(await verifiedOauthQuery(expired.toString(), secret), null);
+  });
+
   test('requires an explicit public origin, a long secret and valid proxy ranges', () => {
     assert.throws(() => loadIdentityConfig({ FLUX_AUTH_SECRET: base.FLUX_AUTH_SECRET }), /FLUX_PUBLIC_ORIGIN is required/);
     assert.throws(() => loadIdentityConfig({ ...base, FLUX_PUBLIC_ORIGIN: 'https://flux.example.org/app' }), /without path/);
@@ -62,6 +76,35 @@ describe('identity configuration', () => {
 });
 
 describe('identity server behaviour', () => {
+  test('unauthenticated MCP calls advertise the protected resource', async () => {
+    const identity = config();
+    const server = Fastify();
+    const registered = registerIdentity(server, { db: database.db, config: identity, mailer: null });
+    registerMcpRoute(server, database.db, registered.auth, identity.publicOrigin);
+    await server.ready();
+    try {
+      const response = await server.inject({ method: 'POST', url: '/mcp',
+        headers: { 'content-type': 'application/json' },
+        payload: { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2026-07-28', capabilities: {}, clientInfo: { name: 'probe', version: '1' } } },
+      });
+      assert.equal(response.statusCode, 401);
+      assert.match(response.headers['www-authenticate'] as string, /oauth-protected-resource/);
+    } finally { await server.close(); }
+  });
+
+  test('publishes OAuth and MCP discovery only at the expected paths', async () => {
+    const server = await app(config());
+    try {
+      const resource = await server.inject({ method: 'GET', url: '/.well-known/oauth-protected-resource/mcp' });
+      assert.equal(resource.statusCode, 200);
+      assert.equal(resource.json().resource, 'https://flux.example.org/mcp');
+      const issuer = await server.inject({ method: 'GET', url: '/.well-known/oauth-authorization-server/api/auth' });
+      assert.equal(issuer.statusCode, 200);
+      assert.equal(issuer.json().issuer, 'https://flux.example.org/api/auth');
+      assert.equal((await server.inject({ method: 'GET', url: '/.well-known/unrelated' })).statusCode, 404);
+    } finally { await server.close(); }
+  });
+
   test('password reset reports unavailable when SMTP is not configured', async () => {
     const server = await app(config());
     try {

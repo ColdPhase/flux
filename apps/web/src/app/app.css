@@ -16,6 +16,7 @@
 .auth__top { display: flex; align-items: center; height: 60px; padding: 0 24px; padding-top: env(safe-area-inset-top); flex: none; }
 .auth__main { flex: 1; display: flex; justify-content: center; align-items: flex-start; padding: 8vh 20px 48px; outline: none; }
 .auth__col { width: 100%; max-width: 360px; animation: rise var(--dur-3) var(--ease-out) both; }
+.auth__col--connection { max-width: 560px; }
 .auth__head { margin-bottom: 28px; }
 .auth__title { font-size: var(--fs-2xl); line-height: 1.25; letter-spacing: -0.02em; }
 .auth__lead { margin-top: 8px; font-size: var(--fs-base); color: var(--text-3); line-height: 1.55; }

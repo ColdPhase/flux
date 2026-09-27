@@ -27,19 +27,27 @@ server stores an immutable connection ID, owner, agent, project set and scopes;
 it never stores a model credential. Revocation is immediate for new tool calls.
 The proposal commit rechecks that connection and its selected project under the
 same transaction as the source and grant checks, so a retry cannot use a revoked
-selection. OAuth will bind its consent and access token to this server-owned ID.
+selection. `POST /api/v1/agent-connections/:id/select-for-oauth` binds one
+immutable choice to the live browser session. A second tab cannot switch that
+choice; use a new browser session to authorize a different selection. The
+signed consent screen shows the same connection, client, project names and
+requested scopes. OAuth carries the server-owned connection ID in its signed
+token; it never accepts project or agent IDs from the external client.
 
 The OAuth protected resource is the configured public HTTPS origin's `/mcp`.
 The server advertises resource and authorization metadata, validates redirect
 clients, PKCE, `resource`, issuer, audience and token expiry. Codes are short
-lived and single use. Tokens are stored only as hashes and bound to the selected
-owner, agent and projects. Bearer credentials never grant the user's broader
-human authority. DMs are outside this first agent grant model.
+lived and single use. The OAuth provider persists token records using its
+hashed-token default; the MCP endpoint verifies signed access tokens and
+reloads the selected connection and current grants on every tool call.
+Revoking the Flux connection immediately denies subsequent tools, even while
+an access token has not yet expired. Bearer credentials never grant the user's
+broader human authority. DMs are outside this first agent grant model.
 
 ## Initial tools and proposal
 
-`flux_list_contexts` returns only selected, currently readable projects, with a
-bounded page and no count of inaccessible projects. `flux_read_material` returns
+`flux_list_contexts` returns only selected, currently readable projects (at most
+50 by the connection limit), with no count of inaccessible projects. `flux_read_material` returns
 one selected project's currently readable material and its exact revision. A
 private draft is never pulled in through a material's provenance.
 
