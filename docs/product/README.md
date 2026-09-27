@@ -93,4 +93,4 @@ Agents make decisions as evidence becomes available and begin ready implementati
 
 The [proposed vocabulary and connected journeys](journeys-and-vocabulary.md) give
 design and application tasks a concrete human return, handoff, and conditional
-agent scenario. Its decision status is recorded in the proposal.
+agent scenario. Their decision status is recorded in the proposal.
