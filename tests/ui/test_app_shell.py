@@ -631,11 +631,28 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_role("link", name="New project").click()
         owner.get_by_label("Your space").fill("Lamp lab")
         owner.get_by_label("Project name").fill("Gesture lamp")
+        project_attempts = {"count": 0}
+        def fail_first_project(route) -> None:
+            if route.request.method != "POST":
+                route.continue_()
+                return
+            project_attempts["count"] += 1
+            if project_attempts["count"] == 1:
+                route.abort("failed")
+            else:
+                route.continue_()
+        owner.route("**/api/v1/workspaces/*/projects", fail_first_project)
+        owner.get_by_role("button", name="Create project").click()
+        expect(owner.get_by_role("alert")).to_contain_text("Could not create this project")
+        expect(owner.get_by_text("In Lamp lab")).to_be_visible()
         owner.get_by_role("button", name="Create project").click()
         expect(owner.get_by_role("heading", level=1, name="Gesture lamp")).to_be_visible()
+        owner.unroute("**/api/v1/workspaces/*/projects", fail_first_project)
         project_id = owner.locator(".project-convo").get_attribute("data-project-id")
         self.assertTrue(project_id)
-        ws = owner.context.request.get(f"{ORIGIN}/api/v1/workspaces").json()[0]
+        spaces = owner.context.request.get(f"{ORIGIN}/api/v1/workspaces").json()
+        self.assertEqual(len(spaces), 1, "project retry must reuse the newly created space")
+        ws = spaces[0]
         owner.get_by_role("link", name="Home").click()
         owner.get_by_label("Private note", exact=True).fill("home address 123; PIR avoids storing images")
         owner.get_by_role("button", name="Save note").click()
@@ -689,11 +706,29 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_label("Reply", exact=True).fill("Retry this one reply")
         owner.get_by_role("button", name="Send reply").click()
         expect(owner.get_by_role("alert")).to_contain_text("Flux could not be reached")
-        owner.get_by_role("button", name="Retry").click()
+        owner.get_by_role("button", name="Retry send").click()
         expect(owner.get_by_text("Retry this one reply", exact=True)).to_be_visible()
         owner.unroute("**/api/v1/conversations/*/messages", drop_first_response)
         saved = owner.context.request.get(f"{ORIGIN}/api/v1/conversations/{conversation_id}").json()
         self.assertEqual(sum(message["body"] == "Retry this one reply" for message in saved["messages"]), 1)
+
+        read_failures = {"count": 0}
+        def fail_first_citation(route) -> None:
+            read_failures["count"] += 1
+            if read_failures["count"] == 1:
+                route.abort("failed")
+            else:
+                route.continue_()
+        owner.route("**/api/v1/materials/*/versions/1", fail_first_citation)
+        owner.get_by_label("Reply", exact=True).fill("Do not send this draft on read retry")
+        owner.get_by_role("button", name="Discuss this version").click()
+        expect(owner.get_by_role("button", name="Retry read")).to_be_visible()
+        owner.get_by_role("button", name="Retry read").click()
+        expect(owner.get_by_text("Discussing “Privacy options” v1")).to_be_visible()
+        self.assertEqual(owner.context.request.get(f"{ORIGIN}/api/v1/conversations/{conversation_id}").json()["messages"][-1]["body"], "Retry this one reply")
+        owner.get_by_label("Reply", exact=True).fill("")
+        owner.get_by_role("button", name="Remove material citation").click()
+        owner.unroute("**/api/v1/materials/*/versions/1", fail_first_citation)
 
         partner_email = f"partner+{int(time.time() * 1000)}@example.test"
         partner = self.page(signed_in=False)
@@ -733,6 +768,26 @@ class AppShellJourney(unittest.TestCase):
         expect(phone.locator(".project-convo__current-thread")).to_contain_text("Try a PIR sensor before considering a camera")
         shot(phone, "conversation-phone-390")
         self.assertLessEqual(phone.locator("body").evaluate("el => el.scrollWidth"), PHONE["width"])
+
+        guest_email = f"guest+{int(time.time() * 1000)}@example.test"
+        guest = self.page(signed_in=False)
+        guest.goto("/sign-up")
+        guest.get_by_label("Name").fill("Kai Guest")
+        guest.get_by_label("Email").fill(guest_email)
+        guest.get_by_label("Password").fill(PASSWORD)
+        guest.get_by_role("button", name="Create account").click()
+        expect(guest.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        guest_id = guest.context.request.get(f"{ORIGIN}/api/v1/me").json()["user"]["id"]
+        invite = owner.context.request.post(f"{ORIGIN}/api/v1/workspaces/{ws['id']}/members", data={"email": guest_email, "role": "guest"}, headers={"Origin": ORIGIN})
+        self.assertEqual(invite.status, 201, invite.text())
+        grant = owner.context.request.post(f"{ORIGIN}/api/v1/projects/{project_id}/grants", data={"principal": {"kind": "human", "id": guest_id}, "role": "contributor"}, headers={"Origin": ORIGIN})
+        self.assertEqual(grant.status, 201, grant.text())
+        self.assertEqual(guest.context.request.get(f"{ORIGIN}/api/v1/workspaces/{ws['id']}/members").status, 403)
+        guest.goto(f"/projects/{project_id}/conversations/{conversation_id}")
+        expect(guest.get_by_text("Agreed. Test low light too.", exact=True)).to_be_visible()
+        guest.get_by_label("Reply", exact=True).fill("A guest can contribute here")
+        guest.get_by_role("button", name="Send reply").click()
+        expect(guest.get_by_text("A guest can contribute here", exact=True)).to_be_visible()
 
         denial = owner.context.request.post(f"{ORIGIN}/api/v1/projects/{project_id}/grants", data={"principal": {"kind": "human", "id": partner_id}, "role": "denied"}, headers={"Origin": ORIGIN})
         self.assertEqual(denial.status, 201, denial.text())
@@ -793,6 +848,16 @@ class AppShellJourney(unittest.TestCase):
         expect(owner.get_by_text("Reply 121", exact=True)).to_be_visible()
         self.assertEqual(owner.locator(".project-convo__message").count(), 122, "revalidation retains every loaded sequence")
         self.assertEqual([int(text.lstrip('#')) for text in owner.locator(".project-convo__message-meta span").all_text_contents()], list(range(1, 123)))
+
+        # More than one server window arrives while this page is idle. Refresh must fill
+        # the middle before presenting the new tail beside already loaded history.
+        for index in range(60):
+            result = request.post(f"{ORIGIN}/api/v1/conversations/{first_id}/messages", data={"body": f"Missed reply {index}", "clientMessageId": str(uuid.uuid4())}, headers=headers)
+            self.assertEqual(result.status, 201, result.text())
+        owner.evaluate("window.dispatchEvent(new Event('focus'))")
+        expect(owner.get_by_text("Missed reply 59", exact=True)).to_be_visible()
+        expect(owner.locator(".project-convo__message")).to_have_count(182)
+        self.assertEqual([int(text.lstrip('#')) for text in owner.locator(".project-convo__message-meta span").all_text_contents()], list(range(1, 183)))
 
         # Hold the browser's POST, then prove the in-flight text cannot be overwritten.
         owner.evaluate("""() => {

@@ -11,7 +11,14 @@ interface ProjectData { project: Project; conversations: ConversationSummary[]; 
 export async function projectConversationLoader({ params, request }: LoaderFunctionArgs): Promise<ProjectData> {
   const projectId = params.projectId!;
   const project = await getProject(projectId, request.signal);
-  const [threads, materials, members] = await Promise.all([listConversations(projectId, request.signal), listMaterials(projectId, request.signal), listWorkspaceMembers(project.workspaceId, request.signal)]);
+  const [threads, materials, members] = await Promise.all([
+    listConversations(projectId, request.signal),
+    listMaterials(projectId, request.signal),
+    listWorkspaceMembers(project.workspaceId, request.signal).catch((error: unknown) => {
+      if (error instanceof ApiError && error.status === 403) return [];
+      throw error;
+    }),
+  ]);
   const selected = params.conversationId;
   const first = selected ?? (new URL(request.url).searchParams.has('new') ? undefined : threads.items[0]?.id);
   const conversation = first ? await getConversation(first, request.signal) : null;
@@ -56,7 +63,10 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
   const [pending, setPending] = useState<SendMessageCommand | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [readFailure, setReadFailure] = useState<{ message: string; retry: () => void } | null>(null);
   const [messages, setMessages] = useState<Conversation['messages']>(conversation?.messages ?? []);
+  const messagesRef = useRef(messages);
+  const refreshingRef = useRef(false);
   const [olderCursor, setOlderCursor] = useState(conversation?.messagePage.nextBeforeSequence ?? null);
   const [olderBusy, setOlderBusy] = useState(false);
   const [threadItems, setThreadItems] = useState(conversations);
@@ -82,11 +92,14 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
   const writable = project.access !== 'viewer';
   const conversationId = conversation?.id;
   const author = (id: string) => id === me.user.id ? me.user.name : members.find((member) => member.userId === id)?.name ?? 'Member';
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => {
     try { sessionStorage.setItem(materialFormKey, JSON.stringify({ open: showMaterialForm, title: materialTitle, body: materialBody, url: materialUrl, sourceDraft, mutationId: materialMutationId } satisfies MaterialFormSnapshot)); }
     catch { /* private mode: the form remains usable during this visit */ }
   }, [materialFormKey, showMaterialForm, materialTitle, materialBody, materialUrl, sourceDraft, materialMutationId]);
   const refresh = useCallback(async () => {
+    if (refreshingRef.current) return;
+    refreshingRef.current = true;
     revalidator.revalidate();
     try {
       const [threads, latestMaterials, latestConversation] = await Promise.all([
@@ -98,8 +111,20 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
       setThreadTotal(threads.total);
       setMaterialItems((current) => [...latestMaterials.items, ...current.filter((item) => !latestMaterials.items.some((latest) => latest.materialId === item.materialId))]);
       setMaterialTotal(latestMaterials.total);
-      if (latestConversation) setMessages((current) => mergeMessages(current, latestConversation.messages));
+      if (latestConversation) {
+        const newestSeen = messagesRef.current.at(-1)?.sequence ?? 0;
+        let incoming = latestConversation.messages;
+        let cursor = incoming[0]?.sequence;
+        while (newestSeen > 0 && cursor && cursor > newestSeen + 1) {
+          const page = await olderMessages(conversationId!, cursor);
+          if (!page.messages.length || page.messages[0]!.sequence >= cursor) throw new Error('Could not load intervening replies');
+          incoming = mergeMessages(page.messages, incoming);
+          cursor = page.messages[0]?.sequence;
+        }
+        setMessages((current) => mergeMessages(current, incoming));
+      }
     } catch { /* the route loader shows current denial or connectivity state */ }
+    finally { refreshingRef.current = false; }
   }, [conversationId, project.id, revalidator]);
   useEffect(() => {
     if (!showMaterialForm) return;
@@ -137,22 +162,22 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
   }
   async function loadOlder() {
     if (!conversation || !olderCursor || olderBusy) return;
-    setOlderBusy(true);
+    setOlderBusy(true); setReadFailure(null);
     try {
       const page = await olderMessages(conversation.id, olderCursor);
       setMessages((current) => mergeMessages(current, page.messages)); setOlderCursor(page.messagePage.nextBeforeSequence);
-    } catch (cause) { setError(readableError(cause)); }
+    } catch (cause) { setReadFailure({ message: readableError(cause), retry: () => void loadOlder() }); }
     finally { setOlderBusy(false); }
   }
   async function loadMoreThreads() {
     if (threadBusy || threadOffset >= threadTotal) return;
-    setThreadBusy(true);
+    setThreadBusy(true); setReadFailure(null);
     try {
       const page = await listConversations(project.id, undefined, threadOffset);
       setThreadItems((current) => [...current, ...page.items.filter((item) => !current.some((existing) => existing.id === item.id))]);
       setThreadOffset((current) => current + page.items.length);
       setThreadTotal(page.total);
-    } catch (cause) { setError(readableError(cause)); }
+    } catch (cause) { setReadFailure({ message: readableError(cause), retry: () => void loadMoreThreads() }); }
     finally { setThreadBusy(false); }
   }
   async function loadMoreMaterials() {
@@ -176,11 +201,12 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
     finally { setMaterialBusy(false); }
   }
   async function cite(material: Material) {
+    setReadFailure(null);
     try {
       const snapshot = await getMaterialVersion(material.materialId, material.version);
       setCitation({ title: snapshot.title, materialId: material.materialId, version: snapshot.version }); setPending(null); setError('');
       document.getElementById('project-composer')?.focus();
-    } catch (cause) { setError(readableError(cause)); }
+    } catch (cause) { setReadFailure({ message: readableError(cause), retry: () => void cite(material) }); }
   }
 
   return <div className="project-convo" data-project-id={project.id}>
@@ -209,7 +235,15 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
         </div>
       </div>
     </div>
-    <div className="composer project-convo__composer"><div className="composer__in">{conversation ? <p className="project-convo__current-thread" title={conversation.firstMessageBody.split('\n')[0]}>Replying to · {conversation.firstMessageBody.split('\n')[0] || 'Conversation'}</p> : null}<p className="composer__audience"><Icon name="lock" size={13} />{project.name} · {project.visibility === 'restricted' ? 'Members only' : 'Workspace members'} · Saved to project</p>{citation ? <div className="project-convo__citation">Discussing “{citation.title}” v{citation.version}<button type="button" disabled={busy} onClick={() => { setCitation(null); setPending(null); setError(''); }} aria-label="Remove material citation">×</button></div> : null}<div className="composer__box"><label className="ui-vh" htmlFor="project-composer">{conversation ? 'Reply' : 'Start a conversation'}</label><textarea id="project-composer" value={draft} onChange={(event) => changeDraft(event.target.value)} onKeyDown={onComposerKey} disabled={!writable || busy} placeholder={conversation ? 'Reply…' : 'Share a thought…'} rows={1} /><button className="composer__send" aria-label={conversation ? 'Send reply' : 'Start conversation'} aria-disabled={!draft.trim() || !writable || busy} type="button" onClick={() => void send()}><Icon name="send" /></button></div>{error ? <p className="project-convo__error" role="alert">{error} <button type="button" onClick={() => void send()}>Retry</button></p> : null}<p className="composer__hint">{writable ? 'Enter sends · Shift+Enter adds a line. Your draft stays in this browser.' : 'You have read access to this project.'}</p></div></div>
+    <div className="composer project-convo__composer"><div className="composer__in">
+      {conversation ? <p className="project-convo__current-thread" title={conversation.firstMessageBody.split('\n')[0]}>Replying to · {conversation.firstMessageBody.split('\n')[0] || 'Conversation'}</p> : null}
+      <p className="composer__audience"><Icon name="lock" size={13} />{project.name} · {project.visibility === 'restricted' ? 'Members only' : 'Workspace members'} · Saved to project</p>
+      {citation ? <div className="project-convo__citation">Discussing “{citation.title}” v{citation.version}<button type="button" disabled={busy} onClick={() => { setCitation(null); setPending(null); setError(''); }} aria-label="Remove material citation">×</button></div> : null}
+      <div className="composer__box"><label className="ui-vh" htmlFor="project-composer">{conversation ? 'Reply' : 'Start a conversation'}</label><textarea id="project-composer" value={draft} onChange={(event) => changeDraft(event.target.value)} onKeyDown={onComposerKey} disabled={!writable || busy} placeholder={conversation ? 'Reply…' : 'Share a thought…'} rows={1} /><button className="composer__send" aria-label={conversation ? 'Send reply' : 'Start conversation'} aria-disabled={!draft.trim() || !writable || busy} type="button" onClick={() => void send()}><Icon name="send" /></button></div>
+      {readFailure ? <p className="project-convo__error" role="alert">{readFailure.message} <button type="button" onClick={readFailure.retry}>Retry read</button></p> : null}
+      {error ? <p className="project-convo__error" role="alert">{error} <button type="button" onClick={() => void send()}>Retry send</button></p> : null}
+      <p className="composer__hint">{writable ? 'Enter sends · Shift+Enter adds a line. Your draft stays in this browser.' : 'You have read access to this project.'}</p>
+    </div></div>
   </div>;
 }
 
