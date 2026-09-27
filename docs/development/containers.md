@@ -32,6 +32,11 @@ for the current clean-start, validation and backup/restore commands. This is an
 application skeleton; #29's identity/session and project policy slices are now
 merged, while collaboration and release verification remain separate tasks.
 
+The `files` mounts on `files-init`, API and worker all use `:z` so SELinux gives
+the shared volume a label accessible to both running services. `files-init`
+still sets ownership for their non-root UID; all three mounts must keep the
+shared label option or one container can deny another's writes on SELinux hosts.
+
 ## Local task worktrees
 
 Keep each task or independent review in its own Git worktree under the repository

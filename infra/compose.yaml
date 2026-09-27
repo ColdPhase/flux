@@ -30,7 +30,7 @@ services:
     user: "0:0"
     command: ["chown", "-R", "1000:1000", "/data/files"]
     volumes:
-      - files:/data/files
+      - files:/data/files:z
     restart: "no"
   api:
     image: flux-foundation:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
@@ -51,7 +51,7 @@ services:
       FLUX_VAPID_PUBLIC_KEY: ${FLUX_VAPID_PUBLIC_KEY:-}
       PORT: 8080
     volumes:
-      - files:/data/files
+      - files:/data/files:z
     ports:
       - 127.0.0.1:${FLUX_PORT:-8081}:8080
     depends_on:
@@ -73,7 +73,7 @@ services:
       FLUX_VAPID_PRIVATE_KEY: ${FLUX_VAPID_PRIVATE_KEY:-}
       FLUX_VAPID_SUBJECT: ${FLUX_VAPID_SUBJECT:-}
     volumes:
-      - files:/data/files
+      - files:/data/files:z
     depends_on:
       migrate:
         condition: service_completed_successfully

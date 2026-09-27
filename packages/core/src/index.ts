@@ -10,6 +10,9 @@ export * from './access/errors.js';
 export {
   authorize,
   assertAuthorized,
+  enforce,
+  evaluateProject,
+  evaluateDraft,
   visibleFilter,
   loadActor,
   isUuid,
@@ -25,6 +28,8 @@ export {
   type ResourceType,
 } from './access/policy.js';
 export * from './access/domain.js';
+export * from './conversation/commands.js';
+export * from './conversation/service.js';
 
 export const SAMPLE_JOB = 'sample.process';
 
