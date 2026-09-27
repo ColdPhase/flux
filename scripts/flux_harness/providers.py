@@ -130,7 +130,8 @@ def terminate(process):
         process.wait(timeout=5)
 
 
-def run_provider(provider, root, workspace, directory, prompt, deadline, tick, session=None, options=None):
+def run_provider(provider, root, workspace, directory, prompt, deadline, tick, session=None, options=None,
+                 idle_timeout=None):
     directory.mkdir(parents=True, exist_ok=False, mode=0o700)
     (directory / "result-schema.json").write_text(json.dumps(RESULT_SCHEMA), encoding="utf-8")
     (directory / "prompt.txt").write_text(prompt, encoding="utf-8")
@@ -138,6 +139,7 @@ def run_provider(provider, root, workspace, directory, prompt, deadline, tick, s
     (directory / "execution.json").write_text(json.dumps({"provider": provider,
         "selection": options or {}, "argv": argv}, indent=2), encoding="utf-8")
     process = None
+    output_size, last_output = 0, time.monotonic()
     with (directory / "prompt.txt").open() as incoming, \
             (directory / "events.jsonl").open("w") as outgoing, \
             (directory / "stderr.log").open("w") as errors:
@@ -147,6 +149,11 @@ def run_provider(provider, root, workspace, directory, prompt, deadline, tick, s
             while process.poll() is None:
                 if time.monotonic() >= deadline:
                     raise HarnessError("Turn/run time limit reached; preserve and resume the checkpoint")
+                size = (directory / "events.jsonl").stat().st_size
+                if size != output_size:
+                    output_size, last_output = size, time.monotonic()
+                if idle_timeout is not None and time.monotonic() - last_output >= idle_timeout:
+                    raise HarnessError("Provider event stream stalled; unfinished turn and files are preserved")
                 tick()
                 time.sleep(0.5)
             if process.returncode:

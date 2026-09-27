@@ -115,6 +115,13 @@ class FoundationValidationTests(unittest.TestCase):
         altered["loop"]["enabeld"] = True
         self.assertTrue(any("unknown fields" in error for error in self.check(altered)))
 
+    def test_peer_watch_cannot_be_omitted_or_expire_before_three_beats(self):
+        altered = copy.deepcopy(self.manifest)
+        del altered["peer_watch"]
+        self.assertTrue(any("peer_watch" in error for error in self.check(altered)))
+        self.manifest["peer_watch"]["stale_after_seconds"] = 60
+        self.assertTrue(any("three heartbeats" in error for error in self.check()))
+
     def test_planning_can_run_without_inventing_an_application_stack(self):
         self.manifest["state"] = "active"
         self.manifest["loop"]["enabled"] = True

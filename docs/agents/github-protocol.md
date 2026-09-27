@@ -161,6 +161,24 @@ artifact and independent acceptance. The milestone stays open through final
 verification. Keep criterion-specific reports in an acceptance task/PR inside
 it; this is an ordinary work item, not the entry point for the workers.
 
+## Worker presence
+
+The configured `peer_watch.issue_number` is a dedicated coordination issue outside
+all product milestones. Each worker reuses one comment beginning with
+`<!-- flux-presence:v1`, with a JSON payload containing `worker`, `run_id`,
+`status`, `config_digest` and an increasing `sequence`. Status is `ready`,
+`working`, `waiting`, `stopped`, `suspended` or `complete`.
+
+Only the actual configured GitHub author can supply that worker's record. The
+runner verifies the matching configuration and GitHub's `updated_at` freshness;
+text claiming another identity is insufficient. Edits replace the heartbeat,
+without appending discussion or invoking a model. These records never enter
+task eligibility, and cannot approve a contract, transfer ownership or complete
+a release. Private error details remain in the local journal.
+
+Both workers stop paid/model execution when either becomes unavailable. See
+[paired execution](startup.md#paired-execution) for expiry, idle limits and restart.
+
 ## Discoverable milestones
 
 Agents create milestones themselves within the full Flux foundation. Include this

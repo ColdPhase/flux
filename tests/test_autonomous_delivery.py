@@ -145,7 +145,7 @@ class ResumeAndContinuationTests(LoopFixture):
     def test_drain_finishes_one_checkpoint_and_starts_no_next_turn(self):
         data = snapshot(issue(1))
 
-        def provider(name, root, cwd, turn, prompt, deadline, tick, session, options):
+        def provider(name, root, cwd, turn, prompt, deadline, tick, session, options, idle_timeout=None):
             (self.repo / ".harness/local" / WORKER["id"] / "drain.request").touch()
             return result("progress", 1), "fixture"
 
@@ -190,7 +190,7 @@ class ResumeAndContinuationTests(LoopFixture):
             "body": '<!-- flux-agent:v1\n' + json.dumps({"worker": WORKER["id"], "task": 8,
                 "kind": "claim", "role": "implementation"}) + '\n-->'}]
 
-        def provider(name, root, cwd, turn, prompt, deadline, tick, session, options):
+        def provider(name, root, cwd, turn, prompt, deadline, tick, session, options, idle_timeout=None):
             self.assertIn('"resume_issue_numbers": [8]', prompt)
             self.assertIn("unfinished.txt", prompt)
             self.assertEqual((path / "unfinished.txt").read_text(), "Saved before stop")

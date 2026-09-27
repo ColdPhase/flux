@@ -39,6 +39,13 @@ an authorized continuing session, follow the same selection cycle. If nothing
 is actionable, wait for the relevant event; do not generate status comments or
 create extra scope to keep busy. Do not add a nested `/goal` inside a runner turn.
 
+Both workers must be available under the founder's paired-execution policy.
+Python supplies heartbeats and suspends the pair if either worker stops, fails or
+stalls. Never spend model calls checking whether an unavailable peer has returned.
+Preserve interrupted work; resume through `flux-resume-work` after both restart.
+Return waiting promptly when only peer input is missing; do not repeatedly research
+unchanged material or invent probes to fill the wait.
+
 Completion requires the milestone's independent acceptance evidence and any
 agreed release/publication/deployment checks. An empty queue or exhausted run limit is a waiting/suspended
 outcome. Preserve state; never manufacture a successful release result.

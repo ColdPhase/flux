@@ -11,6 +11,7 @@ official Codex/Claude CLIs. It does not choose or install the application stack.
 | GitHub transport | `scripts/flux_harness/github.py`: explicit repository/host, paginated issues/comments/timelines/reviews/checks, review-thread resolution, comment retry reconciliation |
 | Worker loop | `scripts/flux_harness/worker.py`: scope/identity checks, coarse work eligibility, idle polling, blocked-task parking, real-progress detection, limits |
 | Provider adapters | `scripts/flux_harness/providers.py`: structured CLI turns, session continuity, process termination and outcome validation |
+| Paired presence | `scripts/flux_harness/presence.py`: authenticated GitHub heartbeats, startup rendezvous and peer-loss suspension without model calls |
 | Local journal | `scripts/flux_harness/state.py`: SQLite turn checkpoints/outbox, process-lifetime local singleton lock |
 | Shared procedures | `AGENTS.md`, `.agents/skills/`, and these guides: task negotiation, scope decisions, branch ownership, independent evaluation, CI and delivery |
 
@@ -39,7 +40,8 @@ Its coarse eligible list is not proof of a task's accepted contract.
    state makes parked work eligible again.
 7. When nothing is actionable, poll without model calls or status comments.
    Stop on request, scope/identity failure, provider failure, configured limits,
-   or a closed milestone; preserve work for a new invocation.
+   peer unavailability or verified full-product acceptance; preserve unfinished
+   work for a new invocation. An intermediate milestone closing does not stop work.
 
 `candidate-complete` requests peer verification; it does not close the product.
 Agents may close verified milestones and create new ones. The goal is the full
@@ -48,7 +50,7 @@ covering foundation areas 8.1–8.16 at the same candidate, closed required work
 and successful live application checks on the current protected base head.
 This coordination check does not replace the peers testing real behavior.
 
-## Configuration version 3
+## Configuration version 4
 
 The manifest includes initial milestones and product-scope discovery. A trusted
 creator plus the exact `flux-milestone:v1` marker admits a subsequent milestone.
@@ -73,6 +75,24 @@ override, Claude uses `--effort`. Every turn records its selection/argv locally.
 Changing selection keeps task work; unpinned CLI defaults are identified honestly.
 No overall run cap is configured; per-turn deadlines and optional overall caps
 remain supported. Idle polling does not invoke a model.
+
+Version 4 adds mandatory `peer_watch`. Both workers publish one reusable presence
+comment on the configured coordination issue, separately from task snapshots.
+Actual GitHub comment authors, the worker ID, configuration digest, server update
+timestamp and run ID determine presence. A forged marker, stale heartbeat,
+duplicate/mismatched record or unreadable channel never authorizes a model call.
+Run IDs also prevent a previous invocation from overwriting its replacement.
+
+The same guard runs before provider turns, during provider polling, while idle,
+and before inbox API requests so a large paginated inbox cannot starve heartbeats.
+Provider event output has its own idle watchdog. Failure terminates the process
+group, preserves the interrupted turn and best-effort publishes suspension.
+Expiry handles crashes that cannot publish. See [paired execution](startup.md#paired-execution)
+for bounds and restart behavior. This channel cannot grant task ownership.
+
+The coordinator remembers the snapshot after an empty-milestone bootstrap
+attempt. An unchanged empty milestone does not repeatedly wake the model when
+its useful tasks are parked; changed task evidence can wake it again.
 
 ## Recovery and boundaries
 

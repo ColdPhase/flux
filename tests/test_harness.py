@@ -272,6 +272,7 @@ class LoopFixture(TempTest):
         self.repo.mkdir()
         subprocess.run(["git", "init", "-q", str(self.repo)], check=True)
         (self.repo / "README.md").write_text("Fixture\n")
+        (self.repo / ".gitignore").write_text("/.harness/\n")
         subprocess.run(["git", "-C", str(self.repo), "add", "."], check=True)
         subprocess.run(["git", "-C", str(self.repo), "-c", "user.name=Fixture",
                         "-c", "user.email=fixture@example.invalid", "commit", "-qm", "fixture"], check=True)
@@ -281,6 +282,13 @@ class LoopFixture(TempTest):
         self.config["limits"]["max_turns"] = 2
         (self.repo / ".harness").mkdir()
         (self.repo / ".harness/project.json").write_text(json.dumps(self.config))
+        # Scheduler fixtures isolate coordination from the tested provider behavior.
+        # Dedicated peer-presence tests exercise the real guard and its transport.
+        self.guard_patch = patch("flux_harness.worker.PeerGuard")
+        self.guard = self.guard_patch.start().return_value
+        self.guard.start.return_value = None
+        self.guard.poll.return_value = None
+        self.addCleanup(self.guard_patch.stop)
 
 class LoopTests(LoopFixture):
     def test_workspace_is_isolated_and_reused_without_deleting_work(self):
@@ -315,7 +323,7 @@ class LoopTests(LoopFixture):
             def verify_identity(self, worker):
                 return worker["github_login"]
 
-        def provider(name, root, cwd, directory, prompt, deadline, tick, session, options=None):
+        def provider(name, root, cwd, directory, prompt, deadline, tick, session, options=None, idle_timeout=None):
             calls.append(prompt)
             if len(calls) == 1:
                 return result("blocked", 1), "fixture"
@@ -354,7 +362,7 @@ class LoopTests(LoopFixture):
         data = snapshot(issue(1), issue(2))
         calls = []
 
-        def provider(name, root, cwd, directory, prompt, deadline, tick, session, options=None):
+        def provider(name, root, cwd, directory, prompt, deadline, tick, session, options=None, idle_timeout=None):
             calls.append(prompt)
             if len(calls) == 2:
                 self.assertIn('"eligible_issue_numbers": [2]', prompt)

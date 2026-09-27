@@ -58,7 +58,8 @@ def read_snapshot(github, config):
         scope_check(config, item["milestone"])
     return {"milestone": snapshots[0]["milestone"],
             "milestones": [item["milestone"] for item in snapshots],
-            "issues": list({issue["number"]: issue for item in snapshots for issue in item["issues"]}.values()),
+            "issues": list({issue["number"]: issue for item in snapshots for issue in item["issues"]
+                            if issue["number"] != config["peer_watch"]["issue_number"]}.values()),
             "pull_requests": list({pr["number"]: pr for item in snapshots for pr in item["pull_requests"]}.values())}
 
 
