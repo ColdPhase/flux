@@ -167,7 +167,8 @@ export function conversationStore(db: Database) {
         await lockIdempotency(tx, projectId, authorId, input.clientMessageId);
         const existing = await existingMessage(projectId, authorId, input.clientMessageId, tx);
         if (existing) {
-          if (existing.requestFingerprint !== input.fingerprint) throw new ConflictError('This clientMessageId was used for another message', 'IDEMPOTENCY_CONFLICT');
+          if (existing.requestFingerprint !== input.fingerprint || existing.sequence !== 1)
+            throw new ConflictError('This clientMessageId was used for another message', 'IDEMPOTENCY_CONFLICT');
           const row = await locateConversation(principal, existing.conversationId, tx);
           return { id: row.id, projectId: row.projectId, workspaceId: row.workspaceId,
             audience: { kind: 'project' as const, projectId: row.projectId }, createdBy: row.createdBy,
@@ -193,6 +194,8 @@ export function conversationStore(db: Database) {
         const row = await locateConversation(principal, conversationId, tx, true, true);
         await lockIdempotency(tx, row.projectId, authorId, input.clientMessageId);
         const sent = await sendInTransaction(tx, row, authorId, input);
+        if (sent.message.sequence === 1)
+          throw new ConflictError('This clientMessageId was used to start the conversation', 'IDEMPOTENCY_CONFLICT');
         if (sent.inserted) await recordEvent(tx, principal, row.workspaceId, 'project.message_sent.v1', row.projectId, {});
         return sent.message;
       });

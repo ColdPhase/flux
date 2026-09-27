@@ -58,7 +58,9 @@ projects that the current person can see, and a selected project route loads its
 conversation and materials under the current session. A revoked project route
 returns an error instead of keeping old server content on screen. The active
 composer draft is kept per signed-in user and conversation in session storage;
-its UUID is retained across a failed send until the command changes. A published
+its pending command and UUID survive a reload or view switch after a failed send,
+until the message text or material citation changes. Starting a conversation and
+replying cannot reuse one another's UUID. A published
 material from a private draft uses the chosen draft version and the exact edited
 public text. The private draft stays separate.
 

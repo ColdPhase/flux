@@ -33,6 +33,19 @@ function readableError(error: unknown) {
 }
 function savedDraft(key: string) { try { return sessionStorage.getItem(key) ?? ''; } catch { return ''; } }
 function putDraft(key: string, value: string) { try { if (value) sessionStorage.setItem(key, value); else sessionStorage.removeItem(key); } catch { /* private mode */ } }
+interface PendingSend { command: SendMessageCommand; citation: { title: string; materialId: string; version: number } | null }
+function savedPending(key: string, draft: string): PendingSend | null {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(key) ?? 'null') as PendingSend | null;
+    if (!saved?.command || saved.command.body !== draft.trim() || typeof saved.command.clientMessageId !== 'string') return null;
+    if (saved.command.source && (!saved.citation || saved.command.source.materialId !== saved.citation.materialId || saved.command.source.version !== saved.citation.version)) return null;
+    return saved;
+  } catch { return null; }
+}
+function putPending(key: string, value: PendingSend | null) {
+  try { if (value) sessionStorage.setItem(key, JSON.stringify(value)); else sessionStorage.removeItem(key); }
+  catch { /* private mode: same-page retry still works */ }
+}
 interface MaterialFormSnapshot { open: boolean; title: string; body: string; url: string; sourceDraft: Draft | null; mutationId: string }
 function savedMaterialForm(key: string): MaterialFormSnapshot {
   try {
@@ -58,9 +71,12 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
   const navigate = useNavigate();
   const revalidator = useRevalidator();
   const materialFormKey = `flux.project-material.${me.user.id}.${project.id}`;
+  const draftKey = `flux.project-composer.${me.user.id}.${project.id}.${conversation?.id ?? 'new'}`;
+  const pendingKey = `${draftKey}.pending`;
   const savedMaterial = useMemo(() => savedMaterialForm(materialFormKey), [materialFormKey]);
-  const [draft, setDraft] = useState(() => savedDraft(`flux.project-composer.${me.user.id}.${project.id}.${conversation?.id ?? 'new'}`));
-  const [pending, setPending] = useState<SendMessageCommand | null>(null);
+  const [draft, setDraft] = useState(() => savedDraft(draftKey));
+  const restoredPending = useMemo(() => savedPending(pendingKey, savedDraft(draftKey)), [pendingKey, draftKey]);
+  const [pending, setPending] = useState<SendMessageCommand | null>(restoredPending?.command ?? null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [readFailure, setReadFailure] = useState<{ message: string; retry: () => void } | null>(null);
@@ -87,9 +103,8 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
   const [materialMutationId, setMaterialMutationId] = useState(savedMaterial.mutationId);
   const [privateDrafts, setPrivateDrafts] = useState<Draft[]>([]);
   const [sourceDraft, setSourceDraft] = useState<Draft | null>(savedMaterial.sourceDraft);
-  const [citation, setCitation] = useState<{ title: string; materialId: string; version: number } | null>(null);
+  const [citation, setCitation] = useState<{ title: string; materialId: string; version: number } | null>(restoredPending?.citation ?? null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const draftKey = `flux.project-composer.${me.user.id}.${project.id}.${conversation?.id ?? 'new'}`;
   const writable = project.access !== 'viewer';
   const conversationId = conversation?.id;
   const author = (id: string) => id === me.user.id ? me.user.name : members.find((member) => member.userId === id)?.name ?? 'Member';
@@ -151,14 +166,18 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
   }, [refresh]);
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [conversation?.id]);
 
-  function changeDraft(value: string) { setDraft(value); putDraft(draftKey, value); if (pending && pending.body !== value.trim()) setPending(null); setError(''); }
+  function changeDraft(value: string) {
+    setDraft(value); putDraft(draftKey, value);
+    if (pending && pending.body !== value.trim()) { setPending(null); putPending(pendingKey, null); }
+    setError('');
+  }
   async function send() {
     if (!writable || busy || !draft.trim()) return;
     const command = pending ?? { body: draft.trim(), clientMessageId: crypto.randomUUID(), ...(citation ? { source: { materialId: citation.materialId, version: citation.version } } : {}) };
-    setPending(command); setBusy(true); setError('');
+    setPending(command); putPending(pendingKey, { command, citation }); setBusy(true); setError('');
     try {
       const result = conversation ? await reply(conversation.id, command) : await startConversation(project.id, command);
-      setPending(null); setDraft(''); putDraft(draftKey, ''); setCitation(null);
+      setPending(null); putPending(pendingKey, null); setDraft(''); putDraft(draftKey, ''); setCitation(null);
       if (!conversation) navigate(`/projects/${project.id}/conversations/${(result as Conversation).id}`);
       else void refresh();
     } catch (cause) {
@@ -213,7 +232,11 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
     setReadFailure(null);
     try {
       const snapshot = await getMaterialVersion(material.materialId, material.version);
-      setCitation({ title: snapshot.title, materialId: material.materialId, version: snapshot.version }); setPending(null); setError('');
+      const selected = { title: snapshot.title, materialId: material.materialId, version: snapshot.version };
+      if (!pending?.source || pending.source.materialId !== selected.materialId || pending.source.version !== selected.version) {
+        setPending(null); putPending(pendingKey, null);
+      }
+      setCitation(selected); setError('');
       document.getElementById('project-composer')?.focus();
     } catch (cause) { hideIfDenied(cause); setReadFailure({ message: readableError(cause), retry: () => void cite(material) }); }
   }
@@ -248,7 +271,7 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
     <div className="composer project-convo__composer"><div className="composer__in">
       {conversation ? <p className="project-convo__current-thread" title={conversation.firstMessageBody.split('\n')[0]}>Replying to · {conversation.firstMessageBody.split('\n')[0] || 'Conversation'}</p> : null}
       <p className="composer__audience"><Icon name="lock" size={13} />{project.name} · People with project access · Saved to project</p>
-      {citation ? <div className="project-convo__citation">Discussing “{citation.title}” v{citation.version}<button type="button" disabled={busy} onClick={() => { setCitation(null); setPending(null); setError(''); }} aria-label="Remove material citation">×</button></div> : null}
+      {citation ? <div className="project-convo__citation">Discussing “{citation.title}” v{citation.version}<button type="button" disabled={busy} onClick={() => { setCitation(null); setPending(null); putPending(pendingKey, null); setError(''); }} aria-label="Remove material citation">×</button></div> : null}
       <div className="composer__box"><label className="ui-vh" htmlFor="project-composer">{conversation ? 'Reply' : 'Start a conversation'}</label><textarea id="project-composer" value={draft} onChange={(event) => changeDraft(event.target.value)} onKeyDown={onComposerKey} disabled={!writable || busy} placeholder={conversation ? 'Reply…' : 'Share a thought…'} rows={1} /><button className="composer__send" aria-label={conversation ? 'Send reply' : 'Start conversation'} aria-disabled={!draft.trim() || !writable || busy} type="button" onClick={() => void send()}><Icon name="send" /></button></div>
       {readFailure ? <p className="project-convo__error" role="alert">{readFailure.message} <button type="button" onClick={readFailure.retry}>Retry read</button></p> : null}
       {error ? <p className="project-convo__error" role="alert">{error} <button type="button" onClick={() => void send()}>Retry send</button></p> : null}

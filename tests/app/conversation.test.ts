@@ -96,6 +96,8 @@ describe('project capture and inline conversation', () => {
     assert.equal(thread.audience.projectId, project.id);
     const retry = expect(await owner.browser.request('POST', `/api/v1/projects/${project.id}/conversations`, { body: command }), 201) as Conversation;
     assert.equal(retry.id, thread.id);
+    expect(await owner.browser.request('POST', `/api/v1/conversations/${thread.id}/messages`,
+      { body: command }), 409, 'an opening key cannot impersonate a later reply');
     expect(await owner.browser.request('POST', `/api/v1/projects/${project.id}/conversations`,
       { body: { ...command, body: 'different send' } }), 409);
     const item = expect(await partner.browser.request('POST', `/api/v1/projects/${project.id}/materials`,
@@ -115,6 +117,8 @@ describe('project capture and inline conversation', () => {
     const replay = expect(await partner.browser.request('POST', `/api/v1/conversations/${thread.id}/messages`,
       { body: replyCommand }), 201) as ConversationMessage;
     assert.equal(replay.id, first.id);
+    expect(await partner.browser.request('POST', `/api/v1/projects/${project.id}/conversations`,
+      { body: replyCommand }), 409, 'a reply key cannot impersonate a conversation opening');
     const concurrent = await Promise.all(Array.from({ length: 4 }, (_, i) => owner.browser.request('POST',
       `/api/v1/conversations/${thread.id}/messages`, { body: { body: `note ${i}`, clientMessageId: randomUUID() } })));
     concurrent.forEach((response) => expect(response, 201));

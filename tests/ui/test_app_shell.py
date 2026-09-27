@@ -712,6 +712,44 @@ class AppShellJourney(unittest.TestCase):
         saved = owner.context.request.get(f"{ORIGIN}/api/v1/conversations/{conversation_id}").json()
         self.assertEqual(sum(message["body"] == "Retry this one reply" for message in saved["messages"]), 1)
 
+        # The server commits, the response disappears, and the browser reloads before
+        # the person retries. The client id must survive the remount with the draft.
+        def lose_committed_reply(route) -> None:
+            response = route.fetch()
+            self.assertEqual(response.status, 201)
+            route.abort("failed")
+        owner.route("**/api/v1/conversations/*/messages", lose_committed_reply)
+        owner.get_by_label("Reply", exact=True).fill("Reload after lost reply")
+        owner.get_by_role("button", name="Send reply").click()
+        expect(owner.get_by_role("alert")).to_contain_text("Flux could not be reached")
+        owner.unroute("**/api/v1/conversations/*/messages", lose_committed_reply)
+        owner.reload()
+        expect(owner.get_by_label("Reply", exact=True)).to_have_value("Reload after lost reply")
+        owner.get_by_role("button", name="Send reply").click()
+        expect(owner.get_by_label("Reply", exact=True)).to_have_value("")
+        saved = owner.context.request.get(f"{ORIGIN}/api/v1/conversations/{conversation_id}").json()
+        self.assertEqual(sum(message["body"] == "Reload after lost reply" for message in saved["messages"]), 1)
+
+        owner.get_by_role("link", name="New conversation").click()
+        def lose_committed_opening(route) -> None:
+            response = route.fetch()
+            self.assertEqual(response.status, 201)
+            route.abort("failed")
+        owner.route("**/api/v1/projects/*/conversations", lose_committed_opening)
+        owner.get_by_label("Start a conversation").fill("Revisit after lost opening")
+        owner.get_by_role("button", name="Start conversation").click()
+        expect(owner.get_by_role("alert")).to_contain_text("Flux could not be reached")
+        owner.unroute("**/api/v1/projects/*/conversations", lose_committed_opening)
+        owner.get_by_role("link", name="Home").click()
+        owner.goto(f"/projects/{project_id}?new=1")
+        expect(owner.get_by_label("Start a conversation")).to_have_value("Revisit after lost opening")
+        owner.get_by_role("button", name="Start conversation").click()
+        expect(owner.get_by_text("Revisit after lost opening", exact=True)).to_be_visible()
+        threads = owner.context.request.get(f"{ORIGIN}/api/v1/projects/{project_id}/conversations").json()["items"]
+        self.assertEqual(sum(thread["firstMessageBody"] == "Revisit after lost opening" for thread in threads), 1)
+        owner.goto(f"/projects/{project_id}/conversations/{conversation_id}")
+        expect(owner.get_by_role("link", name="Source: Privacy options · v1")).to_be_visible()
+
         read_failures = {"count": 0}
         def fail_first_citation(route) -> None:
             read_failures["count"] += 1
@@ -725,7 +763,7 @@ class AppShellJourney(unittest.TestCase):
         expect(owner.get_by_role("button", name="Retry read")).to_be_visible()
         owner.get_by_role("button", name="Retry read").click()
         expect(owner.get_by_text("Discussing “Privacy options” v1")).to_be_visible()
-        self.assertEqual(owner.context.request.get(f"{ORIGIN}/api/v1/conversations/{conversation_id}").json()["messages"][-1]["body"], "Retry this one reply")
+        self.assertEqual(owner.context.request.get(f"{ORIGIN}/api/v1/conversations/{conversation_id}").json()["messages"][-1]["body"], "Reload after lost reply")
         owner.get_by_label("Reply", exact=True).fill("")
         owner.get_by_role("button", name="Remove material citation").click()
         owner.unroute("**/api/v1/materials/*/versions/1", fail_first_citation)
@@ -766,6 +804,12 @@ class AppShellJourney(unittest.TestCase):
         phone.go_back()
         expect(phone.get_by_label("Reply", exact=True)).to_have_value("Phone draft survives a view switch")
         expect(phone.locator(".project-convo__current-thread")).to_contain_text("Try a PIR sensor before considering a camera")
+        phone.set_viewport_size({"width": 390, "height": 500})
+        phone.get_by_label("Reply", exact=True).focus()
+        composer = phone.locator(".project-convo__composer").bounding_box()
+        self.assertIsNotNone(composer)
+        self.assertLessEqual(composer["y"] + composer["height"], 500, "focused composer remains inside a reduced phone viewport")
+        phone.set_viewport_size(PHONE)
         shot(phone, "conversation-phone-390")
         self.assertLessEqual(phone.locator("body").evaluate("el => el.scrollWidth"), PHONE["width"])
 
