@@ -50,6 +50,10 @@ app.post<{ Body: SampleCommand }>(SAMPLE_COMMAND_PATH, {
 });
 
 await fastifyStatic(app, { root: join(process.cwd(), 'apps/web/dist'), prefix: '/' });
-app.setNotFoundHandler(async (_request, reply) => reply.sendFile('index.html'));
+app.setNotFoundHandler(async (request, reply) => {
+  if (request.url.startsWith('/api/')) return reply.code(404).send({ error: 'Not Found' });
+  if (!request.headers.accept?.includes('text/html')) return reply.code(404).send({ error: 'Not Found' });
+  return reply.sendFile('index.html');
+});
 await app.listen({ host: '0.0.0.0', port: Number(process.env.PORT ?? 8080) });
 app.log.info({ queue: SAMPLE_JOB }, 'Flux API ready');
