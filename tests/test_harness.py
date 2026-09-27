@@ -20,6 +20,8 @@ from flux_harness.worker import eligibility, scope_check, task_fingerprint, work
 
 
 CONFIG = json.loads((ROOT / ".harness/project.json").read_text())
+CONFIG["additional_milestones"] = []
+CONFIG["milestone_discovery"]["enabled"] = False
 WORKER = CONFIG["workers"][0]
 PEER = CONFIG["workers"][1]
 
@@ -202,6 +204,11 @@ class ProviderTests(TempTest):
 import json, pathlib, sys
 prompt = sys.stdin.read()
 assert 'literal $(touch /tmp/flux-not-a-shell-command)' in prompt
+assert sys.argv[sys.argv.index('--model')+1] == 'fixture-model'
+if pathlib.Path(sys.argv[0]).name == 'claude':
+    assert sys.argv[sys.argv.index('--effort')+1] == 'high'
+else:
+    assert 'model_reasoning_effort="high"' in sys.argv
 response = {"outcome":"waiting","task":None,"role":"planning","summary":"Checked fixture","next_action":"Wait for peer","evidence":[]}
 if pathlib.Path(sys.argv[0]).name == 'codex':
     pathlib.Path(sys.argv[sys.argv.index('--output-last-message')+1]).write_text(json.dumps(response))
@@ -219,7 +226,7 @@ else:
                 with self.subTest(provider=provider):
                     response, session = run_provider(provider, self.directory, self.directory,
                         self.directory / provider, "literal $(touch /tmp/flux-not-a-shell-command)",
-                        time.monotonic() + 10, lambda: None)
+                        time.monotonic() + 10, lambda: None, options={"model":"fixture-model", "reasoning_effort":"high"})
                     self.assertEqual(response["outcome"], "waiting")
                     self.assertEqual(session, "fixture-session")
 
@@ -239,7 +246,7 @@ else:
         self.assertLess(time.monotonic() - started, 10)
 
 
-class LoopTests(TempTest):
+class LoopFixture(TempTest):
     def setUp(self):
         super().setUp()
         self.repo = self.directory / "repo"
@@ -256,6 +263,7 @@ class LoopTests(TempTest):
         (self.repo / ".harness").mkdir()
         (self.repo / ".harness/project.json").write_text(json.dumps(self.config))
 
+class LoopTests(LoopFixture):
     def test_workspace_is_isolated_and_reused_without_deleting_work(self):
         directory = self.repo / ".harness/local/fixture"
         directory.mkdir(parents=True)
@@ -288,7 +296,7 @@ class LoopTests(TempTest):
             def verify_identity(self, worker):
                 return worker["github_login"]
 
-        def provider(name, root, cwd, directory, prompt, deadline, tick, session):
+        def provider(name, root, cwd, directory, prompt, deadline, tick, session, options=None):
             calls.append(prompt)
             if len(calls) == 1:
                 return result("blocked", 1), "fixture"
@@ -327,7 +335,7 @@ class LoopTests(TempTest):
         data = snapshot(issue(1), issue(2))
         calls = []
 
-        def provider(name, root, cwd, directory, prompt, deadline, tick, session):
+        def provider(name, root, cwd, directory, prompt, deadline, tick, session, options=None):
             calls.append(prompt)
             if len(calls) == 2:
                 self.assertIn('"eligible_issue_numbers": [2]', prompt)

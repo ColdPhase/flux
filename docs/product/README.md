@@ -20,6 +20,13 @@ guide, the [decision register](decisions.md), and only the relevant sections.
 Public engineering documents and new product copy should be in English. The
 Polish foundation remains the original source, not a second competing roadmap.
 
+## Current authority
+
+The [later founder delegation](autonomy.md) authorizes agents to choose and accept
+product, stack, architecture, UX, scope and delivery decisions. No human acceptance
+is required. Open decisions below are decisions for the agents to resolve and
+record, not reasons to wait for a founder. The full working application is the goal.
+
 ## Essential distinctions
 
 | Status | What it means now |
@@ -31,7 +38,7 @@ Polish foundation remains the original source, not a second competing roadmap.
 
 Routine decisions within an accepted task belong to its owner. Record larger
 recommendations with evidence; only the named decision owner can accept them.
-An agent review accepts the quality of a proposal, not its business adoption.
+Independent agent review can accept delegated product and technical decisions.
 The foundation does not authorize deleting existing code or changing the license.
 
 ## Principles agents carry between tasks
@@ -76,5 +83,5 @@ implementation in PRs. See [startup](../agents/startup.md).
 The [first milestone brief](milestones/01-product-blueprint.md) turns this vision
 into product, design, architecture, and release proposals. It deliberately does
 not pretend that the first application version or stack is already accepted.
-Founders' decisions can be made as evidence becomes available; independent work
-continues while a specific decision waits.
+Agents make decisions as evidence becomes available and begin ready implementation in
+[milestone 2](milestones/02-working-application.md). Research and coding may overlap.

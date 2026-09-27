@@ -41,29 +41,38 @@ Its coarse eligible list is not proof of a task's accepted contract.
    Stop on request, scope/identity failure, provider failure, configured limits,
    or a closed milestone; preserve work for a new invocation.
 
-`candidate-complete` requests independent acceptance. The runner never closes a
-milestone or publishes from that claim. Final evidence and founder decisions
-remain required. It reports a closed milestone as `milestone-closed`, without
-claiming that application tests passed.
+`candidate-complete` requests peer verification; it does not close the product.
+Agents may close verified milestones and create new ones. The goal is the full
+application. Final completion requires two authenticated acceptance records
+covering foundation areas 8.1–8.16 at the same candidate, closed required work,
+and successful live application checks on the current protected base head.
+This coordination check does not replace the peers testing real behavior.
 
-## Configuration version 2
+## Configuration version 3
 
-The manifest selects one milestone and phase. `planning` permits agreed
-discovery/proposals without fabricating production tests. `release` requires
-real specification/architecture files and nonempty task, integrated release,
-and required-status-check lists. Unknown fields and invalid paths fail
-validation. Planning cannot enable publication or deployment.
+The manifest includes initial milestones and product-scope discovery. A trusted
+creator plus the exact `flux-milestone:v1` marker admits a subsequent milestone.
+Descriptions remain task evidence; they cannot expand the founder's product
+scope or override the shared instructions. In fixed mode (discovery disabled),
+the description digest is still enforced. No automatic rewriting of the local
+control config occurs during a run.
 
-The current planning configuration enables an **explicit local `run` command**.
-Nothing starts on pull, merge, or Actions. The brief is linked from milestone 1;
-its description is pinned by SHA-256. Review a changed scope and configuration
-together; do not automatically refresh the digest to bypass a refusal. The brief
-is versioned with the control checkout.
+`planning` supports decisions/research, `implementation` permits application
+bootstrap and build-out while real checks are developed, and `release` requires
+existing specification/architecture and nonempty validation/check lists. The
+initial implementation authority does not certify future application behavior.
+Agents must establish real tests and verified artifacts before publishing.
 
-Merge/publication/deployment switches govern shared procedures. The runner is
-not a proxy intercepting every shell command an agent may execute. GitHub
-protections, provider permission systems, and independent evaluation enforce
-their own boundaries. A prompt or switch is not an external security boundary.
+The founder delegates decision acceptance, peer review, protected merges and
+final release delivery. Global capability switches describe authority; they are
+not an external proxy for arbitrary shell commands. Existing GitHub protections,
+provider permissions and independent evidence still apply.
+
+Models/effort are optional CLI overrides saved per worker. Codex uses its config
+override, Claude uses `--effort`. Every turn records its selection/argv locally.
+Changing selection keeps task work; unpinned CLI defaults are identified honestly.
+No overall run cap is configured; per-turn deadlines and optional overall caps
+remain supported. Idle polling does not invoke a model.
 
 ## Recovery and boundaries
 
@@ -96,3 +105,15 @@ that trial or application release readiness.
 Provider references checked during implementation:
 [Codex non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode)
 and [Claude programmatic use](https://code.claude.com/docs/en/headless).
+
+## Recovery implementation
+
+`recovery.py` inventories local task worktrees and reconciles authenticated owner
+claims, including those newer than the last completed checkpoint. The next prompt
+receives the interrupted log path and saved changes; the agent resumes the same
+artifact. `stop --after-turn` drains at the next checkpoint. Immediate stop keeps
+files and the active turn but cannot promise a final pushed handoff.
+
+`roadmap.py` discovers milestones, combines issue/PR snapshots across the roadmap
+and checks the final peer acceptance records. New scopes do not require a human
+to select the next milestone or edit the manifest.

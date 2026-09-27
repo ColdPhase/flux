@@ -29,6 +29,9 @@ class FoundationValidationTests(unittest.TestCase):
         self.manifest["state"] = "design"
         for capability in ("loop", "merge", "publishing", "deployment"):
             self.manifest[capability]["enabled"] = False
+        self.manifest["publishing"]["formats"] = []
+        self.manifest["additional_milestones"] = []
+        self.manifest["milestone_discovery"]["enabled"] = False
         self.manifest["milestone"] = {
             "number": None, "phase": "release", "brief_path": None,
             "description_digest": None, "spec_path": None, "architecture_path": None,
@@ -70,11 +73,12 @@ class FoundationValidationTests(unittest.TestCase):
     def test_switching_on_loop_does_not_bypass_missing_release_inputs(self):
         self.manifest["state"] = "active"
         self.manifest["loop"]["enabled"] = True
+        self.manifest["limits"]["max_turn_minutes"] = None
         errors = self.check()
         self.assertTrue(any("milestone.spec_path" in error for error in errors))
         self.assertTrue(any("verification.task_commands" in error for error in errors))
         self.assertTrue(any("verification.required_status_checks" in error for error in errors))
-        self.assertTrue(any("limits.max_run_minutes" in error for error in errors))
+        self.assertTrue(any("limits.max_turn_minutes" in error for error in errors))
 
     def test_design_cannot_enable_publishing(self):
         self.manifest["publishing"]["enabled"] = True

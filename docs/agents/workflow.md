@@ -8,16 +8,15 @@ Planning briefs name research/proposal outcomes and evidence; release briefs
 link accepted specification/architecture decisions, observable acceptance
 criteria, and permitted automation/delivery scope.
 
-The maintainers accept the milestone brief before an autonomous run starts.
-Its acceptance covers routine implementation, task decomposition, in-scope fixes,
-and peer evaluation. Agents can create and assign those tasks without asking for
-permission again. Product expansion or changes to accepted constraints go back
-to the maintainers; keep unrelated ideas outside the active milestone.
+The founder has accepted the product direction and [delegated](../product/autonomy.md)
+product/technical/design choices and delivery to the agents. They create further
+milestones as needed and independently review decisions. Do not wait for founder
+approval. Milestone descriptions carry the product scope marker in the protocol;
+the runner discovers them automatically.
 
-The complete [foundation](../product/FLUX-FOUNDATION.md) supplies direction.
-Hypotheses, stack candidates and prototype demonstrations are not accepted
-production scope. Agents create bounded issues needed for the milestone;
-do not turn every visionary area into an implementation ticket.
+Planning and implementation may overlap. Start each coding task once its specific
+architecture/interface decisions are agreed; do not wait for all market research
+or for the planning milestone to close. The full foundation supplies the goal.
 
 ## 2. Agree on a task contract
 
@@ -37,11 +36,13 @@ It records:
 - verification scenarios, including relevant failure and permission cases;
 - dependencies and shared interfaces that must be agreed first.
 
-The builder proposes a contract in a comment; the evaluator accepts it or names
-specific gaps. Acceptance references that proposal's comment ID and revision.
-No coding starts on an autonomous task until its contract is accepted and its
-dependencies are satisfied. Negotiation should finish with a testable decision;
-repeated disagreement becomes a recorded blocker, not an endless conversation.
+The coordinator or builder proposes a concise contract; the owner can adopt it
+by reference and the independent evaluator accepts it or names material gaps. Acceptance references that proposal's comment ID and revision.
+Resolve meaningful dependencies and agree on observable criteria, then build.
+Routine reversible details can be reviewed in the implementation PR. Do not
+rewrite an unchanged proposal for ceremony or keep refining wording after the
+outcome is testable. Repeated disagreement becomes a concrete task blocker;
+continue other work. No founder acceptance is needed.
 
 Changing the proposal after acceptance invalidates that acceptance. Publish a new
 revision and get it accepted. Keep the accepted proposal immutable; the issue
@@ -90,6 +91,9 @@ Open a draft PR once useful work can be inspected. Link its issue. Add `Closes`
 only when the PR is intended to fulfill the issue's entire agreed outcome.
 Build and verify in coherent increments; record progress after meaningful
 checkpoints and before a session ends.
+
+After a restart, inspect the recovery record and actual issue/branch/PR before
+creating new work. Preserve local changes and continue the existing artifact.
 
 At handoff, push the current commit, publish the [handoff](templates/handoff.md),
 release the active claim, and request the peer's evaluation. Unavailable checks
@@ -158,3 +162,11 @@ Create the version tag at the accepted candidate, build and test the distributab
 artifacts, publish them through GitHub Releases, and verify that users can download
 and start them as documented. Keep the milestone open until these required
 delivery checks pass. Record application deployment separately when included.
+
+## 8. Continue to the complete product
+
+An intermediate milestone closing does not finish the project. Maintain the
+foundation coverage matrix, create the next useful milestones/issues, and keep
+implementing. The independent agents verify the final integrated application,
+trigger its one final release pipeline, check delivered artifacts and post the
+full-product acceptance records. There is no human approval step.

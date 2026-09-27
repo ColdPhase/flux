@@ -10,12 +10,14 @@ Read `AGENTS.md`, `.harness/project.json`, and
 read [the GitHub protocol](../../../docs/agents/github-protocol.md).
 
 1. Establish the authenticated worker, milestone/brief, phase, config revision,
-   and checkpoint. Follow [startup](../../../docs/agents/startup.md). A planning
-   milestone creates proposals; it cannot silently authorize a production release.
+   and checkpoint. Follow [startup](../../../docs/agents/startup.md) and the
+   [delegation](../../../docs/product/autonomy.md). Agents own decisions and final
+   delivery; no founder acceptance is required. Planning and coding may overlap.
    There is no parent issue. The coordinator creates initial bounded tasks if
    the milestone is empty; both workers can create further agreed in-scope work.
 2. Reconcile the task, branch, PR, current head, pending peer requests, and claims.
    Reuse existing work. A message or label alone is not proof of current state.
+   After a restart use `flux-resume-work` before creating replacement work.
 3. Select work in workflow priority order: maintainer corrections, actionable peer
    decisions/review, own fixes/resumption, ready assigned tasks, release verification.
    Hold at most one active unit; checkpoint before switching.
@@ -40,3 +42,8 @@ create extra scope to keep busy. Do not add a nested `/goal` inside a runner tur
 Completion requires the milestone's independent acceptance evidence and any
 agreed release/publication/deployment checks. An empty queue or exhausted run limit is a waiting/suspended
 outcome. Preserve state; never manufacture a successful release result.
+
+Create subsequent milestones with the product scope marker. The runner discovers
+them automatically. Maintain coverage of foundation areas 8.1–8.16 and continue
+until the integrated product is delivered. Use the two final product acceptance
+records from the protocol. Keep PR Actions light and package only the final product.

@@ -61,9 +61,10 @@ def validate(root: Path) -> list[str]:
     data = record(data, "manifest", {
         "version", "state", "github", "workers", "milestone", "loop", "limits",
         "verification", "merge", "publishing", "deployment", "local_state_directory",
+        "additional_milestones", "milestone_discovery",
     })
-    require(type(data.get("version")) is int and data["version"] == 2,
-            "manifest.version: supported version is 2")
+    require(type(data.get("version")) is int and data["version"] == 3,
+            "manifest.version: supported version is 3")
     require(data.get("state") in ("design", "active"),
             "manifest.state: expected design or active")
 
@@ -106,8 +107,8 @@ def validate(root: Path) -> list[str]:
     release = record(data.get("milestone"), "milestone", {
         "number", "phase", "brief_path", "description_digest", "spec_path", "architecture_path",
     })
-    require(release.get("phase") in ("planning", "release"),
-            "milestone.phase: expected planning or release")
+    require(release.get("phase") in ("planning", "implementation", "release"),
+            "milestone.phase: expected planning, implementation or release")
     for key in ("number",):
         require(release.get(key) is None or positive(release[key]),
                 f"milestone.{key}: expected null or a positive integer")
@@ -118,6 +119,30 @@ def validate(root: Path) -> list[str]:
     require(pinned_digest is None or (isinstance(pinned_digest, str) and
             bool(re.fullmatch(r"sha256:[a-f0-9]{64}", pinned_digest))),
             "milestone.description_digest: expected null or a SHA-256 digest")
+
+    extra = data.get("additional_milestones")
+    require(isinstance(extra, list), "additional_milestones: expected a list")
+    numbers = [release.get("number")]
+    phases = [release.get("phase")]
+    for index, value in enumerate(extra if isinstance(extra, list) else []):
+        name = f"additional_milestones[{index}]"
+        item = record(value, name, {"number", "phase", "brief_path", "description_digest",
+                                   "spec_path", "architecture_path"})
+        require(positive(item.get("number")), f"{name}.number: expected a positive integer")
+        require(item.get("phase") in ("planning", "implementation", "release"), f"{name}.phase: invalid")
+        inside_file(item.get("brief_path"), f"{name}.brief_path")
+        require(isinstance(item.get("description_digest"), str) and
+                bool(re.fullmatch(r"sha256:[a-f0-9]{64}", item["description_digest"])), f"{name}: invalid digest")
+        for key in ("spec_path", "architecture_path"):
+            if item.get(key) is not None or item.get("phase") == "release":
+                inside_file(item.get(key), f"{name}.{key}")
+        numbers.append(item.get("number"))
+        phases.append(item.get("phase"))
+    require(len(numbers) == len(set(numbers)), "milestones: numbers must be unique")
+    discovery = record(data.get("milestone_discovery"), "milestone_discovery", {"enabled", "scope"})
+    require(type(discovery.get("enabled")) is bool, "milestone_discovery.enabled: expected boolean")
+    require(isinstance(discovery.get("scope"), str) and
+            bool(re.fullmatch(r"[a-z0-9-]+", discovery["scope"])), "milestone_discovery.scope: invalid")
 
     loop = record(data.get("loop"), "loop", {
         "enabled", "poll_seconds", "max_active_tasks_per_worker",
@@ -173,17 +198,18 @@ def validate(root: Path) -> list[str]:
         require(positive(release.get("number")), "active milestone requires milestone.number")
         inside_file(release.get("brief_path"), "active milestone.brief_path")
         require(pinned_digest is not None, "active milestone requires milestone.description_digest")
-        if release.get("phase") == "release":
-            for key in ("spec_path", "architecture_path"):
-                inside_file(release.get(key), f"active milestone.{key}")
+        if "release" in phases:
+            if release.get("phase") == "release":
+                for key in ("spec_path", "architecture_path"):
+                    inside_file(release.get(key), f"active milestone.{key}")
             for key in ("task_commands", "release_commands", "required_status_checks"):
                 require(bool(check_lists[key]), f"active release requires verification.{key}")
-        for key in ("max_run_minutes", "max_turn_minutes", "max_turns"):
-            require(positive(limits.get(key)), f"active milestone requires a positive limits.{key}")
+        require(positive(limits.get("max_turn_minutes")),
+                "active milestone requires a positive limits.max_turn_minutes")
         if positive(limits.get("max_turn_minutes")) and positive(limits.get("max_run_minutes")):
             require(limits["max_turn_minutes"] <= limits["max_run_minutes"],
                     "limits.max_turn_minutes cannot exceed max_run_minutes")
-    if release.get("phase") == "planning":
+    if all(phase == "planning" for phase in phases):
         require(publishing.get("enabled") is False and deployment.get("enabled") is False,
                 "planning milestones cannot enable publication or deployment")
 

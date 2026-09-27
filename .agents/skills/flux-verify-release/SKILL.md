@@ -27,3 +27,5 @@ Read `AGENTS.md`, the accepted release contract, and
 
 Return the candidate SHA, contract revision, criterion results, evidence, remaining
 tasks, and next action. Distinguish a verified candidate from a published version.
+
+The founder delegates final acceptance to the two independent agents. Maintain coverage for all foundation areas 8.1–8.16. After the full product is verified and delivered, publish the two authenticated final acceptance records described in the GitHub protocol. An intermediate milestone does not finish the application.

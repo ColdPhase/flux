@@ -41,11 +41,17 @@ def validate_result(result):
     return result
 
 
-def provider_command(provider, root, turn_directory, session=None):
+def provider_command(provider, root, turn_directory, session=None, options=None):
+    options = options or {}
     schema_path = turn_directory / "result-schema.json"
     if provider == "codex":
         # Keep the sandbox; the worker needs its worktrees and GitHub network access.
-        argv = ["codex", "--no-daemon", "--ask-for-approval", "never",
+        argv = ["codex", "--no-daemon", "--ask-for-approval", "never"]
+        if options.get("model"):
+            argv += ["--model", options["model"]]
+        if options.get("reasoning_effort"):
+            argv += ["-c", "model_reasoning_effort=" + json.dumps(options["reasoning_effort"])]
+        argv += [
                 "-c", 'sandbox_mode="workspace-write"',
                 "-c", "sandbox_workspace_write.network_access=true",
                 "-c", "sandbox_workspace_write.writable_roots=" + json.dumps([str(root)]), "exec"]
@@ -59,6 +65,10 @@ def provider_command(provider, root, turn_directory, session=None):
                 "--permission-prompts", "none", "--add-dir", str(root)]
         if session:
             argv += ["--resume", session]
+        if options.get("model"):
+            argv += ["--model", options["model"]]
+        if options.get("reasoning_effort"):
+            argv += ["--effort", options["reasoning_effort"]]
         return argv
     raise HarnessError(f"Unsupported provider: {provider}")
 
@@ -116,11 +126,13 @@ def terminate(process):
         process.wait(timeout=5)
 
 
-def run_provider(provider, root, workspace, directory, prompt, deadline, tick, session=None):
+def run_provider(provider, root, workspace, directory, prompt, deadline, tick, session=None, options=None):
     directory.mkdir(parents=True, exist_ok=False, mode=0o700)
     (directory / "result-schema.json").write_text(json.dumps(RESULT_SCHEMA), encoding="utf-8")
     (directory / "prompt.txt").write_text(prompt, encoding="utf-8")
-    argv = provider_command(provider, root, directory, session)
+    argv = provider_command(provider, root, directory, session, options)
+    (directory / "execution.json").write_text(json.dumps({"provider": provider,
+        "selection": options or {}, "argv": argv}, indent=2), encoding="utf-8")
     process = None
     with (directory / "prompt.txt").open() as incoming, \
             (directory / "events.jsonl").open("w") as outgoing, \

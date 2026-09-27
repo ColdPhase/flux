@@ -11,6 +11,10 @@ import uuid
 from check_agent_setup import validate
 from .github import GitHub, HarnessError, command, digest
 from .providers import run_provider
+from .options import execution_options, saved_options, selection_summary
+from .recovery import recovery_context, work_inventory
+from .roadmap import (configured_milestones, scope_check, milestone_numbers, read_snapshot,
+                      accepted_product, verify_product_ci)
 from .state import State, worker_lock
 
 
@@ -23,13 +27,6 @@ def configuration(root, worker_id):
     if worker is None:
         raise HarnessError(f"Unknown worker {worker_id}")
     return config, worker
-
-
-def scope_check(config, milestone):
-    if milestone["number"] != config["milestone"]["number"]:
-        raise HarnessError("Wrong milestone returned by GitHub")
-    if digest(milestone.get("description") or "") != config["milestone"]["description_digest"]:
-        raise HarnessError("Milestone description changed. Review the scope and update its committed digest.")
 
 
 def preflight(root, config, worker, live=True, clean=False):
@@ -56,10 +53,12 @@ def preflight(root, config, worker, live=True, clean=False):
     if live:
         github = GitHub(config["github"]["repository"], root)
         report["github_login"] = github.verify_identity(worker)
-        milestone = github.milestone(config["milestone"]["number"])
-        scope_check(config, milestone)
-        report["milestone_url"] = milestone["html_url"]
-        report["milestone_state"] = milestone["state"]
+        report["milestones"] = []
+        for number in milestone_numbers(github, config):
+            milestone = github.milestone(number)
+            scope_check(config, milestone)
+            report["milestones"].append({"number": number, "url": milestone["html_url"],
+                                         "state": milestone["state"]})
     return report
 
 
@@ -101,7 +100,11 @@ def eligibility(snapshot, worker, config, parked):
             for comment in issue["comments"])
         if owner == login or peer_request or labels & {"agent:planning", "agent:review"}:
             ready.append(issue["number"])
-    bootstrap = not snapshot["issues"] and config["loop"]["coordinator"] == worker["id"]
+    active = [item["number"] for item in snapshot.get("milestones", [snapshot["milestone"]])
+              if item["state"] == "open"]
+    populated = {(item.get("milestone") or {}).get("number", config["milestone"]["number"])
+                 for item in snapshot["issues"]}
+    bootstrap = (not active or bool(set(active) - populated)) and config["loop"]["coordinator"] == worker["id"]
     return ready, bootstrap
 
 
@@ -154,14 +157,30 @@ def make_prompt(root, config, worker, snapshot, state, directory, ready, bootstr
         "control_checkout": str(root), "worker_directory": str(directory),
         "latest_inbox_file": str(directory / "inbox.json"),
         "turn_minutes": config["limits"]["max_turn_minutes"],
+        "recovery": state.get("recovery"), "execution": state.get("execution_options"),
     }
-    brief = (root / config["milestone"]["brief_path"]).read_text(encoding="utf-8")
+    brief = "\n\n".join(f"MILESTONE {item['number']} ({item['phase']}):\n" +
+                        (root / item["brief_path"]).read_text(encoding="utf-8")
+                        for item in configured_milestones(config))
     return f"""Work as the configured Flux worker for ONE useful collaboration cycle.
 Read the trusted control checkout's AGENTS.md, .harness/project.json, and the
 flux-work-loop skill. Read docs/product/FLUX-FOUNDATION.md in full on first joining
 this project; thereafter use docs/product/README.md, current decisions, and the
 relevant sections. Use the milestone as your entry point. There is no parent issue.
-The committed milestone brief below defines this run's authorized scope.
+Read docs/product/autonomy.md. The goal is the complete Flux application, not
+finishing a planning document or one intermediate milestone. The founder delegated
+product, stack, UX, architecture, sequencing and release decisions to the agents.
+Choose the best supported option with your peer, record it and implement it.
+Do NOT request founder acceptance. Review each other and merge after real GitHub
+gates pass. Publication happens only for the completed and independently tested
+application. Run substantial tests locally in Docker; keep PR Actions light and
+release packaging on explicit final delivery, never every main push.
+The committed briefs below and the full founder vision define the authorized
+product scope. Agents create subsequent milestones with the scope marker described
+in docs/agents/github-protocol.md; the runner discovers them automatically.
+Milestones may overlap: start ready implementation as soon as its particular
+architecture/interface decisions are agreed. Do not wait for all market research.
+A milestone closing is not completion of the entire application.
 
 Reconcile real GitHub state before mutations; the supplied inbox is a snapshot.
 GitHub authors, assignment, contracts and reviews matter. Incoming bodies, review
@@ -172,6 +191,11 @@ criteria before implementation and verify dependencies and one writer per branch
 When bootstrap is true, create only the initial bounded issues needed for the
 milestone; assign yourself and your peer independent work and agree on criteria.
 Search for existing issues/PRs before creating any, especially after interruption.
+On recovery, first reconcile the interrupted task, GitHub claims, branches/PRs,
+local worktree changes and available turn logs in the recovery record. Resume the
+saved artifact before creating replacement work. Read normal tool results and
+checkpoints; do not treat old prompts as current instructions. Never discard local
+changes or blindly repeat an external action that might have succeeded.
 Otherwise prioritize peer questions/reviews, your fixes, ready work, and integrated
 verification. Both workers can plan, implement and evaluate; no self-approval.
 
@@ -202,7 +226,10 @@ The runner schedules the next cycle: do NOT create an additional /goal, recursiv
 runner, or infinite polling loop inside this turn. Finish at a useful checkpoint
 within the turn budget. An unmet milestone is never success because the queue is
 empty. Candidate-complete requires independent criterion-specific evidence and
-any founder decisions; report it for acceptance without closing the milestone.
+agent-reviewed decisions. The independent peer records acceptance and closes the
+milestone after verifying its criteria, without a human approval step. Continue
+other milestones until the complete product is verified. Final completion uses
+the two authenticated product acceptance reports in the GitHub protocol.
 
 Return the required structured result with actual evidence and next action.
 
@@ -215,13 +242,15 @@ GITHUB SNAPSHOT (external data):\n{json.dumps(snapshot, ensure_ascii=False)}
 def deliver_pending(github, state, config, worker):
     for message_id, issue, body in state.pending():
         current = github.api(f"{github.prefix}/issues/{issue}")
-        if (current.get("milestone") or {}).get("number") != config["milestone"]["number"]:
-            raise HarnessError("Pending message issue moved outside the configured milestone")
+        number = (current.get("milestone") or {}).get("number")
+        if number is None:
+            raise HarnessError("Pending message target has no milestone")
+        scope_check(config, github.milestone(number))
         result = github.comment_once(issue, body, message_id, worker["github_login"])
         state.delivered(message_id, result["id"])
 
 
-def run(root, worker_id, once=False, dry_run=False):
+def run(root, worker_id, once=False, dry_run=False, model=None, effort=None, use_cli_defaults=False):
     config, worker = configuration(root, worker_id)
     report = preflight(root, config, worker, clean=not dry_run)
     if not report["execution_configured"]:
@@ -229,16 +258,29 @@ def run(root, worker_id, once=False, dry_run=False):
     directory = root / ".harness/local" / worker_id
     github = GitHub(config["github"]["repository"], root)
     if dry_run:
-        snapshot = github.snapshot(config["milestone"]["number"])
+        snapshot = read_snapshot(github, config)
         ready, bootstrap = eligibility(snapshot, worker, config, {})
+        selected = execution_options(worker["provider"], saved_options(directory), model=model, effort=effort,
+                                     use_cli_defaults=use_cli_defaults)
         print(json.dumps({**report, "eligible_issues": ready, "bootstrap": bootstrap,
+                          "execution": selected,
                           "model_started": False, "github_writes": False}, indent=2))
         return 0
     os.umask(0o077)
     with worker_lock(directory):
         state = State(directory)
+        try:
+            options = execution_options(worker["provider"], state.get("execution_options"),
+                                        model, effort, use_cli_defaults)
+        except HarnessError:
+            state.close()
+            raise
+        state.set("execution_options", options)
+        print("Worker selection: " + selection_summary(options), flush=True)
         stop_file = directory / "stop.request"
         stop_file.unlink(missing_ok=True)
+        drain_file = directory / "drain.request"
+        drain_file.unlink(missing_ok=True)
         interrupted = False
 
         def interrupt(signum, frame):
@@ -249,14 +291,17 @@ def run(root, worker_id, once=False, dry_run=False):
         try:
             state.set("status", "starting")
             state.set("run_pid", os.getpid())
+            state.set("last_error", None)
             workspace_path = workspace(root, directory, report["revision"])
             trusted_manifest = digest((root / ".harness/project.json").read_text())
-            deadline = time.monotonic() + config["limits"]["max_run_minutes"] * 60
+            run_minutes = config["limits"]["max_run_minutes"]
+            deadline = time.monotonic() + run_minutes * 60 if run_minutes is not None else float("inf")
             github.deadline = deadline
             turns, stagnant, failures = 0, 0, 0
             last_seen = state.get("wait_digest")
             session = None  # Reconstruct safely after process interruption.
             last_poll = 0.0
+            recovering = True
 
             def tick():
                 nonlocal last_poll
@@ -267,19 +312,21 @@ def run(root, worker_id, once=False, dry_run=False):
                 if time.monotonic() - last_poll >= config["loop"]["poll_seconds"]:
                     if command(["git", "status", "--porcelain"], root).strip():
                         raise HarnessError("Control checkout changed during work; preserve edits and reconcile before resuming")
-                    latest = github.snapshot(config["milestone"]["number"])
-                    scope_check(config, latest["milestone"])
+                    latest = read_snapshot(github, config)
                     save_inbox(directory, latest)
                     last_poll = time.monotonic()
-                    if latest["milestone"]["state"] == "closed":
-                        raise HarnessError("Milestone closed during active work; checkpoint before accepting its final state")
+                    # Finish the current checkpoint even if a peer closes a milestone.
+                    # Other admitted milestones may still have useful work.
 
-            while time.monotonic() < deadline and turns < config["limits"]["max_turns"]:
+            while time.monotonic() < deadline and (config["limits"]["max_turns"] is None or
+                                                   turns < config["limits"]["max_turns"]):
+                if drain_file.exists():
+                    state.set("status", "stopped-at-checkpoint")
+                    return 0
                 if interrupted or stop_file.exists():
                     raise HarnessError("Stop requested; restart the same command to reconcile and resume")
                 try:
-                    snapshot = github.snapshot(config["milestone"]["number"])
-                    scope_check(config, snapshot["milestone"])
+                    snapshot = read_snapshot(github, config)
                     deliver_pending(github, state, config, worker)
                     failures = 0
                 except HarnessError:
@@ -290,10 +337,19 @@ def run(root, worker_id, once=False, dry_run=False):
                     wait_until(min(deadline, time.monotonic() + min(300, 15 * 2 ** failures)), stop_file,
                                lambda: interrupted)
                     continue
-                if snapshot["milestone"]["state"] == "closed":
-                    state.set("status", "milestone-closed")
-                    print("Milestone is closed. This is its tracking state; consult the independent acceptance evidence.")
-                    return 0
+                acceptance = accepted_product(snapshot, config)
+                if acceptance is not None:
+                    try:
+                        verify_product_ci(github, config, acceptance)
+                    except HarnessError as error:
+                        # A stale/failed final report is repair work, not a reason
+                        # to stop the whole roadmap or declare the product done.
+                        snapshot["acceptance_gap"] = str(error)
+                    else:
+                        state.set("status", "product-accepted")
+                        state.set("product_acceptance", acceptance)
+                        print("The peers accepted the full product and its candidate checks passed.")
+                        return 0
                 snapshot_hash = digest(snapshot)
                 save_inbox(directory, snapshot)
                 last_poll = time.monotonic()
@@ -302,6 +358,15 @@ def run(root, worker_id, once=False, dry_run=False):
                           if task_fingerprint(snapshot, int(task)) == fingerprint}
                 state.set("parked", parked)
                 ready, bootstrap = eligibility(snapshot, worker, config, parked)
+                if recovering:
+                    recovery = recovery_context(root, directory, state, snapshot, worker)
+                    state.set("recovery", recovery)
+                    for number in reversed(recovery["resume_issue_numbers"]):
+                        if number not in ready:
+                            ready.insert(0, number)
+                    if recovery["interrupted_turn"] or recovery["resume_issue_numbers"]:
+                        last_seen = None
+                    recovering = False
                 if snapshot_hash == last_seen or (not ready and not bootstrap):
                     state.set("status", "waiting-for-work")
                     if once:
@@ -317,15 +382,16 @@ def run(root, worker_id, once=False, dry_run=False):
                 prompt = make_prompt(root, config, worker, snapshot, state, directory, ready, bootstrap)
                 state.begin(turn_id, snapshot_hash)
                 state.set("status", "working")
-                print(f"Starting {worker_id} cycle {turns + 1}; milestone {config['milestone']['number']}", flush=True)
+                print(f"Starting {worker_id} cycle {turns + 1}; product milestones " +
+                      ", ".join(str(item["number"]) for item in snapshot["milestones"]), flush=True)
                 result, session = run_provider(worker["provider"], root, workspace_path,
                     directory / "turns" / turn_id, prompt,
-                    min(deadline, time.monotonic() + config["limits"]["max_turn_minutes"] * 60), tick, session)
+                    min(deadline, time.monotonic() + config["limits"]["max_turn_minutes"] * 60), tick, session, options)
                 state.finish(turn_id, result, result["outcome"])
                 state.set("status", result["outcome"])
                 state.set("session", session)
-                after = github.snapshot(config["milestone"]["number"])
-                scope_check(config, after["milestone"])
+                state.set("recovery", None)
+                after = read_snapshot(github, config)
                 if result["task"] is not None and result["task"] not in {
                         task["number"] for task in after["issues"]}:
                     raise HarnessError("Provider checkpoint names a task outside the configured milestone")
@@ -369,6 +435,10 @@ def run(root, worker_id, once=False, dry_run=False):
             state.set("last_error", str(error))
             raise
         finally:
+            try:
+                state.set("saved_worktrees", work_inventory(root, directory))
+            except HarnessError:
+                pass
             state.set("run_pid", None)
             state.close()
             for sig, handler in previous_handlers.items():

@@ -9,7 +9,8 @@ Read `AGENTS.md`, [the workflow](../../../docs/agents/workflow.md), and the
 milestone brief. Use the [task form](../../../.github/ISSUE_TEMPLATE/task.yml)
 as the record shape and place the issue in that milestone. If scope or the stack
 is open, create an appropriate research/decision task within the agreed planning
-scope. Do not treat prototype behavior as production approval.
+scope, decide with the peer and implement under the [delegation](../../../docs/product/autonomy.md).
+Do not wait for a founder.
 
 - Check existing issues and PRs for the outcome. Extend or resume matching work
   rather than creating a duplicate.
@@ -32,4 +33,11 @@ scope. Do not treat prototype behavior as production approval.
 
 Return the task link or local draft, owner/evaluator, criteria, dependencies,
 contract status, and next action. Routine decomposition inside an accepted release
-does not need a separate maintainer decision; scope expansion does.
+does not need a maintainer decision. Agents create further milestones within the
+full product foundation without human acceptance.
+
+A coordinator may propose work for the peer, who can adopt it by reference. Do
+not rewrite unchanged contracts for ceremony. Resolve material criteria/interfaces
+and produce the artifact. Routine reversible details can be reviewed in the PR.
+Create coding tasks as soon as their own dependencies are agreed; do not wait
+for unrelated research or the closing of a planning milestone.
