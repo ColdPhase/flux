@@ -51,7 +51,9 @@ In an isolated Compose test on 2026-09-28, Claude Code 2.1.281 completed OAuth
 and reported MCP protocol revision `2026-07-28` (`protocolEra: modern`). Its
 authenticated connection exposed the three Flux tools. The same bearer was
 used to read a selected material and create a sourced proposal over the MCP
-wire; retry with the same command ID returned the same proposal. The Claude
+wire; retry with the same command ID returned the same proposal. After Flux
+connection deletion, the same JWT's MCP request changed from HTTP 200 to 403.
+The Claude
 Code installation had no model login, so model-driven tool calls through the
 official CLI remain unverified. The self-hosted HTTPS deployment path also
 remains to be exercised before calling the integration fully supported.
