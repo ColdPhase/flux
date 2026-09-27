@@ -402,9 +402,9 @@ describe('notification audience follows the source (access policy)', () => {
     const { owner, viewer, projectId } = await restrictedProjectWithViewer();
     const draft = await owner.browser.request('POST', `/api/v1/workspaces/${owner.workspaceId}/drafts`, { body: { title: 'Minutes', projectId } });
     assert.equal(draft.status, 201, draft.text);
-    const draftId = (draft.json as { id: string }).id;
+    const { id: draftId, version } = draft.json as { id: string; version: number };
     await assert.rejects(notify({ userId: viewer.userId, source: { type: 'draft', id: draftId }, title: 'Minutes drafted' }), NotFoundError, 'a private draft is not readable by the viewer');
-    assert.equal((await owner.browser.request('POST', `/api/v1/drafts/${draftId}/share`, { body: { scope: 'project', projectId } })).status, 200);
+    assert.equal((await owner.browser.request('POST', `/api/v1/drafts/${draftId}/share`, { body: { scope: 'project', projectId }, headers: { 'if-match': `"${version}"` } })).status, 200);
     const aboutDraft = await notify({ userId: viewer.userId, source: { type: 'draft', id: draftId }, title: 'Minutes shared' });
     const aboutProject = await notify({ userId: viewer.userId, source: { type: 'project', id: projectId }, title: 'Board pack' });
     const ownWorkspace = await notify(own(viewer, { title: 'Own space' }));

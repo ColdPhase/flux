@@ -1,90 +1,92 @@
 # Flux
 
-Conversations, mind maps, tasks, and wiki pages in one connected workspace.
+An open source, self-hostable workspace where people and AI agents work on the same
+projects: conversations, and the tasks, documents and decisions that come out of them.
 
-Flux is an open source project working toward a workspace that teams can
-host themselves. The idea is to keep a discussion connected to the work and
-materials it produces.
-
-The [product foundation](docs/product/README.md) describes the broader direction:
-human and agent collaboration, continuity of project knowledge, self-hosting,
-extensibility, and a path to enterprise. The prototype below is an exploration;
-its layout and technology are not the accepted application design.
+The [product foundation](docs/product/README.md) describes the direction: human and
+agent collaboration, continuity of project knowledge, self-hosting and extensibility.
 
 ## Project status
 
-**Early development:** the repository now has a persistent Docker application
-foundation as well as the historical Flux Studio v8 UX prototype. The application
-currently exposes a browser shell, API, worker and PostgreSQL integration fixture.
-It does not yet provide human login or the working messenger.
+**Early development, not released.** There is no stable version, upgrade path or
+supported deployment yet; do not use it for sensitive data or production teams.
 
-Start the application with the [Compose guide](docs/development/application-foundation.md).
-The prototype remains a single HTML file with embedded JavaScript and CSS; its
-interface and sample content are in Polish.
+What exists on `main` today is a Docker Compose stack (API, worker, PostgreSQL,
+queue and a browser/PWA shell) with email/password accounts and sessions in the API,
+the workspace/project access policy, and notification/Web Push plumbing. The collaborative workspace itself is
+being built in the [current milestone](https://github.com/ColdPhase/flux/milestones).
 
-You can explore conversations, mind maps, task boards, wiki pages, and the links
-between them. Accounts, permissions, collaboration, AI agents, MCP, and external
-integrations are demonstrations. There is no shared backend or real AI service.
+`flux-ux-v8.html` is an earlier single-file UX prototype (Polish interface, browser
+storage only). It is design inspiration, not the application; see the
+[prototype guide](docs/prototype/README.md).
 
-![Flux prototype showing a project conversation and its related work](docs/prototype/images/flux-v8.png)
+## Quick start
 
-The prototype uses browser storage for local data. Use the JSON export for data
-you want to keep, and use sample data when trying it out. It is not ready to store
-sensitive information or serve a team in production.
-
-## Try the prototype
-
-Download or clone the repository, then open `flux-ux-v8.html` in a modern browser.
-No build step or account is needed.
-
-To serve it locally with Python 3:
+Prerequisites: Git and Docker Engine with Compose. No host Node.js or PostgreSQL.
 
 ```sh
 git clone https://github.com/ColdPhase/flux.git
 cd flux
-python3 -m http.server 8080 --bind 127.0.0.1
+cp .env.example .env
+# Replace POSTGRES_PASSWORD, FLUX_FIXTURE_TOKEN and FLUX_AUTH_SECRET with long random values.
+set -a; . ./.env; set +a
+docker compose --env-file .env -p flux -f infra/compose.yaml up -d --build db migrate
+docker compose --env-file .env -p flux -f infra/compose.yaml --profile setup run --rm files-init
+docker compose --env-file .env -p flux -f infra/compose.yaml up -d --wait api worker
+curl -fsS http://127.0.0.1:8081/api/v1/health
 ```
 
-Open <http://127.0.0.1:8080/flux-ux-v8.html>. On systems where Python 3 is named
-`python`, use that command instead of `python3`.
+Then open <http://127.0.0.1:8081/>. The [application foundation guide](docs/development/application-foundation.md)
+covers configuration, backups and the integration fixture;
+[containers](docs/development/containers.md) describes every service and variable.
 
-Start with the **Arduino + AI** project. Explore its conversation, switch to
-**Mapy**, **Zadania**, or **Wiki**, and follow the related materials. The
-[prototype guide in Polish](docs/prototype/README.md) describes a more detailed walkthrough.
+Run the checks (build, type check, lint, tests and browser checks, all in Docker):
+
+```sh
+./scripts/check_application.sh
+python3 scripts/check_agent_setup.py
+```
+
+## Repository layout
+
+| Path | Contents |
+| --- | --- |
+| `apps/server` | API: HTTP routes, identity, push, serving the web build |
+| `apps/worker` | Background jobs and Web Push delivery |
+| `apps/web` | Browser application and PWA |
+| `packages/core` | Domain rules, authorization, use cases and ports |
+| `packages/db` | Database schema, SQL migrations and persistence adapters |
+| `packages/contracts` | Public API wire types (Apache-2.0) |
+| `packages/sdk` | TypeScript client for the public API (Apache-2.0) |
+| `packages/agent-runtime` | Optional model/provider adapter |
+| `examples/external-agent` | An external agent using the SDK (Apache-2.0) |
+| `infra` | Dockerfile, Compose files, migration entry point |
+| `tests` | Application tests (`tests/app`) and repository tooling tests |
+| `scripts` | Check scripts and repository tooling |
+| `docs` | Product, design, development and agent documentation |
+
+Dependency directions between these are described and enforced in
+[architecture](docs/development/architecture.md).
 
 ## Contribute
 
-Bug reports, UX and accessibility feedback, documentation, and focused fixes are
-welcome. Read [CONTRIBUTING.md](docs/CONTRIBUTING.md) before opening a pull request.
-Discuss substantial features or architecture changes with the maintainers first.
+Bug reports, documentation, accessibility feedback and focused fixes are welcome.
+Read [CONTRIBUTING.md](docs/CONTRIBUTING.md) first and discuss larger features or
+architecture changes in an issue before starting.
 
-- [Report a bug or propose a feature](https://github.com/ColdPhase/flux/issues/new/choose).
-- [Follow development on the project board](https://github.com/orgs/ColdPhase/projects/1).
-- [Ask a question or discuss an idea](https://github.com/ColdPhase/flux/discussions).
-- [Report a security vulnerability privately](docs/SECURITY.md).
+- [Report a bug or propose a feature](https://github.com/ColdPhase/flux/issues/new/choose)
+- [Project board](https://github.com/orgs/ColdPhase/projects/1)
+- [Discussions](https://github.com/ColdPhase/flux/discussions)
+- [Report a security vulnerability privately](docs/SECURITY.md)
 
-Maintainers review contributions and decide what is merged into the project.
-
-## Documentation
-
-The [documentation index](docs/README.md) covers contributing, security, and the
-prototype's design:
-
-- [Prototype walkthrough](docs/prototype/README.md) — Polish user guide and limitations.
-- [UX specification](docs/prototype/SPECIFICATION.md) — design notes for this prototype.
-- [Changelog](docs/prototype/CHANGELOG.md) — changes in v8.
-- [UX audit](docs/prototype/AUDIT.md) — historical observations and limitations.
-- [Agent collaboration](docs/agents/README.md) — shared instructions and skills
-  for Codex and Claude to work through GitHub issues and PRs.
-- [Start the agents](docs/agents/startup.md) — each person's `/goal` session, pause and resume.
-- [Product foundation and decisions](docs/product/README.md) — founder direction and open choices.
-- [Docker development](docs/development/containers.md) — the environment contract for the application.
-- [Application foundation](docs/development/application-foundation.md) — clean Compose start, checks and initial backup/restore.
-
-These notes describe the prototype and its design history. Future architecture
-and feature proposals are discussed in Issues and Discussions.
+Much of the development is done by two coding agents (Codex and Claude) working
+through GitHub issues and pull requests with independent review; see
+[agent collaboration](docs/agents/README.md). The [documentation index](docs/README.md)
+lists everything else.
 
 ## License
 
-Flux is licensed under the GNU Affero General Public License, version 3.
-See [LICENSE](LICENSE) for the full terms.
+The application is licensed under the [GNU Affero General Public License v3](LICENSE).
+`packages/contracts`, `packages/sdk` and `examples/external-agent` are licensed under
+Apache-2.0 so that external agents and clients can use them; see
+[licensing](docs/product/licensing.md).

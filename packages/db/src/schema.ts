@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid, integer, jsonb, boolean, index, uniqueIndex, primaryKey, foreignKey, unique, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, uuid, integer, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
 export const samples = pgTable('samples', {
   id: uuid('id').primaryKey(),
@@ -16,6 +16,8 @@ export const events = pgTable('events', {
   data: jsonb('data').notNull(),
   // Added in migration 0003; null for pre-tenant fixture events.
   workspaceId: uuid('workspace_id').references((): AnyPgColumn => workspaces.id, { onDelete: 'cascade' }),
+  // Added in migration 0004. Assigned by a trigger in commit order; the stream cursor.
+  seq: bigserial('seq', { mode: 'number' }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -202,3 +204,40 @@ export const notifications = pgTable('notifications', {
   index('notifications_user_created_idx').on(table.userId, table.createdAt.desc()),
   index('notifications_source_idx').on(table.sourceType, table.sourceId),
 ]);
+// Per-recipient stream index (migration 0004), written by recordEvent.
+export const eventAudience = pgTable('event_audience', {
+  recipient: text('recipient').notNull(),
+  seq: bigint('seq', { mode: 'number' }).notNull(),
+  eventId: uuid('event_id').notNull().references(() => events.id, { onDelete: 'cascade' }),
+}, (table) => [primaryKey({ columns: [table.recipient, table.seq] }), index('event_audience_event_idx').on(table.eventId)]);
+
+// Worker job results and idempotency keys (migration 0004).
+export const draftResults = pgTable('draft_results', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  draftId: uuid('draft_id').notNull().references(() => drafts.id, { onDelete: 'cascade' }),
+  principalKind: text('principal_kind', { enum: ['human', 'agent'] }).notNull(),
+  principalId: text('principal_id').notNull(),
+  status: text('status', { enum: ['queued', 'running', 'completed', 'denied'] }).notNull().default('queued'),
+  deniedAtStage: text('denied_at_stage', { enum: ['before_read', 'before_commit'] }),
+  jobId: text('job_id'),
+  draftVersion: integer('draft_version'),
+  wordCount: integer('word_count'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+}, (table) => [index('draft_results_draft_idx').on(table.draftId, table.createdAt)]);
+
+export const idempotencyKeys = pgTable('idempotency_keys', {
+  id: uuid('id').primaryKey(),
+  principal: text('principal').notNull(),
+  workspaceId: uuid('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
+  operation: text('operation').notNull(),
+  key: text('key').notNull(),
+  requestHash: text('request_hash').notNull(),
+  responseStatus: integer('response_status').notNull(),
+  responseBody: jsonb('response_body'),
+  responseEtag: text('response_etag'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+}, (table) => [index('idempotency_keys_expiry_idx').on(table.expiresAt)]);

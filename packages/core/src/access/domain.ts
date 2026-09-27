@@ -27,7 +27,8 @@ import type {
   WorkspaceRole,
 } from '@flux/contracts';
 import type { Database, Principal } from '../types.js';
-import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, RuleViolationError } from './errors.js';
+import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, PreconditionRequiredError, RuleViolationError, VersionConflictError } from './errors.js';
+import { recordEvent } from '../events.js';
 import {
   accessName,
   enforce,
@@ -49,6 +50,7 @@ import {
 // project and the actor's grants on it). Membership, grant and agent changes take
 // conflicting locks on the rows they change, so a concurrent revocation is either seen or
 // waits until the mutation commits. Entry points must call these methods, never the tables.
+// Draft update, share and move require the caller's expected version (If-Match).
 
 const ROLES: readonly WorkspaceRole[] = ['owner', 'admin', 'member', 'guest'];
 const PROJECT_VISIBILITIES: readonly ProjectVisibility[] = ['workspace', 'restricted'];
@@ -89,9 +91,14 @@ function pgCode(error: unknown): string | undefined {
   return typeof code === 'string' ? code : undefined;
 }
 
-async function recordEvent(tx: Tx, principal: Principal, workspaceId: string, kind: string, objectId: string, data: Record<string, unknown>) {
-  // Events carry identifiers and audience, never draft content; stream code filters them per recipient.
-  await tx.insert(schema.events).values({ id: randomUUID(), kind, objectId, actorId: `${principal.kind}:${principal.id}`, data, workspaceId });
+/**
+ * Enforces the caller's expected version on a draft that is already authorized and locked.
+ * Authorization comes first so a missing or stale precondition never reveals an object.
+ */
+function requireVersion(draft: typeof schema.drafts.$inferSelect, expected: unknown) {
+  if (expected === undefined || expected === null) throw new PreconditionRequiredError();
+  if (typeof expected !== 'number' || !Number.isInteger(expected) || expected < 1) throw new InvalidInputError('expectedVersion must be a positive integer');
+  if (draft.version !== expected) throw new VersionConflictError(draft.version, toDraft(draft));
 }
 
 async function lockWorkspace(tx: Tx, workspaceId: string) {
@@ -143,7 +150,7 @@ function toAgent(row: typeof schema.agents.$inferSelect): Agent {
   };
 }
 
-function toDraft(row: typeof schema.drafts.$inferSelect): Draft {
+export function toDraft(row: typeof schema.drafts.$inferSelect): Draft {
   return {
     id: row.id,
     workspaceId: row.workspaceId,
@@ -510,6 +517,7 @@ export async function updateDraft(principal: Principal, draftId: string, command
   if (!Object.keys(changes).length) throw new InvalidInputError('Nothing to update');
   return db.transaction(async (tx) => {
     const { draft } = enforce(await evaluateDraft(principal, 'draft.write', draftId, tx, { lock: true }), 'draft');
+    requireVersion(draft!, command.expectedVersion);
     const [row] = await tx.update(schema.drafts).set({ ...changes, version: sql`${schema.drafts.version} + 1`, updatedAt: new Date() })
       .where(eq(schema.drafts.id, draftId)).returning();
     await recordEvent(tx, principal, draft!.workspaceId, 'draft.updated.v1', draftId, { version: row!.version });
@@ -525,6 +533,7 @@ export async function shareDraft(principal: Principal, draftId: string, command:
   const scope = oneOf(command?.scope, DRAFT_VISIBILITIES, 'scope');
   return db.transaction(async (tx) => {
     const { actor, draft } = enforce(await evaluateDraft(principal, 'draft.share', draftId, tx, { lock: true }), 'draft');
+    requireVersion(draft!, command.expectedVersion);
     let projectId = draft!.projectId;
     if (command.projectId !== undefined && command.projectId !== draft!.projectId) {
       if (scope !== 'project') throw new InvalidInputError('projectId applies only to project scope; use move to change the project');
@@ -550,6 +559,7 @@ export async function moveDraft(principal: Principal, draftId: string, command: 
   if (command.projectId !== null && typeof command.projectId !== 'string') throw new InvalidInputError('projectId must be a project id or null');
   return db.transaction(async (tx) => {
     const { actor, draft } = enforce(await evaluateDraft(principal, 'draft.move', draftId, tx, { lock: true }), 'draft');
+    requireVersion(draft!, command.expectedVersion);
     if (principal.kind === 'agent' && command.projectId === null) {
       throw new RuleViolationError('An agent cannot move a draft outside every project', 'PROJECT_REQUIRED');
     }

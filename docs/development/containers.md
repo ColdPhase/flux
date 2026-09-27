@@ -32,6 +32,11 @@ for the current clean-start, validation and backup/restore commands. This is an
 application skeleton; #29's identity/session and project policy slices are now
 merged, while collaboration and release verification remain separate tasks.
 
+The `files` mounts on `files-init`, API and worker all use `:z` so SELinux gives
+the shared volume a label accessible to both running services. `files-init`
+still sets ownership for their non-root UID; all three mounts must keep the
+shared label option or one container can deny another's writes on SELinux hosts.
+
 ## Local task worktrees
 
 Keep each task or independent review in its own Git worktree under the repository
@@ -75,6 +80,7 @@ next request. The API reads these variables (see `.env.example`):
 | `FLUX_SMTP_URL`, `FLUX_MAIL_FROM` | SMTP transport URL (e.g. `smtp://user:pass@mail.example.org:587`) and sender for password reset mail. If unset, password reset answers `503 PASSWORD_RESET_UNAVAILABLE` and `/api/v1/auth/capabilities` reports `unavailable`. |
 | `FLUX_PASSWORD_RESET_TTL_SECONDS` | Reset token lifetime, 60–86400, default 3600. Tokens are single use and stored hashed. |
 | `FLUX_AUTH_RATE_LIMIT` | `true` (default) enables Better Auth's in-memory login rate limit. Only the test script turns it off. |
+| `FLUX_STREAM_HEARTBEAT_MS` | WebSocket stream ping, session revalidation and polling interval in milliseconds (default `25000`, minimum `100`). The test script uses `1000`. See [access policy](access-policy.md#websocket-stream). |
 
 For development, the `dev` Compose profile adds a local mail catcher
 (Mailpit, pinned by digest). Set `FLUX_SMTP_URL=smtp://mailpit:1025` and a

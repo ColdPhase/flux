@@ -1,4 +1,5 @@
-import type { FastifyError, FastifyInstance } from 'fastify';
+import type { FastifyError, FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { PgBoss } from 'pg-boss';
 import {
   AGENTS_PATH,
   DRAFTS_PATH,
@@ -17,6 +18,9 @@ import {
   type PageQuery,
   type ShareDraftCommand,
   type UpdateDraftCommand,
+  IDEMPOTENCY_KEY_HEADER,
+  IDEMPOTENT_REPLAYED_HEADER,
+  IF_MATCH_HEADER,
 } from '@flux/contracts';
 import {
   addMember,
@@ -42,16 +46,32 @@ import {
   revokeProjectGrant,
   shareDraft,
   updateDraft,
+  getDraftSummary,
+  InvalidInputError,
+  listDraftSummaries,
+  parseIdempotencyKey,
+  requestDraftSummary,
+  requestHash,
+  runIdempotent,
+  visibleWorkspaceOf,
+  assertAuthorized,
+  type ActionsByResource,
+  type CommandResponse,
   type Database,
+  type Principal,
+  type ResourceRef,
+  type ResourceType,
 } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 
 export interface AccessRouteOptions {
   db: Database;
   sessions: SessionResolver;
+  boss: Pick<PgBoss, 'send'>;
 }
 
 const nameSchema = { type: 'string', minLength: 1, maxLength: 200 } as const;
+const versionSchema = { type: 'integer', minimum: 1 } as const;
 const pageQuery = {
   type: 'object',
   additionalProperties: false,
@@ -60,14 +80,69 @@ const pageQuery = {
 const roleSchema = { type: 'string', enum: ['owner', 'admin', 'member', 'guest'] } as const;
 const visibilitySchema = { type: 'string', enum: ['private', 'project', 'workspace'] } as const;
 
+function single(value: string | string[] | undefined) {
+  if (Array.isArray(value)) {
+    if (value.length > 1) throw new InvalidInputError('Header must appear once', 'INVALID_HEADER');
+    return value[0];
+  }
+  return value;
+}
+
+/** `If-Match: "<version>"` (or a bare integer) → version; absent → undefined. `*` and lists are rejected. */
+export function parseIfMatch(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const match = /^\s*"?([1-9][0-9]{0,9})"?\s*$/.exec(value);
+  if (!match) throw new InvalidInputError('If-Match must be a single quoted version such as "3"', 'INVALID_PRECONDITION');
+  return Number(match[1]);
+}
+
+/** Combines If-Match with a body `expectedVersion`; both may be given only if they agree. */
+function expectedVersion(request: FastifyRequest): number | undefined {
+  const header = parseIfMatch(single(request.headers[IF_MATCH_HEADER]));
+  const body = (request.body as { expectedVersion?: number } | undefined)?.expectedVersion;
+  if (header !== undefined && body !== undefined && header !== body) throw new InvalidInputError('If-Match and expectedVersion disagree', 'INVALID_PRECONDITION');
+  return header ?? body;
+}
+
+function draftEtag(value: unknown) {
+  const version = (value as { version?: unknown } | null)?.version;
+  return typeof version === 'number' ? `"${version}"` : null;
+}
+
+/** Checks, before an idempotent replay, that the caller may still read what the stored body describes. */
+type ReplayCheck = (principal: Principal, body: unknown, db: Database) => Promise<void>;
+
+function bodyId(body: unknown): string {
+  const id = (body as { id?: unknown } | null)?.id;
+  return typeof id === 'string' ? id : '';
+}
+
+/** A replay needs `action` on the object named by `id` (from the stored body or the route). */
+function requires<T extends ResourceType>(type: T, action: ActionsByResource[T], id: (body: unknown) => string): ReplayCheck {
+  return (principal, body, db) => assertAuthorized(principal, action, { type, id: id(body) } as ResourceRef<T>, db);
+}
+
+interface CommandSpec {
+  /** Stable operation name used to scope idempotency keys. */
+  operation: string;
+  /** The object whose workspace scopes the idempotency key; null outside a workspace. */
+  scope: ResourceRef | null;
+  status?: number;
+  etag?: boolean;
+  run: (principal: Principal, db: Database) => Promise<unknown>;
+  /** Current authorization a stored response must pass before it is replayed. */
+  replay: ReplayCheck;
+}
+
 /**
  * `/api/v1` workspace, project, grant, agent and draft routes. Each handler resolves the
  * current session (no caching) and calls one core domain method, which authorizes.
+ * POST/PATCH commands accept `Idempotency-Key`; draft update/share/move need `If-Match`.
  */
-export async function accessRoutes(app: FastifyInstance, { db, sessions }: AccessRouteOptions) {
+export async function accessRoutes(app: FastifyInstance, { db, sessions, boss }: AccessRouteOptions) {
   app.setErrorHandler((error: FastifyError | DomainError, request, reply) => {
     if (error instanceof DomainError) {
-      const payload: ApiError = { error: error.message, code: error.code };
+      const payload: ApiError = { ...error.details, error: error.message, code: error.code };
       return reply.code(error.status).send(payload);
     }
     if ((error as FastifyError).statusCode === 401) {
@@ -78,11 +153,42 @@ export async function accessRoutes(app: FastifyInstance, { db, sessions }: Acces
 
   const principal = async (request: Parameters<SessionResolver['requirePrincipal']>[0]) => (await sessions.requirePrincipal(request)).principal;
 
+  /** Runs a state-changing command, at most once per Idempotency-Key when one is sent. */
+  async function command(request: FastifyRequest, reply: FastifyReply, spec: CommandSpec) {
+    const actor = await principal(request);
+    const key = parseIdempotencyKey(single(request.headers[IDEMPOTENCY_KEY_HEADER]));
+    const execute = async (conn: Database): Promise<CommandResponse> => {
+      const result = await spec.run(actor, conn);
+      return { status: spec.status ?? 200, body: result ?? null, etag: spec.etag ? draftEtag(result) : null };
+    };
+    let response: CommandResponse & { replayed?: boolean };
+    if (key === null) {
+      response = await execute(db);
+    } else {
+      const workspaceId = spec.scope ? await visibleWorkspaceOf(actor, spec.scope, db) : null;
+      const hash = requestHash({ params: request.params, query: request.query, body: request.body ?? null, ifMatch: request.headers[IF_MATCH_HEADER] ?? null });
+      response = await runIdempotent(db, { principal: actor, workspaceId, operation: spec.operation, key, requestHash: hash }, execute,
+        (stored, conn) => spec.replay(actor, stored.body, conn));
+    }
+    if (response.etag) reply.header('etag', response.etag);
+    if (response.replayed) reply.header(IDEMPOTENT_REPLAYED_HEADER, 'true');
+    if (response.status === 204) return reply.code(204).send();
+    return reply.code(response.status).send(response.body);
+  }
+
+  const workspaceScope = (id: string): ResourceRef => ({ type: 'workspace', id });
+  const projectScope = (id: string): ResourceRef => ({ type: 'project', id });
+  const draftScope = (id: string): ResourceRef => ({ type: 'draft', id });
+
   // Workspaces and membership
   app.get(WORKSPACES_PATH, async (request) => listWorkspaces(await principal(request), db));
   app.post<{ Body: CreateWorkspaceCommand }>(WORKSPACES_PATH, {
     schema: { body: { type: 'object', required: ['name'], additionalProperties: false, properties: { name: nameSchema } } },
-  }, async (request, reply) => reply.code(201).send(await createWorkspace(await principal(request), request.body, db)));
+  }, async (request, reply) => command(request, reply, {
+    operation: `POST ${WORKSPACES_PATH}`, scope: null, status: 201,
+    run: (actor, conn) => createWorkspace(actor, request.body, conn),
+    replay: requires('workspace', 'workspace.read', bodyId),
+  }));
   app.get<{ Params: { workspaceId: string } }>(`${WORKSPACES_PATH}/:workspaceId`, async (request) =>
     getWorkspace(await principal(request), request.params.workspaceId, db));
 
@@ -90,10 +196,18 @@ export async function accessRoutes(app: FastifyInstance, { db, sessions }: Acces
     listMembers(await principal(request), request.params.workspaceId, db));
   app.post<{ Params: { workspaceId: string }; Body: AddMemberCommand }>(`${WORKSPACES_PATH}/:workspaceId/members`, {
     schema: { body: { type: 'object', required: ['role'], additionalProperties: false, properties: { userId: { type: 'string' }, email: { type: 'string' }, role: roleSchema } } },
-  }, async (request, reply) => reply.code(201).send(await addMember(await principal(request), request.params.workspaceId, request.body, db)));
+  }, async (request, reply) => command(request, reply, {
+    operation: `POST ${WORKSPACES_PATH}/:workspaceId/members`, scope: workspaceScope(request.params.workspaceId), status: 201,
+    run: (actor, conn) => addMember(actor, request.params.workspaceId, request.body, conn),
+    replay: requires('workspace', 'workspace.read_members', () => request.params.workspaceId),
+  }));
   app.patch<{ Params: { workspaceId: string; userId: string }; Body: ChangeRoleCommand }>(`${WORKSPACES_PATH}/:workspaceId/members/:userId`, {
     schema: { body: { type: 'object', required: ['role'], additionalProperties: false, properties: { role: roleSchema } } },
-  }, async (request) => changeRole(await principal(request), request.params.workspaceId, request.params.userId, request.body, db));
+  }, async (request, reply) => command(request, reply, {
+    operation: `PATCH ${WORKSPACES_PATH}/:workspaceId/members/:userId`, scope: workspaceScope(request.params.workspaceId),
+    run: (actor, conn) => changeRole(actor, request.params.workspaceId, request.params.userId, request.body, conn),
+    replay: requires('workspace', 'workspace.read_members', () => request.params.workspaceId),
+  }));
   app.delete<{ Params: { workspaceId: string; userId: string } }>(`${WORKSPACES_PATH}/:workspaceId/members/:userId`, async (request, reply) => {
     await removeMember(await principal(request), request.params.workspaceId, request.params.userId, db);
     return reply.code(204).send();
@@ -104,7 +218,11 @@ export async function accessRoutes(app: FastifyInstance, { db, sessions }: Acces
     listProjects(await principal(request), request.params.workspaceId, request.query, db));
   app.post<{ Params: { workspaceId: string }; Body: CreateProjectCommand }>(`${WORKSPACES_PATH}/:workspaceId/projects`, {
     schema: { body: { type: 'object', required: ['name'], additionalProperties: false, properties: { name: nameSchema, visibility: { type: 'string', enum: ['workspace', 'restricted'] } } } },
-  }, async (request, reply) => reply.code(201).send(await createProject(await principal(request), request.params.workspaceId, request.body, db)));
+  }, async (request, reply) => command(request, reply, {
+    operation: `POST ${WORKSPACES_PATH}/:workspaceId/projects`, scope: workspaceScope(request.params.workspaceId), status: 201,
+    run: (actor, conn) => createProject(actor, request.params.workspaceId, request.body, conn),
+    replay: requires('project', 'project.read', bodyId),
+  }));
   app.get<{ Params: { projectId: string } }>(`${PROJECTS_PATH}/:projectId`, async (request) =>
     getProject(await principal(request), request.params.projectId, db));
   app.get<{ Params: { projectId: string } }>(`${PROJECTS_PATH}/:projectId/grants`, async (request) =>
@@ -119,7 +237,11 @@ export async function accessRoutes(app: FastifyInstance, { db, sessions }: Acces
         },
       },
     },
-  }, async (request, reply) => reply.code(201).send(await grantProject(await principal(request), request.params.projectId, request.body, db)));
+  }, async (request, reply) => command(request, reply, {
+    operation: `POST ${PROJECTS_PATH}/:projectId/grants`, scope: projectScope(request.params.projectId), status: 201,
+    run: (actor, conn) => grantProject(actor, request.params.projectId, request.body, conn),
+    replay: requires('project', 'project.manage', () => request.params.projectId),
+  }));
   app.delete<{ Params: { projectId: string; grantId: string } }>(`${PROJECTS_PATH}/:projectId/grants/:grantId`, async (request, reply) => {
     await revokeProjectGrant(await principal(request), request.params.projectId, request.params.grantId, db);
     return reply.code(204).send();
@@ -130,7 +252,11 @@ export async function accessRoutes(app: FastifyInstance, { db, sessions }: Acces
     listAgents(await principal(request), request.params.workspaceId, db));
   app.post<{ Params: { workspaceId: string }; Body: CreateAgentCommand }>(`${WORKSPACES_PATH}/:workspaceId/agents`, {
     schema: { body: { type: 'object', required: ['name', 'owner'], additionalProperties: false, properties: { name: nameSchema, owner: { type: 'string', enum: ['self', 'workspace'] } } } },
-  }, async (request, reply) => reply.code(201).send(await createAgent(await principal(request), request.params.workspaceId, request.body, db)));
+  }, async (request, reply) => command(request, reply, {
+    operation: `POST ${WORKSPACES_PATH}/:workspaceId/agents`, scope: workspaceScope(request.params.workspaceId), status: 201,
+    run: (actor, conn) => createAgent(actor, request.params.workspaceId, request.body, conn),
+    replay: requires('agent', 'agent.read', bodyId),
+  }));
   app.delete<{ Params: { agentId: string } }>(`${AGENTS_PATH}/:agentId`, async (request) =>
     revokeAgent(await principal(request), request.params.agentId, db));
 
@@ -140,16 +266,45 @@ export async function accessRoutes(app: FastifyInstance, { db, sessions }: Acces
   }, async (request) => listDrafts(await principal(request), request.params.workspaceId, request.query, db));
   app.post<{ Params: { workspaceId: string }; Body: CreateDraftCommand }>(`${WORKSPACES_PATH}/:workspaceId/drafts`, {
     schema: { body: { type: 'object', required: ['title'], additionalProperties: false, properties: { title: nameSchema, body: { type: 'string', maxLength: 100_000 }, projectId: { type: 'string' } } } },
-  }, async (request, reply) => reply.code(201).send(await createDraft(await principal(request), request.params.workspaceId, request.body, db)));
-  app.get<{ Params: { draftId: string } }>(`${DRAFTS_PATH}/:draftId`, async (request) =>
-    getDraft(await principal(request), request.params.draftId, db));
+  }, async (request, reply) => command(request, reply, {
+    operation: `POST ${WORKSPACES_PATH}/:workspaceId/drafts`, scope: workspaceScope(request.params.workspaceId), status: 201, etag: true,
+    run: (actor, conn) => createDraft(actor, request.params.workspaceId, request.body, conn),
+    replay: requires('draft', 'draft.read', bodyId),
+  }));
+  app.get<{ Params: { draftId: string } }>(`${DRAFTS_PATH}/:draftId`, async (request, reply) => {
+    const draft = await getDraft(await principal(request), request.params.draftId, db);
+    return reply.header('etag', draftEtag(draft)).send(draft);
+  });
   app.patch<{ Params: { draftId: string }; Body: UpdateDraftCommand }>(`${DRAFTS_PATH}/:draftId`, {
-    schema: { body: { type: 'object', additionalProperties: false, minProperties: 1, properties: { title: nameSchema, body: { type: 'string', maxLength: 100_000 } } } },
-  }, async (request) => updateDraft(await principal(request), request.params.draftId, request.body, db));
+    schema: { body: { type: 'object', additionalProperties: false, minProperties: 1, properties: { title: nameSchema, body: { type: 'string', maxLength: 100_000 }, expectedVersion: versionSchema } } },
+  }, async (request, reply) => command(request, reply, {
+    operation: `PATCH ${DRAFTS_PATH}/:draftId`, scope: draftScope(request.params.draftId), etag: true,
+    run: (actor, conn) => updateDraft(actor, request.params.draftId, { ...request.body, expectedVersion: expectedVersion(request) }, conn),
+    replay: requires('draft', 'draft.read', () => request.params.draftId),
+  }));
   app.post<{ Params: { draftId: string }; Body: ShareDraftCommand }>(`${DRAFTS_PATH}/:draftId/share`, {
-    schema: { body: { type: 'object', required: ['scope'], additionalProperties: false, properties: { scope: visibilitySchema, projectId: { type: 'string' } } } },
-  }, async (request) => shareDraft(await principal(request), request.params.draftId, request.body, db));
+    schema: { body: { type: 'object', required: ['scope'], additionalProperties: false, properties: { scope: visibilitySchema, projectId: { type: 'string' }, expectedVersion: versionSchema } } },
+  }, async (request, reply) => command(request, reply, {
+    operation: `POST ${DRAFTS_PATH}/:draftId/share`, scope: draftScope(request.params.draftId), etag: true,
+    run: (actor, conn) => shareDraft(actor, request.params.draftId, { ...request.body, expectedVersion: expectedVersion(request) }, conn),
+    replay: requires('draft', 'draft.read', () => request.params.draftId),
+  }));
   app.post<{ Params: { draftId: string }; Body: MoveDraftCommand }>(`${DRAFTS_PATH}/:draftId/move`, {
-    schema: { body: { type: 'object', required: ['projectId', 'visibility'], additionalProperties: false, properties: { projectId: { type: ['string', 'null'] }, visibility: visibilitySchema } } },
-  }, async (request) => moveDraft(await principal(request), request.params.draftId, request.body, db));
+    schema: { body: { type: 'object', required: ['projectId', 'visibility'], additionalProperties: false, properties: { projectId: { type: ['string', 'null'] }, visibility: visibilitySchema, expectedVersion: versionSchema } } },
+  }, async (request, reply) => command(request, reply, {
+    operation: `POST ${DRAFTS_PATH}/:draftId/move`, scope: draftScope(request.params.draftId), etag: true,
+    run: (actor, conn) => moveDraft(actor, request.params.draftId, { ...request.body, expectedVersion: expectedVersion(request) }, conn),
+    replay: requires('draft', 'draft.read', () => request.params.draftId),
+  }));
+
+  // Background job results
+  app.post<{ Params: { draftId: string } }>(`${DRAFTS_PATH}/:draftId/summaries`, async (request, reply) => command(request, reply, {
+    operation: `POST ${DRAFTS_PATH}/:draftId/summaries`, scope: draftScope(request.params.draftId), status: 202,
+    run: (actor, conn) => requestDraftSummary(actor, request.params.draftId, conn, boss),
+    replay: requires('draft', 'draft.read', () => request.params.draftId),
+  }));
+  app.get<{ Params: { draftId: string } }>(`${DRAFTS_PATH}/:draftId/summaries`, async (request) =>
+    listDraftSummaries(await principal(request), request.params.draftId, db));
+  app.get<{ Params: { draftId: string; resultId: string } }>(`${DRAFTS_PATH}/:draftId/summaries/:resultId`, async (request) =>
+    getDraftSummary(await principal(request), request.params.draftId, request.params.resultId, db));
 }
