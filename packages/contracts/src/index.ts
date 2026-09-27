@@ -37,3 +37,5 @@ export interface SessionSummary {
   ipAddress: string | null;
   userAgent: string | null;
 }
+
+export * from './access.js';

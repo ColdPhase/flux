@@ -31,9 +31,10 @@ test('forced failure after insert leaves no domain row or related job', async ()
   const boss = new PgBoss({ connectionString, migrate: false });
   await boss.start();
   try {
-    const before = await pool.query('SELECT (SELECT count(*) FROM samples)::int AS samples, (SELECT count(*) FROM events)::int AS events, (SELECT count(*) FROM outbox)::int AS outbox, (SELECT count(*) FROM pgboss.job)::int AS jobs');
+    // Only sample rows are counted: other test files write access events concurrently.
+    const before = await pool.query('SELECT (SELECT count(*) FROM samples)::int AS samples, (SELECT count(*) FROM events WHERE kind = \'sample.created.v1\')::int AS events, (SELECT count(*) FROM outbox)::int AS outbox, (SELECT count(*) FROM pgboss.job)::int AS jobs');
     await assert.rejects(createSample({ id: 'test-principal', kind: 'fixture' }, { title: 'rollback sentinel' }, db, boss, true), /Forced rollback/);
-    const after = await pool.query('SELECT (SELECT count(*) FROM samples)::int AS samples, (SELECT count(*) FROM events)::int AS events, (SELECT count(*) FROM outbox)::int AS outbox, (SELECT count(*) FROM pgboss.job)::int AS jobs');
+    const after = await pool.query('SELECT (SELECT count(*) FROM samples)::int AS samples, (SELECT count(*) FROM events WHERE kind = \'sample.created.v1\')::int AS events, (SELECT count(*) FROM outbox)::int AS outbox, (SELECT count(*) FROM pgboss.job)::int AS jobs');
     assert.deepEqual(after.rows[0], before.rows[0]);
   } finally {
     await boss.stop();
@@ -48,12 +49,13 @@ test('test deployment failure header rolls back; the public command body rejects
   const browser = new Browser();
   const headers = { authorization: `Bearer ${token}`, 'x-flux-test-failure': 'after-insert' };
   try {
-    const before = await pool.query('SELECT (SELECT count(*) FROM samples)::int AS samples, (SELECT count(*) FROM events)::int AS events, (SELECT count(*) FROM outbox)::int AS outbox, (SELECT count(*) FROM pgboss.job)::int AS jobs');
+    // Only sample rows are counted: other test files write access events concurrently.
+    const before = await pool.query('SELECT (SELECT count(*) FROM samples)::int AS samples, (SELECT count(*) FROM events WHERE kind = \'sample.created.v1\')::int AS events, (SELECT count(*) FROM outbox)::int AS outbox, (SELECT count(*) FROM pgboss.job)::int AS jobs');
     const failure = await browser.request('POST', SAMPLE_COMMAND_PATH, { headers, body: { title: 'rollback over HTTP' } });
     assert.equal(failure.status, 409);
     const rejected = await browser.request('POST', SAMPLE_COMMAND_PATH, { headers, body: { title: 'invalid public flag', failAfterInsert: true } });
     assert.equal(rejected.status, 400);
-    const after = await pool.query('SELECT (SELECT count(*) FROM samples)::int AS samples, (SELECT count(*) FROM events)::int AS events, (SELECT count(*) FROM outbox)::int AS outbox, (SELECT count(*) FROM pgboss.job)::int AS jobs');
+    const after = await pool.query('SELECT (SELECT count(*) FROM samples)::int AS samples, (SELECT count(*) FROM events WHERE kind = \'sample.created.v1\')::int AS events, (SELECT count(*) FROM outbox)::int AS outbox, (SELECT count(*) FROM pgboss.job)::int AS jobs');
     assert.deepEqual(after.rows[0], before.rows[0]);
   } finally {
     await pool.end();

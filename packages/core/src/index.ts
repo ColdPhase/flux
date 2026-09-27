@@ -1,16 +1,32 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { fromDrizzle, type PgBoss } from 'pg-boss';
-import { schema, type createDatabase } from '@flux/db';
+import { schema } from '@flux/db';
 import type { SampleAccepted, SampleCommand } from '@flux/contracts';
+import type { Database, Principal } from './types.js';
+
+export type { Database, Executor, Principal } from './types.js';
+export * from './access/errors.js';
+export {
+  authorize,
+  assertAuthorized,
+  visibleFilter,
+  loadActor,
+  isUuid,
+  AGENT_ACTIONS,
+  DRAFT_ACTIONS,
+  PROJECT_ACTIONS,
+  WORKSPACE_ACTIONS,
+  type Action,
+  type ActionsByResource,
+  type Actor,
+  type Decision,
+  type ResourceRef,
+  type ResourceType,
+} from './access/policy.js';
+export * from './access/domain.js';
 
 export const SAMPLE_JOB = 'sample.process';
-export type Database = ReturnType<typeof createDatabase>['db'];
-
-export interface Principal {
-  id: string;
-  kind: 'fixture' | 'human' | 'agent';
-}
 
 export async function createSample(principal: Principal, command: SampleCommand, db: Database, boss: PgBoss, testFailureAfterInsert = false): Promise<SampleAccepted> {
   if (!principal.id) throw new Error('Unauthenticated actor');
