@@ -190,6 +190,25 @@ class ProviderTests(TempTest):
         with self.assertRaisesRegex(HarnessError, "denied"):
             parse_output("claude", self.directory)
 
+    def test_claude_background_agent_results_use_latest_structured_output(self):
+        # Claude Code 2.1.283 emits a result per turn resumed by a background subagent report.
+        events = [{"type": "result", "session_id": "s", "result_index": 0, "structured_output": result(task=1)},
+                  {"type": "result", "session_id": "s", "result_index": 1, "origin": {"kind": "peer"}},
+                  {"type": "result", "session_id": "s", "result_index": 2, "structured_output": result(task=2)},
+                  {"type": "result", "session_id": "s", "result_index": 3, "origin": {"kind": "peer"}}]
+        (self.directory / "events.jsonl").write_text("\n".join(map(json.dumps, events)))
+        parsed, session = parse_output("claude", self.directory)
+        self.assertEqual((parsed["task"], session), (2, "s"))
+
+    def test_claude_any_failed_or_denied_result_is_not_success(self):
+        for extra, message in (({"is_error": True}, "successful"),
+                               ({"permission_denials": [{"tool_name": "Bash"}]}, "denied")):
+            events = [{"type": "result", "session_id": "s", "structured_output": result()},
+                      dict({"type": "result", "session_id": "s"}, **extra)]
+            (self.directory / "events.jsonl").write_text("\n".join(map(json.dumps, events)))
+            with self.assertRaisesRegex(HarnessError, message):
+                parse_output("claude", self.directory)
+
     def test_codex_failed_turn_cannot_reuse_a_plausible_result(self):
         (self.directory / "events.jsonl").write_text(json.dumps({"type": "turn.failed"}))
         (self.directory / "result.json").write_text(json.dumps(result()))
