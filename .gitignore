@@ -7,3 +7,4 @@ __pycache__/
 # Application dependency and build output.
 node_modules/
 dist/
+.env

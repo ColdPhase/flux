@@ -21,11 +21,11 @@ export async function createSample(principal: Principal, command: SampleCommand,
   const outboxId = randomUUID();
   return db.transaction(async (tx) => {
     await tx.insert(schema.samples).values({ id, title, createdBy: principal.id });
-    if (command.failAfterInsert) throw new Error('Forced rollback');
     await tx.insert(schema.events).values({ id: eventId, kind: 'sample.created.v1', objectId: id, actorId: principal.id, data: { title } });
     await tx.insert(schema.outbox).values({ id: outboxId, eventId });
     const jobId = await boss.send(SAMPLE_JOB, { sampleId: id }, { db: fromDrizzle(tx, sql) });
     if (!jobId) throw new Error('Job enqueue failed');
+    if (command.failAfterInsert) throw new Error('Forced rollback');
     return { id, eventId, jobId };
   });
 }

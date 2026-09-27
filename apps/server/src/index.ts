@@ -1,8 +1,10 @@
-import { access, constants } from 'node:fs/promises';
+import { open, unlink } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { PgBoss } from 'pg-boss';
+import { PG_BOSS_SCHEMA_VERSION } from '@flux/db';
 import { SAMPLE_COMMAND_PATH, type SampleCommand } from '@flux/contracts';
 import { createSample, SAMPLE_JOB } from '@flux/core';
 import { registerDatabase } from './plugins/database.js';
@@ -22,8 +24,10 @@ app.get('/api/v1/health', async (_request, reply) => {
   try {
     const version = await pool.query('SELECT max(version) AS version FROM flux_schema_version');
     if (Number(version.rows[0]?.version) !== 1) throw new Error('Schema mismatch');
-    if (!(await boss.schemaVersion())) throw new Error('Queue schema unavailable');
-    await access(filesDir, constants.R_OK | constants.W_OK);
+    if ((await boss.schemaVersion()) !== PG_BOSS_SCHEMA_VERSION) throw new Error('Queue schema mismatch');
+    const probe = join(filesDir, `.flux-health-${randomUUID()}`);
+    const file = await open(probe, 'wx');
+    try { await file.writeFile('ok'); } finally { await file.close(); await unlink(probe); }
     return { status: 'ok', schemaVersion: 1 };
   } catch (error) {
     app.log.warn(error);

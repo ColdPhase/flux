@@ -17,8 +17,8 @@ See the [project README](../README.md) for an introduction and quick start.
 
 Each maintainer runs one `/goal` agent session; [startup](agents/startup.md)
 explains how to start, pause and resume it. The first milestone
-prepares product/design/architecture decisions. Application technology and the
-first release scope still need acceptance.
+prepares product/design/architecture decisions. Application technology is accepted;
+implementation and the first release scope continue in the working application milestone.
 
 ## Product and environment
 
@@ -26,6 +26,7 @@ first release scope still need acceptance.
 - [Decision register](product/decisions.md) — accepted direction, proposals, open choices.
 - [Design workflow](design/README.md) — realistic variants, density and independent review.
 - [Container development](development/containers.md) — Docker/Compose for the application and services.
+- [Application foundation](development/application-foundation.md) — clean start, integration fixture and operations.
 
 ## Prototype
 
