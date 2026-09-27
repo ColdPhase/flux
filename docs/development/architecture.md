@@ -115,7 +115,7 @@ recorded in the allowlist and tracked by [#46](https://github.com/ColdPhase/flux
 | `packages/core/src/access/domain.ts` | `drizzle-orm`, `@flux/db` | Split the workspace, project/grant, agent and draft use cases; move queries and row mapping to `@flux/db` repositories. Keep the current locks and transactions. |
 | `packages/core/src/index.ts` | `drizzle-orm`, `pg-boss`, `@flux/db` | Move the integration-fixture sample use case behind a transaction/outbox port or out of core; leave `index.ts` as exports only. |
 | `packages/core/src/types.ts` | `@flux/db` | Replace the Drizzle-derived `Database`/`Executor` types with a core-owned transaction port. |
-| `packages/core/src/events.ts`, `stream-audience.ts` | `drizzle-orm`, `@flux/db` | Merged in #47 before this rule. Move event recording and the per-recipient audience queries to `@flux/db` repositories behind `EventRepository` and `StreamAudienceRepository` ports. |
+| `packages/core/src/events.ts` | `drizzle-orm`, `@flux/db` | Merged in #47 before this rule. Move event recording to a `@flux/db` repository behind an `EventRepository` port. The per-recipient audience reads already sit behind `StreamAudienceRepository` ([#80](https://github.com/ColdPhase/flux/issues/80)). |
 | `packages/core/src/idempotency.ts` | `drizzle-orm`, `@flux/db` | Merged in #47. Put key storage and replay behind an `IdempotencyStore` port. |
 | `packages/core/src/jobs/draft-summary.ts` | `drizzle-orm`, `pg-boss`, `@flux/db` | Merged in #47. Split it into a pure use case plus repository and `JobQueue` ports. |
 | `packages/core/package.json` | `@flux/db`, `drizzle-orm`, `pg-boss` | Remove each dependency when no core file uses it. |
@@ -129,3 +129,9 @@ locking the behavior. Other structural hotspots (the multi-capability
 `apps/server/src/access/routes.ts`, fixture wiring in `apps/server/src/index.ts`
 and `apps/worker/src/index.ts`, the growing `packages/db/src/schema.ts`) follow the
 same plan.
+
+Resolved outside the allowlist: identity no longer queries session rows itself. The
+session list/revoke queries live in `packages/db/src/repositories/sessions.ts` behind
+the `SessionStore` port in `apps/server/src/identity/routes.ts`, identity takes a
+`@flux/db` `DbExecutor` instead of core's `Database`, and only `identity/auth.ts` wires
+Drizzle, for Better Auth's adapter ([#81](https://github.com/ColdPhase/flux/issues/81)).

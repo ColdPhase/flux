@@ -222,3 +222,21 @@ the encrypted body (the test decrypts it), fresh VAPID keys per run, a Chromium
 check through an HTTPS proxy (registration and control, offline fallback,
 update prompt) and a final API run without keys. Do not use that override
 outside tests.
+
+## Web app and browser tests
+
+The web app (`apps/web`, React 19 + React Router 8 Data Mode, built by Vite into the API
+image) is served by the API on the same origin. Its design tokens and components are
+described in [the app shell record](../design/app-shell/README.md).
+`python3 scripts/check_contrast.py` checks token contrast without Docker.
+
+`./scripts/check_ui.sh` builds the image (which runs build, typecheck and lint), starts the
+stack in its own Compose project on `127.0.0.1:${FLUX_UI_PORT:-18591}` with Mailpit, and runs
+`tests/ui` (copied into the image, `unittest discover`) in a Playwright 1.62 container (`infra/ui-tests.Dockerfile`, image pinned by
+digest, Python client pinned by hash). Inside that container the browser opens the
+loopback `FLUX_PUBLIC_ORIGIN`, which a small forwarder carries to the API service, so origin
+checks and cookies behave as on the host. It takes about two minutes after the first image
+build. Set `FLUX_UI_SCREENSHOT_DIR` to an absolute path (for example
+`"$PWD/docs/design/app-shell"`) to save screenshots, and `FLUX_UI_PORT` /
+`FLUX_UI_MAILPIT_PORT` to avoid clashes with a concurrent run. It is kept separate from
+`check_application.sh` so the PR check stays fast.

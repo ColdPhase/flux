@@ -1,18 +1,9 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useState } from 'react';
 import { disablePushNotifications, enablePushNotifications, getPushState, type PushState } from './push.js';
 
-const note: CSSProperties = { margin: '4px 0 0', color: '#5E6068', fontSize: 13, lineHeight: 1.45 };
-const action: CSSProperties = {
-  minHeight: 44,
-  padding: '0 16px',
-  borderRadius: 8,
-  border: '1px solid #D5D6DA',
-  background: '#FFFFFF',
-  color: '#1B1C1F',
-  font: 'inherit',
-  fontWeight: 600,
-  cursor: 'pointer',
-};
+// Styled by the shell's tokens (apps/web/src/app/app.css: .pwa-note, .pwa-action).
+const note = 'pwa-note';
+const action = 'ui-btn ui-btn--secondary pwa-action';
 
 type View = PushState | { state: 'loading' } | { state: 'working' } | { state: 'error'; message: string };
 
@@ -34,27 +25,27 @@ export function NotificationsButton({ deviceLabel }: { deviceLabel?: string }) {
 
   if (view.state === 'loading') return null;
   const message = MESSAGES[view.state];
-  if (message) return <p style={note} role="note">{message}</p>;
-  if (view.state === 'error') return <p style={note} role="alert">Notification settings could not be loaded. Your Inbox still works.</p>;
+  if (message) return <p className={note} role="note">{message}</p>;
+  if (view.state === 'error') return <p className={note} role="alert">Notification settings could not be loaded. Your Inbox still works.</p>;
   if (view.state === 'subscribed') {
     return (
       <div>
-        <p style={note}>Notifications are on for this device.</p>
-        <button type="button" style={action} onClick={() => { setView({ state: 'working' }); void disablePushNotifications().finally(refresh); }}>
+        <p className={note}>Notifications are on for this device.</p>
+        <button type="button" className={action} onClick={() => { setView({ state: 'working' }); void disablePushNotifications().finally(refresh); }}>
           Turn off on this device
         </button>
       </div>
     );
   }
-  if (view.state === 'working') return <p style={note} aria-live="polite">Updating notifications…</p>;
+  if (view.state === 'working') return <p className={note} aria-live="polite">Updating notifications…</p>;
   if (view.state !== 'prompt') return null;
   const { publicKey } = view;
   return (
     <div>
-      <p style={note}>Get notified about mentions and replies, work assigned to you, decisions and agent results, even when Flux is closed.</p>
+      <p className={note}>Get notified about mentions and replies, work assigned to you, decisions and agent results, even when Flux is closed.</p>
       <button
         type="button"
-        style={action}
+        className={action}
         onClick={() => {
           // Called directly in the click handler: the permission prompt needs this user gesture.
           const pending = enablePushNotifications(publicKey, deviceLabel);

@@ -80,7 +80,7 @@ services:
         condition: service_completed_successfully
   mailpit:
     # Local SMTP catcher for development and tests only. Never a production mail relay.
-    profiles: ["dev", "test"]
+    profiles: ["dev", "test", "ui"]
     image: axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d
     environment:
       MP_SMTP_AUTH_ACCEPT_ANY: "true"
@@ -119,7 +119,31 @@ services:
         condition: service_started
       mailpit:
         condition: service_healthy
+  ui-test:
+    # Playwright browser tests against the running app (scripts/check_ui.sh). The browser opens
+    # FLUX_PUBLIC_ORIGIN, a loopback address inside this container that is forwarded to the API,
+    # so origin checks and cookies behave as they do for a person on the host.
+    profiles: ["ui"]
+    build:
+      context: ..
+      dockerfile: infra/ui-tests.Dockerfile
+    image: flux-ui-tests:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
+    environment:
+      FLUX_UI_ORIGIN: ${FLUX_PUBLIC_ORIGIN:?Set FLUX_PUBLIC_ORIGIN}
+      FLUX_UI_UPSTREAM: api:8080
+      FLUX_MAILPIT_URL: http://mailpit:8025
+      FLUX_UI_SCREENSHOTS: /screenshots
+    volumes:
+      # Tests are baked into the image (see infra/ui-tests.Dockerfile). Only the screenshot
+      # output is mounted; "z" relabels it for SELinux hosts and is ignored elsewhere.
+      - ${FLUX_UI_SCREENSHOT_DIR:-uishots}:/screenshots:z
+    depends_on:
+      api:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
 volumes:
   pgdata:
   files:
   teststate:
+  uishots:

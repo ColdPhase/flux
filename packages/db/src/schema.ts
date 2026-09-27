@@ -241,3 +241,72 @@ export const idempotencyKeys = pgTable('idempotency_keys', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
 }, (table) => [index('idempotency_keys_expiry_idx').on(table.expiresAt)]);
+
+// Conversation and immutable material snapshots (migration 0006).
+export const projectConversations = pgTable('project_conversations', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  createdBy: text('created_by').notNull(),
+  nextSequence: integer('next_sequence').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique().on(table.workspaceId, table.projectId, table.id),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+]);
+
+export const projectMaterials = pgTable('project_materials', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  createdBy: text('created_by').notNull(),
+  clientMutationId: uuid('client_mutation_id').notNull(),
+  requestFingerprint: text('request_fingerprint').notNull(),
+  currentVersion: integer('current_version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique().on(table.workspaceId, table.projectId, table.id),
+  unique().on(table.projectId, table.createdBy, table.clientMutationId),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+]);
+
+export const projectMaterialVersions = pgTable('project_material_versions', {
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  materialId: uuid('material_id').notNull(),
+  version: integer('version').notNull(),
+  title: text('title').notNull(),
+  body: text('body').notNull(),
+  url: text('url'),
+  authorId: text('author_id').notNull(),
+  clientMutationId: uuid('client_mutation_id'),
+  requestFingerprint: text('request_fingerprint'),
+  sourceDraftId: uuid('source_draft_id'),
+  sourceDraftVersion: integer('source_draft_version'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.materialId, table.version] }),
+  unique().on(table.workspaceId, table.projectId, table.materialId, table.version),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.materialId], foreignColumns: [projectMaterials.workspaceId, projectMaterials.projectId, projectMaterials.id] }).onDelete('cascade'),
+]);
+
+export const projectMessages = pgTable('project_messages', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  conversationId: uuid('conversation_id').notNull(),
+  authorId: text('author_id').notNull(),
+  clientMessageId: uuid('client_message_id').notNull(),
+  requestFingerprint: text('request_fingerprint').notNull(),
+  sequence: integer('sequence').notNull(),
+  body: text('body').notNull(),
+  sourceMaterialId: uuid('source_material_id'),
+  sourceMaterialVersion: integer('source_material_version'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique().on(table.conversationId, table.sequence),
+  unique().on(table.projectId, table.authorId, table.clientMessageId),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.conversationId], foreignColumns: [projectConversations.workspaceId, projectConversations.projectId, projectConversations.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.sourceMaterialId, table.sourceMaterialVersion], foreignColumns: [projectMaterialVersions.workspaceId, projectMaterialVersions.projectId, projectMaterialVersions.materialId, projectMaterialVersions.version] }),
+]);

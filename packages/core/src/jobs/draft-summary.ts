@@ -142,4 +142,3 @@ export async function processDraftSummary(resultId: string, db: Database, hooks:
     return 'completed' as const;
   });
 }
-
