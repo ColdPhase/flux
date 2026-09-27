@@ -8,6 +8,16 @@ See the [project README](../README.md) for an introduction and quick start.
   submitting a pull request.
 - [Security policy](SECURITY.md) — supported code and private vulnerability reports.
 
+## Agent collaboration
+
+- [Agent workflow and harness design](agents/README.md) — shared Codex/Claude
+  instructions, GitHub communication, task contracts, and continuous release work.
+- [CI and releases](agents/ci-and-releases.md) — validation workflows, required PR
+  checks, packaging, and publication responsibilities.
+
+This is the collaboration foundation. The application plan, technology stack,
+and executable agent runner are still to be supplied/implemented.
+
 ## Prototype
 
 The v8 design documents are currently in Polish:

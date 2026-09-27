@@ -1,0 +1,50 @@
+name: Implementation task
+description: Plan a bounded application, CI, or release task with verifiable acceptance criteria.
+title: "[Task]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for planned work by people or agents. Search existing tasks first.
+        A maintainer or authorized release worker admits the task to a release.
+        Filling out this form does not start automation.
+  - type: textarea
+    id: release
+    attributes:
+      label: Release and decisions
+      description: Link the release contract, milestone, specification, and applicable architecture decisions.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome and scope
+      description: What observable user outcome or engineering deliverable will this task provide? What is excluded?
+    validations:
+      required: true
+  - type: textarea
+    id: criteria
+    attributes:
+      label: Acceptance criteria
+      description: Give criteria stable IDs such as AC-1. Include relevant failure and permission cases.
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification plan
+      description: Explain how each criterion will be checked and what evidence will be attached. For CI tasks, include failure behavior; for releases, test the built package.
+    validations:
+      required: true
+  - type: textarea
+    id: ownership
+    attributes:
+      label: Ownership and dependencies
+      description: Name one implementation owner, a different evaluator, blocking issues, and shared interfaces. Write "None" for no dependencies.
+    validations:
+      required: true
+  - type: textarea
+    id: contract
+    attributes:
+      label: Contract status
+      description: Link the proposal and peer acceptance comments when available. Leave as proposed until the exact contract revision is accepted.

@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "state": "design",
+  "github": {
+    "repository": "ColdPhase/flux",
+    "base_branch": "main",
+    "trusted_logins": ["PelikanFix16", "Zamojski5"]
+  },
+  "workers": [
+    {
+      "id": "codex-hubert",
+      "provider": "codex",
+      "github_login": "PelikanFix16"
+    },
+    {
+      "id": "claude-maurycy",
+      "provider": "claude",
+      "github_login": "Zamojski5"
+    }
+  ],
+  "release": {
+    "milestone_number": null,
+    "contract_issue_number": null,
+    "spec_path": null,
+    "architecture_path": null
+  },
+  "loop": {
+    "enabled": false,
+    "poll_seconds": 60,
+    "max_active_tasks_per_worker": 1,
+    "max_attempts_without_progress": 3
+  },
+  "limits": {
+    "max_run_minutes": null
+  },
+  "verification": {
+    "repository_commands": [
+      "python3 scripts/check_agent_setup.py",
+      "python3 -m unittest discover -s tests -p 'test_*.py'",
+      "git diff --check"
+    ],
+    "task_commands": [],
+    "release_commands": [],
+    "required_status_checks": []
+  },
+  "merge": {
+    "enabled": false,
+    "mode": "peer-review-and-required-checks"
+  },
+  "publishing": {
+    "enabled": false,
+    "target": "github-releases",
+    "formats": []
+  },
+  "deployment": {
+    "enabled": false,
+    "target": null
+  },
+  "local_state_directory": ".harness/local"
+}

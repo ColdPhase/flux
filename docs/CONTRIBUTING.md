@@ -89,8 +89,18 @@ contribute through a fork.
 
 ## Verify your change
 
-The repository currently has no build step or automated test suite. Verify the
-behavior you changed in a browser and describe your checks in the PR:
+The application currently has no build step or automated application test suite.
+The repository's agent-collaboration foundation has a structural check:
+
+```sh
+python3 scripts/check_agent_setup.py
+python3 -m unittest discover -s tests -p 'test_*.py'
+git diff --check
+```
+
+GitHub Actions runs the structural check as `Agent setup`. Application lint,
+tests, and build checks will be added with the selected technology stack. For
+prototype changes, verify the behavior in a browser and describe your checks:
 
 - Reproduce the issue before the fix and check the same steps afterward.
 - Check the browser console for new errors.
@@ -118,3 +128,16 @@ with squash merging.
 
 Please keep each PR focused on one problem. Updating documentation alongside a
 behavior change helps other contributors understand and maintain it.
+
+## Working with coding agents
+
+Codex and Claude share [AGENTS.md](../AGENTS.md) and the skills in
+`.agents/skills/`. The [agent collaboration guide](agents/README.md) describes
+task contracts, conversations through issues/PRs, independent evaluation, and
+the planned continuous runner. Its [CI and release process](agents/ci-and-releases.md)
+also assigns agents responsibility for validation and packaging once the stack
+is chosen. The background runner is not yet implemented.
+
+Use the implementation-task issue form for planned work. Ordinary contributions
+remain welcome through the existing issue and PR process; the autonomous release
+protocol applies when a task is admitted to that workflow.

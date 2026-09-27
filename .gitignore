@@ -1,0 +1,5 @@
+# Machine-local agent sessions, cursors, locks, and temporary artifacts.
+/.harness/local/
+
+# Python bytecode from the repository validation tools.
+__pycache__/

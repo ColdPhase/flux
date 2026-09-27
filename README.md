@@ -64,6 +64,8 @@ prototype's design:
 - [UX specification](docs/prototype/SPECIFICATION.md) — design notes for this prototype.
 - [Changelog](docs/prototype/CHANGELOG.md) — changes in v8.
 - [UX audit](docs/prototype/AUDIT.md) — historical observations and limitations.
+- [Agent collaboration](docs/agents/README.md) — shared instructions, skills,
+  and the planned workflow for Codex and Claude to work through GitHub.
 
 These notes describe the prototype and its design history. Future architecture
 and feature proposals are discussed in Issues and Discussions.
