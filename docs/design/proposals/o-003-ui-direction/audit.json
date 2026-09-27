@@ -246,6 +246,62 @@
         "contrast_failures": [],
         "small_text": [],
         "touch_targets_under_44": []
+      },
+      "1440x900#details": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null
+      },
+      "1440x900#tasks": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null
+      },
+      "1440x900#map": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null
+      },
+      "1280x800#map-list": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null
+      },
+      "1024x768#docs": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
+      },
+      "390x844#tasks": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
+      },
+      "390x844#map": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
+      },
+      "360x780#docs": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
       }
     },
     "zoom200": {

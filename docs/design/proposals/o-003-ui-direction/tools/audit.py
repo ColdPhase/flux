@@ -20,7 +20,9 @@ VARIANTS = {"a": "variant-a-return-ledger.html", "b": "variant-b-state-board.htm
 # Extra interactive states (URL hash) that are rendered and audited like the default view.
 STATES = {"c": [(1440, 900, "since"), (1440, 900, "result"), (1440, 900, "agent-test"), (1280, 800, "decision"),
                 (1024, 768, "details"), (768, 1024, "nav"), (390, 844, "details"), (390, 844, "sources"),
-                (390, 844, "nav"), (390, 844, "since")]}
+                (390, 844, "nav"), (390, 844, "since"), (1440, 900, "details"), (1440, 900, "tasks"),
+                (1440, 900, "map"), (1280, 800, "map-list"), (1024, 768, "docs"), (390, 844, "tasks"),
+                (390, 844, "map"), (360, 780, "docs")]}
 VIEWPORTS = [(1440, 900), (1280, 800), (1024, 768), (768, 1024), (390, 844), (360, 780)]
 
 TEXT_AUDIT = r"""() => {

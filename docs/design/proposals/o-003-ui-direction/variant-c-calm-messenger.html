@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="boot">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
@@ -12,7 +12,7 @@
   Aesthetic: Linear (near-monochrome, one indigo accent, 1px rules, quiet dots).
   Restraint: Apple Notes / Messages (generous spacing, few elements at once).
   Scenario content follows brief.md. Internal IDs appear only in the side panel, muted.
-  Hashes for review: #details, #decision, #result, #sources, #agent-test, #agent-review, #nav, #since.
+  Hashes for review: #details, #decision, #result, #sources, #agent-test, #agent-review, #nav, #since, #tasks, #map, #map-list, #docs.
 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -53,6 +53,23 @@
   --side-w: 244px;
   --panel-w: 384px;
   --col: 700px;             /* conversation reading column */
+
+  /* Motion. Motion explains cause and effect or where something went; it never decorates.
+     --dur-1 small feedback (hover, press, focus, badges, swaps out)
+     --dur-2 content changes (view swaps in, rows, pill, sheet exits)
+     --dur-3 panels, sheets, drawers and height expansion
+     --ease-out enters, --ease-in leaves (paired with the next-shorter duration),
+     --ease-sheet is an overshoot-free, spring-like deceleration for panels and sheets.
+     Only transform and opacity animate (plus grid-template-rows for height).
+     Every token is 0ms under prefers-reduced-motion; the script reads the same tokens. */
+  --dur-1: 120ms; --dur-2: 180ms; --dur-3: 280ms; --stagger: 24ms;
+  --ease-out: cubic-bezier(.2, .8, .2, 1);
+  --ease-in: cubic-bezier(.4, 0, 1, 1);
+  --ease-sheet: cubic-bezier(.3, .6, .1, 1);
+  --tr: background-color var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out),
+        box-shadow var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out),
+        opacity var(--dur-1) var(--ease-out), outline-color var(--dur-1) var(--ease-out),
+        outline-offset var(--dur-1) var(--ease-out);
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -79,12 +96,48 @@ button { cursor: pointer; background: none; border: 0; padding: 0; }
 p { margin: 0; }
 h1, h2, h3 { margin: 0; font-weight: 600; }
 svg { flex: none; }
-:focus { outline: none; }
-:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--r-sm); }
+:focus { outline-style: none; }
+/* The ring fades in and settles 2px inwards instead of jumping on. */
+:where(a[href], button, textarea, input, [tabindex]) { outline-color: transparent; outline-offset: 4px; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.boot *, .boot *::before, .boot *::after { transition: none !important; }
 [hidden] { display: none !important; }
 .vh { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .skip { position: absolute; left: 12px; top: 12px; transform: translateY(-200%); opacity: 0; z-index: 100; background: var(--bg); padding: 8px 12px; border-radius: var(--r); box-shadow: var(--shadow); color: var(--text); }
 .skip:focus-visible { transform: none; opacity: 1; }
+
+/* Shared hover / press / focus feedback */
+.btn, .icon-btn, .chip, .nav a, .nav button.item, .since-item, .since-btn, .row-btn, .p-back, .typing-btn,
+.ws-btn, .jump, button.obj, .skip, .box, .presence { transition: var(--tr); }
+:is(.btn, .chip, .p-back, .typing-btn, .ws-btn, .jump):active:not([aria-disabled="true"]) { transform: scale(.98); transition-duration: calc(var(--dur-1) / 2); }
+.icon-btn:active { transform: scale(.94); transition-duration: calc(var(--dur-1) / 2); }
+:is(.row-btn, .since-item, button.obj, .nav a):active { transform: scale(.99); transition-duration: calc(var(--dur-1) / 2); }
+.btn[aria-disabled="true"] { cursor: default; }
+.btn.done, .btn.done:hover { color: var(--ok); background: transparent; }
+.spin { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.dot.live { position: relative; }
+.dot.live::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: inherit; animation: ping 1.3s var(--ease-out) 2; }
+@keyframes ping { from { transform: scale(1); opacity: .55; } to { transform: scale(2.8); opacity: 0; } }
+
+/* Tooltips: only where a pointer can hover; they wait, then fade in. */
+@media (hover: hover) and (pointer: fine) {
+  [data-tip] { position: relative; }
+  [data-tip]::after {
+    content: attr(data-tip); position: absolute; z-index: 60; top: calc(100% + 6px); right: 0;
+    padding: 3px 8px; border-radius: var(--r-sm); background: var(--text); color: var(--bg);
+    font: 500 12px/1.5 var(--font); letter-spacing: 0; white-space: pre; pointer-events: none;
+    opacity: 0; transform: translateY(-2px);
+    transition: opacity var(--dur-1) var(--ease-in), transform var(--dur-1) var(--ease-in);
+  }
+  [data-tip-align="start"]::after { right: auto; left: 0; }
+  time[data-tip] { cursor: default; }
+  time[data-tip]::after { top: auto; bottom: calc(100% + 4px); right: auto; left: -4px; transform: translateY(2px); }
+  [data-tip]:hover::after, [data-tip]:focus-visible::after {
+    opacity: 1; transform: none;
+    transition: opacity var(--dur-2) var(--ease-out) 450ms, transform var(--dur-2) var(--ease-out) 450ms;
+  }
+}
 
 /* ---------- Controls ---------- */
 .btn {
@@ -119,11 +172,13 @@ svg { flex: none; }
   display: flex; flex-direction: column; min-height: 0;
   padding: 10px 10px 8px; padding-top: max(10px, env(safe-area-inset-top)); padding-left: max(10px, env(safe-area-inset-left));
 }
-.main { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; background: var(--bg); }
+.app { position: relative; }
+.main { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; background: var(--bg); overflow: clip; }
 .panel {
   width: var(--panel-w); flex: none; border-left: 1px solid var(--line); background: var(--bg);
   display: flex; flex-direction: column; min-height: 0;
 }
+.panel.leaving { position: absolute; right: 0; top: 0; bottom: 0; z-index: 3; }
 
 /* ---------- Sidebar ---------- */
 .ws { display: flex; align-items: center; gap: 8px; padding: 0 4px 0 2px; margin-bottom: 8px; }
@@ -137,7 +192,11 @@ svg { flex: none; }
 }
 .jump:hover { box-shadow: inset 0 0 0 1px var(--line-strong); }
 .jump kbd { margin-left: auto; font: 500 12px/1 var(--font); color: var(--text-3); }
-.nav { overflow-y: auto; flex: 1; min-height: 0; margin: 0 -4px; padding: 0 4px; }
+.nav { overflow-y: auto; flex: 1; min-height: 0; margin: 0 -4px; padding: 0 4px; position: relative; }
+/* One selection background that slides between items instead of blinking. */
+.nav-ind { position: absolute; top: 0; left: 0; border-radius: var(--r-sm); background: var(--bg-active); pointer-events: none; transition: transform var(--dur-3) var(--ease-sheet); }
+.nav a, .nav button.item { position: relative; }
+.nav.has-ind a[aria-current="page"], .nav.has-ind a[aria-current="page"]:hover { background: transparent; }
 .nav-sec { margin-bottom: 18px; }
 .nav-h { font-size: 12px; font-weight: 500; color: var(--text-3); padding: 0 8px 4px; letter-spacing: 0; }
 .nav a, .nav button.item {
@@ -147,7 +206,7 @@ svg { flex: none; }
 .nav a:hover, .nav button.item:hover { background: var(--bg-hover); color: var(--text); }
 .nav a[aria-current="page"] { background: var(--bg-active); color: var(--text); font-weight: 500; }
 .nav .hash { color: var(--text-3); width: 14px; text-align: center; font-size: 14px; }
-.nav .n { margin-left: auto; font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.nav .n { margin-left: auto; font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; display: inline-block; }
 .nav .unread { color: var(--text); font-weight: 600; }
 .nav .person-av { width: 20px; height: 20px; border-radius: 50%; background: var(--bg-active); color: var(--text-2); display: grid; place-items: center; font-size: 12px; font-weight: 600; position: relative; }
 .nav .person-av .st { position: absolute; right: -3px; bottom: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 2px var(--bg-side); }
@@ -181,6 +240,76 @@ svg { flex: none; }
 .faces .av + .av { margin-left: -6px; }
 .only-narrow { display: none; }
 
+.top { border-bottom: 0; }
+.details-btn { gap: 7px; padding: 0 10px; }
+.details-btn[aria-expanded="true"] { background: var(--bg-active); color: var(--text); }
+
+/* ---------- Project views: Conversation · Tasks · Map · Docs ---------- */
+.views { position: relative; flex: none; display: flex; gap: 4px; padding: 0 12px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.views::-webkit-scrollbar { display: none; }
+.tab { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 8px; font-size: 14px; font-weight: 500; color: var(--text-3); white-space: nowrap; border-radius: var(--r-sm); transition: var(--tr); }
+.tab:hover { color: var(--text); }
+.tab[aria-selected="true"] { color: var(--text); }
+.tab:focus-visible { outline-offset: -4px; }
+.tab:active { transform: scale(.98); transition-duration: calc(var(--dur-1) / 2); }
+.tab-n { font-size: 12px; font-weight: 500; color: var(--text-3); font-variant-numeric: tabular-nums; }
+/* One underline that slides between tabs (translate + scaleX of a 1px bar). */
+.views-ind { position: absolute; left: 0; bottom: 0; width: 1px; height: 2px; background: var(--text); transform-origin: 0 0; pointer-events: none; transition: transform var(--dur-3) var(--ease-sheet); }
+.pane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.pane:focus-visible { outline-offset: -2px; }
+.pane-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.pane-in { max-width: calc(var(--col) + 48px); margin: 0 auto; padding: 20px 24px 40px; padding-bottom: max(40px, env(safe-area-inset-bottom)); }
+.pane-in.wide { max-width: 1040px; container-type: inline-size; }
+.group + .group { margin-top: 26px; }
+.group-h { font-size: 12px; font-weight: 500; color: var(--text-3); margin-bottom: 6px; display: flex; gap: 6px; }
+.group-h span { font-variant-numeric: tabular-nums; }
+.list { list-style: none; margin: 0; padding: 0; }
+.list > li + li { border-top: 1px solid var(--line); }
+.item { display: flex; align-items: center; gap: 12px; width: calc(100% + 16px); margin: 0 -8px; padding: 11px 8px; border-radius: var(--r); text-align: left; transition: var(--tr); }
+.item:hover { background: var(--bg-hover); }
+.item:active { transform: scale(.99); transition-duration: calc(var(--dur-1) / 2); }
+.item .st { color: var(--text-3); }
+.item .st.need { color: var(--accent); }
+.item .st.warn, .item .warn { color: var(--warning); }
+.item-b { flex: 1; min-width: 0; }
+.item-t { display: block; font-size: 14px; font-weight: 500; color: var(--text); line-height: 1.45; }
+.item-s { display: block; font-size: 13px; color: var(--text-3); line-height: 1.5; }
+.item-r { display: flex; align-items: center; gap: 8px; flex: none; font-size: 13px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.av.sm { width: 22px; height: 22px; font-size: 12px; }
+.map-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.map-lead { font-size: 14px; color: var(--text-2); }
+.seg { display: inline-flex; padding: 2px; border-radius: var(--r); background: var(--bg-hover); }
+.seg-b { min-height: 28px; padding: 0 12px; border-radius: 6px; font-size: 13px; font-weight: 500; color: var(--text-3); transition: var(--tr); }
+.seg-b[aria-pressed="true"] { background: var(--bg); color: var(--text); box-shadow: 0 1px 2px rgba(16,17,20,.08), inset 0 0 0 1px var(--line); }
+.flow { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0; }
+.node { position: relative; display: flex; flex-direction: column; }
+.node-b { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 12px 14px; border-radius: var(--r-lg); text-align: left; background: var(--bg-raised); box-shadow: inset 0 0 0 1px var(--line); transition: var(--tr); }
+.node-b:hover { background: var(--bg-hover); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.node-b:active { transform: scale(.985); transition-duration: calc(var(--dur-1) / 2); }
+.node-k { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-3); line-height: 1.4; }
+.node-t { font-size: 14px; font-weight: 500; color: var(--text); line-height: 1.4; }
+.node-s { font-size: 13px; color: var(--text-3); line-height: 1.45; }
+.node.replaced .node-b { box-shadow: inset 0 0 0 1px var(--line); background: transparent; }
+.node.replaced .node-b:hover { background: var(--bg-hover); }
+.node.replaced .node-t { color: var(--text-3); text-decoration: line-through; text-decoration-color: var(--line-strong); }
+.node.now .node-b { box-shadow: inset 0 0 0 1.5px var(--text-3); }
+.node.need .node-s { color: var(--accent); font-weight: 500; }
+/* Edges: a short labelled connector to the next step */
+.edge { display: flex; align-items: center; gap: 8px; min-height: 30px; padding-left: 22px; font-size: 12px; color: var(--text-3); }
+.edge::before { content: ""; width: 1px; align-self: stretch; background: var(--line-strong); }
+@container (min-width: 760px) {
+  .flow.as-map { flex-direction: row; align-items: stretch; }
+  .flow.as-map .node { flex: 1 1 0; min-width: 0; flex-direction: row; align-items: center; }
+  .flow.as-map .node-b { flex: 1; min-width: 0; align-self: stretch; }
+  .flow.as-map .edge { flex-direction: column; justify-content: center; gap: 4px; width: 76px; white-space: nowrap; min-height: 0; padding: 0; flex: none; text-align: center; }
+  .flow.as-map .edge::before { width: 100%; height: 1px; align-self: auto; order: 2; }
+}
+.flow.as-list { gap: 0; }
+.flow.as-list .node-b { box-shadow: none; padding: 10px 8px; margin: 0 -8px; width: calc(100% + 16px); background: transparent; }
+.flow.as-list .node-b:hover { background: var(--bg-hover); }
+.flow.as-list .edge { padding-left: 0; min-height: 0; margin: 0 0 2px; }
+.flow.as-list .edge::before { display: none; }
+
 /* ---------- Since you left ---------- */
 .since { flex: none; border-bottom: 1px solid var(--line); }
 .since-in { max-width: calc(var(--col) + 48px); margin: 0 auto; padding: 0 24px; }
@@ -190,9 +319,14 @@ svg { flex: none; }
 }
 .since-btn b { font-weight: 600; color: var(--text); }
 .since-btn .need { color: var(--accent); font-weight: 500; }
-.since-btn .chev { margin-left: auto; color: var(--text-3); transition: transform .18s ease; }
+.since-btn .chev { margin-left: auto; color: var(--text-3); transition: transform var(--dur-3) var(--ease-sheet); }
 .since-btn[aria-expanded="true"] .chev { transform: rotate(180deg); }
 .since-btn:focus-visible { outline-offset: -2px; }
+/* Height expands with the grid-rows trick; collapsed content is hidden from focus and AT. */
+.since-coll { display: grid; grid-template-rows: 0fr; visibility: hidden; margin: 0 -12px; padding: 0 12px;
+  transition: grid-template-rows var(--dur-2) var(--ease-in), visibility 0s linear var(--dur-2); }
+.since-coll.open { grid-template-rows: 1fr; visibility: visible; transition: grid-template-rows var(--dur-3) var(--ease-sheet); }
+.since-clip { min-height: 0; overflow: hidden; margin: 0 -12px; padding: 0 12px; }
 .since-list { list-style: none; margin: 0; padding: 2px 0 14px; max-height: 46vh; overflow-y: auto; }
 .since-list li { display: flex; }
 .since-item {
@@ -207,11 +341,21 @@ svg { flex: none; }
 .since-foot span { font-size: 13px; color: var(--text-3); }
 
 /* ---------- Conversation ---------- */
-.feed { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scroll-padding-bottom: 24px; }
+.feed { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scroll-padding-bottom: 24px; }
 .feed-in { max-width: calc(var(--col) + 48px); margin: 0 auto; padding: 20px 24px 20px; }
 .feed-wrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.latest { white-space: nowrap; position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 5; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 14px; border-radius: 999px; background: var(--bg-raised); color: var(--text-2); font-size: 13px; font-weight: 500; box-shadow: var(--shadow), inset 0 0 0 1px var(--line); }
+.latest { white-space: nowrap; position: absolute; left: 50%; bottom: 12px; z-index: 5;
+  transform: translate(-50%, 16px); opacity: 0; visibility: hidden;
+  transition: transform var(--dur-2) var(--ease-in), opacity var(--dur-1) var(--ease-in), visibility 0s linear var(--dur-2), color var(--dur-1) var(--ease-out); display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 14px; border-radius: 999px; background: var(--bg-raised); color: var(--text-2); font-size: 13px; font-weight: 500; box-shadow: var(--shadow), inset 0 0 0 1px var(--line); }
+.latest.show { transform: translate(-50%, 0); opacity: 1; visibility: visible;
+  transition: transform var(--dur-3) var(--ease-sheet), opacity var(--dur-2) var(--ease-out), color var(--dur-1) var(--ease-out); }
+.latest.show:active { transform: translate(-50%, 0) scale(.97); transition-duration: calc(var(--dur-1) / 2); }
 .latest:hover { color: var(--text); }
+/* While the pill shows, the text under it fades into the page instead of being cut mid-line. */
+.feed-wrap::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 76px; z-index: 4; pointer-events: none;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--bg) 0%, transparent), var(--bg) 70%);
+  opacity: 0; transition: opacity var(--dur-2) var(--ease-in); }
+.feed-wrap.has-latest::after { opacity: 1; transition: opacity var(--dur-3) var(--ease-out); }
 .latest .dot { background: var(--danger); }
 .intro { padding: 12px 0 8px; }
 .intro h2 { font-size: 20px; letter-spacing: -0.015em; line-height: 1.35; }
@@ -237,7 +381,8 @@ svg { flex: none; }
 .who { font-weight: 600; font-size: 15px; }
 .role { color: var(--text-3); font-size: 13px; }
 time, .time { color: var(--text-3); font-size: 12px; font-variant-numeric: tabular-nums; }
-.text { color: var(--text); margin-top: 2px; max-width: 64ch; }
+.text { color: var(--text); margin-top: 2px; max-width: 64ch; transition: color var(--dur-3) var(--ease-out); }
+.msg.sending .text { color: var(--text-3); }
 .text + .text { margin-top: 8px; }
 .text em { font-style: normal; font-weight: 500; }
 .quote { margin-top: 10px; padding-left: 14px; border-left: 2px solid var(--line-strong); color: var(--text-2); }
@@ -278,15 +423,25 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
 .sys.warn strong { color: var(--warning); font-weight: 500; }
 
 /* Own failed message */
-.msg.failed .bubble { background: var(--tint-danger); border-radius: var(--r-lg); padding: 10px 14px; margin: 4px 0 0 -14px; width: fit-content; max-width: calc(100% + 14px); }
+.msg.failed .bubble { position: relative; isolation: isolate; border-radius: var(--r-lg); padding: 10px 14px; margin: 4px 0 0 -14px; width: fit-content; max-width: calc(100% + 14px); }
+/* The tint fades in (and out once sent) on its own layer: an opacity change, not a repaint of the text. */
+.msg.failed .bubble::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--tint-danger);
+  animation: fade-in var(--dur-3) var(--ease-out) 120ms backwards; transition: opacity var(--dur-3) var(--ease-out); }
+.msg.failed .bubble.resolved::before { opacity: 0; }
+@keyframes fade-in { from { opacity: 0; } }
 .msg.failed .text { color: var(--text-2); }
+.msg.failed .bubble.resolved .text { color: var(--text); }
+.collapse { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--dur-2) var(--ease-in), opacity var(--dur-1) var(--ease-in); }
+.collapse.gone { grid-template-rows: 0fr; opacity: 0; }
+.collapse > * { min-height: 0; overflow: hidden; }
 .fail { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 12px; margin-top: 6px; font-size: 13px; color: var(--danger); }
 .fail-msg { display: flex; align-items: flex-start; gap: 6px; line-height: 1.45; }
 .fail-msg svg { margin-top: 2px; }
 .fail-acts { display: flex; gap: 2px; margin-left: -8px; }
 .fail .btn { min-height: 28px; padding: 0 8px; font-size: 13px; }
 .fail .btn.link { color: var(--text); font-weight: 600; }
-.sent-note { font-size: 12px; color: var(--text-3); }
+.sent-note { display: inline-flex; align-items: center; gap: 7px; min-height: 28px; font-size: 13px; color: var(--text-3); }
+.sent-note.ok { color: var(--ok); }
 
 /* Agent presence as a message-like line */
 .typing { display: flex; align-items: center; gap: 14px; padding: 10px 0 4px; }
@@ -294,9 +449,12 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
 .typing-btn { display: inline-flex; align-items: center; gap: 10px; min-height: 32px; padding: 0 10px; margin-left: -10px; border-radius: var(--r); font-size: 14px; color: var(--text-3); }
 .typing-btn:hover { background: var(--bg-hover); color: var(--text-2); }
 .dots { display: inline-flex; gap: 3px; }
-.dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; animation: blink 1.4s infinite both; }
-.dots i:nth-child(2) { animation-delay: .2s; } .dots i:nth-child(3) { animation-delay: .4s; }
-@keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+.dots { align-items: center; height: 8px; }
+.dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; animation: typing 1.2s ease-in-out infinite both; }
+.dots i:nth-child(2) { animation-delay: .15s; } .dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes typing { 0%, 70%, 100% { opacity: .3; transform: translateY(0); } 35% { opacity: 1; transform: translateY(-2px); } }
+.sys .sys-ic .dot { margin-top: 5px; }
+.sys-ic .spin { margin-top: 3px; }
 
 /* ---------- Composer ---------- */
 .composer { flex: none; padding: 8px 24px 16px; padding-bottom: max(16px, env(safe-area-inset-bottom)); }
@@ -312,8 +470,17 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
 }
 .box textarea::placeholder { color: var(--text-3); }
 .box textarea:focus-visible { outline: none; }
-.send { width: 32px; height: 32px; border-radius: var(--r); display: grid; place-items: center; background: var(--accent); color: var(--on-accent); }
-.send:hover { background: var(--accent-hover); }
+/* The button keeps its full hit area; only its fill scales, so enabling reads as a soft "arrival". */
+.send { position: relative; isolation: isolate; width: 32px; height: 32px; border-radius: var(--r); display: grid; place-items: center; color: var(--on-accent);
+  transition: color var(--dur-2) var(--ease-out), outline-color var(--dur-1) var(--ease-out), outline-offset var(--dur-1) var(--ease-out); }
+.send::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--accent);
+  transition: background-color var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-sheet); }
+.send svg { transition: transform var(--dur-2) var(--ease-sheet); }
+.send[aria-disabled="true"] { color: var(--text-3); cursor: default; }
+.send[aria-disabled="true"]::before { background: var(--bg-active); transform: scale(.84); }
+.send[aria-disabled="true"] svg { transform: scale(.9); }
+.send:not([aria-disabled="true"]):hover::before { background: var(--accent-hover); }
+.send:not([aria-disabled="true"]):active::before { transform: scale(.9); transition-duration: calc(var(--dur-1) / 2); }
 .hint { font-size: 12px; color: var(--text-3); margin: 6px 2px 0; }
 
 /* ---------- Side panel ---------- */
@@ -321,7 +488,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
 .p-head h2 { font-size: 14px; font-weight: 600; flex: 1; padding-left: 4px; }
 .p-back { display: inline-flex; align-items: center; gap: 4px; min-height: var(--ctl); padding: 0 8px 0 4px; border-radius: var(--r); color: var(--text-3); font-size: 14px; }
 .p-back:hover { background: var(--bg-hover); color: var(--text); }
-.p-body { flex: 1; overflow-y: auto; min-height: 0; padding: 20px 22px 28px; padding-bottom: max(28px, env(safe-area-inset-bottom)); }
+.p-body { position: relative; flex: 1; overflow-y: auto; overflow-x: hidden; min-height: 0; padding: 20px 22px 28px; padding-bottom: max(28px, env(safe-area-inset-bottom)); }
 .p-body:focus-visible { outline-offset: -2px; }
 .eyebrow { font-size: 12px; font-weight: 500; color: var(--text-3); display: flex; align-items: center; gap: 7px; }
 .p-long { font-size: 15px; color: var(--text-2); line-height: 1.55; margin: 6px 0 4px; }
@@ -354,7 +521,8 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
 .src span { font-size: 13px; color: var(--text-3); display: block; line-height: 1.5; }
 .src span.warn { color: var(--warning); }
 .src .mini { display: flex; gap: 4px; margin: 4px 0 0 -8px; }
-.ids { margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12px; color: var(--text-3); font-family: var(--mono); letter-spacing: 0; }
+.ids .btn { font-family: var(--font); font-size: 12px; margin: -6px -6px -6px auto; }
+.ids { display: flex; align-items: center; gap: 8px; margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12px; color: var(--text-3); font-family: var(--mono); letter-spacing: 0; }
 .mono { font-family: var(--mono); font-size: 13px; letter-spacing: 0; }
 .stat { display: flex; gap: 20px; margin-top: 4px; }
 .stat div { font-size: 13px; color: var(--text-3); }
@@ -362,17 +530,17 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
 .status-line { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-2); }
 .status-line.warn { color: var(--warning); }
 
-.scrim { position: fixed; inset: 0; background: var(--scrim); z-index: 30; }
-@keyframes slide-in { from { transform: translateX(16px); opacity: 0; } }
-@keyframes slide-in-left { from { transform: translateX(-16px); opacity: 0; } }
-@keyframes rise { from { transform: translateY(24px); opacity: 0; } }
-.panel:not([hidden]) { animation: slide-in .18s ease-out; }
+.scrim { position: fixed; inset: 0; background: var(--scrim); z-index: 30; opacity: 0; visibility: hidden;
+  transition: opacity var(--dur-2) var(--ease-in), visibility 0s linear var(--dur-2); }
+.scrim.on { opacity: 1; visibility: visible; transition: opacity var(--dur-3) var(--ease-out); }
 
 /* ---------- ≤1180: sidebar becomes a drawer ---------- */
 @media (max-width: 1180px) {
   .only-narrow { display: inline-grid; }
-  .sidebar { position: fixed; left: 0; top: 0; bottom: 0; z-index: 40; width: 288px; box-shadow: var(--shadow); display: none; }
-  body.nav-open .sidebar { display: flex; animation: slide-in-left .18s ease-out; }
+  .sidebar { position: fixed; left: 0; top: 0; bottom: 0; z-index: 40; width: 288px; box-shadow: var(--shadow);
+    transform: translateX(calc(-100% - 40px)); visibility: hidden;
+    transition: transform var(--dur-2) var(--ease-in), visibility 0s linear var(--dur-2); }
+  body.nav-open .sidebar { transform: none; visibility: visible; transition: transform var(--dur-3) var(--ease-sheet); }
   .top { padding-left: 8px; }
 }
 /* ---------- ≤980: side panel overlays instead of docking ---------- */
@@ -392,6 +560,9 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
   .box { padding: 4px 4px 4px 14px; align-items: center; }
   .box textarea { min-height: 44px; padding: 10px 0; }
   .p-back { min-height: 44px; }
+  .tab { min-height: 44px; padding: 0 12px; }
+  .seg-b { min-height: 44px; }
+  .item { min-height: 56px; }
   .row-btn { min-height: 56px; }
   .latest { min-height: 44px; }
 }
@@ -417,12 +588,16 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
   .since-item .when { display: none; }
   .intro h2 { font-size: 18px; }
   .sidebar { width: 100%; border-right: 0; }
+  .views { padding: 0 4px; gap: 0; }
+  .pane-in { padding-left: 16px; padding-right: 16px; }
+  .item-r .av { display: none; }
+  .details-btn { padding: 0 12px; }
   .panel { width: 100%; }
-  body.panel-open .panel { animation: rise .2s ease-out; }
   .p-body { padding: 18px 16px 28px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  :root { --dur-1: 0ms; --dur-2: 0ms; --dur-3: 0ms; --stagger: 0ms; }
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
 </style>
@@ -451,6 +626,8 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
     <symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.4" fill="none"/><path d="M8 4.75V8l2 1.5" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></symbol>
     <symbol id="i-inbox" viewBox="0 0 16 16"><path d="M2.5 9.5l1.7-5.2a1 1 0 01.95-.8h5.7a1 1 0 01.95.8l1.7 5.2v3a1 1 0 01-1 1h-9a1 1 0 01-1-1z" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round"/><path d="M2.5 9.5h3l1 1.5h3l1-1.5h3" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round"/></symbol>
     <symbol id="i-spark" viewBox="0 0 16 16"><path d="M8 2.5l1.3 3.2 3.2 1.3-3.2 1.3L8 11.5 6.7 8.3 3.5 7l3.2-1.3z" fill="currentColor"/><path d="M12.5 11l.5 1.5 1.5.5-1.5.5-.5 1.5-.5-1.5-1.5-.5 1.5-.5z" fill="currentColor"/></symbol>
+    <symbol id="i-st-progress" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.75" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M8 4.5a3.5 3.5 0 010 7z" fill="currentColor"/></symbol>
+    <symbol id="i-st-review" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.75" stroke="currentColor" stroke-width="1.5" fill="none" stroke-dasharray="2.2 1.8"/><circle cx="8" cy="8" r="2.25" fill="currentColor"/></symbol>
   </defs>
 </svg>
 
@@ -468,7 +645,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
       </div>
       <div class="nav-sec" aria-labelledby="h-proj">
         <div class="nav-h" id="h-proj">Projects</div>
-        <a href="#" aria-current="page" data-nav-close><span class="hash" aria-hidden="true">#</span>Shared export<span class="n unread">7</span></a>
+        <a href="#" aria-current="page" data-nav-close><span class="hash" aria-hidden="true">#</span>Shared export<span class="n unread" id="badge-shared">7</span></a>
         <a href="#"><span class="hash" aria-hidden="true">#</span>Guest onboarding<span class="n">2</span></a>
         <a href="#"><span class="hash" aria-hidden="true">#</span>Billing migration</a>
         <a href="#"><span class="hash" aria-hidden="true">#</span>Audit log retention</a>
@@ -485,12 +662,12 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
       <div><b>Jo Marsh</b><span>Back today, 09:02</span></div>
     </div>
   </nav>
-  <div class="scrim" id="scrim" hidden></div>
+  <div class="scrim" id="scrim"></div>
 
   <!-- ============ Conversation ============ -->
   <main class="main" id="main">
     <header class="top">
-      <button class="icon-btn only-narrow" type="button" id="menu-btn" aria-label="Open sidebar" aria-controls="sidebar" aria-expanded="false"><svg width="18" height="18"><use href="#i-menu"/></svg></button>
+      <button class="icon-btn only-narrow" type="button" id="menu-btn" aria-label="Open sidebar" aria-controls="sidebar" aria-expanded="false" data-tip="Sidebar" data-tip-align="start"><svg width="18" height="18"><use href="#i-menu"/></svg></button>
       <div class="title">
         <span class="crumb">Tide</span><span class="slash" aria-hidden="true">/</span>
         <h1>Shared export</h1>
@@ -498,9 +675,16 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
       </div>
       <div class="top-right">
         <div class="faces" aria-label="Members: Ari, Nia, Jo"><span class="av" aria-hidden="true">A</span><span class="av" aria-hidden="true">N</span><span class="av me-av" aria-hidden="true">J</span></div>
-        <button class="icon-btn" type="button" id="details-btn" data-open="overview" aria-label="Show details" aria-controls="panel" aria-expanded="false" title="Details  ]"><svg width="18" height="18"><use href="#i-panel"/></svg></button>
+        <button class="btn quiet details-btn" type="button" id="details-btn" data-open="overview" aria-controls="panel" aria-expanded="false" aria-keyshortcuts="]" data-tip="Toggle details   ]"><svg width="16" height="16" aria-hidden="true"><use href="#i-panel"/></svg>Details</button>
       </div>
     </header>
+    <div class="views" role="tablist" aria-label="Project views">
+      <button class="tab" type="button" role="tab" id="tab-conversation" aria-selected="true" aria-controls="pane-conversation" data-pane="conversation">Conversation</button>
+      <button class="tab" type="button" role="tab" id="tab-tasks" aria-selected="false" aria-controls="pane-tasks" data-pane="tasks" tabindex="-1">Tasks<span class="tab-n" aria-label="3 tasks">3</span></button>
+      <button class="tab" type="button" role="tab" id="tab-map" aria-selected="false" aria-controls="pane-map" data-pane="map" tabindex="-1">Map</button>
+      <button class="tab" type="button" role="tab" id="tab-docs" aria-selected="false" aria-controls="pane-docs" data-pane="docs" tabindex="-1">Docs<span class="tab-n" aria-label="4 documents">4</span></button>
+      <span class="views-ind" aria-hidden="true"></span>
+    </div>
 
     <section class="since" id="since" aria-label="Since you left">
       <div class="since-in">
@@ -509,7 +693,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
           <span><b>7 updates</b> since Sep 19 · <span class="need">3 need you</span></span>
           <svg class="chev" width="16" height="16" aria-hidden="true"><use href="#i-chev-d"/></svg>
         </button>
-        <div id="since-panel" hidden>
+        <div id="since-panel" class="since-coll"><div class="since-clip">
           <ul class="since-list">
             <li><button class="since-item" type="button" data-open="result"><span class="dot accent" aria-hidden="true"></span><span><strong>Nia's result is ready for your review</strong></span><span class="vh">, needs you</span><span class="when">Sep 25</span></button></li>
             <li><button class="since-item" type="button" data-open="handoff"><span class="dot accent" aria-hidden="true"></span><span><strong>Ari handed you the guest-count question</strong></span><span class="vh">, needs you</span><span class="when">Sep 26</span></button></li>
@@ -520,10 +704,11 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
             <li><button class="since-item" type="button" data-open="work"><span class="dot ring" aria-hidden="true"></span><span>Nia started the work</span><span class="when">Sep 22</span></button></li>
           </ul>
           <div class="since-foot"><span>Saved Sep 19, 17:40</span><button class="btn quiet" type="button" id="mark-read">Mark all as read</button></div>
-        </div>
+        </div></div>
       </div>
     </section>
 
+    <div class="pane" id="pane-conversation" role="tabpanel" aria-labelledby="tab-conversation">
     <div class="feed-wrap">
     <div class="feed" id="feed" tabindex="-1">
       <div class="feed-in" role="log" aria-label="Conversation: guest visibility of archived items in exports">
@@ -580,11 +765,11 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
           <p class="text">I'll take it.</p>
         </article>
 
-        <div class="sys warn">
+        <div class="sys warn" id="spec-notice">
           <span class="sys-ic" aria-hidden="true"><svg width="16" height="16"><use href="#i-unlink"/></svg></span>
           <div>
-            <p><strong>“Export spec v2” is missing.</strong> It was moved and the link broke.<span class="time">Sep 24</span></p>
-            <div class="sys-acts"><button class="btn link" type="button" data-open="sources">Fix link</button></div>
+            <p id="spec-notice-text" aria-live="polite"><strong>“Export spec v2” is missing.</strong> It was moved and the link broke.<span class="time">Sep 24</span></p>
+            <div class="sys-acts" id="spec-acts"><button class="btn link" type="button" data-open="sources">Fix link</button></div>
           </div>
         </div>
 
@@ -612,7 +797,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
         <div class="sys warn" id="test-notice">
           <span class="sys-ic" aria-hidden="true"><svg width="16" height="16"><use href="#i-pause"/></svg></span>
           <div>
-            <p id="test-notice-text"><strong>Test agent stopped</strong> — the provider limit was reached after 14 of 18 cases. Its partial output is kept.<span class="time">15:48</span></p>
+            <p id="test-notice-text" aria-live="polite"><strong>Test agent stopped</strong> — the provider limit was reached after 14 of 18 cases. Its partial output is kept.<span class="time">15:48</span></p>
             <div class="sys-acts" id="test-notice-acts">
               <button class="btn link" type="button" data-resume-test>Resume</button>
               <button class="btn quiet" type="button" data-open="agent-test">Details</button>
@@ -637,10 +822,11 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
           <div class="meta"><span class="who">You</span><time id="failed-time">09:14</time></div>
           <div class="bubble">
             <p class="text" id="failed-text">Agree with Ari: no count for guests, but members should still see it. I'll review the result first and answer formally after that.</p>
+            <div class="collapse" id="fail-wrap"><div>
             <div class="fail" id="fail-row" role="status">
               <p class="fail-msg"><svg width="15" height="15" aria-hidden="true"><use href="#i-alert"/></svg>Couldn't send — connection lost. Your draft is kept.</p>
               <div class="fail-acts"><button class="btn link" type="button" id="retry-btn">Retry</button><button class="btn quiet" type="button" id="edit-btn">Edit</button></div>
-            </div>
+            </div></div></div>
           </div>
         </article>
 
@@ -650,7 +836,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
         </div>
       </div>
     </div>
-    <button class="latest" type="button" id="latest" hidden><span class="dot" aria-hidden="true"></span>1 not sent · Latest<svg width="14" height="14" aria-hidden="true"><use href="#i-chev-d"/></svg></button>
+    <button class="latest" type="button" id="latest"><span class="dot" aria-hidden="true"></span><span id="latest-label">1 not sent · Latest</span><svg width="14" height="14" aria-hidden="true"><use href="#i-chev-d"/></svg></button>
     </div>
 
     <form class="composer" id="composer" autocomplete="off">
@@ -658,10 +844,78 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
         <label class="vh" for="reply">Reply in Shared export</label>
         <div class="box">
           <textarea id="reply" rows="1" placeholder="Reply to Ari and Nia…"></textarea>
-          <button class="send" type="submit" aria-label="Send"><svg width="16" height="16" aria-hidden="true"><use href="#i-send"/></svg></button>
+          <button class="send" type="submit" aria-label="Send" aria-disabled="true"><svg width="16" height="16" aria-hidden="true"><use href="#i-send"/></svg></button>
         </div>
       </div>
     </form>
+    </div>
+
+    <!-- Tasks: the same work, as a calm list -->
+    <div class="pane" id="pane-tasks" role="tabpanel" aria-labelledby="tab-tasks" tabindex="-1" hidden>
+      <div class="pane-scroll"><div class="pane-in">
+        <section class="group" aria-labelledby="g-need">
+          <h2 class="group-h" id="g-need">Needs you <span>2</span></h2>
+          <ul class="list">
+            <li><button class="item" type="button" data-open="result">
+              <svg class="st need" width="16" height="16" aria-hidden="true"><use href="#i-st-review"/></svg>
+              <span class="item-b"><span class="item-t">Review patch and permission tests</span><span class="item-s">Result from Nia · 14 passed, 4 not run · <span class="need-you">waiting for your review</span></span></span>
+              <span class="item-r">Sep 25</span></button></li>
+            <li><button class="item" type="button" data-open="handoff">
+              <svg class="st need" width="16" height="16" aria-hidden="true"><use href="#i-hand"/></svg>
+              <span class="item-b"><span class="item-t">Answer the guest-count question</span><span class="item-s">Handed to you by Ari · not answered</span></span>
+              <span class="item-r">Sep 26</span></button></li>
+          </ul>
+        </section>
+        <section class="group" aria-labelledby="g-prog">
+          <h2 class="group-h" id="g-prog">In progress <span>1</span></h2>
+          <ul class="list">
+            <li><button class="item" type="button" data-open="work">
+              <svg class="st" width="16" height="16" aria-hidden="true"><use href="#i-st-progress"/></svg>
+              <span class="item-b"><span class="item-t">Apply the check to export generation</span><span class="item-s">Nia · follows “Exclude items guests can’t open” · due moved to Oct 1</span></span>
+              <span class="item-r"><span class="av sm" aria-hidden="true">N</span><span class="vh">Owner Nia, </span>Oct 1</span></button></li>
+          </ul>
+        </section>
+      </div></div>
+    </div>
+
+    <!-- Map: how the current rule came to be; the ordered list is also the accessible alternative -->
+    <div class="pane" id="pane-map" role="tabpanel" aria-labelledby="tab-map" tabindex="-1" hidden>
+      <div class="pane-scroll"><div class="pane-in wide">
+        <div class="map-head">
+          <p class="map-lead">From the support report to the result waiting for you.</p>
+          <div class="seg" role="group" aria-label="Show as">
+            <button class="seg-b" type="button" aria-pressed="true" data-maplayout="map">Map</button>
+            <button class="seg-b" type="button" aria-pressed="false" data-maplayout="list">List</button>
+          </div>
+        </div>
+        <ol class="flow as-map" id="flow" aria-label="From source to result">
+          <li class="node"><button class="node-b" type="button" data-open="sources"><span class="node-k">Source</span><span class="node-t">Support report, Halden Co</span><span class="node-s">Redacted PDF · Sep 20</span></button><span class="edge">led to</span></li>
+          <li class="node replaced"><button class="node-b" type="button" data-open="decision"><span class="node-k">Earlier rule · replaced</span><span class="node-t">Include archived items for members</span><span class="node-s">Aug 30 – Sep 22</span></button><span class="edge">replaced by</span></li>
+          <li class="node now"><button class="node-b" type="button" data-open="decision"><span class="node-k"><span class="dot ok" aria-hidden="true"></span>Current rule</span><span class="node-t">Exclude items guests can’t open</span><span class="node-s">Accepted Sep 22</span></button><span class="edge">applied in</span></li>
+          <li class="node"><button class="node-b" type="button" data-open="work"><span class="node-k">Work · in progress</span><span class="node-t">Apply the check to export generation</span><span class="node-s">Nia · due Oct 1</span></button><span class="edge">produced</span></li>
+          <li class="node need"><button class="node-b" type="button" data-open="result"><span class="node-k"><span class="dot accent" aria-hidden="true"></span>Result · needs you</span><span class="node-t">Patch and permission tests</span><span class="node-s">Waiting for your review</span></button></li>
+        </ol>
+      </div></div>
+    </div>
+
+    <!-- Docs: the materials behind the work -->
+    <div class="pane" id="pane-docs" role="tabpanel" aria-labelledby="tab-docs" tabindex="-1" hidden>
+      <div class="pane-scroll"><div class="pane-in">
+        <section class="group" aria-labelledby="g-docs">
+          <h2 class="group-h" id="g-docs">Materials <span>4</span></h2>
+          <ul class="list">
+            <li><button class="item" type="button" data-open="sources"><svg class="st" width="16" height="16" aria-hidden="true"><use href="#i-doc"/></svg>
+              <span class="item-b"><span class="item-t">Support report, Halden Co</span><span class="item-s">Redacted · PDF · added by Ari</span></span><span class="item-r">Sep 20</span></button></li>
+            <li><button class="item" type="button" data-open="sources"><svg class="st" width="16" height="16" aria-hidden="true"><use href="#i-doc"/></svg>
+              <span class="item-b"><span class="item-t">Permission test output</span><span class="item-s">Partial, 14 of 18 cases · Test agent for Nia</span></span><span class="item-r">Sep 25</span></button></li>
+            <li><button class="item" type="button" data-open="sources"><svg class="st warn" width="16" height="16" aria-hidden="true" id="spec-doc-ic"><use href="#i-unlink"/></svg>
+              <span class="item-b"><span class="item-t">Export spec v2</span><span class="item-s"><span class="warn" id="spec-doc">Missing · moved, link broken</span></span></span><span class="item-r">Sep 24</span></button></li>
+            <li><button class="item" type="button" data-open="sources"><svg class="st" width="16" height="16" aria-hidden="true"><use href="#i-lock"/></svg>
+              <span class="item-b"><span class="item-t">Restricted source</span><span class="item-s">You don’t have access. Its title and content are hidden.</span></span><span class="item-r"></span></button></li>
+          </ul>
+        </section>
+      </div></div>
+    </div>
   </main>
 
   <!-- ============ Side panel (closed by default) ============ -->
@@ -669,7 +923,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
     <div class="p-head">
       <button class="p-back" type="button" id="p-back" hidden><svg width="16" height="16" aria-hidden="true"><use href="#i-chev-l"/></svg>Details</button>
       <h2 id="p-title">Details</h2>
-      <button class="icon-btn" type="button" id="p-close" aria-label="Close details"><svg width="16" height="16"><use href="#i-x"/></svg></button>
+      <button class="icon-btn" type="button" id="p-close" aria-label="Close details" data-tip="Close   Esc"><svg width="16" height="16"><use href="#i-x"/></svg></button>
     </div>
     <div class="p-body" id="p-body" tabindex="-1">
 
@@ -685,7 +939,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
           <li><button class="row-btn" type="button" data-go="agent-review"><span class="rb"><span class="row-k">Agent · started by you</span><span class="row-t">Review agent</span><span class="row-s"><span class="dot accent" aria-hidden="true"></span>Reading the result</span></span><svg class="chev" width="16" height="16" aria-hidden="true"><use href="#i-chev-r"/></svg></button></li>
           <li><button class="row-btn" type="button" data-go="agent-test"><span class="rb"><span class="row-k">Agent · started by Nia</span><span class="row-t">Test agent</span><span class="row-s" data-test-status><span class="dot ring" aria-hidden="true"></span><span class="warn">Stopped · provider limit</span></span></span><svg class="chev" width="16" height="16" aria-hidden="true"><use href="#i-chev-r"/></svg></button></li>
         </ul>
-        <p class="ids">W-1 · C-1 · project Tide/shared-export</p>
+        <p class="ids">W-1 · C-1 · project Tide/shared-export<button class="btn quiet" type="button" data-copy="flux://tide/shared-export">Copy link</button></p>
       </section>
 
       <section data-view="decision" data-title="Decision" hidden>
@@ -705,7 +959,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
         <div class="p-sec">
           <h3>Accepted by</h3>
           <p>Ari, on your behalf. You can confirm it or reopen it.</p>
-          <div class="p-acts" style="margin-top:10px"><button class="btn line" type="button" id="confirm-dec">Confirm</button><button class="btn quiet" type="button">Reopen</button></div>
+          <div class="p-acts" style="margin-top:10px"><button class="btn line" type="button" id="confirm-dec" data-confirm="Confirmed">Confirm</button><button class="btn quiet" type="button">Reopen</button></div>
         </div>
         <div class="p-sec">
           <h3>Evidence</h3>
@@ -715,7 +969,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
             <li><button class="row-btn" type="button" data-go="sources"><span class="rb"><span class="row-t">Export spec v2</span><span class="row-s"><span class="warn">Missing · link broken</span></span></span><svg class="chev" width="16" height="16" aria-hidden="true"><use href="#i-chev-r"/></svg></button></li>
           </ul>
         </div>
-        <p class="ids">D-2 · supersedes D-1 · discussed in C-1, Sep 21</p>
+        <p class="ids">D-2 · supersedes D-1 · discussed in C-1, Sep 21<button class="btn quiet" type="button" data-copy="flux://tide/shared-export/D-2">Copy link</button></p>
       </section>
 
       <section data-view="result" data-title="Result" hidden>
@@ -739,7 +993,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
           <button class="btn line" type="button">Request changes</button>
           <button class="btn quiet" type="button">Hand off</button>
         </div>
-        <p class="ids">R-1 · result of W-1 · input D-2</p>
+        <p class="ids">R-1 · result of W-1 · input D-2<button class="btn quiet" type="button" data-copy="flux://tide/shared-export/R-1">Copy link</button></p>
       </section>
 
       <section data-view="work" data-title="Work" hidden>
@@ -783,13 +1037,13 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
         </div>
         <div class="src">
           <svg class="ic warn" width="16" height="16" aria-hidden="true"><use href="#i-unlink"/></svg>
-          <div><b>Export spec v2</b><span class="warn">Missing — moved, link broken since Sep 24</span>
-            <div class="mini"><button class="btn link" type="button">Relink</button><button class="btn quiet" type="button">Ask Ari</button></div></div>
+          <div><b>Export spec v2</b><span class="warn" id="spec-src">Missing — moved, link broken since Sep 24</span>
+            <div class="mini"><button class="btn link" type="button" id="relink-btn">Relink</button><button class="btn quiet" type="button">Ask Ari</button></div></div>
         </div>
         <div class="src">
           <svg class="ic" width="16" height="16" aria-hidden="true"><use href="#i-lock"/></svg>
           <div><b>Restricted source</b><span>You don't have access. Its title and content are hidden.</span>
-            <div class="mini"><button class="btn link" type="button">Request access</button></div></div>
+            <div class="mini"><button class="btn link" type="button" data-confirm="Requested">Request access</button></div></div>
         </div>
         <p class="ids">M-1 · M-2 · M-3 · M-1-private</p>
       </section>
@@ -836,52 +1090,129 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
 (() => {
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => [...r.querySelectorAll(s)];
-  const body = document.body, panel = $('#panel'), sidebar = $('#sidebar'), scrim = $('#scrim'), main = $('#main');
-  const feed = $('#feed'), detailsBtn = $('#details-btn'), menuBtn = $('#menu-btn');
+  const root = document.documentElement, body = document.body;
+  const panel = $('#panel'), sidebar = $('#sidebar'), scrim = $('#scrim'), main = $('#main');
+  const feed = $('#feed'), detailsBtn = $('#details-btn'), menuBtn = $('#menu-btn'), pBody = $('#p-body');
   const mqPanelOverlay = matchMedia('(max-width: 980px)'), mqNavDrawer = matchMedia('(max-width: 1180px)');
-  let panelReturn = null, navReturn = null, current = null;
+  const mqPhone = matchMedia('(max-width: 640px)'), reduce = matchMedia('(prefers-reduced-motion: reduce)');
+  let panelReturn = null, navReturn = null, current = null, panelState = 'closed', panelAnim = null;
+
+  // ---- Motion helpers: durations and easings come from the CSS tokens (0 under reduced motion) ----
+  let booting = true;
+  const token = n => getComputedStyle(root).getPropertyValue(n).trim();
+  const T = n => (booting || reduce.matches) ? 0 : (parseFloat(token(n)) || 0);
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  function anim(el, frames, dur, easing, opts = {}) {
+    if (!dur || !el || !el.animate) return Promise.resolve(null);
+    const a = el.animate(frames, { duration: dur, easing: token(easing) || 'ease-out', ...opts });
+    return a.finished.then(() => a, () => null);
+  }
+  const enter = (el, from, dur = T('--dur-2'), opts = {}) =>
+    anim(el, [from, { opacity: 1, transform: 'none' }], dur, '--ease-out', { fill: 'backwards', ...opts });
+  const leave = (el, to, dur = T('--dur-1'), opts = {}) =>
+    anim(el, [{ opacity: 1, transform: 'none' }, to], dur, '--ease-in', { fill: 'forwards', ...opts });
+  // Swap content in place: the old content lifts out, the new settles in.
+  async function swap(el, update) {
+    const a = await leave(el, { opacity: 0, transform: 'translateY(-2px)' }, T('--dur-1') * .8);
+    update(); if (a) a.cancel();
+    return enter(el, { opacity: 0, transform: 'translateY(3px)' }, T('--dur-2'));
+  }
+  // FLIP: let layout change instantly, then animate the elements from where they were.
+  function flip(els, mutate, dur = T('--dur-3'), easing = '--ease-sheet') {
+    els = els.filter(Boolean);
+    const before = els.map(e => e.getBoundingClientRect());
+    mutate();
+    if (!dur) return;
+    els.forEach((e, i) => {
+      const a = e.getBoundingClientRect(), dx = before[i].left - a.left, dy = before[i].top - a.top;
+      if (Math.abs(dx) + Math.abs(dy) >= 1) anim(e, [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], dur, easing);
+    });
+  }
+  const live = document.createElement('div'); live.className = 'vh'; live.setAttribute('role', 'status'); body.append(live);
+  const announce = t => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
+  const SPIN = '<span class="spin" aria-hidden="true"></span>';
+  const CHECK = '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const now = () => new Date().toTimeString().slice(0, 5);
 
   function syncInert() {
-    const panelModal = !panel.hidden && mqPanelOverlay.matches;
+    const panelModal = panelState === 'open' && mqPanelOverlay.matches;
     const navModal = body.classList.contains('nav-open') && mqNavDrawer.matches;
     main.inert = panelModal || navModal;
     sidebar.inert = panelModal || (mqNavDrawer.matches && !navModal);
-    panel.inert = navModal;
-    scrim.hidden = !(panelModal || navModal);
+    panel.inert = navModal || panelState === 'closing';
+    scrim.classList.toggle('on', panelModal || navModal);
     if (panelModal) { panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-modal', 'true'); }
     else { panel.removeAttribute('role'); panel.removeAttribute('aria-modal'); }
     if (navModal) { sidebar.setAttribute('role', 'dialog'); sidebar.setAttribute('aria-modal', 'true'); }
     else { sidebar.removeAttribute('role'); sidebar.removeAttribute('aria-modal'); }
   }
 
-  function show(view, focus = true) {
+  // ---- Side panel ----
+  // dir: +1 goes deeper (content comes from the right), -1 goes back (from the left), 0 no transition.
+  function show(view, focus = true, dir = 0) {
+    const next = $(`[data-view="${view}"]`, panel);
+    const prev = current && current !== view ? $(`[data-view="${current}"]`, panel) : null;
     current = view;
-    $$('[data-view]', panel).forEach(s => s.hidden = s.dataset.view !== view);
-    const sec = $(`[data-view="${view}"]`, panel);
-    $('#p-title').textContent = sec.dataset.title;
-    $('#p-back').hidden = view === 'overview';
-    $('#p-body').scrollTop = 0;
-    if (focus) $('#p-body').focus({ preventScroll: true });
+    const d1 = T('--dur-1'), d2 = T('--dur-2'), moving = !!(prev && !prev.hidden && dir && d2);
+    if (moving) {
+      // The outgoing view is lifted out of flow where it is, so both can cross-fade.
+      const top = prev.offsetTop - pBody.scrollTop;
+      Object.assign(prev.style, { position: 'absolute', top: top + 'px', left: prev.offsetLeft + 'px', width: prev.offsetWidth + 'px' });
+      prev.inert = true;
+      leave(prev, { opacity: 0, transform: `translateX(${-dir * 10}px)` }, d1 * .6).then(a => {
+        if (current !== prev.dataset.view) prev.hidden = true;
+        prev.removeAttribute('style'); prev.inert = false; if (a) a.cancel();
+      });
+    }
+    $$('[data-view]', panel).forEach(s => { if (!(moving && s === prev)) s.hidden = s !== next; });
+    const title = $('#p-title'), back = $('#p-back');
+    title.textContent = next.dataset.title;
+    const wantBack = view !== 'overview';
+    if (back.hidden === wantBack) { back.hidden = !wantBack; if (wantBack && dir) enter(back, { opacity: 0, transform: 'translateX(6px)' }, d2); }
+    pBody.scrollTop = 0;
+    let done = Promise.resolve();
+    if (dir && d2) {
+      enter(title, { opacity: 0, transform: `translateX(${dir * 6}px)` }, d2, { delay: d1 * .5 });
+      done = enter(next, { opacity: 0, transform: `translateX(${dir * 14}px)` }, d2, { delay: d1 * .5 });
+    }
+    if (focus) done.then(() => { if (current === view && panelState === 'open') pBody.focus({ preventScroll: true }); });
   }
+  const docked = () => !mqPanelOverlay.matches;
+  const shifting = () => [$('.since-in'), $('.pane:not([hidden]) .feed-in'), $('.pane:not([hidden]) .composer-in'), $('.pane:not([hidden]) .pane-in'), $('.top-right')];
+  const offstage = () => docked() ? { transform: 'translateX(24px)', opacity: 0 }
+    : mqPhone.matches ? { transform: 'translateY(100%)', opacity: 1 } : { transform: 'translateX(100%)', opacity: 1 };
+
   function openPanel(view, trigger, focus = true) {
     if (body.classList.contains('nav-open')) closeNav(false);
-    if (panel.hidden) panelReturn = trigger || document.activeElement;
-    panel.hidden = false; body.classList.add('panel-open');
+    if (panelState === 'open') { if (view !== current) show(view, focus, view === 'overview' ? -1 : 1); else if (focus) pBody.focus({ preventScroll: true }); return; }
+    if (panelState === 'closed') panelReturn = trigger || document.activeElement;
+    if (panelAnim) { panelAnim.cancel(); panelAnim = null; }
+    panelState = 'open';
+    const mutate = () => { panel.classList.remove('leaving'); panel.hidden = false; body.classList.add('panel-open'); current = null; show(view, false, 0); };
+    if (docked()) flip(shifting(), mutate); else mutate();
     detailsBtn.setAttribute('aria-expanded', 'true');
-    detailsBtn.setAttribute('aria-label', 'Hide details');
-    show(view, focus);
     syncInert();
+    anim(panel, [offstage(), { transform: 'none', opacity: 1 }], T('--dur-3'), docked() ? '--ease-out' : '--ease-sheet', { fill: 'backwards' })
+      .then(() => { if (focus && panelState === 'open') pBody.focus({ preventScroll: true }); });
   }
   function closePanel(restore = true) {
-    if (panel.hidden) return;
-    panel.hidden = true; body.classList.remove('panel-open');
+    if (panelState !== 'open') return;
+    panelState = 'closing'; body.classList.remove('panel-open');
     detailsBtn.setAttribute('aria-expanded', 'false');
-    detailsBtn.setAttribute('aria-label', 'Show details');
+    const to = offstage(), isDocked = docked();
+    // Docked: the conversation takes the space back at once (FLIP) while the panel fades out over it.
+    if (isDocked) flip(shifting(), () => panel.classList.add('leaving'));
     syncInert();
-    if (restore && panelReturn && panelReturn.isConnected) panelReturn.focus();
+    if (restore && panelReturn && panelReturn.isConnected) panelReturn.focus({ preventScroll: true });
+    const finish = () => { panel.hidden = true; panel.classList.remove('leaving'); panelState = 'closed'; };
+    const d = isDocked ? T('--dur-2') : T('--dur-3') * .85;
+    if (!d) { finish(); return; }
+    if (isDocked) to.transform = 'translateX(16px)';
+    const a = panelAnim = panel.animate([{ transform: 'none', opacity: 1 }, to], { duration: d, easing: token('--ease-in'), fill: 'forwards' });
+    a.finished.then(() => { if (panelState === 'closing') finish(); a.cancel(); if (panelAnim === a) panelAnim = null; }, () => {});
   }
   function openNav() {
-    if (!panel.hidden && mqPanelOverlay.matches) closePanel(false);
+    if (panelState === 'open' && mqPanelOverlay.matches) closePanel(false);
     navReturn = document.activeElement;
     body.classList.add('nav-open'); menuBtn.setAttribute('aria-expanded', 'true');
     syncInert();
@@ -890,101 +1221,280 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
   function closeNav(restore = true) {
     body.classList.remove('nav-open'); menuBtn.setAttribute('aria-expanded', 'false');
     syncInert();
-    if (restore && navReturn && navReturn.isConnected) navReturn.focus();
+    if (restore && navReturn && navReturn.isConnected) navReturn.focus({ preventScroll: true });
   }
 
   document.addEventListener('click', e => {
     const open = e.target.closest('[data-open]');
     if (open) {
-      if (open === detailsBtn && !panel.hidden) { closePanel(); return; }
+      if (open === detailsBtn && panelState === 'open') { closePanel(); return; }
       openPanel(open.dataset.open, open); return;
     }
     const go = e.target.closest('[data-go]');
-    if (go) { show(go.dataset.go); return; }
+    if (go) { show(go.dataset.go, true, 1); return; }
     if (e.target.closest('[data-resume-test]')) { resumeTest(); return; }
     if (e.target.closest('[data-focus-reply]')) { closePanel(false); $('#reply').focus(); return; }
     if (e.target.closest('[data-close-nav]')) { closeNav(); return; }
+    const conf = e.target.closest('[data-confirm]');
+    if (conf) { confirmInline(conf, conf.dataset.confirm); return; }
+    const copy = e.target.closest('[data-copy]');
+    if (copy) { copyLink(copy); return; }
     if (e.target.closest('[data-nav-close]') && mqNavDrawer.matches) { closeNav(false); }
   });
   $('#p-close').addEventListener('click', () => closePanel());
-  $('#p-back').addEventListener('click', () => show('overview'));
+  $('#p-back').addEventListener('click', () => show('overview', true, -1));
   menuBtn.addEventListener('click', () => body.classList.contains('nav-open') ? closeNav() : openNav());
   scrim.addEventListener('click', () => { closePanel(); closeNav(); });
-  [mqPanelOverlay, mqNavDrawer].forEach(m => m.addEventListener('change', () => { if (!mqNavDrawer.matches) body.classList.remove('nav-open'); syncInert(); }));
+  [mqPanelOverlay, mqNavDrawer].forEach(m => m.addEventListener('change', () => { if (!mqNavDrawer.matches) body.classList.remove('nav-open'); syncInert(); placeInd(false); }));
 
-  // Since you left
-  const sinceBtn = $('#since-btn'), sincePanel = $('#since-panel');
-  function setSince(open) { sinceBtn.setAttribute('aria-expanded', String(open)); sincePanel.hidden = !open; }
-  sinceBtn.addEventListener('click', () => setSince(sincePanel.hidden));
-  $('#mark-read').addEventListener('click', () => {
-    setSince(false);
-    sinceBtn.querySelector('span:not(.dot)').innerHTML = '<b>All caught up</b> · 3 still need you';
-    $('.since-btn .dot').className = 'dot ring';
-    sinceBtn.focus();
+  // ---- Sidebar selection: one indicator slides to the chosen item ----
+  const nav = $('.nav'), ind = document.createElement('span');
+  ind.className = 'nav-ind'; ind.setAttribute('aria-hidden', 'true'); nav.prepend(ind); nav.classList.add('has-ind');
+  function placeInd(animate = true) {
+    const cur = $('.nav a[aria-current="page"]');
+    if (!cur) { ind.hidden = true; return; }
+    ind.hidden = false;
+    if (!animate) ind.style.transition = 'none';
+    Object.assign(ind.style, { transform: `translateY(${cur.offsetTop}px)`, left: cur.offsetLeft + 'px', width: cur.offsetWidth + 'px', height: cur.offsetHeight + 'px' });
+    if (!animate) { ind.offsetWidth; ind.style.transition = ''; }
+  }
+  nav.addEventListener('click', e => {
+    const a = e.target.closest('a[href="#"]'); if (!a) return;
+    e.preventDefault();
+    $$('.nav a[aria-current]').forEach(x => x.removeAttribute('aria-current'));
+    a.setAttribute('aria-current', 'page'); placeInd();
+    // In the drawer, let the selection land before the drawer leaves.
+    if (mqNavDrawer.matches) setTimeout(() => closeNav(false), T('--dur-2'));
   });
+  addEventListener('resize', () => placeInd(false));
 
-  // Earlier messages
-  $('#earlier-btn').addEventListener('click', e => {
-    const el = $('#earlier'); el.hidden = false; e.currentTarget.remove(); $('#feed').focus({ preventScroll: true });
+  // ---- Project views: one underline slides to the chosen tab; panes slide in from the side they sit on ----
+  const tabs = $$('.views [role="tab"]'), viewsBar = $('.views'), viewsInd = $('.views-ind');
+  const order = tabs.map(t => t.dataset.pane);
+  let pane = 'conversation', feedScroll = null;
+  function placeTabInd(animate = true) {
+    const t = tabs.find(x => x.getAttribute('aria-selected') === 'true'), pad = parseFloat(getComputedStyle(t).paddingLeft) || 0;
+    if (!animate) viewsInd.style.transition = 'none';
+    viewsInd.style.transform = `translateX(${t.offsetLeft + pad}px) scaleX(${Math.max(1, t.offsetWidth - pad * 2)})`;
+    if (!animate) { viewsInd.offsetWidth; viewsInd.style.transition = ''; }
+  }
+  async function setPane(name, focusTab = false) {
+    const tab = tabs.find(t => t.dataset.pane === name);
+    tabs.forEach(t => { const on = t === tab; t.setAttribute('aria-selected', String(on)); t.tabIndex = on ? 0 : -1; });
+    if (focusTab) tab.focus();
+    tab.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: T('--dur-1') ? 'smooth' : 'auto' });
+    placeTabInd();
+    if (name === pane) return;
+    const dir = Math.sign(order.indexOf(name) - order.indexOf(pane)), old = $('#pane-' + pane), next = $('#pane-' + name);
+    if (pane === 'conversation') feedScroll = feed.scrollTop;
+    pane = name;
+    const d1 = T('--dur-1');
+    if (d1) {
+      // Cross-fade: the old pane is lifted out of flow in place while the new one slides in from its side.
+      Object.assign(old.style, { position: 'absolute', top: old.offsetTop + 'px', left: 0, right: 0, height: old.offsetHeight + 'px' });
+      old.inert = true;
+      leave(old, { opacity: 0, transform: `translateX(${-dir * 8}px)` }, d1 * .6).then(a => {
+        if (pane !== old.id.slice(5)) old.hidden = true;
+        old.removeAttribute('style'); old.inert = false; if (a) a.cancel();
+      });
+    }
+    $$('.pane').forEach(p => { if (!(d1 && p === old)) p.hidden = p !== next; });
+    if (name === 'conversation' && feedScroll !== null) feed.scrollTop = feedScroll;
+    enter(next, { opacity: 0, transform: `translateX(${dir * 12}px)` }, T('--dur-2'), { delay: d1 * .5 });
+  }
+  tabs.forEach(t => t.addEventListener('click', () => setPane(t.dataset.pane)));
+  viewsBar.addEventListener('keydown', e => {
+    const i = order.indexOf(pane), k = e.key;
+    const to = k === 'ArrowRight' ? (i + 1) % order.length : k === 'ArrowLeft' ? (i - 1 + order.length) % order.length : k === 'Home' ? 0 : k === 'End' ? order.length - 1 : -1;
+    if (to >= 0) { e.preventDefault(); setPane(order[to], true); }
   });
+  addEventListener('resize', () => placeTabInd(false));
+  // Map ↔ list: the same ordered list, laid out spatially or as plain rows.
+  $$('[data-maplayout]').forEach(b => b.addEventListener('click', () => {
+    const flow = $('#flow'), mode = b.dataset.maplayout;
+    $$('[data-maplayout]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    if (flow.classList.contains('as-' + mode)) return;
+    // A layout change, not a movement: a quick swap reads calmer than nodes flying to new places.
+    swap(flow, () => { flow.classList.toggle('as-map', mode === 'map'); flow.classList.toggle('as-list', mode === 'list'); });
+  }));
 
-  // Failed reply: retry keeps the draft until it is really sent
-  const retry = $('#retry-btn');
-  retry.addEventListener('click', () => {
-    const row = $('#fail-row');
-    row.innerHTML = '<span class="sent-note">Sending…</span>';
-    setTimeout(() => {
-      const msg = $('#failed-msg');
-      msg.classList.remove('failed');
-      const bubble = msg.querySelector('.bubble');
-      bubble.replaceWith(...bubble.childNodes);
-      $('#fail-row').remove();
-      $('#failed-time').textContent = new Date().toTimeString().slice(0, 5);
-      $('#reply').focus();
-    }, 600);
-  });
-  $('#edit-btn').addEventListener('click', () => {
-    const ta = $('#reply'); ta.value = $('#failed-text').textContent; ta.focus(); autosize();
-  });
-
-  // Test agent resume
-  function resumeTest() {
-    $('#test-notice-text').innerHTML = '<strong style="color:var(--text-2)">Test agent resumed</strong> — running the last 4 cases on Nia’s grant.<span class="time">now</span>';
-    $('#test-notice').classList.remove('warn');
-    $('#test-notice-acts').innerHTML = '<button class="btn quiet" type="button" data-open="agent-test">Details</button>';
-    $('[data-test-eyebrow]').innerHTML = '<span class="dot accent" aria-hidden="true"></span>Working · resumed by you';
-    $('[data-test-lead]').textContent = 'Running the 4 cases that did not finish. It stops again if the provider limit is reached, and won’t switch to another paid provider on its own.';
-    $('[data-test-acts]').innerHTML = '<button class="btn line" type="button">Stop</button>';
-    $('[data-test-status]').innerHTML = '<span class="dot accent" aria-hidden="true"></span>Running the last 4 cases';
-    if (!panel.hidden && current === 'agent-test') $('#p-body').focus({ preventScroll: true });
+  // ---- Badges: the old number lifts out, the new one rises in ----
+  async function setCount(el, n) {
+    if (el.textContent === String(n)) return;
+    const a = await leave(el, { opacity: 0, transform: 'translateY(-5px)' }, T('--dur-1'));
+    el.textContent = n; if (a) a.cancel();
+    enter(el, { opacity: 0, transform: 'translateY(5px)' }, T('--dur-2'));
   }
 
-  // Composer
-  const ta = $('#reply');
+  // ---- Since you left ----
+  const sinceBtn = $('#since-btn'), sincePanel = $('#since-panel');
+  let sinceOpen = false;
+  function setSince(open) {
+    sinceOpen = open;
+    sinceBtn.setAttribute('aria-expanded', String(open)); sincePanel.classList.toggle('open', open);
+    if (open) {
+      const d = T('--dur-2'), step = T('--stagger');
+      $$('.since-list > li, .since-foot', sincePanel).forEach((li, i) =>
+        enter(li, { opacity: 0, transform: 'translateY(-4px)' }, d, { delay: step * 1.5 + Math.min(i, 5) * step }));
+    }
+  }
+  sinceBtn.addEventListener('click', () => setSince(!sinceOpen));
+  $('#mark-read').addEventListener('click', async () => {
+    const dot = $('.since-btn .dot'), label = sinceBtn.querySelector('span:not(.dot)');
+    setSince(false); sinceBtn.focus();
+    swap(label, () => { label.innerHTML = '<b>All caught up</b> · <span class="need">3 still need you</span>'; });
+    setCount($('#badge-shared'), 3);
+    announce('Marked as read. 3 still need you.');
+    const a = await leave(dot, { opacity: 0, transform: 'scale(.3)' }, T('--dur-2'));
+    dot.className = 'dot ring'; if (a) a.cancel();
+    enter(dot, { opacity: 0, transform: 'scale(.6)' }, T('--dur-2'));
+  });
+
+  // Earlier messages fade in above; scroll anchoring keeps the reading position.
+  $('#earlier-btn').addEventListener('click', e => {
+    const el = $('#earlier'); el.hidden = false; e.currentTarget.remove(); feed.focus({ preventScroll: true });
+    [...el.children].forEach((c, i) => enter(c, { opacity: 0 }, T('--dur-3'), { delay: i * T('--stagger') }));
+  });
+
+  // ---- Latest pill ----
+  const latest = $('#latest'), feedWrap = $('.feed-wrap'), anchor = $('#review-btn').closest('.obj');
+  const atBottom = () => feed.scrollHeight - feed.scrollTop - feed.clientHeight < 24;
+  function setLatest(on) { latest.classList.toggle('show', on); latest.inert = !on; feedWrap.classList.toggle('has-latest', on); }
+  function scrollToEnd() { feed.scrollTo({ top: feed.scrollHeight, behavior: T('--dur-1') ? 'smooth' : 'auto' }); }
+  function place() {
+    const toResult = feed.scrollTop + anchor.getBoundingClientRect().top - feed.getBoundingClientRect().top - 8;
+    feed.scrollTop = Math.min(feed.scrollHeight, toResult < feed.scrollHeight - feed.clientHeight ? toResult : feed.scrollHeight);
+    setLatest(!atBottom());
+  }
+  feed.addEventListener('scroll', () => { if (atBottom()) setLatest(false); }, { passive: true });
+  latest.addEventListener('click', () => { setLatest(false); scrollToEnd(); feed.focus({ preventScroll: true }); });
+
+  // ---- Failed reply: Retry → spinner → check → the message settles into the conversation ----
+  const retry = $('#retry-btn');
+  retry.addEventListener('click', async () => {
+    const row = $('#fail-row'), msg = $('#failed-msg'), bubble = msg.querySelector('.bubble'), wrap = $('#fail-wrap');
+    $('#reply').focus({ preventScroll: true });
+    await swap(row, () => { row.innerHTML = `<span class="sent-note">${SPIN}Sending…</span>`; });
+    await wait(700);
+    bubble.classList.add('resolved');
+    $('#failed-time').textContent = now();
+    $('#latest-label').textContent = 'Latest'; $('.latest .dot').hidden = true;
+    await swap(row, () => { row.innerHTML = `<span class="sent-note ok">${CHECK}Sent</span>`; });
+    await wait(900);
+    wrap.classList.add('gone');
+    await wait(T('--dur-2'));
+    const after = []; for (let n = msg.nextElementSibling; n; n = n.nextElementSibling) after.push(n);
+    flip([msg.querySelector('.text'), ...after], () => {
+      msg.classList.remove('failed'); wrap.remove(); bubble.replaceWith(...bubble.childNodes);
+    }, T('--dur-2'), '--ease-out');
+  });
+  $('#edit-btn').addEventListener('click', () => {
+    ta.value = $('#failed-text').textContent; ta.focus(); autosize(); syncSend();
+  });
+
+  // ---- Test agent: stopped → resuming → running ----
+  let resumed = false;
+  async function resumeTest() {
+    if (resumed) return; resumed = true;
+    const notice = $('#test-notice'), ic = $('.sys-ic', notice), txt = $('#test-notice-text'), acts = $('#test-notice-acts');
+    const eyebrow = $('[data-test-eyebrow]'), lead = $('[data-test-lead]'), pacts = $('[data-test-acts]'), status = $('[data-test-status]');
+    const fromPanel = panel.contains(document.activeElement), fromNotice = acts.contains(document.activeElement);
+    notice.classList.remove('warn');
+    swap(ic, () => { ic.innerHTML = SPIN; });
+    swap(txt, () => { txt.innerHTML = '<strong style="color:var(--text-2)">Resuming Test agent…</strong> — picking up after 14 of 18 cases.<span class="time">now</span>'; });
+    swap(eyebrow, () => { eyebrow.innerHTML = SPIN + 'Resuming…'; });
+    swap(status, () => { status.innerHTML = SPIN + 'Resuming…'; });
+    swap(pacts, () => { pacts.innerHTML = '<button class="btn line" type="button" aria-disabled="true">Resuming…</button>'; });
+    await swap(acts, () => { acts.innerHTML = '<button class="btn quiet" type="button" data-open="agent-test">Details</button>'; });
+    if (fromNotice) $('button', acts).focus({ preventScroll: true });
+    if (fromPanel) pBody.focus({ preventScroll: true });
+    await wait(900);
+    const dot = '<span class="dot accent live" aria-hidden="true"></span>';
+    swap(ic, () => { ic.innerHTML = dot; });
+    swap(txt, () => { txt.innerHTML = '<strong style="color:var(--text-2)">Test agent resumed</strong> — running the last 4 cases on Nia’s grant.<span class="time">now</span>'; });
+    swap(eyebrow, () => { eyebrow.innerHTML = dot + 'Working · resumed by you'; });
+    swap(lead, () => { lead.textContent = 'Running the 4 cases that did not finish. It stops again if the provider limit is reached, and won’t switch to another paid provider on its own.'; });
+    swap(status, () => { status.innerHTML = dot + 'Running the last 4 cases'; });
+    swap(pacts, () => { pacts.innerHTML = '<button class="btn line" type="button">Stop</button>'; });
+  }
+
+  // ---- Inline confirmations (Confirm, Request access, Relink, Copy link) ----
+  async function confirmInline(btn, label, { busy = false, revert = false } = {}) {
+    if (btn.dataset.state) return;
+    btn.dataset.state = 'busy';
+    const orig = btn.innerHTML, focused = document.activeElement === btn;
+    btn.style.minWidth = btn.offsetWidth + 'px';
+    if (busy) { await swap(btn, () => { btn.innerHTML = SPIN; }); btn.setAttribute('aria-disabled', 'true'); await wait(600); }
+    await swap(btn, () => { btn.innerHTML = CHECK + label; btn.classList.add('done'); btn.setAttribute('aria-disabled', 'true'); });
+    if (focused) btn.focus({ preventScroll: true });
+    announce(label);
+    if (!revert) return;
+    await wait(1400);
+    await swap(btn, () => { btn.innerHTML = orig; btn.classList.remove('done'); btn.removeAttribute('aria-disabled'); });
+    btn.style.minWidth = ''; delete btn.dataset.state;
+  }
+  async function copyLink(btn) {
+    const text = btn.dataset.copy;
+    let ok = false;
+    try { await navigator.clipboard.writeText(text); ok = true; } catch (_) {
+      try {
+        const x = document.createElement('textarea'); x.value = text; x.setAttribute('readonly', ''); x.className = 'vh';
+        body.append(x); x.select(); ok = document.execCommand('copy'); x.remove(); btn.focus({ preventScroll: true });
+      } catch (_) { ok = false; }
+    }
+    confirmInline(btn, ok ? 'Copied' : 'Couldn’t copy', { revert: true });
+  }
+  $('#relink-btn').addEventListener('click', async e => {
+    const btn = e.currentTarget, src = $('#spec-src');
+    await confirmInline(btn, 'Linked', { busy: true });
+    swap(src, () => { src.className = ''; src.textContent = 'Relinked to Docs › Export › Spec v2 · just now'; });
+    const n = $('#spec-notice'), t = $('#spec-notice-text'), acts = $('#spec-acts');
+    n.classList.remove('warn');
+    swap(t, () => { t.innerHTML = '<strong style="color:var(--text-2)">“Export spec v2” relinked</strong> by you.<span class="time">now</span>'; });
+    swap(acts, () => { acts.innerHTML = ''; });
+    const doc = $('#spec-doc');
+    doc.className = ''; doc.textContent = 'Relinked just now'; $('#spec-doc-ic').classList.remove('warn');
+  });
+
+  // ---- Composer ----
+  const ta = $('#reply'), send = $('.send');
   function autosize() { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 180) + 'px'; }
-  ta.addEventListener('input', autosize);
+  function syncSend() { send.setAttribute('aria-disabled', String(!ta.value.trim())); }
+  ta.addEventListener('input', () => { autosize(); syncSend(); });
   ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('#composer').requestSubmit(); } });
   $('#composer').addEventListener('submit', e => {
     e.preventDefault();
     const v = ta.value.trim(); if (!v) return;
-    const a = document.createElement('article'); a.className = 'msg';
-    a.innerHTML = '<span class="av me-av" aria-hidden="true">J</span><div class="meta"><span class="who">You</span><time></time></div><p class="text"></p>';
-    a.querySelector('time').textContent = new Date().toTimeString().slice(0, 5);
+    const a = document.createElement('article'); a.className = 'msg sending';
+    a.innerHTML = '<span class="av me-av" aria-hidden="true">J</span><div class="meta"><span class="who">You</span><time>Sending…</time></div><p class="text"></p>';
     a.querySelector('.text').textContent = v;
-    $('#typing').before(a); ta.value = ''; autosize();
-    feed.scrollTop = feed.scrollHeight;
+    // Optimistic: the reply appears at once, rises into place and pushes the agent line down smoothly.
+    flip([$('#typing')], () => $('#typing').before(a), T('--dur-2'), '--ease-out');
+    enter(a, { opacity: 0, transform: 'translateY(10px)' }, T('--dur-2'));
+    ta.value = ''; autosize(); syncSend();
+    scrollToEnd();
+    setTimeout(() => {
+      const t = a.querySelector('time');
+      a.classList.remove('sending');
+      swap(t, () => { t.textContent = now(); t.dataset.tip = 'Today at ' + t.textContent; });
+    }, 800);
   });
-  ta.addEventListener('focus', () => setTimeout(() => { feed.scrollTop = feed.scrollHeight; }, 50));
+  ta.addEventListener('focus', () => setTimeout(scrollToEnd, 50));
+
+  // Timestamps get their full date as a delayed hover tooltip.
+  let day = 'Today';
+  const fullDay = d => d === 'Today' ? 'Today' : new Date(`${d}, 2026 12:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  $$('.day, .msg time', feed).forEach(el => { if (el.classList.contains('day')) day = el.textContent.trim(); else el.dataset.tip = `${fullDay(day)} at ${el.textContent}`; });
 
   // Keyboard: Esc closes the top layer, ] toggles details, ⌘K / Ctrl+K jumps
   document.addEventListener('keydown', e => {
     const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);
     if (e.key === 'Escape') {
-      if (!panel.hidden) { closePanel(); e.preventDefault(); }
+      if (panelState === 'open') { closePanel(); e.preventDefault(); }
       else if (body.classList.contains('nav-open')) { closeNav(); e.preventDefault(); }
-      else if (!sincePanel.hidden) { setSince(false); sinceBtn.focus(); }
+      else if (sinceOpen) { setSince(false); sinceBtn.focus(); }
     } else if (e.key === ']' && !typing && !e.metaKey && !e.ctrlKey) {
-      panel.hidden ? openPanel('overview', detailsBtn) : closePanel();
+      panelState === 'open' ? closePanel() : openPanel('overview', detailsBtn);
     } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault(); if (mqNavDrawer.matches) openNav(); $('#jump').focus();
     }
@@ -992,25 +1502,19 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
 
   // Open at the latest messages, like a messenger — unless that would hide the result
   // waiting for Jo's review. Then the result is anchored and a pill leads to newer messages.
-  const latest = $('#latest'), anchor = $('#review-btn').closest('.obj');
-  const atBottom = () => feed.scrollHeight - feed.scrollTop - feed.clientHeight < 24;
-  function place() {
-    const toResult = feed.scrollTop + anchor.getBoundingClientRect().top - feed.getBoundingClientRect().top - 8;
-    feed.scrollTop = Math.min(feed.scrollHeight, toResult < feed.scrollHeight - feed.clientHeight ? toResult : feed.scrollHeight);
-    latest.hidden = atBottom();
-  }
-  feed.addEventListener('scroll', () => { if (atBottom()) latest.hidden = true; });
-  latest.addEventListener('click', () => { feed.scrollTop = feed.scrollHeight; latest.hidden = true; });
-  place();
-  if (document.fonts) document.fonts.ready.then(place);
-  syncInert();
+  place(); placeInd(false); placeTabInd(false); syncInert(); syncSend();
+  if (document.fonts) document.fonts.ready.then(() => { place(); placeInd(false); placeTabInd(false); });
 
-  // Review hashes: #details, #decision, #result, #sources, #agent-test, #agent-review, #nav, #since
+  // Review hashes: #details, #decision, #result, #sources, #agent-test, #agent-review, #nav, #since, #tasks, #map, #map-list, #docs
   const h = location.hash.slice(1);
   const views = { details: 'overview', decision: 'decision', result: 'result', sources: 'sources', 'agent-test': 'agent-test', 'agent-review': 'agent-review', handoff: 'handoff' };
   if (views[h]) openPanel(views[h], detailsBtn, false);
   else if (h === 'nav' && mqNavDrawer.matches) openNav();
   else if (h === 'since') setSince(true);
+  else if (['tasks', 'map', 'docs'].includes(h)) setPane(h);
+  else if (h === 'map-list') { setPane('map'); $('[data-maplayout="list"]').click(); }
+  // States opened on load appear at rest; motion starts with the first interaction.
+  requestAnimationFrame(() => requestAnimationFrame(() => { root.classList.remove('boot'); booting = false; }));
 })();
 </script>
 </body>

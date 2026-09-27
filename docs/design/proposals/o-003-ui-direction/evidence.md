@@ -25,9 +25,32 @@ Viewports are CSS px at 100% zoom: 1440×900, 1280×800, 1024×768 and 768×1024
 | Keyboard: first 40 Tab stops at 1440×900 without a visible focus ring | 0 | 0 | 0 (39 stops) |
 | `prefers-reduced-motion: reduce`: animated elements | 0 | 0 | 0 |
 
-For C, the audit also renders and checks ten interactive states opened by URL hash (`STATES` in `tools/audit.py`): "Since you left" expanded, the result, stopped agent and decision panels, the details panel at 1024×768, the drawer at 768×1024 and 390×844, and the phone details, sources and "Since you left" sheets. All ten have the same zero counts. Screenshots: `screenshots/c-<viewport>-<state>.png`.
+For C, the audit also renders and checks eighteen interactive states opened by URL hash (`STATES` in `tools/audit.py`): "Since you left" expanded, the details, result, stopped agent and decision panels, the details panel at 1024×768, the drawer at 768×1024 and 390×844, the phone details, sources and "Since you left" sheets, and the Tasks, Map, Map-as-list and Docs views at desktop, tablet and phone sizes. All eighteen have the same zero counts. Screenshots: `screenshots/c-<viewport>-<state>.png`.
 
 A one-off Playwright run in the same image (not checked in) exercised C's interactions at 1440×900 and 390×844: the panel opens from a message attachment and from the header button, switches to the stopped Test agent, closes with Esc or ✕ and returns focus; Resume updates the notice; "Since you left" expands to 7 items; Retry sends the failed reply; Enter sends a new reply; `]` toggles details; the phone drawer opens with the conversation inert and closes; on the phone "Review result" opens a modal full-screen sheet. No console errors. `screenshots/c-1440x900-dark.png` shows the `prefers-color-scheme: dark` theme; its contrast is not audited.
+
+v8 comparison renders (`screenshots/v8-*.png`, see brief.md "What C keeps and improves from v8") come from `tools/compare_v8.py`, which mounts the whole repository because v8 lives at its root:
+
+```sh
+docker run --rm -v "$PWD:/repo" -w /repo/docs/design/proposals/o-003-ui-direction \
+  mcr.microsoft.com/playwright/python:v1.62.0-noble-arm64 \
+  sh -c "pip install -q playwright==1.62.0 && python3 tools/compare_v8.py"
+```
+
+### Motion (variant C, 2026-09-27)
+
+Tokens are in C's `:root` and documented there. `--dur-1` is 120 ms (hover, press, focus, badges, outgoing content), `--dur-2` 180 ms (incoming content, rows, the pill, docked panel exit), `--dur-3` 280 ms (panels, sheets, the drawer, height expansion) and `--stagger` 24 ms. The easings are `--ease-out` `cubic-bezier(.2,.8,.2,1)` for entering, `--ease-in` `cubic-bezier(.4,0,1,1)` for leaving (paired with a shorter duration), and `--ease-sheet` `cubic-bezier(.3,.6,.1,1)`, an overshoot-free deceleration for panels, sheets, the drawer and the sliding indicators. Only transform and opacity animate, plus grid-template-rows for "Since you left" and the failed-reply row. The script reads the same tokens. Under `prefers-reduced-motion: reduce` every token is 0 ms and nothing animates.
+
+What was motion-checked:
+- The side panel slides and fades in while the conversation column moves aside (FLIP, transform only). Views cross-fade with a direction: deeper views come from the right and Back comes from the left. Focus moves into the panel after the animation. Esc or ✕ reverses the motion while the conversation takes the space back.
+- "Since you left" expands with grid rows while the chevron turns. Items stagger in, capped at six steps. "Mark all as read" shrinks the unread dot into a ring and rolls the badge from 7 to 3.
+- Send is grey and slightly smaller until the reply has text; only its fill scales, so the hit area stays 44 px. A sent reply appears at once, rises into place with "Sending…", then shows its time. The failed reply's tint fades in. Retry shows a spinner, then "✓ Sent". The tint fades, the row collapses and the message settles (FLIP).
+- The typing dots pulse in a staggered wave. Resume on the stopped Test agent moves through Stopped → a spinner with "Resuming…" → a running dot with a short ping, in the notice, the panel and the overview row.
+- Hover backgrounds fade, and buttons, chips and rows scale slightly on press (0.98, rows 0.99, icons 0.94). The focus ring fades in and settles 2 px inwards. One selection background slides between sidebar items, and one underline slides between the view tabs, whose panes cross-fade from their side.
+- On tablet and phone, the drawer and sheets slide on `--ease-sheet` over a fading backdrop, and tapping the backdrop closes them. The "1 not sent · Latest" pill slides up or down. While it shows, a fade behind it keeps it from cutting through a line of text. Tapping it scrolls smoothly to the latest message.
+- Tooltips (Details `]`, Close `Esc`, full dates on timestamps) appear after 450 ms, only on hover-capable pointers. Copy link, Confirm, Request access and Relink show a brief inline "✓" confirmation. Relink also updates the feed notice and the Docs row.
+
+How it was verified: a throwaway Playwright script (not checked in) in the same image ran 48 checks at 1440×900, 768×1024 and 390×844, plus reduced motion. It covered the final states, focus after the animation, focus return, tabs with arrow keys and Home, backdrop taps, and no console errors. All passed. Frame sequences at 0/60/120/200/300 ms were captured by pausing the Web Animations timeline, then inspected. Two rounds came from those frames. The panel view cross-fade overlapped two views at half opacity at 60 ms, so the outgoing view now leaves in 72 ms and the incoming view starts at 60 ms. The phone sheet had covered 83% of its travel by 60 ms, so the sheet curve is now gentler, at 59%, and 280 ms long. The first tab switch left a blank frame and became a true cross-fade. The first Map/List switch flew the nodes diagonally and became a quick content swap. `screenshots/c-journey.webm` (1280×800, 1.9 MB) records the main desktop journey. Frame inspection is visual evidence only. Actual frame rate on real devices was not measured.
 
 **What these checks do not cover:**
 - Contrast of non-text elements (borders and icons) is not computed.
