@@ -24,9 +24,13 @@ The architecture and first application setup task must supply:
 - Release builds from the accepted source revision, appropriate container image
   or other agreed deliverables, and installation/update/restore verification.
 
-Choose services after their need and stack are established; PostgreSQL is still
-an architecture candidate. Do not add an unused database just to fill a template.
-The current branch adds this environment contract, not a production Compose file.
+The [accepted O-002 architecture](../product/application-architecture-proposal.md)
+selects PostgreSQL. The first application foundation in `infra/compose.yaml`
+starts PostgreSQL, a one-shot migration, the API and a separate worker with named
+`pgdata` and `files` volumes. See [application foundation](application-foundation.md)
+for the current clean-start, validation and backup/restore commands. This is an
+application skeleton; user identity, collaboration and release verification are
+separate tasks.
 
 Git, Docker/Compose, GitHub CLI, the installed official coding-agent CLIs, and
 Python 3.11+ for this repository's standard-library foundation checks are host
