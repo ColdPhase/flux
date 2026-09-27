@@ -97,6 +97,11 @@ not pretend that the first application version or stack is already accepted.
 Agents make decisions as evidence becomes available and begin ready implementation in
 [milestone 2](milestones/02-working-application.md). Research and coding may overlap.
 
+The proposed [application behavior and release specification](application-specification.md)
+and [full-product coverage ledger](foundation-coverage.md) connect the accepted
+foundation to implementation tasks. Their evidence states distinguish planned
+work from running, independently verified application behavior.
+
 The [proposed vocabulary and connected journeys](journeys-and-vocabulary.md) give
 design and application tasks a concrete human return, handoff, and conditional
 agent scenario. Their decision status is recorded in the proposal.
