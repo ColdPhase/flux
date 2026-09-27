@@ -212,18 +212,6 @@ export function DocsView() {
   );
 }
 
-/** Direct messages: private conversations with people, independent of any project (#36). */
-export function DirectMessagesView() {
-  return (
-    <Pane>
-      <ViewEmpty icon="chat" title="No direct messages yet">
-        <p>When you talk with someone one to one, or with a few people outside a project, the conversation lives here. Only the people in it can see it.</p>
-        <p>Messaging people directly isn’t available in this version yet.</p>
-      </ViewEmpty>
-    </Pane>
-  );
-}
-
 export function NotFoundView() {
   return (
     <Pane>

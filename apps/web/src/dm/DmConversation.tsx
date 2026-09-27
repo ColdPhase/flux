@@ -1,0 +1,279 @@
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { Link, useLoaderData, useNavigate, useRevalidator, type LoaderFunctionArgs } from 'react-router';
+import type { ConversationMessage, Dm, DmPerson, SendDmMessageCommand } from '@flux/contracts';
+import { ApiError } from '../api/client';
+import { getDm, leaveDm, olderDmMessages, sendDmMessage } from '../api/direct-messages';
+import { useStreamEvents } from '../api/stream';
+import { useShellData } from '../app/data';
+import { Avatar, Button, Icon } from '../ui';
+import { audienceLine, dmTitle, othersIn } from './names';
+import './dm.css';
+
+/**
+ * One direct message (#107): a private conversation with its audience always in view. Messages
+ * reuse the #36 contract (sequence order, `clientMessageId` retries) and the conversation
+ * composer. Replies inherit the DM's audience; there is no audience checkbox. A failed send keeps
+ * its text and its client id for this account and DM, so Retry never duplicates a message.
+ */
+export async function dmLoader({ params, request }: LoaderFunctionArgs): Promise<Dm | null> {
+  try {
+    return await getDm(params.dmId!, request.signal);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+export function DmConversation() {
+  const dm = useLoaderData() as Dm | null;
+  if (!dm) return <DmUnavailable />;
+  return <DmContent key={dm.id} initial={dm} />;
+}
+
+function DmUnavailable() {
+  return (
+    <div className="pane-scroll"><div className="pane-in dm-gone" role="alert">
+      <Icon name="lock" size={16} />
+      <div><h2>This conversation isn’t available</h2><p>It may have been left, or you are no longer in it. Only the people in a direct message can open it.</p>
+        <Link className="ui-btn ui-btn--secondary" to="/dm">Back to direct messages</Link></div>
+    </div></div>
+  );
+}
+
+function stored(key: string) { try { return sessionStorage.getItem(key) ?? ''; } catch { return ''; } }
+function store(key: string, value: string) { try { if (value) sessionStorage.setItem(key, value); else sessionStorage.removeItem(key); } catch { /* private mode */ } }
+function storedPending(key: string, text: string): SendDmMessageCommand | null {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(key) ?? 'null') as SendDmMessageCommand | null;
+    return saved && saved.body === text.trim() && typeof saved.clientMessageId === 'string' ? saved : null;
+  } catch { return null; }
+}
+function merge(current: ConversationMessage[], incoming: ConversationMessage[]) {
+  const byId = new Map(current.map((message) => [message.id, message]));
+  for (const message of incoming) byId.set(message.id, message);
+  return [...byId.values()].sort((a, b) => a.sequence - b.sequence);
+}
+
+const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
+const day = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+function dayLabel(iso: string) {
+  const date = new Date(iso);
+  const today = new Date();
+  const yesterday = new Date(); yesterday.setDate(today.getDate() - 1);
+  if (date.toDateString() === today.toDateString()) return 'Today';
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return day.format(date);
+}
+
+function DmContent({ initial }: { initial: Dm }) {
+  const { me } = useShellData();
+  const navigate = useNavigate();
+  const revalidator = useRevalidator();
+  const audienceId = useId();
+  const hintId = useId();
+  const [dm, setDm] = useState(initial);
+  const [messages, setMessages] = useState(initial.messages);
+  const [people, setPeople] = useState(() => new Map(initial.people.map((p) => [p.id, p])));
+  const [olderCursor, setOlderCursor] = useState(initial.messagePage.nextBeforeSequence);
+  const [olderBusy, setOlderBusy] = useState(false);
+  const draftKey = `flux.dm-composer.${me.user.id}.${initial.id}`;
+  const pendingKey = `${draftKey}.pending`;
+  const [draft, setDraft] = useState(() => stored(draftKey));
+  const [pending, setPending] = useState<SendDmMessageCommand | null>(() => storedPending(pendingKey, stored(draftKey)));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [gone, setGone] = useState(false);
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const feedRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const messagesRef = useRef(messages);
+  const refreshing = useRef(false);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
+
+  const title = dmTitle(dm, me.user.id);
+  const audience = audienceLine(dm, me.user.id);
+  const others = othersIn(dm, me.user.id);
+  const nameOf = (id: string) => id === me.user.id ? 'You' : people.get(id)?.name ?? 'Former participant';
+
+  const learn = useCallback((list: DmPerson[]) => setPeople((current) => {
+    const next = new Map(current);
+    for (const person of list) next.set(person.id, person);
+    return next;
+  }), []);
+
+  const denied = useCallback((cause: unknown) => {
+    if (cause instanceof ApiError && (cause.status === 404 || cause.status === 401)) { setGone(true); revalidator.revalidate(); return true; }
+    return false;
+  }, [revalidator]);
+
+  const atBottom = () => { const el = feedRef.current; return !el || el.scrollHeight - el.scrollTop - el.clientHeight < 80; };
+  const toBottom = () => requestAnimationFrame(() => { const el = feedRef.current; if (el) el.scrollTop = el.scrollHeight; });
+
+  /** Fetches the newest window and any replies between it and what is on screen. */
+  const refresh = useCallback(async () => {
+    if (refreshing.current) return;
+    refreshing.current = true;
+    try {
+      const latest = await getDm(initial.id);
+      const follow = atBottom();
+      const newestSeen = messagesRef.current.at(-1)?.sequence ?? 0;
+      let incoming = latest.messages;
+      let cursor = incoming[0]?.sequence;
+      while (newestSeen > 0 && cursor && cursor > newestSeen + 1) {
+        const page = await olderDmMessages(initial.id, cursor);
+        if (!page.messages.length || page.messages[0]!.sequence >= cursor) break;
+        incoming = merge(page.messages, incoming);
+        learn(page.people);
+        cursor = page.messages[0]?.sequence;
+      }
+      setDm(latest);
+      learn(latest.people);
+      setMessages((current) => merge(current, incoming));
+      if (follow) toBottom();
+    } catch (cause) { denied(cause); }
+    finally { refreshing.current = false; }
+  }, [denied, initial.id, learn]);
+
+  useStreamEvents(me.user.id, (event) => {
+    if (event.objectType === 'dm' && event.objectId === initial.id) void refresh();
+  }, () => { void refresh(); });
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible') void refresh(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => { document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('focus', onVisible); };
+  }, [refresh]);
+  useLayoutEffect(() => { const el = feedRef.current; if (el) el.scrollTop = el.scrollHeight; }, []);
+
+  const autosize = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
+  };
+  useLayoutEffect(autosize, []);
+
+  function change(value: string) {
+    setDraft(value); store(draftKey, value);
+    if (pending && pending.body !== value.trim()) { setPending(null); store(pendingKey, ''); }
+    setError('');
+    autosize();
+  }
+
+  async function send() {
+    const body = draft.trim();
+    if (busy || !body) return;
+    const command = pending ?? { body, clientMessageId: crypto.randomUUID() };
+    setPending(command); store(pendingKey, JSON.stringify(command)); setBusy(true); setError('');
+    try {
+      const sent = await sendDmMessage(initial.id, command);
+      setMessages((current) => merge(current, [sent]));
+      setPending(null); store(pendingKey, ''); setDraft(''); store(draftKey, '');
+      requestAnimationFrame(autosize);
+      toBottom();
+    } catch (cause) {
+      if (!denied(cause)) setError('Not sent. Your message is kept here; Retry sends it once.');
+    } finally { setBusy(false); }
+  }
+
+  function onKey(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); }
+  }
+
+  async function loadOlder() {
+    if (!olderCursor || olderBusy) return;
+    setOlderBusy(true);
+    const el = feedRef.current;
+    const before = el ? el.scrollHeight - el.scrollTop : 0;
+    try {
+      const page = await olderDmMessages(initial.id, olderCursor);
+      learn(page.people);
+      setMessages((current) => merge(current, page.messages));
+      setOlderCursor(page.messagePage.nextBeforeSequence);
+      requestAnimationFrame(() => { if (el) el.scrollTop = el.scrollHeight - before; });
+    } catch (cause) { denied(cause); }
+    finally { setOlderBusy(false); }
+  }
+
+  async function leave() {
+    setLeaving(true);
+    try {
+      await leaveDm(initial.id);
+      store(draftKey, ''); store(pendingKey, '');
+      revalidator.revalidate();
+      navigate('/dm', { replace: true });
+    } catch (cause) {
+      if (!denied(cause)) setError('Could not leave. Try again.');
+      setLeaving(false);
+    }
+  }
+
+  if (gone) return <DmUnavailable />;
+  const canSend = draft.trim().length > 0 && !busy;
+  const rows = messages.map((message, index) => {
+    const previous = messages[index - 1];
+    const label = dayLabel(message.createdAt);
+    const newDay = !previous || dayLabel(previous.createdAt) !== label;
+    return { message, label, newDay, continued: !newDay && previous?.authorId === message.authorId };
+  });
+  return (
+    <div className="dm" data-dm-id={dm.id}>
+      <div className="dm__feed" ref={feedRef}>
+        <div className="dm__in">
+          <header className="dm__head">
+            <span className="dm__faces" aria-hidden="true">
+              {(others.length ? others : [{ id: me.user.id, name: me.user.name }]).slice(0, 3).map((person) => <Avatar key={person.id} name={person.name} size="lg" />)}
+            </span>
+            <div className="dm__who">
+              <h2>{title}</h2>
+              <p><Icon name="lock" size={12} />{audience}<span aria-hidden="true"> · </span>outside any project</p>
+            </div>
+            {confirmLeave ? (
+              <div className="dm__leave" role="group" aria-label="Leave this conversation">
+                <p>{dm.kind === 'pair' ? 'You won’t see these messages until you open this conversation again.' : 'You won’t see these messages again unless someone starts a new conversation with you.'}</p>
+                <Button variant="danger" busy={leaving} onClick={() => void leave()}>Leave</Button>
+                <Button variant="quiet" onClick={() => setConfirmLeave(false)}>Cancel</Button>
+              </div>
+            ) : <Button variant="quiet" className="dm__leave-btn" onClick={() => setConfirmLeave(true)}>Leave</Button>}
+          </header>
+          {olderCursor ? <div className="dm__older"><Button variant="quiet" busy={olderBusy} onClick={() => void loadOlder()}>Show earlier messages</Button></div> : null}
+          {messages.length ? (
+            <ol className="dm__list" aria-label="Messages">
+              {rows.map(({ message, label, newDay, continued }) => {
+                const mine = message.authorId === me.user.id;
+                return (
+                  <li key={message.id} className={`dm-msg${continued ? ' dm-msg--cont' : ''}`} data-sequence={message.sequence}>
+                    {newDay ? <p className="dm__day"><span>{label}</span></p> : null}
+                    <div className="dm-msg__row">
+                      <span className="dm-msg__face">{continued ? null : <Avatar name={mine ? me.user.name : nameOf(message.authorId)} size="md" tone={mine ? 'me' : 'neutral'} />}</span>
+                      <div className="dm-msg__main">
+                        {continued ? null : <p className="dm-msg__meta"><b>{nameOf(message.authorId)}</b><time dateTime={message.createdAt}>{time.format(new Date(message.createdAt))}</time></p>}
+                        <p className="dm-msg__body">{message.body}</p>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          ) : (
+            <p className="dm__first">This is the start of your conversation{others.length ? ` with ${others.map((p) => p.name).join(', ')}` : ''}. Only the people named above can read it.</p>
+          )}
+        </div>
+      </div>
+      <div className="composer dm__composer">
+        <div className="composer__in">
+          <p className="composer__audience" id={audienceId}><Icon name="lock" size={13} />{audience}<span aria-hidden="true"> · </span><span className="composer__where">direct message</span></p>
+          <div className="composer__box">
+            <label className="ui-vh" htmlFor="dm-composer">Message {title}</label>
+            <textarea id="dm-composer" ref={textareaRef} rows={1} value={draft} onChange={(event) => change(event.target.value)} onKeyDown={onKey}
+              disabled={busy} placeholder={`Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title}…`} aria-describedby={`${audienceId} ${hintId}`} />
+            <button type="button" className="composer__send" aria-label="Send message" aria-disabled={!canSend} onClick={() => void send()}><Icon name="send" /></button>
+          </div>
+          {error ? <p className="dm__error" role="alert"><Icon name="alert" size={13} />{error}{pending ? <button type="button" onClick={() => void send()}>Retry</button> : null}</p> : null}
+          <p className="composer__hint" id={hintId}><span className="composer__keys">Enter sends · Shift+Enter adds a line · </span>Unsent text stays in this tab</p>
+        </div>
+      </div>
+    </div>
+  );
+}

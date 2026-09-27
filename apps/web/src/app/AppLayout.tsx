@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { Outlet, useLocation } from 'react-router';
+import { Outlet, useLocation, useRevalidator } from 'react-router';
+import { useStreamEvents } from '../api/stream';
 import { Button, Drawer, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useSidePanelMode } from '../ui';
 import { useShellData } from './data';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
@@ -57,6 +58,14 @@ export function AppLayout() {
     });
   }, [me.user.id]);
 
+  // New or changed direct messages refresh the sidebar list (#107). An open DM refetches itself.
+  const revalidator = useRevalidator();
+  useStreamEvents(me.user.id, (event) => {
+    if (event.objectType !== 'dm') return;
+    const known = directMessages.some((dm) => dm.id === event.objectId);
+    if (!known || event.kind !== 'dm.message_sent.v1' || location.pathname === '/dm') revalidator.revalidate();
+  }, () => revalidator.revalidate());
+
   const shell = useMemo(() => ({
     openDetails(view: DetailsView = 'place') {
       setDetailsView(view);
@@ -101,10 +110,17 @@ export function AppLayout() {
     { id: 'conversation', label: 'Conversation', to: onTasks ? lastConversationPath(projectId) : location.pathname },
     { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks` },
   ] : null;
+  const dmId = location.pathname.match(/^\/dm\/([^/]+)/)?.[1];
+  const activeDm = directMessages.find((dm) => dm.id === dmId);
   const place = activeProject
     ? { crumb: activeProject.workspaceName ?? null, title: activeProject.name, topic: 'Conversation, work and decisions', views: false }
     : where === 'dm'
-      ? { crumb: null, title: 'Direct messages', topic: 'Conversations with people, outside any project', views: false }
+      ? activeDm
+        // A DM's header names its exact audience (design principle 5).
+        ? { crumb: null, title: activeDm.title, topic: activeDm.audience, views: false }
+        : dmId === 'new'
+          ? { crumb: null, title: 'New message', topic: 'Only the people you choose can read it', views: false }
+          : { crumb: null, title: 'Direct messages', topic: 'Conversations with people, outside any project', views: false }
       : { crumb: workspace?.name ?? null, title: 'Home', topic: 'Your private notes and where you left off', views: true };
 
   return (
@@ -149,7 +165,7 @@ export function AppLayout() {
       </div>
 
       <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title="Details" id="details">
-        <Details view={detailsView} workspace={workspace} placeTitle={place.title} onBack={() => setDetailsView('place')} />
+        <Details view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} />
       </SidePanel>
     </div>
     </ShellContext.Provider>

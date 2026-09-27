@@ -8,14 +8,37 @@ import type { DetailsView } from './shellContext';
  * selected message, task, decision or result joins it with conversations (#36). Account and
  * session details live in the account menu.
  */
-export function Details({ view, workspace, placeTitle, onBack }: {
+export function Details({ view, workspace, placeTitle, dm = null, onBack }: {
   view: DetailsView;
   workspace: WorkspaceSummary | null;
   placeTitle: string;
+  /** The open direct message (#107): its other people and audience line. */
+  dm?: { people: string[]; audience: string } | null;
   onBack: () => void;
 }) {
   if (view === 'connect-ai') return <ConnectAi onBack={onBack} />;
   if (typeof view === 'object') return <WorkDetails view={view} />;
+  if (dm) {
+    return (
+      <div className="details">
+        <p className="details__eyebrow">Direct message</p>
+        <h3 className="details__title">{dm.audience}</h3>
+        <p className="details__lead">A private conversation outside any project. Workspace owners and admins can’t read it unless they are in it.</p>
+        <section className="details__sec" aria-labelledby="details-dm-people">
+          <h4 id="details-dm-people">People in this conversation</h4>
+          <ul className="details__rows">
+            <li><b>You</b></li>
+            {dm.people.map((name, index) => <li key={`${name}-${index}`}><b>{name}</b></li>)}
+          </ul>
+        </section>
+        <section className="details__sec" aria-labelledby="details-dm-rules">
+          <h4 id="details-dm-rules">What stays private</h4>
+          <p>Replies go to exactly these people. Someone who leaves, or leaves the workspace, stops seeing the conversation at once, including earlier messages.</p>
+        </section>
+        <p className="details__keys"><kbd>]</kbd> toggles this panel · <kbd>Esc</kbd> closes it</p>
+      </div>
+    );
+  }
   const home = placeTitle === 'Home';
   return (
     <div className="details">

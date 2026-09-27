@@ -111,6 +111,8 @@
 .side__empty { padding: 2px 8px; font-size: var(--fs-sm); line-height: 1.5; color: var(--text-3); }
 .side__person { display: flex; align-items: center; gap: 10px; min-height: 30px; padding: 0 8px; font-size: var(--fs-md); color: var(--text-2); }
 .side__sub { margin-left: auto; font-size: var(--fs-xs); color: var(--text-3); }
+.side__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side__dm .ui-avatar { flex: none; }
 
 /* Account button and popover */
 .me { position: relative; margin: 8px -10px 0; border-top: 1px solid var(--line); padding: 6px 6px; padding-bottom: max(6px, env(safe-area-inset-bottom)); }
