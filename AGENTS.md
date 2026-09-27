@@ -18,6 +18,7 @@ Keep procedures in one place and use the guides below when relevant.
 
 | Task | Read |
 | --- | --- |
+| Delivery pace, MVP slicing, releases, or community | `docs/product/playbook-the-5.md` |
 | Product direction, personas, scope, or research | `docs/product/README.md`, `docs/product/decisions.md`, and `docs/product/research.md` |
 | UI direction, density, or visual review | `docs/design/README.md` and foundation sections 10 / 17 D1–D4 |
 | Agent startup, milestone selection, or recovery | `docs/agents/startup.md` |

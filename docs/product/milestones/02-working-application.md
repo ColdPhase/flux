@@ -14,6 +14,8 @@ Resume existing work first. In parallel with research, settle the first required
 architecture/interface decisions with a concise peer-reviewed record. Then build
 the Docker application foundation, real persistence/migrations, identity/access,
 UI foundations and fast PR checks. Do not wait for milestone 1 to close.
+Follow the [delivery playbook](../playbook-the-5.md): the first target is a
+runnable v0.1 of one journey on a clean Compose install, then thin slices.
 
 Continue with integrated human collaboration, conversations, project material,
 maps/relationships, tasks, decisions, results, handoffs, search and notifications.

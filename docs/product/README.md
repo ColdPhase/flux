@@ -31,6 +31,12 @@ The later [mobile and tablet PWA requirement](mobile-pwa.md) is also accepted:
 Android phones/tablets, iPhones and iPads, installable app behavior, responsive
 touch workflows and Web Push are required in the complete application release.
 
+## Delivery playbook
+
+Follow the [delivery playbook](playbook-the-5.md): ship a thin working slice
+early, keep contracts short, make a clean install easy and release predictably.
+Research serves a concrete code task; it does not replace shipping.
+
 ## Essential distinctions
 
 | Status | What it means now |
