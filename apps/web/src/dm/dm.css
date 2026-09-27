@@ -5,7 +5,7 @@
 .dm__head { display: flex; align-items: center; gap: 12px; padding: 20px 0 18px; }
 .dm__faces { display: flex; flex: none; }
 .dm__faces .ui-avatar { box-shadow: 0 0 0 2px var(--bg); }
-.dm__faces .ui-avatar + .ui-avatar { margin-left: -10px; }
+.dm__faces .ui-avatar + .ui-avatar { margin-left: -6px; }
 .dm__who { flex: 1; min-width: 0; }
 .dm__who h2 { font-size: var(--fs-lg); font-weight: 600; letter-spacing: -0.01em; overflow-wrap: anywhere; }
 .dm__who p { margin-top: 2px; font-size: var(--fs-sm); line-height: 1.45; color: var(--text-3); }
@@ -74,6 +74,7 @@
   .dm__head { padding: 8px 0 12px; }
   .dm__faces .ui-avatar--lg { width: 30px; height: 30px; }
   .dm__composer { padding-top: 6px; }
+  .dm__composer .composer__hint:not(.dm__error) { display: none; }
   .dm-index__head { align-items: center; }
   .dm-index__head p { display: none; }
 }

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useRevalidator } from 'react-router';
 import { leaveDm } from '../api/direct-messages';
-import { Button, Icon } from '../ui';
+import { Avatar, Button, Icon } from '../ui';
 import { WorkDetails } from '../work/WorkDetails';
 import type { WorkspaceSummary } from './data';
 import type { DetailsView } from './shellContext';
@@ -16,7 +16,7 @@ export function Details({ view, workspace, placeTitle, dm = null, onBack }: {
   workspace: WorkspaceSummary | null;
   placeTitle: string;
   /** The open direct message (#107): its other people and audience line. */
-  dm?: { id: string; kind: 'pair' | 'group'; people: string[]; audience: string } | null;
+  dm?: { id: string; kind: 'pair' | 'group'; title: string; me: string; people: string[]; audience: string } | null;
   onBack: () => void;
 }) {
   if (view === 'connect-ai') return <ConnectAi onBack={onBack} />;
@@ -25,13 +25,14 @@ export function Details({ view, workspace, placeTitle, dm = null, onBack }: {
     return (
       <div className="details">
         <p className="details__eyebrow">Direct message</p>
-        <h3 className="details__title">{dm.audience}</h3>
+        <h3 className="details__title">{dm.title}</h3>
+        <p className="details__lead"><b>{dm.audience}</b></p>
         <p className="details__lead">A private conversation outside any project. Workspace owners and admins can’t read it unless they are in it.</p>
         <section className="details__sec" aria-labelledby="details-dm-people">
           <h4 id="details-dm-people">People in this conversation</h4>
           <ul className="details__rows">
-            <li><b>You</b></li>
-            {dm.people.map((name, index) => <li key={`${name}-${index}`}><b>{name}</b></li>)}
+            <li className="details__person"><Avatar name={dm.me} size="md" tone="me" /><b>{dm.me} (you)</b></li>
+            {dm.people.map((name, index) => <li key={`${name}-${index}`} className="details__person"><Avatar name={name} size="md" /><b>{name}</b></li>)}
           </ul>
         </section>
         <section className="details__sec" aria-labelledby="details-dm-rules">
@@ -105,8 +106,7 @@ function LeaveDm({ id, kind }: { id: string; kind: 'pair' | 'group' }) {
     } catch { setError('Could not leave. Try again.'); setBusy(false); }
   }
   return (
-    <section className="details__sec" aria-labelledby="details-dm-leave">
-      <h4 id="details-dm-leave">Leave</h4>
+    <section className="details__sec" aria-label="Leave">
       {confirm ? (
         <div role="group" aria-label="Leave this conversation" className="details__confirm">
           <p>{kind === 'pair' ? 'You won’t see these messages until you open this conversation again.' : 'You won’t see these messages again unless someone starts a new conversation with you.'}</p>
@@ -116,7 +116,7 @@ function LeaveDm({ id, kind }: { id: string; kind: 'pair' | 'group' }) {
           </div>
           {error ? <p role="alert">{error}</p> : null}
         </div>
-      ) : <Button variant="secondary" onClick={() => setConfirm(true)}>Leave conversation</Button>}
+      ) : <Button variant="quiet" className="details__leave" onClick={() => setConfirm(true)}>Leave conversation</Button>}
     </section>
   );
 }
