@@ -28,9 +28,11 @@ These workflows are dormant during ordinary PR and `main` pushes.
    ```
 
 4. Dispatch `Publish reviewed release` on `main` with those exact values and
-   review issue number. It downloads and rechecks the draft assets and peer
-   record, promotes the existing digest to the never-retag `vX.Y.Z` GHCR tag,
-   verifies anonymous image access, publishes the immutable GitHub Release and
+   review issue number. It checks that the draft target and any peeled Git tag
+   resolve to the accepted source SHA, then downloads and rechecks the draft
+   assets and peer record. It promotes the existing digest to the never-retag
+   `vX.Y.Z` GHCR tag, verifies anonymous image access, repeats the tag/target
+   check immediately before publishing the immutable GitHub Release, then
    checks public asset downloads against `SHA256SUMS`. Record the final image
    digest, tag and release URL in #77. If publication fails mid-step, inspect
    the existing tag/release first; the workflow refuses to move a version tag
