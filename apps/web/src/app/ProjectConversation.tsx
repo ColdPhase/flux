@@ -222,7 +222,7 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
   return <div className="project-convo" data-project-id={project.id}>
     <div className="project-convo__feed" ref={scrollRef}>
       <div className="project-convo__in">
-        <div className="project-convo__head"><div><p className="project-convo__eyebrow">{project.name} · {project.visibility === 'restricted' ? 'Members only' : 'Workspace members'}</p><h2>{conversation ? conversation.firstMessageBody.split('\n')[0] || 'Conversation' : 'New conversation'}</h2><p>Capture an idea or reply here. Everyone with access to this project can read it.</p></div></div>
+        <div className="project-convo__head"><div><p className="project-convo__eyebrow">{project.name} · People with project access</p><h2>{conversation ? conversation.firstMessageBody.split('\n')[0] || 'Conversation' : 'New conversation'}</h2><p>Capture an idea or reply here. Everyone with access to this project can read it.</p></div></div>
         <div className="project-convo__columns">
           <section aria-label="Conversations" className="project-convo__threads"><div className="project-convo__section-head"><h3>Threads</h3><span>{threadTotal}</span></div>
             <Link to={`/projects/${project.id}?new=1`} className={`project-convo__thread ${!conversation ? 'is-current' : ''}`}>New conversation</Link>
@@ -247,7 +247,7 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
     </div>
     <div className="composer project-convo__composer"><div className="composer__in">
       {conversation ? <p className="project-convo__current-thread" title={conversation.firstMessageBody.split('\n')[0]}>Replying to · {conversation.firstMessageBody.split('\n')[0] || 'Conversation'}</p> : null}
-      <p className="composer__audience"><Icon name="lock" size={13} />{project.name} · {project.visibility === 'restricted' ? 'Members only' : 'Workspace members'} · Saved to project</p>
+      <p className="composer__audience"><Icon name="lock" size={13} />{project.name} · People with project access · Saved to project</p>
       {citation ? <div className="project-convo__citation">Discussing “{citation.title}” v{citation.version}<button type="button" disabled={busy} onClick={() => { setCitation(null); setPending(null); setError(''); }} aria-label="Remove material citation">×</button></div> : null}
       <div className="composer__box"><label className="ui-vh" htmlFor="project-composer">{conversation ? 'Reply' : 'Start a conversation'}</label><textarea id="project-composer" value={draft} onChange={(event) => changeDraft(event.target.value)} onKeyDown={onComposerKey} disabled={!writable || busy} placeholder={conversation ? 'Reply…' : 'Share a thought…'} rows={1} /><button className="composer__send" aria-label={conversation ? 'Send reply' : 'Start conversation'} aria-disabled={!draft.trim() || !writable || busy} type="button" onClick={() => void send()}><Icon name="send" /></button></div>
       {readFailure ? <p className="project-convo__error" role="alert">{readFailure.message} <button type="button" onClick={readFailure.retry}>Retry read</button></p> : null}

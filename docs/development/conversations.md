@@ -1,7 +1,8 @@
 # Project capture and conversation backend (#36)
 
 The current slice stores project conversations, direct text replies and versioned
-project materials. A signed-in member can send from the current project without
+project materials. A signed-in person with contributor access can send from the
+current project without
 creating a draft. `POST /api/v1/projects/:projectId/conversations` starts a thread
 with its first message; `POST /api/v1/conversations/:id/messages` replies in it.
 Both take `{ "body": "…", "clientMessageId": "<UUID>" }` and may cite
@@ -29,8 +30,8 @@ the authorized project. `GET /api/v1/conversations/:id` returns the newest 50
 messages by default, in ascending display order. `?limit=1..100` changes the
 window size; `?beforeSequence=<positive integer>` fetches the next older window.
 Use `messagePage.nextBeforeSequence` while `hasMoreBefore` is true. Sequence
-cursors stay stable as new replies arrive. Server events, DM and many-to-many
-links remain outside this backend slice.
+cursors stay stable as new replies arrive. Authorized project refresh events are
+described below. DM and many-to-many links remain outside this slice.
 
 Clean start and verification use Docker only:
 
