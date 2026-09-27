@@ -31,6 +31,12 @@ The later [mobile and tablet PWA requirement](mobile-pwa.md) is also accepted:
 Android phones/tablets, iPhones and iPads, installable app behavior, responsive
 touch workflows and Web Push are required in the complete application release.
 
+The later [live collaboration requirement](live-collaboration.md) adds calm
+joinable sessions at existing work, native context sharing, self-hosted human
+audio/video/screenshare and durable outcomes. Its reference HTML demonstrates UX;
+the linked implementation and receiver/device quality tasks remain required.
+Personal AI ownership and explicit optional audio-processing consent still apply.
+
 ## Delivery playbook
 
 Follow the [delivery playbook](playbook-the-5.md): ship a thin working slice

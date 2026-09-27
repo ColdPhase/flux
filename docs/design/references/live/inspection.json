@@ -1,0 +1,73 @@
+{
+  "browser": "151.0.7922.34",
+  "checks": [
+    {
+      "name": "Join requests no devices",
+      "passed": true
+    },
+    {
+      "name": "Navigation preserves session and original shared context",
+      "passed": true
+    },
+    {
+      "name": "Explicit sharing updates context",
+      "passed": true
+    },
+    {
+      "name": "Opt-in following",
+      "passed": true
+    },
+    {
+      "name": "Independent navigation cancels following",
+      "passed": true
+    },
+    {
+      "name": "Quiet stops media and following but preserves presence",
+      "passed": true
+    },
+    {
+      "name": "Return stays muted",
+      "passed": true
+    },
+    {
+      "name": "Leave retains saved work",
+      "passed": true
+    },
+    {
+      "name": "Local content reloads; session does not",
+      "passed": true
+    },
+    {
+      "name": "03-laptop document overflow",
+      "passed": true,
+      "viewport": [
+        1280,
+        800
+      ]
+    },
+    {
+      "name": "04-phone document overflow",
+      "passed": true,
+      "viewport": [
+        390,
+        844
+      ]
+    },
+    {
+      "name": "05-tablet document overflow",
+      "passed": true,
+      "viewport": [
+        768,
+        1024
+      ]
+    }
+  ],
+  "page_errors": [],
+  "limits": "Local file in isolated Docker Chromium, instrumented media calls blocked. No real device, transmission, remote participants, accessibility certification or independent visual review.",
+  "date": "2026-09-27",
+  "source_sha256": "1f32429c9091881a1663ea88b948fe7dd48ad699669e46fa9884a2ba63259f27",
+  "imported_sha256": "812113533d2f78f2349a1cafbe08ad3a971b0eec783a6923f26bfe7833774674",
+  "source_bytes": 42796,
+  "import_change": "Only the two backlinks to flux-ux-v8.html are made repository-relative. Application CSS/JS remains as supplied.",
+  "review": "Self-inspection; not independent design acceptance."
+}

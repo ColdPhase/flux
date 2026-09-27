@@ -5,6 +5,15 @@ Read foundation sections 10, 17 D1–D4, and 21 in
 font family, application layout, or design system yet. Existing screens and
 third-party skills are references; their defaults do not establish Flux's style.
 
+## Live collaboration reference
+
+The founder's [live collaboration requirements](../product/live-collaboration.md)
+add contextual human audio/video/screen sessions to existing work. The supplied
+[interactive reference and inspection](references/live/README.md) illustrate
+join, show/follow, quiet/return and durable outcomes. Preserve the current C/v8
+direction, personal-agent ownership and compact working surfaces while designing
+this capability. The reference is simulated; it is not evidence of working media.
+
 ## Brief and continuity
 
 Give each design task its persona, user job, surface type, main action, difficult

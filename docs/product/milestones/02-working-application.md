@@ -29,6 +29,15 @@ authorized Web Push, connectivity/update recovery and self-hosted operation.
 Include these constraints in the initial architecture and UI foundation; split
 implementation into concrete issues and link their evidence from the coverage matrix.
 
+Deliver [contextual live collaboration](../live-collaboration.md): join at existing
+work with devices off, explicit context presentation and opt-in following,
+human audio/video/screenshare on our self-hosted SFU/relay, quiet/return, and
+results in the existing conversation/task/map/wiki. Track the reference/contract
+in #59, server/context in #61, interface in #62 and deployment/quality in #63.
+Real two/four-person receiver, revocation, network and supported mobile evidence
+are required; a local HTML preview is not acceptance. Keep optional personal AI
+help within #57; no shared subscription or hidden audio-processing participant.
+
 Each task has one owner, a different evaluator, specific dependencies and proof
 of its user-visible outcome. Preserve unfinished work and resume it after a stop.
 Park a blocked task and continue independent implementation or review.
