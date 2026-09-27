@@ -7,7 +7,7 @@ description: Build, test, and publish Flux application artifacts from an accepte
 
 Read `AGENTS.md`, the release contract and candidate acceptance report, and
 [CI and releases](../../../docs/agents/ci-and-releases.md). Publication requires
-recorded authority, actual artifact formats, and the manifest capability switch.
+recorded authority and the actual artifact formats in the release contract.
 
 1. Confirm the accepted candidate SHA, required checks, exact version, packaging
    targets, and publication permissions. Respect existing tag and branch rules.

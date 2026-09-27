@@ -19,7 +19,7 @@ screenshots, a neutral brief and references, separately from functional testing.
 
 ## At task review
 
-1. Pin the contract revision and PR head. Check the current base, conflicts,
+1. Pin the issue contract and PR head. Check the current base, conflicts,
    required checks, and unresolved prior findings.
 2. Read the implementation in an isolated checkout. Inspect integration points,
    data ownership, permission behavior, and compatibility relevant to the diff.
@@ -81,7 +81,7 @@ Publish one criterion matrix with the candidate SHA and evidence links in an
 acceptance task/PR within the milestone. Missing functionality becomes a task there and
 the loop continues. Resolve product decisions with the peer. Missing external access becomes a named
 blocker for that task, while independent work continues.
-Acceptance applies only to the tested candidate and contract revision.
+Acceptance applies only to the tested candidate and current contract.
 
 If a criterion blocks, seek peer help and record it in its issue. Continue other
 independent acceptance scenarios or tasks. Required parked work still prevents

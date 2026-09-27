@@ -10,13 +10,13 @@ See the [project README](../README.md) for an introduction and quick start.
 
 ## Agent collaboration
 
-- [Agent workflow and harness design](agents/README.md) — shared Codex/Claude
+- [Agent workflow](agents/README.md) — shared Codex/Claude
   instructions, GitHub communication, task contracts, and continuous release work.
 - [CI and releases](agents/ci-and-releases.md) — validation workflows, required PR
   checks, packaging, and publication responsibilities.
 
-The local milestone runner is implemented; [startup](agents/startup.md) explains
-how each maintainer runs, stops, and resumes their worker. The first milestone
+Each maintainer runs one `/goal` agent session; [startup](agents/startup.md)
+explains how to start, pause and resume it. The first milestone
 prepares product/design/architecture decisions. Application technology and the
 first release scope still need acceptance.
 

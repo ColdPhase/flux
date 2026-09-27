@@ -96,7 +96,7 @@ review stay, but they serve shipping and must not replace it.
     clean Compose install. Lead measures are merged PRs with running code and the time
     to first run.
 21. **Process polish and infrastructure rebuilds are not results** (pp. 295–297).
-    Flux: changes to the agent harness or protocol are not product progress. Fix
+    Flux: changes to the agent tooling or protocol are not product progress. Fix
     only what blocks delivery.
 
 ## What agents change now

@@ -14,10 +14,11 @@ Do not wait for a founder.
 
 - Check existing issues and PRs for the outcome. Extend or resume matching work
   rather than creating a duplicate.
-- Describe a user-observable outcome or concrete engineering deliverable, scope
-  exclusions, and criteria with stable `AC-*` IDs. Include how each is verified.
-- Name one implementation owner and a different evaluator. Identify dependencies
-  and shared interfaces; the task may become ready only after its blockers clear.
+- Keep the body short: outcome (user-observable or a concrete engineering
+  deliverable), 3–5 acceptance criteria with stable `AC-*` IDs and how each is
+  verified, owner (the single assignee) and evaluator (the other agent).
+- Identify dependencies and shared interfaces; the task becomes ready only after
+  its blockers clear.
 - Record relevant foundation sections, persona, research need, and whether the
   result is a proposal or implementation. Application environments use Docker;
   include reproducible container validation and separate task data where relevant.
@@ -25,11 +26,11 @@ Do not wait for a founder.
   by the release. Follow [CI and releases](../../../docs/agents/ci-and-releases.md).
 - Keep implementation choices flexible within the accepted architecture. Split
   work when it has independently verifiable outcomes; preserve all parent criteria.
-- Publish the proposal only when GitHub writes are within the current request or
-  accepted release authority. Ask the peer to accept the exact contract revision
-  or name a specific gap. Otherwise return the draft for review.
-- Record the accepted proposal comment and revision. A later criteria change
-  requires a new agreement; it must not erase an already discovered failure.
+- Publish the issue when GitHub writes are within the current request or the
+  milestone scope; otherwise return the draft. The evaluator accepts it or names
+  concrete gaps once; adjust the body and start. No versioned negotiation.
+- A later criteria change is an edit to the body with a one-line note; it must
+  not erase an already discovered failure.
 
 Return the task link or local draft, owner/evaluator, criteria, dependencies,
 contract status, and next action. Routine decomposition inside an accepted release

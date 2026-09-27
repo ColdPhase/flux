@@ -17,9 +17,9 @@ or only its public description read. Mark inaccessible sources as unavailable.
 For AI integrations assess external official agents, embedded execution, and
 API/local models separately. Record authentication, supported plans/capabilities,
 billing ownership, permissions, deployment constraints, and any required provider
-consent. Recheck changing terms before implementation and publication. This
-developer harness using installed personal CLIs is separate from embedding their
-subscription access in the Flux application.
+consent. Recheck changing terms before implementation and publication. The
+founders' own agent sessions using installed personal CLIs are separate from
+embedding their subscription access in the Flux application.
 
 Finish when the task's recommendation is defensible and relevant limitations
 are known. Resolve product/technical decisions with the independent peer under the founder

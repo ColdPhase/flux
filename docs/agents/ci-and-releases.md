@@ -22,17 +22,15 @@ authorization can proceed without repeated permission requests.
 ## Available in this foundation
 
 [Repository checks](../../.github/workflows/repository-checks.yml) runs
-`python3 scripts/check_agent_setup.py` on PRs and pushes to `main`. It checks this
-foundation's manifest, skill discovery, and local documentation links, using the
-Python standard library. Regression tests also check that incomplete activation,
-shared reviewer identities, missing references, and divergent skills are rejected.
-The suite also exercises the local runner's scheduling, process control,
-checkpoints, retry reconciliation, and provider fixtures. It does not validate
-application functionality or prove a live two-account model collaboration.
+`python3 scripts/check_agent_setup.py` and its regression tests on PRs as the
+required `Agent setup` check. It checks the shared instructions (`AGENTS.md`
+imported by `CLAUDE.md`), the `.claude/skills` link, skill frontmatter and local
+documentation links, using the Python standard library. It does not validate
+application functionality.
 
 Application lint, tests, compilation, packaging, and publication require the later
-stack/release decisions. Empty application commands in the manifest record that
-missing setup. The current structural check cannot replace those future gates.
+stack/release decisions. The current structural check cannot replace those
+future gates.
 
 ## 1. Design checks from the actual stack
 
@@ -56,8 +54,8 @@ the [environment contract](../development/containers.md). Use the same container
 commands locally and in Actions, including readiness, migrations, and isolated
 test data. Do not require a host installation of PostgreSQL or an app toolchain.
 
-Record the real commands and status-check names in the manifest and release
-contract. The peer reviews workflow changes and their observed behavior.
+Record the real commands and status-check names in the release contract and
+`AGENTS.md`. The peer reviews workflow changes and their observed behavior.
 
 ## 2. Implement GitHub Actions
 

@@ -9,7 +9,7 @@ Read `AGENTS.md`, the accepted release contract, and
 [Evaluation](../../../docs/agents/evaluation.md). Check delivery obligations in
 [CI and releases](../../../docs/agents/ci-and-releases.md).
 
-1. Pin a candidate commit on the protected base and the contract revision. Reconcile
+1. Pin a candidate commit on the protected base and the current release contract. Reconcile
    every release outcome, task, child task, merged PR, and blocking finding.
 2. Divide acceptance scenarios between independent evaluators. A worker's own
    implementation cannot receive its sole final evaluation from that same worker.
@@ -25,7 +25,7 @@ Read `AGENTS.md`, the accepted release contract, and
    After delivery, reconcile its artifact/download/deployment evidence before final
    release acceptance. New candidate code requires the affected checks again.
 
-Return the candidate SHA, contract revision, criterion results, evidence, remaining
+Return the candidate SHA, criterion results, evidence, remaining
 tasks, and next action. Distinguish a verified candidate from a published version.
 
-The founder delegates final acceptance to the two independent agents. Maintain coverage for all foundation areas 8.1–8.16. After the full product is verified and delivered, publish the two authenticated final acceptance records described in the GitHub protocol. An intermediate milestone does not finish the application.
+The founder delegates final acceptance to the two independent agents. Maintain coverage for all foundation areas 8.1–8.16. After the full product is verified and delivered, each agent posts its final acceptance report described in the GitHub protocol. An intermediate milestone does not finish the application.

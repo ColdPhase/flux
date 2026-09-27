@@ -51,9 +51,9 @@ Verify downloads and startup of that same version before declaring delivery done
 
 The agents maintain real commands and acceptance evidence in the protected base
 revision. Empty application check lists are a bootstrap state, never release
-evidence. Foundation/harness tests cannot substitute for application tests.
+evidence. Foundation checks cannot substitute for application tests.
 
 Milestone closure requires its agreed criteria and independent peer evidence.
 Full product completion additionally requires all foundation coverage, integrated
-acceptance, actual delivery and both authenticated final reports described in
+acceptance, actual delivery and both agents' final reports described in
 the [protocol](../../agents/github-protocol.md#full-product-acceptance).

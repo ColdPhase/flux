@@ -1,6 +1,6 @@
 # Milestone brief
 
-Link this reviewed document from the GitHub milestone description. Include the product scope marker from the GitHub protocol. The milestone
+Link this reviewed document from the GitHub milestone description. The milestone
 is the entry point; use individual issues for work and discussions.
 
 ## Identity and authority
@@ -22,7 +22,7 @@ is the entry point; use individual issues for work and discussions.
 Specify boundaries, dependencies, and how outcomes integrate. Include Docker
 environment, CI validation, installation, update, recovery, distribution and
 real AI permissions when relevant. A release needs accepted specification and
-architecture files and real verification commands in the manifest.
+architecture files and real verification commands.
 
 ## Task creation and recovery
 
