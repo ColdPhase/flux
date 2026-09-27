@@ -39,6 +39,7 @@ export * from './stream-audience.js';
 export * from './events.js';
 export * from './conversation/commands.js';
 export * from './conversation/service.js';
+export * from './agent-connection/connections.js';
 export * from './sketches/index.js';
 export { policySketchAccess } from './access/sketch-access.js';
 export * from './work/index.js';

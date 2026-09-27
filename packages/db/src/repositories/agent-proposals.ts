@@ -9,6 +9,7 @@ type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 type Row = typeof schema.agentProposals.$inferSelect;
 type Principal = { kind: 'human' | 'agent'; id: string };
 type Connection = {
+  connectionId: string;
   ownerUserId: string;
   agentId: string;
   selectedProjectIds: readonly string[];
@@ -16,7 +17,7 @@ type Connection = {
   computeSource: 'user_operated_claude_code';
 };
 type ValidatedCommand = CreateAgentProposalCommand & { fingerprint: string };
-type Failure = 'AGENT_NOT_FOUND' | 'MATERIAL_NOT_FOUND' | 'SOURCE_VERSION_CONFLICT' | 'IDEMPOTENCY_CONFLICT';
+type Failure = 'CONNECTION_NOT_FOUND' | 'AGENT_NOT_FOUND' | 'MATERIAL_NOT_FOUND' | 'SOURCE_VERSION_CONFLICT' | 'IDEMPOTENCY_CONFLICT';
 
 /** The composition root supplies the one core policy path and event recorder. */
 export interface AgentProposalPolicy {
@@ -44,6 +45,17 @@ export function agentProposalRepository(db: Database, policy: AgentProposalPolic
     async create(connection: Connection, input: ValidatedCommand): Promise<AgentProposal | Failure> {
       const principal: Principal = { kind: 'agent', id: connection.agentId };
       return db.transaction(async (tx) => {
+        const [selection] = await tx.select({ scopes: schema.agentConnections.scopes }).from(schema.agentConnections)
+          .where(and(eq(schema.agentConnections.id, connection.connectionId),
+            eq(schema.agentConnections.ownerUserId, connection.ownerUserId),
+            eq(schema.agentConnections.agentId, connection.agentId),
+            isNull(schema.agentConnections.revokedAt))).for('share');
+        if (!selection?.scopes.includes('flux.proposal.write')) return 'CONNECTION_NOT_FOUND';
+        const [selected] = await tx.select({ projectId: schema.agentConnectionProjects.projectId })
+          .from(schema.agentConnectionProjects).where(and(
+            eq(schema.agentConnectionProjects.connectionId, connection.connectionId),
+            eq(schema.agentConnectionProjects.projectId, input.projectId)));
+        if (!selected) return 'CONNECTION_NOT_FOUND';
         const [agent] = await tx.select({ id: schema.agents.id }).from(schema.agents).where(and(
           eq(schema.agents.id, connection.agentId), eq(schema.agents.ownerUserId, connection.ownerUserId),
           isNull(schema.agents.revokedAt))).for('share');

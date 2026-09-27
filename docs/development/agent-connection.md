@@ -18,6 +18,17 @@ IDs and scopes; current agent and owner project access is checked again. An
 expired/revoked token, removed owner, revoked agent, changed grant or removed
 project cannot use a cached tool result or continue a write.
 
+The person creates a selection through `POST /api/v1/agent-connections`, lists
+their selections through `GET /api/v1/agent-connections`, and revokes one through
+`DELETE /api/v1/agent-connections/:id`. A selection names 1–50 distinct projects
+and one or both supported scopes. Creation checks that the person owns the agent
+and that its current explicit project grants permit the selected action. The
+server stores an immutable connection ID, owner, agent, project set and scopes;
+it never stores a model credential. Revocation is immediate for new tool calls.
+The proposal commit rechecks that connection and its selected project under the
+same transaction as the source and grant checks, so a retry cannot use a revoked
+selection. OAuth will bind its consent and access token to this server-owned ID.
+
 The OAuth protected resource is the configured public HTTPS origin's `/mcp`.
 The server advertises resource and authorization metadata, validates redirect
 clients, PKCE, `resource`, issuer, audience and token expiry. Codes are short

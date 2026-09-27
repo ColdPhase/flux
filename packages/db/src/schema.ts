@@ -311,6 +311,32 @@ export const projectMessages = pgTable('project_messages', {
   foreignKey({ columns: [table.workspaceId, table.projectId, table.sourceMaterialId, table.sourceMaterialVersion], foreignColumns: [projectMaterialVersions.workspaceId, projectMaterialVersions.projectId, projectMaterialVersions.materialId, projectMaterialVersions.version] }),
 ]);
 
+// One person's selected agent, scopes and project ceiling for an external MCP client (#52).
+export const agentConnections = pgTable('agent_connections', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  agentId: uuid('agent_id').notNull(),
+  scopes: text('scopes', { enum: ['flux.context.read', 'flux.proposal.write'] }).array().notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique().on(table.workspaceId, table.id),
+  index('agent_connections_owner_idx').on(table.ownerUserId, table.createdAt, table.id),
+  foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }),
+]);
+
+export const agentConnectionProjects = pgTable('agent_connection_projects', {
+  workspaceId: uuid('workspace_id').notNull(),
+  connectionId: uuid('connection_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.connectionId, table.projectId] }),
+  foreignKey({ columns: [table.workspaceId, table.connectionId], foreignColumns: [agentConnections.workspaceId, agentConnections.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+]);
+
 // Sketches: thoughts on a map and the links between them (migration 0007, issue #69).
 export const sketches = pgTable('sketches', {
   id: uuid('id').primaryKey(),

@@ -1,3 +1,24 @@
+export type AgentScope = 'flux.context.read' | 'flux.proposal.write';
+
+/** A person's server-owned consent selection; no model account or token is stored here. */
+export interface AgentConnection {
+  id: string;
+  workspaceId: string;
+  ownerUserId: string;
+  agentId: string;
+  selectedProjectIds: string[];
+  scopes: AgentScope[];
+  computeSource: 'user_operated_claude_code';
+  revokedAt: string | null;
+  createdAt: string;
+}
+
+export interface CreateAgentConnectionCommand {
+  agentId: string;
+  selectedProjectIds: string[];
+  scopes: AgentScope[];
+}
+
 /** An agent suggestion stays separate from published project material and human decisions. */
 export interface AgentProposal {
   id: string;

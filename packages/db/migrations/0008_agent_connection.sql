@@ -1,3 +1,31 @@
+-- A person's explicit selection for an external MCP client. OAuth carries only this id;
+-- each tool call reloads it and checks today's owner, agent and project grants.
+CREATE TABLE agent_connections (
+  id uuid PRIMARY KEY,
+  workspace_id uuid NOT NULL,
+  owner_user_id text NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,
+  agent_id uuid NOT NULL,
+  scopes text[] NOT NULL CHECK (
+    cardinality(scopes) BETWEEN 1 AND 2
+    AND scopes <@ ARRAY['flux.context.read', 'flux.proposal.write']::text[]
+  ),
+  revoked_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (workspace_id, id),
+  FOREIGN KEY (workspace_id, agent_id) REFERENCES agents(workspace_id, id)
+);
+CREATE INDEX agent_connections_owner_idx ON agent_connections(owner_user_id, created_at DESC, id);
+
+CREATE TABLE agent_connection_projects (
+  workspace_id uuid NOT NULL,
+  connection_id uuid NOT NULL,
+  project_id uuid NOT NULL,
+  PRIMARY KEY (connection_id, project_id),
+  FOREIGN KEY (workspace_id, connection_id) REFERENCES agent_connections(workspace_id, id) ON DELETE CASCADE,
+  FOREIGN KEY (workspace_id, project_id) REFERENCES projects(workspace_id, id) ON DELETE CASCADE
+);
+
 -- Person-owned MCP agent proposals. A proposal is not a published material.
 CREATE TABLE agent_proposals (
   id uuid PRIMARY KEY,
@@ -26,5 +54,3 @@ CREATE TABLE agent_proposals (
     REFERENCES project_material_versions(workspace_id, project_id, material_id, version)
 );
 CREATE INDEX agent_proposals_project_idx ON agent_proposals(project_id, created_at DESC, id DESC);
-
-INSERT INTO flux_schema_version(version) VALUES (7) ON CONFLICT DO NOTHING;

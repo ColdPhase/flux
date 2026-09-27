@@ -45,6 +45,7 @@ describe('sourced personal agent proposals', () => {
   let material: Material;
   let agentId: string;
   let grantId: string;
+  let connectionId: string;
 
   before(async () => {
     [owner, peer, outsider] = await Promise.all(['proposal-owner', 'proposal-peer', 'proposal-outsider'].map(person));
@@ -62,10 +63,18 @@ describe('sourced personal agent proposals', () => {
       { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201) as { id: string }).id;
     material = result(await owner.browser.request('POST', `/api/v1/projects/${project.id}/materials`,
       { body: { clientMutationId: randomUUID(), title: 'Low light', body: 'Sensor A misses dim scenes' } }), 201) as Material;
+    const command = { agentId, selectedProjectIds: [project.id], scopes: ['flux.context.read', 'flux.proposal.write'] };
+    const connection = result(await owner.browser.request('POST', '/api/v1/agent-connections',
+      { body: command }), 201) as { id: string; ownerUserId: string; selectedProjectIds: string[] };
+    connectionId = connection.id;
+    assert.equal(connection.ownerUserId, owner.id);
+    assert.deepEqual(connection.selectedProjectIds, [project.id]);
+    result(await peer.browser.request('POST', '/api/v1/agent-connections', { body: command }), 404);
+    assert.equal((result(await peer.browser.request('GET', '/api/v1/agent-connections'), 200) as unknown[]).length, 0);
   });
 
   test('source, audience, idempotency and current grant protect a proposal', async () => {
-    const context = { ownerUserId: owner.id, agentId, selectedProjectIds: [project.id],
+    const context = { connectionId, ownerUserId: owner.id, agentId, selectedProjectIds: [project.id],
       scopes: ['flux.context.read', 'flux.proposal.write'] as const,
       computeSource: 'user_operated_claude_code' as const };
     const command = { projectId: project.id, source: { materialId: material.materialId, version: 1 },
@@ -82,7 +91,7 @@ describe('sourced personal agent proposals', () => {
       { code: 'IDEMPOTENCY_CONFLICT' });
     await assert.rejects(store.create({ ...context, selectedProjectIds: [] }, command), { code: 'PROJECT_NOT_FOUND' });
     await assert.rejects(store.create({ ...context, scopes: ['flux.context.read'] }, command), { code: 'MCP_SCOPE_REQUIRED' });
-    await assert.rejects(store.create({ ...context, ownerUserId: peer.id }, command), { code: 'AGENT_NOT_FOUND' });
+    await assert.rejects(store.create({ ...context, ownerUserId: peer.id }, command), { code: 'CONNECTION_NOT_FOUND' });
     const second = await store.create(context, { ...command, clientCommandId: randomUUID(), suggestedAction: 'Review exposure logs' });
     const peerView = result(await peer.browser.request('GET',
       `/api/v1/projects/${project.id}/agent-proposals?limit=1&offset=0`), 200) as { items: AgentProposal[]; total: number; limit: number; offset: number };
@@ -107,6 +116,8 @@ describe('sourced personal agent proposals', () => {
       'human project work continues without the agent');
     assert.equal(afterRevocation.items.find((proposal) => proposal.id === first.id)?.agentGrant.id, grantId,
       'the original grant stays attributable after revocation');
+    result(await owner.browser.request('DELETE', `/api/v1/agent-connections/${connectionId}`), 204);
+    await assert.rejects(store.create(context, command), { code: 'CONNECTION_NOT_FOUND' });
   });
 
   test('invalid command shapes and source revision range are domain errors', () => {

@@ -1,15 +1,16 @@
 import { createHash } from 'node:crypto';
-import type { CreateAgentProposalCommand } from '@flux/contracts';
+import type { AgentScope, CreateAgentProposalCommand } from '@flux/contracts';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError } from '../access/errors.js';
 import { isUuid } from '../access/policy.js';
 import type { AgentProposal, Page, PageQuery } from '@flux/contracts';
 import { parsePage } from '../access/domain.js';
 import type { Principal } from '../types.js';
 
-export type AgentScope = 'flux.context.read' | 'flux.proposal.write';
+export type { AgentScope } from '@flux/contracts';
 
 /** Verified OAuth selection. The transport constructs this from live consent, never tool input. */
 export interface AgentConnectionContext {
+  connectionId: string;
   ownerUserId: string;
   agentId: string;
   selectedProjectIds: readonly string[];
@@ -18,6 +19,7 @@ export interface AgentConnectionContext {
 }
 
 export function requireAgentSelection(context: AgentConnectionContext, projectId: string, scope: AgentScope): void {
+  if (!isUuid(context.connectionId)) throw new NotFoundError('Connection', 'CONNECTION_NOT_FOUND');
   if (!context.scopes.includes(scope)) throw new ForbiddenError('The connection lacks the required scope', 'MCP_SCOPE_REQUIRED');
   if (!isUuid(projectId) || !context.selectedProjectIds.includes(projectId))
     throw new NotFoundError('Project', 'PROJECT_NOT_FOUND');
@@ -49,7 +51,7 @@ export function validateProposalCommand(input: CreateAgentProposalCommand): Crea
   return { ...normalized, fingerprint };
 }
 
-export type ProposalPersistenceError = 'AGENT_NOT_FOUND' | 'MATERIAL_NOT_FOUND' | 'SOURCE_VERSION_CONFLICT' | 'IDEMPOTENCY_CONFLICT';
+export type ProposalPersistenceError = 'CONNECTION_NOT_FOUND' | 'AGENT_NOT_FOUND' | 'MATERIAL_NOT_FOUND' | 'SOURCE_VERSION_CONFLICT' | 'IDEMPOTENCY_CONFLICT';
 export interface AgentProposalPort {
   create(connection: AgentConnectionContext, command: ReturnType<typeof validateProposalCommand>): Promise<AgentProposal | ProposalPersistenceError>;
   listForPerson(principal: Principal, projectId: string, page: { limit: number; offset: number }): Promise<Page<AgentProposal>>;
@@ -62,6 +64,7 @@ export function agentProposalUseCases(port: AgentProposalPort) {
       const normalized = validateProposalCommand(command);
       requireAgentSelection(connection, normalized.projectId, 'flux.proposal.write');
       const result = await port.create(connection, normalized);
+      if (result === 'CONNECTION_NOT_FOUND') throw new NotFoundError('Connection', result);
       if (result === 'AGENT_NOT_FOUND') throw new NotFoundError('Agent', result);
       if (result === 'MATERIAL_NOT_FOUND') throw new NotFoundError('Material', result);
       if (result === 'SOURCE_VERSION_CONFLICT') throw new ConflictError('Source material changed since the selected version', result);
