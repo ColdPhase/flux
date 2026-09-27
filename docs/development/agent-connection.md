@@ -47,7 +47,21 @@ broader human authority. DMs are outside this first agent grant model.
 The provider cannot revoke one JWT access token independently through its OAuth
 revoke endpoint; use the Flux connection revoke action to stop access immediately.
 
-In an isolated Compose test on 2026-09-28, Claude Code 2.1.281 completed OAuth
+For a remote deployment, set `FLUX_PUBLIC_ORIGIN` to the exact HTTPS origin
+used by people and Claude Code, such as `https://flux.example.org`. Terminate
+TLS at the operator's reverse proxy and route `/mcp`, `/.well-known/*`,
+`/api/auth/*`, `/api/v1/*` and the web application on that one origin without
+rewriting their paths. Keep the Compose API port reachable only by the trusted
+proxy, configure `FLUX_TRUSTED_PROXIES` for its actual address, and keep the
+origin stable across restart: OAuth issuer, resource identifier, redirect and
+cookie security are derived from it. The CLI adds the remote server with
+`claude mcp add --transport http --scope user flux https://flux.example.org/mcp`
+and then runs `claude mcp login flux`. The operator must supply a trusted TLS
+certificate and reachable DNS name before this can work from another machine.
+
+In an isolated Compose test on 2026-09-28, the API container listened on port
+8080 and mapped to host loopback `127.0.0.1:18562`; Claude Code 2.1.281 on
+that host completed OAuth
 and reported MCP protocol revision `2026-07-28` (`protocolEra: modern`). Its
 authenticated connection exposed the three Flux tools. The same bearer was
 used to read a selected material and create a sourced proposal over the MCP
@@ -78,6 +92,10 @@ payload conflicts. A retry checks current token, selected project and project
 policy before revealing the stored response. A person with current project
 access can inspect the attributed proposal and continue the existing human
 conversation without an agent.
+Stopping the external client before a proposal commit leaves no Flux run to
+resume or bill. A committed proposal remains attributed and pending human
+review after the client disconnects; Flux never restarts the user's model or
+spends their subscription in the background.
 
 The human review API returns a bounded newest-first page (`limit` 1–100, default
 50; `offset` 0–10000) and a total computed only after current project access.
