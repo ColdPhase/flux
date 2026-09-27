@@ -31,6 +31,13 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-flux}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-flux}
       FLUX_FIXTURE_TOKEN: ${FLUX_FIXTURE_TOKEN:?Set FLUX_FIXTURE_TOKEN}
       FLUX_FILES_DIR: /data/files
+      FLUX_PUBLIC_ORIGIN: ${FLUX_PUBLIC_ORIGIN:?Set FLUX_PUBLIC_ORIGIN}
+      FLUX_AUTH_SECRET: ${FLUX_AUTH_SECRET:?Set FLUX_AUTH_SECRET}
+      FLUX_TRUSTED_PROXIES: ${FLUX_TRUSTED_PROXIES:-}
+      FLUX_SMTP_URL: ${FLUX_SMTP_URL:-}
+      FLUX_MAIL_FROM: ${FLUX_MAIL_FROM:-}
+      FLUX_PASSWORD_RESET_TTL_SECONDS: ${FLUX_PASSWORD_RESET_TTL_SECONDS:-3600}
+      FLUX_AUTH_RATE_LIMIT: ${FLUX_AUTH_RATE_LIMIT:-true}
       PORT: 8080
     volumes:
       - files:/data/files
@@ -55,15 +62,40 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+  mailpit:
+    # Local SMTP catcher for development and tests only. Never a production mail relay.
+    profiles: ["dev", "test"]
+    image: axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+    ports:
+      - 127.0.0.1:${FLUX_MAILPIT_PORT:-8025}:8025
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
   test:
     profiles: ["test"]
     image: flux-foundation:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
     command: ["pnpm", "test"]
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-flux}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-flux}
+      FLUX_API_URL: http://api:8080
+      FLUX_MAILPIT_URL: http://mailpit:8025
+      FLUX_PUBLIC_ORIGIN: ${FLUX_PUBLIC_ORIGIN:?Set FLUX_PUBLIC_ORIGIN}
+      FLUX_TEST_STATE_DIR: /state
+    volumes:
+      - teststate:/state
     depends_on:
       migrate:
         condition: service_completed_successfully
+      api:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
 volumes:
   pgdata:
   files:
+  teststate:

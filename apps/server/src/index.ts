@@ -4,31 +4,34 @@ import { join } from 'node:path';
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { PgBoss } from 'pg-boss';
-import { PG_BOSS_SCHEMA_VERSION } from '@flux/db';
+import { FLUX_SCHEMA_VERSION, PG_BOSS_SCHEMA_VERSION } from '@flux/db';
 import { SAMPLE_COMMAND_PATH, type SampleCommand } from '@flux/contracts';
 import { createSample, SAMPLE_JOB } from '@flux/core';
 import { registerDatabase } from './plugins/database.js';
+import { loadIdentityConfig, registerIdentity } from './identity/index.js';
 
 const connectionString = process.env.DATABASE_URL;
 const fixtureToken = process.env.FLUX_FIXTURE_TOKEN;
 const filesDir = process.env.FLUX_FILES_DIR ?? '/data/files';
 if (!connectionString) throw new Error('DATABASE_URL is required');
-const app = Fastify({ logger: true });
+const identityConfig = loadIdentityConfig();
+const app = Fastify({ logger: true, trustProxy: identityConfig.trustedProxies.length ? identityConfig.trustedProxies : false });
 const { pool, db } = registerDatabase(app, connectionString);
 const boss = new PgBoss({ connectionString, migrate: false });
 boss.on('error', (error) => app.log.error(error));
 await boss.start();
 app.addHook('onClose', async () => boss.stop());
+registerIdentity(app, { db, config: identityConfig });
 
 app.get('/api/v1/health', async (_request, reply) => {
   try {
     const version = await pool.query('SELECT max(version) AS version FROM flux_schema_version');
-    if (Number(version.rows[0]?.version) !== 1) throw new Error('Schema mismatch');
+    if (Number(version.rows[0]?.version) !== FLUX_SCHEMA_VERSION) throw new Error('Schema mismatch');
     if ((await boss.schemaVersion()) !== PG_BOSS_SCHEMA_VERSION) throw new Error('Queue schema mismatch');
     const probe = join(filesDir, `.flux-health-${randomUUID()}`);
     const file = await open(probe, 'wx');
     try { await file.writeFile('ok'); } finally { await file.close(); await unlink(probe); }
-    return { status: 'ok', schemaVersion: 1 };
+    return { status: 'ok', schemaVersion: FLUX_SCHEMA_VERSION };
   } catch (error) {
     app.log.warn(error);
     return reply.code(503).send({ status: 'unavailable' });
