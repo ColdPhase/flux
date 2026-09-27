@@ -185,7 +185,7 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; }
 .avatar { width: 26px; height: 26px; flex: none; display: grid; place-items: center; font-size: 12px; font-weight: 700; border-radius: 2px; background: var(--surface-inverse); color: var(--text-on-inverse); }
 .avatar.ari { background: #5B3FA8; }
 .avatar.nia { background: #0B6E69; }
-.avatar.bot { background: var(--surface-base); color: var(--text-primary); border: 1.5px solid var(--line-strong); border-radius: 50%; font-size: 10px; letter-spacing: -0.02em; }
+.avatar.bot { background: var(--surface-base); color: var(--text-primary); border: 1.5px solid var(--line-strong); border-radius: 50%; letter-spacing: -0.02em; }
 .rail-foot .who { font-size: 13px; line-height: 1.25; }
 .rail-foot .who span { display: block; font-size: 12px; color: var(--text-muted); }
 
@@ -252,7 +252,7 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; }
 .chip-line { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: center; }
 .thread { margin-top: 8px; border-left: 2px solid var(--line-default); padding-left: 12px; }
 .thread .msg { grid-template-columns: 22px minmax(0,1fr); padding: 6px 0; border-top: 0; }
-.thread .avatar { width: 22px; height: 22px; font-size: 10.5px; }
+.thread .avatar { width: 24px; height: 24px; }
 .thread-toggle { margin-top: 6px; }
 .question { margin-top: 8px; border: 1px solid var(--status-warning); border-left-width: 4px; background: var(--status-warning-surface); padding: 8px 10px; max-width: 76ch; }
 .question .qh { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12.5px; }
@@ -434,6 +434,15 @@ body.agents-open .dock { display: flex; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; scroll-behavior: auto !important; }
+}
+
+/* Touch devices: primary targets are at least 44 CSS px; inline references keep text flow
+   (WCAG 2.5.8 inline exception) with a 24 px hit area. Kept last so it wins the cascade. */
+@media (pointer: coarse) {
+  .lrow .act .btn, .composer textarea { min-height: 44px; }
+  .crumbs a, dd a, .t a { display: inline-flex; align-items: center; min-height: 44px; }
+  .crumbs a { padding: 0 4px; }
+  a.ref { display: inline-flex; align-items: center; min-height: 24px; }
 }
 </style>
 </head>

@@ -1,0 +1,136 @@
+{
+  "a": {
+    "viewports": {
+      "1440x900": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null
+      },
+      "1280x800": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null
+      },
+      "1024x768": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
+      },
+      "768x1024": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
+      },
+      "390x844": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
+      },
+      "360x780": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
+      }
+    },
+    "zoom200": {
+      "horizontal_overflow": false
+    },
+    "keyboard": {
+      "composer_visible": true
+    },
+    "keyboard_focus": {
+      "stops": 40,
+      "without_visible_ring": [],
+      "first_stops": [
+        "Skip to changes since you left",
+        "Skip to reply",
+        "Search and commands (Control K)",
+        "Awaiting your review1",
+        "Open questions to you1",
+        "Handoffs to you1",
+        "Tide",
+        "Shared export7"
+      ]
+    },
+    "reduced_motion_animated_elements": 0
+  },
+  "b": {
+    "viewports": {
+      "1440x900": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null
+      },
+      "1280x800": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null
+      },
+      "1024x768": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
+      },
+      "768x1024": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
+      },
+      "390x844": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
+      },
+      "360x780": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
+      }
+    },
+    "zoom200": {
+      "horizontal_overflow": false
+    },
+    "keyboard": {
+      "composer_visible": true
+    },
+    "keyboard_focus": {
+      "stops": 40,
+      "without_visible_ring": [],
+      "first_stops": [
+        "Skip to project state",
+        "Tide",
+        "Shared export",
+        "Jump to object or person (Command K)",
+        "AgentsAgents \u00b7 1 running \u00b7 1 stopped 2 a",
+        "Review R-1",
+        "ContinueW-1",
+        "Hand off\u2026"
+      ]
+    },
+    "reduced_motion_animated_elements": 0
+  }
+}

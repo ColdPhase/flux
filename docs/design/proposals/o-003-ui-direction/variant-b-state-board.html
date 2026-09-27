@@ -170,7 +170,7 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
 .project h1 { margin: 0; font-size: var(--fs-title); line-height: 1.28; font-weight: 700; letter-spacing: -.01em; max-width: 96ch; }
 .project .actions { display: flex; gap: 8px; }
 .people { display: inline-flex; gap: 0; }
-.people .avatar { width: 20px; height: 20px; font-size: 10px; margin-left: -4px; }
+.people .avatar { width: 22px; height: 22px; margin-left: -4px; }
 .people .avatar:first-child { margin-left: 0; }
 
 /* ---------- Return strip ---------- */
@@ -546,6 +546,12 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
 }
 @media (forced-colors: active) {
   .marker, .chip[aria-pressed="true"], .badge-solid { border: 1px solid CanvasText; }
+}
+
+/* Touch devices: primary targets are at least 44 CSS px. Kept last so it wins the cascade. */
+@media (pointer: coarse) {
+  .crumbs a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px; }
+  .seg button, .composer textarea { min-height: 44px; }
 }
 </style>
 </head>
