@@ -31,6 +31,13 @@ export interface IdempotentResponse extends CommandResponse {
   replayed: boolean;
 }
 
+/**
+ * Re-authorizes a stored response before it is replayed: it must throw the normal
+ * NotFoundError/ForbiddenError when the caller can no longer read the object the stored
+ * response describes. It runs inside the replay transaction with current rows.
+ */
+export type ReplayAuthorization = (stored: CommandResponse, tx: Database) => Promise<void>;
+
 export function parseIdempotencyKey(value: unknown): string | null {
   if (value === undefined) return null;
   if (typeof value !== 'string' || !KEY.test(value)) throw new InvalidInputError('Idempotency-Key must be 1–255 visible ASCII characters', 'INVALID_IDEMPOTENCY_KEY');
@@ -56,8 +63,12 @@ export function requestHash(request: unknown): string {
  * the same commit, so a crash cannot leave a change without its key or vice versa.
  * A concurrent request with the same scope waits for the first and then replays it.
  * Failed commands store nothing and roll back, so a retry runs again.
+ *
+ * A stored response is replayed only after `authorizeReplay` confirms that the caller can
+ * still read what it describes; otherwise the caller gets the same 404/403 as any request
+ * for an object it cannot see, and the stored body is never returned.
  */
-export async function runIdempotent(db: Database, scope: IdempotencyScope, run: (tx: Database) => Promise<CommandResponse>): Promise<IdempotentResponse> {
+export async function runIdempotent(db: Database, scope: IdempotencyScope, run: (tx: Database) => Promise<CommandResponse>, authorizeReplay: ReplayAuthorization): Promise<IdempotentResponse> {
   const principal = principalKey(scope.principal);
   const k = schema.idempotencyKeys;
   const match = and(
@@ -74,7 +85,9 @@ export async function runIdempotent(db: Database, scope: IdempotencyScope, run: 
       await tx.delete(k).where(eq(k.id, existing.id));
     } else if (existing) {
       if (existing.requestHash !== scope.requestHash) throw new RuleViolationError('This Idempotency-Key was already used for a different request', 'IDEMPOTENCY_KEY_REUSED');
-      return { status: existing.responseStatus, body: existing.responseBody, etag: existing.responseEtag, replayed: true };
+      const stored: CommandResponse = { status: existing.responseStatus, body: existing.responseBody, etag: existing.responseEtag };
+      await authorizeReplay(stored, tx as unknown as Database);
+      return { ...stored, replayed: true };
     }
     const response = await run(tx);
     if (response.status >= 200 && response.status < 300) {

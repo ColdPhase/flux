@@ -1,7 +1,7 @@
 import type { IncomingHttpHeaders } from 'node:http';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { WebSocket } from 'ws';
-import { and, asc, eq, gt, isNotNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, isNotNull, lte, sql, type SQL } from 'drizzle-orm';
 import { EVENTS_CHANNEL, listen, schema } from '@flux/db';
 import { authorizeEvent, eventResource, isUuid, type Database, type Principal } from '@flux/core';
 import {
@@ -13,6 +13,7 @@ import {
   type StreamMessage,
 } from '@flux/contracts';
 import type { SessionResolver } from '../identity/index.js';
+import { CursorCodec } from './cursor.js';
 
 export interface StreamOptions {
   db: Database;
@@ -21,6 +22,8 @@ export interface StreamOptions {
   connectionString: string;
   /** Ping, session revalidation and polling interval. */
   heartbeatMs: number;
+  /** Server secret the opaque per-recipient cursors are derived from. */
+  cursorSecret: string;
 }
 
 const BATCH = 200;
@@ -32,7 +35,10 @@ interface Accepted {
   headers: IncomingHttpHeaders;
   principal: Principal;
   sessionId: string;
-  cursor: number;
+  /** Internal scan position in the event log; never sent to the client. */
+  position: number;
+  /** Position of the last event this recipient may see; the only position its cursors encode. */
+  visible: number;
 }
 
 type EventRow = { id: string; seq: number; kind: string; workspaceId: string | null; objectId: string; createdAt: Date };
@@ -48,6 +54,20 @@ const eventColumns = {
 
 function rejection(status: number, code: string, error: string): ApiError & { status: number } {
   return { status, code, error };
+}
+
+function recipientKey(principal: Principal) {
+  return `${principal.kind}:${principal.id}`;
+}
+
+/**
+ * Narrows the scan to workspaces the person currently belongs to. It only saves work: every
+ * event is still decided by the access policy before delivery.
+ */
+function candidateEvents(principal: Principal): SQL {
+  const inWorkspace = isNotNull(schema.events.workspaceId);
+  if (principal.kind !== 'human') return inWorkspace;
+  return and(inWorkspace, sql`${schema.events.workspaceId} IN (SELECT m.workspace_id FROM workspace_members m WHERE m.user_id = ${principal.id})`)!;
 }
 
 /**
@@ -68,14 +88,19 @@ class StreamConnection {
     private readonly accepted: Accepted,
     private readonly options: StreamOptions,
     private readonly log: FastifyInstance['log'],
+    private readonly cursors: CursorCodec,
   ) {}
+
+  private cursor() {
+    return this.cursors.encode(recipientKey(this.accepted.principal), this.accepted.visible);
+  }
 
   async start() {
     this.socket.on('pong', () => { this.alive = true; });
     this.socket.on('message', () => undefined);
     this.timer = setInterval(() => void this.tick(), this.options.heartbeatMs);
     await this.pump();
-    if (!this.closed) await this.send({ type: 'ready', cursor: this.accepted.cursor }).catch(() => this.close(1011, 'Send failed'));
+    if (!this.closed) await this.send({ type: 'ready', cursor: this.cursor() }).catch(() => this.close(1011, 'Send failed'));
   }
 
   close(code: number, reason: string) {
@@ -138,7 +163,7 @@ class StreamConnection {
     const { db } = this.options;
     for (;;) {
       const rows: EventRow[] = await db.select(eventColumns).from(schema.events)
-        .where(and(gt(schema.events.seq, this.accepted.cursor), isNotNull(schema.events.workspaceId)))
+        .where(and(gt(schema.events.seq, this.accepted.position), candidateEvents(this.accepted.principal)))
         .orderBy(asc(schema.events.seq)).limit(BATCH);
       if (!rows.length || this.closed) return;
       if (!(await this.revalidate())) return;
@@ -148,13 +173,14 @@ class StreamConnection {
         if (resource && await authorizeEvent(this.accepted.principal, row, db)) {
           // Revalidate right before each delivery: a revoked session gets nothing more.
           if (!(await this.revalidate())) return;
+          this.accepted.visible = row.seq;
           const message: StreamEvent = {
-            type: 'event', seq: row.seq, id: row.id, kind: row.kind, workspaceId: row.workspaceId!,
+            type: 'event', cursor: this.cursor(), id: row.id, kind: row.kind, workspaceId: row.workspaceId!,
             objectType: resource.type, objectId: row.objectId, createdAt: row.createdAt.toISOString(),
           };
           await this.send(message);
         }
-        this.accepted.cursor = row.seq;
+        this.accepted.position = row.seq;
       }
       if (rows.length < BATCH) return;
     }
@@ -185,6 +211,7 @@ class StreamConnection {
  */
 export async function streamRoutes(app: FastifyInstance, options: StreamOptions) {
   const { db, sessions, publicOrigin } = options;
+  const cursors = new CursorCodec(options.cursorSecret);
   const accepted = new WeakMap<FastifyRequest, Accepted>();
   const connections = new Set<StreamConnection>();
   const wakeAll = () => { for (const connection of connections) void connection.pump(); };
@@ -194,20 +221,39 @@ export async function streamRoutes(app: FastifyInstance, options: StreamOptions)
     for (const connection of connections) connection.close(1001, 'Server shutting down');
   });
 
-  async function resolveCursor(principal: Principal, value: string | undefined): Promise<number | ApiError & { status: number }> {
-    const [head] = await db.select({ seq: sql<number>`coalesce(max(${schema.events.seq}), 0)`.mapWith(Number) }).from(schema.events);
-    const latest = head?.seq ?? 0;
-    if (value === undefined || value === '') return latest;
-    if (/^[0-9]{1,15}$/.test(value)) {
-      const cursor = Number(value);
-      return cursor <= latest ? cursor : rejection(400, 'CURSOR_INVALID', 'Cursor is ahead of the event log');
+  /** The last event at or before `upper` that the principal may see now, or 0. */
+  async function lastVisible(principal: Principal, upper: number): Promise<number> {
+    let bound = upper;
+    for (;;) {
+      const rows: EventRow[] = await db.select(eventColumns).from(schema.events)
+        .where(and(lte(schema.events.seq, bound), candidateEvents(principal)))
+        .orderBy(desc(schema.events.seq)).limit(BATCH);
+      for (const row of rows) if (await authorizeEvent(principal, row, db)) return row.seq;
+      if (rows.length < BATCH) return 0;
+      bound = rows[rows.length - 1]!.seq - 1;
     }
+  }
+
+  /**
+   * Resolves `?cursor=`: absent starts at the head, an opaque cursor issued to this
+   * recipient resumes after its position, and an event id resumes after that event if the
+   * caller may receive it. Raw sequence numbers are not accepted, so the log's size and
+   * activity cannot be probed. The returned `visible` position depends only on events the
+   * recipient may see, so cursors look the same whether or not invisible events happened.
+   */
+  async function resolveCursor(principal: Principal, value: string | undefined): Promise<Pick<Accepted, 'position' | 'visible'> | ApiError & { status: number }> {
+    if (value === undefined || value === '') {
+      const [head] = await db.select({ seq: sql<number>`coalesce(max(${schema.events.seq}), 0)`.mapWith(Number) }).from(schema.events);
+      const position = head?.seq ?? 0;
+      return { position, visible: await lastVisible(principal, position) };
+    }
+    const decoded = cursors.decode(recipientKey(principal), value);
+    if (decoded !== null) return { position: decoded, visible: decoded };
     if (isUuid(value)) {
-      // An event id resolves only if the caller may receive that event.
       const [event] = await db.select(eventColumns).from(schema.events).where(eq(schema.events.id, value));
-      if (event && await authorizeEvent(principal, event, db)) return event.seq;
+      if (event && await authorizeEvent(principal, event, db)) return { position: event.seq, visible: event.seq };
     }
-    return rejection(400, 'CURSOR_INVALID', 'Cursor must be an event seq or an event id you can see');
+    return rejection(400, 'CURSOR_INVALID', 'Cursor must be a cursor issued to you or an event id you can see');
   }
 
   app.get<{ Querystring: { cursor?: string } }>(STREAM_PATH, {
@@ -221,8 +267,8 @@ export async function streamRoutes(app: FastifyInstance, options: StreamOptions)
       const context = await sessions.resolveSession(request.headers);
       if (!context) return reply.code(401).send({ error: 'Authentication required', code: 'UNAUTHENTICATED' } satisfies ApiError);
       const cursor = await resolveCursor(context.principal, typeof request.query.cursor === 'string' ? request.query.cursor : undefined);
-      if (typeof cursor !== 'number') return reply.code(cursor.status).send({ error: cursor.error, code: cursor.code } satisfies ApiError);
-      accepted.set(request, { headers: { cookie: request.headers.cookie }, principal: context.principal, sessionId: context.sessionId, cursor });
+      if ('status' in cursor) return reply.code(cursor.status).send({ error: cursor.error, code: cursor.code } satisfies ApiError);
+      accepted.set(request, { headers: { cookie: request.headers.cookie }, principal: context.principal, sessionId: context.sessionId, ...cursor });
     },
   }, (socket, request) => {
     const state = accepted.get(request);
@@ -230,7 +276,7 @@ export async function streamRoutes(app: FastifyInstance, options: StreamOptions)
       socket.close(STREAM_CLOSE_UNAUTHENTICATED, 'Session ended');
       return;
     }
-    const connection = new StreamConnection(socket, state, options, request.log);
+    const connection = new StreamConnection(socket, state, options, request.log, cursors);
     connections.add(connection);
     socket.on('close', () => {
       connection.stop();

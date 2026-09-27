@@ -21,12 +21,25 @@ async function head(someone: Person) {
 }
 
 /** Connects with a cursor and returns every event replayed before `ready`. */
-async function replay(someone: Person, cursor: number) {
+async function replay(someone: Person, cursor: string) {
   const client = await StreamClient.connect(someone.browser, { cursor });
   await client.ready();
   const events = [...client.events];
   await client.close();
   return events;
+}
+
+/** Everything a person observes on a fresh connection and on a resume from `cursor`. */
+async function observe(someone: Person, cursor: string) {
+  const fresh = await StreamClient.connect(someone.browser);
+  const freshReady = await fresh.ready();
+  const freshMessages = [...fresh.messages];
+  await fresh.close();
+  const resumed = await StreamClient.connect(someone.browser, { cursor });
+  const resumedReady = await resumed.ready();
+  const resumedMessages = [...resumed.messages];
+  await resumed.close();
+  return { fresh: freshReady.cursor, freshMessages, resumed: resumedReady.cursor, resumedMessages };
 }
 
 describe('event stream', () => {
@@ -45,7 +58,8 @@ describe('event stream', () => {
   });
 
   test('replay after a cursor delivers only events the recipient may see', async () => {
-    const start = await head(alice);
+    // Cursors are per person, so each recipient starts from its own head cursor.
+    const [start, carolStart, bobStart] = await Promise.all([head(alice), head(carol), head(bob)]);
     const bobPrivate = await draft(bob, shared.id, 'Bob private notes');
     const room = await project(alice, shared.id, 'Restricted room', 'restricted');
     await grant(alice, room.id, bob, 'contributor');
@@ -61,29 +75,71 @@ describe('event stream', () => {
     assert.equal(aliceObjects.has(bobPrivate.id), false, 'a private draft of another member never reaches the workspace owner');
     assert.equal(aliceObjects.has(elsewhere.id) || aliceObjects.has(bobsOwn.id), false, 'another workspace never reaches a non-member');
     assert.ok(forAlice.every((e) => e.workspaceId === shared.id), 'alice only belongs to the shared workspace');
-    for (let i = 1; i < forAlice.length; i += 1) assert.ok(forAlice[i]!.seq > forAlice[i - 1]!.seq, 'replay is in seq order');
-    for (const event of forAlice) assert.deepEqual(Object.keys(event).sort(), ['createdAt', 'id', 'kind', 'objectId', 'objectType', 'seq', 'type', 'workspaceId'], 'identifiers and kind only');
+    const order = [room.id, roomDraft.id, wide.id].map((id) => forAlice.findIndex((e) => e.objectId === id));
+    assert.deepEqual([...order].sort((a, b) => a - b), order, 'replay is in commit order');
+    for (const event of forAlice) assert.deepEqual(Object.keys(event).sort(), ['createdAt', 'cursor', 'id', 'kind', 'objectId', 'objectType', 'type', 'workspaceId'], 'identifiers, kind and an opaque cursor only');
+    assert.equal(new Set(forAlice.map((e) => e.cursor)).size, forAlice.length, 'each event has its own cursor');
+    assert.ok(forAlice.every((e) => /^c1\.[A-Za-z0-9_-]+$/.test(e.cursor)), 'cursors are opaque tokens');
 
-    const forCarol = await replay(carol, start);
+    const forCarol = await replay(carol, carolStart);
     const carolObjects = new Set(forCarol.map((e) => e.objectId));
     assert.equal(carolObjects.has(room.id), false, 'restricted project events skip non-grantees');
     assert.equal(carolObjects.has(roomDraft.id), false, 'restricted project drafts skip non-grantees');
     assert.equal(carolObjects.has(bobPrivate.id), false);
     assert.ok(carolObjects.has(wide.id), 'workspace-wide draft reaches every member');
 
-    const forBob = await replay(bob, start);
+    const forBob = await replay(bob, bobStart);
     const bobObjects = new Set(forBob.map((e) => e.objectId));
     assert.ok(bobObjects.has(bobPrivate.id) && bobObjects.has(roomDraft.id) && bobObjects.has(elsewhere.id), 'bob sees his own drafts and his grants');
 
     // An event id is also a cursor, but only for an event the caller may receive.
-    const shareEvent = forAlice.find((e) => e.objectId === wide.id && e.kind === 'draft.shared.v1')!;
-    const fromId = await StreamClient.connect(alice.browser, { cursor: shareEvent.id });
-    const ready = await fromId.ready();
-    assert.ok(ready.cursor >= shareEvent.seq);
-    assert.equal(fromId.events.some((e) => e.seq <= shareEvent.seq), false);
-    await fromId.close();
+    const shareIndex = forAlice.findIndex((e) => e.objectId === wide.id && e.kind === 'draft.shared.v1');
+    const shareEvent = forAlice[shareIndex]!;
+    const upToShare = new Set(forAlice.slice(0, shareIndex + 1).map((e) => e.id));
+    for (const cursor of [shareEvent.id, shareEvent.cursor]) {
+      const resumed = await StreamClient.connect(alice.browser, { cursor });
+      const ready = await resumed.ready();
+      assert.equal(resumed.events.some((e) => upToShare.has(e.id)), false, 'resume starts after the cursor event');
+      assert.equal(ready.cursor, resumed.events.at(-1)?.cursor ?? shareEvent.cursor, 'ready carries the last visible cursor');
+      await resumed.close();
+    }
     const hiddenEvent = forBob.find((e) => e.objectId === bobPrivate.id)!;
     assert.equal(await upgradeStatus(alice.browser, { cursor: hiddenEvent.id }), 400, 'an invisible event id is not a usable cursor');
+    assert.equal(await upgradeStatus(alice.browser, { cursor: hiddenEvent.cursor }), 400, 'a cursor issued to someone else is rejected');
+    assert.equal(await upgradeStatus(alice.browser, { cursor: 1 }), 400, 'raw sequence numbers are not cursors');
+  });
+
+  test('restricted activity changes nothing an outsider observes on the stream', async () => {
+    const room = await project(alice, shared.id, 'Quiet room', 'restricted');
+    const countEvents = async () => (await pool.query('SELECT count(*)::int AS n FROM events WHERE workspace_id = $1', [shared.id])).rows[0].n as number;
+    const baseline = await head(carol);
+    const eventsBefore = await countEvents();
+    const before = await observe(carol, baseline);
+    const live = await StreamClient.connect(carol.browser);
+    const liveReady = await live.ready();
+
+    // Restricted and private activity carol cannot see, in her own workspace.
+    for (let i = 0; i < 5; i += 1) {
+      await share(alice, await draft(alice, shared.id, `Quiet ${i}`, { projectId: room.id }), 'project');
+      await draft(bob, shared.id, `Bob quiet ${i}`);
+    }
+    assert.ok(await countEvents() >= eventsBefore + 15, 'the log demonstrably moved on');
+
+    const afterwards = await observe(carol, baseline);
+    assert.equal(before.fresh, baseline);
+    assert.equal(afterwards.fresh, before.fresh, 'a fresh connection gets the same cursor');
+    assert.equal(afterwards.resumed, before.resumed, 'a resume gets the same cursor');
+    assert.deepEqual(afterwards.freshMessages, before.freshMessages, 'identical frames on a fresh connection');
+    assert.deepEqual(afterwards.resumedMessages, before.resumedMessages, 'identical frames on a resume');
+    assert.equal(liveReady.cursor, baseline);
+
+    // The live connection received nothing for the invisible events; a visible one arrives next.
+    const visible = await share(alice, await draft(alice, shared.id, 'Visible after quiet'), 'workspace');
+    const next = await live.event(visible.id, 'draft.shared.v1');
+    assert.equal(live.messages[0]!.type, 'ready');
+    assert.ok(live.events.every((e) => e.objectId === visible.id), 'nothing about the invisible activity was delivered');
+    assert.notEqual(next.cursor, baseline);
+    await live.close();
   });
 
   test('live delivery follows replay and still filters per recipient', async () => {
@@ -140,7 +196,8 @@ describe('event stream', () => {
     assert.equal(await upgradeStatus(alice.browser, { origin: null }), 403, 'missing origin');
     assert.equal(await upgradeStatus(new Browser()), 401, 'no session');
     assert.equal(await upgradeStatus(alice.browser, { cursor: 'not-a-cursor' }), 400);
-    assert.equal(await upgradeStatus(alice.browser, { cursor: 999_999_999_999 }), 400, 'cursor ahead of the log');
+    assert.equal(await upgradeStatus(alice.browser, { cursor: 999_999_999_999 }), 400, 'numbers are never cursors');
+    assert.equal(await upgradeStatus(alice.browser, { cursor: `c1.${'A'.repeat(48)}` }), 400, 'forged cursor');
     assert.equal(await upgradeStatus(alice.browser), 101);
   });
 

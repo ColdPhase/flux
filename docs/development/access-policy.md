@@ -20,9 +20,10 @@ exports:
 | `visibleWorkspaceOf(principal, resource, db)` | The workspace of an object the principal can see, or `null`. Used to scope records such as idempotency keys without revealing invisible objects. |
 
 `authorize` and `assertAuthorized` take an optional `{ lock: true }`. Inside a commit
-transaction it locks the principal's membership or agent rows `FOR SHARE` and a draft
-`FOR UPDATE`. A revocation that committed earlier is then seen, and a concurrent one
-waits until this transaction ends.
+transaction it takes the locks described under [Concurrency](#concurrency): the
+principal's membership or agent rows `FOR SHARE`, a draft `FOR UPDATE`, and the
+project row and the principal's grants on it `FOR SHARE`. A revocation that committed
+earlier is then seen, and a concurrent one waits until this transaction ends.
 
 The domain methods in `packages/core/src/access/domain.ts` call these functions
 before they touch data. Mutations decide and write in one transaction, holding the
@@ -224,7 +225,7 @@ Each mutation also records a row in `events` in the same transaction. The row
 carries `workspace_id`, a versioned `kind` (for example `draft.shared.v1`), the
 actor, and identifiers only, never draft content.
 
-Migration `0004_stream_safe_writes.sql` adds `seq`, a monotonic `bigint` cursor. A
+Migration `0004_stream_safe_writes.sql` adds `seq`, a monotonic `bigint` log position (internal; never sent to clients). A
 `BEFORE INSERT` trigger first takes a transaction-scoped advisory lock and then draws
 the next value. Transactions that write events therefore commit in `seq` order. A
 reader that has seen `seq = N` has already seen every committed event below `N`.
@@ -243,7 +244,7 @@ workspace (the sample fixture) and unknown kinds are never delivered.
 
 ## WebSocket stream
 
-`GET /api/v1/stream?cursor=<seq|eventId>` is implemented in
+`GET /api/v1/stream?cursor=<cursor|eventId>` is implemented in
 `apps/server/src/stream/index.ts` with `@fastify/websocket` 11.3.1. Wire types are
 `StreamMessage`, `StreamEvent` and `StreamReady` in `packages/contracts/src/access.ts`.
 
@@ -254,22 +255,35 @@ workspace (the sample fixture) and unknown kinds are never delivered.
    blocks cross-site WebSocket hijacking with the session cookie.
 2. A live session cookie. Without one the answer is `401 UNAUTHENTICATED`, and this
    includes reconnecting with a revoked session.
-3. The cursor. It is either an event `seq`, or the id of an event the caller may
-   receive. Without a cursor the stream starts at the current head. An unknown,
-   unauthorized or future cursor gets `400 CURSOR_INVALID`. The client should then
-   drop its cursor and refetch.
+3. The cursor. It is either an opaque cursor that the server issued to the same person,
+   or the id of an event the caller may receive. Without a cursor the stream starts at
+   the current head. Anything else, including a raw number, a cursor issued to another
+   person, a forged value or an invisible event id, gets `400 CURSOR_INVALID`. The
+   client should then drop its cursor and refetch.
 
 **Protocol.** The server sends JSON text frames and ignores client messages. Their
 maximum payload is 1 KiB.
 
-- `{"type":"event","seq","id","kind","workspaceId","objectType","objectId","createdAt"}`
+- `{"type":"event","cursor","id","kind","workspaceId","objectType","objectId","createdAt"}`
   is one authorized change. It carries identifiers and kind only, and the client
-  refetches the object over HTTP. Events arrive in `seq` order. They may repeat after a
-  reconnect, so deduplicate by `id` or `seq`.
+  refetches the object over HTTP. Events arrive in commit order. They may repeat after
+  a reconnect, so deduplicate by `id`. `cursor` resumes after this event.
 - `{"type":"ready","cursor"}` is sent once, after replay. Live delivery follows it.
-  `cursor` is the position the server has scanned to. It can be past the last delivered
-  event because the server skips events the caller may not see. Reconnect with the
-  larger of it and the last event `seq`.
+  `cursor` resumes after the last event this person may currently see, not after the
+  global head. Reconnect with the latest cursor received (event or ready).
+
+**Cursors.** The global `seq` is never sent. A cursor is `c1.` followed by the
+base64url AES-256-GCM encryption of a position, authenticated with the recipient
+(`human:<id>`) as associated data (`apps/server/src/stream/cursor.ts`). Keys are
+derived with HKDF from `FLUX_AUTH_SECRET`. The IV is derived from the recipient and
+position, so the same person and position always give the same cursor. The server
+issues cursors only for positions of events that person could see when they were
+issued, or for `0`. A fresh connection's `ready.cursor` is the cursor of the last event
+the person may see now, found by scanning back from the head. It is not the head, so
+events that person cannot see change neither the cursors nor the frames they get.
+Internally the connection still scans from the head, so replay never repeats those
+invisible events. Rotating `FLUX_AUTH_SECRET` invalidates stored cursors (`400`,
+then refetch).
 - Close `4401` means the session ended (revoked, expired or signed out). Reconnecting
   needs a new login. Close `1013` means the client read too slowly: its unsent buffer
   passed 1 MiB, or one send took over 30 s. Reconnect with the last cursor. Close
@@ -297,9 +311,14 @@ if the recipient may see the object when the event is delivered:
 1000 in the test script). Each tick also revalidates the session and polls. A client
 that has not answered the previous ping is terminated.
 
-**Known limits.** `seq` is global, so gaps between delivered values reveal how many
-events happened in other workspaces. Every connection runs its own policy queries for
-every new event. Fan-out across API processes relies on each process's own `LISTEN`.
+**Known limits.** The contents of frames and cursors do not depend on events the
+recipient cannot see. Processing time still does: every connection runs its own policy
+queries for every new event in the person's workspaces, and a fresh connection scans
+back past invisible events to find its `ready.cursor`. The time until `ready`, and the
+latency of a live frame, can therefore vary with activity the person cannot see. The
+difference is milliseconds of server work per event. It is not padded to constant
+time. The heartbeat is a fixed interval and does not depend on events. Fan-out across
+API processes relies on each process's own `LISTEN`.
 
 ## Worker jobs
 
@@ -314,8 +333,12 @@ exists so the worker authorization contract is real and tested:
   content.
 - **Run.** The worker claims the row (`running`). It calls `assertAuthorized` for the
   requesting principal **before reading** the draft. After computing, it opens the
-  commit transaction and calls `assertAuthorized(..., { lock: true })` **again**. It
-  writes the result and `draft.summary_completed.v1` only if that check passes.
+  commit transaction and calls `assertAuthorized(..., { lock: true })` **again**. That
+  check locks the requester's membership, the draft, the draft's project row and the
+  requester's grants on it (see [Concurrency](#concurrency)). It writes the result and
+  `draft.summary_completed.v1` only if that check passes. A grant or membership change
+  that commits before the check is seen. A change that starts after it waits until the
+  result has committed.
 - **Denial.** If access was lost at either point, the result is not committed. The row
   becomes `denied` with `deniedAtStage` `before_read` or `before_commit`, and a
   `draft.summary_denied.v1` event is recorded. A redelivered job for a finished row is
@@ -324,9 +347,10 @@ exists so the worker authorization contract is real and tested:
   `GET /api/v1/drafts/:id/summaries/:resultId` are visible to whoever can currently
   read the draft.
 
-`processDraftSummary(resultId, db, hooks)` accepts an `afterRead` hook. Only tests
-pass it, to place a revocation between the read and the commit. The Compose worker
-never passes hooks.
+`processDraftSummary(resultId, db, hooks)` accepts two hooks. `afterRead` runs between
+the read and the commit transaction. `beforeCommit(tx)` runs inside the commit
+transaction after the recheck, while its locks are held. Only tests pass them, to place
+a revocation at those points. The Compose worker never passes hooks.
 
 ## If-Match preconditions
 
@@ -364,7 +388,15 @@ Auth and session endpoints do not take keys.
   change. A transaction advisory lock on the scope makes a concurrent duplicate wait
   for the first request and then replay it.
 - **Matching retry.** A retry returns the stored status and body, plus
-  `Idempotent-Replayed: true`, without running the command again.
+  `Idempotent-Replayed: true`, without running the command again. It does so only
+  after the caller's **current** access to what the stored response describes is
+  checked again, inside the replay transaction. For a workspace that is
+  `workspace.read`; for a project, draft or agent it is its read action; for member
+  changes it is `workspace.read_members`; for grants it is `project.manage`; for
+  summaries it is `draft.read` on the draft. If the check fails, the caller gets the
+  same `404` (or `403`) as any other request for that object. The response has no
+  replay header, and the stored body is never returned. For example, an admin demoted
+  to member cannot replay the creation of a restricted project to learn its name.
 - **Reused key.** The same key with a different request gets
   `422 IDEMPOTENCY_KEY_REUSED`.
 - **Failures.** 4xx and 5xx responses are not stored, and the change rolls back, so a
@@ -397,11 +429,17 @@ Auth and session endpoints do not take keys.
 - `tests/app/stream.test.ts` covers replay after a cursor and live delivery for two
   workspaces and three accounts. It checks per-recipient filtering (private drafts,
   restricted projects, other tenants), removal of a membership, session revocation
-  (close `4401`, then reconnect `401`), the origin and cursor rejections, and the
-  heartbeat.
+  (close `4401`, then reconnect `401`), the origin and cursor rejections (raw numbers,
+  forged cursors, another person's cursor), and the heartbeat. It also checks that a
+  member outside a restricted project gets identical cursors and frames, fresh and on
+  resume, whether or not restricted and private activity happened.
 - `tests/app/worker.test.ts` covers the Compose worker committing a result. Using the
   `afterRead` hook, it also covers denial before read and the race of a revocation
-  between read and commit.
+  between read and commit. It covers grant revocation on two connections in both orders:
+  a revoke that starts during the commit waits and the result commits, and a revoke
+  that is uncommitted when the commit starts makes the worker wait and then deny.
 - `tests/app/safe-writes.test.ts` covers `If-Match` (428, 409 with an unchanged row,
   `ETag`) and idempotency keys (replay, one row, 422 on reuse, scope, concurrent
-  duplicates, expiry and cleanup).
+  duplicates, expiry and cleanup). It also covers replays after lost access: a demoted
+  admin replaying a restricted project creation, and draft create and share replays
+  after a deny grant. Both get `404` without the stored body.

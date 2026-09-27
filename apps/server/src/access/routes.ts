@@ -54,10 +54,13 @@ import {
   requestHash,
   runIdempotent,
   visibleWorkspaceOf,
+  assertAuthorized,
+  type ActionsByResource,
   type CommandResponse,
   type Database,
   type Principal,
   type ResourceRef,
+  type ResourceType,
 } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 
@@ -106,6 +109,19 @@ function draftEtag(value: unknown) {
   return typeof version === 'number' ? `"${version}"` : null;
 }
 
+/** Checks, before an idempotent replay, that the caller may still read what the stored body describes. */
+type ReplayCheck = (principal: Principal, body: unknown, db: Database) => Promise<void>;
+
+function bodyId(body: unknown): string {
+  const id = (body as { id?: unknown } | null)?.id;
+  return typeof id === 'string' ? id : '';
+}
+
+/** A replay needs `action` on the object named by `id` (from the stored body or the route). */
+function requires<T extends ResourceType>(type: T, action: ActionsByResource[T], id: (body: unknown) => string): ReplayCheck {
+  return (principal, body, db) => assertAuthorized(principal, action, { type, id: id(body) } as ResourceRef<T>, db);
+}
+
 interface CommandSpec {
   /** Stable operation name used to scope idempotency keys. */
   operation: string;
@@ -114,6 +130,8 @@ interface CommandSpec {
   status?: number;
   etag?: boolean;
   run: (principal: Principal, db: Database) => Promise<unknown>;
+  /** Current authorization a stored response must pass before it is replayed. */
+  replay: ReplayCheck;
 }
 
 /**
@@ -149,7 +167,8 @@ export async function accessRoutes(app: FastifyInstance, { db, sessions, boss }:
     } else {
       const workspaceId = spec.scope ? await visibleWorkspaceOf(actor, spec.scope, db) : null;
       const hash = requestHash({ params: request.params, query: request.query, body: request.body ?? null, ifMatch: request.headers[IF_MATCH_HEADER] ?? null });
-      response = await runIdempotent(db, { principal: actor, workspaceId, operation: spec.operation, key, requestHash: hash }, execute);
+      response = await runIdempotent(db, { principal: actor, workspaceId, operation: spec.operation, key, requestHash: hash }, execute,
+        (stored, conn) => spec.replay(actor, stored.body, conn));
     }
     if (response.etag) reply.header('etag', response.etag);
     if (response.replayed) reply.header(IDEMPOTENT_REPLAYED_HEADER, 'true');
@@ -168,6 +187,7 @@ export async function accessRoutes(app: FastifyInstance, { db, sessions, boss }:
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${WORKSPACES_PATH}`, scope: null, status: 201,
     run: (actor, conn) => createWorkspace(actor, request.body, conn),
+    replay: requires('workspace', 'workspace.read', bodyId),
   }));
   app.get<{ Params: { workspaceId: string } }>(`${WORKSPACES_PATH}/:workspaceId`, async (request) =>
     getWorkspace(await principal(request), request.params.workspaceId, db));
@@ -179,12 +199,14 @@ export async function accessRoutes(app: FastifyInstance, { db, sessions, boss }:
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${WORKSPACES_PATH}/:workspaceId/members`, scope: workspaceScope(request.params.workspaceId), status: 201,
     run: (actor, conn) => addMember(actor, request.params.workspaceId, request.body, conn),
+    replay: requires('workspace', 'workspace.read_members', () => request.params.workspaceId),
   }));
   app.patch<{ Params: { workspaceId: string; userId: string }; Body: ChangeRoleCommand }>(`${WORKSPACES_PATH}/:workspaceId/members/:userId`, {
     schema: { body: { type: 'object', required: ['role'], additionalProperties: false, properties: { role: roleSchema } } },
   }, async (request, reply) => command(request, reply, {
     operation: `PATCH ${WORKSPACES_PATH}/:workspaceId/members/:userId`, scope: workspaceScope(request.params.workspaceId),
     run: (actor, conn) => changeRole(actor, request.params.workspaceId, request.params.userId, request.body, conn),
+    replay: requires('workspace', 'workspace.read_members', () => request.params.workspaceId),
   }));
   app.delete<{ Params: { workspaceId: string; userId: string } }>(`${WORKSPACES_PATH}/:workspaceId/members/:userId`, async (request, reply) => {
     await removeMember(await principal(request), request.params.workspaceId, request.params.userId, db);
@@ -199,6 +221,7 @@ export async function accessRoutes(app: FastifyInstance, { db, sessions, boss }:
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${WORKSPACES_PATH}/:workspaceId/projects`, scope: workspaceScope(request.params.workspaceId), status: 201,
     run: (actor, conn) => createProject(actor, request.params.workspaceId, request.body, conn),
+    replay: requires('project', 'project.read', bodyId),
   }));
   app.get<{ Params: { projectId: string } }>(`${PROJECTS_PATH}/:projectId`, async (request) =>
     getProject(await principal(request), request.params.projectId, db));
@@ -217,6 +240,7 @@ export async function accessRoutes(app: FastifyInstance, { db, sessions, boss }:
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${PROJECTS_PATH}/:projectId/grants`, scope: projectScope(request.params.projectId), status: 201,
     run: (actor, conn) => grantProject(actor, request.params.projectId, request.body, conn),
+    replay: requires('project', 'project.manage', () => request.params.projectId),
   }));
   app.delete<{ Params: { projectId: string; grantId: string } }>(`${PROJECTS_PATH}/:projectId/grants/:grantId`, async (request, reply) => {
     await revokeProjectGrant(await principal(request), request.params.projectId, request.params.grantId, db);
@@ -231,6 +255,7 @@ export async function accessRoutes(app: FastifyInstance, { db, sessions, boss }:
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${WORKSPACES_PATH}/:workspaceId/agents`, scope: workspaceScope(request.params.workspaceId), status: 201,
     run: (actor, conn) => createAgent(actor, request.params.workspaceId, request.body, conn),
+    replay: requires('agent', 'agent.read', bodyId),
   }));
   app.delete<{ Params: { agentId: string } }>(`${AGENTS_PATH}/:agentId`, async (request) =>
     revokeAgent(await principal(request), request.params.agentId, db));
@@ -244,6 +269,7 @@ export async function accessRoutes(app: FastifyInstance, { db, sessions, boss }:
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${WORKSPACES_PATH}/:workspaceId/drafts`, scope: workspaceScope(request.params.workspaceId), status: 201, etag: true,
     run: (actor, conn) => createDraft(actor, request.params.workspaceId, request.body, conn),
+    replay: requires('draft', 'draft.read', bodyId),
   }));
   app.get<{ Params: { draftId: string } }>(`${DRAFTS_PATH}/:draftId`, async (request, reply) => {
     const draft = await getDraft(await principal(request), request.params.draftId, db);
@@ -254,24 +280,28 @@ export async function accessRoutes(app: FastifyInstance, { db, sessions, boss }:
   }, async (request, reply) => command(request, reply, {
     operation: `PATCH ${DRAFTS_PATH}/:draftId`, scope: draftScope(request.params.draftId), etag: true,
     run: (actor, conn) => updateDraft(actor, request.params.draftId, { ...request.body, expectedVersion: expectedVersion(request) }, conn),
+    replay: requires('draft', 'draft.read', () => request.params.draftId),
   }));
   app.post<{ Params: { draftId: string }; Body: ShareDraftCommand }>(`${DRAFTS_PATH}/:draftId/share`, {
     schema: { body: { type: 'object', required: ['scope'], additionalProperties: false, properties: { scope: visibilitySchema, projectId: { type: 'string' }, expectedVersion: versionSchema } } },
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${DRAFTS_PATH}/:draftId/share`, scope: draftScope(request.params.draftId), etag: true,
     run: (actor, conn) => shareDraft(actor, request.params.draftId, { ...request.body, expectedVersion: expectedVersion(request) }, conn),
+    replay: requires('draft', 'draft.read', () => request.params.draftId),
   }));
   app.post<{ Params: { draftId: string }; Body: MoveDraftCommand }>(`${DRAFTS_PATH}/:draftId/move`, {
     schema: { body: { type: 'object', required: ['projectId', 'visibility'], additionalProperties: false, properties: { projectId: { type: ['string', 'null'] }, visibility: visibilitySchema, expectedVersion: versionSchema } } },
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${DRAFTS_PATH}/:draftId/move`, scope: draftScope(request.params.draftId), etag: true,
     run: (actor, conn) => moveDraft(actor, request.params.draftId, { ...request.body, expectedVersion: expectedVersion(request) }, conn),
+    replay: requires('draft', 'draft.read', () => request.params.draftId),
   }));
 
   // Background job results
   app.post<{ Params: { draftId: string } }>(`${DRAFTS_PATH}/:draftId/summaries`, async (request, reply) => command(request, reply, {
     operation: `POST ${DRAFTS_PATH}/:draftId/summaries`, scope: draftScope(request.params.draftId), status: 202,
     run: (actor, conn) => requestDraftSummary(actor, request.params.draftId, conn, boss),
+    replay: requires('draft', 'draft.read', () => request.params.draftId),
   }));
   app.get<{ Params: { draftId: string } }>(`${DRAFTS_PATH}/:draftId/summaries`, async (request) =>
     listDraftSummaries(await principal(request), request.params.draftId, db));

@@ -4,7 +4,7 @@ import { after, before, describe, test } from 'node:test';
 import type { Draft, VersionConflict, Workspace } from '@flux/contracts';
 import { createDatabase } from '@flux/db';
 import { deleteExpiredIdempotencyKeys } from '@flux/core';
-import { addMember, draft, expectStatus, person, project, type Person } from './support/people.js';
+import { addMember, draft, expectStatus, grant, person, project, type Person } from './support/people.js';
 
 // If-Match preconditions and idempotency keys over HTTP (issue #29, AC-4).
 const connectionString = process.env.DATABASE_URL;
@@ -147,6 +147,58 @@ describe('idempotency keys', () => {
     assert.deepEqual(results.map((r) => r.status), [201, 201, 201]);
     assert.equal(new Set(results.map((r) => (r.json as Draft).id)).size, 1);
     assert.equal(await countTitled(title), 1);
+  });
+
+  test('a replay after losing access is denied like any invisible object and reveals nothing', async () => {
+    const owner = await person('replay-owner');
+    const admin = await person('replay-admin');
+    const space = expectStatus(await owner.browser.request('POST', '/api/v1/workspaces', { body: { name: 'Replay' } }), 201) as Workspace;
+    await addMember(owner, space.id, admin, 'admin');
+    const key = randomUUID();
+    const name = `Secret lamp ${key}`;
+    const createProject = () => admin.browser.request('POST', `/api/v1/workspaces/${space.id}/projects`, { body: { name, visibility: 'restricted' }, headers: { 'idempotency-key': key } });
+    const created = expectStatus(await createProject(), 201) as { id: string };
+    const replayed = await createProject();
+    assert.equal(replayed.status, 201);
+    assert.equal(replayed.headers.get('idempotent-replayed'), 'true', 'replays while still authorized');
+
+    expectStatus(await owner.browser.request('PATCH', `/api/v1/workspaces/${space.id}/members/${admin.id}`, { body: { role: 'member' } }), 200);
+    expectStatus(await admin.browser.request('GET', `/api/v1/projects/${created.id}`), 404);
+    const denied = await createProject();
+    assert.equal(denied.status, 404, 'the replay is denied like a read of the project');
+    assert.equal(denied.headers.get('idempotent-replayed'), null);
+    assert.equal(denied.text.includes(created.id) || denied.text.includes(name), false, 'the stored body is not revealed');
+    assert.deepEqual(denied.json, { error: 'Project not found', code: 'PROJECT_NOT_FOUND' });
+    const projects = await pool.query('SELECT count(*)::int AS n FROM projects WHERE name = $1', [name]);
+    assert.equal(projects.rows[0].n, 1, 'the denied replay did not create another project');
+  });
+
+  test('draft create and share replays are denied after the grant is replaced by a deny', async () => {
+    const owner = await person('replay-draft-owner');
+    const member = await person('replay-draft-member');
+    const space = expectStatus(await owner.browser.request('POST', '/api/v1/workspaces', { body: { name: 'Replay drafts' } }), 201) as Workspace;
+    await addMember(owner, space.id, member, 'member');
+    const room = await project(owner, space.id, 'Replay room', 'restricted');
+    await grant(owner, room.id, member, 'contributor');
+    const createKey = randomUUID();
+    const shareKey = randomUUID();
+    const title = `Room plan ${createKey}`;
+    const createDraft = () => member.browser.request('POST', `/api/v1/workspaces/${space.id}/drafts`, { body: { title, projectId: room.id }, headers: { 'idempotency-key': createKey } });
+    const item = expectStatus(await createDraft(), 201) as Draft;
+    const shareDraft = () => member.browser.request('POST', `/api/v1/drafts/${item.id}/share`, { body: { scope: 'project' }, headers: { 'if-match': '"1"', 'idempotency-key': shareKey } });
+    expectStatus(await shareDraft(), 200);
+    assert.equal((await shareDraft()).headers.get('idempotent-replayed'), 'true');
+
+    await grant(owner, room.id, member, 'denied');
+    for (const [label, replay] of [['create', createDraft], ['share', shareDraft]] as const) {
+      const response = await replay();
+      assert.equal(response.status, 404, `${label} replay is denied`);
+      assert.equal(response.headers.get('idempotent-replayed'), null);
+      assert.equal(response.text.includes(title), false, `${label} replay reveals no content`);
+      assert.equal((response.json as { code: string }).code, 'DRAFT_NOT_FOUND');
+    }
+    assert.equal(await countTitled(title), 1);
+    assert.equal((await stored(item.id)).version, 2);
   });
 
   test('failures are not stored, invalid keys are rejected, and expired keys are cleaned up', async () => {

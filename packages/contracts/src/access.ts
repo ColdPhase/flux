@@ -231,9 +231,11 @@ export interface DraftSummary {
 // Event stream (issue #29, AC-3)
 
 /**
- * WebSocket upgrade: `GET /api/v1/stream?cursor=<seq|eventId>` with the session cookie and
- * `Origin` equal to the public origin. Rejections before upgrade: 403 ORIGIN_REJECTED,
+ * WebSocket upgrade: `GET /api/v1/stream?cursor=<cursor|eventId>` with the session cookie
+ * and `Origin` equal to the public origin. Rejections before upgrade: 403 ORIGIN_REJECTED,
  * 401 UNAUTHENTICATED, 400 CURSOR_INVALID. Without a cursor the stream starts at the head.
+ * A cursor is an opaque string issued to the same person (in `StreamEvent.cursor` or
+ * `StreamReady.cursor`); it works only for that person and encodes nothing they can read.
  * The server sends JSON text frames (StreamMessage); client messages are ignored.
  */
 export const STREAM_PATH = '/api/v1/stream';
@@ -247,12 +249,12 @@ export type StreamObjectType = 'workspace' | 'project' | 'draft' | 'agent';
 
 /**
  * One authorized change. It carries identifiers and kind only; the client refetches the
- * object through the HTTP API. Events arrive in `seq` order and may repeat after a
- * reconnect, so clients deduplicate by `id` or `seq`.
+ * object through the HTTP API. Events arrive in commit order and may repeat after a
+ * reconnect, so clients deduplicate by `id`. `cursor` resumes after this event.
  */
 export interface StreamEvent {
   type: 'event';
-  seq: number;
+  cursor: string;
   id: string;
   kind: string;
   workspaceId: string;
@@ -262,13 +264,13 @@ export interface StreamEvent {
 }
 
 /**
- * Sent once after replay: live delivery follows. `cursor` is the position the server
- * has scanned to (it may be past the last delivered event because unauthorized events
- * are skipped); store it or the last event seq and pass it as `cursor` on reconnect.
+ * Sent once after replay: live delivery follows. `cursor` resumes after the last event
+ * this person may currently see (not the global head), so it does not change when events
+ * they cannot see happen. Store it, or the latest `StreamEvent.cursor`, for reconnects.
  */
 export interface StreamReady {
   type: 'ready';
-  cursor: number;
+  cursor: string;
 }
 
 export type StreamMessage = StreamEvent | StreamReady;

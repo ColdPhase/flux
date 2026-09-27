@@ -6,7 +6,7 @@ import type { DraftSummary } from '@flux/contracts';
 import { ForbiddenError, NotFoundError } from '../access/errors.js';
 import { assertAuthorized, enforce, evaluateDraft, isUuid } from '../access/policy.js';
 import { recordEvent } from '../events.js';
-import type { Database, Principal } from '../types.js';
+import type { Database, Executor, Principal } from '../types.js';
 
 /**
  * `draft.summarize.v1`: a placeholder derived-result job (a deterministic word count).
@@ -76,9 +76,14 @@ export async function getDraftSummary(principal: Principal, draftId: string, res
 
 export type DraftSummaryOutcome = 'completed' | 'denied' | 'skipped';
 
-/** Test seam: `afterRead` runs after the inputs were read and before the commit transaction. */
+/**
+ * Test seams: `afterRead` runs after the inputs were read and before the commit
+ * transaction; `beforeCommit` runs inside the commit transaction after the recheck and the
+ * result write, while its locks are held.
+ */
 export interface DraftSummaryHooks {
   afterRead?: () => Promise<void>;
+  beforeCommit?: (tx: Executor) => Promise<void>;
 }
 
 function isAccessDenial(error: unknown) {
@@ -94,8 +99,11 @@ async function deny(db: Database, row: ResultRow, principal: Principal, stage: '
 /**
  * Worker handler. Claims the result, authorizes the requester before reading the draft,
  * computes the result, and commits it only if the requester is still authorized inside the
- * commit transaction (membership/agent rows FOR SHARE, the draft FOR UPDATE). If access was
- * lost at either point, nothing is computed or committed and the result becomes `denied`.
+ * commit transaction. The recheck locks what it decides on (membership/agent rows FOR
+ * SHARE, the draft FOR UPDATE, the draft's project row and the requester's grants on it FOR
+ * SHARE), so a membership or grant change that commits first is seen, and one that starts
+ * later waits until the result has committed. If access was lost at either point, nothing
+ * is computed or committed and the result becomes `denied`.
  */
 export async function processDraftSummary(resultId: string, db: Database, hooks: DraftSummaryHooks = {}): Promise<DraftSummaryOutcome> {
   if (!isUuid(resultId)) return 'skipped';
@@ -129,6 +137,7 @@ export async function processDraftSummary(resultId: string, db: Database, hooks:
       .set({ status: 'completed', wordCount, draftVersion: draft.version, updatedAt: new Date(), completedAt: new Date() })
       .where(and(eq(schema.draftResults.id, row.id), eq(schema.draftResults.status, 'running'))).returning({ id: schema.draftResults.id });
     if (!updated.length) return 'skipped' as const;
+    await hooks.beforeCommit?.(tx);
     await recordEvent(tx, principal, row.workspaceId, 'draft.summary_completed.v1', row.draftId, { resultId: row.id });
     return 'completed' as const;
   });

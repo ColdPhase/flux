@@ -8,15 +8,20 @@ import { createDatabase, schema } from '@flux/db';
 import {
   addMember,
   createDraft,
+  createProject,
   createWorkspace,
   DRAFT_SUMMARY_JOB,
+  grantProject,
   NotFoundError,
   processDraftSummary,
   removeMember,
   requestDraftSummary,
+  revokeProjectGrant,
   shareDraft,
+  type Database,
   type Principal,
 } from '@flux/core';
+import { barrier, backendPid, settled, waitUntilBlockedBy } from './support/locks.js';
 import { draft, expectStatus, person } from './support/people.js';
 
 // Worker read/commit authorization for draft.summarize.v1 (issue #29, AC-3).
@@ -136,6 +141,69 @@ describe('draft.summarize.v1 worker', () => {
     assert.equal(stored.draftVersion, item.version);
     assert.equal(await processDraftSummary(summary.id, db), 'skipped');
     assert.deepEqual(await completionEvents(item.id), ['draft.summary_requested.v1', 'draft.summary_completed.v1']);
+  });
+
+  /** A member reads a restricted-project draft only through an explicit viewer grant. */
+  async function grantScenario(label: string) {
+    const owner = await human(`${label}-owner`);
+    const member = await human(`${label}-member`);
+    const ws = await createWorkspace(owner, { name: label }, db);
+    await addMember(owner, ws.id, { userId: member.id, role: 'member' }, db);
+    const room = await createProject(owner, ws.id, { name: 'Room', visibility: 'restricted' }, db);
+    const access = await grantProject(owner, room.id, { principal: { kind: 'human', id: member.id }, role: 'viewer' }, db);
+    const created = await createDraft(owner, ws.id, { title: 'Room notes', body: 'one two three four five', projectId: room.id }, db);
+    const item = await shareDraft(owner, created.id, { scope: 'project', expectedVersion: created.version }, db);
+    const summary = await requestDraftSummary(member, item.id, db, delayed);
+    return { owner, room, access, item, summary };
+  }
+
+  test('a grant revoke that starts during the commit waits and the result commits under the checked grant', async () => {
+    const { owner, room, access, item, summary } = await grantScenario('grant-commit-first');
+    const holding = barrier<number>();
+    const gate = barrier();
+    const outcome = processDraftSummary(summary.id, db, {
+      beforeCommit: async (tx) => { holding.resolve(await backendPid(tx)); await gate.promise; },
+    });
+    const worker = await holding.promise;
+    const revoke = revokeProjectGrant(owner, room.id, access.id, db);
+    const revokeDone = settled(revoke);
+    await waitUntilBlockedBy(pool, worker);
+    assert.equal(revokeDone(), false, 'the revoke waits for the worker commit');
+    gate.resolve();
+    assert.equal(await outcome, 'completed');
+    await revoke;
+    assert.equal((await row(summary.id)).wordCount, 5);
+    assert.deepEqual(await completionEvents(item.id), ['draft.summary_requested.v1', 'draft.summary_completed.v1']);
+  });
+
+  test('a grant revoke committed between read and commit prevents the commit (two connections)', async () => {
+    const { owner, room, access, item, summary } = await grantScenario('grant-revoke-first');
+    const revoked = barrier<number>();
+    const gate = barrier();
+    let revocation: Promise<void> | null = null;
+    const outcome = processDraftSummary(summary.id, db, {
+      afterRead: async () => {
+        // The revoke runs on another connection and stays uncommitted while the worker commits.
+        revocation = db.transaction(async (tx) => {
+          await revokeProjectGrant(owner, room.id, access.id, tx as unknown as Database);
+          revoked.resolve(await backendPid(tx));
+          await gate.promise;
+        });
+        await revoked.promise;
+      },
+    });
+    const revoker = await revoked.promise;
+    await waitUntilBlockedBy(pool, revoker);
+    const workerDone = settled(outcome);
+    assert.equal(workerDone(), false, 'the worker commit waits for the uncommitted revoke');
+    gate.resolve();
+    await revocation;
+    assert.equal(await outcome, 'denied');
+    const stored = await row(summary.id);
+    assert.equal(stored.status, 'denied');
+    assert.equal(stored.deniedAtStage, 'before_commit');
+    assert.equal(stored.wordCount, null, 'nothing was committed under the revoked grant');
+    assert.deepEqual(await completionEvents(item.id), ['draft.summary_requested.v1', 'draft.summary_denied.v1']);
   });
 
   test('requesting needs read access to the draft', async () => {

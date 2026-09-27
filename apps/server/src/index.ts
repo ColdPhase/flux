@@ -35,7 +35,7 @@ if (pushConfig.status === 'unavailable') app.log.warn(pushConfig.reason);
 await app.register(websocket, { options: { maxPayload: 1024 } });
 const heartbeatMs = Number(process.env.FLUX_STREAM_HEARTBEAT_MS ?? 25_000);
 if (!Number.isInteger(heartbeatMs) || heartbeatMs < 100) throw new Error('FLUX_STREAM_HEARTBEAT_MS must be an integer of at least 100');
-await app.register(streamRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, connectionString, heartbeatMs });
+await app.register(streamRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, connectionString, heartbeatMs, cursorSecret: identityConfig.secret });
 
 app.get('/api/v1/health', async (_request, reply) => {
   try {
