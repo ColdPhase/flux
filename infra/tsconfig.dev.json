@@ -1,0 +1,13 @@
+{
+  "//": "./flux dev only (issue #72): tsx resolves workspace packages to their TypeScript source, so edits under packages/*/src reload without a build. Production builds use each package's dist.",
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "..",
+    "paths": {
+      "@flux/contracts": ["packages/contracts/src/index.ts"],
+      "@flux/core": ["packages/core/src/index.ts"],
+      "@flux/db": ["packages/db/src/index.ts"],
+      "@flux/sdk": ["packages/sdk/src/index.ts"]
+    }
+  }
+}

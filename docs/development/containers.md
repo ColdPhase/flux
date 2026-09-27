@@ -57,6 +57,20 @@ default test project or another worker's persistent volumes. The
 Compose commands; the worktree location does not change their container-only
 runtime requirement.
 
+### Launcher and development mode
+
+`./flux` at the repository root wraps these Compose commands for people: `up`
+(generated `.env`, build, migrate, start), `demo` (development seed through the public
+API), `dev` (hot reload with source bind mounts via `infra/compose.dev.yaml`, `:z`
+labels, separate `<project>-dev` volumes), `down`, `logs`, `reset` and `clean`. See
+[application foundation](application-foundation.md#one-command-start-flux-issue-72).
+`./scripts/check_flux_cli.sh` tests it with its own project names, ports and image tags
+and removes them afterwards; set `FLUX_CLI_TEST_PORT`, `FLUX_CLI_TEST_DEV_PORT` and
+`FLUX_CLI_TEST_MAILPIT_PORT` for concurrent runs. Each checkout gets its own default
+project name (stored in `.env`), and destructive commands refuse a project owned by another
+checkout. `./flux clean` removes only the `flux-*` images tagged with its own project names;
+it never prunes the shared build cache and prints the advice below instead.
+
 ### Disk hygiene
 
 Each `scripts/check_*.sh` run builds images tagged with its own Compose
