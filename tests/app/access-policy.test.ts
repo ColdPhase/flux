@@ -51,7 +51,7 @@ function agentPrincipal(id: string): Principal {
 
 async function sharedDraft(actor: Principal, workspaceId: string, title: string, scope: 'project' | 'workspace', projectId?: string) {
   const item = await createDraft(actor, workspaceId, { title, projectId }, db);
-  return shareDraft(actor, item.id, { scope }, db);
+  return shareDraft(actor, item.id, { scope, expectedVersion: item.version }, db);
 }
 
 function pgCode(error: unknown) {
@@ -86,14 +86,14 @@ describe('agent principals', () => {
     await assert.rejects(getProject(bot, open.id, db), NotFoundError, 'workspace-visible project needs an explicit grant');
     assert.deepEqual((await listProjects(bot, ws.id, {}, db)).items.map((p) => [p.id, p.access]), [[granted.id, 'viewer']]);
     assert.deepEqual((await listWorkspaces(bot, db)).map((w) => [w.id, w.role]), [[ws.id, null]]);
-    await assert.rejects(updateDraft(bot, inGranted.id, { body: 'agent edit' }, db), ForbiddenError, 'viewer agent cannot write');
-    await assert.rejects(shareDraft(bot, inGranted.id, { scope: 'workspace' }, db), ForbiddenError);
+    await assert.rejects(updateDraft(bot, inGranted.id, { body: 'agent edit', expectedVersion: inGranted.version }, db), ForbiddenError, 'viewer agent cannot write');
+    await assert.rejects(shareDraft(bot, inGranted.id, { scope: 'workspace', expectedVersion: inGranted.version }, db), ForbiddenError);
 
     await grantProject(owner, granted.id, { principal: { kind: 'agent', id: agent.id }, role: 'contributor' }, db);
-    assert.equal((await updateDraft(bot, inGranted.id, { body: 'agent edit' }, db)).body, 'agent edit');
+    assert.equal((await updateDraft(bot, inGranted.id, { body: 'agent edit', expectedVersion: inGranted.version }, db)).body, 'agent edit');
     const own = await createDraft(bot, ws.id, { title: 'agent draft', projectId: granted.id }, db);
     assert.deepEqual(own.owner, { kind: 'agent', id: agent.id });
-    await assert.rejects(shareDraft(bot, own.id, { scope: 'workspace' }, db), ForbiddenError, 'agents cannot share workspace-wide');
+    await assert.rejects(shareDraft(bot, own.id, { scope: 'workspace', expectedVersion: own.version }, db), ForbiddenError, 'agents cannot share workspace-wide');
     await assert.rejects(getDraft(owner, own.id, db), NotFoundError, 'an agent draft is private too');
     await assert.rejects(createDraft(bot, ws.id, { title: 'elsewhere', projectId: open.id }, db), NotFoundError);
     await assert.rejects(createWorkspace(bot, { name: 'Agent workspace' }, db), ForbiddenError);
@@ -118,7 +118,7 @@ describe('agent principals', () => {
     const bot = agentPrincipal(agent.id);
     await grantProject(admin, board.id, { principal: { kind: 'agent', id: agent.id }, role: 'contributor' }, db);
     assert.equal((await getDraft(bot, item.id, db)).id, item.id);
-    await assert.rejects(updateDraft(bot, item.id, { body: 'x' }, db), ForbiddenError, 'agent cannot exceed its owner (viewer)');
+    await assert.rejects(updateDraft(bot, item.id, { body: 'x', expectedVersion: item.version }, db), ForbiddenError, 'agent cannot exceed its owner (viewer)');
 
     await removeMember(admin, ws.id, human.id, db);
     await assert.rejects(getDraft(bot, item.id, db), NotFoundError, 'owner left the workspace');
