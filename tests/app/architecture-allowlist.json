@@ -108,18 +108,6 @@
       "import": "@flux/db",
       "issue": "https://github.com/ColdPhase/flux/issues/46",
       "reason": "draft.summarize.v1 use case queries drafts/results and enqueues with pg-boss (merged in #47); split into a pure use case plus repository and JobQueue ports."
-    },
-    {
-      "file": "packages/core/src/stream-audience.ts",
-      "import": "drizzle-orm",
-      "issue": "https://github.com/ColdPhase/flux/issues/46",
-      "reason": "per-recipient audience queries use Drizzle (merged in #47); move to a StreamAudienceRepository adapter in @flux/db."
-    },
-    {
-      "file": "packages/core/src/stream-audience.ts",
-      "import": "@flux/db",
-      "issue": "https://github.com/ColdPhase/flux/issues/46",
-      "reason": "per-recipient audience queries use Drizzle (merged in #47); move to a StreamAudienceRepository adapter in @flux/db."
     }
   ]
 }

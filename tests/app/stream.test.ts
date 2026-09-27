@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 import type { Draft, Workspace } from '@flux/contracts';
-import { createDatabase } from '@flux/db';
-import { audiencePageQuery, lastAudienceSeqQuery, type Principal } from '@flux/core';
+import { audiencePageQuery, createDatabase, lastAudienceSeqQuery } from '@flux/db';
+import { audienceKey, type Principal } from '@flux/core';
 import { Browser } from './support/http.js';
 import { addMember, draft, expectStatus, grant, person, project, removeMember, secondSession, share, workspace, type Person } from './support/people.js';
 import { StreamClient, upgradeStatus } from './support/stream.js';
@@ -205,7 +205,7 @@ describe('event stream', () => {
     const baseline = await head(erin);
     const erinBefore = await openToReady(erin, 7);
     const resumeBefore = await openToReady(erin, 3, baseline);
-    const plansBefore = [await examined(lastAudienceSeqQuery(db, erinKey)), await examined(audiencePageQuery(db, erinKey, 0, 200))];
+    const plansBefore = [await examined(lastAudienceSeqQuery(db, audienceKey(erinKey))), await examined(audiencePageQuery(db, audienceKey(erinKey), 0, 200))];
     const daveStart = await head(dave);
 
     // 500 events erin cannot see: 250 private drafts by dave, and 125 drafts alice creates
@@ -219,7 +219,7 @@ describe('event stream', () => {
 
     const erinAfter = await openToReady(erin, 7);
     const resumeAfter = await openToReady(erin, 3, baseline);
-    const plansAfter = [await examined(lastAudienceSeqQuery(db, erinKey)), await examined(audiencePageQuery(db, erinKey, 0, 200))];
+    const plansAfter = [await examined(lastAudienceSeqQuery(db, audienceKey(erinKey))), await examined(audiencePageQuery(db, audienceKey(erinKey), 0, 200))];
     console.log(JSON.stringify({ hiddenEvents: n, openToReadyMs: { before: erinBefore.median, after: erinAfter.median }, work: { before: erinBefore.works[0], after: erinAfter.works[0] }, resumeWork: { before: resumeBefore.works[0], after: resumeAfter.works[0] }, rowsExamined: { before: plansBefore.map((p) => p.rows), after: plansAfter.map((p) => p.rows) }, plans: plansAfter.map((p) => p.nodes) }));
 
     // Deterministic: identical stream work and identical rows examined by PostgreSQL.
