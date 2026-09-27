@@ -35,6 +35,15 @@ PAIRS = [
     ("--focus", "--bg", 3.0, "focus ring"),
     ("--focus", "--bg-side", 3.0, "focus ring in the sidebar"),
     ("--text", "--bg", 3.0, "view switcher indicator"),
+    ("--rail-fg", "--rail-bg", 4.5, "rail icons"),
+    ("--rail-on", "--rail-hover", 4.5, "rail icon on hover"),
+    ("--rail-on", "--rail-active", 4.5, "rail icon of the current place"),
+    ("--lime", "--rail-bg", 3.0, "Flux mark, current-place marker and rail focus ring"),
+    ("--lime", "--rail-active", 3.0, "rail focus ring on the current place"),
+    ("--pm-1-t", "--pm-1", 4.5, "project monogram 1"),
+    ("--pm-2-t", "--pm-2", 4.5, "project monogram 2"),
+    ("--pm-3-t", "--pm-3", 4.5, "project monogram 3"),
+    ("--pm-4-t", "--pm-4", 4.5, "project monogram 4"),
 ]
 
 

@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { Outlet, useLocation } from 'react-router';
 import { Button, Drawer, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useSidePanelMode } from '../ui';
 import { useShellData } from './data';
+import { registerServiceWorker, syncPushSubscription } from '../pwa';
 import { Details } from './Details';
+import { placeOf } from './Rail';
+import { ShellContext, type DetailsView } from './shellContext';
 import { Sidebar } from './Sidebar';
 import { VIEWS, viewIndex } from './views';
 
@@ -13,9 +16,10 @@ function isTyping(target: EventTarget | null) {
 }
 
 /**
- * Authenticated frame from direction C: sidebar · header with the view switcher · work area,
- * and a Details panel that is closed by default. Below 1180px the sidebar is a drawer; the
- * panel overlays below 980px and becomes a full-screen sheet on the phone.
+ * Authenticated frame from direction C with the rail identity: dark rail · light sidebar ·
+ * header with the view switcher · work area, and a Details panel that is closed by default.
+ * Below 1180px rail and sidebar travel together in a drawer; the panel overlays below 980px
+ * and becomes a full-screen sheet on the phone.
  */
 export function AppLayout() {
   const { me, workspace, projects, directMessages } = useShellData();
@@ -24,6 +28,7 @@ export function AppLayout() {
   const panelMode = useSidePanelMode();
   const [navOpen, setNavOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsView, setDetailsView] = useState<DetailsView>('place');
   const detailsButtonRef = useRef<HTMLButtonElement>(null);
   const paneRef = useRef<HTMLDivElement>(null);
   const previousView = useRef(viewIndex(location.pathname));
@@ -40,12 +45,27 @@ export function AppLayout() {
     finish();
   }, [detailsOpen, panelMode]);
 
+  // Refresh this browser's push subscription for the signed-in account; it never prompts (#41).
+  useEffect(() => {
+    void registerServiceWorker().then((registration) => {
+      if (registration) void syncPushSubscription().catch(() => undefined);
+    });
+  }, [me.user.id]);
+
+  const shell = useMemo(() => ({
+    openDetails(view: DetailsView = 'place') {
+      setDetailsView(view);
+      toggleDetails(true);
+    },
+  }), [toggleDetails]);
+
   // "]" toggles Details, as in the header tooltip.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== ']' || event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target)) return;
       if (document.getElementById('root')?.inert && !detailsOpen) return;
       event.preventDefault();
+      setDetailsView('place');
       toggleDetails();
     };
     document.addEventListener('keydown', onKey);
@@ -62,14 +82,18 @@ export function AppLayout() {
     void play(paneRef.current, [{ opacity: 0, transform: `translateX(${direction * 12}px)` }, { opacity: 1, transform: 'none' }], duration('--dur-2'), '--ease-out', { fill: 'backwards' });
   }, [location.pathname]);
 
-  const sidebarProps = { workspace, projects, directMessages, user: me.user };
-  const place = { crumb: workspace?.name ?? null, title: 'Home', topic: 'Your private notes and where you left off' };
+  const sidebarProps = { workspace, projects, directMessages, user: me.user, session: me.session };
+  const where = placeOf(location.pathname);
+  const place = where === 'dm'
+    ? { crumb: null, title: 'Direct messages', topic: 'Conversations with people, outside any project', views: false }
+    : { crumb: workspace?.name ?? null, title: 'Home', topic: 'Your private notes and where you left off', views: true };
 
   return (
+    <ShellContext.Provider value={shell}>
     <div className="app">
       <a className="ui-skip" href="#content">Skip to content</a>
       {navDrawer ? (
-        <Drawer open={navOpen && navDrawer} onClose={() => setNavOpen(false)} labelledBy={drawerTitleId} id="nav-drawer">
+        <Drawer open={navOpen && navDrawer} onClose={() => setNavOpen(false)} labelledBy={drawerTitleId} id="nav-drawer" className="nav-drawer">
           <Sidebar {...sidebarProps} onClose={() => setNavOpen(false)} titleId={drawerTitleId} />
         </Drawer>
       ) : (
@@ -90,20 +114,23 @@ export function AppLayout() {
           <div className="top__right" data-shift>
             <Button ref={detailsButtonRef} variant="quiet" icon="panel" className="top__details" aria-expanded={detailsOpen}
               aria-controls={detailsOpen ? 'details' : undefined} aria-keyshortcuts="]" data-tip={'Toggle details   ]'}
-              onClick={() => toggleDetails()}>
+              onClick={() => { setDetailsView('place'); toggleDetails(); }}>
               Details
             </Button>
           </div>
         </header>
-        <Tabs className="views" label="Views" items={VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path }))} />
+        {place.views
+          ? <Tabs className="views" label="Views" items={VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path }))} />
+          : <div className="views views--none" aria-hidden="true" />}
         <div className="app__pane" id="content" ref={paneRef} tabIndex={-1}>
           <Outlet />
         </div>
       </div>
 
       <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title="Details" id="details">
-        <Details me={me} workspace={workspace} placeTitle={place.title} />
+        <Details view={detailsView} workspace={workspace} placeTitle={place.title} onBack={() => setDetailsView('place')} />
       </SidePanel>
     </div>
+    </ShellContext.Provider>
   );
 }

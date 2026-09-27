@@ -1,9 +1,10 @@
 import { Outlet, createBrowserRouter } from 'react-router';
 import { ToastProvider } from './ui';
+import { UpdatePrompt } from './pwa';
 import { AppLayout } from './app/AppLayout';
 import { appLoader } from './app/data';
 import { Booting, RouteErrorPage } from './app/errors';
-import { ConversationView, DocsView, MapView, NotFoundView, TasksView } from './app/views';
+import { ConversationView, DirectMessagesView, DocsView, MapView, NotFoundView, TasksView } from './app/views';
 import {
   forgotPasswordAction,
   forgotPasswordLoader,
@@ -17,7 +18,8 @@ import {
 import { AuthLayout, ForgotPasswordPage, ResetPasswordPage, SignInPage, SignOutPage, SignUpPage } from './auth/pages';
 
 function Root() {
-  return <ToastProvider><Outlet /></ToastProvider>;
+  // The update prompt is shown on every page, signed in or not; reloading is the person's choice.
+  return <ToastProvider><Outlet /><UpdatePrompt /></ToastProvider>;
 }
 
 export const router = createBrowserRouter([
@@ -47,6 +49,7 @@ export const router = createBrowserRouter([
           { path: 'tasks', Component: TasksView },
           { path: 'map', Component: MapView },
           { path: 'docs', Component: DocsView },
+          { path: 'dm', Component: DirectMessagesView },
           { path: '*', Component: NotFoundView },
         ],
       },

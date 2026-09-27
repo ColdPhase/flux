@@ -25,10 +25,6 @@ export function signIn(input: { email: string; password: string }) {
   return request<unknown>(`${AUTH_BASE_PATH}/sign-in/email`, { method: 'POST', body: { ...input, rememberMe: true } });
 }
 
-export function signOut() {
-  return request<unknown>(`${AUTH_BASE_PATH}/sign-out`, { method: 'POST', body: {} });
-}
-
 /** The mailed link returns to `${origin}/reset-password?token=…` (or `?error=INVALID_TOKEN`). */
 export function requestPasswordReset(email: string) {
   return request<unknown>(`${AUTH_BASE_PATH}/request-password-reset`, {

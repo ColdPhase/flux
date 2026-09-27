@@ -2,7 +2,7 @@ export { Avatar, initials } from './Avatar';
 export { Button, IconButton, Spinner, type ButtonProps, type ButtonVariant } from './Button';
 export { EmptyState } from './EmptyState';
 export { ErrorState } from './ErrorState';
-export { Icon, type IconName } from './Icon';
+export { FluxMark, Icon, type IconName } from './Icon';
 export { Input } from './Input';
 export { MEDIA, duration, flip, play, useMediaQuery } from './motion';
 export { Drawer, Overlay, Sheet, focusableIn, trapTab } from './Overlay';

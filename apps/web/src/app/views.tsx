@@ -1,8 +1,10 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, type NavigateFunction } from 'react-router';
-import { Button, EmptyState, Icon, duration, type IconName } from '../ui';
+import { Button, EmptyState, Icon, IconButton, duration, type IconName } from '../ui';
 import { useCaptures } from './captures';
 import { useShellData } from './data';
+import { useDraft, useReadingPosition } from './drafts';
+import { useShellActions } from './shellContext';
 
 export const VIEWS = [
   { id: 'conversation', label: 'Conversation', path: '/' },
@@ -16,9 +18,13 @@ export function viewIndex(pathname: string): number {
   return index < 0 ? 0 : index;
 }
 
+/** A view's scroll area. Its reading position is kept per account and view across switches and reloads. */
 function Pane({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const { me } = useShellData();
+  useReadingPosition(ref, me.user.id, useLocation().pathname);
   return (
-    <div className="pane-scroll">
+    <div className="pane-scroll" ref={ref}>
       <div className="pane-in" data-shift>{children}</div>
     </div>
   );
@@ -52,13 +58,19 @@ export function startCapture(navigate: NavigateFunction) {
 export function ConversationView() {
   const hintId = useId();
   const audienceId = useId();
+  const askId = useId();
   const { me } = useShellData();
+  const { openDetails } = useShellActions();
   const { items, add, remove } = useCaptures(me.user.id);
-  const [draft, setDraft] = useState('');
+  // Unsent text is kept per account and context, so a view switch or reload never loses it.
+  const draft = useDraft(me.user.id, 'home');
+  // Ask mode targets the signed-in person's own assistant (#57). No compute path exists yet,
+  // so it only explains how to connect one and never pretends to answer.
+  const [asking, setAsking] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const firstName = me.user.name.trim().split(/\s+/)[0] || me.user.name;
-  const canSend = draft.trim().length > 0;
+  const canSend = draft.text.trim().length > 0 && !asking;
   const captureRequest = (useLocation().state as { capture?: number } | null)?.capture;
   useEffect(() => { if (captureRequest) textareaRef.current?.focus(); }, [captureRequest]);
 
@@ -68,15 +80,20 @@ export function ConversationView() {
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
   };
+  // A restored draft gets its full height on the first paint.
+  useLayoutEffect(autosize, []);
   const send = () => {
     if (!canSend) return;
-    add(draft.trim());
-    setDraft('');
+    add(draft.text.trim());
+    draft.clear();
     requestAnimationFrame(() => { autosize(); endRef.current?.scrollIntoView({ block: 'end', behavior: duration('--dur-1') ? 'smooth' : 'auto' }); });
   };
+  const stopAsking = () => { setAsking(false); textareaRef.current?.focus(); };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Escape' && asking) { event.preventDefault(); event.stopPropagation(); stopAsking(); return; }
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); send(); }
   };
+  const hasDraft = draft.text.length > 0;
 
   return (
     <div className="convo">
@@ -109,14 +126,35 @@ export function ConversationView() {
       </Pane>
       <div className="composer">
         <div className="composer__in" data-shift>
-          <p className="composer__audience" id={audienceId}><Icon name="lock" size={13} />Only you<span aria-hidden="true"> · </span><span className="composer__where">private note</span></p>
+          {asking ? (
+            <div className="ask" id={askId}>
+              <span className="ask__who"><Icon name="spark" size={13} />Your assistant
+                <IconButton icon="x" size={12} label="Stop asking your assistant" className="ask__off" onClick={stopAsking} />
+              </span>
+              <span className="ask__note">You haven’t connected an assistant, so nothing will be sent.</span>
+              <button type="button" className="ui-link ask__connect" onClick={() => openDetails('connect-ai')}>Connect your AI</button>
+            </div>
+          ) : (
+            <p className="composer__audience" id={audienceId}><Icon name="lock" size={13} />Only you<span aria-hidden="true"> · </span><span className="composer__where">private note</span></p>
+          )}
           <div className="composer__box">
             <label className="ui-vh" htmlFor="composer">Private note</label>
-            <textarea id="composer" ref={textareaRef} rows={1} value={draft} placeholder="Capture a thought…"
-              aria-describedby={`${audienceId} ${hintId}`} onChange={(event) => { setDraft(event.target.value); autosize(); }} onKeyDown={onKeyDown} />
-            <button type="button" className="composer__send" aria-label="Save note" aria-disabled={!canSend} onClick={send}><Icon name="send" /></button>
+            <button type="button" className="composer__ask" aria-pressed={asking} aria-label="Ask my assistant" data-tip="Ask my assistant" data-tip-align="start"
+              onClick={() => { setAsking(!asking); textareaRef.current?.focus(); }}>
+              <Icon name="spark" />
+            </button>
+            <textarea id="composer" ref={textareaRef} rows={1} value={draft.text} placeholder={asking ? 'Ask your assistant…' : 'Capture a thought…'}
+              aria-describedby={`${asking ? askId : audienceId} ${hintId}`} onChange={(event) => { draft.setText(event.target.value); autosize(); }} onKeyDown={onKeyDown} />
+            <button type="button" className="composer__send" aria-label={asking ? 'Send to your assistant' : 'Save note'} aria-disabled={!canSend} onClick={send}><Icon name="send" /></button>
           </div>
-          <p className="composer__hint" id={hintId}><span className="composer__keys">Enter saves · Shift+Enter for a new line · </span>Kept in this browser until sharing arrives</p>
+          <p className="composer__hint" id={hintId}>
+            <span className="composer__keys">Enter saves · Shift+Enter for a new line · </span>
+            <span className="composer__state" aria-live="polite">
+              {hasDraft
+                ? (draft.storage === 'device' ? 'Draft kept on this device' : 'Draft kept until you close this tab')
+                : 'Notes stay in this browser until sharing arrives'}
+            </span>
+          </p>
         </div>
       </div>
     </div>
@@ -153,6 +191,18 @@ export function DocsView() {
     <Pane>
       <ViewEmpty icon="doc" title="No docs yet">
         <p>Notes worth keeping, what you learned from an experiment, and how things work, written with the people in your projects, will collect here.</p>
+      </ViewEmpty>
+    </Pane>
+  );
+}
+
+/** Direct messages: private conversations with people, independent of any project (#36). */
+export function DirectMessagesView() {
+  return (
+    <Pane>
+      <ViewEmpty icon="chat" title="No direct messages yet">
+        <p>When you talk with someone one to one, or with a few people outside a project, the conversation lives here. Only the people in it can see it.</p>
+        <p>Messaging people directly isn’t available in this version yet.</p>
       </ViewEmpty>
     </Pane>
   );

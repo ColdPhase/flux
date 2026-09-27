@@ -130,8 +130,9 @@ services:
       FLUX_MAILPIT_URL: http://mailpit:8025
       FLUX_UI_SCREENSHOTS: /screenshots
     volumes:
-      - ../tests/ui:/work/tests/ui:ro
-      - ${FLUX_UI_SCREENSHOT_DIR:-uishots}:/screenshots
+      # Tests are baked into the image (see infra/ui-tests.Dockerfile). Only the screenshot
+      # output is mounted; "z" relabels it for SELinux hosts and is ignored elsewhere.
+      - ${FLUX_UI_SCREENSHOT_DIR:-uishots}:/screenshots:z
     depends_on:
       api:
         condition: service_healthy

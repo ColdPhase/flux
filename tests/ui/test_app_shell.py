@@ -214,10 +214,19 @@ class AppShellJourney(unittest.TestCase):
         page.goto("/")
         sidebar = page.get_by_role("complementary", name="Sidebar")
         expect(sidebar).to_be_visible()
-        expect(sidebar.get_by_role("link", name="Home")).to_have_attribute("aria-current", "page")
+        # Identity rail: the Flux mark, Home and Direct messages; no project monograms yet.
+        rail = sidebar.get_by_role("navigation", name="Places")
+        expect(rail.get_by_role("img", name="Flux")).to_be_visible()
+        expect(rail.get_by_role("link", name="Home")).to_have_attribute("aria-current", "page")
+        expect(rail.get_by_role("link", name="Direct messages")).not_to_have_attribute("aria-current", "page")
+        self.assertEqual(rail.get_by_role("link").count(), 2, "only Home and Direct messages until projects exist")
+        rail_box = box(page, rail)
+        self.assertEqual((round(rail_box["x"]), round(rail_box["width"])), (0, 60), "a 60px rail at the far left")
+        self.assertEqual(rail.evaluate("el => getComputedStyle(el).backgroundColor"), "rgb(17, 19, 16)")
+        marker = rail.get_by_role("link", name="Home").evaluate("el => { const s = getComputedStyle(el, '::before'); return [s.opacity, s.backgroundColor]; }")
+        self.assertEqual(marker, ["1", "rgb(211, 234, 138)"], "a lime marker beside the current place")
         expect(sidebar.get_by_text("No projects yet")).to_be_visible()
-        expect(sidebar.get_by_text("No messages yet")).to_be_visible()
-        expect(sidebar.get_by_role("heading", name="Direct messages")).to_be_visible()
+        expect(sidebar.get_by_role("button", name=re.compile("^New thought"))).to_be_visible()
         views = page.get_by_role("navigation", name="Views")
         for label in ("Conversation", "Tasks", "Map", "Docs"):
             expect(views.get_by_role("link", name=label, exact=True)).to_be_visible()
@@ -262,7 +271,8 @@ class AppShellJourney(unittest.TestCase):
         panel = page.get_by_role("complementary", name="Details")
         expect(panel).to_be_visible()
         expect(details_button).to_have_attribute("aria-expanded", "true")
-        expect(panel.get_by_text(EMAIL)).to_be_visible()
+        expect(panel.get_by_role("heading", name="Nothing selected")).to_be_visible()
+        expect(panel.get_by_text(EMAIL)).to_have_count(0)
         # Docked: the work area stays usable beside the panel.
         self.assertGreater(box(page, panel)["x"], 1000)
         expect(page.get_by_role("heading", name="Start a sketch")).to_be_visible()
@@ -276,14 +286,132 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_role("button", name="Close details").click()
         expect(page.get_by_role("complementary", name="Details")).to_have_count(0)
 
+        # Direct messages is its own place: the sidebar lists conversations, there are no views.
+        rail.get_by_role("link", name="Direct messages").click()
+        expect(page).to_have_url(f"{ORIGIN}/dm")
+        expect(page.get_by_role("heading", level=1, name="Direct messages")).to_be_visible()
+        expect(page.get_by_role("heading", name="No direct messages yet")).to_be_visible()
+        expect(rail.get_by_role("link", name="Direct messages")).to_have_attribute("aria-current", "page")
+        expect(sidebar.get_by_text("No messages yet")).to_be_visible()
+        expect(page.get_by_role("navigation", name="Views")).to_have_count(0)
+        shot(page, "desktop-1440-dm-light")
+        rail.get_by_role("link", name="Home").click()
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+
         page.goto("/nowhere")
         expect(page.get_by_role("heading", name="This page doesn’t exist")).to_be_visible()
+
+    # ---------------------------------------------------------------- unfinished work
+
+    def test_04a_draft_survives_view_switch_and_reload(self) -> None:
+        page = self.page()
+        page.goto("/")
+        views = page.get_by_role("navigation", name="Views")
+        composer = page.get_by_label("Private note", exact=True)
+        state = page.locator(".composer__state")
+        expect(state).to_have_text("Notes stay in this browser until sharing arrives")
+        unfinished = "Half a thought: what if the lamp dims when nobody moves for"
+        composer.fill(unfinished)
+        expect(state).to_have_text("Draft kept on this device")
+        user_id = page.evaluate("fetch('/api/v1/me').then(r => r.json()).then(b => b.user.id)")
+        self.assertEqual(page.evaluate(f"localStorage.getItem('flux:draft:{user_id}:home')"), unfinished, "stored per account and context")
+
+        # A view switch remounts the composer; the text comes back.
+        views.get_by_role("link", name="Tasks").click()
+        expect(page.get_by_role("heading", name="No tasks yet")).to_be_visible()
+        views.get_by_role("link", name="Conversation").click()
+        expect(composer).to_have_value(unfinished)
+        expect(state).to_have_text("Draft kept on this device")
+
+        # So does a reload.
+        page.reload()
+        expect(page.get_by_label("Private note", exact=True)).to_have_value(unfinished)
+        shot(page, "desktop-1440-draft-light")
+
+        # Sending saves the note and clears the draft, also after a reload.
+        page.get_by_label("Private note", exact=True).press("Enter")
+        expect(page.get_by_role("region", name="Your private notes").get_by_text(unfinished)).to_be_visible()
+        expect(page.get_by_label("Private note", exact=True)).to_have_value("")
+        expect(state).to_have_text("Notes stay in this browser until sharing arrives")
+        self.assertIsNone(page.evaluate(f"localStorage.getItem('flux:draft:{user_id}:home')"))
+        page.reload()
+        expect(page.get_by_label("Private note", exact=True)).to_have_value("")
+
+        # Another account on the same browser does not see this draft.
+        page.get_by_label("Private note", exact=True).fill("Only mine")
+        self.assertEqual(page.evaluate("Object.keys(localStorage).filter(k => k.startsWith('flux:draft:'))"), [f"flux:draft:{user_id}:home"])
+        page.get_by_label("Private note", exact=True).fill("")
+
+    def test_04b_reading_position_is_kept_per_view(self) -> None:
+        page = self.page()
+        page.goto("/")
+        user_id = page.evaluate("fetch('/api/v1/me').then(r => r.json()).then(b => b.user.id)")
+        key = f"flux.captures.{user_id}"
+        saved = page.evaluate(f"localStorage.getItem('{key}')")
+        notes = [{"id": f"n{i}", "text": f"Reading position check, note {i + 1}: a long enough line to take real space in the column.", "createdAt": "2026-09-27T09:00:00.000Z"} for i in range(40)]
+        page.evaluate(f"localStorage.setItem('{key}', JSON.stringify({json.dumps(notes)}))")
+        try:
+            page.reload()
+            scroller = page.locator(".convo .pane-scroll")
+            expect(page.get_by_text("note 40:")).to_be_attached()
+            scroller.evaluate("el => { el.scrollTop = 600; el.dispatchEvent(new Event('scroll')); }")
+            page.wait_for_timeout(100)
+            views = page.get_by_role("navigation", name="Views")
+            views.get_by_role("link", name="Docs").click()
+            expect(page.get_by_role("heading", name="No docs yet")).to_be_visible()
+            views.get_by_role("link", name="Conversation").click()
+            self.assertAlmostEqual(page.locator(".convo .pane-scroll").evaluate("el => el.scrollTop"), 600, delta=2, msg="position restored after a view switch")
+            page.reload()
+            expect(page.get_by_text("note 40:")).to_be_attached()
+            self.assertAlmostEqual(page.locator(".convo .pane-scroll").evaluate("el => el.scrollTop"), 600, delta=2, msg="position restored after a reload")
+        finally:
+            page.evaluate(f"localStorage.setItem('{key}', {json.dumps(saved)}); localStorage.removeItem('flux:scroll:{user_id}:/')" if saved else f"localStorage.removeItem('{key}'); localStorage.removeItem('flux:scroll:{user_id}:/')")
+            self.save_state(page)
+
+    def test_04c_personal_assistant_needs_a_connection(self) -> None:
+        page = self.page()
+        page.goto("/")
+        composer = page.get_by_label("Private note", exact=True)
+        composer.fill("Which sensor works in the dark?")
+        ask = page.get_by_role("button", name="Ask my assistant")
+        expect(ask).to_have_attribute("aria-pressed", "false")
+        ask.click()
+        expect(ask).to_have_attribute("aria-pressed", "true")
+        expect(page.get_by_text("Your assistant", exact=True)).to_be_visible()
+        expect(page.get_by_text("You haven’t connected an assistant, so nothing will be sent.")).to_be_visible()
+        # Nothing is sent while no assistant is connected; the text stays.
+        send = page.get_by_role("button", name="Send to your assistant")
+        expect(send).to_have_attribute("aria-disabled", "true")
+        composer.press("Enter")
+        expect(composer).to_have_value("Which sensor works in the dark?")
+        shot(page, "desktop-1440-ask-light")
+        page.get_by_role("button", name="Connect your AI").click()
+        panel = page.get_by_role("complementary", name="Details")
+        expect(panel.get_by_role("heading", name="Connect your AI")).to_be_visible()
+        expect(panel.get_by_text("not available yet")).to_have_count(2)
+        expect(panel.get_by_text("Flux works fully without AI.", exact=False)).to_be_visible()
+        panel.get_by_role("button", name="Back to Details").click()
+        expect(panel.get_by_role("heading", name="Nothing selected")).to_be_visible()
+        page.get_by_role("button", name="Close details").click()
+        # Esc in the box, or the chip's close button, returns to a plain private note.
+        composer.focus()
+        page.keyboard.press("Escape")
+        expect(ask).to_have_attribute("aria-pressed", "false")
+        expect(page.locator(".composer__audience")).to_contain_text("Only you")
+        expect(page.get_by_role("button", name="Save note")).to_have_attribute("aria-disabled", "false")
+        ask.click()
+        page.get_by_role("button", name="Stop asking your assistant").click()
+        expect(ask).to_have_attribute("aria-pressed", "false")
+        composer.fill("")
 
     def test_05_desktop_dark_and_tablet(self) -> None:
         page = self.page(dark=True)
         page.goto("/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         self.assertEqual(page.evaluate("getComputedStyle(document.body).backgroundColor"), "rgb(20, 21, 23)")
+        rail = page.get_by_role("navigation", name="Places")
+        self.assertEqual(rail.evaluate("el => getComputedStyle(el).backgroundColor"), "rgb(11, 12, 10)")
+        self.assertIn("inset", rail.evaluate("el => getComputedStyle(el).boxShadow"), "a 1px edge separates the rail in dark theme")
         shot(page, "desktop-1440-dark")
         page.get_by_role("button", name="Details", exact=True).click()
         expect(page.get_by_role("complementary", name="Details")).to_be_visible()
@@ -322,6 +450,12 @@ class AppShellJourney(unittest.TestCase):
         drawer = page.get_by_role("dialog", name="Flux")
         expect(drawer).to_be_visible()
         expect(menu).to_have_attribute("aria-expanded", "true")
+        # The rail travels inside the drawer, beside the sidebar.
+        drawer_rail = drawer.get_by_role("navigation", name="Places")
+        expect(drawer_rail).to_be_visible()
+        self.assertEqual(round(box(page, drawer_rail)["width"]), 60)
+        for name in ("Home", "Direct messages"):
+            self.assertGreaterEqual(box(page, drawer_rail.get_by_role("link", name=name))["height"], 44, f"44px rail target: {name}")
         self.assertTrue(drawer.evaluate("el => el.contains(document.activeElement)"), "focus moves into the drawer")
         self.assertTrue(page.evaluate("document.getElementById('root').inert"), "the page behind the drawer is inert")
         # Tab stays inside the drawer.
@@ -385,6 +519,13 @@ class AppShellJourney(unittest.TestCase):
         account.click()
         menu = page.get_by_role("dialog", name="Account")
         expect(menu).to_be_visible()
+        # Account and session details live here, with this device's notifications (#41).
+        expect(menu.get_by_text(EMAIL)).to_be_visible()
+        expect(menu.get_by_text("Signed in on this device until")).to_be_visible()
+        expect(menu.get_by_text("Notifications on this device")).to_be_visible()
+        # check_ui.sh runs without VAPID keys, so the server says push isn't set up.
+        expect(menu.get_by_role("note")).to_contain_text("Notifications are not set up on this Flux server.")
+        shot(page, "desktop-1440-account-light")
         menu.get_by_role("radio", name="Dark").click()
         self.assertEqual(page.evaluate("document.documentElement.dataset.theme"), "dark")
         page.keyboard.press("Escape")

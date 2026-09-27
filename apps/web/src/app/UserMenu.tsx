@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useFetcher } from 'react-router';
 import { Avatar, Icon, Spinner, duration, play, trapTab, useToast } from '../ui';
 import type { FormResult } from '../auth/logic';
+import { NotificationsButton } from '../pwa';
 import { setTheme, useTheme, type ThemeChoice } from './theme';
 
 const THEMES: { id: ThemeChoice; label: string; icon: 'monitor' | 'sun' | 'moon' }[] = [
@@ -10,8 +11,18 @@ const THEMES: { id: ThemeChoice; label: string; icon: 'monitor' | 'sun' | 'moon'
   { id: 'dark', label: 'Dark', icon: 'moon' },
 ];
 
-/** Account button at the foot of the sidebar; opens a small popover with theme and sign out. */
-export function UserMenu({ name, email }: { name: string; email: string }) {
+const dateFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+function until(iso: string) {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? iso : dateFormat.format(date);
+}
+
+/**
+ * Account button at the foot of the sidebar; opens a small popover with this device's session,
+ * its notifications (#41), the theme and sign out.
+ */
+export function UserMenu({ name, email, sessionExpiresAt }: { name: string; email: string; sessionExpiresAt: string }) {
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
@@ -64,6 +75,11 @@ export function UserMenu({ name, email }: { name: string; email: string }) {
           <div className="me__who">
             <b>{name}</b>
             <span>{email}</span>
+            <span className="me__session">Signed in on this device until <time dateTime={sessionExpiresAt}>{until(sessionExpiresAt)}</time></span>
+          </div>
+          <div className="me__sec">
+            <span className="me__label"><Icon name="bell" size={12} />Notifications on this device</span>
+            <div className="me__notify"><NotificationsButton /></div>
           </div>
           <div className="me__sec">
             <span className="me__label" id={`${popId}-theme`}>Appearance</span>

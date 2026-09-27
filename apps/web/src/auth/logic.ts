@@ -7,10 +7,10 @@ import {
   requestPasswordReset,
   resetPassword,
   signIn,
-  signOut,
   signUp,
 } from '../api/auth';
 import { ApiError, NetworkError } from '../api/client';
+import { signOutDevice } from '../pwa';
 
 export type FieldErrors = Partial<Record<'name' | 'email' | 'password' | 'confirm', string>>;
 
@@ -176,11 +176,13 @@ export async function signOutLoader({ request }: LoaderFunctionArgs) {
   return null;
 }
 
+/** Signs this device out; its push subscription is removed first (#41). */
 export async function signOutAction(): Promise<FormResult | Response> {
   try {
-    await signOut();
+    await signOutDevice();
   } catch (error) {
-    return { formError: describeAuthError(error, 'sign-out') };
+    // fetch rejects with a TypeError when the server can't be reached.
+    return { formError: describeAuthError(error instanceof TypeError ? new NetworkError() : error, 'sign-out') };
   }
   return redirect('/sign-in?notice=signed-out');
 }
