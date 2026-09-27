@@ -28,6 +28,9 @@ jobs:
     name: Validate accepted candidate
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
     outputs:
       source_sha: ${{ steps.check.outputs.source_sha }}
       version: ${{ steps.check.outputs.version }}
