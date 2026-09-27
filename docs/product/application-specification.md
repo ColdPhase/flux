@@ -8,6 +8,45 @@ The [foundation](FLUX-FOUNDATION.md), later [delegation](autonomy.md), and [mobi
 
 Use the working terms *workspace, project, material, conversation, decision, work item, result, handoff,* and *agent run* from #14. A decision's proposed, accepted, and superseded states have different authority. A relation has an explicit meaning; map adjacency alone creates no work dependency. The browser, API, stream, worker, search, notification, file, agent and extension paths must apply the same current authorization, including after revocation. The exact schema and routes belong to bounded implementation contracts.
 
+**Later product clarification (F-012, 2026-09-27):** [#44](https://github.com/ColdPhase/flux/issues/44) adds creative side projects and three integrated scenarios as current direction. Personal capture, independent DM, sketch/map thought and wiki knowledge have distinct meaning and audiences; they are not interchangeable generic material or project chat. The #14 Tide case remains a permissions and decision-history regression. This clarification preserves the accepted O-002 architecture and O-004 complete-product public release boundary.
+
+## Creative integrated journey added by F-012
+
+1. Two people send and reply inline in a private DM about a gesture-controlled
+   lamp. They select specific messages to seed a shared sketch, then promote
+   selected sketch material into an independent two-person project. The audience
+   and exact content of each wider share are previewed; neither the whole DM nor
+   later DM messages synchronize into the project. Unrelated project members see
+   no existence hint, count, title or summary. Personal quick capture remains
+   private until a deliberate share.
+2. Camera, low light and privacy are separate map thoughts. A fluid sketch lets
+   people add/edit inline, connect through one visible-plus action, drag,
+   multi-select, pan/zoom, undo, paste an indented list and use shapes/media,
+   with click/tap/keyboard and phone/list alternatives. One experiment may link
+   several thoughts; the same discussion thread is reachable from task, map and
+   conversation. A negative low-light result can finish the experiment and
+   inform a cited wiki revision while preserving prior camera reasoning. Repeat
+   by starting with the task and adding the map links later. A map placement is
+   not the task, and removing it does not delete the task or thread.
+3. After a break and an explicit pivot, a participant sees the current direction,
+   important sourced changes, last result, still-useful work and one next action.
+   Exploring variant B differs from choosing B. Obsolete work is parked rather
+   than marked complete; prior decisions, results and rationale remain. The
+   journey works on phone/tablet without AI, a return note or inbox cleanup.
+
+For every linked view, show the live source or an explicit source revision/stale
+state. Preserve stable IDs and many-to-many typed relationships among
+conversation, thought, task, decision, result and wiki. Following/muting, task
+assignment and content audience are separate controls. A project or DM composer
+sends to the current conversation with inherited audience and no mandatory
+material form or public-comment checkbox. AI may, after bounded opt-in, react to
+useful events with sourced return context or proposals, but it must deduplicate
+triggers, cap cost, suppress rejected unchanged suggestions and prevent agent
+loops. Human authority is required for commitments, audience and assignments.
+Deterministic Git/CI rules use no LLM and distinguish PR closed from merged;
+manual correction suspends automatic movement until resumed. These are
+**specified requirements**, not evidence of implemented behavior.
+
 ## Integrated return journey (AC-1)
 
 The synthetic **Tide / Shared export** example and IDs M-1, C-1, D-1, M-2, D-2, W-1, R-1 and H-1 are defined in [#14](journeys-and-vocabulary.md#synthetic-scenario-and-source-records). They are examples, not implemented URLs. Each transition below creates or changes persistent state. Reopening from another signed-in device must show the same committed state and its source versions.

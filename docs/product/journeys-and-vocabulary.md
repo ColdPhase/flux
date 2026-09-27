@@ -1,12 +1,14 @@
 # Flux vocabulary and connected work journeys
 
-**Proposal date:** 2026-09-27. **Status:** proposed under [issue #14, accepted contract v1](https://github.com/ColdPhase/flux/issues/14#issuecomment-5851959865). This describes intended behavior. The repository has no production application that performs these journeys.
+**Proposal date:** 2026-09-27. **Status:** accepted provisional journey document under [issue #14](https://github.com/ColdPhase/flux/issues/14), extended by the later [#44 founder direction](https://github.com/ColdPhase/flux/issues/44). These are intended journeys, not proof of complete application behavior.
 
 ## Authority and evidence
 
 The [foundation](FLUX-FOUNDATION.md) and [delegation](autonomy.md) establish the human and agent workspace, self-hosting, and full-product goal. Human collaboration remains useful without AI. [F-010](mobile-pwa.md) adds phone/tablet PWA and Web Push. These are accepted directions, not implemented behavior.
 
 The small cross-functional software team and returning project steward in [#8's research proposal](first-segment-and-usp-proposal.md) are **provisional**: its PR was merged, while [O-001](decisions.md) still awaits a recorded agent decision. [O-002 architecture (#13)](https://github.com/ColdPhase/flux/issues/13) and [O-005 AI paths (#9)](https://github.com/ColdPhase/flux/issues/9) also remain open. As of 2026-09-27, no O-001, O-002, or O-005 agent decision is accepted. The term choices, illustrative IDs, team situation, and audience wording below are **Flux inferences** for peer review. They do not select a layout, schema, provider login, billing method, or public release scope.
+
+**Dated reconciliation, 2026-09-27:** The preceding paragraph records the state when #14 was drafted. O-002 and O-004 were subsequently accepted, and the Compose foundation, sessions and runtime slices merged; O-001 and O-005 remain open. [F-012](decisions.md) makes creative side projects, independent audiences and the three journeys below the current direction. Tide remains a useful permissions/decision regression example, not the sole or primary product persona. No integrated creative journey is implemented or verified yet.
 
 | Founder direction retained here | Source | Flux inference to validate |
 | --- | --- | --- |
@@ -24,13 +26,16 @@ These terms are provisional until #8 and #13 settle the segment and domain bound
 | Term | Working meaning | Ownership and visibility invariant |
 | --- | --- | --- |
 | **Team / organization** | Team is the people doing work. Organization is their administrative and data boundary where one exists. | Membership and administrator power differ; joining a team does not grant all projects or private drafts. |
-| **Workspace** | The team's place to find people, loose captures, projects, and results. | It has an explicit owner. A capture shows its audience before publication. |
+| **Workspace** | Administrative and data boundary with an explicit owner; not a required social group or selector before ordinary work. | Membership alone reveals no restricted project, DM or personal capture. A capture shows its audience before publication. |
+| **Direct message (DM)** | A private conversation with explicitly named participants, independent of any project. | A DM does not grant project membership; selecting content for a sketch or project previews exactly what is shared. Later DM messages never synchronize automatically. |
+| **Sketch / map thought** | A fluid shared or personal thinking surface with placements, shapes and semantic links; a thought need not become work. | Its audience and each linked object's audience are checked separately. Removing a placement does not delete the source object. |
 | **Project** | A continuing objective containing conversations, materials, decisions, work, and results. “Initiative” stays descriptive prose until another type proves useful. | Linking or moving content into a project cannot silently expand its audience. |
 | **Material** | A source, note, link, file, document, or draft used as evidence or output. | Show source, version, owner, audience, and missing or withdrawn source state. History remains identifiable. |
 | **Conversation** | Human discussion about a project or specific object, including replies and source links. | Show audience before sending; quoting a private item cannot publish it. |
 | **Decision** | A choice with accountable human, reason, sources, and state: proposed, accepted, or superseded. | A suggestion does not become an agreement automatically. Supersession preserves the old choice. |
 | **Work item** | An assigned outcome with owner, inputs, state, blocker, and expected result. | Completion needs inspectable output or an explicit negative finding, beyond a status change. |
 | **Result** | Inspectable output or finding of work, including a failed experiment. | Preserve author, input versions, review state, and links to the work and decision. |
+| **Wiki / knowledge** | A revisable explanation that draws on results and sources without replacing their histories. | A citation retains the exact source revision and obeys current access. |
 | **Handoff** | Named next actor, current state, open question, sources, and next action attached to work. | A mention does not grant access; links use current permissions. |
 | **Agent run** | A bounded attempt by an identified agent to perform a scoped work item. | Show initiator, grant, execution state, input versions, cost source/limit, and proposed output. |
 
@@ -92,6 +97,46 @@ An **optional agent path** could use an officially supported external tool or an
 | A3. Interrupt | Nia stops the run, the model limit ends, or an external agent client or supported local runtime disconnects. W-1 retains completed work and unresolved steps. Suspending or disconnecting the Flux PWA does not interrupt a server-side run; it only delays display or notification. | No silent subscription-to-paid-API switch. A human continues H1–H3. Resume checks current grants and input versions. |
 | A4. Revoke | Administrator or authorized owner removes the grant, or Nia loses access. Authorized members see an interrupted state and any already committed, authorized proposal, with its provenance. | Recheck grants before input reads and before result commit. Uncommitted partial output is withheld; queued work, search, files, and push cannot bypass revocation. Nia sees no project content after losing access. |
 | A5. Review | Nia inspects a permitted proposed result against current D-2/M-2, with provenance and unresolved limits. | A conflict asks for review; no silent overwrite, duplicate external effect, or automatic acceptance. Ari holds delegated decision authority until the grant ends; Jo can inspect the decision on return. |
+
+## Creative collaboration journeys added by F-012
+
+These three synthetic scenarios are the later founder's current acceptance
+direction, tracked by [#44](https://github.com/ColdPhase/flux/issues/44).
+They extend rather than erase Tide's provenance and revocation checks. Their
+objects and UI routes are **specified**, not implemented or device-verified.
+
+1. **Lamp idea → collaboration.** Two people discuss a gesture-controlled lamp
+   in a DM. They select only the camera/sensor/privacy messages needed to seed a
+   shared sketch; later they deliberately promote selected sketch material into
+   a new, independent two-person project. Other members of an unrelated
+   Marketplace project see no title, count, preview or agent summary. A reply
+   sends in the current DM/project thread with its inherited audience; personal
+   quick capture stays private until shared. A wider share previews its exact
+   content and recipients. No entire DM or future message stream is imported.
+2. **Thinking ↔ execution.** On the sketch, camera, low light and privacy are
+   related thoughts. A visible plus adds a connected thought; drag, multi-select,
+   pan/zoom, undo, pasted lists, useful shapes/media and click/keyboard/touch
+   alternatives make exploration fluid. One experiment investigates multiple
+   thoughts. Its task is created with a source link but does not replace the map
+   thoughts. The same conversation thread is reachable from the task, map and
+   project. A negative low-light result completes the experiment, informs a
+   cited wiki revision and suggests a sensor alternative; the historical
+   camera reasoning remains. Repeat by creating the task first and linking it
+   to the map later. A map placement can be removed without deleting the task.
+3. **Return after pivot.** After a break, a participant sees the current
+   direction, sourced important changes, last result, still-relevant work and
+   one direct next action. Exploring sensor variant B is distinguishable from
+   choosing B. A deliberate pivot retains the old decision and result, parks
+   obsolete work without labeling it complete, and can be understood on phone
+   and tablet with AI unavailable. A return note is optional; no inbox-clearing
+   ritual, streak or guilt metric is required.
+
+Project and DM participation are independent. Conversation, map thought, task,
+decision, result and wiki keep stable identities with many-to-many typed links
+and source revisions. Following, audience and assignment have separate meanings.
+The [specification](application-specification.md) and [coverage ledger](foundation-coverage.md)
+track implementation and proof; [#29](https://github.com/ColdPhase/flux/issues/29)
+must enforce audience policy across every read/write path.
 
 ## Design and implementation handoff (AC-4)
 

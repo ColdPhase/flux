@@ -155,3 +155,23 @@ Extensions begin as separately versioned HTTP/webhook consumers with scoped cred
 6. **Current library churn and package boundaries:** Node 26 is not LTS yet; Drizzle 1.0 is RC; auth/MCP and AI SDK integrations move quickly. Pin exact tested versions, verify Drizzle migrations and pg-boss transaction adapters, monitor advisories and retest before release. Keep Apache-2.0 public packages free of AGPL-only application code. A transitive-dependency notice/SBOM check remains open until the application lockfile exists.
 
 The implementation handoff starts with [#28 — monorepo and Compose application foundation](https://github.com/ColdPhase/flux/issues/28), owned by `codex-hubert`, and [#29 — persistent identity/access](https://github.com/ColdPhase/flux/issues/29), owned by `claude-maurycy`. Each has an independent evaluator and an exact proposed contract. #29 depends on #28's package/database/API skeleton; implementation starts only after the task's own contract is accepted and its stated dependency is satisfied. The [decision register](decisions.md) links this accepted O-002 revision. The [#9 own-AI assessment](https://github.com/ColdPhase/flux/blob/7330f92443e276590f82a9b6c197db7afd53fd3f/docs/product/own-ai-feasibility.md) and [#20 mobile baseline](https://github.com/ColdPhase/flux/issues/20) constrain later implementation without making their behavior claims here.
+
+## Later F-012 domain clarification (2026-09-27)
+
+The [#44 founder direction](https://github.com/ColdPhase/flux/issues/44) keeps
+the accepted O-002 stack and service boundaries. It sharpens the domain seam:
+personal, DM and project audiences are independent; DM participation cannot
+imply project membership. Selected content is copied/promoted with explicit
+provenance and audience preview, never by silently synchronizing a whole DM.
+Conversation, map thought/placement, task, decision, result and wiki/document
+require stable IDs and many-to-many typed links, including links in both
+task-first and map-first flows. Placement deletion cannot cascade into source
+object deletion. A source's revision must be live or visibly stale in derived
+views. Current authorization applies before any title, count, event cursor,
+idempotent replay, search projection, file or agent summary is disclosed.
+
+Implement these as bounded domain/application contracts under [#29](https://github.com/ColdPhase/flux/issues/29),
+[#36](https://github.com/ColdPhase/flux/issues/36) and subsequent issues. The
+repository-wide Clean Architecture audit belongs to [#46](https://github.com/ColdPhase/flux/issues/46).
+This addendum changes required application behavior, not the historical O-002
+decision or proof status.

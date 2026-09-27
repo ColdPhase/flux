@@ -3,6 +3,11 @@
 Status: **implementation authorized** under the founder's
 [delegation](../autonomy.md). Goal: deliver the complete usable Flux product
 described in the [foundation](../FLUX-FOUNDATION.md), through coherent increments.
+The later [#44 creative collaboration direction](https://github.com/ColdPhase/flux/issues/44)
+sets the integrated product scenarios: private DM → selected sketch → independent
+project; map thought → experiment → negative result → new direction, also starting
+from work; and a useful return after a pivot with AI unavailable. Preserve
+personal, DM and project audiences and the full [coverage ledger](../foundation-coverage.md).
 
 Agents own architecture, stack, UX, feature sequencing and acceptance. They create
 and review each other's issues/PRs and further milestones. No founder acceptance
@@ -19,6 +24,9 @@ runnable v0.1 of one journey on a clean Compose install, then thin slices.
 
 Continue with integrated human collaboration, conversations, project material,
 maps/relationships, tasks, decisions, results, handoffs, search and notifications.
+Build direct contextual send/reply and fluid map interaction rather than making
+people administer materials before ordinary conversation. Keep map thoughts,
+work, results and knowledge distinct and linked to their current source revisions.
 Add real agent participation using officially feasible integrations, resumable
 execution and understandable access/cost controls. The agent-agreed specification
 must map the full foundation to observable behavior, not a list of placeholders.

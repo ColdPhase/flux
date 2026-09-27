@@ -5,6 +5,16 @@ Read foundation sections 10, 17 D1–D4, and 21 in
 [direction.md](direction.md) (accepted O-003, variant C). Existing screens and
 third-party skills are references; their defaults do not establish Flux's style.
 
+The later [F-012 direction](../product/decisions.md) and [#44 scenarios](https://github.com/ColdPhase/flux/issues/44)
+make `flux-ux-v8.html` a concrete baseline for visual and interaction quality.
+Compare it at the same desktop and phone viewport/zoom as the candidate. Preserve
+useful discoverability, density and creative character while improving its weak
+points. O-003 is accepted: direction C with rail identity
+([direction.md](direction.md)); A/B are rejected. Implementation and visual
+evaluation continue within C. A compact messenger
+shell, static map or task dashboard alone cannot demonstrate the DM → sketch →
+project, map ↔ experiment/result or return-after-pivot scenarios.
+
 ## Live collaboration reference
 
 The founder's [live collaboration requirements](../product/live-collaboration.md)
