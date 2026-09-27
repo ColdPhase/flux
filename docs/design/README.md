@@ -9,9 +9,9 @@ The later [F-012 direction](../product/decisions.md) and [#44 scenarios](https:/
 make `flux-ux-v8.html` a concrete baseline for visual and interaction quality.
 Compare it at the same desktop and phone viewport/zoom as the candidate. Preserve
 useful discoverability, density and creative character while improving its weak
-points. The founders chose direction C: v8's useful structure with a calmer C
-style; A/B are rejected. [PR #33](https://github.com/ColdPhase/flux/pull/33)'s
-C prototype, tokens and evidence remain under review. A compact messenger
+points. O-003 is accepted: direction C with rail identity
+([direction.md](direction.md)); A/B are rejected. Implementation and visual
+evaluation continue within C. A compact messenger
 shell, static map or task dashboard alone cannot demonstrate the DM → sketch →
 project, map ↔ experiment/result or return-after-pivot scenarios.
 
