@@ -31,7 +31,7 @@ was inferred from repository layout.
 
 ## Current Flux path and coupling map
 
-At `main` `21b7639` the root `package.json`, lock, pnpm workspace, TypeScript,
+At `main` `603b35c` the root `package.json`, lock, pnpm workspace, TypeScript,
 ESLint and `.env.example` govern `apps/{web,server,worker}`,
 `packages/{contracts,core,db,agent-runtime,sdk}`, `examples/external-agent`
 and `tests/app`. `infra/Dockerfile` copies the whole repository into `/app`,
@@ -47,6 +47,17 @@ defaults output to `apps/web/public/icons`. `scripts/check_application.sh` and
 both source `scripts/test_images.sh`, which discovers per-project images from
 `docker compose config --images` for cleanup. Their `cd` to the repository root
 currently supplies the working-directory invariant.
+Since #55, root `package.json` also typechecks with
+`tsc --noEmit -p apps/web/tsconfig.json` while root `tsconfig.json` excludes
+`apps/web/**`; both configurations move together. `scripts/check_ui.sh` uses
+the `ui` profile of `infra/compose.yaml`, sources `scripts/test_images.sh`,
+and runs the `ui-test` service with isolated ports and volumes.
+`infra/ui-tests.Dockerfile` copies `tests/ui/requirements.txt` and all of
+`tests/ui/` into a pinned Python/Playwright image. These Python browser tests
+are distinct from both TypeScript `tests/app` and root agent setup tests.
+`scripts/check_contrast.py` reads `apps/web/src/ui/tokens.css` relative to the
+repository root, while `docs/design/app-shell/README.md` and
+`docs/development/containers.md` document the UI checks and paths.
 The root `README.md`, `docs/development/containers.md`, `docs/CONTRIBUTING.md`,
 `.github/workflows/application-checks.yml`, `.dockerignore`, and the layer scan
 in `tests/app/support/architecture.ts` are part of this path contract. The
@@ -72,11 +83,12 @@ app/                       # the sole pnpm workspace root; image WORKDIR /app
   tsconfig.json, eslint.config.js, .env.example
   apps/{web,server,worker}/
   packages/{contracts,core,db,agent-runtime,sdk}/
-  tests/                    # application, browser and architecture checks
+  tests/{app,ui}/           # TypeScript app checks and Python/Playwright UI checks
   examples/external-agent/  # public client example; license stays Apache-2.0
   tooling/{migrate.ts,tsconfig.build.json}  # migration entry/build; SQL stays packages/db/migrations
 docker/
   Dockerfile                # builds with app/ as context
+  ui-tests.Dockerfile       # copies app/tests/ui with app/ as context
   compose.source.yaml       # source-built production-mode app for ./flux up
   compose.dev.yaml          # hot-reload overlay with bind mounts for ./flux dev
   compose.test.yaml         # test overlay over compose.source.yaml
@@ -111,6 +123,7 @@ same revision, as O-002 already requires.
 | `./flux up` and `./flux demo`, including a fresh pre-release clone | `docker/compose.source.yaml` | Build the checked-out source into the production-mode image; migrate, start API/worker and then seed demo only on request. `demo` remains development-only and uses the public API. Does not depend on a published GHCR image. |
 | `./flux dev` | `docker/compose.source.yaml` plus `docker/compose.dev.yaml` | Use the same dependencies and isolated volumes, with source bind mounts (`:z` on SELinux) and hot reload. Do not modify production data. |
 | `scripts/check_application.sh`, `scripts/check_runtime.sh` | `docker/compose.source.yaml` plus `docker/compose.test.yaml` where test services are needed | Build from source with unique Compose project, ports and volumes; preserve `scripts/test_images.sh` image cleanup after each run. Runtime check can use the source file alone for its normal services. |
+| `scripts/check_ui.sh` | `docker/compose.source.yaml --profile ui` | Build the source image and `ui-test` from `docker/ui-tests.Dockerfile` with `app/` as context, start isolated app/mail services, then run `app/tests/ui`; keep screenshot output and per-project image cleanup working. |
 | Operator after first accepted release | Downloaded `compose.yaml` plus matching `.env.example` from that GitHub Release | Pull only the image identified by the release digest; no source checkout, compiler or build context. The pre-release repository `docker/compose.yaml` is an example for the future release and is **not** the `./flux up` default. |
 
 For every source-built and operator image, the runtime working directory is the
@@ -121,7 +134,8 @@ lookups with module-relative paths and test them. The Dockerfile builds with
 `app/` as context, compiles `app/tooling/migrate.ts` via
 `app/tooling/tsconfig.build.json`, copies its output to `tooling/dist`, and runs
 `node tooling/dist/migrate.js`; SQL stays in `packages/db/migrations`. The icon
-script header, build paths, TypeScript includes, `.dockerignore` (now scoped to
+script header, build paths, both root and web TypeScript configurations,
+`app/tests/ui/requirements.txt`, `.dockerignore` (now scoped to
 the `app/` build context), and architecture scanner must move with the workspace.
 The scanner must cover `app/tooling/` as an entry-point layer without adding
 new core exemptions. The root `./flux` must use paths relative to its own
@@ -188,7 +202,8 @@ manifests become costlier than a chart.
    contracts are recorded. #46's source boundary work can continue now.
 2. **Application workspace (#76, owner @Zamojski5):** move root pnpm, TS,
    ESLint, env, `apps/`, `packages/`, application tests and the external-agent
-   example together. Update `tsconfig` includes, workspace globs, package
+   example together. Place `tests/ui/` under `app/tests/ui/`. Update both
+   root and web `tsconfig` includes/excludes, workspace globs, package
    scripts, import scanner roots, license/NOTICE paths and Docker build COPY
    paths in the same PR. Keep root agent/document checks working. Verify frozen
    lock install, build, typecheck, lint, unit/integration and browser checks in
@@ -199,8 +214,12 @@ manifests become costlier than a chart.
    `app/tooling/` and change runtime command; create pull-only operator Compose.
    Update
    `scripts/check_application.sh`, `scripts/check_runtime.sh`, README,
-   `scripts/test_images.sh`, the icon-generation instructions,
-   `docs/development/containers.md`, CI paths, ignore rules and root `./flux`.
+   `scripts/test_images.sh`, `scripts/check_ui.sh`,
+   `scripts/check_contrast.py`, the icon-generation instructions,
+   `docs/development/containers.md`, `docs/design/app-shell/README.md`,
+   CI paths, ignore rules and root `./flux`. `docker/ui-tests.Dockerfile`
+   must copy `tests/ui` from the `app/` build context; retain the `ui` profile
+   and its Mailpit dependency in the source Compose file.
    Preserve the `/app` working-directory invariant, the environment templates'
    separate roles and the command-to-Compose mapping above.
    Confirm `docker compose config`, clean clone build/migrate/start, isolated
