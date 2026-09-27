@@ -1,9 +1,11 @@
 # Product direction
 
 Flux is an open source, self-hostable workspace in which people and agents can
-keep conversations, decisions, work, and results connected. Human collaboration
-must remain useful when AI is unavailable. The ambition is a global product,
-starting with innovators and developing toward enterprise use.
+keep conversations, sketches, decisions, work, and results connected. Human
+collaboration must remain useful when AI is unavailable. Creative side projects,
+experiments, pivots and returning after breaks are primary situations, including
+people with attention and working-memory needs. The ambition is a global product
+with a later path to enterprise use; ordinary work must stay enjoyable and light.
 
 ## Source of truth
 
@@ -31,6 +33,14 @@ The later [mobile and tablet PWA requirement](mobile-pwa.md) is also accepted:
 Android phones/tablets, iPhones and iPads, installable app behavior, responsive
 touch workflows and Web Push are required in the complete application release.
 
+The later [creative collaboration direction](https://github.com/ColdPhase/flux/issues/44)
+is recorded as [F-012](decisions.md). It makes `flux-ux-v8.html` a concrete
+visual and interaction baseline to improve, while [#15](https://github.com/ColdPhase/flux/issues/15)
+continues direction C. It specifies separate personal, DM and project audiences;
+selected-content evolution from DM to sketch to project; fluid maps connected to
+work and results; return after a pivot; and bounded proactive help. The three
+integrated scenarios in #44 govern later design and application evaluation.
+
 ## Delivery playbook
 
 Follow the [delivery playbook](playbook-the-5.md): ship a thin working slice
@@ -41,10 +51,11 @@ Research serves a concrete code task; it does not replace shipping.
 
 | Status | What it means now |
 | --- | --- |
-| Founder direction | Global OSS, self-hosting, human collaboration, strong AI participation, high UX quality, own officially supported AI services, and a path to enterprise. |
-| Proposal | Initial personas, market entry, product mechanisms, commercial services, and TypeScript/React/PostgreSQL as a stack candidate. |
-| Open decision | First niche, proven USP, first release scope, architecture, palette, design system, pricing, and supported subscription integration methods. |
-| Existing implementation | A loose HTML prototype; its screens, terminology, colors, and technology are inspiration. |
+| Founder direction | Global OSS, self-hosting, creative human collaboration, connected work, bounded AI participation, high UX quality, mobile PWA and a path to enterprise; see F-012 for the later concrete scenarios. |
+| Proposal | Initial personas, market entry, product mechanisms and commercial services remain research proposals. |
+| Accepted decision | O-002 React/Node/Fastify/PostgreSQL architecture and O-004 complete-product public release boundary; see the [register](decisions.md). |
+| Open decision | First niche/USP (O-001), visual tokens and component system (O-003), supported AI paths (O-005), and later commercial terms. |
+| Existing implementation | A loose v8 prototype and a Compose application foundation with identity sessions/runtime hardening. The prototype is a concrete comparison baseline under F-012, not a production UI. Feature completeness is tracked in the [ledger](foundation-coverage.md). |
 
 Routine decisions within an accepted task belong to its owner. Record larger
 recommendations with evidence; only the named decision owner can accept them.
@@ -80,7 +91,7 @@ The foundation does not authorize deleting existing code or changing the license
 | Mobile/tablet UX, installability, offline recovery and push | [Mobile PWA requirements](mobile-pwa.md), including MOB-1 through MOB-7 |
 | Own agents, subscriptions, APIs, local models | 9, 11.3, 17 E; dated primary-source research |
 | Visual direction, density, accessible interactions | 10, 17 D1–D4, 21; [design workflow](../design/README.md) |
-| Architecture and operations | 11, 13, 18; [O-002 proposal](application-architecture-proposal.md) (awaiting peer decision review), [decision register](decisions.md) |
+| Architecture and operations | 11, 13, 18; [accepted O-002 architecture](application-architecture-proposal.md), [decision register](decisions.md) |
 | OSS and commercial direction | 3, 6, 12–13; existing [LICENSE](../../LICENSE) |
 | Task execution and independent review | 14–17; [agent workflow](../agents/workflow.md) |
 
@@ -92,16 +103,15 @@ bounded issues inside that milestone, negotiate in issue comments, and review
 implementation in PRs. See [startup](../agents/startup.md).
 
 The [first milestone brief](milestones/01-product-blueprint.md) turns this vision
-into product, design, architecture, and release proposals. It deliberately does
-not pretend that the first application version or stack is already accepted.
-Agents make decisions as evidence becomes available and begin ready implementation in
+into product, design, architecture, and release decisions. O-002 and O-004 are
+accepted; remaining decisions proceed alongside implementation in
 [milestone 2](milestones/02-working-application.md). Research and coding may overlap.
 
-The proposed [application behavior and release specification](application-specification.md)
+The [application behavior and release specification](application-specification.md)
 and [full-product coverage ledger](foundation-coverage.md) connect the accepted
 foundation to implementation tasks. Their evidence states distinguish planned
 work from running, independently verified application behavior.
 
-The [proposed vocabulary and connected journeys](journeys-and-vocabulary.md) give
+The [provisional vocabulary and connected journeys](journeys-and-vocabulary.md) give
 design and application tasks a concrete human return, handoff, and conditional
 agent scenario. Their decision status is recorded in the proposal.

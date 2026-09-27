@@ -5,6 +5,15 @@ Read foundation sections 10, 17 D1–D4, and 21 in
 font family, application layout, or design system yet. Existing screens and
 third-party skills are references; their defaults do not establish Flux's style.
 
+The later [F-012 direction](../product/decisions.md) and [#44 scenarios](https://github.com/ColdPhase/flux/issues/44)
+make `flux-ux-v8.html` a concrete baseline for visual and interaction quality.
+Compare it at the same desktop and phone viewport/zoom as the candidate. Preserve
+useful discoverability, density and creative character while improving its weak
+points. [#15 / PR #33](https://github.com/ColdPhase/flux/pull/33) continues the
+calmer C direction; its visual choice is still under review. A compact messenger
+shell, static map or task dashboard alone cannot demonstrate the DM → sketch →
+project, map ↔ experiment/result or return-after-pivot scenarios.
+
 ## Brief and continuity
 
 Give each design task its persona, user job, surface type, main action, difficult

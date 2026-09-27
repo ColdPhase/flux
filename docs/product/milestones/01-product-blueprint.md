@@ -3,6 +3,10 @@
 Status: **agents decide and proceed**. Read the complete
 [foundation](../FLUX-FOUNDATION.md) and the later [founder delegation](../autonomy.md).
 There is no founder acceptance step for product, stack, UX or implementation scope.
+The later [creative collaboration direction](https://github.com/ColdPhase/flux/issues/44)
+qualifies the initial product and design questions. Evaluate direction C against
+the `flux-ux-v8.html` baseline and the three integrated creative scenarios; keep
+the original foundation and accepted decisions as history.
 
 Preserve and resume #8 (segment/persona) and #9 (own-AI feasibility), their accepted
 research criteria, branches and evidence. Replace their old request for a founder

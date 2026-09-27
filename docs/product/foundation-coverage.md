@@ -1,8 +1,13 @@
 # Full-product coverage and evidence ledger
 
-**Revision:** 2026-09-27, live ledger after merged [#16](https://github.com/ColdPhase/flux/issues/16) and [#38](https://github.com/ColdPhase/flux/issues/38), reconciled with `main` at `077db1448f4c5957232e036ce0555239a6857570`. Each implementation PR owner updates its rows and its independent evaluator checks them. This ledger maps the sixteen areas and eight pillars in the [founder foundation §§7–8](FLUX-FOUNDATION.md#7-filary-produktu). The [application specification](application-specification.md) states the shared journey, sequencing and accepted O-004 release boundary. [MOB-1–MOB-7](mobile-pwa.md#required-outcomes) also gate the full product.
+**Revision:** 2026-09-27, live ledger after merged [#16](https://github.com/ColdPhase/flux/issues/16) and [#38](https://github.com/ColdPhase/flux/issues/38), reconciled with `main` at `c597e977e5396dab91a0548876c47b0531d73919` and later [#44](https://github.com/ColdPhase/flux/issues/44). Each implementation PR owner updates its rows and its independent evaluator checks them. This ledger maps the sixteen areas and eight pillars in the [founder foundation §§7–8](FLUX-FOUNDATION.md#7-filary-produktu). The [application specification](application-specification.md) states the shared journey, sequencing and accepted O-004 release boundary. [MOB-1–MOB-7](mobile-pwa.md#required-outcomes) also gate the full product.
 
 ## Evidence rule
+
+The later [F-012 direction](decisions.md) and [#44 scenarios](https://github.com/ColdPhase/flux/issues/44)
+add creative, independent-audience requirements to these same rows. The mapping
+below names every new unmet outcome. A design mock, candidate PR or issue link
+does not increase a row's evidence state.
 
 `gap` means no bounded application contract currently covers the behavior. `planned` means an assigned issue contains a candidate or accepted contract for at least part of the behavior; it **does not** mean code exists or all work in the row is scheduled. `implemented` requires merged behavior, a resolving issue and reproducible checks at a named commit. `verified` requires criterion-specific independent evidence at the tested commit. A planning PR, merged research, screenshot, passing harness check or label cannot raise an application row to `implemented` or `verified`.
 
@@ -41,6 +46,25 @@ At this revision protected `main` includes the merged [#28 / PR #34 application 
 | **F6 Understandable control** | User can explain visibility, agent powers, payer and required consent; server enforces them in every path. | [#29](https://github.com/ColdPhase/flux/issues/29), 8.10, 8.15, #20 push. | Attempt cross-tenant read, private search, revoked job, billing switch and stale deep link. | **planned** — #29 AC-1 sessions are merged; object policy, agent/cost and push controls remain. |
 | **F7 Extensible ownership** | Operator can self-host, export usable linked work and use a versioned extension without forking core. | 8.13, 8.16, #28 skeleton. | Install, export, restore, run external example and upgrade its contract. | **gap** — initial #28 start does not provide export or extension. |
 | **F8 Design quality** | Realistic daily surfaces stay calm and readable, with one clear focus and details available on demand; they remain usable with touch, keyboard, enlarged text and reduced motion. | [#15](https://github.com/ColdPhase/flux/issues/15) visual direction; production UI and [#20](https://github.com/ColdPhase/flux/issues/20). | Independent visual comparison plus running browser/device interaction and contrast tests on real content. | **planned** — #15 direction is in progress; no production UI is verified. |
+
+## F-012 scenario and next-slice mapping
+
+| Unmet outcome | Existing issue/interface | Next bounded slice and evidence state |
+| --- | --- | --- |
+| Personal, DM and project audiences stay independent; no project existence/count/preview leaks. | [#29](https://github.com/ColdPhase/flux/issues/29) policy, [#36](https://github.com/ColdPhase/flux/issues/36) conversation; PR #42 is under review. | 8.1, 8.2, 8.3, 8.15/F6: DM membership and audience commands need a separate implementation issue after policy interface; **specified, unimplemented**. |
+| Send/reply in the current DM or project thread; select DM messages into a shared sketch and later an independent project without synchronizing the whole DM. | #36 direct capture/replies, [#40](https://github.com/ColdPhase/flux/issues/40) UI shell. | 8.2–8.4/F2/F4: selected-content evolution needs a follow-up issue and two-user persistence/access tests; **specified, unimplemented**. |
+| Fluid multi-sketch map with direct add, drag, multi-select, pan/zoom, undo, pasted lists, shapes/media and click/keyboard/touch/list alternatives. | [#15](https://github.com/ColdPhase/flux/issues/15) direction C, #40 shell, [#20](https://github.com/ColdPhase/flux/issues/20) mobile contract. | 8.4/F8: map interactions and persisted placements need bounded UI/domain slices after shared object IDs; **specified, prototype only**. |
+| Many-to-many thought, conversation, task, decision, negative result and wiki links; task-first/map-first paths and source revision/stale state. | #36 conversation, #29 grants and O-002 versioned domain boundary. | 8.4–8.7, 8.12/F2/F4: semantic relation and work/result/knowledge issues after object contracts; **specified, unimplemented**. |
+| Return after pivot with sourced change, current result, useful work and direct next action; preserve history, park obsolete work without calling it done. | #15 prototype, #40 shell, #20 phone/tablet. | 8.6, 8.8–8.9/F5: return/decision lifecycle issue and integrated AI-off test; **specified, prototype only**. |
+| Bounded event-triggered sourced AI proposals with opt-in, suppression/deduplication, costs and loop limits; deterministic Git/CI rules distinguish closed/merged and manual override. | [#37](https://github.com/ColdPhase/flux/issues/37) O-005 path; #29 policy and later durable events. | 8.10–8.11, 8.13/F3/F4: helper and Git/CI automation need separate issues after path/event contracts; manual connector alone is insufficient; **specified, unimplemented**. |
+| Complete mobile DM, map/list, work, return and agent-result loops with touch/offline/authorized Web Push. | #20 and [#41](https://github.com/ColdPhase/flux/issues/41). | 8.2–8.5, 8.8–8.11/F8: real Android/iPhone/iPad evidence remains **unverified**. |
+
+[#44](https://github.com/ColdPhase/flux/issues/44) tracks creation of the missing
+bounded implementation issues as the policy, domain and visual interfaces settle.
+Current PR #33 is a **direction prototype**; #40 is a **UI shell**; #42 and #47
+are **candidate policy/stream implementations under review**. None proves these
+integrated scenarios. Keep #29/#36/#20 ownership and scope intact while adding
+those follow-ups, and update the corresponding area/pillar rows at each merge.
 
 ## Mobile cross-check and release gate
 
