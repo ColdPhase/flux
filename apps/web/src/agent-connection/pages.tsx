@@ -1,14 +1,15 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Link, redirect, useLoaderData, type LoaderFunctionArgs } from 'react-router';
-import { workspaceAgentsPath, type Agent, type AgentConnection, type AgentScope, type Project } from '@flux/contracts';
+import { workspaceAgentsPath, type Agent, type AgentConnection, type AgentScope, type Project, type ProjectGrant, type Workspace } from '@flux/contracts';
 import { getMe } from '../api/auth';
 import { ApiError, NetworkError, request as apiRequest } from '../api/client';
 import { listAccessibleProjects } from '../app/conversation-api';
 import { signInPath } from '../auth/logic';
 import { Button, Icon } from '../ui';
 import {
-  SCOPE_LABELS, continueAgentOAuth, createAgentConnection, decideAgentConsent,
-  followOAuthRedirect, getConsentContext, listAgentConnections, selectAgentConnection,
+  SCOPE_LABELS, continueAgentOAuth, createAgentConnection, createPersonalAgent, decideAgentConsent,
+  followOAuthRedirect, getConsentContext, grantAgentProject, listAgentConnections, listProjectGrants,
+  revokeAgentConnection, selectAgentConnection,
   type ConsentContext,
 } from './api';
 import './connection.css';
@@ -24,6 +25,9 @@ const EXTRA_SCOPE_LABELS: Record<string, { title: string; description: string }>
 interface ConnectionData {
   connections: AgentConnection[];
   projects: Project[];
+  workspaces: Workspace[];
+  /** Only managers can inspect grants. Missing keys mean the status is unknown to this person. */
+  grants: Record<string, ProjectGrant[]>;
   agents: Agent[];
   ownerId: string;
   oauthQuery: string;
@@ -45,13 +49,19 @@ export async function agentConnectionLoader({ request }: LoaderFunctionArgs): Pr
   const [connections, accessible] = await Promise.all([
     listAgentConnections(request.signal), listAccessibleProjects(request.signal),
   ]);
-  const byWorkspace = await Promise.all(accessible.workspaces.map(async (workspace) => {
+  const [byWorkspace, byProject] = await Promise.all([
+    Promise.all(accessible.workspaces.map(async (workspace) => {
     try { return await apiRequest<Agent[]>(workspaceAgentsPath(workspace.id), { signal: request.signal }); }
     catch (error) { if (error instanceof ApiError && error.status === 403) return []; throw error; }
-  }));
+    })),
+    Promise.all(accessible.projects.filter((project) => project.access === 'manager').map(async (project) =>
+      [project.id, await listProjectGrants(project.id, request.signal)] as const)),
+  ]);
   return {
     connections,
     projects: accessible.projects,
+    workspaces: accessible.workspaces,
+    grants: Object.fromEntries(byProject),
     agents: byWorkspace.flat().filter((agent) => agent.owner.kind === 'human' && agent.owner.id === me.user.id && !agent.revokedAt),
     ownerId: me.user.id,
     oauthQuery: queryFrom(request),
@@ -70,6 +80,7 @@ function describeError(error: unknown) {
   if (error instanceof ApiError) {
     if (error.status === 401) return 'Your session ended. Sign in, then start the connection again.';
     if (error.status === 403 || error.status === 404) return 'This connection or project is no longer available to you. Choose another one.';
+    if (error.code === 'ALREADY_SELECTED') return 'This browser session is already bound to another selection. Start a new private browser session to choose a different one.';
     if (error.status === 400 || error.status === 409) return 'This authorization request is no longer valid. Start again in your agent client.';
   }
   return error instanceof Error && error.message.startsWith('Flux did not return') ? error.message : 'Something went wrong. Try again.';
@@ -107,19 +118,69 @@ function ConnectionSummary({ connection, agentName, projectNames }: {
 }
 
 export function AgentConnectionPage() {
-  const { connections, projects, agents, oauthQuery } = useLoaderData() as ConnectionData;
+  const { connections, projects, workspaces, agents, grants, oauthQuery } = useLoaderData() as ConnectionData;
   const [items, setItems] = useState(connections.filter((connection) => !connection.revokedAt));
   const [selected, setSelected] = useState<string | null>(items[0]?.id ?? null);
   const [adding, setAdding] = useState(items.length === 0);
+  const [personalAgents, setPersonalAgents] = useState(agents);
   const [agentId, setAgentId] = useState(agents[0]?.id ?? '');
+  const [creatingAgent, setCreatingAgent] = useState(agents.length === 0);
+  const [agentName, setAgentName] = useState('');
+  const [workspaceId, setWorkspaceId] = useState(workspaces[0]?.id ?? '');
+  const [currentGrants, setCurrentGrants] = useState(grants);
+  const [grantRoles, setGrantRoles] = useState<Record<string, 'viewer' | 'contributor'>>({});
+  const [revoking, setRevoking] = useState<string | null>(null);
   const [projectIds, setProjectIds] = useState<string[]>([]);
   const [scopes, setScopes] = useState<AgentScope[]>(ALL_SCOPES);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const projectNames = new Map(projects.map((project) => [project.id, project.name]));
-  const agentNames = new Map(agents.map((agent) => [agent.id, agent.name]));
-  const chosenAgent = agents.find((agent) => agent.id === agentId);
+  const agentNames = new Map(personalAgents.map((agent) => [agent.id, agent.name]));
+  const chosenAgent = personalAgents.find((agent) => agent.id === agentId);
   const eligibleProjects = projects.filter((project) => project.workspaceId === chosenAgent?.workspaceId);
+
+  function grantFor(project: Project) {
+    return currentGrants[project.id]?.find((grant) => grant.principal.kind === 'agent' && grant.principal.id === agentId);
+  }
+
+  function canSelect(project: Project) {
+    if (!currentGrants[project.id]) return true; // A non-manager cannot inspect grants; the server validates on save.
+    const role = grantFor(project)?.role;
+    return role === 'contributor' || (role === 'viewer' && !scopes.includes('flux.proposal.write'));
+  }
+
+  async function addPersonalAgent(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!workspaceId || !agentName.trim()) return;
+    setBusy(true); setError(null);
+    try {
+      const agent = await createPersonalAgent(workspaceId, agentName.trim());
+      setPersonalAgents((current) => [...current, agent]);
+      setAgentId(agent.id); setProjectIds([]); setAgentName(''); setCreatingAgent(false);
+    } catch (cause) { setError(describeError(cause)); }
+    finally { setBusy(false); }
+  }
+
+  async function grantProject(project: Project) {
+    if (!agentId) return;
+    setBusy(true); setError(null);
+    try {
+      const grant = await grantAgentProject(project.id, agentId, grantRoles[project.id] ?? (scopes.includes('flux.proposal.write') ? 'contributor' : 'viewer'));
+      setCurrentGrants((current) => ({ ...current, [project.id]: [...(current[project.id] ?? []).filter((item) => !(item.principal.kind === 'agent' && item.principal.id === agentId)), grant] }));
+    } catch (cause) { setError(describeError(cause)); }
+    finally { setBusy(false); }
+  }
+
+  async function revoke(connectionId: string) {
+    setBusy(true); setError(null);
+    try {
+      await revokeAgentConnection(connectionId);
+      const remaining = items.filter((item) => item.id !== connectionId);
+      setItems(remaining); setSelected((current) => current === connectionId ? remaining[0]?.id ?? null : current);
+      setRevoking(null);
+    } catch (cause) { setError(describeError(cause)); }
+    finally { setBusy(false); }
+  }
 
   async function addConnection(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -144,46 +205,87 @@ export function AgentConnectionPage() {
   }
 
   return <section className="connection" aria-label="Connect an agent">
-    <FlowHeader step="Agent connection · 1 of 2" title="Choose what your agent can use">
-      Select your own agent and the projects it may work with. Access is checked again whenever the agent calls Flux.
+    <FlowHeader step={oauthQuery ? 'Agent connection · 1 of 2' : 'Personal agent access'} title={oauthQuery ? 'Choose what your agent can use' : 'Your agent connections'}>
+      Select your own agent and its permitted projects. Access is checked again whenever the agent calls Flux.
     </FlowHeader>
-    {!oauthQuery ? <div className="connection__alert" role="alert">Start this connection in your agent client. This page needs its authorization request.</div> : null}
+    {!oauthQuery ? <div className="connection__guide"><h2>Connect Claude Code</h2>
+      <p>Use your self-hosted Flux HTTPS address in Claude Code. The client opens this page to ask for your consent.</p>
+      <code>claude mcp add --transport http flux {window.location.origin}/mcp</code>
+      <code>claude mcp login flux</code>
+      <p>Use your own Claude Code account for compute. Flux receives no provider credentials. This connection only lets your client read selected projects and submit proposals for review.</p>
+    </div> : null}
     {error ? <div className="connection__alert" role="alert">{error}</div> : null}
     {items.length ? <fieldset className="connection__group" disabled={busy}>
       <legend>Saved selections</legend>
-      <div className="connection__choices">{items.map((connection) => <label className="connection__choice" key={connection.id}>
-        <input type="radio" name="connection" value={connection.id} checked={selected === connection.id} onChange={() => setSelected(connection.id)} />
-        <ConnectionSummary connection={connection} agentName={agentNames.get(connection.agentId) ?? `Agent ${connection.agentId.slice(0, 8)}`} projectNames={projectNames} />
-      </label>)}</div>
+      <div className="connection__choices">{items.map((connection) => <div className="connection__saved" key={connection.id}>
+        <label className="connection__choice"><input type="radio" name="connection" value={connection.id} checked={selected === connection.id} onChange={() => setSelected(connection.id)} />
+          <ConnectionSummary connection={connection} agentName={agentNames.get(connection.agentId) ?? `Agent ${connection.agentId.slice(0, 8)}`} projectNames={projectNames} />
+        </label>
+        {revoking === connection.id ? <div className="connection__revoke"><span>Revoke this connection now? Its tools will stop working.</span>
+          <Button variant="secondary" onClick={() => { void revoke(connection.id); }}>Revoke now</Button>
+          <Button variant="link" onClick={() => setRevoking(null)}>Cancel</Button></div>
+          : <Button variant="link" onClick={() => setRevoking(connection.id)}>Revoke connection</Button>}
+      </div>)}</div>
     </fieldset> : null}
+    {creatingAgent ? <form className="connection__create" onSubmit={(event) => { void addPersonalAgent(event); }}>
+      <h2>Create your personal agent</h2><p>This identity belongs only to you. A project manager must explicitly grant it project access.</p>
+      <label className="connection__label" htmlFor="agent-workspace">Workspace</label>
+      <select id="agent-workspace" value={workspaceId} onChange={(event) => setWorkspaceId(event.target.value)} disabled={busy} required>
+        {workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
+      </select>
+      <label className="connection__label" htmlFor="agent-name">Agent name</label>
+      <input id="agent-name" value={agentName} onChange={(event) => setAgentName(event.target.value)} maxLength={160} disabled={busy} required placeholder="My Claude Code agent" />
+      <div className="connection__actions"><Button type="submit" variant="secondary" busy={busy} disabled={!workspaceId || !agentName.trim()}>Create personal agent</Button>
+        {personalAgents.length ? <Button onClick={() => setCreatingAgent(false)}>Cancel</Button> : null}</div>
+    </form> : <Button variant="link" onClick={() => setCreatingAgent(true)}>Create personal agent</Button>}
     {adding ? <form className="connection__create" onSubmit={(event) => { void addConnection(event); }}>
       <h2>New selection</h2>
       <p>Flux accepts only projects already granted to your agent. Saving this selection does not change project access.</p>
       <label className="connection__label" htmlFor="connection-agent">Your agent</label>
       <select id="connection-agent" value={agentId} onChange={(event) => { setAgentId(event.target.value); setProjectIds([]); }} disabled={busy} required>
-        {agents.length ? agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>) : <option value="">No personal agents available</option>}
+        {personalAgents.length ? personalAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>) : <option value="">Create a personal agent first</option>}
       </select>
       <fieldset className="connection__group" disabled={busy || !agentId}>
         <legend>Projects</legend>
-        <div className="connection__checks">{eligibleProjects.map((project) => <label key={project.id}>
-          <input type="checkbox" checked={projectIds.includes(project.id)} onChange={(event) => setProjectIds((current) => event.target.checked ? [...current, project.id] : current.filter((id) => id !== project.id))} />
-          <span>{project.name}</span>
-        </label>)}</div>
+        <div className="connection__checks">{eligibleProjects.map((project) => {
+          const role = grantFor(project)?.role;
+          const selectable = canSelect(project);
+          return <div className="connection__project" key={project.id}><label>
+            <input type="checkbox" disabled={!selectable || (projectIds.length >= 50 && !projectIds.includes(project.id))} checked={projectIds.includes(project.id) && selectable} onChange={(event) => setProjectIds((current) => event.target.checked ? [...current, project.id] : current.filter((id) => id !== project.id))} />
+            <span><strong>{project.name}</strong><small>{currentGrants[project.id]
+              ? role === 'contributor' ? 'Agent grant: read and propose' : role === 'viewer' ? 'Agent grant: read only' : role === 'denied' ? 'Agent access denied' : 'No agent grant yet'
+              : 'Ask a project manager to confirm this agent’s grant before saving.'}</small></span>
+          </label>
+          {project.access === 'manager' && !selectable ? <div className="connection__grant">
+            <label htmlFor={`grant-${project.id}`}>Grant agent access</label>
+            <select id={`grant-${project.id}`} value={grantRoles[project.id] ?? (scopes.includes('flux.proposal.write') ? 'contributor' : 'viewer')} onChange={(event) => setGrantRoles((current) => ({ ...current, [project.id]: event.target.value as 'viewer' | 'contributor' }))} disabled={busy}>
+              <option value="viewer">Read only</option><option value="contributor">Read and propose</option>
+            </select>
+            <Button variant="secondary" onClick={() => { void grantProject(project); }}>Grant</Button>
+          </div> : null}</div>;
+        })}</div>
+        {projectIds.length >= 50 ? <p>One selection can include up to 50 projects.</p> : null}
         {!eligibleProjects.length ? <p>No projects are available in this agent’s workspace.</p> : null}
       </fieldset>
       <fieldset className="connection__group" disabled={busy || !agentId}>
         <legend>Allowed actions</legend>
         <div className="connection__checks">{ALL_SCOPES.map((scope) => <label key={scope}>
-          <input type="checkbox" checked={scopes.includes(scope)} onChange={(event) => setScopes((current) => event.target.checked ? [...current, scope] : current.filter((item) => item !== scope))} />
+          <input type="checkbox" checked={scopes.includes(scope)} onChange={(event) => {
+            setScopes((current) => event.target.checked ? [...current, scope] : current.filter((item) => item !== scope));
+            if (scope === 'flux.proposal.write' && event.target.checked) setProjectIds((current) => current.filter((id) => {
+              const project = eligibleProjects.find((item) => item.id === id);
+              return project && (!currentGrants[id] || grantFor(project)?.role === 'contributor');
+            }));
+          }} />
           <span><strong>{SCOPE_LABELS[scope].title}</strong><small>{SCOPE_LABELS[scope].description}</small></span>
         </label>)}</div>
       </fieldset>
       <div className="connection__actions"><Button type="submit" variant="secondary" busy={busy} disabled={!agentId || !projectIds.length || !scopes.length}>Save selection</Button>
         {items.length ? <Button onClick={() => setAdding(false)}>Cancel</Button> : null}</div>
-      {!agents.length ? <p className="connection__help">Create a personal agent in your workspace before connecting Claude Code.</p> : null}
+      {!personalAgents.length ? <p className="connection__help">Create a personal agent above before saving a selection.</p> : null}
     </form> : <Button variant="link" onClick={() => setAdding(true)}>Create another selection</Button>}
     <div className="connection__footer">
-      <Button variant="primary" size="lg" onClick={() => { void connect(); }} busy={busy} disabled={!selected || !oauthQuery}>Continue to consent</Button>
+      {oauthQuery ? <Button variant="primary" size="lg" onClick={() => { void connect(); }} busy={busy} disabled={!selected}>Continue to consent</Button> : null}
       <Link className="ui-link" to="/">Back to Flux</Link>
     </div>
   </section>;

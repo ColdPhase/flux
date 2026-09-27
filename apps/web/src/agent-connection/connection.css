@@ -10,6 +10,9 @@
 .connection__choice:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
 .connection__choice:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
 .connection__choice > input { flex: none; margin: 4px 0 0; accent-color: var(--accent); }
+.connection__saved { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+.connection__saved .connection__choice { width: 100%; }
+.connection__revoke { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 7px 0; color: var(--danger); font-size: var(--fs-sm); }
 .connection__summary { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
 .connection__summary > strong { overflow-wrap: anywhere; font-size: var(--fs-base); font-weight: 600; }
 .connection__meta { color: var(--text-3); font-size: var(--fs-sm); }
@@ -25,10 +28,20 @@
 .connection__create { display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 16px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg-side); }
 .connection__create h2 { font-size: var(--fs-lg); }
 .connection__create > p, .connection__group > p, .connection__help { color: var(--text-3); font-size: var(--fs-sm); line-height: 1.55; }
-.connection__create select { width: 100%; min-height: var(--ctl-lg); padding: 7px 10px; border: 1px solid var(--line-input); border-radius: var(--r); background: var(--bg); }
+.connection__create select, .connection__create > input { width: 100%; min-height: var(--ctl-lg); padding: 7px 10px; border: 1px solid var(--line-input); border-radius: var(--r); background: var(--bg); color: var(--text); }
 .connection__create .connection__group { margin-top: 7px; }
-.connection__checks label { display: flex; align-items: flex-start; gap: 10px; padding: 5px 0; cursor: pointer; font-size: var(--fs-md); }
+.connection__checks > label, .connection__project > label { display: flex; align-items: flex-start; gap: 10px; padding: 5px 0; cursor: pointer; font-size: var(--fs-md); }
 .connection__checks input { flex: none; margin: 5px 0 0; accent-color: var(--accent); }
+.connection__checks input:disabled { cursor: not-allowed; }
+.connection__project { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.connection__project:last-child { border-bottom: 0; }
+.connection__project small { display: block; color: var(--text-3); font-size: var(--fs-xs); }
+.connection__grant { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 0 4px 25px; font-size: var(--fs-sm); }
+.connection__create .connection__grant select { width: auto; min-width: 155px; }
+.connection__guide { display: flex; flex-direction: column; gap: 9px; padding: 16px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg-side); }
+.connection__guide h2 { font-size: var(--fs-lg); }
+.connection__guide p { color: var(--text-3); font-size: var(--fs-sm); line-height: 1.5; }
+.connection__guide code { display: block; padding: 9px 11px; border-radius: var(--r-sm); background: var(--bg); font: var(--fs-xs)/1.5 var(--mono); overflow-wrap: anywhere; user-select: all; }
 .connection__checks strong, .connection__checks small { display: block; }
 .connection__checks strong { font-weight: 500; }
 .connection__checks small { color: var(--text-3); font-size: var(--fs-xs); }

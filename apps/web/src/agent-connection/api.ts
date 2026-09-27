@@ -1,6 +1,6 @@
 import {
-  AUTH_BASE_PATH, type AgentConnection, type AgentScope,
-  type CreateAgentConnectionCommand,
+  AUTH_BASE_PATH, projectGrantsPath, workspaceAgentsPath, type Agent, type AgentConnection, type AgentScope,
+  type CreateAgentCommand, type CreateAgentConnectionCommand, type GrantProjectCommand, type ProjectGrant,
 } from '@flux/contracts';
 import { request } from '../api/client';
 
@@ -31,6 +31,24 @@ export function listAgentConnections(signal?: AbortSignal) {
 
 export function createAgentConnection(command: CreateAgentConnectionCommand) {
   return request<AgentConnection>(CONNECTIONS_PATH, { method: 'POST', body: command });
+}
+
+export function revokeAgentConnection(connectionId: string) {
+  return request<null>(`${CONNECTIONS_PATH}/${encodeURIComponent(connectionId)}`, { method: 'DELETE' });
+}
+
+export function createPersonalAgent(workspaceId: string, name: string) {
+  const body: CreateAgentCommand = { name, owner: 'self' };
+  return request<Agent>(workspaceAgentsPath(workspaceId), { method: 'POST', body });
+}
+
+export function listProjectGrants(projectId: string, signal?: AbortSignal) {
+  return request<ProjectGrant[]>(projectGrantsPath(projectId), { signal });
+}
+
+export function grantAgentProject(projectId: string, agentId: string, role: 'viewer' | 'contributor') {
+  const body: GrantProjectCommand = { principal: { kind: 'agent', id: agentId }, role };
+  return request<ProjectGrant>(projectGrantsPath(projectId), { method: 'POST', body });
 }
 
 export function selectAgentConnection(connectionId: string) {
