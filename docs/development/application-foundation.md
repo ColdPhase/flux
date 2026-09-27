@@ -8,15 +8,15 @@ in later tasks. The integration command below is a fixture, not a collaboration 
 ## Clean start
 
 Prerequisites: Git and Docker Engine with Compose. No host Node or PostgreSQL is
-needed. Clone the repository, copy `.env.example` to `.env`, and replace the two
-placeholder secrets. Use a unique Compose project name and port for each worker.
+needed. Clone the repository, copy `.env.example` to `.env`, and replace the three
+placeholder secrets (`FLUX_AUTH_SECRET` is described in [identity](containers.md#identity-services-and-variables)). Use a unique Compose project name and port for each worker.
 The project name also isolates its image tag, database and files volumes.
 Passwords used in `DATABASE_URL` must be URL-safe for this first setup; use a long
 random alphanumeric value. Do not commit `.env`.
 
 ```sh
 cp .env.example .env
-# Edit POSTGRES_PASSWORD and FLUX_FIXTURE_TOKEN.
+# Edit POSTGRES_PASSWORD, FLUX_FIXTURE_TOKEN and FLUX_AUTH_SECRET.
 set -a; . ./.env; set +a
 docker compose --env-file .env -p flux28 -f infra/compose.yaml up -d --build db migrate api worker
 docker compose --env-file .env -p flux28 -f infra/compose.yaml ps
@@ -25,7 +25,7 @@ curl -fsS http://127.0.0.1:8081/api/v1/health
 
 Open `http://127.0.0.1:8081/`. The API serves the built browser assets on the same
 origin. Compose waits for PostgreSQL readiness and a successful one-shot migration
-before starting API and worker. `migrate` applies `0001_foundation.sql` and
+before starting API and worker. `migrate` applies each numbered `packages/db/migrations/NNNN_*.sql` once, in order, and
 initializes the pg-boss schema and `sample.process` queue. If a migration fails,
 the API and worker must not start. The API health endpoint checks the database,
 Flux schema version, pg-boss schema and writable files volume.
