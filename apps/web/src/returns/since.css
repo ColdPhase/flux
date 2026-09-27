@@ -18,7 +18,7 @@
 .since__coll.is-open { grid-template-rows: 1fr; visibility: visible; transition: grid-template-rows var(--dur-3) var(--ease-sheet); }
 .since__clip { min-height: 0; overflow: hidden; }
 .since .since__clip > * { max-width: 760px; }
-.since__coll.is-open .since__clip { max-height: 70vh; overflow-y: auto; }
+.since__coll.is-open .since__clip { max-height: min(46vh, 420px); overflow-y: auto; overscroll-behavior: contain; }
 
 .since__dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: transparent; box-shadow: inset 0 0 0 1.5px var(--text-3); }
 .since__dot--need { background: var(--accent); box-shadow: none; }

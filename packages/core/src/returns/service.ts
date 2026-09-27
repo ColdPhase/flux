@@ -398,8 +398,8 @@ export function createReturnUseCases(ports: ReturnPorts) {
           detail: `In ${quote(excerpt(conversation.opening, 60))}`, needsYou: true,
           source: { type: 'message', projectId: message.projectId, conversationId: conversation.id, messageId: message.id },
           step: { priority: addressed ? 1 : 2, text: `Answer ${author}'s question`,
-            reason: addressed ? `${author} asked you in ${quote(excerpt(conversation.opening, 60))}: ${quote(excerpt(message.body, 140))}`
-              : `${author} asked in ${quote(excerpt(conversation.opening, 60))}, a conversation you are part of: ${quote(excerpt(message.body, 140))}` } });
+            reason: addressed ? `${author} asked you in ${quote(excerpt(conversation.opening, 60))}: ${quote(excerpt(message.body, 90))}`
+              : `${author} asked in ${quote(excerpt(conversation.opening, 60))}, a conversation you are part of: ${quote(excerpt(message.body, 90))}` } });
         continue;
       }
       const grouped = conversationGroups.get(conversation.id) ?? [];

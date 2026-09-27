@@ -71,6 +71,8 @@ export function ConversationView() {
   const [serverDrafts, setServerDrafts] = useState<Draft[]>([]);
   const [saveState, setSaveState] = useState('');
   const [saving, setSaving] = useState(false);
+  // With changes to return to, the "nothing here yet" empty state would contradict them.
+  const [returning, setReturning] = useState(false);
   useEffect(() => {
     if (!selectedWorkspace) return;
     const controller = new AbortController();
@@ -127,7 +129,7 @@ export function ConversationView() {
           <h2>Welcome, {firstName}</h2>
           <p>Jot down a thought, a link or a half-formed idea. It stays with you until you choose to share it.</p>
         </div>
-        <SinceYouLeftHome />
+        <SinceYouLeftHome onShown={setReturning} />
         {serverDrafts.length ? <section className="notes" aria-label="Private drafts"><p className="notes__h"><Icon name="lock" size={13} />Private drafts · saved in your space</p><ol className="notes__list">{serverDrafts.map((item) => <li className="note" key={item.id}><p className="note__text">{item.body}</p><div className="note__meta">You · v{item.version} · <time dateTime={item.updatedAt}>{when(item.updatedAt)}</time></div></li>)}</ol></section> : null}
         {items.length ? (
           <section className="notes" aria-label="Your private notes">
@@ -144,7 +146,7 @@ export function ConversationView() {
               ))}
             </ol>
           </section>
-        ) : !serverDrafts.length ? (
+        ) : !serverDrafts.length && !returning ? (
           <ViewEmpty icon="chat" title="Nothing here yet" level={3}>
             <p>Write your first thought below. When you’re added to a project or someone messages you, those conversations open from the sidebar.</p>
           </ViewEmpty>

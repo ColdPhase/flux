@@ -167,6 +167,8 @@ class ReturnViewJourney(unittest.TestCase):
         expect(region.locator(".since__item", has_text="Ari asked you")).to_have_count(0)
         expect(region.get_by_role("link", name=re.compile("Current rule changed: Exclude gestures in the dark"))).to_contain_text("Previously: Use the camera for gestures · No reason was recorded.")
         expect(region.get_by_role("link", name=re.compile("^Blocked: Order the wide-angle lens"))).to_contain_text("No reason was recorded.")
+        # Home does not also claim that nothing is here.
+        expect(page.get_by_text("Nothing here yet")).to_have_count(0)
         # No guilt: nothing to clear and no badges in the rail.
         expect(page.get_by_role("button", name=re.compile("Mark all", re.I))).to_have_count(0)
         shot(page, "return-home-desktop-1440")

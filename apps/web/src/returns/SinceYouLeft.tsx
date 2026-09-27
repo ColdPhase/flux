@@ -173,8 +173,10 @@ export function SinceYouLeftLine({ projectId, conversationId }: { projectId: str
 }
 
 /** Home: the personal return view across the places the person can see now, grouped by place. */
-export function SinceYouLeftHome() {
+export function SinceYouLeftHome({ onShown }: { onShown?: (shown: boolean) => void }) {
   const { summary, keep, keepForLater } = useReturn({ type: 'home' });
+  const visible = !!summary?.point.savedAt && !!summary.items.length;
+  useEffect(() => { onShown?.(visible); }, [onShown, visible]);
   // Nothing new is not news: Home stays as it was.
   if (!summary || !summary.point.savedAt || !summary.items.length) return null;
   const groups = new Map<string, { name: string; items: ReturnItem[] }>();
