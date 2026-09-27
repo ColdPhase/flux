@@ -241,6 +241,9 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         const current = (await ports.work.findWork(id, { lock: true }))!;
         if (current.version !== version) throw new VersionConflictError(current.version, await presentWork(ports, current));
         const nextStatus = changes.status ?? current.status;
+        // A person who explicitly finishes parked work with its current version also takes it
+        // out of the parked list; work is never both finished and parked.
+        if ((nextStatus === 'done' || nextStatus === 'not_pursued') && current.parked) changes.parked = null;
         if (nextStatus !== 'blocked') {
           if (changes.blocker) throw new InvalidInputError('A blocker applies to blocked work only');
           changes.blocker = null;
@@ -337,19 +340,29 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       const sources = valid.refs(command.sources, valid.SOURCE_TYPES, 'sources');
       const workIds = valid.ids(command.work, 'work');
       const decisions: ObjectRef[] = valid.ids(command.decisions, 'decisions').map((id) => ({ type: 'decision', id }));
-      const finishes = command.finishes === undefined ? null : valid.id(command.finishes, 'finishes');
-      if (finishes && !workIds.includes(finishes)) throw new InvalidInputError('finishes must be one of the linked work items');
+      let finishes: { id: string; version: number } | null = null;
+      if (command.finishes !== undefined) {
+        const raw = command.finishes as { id?: unknown; expectedVersion?: unknown } | null;
+        if (!raw || typeof raw !== 'object') throw new InvalidInputError('finishes must be { id, expectedVersion }');
+        finishes = { id: valid.id(raw.id, 'finishes.id'), version: valid.expectedVersion(raw.expectedVersion) };
+        if (!workIds.includes(finishes.id)) throw new InvalidInputError('finishes must be one of the linked work items');
+      }
       return uow.run(async (ports) => {
         const { workspaceId } = await ports.access.requireProject(principal, 'write', project, { lock: true });
         await requireTargets(ports, project, [...sources, ...workRefs(workIds), ...decisions]);
+        // Finishing changes someone's work: it needs the version the author saw and a status
+        // that can become done. A parked or not-pursued item is another person's disposition.
+        const finished = finishes ? (await ports.work.findWork(finishes.id, { lock: true }))! : null;
+        if (finished && finishes) {
+          if (finished.version !== finishes.version) throw new VersionConflictError(finished.version, await presentWork(ports, finished));
+          if (finished.parked) throw new ConflictError('Parked work must be brought back into the plan before a result finishes it', 'WORK_NOT_FINISHABLE');
+          if (finished.status === 'not_pursued') throw new ConflictError('Work that is not pursued cannot be finished by a result', 'WORK_NOT_FINISHABLE');
+        }
         const scope = { workspaceId, projectId: project };
         const record = await ports.work.insertResult({ id: randomUUID(), ...scope, title, finding, evidence, createdBy: by });
         const from = { type: 'result' as const, id: record.id };
         await ports.work.insertLinks([...linkRows(scope, from, 'source', sources, by), ...linkRows(scope, from, 'about', [...workRefs(workIds), ...decisions], by)]);
-        if (finishes) {
-          const work = (await ports.work.findWork(finishes, { lock: true }))!;
-          if (work.status !== 'done') await ports.work.updateWork(work.id, { status: 'done', blocker: null });
-        }
+        if (finished && finished.status !== 'done') await ports.work.updateWork(finished.id, { status: 'done', blocker: null });
         const view = await presentResult(ports, record);
         await ports.events.record(principal, workspaceId, 'project.result_recorded.v1', project, { resultId: record.id });
         return view;

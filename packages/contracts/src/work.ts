@@ -160,8 +160,12 @@ export interface CreateResultCommand {
   sources?: ObjectRef[];
   work?: string[];
   decisions?: string[];
-  /** A work item of `work` this result finishes (its status becomes done), e.g. a negative experiment. */
-  finishes?: string;
+  /**
+   * A work item of `work` this result finishes (its status becomes done), e.g. a negative
+   * experiment, with the version the author saw. A stale version is 409 VERSION_CONFLICT; work
+   * that is not pursued or parked is 409 WORK_NOT_FINISHABLE (un-park it first).
+   */
+  finishes?: { id: string; expectedVersion: number };
 }
 
 export interface CreateObjectLinkCommand {

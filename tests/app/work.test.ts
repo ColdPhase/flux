@@ -230,7 +230,7 @@ describe('work, decisions and results in a project', () => {
     const rule = decisions.find((item) => item.status === 'accepted')!;
     const result = json<WorkResult>(await post(partner, `/api/v1/projects/${lamp.id}/results`, {
       title: 'The camera cannot track gestures below 10 lux', finding: 'negative', evidence: '38% at 5 lux over 20 gestures',
-      sources: [{ type: 'message', id: reply.id }], work: [experiment.id], decisions: [rule.id], finishes: experiment.id,
+      sources: [{ type: 'message', id: reply.id }], work: [experiment.id], decisions: [rule.id], finishes: { id: experiment.id, expectedVersion: experiment.version },
     }), 201);
     assert.equal(result.finding, 'negative');
     assert.deepEqual(result.links.map((link) => `${link.role}:${link.to.type}`).sort(), ['about:decision', 'about:work', 'source:message']);
@@ -243,6 +243,49 @@ describe('work, decisions and results in a project', () => {
       from: { type: 'result', id: result.id }, to: { type: 'material', id: material.materialId, version: 1 },
     }), 201);
     assert.equal(linked.role, 'related');
+  });
+
+  test('a result finishes work only at the version its author saw and never reverses a disposition', async () => {
+    const results = async () => (await pool.query('SELECT count(*)::int AS n FROM project_results WHERE project_id = $1', [lamp.id])).rows[0].n as number;
+    const finish = (work: WorkItem, expectedVersion: number | undefined, title = 'Finding') => post(partner, `/api/v1/projects/${lamp.id}/results`,
+      { title, finding: 'negative', work: [work.id], finishes: expectedVersion === undefined ? { id: work.id } : { id: work.id, expectedVersion } });
+    const code = (response: ClientResponse) => (response.json as { code: string }).code;
+
+    // Stale: someone changed the work after the author looked at it.
+    const stale = json<WorkItem>(await post(owner, `/api/v1/projects/${lamp.id}/work`, { title: 'PIR range test' }), 201);
+    json(await patch(owner, `/api/v1/work/${stale.id}`, { status: 'in_progress' }, { 'if-match': '"1"' }), 200);
+    const before = await results();
+    const staleFinish = await finish(stale, 1);
+    assert.equal(staleFinish.status, 409);
+    assert.equal(code(staleFinish), 'VERSION_CONFLICT');
+    assert.equal((staleFinish.json as { current: WorkItem }).current.status, 'in_progress');
+    assert.equal((await finish(stale, undefined)).status, 400, 'finishing needs the expected version');
+    assert.equal(await results(), before, 'a rejected result stores nothing');
+    assert.equal(json<WorkItem>(await get(owner, `/api/v1/work/${stale.id}`), 200).status, 'in_progress');
+
+    // Not pursued: another person's decision to drop the work stays.
+    const dropped = json<WorkItem>(await post(owner, `/api/v1/projects/${lamp.id}/work`, { title: 'Radar module' }), 201);
+    const droppedNow = json<WorkItem>(await patch(owner, `/api/v1/work/${dropped.id}`, { status: 'not_pursued' }, { 'if-match': '"1"' }), 200);
+    const droppedFinish = await finish(droppedNow, droppedNow.version);
+    assert.deepEqual([droppedFinish.status, code(droppedFinish)], [409, 'WORK_NOT_FINISHABLE']);
+    assert.equal(json<WorkItem>(await get(owner, `/api/v1/work/${dropped.id}`), 200).status, 'not_pursued');
+
+    // Parked by a pivot: it must be brought back first, so it is never both done and parked.
+    const shelved = json<WorkItem>(await post(owner, `/api/v1/projects/${lamp.id}/work`, { title: 'Camera housing' }), 201);
+    const rule = json<Page<Decision>>(await get(owner, `/api/v1/projects/${lamp.id}/decisions?limit=100`), 200).items.find((item) => item.status === 'accepted')!;
+    const pivot = json<Decision>(await post(owner, `/api/v1/projects/${lamp.id}/decisions`, { title: 'Sensor only', supersedes: rule.id }), 201);
+    json(await post(owner, `/api/v1/decisions/${pivot.id}/accept`, { park: [shelved.id] }, { 'if-match': '"1"' }), 200);
+    const parked = json<WorkItem>(await get(partner, `/api/v1/work/${shelved.id}`), 200);
+    assert.ok(parked.parked);
+    const parkedFinish = await finish(parked, parked.version);
+    assert.deepEqual([parkedFinish.status, code(parkedFinish)], [409, 'WORK_NOT_FINISHABLE']);
+    const back = json<WorkItem>(await patch(partner, `/api/v1/work/${shelved.id}`, { parked: false }, { 'if-match': `"${parked.version}"` }), 200);
+    json(await finish(back, back.version, 'Housing not needed'), 201);
+    const done = json<WorkItem>(await get(owner, `/api/v1/work/${shelved.id}`), 200);
+    assert.deepEqual([done.status, done.parked], ['done', null]);
+    assert.equal(await results(), before + 1);
+    const both = await pool.query("SELECT count(*)::int AS n FROM project_work_items WHERE status = 'done' AND parked_at IS NOT NULL");
+    assert.equal(both.rows[0].n, 0, 'no work is both done and parked');
   });
 
   test('events reach only project readers; assigned work uses the visibility filter and access loss hides everything', async () => {

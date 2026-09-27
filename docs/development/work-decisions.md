@@ -11,12 +11,12 @@ principals with current read access to the project; there is no second audience.
 | --- | --- | --- |
 | Work item | title, outcome (may be empty), owner (person or #29 agent, or nobody), status `open` · `in_progress` · `blocked` · `done` · `not_pursued`, optional blocker (only while blocked), `parked`, version | The owner must currently be able to read the project (`OWNER_WITHOUT_ACCESS`). Leaving `blocked` clears the blocker. Small tasks need only a title; no report is required. |
 | Decision | title, rationale, status `proposed` · `accepted` · `superseded`, proposed by, decided by (a person), `supersedes` / `supersededBy`, version | People and agents with write access propose. Only a person with write access accepts (`DECISION_NEEDS_PERSON`). Only an accepted decision can be superseded (`SUPERSEDES_NOT_CURRENT`); accepting the replacement marks the earlier one `superseded` and keeps its title and rationale. |
-| Result | title, finding `positive` · `negative`, evidence | Immutable once recorded, so later thinking never rewrites it. `finishes` names one of its linked work items, which becomes `done`: a negative result can finish an experiment. |
+| Result | title, finding `positive` · `negative`, evidence | Immutable once recorded, so later thinking never rewrites it. `finishes: { id, expectedVersion }` names one of its linked work items, which becomes `done`: a negative result can finish an experiment. A stale version is `409 VERSION_CONFLICT` with the current work; parked or `not_pursued` work is `409 WORK_NOT_FINISHABLE` (bring parked work back first). Nothing is stored when finishing is refused. |
 | Link | role, from (work/decision/result), to (message, material version, work, decision, result), titles of both ends | Roles: `source` (created from / based on), `affects`, `still_applies`, `about`, `related`. Every target must exist in the same project (`LINK_TARGET_NOT_FOUND`). Identical links are stored once. |
 
 **Pivot.** Accepting a decision that supersedes an earlier rule is a pivot. The request may name
 `stillApplies` (linked to the new decision as `still_applies`) and `park` work. Parked work keeps
-its status and records the decision that parked it, so it is never called done; `PATCH
+its status and records the decision that parked it, so it is never called done (a database check forbids finished-and-parked; finishing parked work by PATCH takes it out of the parked list); `PATCH
 { parked: false }` brings it back. Finished work cannot be parked. Two people accepting competing
 replacements of the same rule at once: one wins, the other gets `409 SUPERSEDED_DECISION_CHANGED`.
 
@@ -53,7 +53,7 @@ project readers and the client refetches. Idempotent replays and failed changes 
 - `packages/db/src/repositories/work.ts` and migration `0008_work.sql`: rows only, no decisions.
 - `apps/server/src/work/`: adapters (`evaluateProject`/`authorize`/`visibleFilter`, `recordEvent`)
   and routes. No architecture allowlist entries were added.
-- `apps/web/src/work/`: the Tasks tab (`/projects/:id/tasks`), the state line, message actions
+- `apps/web/src/work/`: loads every page of work, decisions and results (100 per request until `total`), so the state line, Tasks and inline objects are complete; the Tasks tab (`/projects/:id/tasks`), the state line, message actions
   (Create work, Propose decision, Attach result), inline objects under their source message and
   the Details panel views and forms.
 

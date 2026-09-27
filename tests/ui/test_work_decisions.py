@@ -278,6 +278,27 @@ class WorkDecisionsJourney(unittest.TestCase):
         titles = [item["title"] for item in self.work(page)["work"]]
         self.assertEqual(titles.count(FINDING), 1)
 
+    # ---------------------------------------------------------------- beyond one page
+
+    def test_07_more_than_a_hundred_records_are_all_shown(self) -> None:
+        page = self.page("owner")
+        spaces = self.api(page, "GET", "/api/v1/workspaces", status=200)
+        project = self.api(page, "POST", f"/api/v1/workspaces/{spaces[0]['id']}/projects", {"name": "Big lamp", "visibility": "restricted"}, status=201)
+        base = f"/api/v1/projects/{project['id']}"
+        rule = self.api(page, "POST", f"{base}/decisions", {"title": "Oldest rule: battery powered"}, status=201)
+        self.api(page, "POST", f"/api/v1/decisions/{rule['id']}/accept", {"expectedVersion": 1}, status=200)
+        for index in range(1, 102):
+            self.api(page, "POST", f"{base}/decisions", {"title": f"Idea {index:03d}"}, status=201)
+        for index in range(1, 102):
+            self.api(page, "POST", f"{base}/work", {"title": f"Work item {index:03d}"}, status=201)
+        self.assertEqual(self.api(page, "GET", f"{base}/work?limit=1", status=200)["total"], 101)
+        page.goto(f"/projects/{project['id']}/tasks")
+        # Item 101 counted from the newest is the oldest one, beyond the first page of 100.
+        expect(page.get_by_role("region", name=re.compile("^Open")).get_by_role("button", name=re.compile("^Work item 001"))).to_be_visible()
+        expect(page.get_by_role("region", name=re.compile("^Open")).locator(".ws-group__h")).to_contain_text("101")
+        expect(page.get_by_label("Current state")).to_contain_text("Current rule: Oldest rule: battery powered")
+        expect(page.get_by_role("region", name=re.compile("^Needs you")).locator(".ws-group__h")).to_contain_text("101")
+
 
 if __name__ == "__main__":
     unittest.main()

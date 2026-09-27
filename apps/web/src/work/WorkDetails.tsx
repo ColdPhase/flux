@@ -35,6 +35,7 @@ async function loadContext(projectId: string, signal: AbortSignal): Promise<Cont
 
 function readable(error: unknown) {
   if (error instanceof ApiError && error.code === 'VERSION_CONFLICT') return 'Someone changed this a moment ago. The latest version is shown; try again if it still applies.';
+  if (error instanceof ApiError && error.code === 'WORK_NOT_FINISHABLE') return 'That work was parked or set aside meanwhile, so this result cannot finish it. The latest state is shown.';
   if (error instanceof ApiError && error.code === 'SUPERSEDED_DECISION_CHANGED') return 'The rule this would replace has already changed. Review the current rule first.';
   if (error instanceof ApiError && error.status === 404) return 'This is no longer available to you.';
   if (error instanceof ApiError && error.status === 403) return 'You can read this project but not change it.';
@@ -71,7 +72,7 @@ export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
   if (!state) return <div className="details" aria-busy="true"><p className="details__lead">Loading…</p></div>;
   const { object, context } = state;
   if (view.kind === 'propose-decision') return <ProposeDecision key={viewKey} view={view} context={context} />;
-  if (view.kind === 'attach-result') return <AttachResult key={viewKey} view={view} context={context} />;
+  if (view.kind === 'attach-result') return <AttachResult key={viewKey} view={view} context={context} reload={reload} />;
   if (view.kind === 'work') return <WorkPanel key={`${viewKey}:${(object as WorkItem).version}`} item={object as WorkItem} context={context} reload={reload} />;
   if (view.kind === 'decision') return <DecisionPanel key={`${viewKey}:${(object as Decision).version}`} decision={object as Decision} context={context} reload={reload} />;
   return <ResultPanel result={object as WorkResult} context={context} />;
@@ -392,7 +393,7 @@ function ProposeDecision({ view, context }: { view: WorkFormView; context: Conte
   );
 }
 
-function AttachResult({ view, context }: { view: WorkFormView; context: Context }) {
+function AttachResult({ view, context, reload }: { view: WorkFormView; context: Context; reload: () => void }) {
   const { openDetails } = useShellActions();
   const revalidator = useRevalidator();
   const open = context.lists.work.filter((item) => !isFinished(item) || item.id === view.workId);
@@ -408,6 +409,7 @@ function AttachResult({ view, context }: { view: WorkFormView; context: Context 
   const workSelectId = useId();
   const edit = <T,>(set: (value: T) => void) => (value: T) => { set(value); setAttempt(crypto.randomUUID()); setError(''); };
   const chosen = open.find((item) => item.id === workId);
+  const finishable = !!chosen && !chosen.parked && chosen.status !== 'not_pursued';
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -417,12 +419,15 @@ function AttachResult({ view, context }: { view: WorkFormView; context: Context 
       const result = await createResult(view.projectId, {
         title: title.trim(), finding, evidence,
         ...(view.source ? { sources: [{ type: 'message', id: view.source.messageId }] } : {}),
-        ...(workId ? { work: [workId], ...(finishes ? { finishes: workId } : {}) } : {}),
+        ...(workId ? { work: [workId], ...(finishes && chosen && finishable ? { finishes: { id: workId, expectedVersion: chosen.version } } : {}) } : {}),
       }, attempt);
       revalidator.revalidate();
       openDetails({ kind: 'result', id: result.id });
-    } catch (cause) { setError(readable(cause)); }
-    finally { setBusy(false); }
+    } catch (cause) {
+      setError(readable(cause));
+      // The work changed meanwhile: show its current state so the author decides again.
+      if (cause instanceof ApiError && cause.status === 409) { setAttempt(crypto.randomUUID()); reload(); }
+    } finally { setBusy(false); }
   }
 
   return (
@@ -445,7 +450,8 @@ function AttachResult({ view, context }: { view: WorkFormView; context: Context 
             <option value="">Not linked to work</option>
             {open.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
           </select>
-          {chosen ? <label className="wd-check"><input type="checkbox" checked={finishes} onChange={(event) => edit(setFinishes)(event.target.checked)} />This finishes “{chosen.title}”</label> : null}
+          {chosen && !finishable ? <p className="wd-muted">“{chosen.title}” is parked; bring it back into the plan before a result finishes it.</p> : null}
+          {chosen && finishable ? <label className="wd-check"><input type="checkbox" checked={finishes} onChange={(event) => edit(setFinishes)(event.target.checked)} />This finishes “{chosen.title}”</label> : null}
         </> : null}
       </fieldset>
       {error ? <p className="wd-error" role="alert">{error}</p> : null}

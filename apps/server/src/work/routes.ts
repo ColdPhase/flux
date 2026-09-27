@@ -51,7 +51,7 @@ const proposeDecision = { type: 'object', required: ['title'], additionalPropert
 const acceptDecision = { type: 'object', additionalProperties: false, properties: { stillApplies: ids, park: ids, expectedVersion: version } } as const;
 const createResult = { type: 'object', required: ['title', 'finding'], additionalProperties: false, properties: {
   title, finding: { type: 'string', enum: ['positive', 'negative'] }, evidence: { type: 'string', maxLength: WORK_LIMITS.evidence },
-  sources: refs, work: ids, decisions: ids, finishes: { type: 'string' },
+  sources: refs, work: ids, decisions: ids, finishes: { type: 'object', required: ['id', 'expectedVersion'], additionalProperties: false, properties: { id: { type: 'string' }, expectedVersion: version } },
 } } as const;
 const createLink = { type: 'object', required: ['from', 'to'], additionalProperties: false, properties: {
   from: { type: 'object', required: ['type', 'id'], additionalProperties: false, properties: { type: { type: 'string', enum: ['work', 'decision', 'result'] }, id: { type: 'string' } } },

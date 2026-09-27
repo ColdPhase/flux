@@ -52,6 +52,8 @@ CREATE TABLE project_work_items (
   UNIQUE (workspace_id, project_id, id),
   CHECK (owner_user_id IS NULL OR owner_agent_id IS NULL),
   CHECK ((parked_by_decision_id IS NULL) = (parked_at IS NULL)),
+  -- Parked work is never finished at the same time: finishing brings it back first.
+  CHECK (parked_at IS NULL OR status NOT IN ('done', 'not_pursued')),
   FOREIGN KEY (workspace_id, project_id) REFERENCES projects(workspace_id, id) ON DELETE CASCADE,
   FOREIGN KEY (workspace_id, project_id, parked_by_decision_id) REFERENCES project_decisions(workspace_id, project_id, id)
 );
