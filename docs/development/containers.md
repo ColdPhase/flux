@@ -29,8 +29,28 @@ selects PostgreSQL. The first application foundation in `infra/compose.yaml`
 starts PostgreSQL, a one-shot migration, the API and a separate worker with named
 `pgdata` and `files` volumes. See [application foundation](application-foundation.md)
 for the current clean-start, validation and backup/restore commands. This is an
-application skeleton; #29's first slice adds human identity and sessions, while
-project policy, collaboration and release verification remain separate tasks.
+application skeleton; #29's identity/session and project policy slices are now
+merged, while collaboration and release verification remain separate tasks.
+
+## Local task worktrees
+
+Keep each task or independent review in its own Git worktree under the repository
+root's `.worktrees/` directory, for example
+`git worktree add .worktrees/54-local-layout -b codex-hubert/54-local-layout main`.
+The root-anchored [ignore rule](../../.gitignore) keeps these machine-local
+checkouts out of ordinary `git status`; it does not remove or hide tracked
+source. Existing worktrees stay in place. Use `git worktree list` to inspect them
+before any cleanup and never delete another agent's checkout or uncommitted work.
+One issue has one assignee and its branch has one writer; see the
+[agent workflow](../agents/workflow.md#4-implement-and-hand-off).
+
+Run concurrent application checks with a distinct Compose project name,
+published port values, volumes and test accounts per task. For example, use
+`-p flux54-hubert` with a task-specific `FLUX_TEST_PORT` instead of reusing the
+default test project or another worker's persistent volumes. The
+[application foundation guide](application-foundation.md) has the current
+Compose commands; the worktree location does not change their container-only
+runtime requirement.
 
 Git, Docker/Compose, GitHub CLI, the installed official coding-agent CLIs, and
 Python 3.11+ for this repository's standard-library foundation checks are host
