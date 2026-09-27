@@ -12,11 +12,4 @@ export type Database = Pick<DatabaseHandle, 'select' | 'selectDistinct' | 'inser
 export type Executor = Pick<Database, 'select' | 'selectDistinct' | 'insert' | 'update' | 'delete' | 'execute'>;
 export type Transaction = Parameters<Parameters<DatabaseHandle['transaction']>[0]>[0];
 
-/**
- * The authenticated actor of a request, job or tool call. Entry points establish it
- * (session cookie, later OAuth token or job owner) and pass it to domain methods.
- */
-export interface Principal {
-  id: string;
-  kind: 'fixture' | 'human' | 'agent';
-}
+export type { Principal } from './principal.js';

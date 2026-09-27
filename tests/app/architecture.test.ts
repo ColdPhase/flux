@@ -42,6 +42,12 @@ describe('architecture boundaries', () => {
     assert.deepEqual(reachableImports(root, entries, ['@flux/db', 'drizzle-orm', 'pg', 'pg-boss', 'fastify', 'web-push']), []);
   });
 
+  test('the sketch use cases in core stay free of adapters, including through helpers (#69)', () => {
+    const entries = files(join(root, 'packages/core/src/sketches'));
+    assert.ok(entries.length >= 3, 'the sketch use cases and ports exist');
+    assert.deepEqual(reachableImports(root, entries, ['@flux/db', 'drizzle-orm', 'pg', 'pg-boss', 'fastify', 'web-push']), []);
+  });
+
   test('the rules reject each kind of boundary violation (self-test)', () => {
     const source = (path: string, text: string) => ({ path, text });
     const found = checkSources([

@@ -35,6 +35,12 @@ import { ForbiddenError, NotFoundError } from './errors.js';
  *   writable at contributor. A `workspace` draft is readable by owners, admins and
  *   members (not guests or agents) and writable by its author, owners and admins.
  *   Sharing and moving need the author or, for a non-private draft, an owner/admin.
+ * - Sketches (issue #69): a `project` sketch is readable at project level viewer and
+ *   changeable at contributor. A `direct` sketch (a DM's map, or a private one) is readable
+ *   and changeable only by its participants, who must be people currently in the workspace;
+ *   owners and admins without a participation do not see it, and agents never do.
+ *   `sketch.create` in a workspace is a direct sketch by an active person; a project sketch
+ *   needs `project.write` on its project.
  * - An agent never works outside its current project grants, not even on drafts it
  *   authored: it creates drafts only inside a project where it is a contributor, and
  *   every read (viewer) or write, share and move (contributor) of any draft — its own
@@ -47,10 +53,11 @@ import { ForbiddenError, NotFoundError } from './errors.js';
  *   does not leak; visible objects with a forbidden action get {@link ForbiddenError} (403).
  */
 
-export const WORKSPACE_ACTIONS = ['workspace.read', 'workspace.read_members', 'workspace.manage_members', 'workspace.manage_agents', 'project.create', 'draft.create', 'agent.create'] as const;
+export const WORKSPACE_ACTIONS = ['workspace.read', 'workspace.read_members', 'workspace.manage_members', 'workspace.manage_agents', 'project.create', 'draft.create', 'agent.create', 'sketch.create'] as const;
 export const PROJECT_ACTIONS = ['project.read', 'project.write', 'project.manage'] as const;
 export const DRAFT_ACTIONS = ['draft.read', 'draft.write', 'draft.share', 'draft.move'] as const;
 export const AGENT_ACTIONS = ['agent.read', 'agent.revoke'] as const;
+export const SKETCH_ACTIONS = ['sketch.read', 'sketch.write'] as const;
 
 /** Actions grouped by the kind of object they are checked against. */
 export interface ActionsByResource {
@@ -58,6 +65,7 @@ export interface ActionsByResource {
   project: (typeof PROJECT_ACTIONS)[number];
   draft: (typeof DRAFT_ACTIONS)[number];
   agent: (typeof AGENT_ACTIONS)[number];
+  sketch: (typeof SKETCH_ACTIONS)[number];
 }
 export type ResourceType = keyof ActionsByResource;
 export type Action = ActionsByResource[ResourceType];
@@ -216,12 +224,30 @@ export function visibleDraftsSql(actor: Actor): SQL {
   return and(eq(d.workspaceId, actor.workspaceId), sql`NOT ${denied}`, or(...audiences))!;
 }
 
+const sketchProjectVisibility = sql`(SELECT p.visibility FROM projects p WHERE p.id = ${schema.sketches.projectId})`;
+
+function sketchProjectLevel(actor: Actor): SQL {
+  return sql`(CASE WHEN ${schema.sketches.projectId} IS NULL THEN 0 ELSE ${projectLevelSql(actor, schema.sketches.projectId, sketchProjectVisibility)} END)`;
+}
+
+/** Condition over `sketches` rows: the actor may read the sketch. Apply before count/limit. */
+export function visibleSketchesSql(actor: Actor): SQL {
+  if (!actor.active) return sql`false`;
+  const s = schema.sketches;
+  const project = sql`(${s.scope} = 'project' AND ${sketchProjectLevel(actor)} >= 1)`;
+  // Agents never see direct sketches: there is no agent DM grant (docs/product/first-agent-path.md).
+  if (actor.principal.kind !== 'human') return and(eq(s.workspaceId, actor.workspaceId), project)!;
+  const participant = sql`(${s.scope} = 'direct' AND EXISTS (SELECT 1 FROM sketch_participants sp WHERE sp.sketch_id = ${s.id} AND sp.user_id = ${actor.principal.id}))`;
+  return and(eq(s.workspaceId, actor.workspaceId), or(project, participant))!;
+}
+
 /**
  * The list filter for a principal in a workspace. Put it in the WHERE clause of the list
  * query and of its count so invisible rows never reach counts, pages or payloads.
  */
-export async function visibleFilter(principal: Principal, workspaceId: string, kind: 'project' | 'draft', db: Executor): Promise<SQL> {
+export async function visibleFilter(principal: Principal, workspaceId: string, kind: 'project' | 'draft' | 'sketch', db: Executor): Promise<SQL> {
   const actor = await loadActor(principal, workspaceId, db);
+  if (kind === 'sketch') return visibleSketchesSql(actor);
   return kind === 'project' ? visibleProjectsSql(actor) : visibleDraftsSql(actor);
 }
 
@@ -232,11 +258,13 @@ export async function visibleFilter(principal: Principal, workspaceId: string, k
 type DraftRow = typeof schema.drafts.$inferSelect;
 type ProjectRow = typeof schema.projects.$inferSelect;
 type AgentRow = typeof schema.agents.$inferSelect;
+type SketchRow = typeof schema.sketches.$inferSelect;
 
 export interface WorkspaceEvaluation extends Decision { actor: Actor }
 export interface ProjectEvaluation extends Decision { actor: Actor | null; project: ProjectRow | null; level: number }
 export interface DraftEvaluation extends Decision { actor: Actor | null; draft: DraftRow | null; level: number; isOwner: boolean }
 export interface AgentEvaluation extends Decision { actor: Actor | null; agent: AgentRow | null }
+export interface SketchEvaluation extends Decision { actor: Actor | null; sketch: SketchRow | null }
 
 const DENIED: Decision = { allowed: false, visible: false };
 
@@ -253,6 +281,9 @@ export async function evaluateWorkspace(principal: Principal, action: ActionsByR
       // People may keep unscoped private drafts; an agent needs a project it can write in
       // (createDraft additionally requires that project to be the draft's project).
       allowed = human || await hasWritableProject(actor, db);
+      break;
+    case 'sketch.create':
+      allowed = human;
       break;
     case 'workspace.read_members':
     case 'agent.create':
@@ -348,6 +379,31 @@ export async function evaluateAgent(principal: Principal, action: ActionsByResou
 }
 
 /**
+ * With `lock`, the sketch row is taken `FOR NO KEY UPDATE` (changes to one sketch run one at a
+ * time, so version checks and link rules see each other), then the project access rows or the
+ * caller's participation `FOR SHARE`, so a concurrent revocation is seen or waits.
+ */
+export async function evaluateSketch(principal: Principal, action: ActionsByResource['sketch'], sketchId: string, db: Executor, options: LoadOptions = {}): Promise<SketchEvaluation> {
+  const none = { ...DENIED, actor: null, sketch: null };
+  if (!isUuid(sketchId)) return none;
+  const s = schema.sketches;
+  const [located] = await db.select({ workspaceId: s.workspaceId, projectId: s.projectId }).from(s).where(eq(s.id, sketchId));
+  if (!located) return none;
+  const actor = await loadActor(principal, located.workspaceId, db, options);
+  if (!actor.active) return { ...none, actor };
+  if (options.lock) {
+    await db.select({ id: s.id }).from(s).where(eq(s.id, sketchId)).for('no key update');
+    if (located.projectId) await lockProjectAccess(db, actor, located.projectId);
+    else if (principal.kind === 'human') await db.execute(sql`SELECT 1 FROM sketch_participants WHERE sketch_id = ${sketchId} AND user_id = ${principal.id} FOR SHARE`);
+  }
+  const [row] = await db.select({ sketch: s, readable: visibleSketchesSql(actor).mapWith(Boolean), level: sketchProjectLevel(actor).mapWith(Number) })
+    .from(s).where(eq(s.id, sketchId));
+  if (!row || !row.readable) return { ...none, actor };
+  const allowed = action === 'sketch.read' || row.sketch.scope === 'direct' || row.level >= LEVEL.contributor;
+  return { allowed, visible: true, actor, sketch: row.sketch };
+}
+
+/**
  * Decides whether `principal` may perform `action` on `resource`, reading current
  * membership, grants and object visibility. Use {@link assertAuthorized} to throw the
  * matching 404/403 error instead.
@@ -373,10 +429,11 @@ async function evaluate(principal: Principal, action: Action, resource: Resource
     case 'project': return evaluateProject(principal, action as ActionsByResource['project'], resource.id, db, options);
     case 'draft': return evaluateDraft(principal, action as ActionsByResource['draft'], resource.id, db, options);
     case 'agent': return evaluateAgent(principal, action as ActionsByResource['agent'], resource.id, db, options);
+    case 'sketch': return evaluateSketch(principal, action as ActionsByResource['sketch'], resource.id, db, options);
   }
 }
 
-const READ_ACTION = { workspace: 'workspace.read', project: 'project.read', draft: 'draft.read', agent: 'agent.read' } as const satisfies { [T in ResourceType]: ActionsByResource[T] };
+const READ_ACTION = { workspace: 'workspace.read', project: 'project.read', draft: 'draft.read', agent: 'agent.read', sketch: 'sketch.read' } as const satisfies { [T in ResourceType]: ActionsByResource[T] };
 
 /**
  * The workspace of an object the principal can currently see, or null. Entry points use
@@ -388,6 +445,7 @@ export async function visibleWorkspaceOf(principal: Principal, resource: Resourc
   if ('project' in evaluation) return evaluation.project?.workspaceId ?? null;
   if ('draft' in evaluation) return evaluation.draft?.workspaceId ?? null;
   if ('agent' in evaluation) return evaluation.agent?.workspaceId ?? null;
+  if ('sketch' in evaluation) return evaluation.sketch?.workspaceId ?? null;
   return evaluation.actor.workspaceId;
 }
 
@@ -406,7 +464,7 @@ export function eventResource(event: EventRef): ResourceRef | null {
   if (!event.workspaceId) return null;
   const type = event.kind.split('.', 1)[0];
   if (type === 'workspace') return event.objectId === event.workspaceId ? { type, id: event.objectId } : null;
-  if (type === 'project' || type === 'draft' || type === 'agent') return { type, id: event.objectId };
+  if (type === 'project' || type === 'draft' || type === 'agent' || type === 'sketch') return { type, id: event.objectId };
   return null;
 }
 
@@ -425,7 +483,7 @@ export async function authorizeEvent(principal: Principal, event: EventRef, db: 
   return true;
 }
 
-const LABELS: Record<ResourceType, string> = { workspace: 'Workspace', project: 'Project', draft: 'Draft', agent: 'Agent' };
+const LABELS: Record<ResourceType, string> = { workspace: 'Workspace', project: 'Project', draft: 'Draft', agent: 'Agent', sketch: 'Sketch' };
 
 /** Converts a decision into the non-leaking error contract. */
 export function enforce<D extends Decision>(decision: D, type: ResourceType): D {

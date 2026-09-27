@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { Link, useLocation, useNavigate, type NavigateFunction } from 'react-router';
-import { Button, EmptyState, Icon, IconButton, duration, type IconName } from '../ui';
+import { Link, useLocation, type NavigateFunction } from 'react-router';
+import { EmptyState, Icon, IconButton, duration, type IconName } from '../ui';
 import { useCaptures } from './captures';
 import { useShellData } from './data';
 import { useDraft, useReadingPosition } from './drafts';
@@ -167,21 +167,6 @@ export function TasksView() {
       <ViewEmpty icon="tasks" title="No tasks yet">
         <p>When a thought turns into something to do, its task shows up here, linked to where it came from. Nothing is due, and nothing needs clearing.</p>
       </ViewEmpty>
-    </Pane>
-  );
-}
-
-export function MapView() {
-  const navigate = useNavigate();
-  return (
-    <Pane>
-      <div className="view-empty">
-        <EmptyState icon="map" title="Start a sketch"
-          action={<Button variant="primary" icon="plus" onClick={() => startCapture(navigate)}>New thought</Button>}>
-          <p>Maps are for thinking out loud: put thoughts down, connect them and move them around. Nothing on a map has to become work.</p>
-          <p>Sketching on a canvas is on its way; for now a new thought is saved to your private notes.</p>
-        </EmptyState>
-      </div>
     </Pane>
   );
 }

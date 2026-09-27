@@ -4,7 +4,9 @@ import { UpdatePrompt } from './pwa';
 import { AppLayout } from './app/AppLayout';
 import { appLoader } from './app/data';
 import { Booting, RouteErrorPage } from './app/errors';
-import { ConversationView, DirectMessagesView, DocsView, MapView, NotFoundView, TasksView } from './app/views';
+import { ConversationView, DirectMessagesView, DocsView, NotFoundView, TasksView } from './app/views';
+import { SketchIndex } from './sketch/SketchIndex';
+import { SketchRoute } from './sketch/SketchView';
 import {
   forgotPasswordAction,
   forgotPasswordLoader,
@@ -47,7 +49,8 @@ export const router = createBrowserRouter([
         children: [
           { index: true, Component: ConversationView },
           { path: 'tasks', Component: TasksView },
-          { path: 'map', Component: MapView },
+          { path: 'map', Component: SketchIndex },
+          { path: 'map/:sketchId', Component: SketchRoute },
           { path: 'docs', Component: DocsView },
           { path: 'dm', Component: DirectMessagesView },
           { path: '*', Component: NotFoundView },

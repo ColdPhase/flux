@@ -1,4 +1,4 @@
-import type { FastifyError, FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import type { PgBoss } from 'pg-boss';
 import {
   AGENTS_PATH,
@@ -6,7 +6,6 @@ import {
   PROJECTS_PATH,
   WORKSPACES_PATH,
   type AddMemberCommand,
-  type ApiError,
   type ChangeRoleCommand,
   type CreateAgentCommand,
   type CreateDraftCommand,
@@ -18,9 +17,6 @@ import {
   type PageQuery,
   type ShareDraftCommand,
   type UpdateDraftCommand,
-  IDEMPOTENCY_KEY_HEADER,
-  IDEMPOTENT_REPLAYED_HEADER,
-  IF_MATCH_HEADER,
 } from '@flux/contracts';
 import {
   addMember,
@@ -29,7 +25,6 @@ import {
   createDraft,
   createProject,
   createWorkspace,
-  DomainError,
   getDraft,
   getProject,
   getWorkspace,
@@ -47,22 +42,13 @@ import {
   shareDraft,
   updateDraft,
   getDraftSummary,
-  InvalidInputError,
   listDraftSummaries,
-  parseIdempotencyKey,
   requestDraftSummary,
-  requestHash,
-  runIdempotent,
-  visibleWorkspaceOf,
-  assertAuthorized,
-  type ActionsByResource,
-  type CommandResponse,
   type Database,
-  type Principal,
   type ResourceRef,
-  type ResourceType,
 } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
+import { bodyId, commandRunner, expectedVersion, requires, useDomainErrors, versionEtag } from '../http/commands.js';
 
 export interface AccessRouteOptions {
   db: Database;
@@ -80,101 +66,14 @@ const pageQuery = {
 const roleSchema = { type: 'string', enum: ['owner', 'admin', 'member', 'guest'] } as const;
 const visibilitySchema = { type: 'string', enum: ['private', 'project', 'workspace'] } as const;
 
-function single(value: string | string[] | undefined) {
-  if (Array.isArray(value)) {
-    if (value.length > 1) throw new InvalidInputError('Header must appear once', 'INVALID_HEADER');
-    return value[0];
-  }
-  return value;
-}
-
-/** `If-Match: "<version>"` (or a bare integer) → version; absent → undefined. `*` and lists are rejected. */
-export function parseIfMatch(value: string | undefined): number | undefined {
-  if (value === undefined) return undefined;
-  const match = /^\s*"?([1-9][0-9]{0,9})"?\s*$/.exec(value);
-  if (!match) throw new InvalidInputError('If-Match must be a single quoted version such as "3"', 'INVALID_PRECONDITION');
-  return Number(match[1]);
-}
-
-/** Combines If-Match with a body `expectedVersion`; both may be given only if they agree. */
-function expectedVersion(request: FastifyRequest): number | undefined {
-  const header = parseIfMatch(single(request.headers[IF_MATCH_HEADER]));
-  const body = (request.body as { expectedVersion?: number } | undefined)?.expectedVersion;
-  if (header !== undefined && body !== undefined && header !== body) throw new InvalidInputError('If-Match and expectedVersion disagree', 'INVALID_PRECONDITION');
-  return header ?? body;
-}
-
-function draftEtag(value: unknown) {
-  const version = (value as { version?: unknown } | null)?.version;
-  return typeof version === 'number' ? `"${version}"` : null;
-}
-
-/** Checks, before an idempotent replay, that the caller may still read what the stored body describes. */
-type ReplayCheck = (principal: Principal, body: unknown, db: Database) => Promise<void>;
-
-function bodyId(body: unknown): string {
-  const id = (body as { id?: unknown } | null)?.id;
-  return typeof id === 'string' ? id : '';
-}
-
-/** A replay needs `action` on the object named by `id` (from the stored body or the route). */
-function requires<T extends ResourceType>(type: T, action: ActionsByResource[T], id: (body: unknown) => string): ReplayCheck {
-  return (principal, body, db) => assertAuthorized(principal, action, { type, id: id(body) } as ResourceRef<T>, db);
-}
-
-interface CommandSpec {
-  /** Stable operation name used to scope idempotency keys. */
-  operation: string;
-  /** The object whose workspace scopes the idempotency key; null outside a workspace. */
-  scope: ResourceRef | null;
-  status?: number;
-  etag?: boolean;
-  run: (principal: Principal, db: Database) => Promise<unknown>;
-  /** Current authorization a stored response must pass before it is replayed. */
-  replay: ReplayCheck;
-}
-
 /**
  * `/api/v1` workspace, project, grant, agent and draft routes. Each handler resolves the
  * current session (no caching) and calls one core domain method, which authorizes.
  * POST/PATCH commands accept `Idempotency-Key`; draft update/share/move need `If-Match`.
  */
 export async function accessRoutes(app: FastifyInstance, { db, sessions, boss }: AccessRouteOptions) {
-  app.setErrorHandler((error: FastifyError | DomainError, request, reply) => {
-    if (error instanceof DomainError) {
-      const payload: ApiError = { ...error.details, error: error.message, code: error.code };
-      return reply.code(error.status).send(payload);
-    }
-    if ((error as FastifyError).statusCode === 401) {
-      return reply.code(401).send({ error: 'Authentication required', code: 'UNAUTHENTICATED' } satisfies ApiError);
-    }
-    throw error;
-  });
-
-  const principal = async (request: Parameters<SessionResolver['requirePrincipal']>[0]) => (await sessions.requirePrincipal(request)).principal;
-
-  /** Runs a state-changing command, at most once per Idempotency-Key when one is sent. */
-  async function command(request: FastifyRequest, reply: FastifyReply, spec: CommandSpec) {
-    const actor = await principal(request);
-    const key = parseIdempotencyKey(single(request.headers[IDEMPOTENCY_KEY_HEADER]));
-    const execute = async (conn: Database): Promise<CommandResponse> => {
-      const result = await spec.run(actor, conn);
-      return { status: spec.status ?? 200, body: result ?? null, etag: spec.etag ? draftEtag(result) : null };
-    };
-    let response: CommandResponse & { replayed?: boolean };
-    if (key === null) {
-      response = await execute(db);
-    } else {
-      const workspaceId = spec.scope ? await visibleWorkspaceOf(actor, spec.scope, db) : null;
-      const hash = requestHash({ params: request.params, query: request.query, body: request.body ?? null, ifMatch: request.headers[IF_MATCH_HEADER] ?? null });
-      response = await runIdempotent(db, { principal: actor, workspaceId, operation: spec.operation, key, requestHash: hash }, execute,
-        (stored, conn) => spec.replay(actor, stored.body, conn));
-    }
-    if (response.etag) reply.header('etag', response.etag);
-    if (response.replayed) reply.header(IDEMPOTENT_REPLAYED_HEADER, 'true');
-    if (response.status === 204) return reply.code(204).send();
-    return reply.code(response.status).send(response.body);
-  }
+  useDomainErrors(app);
+  const { principal, command } = commandRunner(db, sessions);
 
   const workspaceScope = (id: string): ResourceRef => ({ type: 'workspace', id });
   const projectScope = (id: string): ResourceRef => ({ type: 'project', id });
@@ -273,7 +172,7 @@ export async function accessRoutes(app: FastifyInstance, { db, sessions, boss }:
   }));
   app.get<{ Params: { draftId: string } }>(`${DRAFTS_PATH}/:draftId`, async (request, reply) => {
     const draft = await getDraft(await principal(request), request.params.draftId, db);
-    return reply.header('etag', draftEtag(draft)).send(draft);
+    return reply.header('etag', versionEtag(draft)).send(draft);
   });
   app.patch<{ Params: { draftId: string }; Body: UpdateDraftCommand }>(`${DRAFTS_PATH}/:draftId`, {
     schema: { body: { type: 'object', additionalProperties: false, minProperties: 1, properties: { title: nameSchema, body: { type: 'string', maxLength: 100_000 }, expectedVersion: versionSchema } } },

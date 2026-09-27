@@ -4,8 +4,8 @@ import * as schema from './schema.js';
 
 export { schema };
 export { sql } from 'drizzle-orm';
-// Highest numbered file in packages/db/migrations. The API refuses other versions.
-export const FLUX_SCHEMA_VERSION = 5;
+// Highest numbered file in packages/db/migrations (0006 is reserved by #36). The API refuses other versions.
+export const FLUX_SCHEMA_VERSION = 7;
 // pg-boss 12.35.0 declares schema 43. Update this with the pinned package.
 export const PG_BOSS_SCHEMA_VERSION = 43;
 
@@ -15,6 +15,7 @@ export function createDatabase(connectionString: string) {
   return { pool, db };
 }
 export * from './repositories/push.js';
+export * from './repositories/sketches.js';
 
 /** PostgreSQL channel notified (payload: seq) after an event with a workspace commits; wakes stream connections. */
 export const EVENTS_CHANNEL = 'flux_events';

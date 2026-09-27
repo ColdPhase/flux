@@ -241,3 +241,73 @@ export const idempotencyKeys = pgTable('idempotency_keys', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
 }, (table) => [index('idempotency_keys_expiry_idx').on(table.expiresAt)]);
+
+// Sketches: thoughts on a map and the links between them (migration 0007, issue #69).
+export const sketches = pgTable('sketches', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  scope: text('scope', { enum: ['project', 'direct'] }).notNull(),
+  projectId: uuid('project_id'),
+  title: text('title').notNull(),
+  createdByUserId: text('created_by_user_id').references(() => authUsers.id),
+  createdByAgentId: uuid('created_by_agent_id'),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique().on(table.workspaceId, table.id),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.createdByAgentId], foreignColumns: [agents.workspaceId, agents.id] }),
+  index('sketches_workspace_idx').on(table.workspaceId, table.updatedAt.desc(), table.id),
+]);
+
+export const sketchParticipants = pgTable('sketch_participants', {
+  workspaceId: uuid('workspace_id').notNull(),
+  sketchId: uuid('sketch_id').notNull(),
+  userId: text('user_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.sketchId, table.userId] }),
+  foreignKey({ columns: [table.workspaceId, table.sketchId], foreignColumns: [sketches.workspaceId, sketches.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.userId], foreignColumns: [workspaceMembers.workspaceId, workspaceMembers.userId] }).onDelete('cascade'),
+  index('sketch_participants_user_idx').on(table.userId),
+]);
+
+export const sketchThoughts = pgTable('sketch_thoughts', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  sketchId: uuid('sketch_id').notNull(),
+  text: text('text').notNull(),
+  x: integer('x').notNull(),
+  y: integer('y').notNull(),
+  width: integer('width').notNull().default(184),
+  height: integer('height').notNull().default(72),
+  shape: text('shape', { enum: ['card', 'pill', 'circle'] }).notNull().default('card'),
+  placementType: text('placement_type', { enum: ['draft'] }),
+  placementId: uuid('placement_id'),
+  createdByUserId: text('created_by_user_id').references(() => authUsers.id),
+  createdByAgentId: uuid('created_by_agent_id'),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique().on(table.sketchId, table.id),
+  foreignKey({ columns: [table.workspaceId, table.sketchId], foreignColumns: [sketches.workspaceId, sketches.id] }).onDelete('cascade'),
+  index('sketch_thoughts_sketch_idx').on(table.sketchId, table.createdAt, table.id),
+]);
+
+export const sketchLinks = pgTable('sketch_links', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  sketchId: uuid('sketch_id').notNull(),
+  fromId: uuid('from_id').notNull(),
+  toId: uuid('to_id').notNull(),
+  label: text('label'),
+  createdByUserId: text('created_by_user_id').references(() => authUsers.id),
+  createdByAgentId: uuid('created_by_agent_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  foreignKey({ columns: [table.workspaceId, table.sketchId], foreignColumns: [sketches.workspaceId, sketches.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.sketchId, table.fromId], foreignColumns: [sketchThoughts.sketchId, sketchThoughts.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.sketchId, table.toId], foreignColumns: [sketchThoughts.sketchId, sketchThoughts.id] }).onDelete('cascade'),
+]);

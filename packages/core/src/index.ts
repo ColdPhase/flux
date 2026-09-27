@@ -18,6 +18,7 @@ export {
   isUuid,
   AGENT_ACTIONS,
   DRAFT_ACTIONS,
+  SKETCH_ACTIONS,
   PROJECT_ACTIONS,
   WORKSPACE_ACTIONS,
   type Action,
@@ -32,6 +33,9 @@ export * from './access/domain.js';
 export * from './idempotency.js';
 export * from './jobs/draft-summary.js';
 export * from './stream-audience.js';
+export * from './sketches/index.js';
+export { policySketchAccess } from './access/sketch-access.js';
+export { recordEvent } from './events.js';
 
 export const SAMPLE_JOB = 'sample.process';
 
