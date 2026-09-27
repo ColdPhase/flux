@@ -150,14 +150,44 @@ Endpoints, all resolved with `requirePrincipal` and limited to the caller's rows
 (another user's id is `404`): `GET /api/v1/push/public-key`,
 `GET|POST /api/v1/push/subscriptions` (idempotent per endpoint; a browser that
 signs in to another account moves its subscription to that account),
-`DELETE /api/v1/push/subscriptions/:id`, `GET /api/v1/inbox?limit=` and
-`POST /api/v1/inbox/:id/read`. Server code creates a notification with
-`createNotification()` from `@flux/core`: it stores the inbox row and, in the same
-transaction, queues one `push.send` job per subscription (5 retries, exponential
-backoff up to 10 minutes, for 429/5xx/network errors). Before sending, the worker
-rechecks that the account exists and still owns both the subscription and the
-notification. The payload is title, body and a same-origin path; callers decide
-what text is safe on a lock screen.
+`DELETE /api/v1/push/subscriptions/:id`, `GET /api/v1/inbox?limit=`,
+`GET /api/v1/inbox/:id` and `POST /api/v1/inbox/:id/read`.
+
+**Audience.** Every notification names its source (`workspace`, `project` or
+`draft`, with its `workspace_id`). Server code creates one with `createNotifier(db,
+boss)` from `apps/server/src/push` (the core use case `createNotification`): the
+recipient must be allowed `<type>.read` on the source at that moment, otherwise
+nothing is stored (`404 SOURCE_NOT_FOUND`). The inbox list and unread count apply
+the access policy's `visibleFilter` per workspace, and `GET`/`POST .../:id` call
+`authorize` again, so a revoked grant, an explicit deny, a draft made private or
+removal from the workspace hides the row (`404`) until access returns. The row is
+stored in the same transaction as one `push.send` job per subscription with an
+active session (5 retries, exponential backoff up to 10 minutes, for
+429/5xx/network errors).
+
+**Device sessions.** Each subscription stores the Better Auth session that created
+it (`session_id`, foreign key `ON DELETE CASCADE`). Sign-out, revoking a session,
+revoke-others, password reset (which revokes all sessions) and account deletion all
+delete the session row, and with it that device's subscriptions, whichever code path
+ends the session. The web client also unsubscribes before signing out
+(`signOutDevice`). After signing in again, the client's start-up sync re-registers
+the browser subscription under the new session.
+
+**Before each send** the worker rechecks from current rows that the account still
+owns the subscription and the notification, that the subscribing session exists and
+has not expired (otherwise the subscription is deleted), and that the recipient can
+still see the source through the access policy (otherwise the job completes without
+sending). The lock-screen rule in [mobile-pwa.md](../product/mobile-pwa.md#lock-screen-privacy)
+decides what the payload may contain.
+
+**Layers (#46).** `packages/core/src/push` holds the use cases and their ports
+(`NotificationRepository`, `PushSubscriptionRepository`, `JobQueue`,
+`NotificationUnitOfWork`, `PushDeliveryRepository`, `PushSender`,
+`SourceReadAuthorizer`) and imports no Drizzle, `@flux/db`, pg-boss or web-push;
+`tests/app/architecture.test.ts` enforces that transitively. Drizzle row adapters
+are in `packages/db/src/repositories/push.ts`, the policy adapter is
+`policySourceReader` in `packages/core/src/access`, and the server (routes,
+inbox filter, pg-boss queue, transaction) and worker (web-push sender) assemble them.
 
 `./scripts/check_application.sh` layers `infra/compose.test.yaml` over the base
 file: a local HTTPS push-service mock that verifies the VAPID signature and records

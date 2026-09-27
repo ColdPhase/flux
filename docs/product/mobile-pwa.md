@@ -131,6 +131,29 @@ These are vendor documentation statements plus our inferences, not device result
   `Notification.permission` starts as `denied` in headless mode, so real permission
   and OS delivery cannot be shown there.
 
+### Lock-screen privacy
+
+A push notification can appear on a locked or shared screen, so its content follows
+the same audience as the thing it is about ([#41](https://github.com/ColdPhase/flux/issues/41),
+[access policy](../development/access-policy.md)):
+
+- A notification exists only for a recipient who can read its source (a workspace,
+  project or draft; later conversations and DMs) when it is created.
+- Right before sending, the worker rechecks the source through the access policy. A
+  recipient who can no longer see the source receives nothing. The title and body
+  are included only while the recipient can read the source; otherwise the device
+  shows the fixed text "New activity in Flux" with an opaque notification id.
+- Tapping a notification never trusts the payload: the service worker asks
+  `GET /api/v1/inbox/:id`, which rechecks access and the session, and opens the app at
+  its start page when the answer is `404`.
+- A subscription belongs to the session that created it. Signing out, revoking that
+  session, revoking other sessions, resetting the password or deleting the account
+  deletes it, so a handed-over or signed-out device stops receiving previews.
+- The push payload is end-to-end encrypted to the device (RFC 8291), so the push
+  service cannot read it. Operating-system settings (for example hiding previews on
+  the lock screen) still apply on top. *Unverified on devices:* the tap-time fetch and
+  generic preview on iPhone/iPad and Android are part of MOB-4/MOB-7 evidence in #20.
+
 MOB-1 through MOB-7 are required in milestone 2 and its final acceptance report;
 track implementation in [issue #20](https://github.com/ColdPhase/flux/issues/20).
 Agents may create and sequence smaller issues, but cannot mark the full product

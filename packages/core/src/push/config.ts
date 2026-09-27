@@ -1,14 +1,24 @@
-import { createECDH, randomUUID } from 'node:crypto';
+import { createECDH } from 'node:crypto';
 import { isIP } from 'node:net';
-import { eq, sql } from 'drizzle-orm';
-import { fromDrizzle, type PgBoss, type Queue } from 'pg-boss';
-import { schema } from '@flux/db';
-import type { Database } from './index.js';
+
+// Push configuration and input rules (issue #41). Pure: no database, queue or HTTP imports
+// (see tests/app/architecture.test.ts).
 
 /** One job per (notification, subscription) so one slow device never delays or duplicates another. */
 export const PUSH_SEND_JOB = 'push.send';
+
+/** The retry policy of a queue, in the shape the job-queue adapter (pg-boss) accepts. */
+export interface JobRetryPolicy {
+  retryLimit: number;
+  retryDelay: number;
+  retryBackoff: boolean;
+  retryDelayMax: number;
+  expireInSeconds: number;
+  deleteAfterSeconds: number;
+}
+
 /** Bounded retries with exponential backoff for 429/5xx/network failures (about 10 s … 10 min). */
-export const PUSH_SEND_QUEUE: Omit<Queue, 'name'> = {
+export const PUSH_SEND_QUEUE: JobRetryPolicy = {
   retryLimit: 5,
   retryDelay: 10,
   retryBackoff: true,
@@ -16,13 +26,6 @@ export const PUSH_SEND_QUEUE: Omit<Queue, 'name'> = {
   expireInSeconds: 60,
   deleteAfterSeconds: 7 * 24 * 3600,
 };
-
-export interface PushSendJob {
-  notificationId: string;
-  subscriptionId: string;
-  /** The recipient at enqueue time; the worker rechecks that the user and ownership still hold. */
-  userId: string;
-}
 
 export type PushServerConfig =
   | { status: 'available'; publicKey: string }
@@ -109,35 +112,7 @@ export function isSafeAppPath(value: string) {
   return value.startsWith('/') && !value.startsWith('//') && !value.includes('\\') && value.length <= 2048 && ![...value].some((char) => char.charCodeAt(0) < 0x20 || char.charCodeAt(0) === 0x7f);
 }
 
-export interface NotificationInput {
-  userId: string;
-  title: string;
-  body?: string;
-  url?: string | null;
-}
-
-/**
- * Stores an inbox notification and, in the same transaction, queues one push job per current
- * subscription of that user. The inbox row exists even when push is unavailable or denied.
- */
-export async function createNotification(db: Database, boss: PgBoss, input: NotificationInput) {
-  const title = input.title.trim();
-  if (!title || title.length > 200) throw new Error('Notification title must be 1–200 characters');
-  const body = (input.body ?? '').trim();
-  if (body.length > 1000) throw new Error('Notification body must be at most 1000 characters');
-  const url = input.url ?? null;
-  if (url !== null && !isSafeAppPath(url)) throw new Error('Notification url must be a same-origin path');
-  const id = randomUUID();
-  return db.transaction(async (tx) => {
-    await tx.insert(schema.notifications).values({ id, userId: input.userId, title, body, url });
-    const subscriptions = await tx.select({ id: schema.pushSubscriptions.id }).from(schema.pushSubscriptions)
-      .where(eq(schema.pushSubscriptions.userId, input.userId));
-    const jobIds: string[] = [];
-    for (const subscription of subscriptions) {
-      const data: PushSendJob = { notificationId: id, subscriptionId: subscription.id, userId: input.userId };
-      const jobId = await boss.send(PUSH_SEND_JOB, data, { db: fromDrizzle(tx, sql), singletonKey: `${id}:${subscription.id}` });
-      if (jobId) jobIds.push(jobId);
-    }
-    return { id, jobIds };
-  });
+/** The browser's `auth` secret: 16 bytes, base64url. */
+export function isPushAuthSecret(value: string) {
+  return /^[A-Za-z0-9_-]+={0,2}$/.test(value) && Buffer.from(value.replace(/=+$/, ''), 'base64url').length === 16;
 }

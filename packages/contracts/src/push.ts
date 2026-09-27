@@ -28,17 +28,38 @@ export interface PushSubscriptionSummary {
   lastFailureStatus: number | null;
 }
 
-/** Payload encrypted to the subscription and read by the service worker's push handler. */
-export interface PushPayload {
-  notificationId: string;
-  title: string;
-  body: string;
-  /** Same-origin path to open, re-authorized by the app when opened. */
-  url: string;
+/** Shown on the device when the sender cannot prove the recipient may read the source. */
+export const GENERIC_PUSH_TITLE = 'New activity in Flux';
+
+/**
+ * Payload encrypted to the subscription and read by the service worker's push handler.
+ * `full` carries the text only when the recipient could read the source at send time;
+ * otherwise it is `generic` (fixed title and opaque id). On click the service worker asks
+ * `GET /api/v1/inbox/:id`, which rechecks access, before opening anything.
+ */
+export type PushPayload =
+  | {
+    preview: 'full';
+    notificationId: string;
+    title: string;
+    body: string;
+    /** Same-origin path to open, re-authorized by the app when opened. */
+    url: string;
+  }
+  | { preview: 'generic'; notificationId: string; title: string };
+
+export type NotificationSourceType = 'workspace' | 'project' | 'draft';
+
+/** The object a notification is about. Its `<type>.read` decides who may see the notification. */
+export interface NotificationSourceRef {
+  workspaceId: string;
+  type: NotificationSourceType;
+  id: string;
 }
 
 export interface InboxItem {
   id: string;
+  source: NotificationSourceRef;
   title: string;
   body: string;
   url: string | null;

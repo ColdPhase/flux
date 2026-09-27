@@ -25,8 +25,11 @@ replay, worker jobs (before reading inputs and before committing results), file
 upload and download, search, MCP tools and extensions MUST get access decisions
 from these functions or from the domain methods. They must not query collaborative
 tables for a caller directly. A new object type extends `policy.ts` with its own
-actions and filter. It does not get a second policy module. Surfaces that do not
-exist yet (files, search, MCP, extensions, stream and worker rechecks) are future
+actions and filter. It does not get a second policy module. Notifications and
+Web Push (#41) follow this rule: a notification inherits the audience of its source
+(`<type>.read`), checked at creation, in the inbox list (`visibleFilter`), on direct
+reads (`authorize`) and by the worker before each send. Surfaces that do not
+exist yet (files, search, MCP, extensions, stream and other worker rechecks) are future
 integration work. Their enforcement is **not** implemented or verified here.
 
 ## Model

@@ -10,7 +10,7 @@ import { createSample, SAMPLE_JOB } from '@flux/core';
 import { registerDatabase } from './plugins/database.js';
 import { loadIdentityConfig, registerIdentity } from './identity/index.js';
 import { accessRoutes } from './access/routes.js';
-import { loadPushServerConfig, registerPush } from './push/index.js';
+import { loadPushServerConfig, pushRoutes } from './push/index.js';
 import { setStaticHeaders } from './pwa/static-headers.js';
 
 const connectionString = process.env.DATABASE_URL;
@@ -28,7 +28,7 @@ await boss.start();
 app.addHook('onClose', async () => boss.stop());
 const identity = registerIdentity(app, { db, config: identityConfig });
 await app.register(accessRoutes, { db, sessions: identity });
-registerPush(app, { db, sessions: identity, config: pushConfig });
+await app.register(pushRoutes, { db, sessions: identity, config: pushConfig });
 if (pushConfig.status === 'unavailable') app.log.warn(pushConfig.reason);
 
 app.get('/api/v1/health', async (_request, reply) => {

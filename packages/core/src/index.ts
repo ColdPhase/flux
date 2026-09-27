@@ -46,4 +46,5 @@ export async function createSample(principal: Principal, command: SampleCommand,
   });
 }
 
-export * from './push.js';
+export * from './push/index.js';
+export { policySourceReader } from './access/source-reader.js';

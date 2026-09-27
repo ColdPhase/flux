@@ -2,7 +2,8 @@ import type { PgBoss } from 'pg-boss';
 import { PUSH_SEND_JOB, loadPushSenderConfig, type Database, type PushSendJob } from '@flux/core';
 import { createPushAgent, deliverPush } from './deliver.js';
 
-export { deliverPush, RetryableDeliveryError, type DeliveryOutcome } from './deliver.js';
+export { deliverPush } from './deliver.js';
+export { RetryableDeliveryError, type DeliveryOutcome } from '@flux/core';
 
 /**
  * Consumes push.send jobs. Without VAPID configuration jobs complete as skipped and the

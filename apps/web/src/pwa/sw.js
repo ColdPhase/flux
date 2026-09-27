@@ -1,7 +1,7 @@
 /* Flux service worker (issue #41). Built to /sw.js by build/service-worker-plugin.ts, which
  * replaces the version and precache placeholders below. Plain JavaScript on purpose: it is a
  * classic worker script with no imports, so every supported browser can run it. */
-/* global self, caches, fetch, URL, Request, Response, console */
+/* global self, caches, fetch, URL, Request, Response, console, AbortSignal */
 
 const VERSION = '__FLUX_SW_VERSION__';
 const PRECACHE = /* __FLUX_PRECACHE__ */ [];
@@ -69,24 +69,50 @@ function appUrl(value) {
   }
 }
 
+const GENERIC_TITLE = 'New activity in Flux';
+
 self.addEventListener('push', (event) => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch { data = {}; }
-  const title = typeof data.title === 'string' && data.title ? data.title : 'Flux';
-  const body = typeof data.body === 'string' ? data.body : 'You have new activity in Flux.';
+  const notificationId = typeof data.notificationId === 'string' ? data.notificationId : undefined;
+  // Lock-screen privacy: text is shown only when the server sent a full preview, which it does
+  // only while the recipient can read the source. Anything else shows the fixed generic title.
+  const full = data.preview === 'full' && typeof data.title === 'string' && data.title;
+  const title = full ? data.title : GENERIC_TITLE;
+  const body = full && typeof data.body === 'string' ? data.body : '';
   // Every push shows a notification: browsers require user-visible pushes.
   event.waitUntil(self.registration.showNotification(title, {
     body,
     icon: '/icons/icon-192.png',
-    tag: typeof data.notificationId === 'string' ? data.notificationId : undefined,
-    data: { url: appUrl(data.url), notificationId: data.notificationId },
+    tag: notificationId,
+    data: { notificationId },
   }));
 });
 
+/**
+ * Where a tapped notification leads. The payload's link is not trusted: the server rechecks
+ * access for this notification now and answers 404 when the person can no longer read it
+ * (or the device was signed out), in which case the app opens at its start page.
+ */
+async function notificationTarget(notificationId) {
+  if (typeof notificationId !== 'string' || !/^[0-9a-f-]{36}$/i.test(notificationId)) return appUrl('/');
+  try {
+    // Bounded, so the window still opens promptly after the tap (browsers limit how long a
+    // notification click may take to open a window).
+    const signal = typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(3000) : undefined;
+    const response = await fetch(`/api/v1/inbox/${notificationId}`, { credentials: 'same-origin', cache: 'no-store', signal });
+    if (!response.ok) return appUrl('/');
+    const item = await response.json();
+    return appUrl(item && typeof item.url === 'string' ? item.url : '/');
+  } catch {
+    return appUrl('/');
+  }
+}
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const target = appUrl(event.notification.data && event.notification.data.url);
   event.waitUntil((async () => {
+    const target = await notificationTarget(event.notification.data && event.notification.data.notificationId);
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const client of windows) {
       if (new URL(client.url).origin !== self.location.origin) continue;

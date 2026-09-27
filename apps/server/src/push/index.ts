@@ -1,24 +1,33 @@
-import { randomUUID } from 'node:crypto';
-import type { FastifyInstance } from 'fastify';
-import { and, count, desc, eq, isNull, sql } from 'drizzle-orm';
-import { schema } from '@flux/db';
-import { isP256PublicKey, pushEndpointViolation, type Database, type PushServerConfig } from '@flux/core';
+import type { FastifyError, FastifyInstance } from 'fastify';
+import {
+  DomainError,
+  getInboxItem,
+  listInbox,
+  markInboxItemRead,
+  policySourceReader,
+  registerPushSubscription,
+  removePushSubscription,
+  type Database,
+  type NotificationRecord,
+  type PushServerConfig,
+  type PushSubscriptionRecord,
+} from '@flux/core';
 import {
   INBOX_PATH,
   PUSH_PUBLIC_KEY_PATH,
   PUSH_SUBSCRIPTIONS_PATH,
+  type ApiError,
+  type InboxItem,
   type InboxResponse,
   type PushPublicKeyResponse,
   type PushSubscriptionRequest,
   type PushSubscriptionSummary,
 } from '@flux/contracts';
 import type { SessionResolver } from '../identity/index.js';
+import { notificationRepository, subscriptionRepository } from './adapters.js';
 
 export { loadPushServerConfig, type PushServerConfig } from '@flux/core';
-
-/** A browser normally holds one subscription per origin; this bounds rows per account. */
-export const MAX_SUBSCRIPTIONS_PER_USER = 50;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export { createNotifier, notificationUnitOfWork, pgBossQueue } from './adapters.js';
 
 export interface PushRoutesOptions {
   db: Database;
@@ -47,7 +56,7 @@ function unavailable(config: Extract<PushServerConfig, { status: 'unavailable' }
   return { status: 'unavailable', code: 'PUSH_UNAVAILABLE', error: config.reason };
 }
 
-function summary(row: typeof schema.pushSubscriptions.$inferSelect): PushSubscriptionSummary {
+function summary(row: PushSubscriptionRecord): PushSubscriptionSummary {
   return {
     id: row.id,
     endpointOrigin: new URL(row.endpoint).origin,
@@ -60,15 +69,31 @@ function summary(row: typeof schema.pushSubscriptions.$inferSelect): PushSubscri
   };
 }
 
-function authSecretIsValid(value: string) {
-  return /^[A-Za-z0-9_-]+={0,2}$/.test(value) && Buffer.from(value.replace(/=+$/, ''), 'base64url').length === 16;
+function inboxItem(row: NotificationRecord): InboxItem {
+  return {
+    id: row.id,
+    source: row.source,
+    title: row.title,
+    body: row.body,
+    url: row.url,
+    createdAt: row.createdAt.toISOString(),
+    readAt: row.readAt?.toISOString() ?? null,
+  };
 }
 
 /**
- * Web Push subscription routes and the in-app inbox. Every route resolves the caller with
- * requirePrincipal and only reads or changes that user's rows; someone else's id is a 404.
+ * Web Push subscription routes and the in-app inbox. Every route resolves the caller's live
+ * session and calls a core use case. Subscriptions are bound to that session; inbox rows are
+ * listed and returned only while the caller can read their source (otherwise `404`).
  */
-export function registerPush(app: FastifyInstance, { db, sessions, config }: PushRoutesOptions) {
+export async function pushRoutes(app: FastifyInstance, { db, sessions, config }: PushRoutesOptions) {
+  app.setErrorHandler((error: FastifyError | DomainError, _request, reply) => {
+    if (error instanceof DomainError) return reply.code(error.status).send({ error: error.message, code: error.code } satisfies ApiError);
+    throw error;
+  });
+  const subscriptions = subscriptionRepository(db);
+  const inbox = { notifications: notificationRepository(db), authorizer: policySourceReader(db) };
+
   app.get(PUSH_PUBLIC_KEY_PATH, async (request, reply) => {
     await sessions.requirePrincipal(request);
     if (config.status === 'unavailable') return reply.code(503).send(unavailable(config));
@@ -77,60 +102,22 @@ export function registerPush(app: FastifyInstance, { db, sessions, config }: Pus
 
   app.get(PUSH_SUBSCRIPTIONS_PATH, async (request): Promise<PushSubscriptionSummary[]> => {
     const { principal } = await sessions.requirePrincipal(request);
-    const rows = await db.select().from(schema.pushSubscriptions)
-      .where(eq(schema.pushSubscriptions.userId, principal.id))
-      .orderBy(schema.pushSubscriptions.createdAt);
-    return rows.map(summary);
+    return (await subscriptions.listForUser(principal.id)).map(summary);
   });
 
   app.post<{ Body: PushSubscriptionRequest }>(PUSH_SUBSCRIPTIONS_PATH, { schema: { body: subscriptionBody } }, async (request, reply) => {
-    const { principal } = await sessions.requirePrincipal(request);
+    const { principal, sessionId } = await sessions.requirePrincipal(request);
     if (config.status === 'unavailable') return reply.code(503).send(unavailable(config));
-    const { endpoint, keys, expirationTime } = request.body;
-    const violation = pushEndpointViolation(endpoint);
-    if (violation) return reply.code(400).send({ error: violation, code: 'PUSH_ENDPOINT_REJECTED' });
-    if (!isP256PublicKey(keys.p256dh) || !authSecretIsValid(keys.auth)) {
-      return reply.code(400).send({ error: 'Subscription keys are not a valid P-256 key and 16-byte auth secret', code: 'PUSH_KEYS_INVALID' });
-    }
-    const [existing] = await db.select({ id: schema.pushSubscriptions.id }).from(schema.pushSubscriptions)
-      .where(eq(schema.pushSubscriptions.endpoint, endpoint));
-    if (!existing) {
-      const [{ total }] = await db.select({ total: count() }).from(schema.pushSubscriptions).where(eq(schema.pushSubscriptions.userId, principal.id));
-      if (total >= MAX_SUBSCRIPTIONS_PER_USER) {
-        return reply.code(409).send({ error: `At most ${MAX_SUBSCRIPTIONS_PER_USER} push subscriptions per account`, code: 'PUSH_SUBSCRIPTION_LIMIT' });
-      }
-    }
-    const userAgent = request.headers['user-agent']?.slice(0, 500) ?? null;
-    const deviceLabel = request.body.deviceLabel?.trim() || null;
-    const values = {
-      userId: principal.id,
-      p256dh: keys.p256dh.replace(/=+$/, ''),
-      auth: keys.auth.replace(/=+$/, ''),
-      expirationTime: typeof expirationTime === 'number' ? new Date(expirationTime) : null,
-      deviceLabel,
-      userAgent,
-    };
-    // Idempotent on endpoint. The endpoint identifies a browser profile, so when another
-    // account signs in on that browser and subscribes, the device moves to that account and
-    // the previous account stops receiving pushes there.
-    const id = randomUUID();
-    const [row] = await db.insert(schema.pushSubscriptions)
-      .values({ id, endpoint, ...values })
-      .onConflictDoUpdate({
-        target: schema.pushSubscriptions.endpoint,
-        set: { ...values, updatedAt: new Date(), lastFailureAt: null, lastFailureStatus: null },
-      })
-      .returning();
-    return reply.code(row!.id === id ? 201 : 200).send(summary(row!));
+    const { record, created } = await registerPushSubscription(subscriptions, { userId: principal.id, sessionId }, {
+      ...request.body,
+      userAgent: request.headers['user-agent'] ?? null,
+    });
+    return reply.code(created ? 201 : 200).send(summary(record));
   });
 
   app.delete<{ Params: { id: string } }>(`${PUSH_SUBSCRIPTIONS_PATH}/:id`, async (request, reply) => {
     const { principal } = await sessions.requirePrincipal(request);
-    if (!UUID.test(request.params.id)) return reply.code(404).send({ error: 'Subscription not found' });
-    const deleted = await db.delete(schema.pushSubscriptions)
-      .where(and(eq(schema.pushSubscriptions.id, request.params.id), eq(schema.pushSubscriptions.userId, principal.id)))
-      .returning({ id: schema.pushSubscriptions.id });
-    if (!deleted.length) return reply.code(404).send({ error: 'Subscription not found' });
+    await removePushSubscription(subscriptions, principal.id, request.params.id);
     return reply.code(204).send();
   });
 
@@ -138,33 +125,18 @@ export function registerPush(app: FastifyInstance, { db, sessions, config }: Pus
     schema: { querystring: { type: 'object', additionalProperties: false, properties: { limit: { type: 'integer', minimum: 1, maximum: 100 } } } },
   }, async (request): Promise<InboxResponse> => {
     const { principal } = await sessions.requirePrincipal(request);
-    const rows = await db.select().from(schema.notifications)
-      .where(eq(schema.notifications.userId, principal.id))
-      .orderBy(desc(schema.notifications.createdAt), desc(schema.notifications.id))
-      .limit(request.query.limit ?? 50);
-    const [{ unread }] = await db.select({ unread: count() }).from(schema.notifications)
-      .where(and(eq(schema.notifications.userId, principal.id), isNull(schema.notifications.readAt)));
-    return {
-      items: rows.map((row) => ({
-        id: row.id,
-        title: row.title,
-        body: row.body,
-        url: row.url,
-        createdAt: row.createdAt.toISOString(),
-        readAt: row.readAt?.toISOString() ?? null,
-      })),
-      unread,
-    };
+    const { items, unread } = await listInbox(inbox, principal.id, request.query.limit ?? 50);
+    return { items: items.map(inboxItem), unread };
   });
 
-  app.post<{ Params: { id: string } }>(`${INBOX_PATH}/:id/read`, async (request, reply) => {
+  app.get<{ Params: { id: string } }>(`${INBOX_PATH}/:id`, async (request): Promise<InboxItem> => {
     const { principal } = await sessions.requirePrincipal(request);
-    if (!UUID.test(request.params.id)) return reply.code(404).send({ error: 'Notification not found' });
-    const [row] = await db.update(schema.notifications)
-      .set({ readAt: sql`coalesce(${schema.notifications.readAt}, now())` })
-      .where(and(eq(schema.notifications.id, request.params.id), eq(schema.notifications.userId, principal.id)))
-      .returning({ id: schema.notifications.id, readAt: schema.notifications.readAt });
-    if (!row) return reply.code(404).send({ error: 'Notification not found' });
-    return { id: row.id, readAt: row.readAt?.toISOString() ?? null };
+    return inboxItem(await getInboxItem(inbox, principal.id, request.params.id));
+  });
+
+  app.post<{ Params: { id: string } }>(`${INBOX_PATH}/:id/read`, async (request) => {
+    const { principal } = await sessions.requirePrincipal(request);
+    const { id, readAt } = await markInboxItemRead(inbox, principal.id, request.params.id);
+    return { id, readAt: readAt.toISOString() };
   });
 }
