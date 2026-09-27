@@ -3,7 +3,9 @@
  * points map `status` to their transport; `code` is stable and safe to show.
  */
 export class DomainError extends Error {
-  constructor(readonly status: 400 | 403 | 404 | 409 | 422, readonly code: string, message: string) {
+  /** Extra safe fields merged into the error body, e.g. the latest authorized version. */
+  details?: Record<string, unknown>;
+  constructor(readonly status: 400 | 403 | 404 | 409 | 422 | 428, readonly code: string, message: string) {
     super(message);
     this.name = new.target.name;
   }
@@ -39,5 +41,23 @@ export class RuleViolationError extends DomainError {
 export class ConflictError extends DomainError {
   constructor(message: string, code = 'CONFLICT') {
     super(409, code, message);
+  }
+}
+
+/**
+ * The caller's expected version is stale. The change was not applied. `details` carries
+ * the latest version and object the caller is authorized to read.
+ */
+export class VersionConflictError extends ConflictError {
+  constructor(currentVersion: number, current: unknown) {
+    super('The object changed since the expected version', 'VERSION_CONFLICT');
+    this.details = { currentVersion, current };
+  }
+}
+
+/** A versioned mutation arrived without an expected version (If-Match or expectedVersion). */
+export class PreconditionRequiredError extends DomainError {
+  constructor() {
+    super(428, 'PRECONDITION_REQUIRED', 'This change needs the expected version in If-Match or expectedVersion');
   }
 }

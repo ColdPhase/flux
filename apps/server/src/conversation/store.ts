@@ -8,7 +8,7 @@ import type {
 import {
   ConflictError, enforce, evaluateDraft, evaluateProject, InvalidInputError, NotFoundError,
   positiveVersion, uuid,
-  parsePage, type Database, type Principal,
+  parsePage, recordEvent, type Database, type Principal,
 } from '@flux/core';
 import type { ConversationPort } from '@flux/core';
 
@@ -94,12 +94,12 @@ async function lockIdempotency(tx: Tx, projectId: string, authorId: string, clie
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`${projectId}:${authorId}:${clientId}`}))`);
 }
 
-async function sendInTransaction(tx: Tx, conversation: ConversationRow, authorId: string, input: Parameters<ConversationPort['sendMessage']>[2]) {
+async function sendInTransaction(tx: Tx, conversation: ConversationRow, authorId: string, input: Parameters<ConversationPort['sendMessage']>[2]): Promise<{ message: ConversationMessage; inserted: boolean }> {
   const existing = await existingMessage(conversation.projectId, authorId, input.clientMessageId, tx);
   if (existing) {
     if (existing.requestFingerprint !== input.fingerprint || existing.conversationId !== conversation.id)
       throw new ConflictError('This clientMessageId was used for another message', 'IDEMPOTENCY_CONFLICT');
-    return message(existing);
+    return { message: message(existing), inserted: false };
   }
   await sourceExists(conversation.projectId, input.source, tx);
   const [updated] = await tx.update(schema.projectConversations)
@@ -112,11 +112,11 @@ async function sendInTransaction(tx: Tx, conversation: ConversationRow, authorId
     requestFingerprint: input.fingerprint, sequence, body: input.body,
     sourceMaterialId: input.source?.materialId ?? null, sourceMaterialVersion: input.source?.version ?? null,
   }).onConflictDoNothing().returning();
-  if (inserted) return message(inserted);
+  if (inserted) return { message: message(inserted), inserted: true };
   const raced = await existingMessage(conversation.projectId, authorId, input.clientMessageId, tx);
   if (!raced || raced.requestFingerprint !== input.fingerprint || raced.conversationId !== conversation.id)
     throw new ConflictError('This clientMessageId was used for another message', 'IDEMPOTENCY_CONFLICT');
-  return message(raced);
+  return { message: message(raced), inserted: false };
 }
 
 export function conversationStore(db: Database) {
@@ -179,9 +179,10 @@ export function conversationStore(db: Database) {
           id: randomUUID(), workspaceId: project.workspaceId, projectId, createdBy: authorId,
         }).returning();
         const first = await sendInTransaction(tx, row!, authorId, input);
+        if (first.inserted) await recordEvent(tx, principal, project.workspaceId, 'project.conversation_created.v1', projectId, {});
         return { id: row!.id, projectId, workspaceId: project.workspaceId,
           audience: { kind: 'project' as const, projectId }, createdBy: authorId,
-          createdAt: row!.createdAt.toISOString(), firstMessageBody: first.body, messages: [first],
+          createdAt: row!.createdAt.toISOString(), firstMessageBody: first.message.body, messages: [first.message],
           messagePage: { hasMoreBefore: false, nextBeforeSequence: null, limit: 50 } };
       });
     },
@@ -191,7 +192,9 @@ export function conversationStore(db: Database) {
       return db.transaction(async (tx) => {
         const row = await locateConversation(principal, conversationId, tx, true, true);
         await lockIdempotency(tx, row.projectId, authorId, input.clientMessageId);
-        return sendInTransaction(tx, row, authorId, input);
+        const sent = await sendInTransaction(tx, row, authorId, input);
+        if (sent.inserted) await recordEvent(tx, principal, row.workspaceId, 'project.message_sent.v1', row.projectId, {});
+        return sent.message;
       });
     },
 
@@ -257,6 +260,7 @@ export function conversationStore(db: Database) {
           title: input.title, body: input.body, url: input.url, authorId,
           sourceDraftId: input.sourceDraftId, sourceDraftVersion: input.sourceDraftVersion,
         }).returning();
+        await recordEvent(tx, principal, project.workspaceId, 'project.material_created.v1', projectId, {});
         return material(created, first!, principal);
       });
     },
@@ -287,6 +291,7 @@ export function conversationStore(db: Database) {
           version: updated!.currentVersion, ...next, authorId,
           clientMutationId: input.clientMutationId, requestFingerprint: input.fingerprint,
         }).returning();
+        await recordEvent(tx, principal, row.workspaceId, 'project.material_updated.v1', row.projectId, {});
         return material(updated!, snapshot!, principal);
       });
     },

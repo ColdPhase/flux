@@ -49,10 +49,10 @@ material and linked conversation survive. It removes only its own test volumes.
 
 ## Stacked web surface (#36)
 
-The project conversation UI is developed on `codex-hubert/36-ui-stack`, based on
-backend `a6a12f4` and locally merged with app-shell PR #55 head `deee608`.
-It must be rebased after the independently reviewed shell and backend heads merge;
-this stacked branch is not a substitute for their reviews. The shell loads only
+The project conversation UI is developed on `codex-hubert/36-ui-integration`,
+combining the backend and approved app-shell PR #55 head `430bbd4`. It must be
+reconciled after #15/#55 merge and independently reviewed at one pinned head.
+The shell loads only
 projects that the current person can see, and a selected project route loads its
 conversation and materials under the current session. A revoked project route
 returns an error instead of keeping old server content on screen. The active
@@ -77,3 +77,20 @@ covers real two-user sending, private draft reload, selected redacted publicatio
 version citation, lost-response retry without a duplicate, phone draft retention,
 and denial after revocation. Backend database rows and restart are covered by
 `./scripts/check_application.sh`.
+
+## Authorized project refresh events (#36 + #47)
+
+A committed conversation start, reply, material publication or material revision
+records exactly one project-scoped event in the same PostgreSQL transaction:
+`project.conversation_created.v1`, `project.message_sent.v1`,
+`project.material_created.v1` or `project.material_updated.v1` respectively.
+The event's `object_id` is the project id and its `data` is `{}`. The stream frame
+therefore carries the kind, project id and workspace id, never message text,
+material title/body/URL, a private draft id, or a client mutation key. A client
+with current project access may refetch the conversation/material HTTP endpoints.
+The first message is included in `conversation_created`; there is no second event
+for that initial message. Idempotent retries return the original result without a
+new event. `recordEvent` writes the recipient index after the mutation, while the
+transaction's access locks are held; stream delivery and replay recheck current
+project rights. The UI currently refreshes by polling/route revalidation and does
+ not yet subscribe to the stream.

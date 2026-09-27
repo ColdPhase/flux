@@ -5,15 +5,18 @@ import { schema } from '@flux/db';
 import type { SampleAccepted, SampleCommand } from '@flux/contracts';
 import type { Database, Principal } from './types.js';
 
-export type { Database, Executor, Principal } from './types.js';
+export type { Database, DatabaseHandle, Executor, Principal, Transaction } from './types.js';
 export * from './access/errors.js';
 export {
   authorize,
   assertAuthorized,
+  authorizeEvent,
+  eventResource,
   enforce,
   evaluateProject,
   evaluateDraft,
   visibleFilter,
+  visibleWorkspaceOf,
   loadActor,
   isUuid,
   AGENT_ACTIONS,
@@ -24,10 +27,15 @@ export {
   type ActionsByResource,
   type Actor,
   type Decision,
+  type EventRef,
   type ResourceRef,
   type ResourceType,
 } from './access/policy.js';
 export * from './access/domain.js';
+export * from './idempotency.js';
+export * from './jobs/draft-summary.js';
+export * from './stream-audience.js';
+export * from './events.js';
 export * from './conversation/commands.js';
 export * from './conversation/service.js';
 
