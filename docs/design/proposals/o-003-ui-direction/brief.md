@@ -52,3 +52,15 @@ No reference images are checked into the repository. The references below are th
 - **B. Project state board (object-first).** The centre shows the linked state of the project (material → decision → work → result) as a structured board, with an equivalent outline list. Conversation is a secondary pane attached to the selected object. Agents appear as activity on the objects they touch. Candidate accent: yellow-green "current" markers with dark text on warm-white.
 
 Both variants are rendered on this content with the same states.
+
+## Variant C: calm messenger (added 2026-09-27)
+
+The founder judged A and B "ugly, unappealing, overwhelming": everything was shown at once, with ledgers, boards, many boxes and badges, and internal IDs everywhere. C starts again from the founder's references rather than iterating on A or B.
+
+- **Structure (Slack / Discord):** a left sidebar with projects and people, and the conversation in the centre. Context (decision, result, work, handoff, sources, agents) lives in a right side panel that is **closed by default**. It opens from an attachment in a message, a "Since you left" item, or the header button (`]`), and drills down from a short overview.
+- **Aesthetic (Linear):** near-monochrome neutrals, one indigo accent (`#5159C8`, 5.8:1 on white) used only for "needs you" and the primary action, 1px rules instead of boxes, soft radii, Inter. Status is a small dot or icon with text.
+- **Restraint (Apple Notes / Messages):** a 700 px reading column with generous line height. Only two framed objects appear in the feed: the new decision and the result, which carries the primary action **Review result**.
+- **Return point:** one slim line, "7 updates since Sep 19 · 3 need you", expands into a plain seven-item list.
+- **Language:** human-readable first ("New decision: exclude items guests can't open"). IDs (D-2, R-1, M-3…) appear only in the side panel, muted, in monospace.
+- **Agents and difficult states:** the Review agent appears as a message-like "is reading the result…" line. The stopped Test agent is one calm inline notice with Resume and Details. The missing source is an inline system line with "Fix link"; the restricted source is an attachment chip and a sources entry with no title or snippet. The failed reply is Jo's own message with the only soft tint, plus Retry and Edit. Grant, payer and authorizer appear only in the agent panel.
+- **Responsive:** the sidebar becomes a drawer at 1180 px or narrower. The panel overlays at 980 px or narrower and becomes a full-screen sheet on the phone, where the layout is a single Messages-like column with a pinned composer and safe-area padding. When the latest messages would push the result out of view, the feed opens anchored at the result, with a "1 not sent · Latest" pill. Coarse pointers get 44 px targets.

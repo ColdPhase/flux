@@ -132,5 +132,142 @@
       ]
     },
     "reduced_motion_animated_elements": 0
+  },
+  "c": {
+    "viewports": {
+      "1440x900": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null
+      },
+      "1280x800": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null
+      },
+      "1024x768": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
+      },
+      "768x1024": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
+      },
+      "390x844": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
+      },
+      "360x780": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
+      },
+      "1440x900#since": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null
+      },
+      "1440x900#result": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null
+      },
+      "1440x900#agent-test": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null
+      },
+      "1280x800#decision": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null
+      },
+      "1024x768#details": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
+      },
+      "768x1024#nav": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
+      },
+      "390x844#details": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
+      },
+      "390x844#sources": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
+      },
+      "390x844#nav": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
+      },
+      "390x844#since": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
+      }
+    },
+    "zoom200": {
+      "horizontal_overflow": false
+    },
+    "keyboard": {
+      "composer_visible": true
+    },
+    "keyboard_focus": {
+      "stops": 39,
+      "without_visible_ring": [],
+      "first_stops": [
+        "Skip to reply",
+        "TTide",
+        "Jump to\u2026\u2318K",
+        "For you3",
+        "#Shared export7",
+        "#Guest onboarding2",
+        "#Billing migration",
+        "#Audit log retention"
+      ]
+    },
+    "reduced_motion_animated_elements": 0
   }
 }

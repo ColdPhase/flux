@@ -15,7 +15,12 @@ from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
 SHOTS = ROOT / "screenshots"
-VARIANTS = {"a": "variant-a-return-ledger.html", "b": "variant-b-state-board.html"}
+VARIANTS = {"a": "variant-a-return-ledger.html", "b": "variant-b-state-board.html",
+            "c": "variant-c-calm-messenger.html"}
+# Extra interactive states (URL hash) that are rendered and audited like the default view.
+STATES = {"c": [(1440, 900, "since"), (1440, 900, "result"), (1440, 900, "agent-test"), (1280, 800, "decision"),
+                (1024, 768, "details"), (768, 1024, "nav"), (390, 844, "details"), (390, 844, "sources"),
+                (390, 844, "nav"), (390, 844, "since")]}
 VIEWPORTS = [(1440, 900), (1280, 800), (1024, 768), (768, 1024), (390, 844), (360, 780)]
 
 TEXT_AUDIT = r"""() => {
@@ -93,6 +98,24 @@ def main():
                     "contrast_failures": text["contrast_failures"],
                     "small_text": text["small_text"],
                     "touch_targets_under_44": page.evaluate(TARGET_AUDIT) if w <= 1024 else None,
+                }
+                page.close()
+
+            for w, h, state in STATES.get(key, []):
+                touch = w <= 1024
+                page = browser.new_page(viewport={"width": w, "height": h}, is_mobile=touch, has_touch=touch)
+                errors = []
+                page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
+                page.goto(f"{url}#{state}")
+                page.wait_for_timeout(300)
+                page.screenshot(path=str(SHOTS / f"{key}-{w}x{h}-{state}.png"))
+                text = page.evaluate(TEXT_AUDIT)
+                entry["viewports"][f"{w}x{h}#{state}"] = {
+                    "horizontal_overflow": page.evaluate("document.documentElement.scrollWidth > innerWidth"),
+                    "console_errors": errors,
+                    "contrast_failures": text["contrast_failures"],
+                    "small_text": text["small_text"],
+                    "touch_targets_under_44": page.evaluate(TARGET_AUDIT) if touch else None,
                 }
                 page.close()
 
