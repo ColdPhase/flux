@@ -13,11 +13,8 @@ ENV_EXAMPLE="$FLUX_ROOT/.env.example"
 ENV_FILE="$FLUX_ROOT/.env"
 DEMO_SEED="$FLUX_ROOT/scripts/flux-demo.mjs"
 
-# --- Names. FLUX_PROJECT isolates containers, volumes and image tags; `./flux dev` uses
-# its own project (<name>-dev) so hot-reload work never touches the `up` data.
-PROJECT="${FLUX_PROJECT:-flux}"
-DEV_PROJECT="${PROJECT}-dev"
 WAIT_TIMEOUT="${FLUX_WAIT_TIMEOUT:-300}"
+OWNER_LABEL=com.flux.checkout
 
 say() { printf '%s\n' "$*"; }
 warn() { printf 'flux: %s\n' "$*" >&2; }
@@ -52,6 +49,66 @@ env_value() {
 }
 env_file_has() { [ -f "$ENV_FILE" ] && grep -q "^$1=." "$ENV_FILE"; }
 
+# --- Compose project names. Each checkout gets its own stable default, derived from its
+# absolute path and stored in the env file as FLUX_PROJECT on first use, so two clones never
+# share containers, volumes or image tags. `./flux dev` uses <project>-dev, so hot-reload work
+# never touches the `up` data. A shell FLUX_PROJECT overrides it and is announced.
+path_hash() {
+  if command -v sha256sum >/dev/null 2>&1; then printf '%s' "$FLUX_ROOT" | sha256sum | cut -c1-8
+  elif command -v shasum >/dev/null 2>&1; then printf '%s' "$FLUX_ROOT" | shasum -a 256 | cut -c1-8
+  else printf '%s' "$FLUX_ROOT" | cksum | cut -d' ' -f1
+  fi
+}
+default_project() {
+  base=$(basename -- "$FLUX_ROOT" | tr 'A-Z' 'a-z' | tr -c 'a-z0-9\n' '-' | tr -d '\n' | cut -c1-24 | sed 's/^-*//; s/-*$//')
+  if [ -z "$base" ] || [ "$base" = flux ]; then printf 'flux-%s' "$(path_hash)"; else printf 'flux-%s-%s' "$base" "$(path_hash)"; fi
+}
+resolve_project() {
+  stored=''
+  [ ! -f "$ENV_FILE" ] || stored=$(sed -n 's/^FLUX_PROJECT=//p' "$ENV_FILE" | tail -n 1)
+  own=${stored:-$(default_project)}
+  if [ -n "${FLUX_PROJECT:-}" ]; then
+    PROJECT=$FLUX_PROJECT
+    [ "$PROJECT" = "$own" ] || warn "NOTE: FLUX_PROJECT=$PROJECT from the environment overrides this checkout's project ($own)."
+  else
+    PROJECT=$own
+  fi
+  case "$PROJECT" in
+    [a-z0-9]*) ;;
+    *) die "invalid Compose project name: $PROJECT" ;;
+  esac
+  case "$PROJECT" in *[!a-z0-9_-]*) die "invalid Compose project name: $PROJECT (use a-z, 0-9, - and _)" ;; esac
+  DEV_PROJECT="${PROJECT}-dev"
+}
+
+# --- Ownership. A small marker volume records which checkout created a project. Commands
+# that start, stop or delete a project refuse one that belongs to another checkout (for
+# example a copied .env), or one whose data exists without a marker, unless --force-project.
+marker() { printf '%s_flux-checkout' "$1"; }
+project_owner() { docker volume inspect -f "{{ index .Labels \"$OWNER_LABEL\" }}" "$(marker "$1")" 2>/dev/null || true; }
+project_has_resources() {
+  [ -n "$(docker ps -aq --filter "label=com.docker.compose.project=$1")" ] ||
+    [ -n "$(docker volume ls -q --filter "label=com.docker.compose.project=$1")" ]
+}
+check_owner() {
+  owner=$(project_owner "$1")
+  [ -z "$owner" ] || [ "$owner" = "$FLUX_ROOT" ] || [ "${FORCE_PROJECT:-0}" = 1 ] ||
+    die "Compose project $1 belongs to another checkout ($owner). Refusing to touch it. Set a different FLUX_PROJECT in ${ENV_FILE#"$FLUX_ROOT"/}, or pass --force-project if you really mean that project."
+  if [ -z "$owner" ] && [ "${FORCE_PROJECT:-0}" != 1 ] && project_has_resources "$1"; then
+    die "Compose project $1 has containers or volumes but no owner record, so it may belong to another checkout or a manual setup. Refusing to touch it; pass --force-project if it is yours."
+  fi
+  [ "${FORCE_PROJECT:-0}" != 1 ] || [ -z "$owner" ] || [ "$owner" = "$FLUX_ROOT" ] ||
+    warn "WARNING: --force-project: acting on $1, which belongs to $owner."
+  return 0
+}
+claim_project() {
+  check_owner "$1"
+  [ "$(project_owner "$1")" = "$FLUX_ROOT" ] && return 0
+  docker volume rm "$(marker "$1")" >/dev/null 2>&1 || true
+  docker volume create --label "$OWNER_LABEL=$FLUX_ROOT" --label "com.flux.project=$1" "$(marker "$1")" >/dev/null
+}
+release_project() { docker volume rm "$(marker "$1")" >/dev/null 2>&1 || true; }
+
 port() { v=$(env_value FLUX_PORT); printf '%s' "${v:-8081}"; }
 dev_port() { v=$(env_value FLUX_DEV_PORT); printf '%s' "${v:-5173}"; }
 dev_origin() { printf 'http://127.0.0.1:%s' "$(dev_port)"; }
@@ -73,6 +130,10 @@ set_env_line() {
 ensure_env() {
   if [ -f "$ENV_FILE" ]; then
     say "Using existing ${ENV_FILE#"$FLUX_ROOT"/} (never overwritten)."
+    if ! env_file_has FLUX_PROJECT; then
+      # Adds the missing key only, so the project name stays stable and visible.
+      printf '# Added by ./flux: Compose project of this checkout.\nFLUX_PROJECT=%s\n' "$PROJECT" >> "$ENV_FILE"
+    fi
     return 0
   fi
   [ -f "$ENV_EXAMPLE" ] || die "Missing $ENV_EXAMPLE"
@@ -83,6 +144,7 @@ ensure_env() {
   umask "$old_umask"
   trap 'rm -f "$draft" "$draft.flux-tmp"' EXIT HUP INT TERM
   p="${FLUX_PORT:-8081}"
+  set_env_line "$draft" FLUX_PROJECT "$PROJECT"
   set_env_line "$draft" FLUX_PORT "$p"
   set_env_line "$draft" FLUX_PUBLIC_ORIGIN "http://127.0.0.1:$p"
   set_env_line "$draft" POSTGRES_PASSWORD "$(random_hex 32)"
@@ -132,13 +194,41 @@ start_main() {
     || { compose_main logs --no-color --tail 60 migrate api worker >&2 || true; die "Flux did not become healthy. See the logs above."; }
 }
 
-# Development demo only: a non-loopback origin looks like a real deployment.
+# Development demo only. True only for an origin that is exactly scheme://host[:port] with
+# scheme http or https, host localhost, [::1] or a valid 127.0.0.0/8 dotted quad, and a
+# numeric port: no userinfo, path, query or fragment. Anything else looks like a deployment.
 is_loopback_origin() {
   case "$1" in
-    http://127.*|http://localhost|http://localhost:*|http://\[::1\]|http://\[::1\]:*) return 0 ;;
-    https://127.*|https://localhost|https://localhost:*|https://\[::1\]|https://\[::1\]:*) return 0 ;;
+    http://*) rest=${1#http://} ;;
+    https://*) rest=${1#https://} ;;
     *) return 1 ;;
   esac
+  case "$rest" in ''|*[/?#@\\%\ ]*) return 1 ;; esac
+  case "$rest" in
+    '[::1]') return 0 ;;
+    '[::1]:'*) valid_port "${rest#\[::1\]:}"; return ;;
+    *'['*|*']'*) return 1 ;;
+  esac
+  host=${rest%%:*}
+  if [ "$host" != "$rest" ]; then valid_port "${rest#*:}" || return 1; fi
+  [ "$host" = localhost ] && return 0
+  loopback_ipv4 "$host"
+}
+valid_port() {
+  case "$1" in ''|*[!0-9]*) return 1 ;; esac
+  [ "${#1}" -le 5 ] && [ "$1" -ge 1 ] && [ "$1" -le 65535 ]
+}
+loopback_ipv4() {
+  case "$1" in *[!0-9.]*|.*|*.|*..*) return 1 ;; esac
+  old_ifs=$IFS; IFS=.
+  # shellcheck disable=SC2086
+  set -- $1
+  IFS=$old_ifs
+  [ $# -eq 4 ] && [ "$1" = 127 ] || return 1
+  for octet in "$2" "$3" "$4"; do
+    case "$octet" in 0?*) return 1 ;; esac  # no leading zeros (octal in some parsers)
+    [ "${#octet}" -le 3 ] && [ "$octet" -le 255 ] || return 1
+  done
 }
 
 ensure_demo_passwords() {
@@ -163,6 +253,7 @@ print_logins() {
 
 cmd_up() {
   need_docker
+  claim_project "$PROJECT"
   ensure_env
   start_main
   say ""
@@ -181,6 +272,7 @@ cmd_demo() {
   done
   need_docker
   [ -f "$ENV_FILE" ] || cmd_up
+  if [ "$target" = dev ]; then check_owner "$DEV_PROJECT"; else claim_project "$PROJECT"; fi
   if [ "$target" = dev ]; then origin=$(dev_origin); else origin=$(public_origin); fi
   if ! is_loopback_origin "$origin" && [ "$force" != 1 ]; then
     die "demo refuses to seed $origin: it looks like a production deployment. Demo data and known passwords belong on a local development instance (use --force only if this really is a throwaway instance)."
@@ -212,6 +304,8 @@ cmd_dev() {
     esac
   done
   need_docker
+  claim_project "$PROJECT"
+  claim_project "$DEV_PROJECT"
   ensure_env
   # The dev image holds dependencies and tools; source is bind-mounted, so code edits need
   # no rebuild. Rebuild after dependency or Dockerfile changes with --build.
@@ -232,6 +326,8 @@ cmd_dev() {
 cmd_down() {
   need_docker
   [ -f "$ENV_FILE" ] || { say "No ${ENV_FILE#"$FLUX_ROOT"/}; nothing to stop."; return 0; }
+  check_owner "$PROJECT"
+  check_owner "$DEV_PROJECT"
   compose_main --profile dev down --remove-orphans
   compose_dev down --remove-orphans
   say "Stopped $PROJECT and $DEV_PROJECT. Data volumes are kept (./flux reset removes them)."
@@ -263,10 +359,14 @@ cmd_reset() {
   parse_yes "$@"
   need_docker
   [ -f "$ENV_FILE" ] || { say "No ${ENV_FILE#"$FLUX_ROOT"/}; nothing to reset."; return 0; }
+  check_owner "$PROJECT"
+  check_owner "$DEV_PROJECT"
   confirm "Delete ALL data (database, files) of Compose projects $PROJECT and $DEV_PROJECT?" \
     || { say "Cancelled; nothing was deleted."; return 1; }
   compose_main --profile dev --profile test --profile ui down -v --remove-orphans
   compose_dev down -v --remove-orphans
+  release_project "$PROJECT"
+  release_project "$DEV_PROJECT"
   say "Removed the containers and volumes of $PROJECT and $DEV_PROJECT. ${ENV_FILE#"$FLUX_ROOT"/} is kept; ./flux up starts empty."
 }
 
@@ -289,13 +389,19 @@ cmd_clean() {
   parse_yes "$@"
   need_docker
   [ -f "$ENV_FILE" ] || die "No ${ENV_FILE#"$FLUX_ROOT"/}; there is no project to clean."
+  check_owner "$PROJECT"
+  check_owner "$DEV_PROJECT"
   confirm "Remove the containers, volumes (ALL data) and built images of $PROJECT and $DEV_PROJECT?" \
     || { say "Cancelled; nothing was removed."; return 1; }
   compose_main --profile dev --profile test --profile ui down -v --remove-orphans
   compose_dev down -v --remove-orphans
   remove_own_images
+  release_project "$PROJECT"
+  release_project "$DEV_PROJECT"
+  # The BuildKit cache is shared by every checkout and project on this Docker host and cannot
+  # be attributed to one project, so clean never prunes it; it only prints how.
   say "Base images, other projects and the shared build cache were not touched."
-  say "To reclaim build cache as well (affects every project on this machine):"
+  say "The build cache is shared by all projects on this machine; to reclaim it yourself:"
   say "  docker system df"
   say "  docker builder prune --filter until=72h"
 }
@@ -316,14 +422,28 @@ Flux launcher. Everything runs in Docker; only sh and Docker Compose are needed.
   ./flux clean [-y]      reset, plus remove the images this checkout built.
   ./flux help            This text.
 
-Environment: FLUX_PROJECT (Compose project, default flux; dev uses <project>-dev),
+Commands that start, stop or delete refuse a Compose project that belongs to another
+checkout; --force-project overrides that check.
+
+Environment: FLUX_PROJECT (Compose project; default flux-<dir>-<hash of this checkout's path>,
+stored in .env on first use; dev uses <project>-dev),
 FLUX_PORT (8081, used when creating .env), FLUX_DEV_PORT (5173), FLUX_MAILPIT_PORT (8025),
 FLUX_NO_CACHE=1 (build without the Docker cache).
 EOF
 }
 
+FORCE_PROJECT=0
+for arg in "$@"; do
+  shift
+  if [ "$arg" = --force-project ]; then FORCE_PROJECT=1; else set -- "$@" "$arg"; fi
+done
 command=${1:-help}
 [ $# -gt 0 ] && shift
+case "$command" in
+  _is-loopback-origin) is_loopback_origin "${1:-}"; exit ;;  # used by scripts/check_flux_cli.sh
+  help|-h|--help) ;;
+  *) resolve_project ;;
+esac
 case "$command" in
   up) cmd_up "$@" ;;
   demo) cmd_demo "$@" ;;

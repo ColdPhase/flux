@@ -66,8 +66,10 @@ labels, separate `<project>-dev` volumes), `down`, `logs`, `reset` and `clean`. 
 [application foundation](application-foundation.md#one-command-start-flux-issue-72).
 `./scripts/check_flux_cli.sh` tests it with its own project names, ports and image tags
 and removes them afterwards; set `FLUX_CLI_TEST_PORT`, `FLUX_CLI_TEST_DEV_PORT` and
-`FLUX_CLI_TEST_MAILPIT_PORT` for concurrent runs. `./flux clean` removes only the
-`flux-*` images tagged with its own project names; the build cache advice below applies.
+`FLUX_CLI_TEST_MAILPIT_PORT` for concurrent runs. Each checkout gets its own default
+project name (stored in `.env`), and destructive commands refuse a project owned by another
+checkout. `./flux clean` removes only the `flux-*` images tagged with its own project names;
+it never prunes the shared build cache and prints the advice below instead.
 
 ### Disk hygiene
 

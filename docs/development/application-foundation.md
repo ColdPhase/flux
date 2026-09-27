@@ -21,11 +21,19 @@ the top of the script; the planned `app/` + `docker/` move (#76) changes only th
 | `./flux down` | Stops both the `up` and `dev` stacks; keeps volumes. |
 | `./flux logs [--dev] [service]` | Follows logs. |
 | `./flux reset [-y]` | After a `y/N` prompt, removes the containers and volumes of this checkout's two Compose projects. `.env` stays. |
-| `./flux clean [-y]` | `reset` plus removal of the `flux-*` images tagged with this checkout's project names. It prints `docker builder prune` advice and never touches base images, other projects or the shared build cache. |
+| `./flux clean [-y]` | `reset` plus removal of the `flux-*` images tagged with this checkout's project names. It does **not** prune the BuildKit build cache: that cache is shared by every checkout and Compose project on the Docker host and cannot be attributed to one project, so pruning it would slow or disturb other work. `clean` prints the `docker system df` / `docker builder prune --filter until=72h` commands for the owner of the machine to run deliberately. Base images and other projects are never touched. This is how #72 AC-4 ("removes this project's images and caches") is met: project images and volumes are removed; the shared cache is advice only. |
 
-`FLUX_PROJECT` (default `flux`) is the Compose project for `up`/`demo`; `dev` uses
-`<project>-dev`, with separate database and files volumes, so hot-reload work cannot
-modify the `up` data. Use distinct `FLUX_PROJECT`, `FLUX_PORT`, `FLUX_DEV_PORT` and
+`FLUX_PROJECT` is the Compose project for `up`/`demo`; `dev` uses `<project>-dev`, with
+separate database and files volumes, so hot-reload work cannot modify the `up` data.
+Its default is unique per checkout, `flux-[<directory>-]<first 8 hex of sha256 of the
+checkout path>`, and is written to `.env` on first use, so it stays stable and visible and
+two clones never share containers or volumes. A shell `FLUX_PROJECT` overrides it and the
+launcher prints a note saying so. Ownership: on `up`/`dev`/`demo` the launcher records the
+checkout path in a marker volume `<project>_flux-checkout` (label `com.flux.checkout`).
+`up`, `dev`, `demo`, `down`, `reset` and `clean` refuse a project whose marker names
+another checkout (for example after copying a checkout together with its `.env`), or one
+that has containers or volumes but no marker (an older or manual setup), unless
+`--force-project` is given; `reset`/`clean` remove the marker with the data. Use distinct `FLUX_PROJECT`, `FLUX_PORT`, `FLUX_DEV_PORT` and
 `FLUX_MAILPIT_PORT` values for parallel checkouts. `FLUX_NO_CACHE=1` builds without the
 Docker cache. `./scripts/check_flux_cli.sh` exercises all of the above on an isolated copy
 of the working tree.
