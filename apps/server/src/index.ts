@@ -12,6 +12,7 @@ import { loadIdentityConfig, registerIdentity } from './identity/index.js';
 
 const connectionString = process.env.DATABASE_URL;
 const fixtureToken = process.env.FLUX_FIXTURE_TOKEN;
+const testFailureInjection = process.env.FLUX_TEST_FAILURE_INJECTION === 'true';
 const filesDir = process.env.FLUX_FILES_DIR ?? '/data/files';
 if (!connectionString) throw new Error('DATABASE_URL is required');
 const identityConfig = loadIdentityConfig();
@@ -39,11 +40,18 @@ app.get('/api/v1/health', async (_request, reply) => {
 });
 
 app.post<{ Body: SampleCommand }>(SAMPLE_COMMAND_PATH, {
-  schema: { body: { type: 'object', required: ['title'], additionalProperties: false, properties: { title: { type: 'string' }, failAfterInsert: { type: 'boolean' } } } },
+  schema: { body: { type: 'object', required: ['title'], additionalProperties: false, properties: { title: { type: 'string' } } } },
+  preValidation: async (request, reply) => {
+    // Fastify's default AJV removes unknown body fields before validation.
+    if (request.body && typeof request.body === 'object' && 'failAfterInsert' in request.body) {
+      return reply.code(400).send({ error: 'Unknown command field' });
+    }
+  },
 }, async (request, reply) => {
   if (!fixtureToken || request.headers.authorization !== `Bearer ${fixtureToken}`) return reply.code(401).send({ error: 'Unauthorized' });
   try {
-    const result = await createSample({ id: 'fixture', kind: 'fixture' }, request.body, db, boss);
+    const result = await createSample({ id: 'fixture', kind: 'fixture' }, request.body, db, boss,
+      testFailureInjection && request.headers['x-flux-test-failure'] === 'after-insert');
     return reply.code(201).send(result);
   } catch (error) {
     if (error instanceof Error && error.message === 'Forced rollback') return reply.code(409).send({ error: error.message });

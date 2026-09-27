@@ -1,1 +1,1 @@
-{"name":"@flux/db","version":"0.1.0","private":true,"type":"module","license":"AGPL-3.0-only","dependencies":{"drizzle-orm":"0.45.3","pg":"8.23.0"},"exports":"./src/index.ts"}
+{"name":"@flux/db","version":"0.1.0","private":true,"type":"module","license":"AGPL-3.0-only","dependencies":{"drizzle-orm":"0.45.3","pg":"8.23.0"},"types":"./dist/index.d.ts","exports":"./dist/index.js","scripts":{"build":"tsc -p tsconfig.build.json"}}

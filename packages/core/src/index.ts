@@ -12,7 +12,7 @@ export interface Principal {
   kind: 'fixture' | 'human' | 'agent';
 }
 
-export async function createSample(principal: Principal, command: SampleCommand, db: Database, boss: PgBoss): Promise<SampleAccepted> {
+export async function createSample(principal: Principal, command: SampleCommand, db: Database, boss: PgBoss, testFailureAfterInsert = false): Promise<SampleAccepted> {
   if (!principal.id) throw new Error('Unauthenticated actor');
   const title = command.title.trim();
   if (!title || title.length > 200) throw new Error('Title must be 1–200 characters');
@@ -25,7 +25,7 @@ export async function createSample(principal: Principal, command: SampleCommand,
     await tx.insert(schema.outbox).values({ id: outboxId, eventId });
     const jobId = await boss.send(SAMPLE_JOB, { sampleId: id }, { db: fromDrizzle(tx, sql) });
     if (!jobId) throw new Error('Job enqueue failed');
-    if (command.failAfterInsert) throw new Error('Forced rollback');
+    if (testFailureAfterInsert) throw new Error('Forced rollback');
     return { id, eventId, jobId };
   });
 }
