@@ -60,7 +60,8 @@ conversation. Flux never converts a #52 MCP grant into background-run consent.
    leaked key at Claude Platform. Document restoring the secret separately from
    restoring the database or require reconnect after a lost secret.
 3. **Bounded request and accounting.** The first run is **one** Messages API
-   request with a configured model/version, fixed prompt and `max_tokens`, no
+   request on the pinned `claude-sonnet-5` snapshot with at most 8,000
+   preflight-counted input tokens and `max_tokens: 1200`, a fixed prompt, no
    provider-hosted web search, code execution, MCP connector or automatic tool
    loop. Assemble only currently authorized, versioned sources from the named
    project. If evidence cannot support a camera/sensor comparison, create an
@@ -69,7 +70,12 @@ conversation. Flux never converts a #52 MCP grant into background-run consent.
    suggestion until relevant evidence changes. One in-flight run per owner;
    owner-configurable maximum runs per day and local period budget, with a
    deliberately small default. Atomically reserve the conservative request
-   estimate before dispatch, including the capped output. Reconcile against the
+   estimate before dispatch, including the capped output. At the documented
+   2026-09-28 standard rate ($2/M input, $10/M output), the nominal maximum
+   for those token limits is $0.028; reserve at least $0.05 for estimate drift
+   and fail closed if the local remaining budget cannot cover it. These prices
+   are an input to the implementation, not a permanent product promise.
+   Reconcile against the
    response `usage`, preserving unknown/in-flight reservations when the response
    is lost. No second paid attempt is automatic. Show estimates and observed
    usage separately. Price data is dated/configured and must be reviewed when
@@ -101,6 +107,7 @@ dispatch ownership isolated reopens this decision before enabling the rule.
 | --- | --- | --- |
 | Vendor documentation | [Claude Platform authentication](https://platform.claude.com/docs/en/manage-claude/authentication) describes expiring, workspace-scoped personal keys, secret-manager storage and revocation; [workspaces](https://platform.claude.com/docs/en/manage-claude/workspaces) describes workspace-scoped keys and limits. | A dedicated key/workspace is available. Flux encryption and owner binding are design obligations, not vendor guarantees. |
 | Vendor API reference | [Messages API](https://platform.claude.com/docs/en/api/messages/create) requires `model` and `max_tokens`; [token counting](https://platform.claude.com/docs/en/build-with-claude/token-counting) says its input count is an estimate. | A single capped-output call is implementable; token preflight alone is not an exact price ceiling. |
+| Vendor model/pricing pages | [Current model list](https://platform.claude.com/docs/en/models/overview) lists pinned `claude-sonnet-5`; [pricing](https://platform.claude.com/docs/en/about-claude/pricing) lists standard $2/M input and $10/M output on 2026-09-28. | The nominal $0.028 request example excludes changed prices, token-estimate error and any separate charge; recheck before implementation or model change. |
 | Vendor documentation | [Rate/spend limits](https://platform.claude.com/docs/en/api/rate-limits) describes provider organization/workspace spend limits; [API errors](https://platform.claude.com/docs/en/api/errors) says official SDKs retry transient errors twice by default; [usage/cost API](https://platform.claude.com/docs/en/manage-claude/usage-cost-api) requires admin credentials and may report at daily granularity. | Payer configures a provider cap independently. Flux does not ingest an overprivileged admin key or infer real-time per-owner invoices from that report; disable automatic retries. |
 | Vendor SDK documentation | [TypeScript SDK](https://platform.claude.com/docs/en/cli-sdks-libraries/sdks/typescript) exposes response usage and stream cancellation. | Actual usage can reconcile a completed request. Aborting a transport is not proof of no provider charge. |
 | Existing Flux research | [O-005](first-agent-path.md) and [provider feasibility](own-ai-feasibility.md) distinguish a user's official CLI, API billing and self-hosted endpoints. | The Claude Code subscription/MCP connection cannot fund or execute this background run. |
