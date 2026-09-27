@@ -45,8 +45,10 @@ import {
 
 // Domain commands for workspaces, projects, grants, agents and drafts. Every method
 // authorizes through ./policy.ts before touching data; mutations decide and write in the
-// same transaction with the actor's membership row locked, so a concurrent revocation is
-// either seen or waits. Entry points must call these methods, never the tables directly.
+// same transaction with the rows the decision depends on locked (membership/agent, draft,
+// project and the actor's grants on it). Membership, grant and agent changes take
+// conflicting locks on the rows they change, so a concurrent revocation is either seen or
+// waits until the mutation commits. Entry points must call these methods, never the tables.
 
 const ROLES: readonly WorkspaceRole[] = ['owner', 'admin', 'member', 'guest'];
 const PROJECT_VISIBILITIES: readonly ProjectVisibility[] = ['workspace', 'restricted'];
@@ -94,7 +96,19 @@ async function recordEvent(tx: Tx, principal: Principal, workspaceId: string, ki
 
 async function lockWorkspace(tx: Tx, workspaceId: string) {
   if (!isUuid(workspaceId)) return;
-  await tx.select({ id: schema.workspaces.id }).from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId)).for('update');
+  // NO KEY UPDATE serializes membership changes without blocking inserts that only
+  // reference the workspace (their foreign-key checks take KEY SHARE).
+  await tx.select({ id: schema.workspaces.id }).from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId)).for('no key update');
+}
+
+/**
+ * Taken before a grant change: conflicts with the `FOR SHARE` lock that mutations hold on
+ * the project while they decide (see lockProjectAccess), including for grants that do
+ * not exist yet, without blocking inserts that only reference the project.
+ */
+async function lockProjectForGrantChange(tx: Tx, projectId: string) {
+  if (!isUuid(projectId)) return;
+  await tx.select({ id: schema.projects.id }).from(schema.projects).where(eq(schema.projects.id, projectId)).for('no key update');
 }
 
 function toWorkspace(row: typeof schema.workspaces.$inferSelect, role: WorkspaceRole | null): Workspace {
@@ -236,7 +250,7 @@ export async function changeRole(principal: Principal, workspaceId: string, user
     await lockWorkspace(tx, workspaceId);
     const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.manage_members', workspaceId, tx, { lock: true }), 'workspace');
     const [target] = await tx.select().from(schema.workspaceMembers)
-      .where(and(eq(schema.workspaceMembers.workspaceId, workspaceId), eq(schema.workspaceMembers.userId, userId)));
+      .where(and(eq(schema.workspaceMembers.workspaceId, workspaceId), eq(schema.workspaceMembers.userId, userId))).for('update');
     if (!target) throw new NotFoundError('Member', 'MEMBER_NOT_FOUND');
     requireRoleAuthority(actor, target.role, role);
     if (target.role === 'owner' && role !== 'owner' && await ownerCount(tx, workspaceId) <= 1) throw new ConflictError('A workspace needs at least one owner', 'LAST_OWNER');
@@ -258,7 +272,7 @@ export async function removeMember(principal: Principal, workspaceId: string, us
     const self = principal.kind === 'human' && principal.id === userId;
     const { actor } = enforce(await evaluateWorkspace(principal, self ? 'workspace.read' : 'workspace.manage_members', workspaceId, tx, { lock: true }), 'workspace');
     const [target] = await tx.select().from(schema.workspaceMembers)
-      .where(and(eq(schema.workspaceMembers.workspaceId, workspaceId), eq(schema.workspaceMembers.userId, userId)));
+      .where(and(eq(schema.workspaceMembers.workspaceId, workspaceId), eq(schema.workspaceMembers.userId, userId))).for('update');
     if (!target) throw new NotFoundError('Member', 'MEMBER_NOT_FOUND');
     if (!self) requireRoleAuthority(actor, target.role);
     if (target.role === 'owner' && await ownerCount(tx, workspaceId) <= 1) throw new ConflictError('A workspace needs at least one owner', 'LAST_OWNER');
@@ -317,6 +331,7 @@ export async function grantProject(principal: Principal, projectId: string, comm
   const target = command.principal;
   if (!target || (target.kind !== 'human' && target.kind !== 'agent') || typeof target.id !== 'string' || !target.id) throw new InvalidInputError('principal must be { kind: "human" | "agent", id }');
   return db.transaction(async (tx) => {
+    await lockProjectForGrantChange(tx, projectId);
     const { actor, project } = enforce(await evaluateProject(principal, 'project.manage', projectId, tx, { lock: true }), 'project');
     const workspaceId = project!.workspaceId;
     if (target.kind === 'human') {
@@ -357,6 +372,7 @@ export async function grantProject(principal: Principal, projectId: string, comm
 
 export async function revokeProjectGrant(principal: Principal, projectId: string, grantId: string, db: Database): Promise<void> {
   await db.transaction(async (tx) => {
+    await lockProjectForGrantChange(tx, projectId);
     const { actor, project } = enforce(await evaluateProject(principal, 'project.manage', projectId, tx, { lock: true }), 'project');
     const [grant] = isUuid(grantId) ? await tx.select().from(schema.projectGrants)
       .where(and(eq(schema.projectGrants.id, grantId), eq(schema.projectGrants.projectId, projectId))).for('update') : [];
@@ -440,12 +456,18 @@ async function projectOf(tx: Tx, projectId: string | null) {
   return row ?? null;
 }
 
-/** Creates a draft that is private to its author, optionally inside a writable project. */
+/**
+ * Creates a draft that is private to its author inside a writable project. People may
+ * omit the project; an agent must name a project where it currently is a contributor.
+ */
 export async function createDraft(principal: Principal, workspaceId: string, command: CreateDraftCommand, db: Database): Promise<Draft> {
   const title = name(command?.title, 'Title');
   const text = body(command.body);
   return db.transaction(async (tx) => {
     enforce(await evaluateWorkspace(principal, 'draft.create', workspaceId, tx, { lock: true }), 'workspace');
+    if (principal.kind === 'agent' && (command.projectId === undefined || command.projectId === null)) {
+      throw new RuleViolationError('An agent can only create drafts inside a project it contributes to', 'PROJECT_REQUIRED');
+    }
     const projectId = command.projectId === undefined || command.projectId === null ? null
       : (await requireTargetProject(principal, workspaceId, command.projectId, tx)).id;
     const id = randomUUID();
@@ -528,6 +550,9 @@ export async function moveDraft(principal: Principal, draftId: string, command: 
   if (command.projectId !== null && typeof command.projectId !== 'string') throw new InvalidInputError('projectId must be a project id or null');
   return db.transaction(async (tx) => {
     const { actor, draft } = enforce(await evaluateDraft(principal, 'draft.move', draftId, tx, { lock: true }), 'draft');
+    if (principal.kind === 'agent' && command.projectId === null) {
+      throw new RuleViolationError('An agent cannot move a draft outside every project', 'PROJECT_REQUIRED');
+    }
     const target = command.projectId === null ? null : await requireTargetProject(principal, draft!.workspaceId, command.projectId, tx);
     requireAudience(actor!, visibility, target);
     const [row] = await tx.update(schema.drafts).set({ projectId: target?.id ?? null, visibility, version: sql`${schema.drafts.version} + 1`, updatedAt: new Date() })

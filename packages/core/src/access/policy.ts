@@ -35,6 +35,14 @@ import { ForbiddenError, NotFoundError } from './errors.js';
  *   writable at contributor. A `workspace` draft is readable by owners, admins and
  *   members (not guests or agents) and writable by its author, owners and admins.
  *   Sharing and moving need the author or, for a non-private draft, an owner/admin.
+ * - An agent never works outside its current project grants, not even on drafts it
+ *   authored: it creates drafts only inside a project where it is a contributor, and
+ *   every read (viewer) or write, share and move (contributor) of any draft — its own
+ *   private drafts included — needs its current level on the draft's project.
+ * - With `lock: true` (inside a mutation transaction) the decision locks the rows it
+ *   depends on — membership/agent `FOR SHARE`, the draft `FOR UPDATE`, the project and
+ *   the principal's grants on it `FOR SHARE` — so a concurrent membership, grant or
+ *   agent change either commits first and is seen, or waits until the mutation commits.
  * - Callers that cannot see an object get {@link NotFoundError} (404) so its existence
  *   does not leak; visible objects with a forbidden action get {@link ForbiddenError} (403).
  */
@@ -96,8 +104,30 @@ export function accessName(level: number): ProjectAccess | null {
 }
 
 export interface LoadOptions {
-  /** Inside a mutation transaction: lock the membership/agent rows so a concurrent revocation waits or is seen. */
+  /**
+   * Inside a mutation transaction: lock the membership/agent rows, the draft, and the
+   * project and grant rows the decision reads, so a concurrent revocation waits or is seen.
+   */
   lock?: boolean;
+}
+
+/**
+ * Locks the project row and every grant row that can contribute to the actor's level on
+ * it (`FOR SHARE`). Grant and revoke take `FOR NO KEY UPDATE` on the project row first
+ * and `FOR UPDATE` (or DELETE) on the grant row, so they conflict with these locks:
+ * whichever transaction locks first finishes before the other decides.
+ */
+export async function lockProjectAccess(db: Executor, actor: Actor, projectId: string): Promise<void> {
+  if (!isUuid(projectId)) return;
+  await db.execute(sql`SELECT 1 FROM projects WHERE id = ${projectId} FOR SHARE`);
+  const holders: SQL[] = [];
+  if (actor.principal.kind === 'human' && isUuid(actor.principal.id)) holders.push(sql`g.user_id = ${actor.principal.id}`);
+  if (actor.principal.kind === 'agent' && isUuid(actor.principal.id)) {
+    holders.push(sql`g.agent_id = ${actor.principal.id}`);
+    if (actor.agent?.ownerUserId) holders.push(sql`g.user_id = ${actor.agent.ownerUserId}`);
+  }
+  if (!holders.length) return;
+  await db.execute(sql`SELECT g.id FROM project_grants g WHERE g.project_id = ${projectId} AND (${sql.join(holders, sql` OR `)}) ORDER BY g.id FOR SHARE`);
 }
 
 async function memberRole(db: Executor, workspaceId: string, userId: string, lock: boolean): Promise<WorkspaceRole | null> {
@@ -174,8 +204,13 @@ export function visibleProjectsSql(actor: Actor): SQL {
 export function visibleDraftsSql(actor: Actor): SQL {
   if (!actor.active) return sql`false`;
   const d = schema.drafts;
-  const column = actor.principal.kind === 'agent' ? 'agent_id' : 'user_id';
-  const denied = sql`(${d.projectId} IS NOT NULL AND ${grantExists(column, actor.principal.id, d.projectId, 'denied')})`;
+  if (actor.principal.kind === 'agent') {
+    // An agent reads only inside its current project access, including its own drafts.
+    // A deny grant or a lost grant yields level 0, so no separate deny clause is needed.
+    return and(eq(d.workspaceId, actor.workspaceId), sql`${draftProjectLevel(actor)} >= 1`,
+      or(isDraftOwner(actor), sql`${d.visibility} = 'project'`))!;
+  }
+  const denied = sql`(${d.projectId} IS NOT NULL AND ${grantExists('user_id', actor.principal.id, d.projectId, 'denied')})`;
   const audiences: SQL[] = [isDraftOwner(actor), sql`(${d.visibility} = 'project' AND ${draftProjectLevel(actor)} >= 1)`];
   if (actor.principal.kind === 'human' && actor.role !== 'guest') audiences.push(sql`${d.visibility} = 'workspace'`);
   return and(eq(d.workspaceId, actor.workspaceId), sql`NOT ${denied}`, or(...audiences))!;
@@ -212,8 +247,12 @@ export async function evaluateWorkspace(principal: Principal, action: ActionsByR
   let allowed: boolean;
   switch (action) {
     case 'workspace.read':
-    case 'draft.create':
       allowed = true;
+      break;
+    case 'draft.create':
+      // People may keep unscoped private drafts; an agent needs a project it can write in
+      // (createDraft additionally requires that project to be the draft's project).
+      allowed = human || await hasWritableProject(actor, db);
       break;
     case 'workspace.read_members':
     case 'agent.create':
@@ -228,6 +267,13 @@ export async function evaluateWorkspace(principal: Principal, action: ActionsByR
   return { allowed, visible: true, actor };
 }
 
+async function hasWritableProject(actor: Actor, db: Executor): Promise<boolean> {
+  const rows = await db.select({ id: schema.projects.id }).from(schema.projects)
+    .where(and(eq(schema.projects.workspaceId, actor.workspaceId), sql`${projectLevelSql(actor, schema.projects.id, schema.projects.visibility)} >= ${LEVEL.contributor}`))
+    .limit(1);
+  return rows.length > 0;
+}
+
 export async function evaluateProject(principal: Principal, action: ActionsByResource['project'], projectId: string, db: Executor, options?: LoadOptions): Promise<ProjectEvaluation> {
   const none = { ...DENIED, actor: null, project: null, level: 0 };
   if (!isUuid(projectId)) return none;
@@ -235,6 +281,7 @@ export async function evaluateProject(principal: Principal, action: ActionsByRes
   if (!located) return none;
   const actor = await loadActor(principal, located.workspaceId, db, options);
   if (!actor.active) return { ...none, actor };
+  if (options?.lock) await lockProjectAccess(db, actor, projectId);
   const [row] = await db.select({ project: schema.projects, level: projectLevelSql(actor, schema.projects.id, schema.projects.visibility).mapWith(Number) })
     .from(schema.projects).where(eq(schema.projects.id, projectId));
   if (!row || row.level < LEVEL.viewer) return { ...none, actor };
@@ -249,6 +296,11 @@ export async function evaluateDraft(principal: Principal, action: ActionsByResou
   if (!located) return none;
   const actor = await loadActor(principal, located.workspaceId, db, options);
   if (!actor.active) return { ...none, actor };
+  if (options.lock) {
+    // Lock the draft first so its project cannot change, then that project's access rows.
+    const [locked] = await db.select({ projectId: schema.drafts.projectId }).from(schema.drafts).where(eq(schema.drafts.id, draftId)).for('update');
+    if (locked?.projectId) await lockProjectAccess(db, actor, locked.projectId);
+  }
   const query = db.select({
     draft: schema.drafts,
     readable: visibleDraftsSql(actor).mapWith(Boolean),
@@ -260,6 +312,12 @@ export async function evaluateDraft(principal: Principal, action: ActionsByResou
   const { draft, level, isOwner } = row;
   const manager = isManager(actor.role);
   let allowed: boolean;
+  if (principal.kind === 'agent') {
+    // Readable already implies current viewer access; changes need current contributor access.
+    const writable = level >= LEVEL.contributor;
+    allowed = action === 'draft.read' || (writable && (action === 'draft.write' ? isOwner || draft.visibility === 'project' : isOwner));
+    return { allowed, visible: true, actor, draft, level, isOwner };
+  }
   switch (action) {
     case 'draft.read':
       allowed = true;

@@ -17,8 +17,8 @@ exports:
 | `visibleFilter(principal, workspaceId, 'project' \| 'draft', db)` | Returns a SQL condition. Put it in the `WHERE` clause of both the list query and its count, so invisible rows never reach counts, pages or payloads. |
 
 The domain methods in `packages/core/src/access/domain.ts` call these functions
-before they touch data. Mutations decide and write in one transaction, with the
-actor's membership or agent row locked `FOR SHARE`.
+before they touch data. Mutations decide and write in one transaction, holding the
+locks described under [Concurrency](#concurrency).
 
 **Obligation for every entry point.** The HTTP API, WebSocket subscriptions and
 replay, worker jobs (before reading inputs and before committing results), file
@@ -79,14 +79,30 @@ revoked. A person-owned agent is also capped at its owner's current level. It st
 entirely when the owner leaves the workspace. A workspace-owned agent is not capped
 by any person.
 
+**An agent never works outside its current project grants**, including on drafts it
+authored:
+
+- It creates a draft only inside a project where its current level is contributor.
+  `draft.create` on the workspace is allowed for an agent only while it has at least
+  one such project (`403` otherwise), and a create without `projectId` is rejected
+  with `422 PROJECT_REQUIRED`. An agent cannot move a draft out of every project
+  (`422 PROJECT_REQUIRED`).
+- Reading any draft, its own private drafts included, needs the agent's current
+  level viewer on the draft's project. Writing, sharing and moving need contributor.
+  The same rule applies in `authorize` and in the `visibleFilter` list condition.
+  After a grant is revoked or replaced by `denied`, the agent's drafts in that project
+  answer `404` and leave its lists and counts. A narrowing to viewer turns writes into `403`.
+- People keep the author path: a person always reads and writes their own private
+  drafts, unless an explicit deny on the draft's project applies.
+
 **Drafts.** A new draft is private to its author. Workspace membership never reveals
 a private draft, not even to owners.
 
 | Visibility | Read | Write |
 | --- | --- | --- |
-| `private` | author | author |
-| `project` | project level ≥ viewer, and the author | project level ≥ contributor, and the author |
-| `workspace` | owners, admins and members (not guests or agents), and the author | author, owners and admins |
+| `private` | author (an agent author also needs project level ≥ viewer) | author (an agent author also needs project level ≥ contributor) |
+| `project` | project level ≥ viewer, and the author | project level ≥ contributor, and the author (agent: contributor) |
+| `workspace` | owners, admins and members (not guests or agents), and the author (agent: viewer) | author, owners and admins (agent author: contributor) |
 
 - **Share and move** need the author, or an owner or admin for a non-private draft.
 - **Target project.** A share or move that names a project needs contributor access
@@ -106,6 +122,44 @@ can grant, change or remove the owner role (`403 OWNER_REQUIRED`). The last owne
 cannot leave or step down (`409 LAST_OWNER`). Any member may leave. Members can
 create personal agents. Only owners and admins can create workspace-owned agents. An
 agent can be revoked by its owning person, a workspace owner or an admin.
+
+## Concurrency
+
+Access is evaluated from current rows in PostgreSQL's default `READ COMMITTED`
+isolation. What is guaranteed:
+
+- **Mutations are serialized against the membership, grant and agent changes they
+  depend on.** Inside its transaction, and before deciding, a mutation locks the
+  actor's membership row (for an agent: its agent row and its owner's membership)
+  `FOR SHARE`, the target draft `FOR UPDATE`, and the draft's or target project's
+  row and every grant row of the actor (and of an agent's owner) on that project
+  `FOR SHARE`. The changes take conflicting locks: `grantProject` and
+  `revokeProjectGrant` lock the project row `FOR NO KEY UPDATE` first and the grant
+  row `FOR UPDATE`; `changeRole` and `removeMember` lock the member row `FOR UPDATE`
+  (and delete it, cascading its grants); `revokeAgent` updates the agent row. So
+  either the change commits first and the mutation decides on the new state, or the
+  change waits until the mutation has committed. A write never commits after a
+  revocation that committed before its decision. The project row is the shared lock
+  for every project-dependent decision: it also covers access that has no grant row
+  to lock, such as a member's default access being narrowed by a new `viewer` grant
+  or removed by a new `denied` grant. `FOR NO KEY UPDATE` conflicts with `FOR SHARE`
+  (so it serializes with deciding writers) but not with the `FOR KEY SHARE` that
+  foreign-key checks take, so inserting drafts or events into the project is not
+  blocked by it. A future project visibility change must take the same lock.
+- **Reads are not locked.** A single-object read and each statement of a list (the
+  count and the page are separate statements) see a consistent snapshot of committed
+  rows as of that statement. A change that commits between the count and the page
+  of one request can make them differ by that change. Nothing is cached, so the next
+  request, event delivery or job step always evaluates fresh.
+
+`tests/app/access-policy.test.ts` checks both orders on two real PostgreSQL
+connections, detecting the wait with `pg_blocking_pids` rather than timing. The
+cases are: revoking an agent's contributor grant; inserting a `denied` grant for a
+member who has no grant row, and replacing an agent grant with `denied`; narrowing a
+member's default access with a `viewer` grant; changing the member to guest; and
+removing the member. In each case, a change that starts after an update decided waits
+until the update commits. An update that starts while the change is uncommitted waits,
+and is then refused with `404` or `403` without writing.
 
 ## Actions
 
