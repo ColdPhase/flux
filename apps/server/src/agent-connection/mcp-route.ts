@@ -5,22 +5,49 @@ import { toNodeHandler } from '@modelcontextprotocol/node';
 import type { Database } from '@flux/core';
 import type { FluxAuth } from '../identity/auth.js';
 import { createFluxMcpServer } from './mcp-tools.js';
+import { createAgentConnectionStore } from './store.js';
 
 /** The only remote MCP entry point. A new tool server is bound to each verified bearer request. */
 export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxAuth, publicOrigin: string) {
-  const protectedFetch = requireMcpAuth(auth, async (request, token) => {
+  const connections = createAgentConnectionStore(db);
+  const handleVerified = async (request: Request, token: Record<string, unknown>) => {
     const ownerUserId = token.flux_owner_user_id;
     const connectionId = token.flux_connection_id;
     const scopes = typeof token.scope === 'string' ? token.scope.split(/\s+/).filter(Boolean) : [];
-    if (typeof ownerUserId !== 'string' || typeof connectionId !== 'string') {
+    if (typeof ownerUserId !== 'string' || typeof connectionId !== 'string' || token.sub !== ownerUserId) {
+      return new Response(JSON.stringify({ error: 'Agent connection is unavailable' }), {
+        status: 403, headers: { 'content-type': 'application/json' },
+      });
+    }
+    // A signed JWT remains valid until expiry, so revocation must be checked
+    // against the live connection before even listing tools.
+    try {
+      if (!await connections.resolve(ownerUserId, connectionId)) throw new Error('Connection revoked');
+    } catch {
       return new Response(JSON.stringify({ error: 'Agent connection is unavailable' }), {
         status: 403, headers: { 'content-type': 'application/json' },
       });
     }
     const handler = createMcpHandler(() => createFluxMcpServer(db, { ownerUserId, connectionId, scopes }), { legacy: 'reject' });
     return handler.fetch(request);
-  }, { resource: `${publicOrigin}/mcp` });
-  const node = toNodeHandler({ fetch: protectedFetch }, { onerror: (error) => app.log.error({ error }, 'MCP request failed') });
+  };
+  // The public origin can be a host-only loopback URL in Compose and is not
+  // necessarily reachable from the API container. Fetch our own JWKS on the
+  // bound loopback port while verifying the token's public issuer and audience.
+  let protectedFetch: ReturnType<typeof requireMcpAuth> | undefined;
+  const node = toNodeHandler({ fetch: (request: Request) => {
+    if (!protectedFetch) {
+      const address = app.server.address();
+      // app.inject() has no bound socket; unauthenticated route tests still
+      // need a challenge and never fetch JWKS.
+      const port = address && typeof address !== 'string' ? address.port : Number(process.env.PORT ?? 8080);
+      protectedFetch = requireMcpAuth(auth, handleVerified, {
+        resource: `${publicOrigin}/mcp`,
+        jwksUrl: `http://127.0.0.1:${port}/api/auth/jwks`,
+      });
+    }
+    return protectedFetch(request);
+  } }, { onerror: (error) => app.log.error({ error }, 'MCP request failed') });
   app.route({ method: ['GET', 'POST', 'DELETE'], url: '/mcp', handler: async (request, reply) => {
     reply.hijack();
     await node(request.raw, reply.raw, request.body);

@@ -15,7 +15,7 @@ but it does not create or enlarge them. `flux.context.read` and
 `flux.proposal.write` are token ceilings, not project permissions. On each tool
 call, the bearer token identifies the connection, owner, agent, selected project
 IDs and scopes; current agent and owner project access is checked again. An
-expired/revoked token, removed owner, revoked agent, changed grant or removed
+expired token, revoked Flux connection, removed owner, revoked agent, changed grant or removed
 project cannot use a cached tool result or continue a write.
 
 The person creates a selection through `POST /api/v1/agent-connections`, lists
@@ -36,13 +36,25 @@ token; it never accepts project or agent IDs from the external client.
 
 The OAuth protected resource is the configured public HTTPS origin's `/mcp`.
 The server advertises resource and authorization metadata, validates redirect
-clients, PKCE, `resource`, issuer, audience and token expiry. Codes are short
-lived and single use. The OAuth provider persists token records using its
-hashed-token default; the MCP endpoint verifies signed access tokens and
-reloads the selected connection and current grants on every tool call.
+clients, PKCE, `resource`, issuer, audience and token expiry. Codes expire
+quickly and can be used once. The OAuth provider persists hashed refresh tokens and
+issues signed JWT access tokens. The MCP endpoint verifies the JWT signature,
+issuer, audience and expiry against its local JWKS, then reloads the selected
+connection and current grants before exposing tools and on every tool call.
 Revoking the Flux connection immediately denies subsequent tools, even while
 an access token has not yet expired. Bearer credentials never grant the user's
 broader human authority. DMs are outside this first agent grant model.
+The provider cannot revoke one JWT access token independently through its OAuth
+revoke endpoint; use the Flux connection revoke action to stop access immediately.
+
+In an isolated Compose test on 2026-09-28, Claude Code 2.1.281 completed OAuth
+and reported MCP protocol revision `2026-07-28` (`protocolEra: modern`). Its
+authenticated connection exposed the three Flux tools. The same bearer was
+used to read a selected material and create a sourced proposal over the MCP
+wire; retry with the same command ID returned the same proposal. The Claude
+Code installation had no model login, so model-driven tool calls through the
+official CLI remain unverified. The self-hosted HTTPS deployment path also
+remains to be exercised before calling the integration fully supported.
 
 ## Initial tools and proposal
 

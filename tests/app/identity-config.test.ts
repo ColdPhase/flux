@@ -92,6 +92,18 @@ describe('identity server behaviour', () => {
     } finally { await server.close(); }
   });
 
+  test('OAuth token endpoint accepts form encoding and rejects an invalid grant itself', async () => {
+    const server = await app(config());
+    try {
+      const response = await server.inject({ method: 'POST', url: '/api/auth/oauth2/token',
+        headers: { 'content-type': 'application/x-www-form-urlencoded', origin: 'https://flux.example.org' },
+        payload: 'grant_type=authorization_code&code=invalid',
+      });
+      assert.notEqual(response.statusCode, 415);
+      assert.ok(response.statusCode >= 400 && response.statusCode < 500);
+    } finally { await server.close(); }
+  });
+
   test('publishes OAuth and MCP discovery only at the expected paths', async () => {
     const server = await app(config());
     try {

@@ -31,6 +31,9 @@ export interface AuthBridgeOptions {
 
 /** Forwards auth endpoints and the exact OAuth discovery paths to Better Auth. */
 export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, passwordReset }: AuthBridgeOptions) {
+  // OAuth token and revocation endpoints use HTML form encoding. Preserve the
+  // bounded raw payload so Better Auth validates it, rather than Fastify's 415.
+  app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_request, body, done) => done(null, body));
   const forward = async (request: FastifyRequest, reply: FastifyReply) => {
       // Build the URL from the configured origin, never from Host or an absolute-form target.
       const target = new URL(request.url, publicOrigin);
