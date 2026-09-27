@@ -3,3 +3,7 @@
 
 # Python bytecode from the repository validation tools.
 __pycache__/
+
+# Application dependency and build output.
+node_modules/
+dist/
