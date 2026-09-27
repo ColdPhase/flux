@@ -12,6 +12,9 @@ export {
   assertAuthorized,
   authorizeEvent,
   eventResource,
+  enforce,
+  evaluateProject,
+  evaluateDraft,
   visibleFilter,
   visibleWorkspaceOf,
   loadActor,
@@ -32,6 +35,9 @@ export * from './access/domain.js';
 export * from './idempotency.js';
 export * from './jobs/draft-summary.js';
 export * from './stream-audience.js';
+export * from './events.js';
+export * from './conversation/commands.js';
+export * from './conversation/service.js';
 
 export const SAMPLE_JOB = 'sample.process';
 

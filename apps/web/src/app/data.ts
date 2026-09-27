@@ -1,6 +1,7 @@
 import { redirect, useRouteLoaderData, type LoaderFunctionArgs } from 'react-router';
 import { getMe, type MeResponse } from '../api/auth';
 import { signInPath } from '../auth/logic';
+import { listAccessibleProjects } from './conversation-api';
 
 /**
  * Shapes the shell renders. Projects and direct messages come from the workspace and
@@ -10,13 +11,14 @@ import { signInPath } from '../auth/logic';
  */
 export interface WorkspaceSummary { id: string; name: string }
 /** A small, audience-specific project. Only projects the person belongs to are ever listed. */
-export interface ProjectSummary { id: string; name: string; hasNew?: boolean }
+export interface ProjectSummary { id: string; name: string; workspaceName?: string; hasNew?: boolean }
 /** A private conversation with one or more people, independent of any project. */
 export interface DirectMessageSummary { id: string; title: string; people: string[]; hasNew?: boolean }
 
 export interface ShellData {
   me: MeResponse;
   workspace: WorkspaceSummary | null;
+  workspaces: WorkspaceSummary[];
   projects: ProjectSummary[];
   directMessages: DirectMessageSummary[];
 }
@@ -28,7 +30,11 @@ export async function appLoader({ request }: LoaderFunctionArgs): Promise<ShellD
     const url = new URL(request.url);
     throw redirect(signInPath(`${url.pathname}${url.search}`));
   }
-  return { me, workspace: null, projects: [], directMessages: [] };
+  const { workspaces, projects } = await listAccessibleProjects(request.signal);
+  const nameCounts = new Map<string, number>();
+  for (const project of projects) nameCounts.set(project.name, (nameCounts.get(project.name) ?? 0) + 1);
+  const namedProjects = projects.map((project) => ({ ...project, workspaceName: nameCounts.get(project.name)! > 1 ? workspaces.find((space) => space.id === project.workspaceId)?.name : undefined }));
+  return { me, workspace: workspaces[0] ?? null, workspaces, projects: namedProjects, directMessages: [] };
 }
 
 export function useShellData(): ShellData {

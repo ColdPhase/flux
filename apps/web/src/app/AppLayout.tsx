@@ -84,9 +84,13 @@ export function AppLayout() {
 
   const sidebarProps = { workspace, projects, directMessages, user: me.user, session: me.session };
   const where = placeOf(location.pathname);
-  const place = where === 'dm'
-    ? { crumb: null, title: 'Direct messages', topic: 'Conversations with people, outside any project', views: false }
-    : { crumb: workspace?.name ?? null, title: 'Home', topic: 'Your private notes and where you left off', views: true };
+  const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
+  const activeProject = projects.find((project) => project.id === projectId);
+  const place = activeProject
+    ? { crumb: activeProject.workspaceName ?? null, title: activeProject.name, topic: 'Conversation and materials', views: false }
+    : where === 'dm'
+      ? { crumb: null, title: 'Direct messages', topic: 'Conversations with people, outside any project', views: false }
+      : { crumb: workspace?.name ?? null, title: 'Home', topic: 'Your private notes and where you left off', views: true };
 
   return (
     <ShellContext.Provider value={shell}>

@@ -3,6 +3,9 @@ import { ToastProvider } from './ui';
 import { UpdatePrompt } from './pwa';
 import { AppLayout } from './app/AppLayout';
 import { appLoader } from './app/data';
+import { ProjectConversation, projectConversationLoader } from './app/ProjectConversation';
+import { ProjectSetup } from './app/ProjectSetup';
+import { MaterialView, materialLoader } from './app/MaterialView';
 import { Booting, RouteErrorPage } from './app/errors';
 import { ConversationView, DirectMessagesView, DocsView, MapView, NotFoundView, TasksView } from './app/views';
 import {
@@ -46,6 +49,11 @@ export const router = createBrowserRouter([
         ErrorBoundary: RouteErrorPage,
         children: [
           { index: true, Component: ConversationView },
+          { path: 'projects/new', Component: ProjectSetup },
+          { path: 'projects/:projectId', loader: projectConversationLoader, Component: ProjectConversation },
+          { path: 'projects/:projectId/conversations/:conversationId', loader: projectConversationLoader, Component: ProjectConversation },
+          { path: 'materials/:materialId', loader: materialLoader, Component: MaterialView },
+          { path: 'materials/:materialId/versions/:version', loader: materialLoader, Component: MaterialView },
           { path: 'tasks', Component: TasksView },
           { path: 'map', Component: MapView },
           { path: 'docs', Component: DocsView },
