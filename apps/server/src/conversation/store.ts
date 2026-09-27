@@ -180,7 +180,7 @@ export function conversationStore(db: Database) {
           id: randomUUID(), workspaceId: project.workspaceId, projectId, createdBy: authorId,
         }).returning();
         const first = await sendInTransaction(tx, row!, authorId, input);
-        if (first.inserted) await recordEvent(tx, principal, project.workspaceId, 'project.conversation_created.v1', projectId, {});
+        if (first.inserted) await recordEvent(tx, principal, project.workspaceId, 'project.conversation_created.v1', projectId, { conversationId: row!.id, messageId: first.message.id });
         return { id: row!.id, projectId, workspaceId: project.workspaceId,
           audience: { kind: 'project' as const, projectId }, createdBy: authorId,
           createdAt: row!.createdAt.toISOString(), firstMessageBody: first.message.body, messages: [first.message],
@@ -196,7 +196,7 @@ export function conversationStore(db: Database) {
         const sent = await sendInTransaction(tx, row, authorId, input);
         if (sent.message.sequence === 1)
           throw new ConflictError('This clientMessageId was used to start the conversation', 'IDEMPOTENCY_CONFLICT');
-        if (sent.inserted) await recordEvent(tx, principal, row.workspaceId, 'project.message_sent.v1', row.projectId, {});
+        if (sent.inserted) await recordEvent(tx, principal, row.workspaceId, 'project.message_sent.v1', row.projectId, { conversationId: row.id, messageId: sent.message.id });
         return sent.message;
       });
     },
@@ -263,7 +263,7 @@ export function conversationStore(db: Database) {
           title: input.title, body: input.body, url: input.url, authorId,
           sourceDraftId: input.sourceDraftId, sourceDraftVersion: input.sourceDraftVersion,
         }).returning();
-        await recordEvent(tx, principal, project.workspaceId, 'project.material_created.v1', projectId, {});
+        await recordEvent(tx, principal, project.workspaceId, 'project.material_created.v1', projectId, { materialId: id, version: 1 });
         return material(created, first!, principal);
       });
     },
@@ -294,7 +294,7 @@ export function conversationStore(db: Database) {
           version: updated!.currentVersion, ...next, authorId,
           clientMutationId: input.clientMutationId, requestFingerprint: input.fingerprint,
         }).returning();
-        await recordEvent(tx, principal, row.workspaceId, 'project.material_updated.v1', row.projectId, {});
+        await recordEvent(tx, principal, row.workspaceId, 'project.material_updated.v1', row.projectId, { materialId: row.id, version: updated!.currentVersion });
         return material(updated!, snapshot!, principal);
       });
     },

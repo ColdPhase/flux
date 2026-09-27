@@ -1,0 +1,70 @@
+/* "Since you left" (#106), direction C `#since`: one slim line that expands into a short list. */
+.since { flex: none; border-bottom: 1px solid var(--line); background: var(--bg); }
+.since__in { max-width: 1280px; margin: 0 auto; padding: 0 24px; }
+.since__btn {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 0; border: 0; background: none;
+  text-align: left; font: inherit; font-size: var(--fs-md); color: var(--text-2); cursor: pointer;
+}
+.since__btn b { font-weight: 600; color: var(--text); }
+.since__need { color: var(--accent); font-weight: 500; }
+.since__line { min-width: 0; }
+.since__chev { margin-left: auto; flex: none; color: var(--text-3); transition: transform var(--dur-3) var(--ease-sheet); }
+.since__btn[aria-expanded="true"] .since__chev { transform: rotate(180deg); }
+.since__btn:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: var(--r-sm); }
+
+/* Height expands with the grid-rows trick; the collapsed list is inert, so it is out of focus and AT. */
+.since__coll { display: grid; grid-template-rows: 0fr; visibility: hidden;
+  transition: grid-template-rows var(--dur-2) var(--ease-in), visibility 0s linear var(--dur-2); }
+.since__coll.is-open { grid-template-rows: 1fr; visibility: visible; transition: grid-template-rows var(--dur-3) var(--ease-sheet); }
+.since__clip { min-height: 0; overflow: hidden; }
+.since .since__list { max-height: 46vh; overflow-y: auto; }
+
+.since__dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: transparent; box-shadow: inset 0 0 0 1.5px var(--text-3); }
+.since__dot--need { background: var(--accent); box-shadow: none; }
+
+.since__list { list-style: none; margin: 0; padding: 2px 0 10px; }
+.since__list li { display: flex; }
+.since__item {
+  display: flex; align-items: baseline; gap: 12px; width: 100%; min-height: 36px; padding: 7px 8px; margin: 0 -8px;
+  border-radius: var(--r); color: var(--text-2); text-decoration: none; font-size: var(--fs-md); line-height: 1.45;
+  transition: background-color var(--dur-1) var(--ease-out);
+}
+.since__item:hover { background: var(--bg-hover); }
+.since__item:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.since__item .since__dot { transform: translateY(-1px); }
+.since__body { display: flex; flex-direction: column; min-width: 0; }
+.since__text { overflow-wrap: anywhere; }
+.since__item.is-need .since__text { color: var(--text); font-weight: 500; }
+.since__detail { color: var(--text-3); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.since__when { margin-left: auto; padding-left: 12px; color: var(--text-3); font-size: var(--fs-sm); white-space: nowrap; }
+
+.since__next { display: grid; gap: 2px; margin: 4px 0 8px; padding: 10px 12px; border-radius: var(--r); background: var(--accent-soft); }
+.since__next-k { font-size: var(--fs-xs); font-weight: 600; color: var(--accent); letter-spacing: .01em; }
+.since__next-link { display: inline-flex; align-items: center; gap: 4px; justify-self: start; min-height: 28px; color: var(--text); font-weight: 600; font-size: var(--fs-base); text-decoration: none; border-radius: var(--r-sm); }
+.since__next-link:hover span { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.since__next-link:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.since__why { margin: 0; color: var(--text-2); font-size: var(--fs-sm); }
+
+.since__foot { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: space-between; align-items: center; padding: 0 0 12px; color: var(--text-3); font-size: var(--fs-sm); }
+.since__keep { min-height: 32px; padding: 0 10px; margin-right: -10px; border: 0; border-radius: var(--r); background: none; font: inherit; color: var(--text-2); cursor: pointer; }
+.since__keep:hover { background: var(--bg-hover); color: var(--text); }
+.since__keep:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
+
+/* Home: the personal return view across places. */
+.since-home { margin: 20px 0 8px; padding: 16px 0 4px; border-top: 1px solid var(--line); }
+.since-home__h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-size: var(--fs-base); font-weight: 600; margin: 0 0 10px; }
+.since-home__sub { font-size: var(--fs-md); font-weight: 400; color: var(--text-3); }
+.since-home__sub b { font-weight: 500; color: var(--text-2); }
+.since-home > .since__why { margin-bottom: 8px; }
+.since-home__place { margin-top: 10px; }
+.since-home__name { margin: 0 0 2px; color: var(--text-3); font-size: var(--fs-xs); font-weight: 600; }
+.since-home__calm { display: flex; align-items: center; gap: 8px; margin: 20px 0 4px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--text-3); font-size: var(--fs-md); }
+
+@media (max-width: 720px) {
+  .since__in { padding: 0 16px; }
+  .since__when { display: none; }
+}
+@media (pointer: coarse) {
+  .since__item { min-height: 44px; }
+  .since__next-link, .since__keep { min-height: 44px; }
+}

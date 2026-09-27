@@ -7,6 +7,7 @@ import { useCaptures } from './captures';
 import { useShellData } from './data';
 import { useDraft, useReadingPosition } from './drafts';
 import { useShellActions } from './shellContext';
+import { SinceYouLeftHome } from '../returns/SinceYouLeft';
 
 export const VIEWS = [
   { id: 'conversation', label: 'Conversation', path: '/' },
@@ -126,6 +127,7 @@ export function ConversationView() {
           <h2>Welcome, {firstName}</h2>
           <p>Jot down a thought, a link or a half-formed idea. It stays with you until you choose to share it.</p>
         </div>
+        <SinceYouLeftHome />
         {serverDrafts.length ? <section className="notes" aria-label="Private drafts"><p className="notes__h"><Icon name="lock" size={13} />Private drafts · saved in your space</p><ol className="notes__list">{serverDrafts.map((item) => <li className="note" key={item.id}><p className="note__text">{item.body}</p><div className="note__meta">You · v{item.version} · <time dateTime={item.updatedAt}>{when(item.updatedAt)}</time></div></li>)}</ol></section> : null}
         {items.length ? (
           <section className="notes" aria-label="Your private notes">
