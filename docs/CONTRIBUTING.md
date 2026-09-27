@@ -71,8 +71,8 @@ issue.
    git switch -c fix/short-description upstream/main
    ```
 
-3. Start the application with Docker Compose as described in the
-   [application foundation guide](development/application-foundation.md#clean-start).
+3. Start the application with `./flux up` (or `./flux dev` for hot reload), as described
+   in the [application foundation guide](development/application-foundation.md#one-command-start-flux-issue-72).
    To work on the historical prototype instead, serve it with Python 3:
 
    ```sh

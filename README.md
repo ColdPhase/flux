@@ -22,28 +22,28 @@ storage only). It is design inspiration, not the application; see the
 
 ## Quick start
 
-Prerequisites: Git and Docker Engine with Compose. No host Node.js or PostgreSQL.
+Prerequisites: Git and Docker Engine (or Docker Desktop) with Compose. No host Node.js or PostgreSQL.
 
 ```sh
 git clone https://github.com/ColdPhase/flux.git
 cd flux
-cp .env.example .env
-# Replace POSTGRES_PASSWORD, FLUX_FIXTURE_TOKEN and FLUX_AUTH_SECRET with long random values.
-set -a; . ./.env; set +a
-docker compose --env-file .env -p flux -f infra/compose.yaml up -d --build db migrate
-docker compose --env-file .env -p flux -f infra/compose.yaml --profile setup run --rm files-init
-docker compose --env-file .env -p flux -f infra/compose.yaml up -d --wait api worker
-curl -fsS http://127.0.0.1:8081/api/v1/health
+./flux up      # creates .env with random secrets once, builds, migrates, starts, prints the URL
+./flux demo    # optional: sample workspace, project, conversation and note; prints two logins
 ```
 
-Then open <http://127.0.0.1:8081/>. The [application foundation guide](docs/development/application-foundation.md)
-covers configuration, backups and the integration fixture;
+Then open <http://127.0.0.1:8081/>. `./flux up` never overwrites an existing `.env`.
+Other commands: `./flux dev` (hot reload in Docker), `./flux down`, `./flux logs`,
+`./flux reset` (deletes data after confirmation), `./flux clean` (also removes the
+images this checkout built) and `./flux help`. The
+[application foundation guide](docs/development/application-foundation.md) covers the
+launcher, configuration, backups and the integration fixture;
 [containers](docs/development/containers.md) describes every service and variable.
 
 Run the checks (build, type check, lint, tests and browser checks, all in Docker):
 
 ```sh
 ./scripts/check_application.sh
+./scripts/check_flux_cli.sh
 python3 scripts/check_agent_setup.py
 ```
 
@@ -62,7 +62,8 @@ python3 scripts/check_agent_setup.py
 | `examples/external-agent` | An external agent using the SDK (Apache-2.0) |
 | `infra` | Dockerfile, Compose files, migration entry point |
 | `tests` | Application tests (`tests/app`) and repository tooling tests |
-| `scripts` | Check scripts and repository tooling |
+| `flux` | One-command launcher: `up`, `demo`, `dev`, `down`, `reset`, `clean` |
+| `scripts` | Check scripts, the demo seed and repository tooling |
 | `docs` | Product, design, development and agent documentation |
 
 Dependency directions between these are described and enforced in

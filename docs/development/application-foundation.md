@@ -6,7 +6,50 @@ and a durable pg-boss queue. Human login and sessions were added in #29's first
 slice; project access and the messenger follow in later tasks. The integration
 command below is a fixture, not a collaboration UI.
 
-## Clean start
+## One-command start: `./flux` (issue #72)
+
+The root [`flux`](../../flux) launcher is a POSIX `sh` script that needs only Docker with
+Compose. It resolves every path relative to its own file, so it works from any directory.
+Its layout constants (Compose files, env file, template, demo seed) are defined once at
+the top of the script; the planned `app/` + `docker/` move (#76) changes only those.
+
+| Command | What it does |
+| --- | --- |
+| `./flux up` | If `.env` is missing, writes it from `.env.example` (mode `600`) with random `POSTGRES_PASSWORD`, `FLUX_FIXTURE_TOKEN` and `FLUX_AUTH_SECRET` (64 hex characters each, from `/dev/urandom`), VAPID keys from the pinned `web-push` inside the freshly built image, `FLUX_PUBLIC_ORIGIN=http://127.0.0.1:${FLUX_PORT:-8081}` and two demo passwords. An existing `.env` is never modified. Then builds the source-checkout image, runs `files-init`, migrates, starts API and worker, waits for health and prints the URL. |
+| `./flux demo [--dev] [--force]` | Seeds a development demo through the **public HTTP API** as two signed-in people (so access policy, idempotency and events apply): workspace *Riverside Makers (demo)*, both accounts, project, a private note, a published material, a four-message conversation with one reply citing the material, and a sketch with connected thoughts when the sketch API (#69) exists (otherwise it reports the skip). Prints the URL and both logins. Rerunning seeds nothing new. It refuses any non-loopback `FLUX_PUBLIC_ORIGIN` (a production-looking deployment) unless `--force`. |
+| `./flux dev [--build] [--follow]` | Hot-reload development inside Docker (see below). |
+| `./flux down` | Stops both the `up` and `dev` stacks; keeps volumes. |
+| `./flux logs [--dev] [service]` | Follows logs. |
+| `./flux reset [-y]` | After a `y/N` prompt, removes the containers and volumes of this checkout's two Compose projects. `.env` stays. |
+| `./flux clean [-y]` | `reset` plus removal of the `flux-*` images tagged with this checkout's project names. It prints `docker builder prune` advice and never touches base images, other projects or the shared build cache. |
+
+`FLUX_PROJECT` (default `flux`) is the Compose project for `up`/`demo`; `dev` uses
+`<project>-dev`, with separate database and files volumes, so hot-reload work cannot
+modify the `up` data. Use distinct `FLUX_PROJECT`, `FLUX_PORT`, `FLUX_DEV_PORT` and
+`FLUX_MAILPIT_PORT` values for parallel checkouts. `FLUX_NO_CACHE=1` builds without the
+Docker cache. `./scripts/check_flux_cli.sh` exercises all of the above on an isolated copy
+of the working tree.
+
+### Hot-reload development: `./flux dev`
+
+[`infra/compose.dev.yaml`](../../infra/compose.dev.yaml) layers over `compose.yaml`. It uses
+the Dockerfile's `build` stage (locked dependencies, `tsx`, Vite) and bind-mounts the source
+directories read-only with `:z` (SELinux relabel; ignored on macOS). The `web` service runs
+the Vite dev server on `FLUX_DEV_PORT` (default 5173) and proxies `/api`, including the
+WebSocket stream, to the API with the browser's `Origin` unchanged; the launcher sets
+`FLUX_PUBLIC_ORIGIN` to the dev origin for this stack. API and worker run under `tsx watch`
+with [`infra/tsconfig.dev.json`](../../infra/tsconfig.dev.json), which resolves
+`@flux/*` packages to their TypeScript source, so edits under `apps/*/src` and
+`packages/*/src` apply without a build. PostgreSQL, the migration and Mailpit
+(`FLUX_SMTP_URL=smtp://mailpit:1025`) run as usual. Dependency, lockfile or Dockerfile
+changes need `./flux dev --build`. If file events do not reach the containers on a host,
+set `FLUX_DEV_POLL=true` for Vite polling.
+
+Observed on macOS Docker Desktop, 2026-09-27: a changed `apps/web/src` module was served
+by Vite 0 s after the edit (browser hot update) and an API handler change was live 3 s
+after the edit (tsx restart), with no image rebuild.
+
+## Manual Compose start
 
 Prerequisites: Git and Docker Engine with Compose. No host Node or PostgreSQL is
 needed. Clone the repository, copy `.env.example` to `.env`, and replace the three
@@ -81,7 +124,7 @@ docker compose --env-file .env -p flux28 -f infra/compose.yaml down
 
 Each script uses its own Compose project and removes only its disposable test
 volumes after the run. `down` without `-v` preserves the work project's `pgdata`
-and `files` named volumes. Run the three clean-start commands again with the same
+and `files` named volumes. Run the manual start commands (or `./flux up`) again with the same
 project name to reuse them; `files-init` is safe to repeat. Run application tooling
 through the `test` build target, not the production runtime image.
 
