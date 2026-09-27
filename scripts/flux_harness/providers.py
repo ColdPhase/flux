@@ -7,6 +7,7 @@ import signal
 import subprocess
 import time
 
+from .context import MAX_PROMPT_CHARS, check_prompt_size
 from .github import HarnessError
 
 
@@ -132,12 +133,14 @@ def terminate(process):
 
 def run_provider(provider, root, workspace, directory, prompt, deadline, tick, session=None, options=None,
                  idle_timeout=None):
+    check_prompt_size(prompt)
     directory.mkdir(parents=True, exist_ok=False, mode=0o700)
     (directory / "result-schema.json").write_text(json.dumps(RESULT_SCHEMA), encoding="utf-8")
     (directory / "prompt.txt").write_text(prompt, encoding="utf-8")
     argv = provider_command(provider, root, directory, session, options)
     (directory / "execution.json").write_text(json.dumps({"provider": provider,
-        "selection": options or {}, "argv": argv}, indent=2), encoding="utf-8")
+        "selection": options or {}, "argv": argv, "input_characters": len(prompt),
+        "input_budget": MAX_PROMPT_CHARS}, indent=2), encoding="utf-8")
     process = None
     output_size, last_output = 0, time.monotonic()
     with (directory / "prompt.txt").open() as incoming, \

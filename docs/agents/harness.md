@@ -10,6 +10,7 @@ official Codex/Claude CLIs. It does not choose or install the application stack.
 | --- | --- |
 | GitHub transport | `scripts/flux_harness/github.py`: explicit repository/host, paginated issues/comments/timelines/reviews/checks, review-thread resolution, comment retry reconciliation |
 | Worker loop | `scripts/flux_harness/worker.py`: scope/identity checks, coarse work eligibility, idle polling, blocked-task parking, real-progress detection, limits |
+| Turn context | `scripts/flux_harness/context.py`: bounded navigation prompt and private files containing exact GitHub evidence and recovery records |
 | Provider adapters | `scripts/flux_harness/providers.py`: structured CLI turns, session continuity, process termination and outcome validation |
 | Paired presence | `scripts/flux_harness/presence.py`: authenticated GitHub heartbeats, startup rendezvous and peer-loss suspension without model calls |
 | Local journal | `scripts/flux_harness/state.py`: SQLite turn checkpoints/outbox, process-lifetime local singleton lock |
@@ -29,8 +30,8 @@ Its coarse eligible list is not proof of a task's accepted contract.
 3. Reconcile the milestone snapshot, including linked PRs, inline review comments,
    resolved-thread state, reviews, checks and status contexts. Persist interrupted
    work and outbox intent; reconcile comments before retrying writes.
-4. When useful work exists, pass the brief, snapshot, shared procedures, prior
-   checkpoint and parked tasks to one provider turn. Continue useful sessions
+4. When useful work exists, pass a bounded index, brief paths, shared procedures
+   and local evidence references to one provider turn. Continue useful sessions
    for unchanged work; new peer events or changed roles use fresh context.
 5. Refresh the inbox while a turn runs. Workers read it at safe checkpoints.
    This adapter does not inject live messages into an in-flight model call;
@@ -93,6 +94,53 @@ for bounds and restart behavior. This channel cannot grant task ownership.
 The coordinator remembers the snapshot after an empty-milestone bootstrap
 attempt. An unchanged empty milestone does not repeatedly wake the model when
 its useful tasks are parked; changed task evidence can wake it again.
+
+## Bounded input and full evidence
+
+Both providers have a local initial-input budget of 64,000 characters. The runner
+prints the actual size and records it in the turn's `execution.json`. Oversized
+input fails locally before a provider process starts. This budget is independent
+of provider context limits and does not limit the size of the GitHub history.
+
+Before each turn, `.harness/local/<worker>/context/<turn-id>/` stores:
+
+- `local.json`: complete checkpoint, parked tasks, recovery/worktree inventory,
+  eligible issues, execution selection and committed milestone brief paths.
+- `index.json`: navigation metadata for all issues, linked PRs and milestones,
+  including current PR heads and counts of comments/reviews/unresolved threads.
+- `snapshot.json`: the exact full GitHub snapshot, including bodies, authors,
+  comments, timeline sources, reviews, inline comments, threads and checks.
+
+The prompt contains a limited index, prioritizing eligible tasks and open PRs.
+Every shortened collection reports total and omitted counts. Oversized local
+context is referenced as a whole file; no contract or recovery field is silently
+cut in half. Read omitted local context before choosing work, the full index when
+needed to find other work, and the selected task's complete contract and relevant
+messages before acting. Read the applicable committed brief from its listed path.
+
+Use Python/JSON selection to read individual records and fields; do not dump the
+whole snapshot or every nested timeline source into model context. For example,
+with the actual path and task number from the prompt:
+
+```python
+import json
+from pathlib import Path
+
+snapshot = json.loads(Path("/actual/worker/context/turn-id/snapshot.json").read_text())
+task = next(item for item in snapshot["issues"] if item["number"] == 22)
+print(task["body"])
+print([(item["id"], item["user"]["login"], item.get("updated_at"))
+       for item in task["comments"]])
+# Select the relevant comment IDs and read their complete bodies next.
+```
+
+Summaries are navigation, not accepted contracts or approvals. Preserve real
+authors, IDs, timestamps, contract revisions and reviewed commits when extracting
+evidence. Full snapshots still drive scheduling, parking and product acceptance;
+the navigation preview never decides these. Each turn's files remain unchanged
+by inbox refreshes and later turns. `inbox.json` continues to provide newer data
+at safe checkpoints; always reconcile current GitHub state before mutations.
+These ignored local files are private recovery evidence, not shared handoffs.
 
 ## Recovery and boundaries
 
