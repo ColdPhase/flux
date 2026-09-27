@@ -436,7 +436,7 @@ export const projectObjectLinks = pgTable('project_object_links', {
   role: text('role', { enum: ['source', 'affects', 'still_applies', 'about', 'related'] }).notNull(),
   fromType: text('from_type', { enum: ['work', 'decision', 'result'] }).notNull(),
   fromId: uuid('from_id').notNull(),
-  toType: text('to_type', { enum: ['message', 'material', 'work', 'decision', 'result'] }).notNull(),
+  toType: text('to_type', { enum: ['message', 'thought', 'material', 'work', 'decision', 'result'] }).notNull(),
   toId: uuid('to_id').notNull(),
   toVersion: integer('to_version'),
   createdByKind: text('created_by_kind', { enum: ['human', 'agent'] }).notNull(),

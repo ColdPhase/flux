@@ -59,7 +59,7 @@ export interface ResultRecord {
   createdAt: Date;
 }
 
-export interface LinkRecord {
+export interface ObjectLinkRecord {
   id: string;
   projectId: string;
   role: LinkRole;
@@ -76,7 +76,7 @@ export type WorkChanges = Partial<Pick<WorkRecord, 'title' | 'outcome' | 'status
 export type NewDecision = Pick<DecisionRecord, 'id' | 'workspaceId' | 'projectId' | 'title' | 'rationale' | 'proposedBy' | 'supersedesId'>;
 export type DecisionChanges = Partial<Pick<DecisionRecord, 'status' | 'decidedBy' | 'decidedAt' | 'supersededById' | 'supersededAt'>>;
 export type NewResult = Omit<ResultRecord, 'createdAt'>;
-export interface NewLink {
+export interface NewObjectLink {
   id: string;
   workspaceId: string;
   projectId: string;
@@ -125,16 +125,16 @@ export interface WorkRepository {
   findResult(id: string): Promise<ResultRecord | null>;
   insertResult(result: NewResult): Promise<ResultRecord>;
   /** Links from or to any of these ids, oldest first. */
-  links(ids: string[]): Promise<LinkRecord[]>;
+  links(ids: string[]): Promise<ObjectLinkRecord[]>;
   /** Inserts links; an identical existing link is kept. */
-  insertLinks(links: NewLink[]): Promise<void>;
+  insertLinks(links: NewObjectLink[]): Promise<void>;
   /** Whether the referenced message, material version or object exists in the project. */
   targetExists(projectId: string, ref: ObjectRef): Promise<boolean>;
   /**
    * Titles of linked objects keyed by `<type>:<id>` (a message's opening words and its
    * conversation, a material version's title). Only for references inside `projectId`.
    */
-  titles(projectId: string, refs: ObjectRef[]): Promise<Map<string, { title: string; conversationId?: string }>>;
+  titles(projectId: string, refs: ObjectRef[]): Promise<Map<string, { title: string; conversationId?: string; sketchId?: string }>>;
   /** Display names keyed by `<kind>:<id>`. */
   names(refs: ActorRef[]): Promise<Map<string, string>>;
 }

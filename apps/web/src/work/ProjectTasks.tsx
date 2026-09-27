@@ -46,7 +46,7 @@ function workSub(item: WorkItem, lists: ProjectWork) {
   return [
     item.owner ? item.owner.name : 'No owner',
     item.status === 'blocked' && item.blocker ? `waiting for ${item.blocker}` : null,
-    parkedBy ? `parked by “${parkedBy.title}” · was ${STATUS_LABEL[item.status].toLowerCase()}` : null,
+    parkedBy ? `Parked · was ${STATUS_LABEL[item.status].toLowerCase()}` : null,
     rule && !parkedBy ? `follows “${rule.title}”` : null,
     fromMessage ? 'from a message' : null,
     results ? `${results} ${results === 1 ? 'result' : 'results'}` : null,
@@ -96,7 +96,7 @@ export function ProjectTasks() {
   const openWork = (item: WorkItem) => () => openDetails({ kind: 'work', id: item.id });
   const openDecision = (item: Decision) => () => openDetails({ kind: 'decision', id: item.id });
   const openResult = (item: WorkResult) => () => openDetails({ kind: 'result', id: item.id });
-  const workRow = (item: WorkItem, muted = false) => <Row key={item.id} icon={dot(item.status)} title={item.title} sub={workSub(item, lists)} right={item.owner ? <span className="ws-av" aria-hidden="true">{item.owner.name.slice(0, 1)}</span> : null} onOpen={openWork(item)} muted={muted} />;
+  const workRow = (item: WorkItem, muted = false) => <Row key={item.id} icon={dot(item.parked ? 'parked' : item.status)} title={item.title} sub={workSub(item, lists)} right={item.owner ? <span className="ws-av" aria-hidden="true">{item.owner.name.slice(0, 1)}</span> : null} onOpen={openWork(item)} muted={muted} />;
   const nothing = !lists.work.length && !lists.decisions.length && !lists.results.length;
 
   return (
@@ -119,7 +119,7 @@ export function ProjectTasks() {
           </EmptyState></div>
         ) : null}
 
-        <Group id="proposed" title="Waiting for a decision" count={proposed.length}>
+        <Group id="proposed" title={writable ? 'Needs you' : 'Waiting for a decision'} count={proposed.length}>
           {proposed.map((item) => <Row key={item.id} icon={<Icon name="rule" size={16} />} iconClass="ws-need" title={item.title} sub={<>Proposed by {item.proposedBy.name}{item.proposedBy.kind === 'agent' ? ' (agent)' : ''}{item.supersedes ? ' · would replace the current rule' : ''}{writable ? <> · <span className="ws-need">you can accept it</span></> : null}</>} right={shortDate(item.createdAt)} onOpen={openDecision(item)} />)}
         </Group>
         <Group id="progress" title="In progress" count={by('in_progress').length}>{by('in_progress').map((item) => workRow(item))}</Group>

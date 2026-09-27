@@ -28,6 +28,8 @@ export const WORK_LIMITS = { title: 200, outcome: 4000, blocker: 2000, rationale
 /** A stable reference to something in the same project. Material references pin a version. */
 export type ObjectRef =
   | { type: 'message'; id: string }
+  /** A thought on one of the project's sketches (#69); private sketches are never linkable. */
+  | { type: 'thought'; id: string }
   | { type: 'material'; id: string; version: number }
   | { type: WorkObjectType; id: string };
 
@@ -49,6 +51,8 @@ export interface ObjectLink {
   toTitle: string;
   /** The conversation of a message target, else null. */
   conversationId: string | null;
+  /** The sketch of a thought target, else null. */
+  sketchId: string | null;
   createdAt: string;
 }
 
@@ -113,7 +117,7 @@ export interface CreateWorkCommand {
   owner?: PrincipalRef | null;
   status?: WorkStatus;
   blocker?: string;
-  /** Messages or material versions the work comes from. They are linked, never moved or copied. */
+  /** Messages, sketch thoughts or material versions the work comes from. They are linked, never moved or copied. */
   sources?: ObjectRef[];
   /** Other objects of the project to connect (thoughts, decisions, results, messages). */
   related?: ObjectRef[];
@@ -160,7 +164,7 @@ export interface CreateResultCommand {
   finishes?: string;
 }
 
-export interface CreateLinkCommand {
+export interface CreateObjectLinkCommand {
   from: { type: WorkObjectType; id: string };
   to: ObjectRef;
 }

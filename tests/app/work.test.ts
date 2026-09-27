@@ -93,6 +93,25 @@ describe('work, decisions and results in a project', () => {
     assert.equal((foreign.json as { code: string }).code, 'LINK_TARGET_NOT_FOUND');
     const list = json<Page<WorkItem>>(await get(partner, `/api/v1/projects/${lamp.id}/work`), 200);
     assert.equal(list.total, 2);
+    const source = list.items.find((item) => item.id === work.id)!.links[0]!;
+    assert.deepEqual([source.toTitle, source.fromTitle, source.conversationId], [message.body, work.title, conversation.id]);
+  });
+
+  test('one experiment can come from several thoughts of a project sketch; private thoughts are not linkable', async () => {
+    const shared = json<{ id: string }>(await post(owner, `/api/v1/workspaces/${ws.id}/sketches`, { title: 'Sensing options', scope: 'project', projectId: lamp.id }), 201);
+    const camera = json<{ thought: { id: string } }>(await post(owner, `/api/v1/sketches/${shared.id}/thoughts`, { text: 'Camera', x: 0, y: 0 }), 201).thought;
+    const dark = json<{ thought: { id: string } }>(await post(owner, `/api/v1/sketches/${shared.id}/thoughts`, { text: 'Works in the dark', x: 200, y: 0 }), 201).thought;
+    const experiment = json<WorkItem>(await post(partner, `/api/v1/projects/${lamp.id}/work`, {
+      title: 'Experiment: camera in low light', sources: [{ type: 'thought', id: camera.id }, { type: 'thought', id: dark.id }],
+    }), 201);
+    assert.deepEqual(experiment.links.map((link) => [link.to.type, link.toTitle, link.sketchId]).sort(),
+      [['thought', 'Camera', shared.id], ['thought', 'Works in the dark', shared.id]]);
+    const sketch = json<{ thoughts: unknown[] }>(await get(owner, `/api/v1/sketches/${shared.id}`), 200);
+    assert.equal(sketch.thoughts.length, 2, 'the map keeps its thoughts');
+    const mine = json<{ id: string }>(await post(owner, `/api/v1/workspaces/${ws.id}/sketches`, { title: 'Private', scope: 'private' }), 201);
+    const secret = json<{ thought: { id: string } }>(await post(owner, `/api/v1/sketches/${mine.id}/thoughts`, { text: 'Secret', x: 0, y: 0 }), 201).thought;
+    const leak = await post(owner, `/api/v1/projects/${lamp.id}/work`, { title: 'From a private thought', sources: [{ type: 'thought', id: secret.id }] });
+    assert.equal((leak.json as { code: string }).code, 'LINK_TARGET_NOT_FOUND');
   });
 
   test('changes need If-Match; stale and concurrent changes get 409 and retries are idempotent', async () => {

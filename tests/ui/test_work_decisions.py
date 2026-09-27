@@ -164,7 +164,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         panel.get_by_label("Why").press("Tab")
         page.keyboard.press("Enter")
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Proposed decision")
-        expect(page.get_by_label("Current state")).to_contain_text("A proposed decision is waiting for you")
+        expect(page.get_by_label("Current state")).to_contain_text("Needs you: a proposed decision")
         shot(page, "decision-desktop-1440-proposed")
         panel.get_by_role("button", name="Accept decision").focus()
         page.keyboard.press("Enter")
@@ -255,12 +255,16 @@ class WorkDecisionsJourney(unittest.TestCase):
     def test_06_phone_creates_work_and_reads_the_tasks_tab(self) -> None:
         page = self.open_conversation("partner", phone=True)
         message = page.locator(f"#message-{self.messages['finding']}")
-        create = message.get_by_role("button", name="Create work")
-        expect(create).to_be_visible()  # actions are always visible on touch
-        box = create.bounding_box()
+        # On touch one quiet button per message opens its actions.
+        expect(message.get_by_role("button", name="Create work")).to_have_count(0)
+        more = message.get_by_role("button", name="Make from this message")
+        box = more.bounding_box()
         assert box
         self.assertGreaterEqual(box["height"], 44, "touch target")
         shot(page, "work-phone-390-conversation")
+        more.tap()
+        create = message.get_by_role("button", name="Create work")
+        self.assertGreaterEqual(create.bounding_box()["height"], 44, "touch target")
         create.tap()
         sheet = page.get_by_role("dialog", name="Details")
         expect(sheet.get_by_role("heading", name=FINDING)).to_be_visible()

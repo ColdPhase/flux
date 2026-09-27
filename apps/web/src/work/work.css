@@ -4,10 +4,10 @@
 /* ---------- Calm state line ---------- */
 .ws-state { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 0; margin: 0 0 12px; font-size: var(--fs-sm); color: var(--text-3); line-height: 1.5; }
 .ws-state--empty { padding: 4px 0; }
-.ws-part { display: inline-flex; align-items: center; min-width: 0; }
+.ws-part { display: inline-flex; align-items: center; min-width: 0; max-width: 100%; }
 .ws-sep { padding: 0 6px; color: var(--text-3); }
-.ws-seg { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; max-width: 100%; padding: 0 6px; margin: 0 -2px; border-radius: var(--r-sm); color: var(--text-2); text-align: left; transition: var(--tr); }
-.ws-seg span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-seg { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 6px; margin: 0 -2px; border-radius: var(--r-sm); color: var(--text-2); text-align: left; transition: var(--tr); }
+.ws-seg span:last-child { min-width: 0; overflow-wrap: anywhere; }
 .ws-seg svg { flex: none; color: var(--text-3); }
 .ws-seg:hover { background: var(--bg-hover); color: var(--text); }
 .ws-seg--need { color: var(--accent); font-weight: 500; }
@@ -15,6 +15,7 @@
 .ws-need { color: var(--accent); font-weight: 500; }
 .ws-dot, .wd-dot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--text-3); }
 .ws-dot--progress, .ws-dot--in_progress, .wd-dot--in_progress { box-shadow: none; background: conic-gradient(var(--text-2) 0 50%, transparent 50%); outline: 1.5px solid var(--text-2); outline-offset: -1.5px; }
+.ws-dot--parked { box-shadow: none; outline: 1.5px dashed var(--text-3); outline-offset: -1.5px; }
 .ws-dot--need { box-shadow: none; background: var(--accent); }
 .ws-dot--blocked, .wd-dot--blocked { box-shadow: inset 0 0 0 1.5px var(--warning); background: color-mix(in srgb, var(--warning) 25%, transparent); }
 .ws-dot--done, .wd-dot--done { box-shadow: none; background: var(--ok); }
@@ -123,6 +124,7 @@
   .ws-state { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-right: -16px; padding-right: 16px; }
   .ws-state::-webkit-scrollbar { display: none; }
   .ws-part { flex: none; max-width: 80vw; }
+  .ws-seg span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ws-acts { margin-left: -4px; }
-  .ws-add { flex-direction: column; }
+  .ws-add .ui-btn { padding: 0 12px; }
 }

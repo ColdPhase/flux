@@ -1,6 +1,6 @@
 .project-convo { display: flex; flex: 1; min-height: 0; flex-direction: column; }
 .project-convo__feed { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
-.project-convo__in { max-width: 1280px; margin: 0 auto; padding: 24px; }
+.project-convo__in { max-width: 1280px; margin: 0 auto; padding: 24px; container-type: inline-size; }
 .project-convo__head { padding: 8px 0 22px; border-bottom: 1px solid var(--line); }
 .project-convo__head h2, .project-setup h2, .material-view h2 { font-size: var(--fs-xl); letter-spacing: -.015em; }
 .project-convo__head h2 { overflow-wrap: anywhere; }
@@ -47,3 +47,5 @@
 .project-convo__material-form select { display: block; width: 100%; margin-top: 4px; border: 1px solid var(--line-strong); border-radius: var(--r); padding: 8px; min-height: 38px; background: var(--bg); color: var(--text); }
 .project-convo__publication { padding: 9px; border-radius: var(--r-sm); background: var(--bg-active); font-size: var(--fs-sm); color: var(--text-2); }
 .project-convo__head .ws-state { margin: 12px 0 0; }
+/* With the Details panel docked the work column narrows; materials move below the messages. */
+@container (max-width: 860px) { .project-convo__columns { grid-template-columns: minmax(155px, 200px) minmax(0, 1fr); } .project-convo__materials { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line); padding: 16px 0; } }

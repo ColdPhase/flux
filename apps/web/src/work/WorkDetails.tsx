@@ -43,8 +43,8 @@ function readable(error: unknown) {
 
 /** Object and form views of the Details panel. */
 export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
-  const [state, setState] = useState<{ object: WorkItem | Decision | WorkResult | null; context: Context } | null>(null);
-  const [failure, setFailure] = useState('');
+  const [loaded, setState] = useState<{ key: string; object: WorkItem | Decision | WorkResult | null; context: Context } | null>(null);
+  const [failed, setFailure] = useState<{ key: string; text: string } | null>(null);
   const [tick, setTick] = useState(0);
   const revalidator = useRevalidator();
   const reload = useCallback(() => { setTick((value) => value + 1); revalidator.revalidate(); }, [revalidator]);
@@ -57,13 +57,16 @@ export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
         ? await (view.kind === 'work' ? getWork(view.id, controller.signal) : view.kind === 'decision' ? getDecision(view.id, controller.signal) : getResult(view.id, controller.signal))
         : null;
       const context = await loadContext(object?.projectId ?? (view as WorkFormView).projectId, controller.signal);
-      setState({ object, context }); setFailure('');
-    })().catch((error: unknown) => { if (!controller.signal.aborted) setFailure(readable(error)); });
+      setState({ key: viewKey, object, context }); setFailure(null);
+    })().catch((error: unknown) => { if (!controller.signal.aborted) { setState(null); setFailure({ key: viewKey, text: readable(error) }); } });
     return () => controller.abort();
     // viewKey identifies the view; tick reloads it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewKey, tick]);
 
+  // While another view loads, the previous one's data must not be read as this view's.
+  const state = loaded?.key === viewKey ? loaded : null;
+  const failure = failed?.key === viewKey ? failed.text : '';
   if (failure && !state) return <div className="details"><p className="details__eyebrow">Details</p><h3 className="details__title">Not available</h3><p className="details__lead" role="alert">{failure}</p></div>;
   if (!state) return <div className="details" aria-busy="true"><p className="details__lead">Loading…</p></div>;
   const { object, context } = state;
@@ -97,8 +100,9 @@ function Sources({ links, id, project }: { links: ObjectLink[]; id: string; proj
       {sources.map((link) => {
         const to = link.to.type === 'message'
           ? `/projects/${project.id}/conversations/${link.conversationId}#message-${link.to.id}`
-          : link.to.type === 'material' ? `/materials/${link.to.id}/versions/${link.to.version}` : null;
-        const kind = link.to.type === 'message' ? 'Message' : `Material v${link.to.type === 'material' ? link.to.version : ''}`;
+          : link.to.type === 'material' ? `/materials/${link.to.id}/versions/${link.to.version}`
+            : link.to.type === 'thought' && link.sketchId ? `/map/${link.sketchId}` : null;
+        const kind = link.to.type === 'message' ? 'Message' : link.to.type === 'thought' ? 'Thought' : `Material v${link.to.type === 'material' ? link.to.version : ''}`;
         return <li key={link.id}>{to ? <Link className="wd-link" to={to}><span><b>{kind}:</b> {link.toTitle}</span><Icon name="chevron-right" size={14} /></Link> : null}</li>;
       })}
     </ul>
@@ -286,7 +290,7 @@ function DecisionPanel({ decision, context, reload }: { decision: Decision; cont
                   <span className="wd-pivot__t">{item.title}<small>{STATUS_LABEL[item.status]}{item.owner ? ` · ${item.owner.name}` : ''}</small></span>
                   {(['keep', 'park', 'leave'] as const).map((choice) => (
                     <label key={choice} className="wd-pivot__c"><input type="radio" name={`pivot-${item.id}`} value={choice} checked={(choices[item.id] ?? 'leave') === choice}
-                      onChange={() => setChoices((current) => ({ ...current, [item.id]: choice }))} />{choice === 'keep' ? 'Still applies' : choice === 'park' ? 'Park' : 'Leave'}</label>
+                      onChange={() => setChoices((current) => ({ ...current, [item.id]: choice }))} />{choice === 'keep' ? 'Still applies' : choice === 'park' ? 'Park' : 'Unchanged'}</label>
                   ))}
                 </div>
               ))}

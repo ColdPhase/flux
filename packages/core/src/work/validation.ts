@@ -6,8 +6,8 @@ import type { PageWindow } from './ports.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const OBJECT_TYPES: readonly WorkObjectType[] = ['work', 'decision', 'result'];
-export const SOURCE_TYPES: readonly ObjectRef['type'][] = ['message', 'material'];
-export const ANY_TYPES: readonly ObjectRef['type'][] = ['message', 'material', ...OBJECT_TYPES];
+export const SOURCE_TYPES: readonly ObjectRef['type'][] = ['message', 'thought', 'material'];
+export const ANY_TYPES: readonly ObjectRef['type'][] = [...SOURCE_TYPES, ...OBJECT_TYPES];
 
 export function isId(value: unknown): value is string {
   return typeof value === 'string' && UUID.test(value);

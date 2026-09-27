@@ -2,7 +2,7 @@ import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { useRevalidator } from 'react-router';
 import type { ConversationMessage, Decision, Project, WorkItem, WorkResult } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { Icon } from '../ui';
+import { Icon, useMediaQuery } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { createWork, type ProjectWork } from './api';
 import { decisionLine, firstLine, fromMessage, resultLine, workLine } from './format';
@@ -28,7 +28,7 @@ export function ProjectStateLine({ lists, canDecide }: { lists: ProjectWork; can
     parts.push({ key: 'work', node: <button type="button" className="ws-seg" onClick={() => openDetails({ kind: 'work', id: active[0]!.id })}><span className="ws-dot ws-dot--progress" aria-hidden="true" /><span>{active.length === 1 ? `In progress: ${active[0]!.title}` : `${active.length} in progress`}{names.length ? ` (${names.join(', ')})` : ''}</span></button> });
   }
   if (blocked.length) parts.push({ key: 'blocked', node: <button type="button" className="ws-seg ws-seg--warn" onClick={() => openDetails({ kind: 'work', id: blocked[0]!.id })}><Icon name="alert" size={13} /><span>{blocked.length} blocked</span></button> });
-  if (proposal) parts.push({ key: 'proposal', node: <button type="button" className={`ws-seg${canDecide ? ' ws-seg--need' : ''}`} onClick={() => openDetails({ kind: 'decision', id: proposal.id })}><span className="ws-dot ws-dot--need" aria-hidden="true" /><span>{canDecide ? 'A proposed decision is waiting for you' : 'A decision is proposed'}</span></button> });
+  if (proposal) parts.push({ key: 'proposal', node: <button type="button" className={`ws-seg${canDecide ? ' ws-seg--need' : ''}`} onClick={() => openDetails({ kind: 'decision', id: proposal.id })}><span className="ws-dot ws-dot--need" aria-hidden="true" /><span>{canDecide ? 'Needs you: a proposed decision' : 'A decision is proposed'}</span></button> });
   if (!parts.length) return <p className="ws-state ws-state--empty" aria-label="Current state">No decisions or work yet. Anything said here can become one.</p>;
   return <p className="ws-state" aria-label="Current state">{parts.map((part, index) => <span key={part.key} className="ws-part">{index ? <span className="ws-sep" aria-hidden="true">·</span> : null}{part.node}</span>)}</p>;
 }
@@ -85,10 +85,18 @@ export function useCreateWorkFromMessage(project: Project) {
   return { create, busy, failed };
 }
 
-/** Quiet actions under a message: always reachable by keyboard, always visible on touch. */
+/**
+ * Quiet actions under a message: shown on hover and focus with a pointer and keyboard; on touch
+ * one "Make from this message" button opens them, so a phone feed is not a wall of buttons.
+ */
 export function MessageActions({ projectId, message, onCreateWork, busy }: { projectId: string; message: ConversationMessage; onCreateWork: () => void; busy: boolean }) {
   const { openDetails } = useShellActions();
+  const touch = useMediaQuery('(hover: none)');
+  const [open, setOpen] = useState(false);
   const source = { messageId: message.id, text: message.body };
+  if (touch && !open) {
+    return <div className="ws-acts"><button type="button" className="ws-act" aria-expanded="false" onClick={() => setOpen(true)}><Icon name="plus" size={14} />Make from this message</button></div>;
+  }
   return (
     <div className="ws-acts" role="group" aria-label="Make something from this message">
       <button type="button" className="ws-act" onClick={onCreateWork} aria-busy={busy || undefined} disabled={busy}><Icon name="tasks" size={14} />{busy ? 'Creating…' : 'Create work'}</button>

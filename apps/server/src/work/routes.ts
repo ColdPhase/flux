@@ -12,7 +12,7 @@ import {
   workItemPath,
   workspaceAssignedWorkPath,
   type AcceptDecisionCommand,
-  type CreateLinkCommand,
+  type CreateObjectLinkCommand,
   type CreateResultCommand,
   type CreateWorkCommand,
   type PageQuery,
@@ -31,7 +31,7 @@ const title = { type: 'string', minLength: 1, maxLength: WORK_LIMITS.title } as 
 const principalRef = { type: ['object', 'null'], required: ['kind', 'id'], additionalProperties: false,
   properties: { kind: { type: 'string', enum: ['human', 'agent'] }, id: { type: 'string', minLength: 1 } } } as const;
 const objectRef = { type: 'object', required: ['type', 'id'], additionalProperties: false,
-  properties: { type: { type: 'string', enum: ['message', 'material', 'work', 'decision', 'result'] }, id: { type: 'string' }, version: { type: 'integer' } } } as const;
+  properties: { type: { type: 'string', enum: ['message', 'thought', 'material', 'work', 'decision', 'result'] }, id: { type: 'string' }, version: { type: 'integer' } } } as const;
 const refs = { type: 'array', maxItems: WORK_LIMITS.links, items: objectRef } as const;
 const ids = { type: 'array', maxItems: WORK_LIMITS.links, items: { type: 'string' } } as const;
 const status = { type: 'string', enum: [...WORK_STATUSES] } as const;
@@ -121,7 +121,7 @@ export async function workRoutes(app: FastifyInstance, { db, sessions }: Options
     }));
   app.get<{ Params: { resultId: string } }>(resultPath(':resultId'), async (request) => work.getResult(await principal(request), request.params.resultId));
 
-  app.post<{ Params: { projectId: string }; Body: CreateLinkCommand }>(projectLinksPath(':projectId'), { schema: { body: createLink } },
+  app.post<{ Params: { projectId: string }; Body: CreateObjectLinkCommand }>(projectLinksPath(':projectId'), { schema: { body: createLink } },
     async (request, reply) => command(request, reply, {
       operation: `POST ${projectLinksPath(':projectId')}`, scope: projectScope(request.params.projectId), status: 201,
       run: (actor, conn) => workUseCases(conn).createLink(actor, request.params.projectId, request.body),

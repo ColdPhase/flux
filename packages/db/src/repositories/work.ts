@@ -14,7 +14,7 @@ type WorkRow = typeof schema.projectWorkItems.$inferSelect;
 type DecisionRow = typeof schema.projectDecisions.$inferSelect;
 type ResultRow = typeof schema.projectResults.$inferSelect;
 type LinkRow = typeof schema.projectObjectLinks.$inferSelect;
-type Ref = { type: 'message' | 'work' | 'decision' | 'result'; id: string } | { type: 'material'; id: string; version: number };
+type Ref = { type: 'message' | 'thought' | 'work' | 'decision' | 'result'; id: string } | { type: 'material'; id: string; version: number };
 type Window = { limit: number; offset: number };
 
 const w = schema.projectWorkItems;
@@ -56,6 +56,11 @@ function toLinkRecord(row: LinkRow) {
 function excerpt(body: string) {
   const line = body.trim().split('\n', 1)[0] ?? '';
   return line.length > 120 ? `${line.slice(0, 119)}…` : line;
+}
+
+/** Sketches shared with the project; a private sketch's thoughts are never linkable to project work. */
+function projectSketch(projectId: string) {
+  return and(eq(schema.sketches.projectId, projectId), eq(schema.sketches.scope, 'project'));
 }
 
 function ownerColumns(owner: Actor | null | undefined) {
@@ -167,6 +172,11 @@ export function workRows(db: DbExecutor) {
           found = await db.select({ id: schema.projectMessages.id }).from(schema.projectMessages)
             .where(and(eq(schema.projectMessages.projectId, projectId), eq(schema.projectMessages.id, ref.id)));
           break;
+        case 'thought':
+          found = await db.select({ id: schema.sketchThoughts.id }).from(schema.sketchThoughts)
+            .innerJoin(schema.sketches, eq(schema.sketches.id, schema.sketchThoughts.sketchId))
+            .where(and(projectSketch(projectId), eq(schema.sketchThoughts.id, ref.id)));
+          break;
         case 'material':
           found = await db.select({ id: schema.projectMaterialVersions.materialId }).from(schema.projectMaterialVersions)
             .where(and(eq(schema.projectMaterialVersions.projectId, projectId), eq(schema.projectMaterialVersions.materialId, ref.id), eq(schema.projectMaterialVersions.version, ref.version)));
@@ -181,13 +191,20 @@ export function workRows(db: DbExecutor) {
 
     /** Titles keyed like core's `refKey`: `<type>:<id>`, or `material:<id>:<version>`. */
     async titles(projectId: string, refs: Ref[]) {
-      const titles = new Map<string, { title: string; conversationId?: string }>();
+      const titles = new Map<string, { title: string; conversationId?: string; sketchId?: string }>();
       const of = (type: Ref['type']) => [...new Set(refs.filter((ref) => ref.type === type).map((ref) => ref.id))];
       const messages = of('message');
       if (messages.length) {
         const m = schema.projectMessages;
         for (const row of await db.select({ id: m.id, body: m.body, conversationId: m.conversationId }).from(m).where(and(eq(m.projectId, projectId), inArray(m.id, messages))))
           titles.set(`message:${row.id}`, { title: excerpt(row.body), conversationId: row.conversationId });
+      }
+      const thoughts = of('thought');
+      if (thoughts.length) {
+        const t = schema.sketchThoughts;
+        const rows = await db.select({ id: t.id, text: t.text, sketchId: t.sketchId }).from(t).innerJoin(schema.sketches, eq(schema.sketches.id, t.sketchId))
+          .where(and(projectSketch(projectId), inArray(t.id, thoughts)));
+        for (const row of rows) titles.set(`thought:${row.id}`, { title: excerpt(row.text), sketchId: row.sketchId });
       }
       const materials = refs.filter((ref): ref is Extract<Ref, { type: 'material' }> => ref.type === 'material');
       if (materials.length) {

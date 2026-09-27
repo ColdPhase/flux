@@ -82,7 +82,7 @@ CREATE TABLE project_object_links (
   role text NOT NULL CHECK (role IN ('source', 'affects', 'still_applies', 'about', 'related')),
   from_type text NOT NULL CHECK (from_type IN ('work', 'decision', 'result')),
   from_id uuid NOT NULL,
-  to_type text NOT NULL CHECK (to_type IN ('message', 'material', 'work', 'decision', 'result')),
+  to_type text NOT NULL CHECK (to_type IN ('message', 'thought', 'material', 'work', 'decision', 'result')),
   to_id uuid NOT NULL,
   to_version integer CHECK (to_version IS NULL OR to_version > 0),
   created_by_kind text NOT NULL CHECK (created_by_kind IN ('human', 'agent')),

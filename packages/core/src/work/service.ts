@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import {
   WORK_LIMITS,
   type AcceptDecisionCommand,
-  type CreateLinkCommand,
+  type CreateObjectLinkCommand,
   type CreateResultCommand,
   type CreateWorkCommand,
   type Decision,
@@ -19,7 +19,7 @@ import {
 } from '@flux/contracts';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, RuleViolationError, VersionConflictError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
-import type { ActorRef, DecisionRecord, LinkRecord, NewLink, ResultRecord, WorkChanges, WorkPorts, WorkRecord, WorkUnitOfWork } from './ports.js';
+import type { ActorRef, DecisionRecord, ObjectLinkRecord, NewObjectLink, ResultRecord, WorkChanges, WorkPorts, WorkRecord, WorkUnitOfWork } from './ports.js';
 import * as valid from './validation.js';
 
 // Work, decision and result use cases (issue #101). Each runs in one unit of work: it asks the
@@ -51,10 +51,10 @@ function notFound(type: WorkObjectType) {
 /** Links and names needed to present a set of records to one reader. */
 async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | null)[]) {
   const [links, names] = await Promise.all([
-    ids.length ? ports.work.links(ids) : Promise.resolve([] as LinkRecord[]),
+    ids.length ? ports.work.links(ids) : Promise.resolve([] as ObjectLinkRecord[]),
     ports.work.names(actors.filter((item): item is ActorRef => item !== null)),
   ]);
-  const target = (link: LinkRecord): ObjectRef =>
+  const target = (link: ObjectLinkRecord): ObjectRef =>
     (link.toType === 'material' ? { type: 'material', id: link.toId, version: link.toVersion! } : { type: link.toType, id: link.toId }) as ObjectRef;
   const byProject = new Map<string, ObjectRef[]>();
   for (const link of links) {
@@ -62,7 +62,7 @@ async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | nu
     refs.push({ type: link.fromType, id: link.fromId }, target(link));
     byProject.set(link.projectId, refs);
   }
-  const titles = new Map<string, { title: string; conversationId?: string }>();
+  const titles = new Map<string, { title: string; conversationId?: string; sketchId?: string }>();
   for (const [projectId, refs] of byProject) for (const [ref, title] of await ports.work.titles(projectId, refs)) titles.set(ref, title);
   const named = (ref: ActorRef): NamedPrincipal => ({ ...ref, name: names.get(key(ref)) ?? (ref.kind === 'agent' ? 'Agent' : 'Former member') });
   const linksOf = (id: string): ObjectLink[] => links.filter((link) => link.fromId === id || link.toId === id).map((link) => {
@@ -71,7 +71,7 @@ async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | nu
     return {
       id: link.id, projectId: link.projectId, role: link.role, from: { type: link.fromType, id: link.fromId }, to,
       fromTitle: titles.get(`${link.fromType}:${link.fromId}`)?.title ?? '', toTitle: toTitle?.title ?? '',
-      conversationId: toTitle?.conversationId ?? null, createdAt: iso(link.createdAt),
+      conversationId: toTitle?.conversationId ?? null, sketchId: toTitle?.sketchId ?? null, createdAt: iso(link.createdAt),
     };
   });
   const base = (record: { id: string; projectId: string; workspaceId: string; createdAt: Date }) => ({
@@ -139,7 +139,7 @@ async function requireOwner(ports: WorkPorts, projectId: string, owner: ActorRef
     throw new RuleViolationError('The owner needs current access to this project', 'OWNER_WITHOUT_ACCESS');
 }
 
-function linkRows(scope: { workspaceId: string; projectId: string }, from: NewLink['from'], role: NewLink['role'], targets: ObjectRef[], by: ActorRef): NewLink[] {
+function linkRows(scope: { workspaceId: string; projectId: string }, from: NewObjectLink['from'], role: NewObjectLink['role'], targets: ObjectRef[], by: ActorRef): NewObjectLink[] {
   return targets.map((to) => ({ id: randomUUID(), ...scope, role, from, to, createdBy: by }));
 }
 
@@ -357,7 +357,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
     },
 
     /** Connects a work item, decision or result to anything else in the project. */
-    async createLink(principal: Principal, projectId: string, command: CreateLinkCommand): Promise<ObjectLink> {
+    async createLink(principal: Principal, projectId: string, command: CreateObjectLinkCommand): Promise<ObjectLink> {
       const by = actor(principal);
       if (!command || typeof command !== 'object') throw new InvalidInputError('Link is required');
       const project = valid.id(projectId, 'projectId');
@@ -374,7 +374,8 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         const titles = await ports.work.titles(project, [from, to]);
         await ports.events.record(principal, workspaceId, 'project.link_created.v1', project, { from: from.id });
         return { id: link.id, projectId: project, role: link.role, from, to, fromTitle: titles.get(valid.refKey(from))?.title ?? '',
-          toTitle: titles.get(valid.refKey(to))?.title ?? '', conversationId: titles.get(valid.refKey(to))?.conversationId ?? null, createdAt: iso(link.createdAt) };
+          toTitle: titles.get(valid.refKey(to))?.title ?? '', conversationId: titles.get(valid.refKey(to))?.conversationId ?? null,
+          sketchId: titles.get(valid.refKey(to))?.sketchId ?? null, createdAt: iso(link.createdAt) };
       });
     },
   };

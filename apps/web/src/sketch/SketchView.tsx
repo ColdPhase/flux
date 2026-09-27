@@ -4,6 +4,8 @@ import { DEFAULT_THOUGHT_SIZE, THOUGHT_SHAPES, type SketchDetail } from '@flux/c
 import { Button, EmptyState, Icon, MEDIA, Spinner, useMediaQuery } from '../ui';
 import { getProject } from '../api/sketches';
 import { useShellData } from '../app/data';
+import { useShellActions } from '../app/shellContext';
+import { createWork } from '../work/api';
 import { useSketchDoc, type Op } from './doc';
 import { audience, quote } from './format';
 import { freeSpot, rectOf } from './geometry';
@@ -214,6 +216,24 @@ export function SketchView({ sketchId }: { sketchId: string }) {
     say(`Shape: ${next === 'card' ? 'card' : next === 'pill' ? 'pill' : 'circle'}`, true);
   };
 
+  // #101: selected thoughts of a project sketch become one work item in one action; the map
+  // keeps its thoughts and the work links back to them.
+  const { openDetails } = useShellActions();
+  const workAttempt = useRef<{ ids: string; key: string } | null>(null);
+  const makeWork = async () => {
+    const thoughts = selection.flatMap((id) => { const t = find(id); return t ? [t] : []; });
+    if (!thoughts.length || !sketch?.projectId) { say('Select thoughts first, then Create work'); return; }
+    const ids = thoughts.map((t) => t.id).join(',');
+    if (workAttempt.current?.ids !== ids) workAttempt.current = { ids, key: crypto.randomUUID() };
+    const title = thoughts.length === 1 ? thoughts[0]!.text : `Explore: ${thoughts.map((t) => t.text).join(', ')}`;
+    try {
+      const item = await createWork(sketch.projectId, { title: title.slice(0, 200), sources: thoughts.map((t) => ({ type: 'thought' as const, id: t.id })) }, workAttempt.current.key);
+      workAttempt.current = null;
+      say(`Created work ${quote(item.title)}; the thoughts stay on the map`);
+      openDetails({ kind: 'work', id: item.id });
+    } catch { say('Could not create the work yet. Wait for “Saved”, then try again.'); }
+  };
+
   const undo = () => {
     setEditing(null);
     setConnectFrom(null);
@@ -283,6 +303,7 @@ export function SketchView({ sketchId }: { sketchId: string }) {
             }}><Icon name="edit" size={14} />Edit</button>
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={cycleShape} aria-label="Change shape"><Icon name="shape" size={14} /><span className="sk-bl">Shape</span></button>
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={() => remove(selection)} aria-label="Remove from sketch"><Icon name="trash" size={14} /><span className="sk-bl">Remove</span></button>
+            {sketch.scope === 'project' ? <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={() => void makeWork()} aria-label="Create work from selected thoughts"><Icon name="tasks" size={14} /><span className="sk-bl">Create work</span></button> : null}
             <span className="sk-div" aria-hidden="true" />
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!doc.canUndo} onClick={undo} aria-label="Undo"><Icon name="undo" size={14} /><span className="sk-bl">Undo</span></button>
             </div>
