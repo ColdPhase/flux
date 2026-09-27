@@ -57,6 +57,27 @@ default test project or another worker's persistent volumes. The
 Compose commands; the worktree location does not change their container-only
 runtime requirement.
 
+### Disk hygiene
+
+Each `scripts/check_*.sh` run builds images tagged with its own Compose
+project (`flux-foundation:<project>`, `flux-test-tools:<project>`,
+`flux-e2e:<project>`, 0.6–4 GB each). After `down -v`, the cleanup trap removes
+exactly those tags and prints how many it removed, on success or failure. It
+never removes base images, other projects' tags such as
+`flux-foundation:flux-demo`, or the shared build cache. Set
+`FLUX_KEEP_TEST_IMAGES=1` to keep a run's images for debugging, then remove
+them yourself with `docker image rm`. Incident, 2026-09-27: before this cleanup,
+about 60 leftover images and 62 GB of build cache filled a developer disk
+([#71](https://github.com/ColdPhase/flux/issues/71)).
+
+The build cache speeds up every worker's next build, so the checks do not prune
+it. Check usage with `docker system df` and, when it grows large on your own
+machine, run `docker builder prune --filter until=72h` (or
+`docker builder prune -a` when no concurrent checks are running). Remove
+leftovers from older or interrupted runs with
+`docker images --format '{{.Repository}}:{{.Tag}}' | grep -E '^flux-[a-z-]+:flux-(test|runtime)-'`,
+then `docker image rm` on the tags you confirm are not in use.
+
 Git, Docker/Compose, GitHub CLI, the installed official coding-agent CLIs, and
 Python 3.11+ for this repository's standard-library foundation checks are host
 tools. Those checks are separate from the Flux application's runtime and do not

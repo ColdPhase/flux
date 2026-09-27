@@ -1,0 +1,1103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<title>Flux · Tide › Shared export · Variant B: project state board (O-003 proposal)</title>
+<!--
+  O-003 UI direction, variant B: "Project state board (object-first)".
+  Static interface prototype for issue #15. Not an accepted design.
+  Self-contained: no external network resources. Scenario content from brief.md.
+-->
+<style>
+:root {
+  /* ---- Semantic tokens (named by role; values are candidates) ---- */
+  --surface-canvas: #F6F3EC;      /* warm white app canvas */
+  --surface-raised: #FFFDF8;      /* cards, panes */
+  --surface-sunken: #ECE8DE;      /* lane headers, superseded */
+  --surface-inverse: #111110;
+  --surface-restricted: #E9E5DB;
+
+  --text-primary: #111110;        /* 17.9:1 on canvas */
+  --text-secondary: #4A4740;      /* ~8.3:1 on canvas */
+  --text-inverse: #FFFFFF;
+  --text-on-marker: #111110;      /* 18:1 on #D7FF00 */
+
+  --border-strong: #111110;
+  --border-control: #6E685D;      /* >=3:1 on canvas and raised */
+  --border-subtle: #D3CCBD;       /* decorative dividers only */
+
+  --action-primary: #111110;
+  --action-primary-hover: #2E2D2A;
+  --action-primary-text: #FFFFFF;
+  --action-secondary-bg: #FFFDF8;
+  --action-secondary-hover: #ECE8DE;
+
+  --marker-current: #D7FF00;      /* ONLY as background behind dark text */
+  --marker-changed: #D7FF00;      /* same hue; always paired with text + glyph */
+
+  --status-danger: #A4161A;       /* ~7.6:1 on raised */
+  --status-danger-surface: #FBEAE6;
+  --status-warning: #FFD600;      /* background behind dark text (14.9:1) */
+  --status-warning-surface: #FFF6CC;
+  --status-running: #111110;
+  --state-superseded: #5F5A51;    /* ~5.3:1 on sunken */
+
+  --focus-ring: #111110;
+  --focus-halo: #D7FF00;
+
+  /* ---- Type & density (foundation §10.8 starting ranges) ---- */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --fs-body: 14px;
+  --fs-meta: 12.5px;
+  --fs-title: 20px;
+  --control-h: 32px;
+  --chip-h: 26px;
+  --row-h: 36px;
+  --radius: 2px;
+  --detail-w: clamp(360px, 30vw, 440px);
+}
+
+@media (max-width: 600px), (pointer: coarse) {
+  :root { --control-h: 44px; --chip-h: 44px; --row-h: 44px; }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: 1.45;
+  color: var(--text-primary);
+  background: var(--surface-canvas);
+}
+button, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+[hidden] { display: none !important; }
+.mono { font-family: var(--font-mono); font-size: 12.5px; letter-spacing: 0; }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.meta { font-size: var(--fs-meta); color: var(--text-secondary); }
+svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: square; }
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px var(--focus-halo);
+}
+
+.skip { position: absolute; left: 8px; top: -60px; z-index: 50; background: var(--action-primary); color: var(--action-primary-text); padding: 8px 12px; }
+.skip:focus { top: 8px; }
+
+/* ---------- Buttons ---------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: var(--control-h); padding: 0 12px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  background: var(--action-secondary-bg); color: var(--text-primary);
+  font-size: 13.5px; font-weight: 600; white-space: nowrap;
+}
+.btn:hover { background: var(--action-secondary-hover); }
+.btn-primary { background: var(--action-primary); color: var(--action-primary-text); border-color: var(--action-primary); }
+.btn-primary:hover { background: var(--action-primary-hover); }
+.btn-quiet { border-color: transparent; background: transparent; }
+.btn-quiet:hover { background: var(--action-secondary-hover); }
+.btn-danger { color: var(--status-danger); border-color: var(--status-danger); }
+.btn-sm { min-height: 28px; padding: 0 9px; font-size: 12.5px; }
+@media (max-width: 600px), (pointer: coarse) { .btn-sm { min-height: 44px; padding: 0 12px; font-size: 13.5px; } }
+
+/* ---------- Badges & markers ---------- */
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 20px; padding: 0 6px;
+  font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  white-space: nowrap; line-height: 1;
+}
+.badge-solid { background: var(--surface-inverse); color: var(--text-inverse); }
+.badge-danger { color: var(--status-danger); border-color: var(--status-danger); background: var(--status-danger-surface); }
+.badge-warn { background: var(--status-warning); color: var(--text-primary); border-color: var(--text-primary); }
+.badge-muted { color: var(--state-superseded); border-style: dashed; border-color: var(--state-superseded); background: transparent; }
+.marker {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 20px; padding: 0 6px;
+  background: var(--marker-changed); color: var(--text-on-marker);
+  font-size: 12px; font-weight: 700; white-space: nowrap; border-radius: var(--radius);
+}
+.marker::before { content: "Δ"; font-weight: 800; }
+.marker.current::before { content: "●"; font-size: 9px; }
+.marker.noexp { background: var(--status-warning); }
+.marker.noexp::before { content: "!"; display: inline-grid; place-items: center; width: 12px; height: 12px; border: 1.5px solid currentColor; border-radius: 50%; font-size: 9px; }
+
+/* ---------- Top bar ---------- */
+.topbar {
+  display: flex; align-items: center; gap: 12px;
+  height: 44px; padding: 0 16px;
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border-strong);
+}
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 800; letter-spacing: .12em; font-size: 13px; }
+.brand-mark { width: 18px; height: 18px; background: var(--surface-inverse); position: relative; }
+.brand-mark::after { content: ""; position: absolute; right: 0; bottom: 0; width: 8px; height: 8px; background: var(--marker-current); }
+.crumbs ol { display: flex; gap: 6px; list-style: none; margin: 0; padding: 0; font-size: 13.5px; }
+.crumbs li + li::before { content: "›"; margin-right: 6px; color: var(--text-secondary); }
+.crumbs a { color: inherit; text-decoration: none; font-weight: 600; }
+.crumbs a:hover { text-decoration: underline; }
+.crumbs [aria-current] { font-weight: 700; }
+.topbar .spacer { flex: 1; }
+.jump { min-width: 220px; justify-content: space-between; color: var(--text-secondary); font-weight: 500; border-color: var(--border-control); }
+.jump kbd { font-family: var(--font-mono); font-size: 12px; border: 1px solid var(--border-control); padding: 1px 4px; border-radius: 2px; }
+.agents-toggle[aria-expanded="true"] { background: var(--surface-inverse); color: var(--text-inverse); }
+.agents-toggle .short { display: none; }
+.agents-toggle .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.agents-toggle .sq { width: 8px; height: 8px; border: 1.5px solid currentColor; }
+.avatar {
+  display: inline-grid; place-items: center; flex: none;
+  width: 24px; height: 24px; border-radius: 50%;
+  font-size: 12px; font-weight: 700; background: var(--surface-sunken); border: 1px solid var(--border-strong);
+}
+.avatar.me { background: var(--surface-inverse); color: var(--text-inverse); }
+.avatar.bot { border-radius: 3px; background: var(--surface-raised); font-family: var(--font-mono); }
+
+/* ---------- Project header ---------- */
+.project {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 24px; align-items: end;
+  padding: 10px 20px 10px;
+  background: var(--surface-raised);
+}
+.project .kicker { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; margin-bottom: 2px; }
+.project h1 { margin: 0; font-size: var(--fs-title); line-height: 1.28; font-weight: 700; letter-spacing: -.01em; max-width: 96ch; }
+.project .actions { display: flex; gap: 8px; }
+.people { display: inline-flex; gap: 0; }
+.people .avatar { width: 22px; height: 22px; margin-left: -4px; }
+.people .avatar:first-child { margin-left: 0; }
+
+/* ---------- Return strip ---------- */
+.return {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+  padding: 6px 20px;
+  border-top: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
+  background: var(--surface-canvas);
+}
+.return-label { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 14px; font-weight: 700; }
+.return-label .tag { background: var(--surface-inverse); color: var(--text-inverse); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; padding: 3px 6px; }
+.chips { display: flex; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: var(--chip-h); padding: 0 10px;
+  border: 1px solid var(--border-control); border-radius: 999px;
+  background: var(--surface-raised); font-size: 12.5px; font-weight: 600; white-space: nowrap;
+}
+.chip .n { font-family: var(--font-mono); font-weight: 700; }
+.chip[aria-pressed="true"] { background: var(--marker-changed); color: var(--text-on-marker); border-color: var(--border-strong); box-shadow: inset 0 0 0 1px var(--border-strong); }
+.chip[aria-pressed="true"]::before { content: "✓"; font-weight: 800; }
+.chip.noexp[aria-pressed="true"] { background: var(--status-warning); }
+.return .end { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+/* ---------- Main layout ---------- */
+.shell { display: flex; flex-direction: column; min-height: 100vh; }
+.main { display: grid; grid-template-columns: minmax(0, 1fr) var(--detail-w); min-height: 0; flex: 1; }
+.workspace { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid var(--border-strong); }
+
+@media (min-width: 901px) {
+  .shell { height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; }
+  .workspace, .detail { overflow: hidden; }
+}
+
+.toolbar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 6px 12px 6px 20px; min-height: 44px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.toolbar h2 { margin: 0; font-size: 15px; font-weight: 700; }
+.legend { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend .stub { width: 16px; height: 0; border-top: 1px solid var(--border-strong); position: relative; }
+.legend .stub::after { content: ""; position: absolute; right: -1px; top: -4px; border-left: 5px solid var(--border-strong); border-top: 3.5px solid transparent; border-bottom: 3.5px solid transparent; }
+.seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--radius); margin-left: auto; }
+.seg button { min-height: calc(var(--control-h) - 2px); padding: 0 12px; border: 0; background: var(--surface-raised); font-size: 13px; font-weight: 600; }
+.seg button + button { border-left: 1px solid var(--border-strong); }
+.seg button[aria-pressed="true"] { background: var(--surface-inverse); color: var(--text-inverse); }
+
+.view { flex: 1; min-height: 0; overflow: auto; }
+
+/* ---------- Board ---------- */
+.board {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  min-height: 100%;
+}
+.lane { border-right: 1px solid var(--border-subtle); min-width: 0; display: flex; flex-direction: column; }
+.lane:last-child { border-right: 0; }
+.lane-h {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; gap: 8px;
+  height: 32px; padding: 0 10px;
+  background: var(--surface-sunken); border-bottom: 1px solid var(--border-strong);
+  font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+}
+.lane-h h3 { margin: 0; font: inherit; }
+.lane-h .num { font-family: var(--font-mono); letter-spacing: 0; }
+.lane-h .count { margin-left: auto; font-family: var(--font-mono); font-weight: 600; letter-spacing: 0; color: var(--text-secondary); }
+.lane-h .flow { font-size: 14px; }
+.lane-b { list-style: none; margin: 0; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+
+.card {
+  position: relative;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  padding: 8px 10px 8px;
+}
+.card.out::after { /* connector stub into the next lane */
+  content: ""; position: absolute; top: 20px; right: -11px; width: 10px; border-top: 1px solid var(--border-strong);
+}
+.card.in::before {
+  content: ""; position: absolute; top: 16px; left: -11px;
+  border-left: 6px solid var(--border-strong); border-top: 4px solid transparent; border-bottom: 4px solid transparent;
+}
+.card-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 3px; }
+.card-top .id { font-family: var(--font-mono); font-size: 12.5px; font-weight: 700; }
+.card-top .type { font-size: 12px; color: var(--text-secondary); }
+.card-top .right { margin-left: auto; display: inline-flex; gap: 4px; }
+.obj-open {
+  display: block; width: 100%; padding: 0; border: 0; background: none; text-align: left;
+  font-size: 14px; line-height: 1.35; font-weight: 600;
+}
+.obj-open::after { content: ""; position: absolute; inset: 0; z-index: 0; } /* whole card selects */
+.card > *:not(.obj-open) { position: relative; }
+.card .links, .card .activity, .card .card-actions, .card .card-top { z-index: 1; }
+.obj-open:focus-visible { outline: none; box-shadow: none; }
+.card:has(.obj-open:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: 2px; box-shadow: 0 0 0 5px var(--focus-halo); }
+.card .desc { margin: 3px 0 0; font-size: 13px; color: var(--text-secondary); }
+.card .meta { margin-top: 4px; }
+.links { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 6px; font-size: 12px; color: var(--text-secondary); }
+.link-chip {
+  display: inline-flex; align-items: center; gap: 3px;
+  min-height: 24px; padding: 0 6px;
+  border: 1px solid var(--border-control); border-radius: var(--radius);
+  background: var(--surface-canvas);
+  font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: var(--text-primary);
+}
+.link-chip:hover { border-color: var(--border-strong); background: var(--surface-sunken); }
+.link-chip.broken { border-style: dashed; border-color: var(--status-danger); color: var(--status-danger); }
+@media (max-width: 600px), (pointer: coarse) { .link-chip { min-height: 44px; padding: 0 10px; } }
+
+.card.changed { box-shadow: inset 0 3px 0 var(--marker-changed); border-top-color: var(--border-strong); }
+.card.changed.noexp-change { box-shadow: inset 0 3px 0 var(--status-warning); }
+.card.is-selected { border: 2px solid var(--border-strong); padding: 7px 9px 7px; background: #FFFFFF; }
+.card.is-selected .sel-tag { display: inline-flex; }
+.sel-tag { display: none; }
+.card.is-linked { border-color: var(--border-strong); border-style: dashed; }
+[data-filter]:not([data-filter="all"]):not([data-filter="none"]) .card.is-hit,
+[data-filter="all"] .card.changed { outline: 3px solid var(--marker-changed); outline-offset: 0; }
+[data-filter="all"] .card.noexp-change, [data-filter="noexp"] .card.is-hit { outline-color: var(--status-warning); }
+
+/* current / accepted */
+.card.accepted { border-left: 4px solid var(--border-strong); padding-left: 8px; }
+.card.accepted.is-selected { border-left-width: 5px; padding-left: 7px; }
+/* superseded */
+.card.superseded { background: var(--surface-sunken); border-style: dashed; border-color: var(--state-superseded); }
+.card.superseded .obj-open { color: var(--state-superseded); text-decoration: line-through; text-decoration-thickness: 1.5px; font-weight: 500; }
+.card.superseded .desc { color: var(--state-superseded); }
+/* missing source */
+.card.missing { border: 1px dashed var(--status-danger); background: var(--status-danger-surface); }
+.card.missing .obj-open { color: var(--text-primary); }
+.missing-note { display: flex; gap: 6px; align-items: flex-start; margin-top: 4px; font-size: 13px; color: var(--status-danger); font-weight: 600; }
+/* restricted */
+.card.restricted {
+  background: repeating-linear-gradient(135deg, var(--surface-restricted) 0 6px, var(--surface-raised) 6px 12px);
+  border: 1px solid var(--border-control);
+}
+.card.restricted .obj-open { display: flex; align-items: center; gap: 6px; }
+.card.restricted .desc { background: var(--surface-raised); display: inline; padding: 0 2px; }
+.card-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+
+/* agent activity on objects */
+.activity {
+  display: flex; align-items: flex-start; gap: 6px;
+  margin: 8px -10px -8px; padding: 6px 10px;
+  border-top: 1px dashed var(--border-control);
+  background: var(--surface-canvas);
+  font-size: 12.5px; line-height: 1.35;
+}
+.card.is-selected .activity { margin: 8px -9px -7px; }
+.activity b { font-weight: 700; }
+.activity.stopped { background: var(--status-danger-surface); border-top: 1px solid var(--status-danger); }
+.activity.stopped .state { color: var(--status-danger); font-weight: 700; }
+.run-dot { width: 8px; height: 8px; margin-top: 4px; border-radius: 50%; background: var(--status-running); flex: none; box-shadow: 0 0 0 2px var(--surface-canvas), 0 0 0 3px var(--status-running); }
+.stop-sq { width: 9px; height: 9px; margin-top: 3px; background: var(--status-danger); flex: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .run-dot { animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 2px var(--surface-canvas), 0 0 0 5px rgba(17,17,16,.25); } }
+}
+
+/* ---------- Outline ---------- */
+.outline { padding: 4px 20px 16px; }
+.outline h3 { margin: 12px 0 4px; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; display: flex; gap: 8px; align-items: center; }
+.outline h3 .num { font-family: var(--font-mono); letter-spacing: 0; }
+.outline ol { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--border-strong); }
+.orow {
+  display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; gap: 2px 10px; align-items: start;
+  padding: 7px 8px; min-height: var(--row-h);
+  border-bottom: 1px solid var(--border-subtle);
+  position: relative;
+}
+.orow .oid { font-family: var(--font-mono); font-size: 12.5px; font-weight: 700; padding-top: 1px; }
+.orow .obj-open { font-weight: 600; }
+.orow .obj-open::after { content: ""; position: absolute; inset: 0; }
+.orow .obj-open:focus-visible { outline: none; box-shadow: none; }
+.orow:has(.obj-open:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: -2px; box-shadow: inset 0 0 0 4px var(--focus-halo); }
+.orow .ostate { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; position: relative; z-index: 1; }
+.orow .osub { grid-column: 2 / 4; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; font-size: 12.5px; color: var(--text-secondary); position: relative; z-index: 1; }
+.orow .osub .links { margin: 0; }
+.orow.is-selected { background: #FFFFFF; box-shadow: inset 4px 0 0 var(--border-strong); }
+.orow.is-linked { box-shadow: inset 2px 0 0 var(--border-control); }
+.orow.superseded .obj-open { text-decoration: line-through; color: var(--state-superseded); font-weight: 500; }
+.orow.changed .oid { background: var(--marker-changed); color: var(--text-on-marker); align-self: start; padding: 0 3px; justify-self: start; }
+.orow.noexp-change .oid { background: var(--status-warning); }
+.orow.missing .obj-open { color: var(--status-danger); }
+[data-filter]:not([data-filter="all"]) .orow.is-hit, [data-filter="all"] .orow.changed { background: #FBFFE0; }
+[data-filter="noexp"] .orow.is-hit, [data-filter="all"] .orow.noexp-change { background: var(--status-warning-surface); }
+
+/* ---------- Agents panel ---------- */
+.agents {
+  flex: none; border-top: 1px solid var(--border-strong); background: var(--surface-raised);
+  max-height: 40%; overflow: auto;
+}
+.agents-h { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 6px 12px 6px 20px; border-bottom: 1px solid var(--border-subtle); position: sticky; top: 0; background: var(--surface-raised); z-index: 1; }
+.agents-h h2 { margin: 0; font-size: 14px; font-weight: 700; }
+.agents-h .meta { flex: 1 1 200px; min-width: 0; }
+.agents-h .close { margin-left: auto; flex: none; }
+.agent-list { list-style: none; margin: 0; padding: 0; }
+.arow {
+  display: grid; grid-template-columns: minmax(210px, .7fr) minmax(0, 1.3fr) minmax(0, 1.4fr) auto;
+  gap: 2px 16px; align-items: start;
+  padding: 6px 12px 6px 20px; border-bottom: 1px solid var(--border-subtle);
+}
+.arow:last-child { border-bottom: 0; }
+.arow .who { display: flex; gap: 8px; align-items: flex-start; }
+.arow .who strong { display: block; font-size: 14px; }
+.arow .state-line { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; }
+.arow .state-line.stopped { color: var(--status-danger); }
+.arow .what { font-size: 13.5px; }
+.arow .what .on { font-size: 12.5px; color: var(--text-secondary); display: block; }
+.arow dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 1px 8px; font-size: 12.5px; }
+.arow dt { color: var(--text-secondary); }
+.arow dd { margin: 0; font-weight: 600; }
+.arow .acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.arow .nosw { margin: 2px 0 0 !important; font-size: 12.5px; font-weight: 600; display: flex; gap: 6px; align-items: center; }
+.arow.stopped { background: #FFF8F6; box-shadow: inset 4px 0 0 var(--status-danger); }
+/* Desktop and tablet: one compact row per agent; the full grant opens on demand so the board keeps its height. */
+.arow .gsum { margin: 0; font-size: 12.5px; color: var(--text-secondary); }
+.arow .gsum b { color: var(--text-primary); font-weight: 600; }
+@media (min-width: 901px) {
+  .arow { grid-template-columns: minmax(190px, .6fr) minmax(0, 1.5fr) minmax(0, 1.1fr) auto; padding-top: 5px; padding-bottom: 5px; }
+  .arow .what .on { display: inline; margin-left: 6px; }
+  .arow dl { display: none; grid-column: 2 / 4; grid-row: 2; margin-top: 2px; }
+  .arow.open dl { display: grid; }
+  .arow .acts { grid-column: 4; grid-row: 1; }
+}
+@media (max-width: 900px) { .arow .gsum, .arow .gtoggle { display: none; } }
+
+/* ---------- Detail pane ---------- */
+.detail { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--surface-raised); }
+#detail-content { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.card .desc, .card > .meta { pointer-events: none; }
+.detail-h { flex: none; padding: 8px 16px 8px; border-bottom: 1px solid var(--border-strong); }
+.detail-h .row1 { display: flex; align-items: center; gap: 8px; }
+.detail-h .row1 .meta { font-weight: 600; }
+.detail-h .back { display: none; }
+.detail-h .row1 .x { margin-left: auto; }
+.detail-h h2 { margin: 4px 0 6px; font-size: 17px; line-height: 1.3; font-weight: 700; outline: none; }
+.detail-h .badges { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; }
+.detail-body { flex: 1; min-height: 0; overflow: auto; }
+.dsec { padding: 8px 16px; border-bottom: 1px solid var(--border-subtle); }
+.dsec h3 { margin: 0 0 3px; font-size: 12px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--text-secondary); }
+.dsec p { margin: 0; }
+.dsec .sup { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; font-size: 13px; }
+.dsec .sup s { color: var(--state-superseded); }
+.evidence { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.evidence .link-chip { font-family: var(--font-sans); font-size: 12.5px; }
+.evidence .link-chip .mono { font-size: 12px; }
+.evidence .link-chip.restricted { background: var(--surface-restricted); border-style: solid; }
+.dgrid { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 6px 8px; align-items: baseline; }
+.dgrid h3 { margin: 0; }
+.next { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 13.5px; }
+.next li { display: flex; gap: 6px; align-items: baseline; }
+.next b { min-width: 28px; }
+
+.thread-h { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding: 8px 16px 4px; position: sticky; top: 0; background: var(--surface-raised); z-index: 1; border-bottom: 1px solid var(--border-subtle); }
+.thread-h h3 { margin: 0; font-size: 14px; font-weight: 700; }
+.msgs { list-style: none; margin: 0; padding: 4px 0 8px; }
+.msg { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 0 8px; padding: 6px 16px; }
+.msg .mh { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.msg .mh b { font-size: 13.5px; }
+.msg p { margin: 1px 0 0; }
+.ref { font-family: var(--font-mono); font-size: 12.5px; font-weight: 700; padding: 0 3px; border: 1px solid var(--border-control); border-radius: 2px; background: var(--surface-canvas); }
+.replies { list-style: none; margin: 4px 0 0; padding: 0 0 0 10px; border-left: 2px solid var(--border-strong); }
+.replies .msg { padding: 4px 0; }
+.replies-h { font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-top: 6px; }
+.msg.question .qbox { margin-top: 5px; padding: 6px 8px; border: 1px solid var(--border-strong); background: var(--surface-canvas); }
+.qbox .qlabel { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 12px; font-weight: 700; margin-bottom: 2px; }
+.qbox .qlabel .ring { width: 10px; height: 10px; border: 2px solid currentColor; border-radius: 50%; }
+.msg.failed .bubble { border: 1px dashed var(--status-danger); background: var(--status-danger-surface); padding: 6px 8px; margin-top: 3px; }
+.msg.failed .err { display: flex; gap: 6px; align-items: center; color: var(--status-danger); font-weight: 700; font-size: 13px; margin-top: 4px; }
+.msg.failed .err-acts { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.msg.sent .bubble { border: 1px solid var(--border-subtle); background: transparent; }
+
+.composer {
+  flex: none; border-top: 1px solid var(--border-strong); background: var(--surface-raised);
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+}
+.composer label { display: block; font-size: 12px; font-weight: 700; margin-bottom: 4px; }
+.composer .box { display: flex; flex-direction: column; border: 1px solid var(--border-control); border-radius: var(--radius); background: #FFFFFF; }
+.composer .box:focus-within { border-color: var(--border-strong); box-shadow: 0 0 0 1px var(--border-strong); }
+.composer textarea { border: 0; resize: none; padding: 7px 9px; min-height: 34px; background: transparent; font-size: 14px; line-height: 1.4; }
+.composer textarea:focus-visible { outline: none; box-shadow: none; }
+.composer .bar { display: flex; align-items: center; gap: 6px; padding: 4px; }
+.composer .bar .meta { flex: 1; padding-left: 4px; }
+
+.backdrop { display: none; }
+
+/* ---------- Responsive: 1180 and below — 2x2 lanes ---------- */
+@media (max-width: 1180px) {
+  .board { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: min-content; }
+  .lane:nth-child(2) { border-right: 0; }
+  .lane:nth-child(n+3) { border-top: 1px solid var(--border-strong); }
+  .lane:nth-child(3) .card.in::before, .lane:nth-child(2) .card.out::after { display: none; }
+  .jump { min-width: 0; }
+  .jump .lbl { display: none; }
+  .arow { grid-template-columns: minmax(190px, .8fr) minmax(0, 1.4fr) auto; }
+  .agents { max-height: 36%; }
+  .arow .gsum { grid-column: 2; }
+  .arow dl { grid-column: 2 / 3; grid-row: auto; }
+  .arow .acts { grid-column: 3; grid-row: 1; }
+  .arow .nosw { grid-column: 2 / 4; }
+  .project .actions .btn:not(.btn-primary) .long { display: none; }
+}
+
+/* ---------- 900 and below — detail becomes a sheet ---------- */
+@media (max-width: 900px) {
+  .main { grid-template-columns: minmax(0, 1fr); }
+  .workspace { border-right: 0; }
+  .project { grid-template-columns: 1fr; }
+  .detail {
+    position: fixed; z-index: 30; top: 0; right: 0; bottom: 0;
+    width: min(480px, 100%);
+    border-left: 1px solid var(--border-strong);
+    transform: translateX(100%); visibility: hidden;
+  }
+  body.sheet-open .detail { transform: none; visibility: visible; }
+  body.sheet-open .backdrop { display: block; position: fixed; inset: 0; z-index: 29; background: rgba(17,17,16,.45); border: 0; }
+  body.sheet-open { overflow: hidden; }
+  .detail-h .back { display: inline-flex; }
+  .detail-h .row1 .x { display: none; }
+  .agents { max-height: none; }
+}
+@media (max-width: 900px) and (prefers-reduced-motion: no-preference) {
+  .detail { transition: transform .18s ease-out, visibility 0s linear .18s; }
+  body.sheet-open .detail { transition: transform .18s ease-out; }
+}
+
+/* ---------- Phone ---------- */
+@media (max-width: 600px) {
+  .topbar { height: 52px; padding: 0 8px 0 12px; gap: 8px; }
+  .brand .word { display: none; }
+  .crumbs ol { font-size: 14px; }
+  .jump { display: none; }
+  .agents-toggle .lbl { display: none; }
+  .agents-toggle .short { display: inline; }
+  .agents-toggle { padding: 0 10px; }
+  .project { padding: 10px 12px; }
+  .project h1 { font-size: 17px; }
+  .project .actions { display: grid; grid-template-columns: 1.2fr 1fr 1fr; }
+  .project .actions .btn { padding: 0 6px; }
+  .return { padding: 8px 12px; flex-wrap: wrap; }
+  .return .chips-wrap { width: 100%; overflow-x: auto; margin: 0 -12px; padding: 0 12px 2px; scrollbar-width: none; }
+  .return .end { margin-left: 0; width: 100%; }
+  .return .end .btn { flex: 1; }
+  .toolbar { padding: 6px 12px; }
+  .legend { display: none; }
+  .outline { padding: 0 12px 12px; }
+  .orow { grid-template-columns: 44px minmax(0, 1fr); padding: 8px 4px; }
+  .orow .ostate { grid-column: 2; justify-content: flex-start; order: 3; }
+  .orow .osub { grid-column: 2; order: 4; }
+  .board { grid-template-columns: minmax(0, 1fr); }
+  .lane { border-right: 0; }
+  .lane + .lane { border-top: 1px solid var(--border-strong); }
+  .card.out::after, .card.in::before { display: none; }
+  .agents-h { padding: 8px 12px; }
+  .arow { grid-template-columns: minmax(0, 1fr); padding: 10px 12px; gap: 6px; }
+  .arow dl, .arow .acts, .arow .nosw { grid-column: 1; grid-row: auto; }
+  .arow .acts { justify-content: flex-start; }
+  .arow .acts .btn { flex: 1; }
+  .detail { width: 100%; border-left: 0; }
+  .detail-h { padding: 6px 12px 8px; }
+  .dsec, .thread-h { padding-left: 12px; padding-right: 12px; }
+  .msg { padding: 6px 12px; }
+  .composer .bar .meta { display: none; }
+  .composer textarea { font-size: 16px; } /* prevent iOS zoom */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+@media (forced-colors: active) {
+  .marker, .chip[aria-pressed="true"], .badge-solid { border: 1px solid CanvasText; }
+}
+
+/* Touch devices: primary targets are at least 44 CSS px. Kept last so it wins the cascade. */
+@media (pointer: coarse) {
+  .crumbs a { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px; padding: 0 4px; }
+  .link-chip, .btn-sm { min-width: 44px; justify-content: center; }
+  .seg button, .composer textarea { min-height: 44px; }
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7"/><path d="M5 7V5a3 3 0 0 1 6 0v2"/></symbol>
+  <symbol id="i-broken" viewBox="0 0 16 16"><path d="M6.5 9.5 4 12a2 2 0 0 1-3-3l2.5-2.5M9.5 6.5 12 4a2 2 0 0 1 3 3l-2.5 2.5M5 1v2M1 5h2M11 15v-2M15 11h-2"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 16 16"><path d="M2 8h11M9 4l4 4-4 4"/></symbol>
+  <symbol id="i-back" viewBox="0 0 16 16"><path d="M14 8H3M7 4 3 8l4 4"/></symbol>
+  <symbol id="i-x" viewBox="0 0 16 16"><path d="M3 3l10 10M13 3 3 13"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 16 16"><path d="M8 1.5 15 14H1z"/><path d="M8 6v4M8 11.5v1"/></symbol>
+  <symbol id="i-retry" viewBox="0 0 16 16"><path d="M13 3v3.5H9.5"/><path d="M13 6.5A5.5 5.5 0 1 0 13.5 10"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8"/></symbol>
+  <symbol id="i-check" viewBox="0 0 16 16"><path d="M2.5 8.5 6 12l7.5-8"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></symbol>
+  <symbol id="i-half" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><path d="M8 2a6 6 0 0 1 0 12z" fill="currentColor"/></symbol>
+  <symbol id="i-link" viewBox="0 0 16 16"><path d="M6.5 9.5l3-3M7 4.5 8.5 3a2.5 2.5 0 0 1 3.5 3.5L10.5 8M9 11.5 7.5 13A2.5 2.5 0 0 1 4 9.5L5.5 8"/></symbol>
+</svg>
+
+<a class="skip" href="#board-region">Skip to project state</a>
+
+<div class="shell">
+  <header class="topbar" role="banner">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"></span><span class="word">FLUX</span></div>
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <ol>
+        <li><a href="#">Tide</a></li>
+        <li><a href="#" aria-current="page">Shared export</a></li>
+      </ol>
+    </nav>
+    <span class="spacer"></span>
+    <button class="btn jump" type="button" aria-label="Jump to object or person (Command K)"><span class="lbl">Jump to object or person</span><kbd>⌘K</kbd></button>
+    <button class="btn agents-toggle" type="button" aria-expanded="false" aria-controls="agents">
+      <span class="short" aria-hidden="true">Agents</span><span class="dot" aria-hidden="true"></span><span class="lbl">Agents · 1 running ·</span>
+      <span class="sq" aria-hidden="true"></span><span class="lbl">1 stopped</span>
+      <span class="sr-only">2 agents: 1 running, 1 stopped</span>
+    </button>
+    <span class="avatar me" title="Jo (you)" aria-label="Signed in as Jo">Jo</span>
+  </header>
+
+  <section class="project" aria-labelledby="project-title">
+    <div>
+      <div class="kicker meta">
+        <span><strong>Tide › Shared export</strong></span>
+        <span>Steward: Jo (you)</span>
+        <span class="people" aria-label="People: Jo, Ari, Nia"><span class="avatar me" aria-hidden="true">Jo</span><span class="avatar" aria-hidden="true">Ar</span><span class="avatar" aria-hidden="true">Ni</span></span>
+        <span>Ari · Nia · 2 agents</span>
+      </div>
+      <h1 id="project-title">Exclude archived items that guests cannot open from CSV and XLSX exports, including items archived after an export was scheduled</h1>
+    </div>
+    <div class="actions" role="group" aria-label="Resume work">
+      <button class="btn btn-primary" type="button" data-select="R-1">Review R-1</button>
+      <button class="btn" type="button" data-select="W-1">Continue<span class="long">W-1</span></button>
+      <button class="btn" type="button">Hand off<span class="long">…</span></button>
+    </div>
+  </section>
+
+  <section class="return" aria-labelledby="return-label">
+    <p class="return-label" id="return-label"><span class="tag">Return point</span> Since you left — Sep 19 · 7 changes</p>
+    <div class="chips-wrap">
+      <ul class="chips" aria-label="Highlight changed objects">
+        <li><button class="chip" type="button" data-filter="all" aria-pressed="true">All <span class="n">7</span></button></li>
+        <li><button class="chip" type="button" data-filter="decision" aria-pressed="false">Decisions <span class="n">2</span></button></li>
+        <li><button class="chip" type="button" data-filter="work" aria-pressed="false">Work &amp; results <span class="n">3</span></button></li>
+        <li><button class="chip" type="button" data-filter="material" aria-pressed="false">Materials <span class="n">2</span></button></li>
+        <li><button class="chip noexp" type="button" data-filter="noexp" aria-pressed="false"><svg class="i" aria-hidden="true"><use href="#i-alert"/></svg>No explanation <span class="n">1</span></button></li>
+      </ul>
+    </div>
+    <div class="end">
+      <button class="btn btn-sm" type="button">Move return point</button>
+      <button class="btn btn-sm" type="button">Mark 7 reviewed</button>
+    </div>
+  </section>
+
+  <main class="main" id="main">
+    <div class="workspace">
+      <div class="toolbar">
+        <h2 id="board-title">Project state</h2>
+        <div class="legend meta" aria-hidden="true">
+          <span><span class="stub"></span> links to</span>
+          <span><span class="marker">Changed</span></span>
+          <span><span class="marker current">Current</span></span>
+          <span><s>Superseded</s></span>
+        </div>
+        <div class="seg" role="group" aria-label="View">
+          <button type="button" data-view="board" aria-pressed="true">Board</button>
+          <button type="button" data-view="outline" aria-pressed="false">Outline</button>
+        </div>
+      </div>
+
+      <!-- ================= BOARD ================= -->
+      <div class="view" id="board-region" tabindex="-1" data-filter="all" aria-labelledby="board-title">
+        <div class="board" id="board" aria-describedby="board-help">
+          <p id="board-help" class="sr-only">Four lanes: Material, Decision, Work, Result. Use Tab or arrow keys to move between objects. Enter selects an object and opens its detail and conversation.</p>
+
+          <!-- MATERIAL -->
+          <section class="lane" aria-labelledby="lane-m">
+            <div class="lane-h"><span class="num">01</span><h3 id="lane-m">Material</h3><span class="count" aria-label="4 objects">4</span><span class="flow" aria-hidden="true">→</span></div>
+            <ul class="lane-b">
+              <li class="card out" data-id="M-1" data-links="D-2">
+                <div class="card-top"><span class="id">M-1</span><span class="type">Support report · redacted</span></div>
+                <button class="obj-open" type="button" data-select="M-1">Guest saw archived row titles in an XLSX export</button>
+                <p class="desc">Ticket #4471, Northwind share. Names and emails removed.</p>
+                <div class="meta">Added by Ari · Sep 12</div>
+                <div class="links"><span>links to</span><button class="link-chip" type="button" data-select="D-2">D-2</button></div>
+              </li>
+              <li class="card out changed" data-id="M-2" data-links="D-2 W-1" data-change="material">
+                <div class="card-top"><span class="id">M-2</span><span class="type">Test output</span><span class="right"><span class="marker">Changed</span></span></div>
+                <button class="obj-open" type="button" data-select="M-2">Permission test: guest_export_visibility</button>
+                <p class="desc"><span class="mono">14 passed · 2 failed</span> — both failures are items archived after the export was scheduled.</p>
+                <div class="meta">Changed Sep 24 · run by Nia, 16:40</div>
+                <div class="links"><span>links to</span><button class="link-chip" type="button" data-select="D-2">D-2</button><button class="link-chip" type="button" data-select="W-1">W-1</button></div>
+              </li>
+              <li class="card out missing changed noexp-change" data-id="M-3" data-links="D-1" data-change="material noexp">
+                <div class="card-top"><span class="id">M-3</span><span class="badge badge-danger"><svg class="i" aria-hidden="true"><use href="#i-broken"/></svg>Missing source</span><span class="right"><span class="marker noexp">No explanation</span></span></div>
+                <button class="obj-open" type="button" data-select="M-3">Export spec v2</button>
+                <div class="missing-note"><svg class="i" aria-hidden="true"><use href="#i-broken"/></svg><span>Moved — link broken. Last opened Sep 10 at /specs/export-v2.</span></div>
+                <div class="meta">Moved Sep 21 · who and why not recorded</div>
+                <div class="card-actions"><button class="btn btn-sm" type="button">Find source</button><button class="btn btn-sm" type="button">Ask who moved it</button></div>
+                <div class="links"><span>cited by</span><button class="link-chip broken" type="button" data-select="D-1">D-1</button></div>
+              </li>
+              <li class="card out restricted" data-id="RX" data-links="D-2">
+                <!-- Placeholder for M-1-private. Viewer has no access: no title, no snippet. -->
+                <div class="card-top"><span class="badge"><svg class="i" aria-hidden="true"><use href="#i-lock"/></svg>Restricted source</span></div>
+                <button class="obj-open" type="button" data-select="RX">Restricted — you don't have access</button>
+                <p class="desc">Title and content are hidden from you.</p>
+                <div class="card-actions"><button class="btn btn-sm" type="button">Request access</button></div>
+                <div class="links"><span>cited by</span><button class="link-chip" type="button" data-select="D-2">D-2</button></div>
+              </li>
+            </ul>
+          </section>
+
+          <!-- DECISION -->
+          <section class="lane" aria-labelledby="lane-d">
+            <div class="lane-h"><span class="num">02</span><h3 id="lane-d">Decision</h3><span class="count" aria-label="2 objects">2</span><span class="flow" aria-hidden="true">→</span></div>
+            <ul class="lane-b">
+              <li class="card in out accepted changed is-selected" data-id="D-2" data-links="M-1 M-2 RX D-1 W-1" data-change="decision">
+                <div class="card-top"><span class="id">D-2</span><span class="badge badge-solid"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Accepted</span><span class="marker current">Current</span><span class="right"><span class="marker">Changed</span></span></div>
+                <button class="obj-open" type="button" data-select="D-2" aria-current="true">Exclude items the guest cannot open from CSV and XLSX exports</button>
+                <p class="desc">Checked when the export runs, not when it is scheduled. Supersedes D-1.</p>
+                <div class="meta">Changed Sep 23 · owner Jo · accepted by Ari, acting</div>
+                <div class="links"><span>evidence</span><button class="link-chip" type="button" data-select="M-1">M-1</button><button class="link-chip" type="button" data-select="M-2">M-2</button><button class="link-chip" type="button" data-select="RX" aria-label="Restricted source">
+                  <svg class="i" aria-hidden="true"><use href="#i-lock"/></svg></button><span>· input to</span><button class="link-chip" type="button" data-select="W-1">W-1</button></div>
+                <div class="links"><span>supersedes</span><button class="link-chip" type="button" data-select="D-1"><s>D-1</s></button><span class="sel-tag badge">Selected</span></div>
+              </li>
+              <li class="card in superseded changed" data-id="D-1" data-links="M-3" data-change="decision">
+                <div class="card-top"><span class="id">D-1</span><span class="badge badge-muted"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg>Superseded</span><span class="right"><span class="marker">Changed</span></span></div>
+                <button class="obj-open" type="button" data-select="D-1">Include archived items in exports for members</button>
+                <p class="desc">Replaced by D-2 on Sep 23. Did not cover guests.</p>
+                <div class="meta">Changed Sep 23 · accepted by Jo Aug 28</div>
+                <div class="links"><span>superseded by</span><button class="link-chip" type="button" data-select="D-2">D-2</button><span>· based on</span><button class="link-chip broken" type="button" data-select="M-3">M-3</button></div>
+              </li>
+            </ul>
+          </section>
+
+          <!-- WORK -->
+          <section class="lane" aria-labelledby="lane-w">
+            <div class="lane-h"><span class="num">03</span><h3 id="lane-w">Work</h3><span class="count" aria-label="1 object">1</span><span class="flow" aria-hidden="true">→</span></div>
+            <ul class="lane-b">
+              <li class="card in out changed" data-id="W-1" data-links="D-2 M-2 R-1" data-change="work">
+                <div class="card-top"><span class="id">W-1</span><span class="badge"><svg class="i" aria-hidden="true"><use href="#i-half"/></svg>In progress</span><span class="right"><span class="marker">Changed</span></span></div>
+                <button class="obj-open" type="button" data-select="W-1">Check guest access when the export runs, including items archived after scheduling</button>
+                <div class="meta">Changed Sep 22 · assigned to Nia · due Sep 30</div>
+                <div class="links"><span>input</span><button class="link-chip" type="button" data-select="D-2">D-2</button><button class="link-chip" type="button" data-select="M-2">M-2</button><span>· produces</span><button class="link-chip" type="button" data-select="R-1">R-1</button></div>
+                <div class="activity stopped" role="status">
+                  <span class="stop-sq" aria-hidden="true"></span>
+                  <span><b>Test agent</b> · <span class="state">Stopped — Provider limit reached</span>. 9 of 16 cases run; partial output kept as draft.</span>
+                </div>
+              </li>
+            </ul>
+          </section>
+
+          <!-- RESULT -->
+          <section class="lane" aria-labelledby="lane-r">
+            <div class="lane-h"><span class="num">04</span><h3 id="lane-r">Result</h3><span class="count" aria-label="2 objects">2</span></div>
+            <ul class="lane-b">
+              <li class="card in changed" data-id="R-1" data-links="W-1 D-2" data-change="work">
+                <div class="card-top"><span class="id">R-1</span><span class="badge badge-warn"><svg class="i" aria-hidden="true"><use href="#i-clock"/></svg>Awaiting review</span><span class="right"><span class="marker">Changed</span></span></div>
+                <button class="obj-open" type="button" data-select="R-1">Run-time export filter + sample CSV and XLSX</button>
+                <p class="desc">Patch and two sample files from the Northwind share. Reviewer: Jo.</p>
+                <div class="meta">Changed Sep 25 · attached by Nia</div>
+                <div class="links"><span>from</span><button class="link-chip" type="button" data-select="W-1">W-1</button><span>· meets</span><button class="link-chip" type="button" data-select="D-2">D-2</button></div>
+                <div class="card-actions"><button class="btn btn-sm btn-primary" type="button" data-select="R-1">Review result</button></div>
+                <div class="activity" role="status">
+                  <span class="run-dot" aria-hidden="true"></span>
+                  <span><b>Review agent</b> · Running under Jo's grant · reading sample XLSX (2 of 3 files). Read-only.</span>
+                </div>
+              </li>
+              <li class="card changed" data-id="H-1" data-links="R-1 W-1" data-change="work">
+                <div class="card-top"><span class="id">H-1</span><span class="type">Handoff · Ari → Jo</span><span class="right"><span class="marker">Changed</span></span></div>
+                <button class="obj-open" type="button" data-select="H-1">Ari's handoff: XLSX footer done, CSV notice still open</button>
+                <p class="desc">“I'm out from Sep 26. The footer wording is in R-1's sample XLSX. Open: how CSV tells guests items were left out — see the question in C-1.”</p>
+                <div class="meta">Changed Sep 25 · Ari, 18:05</div>
+                <div class="links"><span>about</span><button class="link-chip" type="button" data-select="R-1">R-1</button><button class="link-chip" type="button" data-select="W-1">W-1</button></div>
+              </li>
+            </ul>
+          </section>
+        </div>
+      </div>
+
+      <!-- ================= OUTLINE (accessible equivalent) ================= -->
+      <div class="view" id="outline-region" hidden tabindex="-1" data-filter="all" aria-label="Project state outline">
+        <div class="outline">
+          <h3><span class="num">01</span> Material</h3>
+          <ol>
+            <li class="orow" data-id="M-1" data-links="D-2"><span class="oid">M-1</span><button class="obj-open" type="button" data-select="M-1">Guest saw archived row titles in an XLSX export</button><span class="ostate"><span class="badge">Redacted</span></span>
+              <span class="osub">Support report · Ari · Sep 12 <span class="links">links to <button class="link-chip" type="button" data-select="D-2">D-2</button></span></span></li>
+            <li class="orow changed" data-id="M-2" data-links="D-2 W-1" data-change="material"><span class="oid">M-2</span><button class="obj-open" type="button" data-select="M-2">Permission test: guest_export_visibility — 14 passed, 2 failed</button><span class="ostate"><span class="marker">Changed Sep 24</span></span>
+              <span class="osub">Test output · Nia <span class="links">links to <button class="link-chip" type="button" data-select="D-2">D-2</button><button class="link-chip" type="button" data-select="W-1">W-1</button></span></span></li>
+            <li class="orow missing changed noexp-change" data-id="M-3" data-links="D-1" data-change="material noexp"><span class="oid">M-3</span><button class="obj-open" type="button" data-select="M-3">Export spec v2 — moved, link broken</button><span class="ostate"><span class="badge badge-danger"><svg class="i" aria-hidden="true"><use href="#i-broken"/></svg>Missing source</span><span class="marker noexp">No explanation</span></span>
+              <span class="osub">Moved Sep 21, who and why not recorded <span class="links">cited by <button class="link-chip broken" type="button" data-select="D-1">D-1</button></span></span></li>
+            <li class="orow" data-id="RX" data-links="D-2"><span class="oid" aria-label="No ID shown">—</span><button class="obj-open" type="button" data-select="RX"><svg class="i" aria-hidden="true"><use href="#i-lock"/></svg> Restricted — you don't have access</button><span class="ostate"><span class="badge">Restricted source</span></span>
+              <span class="osub">Title and content hidden <span class="links">cited by <button class="link-chip" type="button" data-select="D-2">D-2</button></span></span></li>
+          </ol>
+          <h3><span class="num">02</span> Decision</h3>
+          <ol>
+            <li class="orow changed is-selected" data-id="D-2" data-links="M-1 M-2 RX D-1 W-1" data-change="decision"><span class="oid">D-2</span><button class="obj-open" type="button" data-select="D-2" aria-current="true">Exclude items the guest cannot open from CSV and XLSX exports</button><span class="ostate"><span class="badge badge-solid">Accepted</span><span class="marker current">Current</span><span class="marker">Changed Sep 23</span></span>
+              <span class="osub">Owner Jo · accepted by Ari, acting <span class="links">supersedes <button class="link-chip" type="button" data-select="D-1"><s>D-1</s></button> evidence <button class="link-chip" type="button" data-select="M-1">M-1</button><button class="link-chip" type="button" data-select="M-2">M-2</button><button class="link-chip" type="button" data-select="RX">restricted</button> input to <button class="link-chip" type="button" data-select="W-1">W-1</button></span></span></li>
+            <li class="orow superseded changed" data-id="D-1" data-links="M-3" data-change="decision"><span class="oid">D-1</span><button class="obj-open" type="button" data-select="D-1">Include archived items in exports for members</button><span class="ostate"><span class="badge badge-muted">Superseded</span><span class="marker">Changed Sep 23</span></span>
+              <span class="osub">Replaced by D-2 on Sep 23 <span class="links">superseded by <button class="link-chip" type="button" data-select="D-2">D-2</button></span></span></li>
+          </ol>
+          <h3><span class="num">03</span> Work</h3>
+          <ol>
+            <li class="orow changed" data-id="W-1" data-links="D-2 M-2 R-1" data-change="work"><span class="oid">W-1</span><button class="obj-open" type="button" data-select="W-1">Check guest access when the export runs, including items archived after scheduling</button><span class="ostate"><span class="badge">In progress</span><span class="marker">Changed Sep 22</span></span>
+              <span class="osub">Nia · due Sep 30 · <strong style="color:var(--status-danger)">Test agent stopped — provider limit reached</strong> <span class="links">input <button class="link-chip" type="button" data-select="D-2">D-2</button> produces <button class="link-chip" type="button" data-select="R-1">R-1</button></span></span></li>
+          </ol>
+          <h3><span class="num">04</span> Result</h3>
+          <ol>
+            <li class="orow changed" data-id="R-1" data-links="W-1 D-2" data-change="work"><span class="oid">R-1</span><button class="obj-open" type="button" data-select="R-1">Run-time export filter + sample CSV and XLSX</button><span class="ostate"><span class="badge badge-warn">Awaiting review</span><span class="marker">Changed Sep 25</span></span>
+              <span class="osub">Nia · Sep 25 · Review agent running under Jo's grant <span class="links">from <button class="link-chip" type="button" data-select="W-1">W-1</button></span></span></li>
+            <li class="orow changed" data-id="H-1" data-links="R-1 W-1" data-change="work"><span class="oid">H-1</span><button class="obj-open" type="button" data-select="H-1">Ari's handoff: XLSX footer done, CSV notice still open</button><span class="ostate"><span class="marker">Changed Sep 25</span></span>
+              <span class="osub">Handoff Ari → Jo · Sep 25 <span class="links">about <button class="link-chip" type="button" data-select="R-1">R-1</button></span></span></li>
+          </ol>
+        </div>
+      </div>
+
+      <!-- ================= AGENTS PANEL ================= -->
+      <section class="agents" id="agents" aria-labelledby="agents-title" hidden>
+        <div class="agents-h">
+          <h2 id="agents-title">Agents on this project</h2>
+          <span class="meta">2 · every action is logged on the object it touches · nothing runs without a grant</span>
+          <button class="btn btn-sm btn-quiet close" type="button" data-close-agents aria-label="Close agents panel"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg><span>Close</span></button>
+        </div>
+        <ul class="agent-list">
+          <li class="arow">
+            <div class="who"><span class="avatar bot" aria-hidden="true">RA</span><div><strong>Review agent</strong><span class="state-line"><span class="run-dot" aria-hidden="true" style="margin-top:0"></span>Running · 4 min</span></div></div>
+            <div class="what">Reading sample XLSX (2 of 3 files), checking hidden rows against D-2. No edits, no posting in C-1.<span class="on">on <button class="link-chip" type="button" data-select="R-1">R-1</button> · started 09:10</span></div>
+            <p class="gsum"><b>Jo's grant</b> · read-only, comments on R-1 · Tide org API</p>
+            <dl id="grant-ra">
+              <dt>Grant</dt><dd>Read R-1, W-1, D-2, M-1, M-2 · comment on R-1 only</dd>
+              <dt>Payer</dt><dd>Tide org API — Anthropic</dd>
+              <dt>Authorized</dt><dd>by Jo · Sep 18, valid until Sep 30</dd>
+            </dl>
+            <div class="acts"><button class="btn btn-sm gtoggle" type="button" aria-expanded="false" aria-controls="grant-ra">Grant</button><button class="btn btn-sm btn-danger" type="button"><svg class="i" aria-hidden="true"><use href="#i-stop"/></svg>Stop</button></div>
+          </li>
+          <li class="arow stopped">
+            <div class="who"><span class="avatar bot" aria-hidden="true">TA</span><div><strong>Test agent</strong><span class="state-line stopped"><span class="stop-sq" aria-hidden="true" style="margin-top:0"></span>Stopped — Provider limit reached</span></div></div>
+            <div class="what">9 of 16 permission cases run. Partial output kept as a draft on W-1.<span class="on">on <button class="link-chip" type="button" data-select="W-1">W-1</button> · stopped Sep 26, 14:12</span><p class="nosw" style="margin:0"><svg class="i" aria-hidden="true"><use href="#i-alert"/></svg>No automatic switch to another paid source.</p></div>
+            <p class="gsum"><b>Nia's grant</b> · tests and a draft on W-1 · Tide org API, limit reached</p>
+            <dl id="grant-ta">
+              <dt>Grant</dt><dd>Run tests on W-1 branch · write draft on W-1</dd>
+              <dt>Payer</dt><dd>Tide org API — Anthropic (limit reached)</dd>
+              <dt>Authorized</dt><dd>by Nia · Sep 22</dd>
+            </dl>
+            <div class="acts"><button class="btn btn-sm gtoggle" type="button" aria-expanded="false" aria-controls="grant-ta">Grant</button><button class="btn btn-sm" type="button" data-select="W-1">Continue manually</button><button class="btn btn-sm" type="button">Resume later</button></div>
+          </li>
+        </ul>
+      </section>
+    </div>
+
+    <!-- ================= DETAIL PANE (attached to selected object) ================= -->
+    <button class="backdrop" type="button" tabindex="-1" aria-label="Close object detail" data-close-sheet></button>
+    <aside class="detail" id="detail" aria-labelledby="detail-title">
+      <div id="detail-content">
+        <!-- default: D-2 -->
+      </div>
+    </aside>
+  </main>
+</div>
+
+<!-- ============ Detail templates ============ -->
+<template id="tpl-D-2">
+  <div class="detail-h">
+    <div class="row1">
+      <button class="btn btn-sm btn-quiet back" type="button" data-close-sheet><svg class="i" aria-hidden="true"><use href="#i-back"/></svg>Project state</button>
+      <span class="meta"><span class="mono">D-2</span> · Decision · selected</span>
+      <button class="btn btn-sm btn-quiet x" type="button" aria-label="Select nothing" data-select="none"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+    </div>
+    <h2 id="detail-title" tabindex="-1">Exclude items the guest cannot open from CSV and XLSX exports</h2>
+    <div class="badges"><span class="badge badge-solid"><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Accepted</span><span class="marker current">Current rule</span><span class="marker">Changed Sep 23</span><span class="meta">supersedes</span><button class="link-chip" type="button" data-select="D-1" aria-label="Supersedes D-1: Include archived items in exports for members"><s>D-1</s></button><span class="meta">· owner Jo · accepted by Ari, acting</span></div>
+  </div>
+  <div class="detail-body">
+    <div class="dsec">
+      <h3>Why it changed</h3>
+      <p>M-1 shows a guest received titles of archived items they could not open. D-1 only covered members, and visibility was checked when the export was scheduled, so items archived later slipped through (M-2: 2 failures).</p>
+    </div>
+    <div class="dsec dgrid">
+      <h3>Evidence</h3>
+      <div class="evidence">
+        <button class="link-chip" type="button" data-select="M-1"><span class="mono">M-1</span> Support report</button>
+        <button class="link-chip" type="button" data-select="M-2"><span class="mono">M-2</span> Tests 14/16</button>
+        <button class="link-chip restricted" type="button" data-select="RX"><svg class="i" aria-hidden="true"><use href="#i-lock"/></svg>Restricted source</button>
+      </div>
+      <h3>Next</h3>
+      <ul class="next">
+        <li><b>Jo</b><span>review <button class="link-chip" type="button" data-select="R-1">R-1</button> · answer the CSV question below</span></li>
+        <li><b>Nia</b><span>finish <button class="link-chip" type="button" data-select="W-1">W-1</button> · Test agent stopped at 9/16</span></li>
+      </ul>
+    </div>
+    <section aria-labelledby="c1-title">
+      <div class="thread-h"><h3 id="c1-title"><span class="mono">C-1</span> · Guest visibility of archived items</h3><span class="meta">6 messages · 1 open question</span></div>
+      <ol class="msgs">
+        <li class="msg"><span class="avatar" aria-hidden="true">Ar</span><div>
+          <div class="mh"><b>Ari</b><span class="meta">Sep 20, 10:12</span></div>
+          <p>A guest on the Northwind share got an XLSX with three archived rows. They can't open those items in Tide, but the export still listed the titles. Redacted report is <span class="ref">M-1</span>.</p></div></li>
+        <li class="msg"><span class="avatar" aria-hidden="true">Ni</span><div>
+          <div class="mh"><b>Nia</b><span class="meta">Sep 20, 11:05</span></div>
+          <p>Reproduced in <span class="ref">M-2</span>. We check visibility when the export is scheduled, not when it runs, so anything archived in between gets through.</p>
+          <div class="replies-h">2 replies</div>
+          <ol class="replies">
+            <li class="msg"><span class="avatar" aria-hidden="true">Ar</span><div><div class="mh"><b>Ari</b><span class="meta">11:20</span></div><p>So <span class="ref">D-1</span> was never enough — it only thought about members.</p></div></li>
+            <li class="msg"><span class="avatar" aria-hidden="true">Ni</span><div><div class="mh"><b>Nia</b><span class="meta">11:31</span></div><p>Right. I'll move the check to run time in <span class="ref">W-1</span> once we have a rule.</p></div></li>
+          </ol></div></li>
+        <li class="msg"><span class="avatar" aria-hidden="true">Ar</span><div>
+          <div class="mh"><b>Ari</b><span class="meta">Sep 23, 09:48</span><span class="badge">Decision</span></div>
+          <p>Accepted <span class="ref">D-2</span> as acting owner: drop anything the guest cannot open at the moment the export runs. It supersedes <span class="ref">D-1</span>. Jo, please confirm when you're back.</p></div></li>
+        <li class="msg question"><span class="avatar" aria-hidden="true">Ni</span><div>
+          <div class="mh"><b>Nia</b><span class="meta">Sep 24, 16:02</span></div>
+          <div class="qbox">
+            <div class="qlabel"><span class="ring" aria-hidden="true"></span>Open question · waiting for Jo</div>
+            <p>Should the export tell guests that items were left out? XLSX can carry a footer row, but a footer in CSV would break imports.</p>
+          </div></div></li>
+        <li class="msg failed" id="failed-msg"><span class="avatar me" aria-hidden="true">Jo</span><div>
+          <div class="mh"><b>Jo (you)</b><span class="meta">reply to Nia · not sent</span></div>
+          <div class="bubble"><p>CSV: say it in the export email, not in the file. XLSX keeps Ari's footer. I'll confirm D-2 after reviewing R-1.</p></div>
+          <div class="err" role="alert"><svg class="i" aria-hidden="true"><use href="#i-alert"/></svg><span>Couldn't post reply — connection lost at 09:14. Your draft is kept.</span></div>
+          <div class="err-acts"><button class="btn btn-sm btn-primary" type="button" data-retry><svg class="i" aria-hidden="true"><use href="#i-retry"/></svg>Retry</button><button class="btn btn-sm" type="button">Edit draft</button></div>
+        </div></li>
+      </ol>
+    </section>
+  </div>
+  <form class="composer" onsubmit="return false">
+    <label for="reply">Reply in C-1 · about D-2</label>
+    <div class="box">
+      <textarea id="reply" rows="1" placeholder="Answer the open question or add context…"></textarea>
+      <div class="bar"><button class="btn btn-sm btn-quiet" type="button"><svg class="i" aria-hidden="true"><use href="#i-link"/></svg>Link object</button><span class="meta">Visible to Jo, Ari, Nia</span><button class="btn btn-sm btn-primary" type="submit">Send</button></div>
+    </div>
+  </form>
+</template>
+
+<template id="tpl-generic">
+  <div class="detail-h">
+    <div class="row1">
+      <button class="btn btn-sm btn-quiet back" type="button" data-close-sheet><svg class="i" aria-hidden="true"><use href="#i-back"/></svg>Project state</button>
+      <span class="meta" data-slot="kind"></span>
+      <button class="btn btn-sm btn-quiet x" type="button" aria-label="Select nothing" data-select="none"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button>
+    </div>
+    <h2 id="detail-title" tabindex="-1" data-slot="title"></h2>
+    <div class="badges" data-slot="badges"></div>
+  </div>
+  <div class="detail-body" data-slot="body"></div>
+  <form class="composer" onsubmit="return false">
+    <label for="reply2" data-slot="clabel"></label>
+    <div class="box">
+      <textarea id="reply2" rows="2" placeholder="Start a thread on this object…"></textarea>
+      <div class="bar"><button class="btn btn-sm btn-quiet" type="button"><svg class="i" aria-hidden="true"><use href="#i-link"/></svg>Link object</button><span class="meta">Visible to Jo, Ari, Nia</span><button class="btn btn-sm btn-primary" type="submit">Send</button></div>
+    </div>
+  </form>
+</template>
+
+<template id="tpl-none">
+  <div class="detail-h">
+    <div class="row1"><button class="btn btn-sm btn-quiet back" type="button" data-close-sheet><svg class="i" aria-hidden="true"><use href="#i-back"/></svg>Project state</button><span class="meta">Nothing selected</span></div>
+    <h2 id="detail-title" tabindex="-1">Select an object</h2>
+  </div>
+  <div class="detail-body"><div class="dsec"><p>Choose a material, decision, work item or result to see its detail, rationale and conversation. The current decision is <button class="link-chip" type="button" data-select="D-2">D-2</button>.</p></div></div>
+</template>
+
+<script>
+(function () {
+  "use strict";
+  var DATA = {
+    "D-1": { kind: "D-1 · Decision · selected", title: "Include archived items in exports for members",
+      badges: '<span class="badge badge-muted">Superseded</span><span class="marker">Changed Sep 23</span><span class="meta">Accepted by Jo · Aug 28</span>',
+      body: '<div class="dsec"><h3>Status</h3><p><s>Include archived items in exports for members.</s> Replaced on Sep 23 by <button class="link-chip" type="button" data-select="D-2">D-2</button>. Kept for history; not the current rule.</p></div><div class="dsec"><h3>Based on</h3><p><button class="link-chip broken" type="button" data-select="M-3">M-3</button> Export spec v2 — missing source, link broken.</p></div><div class="dsec"><h3>Conversation</h3><p class="meta">Discussed in C-1 (attached to D-2).</p></div>' },
+    "M-1": { kind: "M-1 · Material · support report", title: "Guest saw archived row titles in an XLSX export",
+      badges: '<span class="badge">Redacted</span><span class="meta">Added by Ari · Sep 12</span>',
+      body: '<div class="dsec"><h3>Snippet</h3><p>“I opened the export from the shared folder and there were three rows I can\'t click in Tide — they say Archived. I shouldn\'t be seeing those.” — guest, Northwind share. Names and emails removed.</p></div><div class="dsec"><h3>Used by</h3><p><button class="link-chip" type="button" data-select="D-2">D-2</button> as evidence.</p></div>' },
+    "M-2": { kind: "M-2 · Material · test output", title: "Permission test: guest_export_visibility",
+      badges: '<span class="marker">Changed Sep 24</span><span class="meta">Run by Nia · Sep 24, 16:40</span>',
+      body: '<div class="dsec"><h3>Result</h3><p class="mono">14 passed · 2 failed<br>FAIL archived_after_schedule_csv<br>FAIL archived_after_schedule_xlsx</p></div><div class="dsec"><h3>Used by</h3><p><button class="link-chip" type="button" data-select="D-2">D-2</button> <button class="link-chip" type="button" data-select="W-1">W-1</button></p></div>' },
+    "M-3": { kind: "M-3 · Material · missing source", title: "Export spec v2",
+      badges: '<span class="badge badge-danger">Missing source</span><span class="marker noexp">No explanation</span>',
+      body: '<div class="dsec"><h3>What happened</h3><p style="color:var(--status-danger);font-weight:600">Moved — link broken.</p><p>The file at /specs/export-v2 was moved on Sep 21. Flux has no record of who moved it or why. D-1 cited it; D-2 does not depend on it.</p><div class="card-actions"><button class="btn btn-sm" type="button">Find source</button><button class="btn btn-sm" type="button">Replace link</button><button class="btn btn-sm" type="button">Ask who moved it</button></div></div>' },
+    "RX": { kind: "Restricted source", title: "Restricted — you don't have access",
+      badges: '<span class="badge"><svg class="i" aria-hidden="true"><use href="#i-lock"/></svg>Restricted source</span>',
+      body: '<div class="dsec"><p>This material is cited by <button class="link-chip" type="button" data-select="D-2">D-2</button>. Its title and content are hidden from you. Asking for access notifies its owner; it does not reveal the content.</p><div class="card-actions"><button class="btn btn-sm" type="button">Request access</button></div></div>' },
+    "W-1": { kind: "W-1 · Work · selected", title: "Check guest access when the export runs, including items archived after scheduling",
+      badges: '<span class="badge">In progress</span><span class="marker">Changed Sep 22</span><span class="meta">Nia · due Sep 30 · input D-2</span>',
+      body: '<div class="dsec"><h3>Test agent</h3><p style="color:var(--status-danger);font-weight:700">Stopped — Provider limit reached</p><p>9 of 16 permission cases ran before the limit on Tide org API — Anthropic. The partial output is kept below as a draft. No automatic switch to another paid source.</p><div class="card-actions"><button class="btn btn-sm" type="button">Continue manually</button><button class="btn btn-sm" type="button">Resume later</button></div></div><div class="dsec"><h3>Draft output (partial, unpublished)</h3><p class="mono">PASS guest_cannot_see_archived_before_schedule<br>PASS guest_cannot_see_archived_after_schedule_csv<br>… 7 more passed<br>NOT RUN 7 cases (xlsx, large share)</p></div><div class="dsec"><h3>Links</h3><p>input <button class="link-chip" type="button" data-select="D-2">D-2</button> <button class="link-chip" type="button" data-select="M-2">M-2</button> · produces <button class="link-chip" type="button" data-select="R-1">R-1</button></p></div>' },
+    "R-1": { kind: "R-1 · Result · selected", title: "Run-time export filter + sample CSV and XLSX",
+      badges: '<span class="badge badge-warn">Awaiting review</span><span class="marker">Changed Sep 25</span><span class="meta">Attached by Nia · reviewer Jo</span>',
+      body: '<div class="dsec"><h3>What is attached</h3><p>Patch moving the guest-access check to export run time; sample-guest.csv and sample-guest.xlsx from the Northwind share (3 archived items hidden, footer: “3 items hidden because you don\'t have access”).</p><div class="card-actions"><button class="btn btn-sm btn-primary" type="button">Approve result</button><button class="btn btn-sm" type="button">Request changes</button></div></div><div class="dsec"><h3>Review agent · running</h3><p>Under Jo\'s grant · read-only · reading sample XLSX (2 of 3). Payer: Tide org API — Anthropic. <button class="btn btn-sm btn-danger" type="button">Stop</button></p></div>' },
+    "H-1": { kind: "H-1 · Handoff · Ari → Jo", title: "Ari's handoff: XLSX footer done, CSV notice still open",
+      badges: '<span class="marker">Changed Sep 25</span><span class="meta">Ari · Sep 25, 18:05</span>',
+      body: '<div class="dsec"><p>“I\'m out from Sep 26. The footer wording is in R-1\'s sample XLSX. Open: how CSV tells guests items were left out — see Nia\'s question in C-1. Nia owns W-1; the Test agent stopped at the provider limit, so she may need to run the rest by hand.”</p></div><div class="dsec"><h3>About</h3><p><button class="link-chip" type="button" data-select="R-1">R-1</button> <button class="link-chip" type="button" data-select="W-1">W-1</button> <button class="link-chip" type="button" data-select="D-2">D-2</button></p></div><div class="card-actions" style="padding:0 16px 12px"><button class="btn btn-sm" type="button">Acknowledge handoff</button></div>' }
+  };
+
+  var detail = document.getElementById("detail-content");
+  var sheetMQ = window.matchMedia("(max-width: 900px)");
+  var phoneMQ = window.matchMedia("(max-width: 600px)");
+  var lastTrigger = null;
+  var current = "D-2";
+
+  function render(id) {
+    var tpl, node;
+    if (id === "D-2") { node = document.getElementById("tpl-D-2").content.cloneNode(true); }
+    else if (id === "none" || !DATA[id]) { node = document.getElementById("tpl-none").content.cloneNode(true); }
+    else {
+      var d = DATA[id];
+      node = document.getElementById("tpl-generic").content.cloneNode(true);
+      node.querySelector('[data-slot="kind"]').textContent = d.kind;
+      node.querySelector('[data-slot="title"]').textContent = d.title;
+      node.querySelector('[data-slot="badges"]').innerHTML = d.badges;
+      node.querySelector('[data-slot="body"]').innerHTML = d.body;
+      node.querySelector('[data-slot="clabel"]').textContent = "Start a thread · about " + (id === "RX" ? "restricted source" : id);
+    }
+    detail.replaceChildren(node);
+  }
+
+  function linkedSet(id) {
+    var set = {};
+    var sel = document.querySelector('#board [data-id="' + id + '"]');
+    if (sel) (sel.dataset.links || "").split(" ").forEach(function (x) { if (x) set[x] = 1; });
+    document.querySelectorAll('#board [data-links]').forEach(function (el) {
+      if ((" " + el.dataset.links + " ").indexOf(" " + id + " ") > -1) set[el.dataset.id] = 1;
+    });
+    return set;
+  }
+
+  function select(id, opts) {
+    opts = opts || {};
+    current = id;
+    var links = linkedSet(id);
+    document.querySelectorAll("[data-id]").forEach(function (el) {
+      var on = el.dataset.id === id;
+      el.classList.toggle("is-selected", on);
+      el.classList.toggle("is-linked", !on && !!links[el.dataset.id]);
+      var b = el.querySelector(".obj-open");
+      if (b) { if (on) b.setAttribute("aria-current", "true"); else b.removeAttribute("aria-current"); }
+    });
+    render(id);
+    if (!opts.initial) {
+      if (sheetMQ.matches && id !== "none") openSheet();
+      var h = document.getElementById("detail-title");
+      if (h && !sheetMQ.matches && opts.focusDetail) h.focus();
+    }
+  }
+
+  function openSheet() {
+    document.body.classList.add("sheet-open");
+    var h = document.getElementById("detail-title");
+    if (h) h.focus();
+  }
+  function closeSheet() {
+    document.body.classList.remove("sheet-open");
+    if (lastTrigger && document.contains(lastTrigger)) lastTrigger.focus();
+  }
+
+  document.addEventListener("click", function (e) {
+    var t = e.target.closest("[data-select]");
+    if (t) {
+      if (!t.closest("#detail")) lastTrigger = t;
+      select(t.dataset.select, { focusDetail: false });
+      return;
+    }
+    if (e.target.closest("[data-close-sheet]")) { closeSheet(); return; }
+    var v = e.target.closest("[data-view]");
+    if (v) { setView(v.dataset.view); return; }
+    var f = e.target.closest("[data-filter]");
+    if (f && f.classList.contains("chip")) { setFilter(f); return; }
+    if (e.target.closest(".agents-toggle")) { toggleAgents(); return; }
+    var gt = e.target.closest(".gtoggle");
+    if (gt) { var row = gt.closest(".arow"); var on = !row.classList.contains("open"); row.classList.toggle("open", on); gt.setAttribute("aria-expanded", String(on)); return; }
+    if (e.target.closest("[data-close-agents]")) { toggleAgents(false); document.querySelector(".agents-toggle").focus(); return; }
+    if (e.target.closest("[data-retry]")) {
+      var m = document.getElementById("failed-msg");
+      if (m) {
+        m.classList.remove("failed"); m.classList.add("sent");
+        m.querySelector(".err").remove(); m.querySelector(".err-acts").remove();
+        m.querySelector(".mh .meta").textContent = "reply to Nia · sent just now";
+      }
+    }
+  });
+
+  function setView(view) {
+    document.querySelectorAll("[data-view]").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.view === view)); });
+    document.getElementById("board-region").hidden = view !== "board";
+    document.getElementById("outline-region").hidden = view !== "outline";
+  }
+
+  function setFilter(btn) {
+    var key = btn.dataset.filter;
+    var wasOn = btn.getAttribute("aria-pressed") === "true";
+    document.querySelectorAll(".chip[data-filter]").forEach(function (c) { c.setAttribute("aria-pressed", "false"); });
+    var active = wasOn ? "none" : key;
+    if (!wasOn) btn.setAttribute("aria-pressed", "true");
+    ["board-region", "outline-region"].forEach(function (rid) { document.getElementById(rid).dataset.filter = active; });
+    document.querySelectorAll("[data-id]").forEach(function (el) {
+      var ch = " " + (el.dataset.change || "") + " ";
+      el.classList.toggle("is-hit", active !== "none" && active !== "all" && ch.indexOf(" " + active + " ") > -1);
+    });
+  }
+
+  function toggleAgents(force) {
+    var btn = document.querySelector(".agents-toggle");
+    var panel = document.getElementById("agents");
+    var open = typeof force === "boolean" ? force : btn.getAttribute("aria-expanded") !== "true";
+    btn.setAttribute("aria-expanded", String(open));
+    panel.hidden = !open;
+  }
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && document.body.classList.contains("sheet-open")) { closeSheet(); return; }
+    var b = e.target.closest && e.target.closest("#board .obj-open");
+    if (!b || ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].indexOf(e.key) < 0) return;
+    var lanes = Array.prototype.slice.call(document.querySelectorAll("#board .lane"));
+    var laneIdx = lanes.indexOf(b.closest(".lane"));
+    var items = Array.prototype.slice.call(lanes[laneIdx].querySelectorAll(".obj-open"));
+    var i = items.indexOf(b), target = null;
+    if (e.key === "ArrowDown") target = items[i + 1];
+    if (e.key === "ArrowUp") target = items[i - 1];
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+      var next = lanes[laneIdx + (e.key === "ArrowRight" ? 1 : -1)];
+      if (next) { var ni = next.querySelectorAll(".obj-open"); target = ni[Math.min(i, ni.length - 1)]; }
+    }
+    if (target) { e.preventDefault(); target.focus(); }
+  });
+
+  // Initial state: D-2 selected; phone opens in Outline view.
+  select("D-2", { initial: true });
+  if (phoneMQ.matches) setView("outline");
+  if (location.hash === "#sheet" && sheetMQ.matches) openSheet();
+  if (location.hash === "#agents") toggleAgents(true);
+})();
+</script>
+</body>
+</html>

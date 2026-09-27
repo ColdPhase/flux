@@ -11,6 +11,7 @@ export FLUX_PORT="${FLUX_RUNTIME_TEST_PORT:-18090}"
 export FLUX_PUBLIC_ORIGIN="http://127.0.0.1:${FLUX_PORT}"
 export FLUX_AUTH_SECRET="auth-runtime-$$-$(date +%s)-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
 export FLUX_TEST_FAILURE_INJECTION=false
+. scripts/test_images.sh
 compose="docker compose -p $project -f infra/compose.yaml"
 response="$(mktemp)"
 
@@ -19,7 +20,8 @@ cleanup() {
   if [ "$status" -ne 0 ]; then
     $compose logs --no-color db migrate files-init api worker || true
   fi
-  $compose down -v
+  $compose down -v || true
+  remove_project_images
   rm -f "$response"
 }
 trap cleanup EXIT HUP INT TERM
