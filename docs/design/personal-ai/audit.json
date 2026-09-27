@@ -1,0 +1,334 @@
+{
+  "states": {
+    "1440x900#default": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": null,
+      "console_errors": []
+    },
+    "1280x800#default": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": null,
+      "console_errors": []
+    },
+    "1024x768#default": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": [],
+      "console_errors": []
+    },
+    "768x1024#default": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": [],
+      "console_errors": []
+    },
+    "390x844#default": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": [],
+      "console_errors": []
+    },
+    "360x780#default": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": [],
+      "console_errors": []
+    },
+    "1440x900#assistant": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": null,
+      "console_errors": []
+    },
+    "1440x900#kai-assistant": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": null,
+      "console_errors": []
+    },
+    "1440x900#suggestion": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": null,
+      "console_errors": []
+    },
+    "1440x900#sources": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": null,
+      "console_errors": []
+    },
+    "1440x900#ask": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": null,
+      "console_errors": []
+    },
+    "1440x900#slash": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": null,
+      "console_errors": []
+    },
+    "1440x900#map-select": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": null,
+      "console_errors": []
+    },
+    "1440x900#tasks": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": null,
+      "console_errors": []
+    },
+    "1280x800#docs": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": null,
+      "console_errors": []
+    },
+    "1440x900#as-kai": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": null,
+      "console_errors": []
+    },
+    "1440x900#as-kai-run": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": null,
+      "console_errors": []
+    },
+    "1440x900#no-connection": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": null,
+      "console_errors": []
+    },
+    "1440x900#no-connection-ask": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": null,
+      "console_errors": []
+    },
+    "1440x900#no-connection-connect": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": null,
+      "console_errors": []
+    },
+    "1440x900#limit": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": null,
+      "console_errors": []
+    },
+    "1440x900#limit-ask": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": null,
+      "console_errors": []
+    },
+    "1440x900#no-ai": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": null,
+      "console_errors": []
+    },
+    "1440x900#no-ai-map": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": null,
+      "console_errors": []
+    },
+    "1024x768#assistant": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": [],
+      "console_errors": []
+    },
+    "768x1024#nav": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": [],
+      "console_errors": []
+    },
+    "390x844#assistant": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": [],
+      "console_errors": []
+    },
+    "390x844#ask": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": [],
+      "console_errors": []
+    },
+    "390x844#slash": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": [],
+      "console_errors": []
+    },
+    "390x844#suggestion": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": [],
+      "console_errors": []
+    },
+    "390x844#map-select": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": [],
+      "console_errors": []
+    },
+    "390x844#no-ai": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": [],
+      "console_errors": []
+    },
+    "390x844#no-connection-connect": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": [],
+      "console_errors": []
+    },
+    "360x780#as-kai": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": [],
+      "console_errors": []
+    },
+    "1440x900#accent": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": null,
+      "console_errors": []
+    },
+    "390x844#accent": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": [],
+      "console_errors": []
+    },
+    "360x780#nav": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": [],
+      "console_errors": []
+    },
+    "390x844#sources": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": [],
+      "console_errors": []
+    }
+  },
+  "zoom200": {
+    "default": false,
+    "assistant": false,
+    "ask": false
+  },
+  "keyboard": {
+    "composer_visible": true,
+    "ask_bar_visible": true
+  },
+  "keyboard_focus": {
+    "default": {
+      "stops": 39,
+      "without_visible_ring": [],
+      "first_stops": [
+        "Skip to reply",
+        "Home",
+        "Direct messages",
+        "Gesture lamp",
+        "Marketplace",
+        "New project",
+        "Jump to\u2026\u2318K",
+        "CapturePrivate",
+        "Camera in low light2",
+        "Lamp shade prints"
+      ]
+    },
+    "no-ai": {
+      "stops": 38,
+      "without_visible_ring": [],
+      "first_stops": [
+        "Skip to reply",
+        "Home",
+        "Direct messages",
+        "Gesture lamp",
+        "Marketplace",
+        "New project",
+        "Jump to\u2026\u2318K",
+        "CapturePrivate",
+        "Camera in low light2",
+        "Lamp shade prints"
+      ]
+    },
+    "as-kai": {
+      "stops": 39,
+      "without_visible_ring": [],
+      "first_stops": [
+        "Skip to reply",
+        "Home",
+        "Direct messages",
+        "Gesture lamp",
+        "Marketplace",
+        "New project",
+        "Jump to\u2026\u2318K",
+        "CapturePrivate",
+        "Camera in low light2",
+        "Lamp shade prints"
+      ]
+    }
+  },
+  "reduced_motion_animated_elements": {
+    "default": 0,
+    "assistant": 0,
+    "slash": 0
+  }
+}

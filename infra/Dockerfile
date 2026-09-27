@@ -11,6 +11,13 @@ CMD ["pnpm", "test"]
 FROM build AS production-dependencies
 RUN pnpm install --prod --offline --frozen-lockfile
 
+# Browser checks only (issue #41): the built workspace on the official Playwright image,
+# whose bundled Chromium matches the pinned playwright 1.63.0 package. Never deployed.
+FROM mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27 AS e2e
+WORKDIR /app
+COPY --from=build /app /app
+CMD ["node_modules/.bin/tsx", "--test", "tests/app/e2e/pwa.e2e.ts"]
+
 FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS runtime
 WORKDIR /app
 ENV NODE_ENV=production

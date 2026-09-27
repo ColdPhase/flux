@@ -352,23 +352,77 @@ export async function evaluateAgent(principal: Principal, action: ActionsByResou
  * membership, grants and object visibility. Use {@link assertAuthorized} to throw the
  * matching 404/403 error instead.
  */
-export async function authorize<T extends ResourceType>(principal: Principal, action: ActionsByResource[T], resource: ResourceRef<T>, db: Executor): Promise<Decision> {
-  const { allowed, visible } = await evaluate(principal, action, resource, db);
+export async function authorize<T extends ResourceType>(principal: Principal, action: ActionsByResource[T], resource: ResourceRef<T>, db: Executor, options?: LoadOptions): Promise<Decision> {
+  const { allowed, visible } = await evaluate(principal, action, resource, db, options);
   return { allowed, visible };
 }
 
-/** Throws NotFoundError when the object is invisible to the principal, ForbiddenError when the action is not allowed. */
-export async function assertAuthorized<T extends ResourceType>(principal: Principal, action: ActionsByResource[T], resource: ResourceRef<T>, db: Executor): Promise<void> {
-  enforce(await evaluate(principal, action, resource, db), resource.type);
+/**
+ * Throws NotFoundError when the object is invisible to the principal, ForbiddenError when
+ * the action is not allowed. Inside a commit transaction pass `{ lock: true }`: the
+ * principal's membership/agent rows are locked FOR SHARE and a draft FOR UPDATE, so a
+ * revocation committed earlier is seen and a concurrent one waits for this transaction.
+ */
+export async function assertAuthorized<T extends ResourceType>(principal: Principal, action: ActionsByResource[T], resource: ResourceRef<T>, db: Executor, options?: LoadOptions): Promise<void> {
+  enforce(await evaluate(principal, action, resource, db, options), resource.type);
 }
 
-async function evaluate(principal: Principal, action: Action, resource: ResourceRef, db: Executor): Promise<Decision> {
+async function evaluate(principal: Principal, action: Action, resource: ResourceRef, db: Executor, options?: LoadOptions) {
   switch (resource.type) {
-    case 'workspace': return evaluateWorkspace(principal, action as ActionsByResource['workspace'], resource.id, db);
-    case 'project': return evaluateProject(principal, action as ActionsByResource['project'], resource.id, db);
-    case 'draft': return evaluateDraft(principal, action as ActionsByResource['draft'], resource.id, db);
-    case 'agent': return evaluateAgent(principal, action as ActionsByResource['agent'], resource.id, db);
+    case 'workspace': return evaluateWorkspace(principal, action as ActionsByResource['workspace'], resource.id, db, options);
+    case 'project': return evaluateProject(principal, action as ActionsByResource['project'], resource.id, db, options);
+    case 'draft': return evaluateDraft(principal, action as ActionsByResource['draft'], resource.id, db, options);
+    case 'agent': return evaluateAgent(principal, action as ActionsByResource['agent'], resource.id, db, options);
   }
+}
+
+const READ_ACTION = { workspace: 'workspace.read', project: 'project.read', draft: 'draft.read', agent: 'agent.read' } as const satisfies { [T in ResourceType]: ActionsByResource[T] };
+
+/**
+ * The workspace of an object the principal can currently see, or null. Entry points use
+ * it to scope records such as idempotency keys without revealing invisible objects.
+ */
+export async function visibleWorkspaceOf(principal: Principal, resource: ResourceRef, db: Executor): Promise<string | null> {
+  const evaluation = await evaluate(principal, READ_ACTION[resource.type], resource, db);
+  if (!evaluation.visible) return null;
+  if ('project' in evaluation) return evaluation.project?.workspaceId ?? null;
+  if ('draft' in evaluation) return evaluation.draft?.workspaceId ?? null;
+  if ('agent' in evaluation) return evaluation.agent?.workspaceId ?? null;
+  return evaluation.actor.workspaceId;
+}
+
+// ---------------------------------------------------------------------------------------
+// Events. The stream and replay deliver an event to a recipient only when this returns
+// true at delivery time; payloads carry identifiers and kind, never content.
+
+export interface EventRef {
+  kind: string;
+  workspaceId: string | null;
+  objectId: string;
+}
+
+/** The object an event is about, derived from its versioned kind (`<type>.<verb>.v<n>`). */
+export function eventResource(event: EventRef): ResourceRef | null {
+  if (!event.workspaceId) return null;
+  const type = event.kind.split('.', 1)[0];
+  if (type === 'workspace') return event.objectId === event.workspaceId ? { type, id: event.objectId } : null;
+  if (type === 'project' || type === 'draft' || type === 'agent') return { type, id: event.objectId };
+  return null;
+}
+
+/**
+ * Whether `principal` may receive `event` now: the principal must be active in the
+ * event's workspace and currently able to read the object the event is about. Unknown
+ * kinds and events without a workspace are never delivered.
+ */
+export async function authorizeEvent(principal: Principal, event: EventRef, db: Executor): Promise<boolean> {
+  const resource = eventResource(event);
+  if (!resource) return false;
+  const decision = await evaluate(principal, READ_ACTION[resource.type], resource, db);
+  if (!decision.allowed || !decision.visible) return false;
+  // The object must still belong to the event's workspace (defense in depth).
+  if ('actor' in decision && decision.actor && decision.actor.workspaceId !== event.workspaceId) return false;
+  return true;
 }
 
 const LABELS: Record<ResourceType, string> = { workspace: 'Workspace', project: 'Project', draft: 'Draft', agent: 'Agent' };
