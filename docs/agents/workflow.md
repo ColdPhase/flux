@@ -81,6 +81,12 @@ Only an accepted scope decision can defer an outcome. When all work is blocked,
 leave clear records and wait without model/status traffic. Persistent provider
 authentication or infrastructure failure may suspend the whole run.
 
+The founder's later paired-execution policy is a global execution condition:
+both development workers must have fresh authenticated presence. If either
+worker stops, fails or stalls, the other suspends too and preserves unfinished
+work. [The Python guard](startup.md#paired-execution) handles this without model
+polling. It does not close tasks, reassign a peer's branch or relax review gates.
+
 ## 4. Implement and hand off
 
 Use a branch/worktree from current `main` for the task. Agree on interfaces before

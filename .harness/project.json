@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "state": "active",
   "github": {
     "repository": "ColdPhase/flux",
@@ -41,6 +41,13 @@
     "max_turn_minutes": 30,
     "max_turns": null
   },
+  "peer_watch": {
+    "issue_number": 18,
+    "heartbeat_seconds": 60,
+    "stale_after_seconds": 180,
+    "startup_wait_seconds": 600,
+    "provider_idle_seconds": 300
+  },
   "verification": {
     "repository_commands": [
       "python3 scripts/check_agent_setup.py",
@@ -75,7 +82,7 @@
       "number": 2,
       "phase": "implementation",
       "brief_path": "docs/product/milestones/02-working-application.md",
-      "description_digest": "sha256:a7d89b72e556cfc10101867a9a8ddb85b6947fa8dd0d74f76da292befead4cab",
+      "description_digest": "sha256:87cd025a2db9c7d2b964803871b3ad563a0bf64e2b7cf77ef8ba68efad4ce69f",
       "spec_path": null,
       "architecture_path": null
     }

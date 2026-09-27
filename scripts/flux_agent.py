@@ -64,7 +64,8 @@ def main():
             try:
                 print(json.dumps({key: state.get(key) for key in (
                     "status", "run_pid", "active_turn", "last_result", "last_error", "parked",
-                    "execution_options", "recovery", "saved_worktrees", "product_acceptance")}, indent=2))
+                    "execution_options", "recovery", "saved_worktrees", "product_acceptance",
+                    "presence", "peer_presence")}, indent=2))
             finally:
                 state.close()
         elif args.command == "message":

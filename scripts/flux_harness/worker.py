@@ -11,6 +11,7 @@ import uuid
 from check_agent_setup import validate
 from .github import GitHub, HarnessError, command, digest
 from .providers import run_provider
+from .presence import PeerGuard, PeerUnavailable
 from .options import execution_options, saved_options, selection_summary
 from .recovery import recovery_context, work_inventory
 from .roadmap import (configured_milestones, scope_check, milestone_numbers, read_snapshot,
@@ -158,6 +159,7 @@ def make_prompt(root, config, worker, snapshot, state, directory, ready, bootstr
         "latest_inbox_file": str(directory / "inbox.json"),
         "turn_minutes": config["limits"]["max_turn_minutes"],
         "recovery": state.get("recovery"), "execution": state.get("execution_options"),
+        "peer_presence": state.get("peer_presence"),
     }
     brief = "\n\n".join(f"MILESTONE {item['number']} ({item['phase']}):\n" +
                         (root / item["brief_path"]).read_text(encoding="utf-8")
@@ -224,7 +226,14 @@ do not retry denied actions or bypass tool/repository restrictions. Existing mer
 protection always applies. Respect merge/publishing/deployment configuration.
 The runner schedules the next cycle: do NOT create an additional /goal, recursive
 runner, or infinite polling loop inside this turn. Finish at a useful checkpoint
-within the turn budget. An unmet milestone is never success because the queue is
+within the turn budget
+and return waiting promptly when only a peer response is missing. Do not spend
+model calls polling GitHub, repeatedly re-reading unchanged sources, or making
+unrelated probes to fill a wait. Python handles heartbeats and idle polling.
+If the peer becomes unavailable the runner terminates this turn and preserves
+its files; this is suspension, not task completion. Keep long tools bounded so
+the provider event stream reports activity within the configured idle deadline.
+An unmet milestone is never success because the queue is
 empty. Candidate-complete requires independent criterion-specific evidence and
 agent-reviewed decisions. The independent peer records acceptance and closes the
 milestone after verifying its criteria, without a human approval step. Continue
@@ -288,6 +297,7 @@ def run(root, worker_id, once=False, dry_run=False, model=None, effort=None, use
             interrupted = True
 
         previous_handlers = {sig: signal.signal(sig, interrupt) for sig in (signal.SIGINT, signal.SIGTERM)}
+        guard = None
         try:
             state.set("status", "starting")
             state.set("run_pid", os.getpid())
@@ -303,12 +313,31 @@ def run(root, worker_id, once=False, dry_run=False, model=None, effort=None, use
             last_poll = 0.0
             recovering = True
 
-            def tick():
-                nonlocal last_poll
+            def guard_tick():
                 if interrupted or stop_file.exists():
                     raise HarnessError("Stop requested; local work and the journal are preserved")
                 if digest((root / ".harness/project.json").read_text()) != trusted_manifest:
                     raise HarnessError("Control configuration changed during the run")
+                guard.check("working" if state.get("status") == "working" else "waiting")
+
+            guard = PeerGuard(GitHub(config["github"]["repository"], root), config, worker, state)
+            reason = guard.start()
+            startup_deadline = min(deadline, time.monotonic() + config["peer_watch"]["startup_wait_seconds"])
+            if reason is not None:
+                print("Waiting for the other worker; no model calls: " + reason, flush=True)
+            while reason is not None:
+                state.set("status", "waiting-for-peer")
+                if once or time.monotonic() >= startup_deadline:
+                    raise PeerUnavailable(reason + "; startup grace ended without starting a model")
+                wait_until(min(startup_deadline, time.monotonic() + config["peer_watch"]["heartbeat_seconds"]),
+                           stop_file, lambda: interrupted)
+                reason = guard.poll("ready", force=True)
+            # Long paginated inbox reads must keep presence current as well.
+            github.before_request = guard_tick
+
+            def tick():
+                nonlocal last_poll
+                guard_tick()
                 if time.monotonic() - last_poll >= config["loop"]["poll_seconds"]:
                     if command(["git", "status", "--porcelain"], root).strip():
                         raise HarnessError("Control checkout changed during work; preserve edits and reconcile before resuming")
@@ -325,17 +354,20 @@ def run(root, worker_id, once=False, dry_run=False, model=None, effort=None, use
                     return 0
                 if interrupted or stop_file.exists():
                     raise HarnessError("Stop requested; restart the same command to reconcile and resume")
+                guard_tick()
                 try:
                     snapshot = read_snapshot(github, config)
                     deliver_pending(github, state, config, worker)
                     failures = 0
+                except PeerUnavailable:
+                    raise
                 except HarnessError:
                     failures += 1
                     if failures >= config["loop"]["max_attempts_without_progress"]:
                         raise
                     state.set("status", "waiting-for-github")
                     wait_until(min(deadline, time.monotonic() + min(300, 15 * 2 ** failures)), stop_file,
-                               lambda: interrupted)
+                               lambda: interrupted, guard_tick)
                     continue
                 acceptance = accepted_product(snapshot, config)
                 if acceptance is not None:
@@ -358,6 +390,7 @@ def run(root, worker_id, once=False, dry_run=False, model=None, effort=None, use
                           if task_fingerprint(snapshot, int(task)) == fingerprint}
                 state.set("parked", parked)
                 ready, bootstrap = eligibility(snapshot, worker, config, parked)
+                bootstrap = bootstrap and state.get("bootstrap_digest") != snapshot_hash
                 if recovering:
                     recovery = recovery_context(root, directory, state, snapshot, worker)
                     state.set("recovery", recovery)
@@ -372,11 +405,12 @@ def run(root, worker_id, once=False, dry_run=False, model=None, effort=None, use
                     if once:
                         return 0
                     wait_until(min(deadline, time.monotonic() + config["loop"]["poll_seconds"]),
-                               stop_file, lambda: interrupted)
+                               stop_file, lambda: interrupted, guard_tick)
                     continue
                 if command(["git", "rev-parse", "HEAD"], root).strip() != report["revision"]:
                     raise HarnessError("Control checkout revision changed; resume with a reviewed configuration")
                 github.verify_identity(worker)
+                guard_tick()
                 before_local = progress_fingerprint(root, directory)
                 turn_id = str(uuid.uuid4())
                 prompt = make_prompt(root, config, worker, snapshot, state, directory, ready, bootstrap)
@@ -386,7 +420,8 @@ def run(root, worker_id, once=False, dry_run=False, model=None, effort=None, use
                       ", ".join(str(item["number"]) for item in snapshot["milestones"]), flush=True)
                 result, session = run_provider(worker["provider"], root, workspace_path,
                     directory / "turns" / turn_id, prompt,
-                    min(deadline, time.monotonic() + config["limits"]["max_turn_minutes"] * 60), tick, session, options)
+                    min(deadline, time.monotonic() + config["limits"]["max_turn_minutes"] * 60), tick, session, options,
+                    idle_timeout=config["peer_watch"]["provider_idle_seconds"])
                 state.finish(turn_id, result, result["outcome"])
                 state.set("status", result["outcome"])
                 state.set("session", session)
@@ -396,6 +431,9 @@ def run(root, worker_id, once=False, dry_run=False, model=None, effort=None, use
                         task["number"] for task in after["issues"]}:
                     raise HarnessError("Provider checkpoint names a task outside the configured milestone")
                 after_hash = digest(after)
+                if bootstrap:
+                    # One attempt per observed roadmap revision, even when it parks a task.
+                    state.set("bootstrap_digest", after_hash)
                 after_local = progress_fingerprint(root, directory)
                 changed = snapshot_hash != after_hash or before_local != after_local
                 stagnant = 0 if changed else stagnant + 1
@@ -430,11 +468,17 @@ def run(root, worker_id, once=False, dry_run=False, model=None, effort=None, use
             state.set("status", "limit-reached")
             print("Run limit reached; milestone is not marked complete. Restart to reconcile and continue.")
             return 2
-        except HarnessError as error:
-            state.set("status", "suspended")
+        except Exception as error:
+            state.set("status", "peer-unavailable" if isinstance(error, PeerUnavailable) else "suspended")
             state.set("last_error", str(error))
             raise
         finally:
+            github.before_request = None
+            if guard is not None:
+                status = state.get("status")
+                terminal = ("complete" if status == "product-accepted" else "suspended"
+                            if status in ("suspended", "peer-unavailable") else "stopped")
+                guard.close(terminal)
             try:
                 state.set("saved_worktrees", work_inventory(root, directory))
             except HarnessError:
@@ -451,8 +495,10 @@ def save_inbox(directory, snapshot):
     temporary.replace(directory / "inbox.json")
 
 
-def wait_until(deadline, stop_file, interrupted):
+def wait_until(deadline, stop_file, interrupted, tick=None):
     while time.monotonic() < deadline:
         if stop_file.exists() or interrupted():
             raise HarnessError("Stop requested while waiting")
+        if tick is not None:
+            tick()
         time.sleep(min(0.5, max(0, deadline - time.monotonic())))

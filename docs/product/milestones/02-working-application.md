@@ -21,6 +21,12 @@ Add real agent participation using officially feasible integrations, resumable
 execution and understandable access/cost controls. The agent-agreed specification
 must map the full foundation to observable behavior, not a list of placeholders.
 
+Deliver the [required mobile/tablet PWA](../mobile-pwa.md), criteria MOB-1–MOB-7:
+installation on Android/iPhone/iPad, responsive phone/tablet touch journeys,
+authorized Web Push, connectivity/update recovery and self-hosted operation.
+Include these constraints in the initial architecture and UI foundation; split
+implementation into concrete issues and link their evidence from the coverage matrix.
+
 Each task has one owner, a different evaluator, specific dependencies and proof
 of its user-visible outcome. Preserve unfinished work and resume it after a stop.
 Park a blocked task and continue independent implementation or review.
@@ -31,6 +37,9 @@ Application tooling, services and tests use Docker/Compose. Test real multi-user
 data/access paths, recovery and relevant failure cases. Render and independently
 evaluate the actual UI; separately check keyboard, narrow screens and behavior.
 Implement clean installation, migrations, update, backup/restore and data export.
+Verify mobile installation and actual OS push delivery on the supported device
+matrix, including backgrounded app, denied/revoked permission and revoked project
+access. Emulated viewports do not establish installation or push behavior.
 
 Keep GitHub Actions light: fast PR checks with cancellation of superseded runs.
 Use local Docker for substantial verification. Do not package releases for every

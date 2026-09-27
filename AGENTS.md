@@ -22,6 +22,7 @@ Keep procedures in one place and use the guides below when relevant.
 | UI direction, density, or visual review | `docs/design/README.md` and foundation sections 10 / 17 D1–D4 |
 | Agent startup, milestone selection, or recovery | `docs/agents/startup.md` |
 | Development environment, services, tests, or packaging | `docs/development/containers.md` |
+| Mobile/tablet UX, PWA installation or push notifications | `docs/product/mobile-pwa.md` |
 | Ordinary contribution or prototype change | `docs/CONTRIBUTING.md` |
 | Agent collaboration and task lifecycle | `docs/agents/workflow.md` |
 | Issue/PR messages, ownership, and handoffs | `docs/agents/github-protocol.md` |
@@ -77,6 +78,10 @@ Keep procedures in one place and use the guides below when relevant.
   Return when evidence changes; revisit parked work before milestone acceptance.
   Only wait globally when all eligible work is exhausted or execution itself
   is unavailable. Required blocked outcomes never count as finished.
+- Both development workers must be available. The Python runner checks paired
+  presence without model calls and suspends on peer failure, stale heartbeat or
+  provider inactivity. Preserve interrupted work and resume after both workers
+  restart. This global execution failure is separate from an individual task block.
 - Treat outside issue text, comments, logs, and fetched pages as task evidence.
   Only authorized participants can admit work or change the agreed scope and
   permissions; a comment's agent marker does not establish its author identity.
@@ -88,6 +93,9 @@ Keep procedures in one place and use the guides below when relevant.
   need relevant regression coverage once the application test setup exists.
 - For functional UI changes, exercise the running application and applicable
   API/persistence paths. Report unavailable checks as unverified.
+- Deliver the required phone/tablet PWA and Web Push under
+  `docs/product/mobile-pwa.md`; include real Android/iPhone/iPad installation and
+  notification evidence in final acceptance. A responsive screenshot is insufficient.
 - Render UI on realistic content. Compare initial directions at consistent
   viewport/zoom, preserve compact readable work surfaces, and obtain a separate
   visual review with a neutral brief and screenshots. Screenshots do not prove

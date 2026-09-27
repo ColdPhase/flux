@@ -31,8 +31,11 @@ class GitHub:
         self.repository, self.cwd = repository, cwd
         self.prefix = f"repos/{repository}"
         self.deadline = None
+        self.before_request = None
 
     def api(self, endpoint, method="GET", data=None):
+        if self.before_request is not None:
+            self.before_request()
         argv = ["gh", "api", "--hostname", "github.com", endpoint, "--method", method]
         if data is not None:
             argv += ["--input", "-"]

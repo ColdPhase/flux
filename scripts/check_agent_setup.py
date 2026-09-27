@@ -61,10 +61,10 @@ def validate(root: Path) -> list[str]:
     data = record(data, "manifest", {
         "version", "state", "github", "workers", "milestone", "loop", "limits",
         "verification", "merge", "publishing", "deployment", "local_state_directory",
-        "additional_milestones", "milestone_discovery",
+        "additional_milestones", "milestone_discovery", "peer_watch",
     })
-    require(type(data.get("version")) is int and data["version"] == 3,
-            "manifest.version: supported version is 3")
+    require(type(data.get("version")) is int and data["version"] == 4,
+            "manifest.version: supported version is 4")
     require(data.get("state") in ("design", "active"),
             "manifest.state: expected design or active")
 
@@ -159,6 +159,20 @@ def validate(root: Path) -> list[str]:
     for key in ("max_run_minutes", "max_turn_minutes", "max_turns"):
         require(limits.get(key) is None or positive(limits[key]),
                 f"limits.{key}: expected null or a positive integer")
+    watch = record(data.get("peer_watch"), "peer_watch", {
+        "issue_number", "heartbeat_seconds", "stale_after_seconds", "startup_wait_seconds",
+        "provider_idle_seconds",
+    })
+    for key in ("issue_number", "heartbeat_seconds", "stale_after_seconds", "startup_wait_seconds",
+                "provider_idle_seconds"):
+        require(positive(watch.get(key)), f"peer_watch.{key}: expected a positive integer")
+    if positive(watch.get("heartbeat_seconds")) and positive(watch.get("stale_after_seconds")):
+        require(watch["heartbeat_seconds"] >= 30, "peer_watch.heartbeat_seconds: minimum 30 seconds")
+        require(watch["stale_after_seconds"] >= 3 * watch["heartbeat_seconds"],
+                "peer_watch.stale_after_seconds: allow at least three heartbeats")
+    if positive(watch.get("provider_idle_seconds")) and positive(limits.get("max_turn_minutes")):
+        require(watch["provider_idle_seconds"] <= limits["max_turn_minutes"] * 60,
+                "peer_watch.provider_idle_seconds: cannot exceed the turn deadline")
     checks = record(data.get("verification"), "verification", {
         "repository_commands", "task_commands", "release_commands", "required_status_checks",
     })

@@ -17,6 +17,9 @@ and the [protocol](../../../docs/agents/github-protocol.md).
   Preserve local changes, recover a pushed branch if needed and reuse the PR.
 - Resume the same artifact and valid criteria. Do not recreate issues, repeat
   accepted research or restart negotiation because the process/model changed.
+- Check paired presence and the local failure reason. Both workers must upgrade
+  to the same peer-watch configuration and restart after a paired suspension.
+  Startup waiting is handled by Python; do not start a model to poll the peer.
 - Incorporate an actual changed requirement and get peer evaluation of its impact.
   Founder acceptance is not needed under the delegated product authority.
 - Publish a recovery checkpoint when it adds shared state. If blocked, preserve
