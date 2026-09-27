@@ -103,3 +103,10 @@ DM or private sketch never receive its events. The stream's `objectType` is `ske
   durations come from the tokens, which are 0 ms under reduced motion.
 
 Out of scope: AI rearranging sketches, and promoting a sketch into a project (after #36).
+
+## Evidence
+
+The screenshots in [`docs/design/sketches/`](../design/sketches/) come from
+`tests/ui/test_sketches.py`, run by `scripts/check_ui.sh`, and show realistic content.
+They do not prove interaction or accessibility; the Playwright journey checks those
+against the API.

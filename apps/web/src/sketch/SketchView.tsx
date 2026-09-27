@@ -322,4 +322,3 @@ function TitleEditor({ sketch, onDone }: { sketch: SketchDetail; onDone(title: s
       }} />
   );
 }
-
