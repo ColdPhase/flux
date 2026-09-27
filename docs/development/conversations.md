@@ -46,3 +46,20 @@ FLUX_TEST_PORT=18136 FLUX_TEST_MAILPIT_PORT=18137 scripts/check_application.sh
 The script creates its own isolated Compose project, builds, typechecks, lints,
 runs API/PostgreSQL integration tests and restarts the API to verify a session,
 material and linked conversation survive. It removes only its own test volumes.
+
+## Authorized project refresh events (#36 + #47)
+
+A committed conversation start, reply, material publication or material revision
+records exactly one project-scoped event in the same PostgreSQL transaction:
+`project.conversation_created.v1`, `project.message_sent.v1`,
+`project.material_created.v1` or `project.material_updated.v1` respectively.
+The event's `object_id` is the project id and its `data` is `{}`. The stream frame
+therefore carries the kind, project id and workspace id, never message text,
+material title/body/URL, a private draft id, or a client mutation key. A client
+with current project access may refetch the conversation/material HTTP endpoints.
+The first message is included in `conversation_created`; there is no second event
+for that initial message. Idempotent retries return the original result without a
+new event. `recordEvent` writes the recipient index after the mutation, while the
+transaction's access locks are held; stream delivery and replay recheck current
+project rights. The UI currently refreshes by polling/route revalidation and does
+not yet subscribe to the stream.
