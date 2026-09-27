@@ -106,15 +106,14 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
-      - name: Build and push one version tag
+      - name: Build and push the untagged candidate manifest
         id: build
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: ${{ steps.paths.outputs.context }}
           file: ${{ steps.paths.outputs.file }}
           platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ghcr.io/coldphase/flux:${{ needs.candidate.outputs.version }}
+          outputs: type=image,name=ghcr.io/coldphase/flux,push=true,push-by-digest=true,name-canonical=true
           provenance: mode=max
           sbom: true
           labels: |
@@ -231,15 +230,19 @@ jobs:
           Flux $RELEASE_VERSION candidate
 
           Source: $CANDIDATE_SHA
-          OCI image: ghcr.io/coldphase/flux@$IMAGE_DIGEST
+          OCI candidate image: ghcr.io/coldphase/flux@$IMAGE_DIGEST
           Platforms: linux/amd64, linux/arm64
           Build: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
           Integrated acceptance: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/issues/$ACCEPTANCE_ISSUE
 
           Install with the attached version-matched compose.yaml, .env.example and INSTALL.md.
-          This draft requires independent packaged install, upgrade and restore review before publication.
+          This draft requires independent packaged install, upgrade and restore review before the version tag and release are published.
           EOF
+          release_flags=(--draft)
+          if [[ "$RELEASE_VERSION" == *-rc.* ]]; then
+            release_flags+=(--prerelease)
+          fi
           gh release create "$RELEASE_VERSION" ./* .env.example \
             --repo "$GITHUB_REPOSITORY" --target "$CANDIDATE_SHA" \
             --title "Flux $RELEASE_VERSION" --notes-file "$RUNNER_TEMP/release-notes.md" \
-            --draft
+            "${release_flags[@]}"
