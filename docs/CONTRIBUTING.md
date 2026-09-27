@@ -1,8 +1,10 @@
 # Contributing to Flux
 
-Flux is in early development. The current application is a local HTML prototype
-with a Polish interface. Contributions to usability, accessibility, documentation,
-and reproducible bug fixes are welcome.
+Flux is in early development and not yet released. The application is a
+TypeScript monorepo run with Docker Compose (see the [README](../README.md) and
+[architecture](development/architecture.md)); `flux-ux-v8.html` is an earlier UX
+prototype with a Polish interface. Contributions to usability, accessibility,
+documentation, and reproducible bug fixes are welcome.
 
 ## Choose the right place
 
@@ -69,7 +71,9 @@ issue.
    git switch -c fix/short-description upstream/main
    ```
 
-3. Run the prototype with Python 3:
+3. Start the application with Docker Compose as described in the
+   [application foundation guide](development/application-foundation.md#clean-start).
+   To work on the historical prototype instead, serve it with Python 3:
 
    ```sh
    python3 -m http.server 8080 --bind 127.0.0.1
@@ -78,8 +82,10 @@ issue.
    Open <http://127.0.0.1:8080/flux-ux-v8.html>. If your Python 3 executable is
    named `python`, use it instead. You can also open the HTML file directly.
 
-4. Make a focused change. The current UI, styles, and application code live in
-   `flux-ux-v8.html`. Avoid reformatting unrelated parts of this large file.
+4. Make a focused change. Put code in the layer that owns it
+   ([architecture](development/architecture.md)) and tests under `tests/app`.
+   Prototype changes live in `flux-ux-v8.html`; avoid reformatting unrelated
+   parts of that large file.
 5. Run the checks below, commit your changes, and push your branch to your fork.
 6. Open a PR against `ColdPhase/flux:main` and complete the PR template. Use a
    draft PR if the change is still being developed.
@@ -89,8 +95,14 @@ contribute through a fork.
 
 ## Verify your change
 
-The application currently has no build step or automated application test suite.
-The repository's agent-collaboration foundation has a structural check:
+Application changes: run the Docker suite, which builds, type checks, lints and
+runs the application, architecture and browser tests against a disposable stack:
+
+```sh
+./scripts/check_application.sh
+```
+
+Repository and documentation checks:
 
 ```sh
 python3 scripts/check_agent_setup.py
@@ -98,9 +110,8 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 git diff --check
 ```
 
-GitHub Actions runs the structural check as `Agent setup`. Application lint,
-tests, and build checks will be added with the selected technology stack. For
-prototype changes, verify the behavior in a browser and describe your checks:
+GitHub Actions runs these checks on pull requests. For UI and prototype changes,
+also verify the behavior in a browser and describe your checks:
 
 - Reproduce the issue before the fix and check the same steps afterward.
 - Check the browser console for new errors.

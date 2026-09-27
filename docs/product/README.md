@@ -40,6 +40,14 @@ continues direction C. It specifies separate personal, DM and project audiences;
 selected-content evolution from DM to sketch to project; fluid maps connected to
 work and results; return after a pivot; and bounded proactive help. The three
 integrated scenarios in #44 govern later design and application evaluation.
+The later [#57 personal AI direction](https://github.com/ColdPhase/flux/issues/57)
+binds invocation and cost to the connection owner while preserving human work
+without AI. [#59 live collaboration](https://github.com/ColdPhase/flux/issues/59)
+adds contextual human sessions and consented optional audio notes. The
+[#44 email direction](https://github.com/ColdPhase/flux/issues/44#issuecomment-5859929702)
+requires global SMTP plus per-user verified notification delivery choices,
+separate from SSO login identity. These are product requirements; the
+[coverage ledger](foundation-coverage.md) records what is still unimplemented.
 
 ## Delivery playbook
 
@@ -54,8 +62,8 @@ Research serves a concrete code task; it does not replace shipping.
 | Founder direction | Global OSS, self-hosting, creative human collaboration, connected work, bounded AI participation, high UX quality, mobile PWA and a path to enterprise; see F-012 for the later concrete scenarios. |
 | Proposal | Initial personas, market entry, product mechanisms and commercial services remain research proposals. |
 | Accepted decision | O-002 React/Node/Fastify/PostgreSQL architecture and O-004 complete-product public release boundary; see the [register](decisions.md). |
-| Open decision | First niche/USP (O-001), visual tokens and component system (O-003), supported AI paths (O-005), and later commercial terms. |
-| Existing implementation | A loose v8 prototype and a Compose application foundation with identity sessions/runtime hardening. The prototype is a concrete comparison baseline under F-012, not a production UI. Feature completeness is tracked in the [ledger](foundation-coverage.md). |
+| Open decision | First niche/USP (O-001) and later commercial terms; O-003 direction C and O-005 first external agent path are accepted, with implementation still in progress. |
+| Existing implementation | A loose v8 prototype plus a Compose application with identity, a C-style shell and a first project conversation slice. The prototype is a concrete comparison baseline under F-012, not a production UI. Feature completeness is tracked in the [ledger](foundation-coverage.md). |
 
 Routine decisions within an accepted task belong to its owner. Record larger
 recommendations with evidence; only the named decision owner can accept them.

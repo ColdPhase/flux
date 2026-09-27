@@ -1,0 +1,91 @@
+[
+  {
+    "step": "signed up and signed in in this browser",
+    "who": "Alice",
+    "observed": {
+      "user": "056bcd25-dff2-4118-9a38-dbfc83d4e639"
+    }
+  },
+  {
+    "step": "signed up and signed in in this browser",
+    "who": "Bob",
+    "observed": {
+      "user": "433ce36e-9400-4158-bb4e-cf3c2466d060"
+    }
+  },
+  {
+    "step": "signed up and signed in in this browser",
+    "who": "Carol",
+    "observed": {
+      "user": "7ef6e83e-6e7e-40a4-8c4a-eea08d9fa64f"
+    }
+  },
+  {
+    "step": "created workspace, restricted project and viewer grant for Bob",
+    "who": "Alice",
+    "observed": {
+      "workspace": "d24c3e82-16cd-443e-8065-17f3daf669cb",
+      "project": "4cc268aa-111c-4e03-a02a-7511ea661d73",
+      "grant": "c5065cc8-7d5a-41be-9fe4-3e69a7f692db"
+    }
+  },
+  {
+    "step": "opened WebSocket /api/v1/stream in the page",
+    "who": "Bob",
+    "observed": {
+      "readyState": 1
+    }
+  },
+  {
+    "step": "GET private draft before sharing",
+    "who": "Bob",
+    "observed": {
+      "status": 404
+    }
+  },
+  {
+    "step": "shared the draft to the project",
+    "who": "Alice",
+    "observed": {
+      "draft": "967618fc-c13a-4639-8ef9-0dea366fa63a",
+      "version": 2
+    }
+  },
+  {
+    "step": "stream delivered draft.shared.v1; GET draft",
+    "who": "Bob",
+    "observed": {
+      "status": 200,
+      "title": "Launch checklist"
+    }
+  },
+  {
+    "step": "GET the shared draft and its project as a non-member",
+    "who": "Carol",
+    "observed": {
+      "draft": 404,
+      "project": 404
+    }
+  },
+  {
+    "step": "revoked Bob's grant",
+    "who": "Alice",
+    "observed": {
+      "grant": "c5065cc8-7d5a-41be-9fe4-3e69a7f692db"
+    }
+  },
+  {
+    "step": "after revocation: stream frames for the draft, sentinel delivery, GET draft",
+    "who": "Bob",
+    "observed": {
+      "draftFrames": [
+        "draft.shared.v1"
+      ],
+      "framesAfterRevocation": [],
+      "sentinelDelivered": true,
+      "updatedVersion": 3,
+      "status": 404,
+      "readyState": 1
+    }
+  }
+]

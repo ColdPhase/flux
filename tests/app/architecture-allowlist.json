@@ -1,0 +1,113 @@
+{
+  "$comment": "Known Clean Architecture violations (issue #46). The architecture test fails on any violation not listed here and on any entry that no longer matches, so this list can only shrink. Do not add entries for new code; see docs/development/architecture.md.",
+  "exceptions": [
+    {
+      "file": "packages/core/src/access/domain.ts",
+      "import": "drizzle-orm",
+      "issue": "https://github.com/ColdPhase/flux/issues/46",
+      "reason": "Workspace/project/grant/agent/draft use cases still build Drizzle queries against @flux/db tables; move queries and row mapping to @flux/db repositories behind core ports."
+    },
+    {
+      "file": "packages/core/src/access/domain.ts",
+      "import": "@flux/db",
+      "issue": "https://github.com/ColdPhase/flux/issues/46",
+      "reason": "Workspace/project/grant/agent/draft use cases still build Drizzle queries against @flux/db tables; move queries and row mapping to @flux/db repositories behind core ports."
+    },
+    {
+      "file": "packages/core/src/access/policy.ts",
+      "import": "drizzle-orm",
+      "issue": "https://github.com/ColdPhase/flux/issues/46",
+      "reason": "authorize/visibleFilter decide access and build SQL in one module; split pure policy decisions from the SQL-backed grant lookup and visibility filter adapter."
+    },
+    {
+      "file": "packages/core/src/access/policy.ts",
+      "import": "@flux/db",
+      "issue": "https://github.com/ColdPhase/flux/issues/46",
+      "reason": "authorize/visibleFilter decide access and build SQL in one module; split pure policy decisions from the SQL-backed grant lookup and visibility filter adapter."
+    },
+    {
+      "file": "packages/core/src/index.ts",
+      "import": "drizzle-orm",
+      "issue": "https://github.com/ColdPhase/flux/issues/46",
+      "reason": "The integration-fixture sample use case writes rows and enqueues pg-boss jobs directly; move it behind a transaction/outbox port or out of core."
+    },
+    {
+      "file": "packages/core/src/index.ts",
+      "import": "pg-boss",
+      "issue": "https://github.com/ColdPhase/flux/issues/46",
+      "reason": "The integration-fixture sample use case writes rows and enqueues pg-boss jobs directly; move it behind a transaction/outbox port or out of core."
+    },
+    {
+      "file": "packages/core/src/index.ts",
+      "import": "@flux/db",
+      "issue": "https://github.com/ColdPhase/flux/issues/46",
+      "reason": "The integration-fixture sample use case writes rows and enqueues pg-boss jobs directly; move it behind a transaction/outbox port or out of core."
+    },
+    {
+      "file": "packages/core/src/types.ts",
+      "import": "@flux/db",
+      "issue": "https://github.com/ColdPhase/flux/issues/46",
+      "reason": "Database/Executor types are derived from @flux/db; replace them with a core-owned transaction port."
+    },
+    {
+      "file": "packages/core/package.json",
+      "import": "@flux/db",
+      "issue": "https://github.com/ColdPhase/flux/issues/46",
+      "reason": "Manifest counterpart of the source exceptions above; remove each dependency once no core file imports it."
+    },
+    {
+      "file": "packages/core/package.json",
+      "import": "drizzle-orm",
+      "issue": "https://github.com/ColdPhase/flux/issues/46",
+      "reason": "Manifest counterpart of the source exceptions above; remove each dependency once no core file imports it."
+    },
+    {
+      "file": "packages/core/package.json",
+      "import": "pg-boss",
+      "issue": "https://github.com/ColdPhase/flux/issues/46",
+      "reason": "Manifest counterpart of the source exceptions above; remove each dependency once no core file imports it."
+    },
+    {
+      "file": "packages/core/src/events.ts",
+      "import": "drizzle-orm",
+      "issue": "https://github.com/ColdPhase/flux/issues/46",
+      "reason": "recordEvent writes events and fan-out audience rows with Drizzle (merged in #47 before this rule); move to an EventRepository port with a @flux/db adapter."
+    },
+    {
+      "file": "packages/core/src/events.ts",
+      "import": "@flux/db",
+      "issue": "https://github.com/ColdPhase/flux/issues/46",
+      "reason": "recordEvent writes events and fan-out audience rows with Drizzle (merged in #47 before this rule); move to an EventRepository port with a @flux/db adapter."
+    },
+    {
+      "file": "packages/core/src/idempotency.ts",
+      "import": "drizzle-orm",
+      "issue": "https://github.com/ColdPhase/flux/issues/46",
+      "reason": "runIdempotent stores keys and replays with Drizzle (merged in #47); move storage behind an IdempotencyStore port."
+    },
+    {
+      "file": "packages/core/src/idempotency.ts",
+      "import": "@flux/db",
+      "issue": "https://github.com/ColdPhase/flux/issues/46",
+      "reason": "runIdempotent stores keys and replays with Drizzle (merged in #47); move storage behind an IdempotencyStore port."
+    },
+    {
+      "file": "packages/core/src/jobs/draft-summary.ts",
+      "import": "drizzle-orm",
+      "issue": "https://github.com/ColdPhase/flux/issues/46",
+      "reason": "draft.summarize.v1 use case queries drafts/results and enqueues with pg-boss (merged in #47); split into a pure use case plus repository and JobQueue ports."
+    },
+    {
+      "file": "packages/core/src/jobs/draft-summary.ts",
+      "import": "pg-boss",
+      "issue": "https://github.com/ColdPhase/flux/issues/46",
+      "reason": "draft.summarize.v1 use case queries drafts/results and enqueues with pg-boss (merged in #47); split into a pure use case plus repository and JobQueue ports."
+    },
+    {
+      "file": "packages/core/src/jobs/draft-summary.ts",
+      "import": "@flux/db",
+      "issue": "https://github.com/ColdPhase/flux/issues/46",
+      "reason": "draft.summarize.v1 use case queries drafts/results and enqueues with pg-boss (merged in #47); split into a pure use case plus repository and JobQueue ports."
+    }
+  ]
+}

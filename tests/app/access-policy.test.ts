@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, describe, test } from 'node:test';
-import { count, eq, sql } from 'drizzle-orm';
+import { count, eq } from 'drizzle-orm';
 import { createDatabase, schema } from '@flux/db';
 import {
   addMember,
@@ -31,6 +31,7 @@ import {
   type Database,
   type Principal,
 } from '@flux/core';
+import { backendPid, settled, waitUntilBlockedBy } from './support/locks.js';
 
 // Policy contract and agent principals exercised directly against PostgreSQL (issue #29).
 // Agent authentication is a later task, so agents are driven through core methods here.
@@ -51,7 +52,7 @@ function agentPrincipal(id: string): Principal {
 
 async function sharedDraft(actor: Principal, workspaceId: string, title: string, scope: 'project' | 'workspace', projectId?: string) {
   const item = await createDraft(actor, workspaceId, { title, projectId }, db);
-  return shareDraft(actor, item.id, { scope }, db);
+  return shareDraft(actor, item.id, { scope, expectedVersion: item.version }, db);
 }
 
 function pgCode(error: unknown) {
@@ -86,14 +87,14 @@ describe('agent principals', () => {
     await assert.rejects(getProject(bot, open.id, db), NotFoundError, 'workspace-visible project needs an explicit grant');
     assert.deepEqual((await listProjects(bot, ws.id, {}, db)).items.map((p) => [p.id, p.access]), [[granted.id, 'viewer']]);
     assert.deepEqual((await listWorkspaces(bot, db)).map((w) => [w.id, w.role]), [[ws.id, null]]);
-    await assert.rejects(updateDraft(bot, inGranted.id, { body: 'agent edit' }, db), ForbiddenError, 'viewer agent cannot write');
-    await assert.rejects(shareDraft(bot, inGranted.id, { scope: 'workspace' }, db), ForbiddenError);
+    await assert.rejects(updateDraft(bot, inGranted.id, { body: 'agent edit', expectedVersion: inGranted.version }, db), ForbiddenError, 'viewer agent cannot write');
+    await assert.rejects(shareDraft(bot, inGranted.id, { scope: 'workspace', expectedVersion: inGranted.version }, db), ForbiddenError);
 
     await grantProject(owner, granted.id, { principal: { kind: 'agent', id: agent.id }, role: 'contributor' }, db);
-    assert.equal((await updateDraft(bot, inGranted.id, { body: 'agent edit' }, db)).body, 'agent edit');
+    assert.equal((await updateDraft(bot, inGranted.id, { body: 'agent edit', expectedVersion: inGranted.version }, db)).body, 'agent edit');
     const own = await createDraft(bot, ws.id, { title: 'agent draft', projectId: granted.id }, db);
     assert.deepEqual(own.owner, { kind: 'agent', id: agent.id });
-    await assert.rejects(shareDraft(bot, own.id, { scope: 'workspace' }, db), ForbiddenError, 'agents cannot share workspace-wide');
+    await assert.rejects(shareDraft(bot, own.id, { scope: 'workspace', expectedVersion: own.version }, db), ForbiddenError, 'agents cannot share workspace-wide');
     await assert.rejects(getDraft(owner, own.id, db), NotFoundError, 'an agent draft is private too');
     await assert.rejects(createDraft(bot, ws.id, { title: 'elsewhere', projectId: open.id }, db), NotFoundError);
     await assert.rejects(createWorkspace(bot, { name: 'Agent workspace' }, db), ForbiddenError);
@@ -118,7 +119,7 @@ describe('agent principals', () => {
     const bot = agentPrincipal(agent.id);
     await grantProject(admin, board.id, { principal: { kind: 'agent', id: agent.id }, role: 'contributor' }, db);
     assert.equal((await getDraft(bot, item.id, db)).id, item.id);
-    await assert.rejects(updateDraft(bot, item.id, { body: 'x' }, db), ForbiddenError, 'agent cannot exceed its owner (viewer)');
+    await assert.rejects(updateDraft(bot, item.id, { body: 'x', expectedVersion: item.version }, db), ForbiddenError, 'agent cannot exceed its owner (viewer)');
 
     await removeMember(admin, ws.id, human.id, db);
     await assert.rejects(getDraft(bot, item.id, db), NotFoundError, 'owner left the workspace');
@@ -148,7 +149,7 @@ describe('agents stay inside current project grants', () => {
     await assert.rejects(createDraft(bot, ws.id, { title: 'other project', projectId: project.id }, db), NotFoundError, 'ungranted project is invisible');
     const inside = await createDraft(bot, ws.id, { title: 'inside', projectId: viewed.id }, db);
     assert.equal(inside.projectId, viewed.id);
-    await assert.rejects(moveDraft(bot, inside.id, { projectId: null, visibility: 'private' }, db), RuleViolationError, 'cannot leave every project');
+    await assert.rejects(moveDraft(bot, inside.id, { projectId: null, visibility: 'private', expectedVersion: inside.version }, db), RuleViolationError, 'cannot leave every project');
 
     const rows = await db.select({ n: count() }).from(schema.drafts).where(eq(schema.drafts.ownerAgentId, agent.id));
     assert.equal(rows[0]!.n, 1, 'only the project draft was created');
@@ -163,19 +164,19 @@ describe('agents stay inside current project grants', () => {
     const grant = await grantProject(owner, room.id, { principal: { kind: 'agent', id: agent.id }, role: 'contributor' }, db);
     const mine = await createDraft(bot, ws.id, { title: 'agent private', projectId: room.id }, db);
     const shared = await sharedDraft(bot, ws.id, 'agent shared', 'project', room.id);
-    assert.equal((await updateDraft(bot, mine.id, { body: 'v2' }, db)).body, 'v2');
+    assert.equal((await updateDraft(bot, mine.id, { body: 'v2', expectedVersion: mine.version }, db)).body, 'v2');
     assert.equal((await listDrafts(bot, ws.id, {}, db)).total, 2);
 
     await grantProject(owner, room.id, { principal: { kind: 'agent', id: agent.id }, role: 'viewer' }, db);
     assert.equal((await getDraft(bot, mine.id, db)).id, mine.id, 'viewer still reads its own draft');
-    await assert.rejects(updateDraft(bot, mine.id, { body: 'v3' }, db), ForbiddenError, 'viewer cannot write its own draft');
-    await assert.rejects(shareDraft(bot, mine.id, { scope: 'project' }, db), ForbiddenError);
+    await assert.rejects(updateDraft(bot, mine.id, { body: 'v3', expectedVersion: 2 }, db), ForbiddenError, 'viewer cannot write its own draft');
+    await assert.rejects(shareDraft(bot, mine.id, { scope: 'project', expectedVersion: 2 }, db), ForbiddenError);
     assert.deepEqual(await authorize(bot, 'draft.write', { type: 'draft', id: shared.id }, db), { allowed: false, visible: true });
 
     await revokeProjectGrant(owner, room.id, grant.id, db);
     for (const id of [mine.id, shared.id]) {
       await assert.rejects(getDraft(bot, id, db), NotFoundError, 'revoked grant hides the agent draft');
-      await assert.rejects(updateDraft(bot, id, { body: 'after revoke' }, db), NotFoundError);
+      await assert.rejects(updateDraft(bot, id, { body: 'after revoke', expectedVersion: 2 }, db), NotFoundError);
       assert.deepEqual(await authorize(bot, 'draft.read', { type: 'draft', id }, db), { allowed: false, visible: false });
     }
     const page = await listDrafts(bot, ws.id, {}, db);
@@ -200,29 +201,6 @@ describe('agents stay inside current project grants', () => {
   });
 });
 
-/** Backend pid of the connection running the given transaction. */
-async function backendPid(tx: { execute: Database['execute'] }): Promise<number> {
-  const result = await tx.execute(sql`SELECT pg_backend_pid() AS pid`);
-  return Number((result.rows[0] as { pid: number }).pid);
-}
-
-/** Resolves once some other session is waiting on a lock held by `holder`. */
-async function waitUntilBlockedBy(holder: number) {
-  const deadline = Date.now() + 10_000;
-  while (Date.now() < deadline) {
-    const result = await pool.query('SELECT count(*)::int AS n FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))', [holder]);
-    if (result.rows[0].n > 0) return;
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-  throw new Error(`No session became blocked by backend ${holder}`);
-}
-
-function settled(promise: Promise<unknown>) {
-  let done = false;
-  promise.then(() => { done = true; }, () => { done = true; });
-  return () => done;
-}
-
 /**
  * Runs `first` inside a transaction on one pooled connection and keeps that transaction
  * open after `first` finished; then runs `second` on another connection, asserts that it
@@ -245,7 +223,7 @@ async function interleave<A, B>(first: (tx: Database) => Promise<A>, second: () 
   if (holder < 0) await outer; // surfaces the error of `first`
   const later = second();
   const laterDone = settled(later);
-  await waitUntilBlockedBy(holder);
+  await waitUntilBlockedBy(pool, holder);
   assert.equal(laterDone(), false, 'the second session waits for the first transaction');
   release();
   const firstResult = await outer;
@@ -267,13 +245,14 @@ async function draftRow(id: string) {
 
 /** Access change committed while the write had already decided: the write commits, the change waits. */
 async function writeThenChange({ writer, draftId, change, refused }: RaceCase) {
+  const { version } = await draftRow(draftId);
   const { firstResult, secondResult } = await interleave(
-    (tx) => updateDraft(writer, draftId, { body: 'decided under the old access' }, tx),
+    (tx) => updateDraft(writer, draftId, { body: 'decided under the old access', expectedVersion: version }, tx),
     () => change(db));
   assert.equal(firstResult.body, 'decided under the old access');
   assert.equal(secondResult.error, null, 'the access change completes after the write');
   assert.equal((await draftRow(draftId)).body, 'decided under the old access');
-  await assert.rejects(updateDraft(writer, draftId, { body: 'after the change' }, db), refused, 'the next write sees the change');
+  await assert.rejects(updateDraft(writer, draftId, { body: 'after the change', expectedVersion: version + 1 }, db), refused, 'the next write sees the change');
 }
 
 /** Access change uncommitted when the write starts: the write waits and is then refused. */
@@ -281,7 +260,7 @@ async function changeThenWrite({ writer, draftId, change, refused }: RaceCase) {
   const before = await draftRow(draftId);
   const { secondResult } = await interleave(
     (tx) => change(tx),
-    () => updateDraft(writer, draftId, { body: 'must not commit' }, db));
+    () => updateDraft(writer, draftId, { body: 'must not commit', expectedVersion: before.version }, db));
   assert.ok(secondResult.error instanceof refused, `the write is refused with ${refused.name}, got ${String(secondResult.error)}`);
   const after = await draftRow(draftId);
   assert.equal(after.body, before.body);
@@ -308,7 +287,7 @@ describe('access changes are serialized with draft writes (two connections)', ()
     await addMember(owner, ws.id, { userId: member.id, role: 'member' }, db);
     const open = await createProject(owner, ws.id, { name: 'Open', visibility: 'workspace' }, db);
     const item = await sharedDraft(owner, ws.id, 'member race', 'project', open.id);
-    assert.equal((await updateDraft(member, item.id, { body: 'implicit access works' }, db)).version, 3);
+    assert.equal((await updateDraft(member, item.id, { body: 'implicit access works', expectedVersion: item.version }, db)).version, 3);
     return { owner, member, ws, open, item };
   }
 

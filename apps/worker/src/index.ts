@@ -1,7 +1,8 @@
 import { PgBoss } from 'pg-boss';
 import { eq } from 'drizzle-orm';
 import { createDatabase, schema } from '@flux/db';
-import { SAMPLE_JOB } from '@flux/core';
+import { deleteExpiredIdempotencyKeys, DRAFT_SUMMARY_JOB, IDEMPOTENCY_CLEANUP_JOB, processDraftSummary, SAMPLE_JOB } from '@flux/core';
+import { registerPushWorker } from './push/index.js';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
@@ -17,6 +18,21 @@ await boss.work<{ sampleId: string }>(SAMPLE_JOB, async (jobs) => {
     await db.insert(schema.sampleResults).values({ sampleId: sample.id, workerId: process.env.HOSTNAME ?? 'worker' }).onConflictDoNothing();
   }
 });
+await registerPushWorker(boss, db);
+// The payload is a result id only. processDraftSummary rechecks the requester's access
+// before reading the draft and inside the commit transaction.
+await boss.work<{ resultId: string }>(DRAFT_SUMMARY_JOB, async (jobs) => {
+  for (const job of jobs) {
+    const outcome = await processDraftSummary(job.data.resultId, db);
+    console.log(JSON.stringify({ job: DRAFT_SUMMARY_JOB, id: job.id, resultId: job.data.resultId, outcome }));
+  }
+});
+await boss.work(IDEMPOTENCY_CLEANUP_JOB, async () => {
+  const deleted = await deleteExpiredIdempotencyKeys(db);
+  console.log(JSON.stringify({ job: IDEMPOTENCY_CLEANUP_JOB, deleted }));
+});
+// Hourly; idempotency keys are retained for 24 hours (see docs/development/access-policy.md).
+await boss.schedule(IDEMPOTENCY_CLEANUP_JOB, '17 * * * *');
 console.log('Flux worker ready');
 const stop = async () => { await boss.stop(); await pool.end(); process.exit(0); };
 process.on('SIGTERM', stop);
