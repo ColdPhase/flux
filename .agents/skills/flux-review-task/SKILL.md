@@ -29,3 +29,5 @@ contract, and all unresolved prior findings. Follow
 
 Release your review claim and hand back the next action. If the head or contract
 changed during evaluation, report that the new version still needs verification.
+
+Peer review and eligible GitHub approvals are authorized. When the current head passes review and required checks, merge using the normal protected path; do not wait for a human approval.

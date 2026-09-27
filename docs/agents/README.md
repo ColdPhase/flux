@@ -21,8 +21,9 @@ flowchart TD
     E --> F[Integrated milestone acceptance]
 ```
 
-Milestone 1 produces the product blueprint. It is not an accepted application
-release plan. Workers create useful issues, keep one active task each, negotiate
+The [delegation](../product/autonomy.md) authorizes decisions and the complete
+application. Planning and implementation milestones overlap, and agents create
+further milestones. No human acceptance is required. Workers create useful issues, keep one active task each, negotiate
 criteria, implement agreed work, and evaluate the other's changes. Roles can
 alternate; there is no fixed provider-to-frontend/backend assignment.
 
@@ -45,6 +46,7 @@ if your Git environment does not preserve them; do not maintain separate copies.
 
 | Skill | Use |
 | --- | --- |
+| `flux-resume-work` | Recover an interrupted task and continue its existing artifact. |
 | `flux-work-loop` | Continue milestone work and revisit parked tasks. |
 | `flux-plan-task` | Agree on a bounded task and its criteria. |
 | `flux-research-product` | Research product/architecture decisions with dated evidence. |

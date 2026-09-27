@@ -26,3 +26,5 @@ brief, current decisions, and foundation sections 10 / 17 D1–D4 / 21.
 - Hand off rendered variants, recommendation, decision status, observed problems
   and evidence. Once accepted, update the design record and real tokens/components
   together. Do not turn an unaccepted experiment into a global design rule.
+
+The agents choose and accept the direction through independent review. No founder approval is required; record the choice and implement it consistently.

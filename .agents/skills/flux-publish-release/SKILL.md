@@ -28,3 +28,5 @@ recorded authority, actual artifact formats, and the manifest capability switch.
 If a hosting deployment is part of the contract, perform and verify it for that
 specific target. GitHub Release assets do not establish that a backend is running.
 A failed package, download, or deployment check remains a delivery blocker.
+
+Final publication is authorized without human acceptance, after independent verification of the complete application. Use an explicit final workflow invocation for the tested candidate. Do not publish/build a release for each main push, PR, intermediate milestone or schedule. Verify the delivered version and record the full-product acceptance evidence.

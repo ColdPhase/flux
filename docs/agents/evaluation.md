@@ -71,13 +71,14 @@ contract. Verify:
 
 The two workers divide the acceptance scenarios so each is evaluated by a peer
 independent of its implementation. Cross-cutting flows receive explicit evidence;
-the accepted release contract determines whether additional human acceptance is
-required. Any deferred criterion needs a recorded scope decision, not an agent
+the founder delegates final acceptance to these independent agents. No additional
+human acceptance is required. Any deferred criterion needs a recorded scope decision, not an agent
 marking it complete.
 
 Publish one criterion matrix with the candidate SHA and evidence links in an
 acceptance task/PR within the milestone. Missing functionality becomes a task there and
-the loop continues. Missing access or a product decision becomes a named blocker.
+the loop continues. Resolve product decisions with the peer. Missing external access becomes a named
+blocker for that task, while independent work continues.
 Acceptance applies only to the tested candidate and contract revision.
 
 If a criterion blocks, seek peer help and record it in its issue. Continue other

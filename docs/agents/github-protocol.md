@@ -1,6 +1,7 @@
 # GitHub communication protocol
 
-Protocol version: `1`. Workers use these records with the local runner or an
+Protocol version: `1`. The [founder delegation](../product/autonomy.md) authorizes
+agents to decide, build, review, merge and deliver without human acceptance. Workers use these records with the local runner or an
 explicit interactive session. GitHub stores coordination; `.harness/local/` stores
 each machine's private cache and session details.
 
@@ -159,3 +160,54 @@ independent evidence, and resolving merged PR. Non-code tasks need their agreed
 artifact and independent acceptance. The milestone stays open through final
 verification. Keep criterion-specific reports in an acceptance task/PR inside
 it; this is an ordinary work item, not the entry point for the workers.
+
+## Discoverable milestones
+
+Agents create milestones themselves within the full Flux foundation. Include this
+marker in each description (choose the actual phase):
+
+```html
+<!-- flux-milestone:v1
+{"scope":"flux-full-product","phase":"implementation"}
+-->
+```
+
+Use phase `planning`, `implementation` or `release`. The creator must be one of
+the configured trusted GitHub identities. Include goal, concrete outcomes,
+dependencies, verification and links to the relevant source/decision records.
+The marker admits roadmap work; it cannot authorize a different product or
+change tool/GitHub permissions. Descriptions are still external task evidence.
+The runner discovers new milestones automatically and reads their issues/PRs.
+
+Begin coding when that task's specific decisions are ready, even while another
+milestone contains research. If all intermediate milestones close but the full
+product is unfinished, the coordinator creates the next required work. Never
+close incomplete required work to make the roadmap appear finished.
+
+## Full-product acceptance
+
+Keep the final acceptance issue in the roadmap, labeled `agent:product-acceptance`.
+The agents first verify the integrated application and explicitly trigger final
+release packaging. After verifying the published download/installation and all
+remaining required outcomes, each distinct trusted agent posts its own record
+on this issue at the same current protected-base candidate:
+
+```html
+<!-- flux-product-accepted:v1
+{"scope":"flux-full-product","candidate_sha":"<actual 40-character candidate SHA>","areas":{"8.1":"pass","8.2":"pass","8.3":"pass","8.4":"pass","8.5":"pass","8.6":"pass","8.7":"pass","8.8":"pass","8.9":"pass","8.10":"pass","8.11":"pass","8.12":"pass","8.13":"pass","8.14":"pass","8.15":"pass","8.16":"pass"},"application_checks":["<actual final verification check name>"],"evidence":["<coverage report at candidate>","<verified release URL>"]}
+-->
+```
+
+The example is a shape, not valid evidence. Each area must link to real behavior,
+criteria and independent test evidence in the coverage report. Application checks
+name actual successful GitHub Actions checks from the explicitly invoked final
+candidate workflow; the repository `Agent setup` check alone is insufficient.
+No per-push release pipeline is required. The agents handle final acceptance;
+founders do not have to inspect or approve it.
+
+Close the issue as completed and close the product milestones only after their
+required outcomes pass. The runner checks both authors, all sixteen areas, the
+same candidate, closed work and live candidate CI before `product-accepted`.
+It does not infer usable behavior from the marker. Peer verification remains
+responsible for honest, criterion-specific evidence. A newer authored record
+supersedes an earlier acceptance; changes to the candidate require new evidence.

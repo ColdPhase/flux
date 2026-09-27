@@ -11,7 +11,7 @@ template is not authorization to start production implementation.
 - Product specification (path and revision):
 - Architecture and stack decisions (path and revision):
 - Configuration/skill revision:
-- Maintainers accepting this contract:
+- Independent agents accepting this contract:
 
 ## Outcomes and boundaries
 
@@ -42,7 +42,7 @@ Record unresolved questions and their decision owner.
 - Allowed CI/ruleset configuration and publication to GitHub Releases/packages:
 - Whether deployment is allowed and to which target:
 - Run/time and provider spending limits:
-- Decisions reserved for maintainers and where to report blockers:
+- Peer decision owners and where to record technical blockers (no human approval gate):
 
 ## Acceptance record
 
@@ -50,3 +50,5 @@ Record acceptance of the exact brief revision in its reviewed PR or an explicit
 decision comment. Later changes need a new acceptance record. The final report
 pins a candidate and accounts for every RC criterion, including parked blockers.
 The milestone is the entry point and remains open until required evidence passes.
+
+Apply the [founder delegation](../../product/autonomy.md). Acceptance is by the independent peer agents; do not add a founder approval step.

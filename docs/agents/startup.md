@@ -1,94 +1,98 @@
-# Start the two workers
+# Run, stop and resume the workers
 
-The entry point is [milestone 1: Flux — product blueprint](https://github.com/ColdPhase/flux/milestone/1).
-Its [checked-in brief](../product/milestones/01-product-blueprint.md) defines the
-initial planning scope. No parent issue is required. The coordinator creates the
-initial bounded issues; workers negotiate, implement, and review through GitHub.
+The founder has [delegated decisions and delivery](../product/autonomy.md) to the
+agents. They resume existing tasks, select work across product milestones, create
+further milestones, review/merge one another's PRs and finish the whole application.
+There is no human acceptance step.
 
-## Prerequisites
+## Upgrade the paused workers
 
-After this PR is reviewed and merged, each person uses a clean clone of `main`
-on Linux/macOS (or WSL), Python 3.11+, Git, GitHub CLI, and their official agent CLI.
-Application work additionally requires Docker with Compose under the environment contract.
-Authenticate `gh` and the agent separately. The CLI adapter uses their existing
-supported login; it does not copy credentials or force a switch to API billing.
-Provider access, limits, and permissions still apply.
+Use one clone and one running process per identity. Preserve `.harness/local/`,
+task branches, worktrees and uncommitted changes. Do not reclone over saved work.
+Stop the old runner with Ctrl+C or its `stop` command before changing the control
+checkout. Pull the new PR branch to try/review the upgrade; after its agent review
+and merge, a clean `main` also contains it. Existing provider sessions need not
+be kept open: the runner reconstructs work from the journal, files and GitHub.
 
-| Person | Worker | `gh` account | Agent |
+Both machines need Python 3.11+, Git, GitHub CLI and the official provider CLI.
+Application work uses Docker/Compose. Log in to GitHub and the provider separately.
+The adapters use existing supported CLI logins and do not force API billing.
+
+| Person | Worker | GitHub login | CLI |
 | --- | --- | --- | --- |
-| Hubert | `codex-hubert` | `PelikanFix16` | Codex CLI |
+| Hubert | `codex-hubert` | `PelikanFix16` | Codex |
 | Maurycy | `claude-maurycy` | `Zamojski5` | Claude Code |
 
-There must be one live runner per worker identity, on one machine. Separate
-clones give each person independent Git state. They do not have to start
-simultaneously. If the coordinator has not created the first tasks, the peer
-waits without calling a model. Once issues exist either worker can proceed.
+## Explicit model selection
 
-CLI surfaces checked during implementation: Codex 0.157.1 and Claude Code
-2.1.281. `doctor` verifies installed commands, required flags, repository, actual
-GitHub identity, and the configured milestone. It does not spend model tokens
-or prove the other person's login or a two-machine run.
-
-## Commands
-
-Hubert, in the repository:
+Hubert:
 
 ```sh
-git switch main
-git pull --ff-only
-python3 scripts/flux_agent.py doctor --worker codex-hubert
-python3 scripts/flux_agent.py run --worker codex-hubert --dry-run
-python3 scripts/flux_agent.py run --worker codex-hubert
+python3 scripts/flux_agent.py doctor --worker codex-hubert --model gpt-6-sol --reasoning-effort high
+python3 scripts/flux_agent.py run --worker codex-hubert --model gpt-6-sol --reasoning-effort high
 ```
 
-Maurycy uses the same commands with `--worker claude-maurycy`.
-`--dry-run` reads GitHub and reports eligibility; it starts no model and makes
-no GitHub writes. `--once` performs at most one collaboration cycle.
+Maurycy:
 
-The committed manifest selects the milestone, phase, worker identities, and
-limits. Changing the milestone description stops execution until its changed
-scope and digest are reviewed in configuration. For a new milestone, copy the
-[milestone brief template](templates/milestone.md), record acceptance in a PR,
-and update the manifest. There is no automatic migration from planning to release.
+```sh
+python3 scripts/flux_agent.py doctor --worker claude-maurycy --model opus --reasoning-effort high
+python3 scripts/flux_agent.py run --worker claude-maurycy --model opus --reasoning-effort high
+```
 
-## Stop, inspect, resume
+Use a full Claude model ID instead of `opus` when a fixed version is desired.
+Both workers accept the same harness flags. Codex receives `--model` and the
+`model_reasoning_effort` config override; Claude receives `--model` and `--effort`.
+The chosen model must support the requested effort and be available to that account.
+The runner does not silently substitute a different model after an error.
+
+Selections are saved per worker. A subsequent `run` without flags reuses them.
+An explicit flag changes that setting and preserves the task/files. Use
+`--use-cli-defaults` to clear the saved overrides. On a first run without flags,
+CLI defaults apply; the runner prints **not pinned**, not an invented model name.
+`doctor` and `run --dry-run` report the selection without saving it or calling a
+model. `--dry-run` reads GitHub without writing. `--once` runs one useful cycle.
+
+## Stop and resume
 
 ```sh
 python3 scripts/flux_agent.py status --worker codex-hubert
-python3 scripts/flux_agent.py stop --worker codex-hubert
+python3 scripts/flux_agent.py stop --worker codex-hubert --after-turn
+python3 scripts/flux_agent.py run --worker codex-hubert
 ```
 
-Ctrl+C also requests a stop. The runner terminates the active CLI process group
-and preserves the journal, logs, and worktrees under `.harness/local/<worker>/`.
-Repeat `run` to reconcile GitHub and continue; do not delete interrupted work or
-start a second writer. A new invocation starts a new bounded run, reconstructs
-from durable evidence, and uses the same existing task branches.
+Use `--worker claude-maurycy` for Maurycy. `stop --after-turn` lets the current
+cycle write its checkpoint before exiting. Plain `stop` or Ctrl+C terminates the
+active provider process group immediately and preserves the journal, logs and
+files; the current unreported action must be reconciled on restart.
 
-Current limits are 120 minutes/run, 30 minutes/model turn, and 24 turns/run.
-Idle polling currently runs every 120 seconds; it does not make model calls.
-Use provider-side spending controls as appropriate for your account; a time or
-turn cap is not a monetary budget. Limits suspend work without claiming completion.
-The machine and process must remain running; this is not a hosted service.
+Recovery inspects the interrupted turn, saved worktrees and authenticated GitHub
+claims, including claims newer than the last completed result. The agent verifies
+what actually succeeded and resumes the existing branch/PR before new work. A
+stop does not guarantee that uncommitted files have been pushed to GitHub; they
+remain on that machine. Never discard or reassign them without reconciliation.
 
-## What `/goal` does here
+## Continuous execution
 
-The runner schedules successive `codex exec` or `claude -p` invocations. You do
-**not** add a second `/goal` loop on top of it. It passes the same milestone and
-shared skills, wakes on GitHub changes, and retains checkpoints between turns.
+There is no overall time/turn cap in the committed configuration. The workers
+continue toward full product acceptance until stopped, unable to execute, or
+provider limits intervene. Each model turn has a 30-minute limit and idle polling
+is every 120 seconds without model calls. Optional run/time caps can still be set
+in the manifest. Neither waiting nor a limit counts as completion.
 
-For an interactive, supervised session you may instead use the client's native
-`/goal` with the milestone and `flux-work-loop` instructions. Stop its runner
-first. Native goals do not provide the runner's journal, idle polling, process
-lock, or task parking. Never run both approaches with the same worker identity.
+Keep both machines/processes available. They need not start simultaneously. Do
+not run a second instance or a separate `/goal` loop with the same identity.
+The runner uses `codex exec` / `claude -p` and schedules their successive cycles.
 
-## Current verification boundary
+## Milestones and completion
 
-The repository tests exercise orchestration with local Git worktrees, temporary
-journals, fake GitHub responses, and CLI fixtures. `doctor`/`--dry-run` can verify
-the available real account without starting a model. A complete real Codex/Claude
-run under the two distinct accounts must be recorded separately; fixtures are
-not evidence of that integration or of application readiness.
+The initial roadmap contains [decisions](../product/milestones/01-product-blueprint.md)
+and [implementation](../product/milestones/02-working-application.md). Agents add
+milestones using the [scope marker](github-protocol.md#discoverable-milestones).
+The runner polls all admitted milestones, including their linked PRs. Closing
+one planning/research milestone does not stop implementation elsewhere.
 
-Planning can produce recommendations and experiments. Product implementation,
-application CI, required checks, packaging and publication follow the accepted
-release scope and the [container environment contract](../development/containers.md).
+Agents perform independent application verification and final delivery, then
+record both final product acceptance reports. The runner checks those authors,
+coverage and current candidate CI before reporting `product-accepted`.
+Fixture tests prove orchestration behavior; they do not prove live two-account
+model collaboration or the application's readiness.

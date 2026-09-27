@@ -129,7 +129,7 @@ class GitHub:
                 "statuses": self.pages(f"{self.prefix}/commits/{sha}/statuses"),
             })
         return {"milestone": {key: milestone.get(key) for key in (
-            "number", "title", "description", "state", "html_url")},
+            "number", "title", "description", "state", "html_url", "creator")},
             "issues": issues, "pull_requests": pulls}
 
     def comment_once(self, number, body, message_id, login):

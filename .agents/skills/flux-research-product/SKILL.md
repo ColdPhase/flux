@@ -1,6 +1,6 @@
 ---
 name: flux-research-product
-description: Research a Flux product, market, architecture, or AI integration decision and produce dated evidence and a scoped recommendation without promoting hypotheses to accepted decisions.
+description: Research a Flux product, market, architecture, or AI integration decision and produce dated evidence and an independently reviewed agent decision that enables implementation.
 ---
 
 # Research a Flux decision
@@ -20,8 +20,9 @@ Read `AGENTS.md`, the milestone/task brief, relevant foundation sections, and
 - Return a defensible recommendation, relevant alternatives, costs, limitations,
   open decision owner, and a condition for reconsideration. A source list alone
   is not the result; do not fabricate interviews or product tests.
-- Record reusable findings with the relevant domain docs. A peer accepts the
-  research quality; founder/owner acceptance of the decision stays explicit.
+- Record findings and the chosen solution in the domain docs. The peer evaluates
+  research and the decision under the founder delegation. Implement or create
+  ready coding tasks; no human acceptance is required.
 - If a source or decision blocks one part, document the gap, ask the peer for
   concrete help, and continue independent research or another milestone task.
 

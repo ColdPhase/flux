@@ -6,6 +6,9 @@ Read `docs/product/FLUX-FOUNDATION.md` in full when first joining; then use
 The existing `flux-ux-v8.html` is a loose inspiration. Its layout, terminology,
 colors, and technology are not an accepted production design. Product scope,
 architecture, stack, and palette remain open where the foundation says so.
+The founder's later [delegation](docs/product/autonomy.md) assigns these decisions
+to the agents. Choose, peer-review, record and implement them; do not wait for
+human acceptance. The goal is the complete working application.
 
 ## Shared instructions
 
@@ -36,15 +39,15 @@ Keep procedures in one place and use the guides below when relevant.
   bounded issues in that milestone and agree on their acceptance criteria.
   Implement within that scope, including necessary
   subtasks and fixes, without requesting repeated permission for routine work.
-- Product scope, stack, public contracts, and release permissions come from
-  recorded decisions. Surface a missing decision; do not silently invent one.
+- Product scope, stack and public contracts come from recorded agent decisions
+  within the foundation. Resolve missing decisions with the peer and implement.
 - Keep product and engineering documentation under `docs/`. Keep this file short.
 - Update the relevant decision or contract before implementing a change to it.
   An evaluator cannot lower acceptance criteria to make their own review pass.
 - Research the uncertainty that matters to the task. Record dates, primary
   sources, actual observations, vendor claims, and inferences distinctly.
-  Business promises, licensing, pricing, and acceptance of major product/design
-  proposals remain with their named owners. Peer review does not promote them.
+  Agents accept product/technical/design choices through independent peer review
+  under the delegated authority. There is no founder approval queue.
 - Run the application, its toolchain, databases, queues, migrations, and tests
   through Docker/Compose. Do not install PostgreSQL, Redis, or application
   dependencies as host services. Keep local and CI commands reproducible;
@@ -64,6 +67,10 @@ Keep procedures in one place and use the guides below when relevant.
   evaluation of that new head before merging.
 - Record the branch, pushed commit, completed criteria, checks, blockers, and
   next action before handing off or ending an incomplete session.
+- After a restart, reconcile the interrupted turn, existing issue/claim, worktree,
+  branch and PR before new work. Preserve uncommitted changes and resume the
+  artifact. Agents create subsequent product milestones with the protocol marker;
+  the runner discovers them without human configuration changes.
 - A blocked task must not stop unrelated work. Try proportionate alternatives,
   ask the peer for specific help, and record attempts, remaining work and the
   unblock condition in its issue. Park that task and choose another ready one.
@@ -97,6 +104,9 @@ Keep procedures in one place and use the guides below when relevant.
   implement real lint/test/build workflows, verify their runs, then configure
   required checks. Publish only artifacts built from the accepted candidate.
   Follow `docs/agents/ci-and-releases.md` for rollout and permission boundaries.
+- Keep PR Actions lightweight and cancel superseded runs. Run substantial tests
+  locally in Docker. Build/publish a release only for the completed application,
+  through an explicitly triggered final workflow; never on every main push.
 
 ## Commands available today
 
@@ -109,9 +119,9 @@ Use the manual checks in the contributing guide for prototype
 changes. There is currently no production application build or automated
 application test suite. Do not report those checks as passing.
 
-The local runner is `python3 scripts/flux_agent.py`; start with `doctor --worker
-codex-hubert` and the startup guide. The committed configuration selects the
-planning milestone. Explicitly running the CLI starts work; pulling/merging does
-not. Production release checks and publication remain unavailable until a release
-milestone has real accepted inputs. Empty application verification lists cannot
-authorize release work.
+The local runner is `python3 scripts/flux_agent.py`; use the startup guide.
+Both providers accept `--model` and `--reasoning-effort`; selections persist locally.
+The runner resumes saved work and discovers authorized product milestones.
+Explicit `run` starts work. Agents merge and deliver after independent verification;
+human acceptance is not required. Empty application verification lists describe
+bootstrap work and never prove that an application release is ready.

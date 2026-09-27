@@ -30,3 +30,5 @@ limit work to the requested repository checks and a pipeline proposal.
 
 Return workflow/check names, run links, failure/pass evidence, actual enforcement
 state, and any remaining setup. Do not claim remote checks ran from local results.
+
+Keep PR Actions lightweight: lint, type checks and relevant fast tests, with cancellation of superseded runs. Run substantial browser/integration/install tests locally in Docker. Do not run release packaging on main pushes, every PR or a schedule. Reserve it for the completed product candidate through an explicit agent-triggered final workflow.

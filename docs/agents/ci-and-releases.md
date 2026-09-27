@@ -1,5 +1,18 @@
 # CI and application releases
 
+## Actions budget and final delivery
+
+Keep PR checks lightweight: lint, type checks and relevant fast tests, with
+concurrency cancellation. Avoid duplicate main-push/PR runs, broad matrices,
+scheduled builds and automatic packaging on feature merges. Run substantial
+application/browser/integration/install tests locally in Docker and record evidence.
+Release packaging is an explicitly triggered final workflow for the completed
+application candidate, launched by an agent after independent verification.
+No human review or environment-approval gate is required by this workflow.
+Do not spend Actions runs rebuilding an unchanged successful candidate.
+
+
+
 Agents are responsible for the delivery pipeline as part of the accepted release
 scope: proposing checks, implementing workflows, verifying them, configuring
 required PR checks, and building/publishing the finished version. Scope and
@@ -136,7 +149,7 @@ retention supplies a permanent download channel.
    acceptance task/PR. A failed delivery check remains an open release blocker;
    record it and continue independent work while seeking the peer's help.
 
-Publication can be automated under the release's authorization after all gates
+Publication is delegated to the agents and proceeds after all technical gates
 pass. Publishing an asset and deploying a running service have different outputs;
 perform any deployment only for the named, authorized target, then verify it.
 
