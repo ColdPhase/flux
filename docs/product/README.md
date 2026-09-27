@@ -31,6 +31,12 @@ The later [mobile and tablet PWA requirement](mobile-pwa.md) is also accepted:
 Android phones/tablets, iPhones and iPads, installable app behavior, responsive
 touch workflows and Web Push are required in the complete application release.
 
+The later [live collaboration requirement](live-collaboration.md) adds calm
+joinable sessions at existing work, native context sharing, self-hosted human
+audio/video/screenshare and durable outcomes. Its reference HTML demonstrates UX;
+the linked implementation and receiver/device quality tasks remain required.
+Personal AI ownership and explicit optional audio-processing consent still apply.
+
 ## Delivery playbook
 
 Follow the [delivery playbook](playbook-the-5.md): ship a thin working slice
@@ -43,7 +49,7 @@ Research serves a concrete code task; it does not replace shipping.
 | --- | --- |
 | Founder direction | Global OSS, self-hosting, human collaboration, strong AI participation, high UX quality, own officially supported AI services, and a path to enterprise. |
 | Proposal | Initial personas, market entry, product mechanisms, commercial services, and TypeScript/React/PostgreSQL as a stack candidate. |
-| Open decision | First niche, proven USP, first release scope, architecture, palette, design system, pricing, and supported subscription integration methods. |
+| Open decision | First niche, proven USP, pricing, and supported subscription integration methods. The accepted [O-002 architecture](application-architecture-proposal.md), [O-003 design direction](../design/direction.md), and [O-004 release boundary](application-specification.md#o-004-proposal-first-public-release-ac-4) have separate implementation and verification work. |
 | Existing implementation | A loose HTML prototype; its screens, terminology, colors, and technology are inspiration. |
 
 Routine decisions within an accepted task belong to its owner. Record larger
@@ -80,7 +86,7 @@ The foundation does not authorize deleting existing code or changing the license
 | Mobile/tablet UX, installability, offline recovery and push | [Mobile PWA requirements](mobile-pwa.md), including MOB-1 through MOB-7 |
 | Own agents, subscriptions, APIs, local models | 9, 11.3, 17 E; dated primary-source research |
 | Visual direction, density, accessible interactions | 10, 17 D1–D4, 21; [design workflow](../design/README.md) |
-| Architecture and operations | 11, 13, 18; [O-002 proposal](application-architecture-proposal.md) (awaiting peer decision review), [decision register](decisions.md) |
+| Architecture and operations | 11, 13, 18; accepted [O-002 architecture](application-architecture-proposal.md), [decision register](decisions.md) |
 | OSS and commercial direction | 3, 6, 12–13; existing [LICENSE](../../LICENSE) |
 | Task execution and independent review | 14–17; [agent workflow](../agents/workflow.md) |
 

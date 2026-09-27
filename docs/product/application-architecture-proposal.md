@@ -51,6 +51,47 @@ The dated [peer research on #13](https://github.com/ColdPhase/flux/issues/13#iss
 
 ## Deployable boundary
 
+### Proposed O-002 media amendment — peer review with #59
+
+The accepted first-journey boundary is still the browser, API, worker and
+PostgreSQL. The founder's later [contextual live collaboration requirement](live-collaboration.md)
+adds real self-hosted audio, video and screen sessions for the **complete**
+application. Package a single-node LiveKit SFU as an **optional Compose profile**
+with its own configuration and pinned image. A fresh clone must reach the ordinary
+human messenger without media port, certificate or TURN setup. The full-product
+release still requires the media profile and [#63](https://github.com/ColdPhase/flux/issues/63)
+operational and receiver evidence; optional installation does not waive that gate.
+
+[LiveKit's single-node architecture](https://docs.livekit.io/reference/internals/livekit-sfu/)
+needs no Redis; [distributed mode](https://docs.livekit.io/transport/self-hosting/distributed/)
+does. Start with its [embedded TURN/STUN](https://docs.livekit.io/transport/self-hosting/deployment/)
+and one documented media host. A separate coturn process would add another
+configuration, certificate and operational boundary; adopt it only if the #63
+restrictive-network or capacity tests show a concrete need. Plan for HTTPS/WSS
+signaling on 7880/TCP behind the TLS ingress, ICE/TCP 7881, ICE/UDP 50000–60000
+or a tested 7882 mux, embedded TURN/STUN 3478/UDP and TURN/TLS 5349/TCP. A
+restrictive network may need TURN/TLS on 443; on a one-IP host that competes
+with the application ingress, so #63 must test a second IP or explicit L4/SNI
+routing before claiming that topology works. These are
+[documented port choices](https://docs.livekit.io/transport/self-hosting/ports-firewall/),
+not a verified Flux deployment.
+
+This adds server capacity, public UDP/TCP exposure, certificates and operational
+work beyond the original three containers. #63 must measure concurrent rooms and
+participants, sender and receiver bitrate, relay/TURN traffic share, egress
+bandwidth, CPU/memory, storage/recording disabled state, and update/recovery cost
+for the chosen host and network. A single-node failure ends its active calls;
+ordinary saved work must survive. [mediasoup](https://mediasoup.org/),
+[Janus](https://janus.conf.meetecho.com/),
+[Jitsi Meet](https://jitsi.github.io/handbook/docs/devops-guide/devops-guide-docker/)
+and [Galène](https://galene.org/) remain transport alternatives, but each would
+still need Flux policy, context, deployment and receiver integration. Reconsider
+the SFU or TURN shape if measured quality, restrictive-network reachability,
+single-node capacity, operating cost, license or security evidence invalidates
+this selection. The [#59 independent review](https://github.com/ColdPhase/flux/pull/65)
+accepts or revises this amendment before media implementation is treated as an
+O-002 extension; no real call is claimed by this document.
+
 ```mermaid
 flowchart LR
   B[Browser / installed PWA] -->|HTTPS same origin| A[Fastify API + static UI]

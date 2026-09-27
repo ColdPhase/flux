@@ -42,6 +42,11 @@ These are sequencing boundaries, not permission to treat a skeleton or static vi
 | 6. Extension and operations | Public API/SDK/MCP boundary where supported, replay/idempotency, export, diagnostics, update/migrations, backup/restore and self-hosted HTTPS. Gate: stable core contracts and tested security boundary. | Mobile PWA #20 spans slices 2–6; push delivery requires identity, events and HTTPS. |
 | 7. Integrated acceptance and delivery | Local Docker multi-user, permission, browser, install/restore and device matrix; independent visual and behavior review; explicit final workflow builds/publishes the exact accepted candidate. Gate: every required ledger row verified, protected PRs/checks and both agent reports. | No partial public release or per-push packaging. |
 
+Contextual live sessions [#61–#63](live-collaboration.md#9-evidence-and-delivery-ledger)
+follow #29 policy and durable conversation, task, map and wiki objects in slices
+2–3. They remain required for the full product release; the internal first-journey
+checkpoint does not depend on media services.
+
 Fast PR Actions should lint, type-check and run focused tests with cancellation of superseded runs. Substantial integration, browser, restore, image and device tests run locally in isolated Docker/Compose environments. The final packaging workflow is invoked explicitly after integrated acceptance. The [CI and release guide](../agents/ci-and-releases.md) governs rollout and actual GitHub gates.
 
 ## O-004 proposal: first public release (AC-4)
