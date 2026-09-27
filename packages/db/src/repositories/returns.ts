@@ -51,8 +51,9 @@ export function returnRows(db: DbExecutor) {
       const [row] = await db.update(rp).set({ seq: sql`${rp.previousSeq}`, savedAt: sql`${rp.previousSavedAt}`, previousSeq: null, previousSavedAt: null })
         .where(and(eq(rp.userId, userId), eq(rp.placeKey, key), sql`${rp.previousSeq} IS NOT NULL`)).returning(pointColumns);
       if (row) return row;
-      const [current] = await db.select(pointColumns).from(rp).where(and(eq(rp.userId, userId), eq(rp.placeKey, key)));
-      return current ?? null;
+      // A point first saved in the visit being undone had no previous one: the place is unviewed again.
+      await db.delete(rp).where(and(eq(rp.userId, userId), eq(rp.placeKey, key), sql`${rp.previousSeq} IS NULL`));
+      return null;
     },
 
     /** The recipient's own audience rows after `afterSeq`, newest first, by primary key. */

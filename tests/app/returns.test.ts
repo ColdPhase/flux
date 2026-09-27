@@ -167,6 +167,10 @@ describe('return view: since you left', () => {
     assert.deepEqual((await summary(nia, place)).items, []);
     const restored = json<ReturnPoint>(await post(nia, '/api/v1/return-points/restore', { place }), 200);
     assert.equal(restored.canRestore, false);
+    // A point first saved in the visit being undone is removed: the place is unviewed again.
+    const talk = { type: 'conversation' as const, id: thread.id };
+    assert.ok((await save(nia, talk, seen.mark)).savedAt);
+    assert.equal(json<ReturnPoint>(await post(nia, '/api/v1/return-points/restore', { place: talk }), 200).savedAt, null);
     assert.deepEqual(texts((await summary(nia, place)).items).sort(), texts(seen.items).sort(), 'the same changes show again');
     // Home counts a project as seen once its own point has passed a change.
     await view(nia, place);

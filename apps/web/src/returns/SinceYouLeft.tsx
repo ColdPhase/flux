@@ -53,11 +53,15 @@ function useReturn(place: ReturnPlace, alsoSave?: ReturnPlace) {
   }, [placeKey]);
   useEffect(() => {
     if (!alsoKey || !summary) return;
-    void saveReturnPoint({ type: 'conversation', id: alsoKey.split(':')[1]! }, summary.mark).catch(() => undefined);
+    const conversation = alsoKey.split(':')[1]!;
+    saving.current = saving.current.then(() => saveReturnPoint({ type: 'conversation', id: conversation }, summary.mark).catch(() => undefined));
   }, [alsoKey, summary]);
   const keepForLater = async () => {
     setKeep('busy');
-    try { await saving.current; await restoreReturnPoint(place); shown.delete(placeKey); setKeep('kept'); } catch { setKeep('failed'); }
+    try {
+      await saving.current;
+      // Both points this visit saved move back, or the conversation's would still hide its messages.
+      await Promise.all([restoreReturnPoint(place), ...(alsoKey ? [restoreReturnPoint({ type: 'conversation', id: alsoKey.split(':')[1]! })] : [])]); shown.delete(placeKey); setKeep('kept'); } catch { setKeep('failed'); }
   };
   return { summary, keep, keepForLater };
 }

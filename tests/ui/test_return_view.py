@@ -226,7 +226,7 @@ class ReturnViewJourney(unittest.TestCase):
         expect(page.get_by_role("region", name="Since you left").get_by_role("button", name=re.compile("1 update since today"))).to_be_visible()
         self.wait_saved(page, "project")
         page.reload()
-        expect(page.get_by_role("heading", level=2)).to_be_visible()
+        expect(page.get_by_role("heading", level=2, name=OPENING)).to_be_visible()
         expect(page.get_by_role("region", name="Since you left")).to_have_count(0)
 
     def test_07_phone_layout(self) -> None:

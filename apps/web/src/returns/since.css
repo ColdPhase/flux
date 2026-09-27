@@ -2,7 +2,7 @@
 .since { flex: none; border-bottom: 1px solid var(--line); background: var(--bg); }
 .since__in { max-width: 1280px; margin: 0 auto; padding: 0 24px; }
 .since__btn {
-  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 0; border: 0; background: none;
+  display: flex; align-items: center; gap: 10px; width: calc(100% + 16px); min-height: 44px; padding: 0 8px; margin: 0 -8px; border: 0; background: none;
   text-align: left; font: inherit; font-size: var(--fs-md); color: var(--text-2); cursor: pointer;
 }
 .since__btn b { font-weight: 600; color: var(--text); }
@@ -17,7 +17,7 @@
   transition: grid-template-rows var(--dur-2) var(--ease-in), visibility 0s linear var(--dur-2); }
 .since__coll.is-open { grid-template-rows: 1fr; visibility: visible; transition: grid-template-rows var(--dur-3) var(--ease-sheet); }
 .since__clip { min-height: 0; overflow: hidden; }
-.since .since__list { max-height: 46vh; overflow-y: auto; }
+.since .since__list { max-height: 40vh; overflow-y: auto; }
 
 .since__dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: transparent; box-shadow: inset 0 0 0 1.5px var(--text-3); }
 .since__dot--need { background: var(--accent); box-shadow: none; }
@@ -46,7 +46,7 @@
 .since__why { margin: 0; color: var(--text-2); font-size: var(--fs-sm); }
 
 .since__foot { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: space-between; align-items: center; padding: 0 0 12px; color: var(--text-3); font-size: var(--fs-sm); }
-.since__keep { min-height: 32px; padding: 0 10px; margin-right: -10px; border: 0; border-radius: var(--r); background: none; font: inherit; color: var(--text-2); cursor: pointer; }
+.since__keep { min-height: 32px; padding: 0 10px; margin: 0 -10px; border: 0; border-radius: var(--r); background: none; font: inherit; color: var(--text-2); cursor: pointer; }
 .since__keep:hover { background: var(--bg-hover); color: var(--text); }
 .since__keep:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
 

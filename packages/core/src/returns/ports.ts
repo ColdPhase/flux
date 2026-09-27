@@ -72,7 +72,7 @@ export interface ReturnRepository {
   points(userId: string, keys: string[]): Promise<Map<string, StoredReturnPoint>>;
   /** Moves the point forward to `seq` (never back); the point it replaced becomes the previous one. */
   advance(userId: string, place: ResolvedPlace, seq: number): Promise<StoredReturnPoint>;
-  /** Moves the point back to the previous one, if there is one. */
+  /** Moves the point back to the previous one; a point without one is removed (the place is unviewed again). */
   restore(userId: string, key: string): Promise<StoredReturnPoint | null>;
   /** The recipient's audience rows after `afterSeq`, newest first. */
   audienceAfter(recipient: string, afterSeq: number, limit: number): Promise<AudienceEvent[]>;
