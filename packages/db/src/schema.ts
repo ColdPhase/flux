@@ -446,3 +446,32 @@ export const projectObjectLinks = pgTable('project_object_links', {
   index('project_object_links_to_idx').on(table.toId),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
 ]);
+// A project-visible agent suggestion citing one immutable, current source revision (#52).
+// Its separate identity prevents a tool call from publishing a material as accepted truth.
+export const agentProposals = pgTable('agent_proposals', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  agentId: uuid('agent_id').notNull(),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
+  computeSource: text('compute_source', { enum: ['user_operated_claude_code'] }).notNull(),
+  agentGrantId: uuid('agent_grant_id').notNull(),
+  agentGrantRole: text('agent_grant_role', { enum: ['contributor'] }).notNull(),
+  sourceMaterialId: uuid('source_material_id').notNull(),
+  sourceMaterialVersion: integer('source_material_version').notNull(),
+  clientCommandId: uuid('client_command_id').notNull(),
+  requestFingerprint: text('request_fingerprint').notNull(),
+  fact: text('fact').notNull(),
+  interpretation: text('interpretation').notNull(),
+  suggestedAction: text('suggested_action').notNull(),
+  status: text('status', { enum: ['proposed', 'dismissed'] }).notNull().default('proposed'),
+  dismissedBy: text('dismissed_by').references(() => authUsers.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique().on(table.agentId, table.projectId, table.clientCommandId),
+  index('agent_proposals_project_idx').on(table.projectId, table.createdAt, table.id),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.sourceMaterialId, table.sourceMaterialVersion], foreignColumns: [projectMaterialVersions.workspaceId, projectMaterialVersions.projectId, projectMaterialVersions.materialId, projectMaterialVersions.version] }),
+]);

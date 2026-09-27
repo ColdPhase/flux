@@ -43,3 +43,4 @@ export * from './push.js';
 export * from './conversation.js';
 export * from './sketch.js';
 export * from './work.js';
+export * from './agent-proposals.js';

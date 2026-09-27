@@ -335,6 +335,9 @@ importers:
 
   packages/db:
     dependencies:
+      '@flux/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       drizzle-orm:
         specifier: 0.45.3
         version: 0.45.3(@types/pg@8.15.5)(kysely@0.29.6)(pg@8.23.0)
