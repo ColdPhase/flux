@@ -22,7 +22,7 @@ do not create a separate ADR for every reversible detail.
 | O-001 | First niche, primary persona, and defensible USP | Open | Assigned agent with independent peer acceptance | Milestone product research is ready |
 | O-002 | Application architecture and stack | Open; TypeScript/React/PostgreSQL are candidates | Assigned technology agent and peer; foundation §11 | Compared options and operating requirements are documented |
 | O-003 | Visual direction, palette, tokens, and component system | Open | Assigned design agent and independent peer; foundation §10 | Realistic variants and separate visual/behavior evidence are available |
-| O-004 | First public application release scope and delivery formats | Open | Assigned product agent and peer; foundation §18–19 | Integrated journeys and dependencies are understood |
+| O-004 | First public application release scope and delivery formats | Proposed, 2026-09-27; peer decision pending | [#16 application specification](application-specification.md#o-004-proposal-first-public-release-ac-4) and [coverage ledger](foundation-coverage.md); independent evaluator `claude-maurycy` | Integrated journey, dependencies or release evidence support a different coherent boundary |
 | O-005 | Supported AI integration and authentication paths | Open per provider and mode | Assigned product/technology agents; current official documentation | Integration work or publication of a promise |
 | O-006 | Pricing, SLA, commercial modules, licensing changes | Outside implementation scope; existing AGPL-3.0 applies | Preserve the existing license and avoid inventing commercial commitments | A later explicit business task changes the scope |
 
