@@ -791,6 +791,9 @@ class AppShellJourney(unittest.TestCase):
 
         denial = owner.context.request.post(f"{ORIGIN}/api/v1/projects/{project_id}/grants", data={"principal": {"kind": "human", "id": partner_id}, "role": "denied"}, headers={"Origin": ORIGIN})
         self.assertEqual(denial.status, 201, denial.text())
+        phone.get_by_role("button", name="Discuss this version").click()
+        expect(phone.get_by_text("Agreed. Test low light too.", exact=True)).to_have_count(0)
+        expect(phone.get_by_label("Reply", exact=True)).to_have_count(0)
         phone.reload()
         expect(phone.get_by_text("Agreed. Test low light too.", exact=True)).to_have_count(0)
         self.assertEqual(phone.context.request.get(f"{ORIGIN}/api/v1/conversations/{conversation_id}").status, 404)

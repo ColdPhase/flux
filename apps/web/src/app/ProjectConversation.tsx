@@ -64,6 +64,7 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [readFailure, setReadFailure] = useState<{ message: string; retry: () => void } | null>(null);
+  const [accessLost, setAccessLost] = useState(false);
   const [messages, setMessages] = useState<Conversation['messages']>(conversation?.messages ?? []);
   const messagesRef = useRef(messages);
   const refreshingRef = useRef(false);
@@ -92,6 +93,12 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
   const writable = project.access !== 'viewer';
   const conversationId = conversation?.id;
   const author = (id: string) => id === me.user.id ? me.user.name : members.find((member) => member.userId === id)?.name ?? 'Member';
+  const hideIfDenied = useCallback((cause: unknown) => {
+    if (!(cause instanceof ApiError) || (cause.status !== 401 && cause.status !== 404)) return;
+    setAccessLost(true);
+    revalidator.revalidate();
+    void getProject(project.id).then(() => setAccessLost(false)).catch(() => { /* denial keeps previous content hidden */ });
+  }, [project.id, revalidator]);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => {
     try { sessionStorage.setItem(materialFormKey, JSON.stringify({ open: showMaterialForm, title: materialTitle, body: materialBody, url: materialUrl, sourceDraft, mutationId: materialMutationId } satisfies MaterialFormSnapshot)); }
@@ -123,9 +130,9 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
         }
         setMessages((current) => mergeMessages(current, incoming));
       }
-    } catch { /* the route loader shows current denial or connectivity state */ }
+    } catch (cause) { hideIfDenied(cause); }
     finally { refreshingRef.current = false; }
-  }, [conversationId, project.id, revalidator]);
+  }, [conversationId, hideIfDenied, project.id, revalidator]);
   useEffect(() => {
     if (!showMaterialForm) return;
     const controller = new AbortController();
@@ -154,7 +161,7 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
       else void refresh();
     } catch (cause) {
       setError(readableError(cause));
-      if (cause instanceof ApiError && (cause.status === 404 || cause.status === 401)) void refresh();
+      hideIfDenied(cause);
     } finally { setBusy(false); }
   }
   function onComposerKey(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -166,7 +173,7 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
     try {
       const page = await olderMessages(conversation.id, olderCursor);
       setMessages((current) => mergeMessages(current, page.messages)); setOlderCursor(page.messagePage.nextBeforeSequence);
-    } catch (cause) { setReadFailure({ message: readableError(cause), retry: () => void loadOlder() }); }
+    } catch (cause) { hideIfDenied(cause); setReadFailure({ message: readableError(cause), retry: () => void loadOlder() }); }
     finally { setOlderBusy(false); }
   }
   async function loadMoreThreads() {
@@ -177,7 +184,7 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
       setThreadItems((current) => [...current, ...page.items.filter((item) => !current.some((existing) => existing.id === item.id))]);
       setThreadOffset((current) => current + page.items.length);
       setThreadTotal(page.total);
-    } catch (cause) { setReadFailure({ message: readableError(cause), retry: () => void loadMoreThreads() }); }
+    } catch (cause) { hideIfDenied(cause); setReadFailure({ message: readableError(cause), retry: () => void loadMoreThreads() }); }
     finally { setThreadBusy(false); }
   }
   async function loadMoreMaterials() {
@@ -188,7 +195,7 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
       setMaterialItems((current) => [...current, ...page.items.filter((item) => !current.some((existing) => existing.materialId === item.materialId))]);
       setMaterialOffset((current) => current + page.items.length);
       setMaterialTotal(page.total);
-    } catch (cause) { setMaterialError(readableError(cause)); }
+    } catch (cause) { hideIfDenied(cause); setMaterialError(readableError(cause)); }
     finally { setMoreMaterialsBusy(false); }
   }
   async function submitMaterial(event: FormEvent) {
@@ -197,7 +204,7 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
     try {
       await publishMaterial(project.id, { title: materialTitle.trim(), body: materialBody, ...(materialUrl.trim() ? { url: materialUrl.trim() } : {}), ...(sourceDraft ? { sourceDraftId: sourceDraft.id, sourceDraftVersion: sourceDraft.version } : {}), clientMutationId: materialMutationId });
       setMaterialTitle(''); setMaterialBody(''); setMaterialUrl(''); setSourceDraft(null); setMaterialMutationId(crypto.randomUUID()); setShowMaterialForm(false); void refresh();
-    } catch (cause) { setMaterialError(readableError(cause)); }
+    } catch (cause) { hideIfDenied(cause); setMaterialError(readableError(cause)); }
     finally { setMaterialBusy(false); }
   }
   async function cite(material: Material) {
@@ -206,9 +213,10 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
       const snapshot = await getMaterialVersion(material.materialId, material.version);
       setCitation({ title: snapshot.title, materialId: material.materialId, version: snapshot.version }); setPending(null); setError('');
       document.getElementById('project-composer')?.focus();
-    } catch (cause) { setReadFailure({ message: readableError(cause), retry: () => void cite(material) }); }
+    } catch (cause) { hideIfDenied(cause); setReadFailure({ message: readableError(cause), retry: () => void cite(material) }); }
   }
 
+  if (accessLost) return <div className="pane-scroll"><div className="pane-in project-setup" role="alert"><h2>Project unavailable</h2><p>Your access to this project may have changed. Reload to check current access.</p></div></div>;
   return <div className="project-convo" data-project-id={project.id}>
     <div className="project-convo__feed" ref={scrollRef}>
       <div className="project-convo__in">
