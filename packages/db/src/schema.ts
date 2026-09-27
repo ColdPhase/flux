@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid, integer, jsonb, boolean, bigserial, index, uniqueIndex, primaryKey, foreignKey, unique, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, uuid, integer, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
 export const samples = pgTable('samples', {
   id: uuid('id').primaryKey(),
@@ -204,6 +204,13 @@ export const notifications = pgTable('notifications', {
   index('notifications_user_created_idx').on(table.userId, table.createdAt.desc()),
   index('notifications_source_idx').on(table.sourceType, table.sourceId),
 ]);
+// Per-recipient stream index (migration 0004), written by recordEvent.
+export const eventAudience = pgTable('event_audience', {
+  recipient: text('recipient').notNull(),
+  seq: bigint('seq', { mode: 'number' }).notNull(),
+  eventId: uuid('event_id').notNull().references(() => events.id, { onDelete: 'cascade' }),
+}, (table) => [primaryKey({ columns: [table.recipient, table.seq] }), index('event_audience_event_idx').on(table.eventId)]);
+
 // Worker job results and idempotency keys (migration 0004).
 export const draftResults = pgTable('draft_results', {
   id: uuid('id').primaryKey(),

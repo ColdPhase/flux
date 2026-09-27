@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 import type { Draft, Workspace } from '@flux/contracts';
 import { createDatabase } from '@flux/db';
+import { audiencePageQuery, lastAudienceSeqQuery, type Principal } from '@flux/core';
 import { Browser } from './support/http.js';
 import { addMember, draft, expectStatus, grant, person, project, removeMember, secondSession, share, workspace, type Person } from './support/people.js';
 import { StreamClient, upgradeStatus } from './support/stream.js';
@@ -9,7 +10,7 @@ import { StreamClient, upgradeStatus } from './support/stream.js';
 // WebSocket stream: replay, live delivery and per-recipient policy (issue #29, AC-3).
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
-const { pool } = createDatabase(connectionString);
+const { pool, db } = createDatabase(connectionString);
 after(() => pool.end());
 const heartbeatMs = Number(process.env.FLUX_STREAM_HEARTBEAT_MS ?? 25_000);
 
@@ -40,6 +41,55 @@ async function observe(someone: Person, cursor: string) {
   const resumedMessages = [...resumed.messages];
   await resumed.close();
   return { fresh: freshReady.cursor, freshMessages, resumed: resumedReady.cursor, resumedMessages };
+}
+
+interface StreamWork { queries: number; rows: number; authorizations: number }
+
+/** Server-side work counters of the caller's last open→ready (test-only endpoint). */
+async function lastWork(someone: Person): Promise<StreamWork> {
+  const response = await someone.browser.request('GET', '/api/v1/stream/work');
+  const { work } = expectStatus(response, 200) as { work: StreamWork | null };
+  assert.ok(work, 'the server recorded open→ready work');
+  return work;
+}
+
+/** Opens `samples` connections (fresh, or resuming `cursor`) and returns the median open→ready time and the work of each. */
+async function openToReady(someone: Person, samples: number, cursor?: string) {
+  const times: number[] = [];
+  const works: StreamWork[] = [];
+  for (let i = 0; i < samples; i += 1) {
+    const started = performance.now();
+    const client = await StreamClient.connect(someone.browser, cursor ? { cursor } : {});
+    await client.ready();
+    times.push(performance.now() - started);
+    await client.close();
+    works.push(await lastWork(someone));
+  }
+  times.sort((a, b) => a - b);
+  return { median: times[Math.floor(times.length / 2)]!, works };
+}
+
+interface PlanNode { 'Actual Rows'?: number; 'Actual Loops'?: number; 'Rows Removed by Filter'?: number; 'Rows Removed by Index Recheck'?: number; 'Relation Name'?: string; 'Node Type': string; 'Index Name'?: string; Plans?: PlanNode[] }
+
+/** Rows PostgreSQL read in the scan nodes of a stream query (EXPLAIN ANALYZE), on fresh statistics. */
+async function examined(query: { toSQL(): { sql: string; params: unknown[] } }) {
+  const { sql, params } = query.toSQL();
+  await pool.query('ANALYZE event_audience, events');
+  const result = await pool.query(`EXPLAIN (ANALYZE, FORMAT JSON) ${sql}`, params);
+  const plan = (result.rows[0]['QUERY PLAN'] as { Plan: PlanNode }[])[0]!.Plan;
+  let rows = 0;
+  const nodes: string[] = [];
+  const walk = (node: PlanNode) => {
+    // Rows read from a table or index by scan nodes, including rows a filter then discarded.
+    if (node['Node Type'].includes('Scan')) {
+      const loops = node['Actual Loops'] ?? 1;
+      rows += ((node['Actual Rows'] ?? 0) + (node['Rows Removed by Filter'] ?? 0) + (node['Rows Removed by Index Recheck'] ?? 0)) * loops;
+    }
+    nodes.push(`${node['Node Type']}${node['Index Name'] ? ` ${node['Index Name']}` : node['Relation Name'] ? ` ${node['Relation Name']}` : ''}`);
+    for (const child of node.Plans ?? []) walk(child);
+  };
+  walk(plan);
+  return { rows, nodes };
 }
 
 describe('event stream', () => {
@@ -140,6 +190,51 @@ describe('event stream', () => {
     assert.ok(live.events.every((e) => e.objectId === visible.id), 'nothing about the invisible activity was delivered');
     assert.notEqual(next.cursor, baseline);
     await live.close();
+  });
+
+  test('opening and replaying do the same work however much hidden activity exists', async () => {
+    // Regression for the ready-latency leak: an outsider's open→ready and replay work must
+    // not grow with events she cannot see. Deterministic metrics first, timing as a coarse bound.
+    const vault = await workspace(alice, 'Hidden volume');
+    const dave = await person('stream-dave');
+    const erin = await person('stream-erin');
+    await addMember(alice, vault.id, dave, 'member');
+    await addMember(alice, vault.id, erin, 'member');
+    const room = await project(alice, vault.id, 'Vault room', 'restricted');
+    const erinKey: Principal = { kind: 'human', id: erin.id };
+    const baseline = await head(erin);
+    const erinBefore = await openToReady(erin, 7);
+    const resumeBefore = await openToReady(erin, 3, baseline);
+    const plansBefore = [await examined(lastAudienceSeqQuery(db, erinKey)), await examined(audiencePageQuery(db, erinKey, 0, 200))];
+    const daveStart = await head(dave);
+
+    // 500 events erin cannot see: 250 private drafts by dave, and 125 drafts alice creates
+    // in the restricted room and shares to it (created + shared = 2 events each).
+    const tasks: (() => Promise<unknown>)[] = [];
+    for (let i = 0; i < 250; i += 1) tasks.push(() => draft(dave, vault.id, `Dave private ${i}`));
+    for (let i = 0; i < 125; i += 1) tasks.push(async () => share(alice, await draft(alice, vault.id, `Vault ${i}`, { projectId: room.id }), 'project'));
+    for (let i = 0; i < tasks.length; i += 25) await Promise.all(tasks.slice(i, i + 25).map((task) => task()));
+    const { rows: [{ n }] } = await pool.query('SELECT count(*)::int AS n FROM events WHERE workspace_id = $1', [vault.id]);
+    assert.ok(n >= 500, `the workspace has at least 500 new events (${n})`);
+
+    const erinAfter = await openToReady(erin, 7);
+    const resumeAfter = await openToReady(erin, 3, baseline);
+    const plansAfter = [await examined(lastAudienceSeqQuery(db, erinKey)), await examined(audiencePageQuery(db, erinKey, 0, 200))];
+    console.log(JSON.stringify({ hiddenEvents: n, openToReadyMs: { before: erinBefore.median, after: erinAfter.median }, work: { before: erinBefore.works[0], after: erinAfter.works[0] }, resumeWork: { before: resumeBefore.works[0], after: resumeAfter.works[0] }, rowsExamined: { before: plansBefore.map((p) => p.rows), after: plansAfter.map((p) => p.rows) }, plans: plansAfter.map((p) => p.nodes) }));
+
+    // Deterministic: identical stream work and identical rows examined by PostgreSQL.
+    for (const work of [...erinBefore.works, ...erinAfter.works]) assert.deepEqual(work, erinBefore.works[0], 'fresh open→ready work is constant');
+    for (const work of [...resumeBefore.works, ...resumeAfter.works]) assert.deepEqual(work, resumeBefore.works[0], 'replay work is constant');
+    assert.equal(erinBefore.works[0]!.authorizations, 0, 'no authorization of events she cannot see');
+    assert.deepEqual(plansAfter.map((p) => p.rows), plansBefore.map((p) => p.rows), 'rows examined do not grow with hidden events');
+    // Coarse wall-clock bound with a generous margin (the leak was 4 ms → 331 ms for 300 events).
+    assert.ok(erinAfter.median <= erinBefore.median * 3 + 50, `open→ready ${erinBefore.median.toFixed(1)} ms → ${erinAfter.median.toFixed(1)} ms`);
+    assert.equal(await head(erin), baseline, 'and the cursor is unchanged');
+
+    // The events exist and reach their audience: dave replays his own private drafts.
+    const forDave = await replay(dave, daveStart);
+    assert.equal(forDave.filter((e) => e.kind === 'draft.created.v1').length, 250);
+    assert.equal(forDave.some((e) => e.objectId === room.id), false);
   });
 
   test('live delivery follows replay and still filters per recipient', async () => {

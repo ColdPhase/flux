@@ -31,6 +31,21 @@ END
 $$;
 CREATE TRIGGER events_notify AFTER INSERT ON events FOR EACH ROW EXECUTE FUNCTION flux_events_notify();
 
+-- Per-recipient stream index. recordEvent decides each event's audience through the
+-- access policy in the writing transaction and stores one row per recipient with the
+-- event's seq, so rows commit together with (and in the order of) their event. Stream
+-- connections read only their own rows, so the work to open a stream or replay after a
+-- cursor never depends on events the recipient cannot see. Delivery still re-authorizes
+-- every row. Events recorded before this migration have no rows and are not replayed.
+CREATE TABLE event_audience (
+  -- `<kind>:<id>` of the principal, as in events.actor_id.
+  recipient text NOT NULL,
+  seq bigint NOT NULL,
+  event_id uuid NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  PRIMARY KEY (recipient, seq)
+);
+CREATE INDEX event_audience_event_idx ON event_audience(event_id);
+
 -- Results of draft.summarize.v1 jobs. The row is the durable job intent and outcome; the
 -- pg-boss payload carries only its id. The requesting principal is rechecked by the worker
 -- before it reads the draft and again inside the commit transaction.

@@ -1,9 +1,9 @@
 import type { IncomingHttpHeaders } from 'node:http';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { WebSocket } from 'ws';
-import { and, asc, desc, eq, gt, isNotNull, lte, sql, type SQL } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { EVENTS_CHANNEL, listen, schema } from '@flux/db';
-import { authorizeEvent, eventResource, isUuid, type Database, type Principal } from '@flux/core';
+import { audiencePageQuery, authorizeEvent, eventResource, isUuid, lastAudienceSeqQuery, type Database, type Principal } from '@flux/core';
 import {
   STREAM_CLOSE_SLOW_CONSUMER,
   STREAM_CLOSE_UNAUTHENTICATED,
@@ -24,6 +24,21 @@ export interface StreamOptions {
   heartbeatMs: number;
   /** Server secret the opaque per-recipient cursors are derived from. */
   cursorSecret: string;
+  /** Test only: serve `GET /api/v1/stream/work` with the caller's last open→ready work counters. */
+  exposeWork?: boolean;
+}
+
+/**
+ * Database work one connection did from the upgrade until `ready`. Counted so tests can
+ * show that it does not depend on events the recipient cannot see.
+ */
+export interface StreamWork {
+  /** Stream queries against events / event_audience. */
+  queries: number;
+  /** Rows those queries returned to the stream. */
+  rows: number;
+  /** authorizeEvent calls. */
+  authorizations: number;
 }
 
 const BATCH = 200;
@@ -35,10 +50,11 @@ interface Accepted {
   headers: IncomingHttpHeaders;
   principal: Principal;
   sessionId: string;
-  /** Internal scan position in the event log; never sent to the client. */
+  /** Position in this recipient's audience rows (an event seq); never sent to the client. */
   position: number;
-  /** Position of the last event this recipient may see; the only position its cursors encode. */
+  /** Position of the last event this recipient was sent or may see; the only position its cursors encode. */
   visible: number;
+  work: StreamWork;
 }
 
 type EventRow = { id: string; seq: number; kind: string; workspaceId: string | null; objectId: string; createdAt: Date };
@@ -61,20 +77,11 @@ function recipientKey(principal: Principal) {
 }
 
 /**
- * Narrows the scan to workspaces the person currently belongs to. It only saves work: every
- * event is still decided by the access policy before delivery.
- */
-function candidateEvents(principal: Principal): SQL {
-  const inWorkspace = isNotNull(schema.events.workspaceId);
-  if (principal.kind !== 'human') return inWorkspace;
-  return and(inWorkspace, sql`${schema.events.workspaceId} IN (SELECT m.workspace_id FROM workspace_members m WHERE m.user_id = ${principal.id})`)!;
-}
-
-/**
- * One subscriber. Delivery is pull-based from the events table: a wake-up (NOTIFY, a
- * heartbeat tick or the initial replay) reads events after the cursor in seq order,
- * revalidates the session, filters each event through the access policy for this
- * principal, and awaits each write, so a slow reader slows only its own cursor.
+ * One subscriber. Delivery is pull-based from this recipient's `event_audience` rows: a
+ * wake-up (NOTIFY flux_events, a heartbeat tick or the initial replay) reads the rows
+ * after the cursor in seq order by primary key, revalidates the session, re-authorizes
+ * each event for this principal as the final check, and awaits each write, so a slow
+ * reader slows only its own cursor. Events the recipient could not see have no rows here.
  */
 class StreamConnection {
   private running = false;
@@ -82,6 +89,8 @@ class StreamConnection {
   private closed = false;
   private alive = true;
   private timer: NodeJS.Timeout | null = null;
+  /** Work is counted for the initial replay only; later wake-ups come from unrelated NOTIFYs. */
+  private counting = true;
 
   constructor(
     private readonly socket: WebSocket,
@@ -95,12 +104,14 @@ class StreamConnection {
     return this.cursors.encode(recipientKey(this.accepted.principal), this.accepted.visible);
   }
 
-  async start() {
+  async start(onReady: (work: StreamWork) => void) {
     this.socket.on('pong', () => { this.alive = true; });
     this.socket.on('message', () => undefined);
     this.timer = setInterval(() => void this.tick(), this.options.heartbeatMs);
     await this.pump();
-    if (!this.closed) await this.send({ type: 'ready', cursor: this.cursor() }).catch(() => this.close(1011, 'Send failed'));
+    if (this.closed) return;
+    onReady({ ...this.accepted.work });
+    await this.send({ type: 'ready', cursor: this.cursor() }).catch(() => this.close(1011, 'Send failed'));
   }
 
   close(code: number, reason: string) {
@@ -161,15 +172,20 @@ class StreamConnection {
 
   private async drain() {
     const { db } = this.options;
+    const { work } = this.accepted;
+    const count = this.counting;
+    this.counting = false;
     for (;;) {
-      const rows: EventRow[] = await db.select(eventColumns).from(schema.events)
-        .where(and(gt(schema.events.seq, this.accepted.position), candidateEvents(this.accepted.principal)))
-        .orderBy(asc(schema.events.seq)).limit(BATCH);
+      const rows: EventRow[] = await audiencePageQuery(db, this.accepted.principal, this.accepted.position, BATCH);
+      if (count) { work.queries += 1; work.rows += rows.length; }
       if (!rows.length || this.closed) return;
       if (!(await this.revalidate())) return;
       for (const row of rows) {
         if (this.closed) return;
         const resource = eventResource(row);
+        if (count) work.authorizations += 1;
+        // Final check: the row says the recipient could read the event when it was fanned
+        // out; membership, grants and visibility are read again now.
         if (resource && await authorizeEvent(this.accepted.principal, row, db)) {
           // Revalidate right before each delivery: a revoked session gets nothing more.
           if (!(await this.revalidate())) return;
@@ -214,44 +230,39 @@ export async function streamRoutes(app: FastifyInstance, options: StreamOptions)
   const cursors = new CursorCodec(options.cursorSecret);
   const accepted = new WeakMap<FastifyRequest, Accepted>();
   const connections = new Set<StreamConnection>();
+  const lastWork = new Map<string, StreamWork>();
   const wakeAll = () => { for (const connection of connections) void connection.pump(); };
+  // Audience rows commit with their event, so the event NOTIFY is the wake-up.
   const listener = listen(options.connectionString, EVENTS_CHANNEL, wakeAll, wakeAll, (error) => app.log.warn({ error }, 'Event listener interrupted'));
   app.addHook('onClose', async () => {
     await listener.close();
     for (const connection of connections) connection.close(1001, 'Server shutting down');
   });
 
-  /** The last event at or before `upper` that the principal may see now, or 0. */
-  async function lastVisible(principal: Principal, upper: number): Promise<number> {
-    let bound = upper;
-    for (;;) {
-      const rows: EventRow[] = await db.select(eventColumns).from(schema.events)
-        .where(and(lte(schema.events.seq, bound), candidateEvents(principal)))
-        .orderBy(desc(schema.events.seq)).limit(BATCH);
-      for (const row of rows) if (await authorizeEvent(principal, row, db)) return row.seq;
-      if (rows.length < BATCH) return 0;
-      bound = rows[rows.length - 1]!.seq - 1;
-    }
-  }
-
   /**
-   * Resolves `?cursor=`: absent starts at the head, an opaque cursor issued to this
+   * Resolves `?cursor=`: absent starts after the recipient's last audience row, an opaque cursor issued to this
    * recipient resumes after its position, and an event id resumes after that event if the
    * caller may receive it. Raw sequence numbers are not accepted, so the log's size and
    * activity cannot be probed. The returned `visible` position depends only on events the
    * recipient may see, so cursors look the same whether or not invisible events happened.
    */
-  async function resolveCursor(principal: Principal, value: string | undefined): Promise<Pick<Accepted, 'position' | 'visible'> | ApiError & { status: number }> {
+  async function resolveCursor(principal: Principal, value: string | undefined): Promise<Pick<Accepted, 'position' | 'visible' | 'work'> | ApiError & { status: number }> {
+    const work: StreamWork = { queries: 0, rows: 0, authorizations: 0 };
     if (value === undefined || value === '') {
-      const [head] = await db.select({ seq: sql<number>`coalesce(max(${schema.events.seq}), 0)`.mapWith(Number) }).from(schema.events);
+      // One primary-key lookup on this recipient's own rows: independent of anyone else's activity.
+      const [head] = await lastAudienceSeqQuery(db, principal);
+      work.queries += 1;
+      work.rows += 1;
       const position = head?.seq ?? 0;
-      return { position, visible: await lastVisible(principal, position) };
+      return { position, visible: position, work };
     }
     const decoded = cursors.decode(recipientKey(principal), value);
-    if (decoded !== null) return { position: decoded, visible: decoded };
+    if (decoded !== null) return { position: decoded, visible: decoded, work };
     if (isUuid(value)) {
       const [event] = await db.select(eventColumns).from(schema.events).where(eq(schema.events.id, value));
-      if (event && await authorizeEvent(principal, event, db)) return { position: event.seq, visible: event.seq };
+      work.queries += 1;
+      work.authorizations += 1;
+      if (event && await authorizeEvent(principal, event, db)) return { position: event.seq, visible: event.seq, work: { ...work, rows: 1 } };
     }
     return rejection(400, 'CURSOR_INVALID', 'Cursor must be a cursor issued to you or an event id you can see');
   }
@@ -283,6 +294,14 @@ export async function streamRoutes(app: FastifyInstance, options: StreamOptions)
       connections.delete(connection);
     });
     socket.on('error', (error) => request.log.warn({ error }, 'Stream socket error'));
-    void connection.start();
+    void connection.start((work) => { if (options.exposeWork) lastWork.set(recipientKey(state.principal), work); });
   });
+
+  if (options.exposeWork) {
+    app.get(`${STREAM_PATH}/work`, async (request, reply) => {
+      const context = await sessions.resolveSession(request.headers);
+      if (!context) return reply.code(401).send({ error: 'Authentication required', code: 'UNAUTHENTICATED' } satisfies ApiError);
+      return { work: lastWork.get(recipientKey(context.principal)) ?? null };
+    });
+  }
 }

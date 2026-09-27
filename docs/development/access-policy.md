@@ -16,7 +16,7 @@ exports:
 | `authorize(principal, action, resource, db)` | Returns `{ allowed, visible }` for one object. |
 | `assertAuthorized(principal, action, resource, db)` | Throws `NotFoundError` (404) when `visible` is false, and `ForbiddenError` (403) when the object is visible but the action is not allowed. |
 | `visibleFilter(principal, workspaceId, 'project' \| 'draft', db)` | Returns a SQL condition. Put it in the `WHERE` clause of both the list query and its count, so invisible rows never reach counts, pages or payloads. |
-| `authorizeEvent(principal, event, db)` | Whether a recipient may receive one event now: the principal is active in the event's workspace and can read the object the event is about. The stream calls it for every event at delivery time. |
+| `authorizeEvent(principal, event, db)` | Whether a recipient may receive one event now: the principal is active in the event's workspace and can read the object the event is about. `recordEvent` calls it per member/agent to write the stream audience, and the stream calls it again for every event at delivery time. |
 | `visibleWorkspaceOf(principal, resource, db)` | The workspace of an object the principal can see, or `null`. Used to scope records such as idempotency keys without revealing invisible objects. |
 
 `authorize` and `assertAuthorized` take an optional `{ lock: true }`. Inside a commit
@@ -237,6 +237,16 @@ An `AFTER INSERT` trigger sends `NOTIFY flux_events` with the `seq` for events t
 have a workspace. The notification is only a wake-up. The `events` table remains the
 source of truth, and `outbox` remains reserved for worker-side external delivery.
 
+**Audience index.** `recordEvent` (`packages/core/src/events.ts`) also writes the
+event's stream audience in the same transaction: for every member and unrevoked agent
+of the workspace it calls `authorizeEvent`, and stores one `event_audience(recipient,
+seq, event_id)` row per principal that may read the object at that moment. The
+decision runs before the event insert, so it sees the transaction's own change (a
+share, a removal) and the seq lock is held only for the two inserts. Rows commit with
+their event and therefore in `seq` order. This is write-side work proportional to the
+workspace's members and agents; readers never pay for events outside their audience.
+Events recorded before migration 0004 have no audience rows and are not replayed.
+
 The event's object type comes from the first segment of its kind: `workspace`,
 `project`, `draft` or `agent`. The read action for that type decides delivery:
 `workspace.read`, `project.read`, `draft.read` or `agent.read`. Events without a
@@ -269,8 +279,8 @@ maximum payload is 1 KiB.
   refetches the object over HTTP. Events arrive in commit order. They may repeat after
   a reconnect, so deduplicate by `id`. `cursor` resumes after this event.
 - `{"type":"ready","cursor"}` is sent once, after replay. Live delivery follows it.
-  `cursor` resumes after the last event this person may currently see, not after the
-  global head. Reconnect with the latest cursor received (event or ready).
+  `cursor` resumes after the last event in this person's audience (sent, or at the
+  head of their audience rows), not after the global head. Reconnect with the latest cursor received (event or ready).
 
 **Cursors.** The global `seq` is never sent. A cursor is `c1.` followed by the
 base64url AES-256-GCM encryption of a position, authenticated with the recipient
@@ -278,25 +288,25 @@ base64url AES-256-GCM encryption of a position, authenticated with the recipient
 derived with HKDF from `FLUX_AUTH_SECRET`. The IV is derived from the recipient and
 position, so the same person and position always give the same cursor. The server
 issues cursors only for positions of events that person could see when they were
-issued, or for `0`. A fresh connection's `ready.cursor` is the cursor of the last event
-the person may see now, found by scanning back from the head. It is not the head, so
-events that person cannot see change neither the cursors nor the frames they get.
-Internally the connection still scans from the head, so replay never repeats those
-invisible events. Rotating `FLUX_AUTH_SECRET` invalidates stored cursors (`400`,
+issued, or for `0`. A fresh connection's `ready.cursor` is the cursor of the person's
+last `event_audience` row, found with one primary-key lookup. It is not the global
+head, so events that person cannot see change neither the cursors nor the frames they
+get. Rotating `FLUX_AUTH_SECRET` invalidates stored cursors (`400`,
 then refetch).
 - Close `4401` means the session ended (revoked, expired or signed out). Reconnecting
   needs a new login. Close `1013` means the client read too slowly: its unsent buffer
   passed 1 MiB, or one send took over 30 s. Reconnect with the last cursor. Close
   `1001` means the server is shutting down. Close `1011` is an internal error.
 
-**Delivery.** Every connection pulls from `events` in `seq` order, starting after its
-cursor. These wake it up: the initial replay, a `NOTIFY`, and the heartbeat tick (a
+**Delivery.** Every connection pulls its own `event_audience` rows (joined to `events`)
+in `seq` order by primary key, starting after its cursor. These wake it up: the initial replay, a `NOTIFY`, and the heartbeat tick (a
 polling fallback in case a notification is lost while the listener reconnects). For
 each batch of 200 events the connection revalidates the session. For each event it
-calls `authorizeEvent` for this principal. It revalidates the session again just
+calls `authorizeEvent` for this principal again as the final check. It revalidates the session again just
 before each send and awaits the write, so a slow client slows only its own cursor.
-Membership, grants and visibility are read at delivery time, so an event is sent only
-if the recipient may see the object when the event is delivered:
+An event is sent only if the recipient could read its object when the event was
+recorded (the audience row) **and** can still read it when it is delivered. Access
+gained later does not replay older events:
 
 - **Private drafts** reach only their author, never workspace owners.
 - **Restricted projects** and their drafts reach only managers and grantees.
@@ -311,14 +321,17 @@ if the recipient may see the object when the event is delivered:
 1000 in the test script). Each tick also revalidates the session and polls. A client
 that has not answered the previous ping is terminated.
 
-**Known limits.** The contents of frames and cursors do not depend on events the
-recipient cannot see. Processing time still does: every connection runs its own policy
-queries for every new event in the person's workspaces, and a fresh connection scans
-back past invisible events to find its `ready.cursor`. The time until `ready`, and the
-latency of a live frame, can therefore vary with activity the person cannot see. The
-difference is milliseconds of server work per event. It is not padded to constant
-time. The heartbeat is a fixed interval and does not depend on events. Fan-out across
-API processes relies on each process's own `LISTEN`.
+**Hidden activity and timing.** Opening a stream, computing `ready.cursor` and
+replaying after a cursor read only the recipient's own audience rows, so their work
+does not depend on events the recipient cannot see. `tests/app/stream.test.ts`
+checks this with 500 hidden events: identical server-side work counters (queries,
+rows, `authorizeEvent` calls, from the test-only `GET /api/v1/stream/work` served when
+`FLUX_TEST_FAILURE_INJECTION=true`), identical rows examined in `EXPLAIN ANALYZE` of
+both stream queries, and a coarse open→ready timing bound. The remaining shared cost
+is global: event writes serialize on the seq lock and the database is shared, so
+heavy activity anywhere can slow everyone's writes and deliveries. That is load, not
+per-recipient work, and it is not padded to constant time. Each API process relies
+on its own `LISTEN` for wake-ups.
 
 ## Worker jobs
 
@@ -415,8 +428,6 @@ Auth and session endpoints do not take keys.
 - Presence and other ephemeral stream messages, retention pruning of `events` (with a
   `reset` signal for cursors older than the retained log), and multi-process fan-out
   measurements.
-- Browser exercise of login, sharing and denied access (the AC-4 browser run). That
-  belongs to the UI task.
 
 ## Tests
 
@@ -433,6 +444,15 @@ Auth and session endpoints do not take keys.
   forged cursors, another person's cursor), and the heartbeat. It also checks that a
   member outside a restricted project gets identical cursors and frames, fresh and on
   resume, whether or not restricted and private activity happened.
+- `tests/app/e2e/access-stream.e2e.ts` runs in Chromium (the `e2e` Playwright
+  image) against the running API: three people sign up in their own browser
+  contexts, the owner creates a workspace, a restricted project, a viewer grant and a
+  private draft, and shares it. The granted member's page `WebSocket` receives the
+  share and its `fetch` reads the draft; a non-member gets `404`. After the grant is
+  revoked, the member's open socket receives a later visible event but nothing for
+  the draft, and the read is `404`. The web app is still the placeholder shell, so
+  the pages use same-origin `fetch` and `WebSocket` rather than UI screens. Evidence
+  from one run is in `docs/development/evidence/29-browser/`.
 - `tests/app/worker.test.ts` covers the Compose worker committing a result. Using the
   `afterRead` hook, it also covers denial before read and the race of a revocation
   between read and commit. It covers grant revocation on two connections in both orders:
