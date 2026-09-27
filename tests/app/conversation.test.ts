@@ -121,10 +121,12 @@ describe('project capture and inline conversation', () => {
     expect(await partner.browser.request('PATCH', `/api/v1/materials/${item.materialId}`,
       { body: { clientMutationId: randomUUID(), expectedVersion: 1, body: 'Negative: low light failed' } }), 200);
     const loaded = expect(await partner.browser.request('GET', `/api/v1/conversations/${thread.id}`), 200) as Conversation;
+    assert.equal(loaded.firstMessageBody, 'Could a camera sense the gesture?');
     assert.deepEqual(loaded.messages.map((m) => m.sequence), [1, 2, 3, 4, 5, 6]);
     assert.deepEqual(loaded.messages[1]?.source, { materialId: item.materialId, version: 1 });
     assert.deepEqual(loaded.messages.map((m) => m.authorId), [owner.id, partner.id, owner.id, owner.id, owner.id, owner.id]);
     const newest = expect(await partner.browser.request('GET', `/api/v1/conversations/${thread.id}?limit=2`), 200) as Conversation;
+    assert.equal(newest.firstMessageBody, 'Could a camera sense the gesture?');
     assert.deepEqual(newest.messages.map((m) => m.sequence), [5, 6]);
     assert.deepEqual(newest.messagePage, { hasMoreBefore: true, nextBeforeSequence: 5, limit: 2 });
     const middle = expect(await partner.browser.request('GET',
@@ -140,6 +142,7 @@ describe('project capture and inline conversation', () => {
     const listed = expect(await partner.browser.request('GET', `/api/v1/projects/${project.id}/conversations?limit=10`), 200) as Page<Conversation>;
     assert.equal(listed.total >= 1, true);
     assert.equal(listed.items.some((row) => row.id === thread.id), true);
+    assert.equal(listed.items.find((row) => row.id === thread.id)?.firstMessageBody, 'Could a camera sense the gesture?');
   });
 
   test('material publication retry and access revocation never expose cached project content', async () => {

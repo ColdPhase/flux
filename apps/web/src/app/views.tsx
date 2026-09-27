@@ -71,7 +71,7 @@ export function ConversationView() {
   const [saveState, setSaveState] = useState('');
   const [saving, setSaving] = useState(false);
   useEffect(() => {
-    if (!selectedWorkspace) { setServerDrafts([]); return; }
+    if (!selectedWorkspace) return;
     const controller = new AbortController();
     listDrafts(selectedWorkspace, controller.signal)
       .then((page) => setServerDrafts(page.items.filter((item) => item.visibility === 'private' && item.owner.kind === 'human' && item.owner.id === me.user.id)))

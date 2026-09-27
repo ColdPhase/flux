@@ -17,6 +17,7 @@ import time
 import unittest
 import urllib.parse
 import urllib.request
+import uuid
 from pathlib import Path
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
@@ -631,7 +632,7 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_label("Your space").fill("Lamp lab")
         owner.get_by_label("Project name").fill("Gesture lamp")
         owner.get_by_role("button", name="Create project").click()
-        expect(owner.get_by_role("heading", level=2, name="Gesture lamp")).to_be_visible()
+        expect(owner.get_by_role("heading", level=1, name="Gesture lamp")).to_be_visible()
         project_id = owner.locator(".project-convo").get_attribute("data-project-id")
         self.assertTrue(project_id)
         ws = owner.context.request.get(f"{ORIGIN}/api/v1/workspaces").json()[0]
@@ -642,10 +643,10 @@ class AppShellJourney(unittest.TestCase):
         owner.reload()
         expect(owner.get_by_role("region", name="Private drafts").get_by_text("home address 123; PIR avoids storing images")).to_be_visible()
         draft_id = owner.context.request.get(f"{ORIGIN}/api/v1/workspaces/{ws['id']}/drafts").json()["items"][0]["id"]
-        owner.get_by_role("link", name="Gesture lamp").click()
+        owner.get_by_role("navigation", name="Home").get_by_role("link", name="Gesture lamp").click()
         owner.get_by_label("Start a conversation").fill("Try a PIR sensor before considering a camera")
         owner.get_by_role("button", name="Start conversation").click()
-        expect(owner.get_by_text("Try a PIR sensor before considering a camera")).to_be_visible()
+        expect(owner.locator(".project-convo__message > p").filter(has_text="Try a PIR sensor before considering a camera")).to_be_visible()
         expect(owner).to_have_url(re.compile(r"/conversations/[0-9a-f-]+$"))
         conversation_id = owner.url.split("/conversations/")[-1]
         owner.get_by_role("button", name="Add material").click()
@@ -653,6 +654,11 @@ class AppShellJourney(unittest.TestCase):
         expect(owner.get_by_label("Text")).to_have_value("home address 123; PIR avoids storing images")
         owner.get_by_label("Title").fill("Privacy options")
         owner.get_by_label("Text").fill("PIR avoids storing images")
+        owner.get_by_role("navigation", name="Places").get_by_role("link", name="Home").click()
+        owner.go_back()
+        expect(owner.get_by_label("Title")).to_have_value("Privacy options")
+        expect(owner.get_by_label("Text")).to_have_value("PIR avoids storing images")
+        expect(owner.get_by_label("Start from a private draft")).to_have_value(draft_id)
         owner.get_by_role("button", name="Save for this project").press("Enter")
         expect(owner.get_by_text("Privacy options")).to_be_visible()
         owner.get_by_role("button", name="Discuss this version").click()
@@ -704,7 +710,7 @@ class AppShellJourney(unittest.TestCase):
         grant = owner.context.request.post(f"{ORIGIN}/api/v1/projects/{project_id}/grants", data={"principal": {"kind": "human", "id": partner_id}, "role": "contributor"}, headers={"Origin": ORIGIN})
         self.assertEqual(grant.status, 201, grant.text())
         partner.goto(f"/projects/{project_id}/conversations/{conversation_id}")
-        expect(partner.get_by_text("Try a PIR sensor before considering a camera", exact=True)).to_be_visible()
+        expect(partner.get_by_role("region", name="Messages").get_by_text("Try a PIR sensor before considering a camera", exact=True)).to_be_visible()
         self.assertNotIn("home address 123", partner.locator("body").inner_text())
         partner.get_by_label("Reply", exact=True).fill("Agreed. Test low light too.")
         partner.get_by_role("button", name="Send reply").click()
@@ -719,9 +725,12 @@ class AppShellJourney(unittest.TestCase):
         phone.goto(f"/projects/{project_id}/conversations/{conversation_id}")
         expect(phone.get_by_text("Agreed. Test low light too.", exact=True)).to_be_visible()
         phone.get_by_label("Reply", exact=True).fill("Phone draft survives a view switch")
-        phone.get_by_role("navigation", name="Views").get_by_role("link", name="Tasks").click()
+        # A project has its own context; leave through the drawer and return without losing text.
+        phone.get_by_role("button", name="Open navigation").click()
+        phone.get_by_role("dialog", name="Flux").get_by_role("link", name="Home").click()
         phone.go_back()
         expect(phone.get_by_label("Reply", exact=True)).to_have_value("Phone draft survives a view switch")
+        expect(phone.locator(".project-convo__current-thread")).to_contain_text("Try a PIR sensor before considering a camera")
         shot(phone, "conversation-phone-390")
         self.assertLessEqual(phone.locator("body").evaluate("el => el.scrollWidth"), PHONE["width"])
 
@@ -730,6 +739,99 @@ class AppShellJourney(unittest.TestCase):
         phone.reload()
         expect(phone.get_by_text("Agreed. Test low light too.", exact=True)).to_have_count(0)
         self.assertEqual(phone.context.request.get(f"{ORIGIN}/api/v1/conversations/{conversation_id}").status, 404)
+
+    def test_13_project_pagination_and_live_history(self) -> None:
+        """The 101st item is reachable, and a fresh reply cannot punch a hole in loaded history."""
+        owner = self.page(signed_in=False)
+        email = f"pagination+{int(time.time() * 1000)}@example.test"
+        owner.goto("/sign-up")
+        owner.get_by_label("Name").fill("Pagination Owner")
+        owner.get_by_label("Email").fill(email)
+        owner.get_by_label("Password").fill(PASSWORD)
+        owner.get_by_role("button", name="Create account").click()
+        owner.get_by_role("link", name="New project").click()
+        owner.get_by_label("Your space").fill("Many ideas")
+        owner.get_by_label("Project name").fill("Busy project")
+        owner.get_by_role("button", name="Create project").click()
+        project_id = owner.locator(".project-convo").get_attribute("data-project-id")
+        self.assertTrue(project_id)
+        request = owner.context.request
+        headers = {"Origin": ORIGIN}
+        first_id = None
+        for index in range(101):
+            result = request.post(f"{ORIGIN}/api/v1/projects/{project_id}/conversations", data={"body": f"Thread {index:03}", "clientMessageId": str(uuid.uuid4())}, headers=headers)
+            self.assertEqual(result.status, 201, result.text())
+            if index == 0:
+                first_id = result.json()["id"]
+            material = request.post(f"{ORIGIN}/api/v1/projects/{project_id}/materials", data={"title": f"Material {index:03}", "body": "A saved project note", "clientMutationId": str(uuid.uuid4())}, headers=headers)
+            self.assertEqual(material.status, 201, material.text())
+        self.assertTrue(first_id)
+        owner.reload()
+        expect(owner.get_by_role("button", name="Load more conversations")).to_be_visible()
+        expect(owner.get_by_role("button", name="Load more materials")).to_be_visible()
+        owner.get_by_role("button", name="Load more conversations").click()
+        owner.get_by_role("button", name="Load more materials").click()
+        expect(owner.get_by_role("link", name=re.compile("Thread 000"))).to_be_visible()
+        expect(owner.get_by_role("article").filter(has_text="Material 000")).to_be_visible()
+        self.assertEqual(owner.locator(".project-convo__thread").count(), 102)  # 101 threads + New
+        self.assertEqual(owner.locator(".project-convo__material").count(), 101)
+
+        for index in range(1, 121):
+            result = request.post(f"{ORIGIN}/api/v1/conversations/{first_id}/messages", data={"body": f"Reply {index:03}", "clientMessageId": str(uuid.uuid4())}, headers=headers)
+            self.assertEqual(result.status, 201, result.text())
+        owner.goto(f"/projects/{project_id}/conversations/{first_id}")
+        expect(owner.get_by_label("Reply", exact=True)).to_be_visible()
+        expect(owner.locator(".project-convo__message")).to_have_count(50)
+        for loaded_count in (100, 121):
+            owner.get_by_role("button", name="Load earlier replies").click()
+            expect(owner.locator(".project-convo__message")).to_have_count(loaded_count)
+        expect(owner.get_by_role("button", name="Load earlier replies")).to_have_count(0)
+        self.assertEqual(owner.locator(".project-convo__message").count(), 121)
+        result = request.post(f"{ORIGIN}/api/v1/conversations/{first_id}/messages", data={"body": "Reply 121", "clientMessageId": str(uuid.uuid4())}, headers=headers)
+        self.assertEqual(result.status, 201, result.text())
+        owner.evaluate("window.dispatchEvent(new Event('focus'))")
+        expect(owner.get_by_text("Reply 121", exact=True)).to_be_visible()
+        self.assertEqual(owner.locator(".project-convo__message").count(), 122, "revalidation retains every loaded sequence")
+        self.assertEqual([int(text.lstrip('#')) for text in owner.locator(".project-convo__message-meta span").all_text_contents()], list(range(1, 123)))
+
+        # Hold the browser's POST, then prove the in-flight text cannot be overwritten.
+        owner.evaluate("""() => {
+          const actual = window.fetch.bind(window);
+          window.fetch = (input, init) => {
+            const url = typeof input === 'string' ? input : input.url;
+            if (url.includes('/messages') && init?.method === 'POST') {
+              return new Promise((resolve) => { window.releaseReply = () => resolve(actual(input, init)); });
+            }
+            return actual(input, init);
+          };
+        }""")
+        reply_box = owner.get_by_label("Reply", exact=True)
+        reply_box.fill("Held reply")
+        owner.get_by_role("button", name="Send reply").click()
+        expect(reply_box).to_be_disabled()
+        self.assertEqual(reply_box.input_value(), "Held reply")
+        owner.evaluate("() => { window.releaseReply(); }")
+        expect(owner.get_by_text("Held reply", exact=True)).to_be_visible()
+        expect(reply_box).to_have_value("")
+
+        owner.get_by_role("button", name="Add material").click()
+        owner.get_by_label("Title").fill("Held material")
+        owner.get_by_label("Text").fill("Do not lose this text")
+        owner.evaluate("""() => {
+          const actual = window.fetch.bind(window);
+          window.fetch = (input, init) => {
+            const url = typeof input === 'string' ? input : input.url;
+            if (url.includes('/materials') && init?.method === 'POST') {
+              return new Promise((resolve) => { window.releaseMaterial = () => resolve(actual(input, init)); });
+            }
+            return actual(input, init);
+          };
+        }""")
+        owner.get_by_role("button", name="Save for this project").click()
+        expect(owner.get_by_label("Title")).to_be_disabled()
+        expect(owner.get_by_label("Text")).to_be_disabled()
+        owner.evaluate("() => { window.releaseMaterial(); }")
+        expect(owner.get_by_role("article").filter(has_text="Held material")).to_be_visible()
 
 
 if __name__ == "__main__":

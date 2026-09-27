@@ -29,6 +29,8 @@ export interface Conversation {
   audience: { kind: 'project'; projectId: string };
   createdBy: string;
   createdAt: string;
+  /** Stable discussion label from the opening message. */
+  firstMessageBody: string;
   messages: ConversationMessage[];
   messagePage: {
     /** True when messages with a lower sequence can be fetched. */
@@ -51,6 +53,8 @@ export interface ConversationSummary {
   projectId: string;
   createdBy: string;
   createdAt: string;
+  /** Stable discussion label: the first message, even as newer replies arrive. */
+  firstMessageBody: string;
   lastMessageAt: string;
   lastMessageBody: string;
 }

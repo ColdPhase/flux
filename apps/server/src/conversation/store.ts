@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, lt, sql } from 'drizzle-orm';
 import { schema } from '@flux/db';
 import type {
   Conversation, ConversationMessage, ConversationSummary, Material,
@@ -130,10 +130,15 @@ export function conversationStore(db: Database) {
         .orderBy(desc(schema.projectConversations.createdAt), desc(schema.projectConversations.id))
         .limit(page.limit).offset(page.offset);
       const items = await Promise.all(rows.map(async (row) => {
-        const [last] = await db.select().from(schema.projectMessages)
-          .where(eq(schema.projectMessages.conversationId, row.id)).orderBy(desc(schema.projectMessages.sequence)).limit(1);
+        const [[first], [last]] = await Promise.all([
+          db.select().from(schema.projectMessages).where(eq(schema.projectMessages.conversationId, row.id))
+            .orderBy(asc(schema.projectMessages.sequence)).limit(1),
+          db.select().from(schema.projectMessages).where(eq(schema.projectMessages.conversationId, row.id))
+            .orderBy(desc(schema.projectMessages.sequence)).limit(1),
+        ]);
         return { id: row.id, projectId: row.projectId, createdBy: row.createdBy, createdAt: row.createdAt.toISOString(),
-          lastMessageAt: last?.createdAt.toISOString() ?? row.createdAt.toISOString(), lastMessageBody: last?.body ?? '' };
+          firstMessageBody: first?.body ?? '', lastMessageAt: last?.createdAt.toISOString() ?? row.createdAt.toISOString(),
+          lastMessageBody: last?.body ?? '' };
       }));
       return { items, total: count?.total ?? 0, ...page };
     },
@@ -146,9 +151,12 @@ export function conversationStore(db: Database) {
         .orderBy(desc(schema.projectMessages.sequence)).limit(window.limit + 1);
       const hasMoreBefore = rows.length > window.limit;
       const messages = rows.slice(0, window.limit).reverse().map(message);
+      const openingInWindow = messages.find((item) => item.sequence === 1);
+      const [opening] = openingInWindow ? [] : await db.select({ body: schema.projectMessages.body }).from(schema.projectMessages)
+        .where(eq(schema.projectMessages.conversationId, row.id)).orderBy(asc(schema.projectMessages.sequence)).limit(1);
       return { id: row.id, projectId: row.projectId, workspaceId: row.workspaceId,
         audience: { kind: 'project', projectId: row.projectId }, createdBy: row.createdBy,
-        createdAt: row.createdAt.toISOString(), messages,
+        createdAt: row.createdAt.toISOString(), firstMessageBody: openingInWindow?.body ?? opening?.body ?? '', messages,
         messagePage: { hasMoreBefore, nextBeforeSequence: hasMoreBefore ? messages[0]!.sequence : null, limit: window.limit } };
     },
 
@@ -163,7 +171,7 @@ export function conversationStore(db: Database) {
           const row = await locateConversation(principal, existing.conversationId, tx);
           return { id: row.id, projectId: row.projectId, workspaceId: row.workspaceId,
             audience: { kind: 'project' as const, projectId: row.projectId }, createdBy: row.createdBy,
-            createdAt: row.createdAt.toISOString(), messages: [message(existing)],
+            createdAt: row.createdAt.toISOString(), firstMessageBody: existing.body, messages: [message(existing)],
             messagePage: { hasMoreBefore: false, nextBeforeSequence: null, limit: 50 } };
         }
         await sourceExists(projectId, input.source, tx);
@@ -173,7 +181,7 @@ export function conversationStore(db: Database) {
         const first = await sendInTransaction(tx, row!, authorId, input);
         return { id: row!.id, projectId, workspaceId: project.workspaceId,
           audience: { kind: 'project' as const, projectId }, createdBy: authorId,
-          createdAt: row!.createdAt.toISOString(), messages: [first],
+          createdAt: row!.createdAt.toISOString(), firstMessageBody: first.body, messages: [first],
           messagePage: { hasMoreBefore: false, nextBeforeSequence: null, limit: 50 } };
       });
     },
