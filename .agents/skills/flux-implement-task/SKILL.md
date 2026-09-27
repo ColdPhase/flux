@@ -16,6 +16,8 @@ guides. Follow [the workflow](../../../docs/agents/workflow.md) and
 3. Implement the agreed outcome with relevant regression coverage. Run real checks
    from the trusted project configuration, with targeted checks during iteration.
    For UI behavior, exercise the running application when the environment is ready.
+   Use Docker/Compose for the application, dependencies and tests. Do not install
+   databases/toolchains as host services; isolate the task's ports and volumes.
 4. Open or update a draft PR, linking the issue and contract. Work in coherent
    commits; checkpoint pushed progress after meaningful milestones and before stopping.
 5. Fix known failures within scope. Report blocked/unavailable checks honestly.
@@ -27,3 +29,7 @@ guides. Follow [the workflow](../../../docs/agents/workflow.md) and
 Respond to peer findings on your own branch. A new head needs relevant verification
 and independent review again. Your self-check is preparation for peer evaluation;
 it cannot provide the required independent approval or final release acceptance.
+
+If blocked, document attempted solutions and the remaining work in the issue,
+ask the peer for help, preserve the worktree, and return the task number. Work on
+another eligible milestone task; never discard required work or block the whole queue.

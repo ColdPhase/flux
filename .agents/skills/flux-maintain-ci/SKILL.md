@@ -11,6 +11,8 @@ limit work to the requested repository checks and a pipeline proposal.
 
 - Inventory real local commands and existing workflows/rules. Select appropriate
   lint, static/type, behavior tests, build, and startup checks from the actual stack.
+- Run application checks/builds in Docker/Compose with the same dependency and
+  service setup locally and in CI; no hidden host-installed database or toolchain.
 - Implement focused workflows on a task branch with stable check names, reviewed
   action pins, explicit timeouts, and read-only PR permissions. Keep publication
   credentials out of contribution checks. No placeholder passing jobs.

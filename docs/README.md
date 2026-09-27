@@ -15,8 +15,17 @@ See the [project README](../README.md) for an introduction and quick start.
 - [CI and releases](agents/ci-and-releases.md) — validation workflows, required PR
   checks, packaging, and publication responsibilities.
 
-This is the collaboration foundation. The application plan, technology stack,
-and executable agent runner are still to be supplied/implemented.
+The local milestone runner is implemented; [startup](agents/startup.md) explains
+how each maintainer runs, stops, and resumes their worker. The first milestone
+prepares product/design/architecture decisions. Application technology and the
+first release scope still need acceptance.
+
+## Product and environment
+
+- [Product direction](product/README.md), including the full founder document.
+- [Decision register](product/decisions.md) — accepted direction, proposals, open choices.
+- [Design workflow](design/README.md) — realistic variants, density and independent review.
+- [Container development](development/containers.md) — Docker/Compose for the application and services.
 
 ## Prototype
 

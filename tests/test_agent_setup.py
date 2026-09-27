@@ -29,9 +29,9 @@ class FoundationValidationTests(unittest.TestCase):
         self.manifest["state"] = "design"
         for capability in ("loop", "merge", "publishing", "deployment"):
             self.manifest[capability]["enabled"] = False
-        self.manifest["release"] = {
-            "milestone_number": None, "contract_issue_number": None,
-            "spec_path": None, "architecture_path": None,
+        self.manifest["milestone"] = {
+            "number": None, "phase": "release", "brief_path": None,
+            "description_digest": None, "spec_path": None, "architecture_path": None,
         }
         for category in ("task_commands", "release_commands", "required_status_checks"):
             self.manifest["verification"][category] = []
@@ -71,7 +71,7 @@ class FoundationValidationTests(unittest.TestCase):
         self.manifest["state"] = "active"
         self.manifest["loop"]["enabled"] = True
         errors = self.check()
-        self.assertTrue(any("release.spec_path" in error for error in errors))
+        self.assertTrue(any("milestone.spec_path" in error for error in errors))
         self.assertTrue(any("verification.task_commands" in error for error in errors))
         self.assertTrue(any("verification.required_status_checks" in error for error in errors))
         self.assertTrue(any("limits.max_run_minutes" in error for error in errors))
@@ -110,6 +110,24 @@ class FoundationValidationTests(unittest.TestCase):
         altered = copy.deepcopy(self.manifest)
         altered["loop"]["enabeld"] = True
         self.assertTrue(any("unknown fields" in error for error in self.check(altered)))
+
+    def test_planning_can_run_without_inventing_an_application_stack(self):
+        self.manifest["state"] = "active"
+        self.manifest["loop"]["enabled"] = True
+        self.manifest["milestone"].update(number=1, phase="planning", brief_path="README.md",
+                                          description_digest="sha256:" + "a" * 64)
+        self.manifest["limits"]["max_run_minutes"] = 120
+        self.assertEqual(self.check(), [])
+
+    def test_planning_cannot_enable_application_publication(self):
+        self.manifest["milestone"]["phase"] = "planning"
+        self.manifest["publishing"].update(enabled=True, formats=["container"])
+        self.assertTrue(any("planning milestones" in error for error in self.check()))
+
+    def test_active_configuration_needs_a_pinned_scope(self):
+        self.manifest["state"] = "active"
+        self.manifest["loop"]["enabled"] = True
+        self.assertTrue(any("description_digest" in error for error in self.check()))
 
 
 if __name__ == "__main__":

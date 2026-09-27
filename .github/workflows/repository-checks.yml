@@ -26,5 +26,5 @@ jobs:
           persist-credentials: false
       - name: Validate shared instructions, skills, and manifest
         run: python3 scripts/check_agent_setup.py
-      - name: Verify invalid configurations are rejected
+      - name: Verify configuration, worker recovery, task parking, and provider adapters
         run: python3 -m unittest discover -s tests -p 'test_*.py'

@@ -1,20 +1,23 @@
 # Workflow
 
-## 1. Establish a release
+## 1. Enter through a milestone
 
-Use one GitHub milestone for the target version and one release-contract issue
-based on the [template](templates/release-contract.md). The contract links the
-product specification and architecture decisions, names observable acceptance
-criteria, and defines permitted automation and deployment scope.
+Use one GitHub milestone with a description linking a reviewed
+[milestone brief](templates/milestone.md). There is no mandatory parent issue.
+Planning briefs name research/proposal outcomes and evidence; release briefs
+link accepted specification/architecture decisions, observable acceptance
+criteria, and permitted automation/delivery scope.
 
-The maintainers accept the contract before an autonomous release run starts.
+The maintainers accept the milestone brief before an autonomous run starts.
 Its acceptance covers routine implementation, task decomposition, in-scope fixes,
 and peer evaluation. Agents can create and assign those tasks without asking for
 permission again. Product expansion or changes to accepted constraints go back
 to the maintainers; keep unrelated ideas outside the active milestone.
 
-The prototype docs are useful design input. Their demonstrations are not an
-accepted production release scope.
+The complete [foundation](../product/FLUX-FOUNDATION.md) supplies direction.
+Hypotheses, stack candidates and prototype demonstrations are not accepted
+production scope. Agents create bounded issues needed for the milestone;
+do not turn every visionary area into an implementation ticket.
 
 ## 2. Agree on a task contract
 
@@ -27,7 +30,7 @@ the delivery work.
 Create an implementation issue using the [task form](../../.github/ISSUE_TEMPLATE/task.yml).
 It records:
 
-- the release contract and the user outcome it serves;
+- the milestone and reviewed brief, and the user outcome it serves;
 - one implementation owner and a different evaluator;
 - scope and exclusions;
 - acceptance criteria with stable IDs such as `AC-1` and `AC-2`;
@@ -61,7 +64,21 @@ Each worker handles one active unit at a time, in this order:
 Finish the current safe checkpoint before changing tasks. Never leave an active
 implementation branch half-owned while editing a peer's branch. When there is
 no actionable work, the runner waits for a message, dependency, or check result.
-An empty queue is not evidence that the release passed.
+An empty queue is not evidence that the milestone passed.
+
+### A blocker affects one task
+
+Try reasonable alternatives and seek the peer's help with a concrete question,
+reproduction and evidence. Record attempts, remaining criteria, dependencies and
+the unblock condition in the issue. Park that task and continue ready
+implementation, review, research or integration work. The runner keeps parked
+tasks separate from global waiting and reconsiders them when relevant state changes.
+
+Revisit parked issues after a peer reply, dependency change, and before milestone
+acceptance. Do not silently close, omit, or move required work to a later milestone.
+Only an accepted scope decision can defer an outcome. When all work is blocked,
+leave clear records and wait without model/status traffic. Persistent provider
+authentication or infrastructure failure may suspend the whole run.
 
 ## 4. Implement and hand off
 
@@ -97,7 +114,7 @@ evidence before counting the outcome toward the release.
 
 ## Task states
 
-These are proposed labels. This foundation does not create them on GitHub.
+These labels summarize task state; they do not provide authority on their own.
 Exactly one state label applies to an admitted, open implementation task.
 
 | Label | Meaning | Next action |
@@ -130,7 +147,8 @@ contract, verify that same version in the named deployment target. A later merge
 requires the affected acceptance checks again; never ship a different commit
 under an old acceptance report.
 
-Publish the report on the release issue. Waiting for a peer, exceeding a limit,
+Publish the report in an acceptance task/PR within the milestone and link it from
+its records. Waiting for a peer, exceeding a limit,
 or exhausting actionable work produces a waiting/blocked report, never success.
 
 ## 7. Publish the accepted version
@@ -138,5 +156,5 @@ or exhausting actionable work produces a waiting/blocked report, never success.
 When publication is in scope, follow [CI and releases](ci-and-releases.md).
 Create the version tag at the accepted candidate, build and test the distributable
 artifacts, publish them through GitHub Releases, and verify that users can download
-and start them as documented. Keep the release issue open until these required
+and start them as documented. Keep the milestone open until these required
 delivery checks pass. Record application deployment separately when included.

@@ -1,6 +1,6 @@
 ## Handoff
 
-- Task / PR / release:
+- Milestone / task / PR:
 - Current owner and requested next actor:
 - Run ID and role:
 - Accepted contract comment and revision:
@@ -22,6 +22,10 @@ List pending, failing, or unavailable checks explicitly.
 State the next concrete step, dependency or question, and who can unblock it.
 Record workspace/environment details needed to reproduce the checks. Keep secrets
 and machine-private session data out of this shared report.
+
+For a blocker: record attempted alternatives, the specific help requested from
+the peer, remaining criteria, and the event that enables retry. Name independent
+work to continue. A parked task remains required until an accepted scope decision.
 
 ### Recovery notes
 

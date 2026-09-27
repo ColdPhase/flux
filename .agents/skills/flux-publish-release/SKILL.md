@@ -21,7 +21,8 @@ recorded authority, actual artifact formats, and the manifest capability switch.
    permissions isolated to the publishing job. A changed source candidate needs
    evaluation again before release.
 5. Publish in the agreed prerelease/stable mode. Verify the actual download URLs,
-   checksums, and documented install path, then return evidence to the release issue.
+   checksums, and documented install path, then link evidence from the milestone's
+   acceptance task/PR.
    Resume matching work after an interruption instead of duplicating a release.
 
 If a hosting deployment is part of the contract, perform and verify it for that

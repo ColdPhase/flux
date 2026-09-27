@@ -59,11 +59,11 @@ def validate(root: Path) -> list[str]:
         return [f".harness/project.json: {error}"]
 
     data = record(data, "manifest", {
-        "version", "state", "github", "workers", "release", "loop", "limits",
+        "version", "state", "github", "workers", "milestone", "loop", "limits",
         "verification", "merge", "publishing", "deployment", "local_state_directory",
     })
-    require(type(data.get("version")) is int and data["version"] == 1,
-            "manifest.version: supported version is 1")
+    require(type(data.get("version")) is int and data["version"] == 2,
+            "manifest.version: supported version is 2")
     require(data.get("state") in ("design", "active"),
             "manifest.state: expected design or active")
 
@@ -103,29 +103,37 @@ def validate(root: Path) -> list[str]:
     require(len(accounts) == len(set(accounts)),
             "workers: GitHub identities must be distinct for independent review")
 
-    release = record(data.get("release"), "release", {
-        "milestone_number", "contract_issue_number", "spec_path", "architecture_path",
+    release = record(data.get("milestone"), "milestone", {
+        "number", "phase", "brief_path", "description_digest", "spec_path", "architecture_path",
     })
-    for key in ("milestone_number", "contract_issue_number"):
+    require(release.get("phase") in ("planning", "release"),
+            "milestone.phase: expected planning or release")
+    for key in ("number",):
         require(release.get(key) is None or positive(release[key]),
-                f"release.{key}: expected null or a positive integer")
-    for key in ("spec_path", "architecture_path"):
+                f"milestone.{key}: expected null or a positive integer")
+    for key in ("brief_path", "spec_path", "architecture_path"):
         if release.get(key) is not None:
-            inside_file(release[key], f"release.{key}")
+            inside_file(release[key], f"milestone.{key}")
+    pinned_digest = release.get("description_digest")
+    require(pinned_digest is None or (isinstance(pinned_digest, str) and
+            bool(re.fullmatch(r"sha256:[a-f0-9]{64}", pinned_digest))),
+            "milestone.description_digest: expected null or a SHA-256 digest")
 
     loop = record(data.get("loop"), "loop", {
         "enabled", "poll_seconds", "max_active_tasks_per_worker",
-        "max_attempts_without_progress",
+        "max_attempts_without_progress", "coordinator",
     })
     for key in ("poll_seconds", "max_attempts_without_progress"):
         require(positive(loop.get(key)), f"loop.{key}: expected a positive integer")
     require(type(loop.get("max_active_tasks_per_worker")) is int and
             loop["max_active_tasks_per_worker"] == 1,
             "loop.max_active_tasks_per_worker: must be 1 for this topology")
+    require(loop.get("coordinator") in ids, "loop.coordinator: must identify a configured worker")
 
-    limits = record(data.get("limits"), "limits", {"max_run_minutes"})
-    require(limits.get("max_run_minutes") is None or positive(limits["max_run_minutes"]),
-            "limits.max_run_minutes: expected null or a positive integer")
+    limits = record(data.get("limits"), "limits", {"max_run_minutes", "max_turn_minutes", "max_turns"})
+    for key in ("max_run_minutes", "max_turn_minutes", "max_turns"):
+        require(limits.get(key) is None or positive(limits[key]),
+                f"limits.{key}: expected null or a positive integer")
     checks = record(data.get("verification"), "verification", {
         "repository_commands", "task_commands", "release_commands", "required_status_checks",
     })
@@ -162,14 +170,22 @@ def validate(root: Path) -> list[str]:
                     f"{name}.enabled: must remain false in design state")
     if data.get("state") == "active":
         require(loop.get("enabled") is True, "active state requires loop.enabled")
-        for key in ("milestone_number", "contract_issue_number"):
-            require(positive(release.get(key)), f"active release requires release.{key}")
-        for key in ("spec_path", "architecture_path"):
-            inside_file(release.get(key), f"active release.{key}")
-        for key in ("task_commands", "release_commands", "required_status_checks"):
-            require(bool(check_lists[key]), f"active release requires verification.{key}")
-        require(positive(limits.get("max_run_minutes")),
-                "active release requires a positive limits.max_run_minutes")
+        require(positive(release.get("number")), "active milestone requires milestone.number")
+        inside_file(release.get("brief_path"), "active milestone.brief_path")
+        require(pinned_digest is not None, "active milestone requires milestone.description_digest")
+        if release.get("phase") == "release":
+            for key in ("spec_path", "architecture_path"):
+                inside_file(release.get(key), f"active milestone.{key}")
+            for key in ("task_commands", "release_commands", "required_status_checks"):
+                require(bool(check_lists[key]), f"active release requires verification.{key}")
+        for key in ("max_run_minutes", "max_turn_minutes", "max_turns"):
+            require(positive(limits.get(key)), f"active milestone requires a positive limits.{key}")
+        if positive(limits.get("max_turn_minutes")) and positive(limits.get("max_run_minutes")):
+            require(limits["max_turn_minutes"] <= limits["max_run_minutes"],
+                    "limits.max_turn_minutes cannot exceed max_run_minutes")
+    if release.get("phase") == "planning":
+        require(publishing.get("enabled") is False and deployment.get("enabled") is False,
+                "planning milestones cannot enable publication or deployment")
 
     require(data.get("local_state_directory") == ".harness/local",
             "local_state_directory: expected .harness/local")
@@ -192,6 +208,8 @@ def validate(root: Path) -> list[str]:
     skill_names = {path.parent.name for path in skill_files}
     documents = [root / "README.md", agents, claude, root / "docs/README.md",
                  root / "docs/CONTRIBUTING.md", *sorted((root / "docs/agents").rglob("*.md")),
+                 *sorted((root / "docs/product").rglob("*.md")),
+                 *sorted((root / "docs/design").rglob("*.md")),
                  *skill_files]
     for path in skill_files:
         body = path.read_text(encoding="utf-8")

@@ -1,0 +1,2 @@
+# Preserve the founder's original Markdown hard line breaks on import.
+docs/product/FLUX-FOUNDATION.md whitespace=-blank-at-eol

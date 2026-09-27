@@ -1,8 +1,9 @@
 # Release contract
 
-Copy this into a release issue when the application plan is available. Replace
-the prompts with actual decisions. An incomplete template is not authorization
-to start the autonomous loop.
+Use this to extend a reviewed [milestone brief](milestone.md) for an application
+release. Link the completed document from the milestone description; no parent
+issue is required. Replace prompts with accepted decisions. An incomplete
+template is not authorization to start production implementation.
 
 ## Identity
 
@@ -25,7 +26,7 @@ Record unresolved questions and their decision owner.
 
 ## Environment and verification
 
-- Clean installation and startup:
+- Docker/Compose clean installation, tooling, services, migrations and startup:
 - Required task checks and GitHub status checks:
 - Required integrated release checks:
 - Distributable formats, supported platforms, and installation checks:
@@ -45,7 +46,7 @@ Record unresolved questions and their decision owner.
 
 ## Acceptance record
 
-A maintainer records acceptance of this exact contract revision in a comment.
-Later changes need a new acceptance record. The final report pins a candidate
-commit and accounts for every RC criterion; implementation PRs reference this
-issue without using a closing keyword.
+Record acceptance of the exact brief revision in its reviewed PR or an explicit
+decision comment. Later changes need a new acceptance record. The final report
+pins a candidate and accounts for every RC criterion, including parked blockers.
+The milestone is the entry point and remains open until required evidence passes.

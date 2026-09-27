@@ -13,8 +13,9 @@ authorization can proceed without repeated permission requests.
 foundation's manifest, skill discovery, and local documentation links, using the
 Python standard library. Regression tests also check that incomplete activation,
 shared reviewer identities, missing references, and divergent skills are rejected.
-It does not validate application functionality, inspect
-live repository settings, or prove the future runner works.
+The suite also exercises the local runner's scheduling, process control,
+checkpoints, retry reconciliation, and provider fixtures. It does not validate
+application functionality or prove a live two-account model collaboration.
 
 Application lint, tests, compilation, packaging, and publication require the later
 stack/release decisions. Empty application commands in the manifest record that
@@ -36,6 +37,11 @@ Write commands that actually execute work. Demonstrate each failure path with a
 controlled failing fixture or temporary test branch, restore it, and record the
 successful run. Do not add placeholder jobs, `echo`-only validation, or swallowed
 test failures to make a status appear green.
+
+The application, toolchain, databases, queues and tests use Docker/Compose under
+the [environment contract](../development/containers.md). Use the same container
+commands locally and in Actions, including readiness, migrations, and isolated
+test data. Do not require a host installation of PostgreSQL or an app toolchain.
 
 Record the real commands and status-check names in the manifest and release
 contract. The peer reviews workflow changes and their observed behavior.
@@ -126,8 +132,9 @@ retention supplies a permanent download channel.
 5. Independently verify packaged startup and the draft's expected assets before
    publishing. Reuse a matching draft/run on retry; do not duplicate releases.
 6. After publication, verify public download URLs, asset checksums, and the
-   documented installation path. Link the release and evidence from the release
-   issue. A failed delivery check remains an open release blocker.
+   documented installation path. Link the release and evidence from the milestone's
+   acceptance task/PR. A failed delivery check remains an open release blocker;
+   record it and continue independent work while seeking the peer's help.
 
 Publication can be automated under the release's authorization after all gates
 pass. Publishing an asset and deploying a running service have different outputs;
@@ -144,4 +151,4 @@ A delivery task reports the workflow PR, successful/failing run evidence, effect
 required-check configuration, candidate SHA, tag, artifact digests, release URL,
 and actual installation/acceptance results as applicable. Mark missing evidence
 as unverified. This record is the input to `flux-verify-release` and the release
-issue's final acceptance.
+milestone's final acceptance.

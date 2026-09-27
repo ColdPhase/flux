@@ -13,6 +13,9 @@ and distinguish prototype demonstrations from required functioning behavior.
 For UI tasks, agree on the intended user flow, empty/loading/error states, and
 applicable layout/accessibility expectations. Visual direction comes from the
 approved product/design input; introducing unrelated design goals changes scope.
+For exploration, distinguish recommended directions from accepted ones. Follow
+[the design workflow](../design/README.md): a fresh visual reviewer receives
+screenshots, a neutral brief and references, separately from functional testing.
 
 ## At task review
 
@@ -20,7 +23,7 @@ approved product/design input; introducing unrelated design goals changes scope.
    required checks, and unresolved prior findings.
 2. Read the implementation in an isolated checkout. Inspect integration points,
    data ownership, permission behavior, and compatibility relevant to the diff.
-3. Run the configured checks. For changed user flows, operate the running app
+3. Run configured application checks through Docker/Compose. For changed user flows, operate the running app
    with a browser and verify relevant API/storage behavior. A screenshot alone
    does not establish that an interaction or persistence works.
 4. Record `pass`, `fail`, or `unverified` for each required criterion using the
@@ -72,7 +75,11 @@ the accepted release contract determines whether additional human acceptance is
 required. Any deferred criterion needs a recorded scope decision, not an agent
 marking it complete.
 
-Publish one criterion matrix with the candidate SHA and evidence links on the
-release issue. Missing functionality becomes a task in the same milestone and
+Publish one criterion matrix with the candidate SHA and evidence links in an
+acceptance task/PR within the milestone. Missing functionality becomes a task there and
 the loop continues. Missing access or a product decision becomes a named blocker.
 Acceptance applies only to the tested candidate and contract revision.
+
+If a criterion blocks, seek peer help and record it in its issue. Continue other
+independent acceptance scenarios or tasks. Required parked work still prevents
+final acceptance; it must not disappear from the matrix.

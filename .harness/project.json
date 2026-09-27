@@ -1,10 +1,13 @@
 {
-  "version": 1,
-  "state": "design",
+  "version": 2,
+  "state": "active",
   "github": {
     "repository": "ColdPhase/flux",
     "base_branch": "main",
-    "trusted_logins": ["PelikanFix16", "Zamojski5"]
+    "trusted_logins": [
+      "PelikanFix16",
+      "Zamojski5"
+    ]
   },
   "workers": [
     {
@@ -18,20 +21,25 @@
       "github_login": "Zamojski5"
     }
   ],
-  "release": {
-    "milestone_number": null,
-    "contract_issue_number": null,
+  "milestone": {
+    "number": 1,
+    "phase": "planning",
+    "brief_path": "docs/product/milestones/01-product-blueprint.md",
+    "description_digest": "sha256:802631d07f18134d3f66b44c4b2610c43cc8065c83a871d8a26d9ddcb548d849",
     "spec_path": null,
     "architecture_path": null
   },
   "loop": {
-    "enabled": false,
-    "poll_seconds": 60,
+    "enabled": true,
+    "poll_seconds": 120,
     "max_active_tasks_per_worker": 1,
-    "max_attempts_without_progress": 3
+    "max_attempts_without_progress": 3,
+    "coordinator": "codex-hubert"
   },
   "limits": {
-    "max_run_minutes": null
+    "max_run_minutes": 120,
+    "max_turn_minutes": 30,
+    "max_turns": 24
   },
   "verification": {
     "repository_commands": [

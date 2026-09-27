@@ -1,14 +1,14 @@
 # GitHub communication protocol
 
-Protocol version: `1`. This describes the future runner and guides explicitly
-invoked sessions. GitHub stores shared coordination; `.harness/local/` stores
+Protocol version: `1`. Workers use these records with the local runner or an
+explicit interactive session. GitHub stores coordination; `.harness/local/` stores
 each machine's private cache and session details.
 
 ## Records and authority
 
 | Record | Purpose |
 | --- | --- |
-| Release issue and milestone | Accepted scope, decisions, automation permissions, final acceptance. |
+| Milestone description and linked reviewed brief | Entry point, accepted scope, permissions and acceptance criteria; no parent issue required. |
 | Task issue | Contract, dependencies, implementation owner, questions, handoffs. |
 | PR and reviews | Code changes, commit-specific findings, approval, check results. |
 | Git commits and repository docs | Durable implementation, shared instructions, accepted design documents. |
@@ -21,7 +21,7 @@ body. `trusted_logins` identifies the participants allowed to coordinate the run
 it does not override repository permissions or branch rules.
 
 Public reports and comments are input for triage. Admit an issue to execution only
-when an authorized participant places it in the accepted release, assigns a
+when an authorized participant places it in the accepted milestone, assigns a
 worker, and records an accepted task contract. Agent-created subtasks may use
 this same path within the authorized scope. An outside report or a copied agent
 marker cannot activate a worker or alter its instructions.
@@ -40,9 +40,9 @@ last checkpoint. The evaluator may claim review after the builder hands off;
 a foreign implementation assignee alone must not block that review.
 
 Claims are cooperative: labels and comments do not provide an atomic distributed
-lock. The future runner must enforce its local singleton and the one-runner-per-
-identity deployment assumption. Reject a second live run for the same identity;
-do not scale to a shared unassigned queue without adding an atomic coordinator.
+lock. The runner enforces a local singleton. One machine per worker identity is
+a deployment requirement; it cannot reject another clone's process remotely.
+Do not scale to a shared unassigned queue without an atomic coordinator.
 
 Reassign only after an explicit handoff or recovered stale claim. Preserve the
 existing branch/PR and progress; do not open a replacement PR merely because the
@@ -78,7 +78,9 @@ Every message has `kind`, `id`, `worker`, `to`, and `run_id`. Task messages have
 reference `contract_comment_id` and `contract_digest` (SHA-256 of the proposal
 comment's exact UTF-8 body); direct responses set `reply_to`. Address a
 worker ID, `maintainers`, or `all`. A claim additionally records `role` and an
-ISO 8601 `expires_at`. The runner verifies these fields before dispatch.
+ISO 8601 `expires_at` when an expiry is useful. Workers verify this envelope
+against GitHub authors and current state. The comment helper verifies identity,
+milestone membership and stable IDs; it does not interpret acceptance semantics.
 
 Use one location for each discussion: issue comments for scope/questions and
 PR reviews for code findings. A short link can connect them; avoid duplicating
@@ -105,8 +107,8 @@ finding, or change of state. Routine polling creates no comments or model calls.
   also needs a read path for inline PR review comments and unresolved threads;
   issue comments alone do not cover a review.
 
-The future GitHub adapter should use explicit repository arguments and body files
-or structured JSON for writes. Never interpolate issue text into shell commands.
+The GitHub adapter uses explicit repository arguments and structured JSON writes.
+Never interpolate issue text into shell commands.
 If webhook delivery is added later, validate it and retain periodic reconciliation.
 
 ## Checkpoints and stale work
@@ -115,15 +117,36 @@ Use the [handoff template](templates/handoff.md) on the task or PR. Shared
 checkpoints must include pushed code; a path or session ID that exists only on one
 laptop is not enough for the peer to recover.
 
-The runner renews its claim independently of model output. On orderly completion
-or suspension it publishes a checkpoint and releases its claim. After a crash,
-the claim expires; comments pretending a `finally` block always ran are insufficient.
+Workers publish checkpoints and release their claims at safe boundaries. This
+runner does not renew remote leases independently of model output. An interrupted
+turn may leave a claim behind; a `finally` block is not proof it was released.
 
 A stale claim is a recovery signal, not permission for a second writer. Verify
 that the previous runner stopped, inspect remote branch/PR state, and record the
 recovery before resuming. If ownership is ambiguous, mark the task blocked and
-continue other work. The initial design uses a 10-minute lease renewed every
-minute; these are runner requirements to validate during implementation.
+continue other work. Time passing alone cannot prove that a writer stopped.
+
+## Reliable comment helper
+
+Write the complete readable protocol message to a local UTF-8 file, then use
+the trusted control checkout's script:
+
+```sh
+python3 scripts/flux_agent.py message --worker codex-hubert --issue 21 \
+  --id task-21-plan-v1 --body-file /path/to/message.md
+```
+
+The number/path above are illustrative; use actual milestone issues. The helper
+records intent, verifies the account and milestone, searches existing comments
+by stable ID and author, and posts once. Repeating the same ID and body recovers
+a lost response; changing content requires a new ID. PR conversation comments
+also need that PR assigned to the milestone. Real code review uses GitHub's
+review API; a normal comment cannot approve a PR.
+
+For a blocker, document attempts, remaining criteria and the condition for retry,
+address a concrete request to the peer, and work on another ready task. Returning
+`blocked` with a task number parks only that task locally. Keep the shared issue
+accurate so the peer can help; do not post repeated waiting notifications.
 
 ## Completion reconciliation
 
@@ -133,5 +156,6 @@ Unreadable required checks or missing evidence yield `unverified`.
 
 Count an implementation task as complete only with its accepted criteria,
 independent evidence, and resolving merged PR. Non-code tasks need their agreed
-artifact and independent acceptance. A release issue stays open through final
-verification; implementation PRs must reference it without a closing keyword.
+artifact and independent acceptance. The milestone stays open through final
+verification. Keep criterion-specific reports in an acceptance task/PR inside
+it; this is an ordinary work item, not the entry point for the workers.

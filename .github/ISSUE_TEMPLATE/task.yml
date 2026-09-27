@@ -1,18 +1,18 @@
-name: Implementation task
-description: Plan a bounded application, CI, or release task with verifiable acceptance criteria.
+name: Milestone task
+description: Agree on a bounded research, design, application, CI, or release outcome.
 title: "[Task]: "
 body:
   - type: markdown
     attributes:
       value: |
         Use this for planned work by people or agents. Search existing tasks first.
-        A maintainer or authorized release worker admits the task to a release.
+        A maintainer or authorized worker admits the task to the selected milestone.
         Filling out this form does not start automation.
   - type: textarea
     id: release
     attributes:
-      label: Release and decisions
-      description: Link the release contract, milestone, specification, and applicable architecture decisions.
+      label: Milestone and decisions
+      description: Link the milestone, its reviewed brief, relevant foundation sections, and accepted decisions. No parent issue is required.
     validations:
       required: true
   - type: textarea
@@ -48,3 +48,8 @@ body:
     attributes:
       label: Contract status
       description: Link the proposal and peer acceptance comments when available. Leave as proposed until the exact contract revision is accepted.
+  - type: textarea
+    id: blockers
+    attributes:
+      label: Blockers and recovery
+      description: Record attempted solutions, specific help requested from the peer, remaining work, and what would unblock it. Park only this task and continue independent milestone work.
