@@ -27,6 +27,7 @@ implementation and the first release scope continue in the working application m
 - [Design workflow](design/README.md) — realistic variants, density and independent review.
 - [Container development](development/containers.md) — Docker/Compose for the application and services.
 - [Application foundation](development/application-foundation.md) — clean start, integration fixture and operations.
+- [Architecture](development/architecture.md) — layers, dependency direction, where code and tests go, known debt.
 - [Access policy](development/access-policy.md) — workspaces, projects, grants, agents, drafts and the single authorization choke point.
 
 ## Prototype

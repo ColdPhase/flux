@@ -11,3 +11,11 @@ __pycache__/
 node_modules/
 dist/
 .env
+
+# Test and tool artifacts.
+test-results/
+playwright-report/
+coverage/
+*.tsbuildinfo
+*.log
+.DS_Store
