@@ -302,6 +302,76 @@
         "contrast_failures": [],
         "small_text": [],
         "touch_targets_under_44": []
+      },
+      "1440x900#capture": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null
+      },
+      "390x844#capture": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
+      },
+      "1440x900#rail": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null
+      },
+      "1280x800#rail": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null
+      },
+      "1440x900#rail-details": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": null
+      },
+      "1024x768#rail": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
+      },
+      "768x1024#rail-nav": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
+      },
+      "390x844#rail": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
+      },
+      "390x844#rail-nav": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
+      },
+      "360x780#rail-nav": {
+        "horizontal_overflow": false,
+        "console_errors": [],
+        "contrast_failures": [],
+        "small_text": [],
+        "touch_targets_under_44": []
       }
     },
     "zoom200": {
@@ -315,15 +385,35 @@
       "without_visible_ring": [],
       "first_stops": [
         "Skip to reply",
-        "TTide",
         "Jump to\u2026\u2318K",
-        "For you3",
-        "#Shared export7",
-        "#Guest onboarding2",
-        "#Billing migration",
-        "#Audit log retention"
+        "Home3",
+        "CapturePrivate",
+        "SShared export7",
+        "GGuest onboarding2",
+        "LGesture lamp",
+        "HHarbor mobile app"
       ]
     },
-    "reduced_motion_animated_elements": 0
+    "reduced_motion_animated_elements": 0,
+    "extra": {
+      "rail": {
+        "zoom200_overflow": false,
+        "keyboard_focus": {
+          "stops": 39,
+          "without_visible_ring": [],
+          "first_stops": [
+            "Skip to reply",
+            "Home, 3 need you",
+            "Direct messages, 1 unread",
+            "Shared export",
+            "Guest onboarding",
+            "Gesture lamp",
+            "Harbor mobile app",
+            "New project"
+          ]
+        },
+        "reduced_motion_animated_elements": 0
+      }
+    }
   }
 }

@@ -19,9 +19,10 @@
 
 ## Layout
 
-- **Desktop:** a 244 px sidebar (Home/return view, Projects, Direct messages, quick capture, user); a reading column of about 700 px; a header with the title, the view tabs and a labelled **Details** button; a 384 px details panel that is closed by default.
+- **Desktop:** a 244 px sidebar with no workspace selector: the Flux mark, Jump to, **Home** (the personal return view), **Capture** (private until shared), Projects with geometric monograms, Direct messages, and the user. Then a reading column of about 700 px; a header with the project monogram, title, current-state line, view tabs and a labelled **Details** button; a 384 px details panel that is closed by default.
+- **Return anchor:** the feed opens on the day line of the result that needs you and always at a whole message or line, never mid-message. Under the result, one quiet evidence line names the decision it follows and its source ("Based on Current rule: … · Source: Permission test output"); each part opens its panel view.
 - **At 1180 px and below,** the sidebar becomes a drawer. **At 980 px and below,** the details panel overlays the content.
-- **Phone:** a single column like Messages. The header shows the topic and **Details**. The current-state line collapses to one 44 px row. The sidebar is a drawer and details are a full-screen sheet. The composer is pinned and respects safe areas and the keyboard. The feed opens where the reader left off, and the "not sent" pill jumps to the kept draft.
+- **Phone:** a single column like Messages. The header shows the topic and **Details**. The current-state line collapses to one 44 px row. The result shows its rule and source cue ("Rule: … · Source: …") in the first screen. The sidebar is a drawer and details are a full-screen sheet. The composer is pinned and respects safe areas and the keyboard. The feed opens where the reader left off, and the "not sent" pill jumps to the kept draft.
 
 ## Tokens
 
@@ -32,10 +33,13 @@ The source of truth is the `:root` block of the variant C prototype. Production 
 | Surfaces | `--bg` #FFFFFF, `--bg-side` #F7F7F8, `--bg-hover` #F1F1F3, `--bg-active` #EBEBEE | #141517, #101113, #1D1E21, #25262A |
 | Text | `--text` #1B1C1F, `--text-2` #3C3F45, `--text-3` #62666D (≥ 5.1:1) | #EDEDEF, #C9CACE, #9A9CA3 |
 | Lines | `--line` #E7E7EA, `--line-strong` #D5D6DA | #26272B, #34353A |
-| Accent (the only one) | `--accent` #5159C8, `--accent-soft` #EEEFFB, `--on-accent` #FFF | #8B90F0, #1F2140, #101113 |
+| Accent (the only one; identity **accent**, default) | `--accent` #4B6624 (6.5:1 with white), `--accent-hover` #3F5A1D, `--accent-soft` #EEF3E3, `--on-accent` #FFF | #B5CF73 (10.6:1 on `--bg`), #C2DA84, #1E2616, #101113 |
+| Accent (identity **rail**) | `--accent` #5159C8, `--accent-soft` #EEEFFB, `--on-accent` #FFF | #8B90F0, #1F2140, #101113 |
+| Rail (identity **rail**) | `--rail-bg` #111310, `--rail-fg` #A9AFA0, `--rail-active` #252C1D, `--lime` #D3EA8A (mark, current marker, badges), `--rail-w` 60 px | `--rail-bg` #0B0C0A |
+| Project monograms | `--pm-1…4` tints with `--pm-N-t` letters (≥ 7.8:1): olive, violet, teal, sand; shapes square, circle, leaf, cut corner | dark tints with light letters |
 | Status | `--danger` #B42318, `--warning` #8A5300, `--ok` #1A7F4B | #F08A80, #E0A650, #5FC08A |
 
-The accent marks only "needs you" and the primary action.
+The accent marks only "needs you" and the primary action. The current rule uses the rule icon, not a green dot, so it never reads as the green accent.
 
 - **Type:** Inter, falling back to the system UI font. Body text is 15 px, rising to 16 px on touch devices; metadata is at least 12 px.
 - **Radii:** 6, 8 and 12 px.
@@ -47,15 +51,24 @@ The accent marks only "needs you" and the primary action.
 - The easings are `--ease-out`, `--ease-in` and the overshoot-free `--ease-sheet`.
 - Only transform, opacity and grid-row height animate. All durations drop to 0 under `prefers-reduced-motion`.
 
+## Identity
+
+Flux keeps one restrained element from `flux-ux-v8.html`, chosen by `data-identity` on `<html>` (prototype: `?identity=accent` or `?identity=rail`).
+
+- **accent (default).** v8's olive green is the only accent. The Flux mark (two slanted strokes, v8's logo) and a lowercase "flux" wordmark head the sidebar. The same mark, 9 px, opens the "You were away" and "Today" divider lines; that is the only geometric motif.
+- **rail (alternative).** Indigo stays. A 60 px dark rail on the far left holds the mark, Home, Direct messages, project monograms and "New project", with a lime marker bar beside the current place, as in Discord's server rail. The light sidebar narrows to 232 px and shows the open project's conversations and Capture. On narrow screens the rail travels inside the drawer.
+
+**Why accent is the default:** it is visible at every size, including the phone's first screen and the green primary action, where the rail is hidden inside the drawer; it adds no width or second navigation column; and it avoids pairing v8's lime rail with a second, indigo accent. The rail remains available for the implementation's user testing.
+
 ## Components
 
-Button (primary uses the accent; quiet is text only), IconButton, Input and Composer, Tabs with a sliding indicator, Chip (an attachment or reference), SidePanel with directional view transitions, Sheet, Drawer, Toast, Pill, a state line, and Empty and Error states.
+Button (primary uses the accent; quiet is text only), IconButton, Rail button and project monogram, evidence line (`.basis` with inline references), Input and Composer, Tabs with a sliding indicator, Chip (an attachment or reference), SidePanel with directional view transitions, Sheet, Drawer, Toast, Pill, a state line, and Empty and Error states.
 
 Press feedback scales to 0.98. The focus ring fades in, is always visible and follows the accent colour. Tooltips appear after 450 ms and only on devices that can hover.
 
 ## Evidence and limits
 
-The audits for [evidence.md](proposals/o-003-ui-direction/evidence.md) run in Docker Playwright: overflow, contrast, 12 px text, 44 px targets, 200% zoom, the software keyboard, focus rings and reduced motion. They cover all variants and 18 opened states of C, and there is a separate 53-step interaction script.
+The audits for [evidence.md](proposals/o-003-ui-direction/evidence.md) run in Docker Playwright: overflow, contrast, 12 px text, 44 px targets, 200% zoom, the software keyboard, focus rings and reduced motion. They cover all variants and 28 opened states of C, both identity options included, and there is a separate 109-check interaction script.
 
 Not yet covered:
 - screen readers;

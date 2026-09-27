@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="boot">
+<html lang="en" class="boot" data-identity="accent">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
@@ -12,8 +12,15 @@
   Aesthetic: Linear (near-monochrome, one indigo accent, 1px rules, quiet dots).
   Restraint: Apple Notes / Messages (generous spacing, few elements at once).
   Scenario content follows brief.md. Internal IDs appear only in the side panel, muted.
-  Hashes for review: #details, #decision, #result, #sources, #agent-test, #agent-review, #nav, #since, #tasks, #map, #map-list, #docs.
+  Hashes for review: #details, #decision, #result, #sources, #agent-test, #agent-review, #capture, #nav, #since, #tasks, #map, #map-list, #docs.
+  Identity (data-identity on <html>, via ?identity=): "accent" (default) is a v8-derived green accent, the Flux
+  mark in the sidebar header and one geometric divider motif; "rail" keeps indigo and adds v8's dark project rail.
 -->
+<script>
+  // Choose the identity option before first paint: ?identity=accent (default) or ?identity=rail.
+  (function () { try { var v = new URLSearchParams(location.search).get('identity');
+    if (v === 'rail' || v === 'accent') document.documentElement.dataset.identity = v; } catch (e) {} })();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -80,6 +87,35 @@
     --accent: #8B90F0; --accent-hover: #9EA3F5; --accent-soft: #1F2140; --on-accent: #101113;
     --danger: #F08A80; --warning: #E0A650; --ok: #5FC08A; --focus: #9EA3F5;
     --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 32px rgba(0,0,0,.45); --scrim: rgba(0,0,0,.5);
+  }
+}
+/* Identity. One restrained element carried over from flux-ux-v8.html, chosen with data-identity on <html>.
+   accent (default): v8's olive green replaces indigo; the Flux mark heads the sidebar; the mark doubles as a
+     small divider glyph on the "You were away" and "Today" lines.
+   rail: indigo stays; a narrow dark rail (v8's #111310) holds the mark, Home, Direct messages and projects. */
+:root {
+  --rail-w: 60px;
+  --rail-bg: #111310; --rail-line: #2A2F25; --rail-fg: #A9AFA0; --rail-hover: #1F241A; --rail-active: #252C1D;
+  --rail-on: #E9EDDF; --lime: #D3EA8A;
+  /* Geometric project monograms (letter ≥ 7.8:1 on its tint) */
+  --pm-1: #E5ECD5; --pm-1-t: #3C4A22; --pm-2: #E7E5EF; --pm-2-t: #413D57;
+  --pm-3: #DDEDEA; --pm-3-t: #1F4944; --pm-4: #F1E6D6; --pm-4-t: #5A3F1E;
+}
+:root[data-identity="accent"] {
+  --accent: #4B6624;        /* 6.5:1 on white; white text on it 6.5:1; 5.5:1 on --bg-active */
+  --accent-hover: #3F5A1D;
+  --accent-soft: #EEF3E3;   /* accent text on it 5.8:1 */
+  --focus: #4B6624;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --pm-1: #2A331F; --pm-1-t: #D3EA8A; --pm-2: #272630; --pm-2-t: #C5C1D6;
+    --pm-3: #1D2E2B; --pm-3-t: #A8D5CF; --pm-4: #33291E; --pm-4-t: #E6C9A0;
+    --rail-bg: #0B0C0A; --rail-line: #22261E;
+  }
+  :root[data-identity="accent"] {
+    --accent: #B5CF73;      /* 10.6:1 on --bg; --on-accent #101113 on it 10.9:1 */
+    --accent-hover: #C2DA84; --accent-soft: #1E2616; --on-accent: #101113; --focus: #C2DA84;
   }
 }
 
@@ -167,9 +203,9 @@ svg { flex: none; }
 /* ---------- App frame ---------- */
 .app { display: flex; height: 100vh; height: 100dvh; }
 .sidebar:focus-visible { outline: none; }
-.sidebar {
-  width: var(--side-w); flex: none; background: var(--bg-side); border-right: 1px solid var(--line);
-  display: flex; flex-direction: column; min-height: 0;
+.sidebar { flex: none; display: flex; min-height: 0; background: var(--bg-side); border-right: 1px solid var(--line); }
+.side-in {
+  width: var(--side-w); flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; min-height: 0;
   padding: 10px 10px 8px; padding-top: max(10px, env(safe-area-inset-top)); padding-left: max(10px, env(safe-area-inset-left));
 }
 .app { position: relative; }
@@ -181,10 +217,66 @@ svg { flex: none; }
 .panel.leaving { position: absolute; right: 0; top: 0; bottom: 0; z-index: 3; }
 
 /* ---------- Sidebar ---------- */
-.ws { display: flex; align-items: center; gap: 8px; padding: 0 4px 0 2px; margin-bottom: 8px; }
-.ws-btn { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; min-height: var(--ctl); padding: 0 6px; border-radius: var(--r); font-weight: 600; font-size: 14px; }
-.ws-btn:hover { background: var(--bg-hover); }
-.ws-mark { width: 22px; height: 22px; border-radius: 6px; background: var(--text); color: var(--bg); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+/* Sidebar header: no workspace selector. Accent identity shows the Flux mark; rail identity names the open project. */
+.ws { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 2px 0 8px; margin-bottom: 8px; }
+.brand { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; font-size: 19px; font-weight: 600; letter-spacing: -0.04em; color: var(--text); line-height: 1; }
+.brand svg { color: var(--accent); }
+.ctx-head { display: none; flex: 1; min-width: 0; flex-direction: column; line-height: 1.3; }
+.ctx-head b { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ctx-head span { font-size: 12px; color: var(--text-3); }
+/* Geometric project monograms: one letter on a tint, the shape varies per project. */
+.pm { display: inline-grid; place-items: center; flex: none; width: 20px; height: 20px; border-radius: 6px; font-size: 12px; font-weight: 600; line-height: 1; letter-spacing: 0;
+  background: var(--pm-1); color: var(--pm-1-t); }
+.pm.p2 { background: var(--pm-2); color: var(--pm-2-t); border-radius: 50%; }
+.pm.p3 { background: var(--pm-3); color: var(--pm-3-t); border-radius: 10px 3px 10px 3px; }
+.pm.p4 { background: var(--pm-4); color: var(--pm-4-t); clip-path: polygon(0 0, 72% 0, 100% 28%, 100% 100%, 0 100%); border-radius: 5px; }
+.nav .ic { color: var(--text-3); }
+.nav .lock-s { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-3); }
+.sec-threads { display: none; }
+.nav .seg-t { white-space: nowrap; }
+.nav button.item { margin: 0; }
+
+/* ---------- Rail (identity "rail") ---------- */
+.rail { display: none; }
+[data-identity="rail"] .rail {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; width: var(--rail-w); flex: none;
+  background: var(--rail-bg); padding: 10px 0; padding-top: max(10px, env(safe-area-inset-top)); padding-bottom: max(10px, env(safe-area-inset-bottom));
+  overflow-y: auto; scrollbar-width: none;
+}
+[data-identity="rail"] .rail { box-shadow: inset -1px 0 0 var(--rail-line); }
+.rail-mark { display: grid; place-items: center; width: 40px; height: 40px; color: var(--lime); margin-bottom: 4px; }
+.rail-btn { position: relative; display: grid; place-items: center; width: 40px; height: 40px; flex: none; border-radius: 12px; color: var(--rail-fg); transition: var(--tr); }
+.rail-btn:hover { background: var(--rail-hover); color: var(--rail-on); }
+.rail-btn:active { transform: scale(.94); transition-duration: calc(var(--dur-1) / 2); }
+.rail-btn[aria-current="page"] { background: var(--rail-active); color: var(--rail-on); }
+/* Discord-like marker: a short lime bar on the rail's edge beside the open place. */
+.rail-btn::before { content: ""; position: absolute; left: -10px; top: 50%; width: 4px; height: 8px; margin-top: -4px; border-radius: 0 3px 3px 0; background: var(--lime); opacity: 0; transform: scaleY(.5); transition: var(--tr); }
+.rail-btn[aria-current="page"]::before { opacity: 1; transform: scaleY(2.5); }
+.rail-btn:focus-visible { outline-color: var(--lime); }
+.rail .pm { width: 30px; height: 30px; font-size: 13px; border-radius: 9px; }
+.rail .pm.p1 { background: #2A331F; color: #D3EA8A; }
+.rail .pm.p2 { background: #272630; color: #C5C1D6; border-radius: 50%; }
+.rail .pm.p3 { background: #1D2E2B; color: #A8D5CF; border-radius: 14px 4px 14px 4px; }
+.rail .pm.p4 { background: #33291E; color: #E6C9A0; border-radius: 7px; }
+.rail-sep { width: 24px; height: 1px; background: var(--rail-line); margin: 6px 0; flex: none; }
+.rail-badge { position: absolute; right: -3px; top: -3px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--lime); color: #111310;
+  font-size: 12px; font-weight: 600; line-height: 18px; text-align: center; box-shadow: 0 0 0 2px var(--rail-bg); font-variant-numeric: tabular-nums; }
+.rail-add { color: #8A9180; }
+[data-identity="rail"] .side-in { width: 232px; }
+[data-identity="rail"] .brand, [data-identity="rail"] .sec-home, [data-identity="rail"] .sec-projects, [data-identity="rail"] .sec-dms { display: none; }
+[data-identity="rail"] .ctx-head { display: flex; }
+[data-identity="rail"] .sec-threads { display: block; }
+@media (hover: hover) and (pointer: fine) {
+  .rail [data-tip]::after { top: 50%; right: auto; left: calc(100% + 10px); transform: translate(-2px, -50%); }
+  .rail [data-tip]:hover::after, .rail [data-tip]:focus-visible::after { transform: translate(0, -50%); }
+}
+
+/* ---------- Divider motif (identity "accent"): the mark, small, opens the away/today lines ---------- */
+[data-identity="accent"] .day.away::before, [data-identity="accent"] .day.new::before {
+  content: ""; width: 9px; height: 10px; flex: none; margin-right: -4px; background: var(--accent);
+  -webkit-mask: var(--mark-mask) center / contain no-repeat; mask: var(--mark-mask) center / contain no-repeat;
+}
+:root { --mark-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 27'%3E%3Cpath d='M3.6 21.2L10.4 6.2M14 9.2l4 8.4' stroke='%23000' stroke-width='4' stroke-linecap='round' fill='none'/%3E%3C/svg%3E"); }
 .jump {
   display: flex; align-items: center; gap: 8px; width: 100%; min-height: var(--ctl); padding: 0 10px;
   border-radius: var(--r); color: var(--text-3); font-size: 14px; box-shadow: inset 0 0 0 1px var(--line);
@@ -425,6 +517,19 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
 .obj.result .row { display: flex; gap: 12px; align-items: center; }
 .obj.result .acts { display: flex; gap: 8px; flex-wrap: wrap; padding-left: 44px; }
 .need-you { color: var(--accent); font-weight: 500; }
+/* Evidence cue under a result: which decision it follows and where the evidence is. Quiet text, each part opens its panel view. */
+.basis { display: flex; flex-wrap: wrap; gap: 0 14px; margin-top: 8px; font-size: 13px; line-height: 1.55; color: var(--text-3); }
+.b-part { display: inline-flex; align-items: center; gap: 0 5px; min-width: 0; }
+.b-part > svg { color: var(--text-3); }
+.l-ph { display: none; }
+.ref { display: inline-block; padding: 2px 3px; margin: 0 -3px; border-radius: 4px; line-height: 20px; color: var(--text-2); font-weight: 500;
+  text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; transition: var(--tr); }
+.ref:hover { background: var(--bg-hover); color: var(--text); text-decoration-color: var(--text-3); }
+.cap-note { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-3); margin-top: 10px; }
+.cap-box { width: 100%; min-height: 112px; margin-top: 12px; padding: 10px 12px; border: 0; border-radius: var(--r-lg); resize: vertical; background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--line-strong); line-height: 1.5; font-size: 15px; outline: none; transition: var(--tr); }
+.cap-box:focus { box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 3px var(--accent-soft); }
+.cap-box::placeholder { color: var(--text-3); }
 .chip {
   display: inline-flex; align-items: center; gap: 7px; min-height: 30px; padding: 0 11px 0 9px; border-radius: 999px;
   box-shadow: inset 0 0 0 1px var(--line); font-size: 13px; color: var(--text-2);
@@ -558,10 +663,11 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
 /* ---------- ≤1180: sidebar becomes a drawer ---------- */
 @media (max-width: 1180px) {
   .only-narrow { display: inline-grid; }
-  .sidebar { position: fixed; left: 0; top: 0; bottom: 0; z-index: 40; width: 288px; box-shadow: var(--shadow);
+  .sidebar { position: fixed; left: 0; top: 0; bottom: 0; z-index: 40; box-shadow: var(--shadow);
     transform: translateX(calc(-100% - 40px)); visibility: hidden;
     transition: transform var(--dur-2) var(--ease-in), visibility 0s linear var(--dur-2); }
   body.nav-open .sidebar { transform: none; visibility: visible; transition: transform var(--dur-3) var(--ease-sheet); }
+  .side-in, [data-identity="rail"] .side-in { width: 288px; }
   .top { padding-left: 8px; }
 }
 /* ---------- ≤980: side panel overlays instead of docking ---------- */
@@ -580,6 +686,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
   .box { padding: 4px 4px 4px 14px; align-items: center; }
   .box textarea { min-height: 44px; padding: 10px 0; }
   .p-back { min-height: 44px; }
+  .rail-btn { width: 44px; height: 44px; }
   .tab { min-height: 44px; padding: 0 12px; }
   .state { display: none; }
   .state-btn { display: flex; align-items: center; gap: 8px; flex: none; width: 100%; min-height: 44px; padding: 0 12px 0 20px; font-size: 13px; color: var(--text-3); text-align: left; white-space: nowrap; transition: var(--tr); }
@@ -597,7 +704,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
   .top { height: 56px; padding: 0 4px; padding-top: env(safe-area-inset-top); height: calc(56px + env(safe-area-inset-top)); }
   .top { padding-top: env(safe-area-inset-top); padding-bottom: 0; }
   .title { flex: 1; min-width: 0; gap: 6px; line-height: 1.3; }
-  .title .crumb, .title .slash, .faces, .presence { display: none; }
+  .title .crumb, .title .slash, .title .pm, .faces, .presence { display: none; }
   .title .sep { display: inline; }
   .title .topic { font-size: 15px; }
   .state-btn { padding-left: 16px; padding-right: 10px; border-top: 1px solid var(--line); }
@@ -611,11 +718,14 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
   .typing .av { width: 32px; }
   .obj { max-width: none; }
   .obj.result .acts { padding-left: 0; }
+  .basis .l-desk { display: none; }
+  .basis .l-ph { display: inline; }
   .obj.result .acts .btn { flex: 1; }
   .msg.failed .bubble { margin-left: -10px; padding: 10px 12px; }
   .since-item .when { display: none; }
   .intro h2 { font-size: 18px; }
   .sidebar { width: 100%; border-right: 0; }
+  .side-in, [data-identity="rail"] .side-in { width: auto; }
   .views { padding: 0 4px; gap: 0; }
   .pane-in { padding-left: 16px; padding-right: 16px; }
   .item-r .av { display: none; }
@@ -656,38 +766,64 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
     <symbol id="i-spark" viewBox="0 0 16 16"><path d="M8 2.5l1.3 3.2 3.2 1.3-3.2 1.3L8 11.5 6.7 8.3 3.5 7l3.2-1.3z" fill="currentColor"/><path d="M12.5 11l.5 1.5 1.5.5-1.5.5-.5 1.5-.5-1.5-1.5-.5 1.5-.5z" fill="currentColor"/></symbol>
     <symbol id="i-st-progress" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.75" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M8 4.5a3.5 3.5 0 010 7z" fill="currentColor"/></symbol>
     <symbol id="i-st-review" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.75" stroke="currentColor" stroke-width="1.5" fill="none" stroke-dasharray="2.2 1.8"/><circle cx="8" cy="8" r="2.25" fill="currentColor"/></symbol>
+    <symbol id="i-flux" viewBox="0 0 24 27"><path d="M3.6 21.2L10.4 6.2M14 9.2l4 8.4" stroke="currentColor" stroke-width="4" stroke-linecap="round" fill="none"/></symbol>
+    <symbol id="i-home" viewBox="0 0 16 16"><path d="M2.75 7.25L8 2.75l5.25 4.5v5.5a1 1 0 01-1 1H10v-4H6v4H3.75a1 1 0 01-1-1z" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 16 16"><path d="M3 3.25h10a1 1 0 011 1v6a1 1 0 01-1 1H7.5L4.5 13.5v-2.25H3a1 1 0 01-1-1v-6a1 1 0 011-1z" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round"/></symbol>
+    <symbol id="i-capture" viewBox="0 0 16 16"><path d="M9.5 2.75H4a1 1 0 00-1 1v8.5a1 1 0 001 1h8.5a1 1 0 001-1V7" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/><path d="M12 1.75v4.5M9.75 4h4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
   </defs>
 </svg>
 
 <div class="app">
   <!-- ============ Sidebar ============ -->
-  <nav class="sidebar" id="sidebar" aria-label="Workspace" tabindex="-1">
+  <nav class="sidebar" id="sidebar" aria-label="Navigation" tabindex="-1">
+    <!-- Identity "rail": where you are (Home, Direct messages, projects); the light sidebar shows what is inside. -->
+    <div class="rail" aria-label="Places">
+      <span class="rail-mark" role="img" aria-label="Flux"><svg width="22" height="25" aria-hidden="true"><use href="#i-flux"/></svg></span>
+      <button class="rail-btn" type="button" aria-label="Home, 3 need you" data-tip="Home"><svg width="18" height="18" aria-hidden="true"><use href="#i-home"/></svg><span class="rail-badge" aria-hidden="true">3</span></button>
+      <button class="rail-btn" type="button" aria-label="Direct messages, 1 unread" data-tip="Direct messages"><svg width="18" height="18" aria-hidden="true"><use href="#i-chat"/></svg><span class="rail-badge" aria-hidden="true">1</span></button>
+      <span class="rail-sep" aria-hidden="true"></span>
+      <button class="rail-btn" type="button" aria-current="page" aria-label="Shared export" data-tip="Shared export"><span class="pm p1" aria-hidden="true">S</span></button>
+      <button class="rail-btn" type="button" aria-label="Guest onboarding" data-tip="Guest onboarding"><span class="pm p2" aria-hidden="true">G</span></button>
+      <button class="rail-btn" type="button" aria-label="Gesture lamp" data-tip="Gesture lamp"><span class="pm p3" aria-hidden="true">L</span></button>
+      <button class="rail-btn" type="button" aria-label="Harbor mobile app" data-tip="Harbor mobile app"><span class="pm p4" aria-hidden="true">H</span></button>
+      <button class="rail-btn rail-add" type="button" aria-label="New project" data-tip="New project"><svg width="16" height="16" aria-hidden="true"><use href="#i-plus"/></svg></button>
+    </div>
+    <div class="side-in">
     <div class="ws">
-      <button class="ws-btn" type="button"><span class="ws-mark" aria-hidden="true">T</span>Tide</button>
+      <span class="brand"><svg width="18" height="20" aria-hidden="true"><use href="#i-flux"/></svg>flux</span>
+      <span class="ctx-head"><b>Shared export</b><span>Ari, Nia and you</span></span>
       <button class="icon-btn only-narrow" type="button" data-close-nav aria-label="Close sidebar"><svg width="16" height="16"><use href="#i-x"/></svg></button>
     </div>
     <button class="jump" type="button" id="jump"><svg width="15" height="15" aria-hidden="true"><use href="#i-search"/></svg>Jump to…<kbd aria-label="Command K">⌘K</kbd></button>
     <div class="nav">
       <div class="nav-sec">
-        <a href="#since" data-nav-close><svg width="16" height="16" aria-hidden="true" style="color:var(--text-3)"><use href="#i-inbox"/></svg>For you<span class="n unread">3</span></a>
+        <a href="#since" class="sec-home" data-nav-close><svg class="ic" width="16" height="16" aria-hidden="true"><use href="#i-home"/></svg>Home<span class="n unread" aria-label="3 need you">3</span></a>
+        <button class="item" type="button" data-open="capture"><svg class="ic" width="16" height="16" aria-hidden="true"><use href="#i-capture"/></svg>Capture<span class="lock-s"><svg width="12" height="12" aria-hidden="true"><use href="#i-lock"/></svg>Private</span></button>
       </div>
-      <div class="nav-sec" aria-labelledby="h-proj">
+      <div class="nav-sec sec-projects" aria-labelledby="h-proj">
         <div class="nav-h" id="h-proj">Projects</div>
-        <a href="#" aria-current="page" data-nav-close><span class="hash" aria-hidden="true">#</span>Shared export<span class="n unread" id="badge-shared">7</span></a>
-        <a href="#"><span class="hash" aria-hidden="true">#</span>Guest onboarding<span class="n">2</span></a>
-        <a href="#"><span class="hash" aria-hidden="true">#</span>Billing migration</a>
-        <a href="#"><span class="hash" aria-hidden="true">#</span>Audit log retention</a>
-        <a href="#"><span class="hash" aria-hidden="true">#</span>Harbor mobile app</a>
+        <a href="#" aria-current="page" data-nav-close><span class="pm p1" aria-hidden="true">S</span>Shared export<span class="n unread" id="badge-shared">7</span></a>
+        <a href="#"><span class="pm p2" aria-hidden="true">G</span>Guest onboarding<span class="n">2</span></a>
+        <a href="#"><span class="pm p3" aria-hidden="true">L</span>Gesture lamp</a>
+        <a href="#"><span class="pm p4" aria-hidden="true">H</span>Harbor mobile app</a>
       </div>
-      <div class="nav-sec" aria-labelledby="h-people">
-        <div class="nav-h" id="h-people">People</div>
-        <a href="#"><span class="person-av" aria-hidden="true">N<span class="st"></span></span>Nia<span class="vh">, online</span></a>
+      <div class="nav-sec sec-threads" aria-labelledby="h-threads">
+        <div class="nav-h" id="h-threads">Conversations</div>
+        <a href="#" aria-current="page" data-nav-close><svg class="ic" width="16" height="16" aria-hidden="true"><use href="#i-chat"/></svg><span class="seg-t">Guest visibility in exports</span><span class="n unread" id="badge-thread">7</span></a>
+        <a href="#"><svg class="ic" width="16" height="16" aria-hidden="true"><use href="#i-chat"/></svg><span class="seg-t">Count of hidden items</span><span class="n">2</span></a>
+        <a href="#"><svg class="ic" width="16" height="16" aria-hidden="true"><use href="#i-chat"/></svg><span class="seg-t">40k-row export timing</span></a>
+      </div>
+      <div class="nav-sec sec-dms" aria-labelledby="h-people">
+        <div class="nav-h" id="h-people">Direct messages</div>
+        <a href="#"><span class="person-av" aria-hidden="true">N<span class="st"></span></span>Nia<span class="vh">, online</span><span class="n unread" aria-label="1 unread">1</span></a>
         <a href="#"><span class="person-av" aria-hidden="true">A<span class="st away"></span></span>Ari<span class="sub">away until Oct 3</span></a>
       </div>
     </div>
     <div class="me">
       <span class="av me-av" aria-hidden="true">J</span>
       <div><b>Jo Marsh</b><span>Back today, 09:02</span></div>
+    </div>
     </div>
   </nav>
   <div class="scrim" id="scrim"></div>
@@ -698,12 +834,12 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
       <button class="icon-btn only-narrow" type="button" id="menu-btn" aria-label="Open sidebar" aria-controls="sidebar" aria-expanded="false" data-tip="Sidebar" data-tip-align="start"><svg width="18" height="18"><use href="#i-menu"/></svg></button>
       <div class="head-b">
         <div class="title">
-          <span class="crumb">Tide</span><span class="slash" aria-hidden="true">/</span>
+          <span class="pm p1" aria-hidden="true">S</span>
           <h1>Shared export</h1><span class="sep" aria-hidden="true">›</span>
           <span class="topic">Guest visibility of archived items in exports</span>
         </div>
         <p class="state" aria-label="Current state">
-          <button class="state-seg" type="button" data-open="decision"><span class="dot ok" aria-hidden="true"></span><span class="seg-t">Current rule: exclude items guests can’t open</span></button><span class="state-sep" aria-hidden="true">·</span>
+          <button class="state-seg" type="button" data-open="decision"><svg width="13" height="13" aria-hidden="true"><use href="#i-rule"/></svg><span class="seg-t">Current rule: exclude items guests can’t open</span></button><span class="state-sep" aria-hidden="true">·</span>
           <button class="state-seg" type="button" data-open="work"><svg width="12" height="12" aria-hidden="true"><use href="#i-st-progress"/></svg><span class="seg-t">Work in progress (Nia)</span></button><span class="state-sep" aria-hidden="true">·</span>
           <button class="state-seg need" type="button" data-open="result"><span class="dot accent" aria-hidden="true"></span><span class="seg-t">Result waiting for your review</span></button>
         </p>
@@ -813,7 +949,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
           </div>
         </div>
 
-        <div class="day">Sep 25</div>
+        <div class="day" id="return-anchor">Sep 25</div>
         <article class="msg">
           <span class="av" aria-hidden="true">N</span>
           <div class="meta"><span class="who">Nia</span><time>16:02</time></div>
@@ -832,6 +968,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
               </div>
             </div>
           </div>
+          <p class="basis"><span class="b-part"><svg width="13" height="13" aria-hidden="true"><use href="#i-rule"/></svg><span class="l-desk">Based on</span> <button class="ref" type="button" data-open="decision"><span class="l-desk">Current rule</span><span class="l-ph">Rule</span>: exclude items guests can’t open</button></span><span class="b-part"><span>Source:</span> <button class="ref" type="button" data-open="sources">Permission test output</button></span></p>
         </article>
 
         <div class="sys warn" id="test-notice">
@@ -931,7 +1068,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
         <ol class="flow as-map" id="flow" aria-label="From source to result">
           <li class="node"><button class="node-b" type="button" data-open="sources"><span class="node-k">Source</span><span class="node-t">Support report, Halden Co</span><span class="node-s">Redacted PDF · Sep 20</span></button><span class="edge">led to</span></li>
           <li class="node replaced"><button class="node-b" type="button" data-open="decision"><span class="node-k">Earlier rule · replaced</span><span class="node-t">Include archived items for members</span><span class="node-s">Aug 30 – Sep 22</span></button><span class="edge">replaced by</span></li>
-          <li class="node now"><button class="node-b" type="button" data-open="decision"><span class="node-k"><span class="dot ok" aria-hidden="true"></span>Current rule</span><span class="node-t">Exclude items guests can’t open</span><span class="node-s">Accepted Sep 22</span></button><span class="edge">applied in</span></li>
+          <li class="node now"><button class="node-b" type="button" data-open="decision"><span class="node-k"><svg width="12" height="12" aria-hidden="true"><use href="#i-rule"/></svg>Current rule</span><span class="node-t">Exclude items guests can’t open</span><span class="node-s">Accepted Sep 22</span></button><span class="edge">applied in</span></li>
           <li class="node"><button class="node-b" type="button" data-open="work"><span class="node-k">Work · in progress</span><span class="node-t">Apply the check to export generation</span><span class="node-s">Nia · due Oct 1</span></button><span class="edge">produced</span></li>
           <li class="node need"><button class="node-b" type="button" data-open="result"><span class="node-k"><span class="dot accent" aria-hidden="true"></span>Result · needs you</span><span class="node-t">Patch and permission tests</span><span class="node-s">Waiting for your review</span></button></li>
         </ol>
@@ -982,8 +1119,16 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
         <p class="ids">W-1 · C-1 · project Tide/shared-export<button class="btn quiet" type="button" data-copy="flux://tide/shared-export">Copy link</button></p>
       </section>
 
+      <section data-view="capture" data-title="Capture" hidden>
+        <p class="eyebrow"><svg width="13" height="13" aria-hidden="true"><use href="#i-lock"/></svg>Only you · private until you share it</p>
+        <label class="p-title" for="capture-box" style="display:block">Capture a thought</label>
+        <p class="p-lead">Text, a link or an image. Nothing is posted; share it into a project or a direct message later.</p>
+        <textarea class="cap-box" id="capture-box" placeholder="What’s on your mind…"></textarea>
+        <div class="p-acts"><button class="btn primary" type="button" data-confirm="Saved privately">Save privately</button></div>
+      </section>
+
       <section data-view="decision" data-title="Decision" hidden>
-        <p class="eyebrow"><span class="dot ok" aria-hidden="true"></span>Current rule · accepted Sep 22</p>
+        <p class="eyebrow"><svg width="13" height="13" aria-hidden="true"><use href="#i-rule"/></svg>Current rule · accepted Sep 22</p>
         <p class="p-title">Exclude items guests can't open</p>
         <p class="p-lead">CSV and XLSX exports leave out every item the recipient can't open. The check runs when the file is generated, so items archived after an export was scheduled are covered too.</p>
         <div class="p-sec">
@@ -1207,7 +1352,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
     $$('[data-view]', panel).forEach(s => { if (!(moving && s === prev)) s.hidden = s !== next; });
     const title = $('#p-title'), back = $('#p-back');
     title.textContent = next.dataset.title;
-    const wantBack = view !== 'overview';
+    const wantBack = view !== 'overview' && view !== 'capture'; // a private capture is not a project detail
     if (back.hidden === wantBack) { back.hidden = !wantBack; if (wantBack && dir) enter(back, { opacity: 0, transform: 'translateX(6px)' }, d2); }
     pBody.scrollTop = 0;
     let done = Promise.resolve();
@@ -1291,7 +1436,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
   const nav = $('.nav'), ind = document.createElement('span');
   ind.className = 'nav-ind'; ind.setAttribute('aria-hidden', 'true'); nav.prepend(ind); nav.classList.add('has-ind');
   function placeInd(animate = true) {
-    const cur = $('.nav a[aria-current="page"]');
+    const cur = $$('.nav a[aria-current="page"]').find(a => a.offsetParent);
     if (!cur) { ind.hidden = true; return; }
     ind.hidden = false;
     if (!animate) ind.style.transition = 'none';
@@ -1301,12 +1446,17 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
   nav.addEventListener('click', e => {
     const a = e.target.closest('a[href="#"]'); if (!a) return;
     e.preventDefault();
-    $$('.nav a[aria-current]').forEach(x => x.removeAttribute('aria-current'));
+    $$('a[aria-current]', a.closest('.nav-sec').parentElement).forEach(x => { if (x.offsetParent) x.removeAttribute('aria-current'); });
     a.setAttribute('aria-current', 'page'); placeInd();
     // In the drawer, let the selection land before the drawer leaves.
     if (mqNavDrawer.matches) setTimeout(() => closeNav(false), T('--dur-2'));
   });
   addEventListener('resize', () => placeInd(false));
+  // Rail: one place is current; the marker bar grows beside it.
+  $$('.rail-btn:not(.rail-add)').forEach(b => b.addEventListener('click', () => {
+    $$('.rail-btn[aria-current]').forEach(x => x.removeAttribute('aria-current'));
+    b.setAttribute('aria-current', 'page');
+  }));
 
   // ---- Project views: one underline slides to the chosen tab; panes slide in from the side they sit on ----
   const tabs = $$('.views [role="tab"]'), viewsBar = $('.views'), viewsInd = $('.views-ind');
@@ -1383,7 +1533,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
     const dot = $('.since-btn .dot'), label = sinceBtn.querySelector('span:not(.dot)');
     setSince(false); sinceBtn.focus();
     swap(label, () => { label.innerHTML = '<b>All caught up</b> · <span class="need">3 still need you</span>'; });
-    setCount($('#badge-shared'), 3);
+    setCount($('#badge-shared'), 3); setCount($('#badge-thread'), 3);
     announce('Marked as read. 3 still need you.');
     const a = await leave(dot, { opacity: 0, transform: 'scale(.3)' }, T('--dur-2'));
     dot.className = 'dot ring'; if (a) a.cancel();
@@ -1397,14 +1547,24 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
   });
 
   // ---- Latest pill ----
-  const latest = $('#latest'), feedWrap = $('.feed-wrap'), anchor = $('#review-btn').closest('.msg');
+  const latest = $('#latest'), feedWrap = $('.feed-wrap'), anchor = $('#return-anchor');
   const atBottom = () => feed.scrollHeight - feed.scrollTop - feed.clientHeight < 24;
   function setLatest(on) { latest.classList.toggle('show', on); latest.inert = !on; feedWrap.classList.toggle('has-latest', on); }
   function scrollToEnd() { feed.scrollTo({ top: feed.scrollHeight, behavior: T('--dur-1') ? 'smooth' : 'auto' }); }
+  // Open on the day that holds the result waiting for Jo, and always at a whole block: if the feed cannot
+  // scroll that far (short content, tall window), back up to the start of whatever the top edge would cut.
   function place() {
-    const toResult = feed.scrollTop + anchor.getBoundingClientRect().top - feed.getBoundingClientRect().top - 8;
-    feed.scrollTop = Math.min(feed.scrollHeight, toResult < feed.scrollHeight - feed.clientHeight ? toResult : feed.scrollHeight);
-    setLatest(!atBottom());
+    for (let pass = 0; pass < 2; pass++) {
+      const top0 = feed.getBoundingClientRect().top - feed.scrollTop, max = feed.scrollHeight - feed.clientHeight;
+      let y = Math.max(0, Math.min(max, anchor.getBoundingClientRect().top - top0 - 8));
+      const cut = $$('.feed-in > :not([hidden])', feed).find(b => {
+        const r = b.getBoundingClientRect(), t = r.top - top0, bottom = r.bottom - top0;
+        return t < y - 1 && bottom > y + 1;
+      });
+      if (cut) y = Math.max(0, cut.getBoundingClientRect().top - top0); // exact: blocks sit edge to edge
+      feed.scrollTop = y;
+      setLatest(!atBottom());
+    }
   }
   feed.addEventListener('scroll', () => { if (atBottom()) setLatest(false); }, { passive: true });
   latest.addEventListener('click', () => {
@@ -1555,9 +1715,9 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
   place(); placeInd(false); placeTabInd(false); syncInert(); syncSend();
   if (document.fonts) document.fonts.ready.then(() => { place(); placeInd(false); placeTabInd(false); });
 
-  // Review hashes: #details, #decision, #result, #sources, #agent-test, #agent-review, #nav, #since, #tasks, #map, #map-list, #docs
+  // Review hashes: #details, #capture, #decision, #result, #sources, #agent-test, #agent-review, #nav, #since, #tasks, #map, #map-list, #docs
   const h = location.hash.slice(1);
-  const views = { details: 'overview', decision: 'decision', result: 'result', sources: 'sources', 'agent-test': 'agent-test', 'agent-review': 'agent-review', handoff: 'handoff' };
+  const views = { details: 'overview', capture: 'capture', decision: 'decision', result: 'result', sources: 'sources', 'agent-test': 'agent-test', 'agent-review': 'agent-review', handoff: 'handoff' };
   if (views[h]) openPanel(views[h], detailsBtn, false);
   else if (h === 'nav' && mqNavDrawer.matches) openNav();
   else if (h === 'since') setSince(true);

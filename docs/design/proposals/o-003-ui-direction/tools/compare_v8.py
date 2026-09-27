@@ -4,9 +4,9 @@ Run from the repository root (v8 lives there, so the whole repository is mounted
   docker run --rm -v "$PWD:/repo" -w /repo/docs/design/proposals/o-003-ui-direction \
     mcr.microsoft.com/playwright/python:v1.62.0-noble python3 tools/compare_v8.py
 
-Writes screenshots/v8-<viewport>.png and screenshots/v8-<viewport>-details.png.
-C's matching shots (c-1440x900.png, c-1440x900-details.png, c-390x844.png,
-c-390x844-details.png) come from tools/audit.py.
+Writes screenshots/v8-<viewport>.png and screenshots/v8-<viewport>-details.png, and C's
+matching shots for both identity options at the same sizes and states:
+screenshots/c-<identity>-<viewport>[-details][-dark].png (identity: accent, the default, or rail).
 Desktop v8 always shows its context column, so its "details" state opens the
 discussed task from its card; on the phone it opens the context sheet.
 """
@@ -36,4 +36,21 @@ with sync_playwright() as p:
             page.screenshot(path=str(SHOTS / f"{name}.png"))
             print(name)
             page.close()
+    # C at the same sizes and states, once per identity option, light and dark.
+    C = ROOT / "variant-c-calm-messenger.html"
+    for identity in ("accent", "rail"):
+        for w, h in [(1440, 900), (390, 844)]:
+            touch = w <= 1024
+            for state in ("", "details"):
+                for scheme in ("light", "dark"):
+                    if scheme == "dark" and state:
+                        continue
+                    page = browser.new_page(viewport={"width": w, "height": h}, is_mobile=touch, has_touch=touch,
+                                            color_scheme=scheme)
+                    page.goto(C.as_uri() + f"?identity={identity}" + (f"#{state}" if state else ""))
+                    page.wait_for_timeout(500)
+                    name = f"c-{identity}-{w}x{h}" + (f"-{state}" if state else "") + ("-dark" if scheme == "dark" else "")
+                    page.screenshot(path=str(SHOTS / f"{name}.png"))
+                    print(name)
+                    page.close()
     browser.close()
