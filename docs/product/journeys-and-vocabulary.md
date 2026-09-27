@@ -26,7 +26,7 @@ These terms are provisional until #8 and #13 settle the segment and domain bound
 | Term | Working meaning | Ownership and visibility invariant |
 | --- | --- | --- |
 | **Team / organization** | Team is the people doing work. Organization is their administrative and data boundary where one exists. | Membership and administrator power differ; joining a team does not grant all projects or private drafts. |
-| **Workspace** | The team's place to find people, loose captures, projects, and results. | It has an explicit owner. A capture shows its audience before publication. |
+| **Workspace** | Administrative and data boundary with an explicit owner; not a required social group or selector before ordinary work. | Membership alone reveals no restricted project, DM or personal capture. A capture shows its audience before publication. |
 | **Direct message (DM)** | A private conversation with explicitly named participants, independent of any project. | A DM does not grant project membership; selecting content for a sketch or project previews exactly what is shared. Later DM messages never synchronize automatically. |
 | **Sketch / map thought** | A fluid shared or personal thinking surface with placements, shapes and semantic links; a thought need not become work. | Its audience and each linked object's audience are checked separately. Removing a placement does not delete the source object. |
 | **Project** | A continuing objective containing conversations, materials, decisions, work, and results. “Initiative” stays descriptive prose until another type proves useful. | Linking or moving content into a project cannot silently expand its audience. |
