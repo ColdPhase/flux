@@ -12,6 +12,7 @@ import { loadIdentityConfig, registerIdentity } from './identity/index.js';
 import { accessRoutes } from './access/routes.js';
 import { loadPushServerConfig, pushRoutes } from './push/index.js';
 import { setStaticHeaders } from './pwa/static-headers.js';
+import { conversationRoutes } from './conversation/routes.js';
 
 const connectionString = process.env.DATABASE_URL;
 const fixtureToken = process.env.FLUX_FIXTURE_TOKEN;
@@ -30,6 +31,7 @@ const identity = registerIdentity(app, { db, config: identityConfig });
 await app.register(accessRoutes, { db, sessions: identity });
 await app.register(pushRoutes, { db, sessions: identity, config: pushConfig });
 if (pushConfig.status === 'unavailable') app.log.warn(pushConfig.reason);
+await app.register(conversationRoutes, { db, sessions: identity });
 
 app.get('/api/v1/health', async (_request, reply) => {
   try {
