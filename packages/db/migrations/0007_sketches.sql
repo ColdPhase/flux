@@ -3,8 +3,7 @@
 -- the person who created it (scope 'private'). DM-bound sketches follow once conversations
 -- exist (#36). Composite foreign keys keep every thought and link in the sketch's workspace
 -- even if application code is wrong. Authorization
--- lives in packages/core (docs/development/sketches.md). Number 0006 is reserved by the
--- open conversation branch (#36); migrate.ts applies every unapplied file in order.
+-- lives in packages/core (docs/development/sketches.md).
 
 CREATE TABLE sketches (
   id uuid PRIMARY KEY,

@@ -25,8 +25,7 @@ caller can read in the same workspace (`404` or `422 CROSS_WORKSPACE`). The titl
 placement is returned only to readers who can open the object now; for anyone else it
 is `null`.
 
-Migration `0007_sketches.sql`. Number 0006 is taken by the open conversation branch
-(#36). `infra/migrate.ts` applies every unapplied file in order and checks that the
+Migration `0007_sketches.sql`. `infra/migrate.ts` applies every unapplied file in order and checks that the
 highest version equals `FLUX_SCHEMA_VERSION` (7).
 
 ## Access
