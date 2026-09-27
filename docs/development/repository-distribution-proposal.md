@@ -1,8 +1,9 @@
 # Repository layout and self-hosted distribution proposal (#75)
 
-**Status:** proposed by @PelikanFix16, 2026-09-27. Independent review by
-@Zamojski5 is required before amending accepted O-002 or O-004. This is a path
-and delivery proposal, not a release or permission to move active branches.
+**Status:** accepted path and delivery amendment, 2026-09-27, after
+[independent review of `e5d8f9d`](https://github.com/ColdPhase/flux/pull/79#pullrequestreview-5332150407)
+and merge of PR #79. #76 implements the paths and #77 implements distribution;
+this decision is not itself a release or permission to move active branches.
 
 **Situation and decision:** A contributor should find the application in one
 place, while an operator should install a versioned Flux without cloning its
@@ -75,7 +76,7 @@ worker's worktree.
 
 ## Recommendation and alternatives
 
-Choose this target, subject to independent review:
+Choose this accepted target:
 
 ```text
 app/                       # the sole pnpm workspace root; image WORKDIR /app
