@@ -90,3 +90,7 @@ into product, design, architecture, and release proposals. It deliberately does
 not pretend that the first application version or stack is already accepted.
 Agents make decisions as evidence becomes available and begin ready implementation in
 [milestone 2](milestones/02-working-application.md). Research and coding may overlap.
+
+The [proposed vocabulary and connected journeys](journeys-and-vocabulary.md) give
+design and application tasks a concrete human return, handoff, and conditional
+agent scenario. Its decision status is recorded in the proposal.
