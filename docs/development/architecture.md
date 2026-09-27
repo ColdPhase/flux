@@ -129,3 +129,9 @@ locking the behavior. Other structural hotspots (the multi-capability
 `apps/server/src/access/routes.ts`, fixture wiring in `apps/server/src/index.ts`
 and `apps/worker/src/index.ts`, the growing `packages/db/src/schema.ts`) follow the
 same plan.
+
+Resolved outside the allowlist: identity no longer queries session rows itself. The
+session list/revoke queries live in `packages/db/src/repositories/sessions.ts` behind
+the `SessionStore` port in `apps/server/src/identity/routes.ts`, identity takes a
+`@flux/db` `DbExecutor` instead of core's `Database`, and only `identity/auth.ts` wires
+Drizzle, for Better Auth's adapter ([#81](https://github.com/ColdPhase/flux/issues/81)).

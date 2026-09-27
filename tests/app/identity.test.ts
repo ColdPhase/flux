@@ -86,7 +86,9 @@ describe('human identity', () => {
 
     const other = await register(uniqueEmail('other'), password);
     const otherId = ((await other.browser.request('GET', '/api/v1/me')).json as Me).session.id;
-    assert.equal((await laptop.request('DELETE', `/api/v1/sessions/${otherId}`)).status, 404, 'cannot revoke another person\'s session');
+    const foreign = await laptop.request('DELETE', `/api/v1/sessions/${otherId}`);
+    assert.equal(foreign.status, 404, 'cannot revoke another person\'s session');
+    assert.deepEqual(foreign.json, { error: 'Session not found', code: 'SESSION_NOT_FOUND' });
     assert.equal((await other.browser.request('GET', '/api/v1/me')).status, 200);
 
     const revoked = await laptop.request('POST', '/api/v1/sessions/revoke-others');

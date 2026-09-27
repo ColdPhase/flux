@@ -1,8 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { schema } from '@flux/db';
-import type { Database } from '@flux/core';
+import { schema, type DbExecutor } from '@flux/db';
 import type { IdentityConfig } from './config.js';
 import type { Mailer } from './mailer.js';
 
@@ -11,7 +10,8 @@ export const CLIENT_IP_HEADER = 'x-flux-client-ip';
 export const SESSION_COOKIE_PREFIX = 'flux';
 
 export interface AuthDependencies {
-  db: Database;
+  /** Pool handle; Better Auth's Drizzle adapter reads and writes the auth tables through it. */
+  db: DbExecutor;
   config: IdentityConfig;
   mailer: Mailer | null;
   onMailError?: (error: unknown) => void;
