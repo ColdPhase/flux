@@ -2,9 +2,14 @@
 
 Conversations, mind maps, tasks, and wiki pages in one connected workspace.
 
-Flux is an open source project working toward a workspace that creative teams can
+Flux is an open source project working toward a workspace that teams can
 host themselves. The idea is to keep a discussion connected to the work and
 materials it produces.
+
+The [product foundation](docs/product/README.md) describes the broader direction:
+human and agent collaboration, continuity of project knowledge, self-hosting,
+extensibility, and a path to enterprise. The prototype below is an exploration;
+its layout and technology are not the accepted application design.
 
 ## Project status
 
@@ -64,6 +69,11 @@ prototype's design:
 - [UX specification](docs/prototype/SPECIFICATION.md) — design notes for this prototype.
 - [Changelog](docs/prototype/CHANGELOG.md) — changes in v8.
 - [UX audit](docs/prototype/AUDIT.md) — historical observations and limitations.
+- [Agent collaboration](docs/agents/README.md) — shared instructions, skills,
+  and a local milestone runner for Codex and Claude to work through GitHub.
+- [Run your worker](docs/agents/startup.md) — each person's commands, stop and resume.
+- [Product foundation and decisions](docs/product/README.md) — founder direction and open choices.
+- [Docker development](docs/development/containers.md) — the environment contract for the application.
 
 These notes describe the prototype and its design history. Future architecture
 and feature proposals are discussed in Issues and Discussions.

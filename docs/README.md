@@ -8,6 +8,25 @@ See the [project README](../README.md) for an introduction and quick start.
   submitting a pull request.
 - [Security policy](SECURITY.md) — supported code and private vulnerability reports.
 
+## Agent collaboration
+
+- [Agent workflow and harness design](agents/README.md) — shared Codex/Claude
+  instructions, GitHub communication, task contracts, and continuous release work.
+- [CI and releases](agents/ci-and-releases.md) — validation workflows, required PR
+  checks, packaging, and publication responsibilities.
+
+The local milestone runner is implemented; [startup](agents/startup.md) explains
+how each maintainer runs, stops, and resumes their worker. The first milestone
+prepares product/design/architecture decisions. Application technology and the
+first release scope still need acceptance.
+
+## Product and environment
+
+- [Product direction](product/README.md), including the full founder document.
+- [Decision register](product/decisions.md) — accepted direction, proposals, open choices.
+- [Design workflow](design/README.md) — realistic variants, density and independent review.
+- [Container development](development/containers.md) — Docker/Compose for the application and services.
+
 ## Prototype
 
 The v8 design documents are currently in Polish:

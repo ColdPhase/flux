@@ -24,5 +24,10 @@ section. Use sample data. -->
 <!-- Mention known limitations, saved-data compatibility, or follow-up work.
 Delete this section if it is not needed. -->
 
+<!-- For a task in the agent release workflow, link the accepted task contract,
+name the independent evaluator, and attach criterion-by-criterion evidence for
+the tested head. For CI changes include real run links; for release changes
+include the candidate SHA and packaged installation checks. -->
+
 - [ ] I read the [contributing guide](https://github.com/ColdPhase/flux/blob/main/docs/CONTRIBUTING.md) and kept this PR focused.
 - [ ] I described the checks I ran and updated relevant documentation.
