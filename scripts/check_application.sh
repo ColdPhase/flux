@@ -18,6 +18,7 @@ export FLUX_MAIL_FROM="Flux <flux@example.test>"
 export FLUX_AUTH_RATE_LIMIT=false
 # Short stream heartbeat so the suite observes pings and periodic session revalidation.
 export FLUX_STREAM_HEARTBEAT_MS=1000
+. scripts/test_images.sh
 compose="docker compose -p $project -f infra/compose.yaml -f infra/compose.test.yaml --profile test"
 
 cleanup() {
@@ -25,7 +26,8 @@ cleanup() {
   if [ "$status" -ne 0 ]; then
     $compose logs --no-color db migrate api worker mailpit pushmock test || true
   fi
-  $compose down -v
+  $compose down -v || true
+  remove_project_images
 }
 trap cleanup EXIT HUP INT TERM
 
