@@ -3,7 +3,7 @@ import type {
 } from '@flux/contracts';
 import { InvalidInputError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
-import type { AudienceEvent, ResolvedPlace, ReturnMessage, ReturnPorts, StoredReturnPoint } from './ports.js';
+import type { AudienceEvent, ResolvedPlace, ReturnMessage, ReturnPorts, ReturnSketch, StoredReturnPoint } from './ports.js';
 
 // "Since you left" (issue #106, foundation 8.8). The summary is built only from the reader's own
 // `event_audience` rows after their return point: the events they could read when each change
@@ -17,6 +17,10 @@ import type { AudienceEvent, ResolvedPlace, ReturnMessage, ReturnPorts, StoredRe
 // may move it back once ("keep for later").
 
 const SCAN = 400;
+/** Stop once this many visible changes are kept: there is more than one short list to show. */
+const VISIBLE_ENOUGH = 400;
+/** At most this many of the reader's own rows are read per summary. */
+const BUDGET = 8000;
 const MAX_ITEMS = 40;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -124,53 +128,66 @@ export function createReturnUseCases(ports: ReturnPorts) {
     const empty: ReturnSummary = { place, point: pointOf(place, own), mark: last?.id ?? null, items: [], needsYou: 0, more: false, nextStep: null };
     if (!base) return empty;
 
-    const scanned = await returns.audienceAfter(recipient, base.seq, SCAN);
-    const candidates = scanned.filter((event) => RELEVANT.has(event.kind) && event.actorId !== recipient && event.workspaceId);
-    const sketches = await returns.sketches([...new Set(candidates.filter((event) => event.kind.startsWith('sketch.')).map((event) => event.objectId))]);
+    // Pages of the reader's own rows, newest first. Scanning stops at the end, once enough
+    // visible changes are kept, or at a fixed row budget. `more` depends only on visible changes,
+    // so rows that are hidden now (revoked or restricted places) never hint that anything exists.
+    const sketches = new Map<string, ReturnSketch>();
     const projectOf = (event: AudienceEvent) => event.kind.startsWith('sketch.') ? sketches.get(event.objectId)?.projectId ?? null : event.objectId;
     const conversationOf = (event: AudienceEvent) => MESSAGE_KINDS.has(event.kind) ? str(event.data.conversationId) : null;
-
-    let events = candidates.filter((event) => {
-      if (event.kind.startsWith('sketch.') && !sketches.has(event.objectId)) return false;
-      if (resolved.type === 'project') return projectOf(event) === resolved.projectId;
-      if (resolved.type === 'conversation') return conversationOf(event) === resolved.conversationId;
-      return true;
-    });
-
-    // A change already seen in a narrower place (a project or one of its conversations) is not
-    // "since you left" here either.
-    const nested = new Set<string>();
-    for (const event of events) {
-      const project = projectOf(event);
-      const conversation = conversationOf(event);
-      if (resolved.type === 'home' && project) nested.add(key('project', project));
-      if (resolved.type !== 'conversation' && conversation) nested.add(key('conversation', conversation));
-    }
-    const narrower = nested.size ? await returns.points(userId, [...nested]) : new Map<string, StoredReturnPoint>();
-    events = events.filter((event) => {
-      const project = projectOf(event);
-      const conversation = conversationOf(event);
-      const seen = Math.max(base.seq,
-        resolved.type === 'home' && project ? narrower.get(key('project', project))?.seq ?? 0 : 0,
-        resolved.type !== 'conversation' && conversation ? narrower.get(key('conversation', conversation))?.seq ?? 0 : 0);
-      return event.seq > seen;
-    });
-
-    // Final check, as the stream does at delivery: the reader must still be able to read the
-    // object now. On Home each project must also be in the policy's list filter.
+    const narrower = new Map<string, StoredReturnPoint | null>();
     const allowed = new Map<string, boolean>();
     const visible = new Map<string, Set<string>>();
     const kept: AudienceEvent[] = [];
-    for (const event of events) {
-      const object = `${event.kind.split('.', 1)[0]}:${event.objectId}`;
-      if (!allowed.has(object)) allowed.set(object, await access.canReceive(principal, event));
-      if (!allowed.get(object)) continue;
-      const project = projectOf(event);
-      if (resolved.type === 'home' && project) {
-        if (!visible.has(event.workspaceId!)) visible.set(event.workspaceId!, await access.visibleProjects(principal, event.workspaceId!));
-        if (!visible.get(event.workspaceId!)!.has(project)) continue;
+    let before: number | null = null;
+    let read = 0;
+    let enough = false;
+    for (;;) {
+      const page = await returns.audienceAfter(recipient, base.seq, SCAN, before);
+      read += page.length;
+      const candidates = page.filter((event) => RELEVANT.has(event.kind) && event.actorId !== recipient && event.workspaceId);
+      const newSketches = [...new Set(candidates.filter((event) => event.kind.startsWith('sketch.') && !sketches.has(event.objectId)).map((event) => event.objectId))];
+      for (const [id, sketch] of await returns.sketches(newSketches)) sketches.set(id, sketch);
+      const events = candidates.filter((event) => {
+        if (event.kind.startsWith('sketch.') && !sketches.has(event.objectId)) return false;
+        if (resolved.type === 'project') return projectOf(event) === resolved.projectId;
+        if (resolved.type === 'conversation') return conversationOf(event) === resolved.conversationId;
+        return true;
+      });
+      // A change already seen in a narrower place (a project or one of its conversations) is not
+      // "since you left" here either.
+      const nested = new Set<string>();
+      for (const event of events) {
+        const project = projectOf(event);
+        const conversation = conversationOf(event);
+        if (resolved.type === 'home' && project) nested.add(key('project', project));
+        if (resolved.type !== 'conversation' && conversation) nested.add(key('conversation', conversation));
       }
-      kept.push(event);
+      const missing = [...nested].filter((item) => !narrower.has(item));
+      if (missing.length) {
+        const found = await returns.points(userId, missing);
+        for (const item of missing) narrower.set(item, found.get(item) ?? null);
+      }
+      for (const event of events) {
+        const project = projectOf(event);
+        const conversation = conversationOf(event);
+        const seen = Math.max(base.seq,
+          resolved.type === 'home' && project ? narrower.get(key('project', project))?.seq ?? 0 : 0,
+          resolved.type !== 'conversation' && conversation ? narrower.get(key('conversation', conversation))?.seq ?? 0 : 0);
+        if (event.seq <= seen) continue;
+        // Final check, as the stream does at delivery: the reader must still be able to read the
+        // object now. On Home each project must also be in the policy's list filter.
+        const object = `${event.kind.split('.', 1)[0]}:${event.objectId}`;
+        if (!allowed.has(object)) allowed.set(object, await access.canReceive(principal, event));
+        if (!allowed.get(object)) continue;
+        if (resolved.type === 'home' && project) {
+          if (!visible.has(event.workspaceId!)) visible.set(event.workspaceId!, await access.visibleProjects(principal, event.workspaceId!));
+          if (!visible.get(event.workspaceId!)!.has(project)) continue;
+        }
+        kept.push(event);
+      }
+      if (kept.length >= VISIBLE_ENOUGH) { enough = true; break; }
+      if (page.length < SCAN || read >= BUDGET) break;
+      before = page.at(-1)!.seq;
     }
 
     const built = await build(principal, userId, kept, projectOf);
@@ -178,7 +195,7 @@ export function createReturnUseCases(ports: ReturnPorts) {
     const items = [...needs, ...built.filter((item) => !item.needsYou)].slice(0, MAX_ITEMS).map(publicItem);
     return {
       ...empty, items, needsYou: needs.length,
-      more: built.length > MAX_ITEMS || scanned.length === SCAN,
+      more: built.length > MAX_ITEMS || enough,
       nextStep: nextStep(built),
     };
   }
@@ -381,8 +398,8 @@ export function createReturnUseCases(ports: ReturnPorts) {
           detail: `In ${quote(excerpt(conversation.opening, 60))}`, needsYou: true,
           source: { type: 'message', projectId: message.projectId, conversationId: conversation.id, messageId: message.id },
           step: { priority: addressed ? 1 : 2, text: `Answer ${author}'s question`,
-            reason: addressed ? `${author} asked you in ${quote(excerpt(conversation.opening, 60))}.`
-              : `${author} asked in ${quote(excerpt(conversation.opening, 60))}, a conversation you are part of.` } });
+            reason: addressed ? `${author} asked you in ${quote(excerpt(conversation.opening, 60))}: ${quote(excerpt(message.body, 140))}`
+              : `${author} asked in ${quote(excerpt(conversation.opening, 60))}, a conversation you are part of: ${quote(excerpt(message.body, 140))}` } });
         continue;
       }
       const grouped = conversationGroups.get(conversation.id) ?? [];

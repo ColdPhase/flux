@@ -105,6 +105,19 @@ function Item({ item, showProject }: { item: ReturnItem; showProject?: boolean }
   );
 }
 
+const FIRST = 6;
+
+/** Whole rows only: the first few, then "Show N more". The next step is not repeated here. */
+function Items({ summary, showProject }: { summary: ReturnSummary; showProject?: boolean }) {
+  const [all, setAll] = useState(false);
+  const rest = summary.items.filter((item) => item.id !== summary.nextStep?.item);
+  const visible = all ? rest : rest.slice(0, FIRST);
+  return <>
+    <ul className="since__list">{visible.map((item) => <Item key={item.id} item={item} showProject={showProject} />)}</ul>
+    {rest.length > visible.length ? <button type="button" className="since__more" onClick={() => setAll(true)}>Show {rest.length - visible.length} more</button> : null}
+  </>;
+}
+
 function NextStep({ step }: { step: ReturnNextStep }) {
   return (
     <div className="since__next">
@@ -150,7 +163,7 @@ export function SinceYouLeftLine({ projectId, conversationId }: { projectId: str
         <div id={panelId} className={`since__coll${open ? ' is-open' : ''}`} inert={!open}>
           <div className="since__clip">
             {summary.nextStep ? <NextStep step={summary.nextStep} /> : null}
-            <ul className="since__list">{summary.items.map((item) => <Item key={item.id} item={item} />)}</ul>
+            <Items summary={summary} />
             <Foot summary={summary} keep={keep} onKeep={() => void keepForLater()} />
           </div>
         </div>
@@ -165,7 +178,7 @@ export function SinceYouLeftHome() {
   // Nothing new is not news: Home stays as it was.
   if (!summary || !summary.point.savedAt || !summary.items.length) return null;
   const groups = new Map<string, { name: string; items: ReturnItem[] }>();
-  for (const item of summary.items) {
+  for (const item of summary.items.filter((entry) => entry.id !== summary.nextStep?.item)) {
     const key = item.project?.id ?? 'private';
     const group = groups.get(key) ?? { name: item.project?.name ?? 'Only you', items: [] };
     group.items.push(item);

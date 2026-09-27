@@ -74,8 +74,8 @@ export interface ReturnRepository {
   advance(userId: string, place: ResolvedPlace, seq: number): Promise<StoredReturnPoint>;
   /** Moves the point back to the previous one; a point without one is removed (the place is unviewed again). */
   restore(userId: string, key: string): Promise<StoredReturnPoint | null>;
-  /** The recipient's audience rows after `afterSeq`, newest first. */
-  audienceAfter(recipient: string, afterSeq: number, limit: number): Promise<AudienceEvent[]>;
+  /** The recipient's audience rows after `afterSeq` (and before `beforeSeq`, when given), newest first. */
+  audienceAfter(recipient: string, afterSeq: number, limit: number, beforeSeq?: number | null): Promise<AudienceEvent[]>;
   /** The recipient's own audience position of an event, or null when it is not theirs. */
   audienceSeq(recipient: string, eventId: string): Promise<number | null>;
   /** The recipient's last audience row. */

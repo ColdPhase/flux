@@ -32,8 +32,11 @@ conversation points are deleted with their place.
 `GET /api/v1/return?place=home|project|conversation&id=` returns `ReturnSummary`
 (`packages/contracts/src/returns.ts`). It is built in `packages/core/src/returns/service.ts`:
 
-1. Read the reader's own audience rows after the point, newest first. At most 400 rows are
-   read, with one primary-key range scan.
+1. Read the reader's own audience rows after the point, newest first, in pages of 400 by primary
+   key. Scanning stops at the end, once 400 visible changes are kept, or after 8,000 rows.
+   `more` is true only when more visible items exist than are shown (40) or the visible limit
+   was reached. Rows that are hidden now never set it, and a reader whose hidden rows fill whole
+   pages gets the same response as one who never had them (tested).
 2. Drop the reader's own changes, and anything that is not about this place.
 3. **Final check**, as the stream does at delivery: `authorizeEvent` for every event object now.
    On Home, each project must also pass the policy's list filter (`visibleFilter`). Revoked
@@ -86,5 +89,10 @@ the grouping and sources, the next step and how it changes when the question is 
 forward-only saving and restore, revoked access, and a restricted project leaking nothing (no
 items, ids, names or counts). `tests/ui/test_return_view.py` (Playwright) covers returning after
 changes on Home and on the project, keyboard expansion, opening a decision and a message source,
-"Keep these for next time", and the phone layout (44 px targets, no horizontal scroll).
-Screenshots: [`docs/design/return-view/`](../design/return-view/).
+"Keep these for next time", and the phone layout (44 px targets, no horizontal scroll). It also
+covers navigation from Home's next step to the message, the composer's audience line, and a
+phone reply sent from the composer. Playwright does not show a real software keyboard, so real
+iOS and Android keyboards remain unverified. The next step is not repeated in the list, and the
+list shows whole rows, six at first, then "Show N more". Screenshots:
+[`docs/design/return-view/`](../design/return-view/). `matched-*` are the same state at
+1440×900, 1280×800 and 390×844 at 100% zoom; `return-*` are the journey states.

@@ -162,7 +162,9 @@ class ReturnViewJourney(unittest.TestCase):
         expect(region).to_contain_text("3 need you")
         expect(region.get_by_role("heading", level=4, name="Gesture lamp")).to_be_visible()
         expect(region.locator(".since__next")).to_contain_text("Answer Ari's question")
-        expect(region.locator(".since__next")).to_contain_text("Ari asked you in “Camera or sensor for the bedside lamp?”.")
+        expect(region.locator(".since__next")).to_contain_text(f"Ari asked you in “Camera or sensor for the bedside lamp?”: “{QUESTION}”")
+        # The next step is not repeated in the list below it.
+        expect(region.locator(".since__item", has_text="Ari asked you")).to_have_count(0)
         expect(region.get_by_role("link", name=re.compile("Current rule changed: Exclude gestures in the dark"))).to_contain_text("Previously: Use the camera for gestures · No reason was recorded.")
         expect(region.get_by_role("link", name=re.compile("^Blocked: Order the wide-angle lens"))).to_contain_text("No reason was recorded.")
         # No guilt: nothing to clear and no badges in the rail.
@@ -178,13 +180,16 @@ class ReturnViewJourney(unittest.TestCase):
         expect(toggle).to_be_visible()
         expect(toggle).to_contain_text("3 need you")
         expect(toggle).to_have_attribute("aria-expanded", "false")
-        expect(line.get_by_role("link", name=re.compile("Ari asked you"))).to_be_hidden()
+        expect(line.get_by_role("link", name="Answer Ari's question")).to_be_hidden()
         shot(page, "return-project-desktop-1440-collapsed")
         toggle.focus()
         page.keyboard.press("Enter")
         expect(toggle).to_have_attribute("aria-expanded", "true")
         items = line.locator(".since__item")
-        expect(items).to_have_count(8)
+        # The next step is the question; the list shows the rest, whole rows only, six at first.
+        expect(items).to_have_count(6)
+        line.get_by_role("button", name="Show 1 more").click()
+        expect(items).to_have_count(7)
         # What needs Nia comes first, in human language.
         expect(items.nth(0)).to_contain_text("needs you")
         expect(line.locator(".since__next")).to_contain_text("Answer Ari's question")
@@ -201,7 +206,7 @@ class ReturnViewJourney(unittest.TestCase):
         page.keyboard.press("Escape")
 
         # The question opens on the whole message it came from.
-        line.get_by_role("link", name=re.compile("Ari asked you")).click()
+        line.get_by_role("link", name="Answer Ari's question").click()
         expect(page).to_have_url(re.compile(f"#message-{self.ids['question']}$"))
         message = page.locator(f"#message-{self.ids['question']}")
         expect(message).to_have_class(re.compile("is-arrived"))
@@ -229,6 +234,90 @@ class ReturnViewJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=2, name=OPENING)).to_be_visible()
         expect(page.get_by_role("region", name="Since you left")).to_have_count(0)
 
+    def context_at(self, who: str, viewport: dict, phone: bool) -> Page:
+        options: dict = {"base_url": ORIGIN, "color_scheme": "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw",
+                         "viewport": viewport, "device_scale_factor": 3 if phone else 1, "storage_state": self.states[who]}
+        if phone:
+            options.update(is_mobile=True, has_touch=True)
+        context = self.browser.new_context(**options)
+        self.addCleanup(context.close)
+        page = context.new_page()
+        errors: list[str] = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
+        return page
+
+    def restore(self, page: Page, *places: dict) -> None:
+        for place in places:
+            self.api(page, "POST", "/api/v1/return-points/restore", {"place": place}, status=200)
+
+    def test_08_matched_viewports_navigation_audience_and_composer(self) -> None:
+        """Same state at 1440x900, 1280x800 and 390x844 (100% zoom): Home, the project line above a real feed, then live navigation."""
+        ari = self.page("ari")
+        self.say(ari, "The PIR mount fits, but the cable needs 2 cm more slack. Nia, can you print the clip with the longer channel?")
+        self.api(ari, "POST", f"/api/v1/projects/{self.project_id}/decisions", {"title": "Route the cable through the lamp stem", "rationale": "Keeps the base flat"}, status=201)
+        self.api(ari, "POST", f"/api/v1/projects/{self.project_id}/work", {"title": "Print a new cable clip", "owner": {"kind": "human", "id": NIA["id"]}}, status=201)
+        project = {"type": "project", "id": self.project_id}
+        conversation = {"type": "conversation", "id": self.conversation_id}
+        for label, viewport, phone in (("desktop-1440", {"width": 1440, "height": 900}, False),
+                                       ("desktop-1280", {"width": 1280, "height": 800}, False),
+                                       ("phone-390", {"width": 390, "height": 844}, True)):
+            page = self.context_at("nia", viewport, phone)
+            page.goto("/")
+            region = page.get_by_role("region", name=re.compile("^Since you left"))
+            expect(region.locator(".since__next")).to_contain_text("Answer Ari's question")
+            self.no_horizontal_scroll(page)
+            shot(page, f"matched-home-{label}")
+            self.wait_saved(page, "home")
+            self.restore(page, {"type": "home"})
+            page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
+            line = page.get_by_role("region", name="Since you left")
+            toggle = line.get_by_role("button", name=re.compile("updates since"))
+            expect(toggle).to_be_visible()
+            # The line sits above a real feed: the thread stays readable below it.
+            expect(page.locator(".project-convo__message", has_text="The PIR mount fits, but the cable needs 2 cm more slack.")).to_be_visible()
+            self.no_horizontal_scroll(page)
+            shot(page, f"matched-project-{label}-collapsed")
+            toggle.click()
+            expect(line.locator(".since__next")).to_be_visible()
+            self.no_horizontal_scroll(page)
+            shot(page, f"matched-project-{label}-expanded")
+            self.wait_saved(page, "project")
+            self.restore(page, project, conversation)
+
+        # Navigation from Home: the next step opens the project on the whole message it names.
+        page = self.page("nia")
+        page.goto("/")
+        page.get_by_role("region", name=re.compile("^Since you left")).get_by_role("link", name="Answer Ari's question").click()
+        expect(page).to_have_url(re.compile(f"/projects/{self.project_id}/conversations/{self.conversation_id}#message-"))
+        expect(page.locator(".is-arrived")).to_be_in_viewport()
+        # The project line shows the same changes (the project point is older than Home's view).
+        expect(page.get_by_role("region", name="Since you left").get_by_role("button", name=re.compile("updates since"))).to_be_visible()
+        # Audience preview before writing: the composer names who will read the reply.
+        expect(page.locator(".composer__audience")).to_have_text(re.compile("Gesture lamp · People with project access · Saved to project"))
+        # Back on Home in the same visit, the list it showed is still there to continue from;
+        # a new visit (reload) starts after the saved point, so nothing is repeated.
+        self.wait_saved(page, "project")
+        page.get_by_role("link", name="Home").first.click()
+        expect(page.get_by_role("heading", name="Welcome, Nia")).to_be_visible()
+        expect(page.get_by_role("region", name=re.compile("^Since you left"))).to_be_visible()
+        page.reload()
+        expect(page.get_by_role("heading", name="Welcome, Nia")).to_be_visible()
+        expect(page.get_by_role("region", name=re.compile("^Since you left"))).to_have_count(0)
+
+        # Phone composer: after reading the line, the reply box is reachable, keeps its audience and sends.
+        phone = self.page("nia", phone=True)
+        phone.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
+        composer = phone.locator("#project-composer")
+        composer.tap()
+        composer.fill("Thanks, I will print the clip tonight.")
+        expect(composer).to_be_in_viewport()
+        expect(phone.locator(".composer__audience")).to_be_in_viewport()
+        self.no_horizontal_scroll(phone)
+        shot(phone, "matched-project-phone-390-composer")
+        phone.get_by_role("button", name="Send reply").tap()
+        expect(phone.locator(".project-convo__message", has_text="Thanks, I will print the clip tonight.")).to_be_visible()
+
     def test_07_phone_layout(self) -> None:
         ari = self.page("ari")
         self.say(ari, "Nia, can you send me a photo of the PIR mount when it is in?")
@@ -250,14 +339,14 @@ class ReturnViewJourney(unittest.TestCase):
         shot(page, "return-project-phone-390-collapsed")
         toggle.tap()
         items = line.locator(".since__item")
-        expect(items).to_have_count(2)
-        for index in range(2):
+        expect(items).to_have_count(1)
+        for index in range(1):
             item_box = items.nth(index).bounding_box()
             assert item_box is not None
             self.assertGreaterEqual(item_box["height"], 44)
         self.no_horizontal_scroll(page)
         shot(page, "return-project-phone-390-expanded")
-        line.get_by_role("link", name=re.compile("Ari asked you")).tap()
+        line.get_by_role("link", name="Answer Ari's question").tap()
         expect(page.locator(".is-arrived")).to_contain_text("photo of the PIR mount")
 
 

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, lt, sql, type SQL } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
@@ -57,14 +57,15 @@ export function returnRows(db: DbExecutor) {
     },
 
     /** The recipient's own audience rows after `afterSeq`, newest first, by primary key. */
-    audienceAfter(recipient: string, afterSeq: number, limit: number) {
+    audienceAfter(recipient: string, afterSeq: number, limit: number, beforeSeq: number | null = null) {
       return db.select({
         id: schema.events.id, seq: schema.eventAudience.seq, kind: schema.events.kind, workspaceId: schema.events.workspaceId,
         objectId: schema.events.objectId, actorId: schema.events.actorId, data: sql<Record<string, unknown>>`${schema.events.data}`,
         createdAt: schema.events.createdAt,
       }).from(schema.eventAudience)
         .innerJoin(schema.events, eq(schema.events.id, schema.eventAudience.eventId))
-        .where(and(eq(schema.eventAudience.recipient, recipient), gt(schema.eventAudience.seq, afterSeq)))
+        .where(and(eq(schema.eventAudience.recipient, recipient), gt(schema.eventAudience.seq, afterSeq),
+          beforeSeq === null ? undefined : lt(schema.eventAudience.seq, beforeSeq)))
         .orderBy(desc(schema.eventAudience.seq)).limit(limit);
     },
 

@@ -130,7 +130,7 @@ describe('return view: since you left', () => {
     assert.equal(back.needsYou, 3);
     assert.ok(back.items.slice(0, 3).every((item) => item.needsYou));
     assert.deepEqual(back.nextStep && [back.nextStep.text, back.nextStep.reason, back.nextStep.item],
-      ['Answer Ari\'s question', 'Ari asked you in “Camera or sensor for the lamp?”.', `message:${reply.id}`]);
+      ['Answer Ari\'s question', 'Ari asked you in “Camera or sensor for the lamp?”: “Nia, can you check the camera at 5 lux before Friday?”', `message:${reply.id}`]);
 
     // Ari's own changes are never "since you left" for Ari.
     const own = await summary(ari, { type: 'home' });
@@ -203,5 +203,37 @@ describe('return view: since you left', () => {
     assert.equal(after.nextStep, null);
     assert.equal((await nia.browser.request('GET', `/api/v1/return?place=project&id=${lamp.id}`)).status, 404);
     assert.equal((await nia.browser.request('PUT', '/api/v1/return-points', { body: { place: { type: 'project', id: lamp.id }, mark: null } })).status, 404);
+  });
+});
+
+describe('return view: hidden rows never hint at anything', () => {
+  test('hundreds of now-hidden audience rows give the same summary as never having had them', async () => {
+    const [ari, nia, olek] = await Promise.all(['Ari', 'Nia', 'Olek'].map(person));
+    const ws = await workspace(ari, 'Saturation studio');
+    await addMember(ari, ws.id, nia, 'member');
+    await addMember(ari, ws.id, olek, 'member');
+    const secret = await createProject(ari, ws.id, 'Secret launch', 'restricted');
+    await grant(ari, secret.id, nia, 'contributor');
+    const hiddenThread = json<Conversation>(await post(ari, `/api/v1/projects/${secret.id}/conversations`, { body: 'Launch plan', clientMessageId: randomUUID() }), 201);
+    for (const someone of [nia, olek]) await view(someone, { type: 'home' });
+
+    // More than one page (400) of Nia's audience rows, in a place she will lose.
+    for (let start = 0; start < 450; start += 25)
+      await Promise.all(Array.from({ length: 25 }, (_, index) => say(ari, hiddenThread.id, `Launch step ${start + index + 1}`)));
+    const open = await createProject(ari, ws.id, 'Open notes', 'workspace');
+    const openThread = json<Conversation>(await post(ari, `/api/v1/projects/${open.id}/conversations`, { body: 'Welcome to the open notes', clientMessageId: randomUUID() }), 201);
+    await say(ari, openThread.id, 'The workshop is on Thursday.');
+    const rows = await pool.query('SELECT count(*)::int AS n FROM event_audience ea JOIN events e ON e.id = ea.event_id WHERE ea.recipient = $1 AND e.object_id = $2', [`human:${nia.id}`, secret.id]);
+    assert.ok(rows.rows[0]!.n > 400, 'the hidden rows are more than one scan page');
+    await grant(ari, secret.id, nia, 'denied');
+
+    const shape = (summary: ReturnSummary) => ({ items: summary.items.map(({ text, detail, needsYou, kind, source, project }) => ({ text, detail, needsYou, kind, source, project })),
+      needsYou: summary.needsYou, more: summary.more, nextStep: summary.nextStep });
+    const hers = await summary(nia, { type: 'home' });
+    const his = await summary(olek, { type: 'home' });
+    assert.equal(hers.more, false, 'hidden rows do not make "more" true');
+    assert.deepEqual(shape(hers), shape(his), 'identical to a member who never had those events');
+    assert.deepEqual(texts(hers.items), ['Ari started “Welcome to the open notes”']);
+    assert.equal(JSON.stringify(hers).includes('Secret launch'), false);
   });
 });
