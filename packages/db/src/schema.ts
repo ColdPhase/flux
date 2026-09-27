@@ -446,3 +446,48 @@ export const projectObjectLinks = pgTable('project_object_links', {
   index('project_object_links_to_idx').on(table.toId),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
 ]);
+
+// Durable project-bound live sessions and identifier-only presentation trace (#61).
+// Access belongs to the existing project policy; media room IDs do not encode titles or users.
+export const liveSessions = pgTable('live_sessions', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  conversationId: uuid('conversation_id'),
+  workId: uuid('work_id'),
+  sketchId: uuid('sketch_id'),
+  createdBy: text('created_by').notNull().references(() => authUsers.id),
+  clientSessionId: uuid('client_session_id').notNull(),
+  state: text('state', { enum: ['available', 'ended'] }).notNull().default('available'),
+  generation: integer('generation').notNull().default(1),
+  roomId: text('room_id').notNull().unique(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique().on(table.createdBy, table.clientSessionId),
+  unique().on(table.workspaceId, table.projectId, table.id),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.conversationId], foreignColumns: [projectConversations.workspaceId, projectConversations.projectId, projectConversations.id] }),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.workId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.sketchId], foreignColumns: [sketches.workspaceId, sketches.projectId, sketches.id] }),
+  index('live_sessions_project_idx').on(table.projectId, table.createdAt.desc(), table.id.desc()),
+]);
+
+export const livePresentations = pgTable('live_presentations', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  sessionId: uuid('session_id').notNull(),
+  generation: integer('generation').notNull(),
+  createdBy: text('created_by').notNull().references(() => authUsers.id),
+  clientEventId: uuid('client_event_id').notNull(),
+  refType: text('ref_type', { enum: ['message', 'material', 'work', 'result', 'sketch'] }).notNull(),
+  refId: uuid('ref_id').notNull(),
+  refVersion: integer('ref_version').notNull(),
+  selectedThoughtIds: uuid('selected_thought_ids').array().notNull().default([]),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique().on(table.sessionId, table.createdBy, table.clientEventId),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.sessionId], foreignColumns: [liveSessions.workspaceId, liveSessions.projectId, liveSessions.id] }).onDelete('cascade'),
+  index('live_presentations_session_idx').on(table.sessionId, table.createdAt, table.id),
+]);

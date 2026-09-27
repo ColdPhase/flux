@@ -42,6 +42,8 @@ export * from './conversation/service.js';
 export * from './sketches/index.js';
 export { policySketchAccess } from './access/sketch-access.js';
 export * from './work/index.js';
+export { liveUseCases } from './live/service.js';
+export type { LiveAccess, LiveMedia, LivePorts, LiveRepository, LiveSessionRecord } from './live/ports.js';
 
 export const SAMPLE_JOB = 'sample.process';
 

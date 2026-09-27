@@ -51,7 +51,7 @@ The dated [peer research on #13](https://github.com/ColdPhase/flux/issues/13#iss
 
 ## Deployable boundary
 
-### Proposed O-002 media amendment — peer review with #59
+### Accepted O-002 media amendment — peer review with #59
 
 The accepted first-journey boundary is still the browser, API, worker and
 PostgreSQL. The founder's later [contextual live collaboration requirement](live-collaboration.md)
@@ -88,9 +88,9 @@ and [Galène](https://galene.org/) remain transport alternatives, but each would
 still need Flux policy, context, deployment and receiver integration. Reconsider
 the SFU or TURN shape if measured quality, restrictive-network reachability,
 single-node capacity, operating cost, license or security evidence invalidates
-this selection. The [#59 independent review](https://github.com/ColdPhase/flux/pull/65)
-accepts or revises this amendment before media implementation is treated as an
-O-002 extension; no real call is claimed by this document.
+this selection. The [#59 independent review](https://github.com/ColdPhase/flux/pull/65#pullrequestreview-5332321792)
+accepted this O-002 extension on 2026-09-27. It selects the transport boundary,
+not a verified call or deployment.
 
 ```mermaid
 flowchart LR

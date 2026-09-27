@@ -17,6 +17,10 @@ import { setStaticHeaders } from './pwa/static-headers.js';
 import { streamRoutes } from './stream/index.js';
 import { conversationRoutes } from './conversation/routes.js';
 import { workRoutes } from './work/routes.js';
+import { liveRoutes } from './live/routes.js';
+import { liveAccess } from './live/access.js';
+import { liveSessionStore } from './live/store.js';
+import { createLiveMediaFromEnv } from './live/media.js';
 
 const connectionString = process.env.DATABASE_URL;
 const fixtureToken = process.env.FLUX_FIXTURE_TOKEN;
@@ -42,6 +46,13 @@ if (!Number.isInteger(heartbeatMs) || heartbeatMs < 100) throw new Error('FLUX_S
 await app.register(streamRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, connectionString, heartbeatMs, cursorSecret: identityConfig.secret, exposeWork: testFailureInjection });
 await app.register(conversationRoutes, { db, sessions: identity });
 await app.register(workRoutes, { db, sessions: identity });
+const liveMedia = createLiveMediaFromEnv();
+// Configuration alone does not prove the SFU, DNS/TLS or receiver path is healthy.
+app.get('/api/v1/live-sessions/capabilities', async () => ({ status: liveMedia ? 'configured' : 'unavailable' }));
+if (liveMedia) await app.register(liveRoutes, {
+  sessions: identity,
+  ports: { access: liveAccess(db), sessions: liveSessionStore(db), ...liveMedia },
+});
 
 app.get('/api/v1/health', async (_request, reply) => {
   try {

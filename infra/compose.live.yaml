@@ -1,0 +1,46 @@
+# Optional self-hosted media profile for issue #61. Layer with compose.yaml.
+# The operator terminates HTTPS/WSS at their ingress and points the API and browser
+# at that origin. Public ICE/TURN ports must reach this host directly.
+services:
+  api:
+    environment:
+      FLUX_LIVEKIT_API_URL: ${FLUX_LIVEKIT_API_URL:?Set the operator-owned HTTPS API origin}
+      FLUX_LIVEKIT_WS_URL: ${FLUX_LIVEKIT_WS_URL:?Set the operator-owned WSS signaling origin}
+      FLUX_LIVEKIT_API_KEY: ${FLUX_LIVEKIT_API_KEY:?Set the LiveKit API key}
+      FLUX_LIVEKIT_API_SECRET: ${FLUX_LIVEKIT_API_SECRET:?Set the LiveKit API secret}
+    depends_on:
+      livekit:
+        condition: service_healthy
+  livekit:
+    image: livekit/livekit-server:v1.13.7@sha256:6fd3b7088874c4d119160dd688798dfec852bc014786d392caad15f6f63912a3
+    restart: unless-stopped
+    environment:
+      LIVEKIT_CONFIG: |
+        port: 7880
+        keys:
+          "${FLUX_LIVEKIT_API_KEY:?Set the LiveKit API key}": "${FLUX_LIVEKIT_API_SECRET:?Set the LiveKit API secret}"
+        room:
+          auto_create: false
+          max_participants: 16
+          empty_timeout: 300
+        rtc:
+          tcp_port: 7881
+          udp_port: 7882
+          use_external_ip: false
+          node_ip: ${FLUX_LIVEKIT_PUBLIC_IP:?Set the public IP advertised to media clients}
+          stun_servers:
+            - ${FLUX_LIVEKIT_DOMAIN:?Set the operator-owned media domain}:3478
+        turn:
+          enabled: true
+          domain: ${FLUX_LIVEKIT_DOMAIN:?Set the operator-owned media domain}
+          udp_port: 3478
+    ports:
+      - 127.0.0.1:${FLUX_LIVEKIT_SIGNAL_PORT:-7880}:7880/tcp
+      - ${FLUX_LIVEKIT_ICE_TCP_PORT:-7881}:7881/tcp
+      - ${FLUX_LIVEKIT_ICE_UDP_PORT:-7882}:7882/udp
+      - ${FLUX_LIVEKIT_TURN_UDP_PORT:-3478}:3478/udp
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:7880/"]
+      interval: 3s
+      timeout: 2s
+      retries: 20
