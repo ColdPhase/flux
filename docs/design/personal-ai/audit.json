@@ -238,11 +238,32 @@
       "touch_targets_under_44": [],
       "console_errors": []
     },
-    "1440x900#rail": {
+    "1440x900#accent": {
       "horizontal_overflow": false,
       "contrast_failures": [],
       "small_text": [],
       "touch_targets_under_44": null,
+      "console_errors": []
+    },
+    "390x844#accent": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": [],
+      "console_errors": []
+    },
+    "360x780#nav": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": [],
+      "console_errors": []
+    },
+    "390x844#sources": {
+      "horizontal_overflow": false,
+      "contrast_failures": [],
+      "small_text": [],
+      "touch_targets_under_44": [],
       "console_errors": []
     }
   },
@@ -261,15 +282,15 @@
       "without_visible_ring": [],
       "first_stops": [
         "Skip to reply",
-        "Jump to\u2026\u2318K",
         "Home",
+        "Direct messages",
+        "Gesture lamp",
+        "Marketplace",
+        "New project",
+        "Jump to\u2026\u2318K",
         "CapturePrivate",
-        "LGesture lamp2",
-        "MMarketplace",
-        "KJKaiJo, online",
-        "MMiraaway",
-        "Experiment: camera in low light",
-        "Result: fails below ~10 lux (Kai)"
+        "Camera in low light2",
+        "Lamp shade prints"
       ]
     },
     "no-ai": {
@@ -277,15 +298,15 @@
       "without_visible_ring": [],
       "first_stops": [
         "Skip to reply",
-        "Jump to\u2026\u2318K",
         "Home",
+        "Direct messages",
+        "Gesture lamp",
+        "Marketplace",
+        "New project",
+        "Jump to\u2026\u2318K",
         "CapturePrivate",
-        "LGesture lamp2",
-        "MMarketplace",
-        "KJKaiJo, online",
-        "MMiraaway",
-        "Experiment: camera in low light",
-        "Result: fails below ~10 lux (Kai)"
+        "Camera in low light2",
+        "Lamp shade prints"
       ]
     },
     "as-kai": {
@@ -293,15 +314,15 @@
       "without_visible_ring": [],
       "first_stops": [
         "Skip to reply",
-        "Jump to\u2026\u2318K",
         "Home",
+        "Direct messages",
+        "Gesture lamp",
+        "Marketplace",
+        "New project",
+        "Jump to\u2026\u2318K",
         "CapturePrivate",
-        "LGesture lamp2",
-        "MMarketplace",
-        "KJKaiJo, online",
-        "MMiraaway",
-        "Experiment: camera in low light",
-        "Result: fails below ~10 lux (Kai)"
+        "Camera in low light2",
+        "Lamp shade prints"
       ]
     }
   },

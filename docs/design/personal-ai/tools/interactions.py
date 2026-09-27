@@ -161,6 +161,46 @@ def main():
         page.click("#tof-node .node-b")
         check("selecting a thought shows actions without opening a panel", page.is_visible("#sel-acts") and page.locator("#panel").is_hidden())
         page.close()
+        # 15. Phone first screen: the proposal is read before it is acted on (title, fact, author, actions together).
+        for w, h in [(390, 844), (360, 780)]:
+            page, errors = page_for(b, "", w, h, True)
+            vis = page.evaluate("""() => { const f = document.querySelector('#feed').getBoundingClientRect();
+              const inView = s => { const r = document.querySelector(s).getBoundingClientRect(); return r.top >= f.top - 1 && r.bottom <= f.bottom + 1; };
+              return ['#jo-proposal .meta', '#proposal .pr-t', '#pr-body .claims dd', '#pr-effect', '#pr-accept'].map(inView); }""")
+            check(f"phone {w}x{h}: authorship, title, fact, effect and Accept are all in the first view", all(vis))
+            check(f"phone {w}x{h}: a Latest pill leads to the newer messages", page.is_visible("#latest"))
+            # Keyboard path: from the proposal's source link, Tab reaches Accept next.
+            page.focus("#pr-body .ref")
+            page.keyboard.press("Tab")
+            check(f"phone {w}x{h}: keyboard goes from the fact's source to Accept", page.evaluate("document.activeElement.id") == "pr-accept")
+            page.close()
+
+        # 16. Modal focus containment: 30 Tab and 30 Shift+Tab never leave the sheet or drawer.
+        inside = "(sel) => { const a = document.activeElement; return !!a && a !== document.body && !!a.closest(sel); }"
+        def walk(page, sel):
+            ok = True
+            for key in ["Tab"] * 30 + ["Shift+Tab"] * 30:
+                page.keyboard.press(key)
+                ok = ok and page.evaluate(inside, sel)
+            return ok
+        for label, suffix, opener, sel in [("click-opened assistant sheet", "", "#ai-btn", "#panel"),
+                                           ("hash-opened assistant sheet", "#assistant", None, "#panel"),
+                                           ("hash-opened sources sheet", "#sources", None, "#panel"),
+                                           ("click-opened drawer", "", "#menu-btn", "#sidebar"),
+                                           ("hash-opened drawer", "#nav", None, "#sidebar")]:
+            page, errors = page_for(b, suffix, 390, 844, True)
+            if opener:
+                page.tap(opener)
+            page.wait_for_timeout(600)
+            check(f"{label}: starts with focus inside", page.evaluate(inside, sel))
+            check(f"{label}: skip link and page are inert", page.evaluate("document.querySelector('.skip').inert && document.querySelector('#main').inert"))
+            check(f"{label}: 30 Tab + 30 Shift+Tab stay inside", walk(page, sel))
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(600)
+            want = (opener or ("#menu-btn" if sel == "#sidebar" else "#ai-btn" if suffix == "#assistant" else "#details-btn")).lstrip("#")
+            check(f"{label}: Esc restores focus to its trigger", page.evaluate("document.activeElement.id") == want)
+            check(f"no console errors ({label})", not errors)
+            page.close()
         b.close()
     failed = [n for n, ok in results if not ok]
     print(f"{len(results) - len(failed)}/{len(results)} passed")

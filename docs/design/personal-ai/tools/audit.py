@@ -36,7 +36,8 @@ STATES = [
     (390, 844, "assistant", "#assistant"), (390, 844, "ask", "#ask"), (390, 844, "slash", "#slash"),
     (390, 844, "suggestion", "#suggestion"), (390, 844, "map-select", "#map-select"),
     (390, 844, "no-ai", "?ai=off"), (390, 844, "no-connection-connect", "?ai=none#connect"),
-    (360, 780, "as-kai", "?as=kai"), (1440, 900, "rail", "?identity=rail"),
+    (360, 780, "as-kai", "?as=kai"), (1440, 900, "accent", "?identity=accent"), (390, 844, "accent", "?identity=accent"),
+    (360, 780, "nav", "#nav"), (390, 844, "sources", "#sources"),
 ]
 
 TEXT_AUDIT = r"""() => {
@@ -72,7 +73,7 @@ TARGET_AUDIT = r"""() => [...document.querySelectorAll('button, a[href], input, 
     const need = e.classList.contains('ref') ? 24 : 44;
     return {label: (e.getAttribute('aria-label') || e.textContent || e.placeholder || e.name || '').trim().replace(/\s+/g,' ').slice(0,30),
             w: Math.round(r.width), h: Math.round(r.height), need}; })
-  .filter(t => t.h < t.need || t.w < 24)"""
+  .filter(t => t.h < t.need || t.w < t.need)"""
 
 FOCUS_STATE = r"""() => { const e = document.activeElement; if (!e || e === document.body) return null;
   const r = e.getBoundingClientRect();

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="boot" data-identity="accent" data-ai="on" data-as="jo">
+<html lang="en" class="boot" data-identity="rail" data-ai="on" data-as="jo">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
@@ -10,8 +10,9 @@
   Visual language: O-003 variant C (docs/design/direction.md). The first <style> block below is C's
   stylesheet copied verbatim from variant-c-calm-messenger.html at dacb10d (tokens, motion, components);
   the second block adds only the assistant components.
+  Identity: rail (founder decision, the default here); ?identity=accent shows C's former default.
   States (query): ?ai=on (default) · ?ai=none (Jo has no connection) · ?ai=limit (daily cap reached)
-                  · ?ai=off (nobody here uses AI) · ?as=kai (the same thread as Kai sees it) · ?identity=rail
+                  · ?ai=off (nobody here uses AI) · ?as=kai (the same thread as Kai sees it) · ?identity=accent
   Views (hash):   #assistant · #kai-assistant · #suggestion · #sources · #connect · #ask · #slash
                   · #tasks · #map · #docs · #nav · #details
 -->
@@ -1114,6 +1115,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
         </div>
       </div>
     </div>
+    <button class="latest" type="button" id="latest"><span id="latest-label">Latest</span><svg width="14" height="14" aria-hidden="true"><use href="#i-chev-d"/></svg></button>
     </div>
 
     <form class="composer" id="composer" autocomplete="off">
@@ -1216,7 +1218,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
       <h2 id="p-title">Details</h2>
       <button class="icon-btn" type="button" id="p-close" aria-label="Close details" data-tip="Close   Esc"><svg width="16" height="16" aria-hidden="true"><use href="#i-x"/></svg></button>
     </div>
-    <div class="p-body" id="p-body" tabindex="-1">
+    <div class="p-body" id="p-body" tabindex="-1" aria-labelledby="p-title">
 
       <section data-view="overview" data-title="Details" hidden>
         <p class="eyebrow">Project · Kai and you</p>
@@ -1440,6 +1442,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
     main.inert = panelModal || navModal;
     sidebar.inert = panelModal || (mqNavDrawer.matches && !navModal);
     panel.inert = navModal || panelState === 'closing';
+    $('.skip').inert = panelModal || navModal;
     scrim.classList.toggle('on', panelModal || navModal);
     if (panelModal) { panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-modal', 'true'); }
     else { panel.removeAttribute('role'); panel.removeAttribute('aria-modal'); }
@@ -1510,9 +1513,9 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
     const a = panelAnim = panel.animate([{ transform: 'none', opacity: 1 }, to], { duration: d, easing: token('--ease-in'), fill: 'forwards' });
     a.finished.then(() => { if (panelState === 'closing') finish(); a.cancel(); if (panelAnim === a) panelAnim = null; }, () => {});
   }
-  function openNav() {
+  function openNav(trigger) {
     if (panelState === 'open' && mqPanelOverlay.matches) closePanel(false);
-    navReturn = document.activeElement;
+    navReturn = trigger || document.activeElement;
     body.classList.add('nav-open'); menuBtn.setAttribute('aria-expanded', 'true');
     syncInert();
     sidebar.focus({ preventScroll: true });
@@ -1522,6 +1525,33 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
     syncInert();
     if (restore && navReturn && navReturn.isConnected) navReturn.focus({ preventScroll: true });
   }
+
+
+  // ---- Modal focus containment: Tab and Shift+Tab stay inside the open sheet or drawer ----
+  const FOCUSABLE = 'a[href], button, textarea, input, select, [tabindex]:not([tabindex="-1"])';
+  function activeModal() {
+    if (panelState === 'open' && mqPanelOverlay.matches) return panel;
+    if (body.classList.contains('nav-open') && mqNavDrawer.matches) return sidebar;
+    return null;
+  }
+  const focusables = el => $$(FOCUSABLE, el).filter(e => !e.closest('[hidden], [inert]') && e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden');
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Tab') return;
+    const m = activeModal(); if (!m) return;
+    const f = focusables(m); if (!f.length) { e.preventDefault(); m.focus(); return; }
+    const a = document.activeElement, first = f[0], last = f[f.length - 1];
+    if (!m.contains(a)) { e.preventDefault(); (e.shiftKey ? last : first).focus(); return; }
+    if (e.shiftKey && (a === first || a === m)) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && a === last) { e.preventDefault(); first.focus(); }
+    else if (a === pBody || a === m) {
+      // From the scrollable region, go to the nearest control in document order inside the modal.
+      const next = e.shiftKey ? [...f].reverse().find(x => a.compareDocumentPosition(x) & Node.DOCUMENT_POSITION_PRECEDING)
+                              : f.find(x => a.compareDocumentPosition(x) & Node.DOCUMENT_POSITION_FOLLOWING);
+      e.preventDefault(); (next || (e.shiftKey ? last : first)).focus();
+    }
+  });
+  // Focus that lands outside an open modal (a click on the page edge, a restored tab) is pulled back in.
+  document.addEventListener('focusin', e => { const m = activeModal(); if (m && !m.contains(e.target)) (focusables(m)[0] || m).focus({ preventScroll: true }); });
 
   // ---- Project views (from variant C) ----
   const tabs = $$('.views [role="tab"]'), viewsBar = $('.views'), viewsInd = $('.views-ind');
@@ -1799,7 +1829,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
   });
   $('#p-close').addEventListener('click', () => closePanel());
   $('#p-back').addEventListener('click', () => show('overview', true, -1));
-  menuBtn.addEventListener('click', () => body.classList.contains('nav-open') ? closeNav() : openNav());
+  menuBtn.addEventListener('click', () => body.classList.contains('nav-open') ? closeNav() : openNav(menuBtn));
   scrim.addEventListener('click', () => { closePanel(); closeNav(); });
   [mqPanelOverlay, mqNavDrawer].forEach(m => m.addEventListener('change', () => { if (!mqNavDrawer.matches) body.classList.remove('nav-open'); syncInert(); }));
   $('.nav').addEventListener('click', e => { if (e.target.closest('a[href="#"]')) e.preventDefault(); });
@@ -1817,16 +1847,31 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
     }
   });
 
-  // Open at the latest message, like a messenger.
+  // Open at the latest message, like a messenger, unless that would cut the proposal waiting for you:
+  // then the proposal's first line is the top of the view, so its title, facts, effect and actions read together.
+  const latest = $('#latest'), feedWrap = $('.feed-wrap');
+  const atBottom = () => feed.scrollHeight - feed.scrollTop - feed.clientHeight < 24;
+  function setLatest(on) { latest.classList.toggle('show', on); latest.inert = !on; feedWrap.classList.toggle('has-latest', on); }
+  function place() {
+    const p = $('#jo-proposal'), max = feed.scrollHeight - feed.clientHeight;
+    let y = max;
+    if (p && p.getClientRects().length && root.dataset.as === 'jo') {
+      const top = p.getBoundingClientRect().top - feed.getBoundingClientRect().top + feed.scrollTop - 8;
+      y = Math.max(0, Math.min(max, top));
+    }
+    feed.scrollTop = y; setLatest(!atBottom());
+  }
+  feed.addEventListener('scroll', () => { if (atBottom()) setLatest(false); }, { passive: true });
+  latest.addEventListener('click', () => { setLatest(false); scrollToEnd(); feed.focus({ preventScroll: true }); });
   applyState(); placeTabInd(false); syncInert(); syncSend();
-  feed.scrollTop = feed.scrollHeight;
-  if (document.fonts) document.fonts.ready.then(() => { placeTabInd(false); feed.scrollTop = feed.scrollHeight; });
+  place();
+  if (document.fonts) document.fonts.ready.then(() => { placeTabInd(false); place(); });
 
   // Review hashes: #details #assistant #kai-assistant #suggestion #sources #connect #ask #slash #tasks #map #map-select #docs #nav
   const h = location.hash.slice(1);
   const views = { details: 'overview', assistant: 'assistant', 'kai-assistant': 'kai-assistant', suggestion: 'suggestion', sources: 'sources', connect: 'connect' };
-  if (views[h]) openPanel(views[h], detailsBtn, false);
-  else if (h === 'nav' && mqNavDrawer.matches) openNav();
+  if (views[h]) openPanel(views[h], views[h] === 'assistant' || views[h] === 'connect' ? $('#ai-btn') : detailsBtn, mqPanelOverlay.matches);
+  else if (h === 'nav' && mqNavDrawer.matches) openNav(menuBtn);
   else if (h === 'ask') { setAsk(true); ta.value = 'What should we measure first when the ToF board arrives?'; autosize(); syncSend(); }
   else if (h === 'slash') { ta.focus(); ta.value = '/'; setSlash(true); }
   else if (['tasks', 'map', 'docs'].includes(h)) setPane(h);

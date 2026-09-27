@@ -2,7 +2,7 @@
 
 **Status:** proposed for independent evaluation in [#57](https://github.com/ColdPhase/flux/issues/57), 2026-09-27, by `claude-maurycy`. Evaluator: `codex-hubert`.
 **Builds on:** the C direction (`docs/design/direction.md` on PR #33, branch `claude-maurycy/task-15-ui-direction`), the #40 shell components, [access policy](../../development/access-policy.md) (agents capped by their owner) and O-005 on PR #53 (first path: user-operated Claude Code through a personal Flux MCP grant).
-**Prototype:** [`prototype.html`](prototype.html) is static and self-contained. Its first `<style>` block is variant C's stylesheet copied verbatim (tokens, motion, components). The second block adds only the assistant components, and it adds no colours.
+**Prototype:** [`prototype.html`](prototype.html) is static and self-contained. Its first `<style>` block is variant C's stylesheet copied verbatim (tokens, motion, components). The second block adds only the assistant components, and it adds no colours. The Flux identity is the founder-chosen **rail** option (a dark 60 px rail with the indigo accent), and it is the default here. `?identity=accent` shows C's earlier default.
 
 This design covers how the product looks and behaves. It does not show that billing, permissions or persisted actions work. Those need the implementation work in [Enforcement and follow-up work](#enforcement-and-follow-up-work).
 
@@ -26,7 +26,7 @@ This design covers how the product looks and behaves. It does not show that bill
 | **Proposal** | The only framed object an assistant adds. | The label "Proposal · not saved yet" with an open ring, a title, Fact / Interpretation / Proposal, and one line on the effect ("Accept saves the result and finishes *Camera in low light*, which you own"). **Accept · Edit · Discard** appear only for a person with authority. **Others see "Jo's assistant drafted this — proposal"** and "Waiting for Jo". After Accept: "Result recorded by you · drafted by your assistant", with Undo. |
 | **Proactive suggestion** | One line after the latest message, above a dashed rule. The owner sees it; nobody else does. | "🔒 Only you see this · your rule 'Point out conflicts with new results'", one sentence, then **Show suggested edit · Not now · Don't suggest again**. The edit opens as a diff in Details, with **Apply edit · Edit first · Dismiss**. A dismissal is kept until the evidence changes. |
 | **Header status** | A ✦ icon button next to Details, with a small dot. | Green dot: ready. Ring: paused, or stopped at the cap. No dot and the label "Connect your AI": no connection. With AI turned off, the button is hidden. |
-| **Assistant details** | Side panel on desktop; a full-screen sheet on the phone. | See below. |
+| **Assistant details** | Side panel on desktop; a full-screen sheet on the phone. | See below. As a sheet (≤ 980 px) and in the drawer, the rest of the page and the skip link are inert. Tab and Shift+Tab cycle inside, and a hash-opened sheet starts with focus inside it. Esc returns focus to the trigger. |
 | **Someone else's assistant** | Opened from "About Kai's assistant" on the answer. | "Kai's assistant · only Kai can use it". The panel says you can read and reply, but can't retry, continue or spend Kai's budget. It shows who asked and when, what it read (only sources you both can open), and who the answer is shown to. It shows no cost, credentials, history or hidden sources. It offers *Ask my assistant about this*, or *Connect your AI*. |
 
 ### Assistant details (owner only)
@@ -57,7 +57,7 @@ This design covers how the product looks and behaves. It does not show that bill
 | **No AI** | `?ai=off` | No ✦, no `/` menu, no assistant lines. The same day reads "You added the thought…" and Kai replies. Conversation, map, tasks and docs are unchanged. |
 | **Peer view** | `?as=kai` | Kai sees Jo's action line with no Undo, and Jo's proposal as "Jo's assistant drafted this — proposal · Waiting for Jo". He does not see Jo's private suggestion. His own earlier answer offers him Retry. |
 
-Phone: a single column, as in C. ✦ sits in the composer and in the header. Ask mode's cost text shortens to "Answer shown to Kai and you". Details and the diff open as full-screen sheets, and the proposal buttons fill the row. Touch targets are 44 px.
+Phone: a single column, as in C. The feed opens at the first line of the proposal waiting for you, never mid-card. Authorship, title, facts, effect and Accept are read together, and a **Latest** pill leads to the newer messages. Without a pending proposal it opens at the latest message. ✦ sits in the composer and in the header. Ask mode's cost text shortens to "Answer shown to Kai and you". Details and the diff open as full-screen sheets, and the proposal buttons fill the row. Touch targets are 44 px.
 
 ## Context and audience boundaries
 
@@ -97,10 +97,10 @@ The UI only reflects decisions the server makes. Hiding a button is not enforcem
 
 | Rule | Where it is enforced | Work |
 | --- | --- | --- |
-| Invocation, retry and continue resolve to the **authenticated requester's** connection. A browser-supplied owner or connection ID is ignored. | Run API, WebSocket command handler and job enqueue, through `policy.ts` (`agent.invoke` owned by the requester). | #29 policy action plus the in-product personal-run follow-up. Tests: a peer calls the run endpoint, retries or replies, and no model call or quota use happens on the owner's connection. |
+| Invocation, retry and continue resolve to the **authenticated requester's** connection. A browser-supplied owner or connection ID is ignored. | Run API, WebSocket command handler and job enqueue, through `policy.ts` (`agent.invoke` owned by the requester). | #29 policy action plus [#68](https://github.com/ColdPhase/flux/issues/68) (in-product personal runs). Tests: a peer calls the run endpoint, retries or replies, and no model call or quota use happens on the owner's connection. |
 | A run reads only (owner rights ∩ agent grant ∩ requested place). The output audience is that place. | Domain read methods and worker rechecks before reads and before commit (#29 AC-3, PR #47). | #29 / #47. Tests: a DM or private capture is never present in a project run's input, and a revoke mid-run commits nothing. |
 | A consequential change is a proposal object. Accept needs human authority. | Domain use cases (result, decision, task and audience). | #52 proposal tools, then map, doc and task mutation tools as their domain APIs arrive. These stay tracked and unimplemented until then. |
-| Cap, pause and revocation stop work; there is no payer fallback. | The run scheduler checks the owner's standing authorization at every step. | The personal-run follow-up and the O-005 embedded-compute contract. |
+| Cap, pause and revocation stop work; there is no payer fallback. | The run scheduler checks the owner's standing authorization at every step. | [#68](https://github.com/ColdPhase/flux/issues/68), which depends on a compute-source decision under O-005. |
 | Proactive rules: owner, scope, frequency, dedupe by rule and source revision, suppression of dismissed suggestions, no triggering from agent output. | Rule engine / worker. | The #37 proactive follow-up. |
 
 In-Flux `/ai` needs an accepted compute contract (O-005: "embedded/API/local … requires a separately accepted compute owner…"). Until then, the MCP path uses the same labels, attributions and proposal objects, and ✦ shows *Connect your AI*.
@@ -115,14 +115,16 @@ docker run --rm -v "$PWD/docs/design/personal-ai:/work" -w /work \
   sh -c "pip install -q playwright==1.62.0 && python3 tools/audit.py && python3 tools/interactions.py"
 ```
 
-- **`tools/audit.py`** is adapted from O-003's audit. It covers 35 states from 1440×900 to 360×780, with touch emulation at 1024 px and below. Results: 0 horizontal overflow, 0 console errors, 0 text contrast failures below WCAG AA, 0 visible text under 12 px, 0 touch targets under 44 px. At 200% zoom there is no overflow in the default, assistant and ask states. On the software keyboard (390×480, ask mode), the composer and ask bar stay visible. The first 40 Tab stops show a focus ring every time: 39 stops default, 38 with no AI, 39 as Kai. Under reduced motion, 0 elements animate. Raw output is in `audit.json`, and screenshots are in `screenshots/<w>x<h>-<state>.png`.
-- **`tools/interactions.py`: 32/32 checks pass.**
+- **`tools/audit.py`** is adapted from O-003's audit. It covers 38 states from 1440×900 to 360×780, both identities included, with touch emulation at 1024 px and below. Results: 0 horizontal overflow, 0 console errors, 0 text contrast failures below WCAG AA, 0 visible text under 12 px, 0 touch targets under 44 px in either width or height. Inline references in sentences need only 24 px, under the WCAG 2.5.8 inline exception. At 200% zoom there is no overflow in the default, assistant and ask states. On the software keyboard (390×480, ask mode), the composer and ask bar stay visible. The first 40 Tab stops show a focus ring every time: 39 stops default, 38 with no AI, 39 as Kai. Under reduced motion, 0 elements animate. Raw output is in `audit.json`, and screenshots are in `screenshots/<w>x<h>-<state>.png`.
+- **`tools/interactions.py`: 63/63 checks pass.**
   - Reply, the `/` menu with the keyboard, ask mode and its audience, the working line, Stop, and the attributed labelled answer.
   - Accept, Discard, Undo on the map, and dismissing a suggestion.
   - Pause blocks sending, and Esc returns focus.
   - The peer view: no Accept or Undo, no private suggestion.
   - No connection, cap reached, and no AI.
   - The phone modal sheet, and map selection without a panel.
+  - At 390×844 and 360×780, authorship, title, fact, effect and Accept are all in the first view. Tab goes from the fact's source to Accept.
+  - Five modals, click-opened and hash-opened (assistant and sources sheets, the drawer): focus starts inside and the skip link and page are inert. 30 Tab and 30 Shift+Tab never leave the modal, and Esc restores focus to the trigger.
 
 **Not covered:**
 - dark-theme contrast;
@@ -133,6 +135,10 @@ docker run --rm -v "$PWD/docs/design/personal-ai:/work" -w /work \
 Two design iterations came from the screenshots:
 1. The first desktop screen was mostly assistant output. The fix added the human flow around it, shortened the proposal and suggestion, and moved Pause next to the status.
 2. Map edge labels were truncated, and the claim labels drifted off their lines.
+3. Review of `87d077f` found three problems, all now fixed:
+   - B1: the phone view opened with the actions visible but not the proposal they act on.
+   - B2: focus could escape the modals.
+   - B3: the target audit tested width against 24 px only.
 
 ## Open questions
 
