@@ -96,3 +96,72 @@ Server code resolves the caller with `requirePrincipal(request)` from
 against the running API and mail catcher, including a session check across
 `docker compose restart api`. Set `FLUX_TEST_PORT` / `FLUX_TEST_MAILPIT_PORT`
 to avoid port clashes with another concurrent run.
+
+## PWA and Web Push
+
+Issue #41 adds the installable shell and the Web Push foundation. The API serves
+`/manifest.webmanifest`, icons under `/icons/`, `/offline.html` and the service
+worker `/sw.js` (scope `/`, `Cache-Control: no-cache`) from the same origin as
+`/api/v1`. Hashed `/assets/*` are `immutable`; HTML, manifest and icons revalidate.
+Browsers only run service workers and push in a secure context: `https://`, or
+`http://localhost`/`127.0.0.1` for development.
+
+The service worker is hand-written (`apps/web/src/pwa/sw.js`) and emitted by a
+small Vite plugin (`apps/web/build/service-worker-plugin.ts`) that injects the
+precache list and a content-hash version; there is no Workbox dependency. It
+precaches the built shell, answers navigations network-first with the offline
+page as fallback, and never handles `/api/*`. A new version installs and waits;
+the page shows "A new version of Flux is available — Reload", and only that
+choice activates it. Placeholder icons are regenerated with
+`apps/web/scripts/generate-icons.ts` (usage in the file header).
+
+| Variable | Service | Meaning |
+| --- | --- | --- |
+| `FLUX_VAPID_PUBLIC_KEY` | API, worker | Base64url P-256 public key given to browsers as `applicationServerKey`. Empty on the API means `GET /api/v1/push/public-key` and `POST /api/v1/push/subscriptions` answer `503 PUSH_UNAVAILABLE`. |
+| `FLUX_VAPID_PRIVATE_KEY` | worker only | Signs the VAPID JWT. Keep it secret; it never reaches the API container. |
+| `FLUX_VAPID_SUBJECT` | worker only | Operator contact for push services, `mailto:` or `https:`. |
+| `FLUX_PUSH_ALLOW_PRIVATE_NETWORK` | worker | `false` by default: the worker refuses push endpoints that resolve to private, loopback or link-local addresses at connect time. Only the test override sets `true` for its local push mock. |
+
+The worker requires all three VAPID values together, checks that the public key
+matches the private key and stops at startup otherwise. Generate a key pair once
+per deployment with the pinned `web-push` CLI in the built image and copy both
+values into `.env`:
+
+```sh
+docker compose --env-file .env -p flux28 -f infra/compose.yaml run --rm --no-deps -T migrate \
+  apps/worker/node_modules/.bin/web-push generate-vapid-keys --json
+```
+
+**Rotation and recovery.** Browser subscriptions are bound to the public key they
+were created with. Back up the key pair with the other secrets; restoring it keeps
+existing subscriptions working. After a deliberate rotation (suspected leak) or a
+lost key, deploy the new pair to API and worker together. Push services then reject
+old subscriptions (typically 403); the worker records the failure on the row and
+does not retry. The web client compares its subscription key with the server key
+on start (`syncPushSubscription`) and re-subscribes without a prompt when
+permission is still granted; devices that stay closed miss pushes until then, and
+the inbox still has every notification. Rows answering 404/410 are deleted.
+
+Outbound access: the worker must reach the browser push services over HTTPS, for
+example `fcm.googleapis.com` (Chrome/Android), `*.push.apple.com` (Safari, iOS and
+iPadOS home-screen apps), `*.push.services.mozilla.com` (Firefox) and `*.notify.windows.com` (Edge on Windows).
+
+Endpoints, all resolved with `requirePrincipal` and limited to the caller's rows
+(another user's id is `404`): `GET /api/v1/push/public-key`,
+`GET|POST /api/v1/push/subscriptions` (idempotent per endpoint; a browser that
+signs in to another account moves its subscription to that account),
+`DELETE /api/v1/push/subscriptions/:id`, `GET /api/v1/inbox?limit=` and
+`POST /api/v1/inbox/:id/read`. Server code creates a notification with
+`createNotification()` from `@flux/core`: it stores the inbox row and, in the same
+transaction, queues one `push.send` job per subscription (5 retries, exponential
+backoff up to 10 minutes, for 429/5xx/network errors). Before sending, the worker
+rechecks that the account exists and still owns both the subscription and the
+notification. The payload is title, body and a same-origin path; callers decide
+what text is safe on a lock screen.
+
+`./scripts/check_application.sh` layers `infra/compose.test.yaml` over the base
+file: a local HTTPS push-service mock that verifies the VAPID signature and records
+the encrypted body (the test decrypts it), fresh VAPID keys per run, a Chromium
+check through an HTTPS proxy (registration and control, offline fallback,
+update prompt) and a final API run without keys. Do not use that override
+outside tests.

@@ -102,6 +102,35 @@ Flux implementation or device-test results:
   This historical source does not prove today's device compatibility; verify the
   current supported releases and install/permission path on devices before shipping.
 
+### Platform facts used by the PWA/Web Push foundation (#41)
+
+Checked 27 September 2026 while implementing [#41](https://github.com/ColdPhase/flux/issues/41).
+These are vendor documentation statements plus our inferences, not device results.
+
+- **iOS/iPadOS need a Home Screen web app.** Apple's
+  [Sending web push notifications in web apps and browsers](https://developer.apple.com/documentation/usernotifications/sending-web-push-notifications-in-web-apps-and-browsers)
+  (vendor documentation) says web push is available to "Home Screen web apps in
+  iOS 16.4 or later" and to Safari 16 on macOS 13+. *Inference:* in an iPhone/iPad
+  Safari tab the client shows add-to-Home-Screen guidance instead of a push button.
+- **Permission follows a gesture.** The same Apple page says to let the user grant
+  permission "with a gesture, such as clicking or tapping a button" and to call the
+  subscription method "immediately from the gesture's event handler". MDN's
+  [`Notification.requestPermission()`](https://developer.mozilla.org/en-US/docs/Web/API/Notification/requestPermission_static)
+  (modified 11 June 2025) also says to request it in response to user interaction.
+  Flux calls `requestPermission()` as the first statement of the click handler and
+  subscribes only after it resolves to `granted`. *Unverified:* whether iOS accepts
+  the subscribe after that await must be confirmed on devices (MOB-7).
+- **VAPID limits.** Apple's page states the JWT audience must be the push service
+  origin, the expiry at most one day ahead, the public key must match the one given to
+  `PushManager.subscribe`, and senders should not refresh the JWT more than once per
+  hour. The worker signs 12-hour tokens and reuses them per push service origin.
+- **Outbound access.** Apple asks restricted networks to allow `https://*.push.apple.com`.
+- **Observed in Docker (Playwright 1.63.0, headless Chromium):** the service worker
+  registers and controls the page over HTTPS with a self-signed certificate
+  (`--ignore-certificate-errors`), offline navigation shows the fallback page, and
+  `Notification.permission` starts as `denied` in headless mode, so real permission
+  and OS delivery cannot be shown there.
+
 MOB-1 through MOB-7 are required in milestone 2 and its final acceptance report;
 track implementation in [issue #20](https://github.com/ColdPhase/flux/issues/20).
 Agents may create and sequence smaller issues, but cannot mark the full product
