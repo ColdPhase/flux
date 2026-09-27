@@ -1,6 +1,9 @@
 # Machine-local agent sessions, cursors, locks, and temporary artifacts.
 /.harness/local/
 
+# Task and review checkouts, kept beside the main checkout without root status noise.
+/.worktrees/
+
 # Python bytecode from the repository validation tools.
 __pycache__/
 
