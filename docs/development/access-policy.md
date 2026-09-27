@@ -134,6 +134,14 @@ a private draft, not even to owners.
   silently widens the audience. A move to another workspace is not supported; it
   needs a later copy command.
 
+**Sketches** (#69, details in [sketches.md](sketches.md)). A `project` sketch is
+readable at project level ≥ viewer and changeable at ≥ contributor, so explicit deny
+and every project rule above apply unchanged. A `direct` sketch (a DM's map, or a
+private one with only its author) is readable and changeable only by its participants,
+who must be current workspace members. Owners and admins who are not participants do
+not see it, and agents never see direct sketches. Sketch events (`sketch.*.v1`) are
+authorized as `sketch.read` on the sketch.
+
 **Membership.** Owners and admins manage members and create projects. Only an owner
 can grant, change or remove the owner role (`403 OWNER_REQUIRED`). The last owner
 cannot leave or step down (`409 LAST_OWNER`). Any member may leave. Members can

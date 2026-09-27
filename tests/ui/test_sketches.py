@@ -186,6 +186,8 @@ class SketchJourney(unittest.TestCase):
         self.assertNotIn("discarded", texts)
 
         # Space selects several; Escape clears the selection.
+        page.keyboard.press("Escape")
+        expect(page.locator(".sk-node[aria-pressed='true']")).to_have_count(0)
         self.thought(page, "Gesture-controlled desk lamp").focus()
         page.keyboard.press("Space")
         self.thought(page, "Swipe to dim").focus()
