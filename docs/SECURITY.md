@@ -2,13 +2,14 @@
 
 ## Supported code
 
-Flux is currently an unreleased, local UX prototype. Security fixes are made on
-the latest `main` branch. Historical commits and prototype revisions do not have
-separate maintenance branches or promised backports.
+Flux is in early development and has no released version. Security fixes are made
+on the latest `main` branch; historical commits do not have maintenance branches or
+promised backports.
 
-The prototype has no production authentication, server-side authorization, or
-shared backend. Its accounts, permissions, AI, and integrations are demonstrations.
-Use sample data while evaluating it and do not expose it as a production service.
+The application on `main` has accounts, sessions and server-side authorization, but
+it has not had a security review or a release. Use sample data and do not expose it
+as a production service. The `flux-ux-v8.html` prototype has no backend; its
+accounts, permissions, AI and integrations are demonstrations.
 
 ## Report a vulnerability
 
