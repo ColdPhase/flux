@@ -18,6 +18,7 @@ import { streamRoutes } from './stream/index.js';
 import { conversationRoutes } from './conversation/routes.js';
 import { workRoutes } from './work/routes.js';
 import { agentProposalRoutes } from './agent-connection/routes.js';
+import { registerMcpRoute } from './agent-connection/mcp-route.js';
 
 const connectionString = process.env.DATABASE_URL;
 const fixtureToken = process.env.FLUX_FIXTURE_TOKEN;
@@ -44,6 +45,7 @@ await app.register(streamRoutes, { db, sessions: identity, publicOrigin: identit
 await app.register(conversationRoutes, { db, sessions: identity });
 await app.register(workRoutes, { db, sessions: identity });
 await app.register(agentProposalRoutes, { db, sessions: identity });
+registerMcpRoute(app, db, identity.auth, identityConfig.publicOrigin);
 
 app.get('/api/v1/health', async (_request, reply) => {
   try {
