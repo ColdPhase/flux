@@ -30,6 +30,15 @@ modify the `up` data. Use distinct `FLUX_PROJECT`, `FLUX_PORT`, `FLUX_DEV_PORT` 
 Docker cache. `./scripts/check_flux_cli.sh` exercises all of the above on an isolated copy
 of the working tree.
 
+**Measured time to first message** (issue #72 AC-3, target under 5 minutes excluding
+image download). 2026-09-27, this Mac (Apple silicon, Docker Desktop, Compose
+v2.40.3), commit `b3ab0ee`, base images (`node`, `postgres`) already present, build
+cache bypassed with `FLUX_NO_CACHE=1` so `pnpm install` downloaded every package:
+`git clone` from GitHub 17 s, `./flux up` 55 s (install 23 s, build/type check/lint
+12 s, migrate, start, health), `./flux demo` 1 s, which sends the first conversation
+message through the API. **Total: 73 s** from starting the clone to the first message.
+Not yet measured on Linux/SELinux hosts or a machine without the base images.
+
 ### Hot-reload development: `./flux dev`
 
 [`infra/compose.dev.yaml`](../../infra/compose.dev.yaml) layers over `compose.yaml`. It uses
