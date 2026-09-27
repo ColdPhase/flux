@@ -11,7 +11,8 @@ This extends the [creative collaboration direction #44](https://github.com/ColdP
 [mobile contract](mobile-pwa.md), and [working application milestone](milestones/02-working-application.md).
 The [supplied interactive reference](../design/references/live/README.md) illustrates
 the interaction; its palette, demo data and monolithic script are not a new
-production design or architecture. Continue the current C/v8 direction.
+production design or architecture. Continue the accepted
+[O-003 C/v8 direction](../design/direction.md).
 
 ## 1. Job and complete journey
 
@@ -123,7 +124,8 @@ Session entry, an invitation, another person's message or audio consent is not
 permission to consume somebody else's AI connection. Human media sessions work
 with AI entirely disabled.
 
-Audio notes are an optional, separately implemented capability, off by default:
+Audio notes are a future, separately scoped capability outside milestone 2 and
+off by default:
 
 - The connection owner initiates; every current participant explicitly consents
   to the disclosed processor, output audience and retention before audio flows
@@ -139,6 +141,14 @@ Audio notes are an optional, separately implemented capability, off by default:
   assignments or deadlines from casual suggestions.
 - Analyzing a screen or camera needs its own scoped permission. Text help comes
   first; the agent does not spontaneously interrupt with synthesized speech.
+
+Room-media recording, egress or transcription is outside milestone 2, including
+when an operator configures a LiveKit service. The deployment must leave those
+paths disabled. A later scoped implementation must show every participant a
+visible state before capture, collect each current participant's explicit
+consent, pause before any newcomer receives or sends captured media, and let
+any participant stop processing. Operator configuration alone never grants
+participant consent.
 
 Choose and document the encryption/key boundary before claiming E2EE. LiveKit
 supports E2EE, but the application handles keys; signaling/API protection has a
@@ -168,9 +178,10 @@ flowchart LR
 
 Own the signaling, SFU, relay and persisted application data. No mandatory cloud
 account, external public relay, hosted analytics or paid media quality tier.
-Inventory outbound dependencies; recording/egress and model inference are off
-unless intentionally configured. Human calling must remain available without
-them. Self-hosting still consumes bandwidth and server capacity.
+Inventory outbound dependencies. Recording, egress and transcription stay
+disabled for milestone 2 under section 5; model inference is optional. Human
+calling must remain available without them. Self-hosting still consumes
+bandwidth and server capacity.
 
 Keep domain session/audience rules and use cases independent of SDK objects.
 Use adapters for grants, media events and diagnostics, existing policy for
@@ -270,7 +281,7 @@ only verifies local prototype behavior with its stated limits.
 | [#63 quality and operation](https://github.com/ColdPhase/flux/issues/63) | Hubert / Maurycy | Receiver/network/device results and operable self-hosted deployment at the candidate |
 
 Only the first row is documentation. The others are required full-application
-outcomes and stay open until demonstrated. Optional audio notes may follow the
-human session slice; any offered implementation must satisfy section 5 before
-processing. It is not a prerequisite for ordinary human calls. Agents can split
+outcomes and stay open until demonstrated. Optional audio notes require a later
+scoped task and must satisfy section 5 before processing. They are not a
+prerequisite for ordinary human calls. Agents can split
 these tasks into bounded PRs while retaining their criteria and single owners.

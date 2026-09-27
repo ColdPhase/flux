@@ -37,10 +37,16 @@ These are sequencing boundaries, not permission to treat a skeleton or static vi
 | 1. Application foundation | [#28 / PR #34](https://github.com/ColdPhase/flux/pull/34): Compose, browser/API/worker/PostgreSQL, migrations, persistent integration fixture and fast PR gate; merged into `main` at `c0bac61`. The foundation is a runnable developer skeleton, with user journeys still to implement. | #15 UI direction, #20 device/platform research, and O-001/O-005 research. |
 | 2. Identity and policy | [#29](https://github.com/ColdPhase/flux/issues/29): persistent sessions, workspace/project grants, private drafts, revocation and one domain authorization boundary. Its [contract v1](https://github.com/ColdPhase/flux/issues/29#issuecomment-5856852514) is accepted; the human identity/session AC-1 slice merged in [PR #39](https://github.com/ColdPhase/flux/pull/39), while policy and later slices remain open. | UI components can use mock data if they do not claim production behavior. |
 | 3. Human collaboration | Capture, materials, conversation/replies, decision history, work/result/handoff, source links and return point on actual shared data. Gate: identity/policy and object/version contracts. A runnable first journey is an **internal** checkpoint. | Map and search design can be explored against the same object contract. |
+
 | 4. Relationships and knowledge | Navigable semantic links, map plus accessible alternative, authorized search, files, provenance and version history. Gate: durable objects and access filtering. | Mobile layouts and notification preferences can proceed on accepted interfaces. |
 | 5. Agents and automation | Accepted O-005 integration path, agent identity/grants, run queue, consent/cost, proposals, interruption and recovery, bounded proactive triggers. Gate: policy and durable jobs; no model dependence in human paths. | External SDK/extension design can proceed after versioned public contracts are pinned. |
 | 6. Extension and operations | Public API/SDK/MCP boundary where supported, replay/idempotency, export, diagnostics, update/migrations, backup/restore and self-hosted HTTPS. Gate: stable core contracts and tested security boundary. | Mobile PWA #20 spans slices 2–6; push delivery requires identity, events and HTTPS. |
 | 7. Integrated acceptance and delivery | Local Docker multi-user, permission, browser, install/restore and device matrix; independent visual and behavior review; explicit final workflow builds/publishes the exact accepted candidate. Gate: every required ledger row verified, protected PRs/checks and both agent reports. | No partial public release or per-push packaging. |
+
+Contextual live sessions [#61–#63](live-collaboration.md#9-evidence-and-delivery-ledger)
+follow #29 policy and durable conversation, task, map and wiki objects in slices
+2–3. They remain required for the full product release; the internal first-journey
+checkpoint does not depend on media services.
 
 Fast PR Actions should lint, type-check and run focused tests with cancellation of superseded runs. Substantial integration, browser, restore, image and device tests run locally in isolated Docker/Compose environments. The final packaging workflow is invoked explicitly after integrated acceptance. The [CI and release guide](../agents/ci-and-releases.md) governs rollout and actual GitHub gates.
 

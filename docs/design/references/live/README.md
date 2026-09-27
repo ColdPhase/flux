@@ -3,7 +3,7 @@
 Hubert supplied `flux-live.html` on 27 September 2026 as an interaction reference
 for working together at a task, map or wiki. The accepted requirements and
 implementation tasks are in [Live collaboration at the work](../../../product/live-collaboration.md).
-Continue the C/v8 application direction; this separate module exploration does
+Continue the accepted C/v8 application direction; this separate module exploration does
 not replace the application or establish a new palette.
 
 ## Open and explore
@@ -47,6 +47,10 @@ covered 1280×800, 390×844 and 768×1024. Desktop rendering also used 1440×900
 Quiet was checked with no active real tracks; stopping real capture or incoming
 audio still requires production tests. These checks do not establish usability,
 accessibility, actual collaboration, media quality or independent visual acceptance.
+In a separate fake-device Chromium check of the supplied HTML, a microphone track
+started only after a click and stopped on entering quiet mode. The fake device
+was not physical hardware or a remote participant; production capture and receiver
+behavior still require their own tests.
 
 ### Observations to carry into implementation
 
