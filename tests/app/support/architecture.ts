@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { builtinModules } from 'node:module';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 
 // Repository-wide dependency rules (issue #46, docs/development/architecture.md).
@@ -68,9 +69,15 @@ export function layerOf(path: string) {
   return LAYERS.find((layer) => layer.paths.some((prefix) => path.startsWith(prefix)));
 }
 
-/** The npm package a bare specifier names: `@scope/name` or `name`, and `node:*` for built-ins. */
+const BUILTINS = new Set(builtinModules.map((name) => name.replace(/^node:/, '')));
+
+/**
+ * The npm package a bare specifier names: `@scope/name` or `name`. Node built-ins map to
+ * `node:*` whether written `node:fs`, `fs` or `fs/promises`, so rules cannot be bypassed.
+ */
 export function packageOf(specifier: string) {
   if (specifier.startsWith('node:')) return 'node:*';
+  if (BUILTINS.has(specifier) || BUILTINS.has(specifier.split('/')[0]!)) return 'node:*';
   const parts = specifier.split('/');
   return specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0]!;
 }
