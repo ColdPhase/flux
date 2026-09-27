@@ -39,6 +39,10 @@ const paths = {
   bell: <><path d="M4 11.5V7a4 4 0 018 0v4.5l1 1H3z" /><path d="M6.75 13.5a1.25 1.25 0 002.5 0" /></>,
   /** The personal assistant (#57): a filled four-point spark. */
   spark: <><path d="M8 2.5l1.3 3.2 3.2 1.3-3.2 1.3L8 11.5 6.7 8.3 3.5 7l3.2-1.3z" fill="currentColor" stroke="none" /><path d="M12.5 11l.5 1.5 1.5.5-1.5.5-.5 1.5-.5-1.5-1.5-.5 1.5-.5z" fill="currentColor" stroke="none" /></>,
+  /** Work objects (#101): a decision (rule) and a result (checked document). */
+  rule: <><path d="M8 2l5.5 3v6L8 14l-5.5-3V5z" /><path d="M5.75 8.1l1.6 1.6 3-3.2" /></>,
+  result: <><path d="M4 2.5h5l3 3v8H4z" /><path d="M6 9.25l1.5 1.5 2.75-3" /></>,
+  flask: <><path d="M6.5 2.5h3M7 2.5v4L3.5 12.5a1 1 0 00.9 1.5h7.2a1 1 0 00.9-1.5L9 6.5v-4" /><path d="M5 10h6" /></>,
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof paths;

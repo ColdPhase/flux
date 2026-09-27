@@ -1,4 +1,5 @@
 import { Icon } from '../ui';
+import { WorkDetails } from '../work/WorkDetails';
 import type { WorkspaceSummary } from './data';
 import type { DetailsView } from './shellContext';
 
@@ -14,6 +15,7 @@ export function Details({ view, workspace, placeTitle, onBack }: {
   onBack: () => void;
 }) {
   if (view === 'connect-ai') return <ConnectAi onBack={onBack} />;
+  if (typeof view === 'object') return <WorkDetails view={view} />;
   const home = placeTitle === 'Home';
   return (
     <div className="details">

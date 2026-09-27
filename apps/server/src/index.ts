@@ -16,6 +16,7 @@ import { loadPushServerConfig, pushRoutes } from './push/index.js';
 import { setStaticHeaders } from './pwa/static-headers.js';
 import { streamRoutes } from './stream/index.js';
 import { conversationRoutes } from './conversation/routes.js';
+import { workRoutes } from './work/routes.js';
 
 const connectionString = process.env.DATABASE_URL;
 const fixtureToken = process.env.FLUX_FIXTURE_TOKEN;
@@ -40,6 +41,7 @@ const heartbeatMs = Number(process.env.FLUX_STREAM_HEARTBEAT_MS ?? 25_000);
 if (!Number.isInteger(heartbeatMs) || heartbeatMs < 100) throw new Error('FLUX_STREAM_HEARTBEAT_MS must be an integer of at least 100');
 await app.register(streamRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, connectionString, heartbeatMs, cursorSecret: identityConfig.secret, exposeWork: testFailureInjection });
 await app.register(conversationRoutes, { db, sessions: identity });
+await app.register(workRoutes, { db, sessions: identity });
 
 app.get('/api/v1/health', async (_request, reply) => {
   try {
