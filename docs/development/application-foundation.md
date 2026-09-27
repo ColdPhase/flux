@@ -2,8 +2,9 @@
 
 This is the first technical slice of the Flux application. It starts a built browser
 shell, a versioned API, a separate worker, PostgreSQL 18, a reviewed SQL migration,
-and a durable pg-boss queue. Human identity, the messenger and project access follow
-in later tasks. The integration command below is a fixture, not a collaboration UI.
+and a durable pg-boss queue. Human login and sessions were added in #29's first
+slice; project access and the messenger follow in later tasks. The integration
+command below is a fixture, not a collaboration UI.
 
 ## Clean start
 
@@ -18,14 +19,16 @@ random alphanumeric value. Do not commit `.env`.
 cp .env.example .env
 # Edit POSTGRES_PASSWORD, FLUX_FIXTURE_TOKEN and FLUX_AUTH_SECRET.
 set -a; . ./.env; set +a
-docker compose --env-file .env -p flux28 -f infra/compose.yaml up -d --build db migrate api worker
+docker compose --env-file .env -p flux28 -f infra/compose.yaml up -d --build db migrate
+docker compose --env-file .env -p flux28 -f infra/compose.yaml --profile setup run --rm files-init
+docker compose --env-file .env -p flux28 -f infra/compose.yaml up -d --wait api worker
 docker compose --env-file .env -p flux28 -f infra/compose.yaml ps
 curl -fsS http://127.0.0.1:8081/api/v1/health
 ```
 
 Open `http://127.0.0.1:8081/`. The API serves the built browser assets on the same
 origin. Compose waits for PostgreSQL readiness and a successful one-shot migration
-before starting API and worker. `migrate` applies each numbered `packages/db/migrations/NNNN_*.sql` once, in order, and
+before starting API and worker. The one-shot `files-init` gives the non-root API and worker access to the named files volume, including an existing volume after an image upgrade. `migrate` applies each numbered `packages/db/migrations/NNNN_*.sql` once, in order, and
 initializes the pg-boss schema and `sample.process` queue. If a migration fails,
 the API and worker must not start. The API health endpoint checks the database,
 Flux schema version, pg-boss schema and writable files volume.
@@ -40,8 +43,11 @@ docker compose --env-file .env -p flux28 -f infra/compose.yaml run --rm migrate
 
 The fixture requires the secret bearer token from `.env`. It writes a sample row,
 event, outbox entry and pg-boss job in one transaction. The separate worker records
-the result in `sample_results`. The `failAfterInsert` switch deliberately aborts
-the transaction after the domain, event, outbox and job writes for rollback verification.
+the result in `sample_results`. The public command body rejects `failAfterInsert`.
+Only the isolated test deployment sets `FLUX_TEST_FAILURE_INJECTION=true`; its
+`X-Flux-Test-Failure: after-insert` header deliberately aborts after the domain,
+event, outbox and job writes to verify rollback. A normal API deployment ignores
+that header even with a valid fixture token.
 
 ```sh
 curl -fsS -H "Authorization: Bearer $FLUX_FIXTURE_TOKEN" \
@@ -61,22 +67,29 @@ not expose this endpoint as a human or agent authorization scheme.
 ## Checks and isolation
 
 The multi-stage Dockerfile runs locked dependency installation, build, type check
-and lint. Run focused integration tests against a fresh PostgreSQL volume using a
+and lint. The production image contains compiled API, worker and migration JavaScript,
+production dependencies, web assets and SQL migrations. API and worker run as UID 1000;
+the separate `test` target retains TypeScript tooling for Docker checks. Run focused integration tests against a fresh PostgreSQL volume using a
 distinct Compose project. The test project may be removed with `down -v` because
 it contains only test data; never do that to a work project.
 
 ```sh
 ./scripts/check_application.sh
+./scripts/check_runtime.sh
 docker compose --env-file .env -p flux28 -f infra/compose.yaml down
 ```
 
-The check script uses a unique Compose project and removes only its own test
+Each script uses its own Compose project and removes only its disposable test
 volumes after the run. `down` without `-v` preserves the work project's `pgdata`
-and `files` named volumes. Run `up`
-again with the same project name to reuse them. To run individual tooling commands
-in the built image, use `docker compose --env-file .env -p flux28 -f infra/compose.yaml run --rm
---no-deps migrate pnpm lint` (or `typecheck`, `test`, `build`), with the test
-command using the isolated test project and database above.
+and `files` named volumes. Run the three clean-start commands again with the same
+project name to reuse them; `files-init` is safe to repeat. Run application tooling
+through the `test` build target, not the production runtime image.
+
+On the local Docker platform on 2026-09-27, the #29 image before this change was
+385,027,688 bytes and the compiled non-root runtime image was 322,443,116 bytes
+(about 16% smaller). Inspection of the new image found UID 1000, compiled API,
+worker and migration entry points, no `tsx` binary and no API TypeScript source.
+Actual image size varies by platform and later dependency changes.
 
 ## Initial backup and restore
 
@@ -106,7 +119,9 @@ cat ../flux-backup/database.dump | docker compose --env-file .env -p flux28resto
 docker run --rm -v flux28restore_files:/data -v "$PWD/../flux-backup":/backup:Z \
   node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 \
   tar -xzf /backup/files.tar.gz -C /data
-FLUX_PORT=8082 docker compose --env-file .env -p flux28restore -f infra/compose.yaml up -d migrate api worker
+FLUX_PORT=8082 docker compose --env-file .env -p flux28restore -f infra/compose.yaml up -d migrate
+FLUX_PORT=8082 docker compose --env-file .env -p flux28restore -f infra/compose.yaml --profile setup run --rm files-init
+FLUX_PORT=8082 docker compose --env-file .env -p flux28restore -f infra/compose.yaml up -d --wait api worker
 ```
 
 An application release needs a full restore acceptance test with real uploaded

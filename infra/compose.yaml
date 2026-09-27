@@ -17,12 +17,20 @@ services:
       context: ..
       dockerfile: infra/Dockerfile
     image: flux-foundation:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
-    command: ["pnpm", "exec", "tsx", "infra/migrate.ts"]
+    command: ["node", "infra/dist/migrate.js"]
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-flux}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-flux}
     depends_on:
       db:
         condition: service_healthy
+    restart: "no"
+  files-init:
+    profiles: ["setup"]
+    image: flux-foundation:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
+    user: "0:0"
+    command: ["chown", "-R", "1000:1000", "/data/files"]
+    volumes:
+      - files:/data/files
     restart: "no"
   api:
     image: flux-foundation:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
@@ -30,6 +38,7 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-flux}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-flux}
       FLUX_FIXTURE_TOKEN: ${FLUX_FIXTURE_TOKEN:?Set FLUX_FIXTURE_TOKEN}
+      FLUX_TEST_FAILURE_INJECTION: ${FLUX_TEST_FAILURE_INJECTION:-false}
       FLUX_FILES_DIR: /data/files
       FLUX_PUBLIC_ORIGIN: ${FLUX_PUBLIC_ORIGIN:?Set FLUX_PUBLIC_ORIGIN}
       FLUX_AUTH_SECRET: ${FLUX_AUTH_SECRET:?Set FLUX_AUTH_SECRET}
@@ -54,7 +63,7 @@ services:
   worker:
     image: flux-foundation:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
     restart: unless-stopped
-    command: ["pnpm", "exec", "tsx", "apps/worker/src/index.ts"]
+    command: ["node", "apps/worker/dist/index.js"]
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-flux}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-flux}
     volumes:
@@ -78,13 +87,18 @@ services:
       retries: 20
   test:
     profiles: ["test"]
-    image: flux-foundation:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+      target: test
+    image: flux-test-tools:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
     command: ["pnpm", "test"]
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-flux}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-flux}
       FLUX_API_URL: http://api:8080
       FLUX_MAILPIT_URL: http://mailpit:8025
       FLUX_PUBLIC_ORIGIN: ${FLUX_PUBLIC_ORIGIN:?Set FLUX_PUBLIC_ORIGIN}
+      FLUX_FIXTURE_TOKEN: ${FLUX_FIXTURE_TOKEN:?Set FLUX_FIXTURE_TOKEN}
       FLUX_TEST_STATE_DIR: /state
     volumes:
       - teststate:/state

@@ -29,8 +29,8 @@ selects PostgreSQL. The first application foundation in `infra/compose.yaml`
 starts PostgreSQL, a one-shot migration, the API and a separate worker with named
 `pgdata` and `files` volumes. See [application foundation](application-foundation.md)
 for the current clean-start, validation and backup/restore commands. This is an
-application skeleton; user identity, collaboration and release verification are
-separate tasks.
+application skeleton; #29's first slice adds human identity and sessions, while
+project policy, collaboration and release verification remain separate tasks.
 
 Git, Docker/Compose, GitHub CLI, the installed official coding-agent CLIs, and
 Python 3.11+ for this repository's standard-library foundation checks are host

@@ -7,6 +7,7 @@ export POSTGRES_USER=flux
 export POSTGRES_DB=flux
 export POSTGRES_PASSWORD="flux-test-$$-$(date +%s)"
 export FLUX_FIXTURE_TOKEN="fixture-test-$$-$(date +%s)"
+export FLUX_TEST_FAILURE_INJECTION=true
 export FLUX_PORT="${FLUX_TEST_PORT:-18089}"
 export FLUX_MAILPIT_PORT="${FLUX_TEST_MAILPIT_PORT:-18025}"
 export FLUX_PUBLIC_ORIGIN="http://127.0.0.1:${FLUX_PORT}"
@@ -26,6 +27,8 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
+$compose up -d --build db migrate
+$compose --profile setup run --rm files-init
 $compose run --build --rm test
 
 # A session created before an API container restart must still be valid afterwards.
