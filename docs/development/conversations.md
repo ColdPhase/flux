@@ -46,3 +46,34 @@ FLUX_TEST_PORT=18136 FLUX_TEST_MAILPIT_PORT=18137 scripts/check_application.sh
 The script creates its own isolated Compose project, builds, typechecks, lints,
 runs API/PostgreSQL integration tests and restarts the API to verify a session,
 material and linked conversation survive. It removes only its own test volumes.
+
+## Stacked web surface (#36)
+
+The project conversation UI is developed on `codex-hubert/36-ui-stack`, based on
+backend `a6a12f4` and locally merged with app-shell PR #55 head `deee608`.
+It must be rebased after the independently reviewed shell and backend heads merge;
+this stacked branch is not a substitute for their reviews. The shell loads only
+projects that the current person can see, and a selected project route loads its
+conversation and materials under the current session. A revoked project route
+returns an error instead of keeping old server content on screen. The active
+composer draft is kept per signed-in user and conversation in session storage;
+its UUID is retained across a failed send until the command changes. A published
+material from a private draft uses the chosen draft version and the exact edited
+public text. The private draft stays separate.
+
+Home captures are server-backed private drafts when a space exists. With no space,
+Home explicitly labels browser-only notes. People with several spaces select the
+space for a new private draft. The project setup route asks for a space name when
+there is none; it does not silently create an administrative boundary. UI project
+creation currently uses a restricted audience. Member invitation and access
+management remain through the #29 API; a full in-app invitation surface is still
+needed before the two-person journey is discoverable without API setup.
+
+Browser verification runs in the isolated Compose UI profile. `scripts/check_ui.sh`
+builds the app and Playwright image, then runs all `tests/ui/test_*.py` through
+unittest discovery. Set `FLUX_UI_PORT`, `FLUX_UI_MAILPIT_PORT` and optionally
+`FLUX_UI_SCREENSHOT_DIR` to avoid other active projects. The #36 browser journey
+covers real two-user sending, private draft reload, selected redacted publication,
+version citation, lost-response retry without a duplicate, phone draft retention,
+and denial after revocation. Backend database rows and restart are covered by
+`./scripts/check_application.sh`.

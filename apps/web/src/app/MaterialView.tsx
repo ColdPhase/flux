@@ -1,0 +1,15 @@
+import { Link, useLoaderData, type LoaderFunctionArgs } from 'react-router';
+import type { Material, MaterialVersion } from '@flux/contracts';
+import { getMaterial, getMaterialVersion } from './conversation-api';
+import { useShellData } from './data';
+
+export async function materialLoader({ params, request }: LoaderFunctionArgs) {
+  const material = await getMaterial(params.materialId!, request.signal);
+  const version = params.version ? await getMaterialVersion(material.materialId, Number(params.version), request.signal) : material;
+  return { material, version };
+}
+export function MaterialView() {
+  const { material, version } = useLoaderData() as { material: Material; version: MaterialVersion };
+  const { me } = useShellData();
+  return <div className="pane-scroll"><article className="pane-in material-view"><Link to={`/projects/${material.projectId}`}>← Project conversation</Link><p className="project-convo__eyebrow">Project material · Version {version.version}{version.version !== material.version ? ' · Historical snapshot' : ''}</p><h2>{version.title}</h2><p className="project-convo__muted">{version.authorId === me.user.id ? 'You' : `Member ${version.authorId.slice(0, 8)}`} · Saved {new Date(version.createdAt).toLocaleString()}</p>{version.body ? <p className="material-view__body">{version.body}</p> : null}{version.url ? <a href={version.url} target="_blank" rel="noreferrer">Open source link</a> : null}{version.version !== material.version ? <p>Current version: <Link to={`/materials/${material.materialId}`}>v{material.version}</Link></p> : null}</article></div>;
+}

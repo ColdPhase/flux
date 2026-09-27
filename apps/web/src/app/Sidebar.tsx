@@ -1,4 +1,4 @@
-import { NavLink, useLocation, useNavigate } from 'react-router';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router';
 import { Avatar, Icon, IconButton } from '../ui';
 import type { DirectMessageSummary, ProjectSummary, WorkspaceSummary } from './data';
 import { Rail, placeOf } from './Rail';
@@ -23,11 +23,16 @@ export interface SidebarProps {
  */
 export function Sidebar({ workspace, projects, directMessages, user, session, onClose, titleId }: SidebarProps) {
   const go = useNavigate();
-  const place = placeOf(useLocation().pathname);
+  const location = useLocation();
+  const place = placeOf(location.pathname);
+  const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
+  const activeProject = projects.find((project) => project.id === projectId);
   const navigate = onClose ? () => onClose() : undefined;
   const head = place === 'dm'
     ? { title: 'Direct messages', sub: 'Only the people in each conversation' }
-    : { title: 'Home', sub: workspace ? `Yours · ${workspace.name}` : 'Only you see Home' };
+    : activeProject
+      ? { title: activeProject.name, sub: activeProject.workspaceName ?? 'Project conversation' }
+      : { title: 'Home', sub: workspace ? `Yours · ${workspace.name}` : 'Only you see Home' };
   return (
     <div className="side-wrap">
       <Rail place={place} projects={projects} onNavigate={navigate} titleId={titleId} />
@@ -69,7 +74,7 @@ export function Sidebar({ workspace, projects, directMessages, user, session, on
                     {projects.map((project) => (
                       <li key={project.id}>
                         <NavLink to={`/projects/${project.id}`} className="side__item" onClick={navigate}>
-                          <span className="side__hash" aria-hidden="true">#</span>{project.name}
+                          <span className="side__hash" aria-hidden="true">#</span>{project.name}{project.workspaceName ? <span className="side__sub">{project.workspaceName}</span> : null}
                           {project.hasNew ? <span className="ui-dot ui-dot--accent side__new"><span className="ui-vh">, new activity</span></span> : null}
                         </NavLink>
                       </li>
@@ -78,6 +83,7 @@ export function Sidebar({ workspace, projects, directMessages, user, session, on
                 ) : (
                   <p className="side__empty">No projects yet. When someone adds you to one, it appears here and in the rail.</p>
                 )}
+                <Link to="/projects/new" className="side__item" onClick={navigate}><Icon name="plus" className="side__ic" />New project</Link>
               </section>
             </>
           )}
