@@ -192,7 +192,8 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; }
 /* ---------- Main ---------- */
 .main { grid-area: main; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--surface-base); }
 .view-head { padding: 12px 20px 12px; border-bottom: 1px solid var(--line-strong); display: grid; grid-template-columns: minmax(0,1fr) auto; column-gap: 16px; row-gap: 4px; align-items: start; }
-.crumbs { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-muted); grid-column: 1; }
+.crumbs { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-muted); grid-column: 1; min-width: 0; white-space: nowrap; }
+.crumbs .here { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .crumbs a { color: var(--text-secondary); text-decoration: none; font-weight: 600; }
 .crumbs a:hover { text-decoration: underline; }
 .crumbs .here { color: var(--text-primary); font-weight: 650; }
@@ -283,7 +284,10 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; }
 /* ---------- Aside / context ---------- */
 .aside { grid-area: aside; display: flex; flex-direction: column; min-height: 0; background: var(--surface-canvas); border-left: 1px solid var(--line-strong); }
 .aside-head { display: none; }
-.ctx { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
+.ctx { flex: 1 1 auto; overflow-y: auto; min-height: 0; position: relative; }
+/* Scroll cue: shown while context continues below the visible part of the column. */
+.more-cue { position: sticky; bottom: 0; display: none; align-items: flex-end; gap: 6px; height: 40px; margin-top: -40px; padding: 0 16px 6px; pointer-events: none; font-size: 12px; font-weight: 650; color: var(--text-secondary); background: linear-gradient(to bottom, rgba(243,244,246,0), var(--surface-canvas) 42%); }
+.ctx.has-more .more-cue { display: flex; }
 .sec { padding: 12px 16px 14px; border-bottom: 1px solid var(--line-default); }
 .sec-h { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .sec-h h2 { font-size: 12px; font-weight: 750; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-secondary); }
@@ -320,7 +324,7 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; }
 .restricted .txt b { color: var(--text-primary); display: block; font-size: 13.5px; }
 
 /* ---------- Agent dock ---------- */
-.dock { display: none; flex: 0 1 auto; max-height: 50%; min-height: 0; flex-direction: column; border-top: 2px solid var(--line-strong); background: var(--surface-base); }
+.dock { display: none; flex: 0 1 auto; max-height: 40%; min-height: 0; flex-direction: column; border-top: 2px solid var(--line-strong); background: var(--surface-base); }
 body.agents-open .dock { display: flex; }
 .dock-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 16px; border-bottom: 1px solid var(--line-default); }
 .dock-head h2 { font-size: 13.5px; font-weight: 700; }
@@ -745,6 +749,7 @@ body.agents-open .dock { display: flex; }
           </li>
         </ul>
       </section>
+      <div class="more-cue" aria-hidden="true"><svg class="i" viewBox="0 0 16 16"><path d="M8 3v9M4 8.5l4 4 4-4" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>More below: sources and handoff</div>
     </div>
 
     <!-- Agent dock -->
@@ -816,6 +821,7 @@ body.agents-open .dock { display: flex; }
     var rail = document.getElementById('rail'), aside = document.getElementById('aside');
     rail.toggleAttribute('inert', railDrawer() && !body.classList.contains('nav-open'));
     aside.toggleAttribute('inert', narrow() && !body.classList.contains('ctx-open'));
+    if (ctx) cue();
   }
   function open(k, trigger) {
     lastTrigger = trigger || document.activeElement;
@@ -881,10 +887,19 @@ body.agents-open .dock { display: flex; }
     if (h === '#nav') { body.classList.add('nav-open'); body.classList.remove('ctx-open'); }
     sync();
   }
+  var ctx = document.querySelector('.ctx');
+  function cue() { ctx.classList.toggle('has-more', !narrow() && ctx.scrollHeight - ctx.scrollTop - ctx.clientHeight > 24); }
+  ctx.addEventListener('scroll', cue, { passive: true });
+  window.addEventListener('resize', cue);
+  var input = document.getElementById('composer-input');
+  function placeholder() { input.placeholder = window.matchMedia('(max-width: 600px)').matches ? 'Reply in C-1\u2026' : 'Reply in C-1\u2026 use # to link D-2, R-1'; }
+  window.matchMedia('(max-width: 600px)').addEventListener('change', placeholder);
+  placeholder();
   window.addEventListener('hashchange', fromHash);
   window.matchMedia('(max-width: 900px)').addEventListener('change', sync);
   window.matchMedia('(max-width: 1120px)').addEventListener('change', sync);
   fromHash();
+  cue();
 })();
 </script>
 </body>

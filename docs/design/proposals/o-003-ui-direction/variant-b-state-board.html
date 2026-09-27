@@ -389,6 +389,17 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
 .arow .acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .arow .nosw { margin: 2px 0 0 !important; font-size: 12.5px; font-weight: 600; display: flex; gap: 6px; align-items: center; }
 .arow.stopped { background: #FFF8F6; box-shadow: inset 4px 0 0 var(--status-danger); }
+/* Desktop and tablet: one compact row per agent; the full grant opens on demand so the board keeps its height. */
+.arow .gsum { margin: 0; font-size: 12.5px; color: var(--text-secondary); }
+.arow .gsum b { color: var(--text-primary); font-weight: 600; }
+@media (min-width: 901px) {
+  .arow { grid-template-columns: minmax(190px, .6fr) minmax(0, 1.5fr) minmax(0, 1.1fr) auto; padding-top: 5px; padding-bottom: 5px; }
+  .arow .what .on { display: inline; margin-left: 6px; }
+  .arow dl { display: none; grid-column: 2 / 4; grid-row: 2; margin-top: 2px; }
+  .arow.open dl { display: grid; }
+  .arow .acts { grid-column: 4; grid-row: 1; }
+}
+@media (max-width: 900px) { .arow .gsum, .arow .gtoggle { display: none; } }
 
 /* ---------- Detail pane ---------- */
 .detail { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--surface-raised); }
@@ -460,7 +471,8 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
   .jump .lbl { display: none; }
   .arow { grid-template-columns: minmax(190px, .8fr) minmax(0, 1.4fr) auto; }
   .agents { max-height: 36%; }
-  .arow dl { grid-column: 2 / 3; }
+  .arow .gsum { grid-column: 2; }
+  .arow dl { grid-column: 2 / 3; grid-row: auto; }
   .arow .acts { grid-column: 3; grid-row: 1; }
   .arow .nosw { grid-column: 2 / 4; }
   .project .actions .btn:not(.btn-primary) .long { display: none; }
@@ -566,7 +578,7 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
     </nav>
     <span class="spacer"></span>
     <button class="btn jump" type="button" aria-label="Jump to object or person (Command K)"><span class="lbl">Jump to object or person</span><kbd>⌘K</kbd></button>
-    <button class="btn agents-toggle" type="button" aria-expanded="true" aria-controls="agents">
+    <button class="btn agents-toggle" type="button" aria-expanded="false" aria-controls="agents">
       <span class="short" aria-hidden="true">Agents</span><span class="dot" aria-hidden="true"></span><span class="lbl">Agents · 1 running ·</span>
       <span class="sq" aria-hidden="true"></span><span class="lbl">1 stopped</span>
       <span class="sr-only">2 agents: 1 running, 1 stopped</span>
@@ -771,7 +783,7 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
       </div>
 
       <!-- ================= AGENTS PANEL ================= -->
-      <section class="agents" id="agents" aria-labelledby="agents-title">
+      <section class="agents" id="agents" aria-labelledby="agents-title" hidden>
         <div class="agents-h">
           <h2 id="agents-title">Agents on this project</h2>
           <span class="meta">2 · every action is logged on the object it touches · nothing runs without a grant</span>
@@ -781,22 +793,24 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
           <li class="arow">
             <div class="who"><span class="avatar bot" aria-hidden="true">RA</span><div><strong>Review agent</strong><span class="state-line"><span class="run-dot" aria-hidden="true" style="margin-top:0"></span>Running · 4 min</span></div></div>
             <div class="what">Reading sample XLSX (2 of 3 files), checking hidden rows against D-2. No edits, no posting in C-1.<span class="on">on <button class="link-chip" type="button" data-select="R-1">R-1</button> · started 09:10</span></div>
-            <dl>
+            <p class="gsum"><b>Jo's grant</b> · read-only, comments on R-1 · Tide org API</p>
+            <dl id="grant-ra">
               <dt>Grant</dt><dd>Read R-1, W-1, D-2, M-1, M-2 · comment on R-1 only</dd>
               <dt>Payer</dt><dd>Tide org API — Anthropic</dd>
               <dt>Authorized</dt><dd>by Jo · Sep 18, valid until Sep 30</dd>
             </dl>
-            <div class="acts"><button class="btn btn-sm btn-danger" type="button"><svg class="i" aria-hidden="true"><use href="#i-stop"/></svg>Stop</button></div>
+            <div class="acts"><button class="btn btn-sm gtoggle" type="button" aria-expanded="false" aria-controls="grant-ra">Grant</button><button class="btn btn-sm btn-danger" type="button"><svg class="i" aria-hidden="true"><use href="#i-stop"/></svg>Stop</button></div>
           </li>
           <li class="arow stopped">
             <div class="who"><span class="avatar bot" aria-hidden="true">TA</span><div><strong>Test agent</strong><span class="state-line stopped"><span class="stop-sq" aria-hidden="true" style="margin-top:0"></span>Stopped — Provider limit reached</span></div></div>
             <div class="what">9 of 16 permission cases run. Partial output kept as a draft on W-1.<span class="on">on <button class="link-chip" type="button" data-select="W-1">W-1</button> · stopped Sep 26, 14:12</span><p class="nosw" style="margin:0"><svg class="i" aria-hidden="true"><use href="#i-alert"/></svg>No automatic switch to another paid source.</p></div>
-            <dl>
+            <p class="gsum"><b>Nia's grant</b> · tests and a draft on W-1 · Tide org API, limit reached</p>
+            <dl id="grant-ta">
               <dt>Grant</dt><dd>Run tests on W-1 branch · write draft on W-1</dd>
               <dt>Payer</dt><dd>Tide org API — Anthropic (limit reached)</dd>
               <dt>Authorized</dt><dd>by Nia · Sep 22</dd>
             </dl>
-            <div class="acts"><button class="btn btn-sm" type="button" data-select="W-1">Continue manually</button><button class="btn btn-sm" type="button">Resume later</button></div>
+            <div class="acts"><button class="btn btn-sm gtoggle" type="button" aria-expanded="false" aria-controls="grant-ta">Grant</button><button class="btn btn-sm" type="button" data-select="W-1">Continue manually</button><button class="btn btn-sm" type="button">Resume later</button></div>
           </li>
         </ul>
       </section>
@@ -1014,6 +1028,8 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
     var f = e.target.closest("[data-filter]");
     if (f && f.classList.contains("chip")) { setFilter(f); return; }
     if (e.target.closest(".agents-toggle")) { toggleAgents(); return; }
+    var gt = e.target.closest(".gtoggle");
+    if (gt) { var row = gt.closest(".arow"); var on = !row.classList.contains("open"); row.classList.toggle("open", on); gt.setAttribute("aria-expanded", String(on)); return; }
     if (e.target.closest("[data-close-agents]")) { toggleAgents(false); document.querySelector(".agents-toggle").focus(); return; }
     if (e.target.closest("[data-retry]")) {
       var m = document.getElementById("failed-msg");
@@ -1073,6 +1089,7 @@ svg.i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none;
   select("D-2", { initial: true });
   if (phoneMQ.matches) setView("outline");
   if (location.hash === "#sheet" && sheetMQ.matches) openSheet();
+  if (location.hash === "#agents") toggleAgents(true);
 })();
 </script>
 </body>
