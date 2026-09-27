@@ -1,9 +1,7 @@
-import { and, eq, inArray } from 'drizzle-orm';
-import { schema } from '@flux/db';
 import type { Executor, Principal } from '../types.js';
 import type { SketchAccess } from '../sketches/ports.js';
 import { RuleViolationError } from './errors.js';
-import { enforce, evaluateDraft, evaluateProject, evaluateSketch, evaluateWorkspace } from './policy.js';
+import { currentMembers, enforce, evaluateDraft, evaluateProject, evaluateSketch, evaluateWorkspace } from './policy.js';
 
 /**
  * The access policy as the sketch use cases' `SketchAccess` port (issue #69). It uses the same
@@ -37,9 +35,7 @@ export function policySketchAccess(db: Executor): SketchAccess {
       }
       enforce(await evaluateWorkspace(principal, 'sketch.create', target.workspaceId, db, { lock: true }), 'workspace');
       if (!target.participantIds.length) throw new RuleViolationError('A direct sketch needs at least one participant', 'NO_PARTICIPANTS');
-      const members = await db.select({ userId: schema.workspaceMembers.userId }).from(schema.workspaceMembers)
-        .where(and(eq(schema.workspaceMembers.workspaceId, target.workspaceId), inArray(schema.workspaceMembers.userId, target.participantIds)))
-        .for('share');
+      const members = await currentMembers(target.workspaceId, target.participantIds, db, { lock: true });
       if (members.length !== target.participantIds.length) {
         throw new RuleViolationError('Every participant must be a member of the sketch’s workspace', 'PARTICIPANT_NOT_MEMBER');
       }

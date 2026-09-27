@@ -42,8 +42,11 @@ concurrent revocation is either seen or waits.
 - `packages/core/src/sketches/` holds the use cases (`createSketchUseCases`) and their
   ports: `SketchAccess`, `SketchRepository`, `SketchEventLog` and `SketchUnitOfWork`.
   It imports only `@flux/contracts`, the domain errors and `principal.ts`. It never
-  imports Drizzle, `@flux/db` or pg-boss (`tests/app/architecture.test.ts`).
+  imports Drizzle, `@flux/db` or pg-boss (`tests/app/architecture.test.ts` also follows its relative imports).
 - `packages/core/src/access/sketch-access.ts` is the policy adapter for `SketchAccess`.
+  It imports no persistence library itself; its SQL reaches it only through the existing
+  `policy.ts` import chain, which the [architecture rules](architecture.md#known-debt)
+  already record. No allowlist entry was added.
 - `packages/db/src/repositories/sketches.ts` holds the rows. It makes no access decisions;
   lists take the policy's condition from the caller.
 - `apps/server/src/sketches/` holds the adapters: the unit of work, the `visibleFilter`

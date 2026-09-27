@@ -1,4 +1,4 @@
-import { and, eq, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
+import { and, eq, inArray, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
 import { schema } from '@flux/db';
 import type { ProjectAccess, WorkspaceRole } from '@flux/contracts';
 import type { Executor, Principal } from '../types.js';
@@ -143,6 +143,18 @@ async function memberRole(db: Executor, workspaceId: string, userId: string, loc
     .where(and(eq(schema.workspaceMembers.workspaceId, workspaceId), eq(schema.workspaceMembers.userId, userId)));
   const rows = lock ? await query.for('share') : await query;
   return rows[0]?.role ?? null;
+}
+
+/**
+ * The ids among `userIds` that are current members of the workspace. With `lock`, their
+ * membership rows are held `FOR SHARE` until the transaction commits, so a concurrent removal
+ * waits (used for the participants of a direct sketch).
+ */
+export async function currentMembers(workspaceId: string, userIds: string[], db: Executor, options: LoadOptions = {}): Promise<string[]> {
+  if (!isUuid(workspaceId) || !userIds.length) return [];
+  const m = schema.workspaceMembers;
+  const query = db.select({ userId: m.userId }).from(m).where(and(eq(m.workspaceId, workspaceId), inArray(m.userId, userIds)));
+  return (options.lock ? await query.for('share') : await query).map((row) => row.userId);
 }
 
 /** Reads the principal's current standing in a workspace. Never cached. */
