@@ -1,0 +1,96 @@
+import { GENERIC_PUSH_TITLE, type PushPayload } from '@flux/contracts';
+import { pushEndpointViolation } from './config.js';
+import { readsSource } from './notifications.js';
+import type { NotificationRecord, PushDeliveryRepository, PushSender, PushSendJob, SourceReadAuthorizer, SourceReadDecision } from './ports.js';
+
+export type DeliveryOutcome =
+  | { outcome: 'sent'; status: number; preview: PushPayload['preview'] }
+  | { outcome: 'removed'; status: number | null; reason: string }
+  | { outcome: 'rejected'; status: number | null; reason: string }
+  | { outcome: 'skipped'; reason: string };
+
+/** Thrown for 429, 5xx and network failures so the queue retries with bounded backoff. */
+export class RetryableDeliveryError extends Error {
+  constructor(message: string, readonly status: number | null) {
+    super(message);
+  }
+}
+
+/**
+ * Lock-screen privacy rule: the notification's text leaves the server only when the recipient
+ * can read its source right now. Otherwise the device gets a fixed title and an opaque id, and
+ * the service worker asks the server (which rechecks) for details when the person taps it.
+ */
+export function buildPushPayload(notification: NotificationRecord, decision: SourceReadDecision): PushPayload {
+  if (readsSource(decision, notification.source)) {
+    return { preview: 'full', notificationId: notification.id, title: notification.title, body: notification.body, url: notification.url ?? '/' };
+  }
+  return { preview: 'generic', notificationId: notification.id, title: GENERIC_PUSH_TITLE };
+}
+
+export interface DeliveryPorts {
+  /** False when the operator has not configured VAPID keys: jobs complete as skipped. */
+  available: boolean;
+  targets: PushDeliveryRepository;
+  authorizer: SourceReadAuthorizer;
+  sender: PushSender;
+  log?: (message: string, details?: Record<string, unknown>) => void;
+}
+
+/**
+ * Sends one notification to one subscription. Right before sending it rechecks, from current
+ * rows, that the subscription and the notification still belong to the recipient, that the
+ * subscribing session is still active and that the recipient may still see the source. A
+ * device that moved to another account, a signed-out or revoked session and a recipient who
+ * lost access receive nothing.
+ */
+export async function deliverPushJob(ports: DeliveryPorts, job: PushSendJob): Promise<DeliveryOutcome> {
+  if (!ports.available) return { outcome: 'skipped', reason: 'push unavailable' };
+  const target = await ports.targets.findTarget(job);
+  if (!target) return { outcome: 'skipped', reason: 'recipient, subscription or notification no longer matches' };
+  const { subscription, notification } = target;
+
+  if (!target.sessionActive) {
+    await ports.targets.deleteSubscription(subscription.id);
+    return { outcome: 'removed', status: null, reason: 'the subscribing session has ended' };
+  }
+  if (subscription.expirationTime && subscription.expirationTime.getTime() <= Date.now()) {
+    await ports.targets.deleteSubscription(subscription.id);
+    return { outcome: 'removed', status: null, reason: 'subscription expired' };
+  }
+  const decision = await ports.authorizer.canRead(job.userId, notification.source);
+  if (!decision.visible) return { outcome: 'skipped', reason: 'recipient can no longer see the notification source' };
+  const violation = pushEndpointViolation(subscription.endpoint);
+  if (violation) {
+    await ports.targets.recordFailure(subscription.id, null);
+    return { outcome: 'rejected', status: null, reason: violation };
+  }
+
+  const payload = buildPushPayload(notification, decision);
+  const result = await ports.sender.send(subscription, payload);
+  switch (result.kind) {
+    case 'accepted':
+      await ports.targets.recordSuccess(subscription.id);
+      return { outcome: 'sent', status: result.status, preview: payload.preview };
+    case 'refused':
+      await ports.targets.recordFailure(subscription.id, null);
+      return { outcome: 'rejected', status: null, reason: result.reason };
+    case 'network':
+      await ports.targets.recordFailure(subscription.id, null);
+      throw new RetryableDeliveryError(`Push delivery failed: ${result.message}`, null);
+    case 'http-error': {
+      const { status } = result;
+      if (status === 404 || status === 410) {
+        // The push service says this subscription is gone for good.
+        await ports.targets.deleteSubscription(subscription.id);
+        return { outcome: 'removed', status, reason: 'push service reports the subscription is gone' };
+      }
+      await ports.targets.recordFailure(subscription.id, status);
+      if (status === 429 || status >= 500) throw new RetryableDeliveryError(`Push service answered ${status}`, status);
+      // 400/401/403/413: retrying cannot help. 403 usually means the VAPID key changed since
+      // this browser subscribed; the client re-subscribes with the current key on next start.
+      ports.log?.('Push rejected by push service', { status, subscriptionId: subscription.id });
+      return { outcome: 'rejected', status, reason: `push service answered ${status}` };
+    }
+  }
+}
