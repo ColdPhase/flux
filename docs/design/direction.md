@@ -1,6 +1,6 @@
 # Flux design direction (O-003)
 
-**Status:** proposed for acceptance in [#15](https://github.com/ColdPhase/flux/issues/15) / PR #33, 2026-09-27. Both founders chose this direction: variant C ([`variant-c-calm-messenger.html`](proposals/o-003-ui-direction/variant-c-calm-messenger.html)). It uses the structure and visible surfaces of `flux-ux-v8.html`, made better in a calm style. Product intent is set in [#44](https://github.com/ColdPhase/flux/issues/44). Variants A and B were rejected as overwhelming. The identity is the **rail** (founder decision, 2026-09-27; see [Identity](#identity)).
+**Status:** accepted, 2026-09-27, through founder choice and independent peer review in [PR #33](https://github.com/ColdPhase/flux/pull/33) ([#15](https://github.com/ColdPhase/flux/issues/15)). Both founders chose this direction: variant C ([`variant-c-calm-messenger.html`](proposals/o-003-ui-direction/variant-c-calm-messenger.html)). It uses the structure and visible surfaces of `flux-ux-v8.html`, made better in a calm style. Product intent is set in [#44](https://github.com/ColdPhase/flux/issues/44). Variants A and B were rejected as overwhelming. The identity is the **rail** (founder decision, 2026-09-27; see [Identity](#identity)).
 
 **References:**
 - Slack and Discord for structure;
