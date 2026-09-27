@@ -10,6 +10,8 @@ import { createSample, SAMPLE_JOB } from '@flux/core';
 import { registerDatabase } from './plugins/database.js';
 import { loadIdentityConfig, registerIdentity } from './identity/index.js';
 import { accessRoutes } from './access/routes.js';
+import { loadPushServerConfig, pushRoutes } from './push/index.js';
+import { setStaticHeaders } from './pwa/static-headers.js';
 
 const connectionString = process.env.DATABASE_URL;
 const fixtureToken = process.env.FLUX_FIXTURE_TOKEN;
@@ -17,6 +19,7 @@ const testFailureInjection = process.env.FLUX_TEST_FAILURE_INJECTION === 'true';
 const filesDir = process.env.FLUX_FILES_DIR ?? '/data/files';
 if (!connectionString) throw new Error('DATABASE_URL is required');
 const identityConfig = loadIdentityConfig();
+const pushConfig = loadPushServerConfig();
 const app = Fastify({ logger: true, trustProxy: identityConfig.trustedProxies.length ? identityConfig.trustedProxies : false });
 const { pool, db } = registerDatabase(app, connectionString);
 const boss = new PgBoss({ connectionString, migrate: false });
@@ -25,6 +28,8 @@ await boss.start();
 app.addHook('onClose', async () => boss.stop());
 const identity = registerIdentity(app, { db, config: identityConfig });
 await app.register(accessRoutes, { db, sessions: identity });
+await app.register(pushRoutes, { db, sessions: identity, config: pushConfig });
+if (pushConfig.status === 'unavailable') app.log.warn(pushConfig.reason);
 
 app.get('/api/v1/health', async (_request, reply) => {
   try {
@@ -62,7 +67,7 @@ app.post<{ Body: SampleCommand }>(SAMPLE_COMMAND_PATH, {
   }
 });
 
-await fastifyStatic(app, { root: join(process.cwd(), 'apps/web/dist'), prefix: '/' });
+await fastifyStatic(app, { root: join(process.cwd(), 'apps/web/dist'), prefix: '/', cacheControl: false, setHeaders: setStaticHeaders });
 app.setNotFoundHandler(async (request, reply) => {
   if (request.url.startsWith('/api/')) return reply.code(404).send({ error: 'Not Found' });
   if (!request.headers.accept?.includes('text/html')) return reply.code(404).send({ error: 'Not Found' });

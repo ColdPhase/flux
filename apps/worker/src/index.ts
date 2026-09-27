@@ -2,6 +2,7 @@ import { PgBoss } from 'pg-boss';
 import { eq } from 'drizzle-orm';
 import { createDatabase, schema } from '@flux/db';
 import { SAMPLE_JOB } from '@flux/core';
+import { registerPushWorker } from './push/index.js';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
@@ -17,6 +18,7 @@ await boss.work<{ sampleId: string }>(SAMPLE_JOB, async (jobs) => {
     await db.insert(schema.sampleResults).values({ sampleId: sample.id, workerId: process.env.HOSTNAME ?? 'worker' }).onConflictDoNothing();
   }
 });
+await registerPushWorker(boss, db);
 console.log('Flux worker ready');
 const stop = async () => { await boss.stop(); await pool.end(); process.exit(0); };
 process.on('SIGTERM', stop);

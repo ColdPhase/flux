@@ -163,3 +163,42 @@ export const drafts = pgTable('drafts', {
   foreignKey({ columns: [table.workspaceId, table.ownerAgentId], foreignColumns: [agents.workspaceId, agents.id] }),
   index('drafts_workspace_idx').on(table.workspaceId, table.createdAt, table.id),
 ]);
+
+// Web Push subscriptions per user and device, and the in-app inbox (migration 0005, issue #41).
+export const pushSubscriptions = pgTable('push_subscriptions', {
+  id: uuid('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  // The session that subscribed; ending that session deletes the subscription (cascade).
+  sessionId: text('session_id').notNull().references(() => authSessions.id, { onDelete: 'cascade' }),
+  endpoint: text('endpoint').notNull().unique(),
+  p256dh: text('p256dh').notNull(),
+  auth: text('auth').notNull(),
+  expirationTime: timestamp('expiration_time', { withTimezone: true }),
+  deviceLabel: text('device_label'),
+  userAgent: text('user_agent'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  lastSuccessAt: timestamp('last_success_at', { withTimezone: true }),
+  lastFailureAt: timestamp('last_failure_at', { withTimezone: true }),
+  lastFailureStatus: integer('last_failure_status'),
+}, (table) => [
+  index('push_subscriptions_user_id_idx').on(table.userId),
+  index('push_subscriptions_session_id_idx').on(table.sessionId),
+]);
+
+export const notifications = pgTable('notifications', {
+  id: uuid('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  // The object the notification is about; its `<type>.read` decides who may see the row.
+  sourceType: text('source_type').$type<'workspace' | 'project' | 'draft'>().notNull(),
+  sourceId: uuid('source_id').notNull(),
+  title: text('title').notNull(),
+  body: text('body').notNull().default(''),
+  url: text('url'),
+  readAt: timestamp('read_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index('notifications_user_created_idx').on(table.userId, table.createdAt.desc()),
+  index('notifications_source_idx').on(table.sourceType, table.sourceId),
+]);
