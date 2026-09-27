@@ -2,7 +2,7 @@
 
 Read foundation sections 10, 17 D1–D4, and 21 in
 [FLUX-FOUNDATION.md](../product/FLUX-FOUNDATION.md). The current direction, tokens and components are in
-[direction.md](direction.md) (O-003, variant C). Existing screens and
+[direction.md](direction.md) (accepted O-003, variant C). Existing screens and
 third-party skills are references; their defaults do not establish Flux's style.
 
 The later [F-012 direction](../product/decisions.md) and [#44 scenarios](https://github.com/ColdPhase/flux/issues/44)
@@ -14,6 +14,15 @@ points. O-003 is accepted: direction C with rail identity
 evaluation continue within C. A compact messenger
 shell, static map or task dashboard alone cannot demonstrate the DM → sketch →
 project, map ↔ experiment/result or return-after-pivot scenarios.
+
+## Live collaboration reference
+
+The founder's [live collaboration requirements](../product/live-collaboration.md)
+add contextual human audio/video/screen sessions to existing work. The supplied
+[interactive reference and inspection](references/live/README.md) illustrate
+join, show/follow, quiet/return and durable outcomes. Preserve the accepted C/v8
+direction, personal-agent ownership and compact working surfaces while designing
+this capability. The reference is simulated; it is not evidence of working media.
 
 ## Brief and continuity
 

@@ -46,6 +46,13 @@ every original criterion.
 
 ## 3. Select work
 
+Before selecting another issue, after pushing reviewable work, at safe boundaries
+during long tasks (roughly every 5–10 minutes), and before merge, make a targeted
+check of assigned issues/new comments, review requests, current PR heads/checks
+and unresolved threads. Act on changed founder direction, peer findings and
+interface answers before unrelated implementation. This is an existing session's
+checkpoint, not a polling service or a reason for status comments.
+
 Both agents pick work in this order:
 
 1. Founder direction or a failure that invalidates current work.
@@ -55,7 +62,9 @@ Both agents pick work in this order:
    unassigned ready issue you claim.
 5. Integrated verification when the milestone is otherwise complete.
 
-WIP limit: at most **2 open implementation PRs per agent**. Reviews do not count.
+WIP limit: at most **3 open implementation PRs per agent**. Reviews do not count.
+Independent tasks may run in parallel through subagents in separate worktrees
+and branches; each issue still has one assignee and each branch one writer.
 The coordinator (`codex-hubert`) keeps the milestones stocked with the next small
 ready issues; either agent may create in-scope issues.
 
@@ -78,8 +87,9 @@ and tests.
 
 Open a draft PR early; link the issue (`Closes #N` when it fulfils the whole
 outcome). Ship small PRs. When ready: push, mark ready for review, and post the
-handoff: PR link, the pinned head SHA, the criteria and checks run, and an
-@mention of the evaluator. Unavailable checks are stated, not implied.
+handoff: issue/PR, branch, full pushed head SHA, actual draft/ready state,
+criteria done and remaining, checks run or unavailable, next action and an
+@mention of the evaluator. A timestamped handoff is a snapshot, not live presence.
 
 ## 5. Review, fix and merge
 
@@ -91,10 +101,17 @@ evaluator re-reviews only the delta and any open findings.
 
 Once the current head is approved, required checks pass and threads are resolved,
 the approver or the author merges. Never bypass branch protection. New code
-after approval needs the relevant re-review. If a reviewer changes code, that
-becomes implementation and the other agent reviews it.
+after approval needs the relevant re-review. A reviewer may reproduce a bug
+and prepare a patch on their own branch. Writing on the peer's branch requires
+an explicit handoff, a current-head check and one writer. Changing code makes
+the reviewer an implementer for that change; the PR author cannot approve their
+own PR. If both agents contribute to the same head and neither can independently
+approve it, split the repair into a separately reviewed PR or obtain another
+eligible independent evaluator. A comment or role switch cannot replace approval.
 
-After the merge, confirm the linked issue closed with its outcome met.
+After merge, map the merged PR and SHA to the issue criteria. Close the issue
+manually if all are met and an auto-close did not occur. Leave partial issues open
+with a short remaining-work/next-owner record; merging one slice is not completion.
 
 ## 6. Verify the version
 

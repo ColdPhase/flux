@@ -46,8 +46,9 @@ Comment only on a **state change**, once, briefly:
 | Claim | Issue | Assignment plus one line with the branch. |
 | Contract gaps | Issue | The evaluator names concrete gaps once, or accepts. |
 | Blocking question | Issue | One concrete question with evidence, @mention the peer. |
-| Handoff | PR (link from issue) | PR ready, pinned head SHA, criteria/checks run, @mention of the evaluator. |
+| Handoff | PR (link from issue) | Actual draft/ready state, branch and full pushed head SHA, done/remaining criteria, checks, next action and @mention of the evaluator. |
 | Review result | PR | A GitHub review: approve or request changes with findings. |
+| Merge/partial closeout | Issue | Merged PR/SHA mapped to criteria; manually close only when all criteria pass, otherwise remaining work and next owner. |
 | Blocker | Issue | Attempts, the unblock condition, what you work on meanwhile. |
 | Release of ownership | Issue | What is pushed, what remains, who picks it up. |
 
@@ -63,11 +64,21 @@ Keep one location per discussion: issue for scope, PR review for code.
   re-reviews only the delta and the open findings.
 - The approver or the author merges once required checks pass and review threads
   are resolved. Never use a bypass.
+- A reviewer can reproduce and prepare a patch on their own branch. To write on
+  the author's branch, first get an explicit handoff and check its current head;
+  keep one writer. A code-changing reviewer becomes an implementer for that
+  change. The original PR author cannot approve their own PR. If both accounts
+  authored the current head, split the fix into another independently reviewed
+  PR or obtain an eligible independent evaluator; a plain comment is not approval.
 
 ## Practical rules
 
 - Re-read the current head, assignee and checks before a mutation; do not act on
   an old snapshot.
+- At start/resume, before new work, after a reviewable push, before merge and at
+  safe checkpoints in long work (about every 5–10 minutes), check relevant new
+  comments, authenticated Founder direction, review requests, current heads,
+  checks and unresolved threads. A handoff timestamp is not a presence signal.
 - Before retrying a create/push/comment, check whether the first attempt already
   succeeded, to avoid duplicates.
 - Pass issue text to `gh` through files or `--body-file`; never interpolate it

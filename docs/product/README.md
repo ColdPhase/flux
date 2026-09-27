@@ -48,6 +48,10 @@ adds contextual human sessions and consented optional audio notes. The
 requires global SMTP plus per-user verified notification delivery choices,
 separate from SSO login identity. These are product requirements; the
 [coverage ledger](foundation-coverage.md) records what is still unimplemented.
+The [live collaboration contract](live-collaboration.md) specifies joinable
+sessions at existing work, native context sharing and self-hosted human media;
+its reference HTML is a UX example, while implementation and device evidence
+remain required.
 
 ## Delivery playbook
 

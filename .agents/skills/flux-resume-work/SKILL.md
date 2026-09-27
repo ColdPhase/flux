@@ -10,11 +10,12 @@ Read `AGENTS.md`, [startup](../../../docs/agents/startup.md) and the
 your local worktrees; there is no other journal.
 
 - Confirm your identity and that no other session runs for it.
-- List open issues assigned to you and read comments since you paused. Check
-  review requests addressed to you.
+- List open issues assigned to you and read comments since you paused, including
+  authenticated Founder direction. Check review requests addressed to you.
 - Inspect your worktrees, branches and uncommitted files. Preserve local changes;
   never discard or overwrite them. Match them to their issue and PR.
-- Check your open PRs: review results, failing checks, unresolved threads.
+- Check your open PRs: current heads, review results, failing checks and unresolved
+  threads. A timestamped handoff is last known state, not proof of live presence.
   Before retrying an uncertain create/push/comment, check whether it already
   happened.
 - Resume the same branch/PR and criteria. Do not recreate issues, repeat accepted
