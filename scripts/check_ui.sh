@@ -25,11 +25,14 @@ compose="docker compose -p $project -f infra/compose.yaml --profile ui"
 cleanup() {
   status=$?
   if [ "$status" -ne 0 ]; then
-    $compose logs --no-color api || true
+    $compose logs --no-color db migrate files-init api || true
   fi
   $compose down -v
 }
 trap cleanup EXIT HUP INT TERM
 
 $compose build migrate ui-test
+$compose up -d db migrate
+# The API writes uploaded files to the shared volume; give it to the runtime user first.
+$compose --profile setup run --rm files-init
 $compose run --rm ui-test
