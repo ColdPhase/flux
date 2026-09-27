@@ -47,6 +47,8 @@ services:
       FLUX_MAIL_FROM: ${FLUX_MAIL_FROM:-}
       FLUX_PASSWORD_RESET_TTL_SECONDS: ${FLUX_PASSWORD_RESET_TTL_SECONDS:-3600}
       FLUX_AUTH_RATE_LIMIT: ${FLUX_AUTH_RATE_LIMIT:-true}
+      # Web Push (issue #41). The API only needs the public key; empty reports push unavailable.
+      FLUX_VAPID_PUBLIC_KEY: ${FLUX_VAPID_PUBLIC_KEY:-}
       PORT: 8080
     volumes:
       - files:/data/files
@@ -66,6 +68,10 @@ services:
     command: ["node", "apps/worker/dist/index.js"]
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-flux}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-flux}
+      # The worker signs Web Push requests. Set all three or none.
+      FLUX_VAPID_PUBLIC_KEY: ${FLUX_VAPID_PUBLIC_KEY:-}
+      FLUX_VAPID_PRIVATE_KEY: ${FLUX_VAPID_PRIVATE_KEY:-}
+      FLUX_VAPID_SUBJECT: ${FLUX_VAPID_SUBJECT:-}
     volumes:
       - files:/data/files
     depends_on:

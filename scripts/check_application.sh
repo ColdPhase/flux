@@ -16,23 +16,43 @@ export FLUX_SMTP_URL="smtp://mailpit:1025"
 export FLUX_MAIL_FROM="Flux <flux@example.test>"
 # The suite signs in many times from one address; rate limiting is covered separately.
 export FLUX_AUTH_RATE_LIMIT=false
-compose="docker compose -p $project -f infra/compose.yaml --profile test"
+compose="docker compose -p $project -f infra/compose.yaml -f infra/compose.test.yaml --profile test"
 
 cleanup() {
   status=$?
   if [ "$status" -ne 0 ]; then
-    $compose logs --no-color db migrate api mailpit test || true
+    $compose logs --no-color db migrate api worker mailpit pushmock || true
   fi
   $compose down -v
 }
 trap cleanup EXIT HUP INT TERM
 
-$compose up -d --build db migrate
+$compose build
+$compose up -d db migrate
 $compose --profile setup run --rm files-init
-$compose run --build --rm test
+
+# Fresh VAPID keys per run, created with the same command operators use (docs/development/containers.md).
+keys=$($compose run --rm --no-deps -T migrate apps/worker/node_modules/.bin/web-push generate-vapid-keys --json)
+FLUX_VAPID_PUBLIC_KEY=$(printf '%s' "$keys" | sed -n 's/.*"publicKey":"\([^"]*\)".*/\1/p')
+FLUX_VAPID_PRIVATE_KEY=$(printf '%s' "$keys" | sed -n 's/.*"privateKey":"\([^"]*\)".*/\1/p')
+export FLUX_VAPID_PUBLIC_KEY FLUX_VAPID_PRIVATE_KEY
+export FLUX_VAPID_SUBJECT="mailto:push-test@example.test"
+if [ -z "$FLUX_VAPID_PUBLIC_KEY" ] || [ -z "$FLUX_VAPID_PRIVATE_KEY" ]; then
+  echo "VAPID key generation failed: $keys" >&2
+  exit 1
+fi
+
+$compose run --rm test
+
+# Service worker registration, offline fallback and the update prompt in Chromium over HTTPS.
+$compose run --rm e2e
 
 # A session created before an API container restart must still be valid afterwards.
 $compose run --rm test pnpm exec tsx tests/app/session-restart.ts prepare
 $compose restart api
 $compose up -d --wait api
 $compose run --rm test pnpm exec tsx tests/app/session-restart.ts verify
+
+# Without VAPID keys the API must report push unavailable rather than fail silently.
+FLUX_VAPID_PUBLIC_KEY= $compose up -d --wait api
+$compose run --rm --no-deps test pnpm exec tsx --test tests/app/push-unavailable.check.ts
