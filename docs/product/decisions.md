@@ -27,6 +27,11 @@ do not create a separate ADR for every reversible detail.
 | O-005 | [First supported agent path: user-operated official Claude Code CLI → Flux MCP/OAuth](first-agent-path.md); other modes conditional | Accepted, 2026-09-27, by [independent peer review of `57c7d4d`](https://github.com/ColdPhase/flux/pull/53#pullrequestreview-5331573326) | Owner @PelikanFix16, [#37](https://github.com/ColdPhase/flux/issues/37), dated primary sources and [#52 first implementation](https://github.com/ColdPhase/flux/issues/52) | Official-client integration test fails, provider terms change, or a safer supported path proves superior |
 | O-006 | Pricing, SLA, commercial modules, licensing changes | Outside implementation scope; existing AGPL-3.0 applies | Preserve the existing license and avoid inventing commercial commitments | A later explicit business task changes the scope |
 
+The [#75 repository and distribution proposal](../development/repository-distribution-proposal.md)
+proposes amendments to O-002's physical workspace/deployment paths and O-004's
+artifact format. Both accepted decisions remain in force until independent peer
+review accepts the proposal at a pinned revision; #76 and #77 depend on it.
+
 For a new significant proposal include: problem, required properties, options,
 recommendation, evidence and date, costs and limitations, acceptance owner,
 status, and reconsideration condition. An acceptance record links to the exact
