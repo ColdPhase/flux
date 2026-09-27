@@ -1,0 +1,248 @@
+name: Final release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version, for example v1.0.0 or v1.0.0-rc.1
+        required: true
+        type: string
+      candidate_sha:
+        description: Exact independently accepted protected-main SHA
+        required: true
+        type: string
+      acceptance_issue:
+        description: Issue with both agents' exact-SHA integrated acceptance comments
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: final-release
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    name: Validate accepted candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      source_sha: ${{ steps.check.outputs.source_sha }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify main SHA, version and independent acceptance
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          ACCEPTANCE_ISSUE: ${{ inputs.acceptance_issue }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RELEASE_VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$ ]]
+          [[ "$ACCEPTANCE_ISSUE" =~ ^[1-9][0-9]*$ ]]
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git rev-parse origin/main)" = "$CANDIDATE_SHA"
+          test -f docker/compose.yaml
+          test -f docker/.env.example
+          if git ls-remote --exit-code --tags --refs origin "refs/tags/$RELEASE_VERSION"; then
+            echo 'Version tag already exists; inspect the existing release before retrying.' >&2
+            exit 1
+          fi
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/issues/$ACCEPTANCE_ISSUE/comments?per_page=100" \
+            > "$RUNNER_TEMP/acceptance-comments.json"
+          python3 scripts/release/verify_acceptance.py \
+            --comments "$RUNNER_TEMP/acceptance-comments.json" --source-sha "$CANDIDATE_SHA"
+          echo "source_sha=$CANDIDATE_SHA" >> "$GITHUB_OUTPUT"
+          echo "version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+
+  image:
+    name: Build amd64 and arm64 OCI image
+    needs: candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.candidate.outputs.source_sha }}
+          persist-credentials: false
+      - name: Select reviewed Docker context
+        id: paths
+        run: |
+          set -euo pipefail
+          if test -f docker/Dockerfile; then
+            echo 'context=./app' >> "$GITHUB_OUTPUT"
+            echo 'file=./docker/Dockerfile' >> "$GITHUB_OUTPUT"
+          else
+            echo 'context=.' >> "$GITHUB_OUTPUT"
+            echo 'file=./infra/Dockerfile' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Build and push one version tag
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: ${{ steps.paths.outputs.context }}
+          file: ${{ steps.paths.outputs.file }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/coldphase/flux:${{ needs.candidate.outputs.version }}
+          provenance: mode=max
+          sbom: true
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.candidate.outputs.source_sha }}
+            org.opencontainers.image.version=${{ needs.candidate.outputs.version }}
+      - name: Attest the pushed manifest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-name: ghcr.io/coldphase/flux
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - name: Confirm both platform manifests
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          docker buildx imagetools inspect --raw "ghcr.io/coldphase/flux@$IMAGE_DIGEST" \
+            > "$RUNNER_TEMP/index.json"
+          python3 - "$RUNNER_TEMP/index.json" <<'PY'
+          import json, sys
+          index = json.load(open(sys.argv[1], encoding='utf-8'))
+          platforms = {
+              (item.get('platform', {}).get('os'), item.get('platform', {}).get('architecture'))
+              for item in index.get('manifests', [])
+          }
+          assert {('linux', 'amd64'), ('linux', 'arm64')} <= platforms, platforms
+          PY
+      - name: Generate image SPDX SBOM
+        uses: anchore/sbom-action@006b7ce8314066bdf1765b4500370d40fa6917a3 # v0.24.2
+        with:
+          image: ghcr.io/coldphase/flux@${{ steps.build.outputs.digest }}
+          output-file: sbom.spdx.json
+          format: spdx-json
+          upload-artifact: false
+          upload-release-assets: false
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-sbom
+          path: sbom.spdx.json
+          if-no-files-found: error
+
+  package:
+    name: Test packaged installation
+    needs: [candidate, image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.candidate.outputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-sbom
+          path: release-input
+      - name: Prepare release assets
+        env:
+          RELEASE_VERSION: ${{ needs.candidate.outputs.version }}
+          CANDIDATE_SHA: ${{ needs.candidate.outputs.source_sha }}
+          IMAGE_DIGEST: ${{ needs.image.outputs.digest }}
+        run: |
+          python3 scripts/release/prepare_assets.py \
+            --version "$RELEASE_VERSION" --source-sha "$CANDIDATE_SHA" \
+            --digest "$IMAGE_DIGEST" --sbom release-input/sbom.spdx.json \
+            --destination release-assets
+          cd release-assets
+          sha256sum -c SHA256SUMS
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Start the packaged image in clean Compose volumes
+        env:
+          COMPOSE_PROJECT_NAME: fluxrelease${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          trap 'docker compose --env-file release-assets/.env -f release-assets/compose.yaml down -v --remove-orphans' EXIT
+          python3 scripts/release/write_test_env.py \
+            --source release-assets/.env.example --destination release-assets/.env --port 18081
+          docker compose --env-file release-assets/.env -f release-assets/compose.yaml config --quiet
+          docker compose --env-file release-assets/.env -f release-assets/compose.yaml pull
+          docker compose --env-file release-assets/.env -f release-assets/compose.yaml up -d --wait
+          curl --fail --show-error --silent http://127.0.0.1:18081/api/v1/health
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-assets
+          path: |
+            release-assets/*
+            release-assets/.env.example
+            !release-assets/.env
+          if-no-files-found: error
+
+  draft:
+    name: Create draft for independent artifact review
+    needs: [candidate, image, package]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.candidate.outputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-assets
+          path: release-assets
+      - name: Create immutable-source draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.candidate.outputs.version }}
+          CANDIDATE_SHA: ${{ needs.candidate.outputs.source_sha }}
+          IMAGE_DIGEST: ${{ needs.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cd release-assets
+          sha256sum -c SHA256SUMS
+          cat > "$RUNNER_TEMP/release-notes.md" <<EOF
+          Flux $RELEASE_VERSION candidate
+
+          Source: $CANDIDATE_SHA
+          OCI image: ghcr.io/coldphase/flux@$IMAGE_DIGEST
+          Platforms: linux/amd64, linux/arm64
+          Build: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+
+          Install with the attached version-matched compose.yaml, .env.example and INSTALL.md.
+          This draft requires independent packaged install, upgrade and restore review before publication.
+          EOF
+          gh release create "$RELEASE_VERSION" ./* .env.example \
+            --repo "$GITHUB_REPOSITORY" --target "$CANDIDATE_SHA" \
+            --title "Flux $RELEASE_VERSION" --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --draft
