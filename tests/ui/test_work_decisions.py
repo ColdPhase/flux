@@ -1,0 +1,279 @@
+"""Browser tests for work, decisions and results linked to conversations (issue #101, AC-5/AC-6).
+
+Runs with the other tests/ui journeys through scripts/check_ui.sh against the running Compose
+application. Two people sign up in their own browser contexts and share one project. From
+messages they create work in one action, propose and accept a decision, attach a negative result
+that finishes the experiment and pivot with parking; one of them works on a phone. Every step is
+checked against the API, so the test proves persisted behaviour rather than local state.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import time
+import unittest
+import uuid
+
+from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
+
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+
+PASSWORD = "decisions need reasons"
+STAMP = int(time.time() * 1000)
+OWNER = {"name": "Ada Lind", "email": f"ada.lind+{STAMP}@example.test"}
+PARTNER = {"name": "Kai Berg", "email": f"kai.berg+{STAMP}@example.test"}
+IDEA = "Test the camera in low light before we commit to it"
+FINDING = "Camera caught 38% of gestures at 5 lux, so it fails in a dark bedroom"
+PIVOT = "Switch to a ToF distance sensor"
+
+
+class WorkDecisionsJourney(unittest.TestCase):
+    """Tests run in name order and share two accounts and one project."""
+
+    pw = None
+    browser: Browser
+    states: dict[str, dict] = {}
+    project_id: str = ""
+    conversation_id: str = ""
+    messages: dict[str, str] = {}
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        if UPSTREAM:
+            start_forwarder(ORIGIN, UPSTREAM)
+        cls.pw = sync_playwright().start()
+        cls.browser = cls.pw.chromium.launch()
+        expect.set_options(timeout=8000)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.browser.close()
+        cls.pw.stop()
+
+    def context(self, who: str | None, *, phone: bool = False) -> BrowserContext:
+        options: dict = {"base_url": ORIGIN, "color_scheme": "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw"}
+        if phone:
+            options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
+        else:
+            options.update(viewport=DESKTOP, device_scale_factor=1)
+        if who and who in self.states:
+            options["storage_state"] = self.states[who]
+        context = self.browser.new_context(**options)
+        self.addCleanup(context.close)
+        return context
+
+    def page(self, who: str | None, **kwargs) -> Page:
+        page = self.context(who, **kwargs).new_page()
+        errors: list[str] = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
+        return page
+
+    def api(self, page: Page, method: str, path: str, body: dict | None = None, status: int | None = None) -> dict:
+        response = page.request.fetch(f"{ORIGIN}{path}", method=method, headers={"origin": ORIGIN, "content-type": "application/json"},
+                                      data=json.dumps(body) if body is not None else None)
+        if status is not None:
+            self.assertEqual(response.status, status, response.text())
+        return json.loads(response.text()) if response.text() else {}
+
+    def work(self, page: Page) -> dict:
+        return {
+            "work": self.api(page, "GET", f"/api/v1/projects/{self.project_id}/work?limit=100", status=200)["items"],
+            "decisions": self.api(page, "GET", f"/api/v1/projects/{self.project_id}/decisions?limit=100", status=200)["items"],
+            "results": self.api(page, "GET", f"/api/v1/projects/{self.project_id}/results?limit=100", status=200)["items"],
+        }
+
+    def open_conversation(self, who: str, **kwargs) -> Page:
+        page = self.page(who, **kwargs)
+        page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
+        expect(page.locator(f"#message-{self.messages['idea']}")).to_be_visible()
+        return page
+
+    def details(self, page: Page):
+        return page.locator("#details")
+
+    # ---------------------------------------------------------------- set up two people
+
+    def test_01_two_people_share_a_project(self) -> None:
+        for key, person in (("owner", OWNER), ("partner", PARTNER)):
+            page = self.page(None)
+            page.goto("/sign-up")
+            page.get_by_label("Name").fill(person["name"])
+            page.get_by_label("Email").fill(person["email"])
+            page.get_by_label("Password").fill(PASSWORD)
+            page.get_by_role("button", name="Create account").click()
+            expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+            type(self).states[key] = page.context.storage_state()
+            person["id"] = self.api(page, "GET", "/api/v1/me", status=200)["user"]["id"]
+        owner = self.page("owner")
+        ws = self.api(owner, "POST", "/api/v1/workspaces", {"name": "Lamp studio"}, status=201)
+        self.api(owner, "POST", f"/api/v1/workspaces/{ws['id']}/members", {"email": PARTNER["email"], "role": "member"}, status=201)
+        project = self.api(owner, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Gesture lamp", "visibility": "restricted"}, status=201)
+        self.api(owner, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": {"kind": "human", "id": PARTNER["id"]}, "role": "contributor"}, status=201)
+        type(self).project_id = project["id"]
+        thread = self.api(owner, "POST", f"/api/v1/projects/{project['id']}/conversations", {"body": IDEA, "clientMessageId": str(uuid.uuid4())}, status=201)
+        type(self).conversation_id = thread["id"]
+        partner = self.page("partner")
+        reply = self.api(partner, "POST", f"/api/v1/conversations/{thread['id']}/messages", {"body": FINDING, "clientMessageId": str(uuid.uuid4())}, status=201)
+        pivot = self.api(owner, "POST", f"/api/v1/conversations/{thread['id']}/messages", {"body": PIVOT, "clientMessageId": str(uuid.uuid4())}, status=201)
+        type(self).messages = {"idea": thread["messages"][0]["id"], "finding": reply["id"], "pivot": pivot["id"]}
+
+    # ---------------------------------------------------------------- create from a message
+
+    def test_02_create_work_from_a_message_in_one_action(self) -> None:
+        page = self.open_conversation("owner")
+        expect(page.get_by_label("Current state")).to_contain_text("No decisions or work yet")
+        message = page.locator(f"#message-{self.messages['idea']}")
+        message.hover()
+        message.get_by_role("button", name="Create work").click()
+        panel = self.details(page)
+        expect(panel.get_by_role("heading", name=IDEA)).to_be_visible()
+        expect(panel.get_by_label("Status")).to_have_value("open")
+        expect(panel).to_contain_text("Everyone with access to Gesture lamp")
+        expect(panel.get_by_role("link", name=re.compile("^Message: Test the camera"))).to_be_visible()
+        # The source stays in place, and the work shows up under it.
+        expect(message.locator(".project-convo__message-meta ~ p").first).to_have_text(IDEA)
+        expect(message.get_by_role("button", name=f"Work: {IDEA}")).to_be_visible()
+        # The panel's controls change the stored work (If-Match under the hood).
+        panel.get_by_label("Status").select_option("in_progress")
+        expect(panel.locator(".wd-eyebrow")).to_contain_text("In progress")
+        panel.get_by_label("Owner").select_option(f"human:{PARTNER['id']}")
+        expect(message.get_by_role("button", name=f"Work: {IDEA}")).to_contain_text("Kai Berg")
+        stored = self.work(page)["work"]
+        self.assertEqual(len(stored), 1, "one action creates exactly one work item")
+        item = stored[0]
+        self.assertEqual((item["title"], item["status"], item["owner"]["id"]), (IDEA, "in_progress", PARTNER["id"]))
+        self.assertEqual([(link["role"], link["to"]) for link in item["links"]], [("source", {"type": "message", "id": self.messages["idea"]})])
+        thread = self.api(page, "GET", f"/api/v1/conversations/{self.conversation_id}", status=200)
+        self.assertEqual([m["body"] for m in thread["messages"]], [IDEA, FINDING, PIVOT], "no message was moved or copied")
+        shot(page, "work-desktop-1440-created")
+
+    # ---------------------------------------------------------------- propose and accept, by keyboard
+
+    def test_03_propose_and_accept_a_decision_with_the_keyboard(self) -> None:
+        page = self.open_conversation("owner")
+        message = page.locator(f"#message-{self.messages['idea']}")
+        message.get_by_role("button", name="Propose decision").focus()
+        page.keyboard.press("Enter")
+        panel = self.details(page)
+        expect(panel.get_by_role("heading", name="Propose a decision")).to_be_visible()
+        expect(panel.get_by_label("Decision")).to_have_value(IDEA)
+        panel.get_by_label("Decision").fill("Use a camera for gesture control")
+        panel.get_by_label("Why").fill("It recognises the richest set of gestures")
+        panel.get_by_label("Why").press("Tab")
+        page.keyboard.press("Enter")
+        expect(panel.locator(".wd-eyebrow")).to_contain_text("Proposed decision")
+        expect(page.get_by_label("Current state")).to_contain_text("A proposed decision is waiting for you")
+        shot(page, "decision-desktop-1440-proposed")
+        panel.get_by_role("button", name="Accept decision").focus()
+        page.keyboard.press("Enter")
+        expect(panel.locator(".wd-eyebrow")).to_contain_text("Current rule")
+        expect(panel).to_contain_text("Ada Lind")
+        expect(page.get_by_label("Current state")).to_contain_text("Current rule: Use a camera for gesture control")
+        decision = self.work(page)["decisions"][0]
+        self.assertEqual((decision["status"], decision["decidedBy"]["id"]), ("accepted", OWNER["id"]))
+        self.assertEqual([link["to"]["id"] for link in decision["links"] if link["role"] == "source"], [self.messages["idea"]])
+        page.keyboard.press("Escape")
+        expect(message.get_by_role("button", name="Decision: Use a camera for gesture control")).to_be_visible()
+
+    # ---------------------------------------------------------------- negative result, other person
+
+    def test_04_attach_a_negative_result_that_finishes_the_experiment(self) -> None:
+        page = self.open_conversation("partner")
+        message = page.locator(f"#message-{self.messages['finding']}")
+        message.hover()
+        message.get_by_role("button", name="Attach result").click()
+        panel = self.details(page)
+        expect(panel.get_by_role("heading", name="Attach a result")).to_be_visible()
+        panel.get_by_label("Finding").fill("The camera cannot track gestures below 10 lux")
+        panel.get_by_text("Negative", exact=True).click()
+        panel.get_by_label("Evidence").fill("38% of 20 gestures at 5 lux")
+        panel.get_by_label("For work").select_option(label=IDEA)
+        panel.get_by_label(f"This finishes “{IDEA}”").check()
+        panel.get_by_role("button", name="Attach result").click()
+        expect(panel.locator(".wd-eyebrow")).to_contain_text("Negative result")
+        expect(panel.get_by_role("button", name=re.compile(IDEA))).to_be_visible()
+        expect(message.get_by_role("button", name="Result: The camera cannot track gestures below 10 lux")).to_be_visible()
+        stored = self.work(page)
+        self.assertEqual(stored["results"][0]["finding"], "negative")
+        self.assertEqual(stored["work"][0]["status"], "done", "a negative result finished the experiment")
+        shot(page, "result-desktop-1440-negative")
+
+        page.get_by_role("navigation", name="Project views").get_by_role("link", name="Tasks").click()
+        expect(page).to_have_url(re.compile(r"/tasks$"))
+        expect(page.get_by_role("region", name=re.compile("^Finished"))).to_contain_text(IDEA)
+        expect(page.get_by_role("region", name=re.compile("^Decisions"))).to_contain_text("Use a camera for gesture control")
+        expect(page.get_by_role("region", name=re.compile("^Results"))).to_contain_text("The camera cannot track gestures")
+
+    # ---------------------------------------------------------------- pivot parks work
+
+    def test_05_pivot_keeps_history_and_parks_obsolete_work(self) -> None:
+        page = self.page("owner")
+        page.goto(f"/projects/{self.project_id}/tasks")
+        page.get_by_label("New work").fill("Mount the camera in the lamp head")
+        page.get_by_role("button", name="Add work").click()
+        panel = self.details(page)
+        expect(panel.get_by_role("heading", name="Mount the camera in the lamp head")).to_be_visible()
+        page.get_by_label("New work").fill("Design the diffuser")
+        page.get_by_role("button", name="Add work").click()
+        expect(panel.get_by_role("heading", name="Design the diffuser")).to_be_visible()
+
+        page.get_by_role("navigation", name="Project views").get_by_role("link", name="Conversation").click()
+        message = page.locator(f"#message-{self.messages['pivot']}")
+        message.hover()
+        message.get_by_role("button", name="Propose decision").click()
+        panel.get_by_label("Why").fill("The camera failed in low light; a ToF sensor works in the dark and stores no images")
+        panel.get_by_label("Replaces").select_option(label="Use a camera for gesture control")
+        panel.get_by_role("button", name="Propose decision").click()
+        expect(panel.get_by_role("heading", name="Accept as a pivot")).to_be_visible()
+        panel.get_by_role("radiogroup", name="Mount the camera in the lamp head").get_by_label("Park").check()
+        panel.get_by_role("radiogroup", name="Design the diffuser").get_by_label("Still applies").check()
+        shot(page, "decision-desktop-1440-pivot")
+        panel.get_by_role("button", name="Accept and pivot").click()
+        expect(panel.locator(".wd-eyebrow")).to_contain_text("Current rule")
+        expect(panel.get_by_role("region", name="At this pivot")).to_contain_text("parked")
+        expect(page.get_by_label("Current state")).to_contain_text(f"Current rule: {PIVOT}")
+
+        stored = self.work(page)
+        by_title = {item["title"]: item for item in stored["work"]}
+        self.assertEqual(by_title["Mount the camera in the lamp head"]["status"], "open", "parked work keeps its status")
+        self.assertIsNotNone(by_title["Mount the camera in the lamp head"]["parked"])
+        self.assertIsNone(by_title["Design the diffuser"]["parked"])
+        rules = {item["title"]: item for item in stored["decisions"]}
+        self.assertEqual(rules["Use a camera for gesture control"]["status"], "superseded")
+        self.assertEqual(rules["Use a camera for gesture control"]["rationale"], "It recognises the richest set of gestures")
+
+        page.get_by_role("navigation", name="Project views").get_by_role("link", name="Tasks").click()
+        expect(page.get_by_role("region", name=re.compile("^Parked by a pivot"))).to_contain_text("Mount the camera in the lamp head")
+        expect(page.get_by_role("region", name=re.compile("^Decisions"))).to_contain_text("Earlier rule")
+        page.keyboard.press("Escape")
+        shot(page, "tasks-desktop-1440")
+
+    # ---------------------------------------------------------------- phone
+
+    def test_06_phone_creates_work_and_reads_the_tasks_tab(self) -> None:
+        page = self.open_conversation("partner", phone=True)
+        message = page.locator(f"#message-{self.messages['finding']}")
+        create = message.get_by_role("button", name="Create work")
+        expect(create).to_be_visible()  # actions are always visible on touch
+        box = create.bounding_box()
+        assert box
+        self.assertGreaterEqual(box["height"], 44, "touch target")
+        shot(page, "work-phone-390-conversation")
+        create.tap()
+        sheet = page.get_by_role("dialog", name="Details")
+        expect(sheet.get_by_role("heading", name=FINDING)).to_be_visible()
+        expect(sheet).to_contain_text("Everyone with access to Gesture lamp")
+        shot(page, "work-phone-390-details")
+        sheet.get_by_role("button", name="Close details").tap()
+        expect(message.get_by_role("button", name=f"Work: {FINDING}")).to_be_visible()
+        page.get_by_role("navigation", name="Project views").get_by_role("link", name="Tasks").tap()
+        expect(page.get_by_role("region", name=re.compile("^Open"))).to_contain_text(FINDING)
+        shot(page, "tasks-phone-390")
+        titles = [item["title"] for item in self.work(page)["work"]]
+        self.assertEqual(titles.count(FINDING), 1)
+
+
+if __name__ == "__main__":
+    unittest.main()

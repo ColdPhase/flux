@@ -10,6 +10,11 @@ import { ShellContext, type DetailsView } from './shellContext';
 import { Sidebar } from './Sidebar';
 import { VIEWS, viewIndex } from './views';
 
+function lastConversationPath(projectId: string) {
+  try { return sessionStorage.getItem(`flux.project-conversation.${projectId}`) ?? `/projects/${projectId}`; }
+  catch { return `/projects/${projectId}`; }
+}
+
 function isTyping(target: EventTarget | null) {
   const el = target as HTMLElement | null;
   return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
@@ -86,8 +91,18 @@ export function AppLayout() {
   const where = placeOf(location.pathname);
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const activeProject = projects.find((project) => project.id === projectId);
+  // The Conversation tab returns to the conversation that was open before Tasks.
+  const onTasks = location.pathname.endsWith('/tasks');
+  useEffect(() => {
+    if (!projectId || onTasks) return;
+    try { sessionStorage.setItem(`flux.project-conversation.${projectId}`, location.pathname); } catch { /* private mode */ }
+  }, [projectId, onTasks, location.pathname]);
+  const projectViews = projectId ? [
+    { id: 'conversation', label: 'Conversation', to: onTasks ? lastConversationPath(projectId) : location.pathname },
+    { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks` },
+  ] : null;
   const place = activeProject
-    ? { crumb: activeProject.workspaceName ?? null, title: activeProject.name, topic: 'Conversation and materials', views: false }
+    ? { crumb: activeProject.workspaceName ?? null, title: activeProject.name, topic: 'Conversation, work and decisions', views: false }
     : where === 'dm'
       ? { crumb: null, title: 'Direct messages', topic: 'Conversations with people, outside any project', views: false }
       : { crumb: workspace?.name ?? null, title: 'Home', topic: 'Your private notes and where you left off', views: true };
@@ -125,7 +140,9 @@ export function AppLayout() {
         </header>
         {place.views
           ? <Tabs className="views" label="Views" items={VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path }))} />
-          : <div className="views views--none" aria-hidden="true" />}
+          : activeProject && projectViews
+            ? <Tabs className="views" label="Project views" items={projectViews} />
+            : <div className="views views--none" aria-hidden="true" />}
         <div className="app__pane" id="content" ref={paneRef} tabIndex={-1}>
           <Outlet />
         </div>

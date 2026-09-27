@@ -368,3 +368,81 @@ export const sketchLinks = pgTable('sketch_links', {
   foreignKey({ columns: [table.sketchId, table.fromId], foreignColumns: [sketchThoughts.sketchId, sketchThoughts.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.sketchId, table.toId], foreignColumns: [sketchThoughts.sketchId, sketchThoughts.id] }).onDelete('cascade'),
 ]);
+
+// Work items, decisions, results and their links (migration 0008, #101).
+export const projectDecisions = pgTable('project_decisions', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  title: text('title').notNull(),
+  rationale: text('rationale').notNull().default(''),
+  status: text('status', { enum: ['proposed', 'accepted', 'superseded'] }).notNull().default('proposed'),
+  proposedByKind: text('proposed_by_kind', { enum: ['human', 'agent'] }).notNull(),
+  proposedById: text('proposed_by_id').notNull(),
+  decidedBy: text('decided_by'),
+  decidedAt: timestamp('decided_at', { withTimezone: true }),
+  supersedesId: uuid('supersedes_id'),
+  supersededById: uuid('superseded_by_id'),
+  supersededAt: timestamp('superseded_at', { withTimezone: true }),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique().on(table.workspaceId, table.projectId, table.id),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+]);
+
+export const projectWorkItems = pgTable('project_work_items', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  title: text('title').notNull(),
+  outcome: text('outcome').notNull().default(''),
+  status: text('status', { enum: ['open', 'in_progress', 'blocked', 'done', 'not_pursued'] }).notNull().default('open'),
+  blocker: text('blocker'),
+  ownerUserId: text('owner_user_id'),
+  ownerAgentId: uuid('owner_agent_id'),
+  parkedByDecisionId: uuid('parked_by_decision_id'),
+  parkedAt: timestamp('parked_at', { withTimezone: true }),
+  createdByKind: text('created_by_kind', { enum: ['human', 'agent'] }).notNull(),
+  createdById: text('created_by_id').notNull(),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique().on(table.workspaceId, table.projectId, table.id),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+]);
+
+export const projectResults = pgTable('project_results', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  title: text('title').notNull(),
+  finding: text('finding', { enum: ['positive', 'negative'] }).notNull(),
+  evidence: text('evidence').notNull().default(''),
+  createdByKind: text('created_by_kind', { enum: ['human', 'agent'] }).notNull(),
+  createdById: text('created_by_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique().on(table.workspaceId, table.projectId, table.id),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+]);
+
+export const projectObjectLinks = pgTable('project_object_links', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  role: text('role', { enum: ['source', 'affects', 'still_applies', 'about', 'related'] }).notNull(),
+  fromType: text('from_type', { enum: ['work', 'decision', 'result'] }).notNull(),
+  fromId: uuid('from_id').notNull(),
+  toType: text('to_type', { enum: ['message', 'material', 'work', 'decision', 'result'] }).notNull(),
+  toId: uuid('to_id').notNull(),
+  toVersion: integer('to_version'),
+  createdByKind: text('created_by_kind', { enum: ['human', 'agent'] }).notNull(),
+  createdById: text('created_by_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index('project_object_links_to_idx').on(table.toId),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+]);

@@ -6,6 +6,7 @@ import { appLoader } from './app/data';
 import { ProjectConversation, projectConversationLoader } from './app/ProjectConversation';
 import { ProjectSetup } from './app/ProjectSetup';
 import { MaterialView, materialLoader } from './app/MaterialView';
+import { ProjectTasks, projectTasksLoader } from './work/ProjectTasks';
 import { Booting, RouteErrorPage } from './app/errors';
 import { ConversationView, DirectMessagesView, DocsView, NotFoundView, TasksView } from './app/views';
 import { SketchIndex } from './sketch/SketchIndex';
@@ -54,6 +55,7 @@ export const router = createBrowserRouter([
           { path: 'projects/new', Component: ProjectSetup },
           { path: 'projects/:projectId', loader: projectConversationLoader, Component: ProjectConversation },
           { path: 'projects/:projectId/conversations/:conversationId', loader: projectConversationLoader, Component: ProjectConversation },
+          { path: 'projects/:projectId/tasks', loader: projectTasksLoader, Component: ProjectTasks },
           { path: 'materials/:materialId', loader: materialLoader, Component: MaterialView },
           { path: 'materials/:materialId/versions/:version', loader: materialLoader, Component: MaterialView },
           { path: 'tasks', Component: TasksView },

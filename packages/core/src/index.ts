@@ -41,6 +41,7 @@ export * from './conversation/commands.js';
 export * from './conversation/service.js';
 export * from './sketches/index.js';
 export { policySketchAccess } from './access/sketch-access.js';
+export * from './work/index.js';
 
 export const SAMPLE_JOB = 'sample.process';
 
