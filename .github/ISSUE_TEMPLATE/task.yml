@@ -26,7 +26,7 @@ body:
     id: criteria
     attributes:
       label: Acceptance criteria
-      description: Give criteria stable IDs such as AC-1. Include relevant failure and permission cases.
+      description: Give 3-5 criteria stable IDs such as AC-1. Include relevant failure and permission cases.
     validations:
       required: true
   - type: textarea
@@ -40,14 +40,14 @@ body:
     id: ownership
     attributes:
       label: Ownership and dependencies
-      description: Name one implementation owner, a different evaluator, blocking issues, and shared interfaces. Write "None" for no dependencies.
+      description: Name one implementation owner (the assignee), a different evaluator, blocking issues, and shared interfaces. Write "None" for no dependencies.
     validations:
       required: true
   - type: textarea
     id: contract
     attributes:
       label: Contract status
-      description: Link the proposal and peer acceptance comments when available. Leave as proposed until the exact contract revision is accepted.
+      description: Proposed until the evaluator accepts it or names concrete gaps (once). Note later scope edits in one line.
   - type: textarea
     id: blockers
     attributes:

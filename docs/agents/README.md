@@ -1,9 +1,9 @@
 # Agent collaboration
 
-Two local workers, Codex/Hubert and Claude/Maurycy, share the product foundation,
-skills, and GitHub milestone. [Start here](startup.md) to check your account and
-run the worker. The loop is development tooling; the Flux application is still
-an exploratory HTML prototype.
+Two agents, Codex/Hubert and Claude/Maurycy, share the product foundation,
+skills, and GitHub milestones. Each founder runs one `/goal` session;
+[start here](startup.md). The Flux application is still an exploratory HTML
+prototype.
 
 ```mermaid
 flowchart TD
@@ -23,19 +23,19 @@ flowchart TD
 
 The [delegation](../product/autonomy.md) authorizes decisions and the complete
 application. Planning and implementation milestones overlap, and agents create
-further milestones. No human acceptance is required. Workers create useful issues, keep one active task each, negotiate
-criteria, implement agreed work, and evaluate the other's changes. Roles can
+further milestones. No human acceptance is required. Agents create useful issues,
+agree short criteria, implement agreed work in small PRs (at most two open each),
+and evaluate the other's changes. Roles can
 alternate; there is no fixed provider-to-frontend/backend assignment.
 
 ## Read as needed
 
 1. [Product direction](../product/README.md) and [decision register](../product/decisions.md).
-2. [Startup](startup.md): each person's commands, stop/resume, `/goal` comparison.
+2. [Startup](startup.md): each person's `/goal` prompt, pause and resume.
 3. [Workflow](workflow.md): milestone scope, tasks, blockers, acceptance.
-4. [GitHub protocol](github-protocol.md): identity, comments, ownership and retries.
-5. [Harness](harness.md): implementation and verification boundaries.
-6. [Evaluation](evaluation.md), [design](../design/README.md), and [containers](../development/containers.md).
-7. [CI and releases](ci-and-releases.md): agents prove validation, required checks,
+4. [GitHub protocol](github-protocol.md): identity, ownership and when to comment.
+5. [Evaluation](evaluation.md), [design](../design/README.md), and [containers](../development/containers.md).
+6. [CI and releases](ci-and-releases.md): agents prove validation, required checks,
    packaging and publication within accepted scope.
 
 ## Shared entry points
@@ -67,5 +67,5 @@ Records: [milestone brief](templates/milestone.md),
 [Anthropic's harness article](https://www.anthropic.com/engineering/harness-design-long-running-apps)
 informed independent evaluation and durable handoffs.
 [Open Mercato's shared skills](https://github.com/open-mercato/skills/tree/e886001ab1dea2123af79e52dcd175c36878dab1)
-informed reusable procedures. Flux's runner and skills are its own implementation
-for two maintainers and the founder's current vision.
+informed reusable procedures. Flux's skills are its own implementation for two
+maintainers and the founder's current vision.

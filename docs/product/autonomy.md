@@ -42,8 +42,8 @@ for Docker setup, persistence, identity, access, UI components or CI.
 The first architecture task selects the stack and interfaces, records a concise
 decision with peer acceptance, and creates immediately executable coding tasks.
 Agents create more milestones and issues as the product needs them, using the
-[GitHub protocol](../agents/github-protocol.md). The runner discovers those
-milestones; no founder needs to edit the manifest for every new stage.
+[GitHub protocol](../agents/github-protocol.md). No founder needs to configure
+anything for a new stage.
 
 ## Finish the application
 

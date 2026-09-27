@@ -2,7 +2,7 @@
 
 - Task or release:
 - Evaluator and independent implementation owner(s):
-- Accepted contract comment and revision:
+- Issue contract (link):
 - Tested head/candidate SHA:
 - Environment and relevant base SHA:
 - Verdict: pass / changes-requested / unverified

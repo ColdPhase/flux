@@ -11,8 +11,9 @@ guides. Follow [the workflow](../../../docs/agents/workflow.md) and
 
 1. Confirm you own implementation, dependencies are satisfied, and the accepted
    contract is current. Inspect an existing branch/PR/checkpoint before starting.
-2. Claim the activity. Use a dedicated worktree and task branch from the configured
-   base; reuse the existing task worktree when resuming. Preserve user changes.
+2. Claim by assigning yourself with one short comment. Use a dedicated worktree
+   and branch `<worker>/<issue>-<slug>` from current `main`; reuse the existing
+   task worktree when resuming. Preserve user changes.
 3. Implement the agreed outcome with relevant regression coverage. Run real checks
    from the trusted project configuration, with targeted checks during iteration.
    For UI behavior, exercise the running application when the environment is ready.
@@ -22,9 +23,9 @@ guides. Follow [the workflow](../../../docs/agents/workflow.md) and
    commits; checkpoint pushed progress after meaningful milestones and before stopping.
 5. Fix known failures within scope. Report blocked/unavailable checks honestly.
    Do not disable tests, weaken criteria, or add unrelated features to complete a run.
-6. When ready, publish the [handoff](../../../docs/agents/templates/handoff.md)
-   with the exact head SHA and ask the peer for evaluation. Release the active
-   claim so review can proceed. Incomplete implementation remains a draft.
+6. When ready, mark the PR ready and post one [handoff](../../../docs/agents/templates/handoff.md)
+   comment with the exact head SHA and an @mention of the evaluator. You stay the
+   assignee during review. Incomplete implementation remains a draft.
 
 Respond to peer findings on your own branch. A new head needs relevant verification
 and independent review again. Your self-check is preparation for peer evaluation;

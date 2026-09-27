@@ -134,9 +134,9 @@ behavior change helps other contributors understand and maintain it.
 Codex and Claude share [AGENTS.md](../AGENTS.md) and the skills in
 `.agents/skills/`. The [agent collaboration guide](agents/README.md) describes
 task contracts, conversations through issues/PRs, independent evaluation, and
-the planned continuous runner. Its [CI and release process](agents/ci-and-releases.md)
-also assigns agents responsibility for validation and packaging once the stack
-is chosen. The background runner is not yet implemented.
+how each maintainer runs one `/goal` agent session. Its
+[CI and release process](agents/ci-and-releases.md) also assigns agents
+responsibility for validation and packaging once the stack is chosen.
 
 Use the implementation-task issue form for planned work. Ordinary contributions
 remain welcome through the existing issue and PR process; the autonomous release

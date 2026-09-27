@@ -1,56 +1,36 @@
 ---
 name: flux-work-loop
-description: Continue authorized Flux milestone work through issues, peer messages, PR reviews, and durable handoffs, parking individual blockers while progressing independent tasks.
+description: Continue Flux milestone work in a /goal session through issues, PR reviews and short GitHub handoffs, parking individual blockers while progressing independent tasks.
 ---
 
 # Continue the Flux work loop
 
-Read `AGENTS.md`, `.harness/project.json`, and
-[the workflow](../../../docs/agents/workflow.md). For event delivery or claims,
-read [the GitHub protocol](../../../docs/agents/github-protocol.md).
+Read `AGENTS.md`, [the workflow](../../../docs/agents/workflow.md) and
+[the GitHub protocol](../../../docs/agents/github-protocol.md). Sessions are
+started as described in [startup](../../../docs/agents/startup.md).
 
-1. Establish the authenticated worker, milestone/brief, phase, config revision,
-   and checkpoint. Follow [startup](../../../docs/agents/startup.md) and the
-   [delegation](../../../docs/product/autonomy.md). Agents own decisions and final
-   delivery; no founder acceptance is required. Planning and coding may overlap.
-   There is no parent issue. The coordinator creates initial bounded tasks if
-   the milestone is empty; both workers can create further agreed in-scope work.
-2. Reconcile the task, branch, PR, current head, pending peer requests, and claims.
-   Reuse existing work. A message or label alone is not proof of current state.
-   After a restart use `flux-resume-work` before creating replacement work.
-3. Select work in workflow priority order: maintainer corrections, actionable peer
-   decisions/review, own fixes/resumption, ready assigned tasks, release verification.
-   Hold at most one active unit; checkpoint before switching.
-4. Use the relevant shared skill: `flux-plan-task`, `flux-implement-task`,
+1. Confirm your identity (`gh auth status`) and the current milestones. Agents own
+   decisions and final delivery under the [delegation](../../../docs/product/autonomy.md);
+   no founder acceptance is required. After a restart use `flux-resume-work` first.
+2. Pick work in workflow order: founder direction; peer review requests and fixes
+   to your own PRs; your in-progress issues; new ready work in milestone order.
+   Keep at most 2 open implementation PRs.
+3. Use the relevant skill: `flux-plan-task`, `flux-implement-task`,
    `flux-review-task`, `flux-research-product`, `flux-design-ui`, `flux-review-visual`,
-   `flux-maintain-ci`, `flux-verify-release`, or `flux-publish-release`.
-   Keep the task's owner and independent evaluator distinct.
-5. Return the real outcome and next action, with task/PR, contract revision,
-   pushed head, evidence, and a recovery checkpoint. Publish an authorized
-   GitHub handoff once, then release the claim you own.
+   `flux-maintain-ci`, `flux-verify-release` or `flux-publish-release`.
+   The owner and the evaluator of a change are different agents.
+4. Comment on GitHub only on state changes: claim, blocking question, handoff
+   (PR ready + pinned head SHA + @mention), review result, blocker, release.
+5. For a blocker, try an alternative, record attempts and the unblock condition
+   once in the issue, ask the peer a concrete question, and do other ready work.
+   Revisit it when evidence changes and before milestone acceptance.
 
-6. For a blocker, attempt a proportionate alternative, document attempts and the
-   unblock condition in the issue, and ask the peer for specific help. Park only
-   this task, return its number with `blocked`, and continue other useful work.
-   Revisit parked issues when evidence changes and before milestone acceptance.
+If only peer input is missing and nothing else is ready, re-check GitHub about
+every 10 minutes (a sleep/poll or the tool's scheduling feature). Do not
+busy-loop with model calls, post waiting comments or invent scope to stay busy.
+On a usage limit, wait and continue; it is not completion.
 
-The runner schedules the next turn and delivers messages. While operating inside
-an authorized continuing session, follow the same selection cycle. If nothing
-is actionable, wait for the relevant event; do not generate status comments or
-create extra scope to keep busy. Do not add a nested `/goal` inside a runner turn.
-
-Both workers must be available under the founder's paired-execution policy.
-Python supplies heartbeats and suspends the pair if either worker stops, fails or
-stalls. Never spend model calls checking whether an unavailable peer has returned.
-Preserve interrupted work; resume through `flux-resume-work` after both restart.
-Return waiting promptly when only peer input is missing; do not repeatedly research
-unchanged material or invent probes to fill the wait.
-
-Completion requires the milestone's independent acceptance evidence and any
-agreed release/publication/deployment checks. An empty queue or exhausted run limit is a waiting/suspended
-outcome. Preserve state; never manufacture a successful release result.
-
-Create subsequent milestones with the product scope marker. The runner discovers
-them automatically. Maintain coverage of foundation areas 8.1–8.16 and continue
-until the integrated product is delivered. Use the two final product acceptance
-records from the protocol. Keep PR Actions light and package only the final product.
+The coordinator (`codex-hubert`) keeps milestones stocked with the next small
+ready issues. Maintain coverage of foundation areas 8.1–8.16 and continue until
+the integrated product is delivered and both final acceptance reports are posted.
+Keep PR Actions light and package only the final product.

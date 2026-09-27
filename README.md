@@ -69,9 +69,9 @@ prototype's design:
 - [UX specification](docs/prototype/SPECIFICATION.md) — design notes for this prototype.
 - [Changelog](docs/prototype/CHANGELOG.md) — changes in v8.
 - [UX audit](docs/prototype/AUDIT.md) — historical observations and limitations.
-- [Agent collaboration](docs/agents/README.md) — shared instructions, skills,
-  and a local milestone runner for Codex and Claude to work through GitHub.
-- [Run your worker](docs/agents/startup.md) — each person's commands, stop and resume.
+- [Agent collaboration](docs/agents/README.md) — shared instructions and skills
+  for Codex and Claude to work through GitHub issues and PRs.
+- [Start the agents](docs/agents/startup.md) — each person's `/goal` session, pause and resume.
 - [Product foundation and decisions](docs/product/README.md) — founder direction and open choices.
 - [Docker development](docs/development/containers.md) — the environment contract for the application.
 

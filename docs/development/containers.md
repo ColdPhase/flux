@@ -29,9 +29,9 @@ an architecture candidate. Do not add an unused database just to fill a template
 The current branch adds this environment contract, not a production Compose file.
 
 Git, Docker/Compose, GitHub CLI, the installed official coding-agent CLIs, and
-Python 3.11+ for this repository's standard-library development harness are host
-tools. The development harness is separate from the Flux application's runtime.
-Its dependency-free checks do not require installing an application toolchain.
+Python 3.11+ for this repository's standard-library foundation checks are host
+tools. Those checks are separate from the Flux application's runtime and do not
+require installing an application toolchain.
 
 The existing static HTML prototype can still be opened directly in a browser.
 It is historical exploration material and is not the application environment.
