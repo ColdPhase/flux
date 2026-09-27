@@ -15,6 +15,7 @@ export function createDatabase(connectionString: string) {
   return { pool, db };
 }
 export * from './repositories/push.js';
+export * from './repositories/stream.js';
 
 /** PostgreSQL channel notified (payload: seq) after an event with a workspace commits; wakes stream connections. */
 export const EVENTS_CHANNEL = 'flux_events';
