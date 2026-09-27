@@ -240,7 +240,26 @@ svg { flex: none; }
 .faces .av + .av { margin-left: -6px; }
 .only-narrow { display: none; }
 
-.top { border-bottom: 0; }
+.top { border-bottom: 0; height: auto; min-height: 52px; padding-top: 7px; padding-bottom: 5px; }
+.head-b { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.title { flex: none; }
+.title .sep { display: none; color: var(--text-3); }
+/* One quiet line with the current state; each part opens its panel view. */
+.state { display: flex; align-items: center; gap: 2px; min-width: 0; margin: 0 0 0 -6px; font-size: 13px; color: var(--text-3); white-space: nowrap; overflow: hidden; }
+.state-seg { display: inline-flex; align-items: center; gap: 6px; min-width: 0; flex: 0 1 auto; min-height: 24px; padding: 0 6px; border-radius: var(--r-sm); color: var(--text-3); transition: var(--tr); }
+.state-seg:hover { background: var(--bg-hover); color: var(--text); }
+.state-seg:active { transform: scale(.98); transition-duration: calc(var(--dur-1) / 2); }
+.state-seg.need { color: var(--accent); }
+.state-seg svg { color: var(--text-3); }
+.seg-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.state-sep { flex: none; }
+.state-btn { display: none; }
+.day.away { color: var(--accent); }
+.day.away::after { background: var(--accent); opacity: .45; }
+/* The "1 not sent" pill jumps here and this ring pulses once around the kept draft. */
+.msg.failed .bubble::after { content: ""; position: absolute; inset: -3px; border-radius: calc(var(--r-lg) + 3px); box-shadow: 0 0 0 2px var(--danger); opacity: 0; pointer-events: none; }
+.msg.failed.flash .bubble::after { animation: flash 1.4s var(--ease-out) 1; }
+@keyframes flash { 15% { opacity: .85; } 100% { opacity: 0; } }
 .details-btn { gap: 7px; padding: 0 10px; }
 .details-btn[aria-expanded="true"] { background: var(--bg-active); color: var(--text); }
 
@@ -343,6 +362,8 @@ svg { flex: none; }
 /* ---------- Conversation ---------- */
 .feed { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scroll-padding-bottom: 24px; }
 .feed-in { max-width: calc(var(--col) + 48px); margin: 0 auto; padding: 20px 24px 20px; }
+.feed { scroll-padding-bottom: calc(68px + env(safe-area-inset-bottom)); }
+.feed-wrap.has-latest .feed-in { padding-bottom: calc(68px + env(safe-area-inset-bottom)); }
 .feed-wrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .latest { white-space: nowrap; position: absolute; left: 50%; bottom: 12px; z-index: 5;
   transform: translate(-50%, 16px); opacity: 0; visibility: hidden;
@@ -433,7 +454,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
 .msg.failed .bubble.resolved .text { color: var(--text); }
 .collapse { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--dur-2) var(--ease-in), opacity var(--dur-1) var(--ease-in); }
 .collapse.gone { grid-template-rows: 0fr; opacity: 0; }
-.collapse > * { min-height: 0; overflow: hidden; }
+.collapse > * { min-height: 0; overflow: hidden; padding: 4px; margin: -4px; } /* room for focus rings */
 .fail { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 12px; margin-top: 6px; font-size: 13px; color: var(--danger); }
 .fail-msg { display: flex; align-items: flex-start; gap: 6px; line-height: 1.45; }
 .fail-msg svg { margin-top: 2px; }
@@ -546,7 +567,6 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
 /* ---------- ≤980: side panel overlays instead of docking ---------- */
 @media (max-width: 980px) {
   .panel { position: fixed; right: 0; top: 0; bottom: 0; z-index: 40; width: min(420px, 100%); box-shadow: var(--shadow); border-left: 0; }
-  .title .topic { display: none; }
 }
 /* ---------- Coarse pointers: 44px targets ---------- */
 @media (pointer: coarse) {
@@ -561,6 +581,11 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
   .box textarea { min-height: 44px; padding: 10px 0; }
   .p-back { min-height: 44px; }
   .tab { min-height: 44px; padding: 0 12px; }
+  .state { display: none; }
+  .state-btn { display: flex; align-items: center; gap: 8px; flex: none; width: 100%; min-height: 44px; padding: 0 12px 0 20px; font-size: 13px; color: var(--text-3); text-align: left; white-space: nowrap; transition: var(--tr); }
+  .state-btn .seg-t { flex: 1; }
+  .state-btn svg { flex: none; color: var(--text-3); }
+  .state-btn:active { background: var(--bg-hover); }
   .seg-b { min-height: 44px; }
   .item { min-height: 56px; }
   .row-btn { min-height: 56px; }
@@ -570,9 +595,12 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
 @media (max-width: 640px) {
   body { font-size: 15px; }
   .top { height: 56px; padding: 0 4px; padding-top: env(safe-area-inset-top); height: calc(56px + env(safe-area-inset-top)); }
-  .title { flex-direction: column; align-items: center; gap: 0; line-height: 1.25; }
-  .title .crumb { font-size: 12px; order: 2; }
-  .title .slash, .faces, .presence { display: none; }
+  .top { padding-top: env(safe-area-inset-top); padding-bottom: 0; }
+  .title { flex: 1; min-width: 0; gap: 6px; line-height: 1.3; }
+  .title .crumb, .title .slash, .faces, .presence { display: none; }
+  .title .sep { display: inline; }
+  .title .topic { font-size: 15px; }
+  .state-btn { padding-left: 16px; padding-right: 10px; border-top: 1px solid var(--line); }
   .title h1 { font-size: 16px; }
   .since-in, .feed-in { padding-left: 16px; padding-right: 16px; }
   .composer { padding: 6px 10px 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
@@ -668,16 +696,27 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
   <main class="main" id="main">
     <header class="top">
       <button class="icon-btn only-narrow" type="button" id="menu-btn" aria-label="Open sidebar" aria-controls="sidebar" aria-expanded="false" data-tip="Sidebar" data-tip-align="start"><svg width="18" height="18"><use href="#i-menu"/></svg></button>
-      <div class="title">
-        <span class="crumb">Tide</span><span class="slash" aria-hidden="true">/</span>
-        <h1>Shared export</h1>
-        <span class="topic">Guest visibility of archived items in exports</span>
+      <div class="head-b">
+        <div class="title">
+          <span class="crumb">Tide</span><span class="slash" aria-hidden="true">/</span>
+          <h1>Shared export</h1><span class="sep" aria-hidden="true">›</span>
+          <span class="topic">Guest visibility of archived items in exports</span>
+        </div>
+        <p class="state" aria-label="Current state">
+          <button class="state-seg" type="button" data-open="decision"><span class="dot ok" aria-hidden="true"></span><span class="seg-t">Current rule: exclude items guests can’t open</span></button><span class="state-sep" aria-hidden="true">·</span>
+          <button class="state-seg" type="button" data-open="work"><svg width="12" height="12" aria-hidden="true"><use href="#i-st-progress"/></svg><span class="seg-t">Work in progress (Nia)</span></button><span class="state-sep" aria-hidden="true">·</span>
+          <button class="state-seg need" type="button" data-open="result"><span class="dot accent" aria-hidden="true"></span><span class="seg-t">Result waiting for your review</span></button>
+        </p>
       </div>
       <div class="top-right">
         <div class="faces" aria-label="Members: Ari, Nia, Jo"><span class="av" aria-hidden="true">A</span><span class="av" aria-hidden="true">N</span><span class="av me-av" aria-hidden="true">J</span></div>
         <button class="btn quiet details-btn" type="button" id="details-btn" data-open="overview" aria-controls="panel" aria-expanded="false" aria-keyshortcuts="]" data-tip="Toggle details   ]"><svg width="16" height="16" aria-hidden="true"><use href="#i-panel"/></svg>Details</button>
       </div>
     </header>
+    <button class="state-btn" type="button" data-open="overview" aria-controls="panel">
+      <span class="dot accent" aria-hidden="true"></span><span class="seg-t"><span class="need-you">Result needs you</span> · Work in progress (Nia) · Rule: exclude guest-hidden items</span>
+      <svg width="16" height="16" aria-hidden="true"><use href="#i-chev-r"/></svg>
+    </button>
     <div class="views" role="tablist" aria-label="Project views">
       <button class="tab" type="button" role="tab" id="tab-conversation" aria-selected="true" aria-controls="pane-conversation" data-pane="conversation">Conversation</button>
       <button class="tab" type="button" role="tab" id="tab-tasks" aria-selected="false" aria-controls="pane-tasks" data-pane="tasks" tabindex="-1">Tasks<span class="tab-n" aria-label="3 tasks">3</span></button>
@@ -716,6 +755,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
           <h2>Guest visibility of archived items in exports</h2>
           <p>Started by Ari on Sep 20 · Ari, Nia and you</p>
         </div>
+        <div class="day away" id="away">You were away · 7 updates since Sep 19</div>
         <button class="btn quiet earlier" type="button" id="earlier-btn" aria-expanded="false" aria-controls="earlier">Show 2 earlier messages</button>
         <div id="earlier" hidden>
           <div class="day">Sep 20</div>
@@ -1357,7 +1397,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
   });
 
   // ---- Latest pill ----
-  const latest = $('#latest'), feedWrap = $('.feed-wrap'), anchor = $('#review-btn').closest('.obj');
+  const latest = $('#latest'), feedWrap = $('.feed-wrap'), anchor = $('#review-btn').closest('.msg');
   const atBottom = () => feed.scrollHeight - feed.scrollTop - feed.clientHeight < 24;
   function setLatest(on) { latest.classList.toggle('show', on); latest.inert = !on; feedWrap.classList.toggle('has-latest', on); }
   function scrollToEnd() { feed.scrollTo({ top: feed.scrollHeight, behavior: T('--dur-1') ? 'smooth' : 'auto' }); }
@@ -1367,7 +1407,17 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
     setLatest(!atBottom());
   }
   feed.addEventListener('scroll', () => { if (atBottom()) setLatest(false); }, { passive: true });
-  latest.addEventListener('click', () => { setLatest(false); scrollToEnd(); feed.focus({ preventScroll: true }); });
+  latest.addEventListener('click', () => {
+    setLatest(false);
+    const failed = $('#failed-msg.failed');
+    if (!failed) { scrollToEnd(); feed.focus({ preventScroll: true }); return; }
+    // Jump to the kept draft (not merely the bottom) and mark it once, then put focus on Retry.
+    failed.scrollIntoView({ block: 'end', behavior: T('--dur-1') ? 'smooth' : 'auto' });
+    $('#retry-btn').focus({ preventScroll: true });
+    failed.classList.remove('flash'); void failed.offsetWidth;
+    setTimeout(() => failed.classList.add('flash'), T('--dur-3'));
+    setTimeout(() => failed.classList.remove('flash'), T('--dur-3') + 1500);
+  });
 
   // ---- Failed reply: Retry → spinner → check → the message settles into the conversation ----
   const retry = $('#retry-btn');
@@ -1484,7 +1534,7 @@ button.obj:hover { box-shadow: inset 0 0 0 1px var(--line-strong); background: v
   // Timestamps get their full date as a delayed hover tooltip.
   let day = 'Today';
   const fullDay = d => d === 'Today' ? 'Today' : new Date(`${d}, 2026 12:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-  $$('.day, .msg time', feed).forEach(el => { if (el.classList.contains('day')) day = el.textContent.trim(); else el.dataset.tip = `${fullDay(day)} at ${el.textContent}`; });
+  $$('.day:not(.away), .msg time', feed).forEach(el => { if (el.classList.contains('day')) day = el.textContent.trim(); else el.dataset.tip = `${fullDay(day)} at ${el.textContent}`; });
 
   // Keyboard: Esc closes the top layer, ] toggles details, ⌘K / Ctrl+K jumps
   document.addEventListener('keydown', e => {
