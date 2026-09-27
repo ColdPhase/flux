@@ -14,7 +14,8 @@ started as described in [startup](../../../docs/agents/startup.md).
    no founder acceptance is required. After a restart use `flux-resume-work` first.
 2. Pick work in workflow order: founder direction; peer review requests and fixes
    to your own PRs; your in-progress issues; new ready work in milestone order.
-   Keep at most 2 open implementation PRs.
+   Keep at most 3 open implementation PRs. Parallel independent tasks may use
+   subagents with separate worktrees/branches, one issue owner and one writer.
    At start/resume, after a reviewable push, before new work/merge, and at safe
    boundaries in long work (about every 5–10 minutes), make a targeted check of
    new issue comments, review requests, PR heads/checks and unresolved threads.

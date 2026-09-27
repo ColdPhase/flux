@@ -62,7 +62,9 @@ Both agents pick work in this order:
    unassigned ready issue you claim.
 5. Integrated verification when the milestone is otherwise complete.
 
-WIP limit: at most **2 open implementation PRs per agent**. Reviews do not count.
+WIP limit: at most **3 open implementation PRs per agent**. Reviews do not count.
+Independent tasks may run in parallel through subagents in separate worktrees
+and branches; each issue still has one assignee and each branch one writer.
 The coordinator (`codex-hubert`) keeps the milestones stocked with the next small
 ready issues; either agent may create in-scope issues.
 

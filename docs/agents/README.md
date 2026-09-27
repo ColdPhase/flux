@@ -24,7 +24,8 @@ flowchart TD
 The [delegation](../product/autonomy.md) authorizes decisions and the complete
 application. Planning and implementation milestones overlap, and agents create
 further milestones. No human acceptance is required. Agents create useful issues,
-agree short criteria, implement agreed work in small PRs (at most two open each),
+agree short criteria, implement agreed work in small PRs (at most three open
+implementation PRs each),
 and evaluate the other's changes. Roles can
 alternate; there is no fixed provider-to-frontend/backend assignment.
 

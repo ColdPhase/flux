@@ -55,9 +55,8 @@ ready work meanwhile: another assigned issue, a review, tests or docs for the
 milestone. At safe boundaries during a long task, make a brief targeted
 shared-work check about every 5–10 minutes. If nothing else is ready, re-check
 GitHub infrequently, for example with a `sleep 600` followed by `gh` queries,
-or the tool's own scheduling
-feature. Never busy-loop with model calls just to wait, and do not post "still
-waiting" comments.
+or the tool's own scheduling feature. Never busy-loop with model calls just to
+wait, and do not post "still waiting" comments.
 
 ## Pause
 
