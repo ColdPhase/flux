@@ -94,7 +94,9 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
   const conversationId = conversation?.id;
   const author = (id: string) => id === me.user.id ? me.user.name : members.find((member) => member.userId === id)?.name ?? 'Member';
   const hideIfDenied = useCallback((cause: unknown) => {
-    if (!(cause instanceof ApiError) || (cause.status !== 401 && cause.status !== 404)) return;
+    if (!(cause instanceof ApiError)) return;
+    if (cause.status === 403) { revalidator.revalidate(); return; }
+    if (cause.status !== 401 && cause.status !== 404) return;
     setAccessLost(true);
     revalidator.revalidate();
     void getProject(project.id).then(() => setAccessLost(false)).catch(() => { /* denial keeps previous content hidden */ });
@@ -230,7 +232,7 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
           <section aria-label="Messages" className="project-convo__messages">
             {conversation ? <>
               {olderCursor ? <Button variant="quiet" busy={olderBusy} onClick={() => void loadOlder()}>Load earlier replies</Button> : null}
-              <ol className="project-convo__message-list">{messages.map((message) => <li key={message.id} className="project-convo__message"><div className="project-convo__message-meta"><strong>{author(message.authorId)}{message.authorId === me.user.id ? ' · you' : ''}</strong><time dateTime={message.createdAt}>{when(message.createdAt)}</time><span>#{message.sequence}</span></div><p>{message.body}</p>{message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} /> : null}</li>)}</ol>
+              <ol className="project-convo__message-list">{messages.map((message) => <li key={message.id} className="project-convo__message"><div className="project-convo__message-meta"><strong>{author(message.authorId)}{message.authorId === me.user.id ? ' · you' : ''}</strong><time dateTime={message.createdAt}>{when(message.createdAt)}</time><span>#{message.sequence}</span></div><p>{message.body}</p>{message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={hideIfDenied} /> : null}</li>)}</ol>
             </> : <EmptyState icon="chat" title="Start a conversation"><p>Share a thought with the people in {project.name}. No material form is required.</p></EmptyState>}
           </section>
           <section aria-label="Project materials" className="project-convo__materials"><div className="project-convo__section-head"><h3>Materials</h3><span>{materialTotal}</span></div>
@@ -255,8 +257,10 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
   </div>;
 }
 
-function SourceCitation({ materialId, version }: { materialId: string; version: number }) {
+function SourceCitation({ materialId, version, onDenied }: { materialId: string; version: number; onDenied: (cause: unknown) => void }) {
   const [title, setTitle] = useState('Material');
-  useEffect(() => { const controller = new AbortController(); getMaterialVersion(materialId, version, controller.signal).then((item) => setTitle(item.title)).catch(() => setTitle('Material unavailable')); return () => controller.abort(); }, [materialId, version]);
+  const onDeniedRef = useRef(onDenied);
+  useEffect(() => { onDeniedRef.current = onDenied; }, [onDenied]);
+  useEffect(() => { const controller = new AbortController(); getMaterialVersion(materialId, version, controller.signal).then((item) => setTitle(item.title)).catch((cause: unknown) => { if (!controller.signal.aborted) { onDeniedRef.current(cause); setTitle('Material unavailable'); } }); return () => controller.abort(); }, [materialId, version]);
   return <Link to={`/materials/${materialId}/versions/${version}`} className="project-convo__source">Source: {title} · v{version}</Link>;
 }
