@@ -21,15 +21,30 @@ visible provenance. If the client is offline or limited, people can still send,
 decide, work and return without AI.
 
 For this first path, the Flux MCP server is an OAuth 2.1 resource server using
-the **2026-07-28 MCP** streamable HTTP contract, protected resource and
+streamable HTTP and the newest MCP revision the tested official client negotiates
+(target **2026-07-28**), protected resource and
 authorization-server metadata, issuer validation, client ID metadata documents
 where supported, optional pre-registration or DCR compatibility, and a
-resource/audience-bound token. Tokens identify a Flux person and separately
-named agent grant. Client scopes are an upper bound; Flux rechecks current
-DM/project/object authorization and source revision for every tool, read and
-write, including idempotent replay and queued output. Token or session caching
-cannot restore a revoked grant. Do not reveal an inaccessible project's
-existence, count, title, event cursor or summary.
+resource/audience-bound token. At consent, the authenticated person creates or
+selects **their own** named `agents` row; a workspace-owned agent or another
+person's agent cannot be selected. Consent shows the selected projects and the
+agent's existing explicit per-project grants. Adding or changing those grants
+uses #29's manager-authorized grant flow; OAuth consent alone cannot grant a
+project the person cannot manage. The token binds that person, this agent ID and
+the approved project IDs, never the person's own policy principal. The only
+initial OAuth scopes are `flux.context.read` (list/read selected authorized
+project sources) and `flux.proposal.write` (create a sourced proposal in an
+approved project). They are ceilings, not grants. On every tool call, Flux
+authorizes as the **agent principal**: the effective project level is the lesser
+of the agent's current explicit grant and its owner's current level, and the
+requested action must also fit the token scope, selected project and object
+audience. Agent revocation or owner departure stops access. The first slice
+excludes DMs because #29 defines no agent DM grant; a later DM tool requires an
+explicit participant-granted DM policy and its own review. Flux rechecks current
+authorization and source revision for every tool, read and write, including
+idempotent replay and queued output. Token or session caching cannot restore a
+revoked grant. Do not reveal an inaccessible project's existence, count, title,
+event cursor or summary.
 
 The first tool set is deliberately small: list authorized current contexts,
 read a selected source with revision, and create a **sourced proposal** for
@@ -39,6 +54,16 @@ Each proposal labels fact, interpretation and suggested action, its source
 revisions, actor, grant and compute source. A changed source creates an explicit
 stale/conflict response. Stop, client disconnect, expiry and revocation leave
 human continuation in the same work context; no retry silently doubles a write.
+
+The external client and its compute remain personal to the authenticating
+owner. A project participant may read an authorized, attributed proposal, but
+cannot invoke, continue or retry the owner's agent or consume their allowance.
+Shared output uses the selected project's audience and only sources safe for
+that audience; OAuth authorization is not publication consent for unrelated
+private material. This external connection does not provide an in-Flux `/ai`
+runtime. A person without their own connection sees setup/unavailable there,
+with the ordinary human workflow still available. These #57 ownership,
+source and output boundaries apply to later run interfaces as well.
 
 **Conditional later modes:** Codex CLI and cloud app connectors need their own
 actual compatibility, auth and reachability tests before the supported list
@@ -75,8 +100,9 @@ stale source, expired token, duplicate command, changed audience and client
 disconnect. Report provider/client version and cost owner; do not label a stub
 or harness call as an official-client pass.
 
-The first **proactive follow-up** is a separately bounded event → sourced
-artifact → human continuation slice: after opt-in, a negative low-light result
+The [first proactive follow-up #58](https://github.com/ColdPhase/flux/issues/58)
+is a separately bounded event → sourced artifact → human continuation slice:
+after opt-in, a negative low-light result
 triggers one cited comparison of camera and sensor options in that project's
 quiet return surface. Deduplicate by rule/source revision, suppress a rejected
 proposal until evidence changes, cap frequency/cost, prevent agent-to-agent
