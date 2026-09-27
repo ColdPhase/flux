@@ -310,3 +310,61 @@ export const projectMessages = pgTable('project_messages', {
   foreignKey({ columns: [table.workspaceId, table.projectId, table.conversationId], foreignColumns: [projectConversations.workspaceId, projectConversations.projectId, projectConversations.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.sourceMaterialId, table.sourceMaterialVersion], foreignColumns: [projectMaterialVersions.workspaceId, projectMaterialVersions.projectId, projectMaterialVersions.materialId, projectMaterialVersions.version] }),
 ]);
+
+// Sketches: thoughts on a map and the links between them (migration 0007, issue #69).
+export const sketches = pgTable('sketches', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  scope: text('scope', { enum: ['project', 'private'] }).notNull(),
+  projectId: uuid('project_id'),
+  title: text('title').notNull(),
+  createdByUserId: text('created_by_user_id').references(() => authUsers.id),
+  createdByAgentId: uuid('created_by_agent_id'),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique().on(table.workspaceId, table.id),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.createdByAgentId], foreignColumns: [agents.workspaceId, agents.id] }),
+  index('sketches_workspace_idx').on(table.workspaceId, table.updatedAt.desc(), table.id),
+]);
+
+export const sketchThoughts = pgTable('sketch_thoughts', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  sketchId: uuid('sketch_id').notNull(),
+  text: text('text').notNull(),
+  x: integer('x').notNull(),
+  y: integer('y').notNull(),
+  width: integer('width').notNull().default(184),
+  height: integer('height').notNull().default(72),
+  shape: text('shape', { enum: ['card', 'pill', 'circle'] }).notNull().default('card'),
+  placementType: text('placement_type', { enum: ['draft'] }),
+  placementId: uuid('placement_id'),
+  createdByUserId: text('created_by_user_id').references(() => authUsers.id),
+  createdByAgentId: uuid('created_by_agent_id'),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique().on(table.sketchId, table.id),
+  foreignKey({ columns: [table.workspaceId, table.sketchId], foreignColumns: [sketches.workspaceId, sketches.id] }).onDelete('cascade'),
+  index('sketch_thoughts_sketch_idx').on(table.sketchId, table.createdAt, table.id),
+]);
+
+export const sketchLinks = pgTable('sketch_links', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  sketchId: uuid('sketch_id').notNull(),
+  fromId: uuid('from_id').notNull(),
+  toId: uuid('to_id').notNull(),
+  label: text('label'),
+  createdByUserId: text('created_by_user_id').references(() => authUsers.id),
+  createdByAgentId: uuid('created_by_agent_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  foreignKey({ columns: [table.workspaceId, table.sketchId], foreignColumns: [sketches.workspaceId, sketches.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.sketchId, table.fromId], foreignColumns: [sketchThoughts.sketchId, sketchThoughts.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.sketchId, table.toId], foreignColumns: [sketchThoughts.sketchId, sketchThoughts.id] }).onDelete('cascade'),
+]);

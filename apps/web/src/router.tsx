@@ -7,7 +7,9 @@ import { ProjectConversation, projectConversationLoader } from './app/ProjectCon
 import { ProjectSetup } from './app/ProjectSetup';
 import { MaterialView, materialLoader } from './app/MaterialView';
 import { Booting, RouteErrorPage } from './app/errors';
-import { ConversationView, DirectMessagesView, DocsView, MapView, NotFoundView, TasksView } from './app/views';
+import { ConversationView, DirectMessagesView, DocsView, NotFoundView, TasksView } from './app/views';
+import { SketchIndex } from './sketch/SketchIndex';
+import { SketchRoute } from './sketch/SketchView';
 import {
   forgotPasswordAction,
   forgotPasswordLoader,
@@ -55,7 +57,8 @@ export const router = createBrowserRouter([
           { path: 'materials/:materialId', loader: materialLoader, Component: MaterialView },
           { path: 'materials/:materialId/versions/:version', loader: materialLoader, Component: MaterialView },
           { path: 'tasks', Component: TasksView },
-          { path: 'map', Component: MapView },
+          { path: 'map', Component: SketchIndex },
+          { path: 'map/:sketchId', Component: SketchRoute },
           { path: 'docs', Component: DocsView },
           { path: 'dm', Component: DirectMessagesView },
           { path: '*', Component: NotFoundView },

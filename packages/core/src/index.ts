@@ -21,6 +21,7 @@ export {
   isUuid,
   AGENT_ACTIONS,
   DRAFT_ACTIONS,
+  SKETCH_ACTIONS,
   PROJECT_ACTIONS,
   WORKSPACE_ACTIONS,
   type Action,
@@ -38,6 +39,8 @@ export * from './stream-audience.js';
 export * from './events.js';
 export * from './conversation/commands.js';
 export * from './conversation/service.js';
+export * from './sketches/index.js';
+export { policySketchAccess } from './access/sketch-access.js';
 
 export const SAMPLE_JOB = 'sample.process';
 
