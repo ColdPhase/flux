@@ -13,9 +13,14 @@ its layout and technology are not the accepted application design.
 
 ## Project status
 
-**Early development: this repository currently contains the Flux Studio v8 UX
-prototype.** It runs locally as a single HTML file with embedded JavaScript and
-CSS. The interface and sample content are currently in Polish.
+**Early development:** the repository now has a persistent Docker application
+foundation as well as the historical Flux Studio v8 UX prototype. The application
+currently exposes a browser shell, API, worker and PostgreSQL integration fixture.
+It does not yet provide human login or the working messenger.
+
+Start the application with the [Compose guide](docs/development/application-foundation.md).
+The prototype remains a single HTML file with embedded JavaScript and CSS; its
+interface and sample content are in Polish.
 
 You can explore conversations, mind maps, task boards, wiki pages, and the links
 between them. Accounts, permissions, collaboration, AI agents, MCP, and external
@@ -74,6 +79,7 @@ prototype's design:
 - [Start the agents](docs/agents/startup.md) — each person's `/goal` session, pause and resume.
 - [Product foundation and decisions](docs/product/README.md) — founder direction and open choices.
 - [Docker development](docs/development/containers.md) — the environment contract for the application.
+- [Application foundation](docs/development/application-foundation.md) — clean Compose start, checks and initial backup/restore.
 
 These notes describe the prototype and its design history. Future architecture
 and feature proposals are discussed in Issues and Discussions.
