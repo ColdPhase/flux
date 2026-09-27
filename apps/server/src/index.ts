@@ -9,6 +9,7 @@ import { SAMPLE_COMMAND_PATH, type SampleCommand } from '@flux/contracts';
 import { createSample, SAMPLE_JOB } from '@flux/core';
 import { registerDatabase } from './plugins/database.js';
 import { loadIdentityConfig, registerIdentity } from './identity/index.js';
+import { accessRoutes } from './access/routes.js';
 
 const connectionString = process.env.DATABASE_URL;
 const fixtureToken = process.env.FLUX_FIXTURE_TOKEN;
@@ -22,7 +23,8 @@ const boss = new PgBoss({ connectionString, migrate: false });
 boss.on('error', (error) => app.log.error(error));
 await boss.start();
 app.addHook('onClose', async () => boss.stop());
-registerIdentity(app, { db, config: identityConfig });
+const identity = registerIdentity(app, { db, config: identityConfig });
+await app.register(accessRoutes, { db, sessions: identity });
 
 app.get('/api/v1/health', async (_request, reply) => {
   try {
