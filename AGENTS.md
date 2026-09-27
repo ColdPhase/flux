@@ -23,6 +23,7 @@ Keep procedures in one place and use the guides below when relevant.
 | UI direction, density, or visual review | `docs/design/README.md` and foundation sections 10 / 17 D1–D4 |
 | Starting, pausing or resuming the agents (`/goal` sessions) | `docs/agents/startup.md` |
 | Development environment, services, tests, or packaging | `docs/development/containers.md` |
+| Module boundaries, dependency direction, or where code/tests go | `docs/development/architecture.md` |
 | Mobile/tablet UX, PWA installation or push notifications | `docs/product/mobile-pwa.md` |
 | Ordinary contribution or prototype change | `docs/CONTRIBUTING.md` |
 | Agent collaboration and task lifecycle | `docs/agents/workflow.md` |
@@ -123,8 +124,8 @@ Serve the prototype: `python3 -m http.server 8080 --bind 127.0.0.1`, then open
 
 Check this foundation: `python3 scripts/check_agent_setup.py`,
 `python3 -m unittest discover -s tests -p 'test_*.py'`, and `git diff --check`.
-Use the manual checks in the contributing guide for prototype
-changes. There is currently no production application build or automated
-application test suite. Do not report those checks as passing.
+Check the application (build, type check, lint, tests, architecture rules and
+browser checks in Docker): `./scripts/check_application.sh`; set `FLUX_TEST_PORT`
+and `FLUX_TEST_MAILPIT_PORT` for concurrent runs. Report only checks you ran.
 
 Start the agents: see `docs/agents/startup.md`.

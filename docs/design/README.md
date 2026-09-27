@@ -1,8 +1,8 @@
 # Design work in Flux
 
 Read foundation sections 10, 17 D1–D4, and 21 in
-[FLUX-FOUNDATION.md](../product/FLUX-FOUNDATION.md). There is no accepted palette,
-font family, application layout, or design system yet. Existing screens and
+[FLUX-FOUNDATION.md](../product/FLUX-FOUNDATION.md). The current direction, tokens and components are in
+[direction.md](direction.md) (O-003, variant C). Existing screens and
 third-party skills are references; their defaults do not establish Flux's style.
 
 ## Brief and continuity

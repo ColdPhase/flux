@@ -32,6 +32,11 @@ for the current clean-start, validation and backup/restore commands. This is an
 application skeleton; #29's identity/session and project policy slices are now
 merged, while collaboration and release verification remain separate tasks.
 
+The `files` mounts on `files-init`, API and worker all use `:z` so SELinux gives
+the shared volume a label accessible to both running services. `files-init`
+still sets ownership for their non-root UID; all three mounts must keep the
+shared label option or one container can deny another's writes on SELinux hosts.
+
 ## Local task worktrees
 
 Keep each task or independent review in its own Git worktree under the repository
@@ -51,6 +56,27 @@ default test project or another worker's persistent volumes. The
 [application foundation guide](application-foundation.md) has the current
 Compose commands; the worktree location does not change their container-only
 runtime requirement.
+
+### Disk hygiene
+
+Each `scripts/check_*.sh` run builds images tagged with its own Compose
+project (`flux-foundation:<project>`, `flux-test-tools:<project>`,
+`flux-e2e:<project>`, 0.6–4 GB each). After `down -v`, the cleanup trap removes
+exactly those tags and prints how many it removed, on success or failure. It
+never removes base images, other projects' tags such as
+`flux-foundation:flux-demo`, or the shared build cache. Set
+`FLUX_KEEP_TEST_IMAGES=1` to keep a run's images for debugging, then remove
+them yourself with `docker image rm`. Incident, 2026-09-27: before this cleanup,
+about 60 leftover images and 62 GB of build cache filled a developer disk
+([#71](https://github.com/ColdPhase/flux/issues/71)).
+
+The build cache speeds up every worker's next build, so the checks do not prune
+it. Check usage with `docker system df` and, when it grows large on your own
+machine, run `docker builder prune --filter until=72h` (or
+`docker builder prune -a` when no concurrent checks are running). Remove
+leftovers from older or interrupted runs with
+`docker images --format '{{.Repository}}:{{.Tag}}' | grep -E '^flux-[a-z-]+:flux-(test|runtime)-'`,
+then `docker image rm` on the tags you confirm are not in use.
 
 Git, Docker/Compose, GitHub CLI, the installed official coding-agent CLIs, and
 Python 3.11+ for this repository's standard-library foundation checks are host
@@ -75,6 +101,7 @@ next request. The API reads these variables (see `.env.example`):
 | `FLUX_SMTP_URL`, `FLUX_MAIL_FROM` | SMTP transport URL (e.g. `smtp://user:pass@mail.example.org:587`) and sender for password reset mail. If unset, password reset answers `503 PASSWORD_RESET_UNAVAILABLE` and `/api/v1/auth/capabilities` reports `unavailable`. |
 | `FLUX_PASSWORD_RESET_TTL_SECONDS` | Reset token lifetime, 60–86400, default 3600. Tokens are single use and stored hashed. |
 | `FLUX_AUTH_RATE_LIMIT` | `true` (default) enables Better Auth's in-memory login rate limit. Only the test script turns it off. |
+| `FLUX_STREAM_HEARTBEAT_MS` | WebSocket stream ping, session revalidation and polling interval in milliseconds (default `25000`, minimum `100`). The test script uses `1000`. See [access policy](access-policy.md#websocket-stream). |
 
 For development, the `dev` Compose profile adds a local mail catcher
 (Mailpit, pinned by digest). Set `FLUX_SMTP_URL=smtp://mailpit:1025` and a

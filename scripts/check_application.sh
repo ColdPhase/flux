@@ -16,14 +16,18 @@ export FLUX_SMTP_URL="smtp://mailpit:1025"
 export FLUX_MAIL_FROM="Flux <flux@example.test>"
 # The suite signs in many times from one address; rate limiting is covered separately.
 export FLUX_AUTH_RATE_LIMIT=false
+# Short stream heartbeat so the suite observes pings and periodic session revalidation.
+export FLUX_STREAM_HEARTBEAT_MS=1000
+. scripts/test_images.sh
 compose="docker compose -p $project -f infra/compose.yaml -f infra/compose.test.yaml --profile test"
 
 cleanup() {
   status=$?
   if [ "$status" -ne 0 ]; then
-    $compose logs --no-color db migrate api worker mailpit pushmock || true
+    $compose logs --no-color db migrate api worker mailpit pushmock test || true
   fi
-  $compose down -v
+  $compose down -v || true
+  remove_project_images
 }
 trap cleanup EXIT HUP INT TERM
 
@@ -46,6 +50,9 @@ $compose run --rm test
 
 # Service worker registration, offline fallback and the update prompt in Chromium over HTTPS.
 $compose run --rm e2e
+
+# Login, sharing, denied access and stream revocation in Chromium sessions (issue #29, AC-4).
+$compose run --rm e2e node_modules/.bin/tsx --test tests/app/e2e/access-stream.e2e.ts
 
 # A session created before an API container restart must still be valid afterwards.
 $compose run --rm test pnpm exec tsx tests/app/session-restart.ts prepare

@@ -20,6 +20,7 @@ export FLUX_MAIL_FROM="Flux <flux@example.test>"
 # The journey signs in several times from one address; rate limiting is covered by the API suite.
 export FLUX_AUTH_RATE_LIMIT=false
 if [ -n "${FLUX_UI_SCREENSHOT_DIR:-}" ]; then mkdir -p "$FLUX_UI_SCREENSHOT_DIR"; fi
+. scripts/test_images.sh
 compose="docker compose -p $project -f infra/compose.yaml --profile ui"
 
 cleanup() {
@@ -27,7 +28,8 @@ cleanup() {
   if [ "$status" -ne 0 ]; then
     $compose logs --no-color db migrate files-init api || true
   fi
-  $compose down -v
+  $compose down -v || true
+  remove_project_images
 }
 trap cleanup EXIT HUP INT TERM
 
