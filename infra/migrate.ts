@@ -42,7 +42,9 @@ try {
   const boss = new PgBoss({ connectionString });
   boss.on('error', (error) => console.error(error));
   await boss.start();
-  await boss.createQueue('sample.process');
+  for (const queue of ['sample.process', 'draft.summarize.v1', 'idempotency.cleanup.v1']) {
+    await boss.createQueue(queue);
+  }
   // Existing queues keep their stored policy; updateQueue applies the reviewed retry bounds.
   await boss.createQueue(PUSH_SEND_JOB, PUSH_SEND_QUEUE);
   await boss.updateQueue(PUSH_SEND_JOB, PUSH_SEND_QUEUE);

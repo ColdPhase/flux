@@ -49,6 +49,7 @@ services:
       FLUX_AUTH_RATE_LIMIT: ${FLUX_AUTH_RATE_LIMIT:-true}
       # Web Push (issue #41). The API only needs the public key; empty reports push unavailable.
       FLUX_VAPID_PUBLIC_KEY: ${FLUX_VAPID_PUBLIC_KEY:-}
+      FLUX_STREAM_HEARTBEAT_MS: ${FLUX_STREAM_HEARTBEAT_MS:-25000}
       PORT: 8080
     volumes:
       - files:/data/files
@@ -106,6 +107,7 @@ services:
       FLUX_PUBLIC_ORIGIN: ${FLUX_PUBLIC_ORIGIN:?Set FLUX_PUBLIC_ORIGIN}
       FLUX_FIXTURE_TOKEN: ${FLUX_FIXTURE_TOKEN:?Set FLUX_FIXTURE_TOKEN}
       FLUX_TEST_STATE_DIR: /state
+      FLUX_STREAM_HEARTBEAT_MS: ${FLUX_STREAM_HEARTBEAT_MS:-25000}
     volumes:
       - teststate:/state
     depends_on:
@@ -113,6 +115,8 @@ services:
         condition: service_completed_successfully
       api:
         condition: service_healthy
+      worker:
+        condition: service_started
       mailpit:
         condition: service_healthy
 volumes:

@@ -16,12 +16,14 @@ export FLUX_SMTP_URL="smtp://mailpit:1025"
 export FLUX_MAIL_FROM="Flux <flux@example.test>"
 # The suite signs in many times from one address; rate limiting is covered separately.
 export FLUX_AUTH_RATE_LIMIT=false
+# Short stream heartbeat so the suite observes pings and periodic session revalidation.
+export FLUX_STREAM_HEARTBEAT_MS=1000
 compose="docker compose -p $project -f infra/compose.yaml -f infra/compose.test.yaml --profile test"
 
 cleanup() {
   status=$?
   if [ "$status" -ne 0 ]; then
-    $compose logs --no-color db migrate api worker mailpit pushmock || true
+    $compose logs --no-color db migrate api worker mailpit pushmock test || true
   fi
   $compose down -v
 }

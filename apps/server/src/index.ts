@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
+import websocket from '@fastify/websocket';
 import { PgBoss } from 'pg-boss';
 import { FLUX_SCHEMA_VERSION, PG_BOSS_SCHEMA_VERSION } from '@flux/db';
 import { SAMPLE_COMMAND_PATH, type SampleCommand } from '@flux/contracts';
@@ -12,6 +13,7 @@ import { loadIdentityConfig, registerIdentity } from './identity/index.js';
 import { accessRoutes } from './access/routes.js';
 import { loadPushServerConfig, pushRoutes } from './push/index.js';
 import { setStaticHeaders } from './pwa/static-headers.js';
+import { streamRoutes } from './stream/index.js';
 
 const connectionString = process.env.DATABASE_URL;
 const fixtureToken = process.env.FLUX_FIXTURE_TOKEN;
@@ -27,9 +29,13 @@ boss.on('error', (error) => app.log.error(error));
 await boss.start();
 app.addHook('onClose', async () => boss.stop());
 const identity = registerIdentity(app, { db, config: identityConfig });
-await app.register(accessRoutes, { db, sessions: identity });
+await app.register(accessRoutes, { db, sessions: identity, boss });
 await app.register(pushRoutes, { db, sessions: identity, config: pushConfig });
 if (pushConfig.status === 'unavailable') app.log.warn(pushConfig.reason);
+await app.register(websocket, { options: { maxPayload: 1024 } });
+const heartbeatMs = Number(process.env.FLUX_STREAM_HEARTBEAT_MS ?? 25_000);
+if (!Number.isInteger(heartbeatMs) || heartbeatMs < 100) throw new Error('FLUX_STREAM_HEARTBEAT_MS must be an integer of at least 100');
+await app.register(streamRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, connectionString, heartbeatMs });
 
 app.get('/api/v1/health', async (_request, reply) => {
   try {
