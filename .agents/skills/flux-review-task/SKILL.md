@@ -19,15 +19,17 @@ contract, and all unresolved prior findings. Follow
 - Record each criterion as pass, fail, or unverified, with evidence at this head.
   Inspect CI and unresolved review threads. Pending or unavailable required checks
   stay unverified.
-- Publish [the evaluation report](../../../docs/agents/templates/evaluation.md).
+- Submit the result as a GitHub PR review (approve / request changes), shaped by
+  [the evaluation report](../../../docs/agents/templates/evaluation.md) and kept short.
   Findings need expected/observed behavior and reproduction steps. Separate optional
-  improvements from blocking failures; account for each earlier finding on re-review.
+  improvements from blocking failures. On re-review, check only the delta and each
+  earlier open finding.
 - Return fixes to the implementation owner. If you edit code, identify that as
   implementation and obtain independent evaluation of the changed head.
 - Submit the appropriate GitHub review only when authorized and eligible. A passing
   report does not bypass required Code Owner approval, checks, or conversation rules.
 
-Release your review claim and hand back the next action. If the head or contract
+Hand back the next action in the review itself. If the head or contract
 changed during evaluation, report that the new version still needs verification.
 
 Peer review and eligible GitHub approvals are authorized. When the current head passes review and required checks, merge using the normal protected path; do not wait for a human approval.

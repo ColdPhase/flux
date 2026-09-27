@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-      - name: Validate shared instructions, skills, and manifest
+      - name: Validate shared instructions, skills, and document links
         run: python3 scripts/check_agent_setup.py
-      - name: Verify configuration, worker recovery, task parking, and provider adapters
+      - name: Test the foundation checks
         run: python3 -m unittest discover -s tests -p 'test_*.py'
