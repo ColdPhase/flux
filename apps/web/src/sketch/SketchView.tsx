@@ -104,7 +104,7 @@ export function SketchView({ sketchId, projectId, back = '/map' }: { sketchId: s
   useRegisterLiveHere(projectSketch ? { projectId: projectSketch.projectId!, context: { type: 'sketch', id: projectSketch.id }, label: projectSketch.title } : null,
     projectSketch ? { ref: { type: 'sketch', id: projectSketch.id, version: projectSketch.version, ...(selection.length ? { selectedThoughtIds: selection.slice(0, 100) } : {}) },
       label: firstSelected ? (firstSelected.length > 60 ? `${firstSelected.slice(0, 59)}…` : firstSelected) : projectSketch.title,
-      what: selection.length === 0 ? 'map' : selection.length === 1 ? 'thought on the map' : `${selection.length} thoughts on the map` } : null, 1);
+      what: selection.length === 0 ? 'map' : selection.length === 1 ? 'thought on the map' : `${selection.length} thoughts on the map` } : null);
   const editing = editingState && present.has(editingState.id) ? editingState : null;
 
   const setMode = (next: Mode) => {

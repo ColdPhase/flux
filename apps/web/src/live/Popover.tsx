@@ -26,8 +26,16 @@ export function Popover({ open, onClose, anchorRef, label, className, children, 
     const onPointer = (event: PointerEvent) => {
       if (!pop?.contains(event.target as Node) && !anchorRef.current?.contains(event.target as Node)) onCloseRef.current();
     };
+    // Escape also works after the focused control inside went away (e.g. Invite → Invited).
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      if (document.activeElement && document.activeElement !== document.body && !pop?.contains(document.activeElement)) return;
+      onCloseRef.current();
+      anchorRef.current?.focus();
+    };
     document.addEventListener('pointerdown', onPointer);
-    return () => document.removeEventListener('pointerdown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('pointerdown', onPointer); document.removeEventListener('keydown', onKey); };
   }, [open, anchorRef]);
 
   if (!open) return null;

@@ -70,7 +70,7 @@ export interface LiveValue {
   closeStage(): void;
 }
 
-interface HereEntry { anchor: LiveAnchor | null; presentable: Presentable | null; priority: number }
+interface HereEntry { anchor: LiveAnchor | null; presentable: Presentable | null }
 export interface Here { anchor: LiveAnchor | null; presentable: Presentable | null }
 
 const LiveContext = createContext<LiveValue | null>(null);
@@ -94,13 +94,13 @@ export function useLiveHere(): Here {
  * A view says where the person is (an anchor for "Work on this together") and what it could
  * show ("Show this"). It never publishes anything by itself: private navigation is private.
  */
-export function useRegisterLiveHere(anchor: LiveAnchor | null, presentable: Presentable | null, priority = 1) {
+export function useRegisterLiveHere(anchor: LiveAnchor | null, presentable: Presentable | null) {
   const { register } = useContext(HereContext);
   const key = JSON.stringify([anchor, presentable]);
-  useEffect(() => register({ anchor, presentable, priority }),
+  useEffect(() => register({ anchor, presentable }),
     // The key captures the content; the objects are rebuilt on every render by callers.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [key, priority, register]);
+    [key, register]);
 }
 
 function readable(error: unknown): string {
@@ -473,14 +473,15 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
     return () => setEntries((current) => current.filter((item) => item.id !== id));
   }, []);
   const here = useMemo<Here>(() => {
-    // The most specific view wins: an open Details object over the page beneath it.
-    let anchor: HereEntry | null = null;
-    let presentable: HereEntry | null = null;
+    // What the person opened most recently wins: a task opened in Details over the page
+    // beneath it, and a doc opened afterwards over a task still docked in Details.
+    let anchor: LiveAnchor | null = null;
+    let presentable: Presentable | null = null;
     for (const { entry } of entries) {
-      if (entry.anchor && (!anchor || entry.priority >= anchor.priority)) anchor = entry;
-      if (entry.presentable && (!presentable || entry.priority >= presentable.priority)) presentable = entry;
+      if (entry.anchor) anchor = entry.anchor;
+      if (entry.presentable) presentable = entry.presentable;
     }
-    return { anchor: anchor?.anchor ?? null, presentable: presentable?.presentable ?? null };
+    return { anchor, presentable };
   }, [entries]);
   const hereValue = useMemo(() => ({ register, here }), [register, here]);
 

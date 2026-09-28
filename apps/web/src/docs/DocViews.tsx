@@ -188,7 +188,7 @@ export function DocReader() {
   const base = docUrl(project.id, doc.id);
   // The doc anchors a session; "Show this" points at exactly the version on screen.
   useRegisterLiveHere({ projectId: project.id, context: { type: 'doc', id: doc.id }, label: doc.title },
-    { ref: { type: 'material', id: doc.id, version: shown.version }, label: shown.title, what: current ? `doc · version ${shown.version}` : `doc · earlier version ${shown.version}` }, 1);
+    { ref: { type: 'material', id: doc.id, version: shown.version }, label: shown.title, what: current ? `doc · version ${shown.version}` : `doc · earlier version ${shown.version}` });
   return (
     <div className="pane-scroll">
       <article className="pane-in doc" data-shift aria-labelledby="doc-title">

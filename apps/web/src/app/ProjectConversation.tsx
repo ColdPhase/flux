@@ -85,7 +85,7 @@ export function ProjectConversation() {
 function ProjectConversationContent({ data }: { data: ProjectData }) {
   const { project, materials, members, conversation } = data;
   // The open conversation is where "Work on this together" starts; nothing is shown by itself.
-  useRegisterLiveHere(conversation ? { projectId: project.id, context: { type: 'conversation', id: conversation.id }, label: excerpt(conversation.firstMessageBody) } : null, null, 1);
+  useRegisterLiveHere(conversation ? { projectId: project.id, context: { type: 'conversation', id: conversation.id }, label: excerpt(conversation.firstMessageBody) } : null, null);
   const shell = useProjectShell();
   const work = shell?.work ?? { work: [], decisions: [], results: [] };
   const people = shell?.people ?? null;

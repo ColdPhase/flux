@@ -545,7 +545,9 @@ class LiveJourney(LiveBase):
         found = self.api(lee, "GET", f"/api/v1/projects/{self.ids['project']}/live-sessions")
         self.assertNotIn(TASK, json.dumps(found))
         lee.goto(f"/projects/{self.ids['project']}/live/{self.ids['session1']}")
-        expect(lee.get_by_text(re.compile("no longer open|doesn’t exist|not available", re.I)).first).to_be_visible()
+        expect(lee.get_by_role("heading", level=1).first).to_be_visible()
+        self.assertNotIn(TASK, lee.content(), "the invitation link reveals nothing to an outsider")
+        expect(self.bar(lee)).to_have_count(0)
         bar.get_by_role("button", name="Leave", exact=True).click()
 
 
