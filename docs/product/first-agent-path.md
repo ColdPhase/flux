@@ -1,9 +1,9 @@
 # O-005 — first supported agent path
 
 **Proposal:** 2026-09-27, `codex-hubert` for [#37](https://github.com/ColdPhase/flux/issues/37).
-**Status:** proposed for independent evaluation by `claude-maurycy`.
-This is a product/architecture decision, not an implemented or tested Flux
-integration. It narrows the [#9 feasibility research](own-ai-feasibility.md)
+**Status:** accepted after [independent peer review](https://github.com/ColdPhase/flux/pull/53#pullrequestreview-5331573326).
+This is the product/architecture decision for the [#52 implementation](https://github.com/ColdPhase/flux/issues/52).
+It narrows the [#9 feasibility research](own-ai-feasibility.md)
 within accepted [O-002](application-architecture-proposal.md) and the later
 [#44 creative product direction](https://github.com/ColdPhase/flux/issues/44).
 
@@ -75,6 +75,9 @@ the required proactive AI path.
 
 ## Evidence checked on 2026-09-27
 
+The observations below record the decision-time state. Later implementation
+evidence is kept in the [agent connection contract](../development/agent-connection.md).
+
 | Claim | Evidence class | Primary source and limit |
 | --- | --- | --- |
 | Claude Code supports remote HTTP MCP and `claude mcp login`; it documents OAuth and CIMD/DCR/pre-registered client setup. | Vendor documentation, accessed 2026-09-27. | [Claude Code MCP guide](https://code.claude.com/docs/en/mcp). A Flux login has **not** been tested. |
@@ -82,9 +85,10 @@ the required proactive AI path.
 | MCP 2026-07-28 has a stateless HTTP core and authorization hardening; OAuth 2.1, protected resource metadata, issuer and intended-audience validation are specified; CIMD is preferred and DCR retained for compatibility. | Published protocol and maintainer announcement, 2026-07-28, accessed 2026-09-27. | [Release](https://blog.modelcontextprotocol.io/posts/2026-07-28/), [authorization specification](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization). A real Claude Code ↔ Flux version negotiation is **untested**. |
 | A user-operated client could use its own plan while Flux serves only authorized tools, avoiding Flux-held provider credentials. | Flux inference from the vendor/protocol boundaries above. | Validate with an official-client end-to-end run before advertising support; provider capacity and costs remain with the client account. |
 
-No Flux MCP server, OAuth flow, official-client connection, cost measurement or
-proactive agent run has been observed. The #9 provider matrix is broader
-feasibility research, not evidence that these modes work in Flux.
+At this decision-time snapshot, no Flux MCP server, OAuth flow,
+official-client connection, cost measurement or proactive agent run had been
+observed. The #9 provider matrix is broader feasibility research, not
+evidence that these modes work in Flux.
 
 ## Implementation and observable proof
 
