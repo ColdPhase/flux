@@ -19,13 +19,6 @@ const since = (iso: string) => (sameDay(iso) ? `today, ${time.format(new Date(is
 
 type Keep = 'idle' | 'busy' | 'kept' | 'failed';
 
-/**
- * What this tab showed per place during the visit. Opening a source navigates, and the place's
- * point is already saved, so coming back to the place within the visit shows the same list
- * again instead of an empty line. A reload starts a new visit.
- */
-const shown = new Map<string, { summary: ReturnSummary; at: number }>();
-const VISIT_MS = 30 * 60 * 1000;
 
 /**
  * Loads the summary of a place and then saves the return point at what was shown, so the next
@@ -33,23 +26,21 @@ const VISIT_MS = 30 * 60 * 1000;
  */
 function useReturn(place: ReturnPlace, alsoSave?: ReturnPlace) {
   const placeKey = place.type === 'home' ? 'home' : `${place.type}:${place.id}`;
-  // Start from what this visit already showed, so switching views never shifts the page later.
-  const [summary, setSummary] = useState<ReturnSummary | null>(() => {
-    const earlier = shown.get(placeKey);
-    return earlier && Date.now() - earlier.at < VISIT_MS ? earlier.summary : null;
-  });
+  // Only the current request's authorized response is ever shown: nothing is kept on the client
+  // between mounts, accounts or visits, so a revoked item or another account's item never appears.
+  const [loadedFor, setLoaded] = useState<{ key: string; summary: ReturnSummary } | null>(null);
   const [keep, setKeep] = useState<Keep>('idle');
   // "Keep these" must run after the save of this visit, or the save would overwrite it.
   const saving = useRef<Promise<unknown>>(Promise.resolve());
   const alsoKey = alsoSave && alsoSave.type !== 'home' ? `${alsoSave.type}:${alsoSave.id}` : '';
+  // A summary is shown only for the place it was loaded for.
+  const summary = loadedFor?.key === placeKey ? loadedFor.summary : null;
   useEffect(() => {
     const controller = new AbortController();
     const target: ReturnPlace = placeKey === 'home' ? { type: 'home' } : { type: placeKey.split(':')[0] as 'project', id: placeKey.split(':')[1]! };
     getReturnSummary(target, controller.signal).then(async (loaded) => {
       if (controller.signal.aborted) return;
-      const earlier = shown.get(placeKey);
-      if (!loaded.items.length && earlier && Date.now() - earlier.at < VISIT_MS) setSummary(earlier.summary);
-      else { setSummary(loaded); if (loaded.items.length) shown.set(placeKey, { summary: loaded, at: Date.now() }); }
+      setLoaded({ key: placeKey, summary: loaded });
       saving.current = saveReturnPoint(target, loaded.mark).catch(() => undefined);
       await saving.current;
     }).catch(() => { /* the line is optional; the place works without it */ });
@@ -65,7 +56,7 @@ function useReturn(place: ReturnPlace, alsoSave?: ReturnPlace) {
     try {
       await saving.current;
       // Both points this visit saved move back, or the conversation's would still hide its messages.
-      await Promise.all([restoreReturnPoint(place), ...(alsoKey ? [restoreReturnPoint({ type: 'conversation', id: alsoKey.split(':')[1]! })] : [])]); shown.delete(placeKey); setKeep('kept'); } catch { setKeep('failed'); }
+      await Promise.all([restoreReturnPoint(place), ...(alsoKey ? [restoreReturnPoint({ type: 'conversation', id: alsoKey.split(':')[1]! })] : [])]); setKeep('kept'); } catch { setKeep('failed'); }
   };
   return { summary, keep, keepForLater };
 }

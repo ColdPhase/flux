@@ -79,8 +79,10 @@ a person, blocked work of yours, and other work of yours. Examples: "Answer Ari'
 - `apps/web/src/returns/`: `SinceYouLeftHome` (on Home, grouped by place) and `SinceYouLeftLine`
   (above the project conversation; it collapses to one 44 px row on the phone and expands with
   the grid-rows transition from the tokens). A source link to a message opens on that whole
-  message (`#message-<id>`). A tab keeps what it showed during a visit, so returning to a place
-  after opening a source shows the same list. A reload starts a new visit.
+  message (`#message-<id>`). Only the current request's authorized answer is ever shown: the
+  client keeps no return-view state between mounts, accounts or visits, so a revoked item or
+  another account's item never appears, even before a fresh answer arrives (tested in Playwright
+  with the API held back across a same-tab sign-out and sign-in).
 
 ## Tests
 

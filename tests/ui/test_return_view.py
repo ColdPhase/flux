@@ -297,13 +297,9 @@ class ReturnViewJourney(unittest.TestCase):
         expect(page.get_by_role("region", name="Since you left").get_by_role("button", name=re.compile("updates since"))).to_be_visible()
         # Audience preview before writing: the composer names who will read the reply.
         expect(page.locator(".composer__audience")).to_have_text(re.compile("Gesture lamp · People with project access · Saved to project"))
-        # Back on Home in the same visit, the list it showed is still there to continue from;
-        # a new visit (reload) starts after the saved point, so nothing is repeated.
+        # Back on Home, its point is saved and only the server's fresh answer is shown: nothing repeats.
         self.wait_saved(page, "project")
         page.get_by_role("link", name="Home").first.click()
-        expect(page.get_by_role("heading", name="Welcome, Nia")).to_be_visible()
-        expect(page.get_by_role("region", name=re.compile("^Since you left"))).to_be_visible()
-        page.reload()
         expect(page.get_by_role("heading", name="Welcome, Nia")).to_be_visible()
         expect(page.get_by_role("region", name=re.compile("^Since you left"))).to_have_count(0)
 
@@ -319,6 +315,87 @@ class ReturnViewJourney(unittest.TestCase):
         shot(phone, "matched-project-phone-390-composer")
         phone.get_by_role("button", name="Send reply").tap()
         expect(phone.locator(".project-convo__message", has_text="Thanks, I will print the clip tonight.")).to_be_visible()
+
+    def sign_in(self, page: Page, person: dict) -> None:
+        page.goto("/sign-in")
+        page.get_by_label("Email").fill(person["email"])
+        page.get_by_label("Password").fill(PASSWORD)
+        page.get_by_role("button", name="Sign in").click()
+
+    def test_09_same_tab_account_switch_never_shows_the_previous_persons_items(self) -> None:
+        """AC-5 in the client: nothing from one account's return view survives into the next, even before the API answers."""
+        secret = f"Restricted launch note {STAMP}: Nia, can you keep the 14 Nov date quiet?"
+        olek = {"name": "Olek Wiatr", "email": f"olek.wiatr+{STAMP}@example.test"}
+        signup = self.page(None)
+        signup.goto("/sign-up")
+        signup.get_by_label("Name").fill(olek["name"])
+        signup.get_by_label("Email").fill(olek["email"])
+        signup.get_by_label("Password").fill(PASSWORD)
+        signup.get_by_role("button", name="Create account").click()
+        expect(signup.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        ari = self.page("ari")
+        self.api(ari, "POST", f"/api/v1/workspaces/{self.workspace_id}/members", {"email": olek["email"], "role": "member"}, status=201)
+        # Olek has a Home point (so he would see anything visible to him), then Ari writes in the restricted project.
+        self.api(signup, "PUT", "/api/v1/return-points", {"place": {"type": "home"}, "mark": self.summary(signup, "home")["mark"]}, status=200)
+        self.say(ari, secret)
+
+        # One tab: Nia signs in fresh and sees the restricted item on Home.
+        page = self.page(None)
+        self.sign_in(page, NIA)
+        region = page.get_by_role("region", name=re.compile("^Since you left"))
+        expect(region).to_contain_text("keep the 14 Nov date quiet")
+        # Sign out in the same tab and sign in as Olek, with the return API held back.
+        page.get_by_role("button", name=re.compile("Nia Berg")).click()
+        page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+        expect(page).to_have_url(re.compile("/sign-in"))
+        held: list = []
+        summary_url = re.compile(r"/api/v1/return\?")
+        page.route(summary_url, lambda route: held.append(route))
+        self.sign_in(page, olek)
+        expect(page.get_by_role("heading", name="Welcome, Olek")).to_be_visible()
+        for _ in range(40):
+            if held:
+                break
+            page.wait_for_timeout(50)
+        self.assertTrue(held, "the Home summary request was made")
+        # Before the answer: nothing of Nia's return view is on the page.
+        self.assertNotIn("14 Nov", page.content())
+        expect(page.get_by_role("region", name=re.compile("^Since you left"))).to_have_count(0)
+        for route in held:
+            route.continue_()
+        page.unroute(summary_url)
+        page.wait_for_timeout(600)
+        # After Olek's authorized answer: still nothing of it, and no hint of the restricted project.
+        self.assertNotIn("14 Nov", page.content())
+        self.assertNotIn("Gesture lamp", page.locator("#content").inner_text())
+
+    def test_10_revoked_items_disappear_even_when_the_fresh_answer_is_empty(self) -> None:
+        ari = self.page("ari")
+        page = self.page("nia")
+        line = f"Before the change {STAMP}: Nia, can you confirm the lens order?"
+        self.say(ari, line)
+        page.goto("/")
+        region = page.get_by_role("region", name=re.compile("^Since you left"))
+        expect(region).to_contain_text("confirm the lens order")
+        self.wait_saved(page, "home")
+        # Nia loses access; her Home point is also moved back, so only authorization can hide the item.
+        self.api(ari, "POST", f"/api/v1/projects/{self.project_id}/grants", {"principal": {"kind": "human", "id": NIA["id"]}, "role": "denied"}, status=201)
+        self.api(page, "POST", "/api/v1/return-points/restore", {"place": {"type": "home"}}, status=200)
+        fresh = self.summary(page, "home")
+        self.assertEqual(fresh["items"], [], "the server's fresh answer is empty")
+        # Navigating within the app, then reloading: the item is gone both times.
+        views = page.get_by_role("navigation", name="Views")
+        views.get_by_role("link", name="Docs").click()
+        expect(page.get_by_role("heading", name="No docs yet")).to_be_visible()
+        views.get_by_role("link", name="Conversation").click()
+        expect(page.get_by_role("heading", name="Welcome, Nia")).to_be_visible()
+        page.wait_for_timeout(600)
+        self.assertNotIn("confirm the lens order", page.content())
+        expect(page.get_by_role("region", name=re.compile("^Since you left"))).to_have_count(0)
+        page.reload()
+        expect(page.get_by_role("heading", name="Welcome, Nia")).to_be_visible()
+        page.wait_for_timeout(600)
+        self.assertNotIn("confirm the lens order", page.content())
 
     def test_07_phone_layout(self) -> None:
         ari = self.page("ari")
