@@ -13,17 +13,24 @@
 -- prefix, trigram similarity) is then checked on those candidate rows.
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
--- The audience-scoped keys of a row: for every word (lexeme of the `simple` configuration) of
--- two or more characters, its first two characters (`2:ab`) and, for longer words, its first
--- three (`3:abc`). A query word of two characters looks up `2:`, a longer one `3:`.
+-- The audience-scoped keys of a row, all prefixed with `<audience_key>|`:
+-- - for every word (lexeme of the `simple` configuration) of two or more characters, its first
+--   two characters (`2:ab`) and, for longer words, its first three (`3:abc`), for full-text and
+--   prefix matching: a query word of two characters looks up `2:`, a longer one `3:`;
+-- - every trigram of the title (`t:<trigram>`, as `show_trgm` gives them), for trigram similarity:
+--   a title similar to the query shares at least one trigram with it, wherever the typo is.
 CREATE FUNCTION search_keys(p_audience text, p_title text, p_body text) RETURNS text[]
 LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
   SELECT coalesce(array_agg(DISTINCT p_audience || '|' || k), '{}')
   FROM (
-    SELECT lexeme FROM unnest(to_tsvector('simple', coalesce(p_title, '') || ' ' || left(coalesce(p_body, ''), 100000)))
-  ) words,
-  LATERAL (VALUES ('2:' || left(words.lexeme, 2)), (CASE WHEN length(words.lexeme) >= 3 THEN '3:' || left(words.lexeme, 3) END)) AS prefixes(k)
-  WHERE length(words.lexeme) >= 2 AND k IS NOT NULL
+    SELECT prefixes.k
+    FROM (SELECT lexeme FROM unnest(to_tsvector('simple', coalesce(p_title, '') || ' ' || left(coalesce(p_body, ''), 100000)))) words,
+    LATERAL (VALUES ('2:' || left(words.lexeme, 2)), (CASE WHEN length(words.lexeme) >= 3 THEN '3:' || left(words.lexeme, 3) END)) AS prefixes(k)
+    WHERE length(words.lexeme) >= 2
+    UNION ALL
+    SELECT 't:' || trigram FROM unnest(show_trgm(left(coalesce(p_title, ''), 1000))) AS trigram
+  ) keys
+  WHERE k IS NOT NULL
 $$;
 
 CREATE TABLE search_documents (

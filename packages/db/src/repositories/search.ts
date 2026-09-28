@@ -126,11 +126,13 @@ function tsquery(plan: SearchPlanRows): SQL {
 
 /**
  * The reader's visible audience keys, and the index keys to look up: every visible audience
- * combined with every query word prefix (`project:<id>|3:sen`). Postings of other audiences are
- * never read.
+ * combined with every query word prefix (`project:<id>|3:sen`) and, for plain words, every query
+ * trigram (`project:<id>|t:ens`). Postings of other audiences are never read.
  */
 function audienceCte(audiences: SearchAudienceRows[], plan: SearchPlanRows): SQL {
-  const terms = sql`ARRAY[${sql.join(plan.terms.map((term) => sql`${term}`), sql`, `)}]::text[]`;
+  const words = sql`ARRAY[${sql.join(plan.terms.map((term) => sql`${term}`), sql`, `)}]::text[]`;
+  // Trigram similarity: the query's trigrams, so a title with a typo anywhere is still a candidate.
+  const terms = plan.fuzzy ? sql`(${words} || ARRAY(SELECT 't:' || trigram FROM unnest(show_trgm(${plan.text})) AS trigram))` : words;
   return sql`aud AS MATERIALIZED (
       SELECT v.keys, ARRAY(SELECT key || '|' || term FROM unnest(v.keys) AS key CROSS JOIN unnest(${terms}) AS term) AS lookups
       FROM (SELECT ${visibleKeys(audiences)} AS keys) v)`;

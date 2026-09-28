@@ -255,6 +255,11 @@ describe('search: one query across Flux, only what you may read', () => {
     assert.equal(text(typing.items[0]!.title), 'Sensor comparison');
     const typo = await search(nia, 'comparisn');
     assert.ok(titles(typo).includes('Sensor comparison'), 'trigram matching tolerates typos in titles');
+    // Typos and omissions in the first letters still match by trigram similarity.
+    for (const q of ['ensor', 'omparison', 'Snesor comparison'])
+      assert.ok(titles(await search(nia, q)).includes('Sensor comparison'), `${q} finds “Sensor comparison”`);
+    // Still only inside the reader's audiences.
+    assert.equal(titles(await search(olek, 'omparison')).includes('Sensor comparison'), false, 'not for an outsider');
   });
 
   test('queries are data: operators, quotes and SQL never break or widen the search', async () => {
@@ -363,7 +368,7 @@ describe('search: hidden matches never change the answer or the work', () => {
     // writers (other test files) make a lookup follow a split page to the right now and then, and
     // the tree may gain a level, adding at most one page per key lookup. So the fewest buffers of
     // several runs are compared, and only an increase counts: hidden postings could only add reads.
-    // Isolated runs read exactly the same buffers (58 → 58).
+    // Isolated runs read exactly the same buffers (136 → 136).
     const fewest = async () => Math.min(...await Promise.all([0, 1, 2, 3, 4].map(async () => (await explain(olek, query)).searchBuffers)));
     const bufferGrowth = (await fewest()) - baselineBuffers;
     assert.ok(bufferGrowth <= saturatedWork.indexScans * saturatedWork.lookups,
