@@ -38,9 +38,11 @@ actions and filter. It does not get a second policy module. Notifications and
 Web Push (#41) follow this rule: a notification inherits the audience of its source
 (`<type>.read`), checked at creation, in the inbox list (`visibleFilter`), on direct
 reads (`authorize`) and by the worker before each send. The event stream and the
-draft summary worker job (#29) also use the policy, and tests cover them. Surfaces
-that do not exist yet (files, search, MCP, extensions) are future integration work.
-Their enforcement is **not** implemented or verified here.
+draft summary worker job (#29) also use the policy, and tests cover them. Search (#114)
+composes `visibleFilter` for projects, DMs, sketches and drafts, and `authorize` for
+`workspace.read_members`, into its SQL before ranking, limits, counts and snippets; see
+[search.md](search.md). Surfaces that do not exist yet (files, MCP, extensions) are future
+integration work. Their enforcement is **not** implemented or verified here.
 
 ## Model
 
@@ -359,6 +361,9 @@ on Home, also applies `visibleFilter` to each project. See [return-view.md](retu
 under the access-row lock); an invisible doc is `404 DOC_NOT_FOUND`. The workspace doc list
 applies `visibleFilter` before the page and total. `flux:` references resolve only inside the
 doc's project, so a doc never shows titles of other audiences. See [docs-wiki.md](docs-wiki.md).
+
+**Search** (#114). `GET /api/v1/search` builds the reader's audiences from `visibleFilter` on every
+request and puts them in the WHERE clause of the page and count statements. See [search.md](search.md).
 
 ## Worker jobs
 

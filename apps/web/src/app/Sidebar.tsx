@@ -6,6 +6,7 @@ import { startCapture } from './views';
 import { UserMenu } from './UserMenu';
 import { ProjectThreads } from '../project/ProjectThreads';
 import { audienceLine, useProjectShell } from '../project/data';
+import { useShellActions } from './shellContext';
 
 export interface SidebarProps {
   workspace: WorkspaceSummary | null;
@@ -26,6 +27,8 @@ export interface SidebarProps {
  */
 export function Sidebar({ workspace, projects, directMessages, user, session, onClose, titleId, inboxUnread = false }: SidebarProps) {
   const go = useNavigate();
+  const { openSearch } = useShellActions();
+  const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
   const location = useLocation();
   const place = placeOf(location.pathname);
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
@@ -48,6 +51,9 @@ export function Sidebar({ workspace, projects, directMessages, user, session, on
           <span className="side__place"><b>{head.title}</b><span>{head.sub}</span></span>
           {onClose ? <IconButton icon="x" label="Close navigation" onClick={onClose} /> : null}
         </div>
+        <button type="button" className="side__jump" aria-keyshortcuts={mac ? 'Meta+K' : 'Control+K'} onClick={() => { onClose?.(); openSearch(); }}>
+          <Icon name="search" size={15} />Jump to…<kbd aria-hidden="true">{mac ? '⌘K' : 'Ctrl K'}</kbd>
+        </button>
         <nav className="side__nav" aria-label={head.title}>
           {place === 'inbox' ? (
             <div className="side__sec">

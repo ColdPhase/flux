@@ -24,7 +24,8 @@ export const createProject = (workspaceId: string, name: string) => request<Proj
 export const getProject = (id: string, signal?: AbortSignal) => request<Project>(projectPath(id), { signal });
 export const listConversations = (projectId: string, signal?: AbortSignal, offset = 0) => request<Page<ConversationSummary>>(`${projectConversationsPath(projectId)}?limit=100&offset=${offset}`, { signal });
 export const getConversation = (id: string, signal?: AbortSignal) => request<Conversation>(conversationPath(id), { signal });
-export const olderMessages = (id: string, beforeSequence: number, signal?: AbortSignal) => request<Conversation>(`${conversationPath(id)}?beforeSequence=${beforeSequence}`, { signal });
+export const olderMessages = (id: string, beforeSequence: number, signal?: AbortSignal, limit?: number) =>
+  request<Conversation>(`${conversationPath(id)}?beforeSequence=${beforeSequence}${limit ? `&limit=${limit}` : ''}`, { signal });
 export const startConversation = (projectId: string, command: SendMessageCommand) => request<Conversation>(projectConversationsPath(projectId), { method: 'POST', body: command });
 export const reply = (id: string, command: SendMessageCommand) => request<ConversationMessage>(conversationMessagesPath(id), { method: 'POST', body: command });
 export const listMaterials = (projectId: string, signal?: AbortSignal, offset = 0) => request<Page<Material>>(`${projectMaterialsPath(projectId)}?limit=100&offset=${offset}`, { signal });
