@@ -59,7 +59,9 @@ tap-time rechecks apply unchanged. The URL opens the exact message
 - **Mute a place** (a project or DM the person can read): nothing from it notifies, on any
   channel.
 - **Quiet hours** (`start`/`end` as `HH:MM`, may cross midnight, IANA `timeZone`): push and
-  email jobs get `startAfter` at the end of the window in the person's own time zone, and each
+  email jobs get `startAfter` at the first real instant whose wall-clock time in the person's
+  zone is past the window (daylight-saving aware: an end inside a spring-forward gap resolves to
+  the first valid instant after it, a repeated end at fall-back to its first occurrence), and each
   send re-evaluates the person's *current* quiet hours: a job queued before they were turned on
   is deferred (queued again with `startAfter` at the window's end, the email row stays
   `queued`). The inbox is never held back.

@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { describe, test } from 'node:test';
 import {
   DEFAULT_PREFERENCES,
+  deliverableAt,
+  localMinutes,
   GENERATION_MAX_ATTEMPTS,
   generateNotifications,
   preferenceRepository,
@@ -88,5 +90,47 @@ describe('notification generation cursor', () => {
     assert.equal(state.cursor, 2);
     assert.deepEqual([...state.dead], [events[0]!.id]);
     assert.deepEqual(state.notifications, [events[1]!.id]);
+  });
+});
+
+describe('quiet hours across daylight-saving transitions', () => {
+  const quiet = (timeZone: string, start: string, end: string) => {
+    const clock = (value: string) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
+    return { ...DEFAULT_PREFERENCES, quietEnabled: true, quietStart: clock(start), quietEnd: clock(end), timeZone };
+  };
+  const at = (iso: string) => new Date(iso);
+  const cases: [string, ReturnType<typeof quiet>, string, string][] = [
+    // Europe/Warsaw springs forward 2026-03-29 02:00 CET → 03:00 CEST (01:00Z).
+    ['Warsaw spring-forward, end after the gap', quiet('Europe/Warsaw', '22:00', '04:00'), '2026-03-29T00:30:00Z', '2026-03-29T02:00:00.000Z'],
+    ['Warsaw spring-forward, end inside the gap → first valid instant after it', quiet('Europe/Warsaw', '22:00', '02:30'), '2026-03-29T00:30:00Z', '2026-03-29T01:00:00.000Z'],
+    // Europe/Warsaw falls back 2026-10-25 03:00 CEST → 02:00 CET (01:00Z).
+    ['Warsaw fall-back, end after the repeat', quiet('Europe/Warsaw', '22:00', '04:00'), '2026-10-24T22:30:00Z', '2026-10-25T03:00:00.000Z'],
+    ['Warsaw fall-back, repeated end → first occurrence after now', quiet('Europe/Warsaw', '22:00', '02:30'), '2026-10-24T23:30:00Z', '2026-10-25T00:30:00.000Z'],
+    // America/New_York springs forward 2026-03-08 02:00 EST → 03:00 EDT (07:00Z), falls back 2026-11-01 02:00 EDT → 01:00 EST (06:00Z).
+    ['New York spring-forward', quiet('America/New_York', '23:00', '06:00'), '2026-03-08T05:00:00Z', '2026-03-08T10:00:00.000Z'],
+    ['New York fall-back', quiet('America/New_York', '23:00', '06:00'), '2026-11-01T04:00:00Z', '2026-11-01T11:00:00.000Z'],
+    ['New York fall-back, repeated end → first occurrence', quiet('America/New_York', '22:00', '01:30'), '2026-11-01T04:00:00Z', '2026-11-01T05:30:00.000Z'],
+    // Asia/Tokyo has no DST; the window crosses midnight.
+    ['Tokyo, no DST, across midnight', quiet('Asia/Tokyo', '22:00', '07:00'), '2026-03-29T14:00:00Z', '2026-03-29T22:00:00.000Z'],
+    ['Tokyo, after midnight', quiet('Asia/Tokyo', '22:00', '07:00'), '2026-03-29T16:59:30Z', '2026-03-29T22:00:00.000Z'],
+    ['UTC same-day window, last minute', quiet('UTC', '09:00', '17:00'), '2026-09-28T16:59:30Z', '2026-09-28T17:00:00.000Z'],
+    ['UTC, at the end: already outside', quiet('UTC', '09:00', '17:00'), '2026-09-28T17:00:00Z', '2026-09-28T17:00:00.000Z'],
+    ['outside quiet hours: now', quiet('Europe/Warsaw', '22:00', '04:00'), '2026-03-29T10:00:00Z', '2026-03-29T10:00:00.000Z'],
+  ];
+  for (const [name, preferences, now, expected] of cases) {
+    test(name, () => {
+      const result = deliverableAt(preferences, at(now));
+      assert.equal(result.toISOString(), expected);
+      // Never earlier than now, and never still inside quiet hours.
+      assert.ok(result.getTime() >= at(now).getTime());
+      const minute = localMinutes(result, preferences.timeZone);
+      const { quietStart: start, quietEnd: end } = preferences;
+      assert.ok(!(start < end ? minute >= start && minute < end : minute >= start || minute < end), 'released outside the window');
+    });
+  }
+
+  test('a one-minute outside gap is not stepped over', () => {
+    const preferences = quiet('Europe/Warsaw', '22:01', '22:00');
+    assert.equal(deliverableAt(preferences, at('2026-03-28T21:30:00Z')).toISOString(), '2026-03-29T20:00:00.000Z');
   });
 });

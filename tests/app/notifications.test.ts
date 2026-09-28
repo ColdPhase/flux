@@ -9,6 +9,7 @@ import {
   buildNotificationEmail,
   deliverNotificationEmail,
   deliverableAt,
+  localMinutes,
   loadNotificationMailConfig,
   withoutAddress,
   type NotificationMailer,
@@ -116,12 +117,11 @@ async function generatorCaughtUp() {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Quiet hours that cover the current UTC minute, so push and email wait while the inbox fills. */
-function quietNow() {
-  const now = new Date();
-  const start = (now.getUTCHours() * 60 + now.getUTCMinutes() + 1440 - 30) % 1440;
+function quietNow(timeZone = 'UTC') {
+  const start = (localMinutes(new Date(), timeZone) + 1440 - 30) % 1440;
   const end = (start + 120) % 1440;
   const clock = (minutes: number) => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
-  return { enabled: true, start: clock(start), end: clock(end), timeZone: 'UTC' };
+  return { enabled: true, start: clock(start), end: clock(end), timeZone };
 }
 
 describe('preference rules', () => {
@@ -666,13 +666,16 @@ describe('review fixes: exact unsubscribe, bounded verification, quiet hours at 
       VALUES ($1, $2, $3, 'project', $4, 'Xia Holt mentioned you in Night shift', 'hello', $5, 'mention')`, [notificationId, reader.id, space, room, `/projects/${room}`]);
     await pool.query(`INSERT INTO notification_emails (id, notification_id, user_id, address_kind) VALUES ($1, $2, $3, 'account')`, [emailId, notificationId, reader.id]);
 
-    // Then the person turns quiet hours on, covering now.
-    await prefs(reader, { quietHours: quietNow() });
+    // Then the person turns quiet hours on, covering now, in their own (DST-observing) zone.
+    const window = quietNow('Europe/Warsaw');
+    await prefs(reader, { quietHours: window });
     const options = { available: true, origin, uow: emailUnitOfWork(db), mailer: smtp };
     const deferred = await handleEmailJob(boss, options, { emailId });
     assert.equal(deferred.outcome, 'deferred');
     const until = (deferred as { until: Date }).until;
     assert.ok(until.getTime() > Date.now() + 60_000);
+    const endMinutes = Number(window.end.slice(0, 2)) * 60 + Number(window.end.slice(3));
+    assert.equal(localMinutes(until, 'Europe/Warsaw'), endMinutes, 'released at the chosen local end time in Warsaw');
     const requeued = await pool.query(`SELECT start_after FROM pgboss.job WHERE name = $1 AND data->>'emailId' = $2`, [NOTIFICATION_EMAIL_JOB, emailId]);
     assert.equal(requeued.rowCount, 1, 'the email job is queued again for the end of quiet hours');
     assert.equal(new Date(requeued.rows[0].start_after).getTime(), until.getTime());

@@ -119,28 +119,56 @@ export function applyPreferenceChange(current: StoredPreferences, command: Updat
   return next;
 }
 
-/** Minutes after local midnight at `now` in `timeZone`. */
-export function localMinutes(now: Date, timeZone: string) {
-  const parts = new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(now);
+function clockFormatter(timeZone: string) {
+  return new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+}
+
+function minutesOf(formatter: Intl.DateTimeFormat, at: Date) {
+  const parts = formatter.formatToParts(at);
   const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? 0);
   const minute = Number(parts.find((part) => part.type === 'minute')?.value ?? 0);
   return (hour % 24) * 60 + minute;
 }
 
+/** Minutes after local midnight at `now` in `timeZone`. */
+export function localMinutes(now: Date, timeZone: string) {
+  return minutesOf(clockFormatter(timeZone), now);
+}
+
+const MINUTE = 60_000;
+
 /**
- * When push and email may go out: `now`, or the end of the person's quiet hours if `now` falls
- * inside them (the window may cross midnight). The inbox is never held back.
+ * When push and email may go out: `now`, or — if `now` falls inside the person's quiet hours
+ * (the window may cross midnight) — the first real instant after `now` whose wall-clock time in
+ * their IANA zone is outside the window, i.e. the quiet end. Instants are sampled through Intl,
+ * so daylight-saving transitions are honoured: an end time that does not exist on a
+ * spring-forward day resolves to the first valid instant after the gap, and an end time that
+ * occurs twice on a fall-back day resolves to its first occurrence after `now`. The inbox is
+ * never held back.
  */
 export function deliverableAt(stored: StoredPreferences, now: Date): Date {
   if (!stored.quietEnabled || stored.quietStart === stored.quietEnd || !isTimeZone(stored.timeZone)) return now;
-  const minute = localMinutes(now, stored.timeZone);
   const { quietStart: start, quietEnd: end } = stored;
-  const inside = start < end ? minute >= start && minute < end : minute >= start || minute < end;
-  if (!inside) return now;
-  const wait = (end - minute + 1440) % 1440;
-  const at = new Date(now.getTime() + wait * 60_000);
-  at.setUTCSeconds(0, 0);
-  return at;
+  const formatter = clockFormatter(stored.timeZone);
+  const inside = (at: Date) => {
+    const minute = minutesOf(formatter, at);
+    return start < end ? minute >= start && minute < end : minute >= start || minute < end;
+  };
+  if (!inside(now)) return now;
+  // Zone offsets change on whole minutes, so minute resolution finds the exact end. A coarse
+  // step first (never longer than the outside part of the day, so it cannot jump over it),
+  // then minute by minute inside the last step. Quiet hours last under 24 h plus a DST shift.
+  const outsideMinutes = (start - end + 1440) % 1440;
+  const step = Math.max(1, Math.min(15, outsideMinutes)) * MINUTE;
+  let before = Math.floor(now.getTime() / MINUTE) * MINUTE;
+  let after = before;
+  for (let spent = 0; spent <= 27 * 60 * MINUTE; spent += step) {
+    after = before + step;
+    if (!inside(new Date(after))) break;
+    before = after;
+  }
+  for (let at = before + MINUTE; at <= after; at += MINUTE) if (!inside(new Date(at))) return new Date(at);
+  return new Date(after);
 }
 
 /** The address kinds a destination selects. */
