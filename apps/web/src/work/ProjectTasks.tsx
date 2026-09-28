@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { useLoaderData, useRevalidator, type LoaderFunctionArgs } from 'react-router';
+import { useLoaderData, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { Decision, Project, WorkItem, WorkResult } from '@flux/contracts';
 import { Button, EmptyState, Icon } from '../ui';
 import { getProject } from '../app/conversation-api';
@@ -65,6 +65,16 @@ export function ProjectTasks() {
   const [attempt, setAttempt] = useState(() => crypto.randomUUID());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [search, setSearch] = useSearchParams();
+
+  // `?open=work:<id>` (a doc reference opened in a new tab, #112) opens that object's details.
+  const open = search.get('open');
+  useEffect(() => {
+    const match = /^(work|decision|result):([0-9a-f-]{36})$/i.exec(open ?? '');
+    if (!match) return;
+    openDetails({ kind: match[1] as 'work' | 'decision' | 'result', id: match[2]! });
+    setSearch((current) => { current.delete('open'); return current; }, { replace: true });
+  }, [open, openDetails, setSearch]);
 
   useEffect(() => {
     const refresh = () => { if (document.visibilityState === 'visible') revalidator.revalidate(); };

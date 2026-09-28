@@ -31,7 +31,7 @@ const title = { type: 'string', minLength: 1, maxLength: WORK_LIMITS.title } as 
 const principalRef = { type: ['object', 'null'], required: ['kind', 'id'], additionalProperties: false,
   properties: { kind: { type: 'string', enum: ['human', 'agent'] }, id: { type: 'string', minLength: 1 } } } as const;
 const objectRef = { type: 'object', required: ['type', 'id'], additionalProperties: false,
-  properties: { type: { type: 'string', enum: ['message', 'thought', 'material', 'work', 'decision', 'result'] }, id: { type: 'string' }, version: { type: 'integer' } } } as const;
+  properties: { type: { type: 'string', enum: ['message', 'thought', 'material', 'work', 'decision', 'result', 'doc', 'sketch'] }, id: { type: 'string' }, version: { type: 'integer' } } } as const;
 const refs = { type: 'array', maxItems: WORK_LIMITS.links, items: objectRef } as const;
 const ids = { type: 'array', maxItems: WORK_LIMITS.links, items: { type: 'string' } } as const;
 const status = { type: 'string', enum: [...WORK_STATUSES] } as const;

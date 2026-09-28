@@ -19,6 +19,7 @@ import { streamRoutes } from './stream/index.js';
 import { conversationRoutes } from './conversation/routes.js';
 import { workRoutes } from './work/routes.js';
 import { returnRoutes } from './returns/routes.js';
+import { docRoutes } from './docs/routes.js';
 
 const connectionString = process.env.DATABASE_URL;
 const fixtureToken = process.env.FLUX_FIXTURE_TOKEN;
@@ -46,6 +47,7 @@ await app.register(streamRoutes, { db, sessions: identity, publicOrigin: identit
 await app.register(conversationRoutes, { db, sessions: identity });
 await app.register(workRoutes, { db, sessions: identity });
 await app.register(returnRoutes, { db, sessions: identity });
+await app.register(docRoutes, { db, sessions: identity });
 
 app.get('/api/v1/health', async (_request, reply) => {
   try {
