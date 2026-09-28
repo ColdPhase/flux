@@ -52,8 +52,8 @@ together", body `On “<anchor label>” in <project>` (the conversation's openi
 work item, project sketch or doc title, excerpted to 80 characters) and opens
 `/projects/:p/live/:session?invitation=:invitation`. Repeated invites of the same person to
 the same session converge on one invitation row and record no second event, so there is one
-inbox row and one push. Migration `0026_live_invitation_notifications.sql` (`FLUX_SCHEMA_VERSION`
-26) adds the reason to the `notifications.reason` check.
+inbox row and one push. Migration `0027_live_invitation_notifications.sql` (`FLUX_SCHEMA_VERSION`
+27) adds the reason to the `notifications.reason` check.
 
 ## Preferences
 
