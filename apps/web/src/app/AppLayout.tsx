@@ -109,6 +109,8 @@ export function AppLayout() {
   // ⌘K / Ctrl+K opens Jump to… from anywhere, also while typing, as the sidebar hint says.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      // A surface with its own Ctrl+K (the doc editor's link picker) handles it first.
+      if (event.defaultPrevented) return;
       if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== 'k') return;
       event.preventDefault();
       setNavOpen(false);
