@@ -1,4 +1,4 @@
-import type { DecisionStatus, LinkRole, ObjectRef, ResultFinding, WorkObjectType, WorkStatus } from '@flux/contracts';
+import type { DecisionStatus, LinkOwnerType, LinkRole, ObjectRef, ResultFinding, WorkStatus } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 
 /**
@@ -63,7 +63,7 @@ export interface ObjectLinkRecord {
   id: string;
   projectId: string;
   role: LinkRole;
-  fromType: WorkObjectType;
+  fromType: LinkOwnerType;
   fromId: string;
   toType: ObjectRef['type'];
   toId: string;
@@ -81,7 +81,7 @@ export interface NewObjectLink {
   workspaceId: string;
   projectId: string;
   role: LinkRole;
-  from: { type: WorkObjectType; id: string };
+  from: { type: LinkOwnerType; id: string };
   to: ObjectRef;
   createdBy: ActorRef;
 }
@@ -106,7 +106,7 @@ export interface WorkAccess {
 /** Rows only; the repository makes no access decisions (the use cases ask {@link WorkAccess}). */
 export interface WorkRepository {
   /** The project of an object, whoever may read it; callers must authorize before using it. */
-  locate(type: WorkObjectType, id: string): Promise<{ projectId: string } | null>;
+  locate(type: 'work' | 'decision' | 'result', id: string): Promise<{ projectId: string } | null>;
   listWork(projectId: string, page: PageWindow): Promise<Paged<WorkRecord>>;
   /**
    * Unfinished, unparked work owned by `owner` in the projects of `workspaceId` that pass the
@@ -132,7 +132,8 @@ export interface WorkRepository {
   targetExists(projectId: string, ref: ObjectRef): Promise<boolean>;
   /**
    * Titles of linked objects keyed by `<type>:<id>` (a message's opening words and its
-   * conversation, a material version's title). Only for references inside `projectId`.
+   * conversation, a material version's title, a doc's current title, a project sketch's title).
+   * Only for references inside `projectId`; private sketches and their thoughts are never included.
    */
   titles(projectId: string, refs: ObjectRef[]): Promise<Map<string, { title: string; conversationId?: string; sketchId?: string }>>;
   /** Display names keyed by `<kind>:<id>`. */

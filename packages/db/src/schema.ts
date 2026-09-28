@@ -468,8 +468,10 @@ export const projectMaterials = pgTable('project_materials', {
   workspaceId: uuid('workspace_id').notNull(),
   projectId: uuid('project_id').notNull(),
   createdBy: text('created_by').notNull(),
-  clientMutationId: uuid('client_mutation_id').notNull(),
-  requestFingerprint: text('request_fingerprint').notNull(),
+  /** 'doc' for project docs (#112, migration 0013); docs have no client mutation id. */
+  kind: text('kind', { enum: ['material', 'doc'] }).notNull().default('material'),
+  clientMutationId: uuid('client_mutation_id'),
+  requestFingerprint: text('request_fingerprint'),
   currentVersion: integer('current_version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -492,6 +494,9 @@ export const projectMaterialVersions = pgTable('project_material_versions', {
   requestFingerprint: text('request_fingerprint'),
   sourceDraftId: uuid('source_draft_id'),
   sourceDraftVersion: integer('source_draft_version'),
+  /** Doc versions only (#112): draft or published, and why this version was made. */
+  state: text('state', { enum: ['draft', 'published'] }),
+  reason: text('reason').notNull().default(''),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   primaryKey({ columns: [table.materialId, table.version] }),
@@ -676,10 +681,10 @@ export const projectObjectLinks = pgTable('project_object_links', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),
   projectId: uuid('project_id').notNull(),
-  role: text('role', { enum: ['source', 'affects', 'still_applies', 'about', 'related'] }).notNull(),
-  fromType: text('from_type', { enum: ['work', 'decision', 'result'] }).notNull(),
+  role: text('role', { enum: ['source', 'affects', 'still_applies', 'about', 'related', 'mentions'] }).notNull(),
+  fromType: text('from_type', { enum: ['work', 'decision', 'result', 'doc'] }).notNull(),
   fromId: uuid('from_id').notNull(),
-  toType: text('to_type', { enum: ['message', 'thought', 'material', 'work', 'decision', 'result'] }).notNull(),
+  toType: text('to_type', { enum: ['message', 'thought', 'material', 'work', 'decision', 'result', 'doc', 'sketch'] }).notNull(),
   toId: uuid('to_id').notNull(),
   toVersion: integer('to_version'),
   createdByKind: text('created_by_kind', { enum: ['human', 'agent'] }).notNull(),
@@ -687,6 +692,7 @@ export const projectObjectLinks = pgTable('project_object_links', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   index('project_object_links_to_idx').on(table.toId),
+  index('project_object_links_from_idx').on(table.fromId),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
 ]);
 // A project-visible agent suggestion citing one immutable, current source revision (#52).

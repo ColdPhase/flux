@@ -202,16 +202,6 @@ export function TasksView() {
   );
 }
 
-export function DocsView() {
-  return (
-    <Pane>
-      <ViewEmpty icon="doc" title="No docs yet">
-        <p>Notes worth keeping, what you learned from an experiment, and how things work, written with the people in your projects, will collect here.</p>
-      </ViewEmpty>
-    </Pane>
-  );
-}
-
 export function NotFoundView() {
   return (
     <Pane>

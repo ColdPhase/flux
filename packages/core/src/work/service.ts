@@ -19,7 +19,7 @@ import {
 } from '@flux/contracts';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, RuleViolationError, VersionConflictError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
-import type { ActorRef, DecisionRecord, ObjectLinkRecord, NewObjectLink, ResultRecord, WorkChanges, WorkPorts, WorkRecord, WorkUnitOfWork } from './ports.js';
+import type { ActorRef, DecisionRecord, ObjectLinkRecord, NewObjectLink, ResultRecord, WorkChanges, WorkPorts, WorkRecord, WorkRepository, WorkUnitOfWork } from './ports.js';
 import * as valid from './validation.js';
 
 // Work, decision and result use cases (issue #101). Each runs in one unit of work: it asks the
@@ -48,24 +48,23 @@ function notFound(type: WorkObjectType) {
   return new NotFoundError(LABEL[type], CODE[type]);
 }
 
-/** Links and names needed to present a set of records to one reader. */
-async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | null)[]) {
-  const [links, names] = await Promise.all([
-    ids.length ? ports.work.links(ids) : Promise.resolve([] as ObjectLinkRecord[]),
-    ports.work.names(actors.filter((item): item is ActorRef => item !== null)),
-  ]);
+/**
+ * The links from or to `ids`, with the current titles of both ends, as a lookup per id. Titles
+ * come only from each link's own project, so a link never shows something outside it.
+ */
+export async function linkReader(repo: WorkRepository, ids: string[]): Promise<(id: string) => ObjectLink[]> {
+  const links = ids.length ? await repo.links(ids) : [];
   const target = (link: ObjectLinkRecord): ObjectRef =>
     (link.toType === 'material' ? { type: 'material', id: link.toId, version: link.toVersion! } : { type: link.toType, id: link.toId }) as ObjectRef;
   const byProject = new Map<string, ObjectRef[]>();
   for (const link of links) {
     const refs = byProject.get(link.projectId) ?? [];
-    refs.push({ type: link.fromType, id: link.fromId }, target(link));
+    refs.push({ type: link.fromType, id: link.fromId } as ObjectRef, target(link));
     byProject.set(link.projectId, refs);
   }
   const titles = new Map<string, { title: string; conversationId?: string; sketchId?: string }>();
-  for (const [projectId, refs] of byProject) for (const [ref, title] of await ports.work.titles(projectId, refs)) titles.set(ref, title);
-  const named = (ref: ActorRef): NamedPrincipal => ({ ...ref, name: names.get(key(ref)) ?? (ref.kind === 'agent' ? 'Agent' : 'Former member') });
-  const linksOf = (id: string): ObjectLink[] => links.filter((link) => link.fromId === id || link.toId === id).map((link) => {
+  for (const [projectId, refs] of byProject) for (const [ref, title] of await repo.titles(projectId, refs)) titles.set(ref, title);
+  return (id: string): ObjectLink[] => links.filter((link) => link.fromId === id || link.toId === id).map((link) => {
     const to = target(link);
     const toTitle = titles.get(valid.refKey(to));
     return {
@@ -74,6 +73,15 @@ async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | nu
       conversationId: toTitle?.conversationId ?? null, sketchId: toTitle?.sketchId ?? null, createdAt: iso(link.createdAt),
     };
   });
+}
+
+/** Links and names needed to present a set of records to one reader. */
+async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | null)[]) {
+  const [linksOf, names] = await Promise.all([
+    linkReader(ports.work, ids),
+    ports.work.names(actors.filter((item): item is ActorRef => item !== null)),
+  ]);
+  const named = (ref: ActorRef): NamedPrincipal => ({ ...ref, name: names.get(key(ref)) ?? (ref.kind === 'agent' ? 'Agent' : 'Former member') });
   const base = (record: { id: string; projectId: string; workspaceId: string; createdAt: Date }) => ({
     id: record.id, projectId: record.projectId, workspaceId: record.workspaceId,
     audience: { kind: 'project' as const, projectId: record.projectId }, links: linksOf(record.id), createdAt: iso(record.createdAt),

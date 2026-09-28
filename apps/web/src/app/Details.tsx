@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { useNavigate, useRevalidator } from 'react-router';
+import { Link, useNavigate, useRevalidator } from 'react-router';
 import { leaveDm } from '../api/direct-messages';
 import { Avatar, Button, Icon } from '../ui';
 import { WorkDetails } from '../work/WorkDetails';
-import { Link } from 'react-router';
+import { AddToDoc } from '../docs/AddToDoc';
 import type { WorkspaceSummary } from './data';
 import type { DetailsView } from './shellContext';
 
@@ -21,6 +21,7 @@ export function Details({ view, workspace, placeTitle, dm = null, onBack }: {
   onBack: () => void;
 }) {
   if (view === 'connect-ai') return <ConnectAi onBack={onBack} />;
+  if (typeof view === 'object' && view.kind === 'add-to-doc') return <AddToDoc key={`${view.from.type}:${view.from.id}`} view={view} />;
   if (typeof view === 'object') return <WorkDetails view={view} />;
   if (dm) {
     return (

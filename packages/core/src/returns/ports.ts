@@ -66,6 +66,8 @@ export interface ReturnMessage {
 export interface ReturnConversation { id: string; projectId: string; createdBy: string; opening: string }
 export interface ReturnMaterial { id: string; projectId: string; title: string; version: number }
 export interface ReturnSketch { id: string; workspaceId: string; projectId: string | null; title: string }
+/** A project doc (#112) as it reads now: its current version and that version's reason. */
+export interface ReturnDoc { id: string; projectId: string; title: string; version: number; reason: string }
 
 /** Rows only; the repository makes no access decisions. `recipient` is the stream's audience key. */
 export interface ReturnRepository {
@@ -92,6 +94,7 @@ export interface ReturnRepository {
   lastPosts(userId: string, conversationIds: string[]): Promise<Map<string, Date>>;
   materials(ids: string[]): Promise<Map<string, ReturnMaterial>>;
   sketches(ids: string[]): Promise<Map<string, ReturnSketch>>;
+  docs(ids: string[]): Promise<Map<string, ReturnDoc>>;
   /** Display names keyed by `<kind>:<id>`. */
   names(keys: string[]): Promise<Map<string, string>>;
 }
