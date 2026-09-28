@@ -238,6 +238,8 @@ export interface ExaminedWork {
   searchBuffers: number;
   /** Buffers (hit + read) of the whole statement. */
   buffers: number;
+  /** Index scans on `search_documents` (each looks up every visible audience × query term key). */
+  indexScans: number;
   nodes: string[];
 }
 
@@ -246,7 +248,7 @@ const blocks = (node: PlanNode) => (node['Shared Hit Blocks'] ?? 0) + (node['Sha
 async function examined(db: SearchExecutor, statement: SQL): Promise<ExaminedWork> {
   const result = await planned(db, sql`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${statement}`);
   const plan = ((result.rows[0] as Record<string, unknown>)['QUERY PLAN'] as { Plan: PlanNode }[])[0]!.Plan;
-  const work: ExaminedWork = { rows: 0, indexRows: 0, searchBuffers: 0, buffers: blocks(plan), nodes: [] };
+  const work: ExaminedWork = { rows: 0, indexRows: 0, searchBuffers: 0, buffers: blocks(plan), indexScans: 0, nodes: [] };
   // A node's buffers include its children's: count the topmost scan on search_documents once.
   const walk = (node: PlanNode, inSearchScan: boolean) => {
     const type = node['Node Type'];
@@ -258,7 +260,7 @@ async function examined(db: SearchExecutor, statement: SQL): Promise<ExaminedWor
       work.rows += read;
     }
     const onSearch = name.startsWith('search_documents') && type.includes('Scan');
-    if (onSearch && type === 'Bitmap Index Scan') work.indexRows += (node['Actual Rows'] ?? 0) * loops;
+    if (onSearch && type === 'Bitmap Index Scan') { work.indexRows += (node['Actual Rows'] ?? 0) * loops; work.indexScans += loops; }
     if (onSearch && !inSearchScan) work.searchBuffers += blocks(node);
     work.nodes.push(`${type}${name ? ` ${name}` : ''}${read ? ` rows=${read}` : ''}${onSearch ? ` buffers=${blocks(node)}` : ''}`);
     for (const child of node.Plans ?? []) walk(child, inSearchScan || onSearch);
@@ -320,13 +322,15 @@ export function searchRows(db: SearchExecutor) {
       return { counts, capped: total > cap };
     },
 
-    /** Test support: the rows examined by the page and count statements of this plan. */
+    /** Test support: what the page and count statements of this plan read, and the keys each index scan looks up. */
     async explain(audiences: SearchAudienceRows[], plan: SearchPlanRows, cap: number) {
-      if (!audiences.length || !plan.terms.length) return { rows: 0, indexRows: 0, searchBuffers: 0, buffers: 0, nodes: [] as string[] };
+      if (!audiences.length || !plan.terms.length) return { rows: 0, indexRows: 0, searchBuffers: 0, buffers: 0, indexScans: 0, lookups: 0, nodes: [] as string[] };
       const page = await examined(db, pageStatement(audiences, plan));
       const count = await examined(db, countStatement(audiences, plan, cap));
+      const keys = await planned(db, sql`WITH ${audienceCte(audiences, plan)} SELECT cardinality(lookups) AS n FROM aud`);
       return { rows: page.rows + count.rows, indexRows: page.indexRows + count.indexRows, searchBuffers: page.searchBuffers + count.searchBuffers,
-        buffers: page.buffers + count.buffers, nodes: [...page.nodes, '|', ...count.nodes] };
+        buffers: page.buffers + count.buffers, indexScans: page.indexScans + count.indexScans,
+        lookups: Number((keys.rows[0] as { n: number | string }).n), nodes: [...page.nodes, '|', ...count.nodes] };
     },
   };
 }

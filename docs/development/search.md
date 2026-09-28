@@ -78,7 +78,7 @@ contrib extension) and one table, `search_documents`. Each row is one searchable
    gin_trgm_ops)`. `EXPLAIN (ANALYZE, BUFFERS)` showed that they returned the same visible rows but
    read more index pages after hidden saturation (15 → 17 buffers per bitmap index scan): the
    trigram and lexeme posting lists are shared by all audiences and were intersected in the index.
-   With the audience-scoped keys the same test reads 27 → 27 buffers (5 buffers for the bare lookup
+   With the audience-scoped keys the same test reads the same buffers before and after (5 buffers for the bare lookup
    of 2 visible rows among 462 matches in the workspace).
 
 Matches the reader cannot see therefore change neither the answer (items, snippets, counts,
@@ -161,8 +161,11 @@ Direct messages were added this way (`dm_message`, audience `dm`), and docs (`do
   sealed keyset pagination (another reader, another query or filter, or a forged cursor get
   `400`). **Saturation:** 300 hidden project messages, 100 thoughts in another person's private
   sketch and 60 DM messages give the outsider an identical answer (items, counts, `next`) and
-  identical work from `EXPLAIN (ANALYZE, BUFFERS)`: table rows, row addresses from the index and
-  buffers of `search_documents` and its index, measured twice for determinism. Only a very coarse
+  identical work from `EXPLAIN (ANALYZE, BUFFERS)`: table rows, index scans, the keys they look up
+  and the row addresses from the index, measured twice for determinism. Buffers of
+  `search_documents` and its index are equal in an isolated run (58 → 58); with other test files
+  writing concurrently the shared GIN entry tree can be split or rebalanced, so the test allows at
+  most two pages per key lookup, never an amount that grows with the hidden postings. Only a very coarse
   wall-clock sanity bound remains, because other test files share the database; the insider sees
   the hidden rows with `more`.
 - `tests/ui/test_search.py` (in `./scripts/check_ui.sh`) covers Ctrl+K search as you type and

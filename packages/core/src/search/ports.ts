@@ -71,6 +71,9 @@ export interface SearchWork {
   searchBuffers: number;
   /** Buffers of the whole statements. */
   buffers: number;
+  /** Index scans on the search table, and the index keys each one looks up. */
+  indexScans: number;
+  lookups: number;
   nodes: string[];
 }
 

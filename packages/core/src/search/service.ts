@@ -179,7 +179,7 @@ export function createSearchUseCases<C>(ports: SearchPorts<C>) {
     /** Test support (served only with test failure injection): rows examined by this search. */
     async explain(principal: Principal, query: Partial<SearchQuery>) {
       const { plan, audiences, searchable } = await prepare(principal, query);
-      if (!searchable) return { rows: 0, indexRows: 0, searchBuffers: 0, buffers: 0, nodes: [] };
+      if (!searchable) return { rows: 0, indexRows: 0, searchBuffers: 0, buffers: 0, indexScans: 0, lookups: 0, nodes: [] };
       return ports.rows.explain(audiences, plan, SEARCH_LIMITS.countCap);
     },
   };
