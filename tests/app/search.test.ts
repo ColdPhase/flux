@@ -334,6 +334,7 @@ describe('search: hidden matches never change the answer or the work', () => {
     await settle();
     const baseline = await search(olek, query);
     const baselineWork = await explain(olek, query);
+    const baselineBuffers = Math.min(baselineWork.searchBuffers, ...await Promise.all([0, 1, 2, 3].map(async () => (await explain(olek, query)).searchBuffers)));
     const baselineTime = await median();
     assert.equal(baseline.items.length, 2);
 
@@ -358,13 +359,15 @@ describe('search: hidden matches never change the answer or the work', () => {
     // scans looking up the same keys, and the same row addresses coming out of the index.
     assert.deepEqual(work(saturatedWork), work(baselineWork), `rows, index keys and row addresses (after: ${saturatedWork.nodes.join(', ')})`);
     // Buffers of the search table and its index. Every key is scoped to one audience, so no
-    // posting of a hidden row is read. What remains shared is the GIN entry tree, which other
-    // writers (here: concurrent test files and the hidden inserts) split and rebalance; that can
-    // move each key lookup by a page of the path and a neighbouring leaf, never by the size of the
-    // hidden postings. Isolated runs read exactly the same buffers (58 → 58).
-    const treeSlack = 2 * saturatedWork.indexScans * saturatedWork.lookups;
-    assert.ok(Math.abs(saturatedWork.searchBuffers - baselineWork.searchBuffers) <= treeSlack,
-      `search table and index buffers ${baselineWork.searchBuffers} → ${saturatedWork.searchBuffers} (tree slack ${treeSlack}; before: ${baselineWork.nodes.join(', ')}; after: ${saturatedWork.nodes.join(', ')})`);
+    // posting of a hidden row is read. What remains shared is the GIN entry tree: concurrent
+    // writers (other test files) make a lookup follow a split page to the right now and then, and
+    // the tree may gain a level, adding at most one page per key lookup. So the fewest buffers of
+    // several runs are compared, and only an increase counts: hidden postings could only add reads.
+    // Isolated runs read exactly the same buffers (58 → 58).
+    const fewest = async () => Math.min(...await Promise.all([0, 1, 2, 3, 4].map(async () => (await explain(olek, query)).searchBuffers)));
+    const bufferGrowth = (await fewest()) - baselineBuffers;
+    assert.ok(bufferGrowth <= saturatedWork.indexScans * saturatedWork.lookups,
+      `search table and index buffers grew by ${bufferGrowth} (allowed: one page per key lookup, ${saturatedWork.indexScans * saturatedWork.lookups}; before: ${baselineWork.nodes.join(', ')}; after: ${saturatedWork.nodes.join(', ')})`);
     // The reader who can see them does get them, with `more` and a count.
     const insider = await search(nia, query);
     assert.ok(insider.next, 'Nia has more pages');

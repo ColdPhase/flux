@@ -164,8 +164,9 @@ Direct messages were added this way (`dm_message`, audience `dm`), and docs (`do
   identical work from `EXPLAIN (ANALYZE, BUFFERS)`: table rows, index scans, the keys they look up
   and the row addresses from the index, measured twice for determinism. Buffers of
   `search_documents` and its index are equal in an isolated run (58 → 58); with other test files
-  writing concurrently the shared GIN entry tree can be split or rebalanced, so the test allows at
-  most two pages per key lookup, never an amount that grows with the hidden postings. Only a very coarse
+  writing concurrently a lookup can follow a split page and the shared GIN entry tree can gain a
+  level, so the test compares the fewest buffers of several runs and allows an increase of at most
+  one page per key lookup (hidden postings could only add reads, and would add them per hidden row). Only a very coarse
   wall-clock sanity bound remains, because other test files share the database; the insider sees
   the hidden rows with `more`.
 - `tests/ui/test_search.py` (in `./scripts/check_ui.sh`) covers Ctrl+K search as you type and
