@@ -296,7 +296,7 @@ class ReturnViewJourney(unittest.TestCase):
         # The project line shows the same changes (the project point is older than Home's view).
         expect(page.get_by_role("region", name="Since you left").get_by_role("button", name=re.compile("updates since"))).to_be_visible()
         # Audience preview before writing: the composer names who will read the reply.
-        expect(page.locator(".composer__audience")).to_have_text(re.compile("Gesture lamp · People with project access · Saved to project"))
+        expect(page.locator(".composer__audience")).to_have_text(re.compile("Ari and you · only you two · saved to Gesture lamp"))
         # Back on Home, its point is saved and only the server's fresh answer is shown: nothing repeats.
         self.wait_saved(page, "project")
         page.get_by_role("link", name="Home").first.click()
