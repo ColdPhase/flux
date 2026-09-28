@@ -1,6 +1,6 @@
 import { and, eq, or, sql, type SQL } from 'drizzle-orm';
 import { fromDrizzle, type PgBoss } from 'pg-boss';
-import { notificationRows, pushSubscriptionRepository, schema, type DbExecutor } from '@flux/db';
+import { markAllNotificationsRead, notificationRows, pushSubscriptionRepository, schema, type DbExecutor } from '@flux/db';
 import {
   PUSH_SEND_JOB,
   createNotification,
@@ -22,7 +22,7 @@ const n = schema.notifications;
 /**
  * The inbox audience as one SQL condition over `notifications`: per workspace the recipient has
  * notifications in, the source must pass the policy's own list filter (`visibleFilter`) for
- * projects and drafts, or the workspace itself must be readable. Applied before the limit and
+ * projects, drafts and direct messages, or the workspace itself must be readable. Applied before the limit and
  * in the unread count, so invisible rows never reach pages, counts or payloads.
  */
 async function inboxAudience(db: DbExecutor, userId: string): Promise<SQL> {
@@ -35,9 +35,12 @@ async function inboxAudience(db: DbExecutor, userId: string): Promise<SQL> {
     if (!workspace.visible) continue;
     const projects = await visibleFilter(principal, workspaceId, 'project', db);
     const drafts = await visibleFilter(principal, workspaceId, 'draft', db);
+    const dms = await visibleFilter(principal, workspaceId, 'dm', db);
     const sources: SQL[] = [
       sql`(${n.sourceType} = 'project' AND EXISTS (SELECT 1 FROM ${schema.projects} WHERE ${schema.projects.id} = ${n.sourceId} AND ${projects}))`,
       sql`(${n.sourceType} = 'draft' AND EXISTS (SELECT 1 FROM ${schema.drafts} WHERE ${schema.drafts.id} = ${n.sourceId} AND ${drafts}))`,
+      // Direct messages (#116): only while the recipient is a participant (#107).
+      sql`(${n.sourceType} = 'dm' AND EXISTS (SELECT 1 FROM ${schema.dms} WHERE ${schema.dms.id} = ${n.sourceId} AND ${dms}))`,
     ];
     if (workspace.allowed) sources.push(sql`(${n.sourceType} = 'workspace' AND ${n.sourceId} = ${workspaceId})`);
     conditions.push(and(eq(n.workspaceId, workspaceId), or(...sources))!);
@@ -51,6 +54,7 @@ export function notificationRepository(db: DbExecutor): NotificationRepository {
     insert: (record) => rows.insert(record),
     findForRecipient: (userId, id) => rows.findForRecipient(userId, id),
     markRead: (userId, id) => rows.markRead(userId, id),
+    markAllRead: (userId) => markAllNotificationsRead(db, userId),
     async listReadable(userId, limit) {
       const audience = await inboxAudience(db, userId);
       return { items: await rows.listForRecipient(userId, audience, limit), unread: await rows.countUnread(userId, audience) };

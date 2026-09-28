@@ -75,7 +75,20 @@ interface PlanNode { 'Actual Rows'?: number; 'Actual Loops'?: number; 'Rows Remo
 async function examined(query: { toSQL(): { sql: string; params: unknown[] } }) {
   const { sql, params } = query.toSQL();
   await pool.query('ANALYZE event_audience, events');
-  const result = await pool.query(`EXPLAIN (ANALYZE, FORMAT JSON) ${sql}`, params);
+  // Pin the access path to the indexes the stream relies on. Otherwise the planner may pick a
+  // sequential or bitmap scan on a small or fast-growing table, and the row count then reflects
+  // plan shape (seen as [47, 82] → [1, 2] and [1, 2] → [1, 3]), not work done for hidden events.
+  const client = await pool.connect();
+  let result;
+  try {
+    await client.query('BEGIN');
+    await client.query('SET LOCAL enable_seqscan = off');
+    await client.query('SET LOCAL enable_bitmapscan = off');
+    result = await client.query(`EXPLAIN (ANALYZE, FORMAT JSON) ${sql}`, params);
+    await client.query('COMMIT');
+  } finally {
+    client.release();
+  }
   const plan = (result.rows[0]['QUERY PLAN'] as { Plan: PlanNode }[])[0]!.Plan;
   let rows = 0;
   const nodes: string[] = [];

@@ -13,6 +13,8 @@ import { Booting, RouteErrorPage } from './app/errors';
 import { ConversationView, NotFoundView, TasksView } from './app/views';
 import { DmIndex, NewDm } from './dm/DmIndex';
 import { DmConversation, dmLoader } from './dm/DmConversation';
+import { InboxOpen, InboxView } from './notifications/InboxView';
+import { NotificationSettings, UnsubscribePage, VerifyAddress } from './notifications/NotificationSettings';
 import { SketchIndex } from './sketch/SketchIndex';
 import { SketchRoute } from './sketch/SketchView';
 import { projectShellLoader } from './project/data';
@@ -51,6 +53,8 @@ export const router = createBrowserRouter([
           { path: 'sign-out', loader: signOutLoader, action: signOutAction, Component: SignOutPage },
           { path: 'connect-agent', loader: agentConnectionLoader, Component: AgentConnectionPage },
           { path: 'consent', loader: agentConsentLoader, Component: AgentConsentPage },
+          // Linked from notification email (#116); works without signing in.
+          { path: 'unsubscribe', Component: UnsubscribePage },
         ],
       },
       {
@@ -90,6 +94,10 @@ export const router = createBrowserRouter([
           { path: 'dm', Component: DmIndex },
           { path: 'dm/new', Component: NewDm },
           { path: 'dm/:dmId', loader: dmLoader, Component: DmConversation },
+          { path: 'inbox', Component: InboxView },
+          { path: 'inbox/:id', Component: InboxOpen },
+          { path: 'settings/notifications', Component: NotificationSettings },
+          { path: 'settings/notifications/verify', Component: VerifyAddress },
           { path: '*', Component: NotFoundView },
         ],
       },

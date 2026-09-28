@@ -3,6 +3,7 @@ import {
   DomainError,
   getInboxItem,
   listInbox,
+  markAllInboxRead,
   markInboxItemRead,
   policySourceReader,
   registerPushSubscription,
@@ -14,6 +15,7 @@ import {
 } from '@flux/core';
 import {
   INBOX_PATH,
+  INBOX_READ_ALL_PATH,
   PUSH_PUBLIC_KEY_PATH,
   PUSH_SUBSCRIPTIONS_PATH,
   type ApiError,
@@ -73,6 +75,7 @@ function inboxItem(row: NotificationRecord): InboxItem {
   return {
     id: row.id,
     source: row.source,
+    reason: row.reason,
     title: row.title,
     body: row.body,
     url: row.url,
@@ -127,6 +130,11 @@ export async function pushRoutes(app: FastifyInstance, { db, sessions, config }:
     const { principal } = await sessions.requirePrincipal(request);
     const { items, unread } = await listInbox(inbox, principal.id, request.query.limit ?? 50);
     return { items: items.map(inboxItem), unread };
+  });
+
+  app.post(INBOX_READ_ALL_PATH, async (request) => {
+    const { principal } = await sessions.requirePrincipal(request);
+    return markAllInboxRead(inbox, principal.id);
   });
 
   app.get<{ Params: { id: string } }>(`${INBOX_PATH}/:id`, async (request): Promise<InboxItem> => {

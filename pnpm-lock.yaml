@@ -328,6 +328,9 @@ importers:
       drizzle-orm:
         specifier: 0.45.3
         version: 0.45.3(@types/pg@8.15.5)(kysely@0.29.6)(pg@8.23.0)
+      nodemailer:
+        specifier: 10.0.10
+        version: 10.0.10
       pg-boss:
         specifier: 12.35.0
         version: 12.35.0
