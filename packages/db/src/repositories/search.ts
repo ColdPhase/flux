@@ -174,8 +174,8 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows): S
     LEFT JOIN projects p ON p.id = h.project_id AND ('project:' || p.id) = ANY ((SELECT keys FROM aud)::text[])
     LEFT JOIN workspaces w ON w.id = h.workspace_id
     LEFT JOIN auth_users au ON h.author_kind = 'human' AND au.id = h.author_id
-    LEFT JOIN agents ag ON h.author_kind = 'agent' AND ag.id::text = h.author_id
-    LEFT JOIN project_materials pm ON h.kind = 'material' AND pm.id::text = h.object_id
+    LEFT JOIN agents ag ON ag.id = (CASE WHEN h.author_kind = 'agent' THEN h.author_id::uuid END)
+    LEFT JOIN project_materials pm ON pm.id = (CASE WHEN h.kind = 'material' THEN h.object_id::uuid END)
     LEFT JOIN sketches sk ON h.kind = 'thought' AND sk.id = h.parent_id
     LEFT JOIN dms d ON h.kind = 'dm_message' AND d.id = h.parent_id
     ORDER BY h.score DESC, h.at DESC, h.id DESC`;
@@ -220,7 +220,8 @@ async function examined(db: SearchExecutor, statement: SQL) {
   const nodes: string[] = [];
   const walk = (node: PlanNode) => {
     let read = 0;
-    if (node['Node Type'].includes('Scan')) {
+    // Table rows read: a bitmap index scan only lists row addresses for the heap scan above it.
+    if (node['Node Type'].includes('Scan') && node['Node Type'] !== 'Bitmap Index Scan') {
       read = ((node['Actual Rows'] ?? 0) + (node['Rows Removed by Filter'] ?? 0) + (node['Rows Removed by Index Recheck'] ?? 0)) * (node['Actual Loops'] ?? 1);
       rows += read;
     }
