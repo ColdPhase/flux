@@ -8,7 +8,9 @@ import { ProjectSetup } from './app/ProjectSetup';
 import { MaterialView, materialLoader } from './app/MaterialView';
 import { ProjectTasks, projectTasksLoader } from './work/ProjectTasks';
 import { Booting, RouteErrorPage } from './app/errors';
-import { ConversationView, DirectMessagesView, DocsView, NotFoundView, TasksView } from './app/views';
+import { ConversationView, DocsView, NotFoundView, TasksView } from './app/views';
+import { DmIndex, NewDm } from './dm/DmIndex';
+import { DmConversation, dmLoader } from './dm/DmConversation';
 import { SketchIndex } from './sketch/SketchIndex';
 import { SketchRoute } from './sketch/SketchView';
 import {
@@ -62,7 +64,9 @@ export const router = createBrowserRouter([
           { path: 'map', Component: SketchIndex },
           { path: 'map/:sketchId', Component: SketchRoute },
           { path: 'docs', Component: DocsView },
-          { path: 'dm', Component: DirectMessagesView },
+          { path: 'dm', Component: DmIndex },
+          { path: 'dm/new', Component: NewDm },
+          { path: 'dm/:dmId', loader: dmLoader, Component: DmConversation },
           { path: '*', Component: NotFoundView },
         ],
       },

@@ -40,6 +40,10 @@ import { ForbiddenError, NotFoundError } from './errors.js';
  *   person who created it while they are active in the workspace; owners and admins do not
  *   see it, and agents never do. `sketch.create` in a workspace is a private sketch by an
  *   active person; a project sketch needs `project.write` on its project.
+ * - Direct messages (issue #107): a DM's audience is exactly its current participants. Only a
+ *   participant who is active in the workspace reads or writes it; workspace owners and admins
+ *   who are not participants never see it, and agents never do in this slice. `dm.create` is
+ *   for owners, admins and members (guests can take part when added, but not start a DM).
  * - An agent never works outside its current project grants, not even on drafts it
  *   authored: it creates drafts only inside a project where it is a contributor, and
  *   every read (viewer) or write, share and move (contributor) of any draft — its own
@@ -52,11 +56,12 @@ import { ForbiddenError, NotFoundError } from './errors.js';
  *   does not leak; visible objects with a forbidden action get {@link ForbiddenError} (403).
  */
 
-export const WORKSPACE_ACTIONS = ['workspace.read', 'workspace.read_members', 'workspace.manage_members', 'workspace.manage_agents', 'project.create', 'draft.create', 'agent.create', 'sketch.create'] as const;
+export const WORKSPACE_ACTIONS = ['workspace.read', 'workspace.read_members', 'workspace.manage_members', 'workspace.manage_agents', 'project.create', 'draft.create', 'agent.create', 'sketch.create', 'dm.create'] as const;
 export const PROJECT_ACTIONS = ['project.read', 'project.write', 'project.manage'] as const;
 export const DRAFT_ACTIONS = ['draft.read', 'draft.write', 'draft.share', 'draft.move'] as const;
 export const AGENT_ACTIONS = ['agent.read', 'agent.revoke'] as const;
 export const SKETCH_ACTIONS = ['sketch.read', 'sketch.write'] as const;
+export const DM_ACTIONS = ['dm.read', 'dm.write'] as const;
 
 /** Actions grouped by the kind of object they are checked against. */
 export interface ActionsByResource {
@@ -65,6 +70,7 @@ export interface ActionsByResource {
   draft: (typeof DRAFT_ACTIONS)[number];
   agent: (typeof AGENT_ACTIONS)[number];
   sketch: (typeof SKETCH_ACTIONS)[number];
+  dm: (typeof DM_ACTIONS)[number];
 }
 export type ResourceType = keyof ActionsByResource;
 export type Action = ActionsByResource[ResourceType];
@@ -241,12 +247,24 @@ export function visibleSketchesSql(actor: Actor): SQL {
 }
 
 /**
+ * Condition over `dms` rows: the actor is a current participant. Workspace roles add nothing:
+ * owners and admins see only the DMs they are in. Agents see none (no participant grants yet).
+ */
+export function visibleDmsSql(actor: Actor): SQL {
+  if (!actor.active || actor.principal.kind !== 'human') return sql`false`;
+  const d = schema.dms;
+  return and(eq(d.workspaceId, actor.workspaceId),
+    sql`EXISTS (SELECT 1 FROM dm_participants dp WHERE dp.dm_id = "dms"."id" AND dp.user_id = ${actor.principal.id})`)!;
+}
+
+/**
  * The list filter for a principal in a workspace. Put it in the WHERE clause of the list
  * query and of its count so invisible rows never reach counts, pages or payloads.
  */
-export async function visibleFilter(principal: Principal, workspaceId: string, kind: 'project' | 'draft' | 'sketch', db: Executor): Promise<SQL> {
+export async function visibleFilter(principal: Principal, workspaceId: string, kind: 'project' | 'draft' | 'sketch' | 'dm', db: Executor): Promise<SQL> {
   const actor = await loadActor(principal, workspaceId, db);
   if (kind === 'sketch') return visibleSketchesSql(actor);
+  if (kind === 'dm') return visibleDmsSql(actor);
   return kind === 'project' ? visibleProjectsSql(actor) : visibleDraftsSql(actor);
 }
 
@@ -258,12 +276,14 @@ type DraftRow = typeof schema.drafts.$inferSelect;
 type ProjectRow = typeof schema.projects.$inferSelect;
 type AgentRow = typeof schema.agents.$inferSelect;
 type SketchRow = typeof schema.sketches.$inferSelect;
+type DmRow = typeof schema.dms.$inferSelect;
 
 export interface WorkspaceEvaluation extends Decision { actor: Actor }
 export interface ProjectEvaluation extends Decision { actor: Actor | null; project: ProjectRow | null; level: number }
 export interface DraftEvaluation extends Decision { actor: Actor | null; draft: DraftRow | null; level: number; isOwner: boolean }
 export interface AgentEvaluation extends Decision { actor: Actor | null; agent: AgentRow | null }
 export interface SketchEvaluation extends Decision { actor: Actor | null; sketch: SketchRow | null }
+export interface DmEvaluation extends Decision { actor: Actor | null; dm: DmRow | null }
 
 const DENIED: Decision = { allowed: false, visible: false };
 
@@ -283,6 +303,9 @@ export async function evaluateWorkspace(principal: Principal, action: ActionsByR
       break;
     case 'sketch.create':
       allowed = human;
+      break;
+    case 'dm.create':
+      allowed = human && actor.role !== 'guest';
       break;
     case 'workspace.read_members':
     case 'agent.create':
@@ -403,6 +426,32 @@ export async function evaluateSketch(principal: Principal, action: ActionsByReso
 }
 
 /**
+ * A DM is visible and changeable only for its current participants. With `lock`, the DM row is
+ * taken `FOR NO KEY UPDATE` (sends, renames and leaves of one DM run one at a time) and the
+ * caller's participant row `FOR SHARE`, after `loadActor` locked the membership: leaving or a
+ * membership removal (which cascades to the participant row) either commits first and is seen,
+ * or waits until this change commits.
+ */
+export async function evaluateDm(principal: Principal, _action: ActionsByResource['dm'], dmId: string, db: Executor, options: LoadOptions = {}): Promise<DmEvaluation> {
+  const none = { ...DENIED, actor: null, dm: null };
+  if (!isUuid(dmId)) return none;
+  const d = schema.dms;
+  const [located] = await db.select({ workspaceId: d.workspaceId }).from(d).where(eq(d.id, dmId));
+  if (!located) return none;
+  const actor = await loadActor(principal, located.workspaceId, db, options);
+  if (!actor.active || principal.kind !== 'human') return { ...none, actor };
+  if (options.lock) {
+    await db.select({ id: d.id }).from(d).where(eq(d.id, dmId)).for('no key update');
+    await db.select({ userId: schema.dmParticipants.userId }).from(schema.dmParticipants)
+      .where(and(eq(schema.dmParticipants.dmId, dmId), eq(schema.dmParticipants.userId, principal.id))).for('share');
+  }
+  const [row] = await db.select({ dm: d, readable: visibleDmsSql(actor).mapWith(Boolean) }).from(d).where(eq(d.id, dmId));
+  if (!row || !row.readable) return { ...none, actor };
+  // Reading and writing need the same thing: being a participant now.
+  return { allowed: true, visible: true, actor, dm: row.dm };
+}
+
+/**
  * Decides whether `principal` may perform `action` on `resource`, reading current
  * membership, grants and object visibility. Use {@link assertAuthorized} to throw the
  * matching 404/403 error instead.
@@ -429,10 +478,11 @@ async function evaluate(principal: Principal, action: Action, resource: Resource
     case 'draft': return evaluateDraft(principal, action as ActionsByResource['draft'], resource.id, db, options);
     case 'agent': return evaluateAgent(principal, action as ActionsByResource['agent'], resource.id, db, options);
     case 'sketch': return evaluateSketch(principal, action as ActionsByResource['sketch'], resource.id, db, options);
+    case 'dm': return evaluateDm(principal, action as ActionsByResource['dm'], resource.id, db, options);
   }
 }
 
-const READ_ACTION = { workspace: 'workspace.read', project: 'project.read', draft: 'draft.read', agent: 'agent.read', sketch: 'sketch.read' } as const satisfies { [T in ResourceType]: ActionsByResource[T] };
+const READ_ACTION = { workspace: 'workspace.read', project: 'project.read', draft: 'draft.read', agent: 'agent.read', sketch: 'sketch.read', dm: 'dm.read' } as const satisfies { [T in ResourceType]: ActionsByResource[T] };
 
 /**
  * The workspace of an object the principal can currently see, or null. Entry points use
@@ -445,6 +495,7 @@ export async function visibleWorkspaceOf(principal: Principal, resource: Resourc
   if ('draft' in evaluation) return evaluation.draft?.workspaceId ?? null;
   if ('agent' in evaluation) return evaluation.agent?.workspaceId ?? null;
   if ('sketch' in evaluation) return evaluation.sketch?.workspaceId ?? null;
+  if ('dm' in evaluation) return evaluation.dm?.workspaceId ?? null;
   return evaluation.actor.workspaceId;
 }
 
@@ -463,7 +514,7 @@ export function eventResource(event: EventRef): ResourceRef | null {
   if (!event.workspaceId) return null;
   const type = event.kind.split('.', 1)[0];
   if (type === 'workspace') return event.objectId === event.workspaceId ? { type, id: event.objectId } : null;
-  if (type === 'project' || type === 'draft' || type === 'agent' || type === 'sketch') return { type, id: event.objectId };
+  if (type === 'project' || type === 'draft' || type === 'agent' || type === 'sketch' || type === 'dm') return { type, id: event.objectId };
   return null;
 }
 
@@ -482,7 +533,7 @@ export async function authorizeEvent(principal: Principal, event: EventRef, db: 
   return true;
 }
 
-const LABELS: Record<ResourceType, string> = { workspace: 'Workspace', project: 'Project', draft: 'Draft', agent: 'Agent', sketch: 'Sketch' };
+const LABELS: Record<ResourceType, string> = { workspace: 'Workspace', project: 'Project', draft: 'Draft', agent: 'Agent', sketch: 'Sketch', dm: 'Direct message' };
 
 /** Converts a decision into the non-leaking error contract. */
 export function enforce<D extends Decision>(decision: D, type: ResourceType): D {

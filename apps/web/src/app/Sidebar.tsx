@@ -43,23 +43,30 @@ export function Sidebar({ workspace, projects, directMessages, user, session, on
         </div>
         <nav className="side__nav" aria-label={head.title}>
           {place === 'dm' ? (
-            <section className="side__sec" aria-labelledby="side-dms">
-              <h2 className="side__h" id="side-dms">Conversations</h2>
-              {directMessages.length ? (
-                <ul className="side__list">
-                  {directMessages.map((dm) => (
-                    <li key={dm.id}>
-                      <NavLink to={`/dm/${dm.id}`} className="side__item" onClick={navigate}>
-                        <Avatar name={dm.people[0] ?? dm.title} size="sm" />{dm.title}
-                        {dm.hasNew ? <span className="ui-dot ui-dot--accent side__new"><span className="ui-vh">, new messages</span></span> : null}
-                      </NavLink>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="side__empty">No messages yet</p>
-              )}
-            </section>
+            <>
+              <div className="side__sec">
+                <NavLink to="/dm/new" className="side__item side__capture" onClick={navigate}>
+                  <Icon name="plus" className="side__ic" />New message
+                </NavLink>
+              </div>
+              <section className="side__sec" aria-labelledby="side-dms">
+                <h2 className="side__h" id="side-dms">Conversations</h2>
+                {directMessages.length ? (
+                  <ul className="side__list">
+                    {directMessages.map((dm) => (
+                      <li key={dm.id}>
+                        <NavLink to={`/dm/${dm.id}`} className="side__item side__dm" onClick={navigate} title={`${dm.title} · ${dm.audience}`}>
+                          <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} size="sm" /><span className="side__label">{dm.title}</span>
+                          {dm.hasNew ? <span className="ui-dot ui-dot--accent side__new"><span className="ui-vh">, new messages</span></span> : null}
+                        </NavLink>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="side__empty">No conversations yet. Start one with anyone in your space; only the people in it can read it.</p>
+                )}
+              </section>
+            </>
           ) : (
             <>
               <div className="side__sec">
