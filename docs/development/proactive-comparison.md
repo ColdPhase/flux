@@ -34,8 +34,9 @@ connection, `BACKGROUND_BUDGET_TOO_LOW` if the rule exceeds that owner's
 consented budget, and `BACKGROUND_RUNTIME_UNAVAILABLE` after those checks because
 the complete worker/provider path is not implemented yet. The stored rule remains
 paused. A configured key does not start a provider call or emit a proposal. A
-negative result authored by the rule owner creates a deduplicated outbox candidate
-in the result transaction **only for an enabled rule**; production activation is
+negative result authored by any currently authorized human contributor creates a
+deduplicated outbox candidate for each opted-in owner of that named project in the
+result transaction **only for an enabled rule**; production activation is
 still disabled, so current production rules do not create candidates. The worker
 adapter can recheck current owner/agent access, result authorship, explicit source
 links and budget before reserving; there is no scheduled dispatch yet. Peers cannot

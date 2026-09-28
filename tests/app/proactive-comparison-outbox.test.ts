@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { createDatabase, proactiveOutboxRows } from '@flux/db';
+import { recordEvent } from '@flux/core';
 import type { WorkResult } from '@flux/contracts';
 import { proactiveReservation } from '../../apps/worker/src/proactive-comparison/reservation-adapter.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
@@ -17,24 +18,28 @@ describe('negative-result candidate and budget reservation (#58)', () => {
   let owner: Person;
   let peer: Person;
   let projectId: string;
+  let workspaceId: string;
   let ruleId: string;
+  let agentId: string;
   let grantId: string;
+  let peerResultId: string;
 
   const result = async (actor: Person, finding: 'positive' | 'negative', title: string) =>
     expectStatus(await actor.browser.request('POST', `/api/v1/projects/${projectId}/results`,
       { body: { title, finding, evidence: 'Low-light trial at 5 lux' } }), 201) as WorkResult;
   const candidate = async (resultId: string) => {
-    const found = await pool.query('SELECT id, status, source_fingerprint, reserved_cents FROM proactive_comparison_outbox WHERE result_id=$1', [resultId]);
-    return found.rows[0] as { id: string; status: string; source_fingerprint: string; reserved_cents: number } | undefined;
+    const found = await pool.query('SELECT id, owner_user_id, rule_id, status, source_fingerprint, reserved_cents FROM proactive_comparison_outbox WHERE result_id=$1', [resultId]);
+    return found.rows[0] as { id: string; owner_user_id: string; rule_id: string; status: string; source_fingerprint: string; reserved_cents: number } | undefined;
   };
 
   before(async () => {
     [owner, peer] = await Promise.all([person('outbox-owner'), person('outbox-peer')]);
     const ws = await workspace(owner, 'Outbox workspace');
+    workspaceId = ws.id;
     await addMember(owner, ws.id, peer, 'member');
     projectId = (await project(owner, ws.id, 'Dark-room trial', 'restricted')).id;
     await grant(owner, projectId, peer, 'contributor');
-    const agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
+    agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
       { body: { name: 'Comparison agent', owner: 'self' } }), 201) as { id: string }).id;
     grantId = (expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/grants`,
       { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201) as { id: string }).id;
@@ -53,11 +58,18 @@ describe('negative-result candidate and budget reservation (#58)', () => {
     await pool.query("UPDATE proactive_comparison_rules SET status='enabled' WHERE id=$1", [ruleId]);
   });
 
-  test('only the owner-authored committed negative result enqueues, and replay coalesces', async () => {
+  test('a permitted peer’s committed negative result uses the owner’s standing rule; positive and proposal events do not trigger', async () => {
     const positive = await result(owner, 'positive', 'Camera passes');
     const peerNegative = await result(peer, 'negative', 'Peer sees poor low-light result');
+    peerResultId = peerNegative.id;
     assert.equal(await candidate(positive.id), undefined);
-    assert.equal(await candidate(peerNegative.id), undefined, 'a peer cannot spend the owner’s key');
+    assert.deepEqual([(await candidate(peerNegative.id))?.owner_user_id, (await candidate(peerNegative.id))?.rule_id],
+      [owner.id, ruleId], 'the peer’s project-visible result uses only the owner’s explicit rule and budget');
+    const beforeProposal = (await pool.query('SELECT count(*)::int AS n FROM proactive_comparison_outbox WHERE project_id=$1', [projectId])).rows[0].n;
+    await db.transaction((tx) => recordEvent(tx, { kind: 'agent', id: agentId }, workspaceId,
+      'project.proposal_created.v1', projectId, {}));
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM proactive_comparison_outbox WHERE project_id=$1', [projectId])).rows[0].n,
+      beforeProposal, 'a proposal-origin event cannot start another comparison');
     const resultPath = `/api/v1/projects/${projectId}/results`;
     const key = randomUUID();
     const command = { title: 'Camera misses gestures in low light', finding: 'negative', evidence: 'Low-light trial at 5 lux' };
@@ -70,13 +82,13 @@ describe('negative-result candidate and budget reservation (#58)', () => {
       { body: command, headers: { 'Idempotency-Key': key } }), 201) as WorkResult;
     assert.equal(replay.id, negative.id, 'the result, event and candidate share one idempotent commit');
     assert.equal(await db.transaction((tx) => proactiveOutboxRows(tx).enqueueHumanNegative(negative.id, projectId, owner.id)), 0);
+    assert.equal(await db.transaction((tx) => proactiveOutboxRows(tx).enqueueHumanNegative(peerNegative.id, projectId, peer.id)), 0);
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM proactive_comparison_outbox WHERE result_id=$1', [negative.id])).rows[0].n, 1);
   });
 
   test('concurrent reservation charges once and never retries an unknown charge', async () => {
-    const first = await result(owner, 'negative', 'Camera still misses gestures');
     const second = await result(owner, 'negative', 'Another dark-room run failed');
-    const ids = [(await candidate(first.id))!.id, (await candidate(second.id))!.id];
+    const ids = [(await candidate(peerResultId))!.id, (await candidate(second.id))!.id];
     const attempts = await Promise.all(ids.map((id) => reservations.reserve(id)));
     assert.equal(attempts.filter((item) => item.status === 'reserved').length, 1);
     assert.equal(attempts.filter((item) => item.status === 'blocked' && item.reason === 'OWNER_IN_FLIGHT').length, 1);
@@ -86,7 +98,7 @@ describe('negative-result candidate and budget reservation (#58)', () => {
     await pool.query("UPDATE proactive_comparison_outbox SET status='unknown' WHERE id=$1", [reserved.id]);
     const blockedId = ids.find((id) => id !== reserved.id)!;
     assert.deepEqual(await reservations.reserve(blockedId), { status: 'blocked', reason: 'BUDGET_EXHAUSTED' });
-    assert.equal((await candidate(ids[0] === reserved.id ? second.id : first.id))!.status, 'queued');
+    assert.equal((await candidate(ids[0] === reserved.id ? second.id : peerResultId))!.status, 'queued');
   });
 
   test('changed source, paused rule and revoked agent access prevent reservation', async () => {
@@ -119,13 +131,13 @@ describe('negative-result candidate and budget reservation (#58)', () => {
     assert.equal((await candidate(accessLost.id))!.status, 'cancelled');
   });
 
-  test('an agent-origin row cannot be enqueued by the repository', async () => {
+  test('an agent-origin result cannot be enqueued even when an agent ID is supplied', async () => {
     const agentResultId = randomUUID();
     const ws = await pool.query('SELECT workspace_id FROM projects WHERE id=$1', [projectId]);
-    const agent = await pool.query('SELECT agent_id FROM proactive_comparison_rules WHERE id=$1', [ruleId]);
     await pool.query(`INSERT INTO project_results (id, workspace_id, project_id, title, finding, created_by_kind, created_by_id)
-      VALUES ($1, $2, $3, 'Agent-derived finding', 'negative', 'agent', $4)`, [agentResultId, ws.rows[0].workspace_id, projectId, agent.rows[0].agent_id]);
+      VALUES ($1, $2, $3, 'Agent-derived finding', 'negative', 'agent', $4)`, [agentResultId, ws.rows[0].workspace_id, projectId, agentId]);
     assert.equal(await db.transaction((tx) => proactiveOutboxRows(tx).enqueueHumanNegative(agentResultId, projectId, owner.id)), 0);
+    assert.equal(await db.transaction((tx) => proactiveOutboxRows(tx).enqueueHumanNegative(agentResultId, projectId, agentId)), 0);
     assert.equal(await candidate(agentResultId), undefined);
   });
 });

@@ -43,7 +43,7 @@ export function proactiveOutboxRows(db: DbExecutor) {
       if (!result) return 0;
       const { fingerprint } = await resultSourceFingerprint(db, resultId);
       const eligible = await db.select({ id: rules.id, ownerId: rules.ownerUserId }).from(rules)
-        .where(and(eq(rules.projectId, projectId), eq(rules.ownerUserId, authorId), eq(rules.status, 'enabled')));
+        .where(and(eq(rules.projectId, projectId), eq(rules.status, 'enabled')));
       let count = 0;
       for (const rule of eligible) {
         const [inserted] = await db.insert(q).values({ id: randomUUID(), ruleId: rule.id, ownerUserId: rule.ownerId,

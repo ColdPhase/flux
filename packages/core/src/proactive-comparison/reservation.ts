@@ -52,8 +52,7 @@ export function reservationUseCases(unit: ReservationUnitOfWork) {
         const result = await rows.result(candidate.resultId);
         if (!rule || rule.status !== 'enabled' || rule.ownerUserId !== candidate.ownerUserId
           || rule.projectId !== candidate.projectId || !result || result.projectId !== candidate.projectId
-          || result.finding !== 'negative' || result.createdByKind !== 'human'
-          || result.createdById !== candidate.ownerUserId) {
+          || result.finding !== 'negative' || result.createdByKind !== 'human') {
           await rows.cancel(candidate.id);
           return blocked('RULE_STOPPED');
         }
