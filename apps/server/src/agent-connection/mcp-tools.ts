@@ -92,6 +92,20 @@ export function createFluxMcpServer(db: Database, claims: FluxMcpClaims): McpSer
     } catch (error) { return toolError(error); }
   });
 
+  server.registerTool('flux_list_materials', {
+    title: 'List selectable project sources',
+    description: 'List current material and doc IDs, titles and versions in one selected project. Use an ID with flux_read_material before proposing. No bodies or private draft provenance are returned.',
+    inputSchema: z.object({ projectId: z.uuid(), limit: z.int().min(1).max(100).optional(), offset: z.int().min(0).max(10_000).optional() }),
+    annotations: { readOnlyHint: true },
+  }, async ({ projectId, limit, offset }) => {
+    try {
+      const connection = await current('flux.context.read');
+      requireAgentSelection(connection, projectId, 'flux.context.read');
+      const page = await materials.listSourceMaterials({ kind: 'agent', id: connection.agentId }, projectId, { limit, offset });
+      return toolResult({ projectId, ...page });
+    } catch (error) { return toolError(error); }
+  });
+
   server.registerTool('flux_create_proposal', {
     title: 'Propose a sourced project action',
     description: 'Submit a human-reviewable suggestion based on the current version of a selected project material.',

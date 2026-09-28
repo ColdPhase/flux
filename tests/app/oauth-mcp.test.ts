@@ -106,6 +106,15 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
   const material = expect(await browser.request('POST', `/api/v1/projects/${projectId}/materials`,
     { body: { clientMutationId: randomUUID(), title: 'Battery observation', body: 'Battery lasts four hours.' } }), 201);
   const materialId = String(material.materialId);
+  const secondMaterial = expect(await browser.request('POST', `/api/v1/projects/${projectId}/materials`,
+    { body: { clientMutationId: randomUUID(), title: 'Capacity observation', body: 'Capacity is limited.' } }), 201);
+  const doc = expect(await browser.request('POST', `/api/v1/projects/${projectId}/docs`,
+    { body: { title: 'Experiment notes', body: 'A project doc source.' } }), 201);
+  const hiddenProject = expect(await browser.request('POST', `/api/v1/workspaces/${workspaceId}/projects`,
+    { body: { name: 'Unselected private project', visibility: 'restricted' } }), 201);
+  const hiddenProjectId = String(hiddenProject.id);
+  const hiddenMaterial = expect(await browser.request('POST', `/api/v1/projects/${hiddenProjectId}/materials`,
+    { body: { clientMutationId: randomUUID(), title: 'Secret source title', body: 'Private content.' } }), 201);
   const connection = expect(await browser.request('POST', '/api/v1/agent-connections',
     { body: { agentId, selectedProjectIds: [projectId], scopes: ['flux.context.read', 'flux.proposal.write'] } }), 201);
   const connectionId = String(connection.id);
@@ -129,6 +138,30 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
   assert.equal(listed.status, 200, `MCP call returned ${listed.status}: ${JSON.stringify(listed.message)}`);
   assert.deepEqual(toolValue(listed.message).projects, [{ id: projectId,
     name: 'Selected restricted project', workspaceId }]);
+  const sources = await mcp(bearer, 5, 'tools/call', { name: 'flux_list_materials', arguments: { projectId, limit: 1 } });
+  assert.equal(sources.status, 200);
+  const firstPage = toolValue(sources.message);
+  assert.equal(firstPage.total, 3);
+  assert.equal((firstPage.items as unknown[]).length, 1);
+  const nextPage = toolValue((await mcp(bearer, 6, 'tools/call', {
+    name: 'flux_list_materials', arguments: { projectId, limit: 1, offset: 1 },
+  })).message);
+  assert.equal(nextPage.total, 3);
+  const thirdPage = toolValue((await mcp(bearer, 8, 'tools/call', {
+    name: 'flux_list_materials', arguments: { projectId, limit: 1, offset: 2 },
+  })).message);
+  const items = [...firstPage.items as Record<string, unknown>[],
+    ...nextPage.items as Record<string, unknown>[], ...thirdPage.items as Record<string, unknown>[]];
+  assert.deepEqual(new Set(items.map((item) => item.materialId)), new Set([materialId, secondMaterial.materialId, doc.id]));
+  assert.ok(items.every((item) => item.version === 1 && typeof item.title === 'string'));
+  assert.equal(items.find((item) => item.materialId === doc.id)?.kind, 'doc');
+  assert.ok(!JSON.stringify(items).includes('Battery lasts four hours.'), 'the picker does not include source bodies');
+  const deniedSources = await mcp(bearer, 7, 'tools/call', { name: 'flux_list_materials',
+    arguments: { projectId: hiddenProjectId } });
+  assert.equal(deniedSources.status, 200);
+  assert.equal((deniedSources.message?.result as { isError?: boolean })?.isError, true);
+  assert.ok(!JSON.stringify(deniedSources.message).includes('Secret source title'));
+  assert.ok(!JSON.stringify(deniedSources.message).includes(String(hiddenMaterial.materialId)));
   const read = await mcp(bearer, 2, 'tools/call', { name: 'flux_read_material', arguments: { projectId, materialId } });
   assert.equal(read.status, 200);
   assert.equal(toolValue(read.message).body, 'Battery lasts four hours.');
@@ -139,6 +172,14 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
   } });
   assert.equal(created.status, 200);
   assert.equal(toolValue(created.message).status, 'proposed');
+
+  const grants = expect(await browser.request('GET', `/api/v1/projects/${projectId}/grants`), 200) as unknown as { id: string; principal: { kind: string; id: string } }[];
+  const agentGrant = grants.find((grant) => grant.principal.kind === 'agent' && grant.principal.id === agentId);
+  assert.ok(agentGrant);
+  expect(await browser.request('DELETE', `/api/v1/projects/${projectId}/grants/${agentGrant.id}`), 204);
+  const lostGrant = await mcp(bearer, 9, 'tools/call', { name: 'flux_list_materials', arguments: { projectId } });
+  assert.equal(lostGrant.status, 403, 'grant loss invalidates the bearer before tool dispatch');
+  assert.ok(!JSON.stringify(lostGrant.message).includes('Battery observation'));
 
   expect(await browser.request('DELETE', `/api/v1/agent-connections/${connectionId}`), 204);
   const revoked = await mcp(bearer, 4, 'tools/call', { name: 'flux_list_contexts', arguments: {} });

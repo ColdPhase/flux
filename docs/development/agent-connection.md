@@ -75,15 +75,27 @@ authenticated connection exposed the three Flux tools. The same bearer was
 used to read a selected material and create a sourced proposal over the MCP
 wire; retry with the same command ID returned the same proposal. After Flux
 connection deletion, the same JWT's MCP request changed from HTTP 200 to 403.
-The Claude
-Code installation had no model login, so model-driven tool calls through the
-official CLI remain unverified. The self-hosted HTTPS deployment path also
-remains to be exercised before calling the integration fully supported.
+That first Claude Code installation had no model login. A later
+[independent official-client check](https://github.com/ColdPhase/flux/pull/103#issuecomment-5862223636)
+used Claude Code 2.1.283 with a signed-in Sonnet model against local HTTPS Flux
+at `49faf5275f5c5dbf684d5f9abfa41850c94dd1c3`: OAuth consent, a
+model-driven material read, a sourced proposal and immediate connection
+revocation all worked. The run needed a material UUID supplied in its prompt;
+`flux_list_materials` below addresses that discovery gap, but its own
+model-driven use still needs verification. HTTPS from another machine remains
+unverified until the operator deployment is exercised.
 
 ## Initial tools and proposal
 
 `flux_list_contexts` returns only selected, currently readable projects (at most
-50 by the connection limit), with no count of inaccessible projects. `flux_read_material` returns
+50 by the connection limit), with no count of inaccessible projects. Next call
+`flux_list_materials` with a selected `projectId` to discover current material and
+doc IDs, titles and versions. The picker returns at most 100 rows per page
+(`limit` 1–100, default 50; `offset` 0–10000), ordered by latest update, and
+never includes bodies or private draft provenance. Its count covers only that
+selected, currently readable project; a missing selection or lost grant yields
+an error without a title, ID or count from the inaccessible project. Then
+`flux_read_material` returns
 one selected project's currently readable material and its exact revision. A
 private draft is never pulled in through a material's provenance.
 
