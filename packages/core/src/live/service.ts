@@ -30,8 +30,8 @@ export function liveUseCases(ports: LivePorts) {
   return {
     async start(principal: Principal, context: LiveContextRef, clientSessionId: string): Promise<LiveSession> {
       human(principal);
-      if (!context || !['conversation', 'work', 'sketch'].includes(context.type))
-        throw new InvalidInputError('context must name a conversation, work item or project sketch');
+      if (!context || !['conversation', 'work', 'sketch', 'doc'].includes(context.type))
+        throw new InvalidInputError('context must name a conversation, work item, project sketch or wiki doc');
       uuid(context.id, 'context.id');
       uuid(clientSessionId, 'clientSessionId');
       const { projectId } = await ports.access.resolveContext(principal, context);

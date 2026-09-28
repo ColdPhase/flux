@@ -28,6 +28,7 @@ function contextColumns(context: LiveContextRef) {
     conversationId: context.type === 'conversation' ? context.id : null,
     workId: context.type === 'work' ? context.id : null,
     sketchId: context.type === 'sketch' ? context.id : null,
+    docId: context.type === 'doc' ? context.id : null,
   };
 }
 
@@ -37,13 +38,15 @@ function sameContext(row: SessionRow, projectId: string, context: LiveContextRef
     case 'conversation': return row.conversationId === context.id;
     case 'work': return row.workId === context.id;
     case 'sketch': return row.sketchId === context.id;
+    case 'doc': return row.docId === context.id;
   }
 }
 
 function record(row: SessionRow): LiveSessionRecord {
   const context: LiveContextRef = row.conversationId
     ? { type: 'conversation', id: row.conversationId }
-    : row.workId ? { type: 'work', id: row.workId } : { type: 'sketch', id: row.sketchId! };
+    : row.workId ? { type: 'work', id: row.workId }
+      : row.sketchId ? { type: 'sketch', id: row.sketchId } : { type: 'doc', id: row.docId! };
   return {
     id: row.id,
     projectId: row.projectId,

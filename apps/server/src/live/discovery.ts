@@ -15,7 +15,8 @@ type Row = typeof schema.liveSessions.$inferSelect;
 function anchor(row: Row): LiveContextRef {
   if (row.conversationId) return { type: 'conversation', id: row.conversationId };
   if (row.workId) return { type: 'work', id: row.workId };
-  return { type: 'sketch', id: row.sketchId! };
+  if (row.sketchId) return { type: 'sketch', id: row.sketchId };
+  return { type: 'doc', id: row.docId! };
 }
 
 function limitOf(value: unknown): number {

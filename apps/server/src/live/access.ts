@@ -29,6 +29,14 @@ export async function requireLiveContext(principal: Principal, ref: LiveContextR
     if (!row || row.projectId !== projectId || row.scope !== 'project') missing();
     return;
   }
+  if (ref.type === 'doc') {
+    const query = db.select({ projectId: schema.projectMaterials.projectId,
+      kind: schema.projectMaterials.kind }).from(schema.projectMaterials)
+      .where(eq(schema.projectMaterials.id, ref.id));
+    const [row] = lock ? await query.for('share') : await query;
+    if (!row || row.projectId !== projectId || row.kind !== 'doc') missing();
+    return;
+  }
   missing();
 }
 
@@ -105,6 +113,12 @@ export function liveAccess(db: Executor): LiveAccess {
       const [row] = await db.select({ projectId: schema.sketches.projectId, scope: schema.sketches.scope }).from(schema.sketches)
         .where(eq(schema.sketches.id, id));
       return row?.scope === 'project' ? row.projectId : null;
+    }
+    if (type === 'doc') {
+      const [row] = await db.select({ projectId: schema.projectMaterials.projectId,
+        kind: schema.projectMaterials.kind }).from(schema.projectMaterials)
+        .where(eq(schema.projectMaterials.id, id));
+      return row?.kind === 'doc' ? row.projectId : null;
     }
     if (type === 'message') {
       const [row] = await db.select({ projectId: schema.projectMessages.projectId }).from(schema.projectMessages)

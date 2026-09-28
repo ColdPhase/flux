@@ -462,6 +462,7 @@ export const liveSessions = pgTable('live_sessions', {
   conversationId: uuid('conversation_id'),
   workId: uuid('work_id'),
   sketchId: uuid('sketch_id'),
+  docId: uuid('doc_id'),
   createdBy: text('created_by').notNull().references(() => authUsers.id),
   clientSessionId: uuid('client_session_id').notNull(),
   state: text('state', { enum: ['available', 'rotating', 'ending', 'ended'] }).notNull().default('available'),
@@ -480,6 +481,7 @@ export const liveSessions = pgTable('live_sessions', {
   foreignKey({ columns: [table.workspaceId, table.projectId, table.conversationId], foreignColumns: [projectConversations.workspaceId, projectConversations.projectId, projectConversations.id] }),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.workId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.sketchId], foreignColumns: [sketches.workspaceId, sketches.projectId, sketches.id] }),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.docId], foreignColumns: [projectMaterials.workspaceId, projectMaterials.projectId, projectMaterials.id] }),
   index('live_sessions_project_idx').on(table.projectId, table.createdAt.desc(), table.id.desc()),
   index('live_sessions_lifecycle_idx').on(table.state, table.updatedAt, table.id),
 ]);

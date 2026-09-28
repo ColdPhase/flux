@@ -13,7 +13,8 @@ export const liveInvitationReplyPath = (id: string) => `${LIVE_INVITATIONS_PATH}
 export type LiveContextRef =
   | { type: 'conversation'; id: string }
   | { type: 'work'; id: string }
-  | { type: 'sketch'; id: string };
+  | { type: 'sketch'; id: string }
+  | { type: 'doc'; id: string };
 
 /** Identifiers only. Receivers load text through the normal authorized Flux API. */
 export type LivePresentationRef =

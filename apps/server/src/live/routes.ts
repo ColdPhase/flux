@@ -12,7 +12,7 @@ interface Options { ports: LivePorts; sessions: SessionResolver; lifecycle?: Pic
 
 const id = { type: 'string', pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' } as const;
 const context = { type: 'object', required: ['type', 'id'], additionalProperties: false,
-  properties: { type: { type: 'string', enum: ['conversation', 'work', 'sketch'] }, id } } as const;
+  properties: { type: { type: 'string', enum: ['conversation', 'work', 'sketch', 'doc'] }, id } } as const;
 const presentation = { type: 'object', required: ['type', 'id', 'version'], additionalProperties: false,
   properties: { type: { type: 'string', enum: ['message', 'material', 'work', 'result', 'sketch'] }, id,
     version: { type: 'integer', minimum: 1 }, selectedThoughtIds: { type: 'array', maxItems: 100, uniqueItems: true, items: id } } } as const;

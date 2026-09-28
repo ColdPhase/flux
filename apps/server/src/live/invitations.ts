@@ -33,6 +33,7 @@ function context(row: typeof schema.liveSessions.$inferSelect): LiveContextRef {
   if (row.conversationId) return { type: 'conversation', id: row.conversationId };
   if (row.workId) return { type: 'work', id: row.workId };
   if (row.sketchId) return { type: 'sketch', id: row.sketchId };
+  if (row.docId) return { type: 'doc', id: row.docId };
   throw new Error('Live session has no context');
 }
 

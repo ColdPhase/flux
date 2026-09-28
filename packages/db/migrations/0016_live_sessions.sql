@@ -9,6 +9,7 @@ CREATE TABLE live_sessions (
   conversation_id uuid,
   work_id uuid,
   sketch_id uuid,
+  doc_id uuid,
   created_by text NOT NULL REFERENCES auth_users(id),
   client_session_id uuid NOT NULL,
   state text NOT NULL DEFAULT 'available' CHECK (state IN ('available', 'ended')),
@@ -18,14 +19,16 @@ CREATE TABLE live_sessions (
   updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (created_by, client_session_id),
   UNIQUE (workspace_id, project_id, id),
-  CHECK (num_nonnulls(conversation_id, work_id, sketch_id) = 1),
+  CHECK (num_nonnulls(conversation_id, work_id, sketch_id, doc_id) = 1),
   FOREIGN KEY (workspace_id, project_id) REFERENCES projects(workspace_id, id) ON DELETE CASCADE,
   FOREIGN KEY (workspace_id, project_id, conversation_id)
     REFERENCES project_conversations(workspace_id, project_id, id),
   FOREIGN KEY (workspace_id, project_id, work_id)
     REFERENCES project_work_items(workspace_id, project_id, id),
   FOREIGN KEY (workspace_id, project_id, sketch_id)
-    REFERENCES sketches(workspace_id, project_id, id)
+    REFERENCES sketches(workspace_id, project_id, id),
+  FOREIGN KEY (workspace_id, project_id, doc_id)
+    REFERENCES project_materials(workspace_id, project_id, id)
 );
 CREATE INDEX live_sessions_project_idx ON live_sessions(project_id, created_at DESC, id DESC);
 

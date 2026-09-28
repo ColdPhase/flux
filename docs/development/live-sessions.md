@@ -11,13 +11,16 @@ restrictive-network acceptance remain in [#63](https://github.com/ColdPhase/flux
 
 ## Current behavior
 
-- A human can start a session at an existing project conversation, work item or
-  project sketch, get it by opaque ID, request a room-scoped grant and send a
+- A human can start a session at an existing project conversation, work item,
+  project sketch or wiki doc, get it by opaque ID, request a room-scoped grant and send a
   versioned object reference without copying a title or body into the media
   trace. The API rechecks project access; durable starts and presentations have
   caller-provided idempotency IDs. Private sketches cannot anchor a project
   session. The SFU participant list is queried for actual connected people; a
   failed query appears as unknown rather than zero people.
+  A wiki doc anchor uses the existing project material ID only when its kind is
+  `doc`; every admission and recipient read checks current project access and
+  the anchor again. A regular project material cannot impersonate a doc.
 - `POST /api/v1/live-sessions/:id/leave` disconnects that human from media.
   A repeated leave returns `204` after the SFU confirms the person is absent.
   Device capture and playback remain client actions; receiving a grant never
