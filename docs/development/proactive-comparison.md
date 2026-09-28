@@ -19,8 +19,11 @@ separate from the external MCP/OAuth connection. The request includes the
 Claude Platform key, its payer organization and dedicated provider workspace,
 affirmation of spending authority and single-workspace scope, acknowledgement
 that project-published excerpts may leave the instance, and a **consented 30-day
-local budget**, per-run ceiling and maximum daily runs. Dispatch accounting is
-not implemented yet. The provider organization
+local budget**, per-run ceiling and maximum daily runs. An internal reservation
+gate now counts possible charges across the owner's connections in a rolling
+30-day window and UTC day; it reserves at least 5 cents atomically, keeps
+unknown charges counted, and allows one in-flight reservation per owner. It does
+not call the provider. The provider organization
 owning the key pays Anthropic; Flux cannot verify the caller's spending authority
 or guarantee the provider invoice. Metadata returns only the last four key
 characters and a short SHA-256 fingerprint. It never returns plaintext or
@@ -29,9 +32,14 @@ ciphertext. Replacing/revoking clears the earlier ciphertext in the database.
 Enabling returns `BACKGROUND_CONNECTION_REQUIRED` without a current owner
 connection, `BACKGROUND_BUDGET_TOO_LOW` if the rule exceeds that owner's
 consented budget, and `BACKGROUND_RUNTIME_UNAVAILABLE` after those checks because
-the budgeted worker/trigger path is not implemented yet. The stored rule remains
-paused. A configured key does not start a provider call, enqueue a job or emit a
-proposal. Peers cannot read, revoke or spend another person's connection. The
+the complete worker/provider path is not implemented yet. The stored rule remains
+paused. A configured key does not start a provider call or emit a proposal. A
+negative result authored by the rule owner creates a deduplicated outbox candidate
+in the result transaction **only for an enabled rule**; production activation is
+still disabled, so current production rules do not create candidates. The worker
+adapter can recheck current owner/agent access, result authorship, explicit source
+links and budget before reserving; there is no scheduled dispatch yet. Peers cannot
+read, revoke or spend another person's connection. The
 API has no route to change the rule's owner, audience, scope or purpose.
 
 ## Key file, restore and rotation
@@ -69,12 +77,14 @@ restarting API and worker. If that final file switch fails, **do not restart**:
 finish the switch or restore the paired database and old secret backup. Rotate
 the provider keys separately if compromise is suspected.
 
-Migration `0021_proactive_rules.sql` uses 21 because 14–20 are reserved by the
-parallel search, notifications and live-session branches. The migrator applies
-individual files in numeric order; #118 will add a strict migration ledger and
-same-volume upgrade proof before these branches can be integrated as a release.
+Migrations `0021`–`0023` include the standing rule, encrypted connection and
+candidate/reservation ledger. The outbox retains reserved possible charges when
+a rule or result would otherwise be deleted, so removal cannot reset the owner's
+allowance. The migrator applies individual files in numeric order; #118 must add
+the strict migration ledger and same-volume upgrade proof before release.
 
-Remaining #58 work: trigger capture and deduplication from committed human negative results; budgeted worker
-execution and cancellation; source/audience rechecks; quiet proposal and UI;
+Remaining #58 work: enabling with a complete runtime, budgeted worker/provider
+execution and cancellation, rechecking sources/access immediately before dispatch
+and proposal commit, reconciling actual usage, quiet proposal and UI;
 real provider, privacy and no-AI continuation evidence. This file describes a
 working configuration slice, not completion of #58.

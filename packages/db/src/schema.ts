@@ -1,4 +1,4 @@
-import { isNull } from 'drizzle-orm';
+import { eq, isNull } from 'drizzle-orm';
 import { pgTable, text, timestamp, uuid, integer, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
 export const samples = pgTable('samples', {
@@ -841,6 +841,27 @@ export const notificationCursor = pgTable('notification_cursor', {
   id: text('id').primaryKey(),
   seq: bigint('seq', { mode: 'number' }).notNull(),
 });
+
+// An event candidate and any reserved possible charge remain separate from rule consent (#58).
+export const proactiveComparisonOutbox = pgTable('proactive_comparison_outbox', {
+  id: uuid('id').primaryKey(),
+  ruleId: uuid('rule_id').notNull().references(() => proactiveComparisonRules.id),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  projectId: uuid('project_id').notNull(),
+  resultId: uuid('result_id').notNull().references(() => projectResults.id),
+  sourceFingerprint: text('source_fingerprint').notNull(),
+  status: text('status', { enum: ['queued', 'reserved', 'cancelled', 'unknown', 'completed'] }).notNull().default('queued'),
+  connectionId: uuid('connection_id').references(() => backgroundComputeConnections.id),
+  reservedCents: integer('reserved_cents').notNull().default(0),
+  reservedAt: timestamp('reserved_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique().on(table.ruleId, table.resultId, table.sourceFingerprint),
+  index('proactive_comparison_outbox_owner_time_idx').on(table.ownerUserId, table.reservedAt),
+  uniqueIndex('proactive_comparison_outbox_owner_inflight_idx').on(table.ownerUserId).where(eq(table.status, 'reserved')),
+  index('proactive_comparison_outbox_queued_idx').on(table.createdAt, table.id).where(eq(table.status, 'queued')),
+]);
 
 export const notificationGenerationFailures = pgTable('notification_generation_failures', {
   eventId: uuid('event_id').primaryKey(),

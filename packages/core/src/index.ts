@@ -75,3 +75,4 @@ export * from './notifications/index.js';
 export { policySourceReader } from './access/source-reader.js';
 export * from './proactive-comparison/rules.js';
 export * from './proactive-comparison/connections.js';
+export * from './proactive-comparison/reservation.js';

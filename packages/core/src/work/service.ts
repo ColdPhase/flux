@@ -377,6 +377,8 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         await ports.work.insertLinks([...linkRows(scope, from, 'source', sources, by), ...linkRows(scope, from, 'about', [...workRefs(workIds), ...decisions], by)]);
         if (finished && finished.status !== 'done') await ports.work.updateWork(finished.id, { status: 'done', blocker: null });
         const view = await presentResult(ports, record);
+        if (finding === 'negative' && by.kind === 'human')
+          await ports.backgroundComparison.enqueueHumanNegative(record.id, project, by.id);
         await ports.events.record(principal, workspaceId, 'project.result_recorded.v1', project, { resultId: record.id });
         return view;
       });

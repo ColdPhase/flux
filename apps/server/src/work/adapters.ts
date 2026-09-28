@@ -1,4 +1,4 @@
-import { workRows, type DbExecutor } from '@flux/db';
+import { proactiveOutboxRows, workRows, type DbExecutor } from '@flux/db';
 import {
   assertAuthorized,
   authorize,
@@ -48,6 +48,8 @@ function workPorts(tx: DbExecutor): WorkPorts {
     access: policyWorkAccess(tx),
     work: workRepository(tx),
     events: { record: async (principal, workspaceId, kind, projectId, data) => { await recordEvent(tx, principal, workspaceId, kind, projectId, data); } },
+    backgroundComparison: { enqueueHumanNegative: (resultId, projectId, authorId) =>
+      proactiveOutboxRows(tx).enqueueHumanNegative(resultId, projectId, authorId) },
   };
 }
 
