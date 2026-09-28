@@ -1,0 +1,65 @@
+# Local-only restrictive-client proof. Never deploy this overlay.
+services:
+  livekit:
+    networks:
+      default:
+        aliases: [turn.flux.test]
+    environment:
+      LIVEKIT_CONFIG: |
+        port: 7880
+        prometheus_port: 6789
+        keys:
+          "${FLUX_LIVEKIT_API_KEY:?Set a disposable test key}": "${FLUX_LIVEKIT_API_SECRET:?Set a disposable test secret}"
+        webhook:
+          api_key: "${FLUX_LIVEKIT_API_KEY:?Set a disposable test key}"
+          urls:
+            - http://api:8080/api/v1/internal/livekit/webhook
+        room:
+          auto_create: false
+          max_participants: 16
+          empty_timeout: 420
+          departure_timeout: 180
+        rtc:
+          tcp_port: 7881
+          udp_port: 7882
+          use_external_ip: false
+        turn:
+          enabled: true
+          domain: turn.flux.test
+          udp_port: 3478
+          tls_port: 443
+          cert_file: /run/livekit-turn-certs/fullchain.pem
+          key_file: /run/livekit-turn-certs/privkey.pem
+          # Docker bridge SFU is a private TURN peer. Production public media
+          # addresses must retain LiveKit's default deny for private peers.
+          allow_restricted_peer_cidrs:
+            - 172.16.0.0/12
+  live-sfu-test:
+    cap_add: [NET_ADMIN]
+    volumes:
+      - ${FLUX_LIVEKIT_TURN_CERT_DIR:?Set a disposable test cert directory}:/run/livekit-turn-certs:ro,z
+    command:
+      - sh
+      - -ec
+      - |
+        media_ip=$$(getent ahostsv4 livekit | awk 'NR == 1 { print $$1 }')
+        test -n "$$media_ip"
+        iptables -A OUTPUT -d "$$media_ip" -p udp -j REJECT
+        iptables -A OUTPUT -d "$$media_ip" -p tcp --dport 7881 -j REJECT
+        trap 'iptables -L OUTPUT -n -v' EXIT
+        cp /run/livekit-turn-certs/ca.pem /usr/local/share/ca-certificates/turn-flux-test.crt
+        update-ca-certificates >/dev/null
+        mkdir -p /root/.pki/nssdb
+        certutil -N -d sql:/root/.pki/nssdb --empty-password
+        certutil -A -d sql:/root/.pki/nssdb -n turn-flux-test -t 'C,,' \
+          -i /run/livekit-turn-certs/ca.pem
+        openssl s_client -connect turn.flux.test:443 -servername turn.flux.test \
+          -verify_hostname turn.flux.test -verify_return_error \
+          -CAfile /run/livekit-turn-certs/ca.pem -brief \
+          </dev/null >/tmp/turn-tls.txt 2>&1
+        grep -q 'Verification: OK' /tmp/turn-tls.txt
+        cat /tmp/turn-tls.txt
+        node -e "const net=require('node:net'); const s=net.connect(7881,process.argv[1]); s.on('connect',()=>process.exit(1)); s.on('error',()=>process.exit(0)); setTimeout(()=>process.exit(2),2000)" "$$media_ip"
+        node -e "fetch('http://livekit:6789/metrics').then(r=>{if(!r.ok)throw Error('metrics HTTP '+r.status);console.log('SFU metrics HTTP '+r.status)}).catch(e=>{console.error(e);process.exit(1)})"
+        node_modules/.bin/tsx --test tests/app/e2e/live-turn-relay.e2e.ts
+        iptables -L OUTPUT -n -v
