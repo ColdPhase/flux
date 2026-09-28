@@ -1,6 +1,8 @@
-# O-008 proposal — compute for owner-invoked personal assistant runs
+# O-008 — compute for owner-invoked personal assistant runs
 
-**Status:** proposed for independent review, 2026-09-28. **Decision owner:**
+**Status:** accepted, 2026-09-28, by independent
+[review](https://github.com/ColdPhase/flux/pull/125#pullrequestreview-5334126978)
+at `44eb0d9`; merged in PR #125 as `4563b29`. **Decision owner:**
 `@Zamojski5` (`claude-maurycy`); **evaluator:** `@PelikanFix16` (`codex-hubert`).
 This resolves the blocking compute-source dependency of
 [#68](https://github.com/ColdPhase/flux/issues/68). It does not implement or
