@@ -199,7 +199,8 @@ export function createDmUseCases(uow: DmUnitOfWork) {
           id: randomUUID(), workspaceId: dm.workspaceId, dmId: dm.id, authorId,
           clientMessageId: input.clientMessageId, requestFingerprint: input.fingerprint, body: input.body,
         });
-        await ports.events.record(principal, dm.workspaceId, 'dm.message_sent.v1', dm.id, {});
+        // The message id (an identifier, never content) lets notifications (#116) name the message.
+        await ports.events.record(principal, dm.workspaceId, 'dm.message_sent.v1', dm.id, { messageId: message.id });
         return toMessage(message);
       });
     },

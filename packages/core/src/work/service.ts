@@ -224,7 +224,9 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         const from = { type: 'work' as const, id: record.id };
         await ports.work.insertLinks([...linkRows(scope, from, 'source', sources, by), ...linkRows(scope, from, 'related', related, by)]);
         const view = await presentWork(ports, record);
-        await ports.events.record(principal, workspaceId, 'project.work_created.v1', project, { workId: record.id });
+        // `assignedTo` names a person given this work by someone else (notifications, #116).
+        const assignedTo = owner?.kind === 'human' && owner.id !== by.id ? owner.id : undefined;
+        await ports.events.record(principal, workspaceId, 'project.work_created.v1', project, { workId: record.id, ...(assignedTo ? { assignedTo } : {}) });
         return view;
       });
     },
@@ -259,7 +261,10 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         if (changes.owner !== undefined) await requireOwner(ports, projectId, changes.owner);
         const record = await ports.work.updateWork(id, changes);
         const view = await presentWork(ports, record);
-        await ports.events.record(principal, workspaceId, 'project.work_updated.v1', projectId, { workId: id });
+        const newOwner = changes.owner;
+        const assignedTo = newOwner?.kind === 'human' && newOwner.id !== principal.id
+          && !(current.owner?.kind === 'human' && current.owner.id === newOwner.id) ? newOwner.id : undefined;
+        await ports.events.record(principal, workspaceId, 'project.work_updated.v1', projectId, { workId: id, ...(assignedTo ? { assignedTo } : {}) });
         return view;
       });
     },

@@ -34,6 +34,11 @@ export interface DeliveryPorts {
   targets: PushDeliveryRepository;
   authorizer: SourceReadAuthorizer;
   sender: PushSender;
+  /**
+   * The recipient's current notification preferences (#116): false when push is now off for the
+   * notification's reason or its place is muted. Absent for callers without preferences.
+   */
+  stillWanted?: (userId: string, notification: NotificationRecord) => Promise<boolean>;
   log?: (message: string, details?: Record<string, unknown>) => void;
 }
 
@@ -60,6 +65,7 @@ export async function deliverPushJob(ports: DeliveryPorts, job: PushSendJob): Pr
   }
   const decision = await ports.authorizer.canRead(job.userId, notification.source);
   if (!decision.visible) return { outcome: 'skipped', reason: 'recipient can no longer see the notification source' };
+  if (ports.stillWanted && !await ports.stillWanted(job.userId, notification)) return { outcome: 'skipped', reason: 'push turned off or place muted' };
   const violation = pushEndpointViolation(subscription.endpoint);
   if (violation) {
     await ports.targets.recordFailure(subscription.id, null);

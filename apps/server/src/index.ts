@@ -22,6 +22,7 @@ import { agentProposalRoutes } from './agent-connection/routes.js';
 import { registerMcpRoute } from './agent-connection/mcp-route.js';
 import { returnRoutes } from './returns/routes.js';
 import { docRoutes } from './docs/routes.js';
+import { notificationRoutes } from './notifications/routes.js';
 
 const connectionString = process.env.DATABASE_URL;
 const fixtureToken = process.env.FLUX_FIXTURE_TOKEN;
@@ -52,6 +53,7 @@ await app.register(agentProposalRoutes, { db, sessions: identity });
 registerMcpRoute(app, db, identity.auth, identityConfig.publicOrigin);
 await app.register(returnRoutes, { db, sessions: identity });
 await app.register(docRoutes, { db, sessions: identity });
+await app.register(notificationRoutes, { db, sessions: identity, smtp: identityConfig.smtp, publicOrigin: identityConfig.publicOrigin });
 
 app.get('/api/v1/health', async (_request, reply) => {
   try {

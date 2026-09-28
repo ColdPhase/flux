@@ -1,4 +1,4 @@
-import type { NotificationSourceRef, NotificationSourceType, PushPayload } from '@flux/contracts';
+import type { NotificationReason, NotificationSourceRef, NotificationSourceType, PushPayload } from '@flux/contracts';
 
 /**
  * Ports of the notification and Web Push use cases (issues #41, #46). Core defines what it
@@ -36,9 +36,11 @@ export interface NotificationRecord {
   url: string | null;
   createdAt: Date;
   readAt: Date | null;
+  /** Why it exists (#116); null for notifications created directly through `createNotification`. */
+  reason: NotificationReason | null;
 }
 
-export type NewNotification = Omit<NotificationRecord, 'createdAt' | 'readAt'>;
+export type NewNotification = Omit<NotificationRecord, 'createdAt' | 'readAt' | 'reason'>;
 
 export interface NotificationRepository {
   insert(notification: NewNotification): Promise<void>;
@@ -51,6 +53,8 @@ export interface NotificationRepository {
   listReadable(userId: string, limit: number): Promise<{ items: NotificationRecord[]; unread: number }>;
   /** Sets read_at once; returns the stored time, or null when the row is not the recipient's. */
   markRead(userId: string, id: string): Promise<Date | null>;
+  /** Marks every unread inbox row of the recipient read (#116); returns how many changed. */
+  markAllRead(userId: string): Promise<number>;
 }
 
 export interface PushSubscriptionRecord {

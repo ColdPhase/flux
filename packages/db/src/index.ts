@@ -8,7 +8,7 @@ export * from './repositories/sessions.js';
 export * from './repositories/agent-proposals.js';
 export * from './repositories/agent-connections.js';
 // Highest numbered file in packages/db/migrations. The API refuses other versions.
-export const FLUX_SCHEMA_VERSION = 13;
+export const FLUX_SCHEMA_VERSION = 15;
 // pg-boss 12.35.0 declares schema 43. Update this with the pinned package.
 export const PG_BOSS_SCHEMA_VERSION = 43;
 
@@ -72,3 +72,4 @@ export function listen(connectionString: string, channel: string, onNotify: (pay
   };
 }
 export * from './repositories/returns.js';
+export * from './repositories/notifications.js';
