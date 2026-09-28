@@ -1,0 +1,8 @@
+{
+  "name": "flux-live-sfu-test",
+  "private": true,
+  "version": "0.0.0",
+  "dependencies": {
+    "livekit-client": "2.17.2"
+  }
+}
