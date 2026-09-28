@@ -104,6 +104,41 @@ export function liveRevocationCoordinator(db: Database, pool: Pool, media: LiveM
     for (const row of pending) await retireAndFinish({ workspaceId, projectId: row.projectId });
   }
 
+  async function recoverMissingRoom(sessionId: string): Promise<void> {
+    const [located] = await db.select({ workspaceId: schema.liveSessions.workspaceId,
+      projectId: schema.liveSessions.projectId }).from(schema.liveSessions)
+      .where(eq(schema.liveSessions.id, sessionId));
+    if (!located) throw new NotFoundError('Live session', 'LIVE_SESSION_NOT_FOUND');
+    await locked(located.workspaceId, async () => {
+      await lifecycle?.recoverWorkspaceUnderLock(located.workspaceId);
+      await recoverUnderLock(located.workspaceId);
+      const missing = await db.transaction(async (tx) => {
+        // Admission takes these guards in the same order. The SFU check stays
+        // under the project guard, so a concurrent grant mutation cannot pass
+        // between proof of room loss and the durable admission fence.
+        await tx.select({ id: schema.workspaces.id }).from(schema.workspaces)
+          .where(eq(schema.workspaces.id, located.workspaceId)).for('share');
+        await tx.select({ id: schema.projects.id }).from(schema.projects)
+          .where(eq(schema.projects.id, located.projectId)).for('no key update');
+        const [current] = await tx.select().from(schema.liveSessions)
+          .where(eq(schema.liveSessions.id, sessionId)).for('update');
+        if (!current || current.state !== 'available') return false;
+        try { await media.requireRoom(current.roomId); return false; }
+        catch (error) {
+          if (!(error instanceof ServiceUnavailableError) || error.code !== 'LIVE_ROOM_GONE') throw error;
+        }
+        await tx.insert(schema.liveAccessFences).values({
+          scopeKey: `p:${current.projectId}`, workspaceId: current.workspaceId,
+          projectId: current.projectId,
+        }).onConflictDoNothing();
+        await tx.update(schema.liveSessions).set({ state: 'rotating', updatedAt: new Date() })
+          .where(eq(schema.liveSessions.id, sessionId));
+        return true;
+      });
+      if (missing) await retireAndFinish({ workspaceId: located.workspaceId, projectId: located.projectId });
+    });
+  }
+
   async function change<T>(scope: Scope, mutation: () => Promise<T>): Promise<T> {
     return locked(scope.workspaceId, async () => {
       await lifecycle?.recoverWorkspaceUnderLock(scope.workspaceId);
@@ -128,6 +163,7 @@ export function liveRevocationCoordinator(db: Database, pool: Pool, media: LiveM
   }
 
   return {
+    recoverMissingRoom,
     async withProjectChange<T>(projectId: string, mutation: () => Promise<T>): Promise<T> {
       const [project] = await db.select({ workspaceId: schema.projects.workspaceId }).from(schema.projects)
         .where(eq(schema.projects.id, projectId));

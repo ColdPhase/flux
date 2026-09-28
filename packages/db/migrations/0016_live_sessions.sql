@@ -52,4 +52,4 @@ CREATE TABLE live_presentations (
 );
 CREATE INDEX live_presentations_session_idx ON live_presentations(session_id, created_at, id);
 
-INSERT INTO flux_schema_version(version) VALUES (13) ON CONFLICT DO NOTHING;
+INSERT INTO flux_schema_version(version) VALUES (16) ON CONFLICT DO NOTHING;

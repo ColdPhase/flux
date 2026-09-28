@@ -67,7 +67,10 @@ export function liveMediaConfig(env: NodeJS.ProcessEnv): LiveMediaConfig {
 
 /** Infrastructure adapter only. Flux core decides admission before calling grant(). */
 export function createLiveMedia(config: LiveMediaConfig): LiveMediaAdapter {
-  const rooms = new RoomServiceClient(config.apiUrl, config.apiKey, config.apiSecret);
+  // Calls also run beneath admission and recovery locks; bound an unavailable
+  // SFU instead of holding those locks for the SDK's default retry window.
+  const rooms = new RoomServiceClient(config.apiUrl, config.apiKey, config.apiSecret,
+    { requestTimeout: 5, failover: false });
   const room = (roomId: string) => {
     if (!ROOM_ID.test(roomId)) throw new Error('Invalid opaque LiveKit room ID');
     return roomId;
@@ -80,7 +83,9 @@ export function createLiveMedia(config: LiveMediaConfig): LiveMediaAdapter {
     },
     async requireRoom(roomId) {
       const name = room(roomId);
-      const existing = await rooms.listRooms([name]);
+      let existing;
+      try { existing = await rooms.listRooms([name]); }
+      catch { throw new ServiceUnavailableError('Live media is unavailable', 'LIVE_MEDIA_UNAVAILABLE'); }
       if (!existing.some((candidate) => candidate.name === name))
         throw new ServiceUnavailableError('This live room has ended; start a new session', 'LIVE_ROOM_GONE');
     },

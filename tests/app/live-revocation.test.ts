@@ -4,13 +4,14 @@ import { after, test } from 'node:test';
 import Fastify from 'fastify';
 import { eq } from 'drizzle-orm';
 import { createDatabase, schema } from '@flux/db';
-import { DomainError, grantProject, liveUseCases, removeMember as removeWorkspaceMember, type LiveMedia } from '@flux/core';
+import { DomainError, ServiceUnavailableError, grantProject, liveUseCases, removeMember as removeWorkspaceMember, type LiveMedia } from '@flux/core';
 import type { Conversation } from '@flux/contracts';
 import { liveAccess } from '../../apps/server/src/live/access.js';
 import { liveLifecycle } from '../../apps/server/src/live/lifecycle.js';
 import { liveSessionStore } from '../../apps/server/src/live/store.js';
 import { liveRevocationCoordinator, withNoMediaAccessChange } from '../../apps/server/src/live/revocation.js';
 import { accessRoutes } from '../../apps/server/src/access/routes.js';
+import { liveRoutes } from '../../apps/server/src/live/routes.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
 
 const connectionString = process.env.DATABASE_URL;
@@ -23,9 +24,16 @@ function mediaFixture() {
   const retired: string[] = [];
   let deleteCalls = 0;
   let failOnCall = 0;
+  let failNextRequire = false;
   const media: LiveMedia = {
     async ensureRoom(roomId) { rooms.add(roomId); },
-    async requireRoom(roomId) { if (!rooms.has(roomId)) throw new Error('Room missing'); },
+    async requireRoom(roomId) {
+      if (failNextRequire) {
+        failNextRequire = false;
+        throw new ServiceUnavailableError('SFU unavailable', 'LIVE_MEDIA_UNAVAILABLE');
+      }
+      if (!rooms.has(roomId)) throw new ServiceUnavailableError('Room missing', 'LIVE_ROOM_GONE');
+    },
     async grant(roomId) {
       if (!rooms.has(roomId)) throw new Error('Cannot grant a missing room');
       return { token: `jwt:${roomId}`, expiresAt: new Date(Date.now() + 90_000) };
@@ -41,7 +49,8 @@ function mediaFixture() {
     },
   };
   return { media, rooms, retired, failNextDelete: () => { failOnCall = deleteCalls + 1; },
-    failSecondDelete: () => { failOnCall = deleteCalls + 2; } };
+    failSecondDelete: () => { failOnCall = deleteCalls + 2; },
+    failNextRequire: () => { failNextRequire = true; } };
 }
 
 async function fixture(label: string) {
@@ -62,6 +71,93 @@ async function fixture(label: string) {
   const coordinator = liveRevocationCoordinator(db, pool, transport.media);
   return { owner, member, ws, place, store, transport, principal, context, session, coordinator };
 }
+
+async function joinApp(f: Awaited<ReturnType<typeof fixture>>,
+  revocation: { recoverMissingRoom(sessionId: string): Promise<void> } = f.coordinator) {
+  const app = Fastify();
+  await app.register(liveRoutes, {
+    sessions: { requirePrincipal: async () => ({ principal: f.principal }) } as never,
+    ports: { access: liveAccess(db), sessions: f.store, media: f.transport.media,
+      mediaUrl: 'wss://media.example.test' },
+    revocation,
+  });
+  return app;
+}
+
+test('a confirmed lost room rotates only its session and concurrent joins use one new generation', async () => {
+  const f = await fixture('live-room-loss');
+  const other = await f.store.createOrGet(f.principal, f.place.id, f.context,
+    randomUUID(), f.transport.media.ensureRoom);
+  f.transport.rooms.delete(f.session.roomId);
+  const app = await joinApp(f);
+  try {
+    const responses = await Promise.all(Array.from({ length: 3 }, () => app.inject({
+      method: 'POST', url: `/api/v1/live-sessions/${f.session.id}/join`,
+    })));
+    assert.deepEqual(responses.map((response) => response.statusCode), [200, 200, 200]);
+    const next = (await f.store.find(f.session.id))!;
+    assert.equal(next.generation, 2);
+    assert.notEqual(next.roomId, f.session.roomId);
+    assert.equal(f.transport.rooms.has(next.roomId), true);
+    assert.equal(f.transport.rooms.has(f.session.roomId), false);
+    assert.equal((await f.store.find(other.id))?.generation, 1, 'unaffected rooms must not rotate');
+    assert.equal(f.transport.rooms.has(other.roomId), true);
+    for (const response of responses) {
+      const body = response.json() as { token: string; session: { generation: number } };
+      assert.equal(body.token, `jwt:${next.roomId}`);
+      assert.equal(body.session.generation, 2);
+    }
+  } finally { await app.close(); }
+});
+
+test('an uncertain SFU result never rotates or grants a room', async () => {
+  const f = await fixture('live-room-outage');
+  f.transport.failNextRequire();
+  const app = await joinApp(f);
+  try {
+    const response = await app.inject({ method: 'POST', url: `/api/v1/live-sessions/${f.session.id}/join` });
+    assert.equal(response.statusCode, 503);
+    assert.equal((response.json() as { code: string }).code, 'LIVE_MEDIA_UNAVAILABLE');
+    assert.equal((await f.store.find(f.session.id))?.generation, 1);
+    assert.equal((await f.store.find(f.session.id))?.state, 'available');
+    assert.equal(f.transport.rooms.has(f.session.roomId), true);
+  } finally { await app.close(); }
+});
+
+test('a failed lost-room retirement stays fenced and crash recovery completes it', async () => {
+  const f = await fixture('live-room-crash');
+  f.transport.rooms.delete(f.session.roomId);
+  f.transport.failNextDelete();
+  const app = await joinApp(f);
+  try {
+    const failed = await app.inject({ method: 'POST', url: `/api/v1/live-sessions/${f.session.id}/join` });
+    assert.equal(failed.statusCode, 500);
+    assert.equal((await f.store.find(f.session.id))?.state, 'rotating');
+    await assert.rejects(f.store.withAdmission(f.principal, f.session.id, async () => 'unexpected'),
+      (error) => error instanceof DomainError && error.code === 'LIVE_SESSION_ROTATING');
+    await f.coordinator.recoverPending();
+    const joined = await app.inject({ method: 'POST', url: `/api/v1/live-sessions/${f.session.id}/join` });
+    assert.equal(joined.statusCode, 200);
+    assert.equal((await f.store.find(f.session.id))?.generation, 2);
+  } finally { await app.close(); }
+});
+
+test('lost-room join rechecks policy after repair before issuing a replacement token', async () => {
+  const f = await fixture('live-room-policy');
+  f.transport.rooms.delete(f.session.roomId);
+  const app = await joinApp(f, { recoverMissingRoom: async (sessionId) => {
+    await f.coordinator.recoverMissingRoom(sessionId);
+    await f.coordinator.withProjectChange(f.place.id, () => grantProject(
+      { kind: 'human', id: f.owner.id }, f.place.id,
+      { principal: f.principal, role: 'denied' }, db));
+  } });
+  try {
+    const response = await app.inject({ method: 'POST', url: `/api/v1/live-sessions/${f.session.id}/join` });
+    assert.equal(response.statusCode, 404);
+    assert.equal((response.json() as { code: string }).code, 'PROJECT_NOT_FOUND');
+    assert.equal((await f.store.find(f.session.id))?.generation, 3);
+  } finally { await app.close(); }
+});
 
 test('grant revocation retires the old room before commit and leaves only a new-generation owner room', async () => {
   const f = await fixture('live-revoke');

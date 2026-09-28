@@ -26,12 +26,17 @@ export FLUX_LIVEKIT_ICE_UDP_PORT="${FLUX_LIVE_TEST_ICE_UDP_PORT:-18764}"
 export FLUX_LIVEKIT_TURN_UDP_PORT="${FLUX_LIVE_TEST_TURN_UDP_PORT:-18765}"
 
 compose="docker compose -p $project -f infra/compose.yaml -f infra/compose.live.yaml -f infra/compose.live.test.yaml --profile live-test"
+marker_dir=$(mktemp -d)
+chmod 1777 "$marker_dir"
+restart_pid=""
 cleanup() {
   status=$?
+  if [ -n "$restart_pid" ]; then kill "$restart_pid" 2>/dev/null || true; fi
   if [ "$status" -ne 0 ]; then
     $compose logs --no-color --tail=80 db migrate api livekit live-sfu-test || true
   fi
   $compose down -v || true
+  rm -rf "$marker_dir"
   if [ "${FLUX_KEEP_TEST_IMAGES:-0}" != "1" ]; then
     docker image rm "flux-foundation:$project" "flux-e2e:$project" "flux-live-sfu-test:$project" 2>/dev/null || true
   fi
@@ -43,3 +48,30 @@ docker build -f infra/Dockerfile --target e2e -t "flux-e2e:$project" .
 $compose build migrate live-sfu-test
 $compose up -d --wait api livekit
 $compose run --rm live-sfu-test
+
+# The browser test signals only after a real client has joined and received an
+# SFU-refreshed token. Restart the pinned SFU, then release its assertions.
+$compose run --rm -v "$marker_dir:/restart:Z" -e FLUX_RESTART_MARKER_DIR=/restart \
+  live-sfu-test node_modules/.bin/tsx --test tests/app/e2e/live-sfu-restart.e2e.ts \
+  > "$marker_dir/test.log" 2>&1 &
+restart_pid=$!
+ready=0
+for _ in $(seq 1 60); do
+  if [ -f "$marker_dir/ready" ]; then ready=1; break; fi
+  if ! kill -0 "$restart_pid" 2>/dev/null; then break; fi
+  sleep 1
+done
+if [ "$ready" -ne 1 ]; then
+  cat "$marker_dir/test.log" >&2
+  echo 'Real SFU restart test did not reach a connected client' >&2
+  exit 1
+fi
+$compose restart livekit
+$compose up -d --wait livekit
+printf 'ok\n' > "$marker_dir/restarted"
+if ! wait "$restart_pid"; then
+  cat "$marker_dir/test.log" >&2
+  exit 1
+fi
+restart_pid=""
+cat "$marker_dir/test.log"

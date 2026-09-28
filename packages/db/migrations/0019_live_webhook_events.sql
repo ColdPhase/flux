@@ -10,4 +10,4 @@ CREATE TABLE live_webhook_events (
 
 CREATE INDEX live_webhook_events_received_idx ON live_webhook_events(received_at);
 
-INSERT INTO flux_schema_version(version) VALUES (16) ON CONFLICT DO NOTHING;
+INSERT INTO flux_schema_version(version) VALUES (19) ON CONFLICT DO NOTHING;

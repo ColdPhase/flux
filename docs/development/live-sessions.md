@@ -28,7 +28,13 @@ restrictive-network acceptance remain in [#63](https://github.com/ColdPhase/flux
   `ending` state fences admission before room deletion. Signed LiveKit webhooks
   only prompt reconciliation; a periodic SFU occupancy sweep and startup
   recovery provide the independent path. A room that disappears cannot be
-  recreated by an old join request or old token.
+  recreated by an old join request or old token. If an available session's
+  room is confirmed missing after an SFU restart, a join marks only that
+  session rotating under a project admission fence, retires its old room ID,
+  creates a fresh generation and retries
+  under current project and anchor authorization. An uncertain SFU response
+  leaves admission closed; startup and periodic recovery finish a durable
+  fence before joins resume.
 - A person may invite another authorized project reader. The invitation stores
   only identities, response choice and dates. The recipient's bounded,
   encrypted-cursor inbox rechecks project and anchor access on every page;
@@ -49,6 +55,15 @@ restrictive-network acceptance remain in [#63](https://github.com/ColdPhase/flux
   If the API has no LiveKit configuration while a durable room is available or
   rotating, these access changes return `503 LIVE_MEDIA_UNAVAILABLE` without
   changing policy. Ordinary work and conversation endpoints remain available.
+
+The LiveKit operator configuration must keep `room.auto_create=false`, as both
+Compose profiles do. Otherwise an unexpired or SFU-refreshed old token could
+recreate a retired room. Room-service calls have a five-second request timeout;
+an unreachable SFU returns no grant and cannot trigger room-loss rotation.
+An unrelated pending ending room can delay recovery under the workspace lock;
+admission remains fenced until the SFU confirms deletion.
+Other sessions in that project pause admission briefly while a missing room
+rotates, but keep their room IDs and generations.
 
 The project and anchor are checked again for GET, JOIN and presentation. A
 project sketch cannot be changed into a private sketch while its live session
@@ -89,14 +104,17 @@ older than seven days are pruned in bounded batches. LiveKit webhook delivery
 is advisory, so the periodic SFU sweep remains required. See the
 [LiveKit self-hosted webhook configuration](https://docs.livekit.io/intro/basics/rooms-participants-tracks/webhooks-events/).
 
-Also pending: media-restart reconnect recovery, screen-track sharing and
+Also pending: screen-track sharing, media-track recovery across restart and
 independent review. A real-SFU test observed natural post-departure expiry at
 about 104 seconds, rejected an old join and a still-valid refreshed JWT, and
 confirmed saved work remained readable. The presentation feed has a focused
 Docker integration test for authorization, cursor handling, generation changes,
-revocation and a bounded hidden tail. A confirmed LiveKit restart currently
-leaves an available Flux session pointing at a gone room, so new join returns
-`503 LIVE_ROOM_GONE`; this must be corrected and retested before #61 review.
+revocation and a bounded hidden tail. The opt-in pinned LiveKit restart test
+stops the SFU after two Chromium clients connect, then proves a new join
+rotates to generation 2, both remaining people reconnect to the new room,
+original and actual SFU-refreshed old grants receive `404` from LiveKit, and
+saved work remains readable. It checks signaling and room admission, not
+screen-track recovery, TURN or physical devices.
 The dated
 [lifecycle plan](live-lifecycle-plan.md) records the intended tables, locks
 and failure tests; implementation is in progress and is not an accepted result.

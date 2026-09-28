@@ -22,4 +22,4 @@ CREATE TABLE live_invitations (
 CREATE INDEX live_invitations_recipient_idx
   ON live_invitations(recipient_id, response, created_at DESC, id DESC);
 
-INSERT INTO flux_schema_version(version) VALUES (17) ON CONFLICT DO NOTHING;
+INSERT INTO flux_schema_version(version) VALUES (20) ON CONFLICT DO NOTHING;

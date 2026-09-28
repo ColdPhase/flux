@@ -1,12 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 import type { LiveContextRef, LivePresentationRef, PresentLiveContextCommand, StartLiveSessionCommand } from '@flux/contracts';
 import { LIVE_SESSIONS_PATH, liveJoinPath, liveLeavePath, livePresentPath, livePresentationsPath, liveSessionPath } from '@flux/contracts';
-import { liveUseCases, type LivePorts } from '@flux/core';
+import { DomainError, liveUseCases, type LivePorts } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
 import type { LiveLifecycle } from './lifecycle.js';
+import type { LiveRevocationCoordinator } from './revocation.js';
 
-interface Options { ports: LivePorts; sessions: SessionResolver; lifecycle?: Pick<LiveLifecycle, 'reconcile'> }
+interface Options { ports: LivePorts; sessions: SessionResolver; lifecycle?: Pick<LiveLifecycle, 'reconcile'>;
+  revocation?: Pick<LiveRevocationCoordinator, 'recoverMissingRoom'> }
 
 const id = { type: 'string', pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' } as const;
 const context = { type: 'object', required: ['type', 'id'], additionalProperties: false,
@@ -16,7 +18,7 @@ const presentation = { type: 'object', required: ['type', 'id', 'version'], addi
     version: { type: 'integer', minimum: 1 }, selectedThoughtIds: { type: 'array', maxItems: 100, uniqueItems: true, items: id } } } as const;
 
 /** API policy runs before transport grants; the browser starts with all devices off. */
-export async function liveRoutes(app: FastifyInstance, { ports, sessions, lifecycle }: Options) {
+export async function liveRoutes(app: FastifyInstance, { ports, sessions, lifecycle, revocation }: Options) {
   useDomainErrors(app);
   const live = liveUseCases(ports);
   const principal = async (request: Parameters<SessionResolver['requirePrincipal']>[0]) => (await sessions.requirePrincipal(request)).principal;
@@ -29,8 +31,17 @@ export async function liveRoutes(app: FastifyInstance, { ports, sessions, lifecy
   app.get<{ Params: { sessionId: string } }>(liveSessionPath(':sessionId'),
     async (request) => live.get(await principal(request), request.params.sessionId));
 
-  app.post<{ Params: { sessionId: string } }>(liveJoinPath(':sessionId'),
-    async (request) => live.join(await principal(request), request.params.sessionId));
+  app.post<{ Params: { sessionId: string } }>(liveJoinPath(':sessionId'), async (request) => {
+    const caller = await principal(request);
+    try { return await live.join(caller, request.params.sessionId); }
+    catch (error) {
+      if (!revocation || !(error instanceof DomainError) ||
+        !['LIVE_ROOM_GONE', 'LIVE_SESSION_ROTATING'].includes(error.code)) throw error;
+      await revocation.recoverMissingRoom(request.params.sessionId);
+      // This is a new admission, including current project and anchor checks.
+      return live.join(caller, request.params.sessionId);
+    }
+  });
 
   app.post<{ Params: { sessionId: string } }>(liveLeavePath(':sessionId'), async (request, reply) => {
     await live.leave(await principal(request), request.params.sessionId);

@@ -64,6 +64,7 @@ if (liveMedia) await app.register(liveRoutes, {
   sessions: identity,
   ports: { access: liveAccess(db), sessions: liveSessionStore(db), ...liveMedia },
   lifecycle: lifecycle!,
+  revocation: liveRevocation!,
 });
 if (liveMedia) await app.register(liveDiscoveryRoutes, { db, sessions: identity, media: liveMedia.media });
 if (liveMedia) await app.register(liveInvitationRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret });

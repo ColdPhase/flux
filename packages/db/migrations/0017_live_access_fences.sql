@@ -14,4 +14,4 @@ CREATE TABLE live_access_fences (
 );
 CREATE INDEX live_access_fences_workspace_idx ON live_access_fences(workspace_id);
 
-INSERT INTO flux_schema_version(version) VALUES (14) ON CONFLICT DO NOTHING;
+INSERT INTO flux_schema_version(version) VALUES (17) ON CONFLICT DO NOTHING;

@@ -15,4 +15,4 @@ ALTER TABLE live_sessions
 CREATE INDEX live_sessions_lifecycle_idx
   ON live_sessions(state, updated_at, id);
 
-INSERT INTO flux_schema_version(version) VALUES (15) ON CONFLICT DO NOTHING;
+INSERT INTO flux_schema_version(version) VALUES (18) ON CONFLICT DO NOTHING;
