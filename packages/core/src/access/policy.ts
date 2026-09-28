@@ -39,7 +39,10 @@ import { ForbiddenError, NotFoundError } from './errors.js';
  *   changeable at contributor. A `private` sketch is readable and changeable only by the
  *   person who created it while they are active in the workspace; owners and admins do not
  *   see it, and agents never do. `sketch.create` in a workspace is a private sketch by an
- *   active person; a project sketch needs `project.write` on its project.
+ *   active person; a project sketch needs `project.write` on its project. A `dm` sketch (#96)
+ *   belongs to one DM: exactly its current participants read it, and they change it while the
+ *   DM is open (a 1:1 whose other person left is read-only until that person reopens it).
+ *   Owners, admins and agents outside the DM never see it.
  * - Direct messages (issue #107): a DM's audience is exactly its current participants. Only a
  *   participant who is active in the workspace reads or writes it; workspace owners and admins
  *   who are not participants never see it, and agents never do in this slice. `dm.create` is
@@ -243,7 +246,62 @@ export function visibleSketchesSql(actor: Actor): SQL {
   // Agents never see private sketches, not even their owner's.
   if (actor.principal.kind !== 'human') return and(eq(s.workspaceId, actor.workspaceId), project)!;
   const own = sql`(${s.scope} = 'private' AND ${s.createdByUserId} = ${actor.principal.id})`;
-  return and(eq(s.workspaceId, actor.workspaceId), or(project, own))!;
+  // A DM sketch is visible to the DM's current participants only (#96). Qualified by hand:
+  // Drizzle leaves columns of a single-table select unqualified, and an unqualified `dm_id`
+  // inside this subquery would name dm_participants.dm_id.
+  const dm = sql`(${s.scope} = 'dm' AND EXISTS (SELECT 1 FROM dm_participants dp WHERE dp.dm_id = "sketches"."dm_id" AND dp.user_id = ${actor.principal.id}))`;
+  return and(eq(s.workspaceId, actor.workspaceId), or(project, own, dm))!;
+}
+
+/**
+ * Promotion of a DM sketch (#96) must commit exactly the audience it previewed. Before the
+ * sketch is evaluated, this takes the rows every audience change locks first, FOR SHARE: the
+ * workspace row (member added, removed or re-roled: `lockWorkspace`, FOR NO KEY UPDATE) and, for
+ * an existing target, the project row (grants and visibility: `lockProjectForGrantChange`). The
+ * global order stays workspace, project, membership, sketch, DM, participants.
+ */
+export async function lockPromotionScope(db: Executor, sketchId: string, projectId: string | null): Promise<void> {
+  if (!isUuid(sketchId)) return;
+  const [sketch] = await db.select({ workspaceId: schema.sketches.workspaceId }).from(schema.sketches).where(eq(schema.sketches.id, sketchId));
+  if (!sketch) return;
+  await db.select({ id: schema.workspaces.id }).from(schema.workspaces).where(eq(schema.workspaces.id, sketch.workspaceId)).for('share');
+  if (projectId && isUuid(projectId)) await db.select({ id: schema.projects.id }).from(schema.projects).where(eq(schema.projects.id, projectId)).for('share');
+}
+
+/**
+ * Locks every participant row of a DM FOR SHARE, in user id order, after the DM row, and returns
+ * the participants. A leave (DM row, then its own row) or a membership removal (which deletes
+ * participant rows by cascade) then waits until the caller's change commits.
+ */
+export async function lockDmParticipants(db: Executor, dmId: string): Promise<string[]> {
+  await db.select({ id: schema.dms.id }).from(schema.dms).where(eq(schema.dms.id, dmId)).for('share');
+  const rows = await db.select({ userId: schema.dmParticipants.userId }).from(schema.dmParticipants)
+    .where(eq(schema.dmParticipants.dmId, dmId)).orderBy(schema.dmParticipants.userId).for('share');
+  return rows.map((row) => row.userId);
+}
+
+/** Why a DM cannot take changes now: the other person of a 1:1 left it or the workspace (#107, #96). */
+export interface DmClosed {
+  reason: 'left' | 'unavailable';
+  recipient: { id: string; name: string };
+}
+
+/**
+ * Null while the DM takes changes. A 1:1 whose other person is no longer a participant is closed
+ * for everyone else: nothing is sent, sketched or promoted on that person's behalf, and only they
+ * can reopen it (the #107 DM_RECIPIENT_LEFT rule). Groups stay open to whoever remains.
+ */
+export async function dmClosedFor(db: Executor, dmId: string, selfId: string): Promise<DmClosed | null> {
+  const [dm] = await db.select({ kind: schema.dms.kind, pairKey: schema.dms.pairKey, workspaceId: schema.dms.workspaceId }).from(schema.dms).where(eq(schema.dms.id, dmId));
+  if (!dm || dm.kind !== 'pair' || !dm.pairKey) return null;
+  const otherId = dm.pairKey.split(':').find((id) => id !== selfId);
+  if (!otherId) return null;
+  const [present] = await db.select({ userId: schema.dmParticipants.userId }).from(schema.dmParticipants)
+    .where(and(eq(schema.dmParticipants.dmId, dmId), eq(schema.dmParticipants.userId, otherId)));
+  if (present) return null;
+  const [user] = await db.select({ name: schema.authUsers.name }).from(schema.authUsers).where(eq(schema.authUsers.id, otherId));
+  const active = (await loadActor({ kind: 'human', id: otherId }, dm.workspaceId, db)).active;
+  return { reason: active ? 'left' : 'unavailable', recipient: { id: otherId, name: user?.name ?? '' } };
 }
 
 /**
@@ -409,7 +467,7 @@ export async function evaluateSketch(principal: Principal, action: ActionsByReso
   const none = { ...DENIED, actor: null, sketch: null };
   if (!isUuid(sketchId)) return none;
   const s = schema.sketches;
-  const [located] = await db.select({ workspaceId: s.workspaceId, projectId: s.projectId }).from(s).where(eq(s.id, sketchId));
+  const [located] = await db.select({ workspaceId: s.workspaceId, projectId: s.projectId, dmId: s.dmId }).from(s).where(eq(s.id, sketchId));
   if (!located) return none;
   const actor = await loadActor(principal, located.workspaceId, db, options);
   if (!actor.active) return { ...none, actor };
@@ -417,11 +475,23 @@ export async function evaluateSketch(principal: Principal, action: ActionsByReso
     await db.select({ id: s.id }).from(s).where(eq(s.id, sketchId)).for('no key update');
     // A private sketch depends only on its owner's membership, which loadActor locked.
     if (located.projectId) await lockProjectAccess(db, actor, located.projectId);
+    // A DM sketch depends on the caller's participant row: a concurrent leave (which deletes it)
+    // or membership removal (which cascades to it) is either seen or waits for this change (#96).
+    // The DM row comes first (FOR SHARE), as leave() takes it first (FOR NO KEY UPDATE), so a
+    // leave either commits before this change or waits for it, and the two never deadlock.
+    if (located.dmId && principal.kind === 'human') {
+      await db.select({ id: schema.dms.id }).from(schema.dms).where(eq(schema.dms.id, located.dmId)).for('share');
+      await db.select({ userId: schema.dmParticipants.userId }).from(schema.dmParticipants)
+        .where(and(eq(schema.dmParticipants.dmId, located.dmId), eq(schema.dmParticipants.userId, principal.id))).for('share');
+    }
   }
   const [row] = await db.select({ sketch: s, readable: visibleSketchesSql(actor).mapWith(Boolean), level: sketchProjectLevel(actor).mapWith(Number) })
     .from(s).where(eq(s.id, sketchId));
   if (!row || !row.readable) return { ...none, actor };
-  const allowed = action === 'sketch.read' || row.sketch.scope === 'private' || row.level >= LEVEL.contributor;
+  let allowed: boolean;
+  if (action === 'sketch.read' || row.sketch.scope === 'private') allowed = true;
+  else if (row.sketch.scope === 'dm') allowed = !(await dmClosedFor(db, row.sketch.dmId!, principal.id));
+  else allowed = row.level >= LEVEL.contributor;
   return { allowed, visible: true, actor, sketch: row.sketch };
 }
 

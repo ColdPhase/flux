@@ -567,8 +567,13 @@ export const agentOauthSelections = pgTable('agent_oauth_selections', {
 export const sketches = pgTable('sketches', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
-  scope: text('scope', { enum: ['project', 'private'] }).notNull(),
+  scope: text('scope', { enum: ['project', 'private', 'dm'] }).notNull(),
   projectId: uuid('project_id'),
+  // A DM sketch's direct message (migration 0025, #96): composite FK to dms(workspace_id, id).
+  dmId: uuid('dm_id'),
+  copiedFromSketchId: uuid('copied_from_sketch_id'),
+  copiedByUserId: text('copied_by_user_id').references(() => authUsers.id),
+  copiedAt: timestamp('copied_at', { withTimezone: true }),
   title: text('title').notNull(),
   createdByUserId: text('created_by_user_id').references(() => authUsers.id),
   createdByAgentId: uuid('created_by_agent_id'),
@@ -594,6 +599,12 @@ export const sketchThoughts = pgTable('sketch_thoughts', {
   shape: text('shape', { enum: ['card', 'pill', 'circle'] }).notNull().default('card'),
   placementType: text('placement_type', { enum: ['draft'] }),
   placementId: uuid('placement_id'),
+  // The message a thought was started from (migration 0025, #96).
+  sourceAuthorId: text('source_author_id').references(() => authUsers.id),
+  sourceAuthorName: text('source_author_name'),
+  sourceSentAt: timestamp('source_sent_at', { withTimezone: true }),
+  sourceDmId: uuid('source_dm_id'),
+  sourceMessageId: uuid('source_message_id'),
   createdByUserId: text('created_by_user_id').references(() => authUsers.id),
   createdByAgentId: uuid('created_by_agent_id'),
   version: integer('version').notNull().default(1),

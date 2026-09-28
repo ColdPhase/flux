@@ -74,13 +74,13 @@ export const SEARCH_SOURCES: Record<SearchKind, SearchSource> = {
     target: (row) => ({ type: 'result', projectId: inProject(row), id: row.objectId }),
   },
   sketch: {
-    filter: 'sketch', audience: 'sketch', textIsTitle: false, label: (row) => (row.status === 'private' ? 'Private sketch' : 'Sketch'),
-    target: (row) => ({ type: 'sketch', sketchId: row.objectId }),
+    filter: 'sketch', audience: 'sketch', textIsTitle: false, label: (row) => (row.status === 'private' ? 'Private sketch' : row.status === 'dm' ? 'Sketch in a direct message' : 'Sketch'),
+    target: (row) => ({ type: 'sketch', sketchId: row.objectId, dmId: row.dmId }),
   },
   thought: {
     filter: 'sketch', audience: 'sketch', textIsTitle: true,
     label: (row) => (row.sketchTitle ? `Thought in ${quote(row.sketchTitle)}` : 'Thought'),
-    target: (row) => ({ type: 'thought', sketchId: row.parentId ?? '', thoughtId: row.objectId }),
+    target: (row) => ({ type: 'thought', sketchId: row.parentId ?? '', thoughtId: row.objectId, dmId: row.dmId }),
   },
   draft: {
     filter: 'draft', audience: 'draft', textIsTitle: false, label: (row) => DRAFT_STATUS[row.status ?? ''] ?? 'Draft',
@@ -101,6 +101,8 @@ export function searchKindsOf(filter: SearchFilterType): SearchKind[] {
 /** Where a row lives, told only from what the reader may see. */
 export function searchPlaceOf(row: SearchRow): SearchPlace {
   if (row.kind === 'dm_message' && row.parentId) return { type: 'dm', id: row.parentId, name: row.dmName ?? 'Direct message' };
+  // A DM sketch or thought lives in its DM (#96); only its participants can see it at all.
+  if ((row.kind === 'sketch' || row.kind === 'thought') && row.dmId) return { type: 'dm', id: row.dmId, name: row.dmName ?? 'Direct message' };
   if (row.kind === 'person') return { type: 'workspace', id: row.workspaceId, name: row.workspaceName ?? '' };
   // The project is named only when it is itself visible to the reader (the rows check it).
   if (row.projectId && row.projectName !== null) return { type: 'project', id: row.projectId, name: row.projectName };

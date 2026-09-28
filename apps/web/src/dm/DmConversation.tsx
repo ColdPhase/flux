@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { Link, useLoaderData, useLocation, useRevalidator, type LoaderFunctionArgs } from 'react-router';
+import { createPortal } from 'react-dom';
+import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, type LoaderFunctionArgs } from 'react-router';
 import type { ConversationMessage, Dm, DmPerson, SendDmMessageCommand } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { getDm, olderDmMessages, sendDmMessage } from '../api/direct-messages';
+import { createDmSketch } from '../api/sketches';
+import { sketchHref } from '../sketch/format';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
-import { Avatar, Button, Icon } from '../ui';
+import { useShellActions } from '../app/shellContext';
+import { Avatar, Button, Icon, useToast } from '../ui';
 import { audienceLine, dmTitle, othersIn } from './names';
 import { pageBackTo } from '../app/seekMessage';
 import './dm.css';
@@ -89,6 +93,15 @@ function DmContent({ initial }: { initial: Dm }) {
   const messagesRef = useRef(messages);
   const refreshing = useRef(false);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
+  // #96: selecting messages to start a sketch that stays in this DM.
+  const navigate = useNavigate();
+  const toast = useToast();
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [starting, setStarting] = useState(false);
+  const startAttempt = useRef<{ ids: string; key: string } | null>(null);
+  const selectButtonRef = useRef<HTMLButtonElement>(null);
+  const { actionSlot } = useShellActions();
 
   const title = dmTitle(dm, me.user.id);
   const audience = audienceLine(dm, me.user.id);
@@ -222,6 +235,37 @@ function DmContent({ initial }: { initial: Dm }) {
     finally { setOlderBusy(false); }
   }
 
+  function toggleSelecting(on: boolean) {
+    setSelecting(on);
+    setPicked([]);
+    requestAnimationFrame(() => {
+      if (on) feedRef.current?.querySelector<HTMLElement>('.dm-msel')?.focus({ preventScroll: true });
+      else selectButtonRef.current?.focus({ preventScroll: true });
+    });
+  }
+  const pick = (id: string) => setPicked((current) => (current.includes(id) ? current.filter((x) => x !== id) : [...current, id]));
+
+  async function startSketch() {
+    if (!picked.length || starting) return;
+    // In conversation order, whatever order they were picked in; a retry reuses its key.
+    const ids = messages.filter((m) => picked.includes(m.id)).map((m) => m.id);
+    const signature = ids.join(',');
+    if (startAttempt.current?.ids !== signature) startAttempt.current = { ids: signature, key: crypto.randomUUID() };
+    setStarting(true);
+    try {
+      const sketch = await createDmSketch(dm.workspaceId, dm.id, `From ${ids.length} ${ids.length === 1 ? 'message' : 'messages'}`, ids, startAttempt.current.key);
+      startAttempt.current = null;
+      navigate(sketchHref(sketch), { state: { fresh: true, started: ids.length } });
+    } catch (cause) {
+      setStarting(false);
+      if (cause instanceof ApiError && (cause.code === 'DM_RECIPIENT_LEFT' || cause.code === 'DM_RECIPIENT_UNAVAILABLE')) {
+        setLeftNotice(cause.message); setSelecting(false); setPicked([]); void refresh();
+        return;
+      }
+      if (!denied(cause)) toast({ message: 'The sketch couldn’t be started. Your selection is kept; try again.', tone: 'danger' });
+    }
+  }
+
   if (gone) return <DmUnavailable />;
   // A 1:1 whose other person left (or was removed) has nobody to send to: say so, disable sending.
   const counterpart = dm.kind === 'pair' ? dm.counterpart : null;
@@ -230,6 +274,10 @@ function DmContent({ initial }: { initial: Dm }) {
     ? leftNotice || `${counterpart!.name.split(/\s+/)[0]} left this conversation. They can reopen it by messaging you.`
     : '';
   const canSend = draft.trim().length > 0 && !busy && !recipientGone;
+  const selectButton = actionSlot && messages.length && !recipientGone ? createPortal(
+    <Button ref={selectButtonRef} variant="quiet" icon="check" aria-pressed={selecting} className="dm-select-btn" onClick={() => toggleSelecting(!selecting)}>Select</Button>,
+    actionSlot,
+  ) : null;
   const rows = messages.map((message, index) => {
     const previous = messages[index - 1];
     const label = dayLabel(message.createdAt);
@@ -237,7 +285,9 @@ function DmContent({ initial }: { initial: Dm }) {
     return { message, label, newDay, continued: !newDay && previous?.authorId === message.authorId };
   });
   return (
-    <div className="dm" data-dm-id={dm.id}>
+    <div className={`dm${selecting ? ' dm--selecting' : ''}`} data-dm-id={dm.id}
+      onKeyDown={(event) => { if (selecting && event.key === 'Escape') { event.preventDefault(); toggleSelecting(false); } }}>
+      {selectButton}
       <div className="dm__feed" ref={feedRef}>
         <div className="dm__in">
           {olderCursor ? null : (
@@ -257,10 +307,18 @@ function DmContent({ initial }: { initial: Dm }) {
             <ol className="dm__list" aria-label="Messages">
               {rows.map(({ message, label, newDay, continued }) => {
                 const mine = message.authorId === me.user.id;
+                const isPicked = selecting && picked.includes(message.id);
                 return (
-                  <li key={message.id} id={`message-${message.id}`} tabIndex={-1} className={`dm-msg${continued ? ' dm-msg--cont' : ''}${arrived === message.id ? ' is-arrived' : ''}`} data-sequence={message.sequence}>
+                  <li key={message.id} id={`message-${message.id}`} tabIndex={-1} className={`dm-msg${continued ? ' dm-msg--cont' : ''}${arrived === message.id ? ' is-arrived' : ''}${isPicked ? ' is-picked' : ''}`} data-sequence={message.sequence} data-message-id={message.id}>
                     {newDay ? <p className="dm__day"><span>{label}</span></p> : null}
-                    <div className="dm-msg__row">
+                    {/* While selecting, the whole row toggles; the check is the keyboard and screen reader control. */}
+                    <div className="dm-msg__row" onClick={selecting ? (event) => { if (!(event.target as HTMLElement).closest('.dm-msel')) pick(message.id); } : undefined}>
+                      {selecting ? (
+                        <button type="button" className="dm-msel" aria-pressed={isPicked} onClick={() => pick(message.id)}
+                          aria-label={`Select ${mine ? 'your' : `${nameOf(message.authorId)}’s`} message, ${time.format(new Date(message.createdAt))}`}>
+                          <i><Icon name="check" size={12} /></i>
+                        </button>
+                      ) : null}
                       <span className="dm-msg__face">{continued ? null : <Avatar name={mine ? me.user.name : nameOf(message.authorId)} size="md" tone={mine ? 'me' : 'neutral'} />}</span>
                       <div className="dm-msg__main">
                         {continued ? null : <p className="dm-msg__meta"><b>{nameOf(message.authorId)}</b><time dateTime={message.createdAt}>{time.format(new Date(message.createdAt))}</time></p>}
@@ -276,7 +334,17 @@ function DmContent({ initial }: { initial: Dm }) {
           )}
         </div>
       </div>
-      <div className="composer dm__composer">
+      {selecting ? (
+        <div className="dm-selbar" role="region" aria-label="Selected messages">
+          <div className="dm-selbar__in">
+            <span className="dm-selbar__count" role="status">{picked.length ? `${picked.length} ${picked.length === 1 ? 'message' : 'messages'} selected` : 'Choose the messages to sketch from'}</span>
+            <Button variant="quiet" onClick={() => toggleSelecting(false)}>Cancel</Button>
+            <Button variant="primary" icon="map" busy={starting} aria-disabled={!picked.length || undefined} onClick={() => void startSketch()}>Start sketch from these messages</Button>
+            <p className="dm-selbar__note"><Icon name="lock" size={12} />The sketch stays in this conversation: {audience.replace(/^Only /, 'only ')} can see it. No project is created.</p>
+          </div>
+        </div>
+      ) : null}
+      <div className="composer dm__composer" hidden={selecting}>
         <div className="composer__in">
           <p className="composer__audience" id={audienceId}><Icon name="lock" size={13} />{audience}<span aria-hidden="true"> · </span><span className="composer__where">direct message</span></p>
           {goneNotice ? <p className="dm__notice" role="status"><Icon name="lock" size={13} />{goneNotice}</p> : null}

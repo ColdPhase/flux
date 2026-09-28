@@ -30,6 +30,30 @@
 .dm-gone h2 { font-size: var(--fs-lg); color: var(--text); }
 .dm-gone p { margin: 4px 0 14px; font-size: var(--fs-md); }
 
+/* Selecting messages to start a sketch in this DM (#96). The check replaces the face; picked rows
+   take the one soft tint. Only transform, opacity and colours animate. */
+.dm--selecting .dm__composer { display: none; }
+.dm--selecting .dm-msg__row { grid-template-columns: 32px minmax(0, 1fr); margin: 0 -10px; padding-left: 10px; padding-right: 10px; border-radius: var(--r-lg); cursor: pointer; transition: background-color var(--dur-1) var(--ease-out); }
+.dm--selecting .dm-msg__row:hover { background: var(--bg-hover); }
+.dm--selecting .dm-msg.is-picked .dm-msg__row { background: var(--accent-soft); }
+.dm--selecting .dm-msg__face { display: none; }
+.dm-msel { display: grid; place-items: center; width: 32px; height: 32px; margin: -4px 0 0 -4px; border-radius: var(--r); color: var(--text-3); animation: dm-in var(--dur-2) var(--ease-out) backwards; }
+.dm-msel i { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; box-shadow: inset 0 0 0 1.5px var(--text-3); transition: var(--tr); }
+.dm-msel svg { opacity: 0; transform: scale(.6); color: var(--on-accent); transition: opacity var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
+.dm-msel[aria-pressed="true"] i { background: var(--accent); box-shadow: none; }
+.dm-msel[aria-pressed="true"] svg { opacity: 1; transform: none; }
+.dm-msel:active i { transform: scale(.9); }
+.dm-selbar { flex: none; border-top: 1px solid var(--line); background: var(--bg); padding: 10px 24px 16px; padding-bottom: max(16px, env(safe-area-inset-bottom)); animation: dm-rise var(--dur-2) var(--ease-out) backwards; }
+.dm-selbar__in { max-width: var(--col); margin: 0 auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; }
+.dm-selbar__count { margin-right: auto; font-size: var(--fs-md); font-weight: 500; color: var(--text); }
+.dm-selbar__note { flex-basis: 100%; display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--text-3); }
+.dm-selbar__note svg { flex: none; }
+.dm-selbar .ui-btn--primary[aria-disabled="true"] { background: var(--bg-active); color: var(--text-3); }
+.dm-select-btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.dm-sk-lead { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: var(--fs-sm); color: var(--text-3); }
+@keyframes dm-in { from { opacity: 0; transform: scale(.8); } }
+@keyframes dm-rise { from { opacity: 0; transform: translateY(8px); } }
+
 /* List of conversations */
 .dm-index__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 16px 0 14px; border-bottom: 1px solid var(--line); }
 .dm-index__head h2 { font-size: var(--fs-xl); letter-spacing: -0.015em; }
@@ -68,11 +92,16 @@
 
 @media (pointer: coarse) {
   .dm__error button { min-height: 44px; }
+  .dm--selecting .dm-msg__row { grid-template-columns: 44px minmax(0, 1fr); }
+  .dm-msel { width: 44px; height: 44px; margin: -10px 0 0 -10px; }
   .dm-new__person { min-height: 56px; }
   .dm-new__space select, .dm-new__search, .dm-new__title input { min-height: 44px; }
 }
 @media (max-width: 640px) {
   .dm__in { padding: 8px 16px 8px; }
+  .dm-selbar { padding: 8px 16px 12px; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .dm-selbar__in .ui-btn--primary { flex: 1 1 100%; justify-content: center; order: 3; }
+  .dm-selbar__note { order: 4; }
   .dm__head { padding: 8px 0 12px; }
   .dm__faces .ui-avatar--lg { width: 30px; height: 30px; }
   .dm__composer { padding-top: 6px; }

@@ -74,6 +74,8 @@ export interface SearchRowRecord {
   projectId: string | null;
   /** Set only when the project is itself visible to the reader. */
   projectName: string | null;
+  /** The DM of a DM message, or of a sketch or thought that belongs to a DM (#96). */
+  dmId: string | null;
   dmName: string | null;
   sketchTitle: string | null;
   version: number | null;
@@ -155,8 +157,10 @@ function hitConditions(plan: SearchPlanRows, withKinds: boolean): SQL {
   if (withKinds && plan.kinds?.length) conditions.push(sql`sd.kind IN (${sql.join(plan.kinds.map((kind) => sql`${kind}`), sql`, `)})`);
   const place = plan.place;
   if (place?.type === 'project') conditions.push(sql`sd.project_id = ${place.id}::uuid`);
-  if (place?.type === 'dm') conditions.push(sql`sd.audience_key = ${`dm:${place.id}`}`);
-  if (place?.type === 'private') conditions.push(sql`((sd.kind = 'draft' AND sd.status = 'private') OR (sd.kind IN ('sketch', 'thought') AND sd.project_id IS NULL))`);
+  // A DM's own messages carry its audience; its sketches and thoughts keep the sketch audience
+  // (still checked above) and name the DM (#96).
+  if (place?.type === 'dm') conditions.push(sql`(sd.audience_key = ${`dm:${place.id}`} OR sd.dm_id = ${place.id}::uuid)`);
+  if (place?.type === 'private') conditions.push(sql`((sd.kind = 'draft' AND sd.status = 'private') OR (sd.kind IN ('sketch', 'thought') AND sd.project_id IS NULL AND sd.dm_id IS NULL))`);
   if (plan.author) conditions.push(sql`sd.author_kind = ${plan.author.kind} AND sd.author_id = ${plan.author.id}`);
   return sql.join(conditions, sql` AND `);
 }
@@ -170,7 +174,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows): S
   return sql`
     WITH ${audienceCte(audiences, plan)},
     matched AS (
-      SELECT sd.id, sd.kind, sd.workspace_id, sd.object_id, sd.parent_id, sd.project_id, sd.version, sd.status, sd.title, sd.body,
+      SELECT sd.id, sd.kind, sd.workspace_id, sd.object_id, sd.parent_id, sd.project_id, sd.dm_id, sd.version, sd.status, sd.title, sd.body,
         sd.author_kind, sd.author_id, sd.at,
         round((ts_rank(sd.tsv, ${q}) + 0.5 * word_similarity(${plan.text}, sd.title))::numeric, 6) AS score,
         row_number() OVER (PARTITION BY sd.kind, sd.object_id ORDER BY sd.version DESC NULLS LAST) AS newest
@@ -180,7 +184,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows): S
     -- One result per object: of several matching versions of a material, the newest.
     hits AS (SELECT * FROM matched WHERE newest = 1)
     SELECT h.id::text AS id, h.score::text AS score, h.at::text AS at_key, h.at, h.kind, h.workspace_id, w.name AS workspace_name,
-      h.object_id, h.parent_id, h.project_id, p.name AS project_name, h.version, pm.current_version, h.status, sk.title AS sketch_title,
+      h.object_id, h.parent_id, h.project_id, coalesce(h.dm_id, d.id) AS dm_id, p.name AS project_name, h.version, pm.current_version, h.status, sk.title AS sketch_title,
       coalesce(au.name, ag.name) AS author_name, length(h.body) > 0 AS has_body,
       ts_headline('simple', ${clean(sql`h.title`)}, ${q}, ${TITLE_OPTIONS}) AS title_headline,
       CASE WHEN length(h.body) = 0 THEN NULL
@@ -197,7 +201,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows): S
     LEFT JOIN agents ag ON ag.id = (CASE WHEN h.author_kind = 'agent' THEN h.author_id::uuid END)
     LEFT JOIN project_materials pm ON pm.id = (CASE WHEN h.kind IN ('material', 'doc') THEN h.object_id::uuid END)
     LEFT JOIN sketches sk ON h.kind = 'thought' AND sk.id = h.parent_id
-    LEFT JOIN dms d ON h.kind = 'dm_message' AND d.id = h.parent_id
+    LEFT JOIN dms d ON d.id = (CASE WHEN h.kind = 'dm_message' THEN h.parent_id ELSE h.dm_id END)
     ORDER BY h.score DESC, h.at DESC, h.id DESC`;
 }
 
@@ -210,7 +214,7 @@ function countStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, c
 
 interface PageRow {
   id: string; score: string; at_key: string; at: Date | string; kind: SearchKind; workspace_id: string; workspace_name: string | null;
-  object_id: string; parent_id: string | null; project_id: string | null; project_name: string | null; version: number | null;
+  object_id: string; parent_id: string | null; project_id: string | null; dm_id: string | null; project_name: string | null; version: number | null;
   current_version: number | null; status: string | null; sketch_title: string | null; author_name: string | null; has_body: boolean;
   title_headline: string | null; body_headline: string | null; dm_name: string | null;
 }
@@ -303,6 +307,7 @@ export function searchRows(db: SearchExecutor) {
         parentId: row.parent_id,
         projectId: row.project_id,
         projectName: row.project_name,
+        dmId: row.dm_id,
         dmName: row.dm_name,
         sketchTitle: row.sketch_title,
         version: row.version,
