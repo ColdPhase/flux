@@ -27,7 +27,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RELEVANT = new Set([
   'project.conversation_created.v1', 'project.message_sent.v1', 'project.material_created.v1', 'project.material_updated.v1',
   'project.work_created.v1', 'project.work_updated.v1', 'project.decision_proposed.v1', 'project.decision_accepted.v1',
-  'project.result_recorded.v1', 'sketch.created.v1', 'sketch.changed.v1',
+  'project.result_recorded.v1', 'sketch.created.v1', 'sketch.changed.v1', 'project.doc_created.v1', 'project.doc_updated.v1',
 ]);
 const MESSAGE_KINDS = new Set(['project.conversation_created.v1', 'project.message_sent.v1']);
 
@@ -218,6 +218,7 @@ export function createReturnUseCases(ports: ReturnPorts) {
         case 'project.result_recorded.v1': { const result = id('resultId'); if (result) add(`result:${result}`, 'result', event); break; }
         case 'project.material_created.v1': case 'project.material_updated.v1': { const material = id('materialId'); if (material) add(`material:${material}`, 'material', event); break; }
         case 'sketch.created.v1': case 'sketch.changed.v1': add(`sketch:${event.objectId}`, 'sketch', event); break;
+        case 'project.doc_created.v1': case 'project.doc_updated.v1': { const doc = id('docId'); if (doc) add(`doc:${doc}`, 'doc', event); break; }
         case 'project.conversation_created.v1': case 'project.message_sent.v1': {
           const message = id('messageId');
           // Messages recorded before #106 carry no ids and cannot link to a source; they are left out.
@@ -228,9 +229,9 @@ export function createReturnUseCases(ports: ReturnPorts) {
       }
     }
     const ids = (prefix: string) => [...groups.keys()].filter((item) => item.startsWith(`${prefix}:`)).map((item) => item.slice(prefix.length + 1));
-    const [work, decisions, results, resultWork, messages, materials, sketches] = await Promise.all([
+    const [work, decisions, results, resultWork, messages, materials, sketches, docs] = await Promise.all([
       returns.work(ids('work')), returns.decisions(ids('decision')), returns.results(ids('result')), returns.resultWork(ids('result')),
-      returns.messages(messageIds), returns.materials(ids('material')), returns.sketches(ids('sketch')),
+      returns.messages(messageIds), returns.materials(ids('material')), returns.sketches(ids('sketch')), returns.docs(ids('doc')),
     ]);
     const extraWork = [...resultWork.values()].flat().filter((id) => !work.has(id));
     for (const [id, item] of await returns.work(extraWork)) work.set(id, item);
@@ -367,6 +368,24 @@ export function createReturnUseCases(ports: ReturnPorts) {
         items.push({ ...base, kind: 'material', text: `${created ? 'New material' : 'Updated material'}: ${item.title}`,
           detail: created ? null : `Now version ${item.version}`, needsYou: false,
           source: { type: 'material', projectId: item.projectId, materialId: item.id, version: item.version } });
+        continue;
+      }
+
+      if (group.kind === 'doc') {
+        const item = docs.get(objectId);
+        if (!item || !inProject(item.projectId)) continue;
+        const created = group.events.some((event) => event.kind === 'project.doc_created.v1');
+        const who = list(group.events.map((event) => nameOf(event.actorId)!));
+        // The versions made while you were away; the link compares from the one before them.
+        const versions = group.events.map((event) => event.data.version).filter((value): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0);
+        const earliest = versions.length ? Math.min(...versions) : item.version;
+        const count = new Set(versions).size;
+        const since = created || earliest <= 1 ? null : earliest - 1;
+        const reason = item.reason.trim();
+        items.push({ ...base, kind: 'doc', text: created ? `${who} started a doc: ${item.title}` : `Doc updated: ${item.title}`,
+          detail: created ? (reason && reason !== 'Started the doc' ? reason : null)
+            : [`${count > 1 ? `${count} new versions` : `Version ${item.version}`} by ${who}`, reason ? `latest: ${reason}` : null].filter(Boolean).join(' · '),
+          needsYou: false, source: { type: 'doc', projectId: item.projectId, docId: item.id, version: item.version, since } });
         continue;
       }
 

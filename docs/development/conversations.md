@@ -25,6 +25,11 @@ UUID for other content returns 409. A fresh edit against an old version returns
 even after later edits. Existing draft updates also retain private version
 snapshots in PostgreSQL. They are not public API resources.
 
+**Docs (#112)** are project materials of kind `doc` that reuse these immutable version
+snapshots; see [docs and wiki](docs-wiki.md). A message can cite a doc version like any material
+version. The materials list excludes docs, and `PATCH /api/v1/materials/:id` on a doc is
+`409 USE_DOC_API`. Since #112 the database rejects any `UPDATE` of a version row.
+
 Collection reads use `?limit=1..100&offset=0..10000` and count only material in
 the authorized project. `GET /api/v1/conversations/:id` returns the newest 50
 messages by default, in ascending display order. `?limit=1..100` changes the

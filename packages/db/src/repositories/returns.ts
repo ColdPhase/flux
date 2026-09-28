@@ -176,6 +176,16 @@ export function returnRows(db: DbExecutor) {
       return byId(rows);
     },
 
+    /** Project docs (#112): materials of kind 'doc' with their current version's title and reason. */
+    async docs(ids: string[]) {
+      if (!ids.length) return new Map();
+      const pm = schema.projectMaterials;
+      const v = schema.projectMaterialVersions;
+      const rows = await db.select({ id: pm.id, projectId: pm.projectId, title: v.title, version: pm.currentVersion, reason: v.reason }).from(pm)
+        .innerJoin(v, and(eq(v.materialId, pm.id), eq(v.version, pm.currentVersion))).where(and(inArray(pm.id, ids), eq(pm.kind, 'doc')));
+      return byId(rows);
+    },
+
     async sketches(ids: string[]) {
       if (!ids.length) return new Map();
       const s = schema.sketches;

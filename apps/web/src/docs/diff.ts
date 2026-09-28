@@ -28,7 +28,9 @@ function words(before: string, after: string): { removed: DiffPart[]; added: Dif
 
 export function diffDocs(before: string, after: string): DiffRow[] {
   const rows: DiffRow[] = [];
-  const changes = diffLines(before, after);
+  // A missing final newline is not a change of the last line.
+  const ended = (text: string) => (text && !text.endsWith('\n') ? `${text}\n` : text);
+  const changes = diffLines(ended(before), ended(after));
   for (let index = 0; index < changes.length; index++) {
     const change = changes[index]!;
     if (!change.added && !change.removed) {

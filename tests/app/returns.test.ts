@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { createDatabase } from '@flux/db';
-import type { Conversation, Decision, Project, ReturnPlace, ReturnPoint, ReturnSummary, Workspace, WorkItem, WorkResult } from '@flux/contracts';
+import type { Conversation, Decision, Doc, Project, ReturnPlace, ReturnPoint, ReturnSummary, Workspace, WorkItem, WorkResult } from '@flux/contracts';
 import type { ClientResponse } from './support/http.js';
 import { addMember, expectStatus, grant, person, project as createProject, workspace, type Person } from './support/people.js';
 
@@ -152,6 +152,23 @@ describe('return view: since you left', () => {
     const withProposal = await summary(nia, { type: 'project', id: lamp.id });
     const proposed = withProposal.items.find((item) => item.source.type === 'decision' && item.source.id === proposal.id)!;
     assert.deepEqual([proposed.text, proposed.detail, proposed.needsYou], ['Proposed rule: Dim the lamp at night', 'Ari proposed it', true]);
+  });
+
+  test('doc changes (#112) are one item in human language that opens what changed', async () => {
+    const place = { type: 'project' as const, id: lamp.id };
+    await view(nia, place);
+    const doc = json<Doc>(await post(ari, `/api/v1/projects/${lamp.id}/docs`, { title: 'Lamp wiring', body: 'Mains to the driver.' }), 201);
+    const started = (await summary(nia, place)).items.filter((item) => item.kind === 'doc');
+    assert.deepEqual(started.map((item) => [item.text, item.detail, item.needsYou]), [['Ari started a doc: Lamp wiring', null, false]]);
+    assert.deepEqual(started[0]!.source, { type: 'doc', projectId: lamp.id, docId: doc.id, version: 1, since: null });
+    await view(nia, place);
+    json(await patch(ari, `/api/v1/docs/${doc.id}`, { body: 'Mains to the 24 V driver.', reason: 'Named the driver' }, { 'if-match': '"1"' }), 200);
+    json(await patch(ari, `/api/v1/docs/${doc.id}`, { state: 'published' }, { 'if-match': '"2"' }), 200);
+    const updated = (await summary(nia, place)).items.filter((item) => item.kind === 'doc');
+    assert.deepEqual(updated.map((item) => [item.text, item.detail]), [['Doc updated: Lamp wiring', '2 new versions by Ari · latest: Published']]);
+    assert.deepEqual(updated[0]!.source, { type: 'doc', projectId: lamp.id, docId: doc.id, version: 3, since: 1 });
+    // A person's own edits are not news to them.
+    assert.equal((await summary(ari, place)).items.some((item) => item.kind === 'doc'), false);
   });
 
   test('saving moves the point forward only; the person may move it back once', async () => {

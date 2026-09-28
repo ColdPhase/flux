@@ -115,7 +115,7 @@
 .doc-diff ins { text-decoration: none; border-radius: 3px; background: color-mix(in srgb, var(--ok) 22%, transparent); box-shadow: 0 1px 0 var(--ok); }
 .doc-diff del { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--danger) 70%, transparent); border-radius: 3px; background: color-mix(in srgb, var(--danger) 16%, transparent); }
 .doc-diff__fold { padding: 2px 12px 2px 32px; font-family: var(--font); font-size: var(--fs-xs); color: var(--text-3); background: var(--bg-side); }
-.doc-diff--compact { max-height: 280px; overflow-y: auto; margin-top: 12px; }
+.doc-diff--compact { background: var(--bg); max-height: 280px; overflow-y: auto; margin-top: 12px; }
 
 /* ---------- Editor ---------- */
 .doc-edit { padding-top: 12px; }
@@ -143,7 +143,7 @@
 .doc-edit__save .doc-seg button { min-height: calc(var(--ctl) - 4px); }
 .doc-edit__acts { display: flex; gap: 8px; margin-left: auto; }
 .doc-edit__foot { margin-top: 12px; }
-.doc-conflict { margin: 14px 0; padding: 12px 14px; border-radius: var(--r); background: var(--tint-danger); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning) 30%, transparent); font-size: var(--fs-md); color: var(--text-2); }
+.doc-conflict { margin: 14px 0; padding: 12px 14px; border-radius: var(--r); background: var(--bg-side); box-shadow: inset 3px 0 0 var(--warning), inset 0 0 0 1px var(--line); font-size: var(--fs-md); color: var(--text-2); }
 .doc-conflict p { display: flex; gap: 8px; align-items: baseline; margin: 0; line-height: 1.55; }
 .doc-conflict p svg { flex: none; color: var(--warning); transform: translateY(2px); }
 .doc-conflict b { color: var(--text); font-weight: 600; }

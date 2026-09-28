@@ -354,6 +354,11 @@ on its own `LISTEN` for wake-ups.
 rows after the person's saved return point, calls `authorizeEvent` again for every event and,
 on Home, also applies `visibleFilter` to each project. See [return-view.md](return-view.md).
 
+**Project docs** (#112). Doc reads and writes use the project policy (`evaluateProject`, write
+under the access-row lock); an invisible doc is `404 DOC_NOT_FOUND`. The workspace doc list
+applies `visibleFilter` before the page and total. `flux:` references resolve only inside the
+doc's project, so a doc never shows titles of other audiences. See [docs-wiki.md](docs-wiki.md).
+
 ## Worker jobs
 
 `draft.summarize.v1` (`packages/core/src/jobs/draft-summary.ts`) is a placeholder
