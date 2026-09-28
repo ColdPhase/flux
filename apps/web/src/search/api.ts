@@ -24,11 +24,7 @@ export function targetHref(target: SearchTarget): string {
     case 'thought': return `/map/${target.sketchId}#thought-${target.thoughtId}`;
     case 'draft': return `/#draft-${target.draftId}`;
     case 'person': return `/dm/new?workspace=${encodeURIComponent(target.workspaceId)}&with=${encodeURIComponent(target.userId)}`;
-    default: return `/projects/${target.projectId}`;
+    // Work, decisions and results open in Details on the project's Tasks view (#101, #117).
+    default: return `/projects/${target.projectId}/tasks?open=${target.type}:${target.id}`;
   }
-}
-
-/** Work, decisions and results open in Details on their project. */
-export function detailsOf(target: SearchTarget) {
-  return target.type === 'work' || target.type === 'decision' || target.type === 'result' ? { kind: target.type, id: target.id } : null;
 }

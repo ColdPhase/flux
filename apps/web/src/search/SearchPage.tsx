@@ -1,10 +1,9 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { SEARCH_FILTER_TYPES, type SearchFilterType, type SearchResult } from '@flux/contracts';
+import { SEARCH_FILTER_TYPES, type SearchFilterType } from '@flux/contracts';
 import { Button, EmptyState, Icon, Spinner } from '../ui';
 import { useShellData } from '../app/data';
-import { detailsOf, targetHref } from './api';
-import { useOpenResult } from './JumpTo';
+import { targetHref } from './api';
 import { useRecentSearches } from './recent';
 import { ResultBody } from './ResultRow';
 import { useSearch } from './useSearch';
@@ -28,7 +27,6 @@ export function SearchPage() {
   const [params, setParams] = useSearchParams();
   const { me, projects, directMessages } = useShellData();
   const recent = useRecentSearches(me.user.id);
-  const openResult = useOpenResult();
   const inputId = useId();
   const listRef = useRef<HTMLOListElement>(null);
   const q = params.get('q') ?? '';
@@ -74,12 +72,7 @@ export function SearchPage() {
     event.preventDefault();
     links[event.key === 'ArrowDown' ? Math.min(index + 1, links.length - 1) : index - 1]?.focus();
   };
-  const onResultClick = (event: MouseEvent<HTMLAnchorElement>, result: SearchResult) => {
-    recent.remember(draft);
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0 || !detailsOf(result.target)) return;
-    event.preventDefault();
-    openResult(result);
-  };
+  const onResultClick = () => recent.remember(draft);
 
   return (
     <div className="pane-scroll">
@@ -140,7 +133,7 @@ export function SearchPage() {
             <ol className="search__list" ref={listRef} aria-label="Results" aria-busy={state.status === 'loading'}>
               {items.map((result) => (
                 <li key={result.id}>
-                  <Link className="sr" to={targetHref(result.target)} onClick={(event) => onResultClick(event, result)}><ResultBody result={result} /></Link>
+                  <Link className="sr" to={targetHref(result.target)} onClick={onResultClick}><ResultBody result={result} /></Link>
                 </li>
               ))}
             </ol>

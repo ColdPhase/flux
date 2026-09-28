@@ -2,8 +2,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useNavigate } from 'react-router';
 import type { SearchResult } from '@flux/contracts';
 import { Icon, MEDIA, Overlay, Spinner, useMediaQuery } from '../ui';
-import { useShellActions } from '../app/shellContext';
-import { detailsOf, targetHref } from './api';
+import { targetHref } from './api';
 import { useRecentSearches } from './recent';
 import { ResultBody } from './ResultRow';
 import { useSearch } from './useSearch';
@@ -14,15 +13,10 @@ type Option =
   | { kind: 'recent'; id: string; text: string }
   | { kind: 'all'; id: string };
 
-/** Opens a result: its exact place, and Details for work, decisions and results. */
+/** Opens a result at its exact place (work, decisions and results in Details on Tasks). */
 export function useOpenResult() {
   const navigate = useNavigate();
-  const { openDetails } = useShellActions();
-  return (result: SearchResult) => {
-    navigate(targetHref(result.target));
-    const details = detailsOf(result.target);
-    if (details) openDetails(details);
-  };
+  return (result: SearchResult) => navigate(targetHref(result.target));
 }
 
 /**

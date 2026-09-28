@@ -178,7 +178,7 @@ class SearchJourney(unittest.TestCase):
         field.press("ArrowUp")
         self.assertEqual(dialog.get_by_role("option").first.get_attribute("aria-selected"), "true")
         field.press("Enter")
-        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['lamp']}$"))
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['lamp']}/tasks$"))
         expect(page.get_by_role("complementary", name="Details").or_(page.get_by_role("dialog", name="Details"))).to_contain_text("Use the infrared sensor at night")
         # A thought opens its sketch with the thought selected; Esc closes Jump to without moving.
         dialog, field = self.jump(page, "walnut")
@@ -325,7 +325,7 @@ class SearchJourney(unittest.TestCase):
             self.assertGreaterEqual(option_box["height"], 44)
         shot(page, "search-jump-phone-390")
         options.filter(has_text="Mount the infrared sensor").first.click()
-        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['lamp']}$"))
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['lamp']}/tasks$"))
         expect(page.get_by_role("dialog", name="Details")).to_contain_text("Mount the infrared sensor in the lamp base")
         page.goto("/search?q=sensor")
         results = page.get_by_role("list", name="Results")
