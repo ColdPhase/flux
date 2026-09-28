@@ -42,6 +42,26 @@ restrictive-network acceptance remain in [#63](https://github.com/ColdPhase/flux
   only identities, response choice and dates. The recipient's bounded,
   encrypted-cursor inbox rechecks project and anchor access on every page;
   replying `later` or `text` never sends a message on the person's behalf.
+  A new invitation row (never a repeated invite) commits `project.live_invited.v1`
+  with identifiers only; the notification worker turns it into one quiet `invitation`
+  inbox item for the recipient (inbox and push by default, no email, no ringing) that
+  opens `/projects/:p/live/:session?invitation=:id`. If the recipient lost project
+  access, answered, or the session stopped being available before generation, nothing
+  is created ([notifications](notifications.md)).
+- Signing out (`POST /api/auth/sign-out`, when live media is configured) resolves the
+  person before Better Auth deletes the session and, after a 2xx response, removes
+  them from each available room of their workspaces (at most 50, newest first) whose
+  SFU participant list contains them (`apps/server/src/live/signout.ts`). It runs
+  after the response with a 15-second bound; SFU failures are logged and never fail
+  or delay sign-out. The SFU identity is the person, not the device, so their other
+  signed-in devices are disconnected too and rejoin with a fresh grant.
+  `RemoveParticipant` does not invalidate an unexpired grant (90 s); a signed-out
+  client has no session to request a new one.
+- `POST /api/v1/live-sessions/:id/join` allows at most 20 attempts per person per
+  rolling 60 seconds **per API instance** (in-memory, created in the composition
+  root; bounded to 10,000 tracked people). Beyond that it answers
+  `429 LIVE_JOIN_RATE_LIMITED` with `Retry-After`. With several API replicas the
+  effective limit multiplies; it guards against runaway clients, not abuse at scale.
 - `GET /api/v1/projects/:projectId/live-sessions` lists currently readable,
   available sessions in bounded pages. The server rechecks each session's
   project and anchor before returning it. The response contains opaque session

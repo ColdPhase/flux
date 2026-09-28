@@ -19,6 +19,7 @@ A notification exists only for a reason a person can act on (`reason` on every r
 | `dm` | `dm.message_sent.v1` (now carries `messageId`) | The other current participants. |
 | `assigned` | `project.work_created.v1` / `project.work_updated.v1` with `assignedTo` | A person someone else made the owner. |
 | `review` | `project.decision_proposed.v1`, `project.result_recorded.v1` | Owners of work the decision affects or the result is about, and the owner of the agent that produced it. |
+| `invitation` | `project.live_invited.v1` (`{ sessionId, invitationId, recipientId }`, recorded only when a new invitation row is inserted) | The invited person, while the invitation is still `pending` and its live session `available` ([live sessions](live-sessions.md), #62). |
 
 The actor is never notified. Nothing else notifies: no digests, counts or "you have been away".
 
@@ -46,7 +47,13 @@ Rows are unique per `(user_id, event_id)`, so reprocessing the log never duplica
 source is the project or DM (`source_type` gains `dm`), so the #41 inbox, push preview and
 tap-time rechecks apply unchanged. The URL opens the exact message
 (`/projects/:p/conversations/:c#message-:m`, `/dm/:d#message-:m`) or the object in Details
-(`/projects/:p/tasks?open=work:<id>`).
+(`/projects/:p/tasks?open=work:<id>`). An invitation reads "<inviter> invited you to work
+together", body `On “<anchor label>” in <project>` (the conversation's opening message or the
+work item, project sketch or doc title, excerpted to 80 characters) and opens
+`/projects/:p/live/:session?invitation=:invitation`. Repeated invites of the same person to
+the same session converge on one invitation row and record no second event, so there is one
+inbox row and one push. Migration `0026_live_invitation_notifications.sql` (`FLUX_SCHEMA_VERSION`
+26) adds the reason to the `notifications.reason` check.
 
 ## Preferences
 
@@ -57,7 +64,8 @@ edits of different fields never overwrite each other; for the same field the lat
 The settings page sends its saves one after another, numbered, and shows only the newest answer.
 
 - **Channels per reason** (`inApp`, `push`, `email`). Defaults: inbox and push on for every
-  reason; email on for `mention`, `question` and `dm` only. With the inbox off but push or email
+  reason; email on for `mention`, `question` and `dm` only (an `invitation` is quiet: inbox and
+  push, no email, never a ringing call). With the inbox off but push or email
   on, the row is kept (`in_inbox = false`) to back those channels and the tap-time recheck, but
   the inbox list leaves it out. All off: nothing is stored.
 - **Mute a place** (a project or DM the person can read): nothing from it notifies, on any
@@ -140,6 +148,9 @@ destination and extra address, quiet hours and muted places. `/inbox/:id` (email
   one-click unsubscribe, access recheck before email and push, push preferences, duplicate and
   concurrent sends, extra address verification and expiry, extra address never signing in or
   receiving a reset, the two-SSO-user destination matrix (#113), STARTTLS and smtps paths.
+- `tests/app/live-invitation-notifications.test.ts`: one invitation item with the exact link,
+  repeated invites, the inviter, and invitations that lost access, were answered or whose
+  session ended before generation (the cursor is held while they change); `invitation.inApp`.
 - `tests/app/email-unavailable.check.ts` after restarting API and worker without SMTP.
 - `tests/ui/test_notifications.py`: inbox from the rail, opening sources, mark read, preferences,
   muting, verifying an address through Mailpit, phone layout, dark mode and the unsubscribe page.

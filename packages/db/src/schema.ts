@@ -409,7 +409,7 @@ export const notifications = pgTable('notifications', {
   readAt: timestamp('read_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   // Migration 0015 (#116): why it exists, the event it came from, and whether the inbox lists it.
-  reason: text('reason').$type<'mention' | 'question' | 'reply' | 'dm' | 'assigned' | 'review'>(),
+  reason: text('reason').$type<'mention' | 'question' | 'reply' | 'dm' | 'assigned' | 'review' | 'invitation'>(),
   eventId: uuid('event_id'),
   inInbox: boolean('in_inbox').notNull().default(true),
 }, (table) => [
