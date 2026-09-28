@@ -59,9 +59,11 @@ the still-disabled background rule.
 Another project member may author a qualifying result under the owner's standing
 rule, but cannot read or revoke that owner's connection or directly command it.
 The API has no route to change the rule's owner, audience, scope or purpose.
-The Docker browser journey in `tests/app/e2e/proactive-comparison.e2e.ts` seeds two
-proposals for a restricted project, renders them at 1440×900, follows an exact
-project-message citation, then edits, uses and dismisses them. It verifies the
+The Docker browser journey in `tests/app/e2e/proactive-comparison.e2e.ts` seeds
+one human work item and two proposals for a restricted project, renders their
+compact review rows alongside ordinary work and results at 1440×900, opens one
+by keyboard, follows an exact project-message citation, then edits, uses and
+dismisses them. It verifies the
 stored versions and resulting work through the API after reload. A person also
 creates work manually after both proposals are gone, so the continuing project
 workflow does not depend on an available model connection.

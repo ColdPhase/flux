@@ -60,15 +60,21 @@ test('real project UI presents sourced quiet suggestions, then persists edits, u
   assert.equal(await cards.count(), 2);
   const initial = (await proposals()).filter((item) => item.status === 'proposed');
   assert.equal(initial.length, 2);
-  assert.match(await cards.first().locator('h3').innerText(), /Second low-light trial/);
-  assert.match(await cards.nth(1).locator('h3').innerText(), /Camera trial failed/);
-  assert.match(await cards.first().innerText(), /Observed fact[\s\S]*Interpretation[\s\S]*Suggested next step[\s\S]*Sources/);
+  assert.match(await cards.first().locator('.ws-proposal__title').innerText(), /Second low-light trial/);
+  assert.match(await cards.nth(1).locator('.ws-proposal__title').innerText(), /Camera trial failed/);
+  assert.equal(await cards.first().locator('.ws-proposal__toggle').getAttribute('aria-expanded'), 'false');
   assert.match(await page.locator('.ws-proposals__intro').innerText(), /has not changed any work or decision/);
-  const resultRow = await page.locator('#g-results + .ws-list .ws-item').first().boundingBox();
+  const workRow = await page.locator('#g-open + .ws-list .ws-item').first().boundingBox();
+  const resultRow = await page.locator('#g-results + .ws-list .ws-item').nth(1).boundingBox();
+  assert.ok(workRow && workRow.y + workRow.height < 900, 'ordinary work remains visible at 1440×900');
   assert.ok(resultRow && resultRow.y + resultRow.height < 900,
-    'the first ordinary result remains visible below the suggestions at 1440×900');
+    'both ordinary results remain visible below the suggestions at 1440×900');
   await page.screenshot({ path: '/state/proactive-ui-1440.png', fullPage: true });
 
+  await cards.first().locator('.ws-proposal__toggle').focus();
+  await page.keyboard.press('Enter');
+  assert.equal(await cards.first().locator('.ws-proposal__toggle').getAttribute('aria-expanded'), 'true');
+  assert.match(await cards.first().innerText(), /Observed fact[\s\S]*Interpretation[\s\S]*Suggested next step[\s\S]*Sources/);
   const message = cards.first().getByRole('link', { name: /Project message/ });
   assert.equal(await message.getAttribute('href'),
     `/projects/${fixture.projectId}/conversations/${fixture.conversationId}#message-${fixture.messageId}`);
@@ -76,11 +82,13 @@ test('real project UI presents sourced quiet suggestions, then persists edits, u
   await page.locator(`#message-${fixture.messageId}`).waitFor();
   await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks`);
   await cards.first().waitFor();
+  await cards.first().locator('.ws-proposal__toggle').click();
   await cards.first().getByRole('button', { name: 'Edit', exact: true }).click();
   await cards.first().getByLabel('Interpretation').fill('The camera result suggests testing a distance sensor, but needs a controlled comparison.');
   await cards.first().getByRole('button', { name: 'Save edits' }).click();
   await page.waitForFunction(() => document.querySelector('.ws-proposal')?.textContent?.includes('needs a controlled comparison'));
   await page.reload();
+  await cards.first().locator('.ws-proposal__toggle').click();
   assert.match(await cards.first().innerText(), /needs a controlled comparison/);
   let stored = await proposals();
   assert.equal(stored.find((item) => item.id === initial[0]?.id)?.version, 2);
@@ -95,6 +103,7 @@ test('real project UI presents sourced quiet suggestions, then persists edits, u
   assert.equal(work.status, 200);
   assert.ok((work.data as { items: Array<{ id: string }> }).items.some((item) => item.id === used.usedWorkId));
 
+  await cards.first().locator('.ws-proposal__toggle').click();
   await cards.first().getByRole('button', { name: 'Dismiss' }).click();
   await page.waitForFunction(() => document.querySelectorAll('.ws-proposal').length === 0);
   await page.reload();

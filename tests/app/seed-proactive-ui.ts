@@ -24,6 +24,8 @@ try {
       body: 'Camera A recognized 38% of 20 gestures. The target is 90%.' } }), 201) as Material;
   const conversation = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${prj.id}/conversations`,
     { body: { clientMessageId: randomUUID(), body: 'Could a ToF distance sensor work better than our camera in a dark bedroom?' } }), 201) as Conversation;
+  expectStatus(await owner.browser.request('POST', `/api/v1/projects/${prj.id}/work`,
+    { body: { title: 'Measure ToF response at 5 lux' }, headers: { 'idempotency-key': randomUUID() } }), 201);
   const results: WorkResult[] = [];
   for (const title of ['Camera trial failed at 5 lux', 'Second low-light trial missed the target']) {
     results.push(expectStatus(await owner.browser.request('POST', `/api/v1/projects/${prj.id}/results`,

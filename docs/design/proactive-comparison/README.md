@@ -1,11 +1,12 @@
 # Project comparison suggestions (#58)
 
 The [1440×900 screenshot](project-tasks-1440.png) shows a restricted sensor
-project's Tasks surface at 100% zoom with two negative low-light results, their
-separately sourced agent suggestions and the ordinary result list. It was
-rendered from persisted Docker seed data at application commit `2c51b1e` on
-2026-09-28. The two result titles are intentionally distinct while the shared
-interpretation and next step repeat, making scanning pressure visible.
+project's Tasks surface at 100% zoom with one human work item, two negative
+low-light results, two collapsed, separately sourced agent suggestions and the
+ordinary work/result lists. It was rendered from persisted Docker seed data
+on 2026-09-28. The two result titles are intentionally distinct. Opening a
+suggestion reveals its fact, interpretation, next step, citations and human
+actions; the collapsed state keeps ordinary work visible before review.
 
 The browser journey in `tests/app/e2e/proactive-comparison.e2e.ts` separately
 checks an exact source-message route, edit/reload, use as work, dismissal and

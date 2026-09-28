@@ -15,6 +15,7 @@ export function ProjectProposals({ proposals, people, projectName, resultTitles,
   const [action, setAction] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [expanded, setExpanded] = useState<string | null>(null);
   const open = proposals.filter((proposal) => proposal.status === 'proposed');
   if (!open.length) return null;
   const name = (id: string) => people?.find((person) => person.id === id)?.name ?? 'a project member';
@@ -34,7 +35,9 @@ export function ProjectProposals({ proposals, people, projectName, resultTitles,
         const outcome = await applyComparisonProposal(proposal, proposal.suggestedAction.slice(0, 200));
         openWork(outcome.work);
       }
-      setEditing(null); refresh();
+      setEditing(null);
+      if (kind !== 'edit') setExpanded(null);
+      refresh();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'The proposal could not be changed.');
     } finally { setBusy(false); }
@@ -45,9 +48,17 @@ export function ProjectProposals({ proposals, people, projectName, resultTitles,
       <p className="ws-proposals__intro">Quiet project suggestions. The agent has not changed any work or decision.</p>
       {open.map((proposal) => {
         const isEditing = editing === proposal.id;
+        const isExpanded = expanded === proposal.id;
         return <article className="ws-proposal" key={proposal.id} aria-label={`Comparison suggestion for ${projectName}`}>
-          <h3 className="ws-proposal__title">After: {resultTitles.get(proposal.resultId) ?? 'Project result'}</h3>
+          <button type="button" className="ws-proposal__toggle" aria-expanded={isExpanded}
+            aria-controls={`comparison-proposal-${proposal.id}`} disabled={busy}
+            onClick={() => { setExpanded(isExpanded ? null : proposal.id); setEditing(null); setError(''); }}>
+            <span className="ws-proposal__title">After: {resultTitles.get(proposal.resultId) ?? 'Project result'}</span>
+            <span className="ws-proposal__expand">{isExpanded ? 'Hide details' : 'Review'}</span>
+            <span className="ws-proposal__cue">{proposal.fact}</span>
+          </button>
           <p className="ws-proposal__origin">From {name(proposal.ownerUserId)}’s agent · visible to readers of {projectName}</p>
+          {isExpanded ? <div id={`comparison-proposal-${proposal.id}`} className="ws-proposal__body">
           {isEditing ? <>
             <label>Observed fact<textarea value={fact} maxLength={10000} onChange={(event) => setFact(event.target.value)} /></label>
             <label>Interpretation<textarea value={interpretation} maxLength={10000} onChange={(event) => setInterpretation(event.target.value)} /></label>
@@ -80,6 +91,7 @@ export function ProjectProposals({ proposals, people, projectName, resultTitles,
             <Button disabled={busy} onClick={() => void change(proposal, 'dismiss')}>Dismiss</Button>
           </div> : null}
           {error ? <p className="wd-error" role="alert">{error}</p> : null}
+          </div> : null}
         </article>;
       })}
     </section>
