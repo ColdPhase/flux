@@ -183,7 +183,34 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
     // A source link from "Since you left" opens on that whole message; otherwise on the latest.
     const anchor = arrived ? document.getElementById(`message-${arrived}`) : null;
     if (anchor) { anchor.scrollIntoView({ block: 'start' }); anchor.focus({ preventScroll: true }); return; }
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    const feed = scrollRef.current;
+    const column = feed?.firstElementChild as HTMLElement | null;
+    if (!feed || !column) return;
+    // Open on whole messages: when the latest screen would start mid-message, begin at the next
+    // message instead, with a little room below the last one (direction C "return anchor").
+    // Layout settles as the return line and fonts arrive, so this repeats until the reader acts.
+    const settle = () => {
+      column.style.paddingBottom = '';
+      feed.scrollTop = feed.scrollHeight;
+      const top = feed.getBoundingClientRect().top;
+      const list = [...feed.querySelectorAll<HTMLElement>('.project-convo__message')];
+      const index = list.findIndex((item) => { const box = item.getBoundingClientRect(); return box.top < top - 1 && box.bottom > top + 1; });
+      if (index < 0) return;
+      const next = list[index + 1];
+      if (!next) { list[index]!.scrollIntoView({ block: 'start' }); return; }
+      const delta = next.getBoundingClientRect().top - top;
+      if (delta <= 0) return;
+      column.style.paddingBottom = `${parseFloat(getComputedStyle(column).paddingBottom) + delta}px`;
+      feed.scrollTop = feed.scrollHeight;
+    };
+    settle();
+    const observer = new ResizeObserver(() => settle());
+    observer.observe(feed);
+    observer.observe(column.firstElementChild ?? column);
+    const stop = () => observer.disconnect();
+    const timer = window.setTimeout(stop, 2000);
+    for (const type of ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const) feed.addEventListener(type, stop, { once: true, passive: true });
+    return () => { stop(); window.clearTimeout(timer); for (const type of ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const) feed.removeEventListener(type, stop); };
   }, [conversation?.id, arrived]);
 
   function changeDraft(value: string) {

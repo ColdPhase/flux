@@ -151,7 +151,8 @@ export function MessageActions({ projectId, message, onCreateWork, busy, writabl
   const details = <button type="button" className="ws-act" onClick={() => openDetails({ kind: 'overview', messageId: message.id })} aria-label="Details of this message"><Icon name="panel" size={14} />Details</button>;
   if (!writable) return <div className="ws-acts">{details}</div>;
   if (touch && !open) {
-    return <div className="ws-acts"><button type="button" className="ws-act" aria-expanded="false" onClick={() => setOpen(true)}><Icon name="plus" size={14} />Make from this message</button></div>;
+    // One quiet 44 px overflow button in the message's corner instead of a row under every message.
+    return <div className="ws-acts ws-acts--more"><button type="button" className="ws-act ws-more" aria-expanded="false" aria-label="Make from this message" onClick={() => setOpen(true)}><Icon name="more" size={16} /></button></div>;
   }
   return (
     <div className="ws-acts" role="group" aria-label="Make something from this message">

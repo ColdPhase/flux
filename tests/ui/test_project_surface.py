@@ -120,7 +120,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         for person in (JONAS, NIA):
             self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": person["id"]}, "role": "contributor"}, status=201)
         # A second project in the rail, and one with a long name for the phone.
-        self.api(ada, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Bike light", "visibility": "restricted"}, status=201)
+        bike = self.api(ada, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Bike light", "visibility": "restricted"}, status=201)
         long_project = self.api(ada, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": LONG_NAME, "visibility": "restricted"}, status=201)
         self.api(ada, "POST", f"/api/v1/projects/{long_project['id']}/grants", {"principal": {"kind": "human", "id": JONAS["id"]}, "role": "contributor"}, status=201)
         self.api(ada, "POST", f"/api/v1/projects/{long_project['id']}/conversations", {"body": "Which shelf gets the first lamp?", "clientMessageId": str(uuid.uuid4())}, status=201)
@@ -149,7 +149,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         for index, text in enumerate(("Camera", "ToF distance sensor", "PIR presence")):
             self.api(jonas, "POST", f"/api/v1/sketches/{sketch['id']}/thoughts", {"text": text, "x": -260 + index * 260, "y": 160, "linkFrom": {"thoughtId": idea["thought"]["id"]}}, status=201, headers={"idempotency-key": str(uuid.uuid4())})
         doc = self.api(ada, "POST", f"{base}/docs", {"title": "What we learned about low light", "from": {"type": "result", "id": result["id"]}, "state": "published", "reason": "First notes"}, status=201, headers={"idempotency-key": str(uuid.uuid4())})
-        type(self).ids = {"workspace": ws["id"], "project": pid, "conversation": cid, "long_project": long_project["id"], "work": work["id"], "result": result["id"], "rule": rule["id"],
+        type(self).ids = {"workspace": ws["id"], "project": pid, "bike": bike["id"], "conversation": cid, "long_project": long_project["id"], "work": work["id"], "result": result["id"], "rule": rule["id"],
                           "proposal": proposal["id"], "sketch": sketch["id"], "doc": doc["id"], "material": material["materialId"], **messages}
 
     # ---------------------------------------------------------------- header
@@ -179,10 +179,28 @@ class ProjectSurfaceJourney(unittest.TestCase):
         # Calm chips under a message open their object.
         chip = page.locator(f"#message-{self.ids['m0']}").get_by_role("button", name="Work: Test the camera in low light")
         expect(chip).to_contain_text("In progress")
+        self.assert_whole_messages(page)
         shot(page, "project-conversation-desktop-1440")
-        page.set_viewport_size({"width": 1280, "height": 800})
-        expect(header.get_by_label("Current state")).to_be_visible()
-        shot(page, "project-conversation-desktop-1280")
+        small = self.page("ada", viewport={"width": 1280, "height": 800})
+        small.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
+        expect(small.locator("header.top").get_by_label("Current state")).to_be_visible()
+        expect(small.locator(f"#message-{self.ids['m4']}")).to_be_visible()
+        self.assert_whole_messages(small)
+        shot(small, "project-conversation-desktop-1280")
+
+    def assert_whole_messages(self, page: Page) -> None:
+        """The feed opens on whole messages: none starts above the top edge of the feed."""
+        page.wait_for_timeout(600)
+        clipped = page.evaluate("""() => {
+          const feed = document.querySelector('.project-convo__feed');
+          const top = feed.getBoundingClientRect().top;
+          return [...feed.querySelectorAll('.project-convo__message')].filter((el) => { const r = el.getBoundingClientRect(); return r.top < top - 1 && r.bottom > top + 1; }).length;
+        }""")
+        self.assertEqual(clipped, 0, "no message is cut off at the top of the opening screen")
+        last = page.locator(".project-convo__message").last.bounding_box()
+        feed = page.locator(".project-convo__feed").bounding_box()
+        assert last and feed
+        self.assertLessEqual(last["y"] + last["height"], feed["y"] + feed["height"] + 1, "the latest message is fully visible")
 
     # ---------------------------------------------------------------- current state
 
@@ -298,6 +316,13 @@ class ProjectSurfaceJourney(unittest.TestCase):
         self.assertGreaterEqual(box["height"], 44, "state row is one 44px target")
         self.assertLessEqual(box["height"], 50, "one line")
         expect(row).to_contain_text("Decision needs you")
+        # One quiet overflow button per message, in its corner, still a 44 px target.
+        message = page.locator(f"#message-{self.ids['m4']}")
+        more = message.get_by_role("button", name="Make from this message")
+        mbox, bbox = more.bounding_box(), message.bounding_box()
+        assert mbox and bbox
+        self.assertGreaterEqual(mbox["height"], 44)
+        self.assertLess(mbox["y"] - bbox["y"], 20, "the overflow button sits beside the author, not in a row of its own")
         expect(page.locator("header.top").get_by_label("Current state")).to_have_count(0)
         self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), PHONE["width"])
         shot(page, "project-conversation-phone-390")
@@ -327,6 +352,24 @@ class ProjectSurfaceJourney(unittest.TestCase):
         shot(page, "project-long-title-phone-390")
         audience.tap()
         expect(page.get_by_role("dialog", name="Details").get_by_role("region", name="Who can see this")).to_contain_text("Jonas Berg")
+
+
+    # ---------------------------------------------------------------- the Map route is bound to its project
+
+    def test_08_a_sketch_never_shows_under_another_projects_frame(self) -> None:
+        page = self.page("ada")
+        other = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/sketches", {"title": "Bike light beam angles", "scope": "project", "projectId": self.ids["bike"]}, status=201, headers={"idempotency-key": str(uuid.uuid4())})
+        private = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/sketches", {"title": "My private lamp doodles", "scope": "private"}, status=201, headers={"idempotency-key": str(uuid.uuid4())})
+        page.goto(f"/projects/{self.ids['project']}/map/{other['id']}")
+        expect(page).to_have_url(f"{ORIGIN}/projects/{self.ids['bike']}/map/{other['id']}")
+        expect(page.locator("header.top h1")).to_have_text("Bike light")
+        expect(page.get_by_role("button", name="Rename sketch Bike light beam angles")).to_be_visible()
+        page.goto(f"/projects/{self.ids['project']}/map/{private['id']}")
+        expect(page).to_have_url(f"{ORIGIN}/map/{private['id']}")
+        expect(page.get_by_role("button", name="Rename sketch My private lamp doodles")).to_be_visible()
+        expect(page.locator(".sk-aud")).to_contain_text("Only you")
+        expect(page.get_by_role("navigation", name="Project views")).to_have_count(0)
+        expect(page.locator("header.top h1")).not_to_have_text("Gesture lamp")
 
 
 if __name__ == "__main__":

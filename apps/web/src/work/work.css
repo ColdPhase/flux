@@ -134,3 +134,7 @@
   .ws-acts { margin-left: -4px; }
   .ws-add .ui-btn { padding: 0 12px; }
 }
+/* Touch: the actions of a message start as one overflow button in its top corner (#117). */
+.project-convo__message .ws-acts--more { position: absolute; top: 0; right: -10px; margin: 0; }
+.ws-more { justify-content: center; width: 44px; height: 44px; padding: 0; color: var(--text-3); }
+.project-convo__message:has(.ws-acts--more) .project-convo__message-meta { padding-right: 36px; }
