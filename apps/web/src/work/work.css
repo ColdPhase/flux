@@ -25,18 +25,24 @@
 .ws-acts { display: flex; flex-wrap: wrap; gap: 2px; margin: 4px 0 0 -6px; opacity: 0; transition: opacity var(--dur-1) var(--ease-out); }
 .project-convo__message:hover .ws-acts, .project-convo__message:focus-within .ws-acts, .ws-acts:focus-within { opacity: 1; }
 @media (hover: none) { .ws-acts { opacity: 1; } }
+@media (hover: hover) {
+  .project-convo__message .ws-acts { position: absolute; top: -10px; right: 0; margin: 0; padding: 2px; border-radius: var(--r); background: var(--bg); box-shadow: 0 0 0 1px var(--line), 0 4px 12px rgb(0 0 0 / .06); pointer-events: none; }
+  .project-convo__message:hover .ws-acts, .project-convo__message:focus-within .ws-acts { pointer-events: auto; }
+}
 .ws-act { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 7px; border-radius: var(--r-sm); font-size: var(--fs-xs); font-weight: 500; color: var(--text-3); transition: var(--tr); }
 .ws-act:hover { background: var(--bg-hover); color: var(--text); }
 .ws-act:disabled { cursor: progress; }
 .ws-act-error { margin-top: 4px; font-size: var(--fs-xs); color: var(--danger); }
 .ws-act-error button { text-decoration: underline; min-height: 28px; }
-.ws-attach { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
-.ws-obj { display: flex; align-items: center; gap: 12px; width: 100%; max-width: 460px; padding: 10px 12px; border-radius: var(--r-lg); background: var(--bg-raised); box-shadow: inset 0 0 0 1px var(--line); text-align: left; color: var(--text-3); transition: var(--tr); }
-.ws-obj:hover { background: var(--bg-hover); box-shadow: inset 0 0 0 1px var(--line-strong); }
-.ws-obj__ic { display: grid; place-items: center; width: 30px; height: 30px; flex: none; border-radius: var(--r); background: var(--bg-hover); color: var(--text-2); }
-.ws-obj__b { flex: 1; min-width: 0; }
-.ws-obj__k { display: block; font-size: var(--fs-xs); color: var(--text-3); line-height: 1.4; }
-.ws-obj__t { display: block; font-size: var(--fs-md); font-weight: 500; color: var(--text); line-height: 1.4; overflow-wrap: anywhere; }
+.ws-attach { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+/* Calm chips under a message (#117): icon, title and a quiet state; the object opens in Details. */
+.ws-chip { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; min-height: 30px; padding: 0 10px; border-radius: var(--r); box-shadow: inset 0 0 0 1px var(--line-strong); font-size: var(--fs-sm); color: var(--text-2); text-align: left; transition: var(--tr); }
+.ws-chip:hover { background: var(--bg-hover); color: var(--text); }
+.ws-chip svg { flex: none; color: var(--text-3); }
+.ws-chip__t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--text); }
+.ws-chip__k { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); color: var(--text-3); }
+.ws-chip--need .ws-chip__k { color: var(--accent); font-weight: 500; }
+@media (pointer: coarse) { .ws-chip { min-height: 44px; box-shadow: none; background: var(--bg-side); } }
 .project-convo__message:target { background: var(--accent-soft); border-radius: var(--r); box-shadow: -8px 0 0 var(--accent-soft), 8px 0 0 var(--accent-soft); }
 
 /* ---------- Tasks tab ---------- */

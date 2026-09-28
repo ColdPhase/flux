@@ -103,7 +103,7 @@ function Sources({ links, id, project }: { links: ObjectLink[]; id: string; proj
         const to = link.to.type === 'message'
           ? `/projects/${project.id}/conversations/${link.conversationId}#message-${link.to.id}`
           : link.to.type === 'material' ? `/materials/${link.to.id}/versions/${link.to.version}`
-            : link.to.type === 'thought' && link.sketchId ? `/map/${link.sketchId}` : null;
+            : link.to.type === 'thought' && link.sketchId ? `/projects/${project.id}/map/${link.sketchId}` : null;
         const kind = link.to.type === 'message' ? 'Message' : link.to.type === 'thought' ? 'Thought' : `Material v${link.to.type === 'material' ? link.to.version : ''}`;
         return <li key={link.id}>{to ? <Link className="wd-link" to={to}><span><b>{kind}:</b> {link.toTitle}</span><Icon name="chevron-right" size={14} /></Link> : null}</li>;
       })}

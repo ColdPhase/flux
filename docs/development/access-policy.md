@@ -221,6 +221,7 @@ forbidden action answers `403`. Error bodies are `{ error, code }`.
 | `PATCH/DELETE /api/v1/workspaces/:id/members/:userId` | `changeRole`, `removeMember` |
 | `GET/POST /api/v1/workspaces/:id/projects` | `listProjects` (`limit`, `offset`), `createProject` |
 | `GET /api/v1/projects/:id` | `getProject` |
+| `GET /api/v1/projects/:id/people` | `listProjectPeople` (#117): the people and agents who can read the project now, each with `access`. Needs `project.read`; every candidate's level comes from `evaluateProject`, so denied, removed and revoked principals are left out. Names only the project's audience, never the workspace roster. |
 | `GET/POST /api/v1/projects/:id/grants` | `listProjectGrants`, `grantProject` (create or replace) |
 | `DELETE /api/v1/projects/:id/grants/:grantId` | `revokeProjectGrant` |
 | `GET/POST /api/v1/workspaces/:id/agents` | `listAgents`, `createAgent` |
