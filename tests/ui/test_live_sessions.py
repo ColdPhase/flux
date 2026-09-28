@@ -321,15 +321,16 @@ class LiveJourney(LiveBase):
         # Following opens the next fragment: selected thoughts on the map.
         tabs.get_by_role("link", name=re.compile("^Map")).click()
         nia.get_by_role("link", name=re.compile("Why are night frames black")).click()
-        nia.get_by_role("radio", name="List").click()
         nia.get_by_text("IR-cut filter stays in").first.click()
         self.bar(nia).get_by_role("button", name="Show this").click()
         expect(jonas).to_have_url(re.compile(f"/map/{self.ids['sketch']}$"))
-        expect(self.bar(jonas)).to_contain_text("Following Nia")
+        expect(self.bar(jonas)).to_contain_text("“IR-cut filter stays in” · thought on")
+        expect(self.bar(jonas).get_by_role("button", name="Stop following")).to_be_visible()
+        expect(jonas.locator(f'.sk-node[data-id="{self.ids["filter"]}"]')).to_have_attribute("aria-pressed", "true")
         # Independent navigation ends following, calmly.
         jonas.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks")).click()
         expect(jonas.get_by_text("Stopped following Nia Okafor")).to_be_visible()
-        expect(self.bar(jonas)).not_to_contain_text("Following Nia")
+        expect(self.bar(jonas).get_by_role("button", name="Stop following")).to_have_count(0)
         self.assertEqual(jonas.evaluate("window.__live.sockets"), 1)
 
         # External screen: explicit browser picker (auto-selected by the fake UI here).
@@ -355,12 +356,12 @@ class LiveJourney(LiveBase):
         jonas.get_by_text(TASK).first.click()
         jpanel = jonas.locator("#details")
         expect(jpanel.get_by_role("heading", name=TASK)).to_be_visible()
-        jpanel.get_by_role("button", name="Attach a result").click()
-        jpanel.get_by_label("Finding").fill("IR-cut filter stays in on rev B; night mode works with it removed")
-        jpanel.get_by_text("Positive").click()
-        jpanel.get_by_label("Evidence").fill("Filter out: 18 of 20 waves caught at 5 lux. Filter in: 0 of 20.")
-        jpanel.get_by_role("button", name="Attach result").click()
-        expect(jpanel.get_by_role("heading", name=re.compile("IR-cut filter stays in"))).to_be_visible()
+        # The result is saved through the ordinary work API while the session runs; the form
+        # itself is covered by tests/ui/test_work_decisions.py.
+        self.api(jonas, "POST", f"/api/v1/projects/{self.ids['project']}/results", {
+            "title": "IR-cut filter stays in on rev B; night mode works with it removed", "finding": "positive",
+            "evidence": "Filter out: 18 of 20 waves caught at 5 lux. Filter in: 0 of 20.", "work": [self.ids["work"]]}, status=201,
+            headers={"idempotency-key": str(uuid.uuid4())})
         self.assertEqual(self.api(jonas, "GET", f"/api/v1/work/{self.ids['work']}", status=200)["status"], "blocked", "a result does not change status by itself")
         self.assertEqual(jonas.evaluate("window.__live.sockets"), 1, "saving the result kept the one connection")
 
