@@ -11,6 +11,7 @@ import { audience, quote } from './format';
 import { freeSpot, rectOf } from './geometry';
 import { SketchList } from './SketchList';
 import { SketchMap } from './SketchMap';
+import { useRegisterLiveHere } from '../live/LiveProvider';
 import './sketch.css';
 
 export interface Editing {
@@ -59,11 +60,19 @@ export function SketchView({ sketchId, projectId, back = '/map' }: { sketchId: s
   const coarse = useMediaQuery('(pointer: coarse)');
   const phone = useMediaQuery(MEDIA.phone);
   const [mode, setModeState] = useState<Mode>(storedMode);
-  const [selectionState, setSelection] = useState<string[]>([]);
+  const location = useLocation();
+  // A fragment shown in a live session (#62) opens with the presenter's thoughts selected.
+  const liveSelect = (location.state as { liveSelect?: string[] | null } | null)?.liveSelect ?? null;
+  const [selectionState, setSelection] = useState<string[]>(() => liveSelect ?? []);
+  const [selectedFor, setSelectedFor] = useState(location.key);
+  if (selectedFor !== location.key) {
+    setSelectedFor(location.key);
+    if (liveSelect) setSelection(liveSelect);
+  }
   const [connectState, setConnectFrom] = useState<string | null>(null);
   const [editingState, setEditing] = useState<Editing | null>(null);
   const [status, setStatus] = useState<{ text: string; change: boolean }>({ text: '', change: false });
-  const [renaming, setRenaming] = useState<boolean>(!!(useLocation().state as { fresh?: boolean } | null)?.fresh);
+  const [renaming, setRenaming] = useState<boolean>(!!(location.state as { fresh?: boolean } | null)?.fresh);
   const [heights] = useState(() => new Map<string, number>());
   const rootRef = useRef<HTMLDivElement>(null);
   const helpId = useId();
@@ -89,6 +98,13 @@ export function SketchView({ sketchId, projectId, back = '/map' }: { sketchId: s
   const present = new Set(sketch?.thoughts.map((t) => t.id));
   const selection = selectionState.filter((id) => present.has(id));
   const connectFrom = connectState && present.has(connectState) ? connectState : null;
+  // A project sketch anchors a session; "Show this" points at the selected thoughts, if any.
+  const projectSketch = sketch?.scope === 'project' && sketch.projectId ? sketch : null;
+  const firstSelected = selection.length === 1 ? sketch?.thoughts.find((t) => t.id === selection[0])?.text : null;
+  useRegisterLiveHere(projectSketch ? { projectId: projectSketch.projectId!, context: { type: 'sketch', id: projectSketch.id }, label: projectSketch.title } : null,
+    projectSketch ? { ref: { type: 'sketch', id: projectSketch.id, version: projectSketch.version, ...(selection.length ? { selectedThoughtIds: selection.slice(0, 100) } : {}) },
+      label: firstSelected ? (firstSelected.length > 60 ? `${firstSelected.slice(0, 59)}…` : firstSelected) : projectSketch.title,
+      what: selection.length === 0 ? 'map' : selection.length === 1 ? 'thought on the map' : `${selection.length} thoughts on the map` } : null, 1);
   const editing = editingState && present.has(editingState.id) ? editingState : null;
 
   const setMode = (next: Mode) => {

@@ -6,6 +6,8 @@ import { ApiError } from '../api/client';
 import { Button, Icon, Input } from '../ui';
 import { getProject, listWorkspaceMembers } from '../app/conversation-api';
 import { useShellData } from '../app/data';
+import { useRegisterLiveHere } from '../live/LiveProvider';
+import { LiveEntry } from '../live/LiveEntry';
 import { useShellActions, type ObjectView, type WorkFormView } from '../app/shellContext';
 import { acceptDecision, createResult, getDecision, getResult, getWork, listAgents, loadProjectWork, proposeDecision, updateWork, type ProjectWork } from './api';
 import { STATUS_LABEL, decisionLine, firstLine, isFinished, linked, resultLine, shortDate } from './format';
@@ -143,6 +145,9 @@ function WorkPanel({ item, context, reload }: { item: WorkItem; context: Context
   const decisions = linked(item.links, item.id, 'decision');
   const results = linked(item.links, item.id, 'result');
   const parkedBy = item.parked ? context.lists.decisions.find((decision) => decision.id === item.parked!.decisionId) : null;
+  // An open task is the most specific place to work together, and a fragment others can open.
+  const liveAnchor = { projectId: item.projectId, context: { type: 'work' as const, id: item.id }, label: item.title };
+  useRegisterLiveHere(liveAnchor, { ref: { type: 'work', id: item.id, version: item.version }, label: item.title, what: 'task' }, 2);
 
   async function change(command: Parameters<typeof updateWork>[1]) {
     setBusy(true); setError('');
@@ -163,6 +168,7 @@ function WorkPanel({ item, context, reload }: { item: WorkItem; context: Context
       <h3 className="details__title">{item.title}</h3>
       {item.outcome ? <p className="details__lead">{item.outcome}</p> : null}
       {item.status === 'blocked' && item.blocker ? <p className="wd-blocker"><Icon name="alert" size={14} />Blocked: {item.blocker}</p> : null}
+      {!isFinished(item) ? <LiveEntry variant="inline" anchor={liveAnchor} /> : null}
 
       {writable ? (
         <fieldset className="wd-controls" disabled={busy}>
@@ -330,6 +336,7 @@ function DecisionPanel({ decision, context, reload }: { decision: Decision; cont
 
 function ResultPanel({ result, context }: { result: WorkResult; context: Context }) {
   const { openDetails } = useShellActions();
+  useRegisterLiveHere(null, { ref: { type: 'result', id: result.id, version: 1 }, label: result.title, what: 'result' }, 2);
   const about = [...linked(result.links, result.id, 'work', ['about']), ...linked(result.links, result.id, 'decision', ['about'])];
   const related = result.links.filter((link) => link.role === 'related');
   return (
