@@ -26,6 +26,18 @@ function words(before: string, after: string): { removed: DiffPart[]; added: Dif
   return { removed, added };
 }
 
+/**
+ * Shows `[label](flux:<type>/<id>)` as `[label](→ Decision “title”)` for reading a diff, so
+ * nobody has to read internal ids. `titles` maps `<type>:<id>` to the object's title.
+ */
+export function readableRefs(text: string, titles: Map<string, string>) {
+  return text.replace(/\]\(flux:([a-z]+)\/([0-9a-f-]{36})\)/gi, (_match, type: string, id: string) => {
+    const title = titles.get(`${type.toLowerCase()}:${id.toLowerCase()}`);
+    const kind = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
+    return title ? `](→ ${kind} “${title}”)` : `](→ ${kind})`;
+  });
+}
+
 export function diffDocs(before: string, after: string): DiffRow[] {
   const rows: DiffRow[] = [];
   // A missing final newline is not a change of the last line.
@@ -73,7 +85,8 @@ function fold(rows: DiffRow[]): DiffRow[] {
   return out;
 }
 
-/** Counts of added and removed lines, for a one-line summary. */
+/** Counts of added and removed lines with text (blank lines are not counted), for a one-line summary. */
 export function diffStats(rows: DiffRow[]) {
-  return { added: rows.filter((row) => row.kind === 'added').length, removed: rows.filter((row) => row.kind === 'removed').length };
+  const real = (row: DiffRow) => row.kind !== 'fold' && row.parts.some((part) => part.text.trim());
+  return { added: rows.filter((row) => row.kind === 'added' && real(row)).length, removed: rows.filter((row) => row.kind === 'removed' && real(row)).length };
 }

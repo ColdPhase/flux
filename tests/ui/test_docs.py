@@ -203,7 +203,7 @@ class DocsJourney(unittest.TestCase):
         conflict = page.get_by_role("alert")
         expect(conflict).to_contain_text("Ada Lind saved version 2 while you were editing")
         expect(conflict).to_contain_text("Nothing was overwritten")
-        conflict.get_by_role("button", name="Show their changes").click()
+        conflict.get_by_role("button", name="Show their changes and yours").click()
         expect(conflict.locator(".doc-diff__row--added")).to_contain_text(["## Open questions"])
         shot(page, "docs-conflict-desktop-1440")
         self.assertEqual(self.doc(page)["version"], 2, "the stale save changed nothing")

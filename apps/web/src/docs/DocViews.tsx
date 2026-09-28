@@ -6,7 +6,7 @@ import { getProject } from '../app/conversation-api';
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { docUrl, getDoc, getVersion, listProjectDocs, listVersions, listWorkspaceDocs } from './api';
-import { diffDocs, diffStats, type DiffRow } from './diff';
+import { diffDocs, diffStats, readableRefs, type DiffRow } from './diff';
 import { STATE_LABEL, docLinks, kindLabel, longDate, pathOfLink, shortDate } from './format';
 import './docs.css';
 
@@ -258,7 +258,10 @@ function DiffView({ rows }: { rows: DiffRow[] }) {
 }
 
 function Changes({ from, to }: { from: DocVersion | null; to: DocVersion }) {
-  const rows = useMemo(() => diffDocs(from?.body ?? '', to.body), [from, to]);
+  const rows = useMemo(() => {
+    const titles = new Map([...(from?.mentions ?? []), ...to.mentions].filter((item) => item.title).map((item) => [`${item.type}:${item.id}`, item.title]));
+    return diffDocs(readableRefs(from?.body ?? '', titles), readableRefs(to.body, titles));
+  }, [from, to]);
   const stats = diffStats(rows);
   const facts: ReactNode[] = [];
   if (from && from.title !== to.title) facts.push(<li key="t">Title: <del>{from.title}</del> → <ins>{to.title}</ins></li>);
@@ -266,7 +269,7 @@ function Changes({ from, to }: { from: DocVersion | null; to: DocVersion }) {
   return (
     <section className="doc-changes" aria-labelledby="doc-changes-h">
       <h3 id="doc-changes-h">{from ? <>Version {from.version} → {to.version}</> : <>Version {to.version}, the first</>}</h3>
-      <p className="doc-changes__why">{to.author.name} · {longDate(to.createdAt)} · {to.reason}</p>
+      <p className="doc-changes__why">{from ? <>From {from.author.name}’s version of {longDate(from.createdAt)} to </> : null}{to.author.name}’s of {longDate(to.createdAt)} · {to.reason}</p>
       {facts.length ? <ul className="doc-changes__facts">{facts}</ul> : null}
       <p className="doc-muted">{stats.added} {stats.added === 1 ? 'line' : 'lines'} added · {stats.removed} removed</p>
       <DiffView rows={rows} />
@@ -294,7 +297,7 @@ export function DocHistory() {
           <p className="doc-head__change">Every version stays as it was written. Messages that cite a version keep reading that version.</p>
         </header>
         <div className="doc-history__grid">
-          <section aria-labelledby="doc-versions-h">
+          <section className="doc-history__list" aria-labelledby="doc-versions-h">
             <h3 className="doc-group__h" id="doc-versions-h">Versions</h3>
             <ol className="doc-versions">
               {versions.map((item) => (
@@ -308,7 +311,7 @@ export function DocHistory() {
               ))}
             </ol>
           </section>
-          <div>
+          <div className="doc-history__diff">
             {to.version > 1 ? (
               <label className="doc-compare">Compare with
                 <select value={from?.version ?? ''} onChange={(event) => compare({ from: Number(event.target.value) })}>

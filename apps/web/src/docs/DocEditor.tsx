@@ -6,7 +6,7 @@ import { Button, Icon, useMediaQuery } from '../ui';
 import { getProject } from '../app/conversation-api';
 import { useShellData } from '../app/data';
 import { createDoc, docUrl, getDoc, previewDoc, updateDoc } from './api';
-import { diffDocs } from './diff';
+import { diffDocs, readableRefs, type DiffRow } from './diff';
 import { STATE_LABEL, longDate } from './format';
 import { LinkPicker, type PickedRef } from './LinkPicker';
 import './docs.css';
@@ -37,6 +37,22 @@ function keep(key: string, value: Kept | null) {
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform);
 const mod = isMac ? '⌘' : 'Ctrl';
+
+function ChangeList({ title, rows }: { title: string; rows: DiffRow[] }) {
+  const changed = rows.some((row) => row.kind === 'added' || row.kind === 'removed');
+  return (
+    <section className="doc-conflict__side" aria-label={title}>
+      <h4>{title}</h4>
+      {!changed ? <p className="doc-muted">No change to the text.</p> : (
+        <ol className="doc-diff doc-diff--compact">
+          {rows.map((row, index) => row.kind === 'fold'
+            ? <li key={index} className="doc-diff__fold">{row.count} unchanged {row.count === 1 ? 'line' : 'lines'}</li>
+            : <li key={index} className={`doc-diff__row doc-diff__row--${row.kind}`}><span className="doc-diff__m" aria-hidden="true">{row.kind === 'added' ? '+' : row.kind === 'removed' ? '−' : ''}</span>{row.kind !== 'same' ? <span className="ui-vh">{row.kind === 'added' ? 'Added: ' : 'Removed: '}</span> : null}<span className="doc-diff__t">{row.parts.map((part) => part.text).join('') || '\u00a0'}</span></li>)}
+        </ol>
+      )}
+    </section>
+  );
+}
 
 export function DocEditor() {
   const { project, doc } = useLoaderData() as EditData;
@@ -139,7 +155,9 @@ export function DocEditor() {
     else if (primary && event.shiftKey && event.key.toLowerCase() === 'p') { event.preventDefault(); setMode((current) => (current === 'write' ? (wide ? 'both' : 'preview') : 'write')); }
   };
 
-  const theirChanges = useMemo(() => (conflict ? diffDocs(baseBody, conflict.body) : []), [conflict, baseBody]);
+  const titles = useMemo(() => new Map([...(doc?.mentions ?? []), ...(conflict?.mentions ?? [])].filter((item) => item.title).map((item) => [`${item.type}:${item.id}`, item.title])), [doc, conflict]);
+  const theirChanges = useMemo(() => (conflict ? diffDocs(readableRefs(baseBody, titles), readableRefs(conflict.body, titles)) : []), [conflict, baseBody, titles]);
+  const myChanges = useMemo(() => (conflict ? diffDocs(readableRefs(baseBody, titles), readableRefs(fields.body, titles)) : []), [conflict, baseBody, fields.body, titles]);
   const back = doc ? docUrl(project.id, doc.id) : `/projects/${project.id}/docs`;
 
   return (
@@ -153,17 +171,17 @@ export function DocEditor() {
           <div className="doc-conflict" role="alert">
             <p><Icon name="alert" size={14} /><b>{conflict.author.name} saved version {conflict.version}</b> while you were editing ({conflict.reason}, {longDate(conflict.createdAt)}). Nothing was overwritten, and your text is still here.</p>
             <div className="doc-conflict__acts">
-              <Button variant="secondary" onClick={() => setShowTheirs((value) => !value)} aria-expanded={showTheirs}>{showTheirs ? 'Hide their changes' : 'Show their changes'}</Button>
+              <Button variant="secondary" onClick={() => setShowTheirs((value) => !value)} aria-expanded={showTheirs}>{showTheirs ? 'Hide the changes' : 'Show their changes and yours'}</Button>
               <Button variant="primary" onClick={keepMine}>Keep my text on top of version {conflict.version}</Button>
               <Button variant="quiet" onClick={takeTheirs}>Discard mine, use theirs</Button>
             </div>
             {showTheirs ? (
-              <ol className="doc-diff doc-diff--compact" aria-label={`Changes in version ${conflict.version}`}>
-                {theirChanges.map((row, index) => row.kind === 'fold'
-                  ? <li key={index} className="doc-diff__fold">{row.count} unchanged {row.count === 1 ? 'line' : 'lines'}</li>
-                  : <li key={index} className={`doc-diff__row doc-diff__row--${row.kind}`}><span className="doc-diff__m" aria-hidden="true">{row.kind === 'added' ? '+' : row.kind === 'removed' ? '−' : ''}</span>{row.kind !== 'same' ? <span className="ui-vh">{row.kind === 'added' ? 'Added: ' : 'Removed: '}</span> : null}<span className="doc-diff__t">{row.parts.map((part) => part.text).join('') || ' '}</span></li>)}
-              </ol>
+              <div className="doc-conflict__both">
+                <ChangeList title={`Their change in version ${conflict.version}`} rows={theirChanges} />
+                <ChangeList title="Your change, not saved yet" rows={myChanges} />
+              </div>
             ) : null}
+            <p className="doc-conflict__what"><b>Keep my text</b> saves your text as version {conflict.version + 1}, in place of theirs: copy anything of theirs you want to keep into your text first. <b>Discard mine</b> opens their version and drops your unsaved change.</p>
           </div>
         ) : null}
 

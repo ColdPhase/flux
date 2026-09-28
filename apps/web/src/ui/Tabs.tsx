@@ -6,6 +6,8 @@ export interface TabItem {
   label: string;
   /** Route for navigation tabs. Without it the item is an in-page tab button. */
   to?: string;
+  /** Navigation tabs: false keeps the tab current on nested routes (e.g. a doc under Docs). */
+  end?: boolean;
   /** Quiet count after the label, e.g. open tasks. */
   count?: number;
   /** Accessible wording for the count, e.g. "3 open tasks". */
@@ -94,7 +96,7 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix }
       <nav className={['ui-tabs', className].filter(Boolean).join(' ')} aria-label={label}>
         <div ref={barRef} className="ui-tabs__bar">
           {items.map((item) => (
-            <NavLink key={item.id} to={item.to ?? '.'} end className="ui-tabs__tab" data-tab={item.id} onClick={(event) => event.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' })}>
+            <NavLink key={item.id} to={item.to ?? '.'} end={item.end ?? true} className="ui-tabs__tab" data-tab={item.id} onClick={(event) => event.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' })}>
               {item.label}<Count item={item} />
             </NavLink>
           ))}

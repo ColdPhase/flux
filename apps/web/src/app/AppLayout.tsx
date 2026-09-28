@@ -109,7 +109,7 @@ export function AppLayout() {
   const projectViews = projectId ? [
     { id: 'conversation', label: 'Conversation', to: onOtherView ? lastConversationPath(projectId) : location.pathname },
     { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks` },
-    { id: 'docs', label: 'Docs', to: `/projects/${projectId}/docs` },
+    { id: 'docs', label: 'Docs', to: `/projects/${projectId}/docs`, end: false },
   ] : null;
   const dmId = location.pathname.match(/^\/dm\/([^/]+)/)?.[1];
   const activeDm = directMessages.find((dm) => dm.id === dmId);

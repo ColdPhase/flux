@@ -87,7 +87,9 @@
 .doc-history { max-width: 1040px; }
 .doc-history__grid { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 32px; align-items: start; }
 .doc-versions { list-style: none; margin: 0; padding: 0; }
-.doc-versions li { display: flex; align-items: stretch; gap: 2px; }
+.doc-versions li { display: flex; align-items: stretch; gap: 2px; border-radius: var(--r); }
+.doc-versions li:has([aria-current="true"]) { background: var(--bg-active); }
+.doc-versions li:has([aria-current="true"]) .doc-version { background: none; }
 .doc-versions li + li { border-top: 1px solid var(--line); }
 .doc-version { flex: 1; min-width: 0; display: flex; gap: 10px; padding: 9px 8px; margin-left: -8px; border-radius: var(--r); text-align: left; transition: var(--tr); }
 .doc-version:hover { background: var(--bg-hover); }
@@ -105,7 +107,7 @@
 .doc-changes__facts { margin: 0 0 8px; padding-left: 1.2em; font-size: var(--fs-sm); color: var(--text-2); }
 .doc-changes__facts ins { text-decoration: none; font-weight: 500; }
 .doc-diff { list-style: none; margin: 10px 0 0; padding: 6px 0; border-radius: var(--r); box-shadow: inset 0 0 0 1px var(--line); font-family: var(--mono); font-size: 13px; line-height: 1.6; overflow-x: auto; }
-.doc-diff__row { display: flex; gap: 8px; padding: 0 12px 0 0; min-width: max-content; }
+.doc-diff__row { display: flex; gap: 8px; padding: 0 12px 0 0; }
 .doc-diff__m { flex: none; width: 24px; text-align: center; color: var(--text-3); user-select: none; }
 .doc-diff__t { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; max-width: 72ch; }
 .doc-diff__row--added { background: color-mix(in srgb, var(--ok) 8%, transparent); }
@@ -148,6 +150,11 @@
 .doc-conflict p svg { flex: none; color: var(--warning); transform: translateY(2px); }
 .doc-conflict b { color: var(--text); font-weight: 600; }
 .doc-conflict__acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.doc-conflict__both { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin-top: 12px; }
+.doc-conflict__side h4 { margin: 0; font-size: var(--fs-xs); font-weight: 500; color: var(--text-3); }
+.doc-conflict__side .doc-diff { margin-top: 4px; }
+.doc-conflict__what { display: block !important; margin-top: 10px !important; font-size: var(--fs-sm); color: var(--text-3); }
+.doc-conflict__what b { font-weight: 500; color: var(--text-2); }
 
 .doc-picker { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; width: min(440px, 100%); border-radius: var(--r-lg); background: var(--bg-raised); box-shadow: var(--shadow), inset 0 0 0 1px var(--line); overflow: hidden; }
 .doc-edit__bar + .doc-picker { position: relative; top: 0; margin-bottom: 8px; }
@@ -172,6 +179,9 @@
 }
 @media (max-width: 860px) {
   .doc-history__grid { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  /* The comparison is what people come for; the version list follows it. */
+  .doc-history__diff { order: -1; }
+  .doc-conflict__both { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 640px) {
   .doc-head__t { font-size: 22px; }
@@ -179,6 +189,9 @@
   .doc-edit__text { min-height: 300px; }
   .doc-edit__preview { min-height: 200px; }
   .doc-edit__acts { width: 100%; margin-left: 0; }
+  /* Save stays in reach while writing, above the safe area. */
+  .doc-edit__save { position: sticky; bottom: 0; z-index: 5; margin: 16px -16px 0; padding: 10px 16px max(10px, env(safe-area-inset-bottom)); background: var(--bg); }
+  .doc-history .doc-head__change { display: none; }
   .doc-edit__acts .ui-btn { flex: 1; justify-content: center; }
   .doc-edit__save .doc-seg { width: 100%; }
   .doc-edit__save .doc-seg button { flex: 1; }
