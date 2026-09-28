@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { flushSync } from 'react-dom';
 import { Outlet, useLocation, useRevalidator } from 'react-router';
 import { useStreamEvents } from '../api/stream';
-import { Button, Drawer, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useSidePanelMode } from '../ui';
+import { Avatar, Button, Drawer, Icon, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useSidePanelMode } from '../ui';
 import { useShellData } from './data';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
 import { Details } from './Details';
@@ -10,10 +10,19 @@ import { placeOf } from './Rail';
 import { ShellContext, type DetailsView } from './shellContext';
 import { Sidebar } from './Sidebar';
 import { VIEWS, viewIndex } from './views';
+import { ProjectStateLine, ProjectStateRow } from '../work/inline';
+import { audienceLine, useProjectShell } from '../project/data';
+import type { ProjectPerson } from '@flux/contracts';
 
 function lastConversationPath(projectId: string) {
   try { return sessionStorage.getItem(`flux.project-conversation.${projectId}`) ?? `/projects/${projectId}`; }
   catch { return `/projects/${projectId}`; }
+}
+
+/** Tab order for the slide direction: Home's views, or a project's Conversation · Tasks · Map · Docs. */
+function viewOrder(pathname: string) {
+  const inProject = pathname.match(/^\/projects\/[^/]+(?:\/(tasks|map|docs))?/);
+  return inProject ? ['conversation', 'tasks', 'map', 'docs'].indexOf(inProject[1] ?? 'conversation') : viewIndex(pathname);
 }
 
 function isTyping(target: EventTarget | null) {
@@ -31,13 +40,14 @@ export function AppLayout() {
   const { me, workspace, projects, directMessages } = useShellData();
   const location = useLocation();
   const navDrawer = useMediaQuery(MEDIA.navDrawer);
+  const phone = useMediaQuery(MEDIA.phone);
   const panelMode = useSidePanelMode();
   const [navOpen, setNavOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsView, setDetailsView] = useState<DetailsView>('place');
   const detailsButtonRef = useRef<HTMLButtonElement>(null);
   const paneRef = useRef<HTMLDivElement>(null);
-  const previousView = useRef(viewIndex(location.pathname));
+  const previousView = useRef(viewOrder(location.pathname));
   const drawerTitleId = useId();
 
   const toggleDetails = useCallback((next?: boolean) => {
@@ -73,6 +83,13 @@ export function AppLayout() {
     },
   }), [toggleDetails]);
 
+  // A link inside an overlaid panel or sheet (#117 overview) leads to its destination.
+  const [shownPath, setShownPath] = useState(location.pathname);
+  if (shownPath !== location.pathname) {
+    setShownPath(location.pathname);
+    if (panelMode !== 'docked' && detailsOpen) setDetailsOpen(false);
+  }
+
   // "]" toggles Details, as in the header tooltip.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -89,7 +106,7 @@ export function AppLayout() {
 
   // A new view slides in from the side its tab sits on.
   useLayoutEffect(() => {
-    const index = viewIndex(location.pathname);
+    const index = viewOrder(location.pathname);
     const direction = Math.sign(index - previousView.current);
     previousView.current = index;
     if (!direction) return;
@@ -100,21 +117,29 @@ export function AppLayout() {
   const where = placeOf(location.pathname);
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const activeProject = projects.find((project) => project.id === projectId);
-  // The Conversation tab returns to the conversation that was open before Tasks or Docs.
-  const onOtherView = /^\/projects\/[^/]+\/(tasks|docs)(\/|$)/.test(location.pathname);
+  // The Conversation tab returns to the conversation that was open before Tasks, Map or Docs.
+  const onOtherView = /^\/projects\/[^/]+\/(tasks|map|docs)(\/|$)/.test(location.pathname);
   useEffect(() => {
     if (!projectId || onOtherView) return;
-    try { sessionStorage.setItem(`flux.project-conversation.${projectId}`, location.pathname); } catch { /* private mode */ }
-  }, [projectId, onOtherView, location.pathname]);
+    try { sessionStorage.setItem(`flux.project-conversation.${projectId}`, `${location.pathname}${location.search}`); } catch { /* private mode */ }
+  }, [projectId, onOtherView, location.pathname, location.search]);
+  const shellProject = useProjectShell();
+  const project = shellProject && shellProject.project.id === projectId ? shellProject : undefined;
+  const openWork = project?.work.work.filter((item) => !item.parked && (item.status === 'open' || item.status === 'in_progress' || item.status === 'blocked')).length;
+  // Conversation · Tasks · Map · Docs (direction C), each a route of the project (#117).
   const projectViews = projectId ? [
-    { id: 'conversation', label: 'Conversation', to: onOtherView ? lastConversationPath(projectId) : location.pathname },
-    { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks` },
-    { id: 'docs', label: 'Docs', to: `/projects/${projectId}/docs`, end: false },
+    { id: 'conversation', label: 'Conversation', to: onOtherView ? lastConversationPath(projectId) : `${location.pathname}${location.search}` },
+    { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks`, ...(openWork ? { count: openWork, countLabel: `, ${openWork} open` } : {}) },
+    { id: 'map', label: 'Map', to: `/projects/${projectId}/map`, end: false, ...(project?.sketches?.total ? { count: project.sketches.total, countLabel: `, ${project.sketches.total} ${project.sketches.total === 1 ? 'sketch' : 'sketches'}` } : {}) },
+    { id: 'docs', label: 'Docs', to: `/projects/${projectId}/docs`, end: false, ...(project?.docs?.length ? { count: project.docs.length, countLabel: `, ${project.docs.length} ${project.docs.length === 1 ? 'doc' : 'docs'}` } : {}) },
   ] : null;
+  const projectIndex = projects.findIndex((item) => item.id === projectId);
+  const audience = project ? audienceLine(project.people, me.user.id) : 'People with project access';
+  const openOverview = () => { setDetailsView('place'); toggleDetails(true); };
   const dmId = location.pathname.match(/^\/dm\/([^/]+)/)?.[1];
   const activeDm = directMessages.find((dm) => dm.id === dmId);
   const place = activeProject
-    ? { crumb: activeProject.workspaceName ?? null, title: activeProject.name, topic: 'Conversation, work, decisions and docs', views: false }
+    ? { crumb: activeProject.workspaceName ?? null, title: activeProject.name, topic: audience, views: false }
     : where === 'dm'
       ? activeDm
         // A DM's header names its exact audience (design principle 5).
@@ -137,17 +162,33 @@ export function AppLayout() {
       )}
 
       <div className="app__main">
-        <header className="top">
+        <header className={`top${activeProject ? ' top--project' : ''}`}>
           {navDrawer ? (
             <IconButton icon="menu" label="Open navigation" size={18} aria-expanded={navOpen} aria-controls={navOpen ? 'nav-drawer' : undefined}
               aria-haspopup="dialog" data-tip-align="start" onClick={() => { setDetailsOpen(false); setNavOpen(true); }} className="top__menu" />
           ) : null}
+          {activeProject ? (
+            <div className="top__head">
+              <div className="top__title top__title--project">
+                <span className={`top__pm rail__pm--${(Math.max(projectIndex, 0) % 4) + 1}`} aria-hidden="true">{activeProject.name.trim().charAt(0).toUpperCase() || '#'}</span>
+                {place.crumb ? <><span className="top__crumb">{place.crumb}</span><span className="top__slash" aria-hidden="true">/</span></> : null}
+                <h1>{place.title}</h1>
+                {/* The audience never truncates away with the title; it opens the people in Details. */}
+                <button type="button" className="top__audience" onClick={openOverview} aria-haspopup="dialog" title={audience}>
+                  <Icon name="lock" size={12} /><span>{audience}</span><span className="ui-vh">, who can see this project</span>
+                </button>
+              </div>
+              {project && !phone ? <ProjectStateLine lists={project.work} canDecide={project.project.access !== 'viewer'} /> : null}
+            </div>
+          ) : (
           <div className="top__title">
             {place.crumb ? <><span className="top__crumb">{place.crumb}</span><span className="top__slash" aria-hidden="true">/</span></> : null}
             <h1>{place.title}</h1>
             <span className="top__topic">{place.topic}</span>
           </div>
+          )}
           <div className="top__right" data-shift>
+            {project?.people && !phone ? <Faces people={project.people} meId={me.user.id} /> : null}
             <Button ref={detailsButtonRef} variant="quiet" icon="panel" className="top__details" aria-expanded={detailsOpen}
               aria-controls={detailsOpen ? 'details' : undefined} aria-keyshortcuts="]" data-tip={'Toggle details   ]'}
               onClick={() => { setDetailsView('place'); toggleDetails(); }}>
@@ -155,6 +196,7 @@ export function AppLayout() {
             </Button>
           </div>
         </header>
+        {project && phone ? <ProjectStateRow lists={project.work} canDecide={project.project.access !== 'viewer'} /> : null}
         {place.views
           ? <Tabs className="views" label="Views" items={VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path }))} />
           : activeProject && projectViews
@@ -170,5 +212,17 @@ export function AppLayout() {
       </SidePanel>
     </div>
     </ShellContext.Provider>
+  );
+}
+
+/** The project's people as small faces beside Details (direction C); the list is in Details. */
+function Faces({ people, meId }: { people: ProjectPerson[]; meId: string }) {
+  const humans = [...people.filter((person) => person.kind === 'human' && person.id !== meId), ...people.filter((person) => person.id === meId)];
+  const shown = humans.slice(-4);
+  return (
+    <span className="top__faces" aria-hidden="true">
+      {humans.length > shown.length ? <span className="ui-avatar ui-avatar--md top__more">+{humans.length - shown.length}</span> : null}
+      {shown.map((person) => <Avatar key={person.id} name={person.name} size="md" tone={person.id === meId ? 'me' : 'neutral'} />)}
+    </span>
   );
 }

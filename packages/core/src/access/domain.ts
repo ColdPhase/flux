@@ -18,6 +18,7 @@ import type {
   PageQuery,
   Project,
   ProjectGrant,
+  ProjectPerson,
   ProjectGrantRole,
   ProjectVisibility,
   ShareDraftCommand,
@@ -326,6 +327,35 @@ export async function listProjectGrants(principal: Principal, projectId: string,
   const rows = await db.select().from(schema.projectGrants).where(eq(schema.projectGrants.projectId, projectId))
     .orderBy(asc(schema.projectGrants.createdAt), asc(schema.projectGrants.id));
   return rows.map(toGrant);
+}
+
+/**
+ * The audience of a project (#117): every person and agent who can read it now. The caller
+ * needs `project.read`. Each candidate's level is decided by the access policy itself
+ * (`evaluateProject`), never re-derived here, so a deny, a revoked agent or a removed
+ * member is left out exactly as on their own next request. The candidates are the
+ * workspace's members and agents; a project that nobody else can read lists only its managers.
+ */
+export async function listProjectPeople(principal: Principal, projectId: string, db: Database): Promise<ProjectPerson[]> {
+  const { project } = enforce(await evaluateProject(principal, 'project.read', projectId, db), 'project');
+  const workspaceId = project!.workspaceId;
+  const humans = await db.select({ id: schema.workspaceMembers.userId, name: schema.authUsers.name })
+    .from(schema.workspaceMembers)
+    .innerJoin(schema.authUsers, eq(schema.authUsers.id, schema.workspaceMembers.userId))
+    .where(eq(schema.workspaceMembers.workspaceId, workspaceId));
+  const agents = await db.select({ id: schema.agents.id, name: schema.agents.name }).from(schema.agents)
+    .where(and(eq(schema.agents.workspaceId, workspaceId), isNull(schema.agents.revokedAt)));
+  const candidates = [
+    ...humans.map((row) => ({ kind: 'human' as const, id: row.id, name: row.name })),
+    ...agents.map((row) => ({ kind: 'agent' as const, id: row.id, name: row.name })),
+  ];
+  const people: ProjectPerson[] = [];
+  for (const candidate of candidates) {
+    const decision = await evaluateProject({ kind: candidate.kind, id: candidate.id }, 'project.read', projectId, db);
+    const access = decision.allowed ? accessName(decision.level) : null;
+    if (access) people.push({ ...candidate, access });
+  }
+  return people.sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) || a.id.localeCompare(b.id) : a.kind === 'human' ? -1 : 1));
 }
 
 /**

@@ -1,5 +1,8 @@
 # Project conversation UI checkpoint
 
+> Layout superseded by [project-surface](../project-surface/README.md) (#117): conversations now
+> sit in the sidebar and sources open from the composer, around one reading column.
+
 Screenshots from the Compose/Playwright journey at 1440×900 desktop and 390×844
 phone, 100% browser zoom, one restricted project with two members, a private draft,
 a redacted project material and linked replies. They show the current direction C

@@ -15,6 +15,8 @@ import { DmIndex, NewDm } from './dm/DmIndex';
 import { DmConversation, dmLoader } from './dm/DmConversation';
 import { SketchIndex } from './sketch/SketchIndex';
 import { SketchRoute } from './sketch/SketchView';
+import { projectShellLoader } from './project/data';
+import { ProjectMap } from './project/ProjectViews';
 import {
   forgotPasswordAction,
   forgotPasswordLoader,
@@ -57,15 +59,25 @@ export const router = createBrowserRouter([
         children: [
           { index: true, Component: ConversationView },
           { path: 'projects/new', Component: ProjectSetup },
-          { path: 'projects/:projectId', loader: projectConversationLoader, Component: ProjectConversation },
-          { path: 'projects/:projectId/conversations/:conversationId', loader: projectConversationLoader, Component: ProjectConversation },
-          { path: 'projects/:projectId/tasks', loader: projectTasksLoader, Component: ProjectTasks },
-          { path: 'projects/:projectId/docs', loader: projectDocsLoader, Component: ProjectDocs },
-          { path: 'projects/:projectId/docs/new', loader: docEditLoader, Component: DocEditor },
-          { path: 'projects/:projectId/docs/:docId', loader: docLoader, Component: DocReader },
-          { path: 'projects/:projectId/docs/:docId/versions/:version', loader: docLoader, Component: DocReader },
-          { path: 'projects/:projectId/docs/:docId/edit', loader: docEditLoader, Component: DocEditor },
-          { path: 'projects/:projectId/docs/:docId/history', loader: docHistoryLoader, Component: DocHistory },
+          {
+            // One project (#117): its header, audience, state line and view tabs share this data.
+            id: 'project',
+            path: 'projects/:projectId',
+            loader: projectShellLoader,
+            children: [
+              { index: true, loader: projectConversationLoader, Component: ProjectConversation },
+              { path: 'conversations/:conversationId', loader: projectConversationLoader, Component: ProjectConversation },
+              { path: 'tasks', loader: projectTasksLoader, Component: ProjectTasks },
+              { path: 'map', Component: ProjectMap },
+              { path: 'map/:sketchId', Component: SketchRoute },
+              { path: 'docs', loader: projectDocsLoader, Component: ProjectDocs },
+              { path: 'docs/new', loader: docEditLoader, Component: DocEditor },
+              { path: 'docs/:docId', loader: docLoader, Component: DocReader },
+              { path: 'docs/:docId/versions/:version', loader: docLoader, Component: DocReader },
+              { path: 'docs/:docId/edit', loader: docEditLoader, Component: DocEditor },
+              { path: 'docs/:docId/history', loader: docHistoryLoader, Component: DocHistory },
+            ],
+          },
           { path: 'materials/:materialId', loader: materialLoader, Component: MaterialView },
           { path: 'materials/:materialId/versions/:version', loader: materialLoader, Component: MaterialView },
           { path: 'tasks', Component: TasksView },
