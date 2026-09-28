@@ -27,7 +27,7 @@ export function Highlighted({ parts }: { parts: SearchText }) {
 export function placeText(place: SearchPlace) {
   switch (place.type) {
     case 'project': return `# ${place.name}`;
-    case 'dm': return place.name;
+    case 'dm': return `With ${place.name}`;
     case 'workspace': return place.name;
     default: return 'Only you';
   }
@@ -35,7 +35,9 @@ export function placeText(place: SearchPlace) {
 
 /** The body of a row; the caller supplies the element (a link on the page, an option in Jump to…). */
 export function ResultBody({ result }: { result: SearchResult }) {
-  const meta = [result.label, placeText(result.place), result.kind === 'person' ? null : result.author].filter(Boolean);
+  // In a DM with the author, "With Ari · Ari" would say the same thing twice.
+  const author = result.kind === 'person' || (result.place.type === 'dm' && result.place.name === result.author) ? null : result.author;
+  const meta = [result.label, placeText(result.place), author].filter(Boolean);
   return (
     <>
       <span className={`sr__ic sr__ic--${result.kind}`} aria-hidden="true"><Icon name={ICONS[result.kind]} size={15} /></span>
@@ -48,6 +50,7 @@ export function ResultBody({ result }: { result: SearchResult }) {
               {index === 1 && result.place.type === 'private' ? <Icon name="lock" size={11} /> : null}{item}
             </span>
           ))}
+          {result.kind === 'person' ? null : <time className="sr__metatime" dateTime={result.at}>{when(result.at)}</time>}
         </span>
       </span>
       {result.kind === 'person' ? null : <time className="sr__when" dateTime={result.at}>{when(result.at)}</time>}
