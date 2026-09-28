@@ -341,6 +341,7 @@ describe('search: hidden matches never change the answer or the work', () => {
     const baselineWork = await explain(olek, query);
     const baselineBuffers = Math.min(baselineWork.searchBuffers, ...await Promise.all([0, 1, 2, 3].map(async () => (await explain(olek, query)).searchBuffers)));
     const baselineTime = await median();
+    const insiderBefore = await explain(nia, query);
     assert.equal(baseline.items.length, 2);
 
     for (let start = 0; start < 300; start += 25)
@@ -357,22 +358,29 @@ describe('search: hidden matches never change the answer or the work', () => {
     assert.deepEqual(saturated, baseline, 'identical answer, counts and `next`');
     assert.equal(saturated.next, null, 'hidden matches never make `more` true');
     const saturatedWork = await explain(olek, query);
-    console.log(JSON.stringify({ search: 'saturation', before: baselineWork, after: saturatedWork }));
+    console.log(JSON.stringify({ search: 'saturation', before: baselineWork, after: saturatedWork, insider: { before: { rows: insiderBefore.rows, searchBuffers: insiderBefore.searchBuffers } } }));
     const work = ({ rows, indexRows, indexScans, lookups }: SearchWork) => ({ rows, indexRows, indexScans, lookups });
     assert.deepEqual(work(await explain(olek, query)), work(saturatedWork), 'the metric is deterministic');
     // Deterministic privacy evidence, index work included: the same table rows, the same index
     // scans looking up the same keys, and the same row addresses coming out of the index.
     assert.deepEqual(work(saturatedWork), work(baselineWork), `rows, index keys and row addresses (after: ${saturatedWork.nodes.join(', ')})`);
     // Buffers of the search table and its index. Every key is scoped to one audience, so no
-    // posting of a hidden row is read. What remains shared is the GIN entry tree: concurrent
-    // writers (other test files) make a lookup follow a split page to the right now and then, and
-    // the tree may gain a level, adding at most one page per key lookup. So the fewest buffers of
-    // several runs are compared, and only an increase counts: hidden postings could only add reads.
-    // Isolated runs read exactly the same buffers (136 → 136).
+    // posting of a hidden row is read, and isolated runs read exactly the same buffers. What is
+    // shared is the GIN entry tree (the index's own B-tree of keys): when writes anywhere in the
+    // database add a level to it, each key lookup reads one more page, and a lookup can follow a
+    // page split to the right. So the fewest buffers of several runs are compared, and only an
+    // increase counts, bounded by one page per key lookup plus two per scan. A read of hidden
+    // postings would instead grow with the hidden rows (462 share the looked-up terms here).
     const fewest = async () => Math.min(...await Promise.all([0, 1, 2, 3, 4].map(async () => (await explain(olek, query)).searchBuffers)));
     const bufferGrowth = (await fewest()) - baselineBuffers;
-    assert.ok(bufferGrowth <= saturatedWork.indexScans * saturatedWork.lookups,
-      `search table and index buffers grew by ${bufferGrowth} (allowed: one page per key lookup, ${saturatedWork.indexScans * saturatedWork.lookups}; before: ${baselineWork.nodes.join(', ')}; after: ${saturatedWork.nodes.join(', ')})`);
+    const treeSlack = saturatedWork.indexScans * (saturatedWork.lookups + 2);
+    assert.ok(bufferGrowth <= treeSlack,
+      `search table and index buffers grew by ${bufferGrowth} (allowed for the shared entry tree: ${treeSlack}; before: ${baselineWork.nodes.join(', ')}; after: ${saturatedWork.nodes.join(', ')})`);
+    // Control: the same metric does see rows the reader may read. Nia can see the hidden rows,
+    // and her search reads them (and their index postings).
+    const insiderAfter = await explain(nia, query);
+    assert.ok(insiderAfter.rows > insiderBefore.rows + 300, `the insider reads the new rows (${insiderBefore.rows} → ${insiderAfter.rows})`);
+    assert.ok(insiderAfter.indexRows > insiderBefore.indexRows + 300, `the insider's index scans return them (${insiderBefore.indexRows} → ${insiderAfter.indexRows})`);
     // The reader who can see them does get them, with `more` and a count.
     const insider = await search(nia, query);
     assert.ok(insider.next, 'Nia has more pages');

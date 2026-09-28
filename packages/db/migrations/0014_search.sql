@@ -13,15 +13,20 @@
 -- prefix, trigram similarity) is then checked on those candidate rows.
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
--- The audience-scoped keys of a row, all prefixed with `<audience_key>|`:
+-- The audience-scoped keys of a row, each one `<audience_key>|<term>`:
 -- - for every word (lexeme of the `simple` configuration) of two or more characters, its first
 --   two characters (`2:ab`) and, for longer words, its first three (`3:abc`), for full-text and
 --   prefix matching: a query word of two characters looks up `2:`, a longer one `3:`;
 -- - every trigram of the title (`t:<trigram>`, as `show_trgm` gives them), for trigram similarity:
 --   a title similar to the query shares at least one trigram with it, wherever the typo is.
-CREATE FUNCTION search_keys(p_audience text, p_title text, p_body text) RETURNS text[]
+-- Keys are stored as 64-bit hashes (`search_key`): short index entries keep the shared GIN entry
+-- tree shallow. A collision only adds a candidate, which the audience and match checks drop.
+CREATE FUNCTION search_key(p_audience text, p_term text) RETURNS bigint
+LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$ SELECT hashtextextended(p_audience || '|' || p_term, 0) $$;
+
+CREATE FUNCTION search_keys(p_audience text, p_title text, p_body text) RETURNS bigint[]
 LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
-  SELECT coalesce(array_agg(DISTINCT p_audience || '|' || k), '{}')
+  SELECT coalesce(array_agg(DISTINCT search_key(p_audience, k)), '{}')
   FROM (
     SELECT prefixes.k
     FROM (SELECT lexeme FROM unnest(to_tsvector('simple', coalesce(p_title, '') || ' ' || left(coalesce(p_body, ''), 100000)))) words,
@@ -55,7 +60,7 @@ CREATE TABLE search_documents (
   tsv tsvector GENERATED ALWAYS AS (
     setweight(to_tsvector('simple', title), 'A') || setweight(to_tsvector('simple', left(body, 100000)), 'B')
   ) STORED,
-  keys text[] GENERATED ALWAYS AS (search_keys(audience_key, title, body)) STORED
+  keys bigint[] GENERATED ALWAYS AS (search_keys(audience_key, title, body)) STORED
 );
 -- fastupdate off: a GIN pending list holds recent inserts of every audience and each search would
 -- scan all of it, so a reader's work would grow with other people's writes. Without it, inserts go

@@ -134,7 +134,7 @@ function audienceCte(audiences: SearchAudienceRows[], plan: SearchPlanRows): SQL
   // Trigram similarity: the query's trigrams, so a title with a typo anywhere is still a candidate.
   const terms = plan.fuzzy ? sql`(${words} || ARRAY(SELECT 't:' || trigram FROM unnest(show_trgm(${plan.text})) AS trigram))` : words;
   return sql`aud AS MATERIALIZED (
-      SELECT v.keys, ARRAY(SELECT key || '|' || term FROM unnest(v.keys) AS key CROSS JOIN unnest(${terms}) AS term) AS lookups
+      SELECT v.keys, ARRAY(SELECT search_key(key, term) FROM unnest(v.keys) AS key CROSS JOIN unnest(${terms}) AS term) AS lookups
       FROM (SELECT ${visibleKeys(audiences)} AS keys) v)`;
 }
 
