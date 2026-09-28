@@ -116,8 +116,8 @@ export function createNotificationSettings(ports: SettingsPorts) {
     view,
 
     async update(account: Account, command: UpdateNotificationPreferencesCommand) {
-      const next = applyPreferenceChange(await ports.preferences.get(account.userId), command);
-      await ports.preferences.save(account.userId, next);
+      // Applied under the row lock: two quick edits of different fields both stay.
+      await ports.preferences.modify(account.userId, (current) => applyPreferenceChange(current, command));
       return view(account);
     },
 
@@ -173,9 +173,7 @@ export function createNotificationSettings(ports: SettingsPorts) {
     /** Removing the extra address never starts email to the sign-in address by itself. */
     async removeAddress(account: Account) {
       if (!await ports.addresses.remove(account.userId)) throw new NotFoundError('Address', 'ADDRESS_NOT_FOUND');
-      const stored = await ports.preferences.get(account.userId);
-      const next = withoutAddress(stored.emailDestination, 'extra');
-      if (next !== stored.emailDestination) await ports.preferences.save(account.userId, { ...stored, emailDestination: next });
+      await ports.preferences.modify(account.userId, (current) => ({ ...current, emailDestination: withoutAddress(current.emailDestination, 'extra') }));
       return view(account);
     },
   };
@@ -193,12 +191,10 @@ export async function unsubscribe(ports: Pick<SettingsPorts, 'preferences' | 'un
   if (!value || value.length > 128) throw new NotFoundError('Unsubscribe link', 'UNSUBSCRIBE_INVALID');
   const email = await ports.unsubscribes.findByToken(hashToken(value));
   if (!email) throw new NotFoundError('Unsubscribe link', 'UNSUBSCRIBE_INVALID');
-  const stored = await ports.preferences.get(email.userId);
   const current = email.addressKind === 'account' ? await ports.unsubscribes.accountAddress(email.userId) : await ports.unsubscribes.verifiedExtraAddress(email.userId);
   if (!email.address || !current || current.toLowerCase() !== email.address.toLowerCase()) {
-    return { result: 'stale', stopped: email.addressKind, destination: stored.emailDestination };
+    return { result: 'stale', stopped: email.addressKind, destination: (await ports.preferences.get(email.userId)).emailDestination };
   }
-  const destination = withoutAddress(stored.emailDestination, email.addressKind);
-  if (destination !== stored.emailDestination) await ports.preferences.save(email.userId, { ...stored, emailDestination: destination });
+  const { emailDestination: destination } = await ports.preferences.modify(email.userId, (stored) => ({ ...stored, emailDestination: withoutAddress(stored.emailDestination, email.addressKind) }));
   return { result: 'stopped', stopped: email.addressKind, destination };
 }

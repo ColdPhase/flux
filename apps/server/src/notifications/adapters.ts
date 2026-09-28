@@ -3,14 +3,15 @@ import {
   notificationEmailRows,
   notificationPlaceRows,
   notificationPreferenceRows,
-  type DbExecutor,
 } from '@flux/db';
 import {
   createNotificationSettings,
   policySourceReader,
   preferenceRepository,
   readsSource,
+  type Database,
   type SettingsPorts,
+  type StoredPreferences,
   type VerificationMailer,
 } from '@flux/core';
 import type { SmtpConfig } from '../identity/config.js';
@@ -36,11 +37,24 @@ export function verificationMailer(smtp: SmtpConfig | null): VerificationMailer 
   };
 }
 
-export function settingsPorts(db: DbExecutor, mailer: VerificationMailer, origin: string): SettingsPorts {
+/** Stored preferences with an atomic partial change: row lock, merge and write in one transaction. */
+function preferenceStore(db: Database) {
+  return {
+    ...notificationPreferenceRows(db),
+    modify: (userId: string, change: (current: StoredPreferences) => StoredPreferences) => db.transaction(async (tx) => {
+      const rows = notificationPreferenceRows(tx);
+      const next = change(await rows.lock(userId) as StoredPreferences);
+      await rows.save(userId, next as Parameters<typeof rows.save>[1]);
+      return next;
+    }),
+  };
+}
+
+export function settingsPorts(db: Database, mailer: VerificationMailer, origin: string): SettingsPorts {
   const authorizer = policySourceReader(db);
   const places = notificationPlaceRows(db);
   return {
-    preferences: preferenceRepository(notificationPreferenceRows(db)),
+    preferences: preferenceRepository(preferenceStore(db)),
     addresses: notificationAddressRows(db),
     unsubscribes: notificationEmailRows(db),
     authorizer,
@@ -65,4 +79,4 @@ export function settingsPorts(db: DbExecutor, mailer: VerificationMailer, origin
   };
 }
 
-export const notificationSettings = (db: DbExecutor, mailer: VerificationMailer, origin: string) => createNotificationSettings(settingsPorts(db, mailer, origin));
+export const notificationSettings = (db: Database, mailer: VerificationMailer, origin: string) => createNotificationSettings(settingsPorts(db, mailer, origin));

@@ -68,14 +68,23 @@ export function NotificationSettings() {
       : push.state === 'unsupported' ? 'This browser cannot receive push; choices apply to your other devices.' : null), () => undefined);
   }, []);
 
-  async function save(run: () => Promise<NotificationPreferences>, done = 'Saved') {
-    try {
-      setPrefs(await run());
-      setSaved(done);
-    } catch (error) {
-      toast({ message: message(error, 'Could not save. Try again.'), tone: 'danger' });
-      load();
-    }
+  // Saves run one after another in the order they were made, each numbered. Only the answer to
+  // the newest one replaces what is shown, so an older response never undoes a newer edit.
+  const queue = useRef<Promise<void>>(Promise.resolve());
+  const sequence = useRef(0);
+  function save(run: () => Promise<NotificationPreferences>, done = 'Saved') {
+    const mine = ++sequence.current;
+    const next = queue.current.then(async () => {
+      try {
+        const result = await run();
+        if (mine === sequence.current) { setPrefs(result); setSaved(done); }
+      } catch (error) {
+        toast({ message: message(error, 'Could not save. Try again.'), tone: 'danger' });
+        if (mine === sequence.current) load();
+      }
+    });
+    queue.current = next;
+    return next;
   }
   const change = (command: UpdateNotificationPreferencesCommand, optimistic?: (current: NotificationPreferences) => NotificationPreferences) => {
     if (optimistic) setPrefs((current) => (current ? optimistic(current) : current));

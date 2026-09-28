@@ -584,6 +584,32 @@ describe('review fixes: exact unsubscribe, bounded verification, quiet hours at 
   before(() => boss.start());
   after(() => boss.stop());
 
+  test('two concurrent partial preference changes both persist (row-locked merge)', async () => {
+    const someone = await person('Zed Arlo');
+    await prefs(someone, { quietHours: { enabled: true, timeZone: 'Europe/Warsaw' } });
+    // Barrier: hold the row lock so both PATCH requests are in flight and waiting together.
+    const holder = await pool.connect();
+    try {
+      await holder.query('BEGIN');
+      await holder.query('SELECT 1 FROM notification_preferences WHERE user_id = $1 FOR UPDATE', [someone.id]);
+      const start = someone.browser.request('PATCH', '/api/v1/notification-preferences', { body: { quietHours: { start: '21:30' } } });
+      const end = someone.browser.request('PATCH', '/api/v1/notification-preferences', { body: { quietHours: { end: '07:15' } } });
+      await waitFor(async () => Number((await pool.query(
+        "SELECT count(*) AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query ILIKE '%notification_preferences%'")).rows[0].n) >= 2,
+      'both updates to wait on the row lock');
+      await holder.query('COMMIT');
+      for (const response of await Promise.all([start, end])) assert.equal(response.status, 200, response.text);
+    } finally {
+      holder.release();
+    }
+    const stored = expectStatus(await someone.browser.request('GET', '/api/v1/notification-preferences'), 200) as NotificationPreferences;
+    assert.deepEqual(stored.quietHours, { enabled: true, start: '21:30', end: '07:15', timeZone: 'Europe/Warsaw' });
+    // The same field changed twice: the later request wins.
+    await prefs(someone, { quietHours: { start: '20:00' } });
+    await prefs(someone, { quietHours: { start: '20:45' } });
+    assert.equal((expectStatus(await someone.browser.request('GET', '/api/v1/notification-preferences'), 200) as NotificationPreferences).quietHours.start, '20:45');
+  });
+
   test('an old unsubscribe link cannot stop a newer address, or a changed sign-in address', async () => {
     const lead = await person('Uma Kerr');
     const reader = await person('Vic Lamb');

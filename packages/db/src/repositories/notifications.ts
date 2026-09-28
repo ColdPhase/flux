@@ -182,6 +182,12 @@ export function notificationPreferenceRows(db: DbExecutor) {
       const set = { ...values, updatedAt: new Date() };
       await db.insert(p).values({ userId, ...set }).onConflictDoUpdate({ target: p.userId, set });
     },
+    /** The row locked FOR UPDATE, created with the column defaults when missing. Use inside a transaction. */
+    async lock(userId: string): Promise<StoredPreferenceRow> {
+      await db.insert(p).values({ userId }).onConflictDoNothing();
+      const [row] = await db.select().from(p).where(eq(p.userId, userId)).for('update');
+      return { channels: row!.channels ?? {}, emailDestination: row!.emailDestination, quietEnabled: row!.quietEnabled, quietStart: row!.quietStart, quietEnd: row!.quietEnd, timeZone: row!.timeZone };
+    },
     async isMuted(userId: string, source: { type: string; id: string }) {
       if (source.type !== 'project' && source.type !== 'dm') return false;
       const rows = await db.select({ id: m.sourceId }).from(m).where(and(eq(m.userId, userId), eq(m.sourceType, source.type), eq(m.sourceId, source.id)));

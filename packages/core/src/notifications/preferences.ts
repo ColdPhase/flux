@@ -196,5 +196,12 @@ export function preferenceRepository(store: PreferenceStore): PreferenceReposito
     isMuted: (userId, source) => store.isMuted(userId, source),
     mutes: (userId) => store.mutes(userId),
     setMuted: (userId, source, muted) => store.setMuted(userId, source, muted),
+    async modify(userId, change) {
+      if (store.modify) return store.modify(userId, change);
+      // Stores without transactions (in-memory test doubles) apply it directly.
+      const next = change((await store.find(userId)) ?? { ...DEFAULT_PREFERENCES, channels: {} });
+      await store.save(userId, next);
+      return next;
+    },
   };
 }

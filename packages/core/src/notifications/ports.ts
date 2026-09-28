@@ -82,6 +82,12 @@ export interface PreferenceStore {
   isMuted(userId: string, source: { type: string; id: string }): Promise<boolean>;
   mutes(userId: string): Promise<{ type: 'project' | 'dm'; id: string }[]>;
   setMuted(userId: string, source: { type: 'project' | 'dm'; id: string }, muted: boolean): Promise<void>;
+  /**
+   * Reads the person's row locked (creating it with the defaults if missing), applies `change`
+   * and writes the result, in one transaction, so concurrent partial changes never overwrite
+   * each other. Returns what was stored.
+   */
+  modify?(userId: string, change: (current: StoredPreferences) => StoredPreferences): Promise<StoredPreferences>;
 }
 
 export interface PreferenceRepository {
@@ -91,6 +97,8 @@ export interface PreferenceRepository {
   isMuted(userId: string, source: { type: string; id: string }): Promise<boolean>;
   mutes(userId: string): Promise<{ type: 'project' | 'dm'; id: string }[]>;
   setMuted(userId: string, source: { type: 'project' | 'dm'; id: string }, muted: boolean): Promise<void>;
+  /** Atomic read-change-write of the person's preferences (see `PreferenceStore.modify`). */
+  modify(userId: string, change: (current: StoredPreferences) => StoredPreferences): Promise<StoredPreferences>;
 }
 
 export interface GeneratedNotification {

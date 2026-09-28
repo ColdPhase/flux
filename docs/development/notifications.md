@@ -51,6 +51,10 @@ tap-time rechecks apply unchanged. The URL opens the exact message
 ## Preferences
 
 `GET/PATCH /api/v1/notification-preferences`; `PUT …/mutes` with `{ type, id, muted }`.
+A `PATCH` is partial and atomic: the row is locked (`SELECT … FOR UPDATE`, created with the
+defaults if missing), the given fields are merged and written in one transaction, so concurrent
+edits of different fields never overwrite each other; for the same field the later request wins.
+The settings page sends its saves one after another, numbered, and shows only the newest answer.
 
 - **Channels per reason** (`inApp`, `push`, `email`). Defaults: inbox and push on for every
   reason; email on for `mention`, `question` and `dm` only. With the inbox off but push or email

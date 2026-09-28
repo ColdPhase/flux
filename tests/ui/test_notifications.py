@@ -242,6 +242,16 @@ class NotificationJourney(unittest.TestCase):
         self.assertEqual(prefs["quietHours"], {"enabled": True, "start": "21:30", "end": "07:15", "timeZone": "Europe/Warsaw"})
         self.assertEqual([place["name"] for place in prefs["muted"]], ["Tool library"])
         self.assertEqual(prefs["email"]["destination"], "account")
+        # Rapid edits of two fields both survive a reload.
+        page.get_by_label("From", exact=True).fill("21:45")
+        page.get_by_label("Until", exact=True).fill("06:30")
+        self.settled(page, lambda stored: stored["quietHours"]["start"] == "21:45" and stored["quietHours"]["end"] == "06:30")
+        page.reload()
+        expect(page.get_by_label("From", exact=True)).to_have_value("21:45")
+        expect(page.get_by_label("Until", exact=True)).to_have_value("06:30")
+        page.get_by_label("From", exact=True).fill("21:30")
+        page.get_by_label("Until", exact=True).fill("07:15")
+        self.settled(page, lambda stored: stored["quietHours"]["start"] == "21:30" and stored["quietHours"]["end"] == "07:15")
         shot(page, "notifications-desktop-1440-settings")
 
         muted.get_by_role("button", name="Unmute").click()
