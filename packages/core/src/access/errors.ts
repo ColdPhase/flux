@@ -5,7 +5,7 @@
 export class DomainError extends Error {
   /** Extra safe fields merged into the error body, e.g. the latest authorized version. */
   details?: Record<string, unknown>;
-  constructor(readonly status: 400 | 403 | 404 | 409 | 422 | 428, readonly code: string, message: string) {
+  constructor(readonly status: 400 | 403 | 404 | 409 | 422 | 428 | 503, readonly code: string, message: string) {
     super(message);
     this.name = new.target.name;
   }
@@ -41,6 +41,13 @@ export class RuleViolationError extends DomainError {
 export class ConflictError extends DomainError {
   constructor(message: string, code = 'CONFLICT') {
     super(409, code, message);
+  }
+}
+
+/** An external dependency is required to enforce a security boundary safely. */
+export class ServiceUnavailableError extends DomainError {
+  constructor(message: string, code = 'SERVICE_UNAVAILABLE') {
+    super(503, code, message);
   }
 }
 

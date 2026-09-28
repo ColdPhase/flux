@@ -458,7 +458,7 @@ export const liveSessions = pgTable('live_sessions', {
   sketchId: uuid('sketch_id'),
   createdBy: text('created_by').notNull().references(() => authUsers.id),
   clientSessionId: uuid('client_session_id').notNull(),
-  state: text('state', { enum: ['available', 'ended'] }).notNull().default('available'),
+  state: text('state', { enum: ['available', 'rotating', 'ended'] }).notNull().default('available'),
   generation: integer('generation').notNull().default(1),
   roomId: text('room_id').notNull().unique(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -472,6 +472,14 @@ export const liveSessions = pgTable('live_sessions', {
   foreignKey({ columns: [table.workspaceId, table.projectId, table.sketchId], foreignColumns: [sketches.workspaceId, sketches.projectId, sketches.id] }),
   index('live_sessions_project_idx').on(table.projectId, table.createdAt.desc(), table.id.desc()),
 ]);
+
+/** Durable admission fence for access changes that also retire LiveKit rooms. */
+export const liveAccessFences = pgTable('live_access_fences', {
+  scopeKey: text('scope_key').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const livePresentations = pgTable('live_presentations', {
   id: uuid('id').primaryKey(),

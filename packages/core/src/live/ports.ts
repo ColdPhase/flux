@@ -17,8 +17,10 @@ export interface LiveAccess {
 
 export interface LiveRepository {
   /** Idempotent on (creator, clientSessionId); a changed context must conflict. */
-  createOrGet(principal: Principal, projectId: string, context: LiveContextRef, clientSessionId: string): Promise<LiveSessionRecord>;
+  createOrGet(principal: Principal, projectId: string, context: LiveContextRef, clientSessionId: string, ensureRoom: (roomId: string) => Promise<void>): Promise<LiveSessionRecord>;
   find(sessionId: string): Promise<LiveSessionRecord | null>;
+  /** Holds policy and session locks through room creation and JWT signing. */
+  withAdmission<T>(principal: Principal, sessionId: string, issue: (session: LiveSessionRecord) => Promise<T>): Promise<T>;
   /** Idempotent on (session, creator, clientEventId); a changed ref must conflict. */
   present(sessionId: string, principal: Principal, ref: LivePresentationRef, clientEventId: string): Promise<void>;
 }

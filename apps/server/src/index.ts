@@ -21,6 +21,8 @@ import { liveRoutes } from './live/routes.js';
 import { liveAccess } from './live/access.js';
 import { liveSessionStore } from './live/store.js';
 import { createLiveMediaFromEnv } from './live/media.js';
+import { liveRevocationCoordinator } from './live/revocation.js';
+import { liveDiscoveryRoutes } from './live/discovery.js';
 
 const connectionString = process.env.DATABASE_URL;
 const fixtureToken = process.env.FLUX_FIXTURE_TOKEN;
@@ -36,7 +38,9 @@ boss.on('error', (error) => app.log.error(error));
 await boss.start();
 app.addHook('onClose', async () => boss.stop());
 const identity = registerIdentity(app, { db, config: identityConfig });
-await app.register(accessRoutes, { db, sessions: identity, boss });
+const liveMedia = createLiveMediaFromEnv();
+const liveRevocation = liveMedia ? liveRevocationCoordinator(db, pool, liveMedia.media) : null;
+await app.register(accessRoutes, { db, sessions: identity, boss, liveRevocation });
 await app.register(sketchRoutes, { db, sessions: identity });
 await app.register(pushRoutes, { db, sessions: identity, config: pushConfig });
 if (pushConfig.status === 'unavailable') app.log.warn(pushConfig.reason);
@@ -46,13 +50,27 @@ if (!Number.isInteger(heartbeatMs) || heartbeatMs < 100) throw new Error('FLUX_S
 await app.register(streamRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, connectionString, heartbeatMs, cursorSecret: identityConfig.secret, exposeWork: testFailureInjection });
 await app.register(conversationRoutes, { db, sessions: identity });
 await app.register(workRoutes, { db, sessions: identity });
-const liveMedia = createLiveMediaFromEnv();
 // Configuration alone does not prove the SFU, DNS/TLS or receiver path is healthy.
 app.get('/api/v1/live-sessions/capabilities', async () => ({ status: liveMedia ? 'configured' : 'unavailable' }));
 if (liveMedia) await app.register(liveRoutes, {
   sessions: identity,
   ports: { access: liveAccess(db), sessions: liveSessionStore(db), ...liveMedia },
 });
+if (liveMedia) await app.register(liveDiscoveryRoutes, { db, sessions: identity, media: liveMedia.media });
+if (liveRevocation) {
+  let recovering = false;
+  const recover = async () => {
+    if (recovering) return;
+    recovering = true;
+    try { await liveRevocation.recoverPending(); }
+    catch (error) { app.log.error({ error }, 'Live media room recovery is pending'); }
+    finally { recovering = false; }
+  };
+  const recoveryTimer = setInterval(() => { void recover(); }, 10_000);
+  recoveryTimer.unref();
+  app.addHook('onClose', async () => clearInterval(recoveryTimer));
+  void recover();
+}
 
 app.get('/api/v1/health', async (_request, reply) => {
   try {

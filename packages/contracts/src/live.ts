@@ -35,7 +35,8 @@ export interface LiveSession {
   id: string;
   projectId: string;
   context: LiveContextRef;
-  state: 'available' | 'ended';
+  /** `rotating` is a fail-closed media fence during access changes/recovery. */
+  state: 'available' | 'rotating' | 'ended';
   generation: number;
   createdBy: string;
   createdAt: string;

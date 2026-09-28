@@ -1,0 +1,40 @@
+# Isolated real-SFU integration profile. Use only through scripts/check_live_sfu.sh.
+services:
+  api:
+    environment:
+      NODE_ENV: development
+      FLUX_LIVEKIT_ALLOW_INSECURE_LOCAL: "true"
+  livekit:
+    # Test clients share the Compose network with LiveKit, so its private Docker
+    # interface is the ICE address. Production uses an operator-owned public IP.
+    environment:
+      LIVEKIT_CONFIG: |
+        port: 7880
+        keys:
+          "${FLUX_LIVEKIT_API_KEY:?Set a disposable test key}": "${FLUX_LIVEKIT_API_SECRET:?Set a disposable test secret}"
+        room:
+          auto_create: false
+          max_participants: 16
+          empty_timeout: 300
+        rtc:
+          tcp_port: 7881
+          udp_port: 7882
+          use_external_ip: false
+  live-sfu-test:
+    profiles: ["live-test"]
+    build:
+      context: ..
+      dockerfile: infra/live-sfu-tests.Dockerfile
+      args:
+        E2E_IMAGE: flux-e2e:${FLUX_IMAGE_TAG:?Set an isolated image tag}
+    image: flux-live-sfu-test:${FLUX_IMAGE_TAG:?Set an isolated image tag}
+    command: ["node_modules/.bin/tsx", "--test", "tests/app/e2e/live-sfu-revocation.e2e.ts"]
+    environment:
+      FLUX_API_URL: http://api:8080
+      FLUX_PUBLIC_ORIGIN: ${FLUX_PUBLIC_ORIGIN:?Set a loopback test origin}
+      FLUX_LIVEKIT_WS_URL: ws://livekit:7880
+    depends_on:
+      api:
+        condition: service_healthy
+      livekit:
+        condition: service_healthy

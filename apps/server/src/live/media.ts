@@ -114,7 +114,14 @@ export function createLiveMedia(config: LiveMediaConfig): LiveMediaAdapter {
       await rooms.removeParticipant(room(roomId), participantIdentity(userId));
     },
     async deleteRoom(roomId) {
-      await rooms.deleteRoom(room(roomId));
+      const name = room(roomId);
+      // A retry may find an already expired/deleted room. Confirm absence even if
+      // DeleteRoom reports an error; never turn an uncertain response into success.
+      let failure: unknown;
+      try { await rooms.deleteRoom(name); } catch (error) { failure = error; }
+      const remaining = await rooms.listRooms([name]);
+      if (remaining.some((candidate) => candidate.name === name))
+        throw failure ?? new Error('LiveKit still lists a retired room');
     },
   };
 }

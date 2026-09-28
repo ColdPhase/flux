@@ -3,7 +3,7 @@ import { InvalidInputError, NotFoundError, RuleViolationError } from '../access/
 import type { Principal } from '../principal.js';
 import type { LivePorts, LiveSessionRecord } from './ports.js';
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const uuid = (value: unknown, name: string) => {
   if (typeof value !== 'string' || !UUID.test(value)) throw new InvalidInputError(`${name} must be a UUID`);
   return value;
@@ -35,10 +35,8 @@ export function liveUseCases(ports: LivePorts) {
       uuid(context.id, 'context.id');
       uuid(clientSessionId, 'clientSessionId');
       const { projectId } = await ports.access.resolveContext(principal, context);
-      const session = await ports.sessions.createOrGet(principal, projectId, context, clientSessionId);
+      const session = await ports.sessions.createOrGet(principal, projectId, context, clientSessionId, ports.media.ensureRoom);
       if (session.state !== 'available') throw new RuleViolationError('This session has ended', 'LIVE_SESSION_ENDED');
-      // A persisted session can be retried if SFU creation failed after its database commit.
-      await ports.media.ensureRoom(session.roomId);
       return visible(session);
     },
 
@@ -49,11 +47,11 @@ export function liveUseCases(ports: LivePorts) {
 
     async join(principal: Principal, sessionId: string): Promise<LiveJoinGrant> {
       human(principal);
-      const session = await current(principal, sessionId);
-      if (session.state !== 'available') throw new RuleViolationError('This session has ended', 'LIVE_SESSION_ENDED');
-      await ports.media.ensureRoom(session.roomId);
-      const grant = await ports.media.grant(session.roomId, principal.id);
-      return { session: await visible(session), mediaUrl: ports.mediaUrl, token: grant.token, expiresAt: grant.expiresAt.toISOString() };
+      return ports.sessions.withAdmission(principal, uuid(sessionId, 'sessionId'), async (session) => {
+        await ports.media.ensureRoom(session.roomId);
+        const grant = await ports.media.grant(session.roomId, principal.id);
+        return { session: await visible(session), mediaUrl: ports.mediaUrl, token: grant.token, expiresAt: grant.expiresAt.toISOString() };
+      });
     },
 
     async leave(principal: Principal, sessionId: string): Promise<void> {

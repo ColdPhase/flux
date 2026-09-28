@@ -21,27 +21,45 @@ restrictive-network acceptance remain in [#63](https://github.com/ColdPhase/flux
 - `POST /api/v1/live-sessions/:id/leave` disconnects that human from media.
   Device capture and playback remain client actions; receiving a grant never
   enables a microphone, camera or screen by itself.
+- `GET /api/v1/projects/:projectId/live-sessions` lists currently readable,
+  available sessions in bounded pages. The server rechecks each session's
+  project and anchor before returning it. The response contains opaque session
+  and context identifiers but no room name or source text; an SFU failure makes
+  participant presence unknown.
 - The `GET /api/v1/live-sessions/capabilities` response says `configured` when
   the required media variables are present. This does not certify reachability,
   DNS/TLS, ICE, relay fallback or receiver quality.
+- Grant, role and membership changes affecting an active room use a durable
+  admission fence. New joins stop before the old SFU room is deleted; the access
+  mutation succeeds only after the old room is absent, and remaining authorized
+  people receive a new room generation. A failed SFU deletion leaves admission
+  fenced for retry; startup and a periodic 10-second pass reconcile the fence.
+  If the API has no LiveKit configuration while a durable room is available or
+  rotating, these access changes return `503 LIVE_MEDIA_UNAVAILABLE` without
+  changing policy. Ordinary work and conversation endpoints remain available.
 
 ## Required before #61 acceptance or merge
 
-This checkpoint does **not** implement secure membership revocation for active
-or reconnecting media. LiveKit's [token documentation](https://docs.livekit.io/frontends/reference/tokens-grants/)
+The revocation coordinator now serializes joins with access changes and rotates
+rooms after deletion. Database and mock-SFU tests exercise grant/membership
+revocation, admission races and recovery. A separate two-client test on the
+pinned self-hosted LiveKit server confirmed that deleting a room disconnects
+both clients, and neither an original JWT nor an actual SFU-refreshed JWT can
+reconnect while `room.auto_create` is disabled. An end-to-end Flux API/SFU
+revocation test, including the remaining member's rejoin, is still required
+before calling this an accepted access boundary. LiveKit's
+[token documentation](https://docs.livekit.io/frontends/reference/tokens-grants/)
 states that self-hosted `RemoveParticipant` does not invalidate existing tokens;
-refreshed reconnect tokens can outlive the initial grant. The remaining slice
-must serialize Flux grant issuance with revocation, rotate each affected room's
-generation, delete the retired SFU room with `room.auto_create: false`, and
-recover safely across partial failures. Test both original and refreshed tokens
-against the real pinned SFU. The current join route must not be exposed as a
-completed access boundary until that work passes.
+room retirement supplies the immediate cutoff instead.
 
-Also pending: a bounded session lifecycle and room count, current-audience
-discovery/invitations, verified webhook or equivalent participant events,
+Also pending: a bounded session lifecycle and room count, invitations,
+verified webhook or equivalent participant events,
 idempotent leave/end and last-person expiry, authorized presentation delivery,
-source-version checks in the same transaction as a trace, two real clients,
-reconnect/media-failure tests and independent review. #62 owns the integrated
+screen-track sharing, reconnect/media-failure tests and independent review.
+The dated [lifecycle plan](live-lifecycle-plan.md) records proposed tables,
+locks and failure tests; it is not an implemented acceptance result.
+Source-version checks now run inside the trace transaction and have targeted
+regressions. #62 owns the integrated
 interface and [#63](https://github.com/ColdPhase/flux/issues/63) owns receiver,
 network and real-device evidence.
 
@@ -51,12 +69,16 @@ Use an isolated Compose project and free ports:
 
 ```sh
 FLUX_TEST_PORT=18661 FLUX_TEST_MAILPIT_PORT=18662 ./scripts/check_application.sh
+FLUX_LIVE_TEST_PORT=18771 ./scripts/check_live_sfu.sh
 ```
 
 That script builds and runs the application, PostgreSQL migration, API tests,
 browser access checks, restart and push checks inside Docker. The focused
-`tests/app/live-store.test.ts` proves project-scoped foreign keys, idempotency,
-identifier-only traces and a denied project grant at the persistence seam. The
-SFU adapter was separately exercised against a pinned local Docker LiveKit
-container (create room twice, issue a JWT, list connected participants and
-delete the room). Neither check proves a real two-person call or revocation.
+`tests/app/live-store.test.ts`, `live-source.test.ts` and
+`live-revocation.test.ts` cover the persistence, policy and coordinator seams.
+The pinned LiveKit server was exercised with two actual Chromium clients and
+an audio track. `check_live_sfu.sh` separately exercises the full Flux API,
+two connected clients, an actual SFU-refreshed token, project-grant revocation,
+old-room disconnection/reconnect rejection and a surviving member's new-room
+join. The local proof does not establish public ingress, TURN/TLS or all device
+and lifecycle cases.
