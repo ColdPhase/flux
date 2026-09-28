@@ -12,6 +12,7 @@ import { registerDatabase } from './plugins/database.js';
 import { loadIdentityConfig, registerIdentity } from './identity/index.js';
 import { accessRoutes } from './access/routes.js';
 import { sketchRoutes } from './sketches/routes.js';
+import { dmRoutes } from './direct-messages/routes.js';
 import { loadPushServerConfig, pushRoutes } from './push/index.js';
 import { setStaticHeaders } from './pwa/static-headers.js';
 import { streamRoutes } from './stream/index.js';
@@ -26,6 +27,7 @@ import { liveDiscoveryRoutes } from './live/discovery.js';
 import { liveLifecycle } from './live/lifecycle.js';
 import { liveWebhookRoutes } from './live/webhook.js';
 import { liveInvitationRoutes } from './live/invitation-routes.js';
+import { returnRoutes } from './returns/routes.js';
 
 const connectionString = process.env.DATABASE_URL;
 const fixtureToken = process.env.FLUX_FIXTURE_TOKEN;
@@ -46,6 +48,7 @@ const lifecycle = liveMedia ? liveLifecycle(db, pool, liveMedia.media) : null;
 const liveRevocation = liveMedia ? liveRevocationCoordinator(db, pool, liveMedia.media, lifecycle!) : null;
 await app.register(accessRoutes, { db, sessions: identity, boss, liveRevocation });
 await app.register(sketchRoutes, { db, sessions: identity });
+await app.register(dmRoutes, { db, sessions: identity });
 await app.register(pushRoutes, { db, sessions: identity, config: pushConfig });
 if (pushConfig.status === 'unavailable') app.log.warn(pushConfig.reason);
 await app.register(websocket, { options: { maxPayload: 1024 } });
@@ -107,6 +110,7 @@ if (liveRevocation) {
   app.addHook('onClose', async () => clearInterval(recoveryTimer));
   void recover();
 }
+await app.register(returnRoutes, { db, sessions: identity });
 
 app.get('/api/v1/health', async (_request, reply) => {
   try {

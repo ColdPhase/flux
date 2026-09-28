@@ -7,6 +7,7 @@ import { useCaptures } from './captures';
 import { useShellData } from './data';
 import { useDraft, useReadingPosition } from './drafts';
 import { useShellActions } from './shellContext';
+import { SinceYouLeftHome } from '../returns/SinceYouLeft';
 
 export const VIEWS = [
   { id: 'conversation', label: 'Conversation', path: '/' },
@@ -70,6 +71,8 @@ export function ConversationView() {
   const [serverDrafts, setServerDrafts] = useState<Draft[]>([]);
   const [saveState, setSaveState] = useState('');
   const [saving, setSaving] = useState(false);
+  // With changes to return to, the "nothing here yet" empty state would contradict them.
+  const [returning, setReturning] = useState(false);
   useEffect(() => {
     if (!selectedWorkspace) return;
     const controller = new AbortController();
@@ -126,6 +129,7 @@ export function ConversationView() {
           <h2>Welcome, {firstName}</h2>
           <p>Jot down a thought, a link or a half-formed idea. It stays with you until you choose to share it.</p>
         </div>
+        <SinceYouLeftHome onShown={setReturning} />
         {serverDrafts.length ? <section className="notes" aria-label="Private drafts"><p className="notes__h"><Icon name="lock" size={13} />Private drafts · saved in your space</p><ol className="notes__list">{serverDrafts.map((item) => <li className="note" key={item.id}><p className="note__text">{item.body}</p><div className="note__meta">You · v{item.version} · <time dateTime={item.updatedAt}>{when(item.updatedAt)}</time></div></li>)}</ol></section> : null}
         {items.length ? (
           <section className="notes" aria-label="Your private notes">
@@ -142,7 +146,7 @@ export function ConversationView() {
               ))}
             </ol>
           </section>
-        ) : !serverDrafts.length ? (
+        ) : !serverDrafts.length && !returning ? (
           <ViewEmpty icon="chat" title="Nothing here yet" level={3}>
             <p>Write your first thought below. When you’re added to a project or someone messages you, those conversations open from the sidebar.</p>
           </ViewEmpty>
@@ -203,18 +207,6 @@ export function DocsView() {
     <Pane>
       <ViewEmpty icon="doc" title="No docs yet">
         <p>Notes worth keeping, what you learned from an experiment, and how things work, written with the people in your projects, will collect here.</p>
-      </ViewEmpty>
-    </Pane>
-  );
-}
-
-/** Direct messages: private conversations with people, independent of any project (#36). */
-export function DirectMessagesView() {
-  return (
-    <Pane>
-      <ViewEmpty icon="chat" title="No direct messages yet">
-        <p>When you talk with someone one to one, or with a few people outside a project, the conversation lives here. Only the people in it can see it.</p>
-        <p>Messaging people directly isn’t available in this version yet.</p>
       </ViewEmpty>
     </Pane>
   );

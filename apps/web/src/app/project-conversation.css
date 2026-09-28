@@ -1,3 +1,7 @@
+/* The project page: the return line (#106) above the conversation. */
+.project-page { display: flex; flex: 1; min-height: 0; flex-direction: column; }
+.project-convo__message:focus { outline: none; }
+.project-convo__message.is-arrived { box-shadow: inset 3px 0 0 var(--accent); padding-left: 12px; }
 .project-convo { display: flex; flex: 1; min-height: 0; flex-direction: column; }
 .project-convo__feed { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .project-convo__in { max-width: 1280px; margin: 0 auto; padding: 24px; container-type: inline-size; }
@@ -49,3 +53,5 @@
 .project-convo__head .ws-state { margin: 12px 0 0; }
 /* With the Details panel docked the work column narrows; materials move below the messages. */
 @container (max-width: 860px) { .project-convo__columns { grid-template-columns: minmax(155px, 200px) minmax(0, 1fr); } .project-convo__materials { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line); padding: 16px 0; } }
+.project-convo__person { color: inherit; text-decoration: none; border-radius: 4px; }
+.project-convo__person:hover { text-decoration: underline; text-underline-offset: 2px; }

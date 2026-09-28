@@ -19,6 +19,7 @@ export * from './repositories/push.js';
 export * from './repositories/stream.js';
 export * from './repositories/sketches.js';
 export * from './repositories/work.js';
+export * from './repositories/direct-messages.js';
 
 /** PostgreSQL channel notified (payload: seq) after an event with a workspace commits; wakes stream connections. */
 export const EVENTS_CHANNEL = 'flux_events';
@@ -67,3 +68,4 @@ export function listen(connectionString: string, channel: string, onNotify: (pay
     },
   };
 }
+export * from './repositories/returns.js';

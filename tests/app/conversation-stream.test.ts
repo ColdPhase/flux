@@ -68,7 +68,11 @@ test('conversation and material commits reach only current project readers throu
     for (const row of rows.rows) {
       assert.equal(row.workspace_id, ws.id);
       assert.equal(row.object_id, project.id);
-      assert.deepEqual(row.data, {}, 'event storage has no content or private draft provenance');
+      // Identifiers only (#106 return view): never text, titles, URLs or private draft provenance.
+      const keys = Object.keys(row.data).sort();
+      assert.ok(['conversationId,messageId', 'materialId,version'].includes(keys.join(',')), `event data keys: ${keys.join(',')}`);
+      for (const value of Object.values(row.data)) assert.ok(typeof value === 'number' || /^[0-9a-f-]{36}$/.test(String(value)), 'identifiers only');
+      assert.equal(JSON.stringify(row.data).includes(privateDraft.id), false);
     }
     const audience = await pool.query('SELECT DISTINCT recipient FROM event_audience WHERE event_id = ANY($1)', [rows.rows.map((row) => row.id)]);
     assert.deepEqual(audience.rows.map((row) => row.recipient).sort(), [`human:${owner.id}`, `human:${partner.id}`].sort());

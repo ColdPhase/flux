@@ -22,6 +22,7 @@ export {
   AGENT_ACTIONS,
   DRAFT_ACTIONS,
   SKETCH_ACTIONS,
+  DM_ACTIONS,
   PROJECT_ACTIONS,
   WORKSPACE_ACTIONS,
   type Action,
@@ -47,6 +48,9 @@ export type { LiveAccess, LiveMedia, LivePorts, LiveRepository, LiveSessionRecor
 export { liveInvitationUseCases } from './live/invitations.js';
 export type { LiveInvitation, LiveInvitationPorts, LiveInvitationTarget, LiveInvitationReply,
   LiveInvitationCursor, LiveInvitationPage, LiveInvitationPageRow } from './live/invitations.js';
+export * from './returns/index.js';
+export * from './direct-messages/index.js';
+export { policyDmAccess } from './access/dm-access.js';
 
 export const SAMPLE_JOB = 'sample.process';
 

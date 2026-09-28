@@ -17,7 +17,7 @@ import {
 } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 
-// Shared HTTP plumbing for `/api/v1` command routes (issue #29 AC-4, reused by #69): the
+// Shared HTTP plumbing for `/api/v1` command routes (issue #29 AC-4, reused by #69 and #107): the
 // domain error mapping, If-Match parsing and the Idempotency-Key runner.
 
 export function single(value: string | string[] | undefined) {
@@ -68,7 +68,8 @@ export interface CommandSpec {
   operation: string;
   /** The object whose workspace scopes the idempotency key; null outside a workspace. */
   scope: ResourceRef | null;
-  status?: number;
+  /** Success status; a function decides from the result (e.g. 201 created, 200 existing). */
+  status?: number | ((body: unknown) => number);
   /** Where the response ETag comes from; `true` means the body's own version. */
   etag?: boolean | ((body: unknown) => string | null);
   run: (principal: Principal, db: Database) => Promise<unknown>;
@@ -100,7 +101,8 @@ export function commandRunner(db: Database, sessions: SessionResolver) {
     const etagOf = spec.etag === true ? versionEtag : spec.etag || (() => null);
     const execute = async (conn: Database): Promise<CommandResponse> => {
       const result = await spec.run(actor, conn);
-      return { status: spec.status ?? 200, body: result ?? null, etag: etagOf(result) };
+      const status = typeof spec.status === 'function' ? spec.status(result) : spec.status ?? 200;
+      return { status, body: result ?? null, etag: etagOf(result) };
     };
     let response: CommandResponse & { replayed?: boolean };
     if (key === null) {
