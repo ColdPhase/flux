@@ -66,4 +66,5 @@ services:
         # The separate Xvfb display keeps Chromium's real display-capture picker
         # and fake camera/mic entirely away from the operator's desktop/devices.
         xvfb-run -a node_modules/.bin/tsx --test tests/app/e2e/live-turn-relay.e2e.ts
+        node scripts/summarize_live_turn_resources.mjs /artifacts
         iptables -L OUTPUT -n -v

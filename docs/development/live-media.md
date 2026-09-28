@@ -87,10 +87,12 @@ its pass status and screenshot remain unverified until the next full run.
 Set `FLUX_LIVE_TURN_ARTIFACT_DIR` to retain browser screenshots and the SFU
 resource trace at a chosen path (otherwise the script prints a new `/tmp` path).
 `livekit-container-stats.jsonl` records timestamped Docker container CPU,
-reported memory usage and cumulative receive/transmit network traffic every two
+reported memory usage and cumulative receive/transmit network traffic roughly every two
 seconds; `livekit-phases.jsonl` marks `four_connected`, `four_media_active` and
-`four_media_verified`. Compare samples inside the media-active interval and
-the cumulative transmit bytes at its endpoints. These are local-container
+`four_media_verified`. The test summarizes samples inside the media-active
+interval and fails if fewer than two were captured or the SFU transmitted no
+bytes. It reports mean/peak CPU percentage, peak memory and network byte deltas;
+the raw samples remain the measurement record. These are local-container
 measurements, not public-link capacity or a four-person service limit. Keep
 raw trace files with the tested commit when reporting performance results.
 

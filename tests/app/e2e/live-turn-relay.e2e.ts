@@ -522,6 +522,9 @@ test('four authorized clients receive two simultaneous code-sized screen tracks 
         assert.equal(candidate.relayProtocol, 'tls', JSON.stringify(candidate));
       }
     }
+    // Leave both screens flowing long enough for two independent Docker stats
+    // snapshots inside the four-person measurement interval.
+    await delay(2_000);
     markResourcePhase('four_media_verified');
     for (const page of pages) await page.close();
   });

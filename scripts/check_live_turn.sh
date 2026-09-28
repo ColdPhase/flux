@@ -76,8 +76,8 @@ stats_path="$artifact_dir/livekit-container-stats.jsonl"
 (
   while :; do
     snapshot=$(docker stats --no-stream --no-trunc --format '{{json .}}' "$livekit_container" 2>/dev/null) || exit 0
-    printf '{"timestampUtc":"%s","stats":%s}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$snapshot" >> "$stats_path"
-    sleep 2
+    printf '{"timestampUtc":"%s","stats":%s}\n' "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" "$snapshot" >> "$stats_path"
+    sleep 1
   done
 ) &
 stats_sampler_pid=$!
