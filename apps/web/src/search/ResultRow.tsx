@@ -6,7 +6,7 @@ import { Icon, type IconName } from '../ui';
 
 const ICONS: Record<SearchKind, IconName> = {
   message: 'chat', dm_message: 'chat', material: 'doc', work: 'tasks', decision: 'rule', result: 'result',
-  sketch: 'map', thought: 'map', draft: 'lock', person: 'people',
+  sketch: 'map', thought: 'map', draft: 'edit', person: 'people',
 };
 
 const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
@@ -50,10 +50,9 @@ export function ResultBody({ result }: { result: SearchResult }) {
               {index === 1 && result.place.type === 'private' ? <Icon name="lock" size={11} /> : null}{item}
             </span>
           ))}
-          {result.kind === 'person' ? null : <time className="sr__metatime" dateTime={result.at}>{when(result.at)}</time>}
+          {result.kind === 'person' ? null : <time dateTime={result.at}>{when(result.at)}</time>}
         </span>
       </span>
-      {result.kind === 'person' ? null : <time className="sr__when" dateTime={result.at}>{when(result.at)}</time>}
     </>
   );
 }

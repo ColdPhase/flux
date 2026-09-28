@@ -122,7 +122,7 @@ function JumpBody({ onClose, userId, phone }: { onClose: () => void; userId: str
           <p className="jump__empty">Nothing you can open matches “{text}”. Try fewer or different words.</p>
         ) : state.status === 'failed' ? <p className="jump__empty" role="alert">{state.message}</p> : null}
       </div>
-      <p className="jump__foot" aria-hidden="true"><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>↵</kbd> open</span><span><kbd>Esc</kbd> close</span></p>
+      <p className="jump__foot" aria-hidden="true">{options.length ? <><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>↵</kbd> open</span></> : null}<span><kbd>Esc</kbd> close</span></p>
     </div>
   );
 }

@@ -1,0 +1,150 @@
+# Search across Flux (issue #114)
+
+Foundation 8.12: a person knows something exists but not where or under which name. One search
+covers project messages, direct messages, materials and every version of them, work items,
+decisions, results, sketches and their thoughts, drafts and people. It runs in PostgreSQL only
+(`tsvector`, GIN, `websearch_to_tsquery`, `ts_headline`, `pg_trgm`), in line with O-002: there is
+no separate search server. The #16 rule applies throughout: **access filtering happens before
+ranking, limits, counts and snippets.**
+
+## Index
+
+Migration `0014_search.sql` (`FLUX_SCHEMA_VERSION` 14) adds the `pg_trgm` and `btree_gin`
+extensions (both trusted contrib extensions) and one table, `search_documents`. Each row is one
+searchable object:
+
+| Column | Meaning |
+| --- | --- |
+| `kind` | `message`, `dm_message`, `material`, `work`, `decision`, `result`, `sketch`, `thought`, `draft` or `person`. |
+| `audience_key` | The object that carries the row's permission: `project:<id>`, `dm:<id>`, `sketch:<id>`, `draft:<id>` or `members:<workspace>`. |
+| `project_id`, `parent_id`, `object_id`, `version` | The place and the exact target: the conversation of a message, the DM of a DM message, the sketch of a thought, and the material version. |
+| `title`, `body`, `status`, `author_kind`/`author_id`, `at` | Content, the status that names it ("Task · blocked"), who wrote it and when. |
+| `tsv` | Generated: `title` weighted A and `body` weighted B, with the `simple` configuration. |
+
+- **Kept current in the same transaction.** `AFTER INSERT OR UPDATE OR DELETE` row triggers on
+  `project_messages`, `dm_messages`, `project_material_versions`, `project_work_items`,
+  `project_decisions`, `project_results`, `sketches`, `sketch_thoughts`, `drafts` and
+  `workspace_members` (plus `auth_users` name changes) write the row with the change itself. A
+  committed edit is searchable at once; a deleted object, including cascades from a deleted
+  project, DM or sketch, disappears with it. Moving a thought on the map does not reindex it. The
+  migration indexes what already exists.
+- **Rows hold content, not permissions.** Who may read a row is decided at query time from its
+  `audience_key`, so a revoked grant, a left DM, a deny grant or a membership removal applies on
+  the next search without touching the index. A sketch's scope and a draft's visibility are
+  read from their own rows by the policy.
+- **Old citations still resolve.** Every material version has its own row. A search that
+  matches only an older version finds that version ("Material · version 1 of 2") and opens it;
+  when several versions match, the newest matching one is shown and the material counts once.
+- **Language.** The `simple` configuration lowercases without stemming, so every language is
+  treated the same way. The last word also matches as a prefix while typing (`sens` finds
+  "sensor"), and titles and names also match by trigram similarity, which tolerates small typos.
+  Queries with web search syntax (`"exact phrase"`, `or`, `-word`) are left to
+  `websearch_to_tsquery` alone, without prefix or trigram matching, so an exclusion stays exact.
+
+## Access before ranking
+
+`packages/core/src/search/` owns the use case and its ports; the server passes the adapters.
+
+1. **Audiences, fresh on every request.** `policySearchAccess` (`apps/server/src/search/adapters.ts`)
+   lists the workspaces the principal is active in and, for each, asks the policy for the list
+   condition of every audience type: `visibleFilter(…, 'project' | 'dm' | 'sketch' | 'draft')`
+   and, for people, `authorize(…, 'workspace.read_members')`. Nothing is cached.
+2. **Composed into SQL.** `searchRows` (`packages/db/src/repositories/search.ts`) turns the
+   conditions into one array of visible audience keys (`ARRAY(SELECT 'project:' || id FROM
+   projects WHERE <visibleFilter> UNION ALL …)`) in a materialized CTE, and every statement starts
+   with `audience_key = ANY(keys)`. Ranking (`ts_rank` plus title similarity), the window that keeps
+   one material version, the `LIMIT` of the page, the per-kind counts and `ts_headline` all run on
+   rows that already passed it. A project is named in a result only when the project itself is
+   among the visible audiences.
+3. **The plan is pinned.** Both GIN indexes lead with `audience_key` (`btree_gin`):
+   `(audience_key, tsv)` and `(audience_key, title gin_trgm_ops)`. The page and count statements
+   run in their own read-only transaction with `SET LOCAL enable_seqscan = off`, so PostgreSQL
+   always reaches `search_documents` through an index condition on the visible audiences, also
+   while the table is small. Rows of other audiences are never fetched, ranked or counted.
+
+Matches the reader cannot see therefore change neither the answer (items, snippets, counts,
+`next`) nor the rows the database examines for it. The remaining shared costs are not per-match:
+the policy conditions scan the workspace's projects, DMs, sketches and drafts (their number, not
+their content), and recent writes leave dead row versions in those tables until autovacuum removes
+them. That is load, as for the stream, and it is not padded to constant time.
+
+## API
+
+`GET /api/v1/search?q=&type=&place=&author=&cursor=&limit=` (`packages/contracts/src/search.ts`)
+needs a live session and answers `Cache-Control: no-store`.
+
+- `q`: 1–200 characters (`400 QUERY_REQUIRED` / `QUERY_TOO_LONG`). A query without any letter or
+  digit returns an empty answer. Queries are always parameters; operators, quotes and SQL are data.
+- `type`: `message` (project and direct messages), `material`, `work`, `decision`, `result`,
+  `sketch` (sketches and thoughts), `draft` or `person`.
+- `place`: `project:<id>`, `dm:<id>` or `private` (your private drafts and sketches). A place
+  the reader cannot see gives the same empty answer as a place without matches.
+- `author`: `human:<id>` or `agent:<id>`.
+- `limit`: 1–50, default 20.
+- **Answer:** `items` (kind, a human label such as "Decision · current rule" or "Thought in
+  “Sensing options”", the title and snippet as plain and matched parts, never markup, the place,
+  author, time and exact target), `next`, `counts` per type over every type (without the cursor)
+  and `countsCapped` (counting stops at 500 visible matches).
+- **Cursor.** `next` is the AES-256-GCM encryption (keys from `FLUX_AUTH_SECRET` via HKDF) of the
+  last visible result's rank, time and row, authenticated with the reader and a hash of the query
+  and filters. It works only for that person and that exact search; anything else is
+  `400 CURSOR_INVALID`. Pages follow keyset order (rank, time, row), so none repeat. After a
+  revocation, the next page is computed with the new access.
+- With `FLUX_TEST_FAILURE_INJECTION=true` only, `GET /api/v1/search/explain` returns the rows
+  examined by the same statements (`EXPLAIN ANALYZE`), for the regression test below.
+
+## Adding a source
+
+A source is registered in three small places plus its trigger:
+
+1. a trigger in a migration that calls `search_put(...)` with its `kind` and `audience_key`;
+2. `SEARCH_SOURCES` in `packages/core/src/search/sources.ts`: its filter, human label and target;
+3. if it brings a new audience type, one entry in `AUDIENCE_KEYS` (`@flux/db` search rows) and one
+   in `POLICY_AUDIENCES` (server adapter) that returns the policy's `visibleFilter` condition.
+
+Direct messages were added this way (`dm_message`, audience `dm`). **Docs (#112)** follow the same
+steps: a `doc` kind and its trigger, and either the `project` audience or a new `doc` audience
+backed by the docs rule in `policy.ts`. They are not indexed yet.
+
+## Web
+
+- **Jump to… (⌘K / Ctrl+K)**, `apps/web/src/search/JumpTo.tsx`. The sidebar shows "Jump to… ⌘K" at
+  the top, as in direction C; the shortcut works everywhere in the app, also while typing. It is a
+  floating dialog near the top on desktop and a full-screen sheet on the phone (opened from the
+  navigation drawer). It searches as you type (140 ms debounce), shows up to eight results as a
+  combobox listbox (↑/↓ move, Enter opens, Esc closes and returns focus) and ends with "See all
+  results". Only the answer to the latest request is shown.
+- **Search page** `/search?q=&type=&place=`, `apps/web/src/search/SearchPage.tsx`: the field, kind
+  chips with their visible counts, a place menu (your projects, your DMs, "Only you"), results as
+  links (↓ from the field moves into them, ↑ from the first returns), and "Show more results" with
+  the cursor.
+- **Opening a result** goes to the exact object: a message or DM message opens on that whole
+  message (`#message-<id>`, highlighted and focused), a material at the matched version, a thought
+  selected in its sketch (`#thought-<id>`), a private draft on Home (`#draft-<id>`), a person to a
+  direct message with them, and work, decisions and results in Details on their project. A DM
+  message outside the loaded window opens the DM at its latest messages; drafts shared with a
+  project have no view of their own yet and open Home.
+- **Recent searches** (`apps/web/src/search/recent.ts`) are kept in this browser only, per account
+  (`flux.search.recent.<userId>`, the person's own words, never results), and every account's list
+  is removed on sign-out.
+
+## Tests
+
+- `tests/app/search.test.ts` (in `./scripts/check_application.sh`) uses an owner, a contributor in
+  a restricted project, a member outside it and a guest. It covers every kind and its label, place
+  and target; the restricted project and a DM leaking nothing to an outsider, including when he
+  filters by their ids; private drafts and sketches reaching only their author, and a group DM
+  hidden from the workspace owner; people for members but not guests; type filters and counts;
+  an edit searchable at once and an old material version; revocation by a deny grant and by
+  leaving a DM on the very next search; ranking and typo tolerance; injection-safe queries; and
+  sealed keyset pagination (another reader, another query or filter, or a forged cursor get
+  `400`). **Saturation:** 300 hidden project messages, 100 thoughts in another person's private
+  sketch and 60 DM messages give the outsider an identical answer (items, counts, `next`) and the
+  same rows examined as before them, measured twice for determinism, and a coarse timing bound;
+  the insider sees them with `more`.
+- `tests/ui/test_search.py` (in `./scripts/check_ui.sh`) covers Ctrl+K search as you type and
+  opening the exact message, the sidebar entry, arrow keys, an old material version, a rule in
+  Details, a thought selected in its sketch, Esc, a DM message, no results, the search page with
+  chips, counts, the place menu and keyboard movement, an outsider seeing only the open project,
+  recent searches per account and their removal on sign-out, and the phone (full-screen sheet from
+  the drawer, 44 px targets, no horizontal scroll). Screenshots: [`docs/design/search/`](../design/search/).

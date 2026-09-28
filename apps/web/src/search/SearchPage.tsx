@@ -95,6 +95,14 @@ export function SearchPage() {
         </form>
 
         <div className="search__filters">
+          <div className="search__place">
+            <select aria-label="Place" value={place ?? ''} onChange={(event) => set('place', event.target.value || null)}>
+              <option value="">All places</option>
+              {projects.map((project) => <option key={project.id} value={`project:${project.id}`}># {project.name}</option>)}
+              {directMessages.map((dm) => <option key={dm.id} value={`dm:${dm.id}`}>{dm.title}</option>)}
+              <option value="private">Only you</option>
+            </select>
+          </div>
           <div className="search__chips" role="group" aria-label="Kind of result">
             <button type="button" className="search__chip" aria-pressed={!type} onClick={() => set('type', null)}>
               All{answer && draft.trim() ? <span className="search__n">{total}{answer.countsCapped ? '+' : ''}</span> : null}
@@ -108,14 +116,6 @@ export function SearchPage() {
                 </button>
               );
             })}
-          </div>
-          <div className="search__place">
-            <select aria-label="Place" value={place ?? ''} onChange={(event) => set('place', event.target.value || null)}>
-              <option value="">All places</option>
-              {projects.map((project) => <option key={project.id} value={`project:${project.id}`}># {project.name}</option>)}
-              {directMessages.map((dm) => <option key={dm.id} value={`dm:${dm.id}`}>{dm.title}</option>)}
-              <option value="private">Only you</option>
-            </select>
           </div>
         </div>
 
