@@ -7,8 +7,10 @@ import { ProjectConversation, projectConversationLoader } from './app/ProjectCon
 import { ProjectSetup } from './app/ProjectSetup';
 import { MaterialView, materialLoader } from './app/MaterialView';
 import { ProjectTasks, projectTasksLoader } from './work/ProjectTasks';
+import { DocHistory, DocReader, ProjectDocs, WorkspaceDocs, docHistoryLoader, docLoader, projectDocsLoader } from './docs/DocViews';
+import { DocEditor, docEditLoader } from './docs/DocEditor';
 import { Booting, RouteErrorPage } from './app/errors';
-import { ConversationView, DocsView, NotFoundView, TasksView } from './app/views';
+import { ConversationView, NotFoundView, TasksView } from './app/views';
 import { DmIndex, NewDm } from './dm/DmIndex';
 import { DmConversation, dmLoader } from './dm/DmConversation';
 import { SketchIndex } from './sketch/SketchIndex';
@@ -58,12 +60,18 @@ export const router = createBrowserRouter([
           { path: 'projects/:projectId', loader: projectConversationLoader, Component: ProjectConversation },
           { path: 'projects/:projectId/conversations/:conversationId', loader: projectConversationLoader, Component: ProjectConversation },
           { path: 'projects/:projectId/tasks', loader: projectTasksLoader, Component: ProjectTasks },
+          { path: 'projects/:projectId/docs', loader: projectDocsLoader, Component: ProjectDocs },
+          { path: 'projects/:projectId/docs/new', loader: docEditLoader, Component: DocEditor },
+          { path: 'projects/:projectId/docs/:docId', loader: docLoader, Component: DocReader },
+          { path: 'projects/:projectId/docs/:docId/versions/:version', loader: docLoader, Component: DocReader },
+          { path: 'projects/:projectId/docs/:docId/edit', loader: docEditLoader, Component: DocEditor },
+          { path: 'projects/:projectId/docs/:docId/history', loader: docHistoryLoader, Component: DocHistory },
           { path: 'materials/:materialId', loader: materialLoader, Component: MaterialView },
           { path: 'materials/:materialId/versions/:version', loader: materialLoader, Component: MaterialView },
           { path: 'tasks', Component: TasksView },
           { path: 'map', Component: SketchIndex },
           { path: 'map/:sketchId', Component: SketchRoute },
-          { path: 'docs', Component: DocsView },
+          { path: 'docs', Component: WorkspaceDocs },
           { path: 'dm', Component: DmIndex },
           { path: 'dm/new', Component: NewDm },
           { path: 'dm/:dmId', loader: dmLoader, Component: DmConversation },

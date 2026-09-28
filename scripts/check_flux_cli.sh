@@ -106,6 +106,7 @@ printf '%s\n' "$out" | grep -q "Flux demo is ready:  $base" || fail "demo did no
 printf '%s\n' "$out" | grep -q 'seeded  conversation with 4 messages' || fail "conversation not seeded"
 printf '%s\n' "$out" | grep -Eq 'seeded  sketch|skipped sketch' || fail "sketch neither seeded nor skipped"
 printf '%s\n' "$out" | grep -q 'seeded  direct message between Ada Kowalska and Jonas Berg with 4 messages' || fail "direct message not seeded"
+printf '%s\n' "$out" | grep -q 'seeded  doc "How the garden sensors work" with 2 versions' || fail "doc with two versions not seeded"
 
 jar="$work/jar"
 sign_in() { # email password -> cookie jar $jar

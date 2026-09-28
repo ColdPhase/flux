@@ -39,7 +39,7 @@ function version(row: VersionRow, principal: Principal): MaterialVersion {
 }
 
 function material(row: MaterialRow, current: VersionRow, principal: Principal): Material {
-  return { ...version(current, principal), projectId: row.projectId, workspaceId: row.workspaceId,
+  return { ...version(current, principal), kind: row.kind, projectId: row.projectId, workspaceId: row.workspaceId,
     audience: { kind: 'project', projectId: row.projectId },
     createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
@@ -204,9 +204,10 @@ export function conversationStore(db: Database) {
     async listMaterials(principal: Principal, projectId: string, query: PageQuery = {}): Promise<Page<Material>> {
       const page = parsePage(query);
       await requireProject(principal, projectId, db);
-      const [count] = await db.select({ total: sql<number>`count(*)::int` }).from(schema.projectMaterials)
-        .where(eq(schema.projectMaterials.projectId, projectId));
-      const rows = await db.select().from(schema.projectMaterials).where(eq(schema.projectMaterials.projectId, projectId))
+      // Docs (#112) are materials of kind 'doc' with their own list; citations of them still resolve below.
+      const materials = and(eq(schema.projectMaterials.projectId, projectId), eq(schema.projectMaterials.kind, 'material'));
+      const [count] = await db.select({ total: sql<number>`count(*)::int` }).from(schema.projectMaterials).where(materials);
+      const rows = await db.select().from(schema.projectMaterials).where(materials)
         .orderBy(desc(schema.projectMaterials.createdAt), desc(schema.projectMaterials.id)).limit(page.limit).offset(page.offset);
       const items = await Promise.all(rows.map(async (row) => material(row, await currentVersion(row, db), principal)));
       return { items, total: count?.total ?? 0, ...page };
@@ -272,6 +273,7 @@ export function conversationStore(db: Database) {
       const authorId = human(principal);
       return db.transaction(async (tx) => {
         const row = await locateMaterial(principal, materialId, tx, true, true);
+        if (row.kind === 'doc') throw new ConflictError('Docs are edited through the doc API with If-Match', 'USE_DOC_API');
         const [locked] = await tx.select().from(schema.projectMaterials).where(eq(schema.projectMaterials.id, row.id)).for('update');
         const [priorEdit] = await tx.select().from(schema.projectMaterialVersions).where(and(
           eq(schema.projectMaterialVersions.materialId, row.id), eq(schema.projectMaterialVersions.authorId, authorId),

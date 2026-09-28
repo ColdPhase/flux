@@ -1,0 +1,129 @@
+# Project docs and wiki (issue #112)
+
+Foundation 8.7 and the #44 rule "results inform knowledge without rewriting historical
+statements". A project has many docs. Each doc has a title, a Markdown text, a draft or
+published state and **immutable versions**, each with its author, time and reason. Docs link
+to work, decisions, results, messages, sketches and other docs, and every linked object shows the
+docs that link to it. Everything is visible exactly to the principals with current read access to
+the project; draft is a state, not a second audience (private notes stay #36 private drafts).
+
+## Reusing #36 materials
+
+A doc **is** a #36 project material of `kind = 'doc'` (migration `0013_docs.sql`). Its versions
+are the same `project_material_versions` snapshots, with two new columns: `state` and `reason`.
+There is no second version table.
+
+- A message cites a doc version exactly as it cites a material:
+  `source: { materialId: <docId>, version: 3 }`. The citation keeps reading version 3 after
+  later edits; `GET /api/v1/materials/:id/versions/:version` still serves it, and the web app
+  opens it in the doc reader.
+- A database trigger rejects `UPDATE` on `project_material_versions`, so no version (of a doc or
+  a material) is ever rewritten, even outside the API.
+- `GET /api/v1/projects/:id/materials` lists only `kind = 'material'`; `PATCH /api/v1/materials/:id`
+  on a doc is `409 USE_DOC_API`. Docs change only through the doc API below.
+- Docs are written by people in this slice (`403 DOC_NEEDS_PERSON` for an agent); agents with a
+  project grant read them. Agent authorship needs an author kind on material versions and is a
+  follow-up.
+
+## API
+
+| Method and path | Notes |
+| --- | --- |
+| `GET/POST /api/v1/projects/:projectId/docs` | List (most recently changed first; `limit`/`offset`) or create `{ title, body?, state?, reason?, from? }`. New docs are drafts unless `state` says otherwise. |
+| `POST /api/v1/projects/:projectId/docs/preview` | `{ body }` → `{ html, mentions }`, rendered exactly as a saved version (project read access). |
+| `GET/PATCH /api/v1/docs/:docId` | `PATCH { title?, body?, state?, reason? }` needs `If-Match: "<version>"` (or `expectedVersion`): 428 without, `409 VERSION_CONFLICT` with the latest doc (`current`) when stale. A save that changes nothing returns the doc without a new version. |
+| `GET /api/v1/docs/:docId/versions`, `GET /api/v1/docs/:docId/versions/:version` | Newest first, each `{ version, title, state, reason, author, createdAt }`; one version adds `body`, `html` and `mentions`. |
+| `POST /api/v1/docs/:docId/sections` | "Add to docs": `{ from: { type: 'result' \| 'decision', id } }`, with `If-Match`. |
+| `GET /api/v1/workspaces/:workspaceId/docs` | Docs in every project of the workspace that the policy's `visibleFilter` lets the caller read, applied before the page and the total. |
+
+Every POST/PATCH accepts `Idempotency-Key` through the shared runner in
+`apps/server/src/http/commands.ts`; a replay rechecks current project read access. Responses with
+a version carry `ETag`. A doc in a project the caller cannot see is `404 DOC_NOT_FOUND`, the same
+as a missing one. When no reason is given, the server writes one from the change: "Started the
+doc", "Published", "Moved back to draft", "Renamed to “…”", "Edited the text" (joined with " · ").
+
+## Markdown and safety
+
+The text is a small Markdown subset: paragraphs, headings, emphasis, strikethrough, lists,
+quotes, code, tables, rules and links. The server renders it; the client only inserts the
+server's HTML. Two independent layers (`apps/server/src/docs/markdown.ts`):
+
+1. **markdown-it 15.0.2** with raw HTML off (it is shown as text), images off, linkify only for
+   explicit `https://` addresses, and a link check after entity decoding that allows only
+   `http(s)://`, `mailto:`, same-app paths (`/…`, never `//…`), `#…` and `flux:` references.
+2. **sanitize-html 2.17.7** on the output with an allowlist of tags, attributes, classes
+   (`doc-ref`, `language-*`), `text-align` styles on table cells and the schemes `http`, `https`,
+   `mailto`. External links get `target="_blank" rel="noopener noreferrer nofollow"`.
+
+`tests/app/docs.test.ts` checks `<script>`, `<img onerror>`, raw `<a href="javascript:">`,
+`javascript:` in any case and entity-encoded, `data:` and `vbscript:` links, `data:` images,
+autolinks, reference definitions, protocol-relative links, `<iframe>`, `<svg onload>` and
+`<style>` in the saved doc, a version and the preview. `tests/ui/test_docs.py` loads hostile text
+in the browser and asserts that no dialog opens and no image, script or hostile link exists.
+
+## Links and backlinks
+
+A doc refers to an object of its project with `[label](flux:<type>/<id>)`, where `type` is
+`doc`, `work`, `decision`, `result`, `message`, `thought` or `sketch`. The editor's **Link**
+picker (⌘/Ctrl K) inserts them. On each save the server parses the new text (only real links,
+not code) and rewrites the doc's `mentions` links in the #101 `project_object_links` table: the
+table accepts `doc` as a source and `doc` and `sketch` as targets (migration 0013). A reference to
+something outside the project, a private sketch or a missing object is stored as nothing and
+renders as quiet plain text "(not available)"; its title is never looked up outside the project.
+Earlier versions keep their own text, so their references remain readable in history.
+
+Backlinks are the incoming links: other docs that mention a doc, and work objects linked to it
+(`POST /api/v1/projects/:id/links` now accepts `{ type: 'doc' }` and `{ type: 'sketch' }`
+targets). Work items, decisions and results show "In docs" in their Details. Rendered references
+open in the app: docs, messages and sketches by route, work objects in the Details panel
+(`/projects/:id/tasks?open=decision:<id>` opens it from a new tab).
+
+## Add to docs
+
+On a result or decision, **Add to docs** (Details panel) starts a doc from it or writes its
+section into an existing doc as a new version. The section is a `## Result: …` or
+`## Decision: …` heading with the finding or rule state, its evidence or rationale, and a
+`Source: [title](flux:result/<id>)` line. The doc also gets a `source` link to the object, which
+is kept across later edits. Adding the same object again rewrites **only its section** (found by
+its `Source:` line; other text is kept byte for byte) with the current state, for example
+"Earlier rule · replaced Sep 28 by [new rule]", as the next version with the reason "Updated the
+decision “…”". The earlier statement stays in the earlier version. Nothing to change makes no
+version. Headings inside quoted evidence are escaped so a section keeps its shape.
+
+## Events
+
+A committed create, edit or section records exactly one project event in its transaction:
+`project.doc_created.v1` or `project.doc_updated.v1`, `object_id` the project and
+`data: { docId, version }` (identifiers only). The stream reaches current project readers; the
+return view (#106) shows "Ari started a doc: …" or "Doc updated: …" with the versions made and
+the latest reason, and links to the history from the version before them. Idempotent replays and
+refused changes record none.
+
+## Web
+
+`apps/web/src/docs/`: the **Docs** tab of a project (`/projects/:id/docs`: published docs and
+drafts with the last change, its author and reason), the reader (`…/docs/:docId`, earlier
+versions at `…/versions/:n` with a calm "earlier version" line), the editor (`…/new`, `…/edit`:
+Write · Preview · Both on wide screens, the server-rendered preview, the link picker, ⌘/Ctrl S
+saves, ⌘/Ctrl ⇧ P toggles the preview, unsaved text kept in the tab's session storage) and the
+history (`…/history?from=&to=`: every version with its reason and a line diff with changed words
+marked, jsdiff 9.0.0, folded context, `+`/`−` marks and screen-reader words so colour is never
+alone). A concurrent save shows who saved which version, "Show their changes" as a diff, and the
+explicit choices "Keep my text on top of version N" or "Discard mine, use theirs"; nothing is
+overwritten silently. Home › Docs lists the docs of every readable project. On the phone the list,
+reader, editor and history are one column with 44 px targets.
+
+## Tests and evidence
+
+`tests/app/docs.test.ts` (API, two people, a viewer, an outsider and an agent principal:
+access, version immutability and citations, If-Match 428/409 and a concurrent race, idempotent
+retries, links and backlinks across all target types without cross-project leaks, sanitization,
+Add to docs with section rewrite, events and the workspace list filter), `tests/app/returns.test.ts`
+(doc items in the return view) and `tests/ui/test_docs.py` (Playwright: write with preview and a
+link, publish, concurrent edit and conflict, history and diff at 1440 and 1280, add from a
+result, phone read/edit/compare, hostile text). Screenshots: `docs/design/docs-wiki/`.
+
+## Not yet
+
+File uploads and images (a separate slice), real-time co-editing (#61), agent-authored docs,
+search across docs, and moving a doc between projects.

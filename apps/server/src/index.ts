@@ -28,6 +28,7 @@ import { liveLifecycle } from './live/lifecycle.js';
 import { liveWebhookRoutes } from './live/webhook.js';
 import { liveInvitationRoutes } from './live/invitation-routes.js';
 import { returnRoutes } from './returns/routes.js';
+import { docRoutes } from './docs/routes.js';
 
 const connectionString = process.env.DATABASE_URL;
 const fixtureToken = process.env.FLUX_FIXTURE_TOKEN;
@@ -111,6 +112,7 @@ if (liveRevocation) {
   void recover();
 }
 await app.register(returnRoutes, { db, sessions: identity });
+await app.register(docRoutes, { db, sessions: identity });
 
 app.get('/api/v1/health', async (_request, reply) => {
   try {

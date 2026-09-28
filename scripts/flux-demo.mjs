@@ -28,9 +28,9 @@ function fail(message) {
 class Session {
   cookies = new Map();
 
-  async request(method, path, body) {
+  async request(method, path, body, extra = {}) {
     for (let attempt = 0; ; attempt++) {
-      const headers = { origin };
+      const headers = { origin, ...extra };
       if (this.cookies.size) headers.cookie = [...this.cookies].map(([k, v]) => `${k}=${v}`).join('; ');
       if (body !== undefined) headers['content-type'] = 'application/json';
       const response = await fetch(new URL(path, api), { method, headers, body: body === undefined ? undefined : JSON.stringify(body), redirect: 'manual' });
@@ -55,8 +55,8 @@ class Session {
     }
   }
 
-  async expect(method, path, body, status = [200, 201]) {
-    const response = await this.request(method, path, body);
+  async expect(method, path, body, status = [200, 201], extra = {}) {
+    const response = await this.request(method, path, body, extra);
     if (!status.includes(response.status)) fail(`${method} ${path} answered ${response.status}: ${response.text}`);
     return response.json;
   }
@@ -177,6 +177,38 @@ if (existing) {
     summary.dmId = dm.id;
   } else {
     summary.skipped.push('direct message: this build has no direct-message API yet (#107)');
+  }
+
+  const docsPath = `/api/v1/projects/${project.id}/docs`;
+  if (await hasRoute(owner.session, docsPath)) {
+    // A project doc with two immutable versions: Ada starts it, Jonas publishes an update.
+    const doc = await owner.session.expect('POST', docsPath, {
+      title: 'How the garden sensors work',
+      body: [
+        '## Sensors', '',
+        '- Capacitive soil moisture probe in each raised bed',
+        '- DS18B20 temperature probe for the frost warnings', '',
+        '## Radio', '',
+        'The far beds report over LoRa. Range is not tested yet.',
+      ].join('\n'),
+      reason: 'First notes from the shortlist',
+    }, [201], { 'idempotency-key': ids() });
+    const updated = await partner.session.expect('PATCH', `/api/v1/docs/${doc.id}`, {
+      body: [
+        '## Sensors', '',
+        '- Capacitive soil moisture probe in each raised bed (no exposed metal)',
+        '- DS18B20 temperature probe for the frost warnings', '',
+        '## Radio', '',
+        'The far beds report over LoRa. Two sensors reached the gateway from 140 m through the hedge.',
+        '',
+        '| Bed | Distance | Signal |', '| --- | ---: | --- |', '| Far east | 140 m | ok |', '| Shed | 60 m | strong |',
+      ].join('\n'),
+      state: 'published',
+      reason: 'Added the LoRa range test',
+    }, [200], { 'if-match': `"${doc.version}"`, 'idempotency-key': ids() });
+    summary.seeded.push(`doc "${doc.title}" with ${updated.version} versions by ${owner.name} and ${partner.name}`);
+  } else {
+    summary.skipped.push('doc: this build has no docs API yet (#112)');
   }
 }
 

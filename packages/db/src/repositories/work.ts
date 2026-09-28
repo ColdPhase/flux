@@ -14,7 +14,7 @@ type WorkRow = typeof schema.projectWorkItems.$inferSelect;
 type DecisionRow = typeof schema.projectDecisions.$inferSelect;
 type ResultRow = typeof schema.projectResults.$inferSelect;
 type LinkRow = typeof schema.projectObjectLinks.$inferSelect;
-type Ref = { type: 'message' | 'thought' | 'work' | 'decision' | 'result'; id: string } | { type: 'material'; id: string; version: number };
+type Ref = { type: 'message' | 'thought' | 'work' | 'decision' | 'result' | 'doc' | 'sketch'; id: string } | { type: 'material'; id: string; version: number };
 type Window = { limit: number; offset: number };
 
 const w = schema.projectWorkItems;
@@ -177,6 +177,13 @@ export function workRows(db: DbExecutor) {
             .innerJoin(schema.sketches, eq(schema.sketches.id, schema.sketchThoughts.sketchId))
             .where(and(projectSketch(projectId), eq(schema.sketchThoughts.id, ref.id)));
           break;
+        case 'doc':
+          found = await db.select({ id: schema.projectMaterials.id }).from(schema.projectMaterials)
+            .where(and(eq(schema.projectMaterials.projectId, projectId), eq(schema.projectMaterials.id, ref.id), eq(schema.projectMaterials.kind, 'doc')));
+          break;
+        case 'sketch':
+          found = await db.select({ id: schema.sketches.id }).from(schema.sketches).where(and(projectSketch(projectId), eq(schema.sketches.id, ref.id)));
+          break;
         case 'material':
           found = await db.select({ id: schema.projectMaterialVersions.materialId }).from(schema.projectMaterialVersions)
             .where(and(eq(schema.projectMaterialVersions.projectId, projectId), eq(schema.projectMaterialVersions.materialId, ref.id), eq(schema.projectMaterialVersions.version, ref.version)));
@@ -212,6 +219,20 @@ export function workRows(db: DbExecutor) {
         const rows = await db.select({ id: v.materialId, version: v.version, title: v.title }).from(v)
           .where(and(eq(v.projectId, projectId), inArray(v.materialId, [...new Set(materials.map((ref) => ref.id))])));
         for (const row of rows) titles.set(`material:${row.id}:${row.version}`, { title: row.title });
+      }
+      const docs = of('doc');
+      if (docs.length) {
+        const m = schema.projectMaterials;
+        const v = schema.projectMaterialVersions;
+        const rows = await db.select({ id: m.id, title: v.title }).from(m)
+          .innerJoin(v, and(eq(v.materialId, m.id), eq(v.version, m.currentVersion)))
+          .where(and(eq(m.projectId, projectId), eq(m.kind, 'doc'), inArray(m.id, docs)));
+        for (const row of rows) titles.set(`doc:${row.id}`, { title: row.title });
+      }
+      const sketchIds = of('sketch');
+      if (sketchIds.length) {
+        for (const row of await db.select({ id: schema.sketches.id, title: schema.sketches.title }).from(schema.sketches).where(and(projectSketch(projectId), inArray(schema.sketches.id, sketchIds))))
+          titles.set(`sketch:${row.id}`, { title: row.title, sketchId: row.id });
       }
       for (const [type, table] of [['work', w], ['decision', d], ['result', r]] as const) {
         const wanted = of(type);

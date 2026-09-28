@@ -78,6 +78,8 @@ export interface MaterialVersion {
 }
 
 export interface Material extends MaterialVersion {
+  /** `doc` for a project doc (#112); edit docs through the doc API. */
+  kind: 'material' | 'doc';
   projectId: string;
   workspaceId: string;
   audience: { kind: 'project'; projectId: string };
