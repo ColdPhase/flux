@@ -3,7 +3,7 @@ import { lookup as dnsLookup, type LookupAddress } from 'node:dns';
 import { BlockList, type LookupFunction } from 'node:net';
 import webpush, { WebPushError } from 'web-push';
 import { pushDeliveryRepository } from '@flux/db';
-import { pushPreferenceCheck } from '../notifications/adapters.js';
+import { pushPreferenceCheck, pushQuietCheck } from '../notifications/adapters.js';
 import {
   deliverPushJob,
   policySourceReader,
@@ -115,6 +115,7 @@ export async function deliverPush(deps: DeliveryDependencies, job: PushSendJob):
     authorizer: policySourceReader(db),
     sender: config.status === 'available' ? webPushSender(config, deps.agent) : unavailable,
     stillWanted: pushPreferenceCheck(db),
+    quietUntil: pushQuietCheck(db),
     log: deps.log,
   }, job);
 }

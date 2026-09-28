@@ -186,17 +186,32 @@ async function deliver(ports: GeneratorPorts, event: GeneratorEvent, candidate: 
   return true;
 }
 
+/** Attempts before an event whose generation keeps failing is dead-lettered and passed. */
+export const GENERATION_MAX_ATTEMPTS = 5;
+
+export interface GenerationResult {
+  processed: number;
+  created: number;
+  /** True when an event failed and will be retried: the cursor stopped just before it. */
+  stalled: boolean;
+}
+
 /**
  * Processes the next batch of committed events after the generator's cursor, in one
  * transaction that holds the cursor row, so concurrent workers never process an event twice
- * and a crash leaves the cursor where the stored notifications end. An event that fails is
- * logged and skipped inside its own savepoint rather than blocking every later notification.
+ * and a crash leaves the cursor where the stored notifications end. Each event runs in its own
+ * savepoint. When one fails, the cursor stops just before it (the events before it commit) and
+ * the failure is counted, so a transient error is retried rather than losing the event's
+ * notifications. Only after `GENERATION_MAX_ATTEMPTS` failures is it dead-lettered (recorded,
+ * logged) and passed, so one poisoned event cannot block everyone's notifications forever.
  */
-export async function generateNotifications(uow: GeneratorUnitOfWork, options: GenerationOptions, limit = GENERATOR_BATCH) {
+export async function generateNotifications(uow: GeneratorUnitOfWork, options: GenerationOptions, limit = GENERATOR_BATCH): Promise<GenerationResult> {
   return uow.run(async (ports) => {
     const cursor = await ports.lockCursor();
     const events = await ports.eventsAfter(cursor, limit);
     let created = 0;
+    let done: number | null = null;
+    let processed = 0;
     for (const event of events) {
       try {
         created += await ports.isolate(async () => {
@@ -205,11 +220,20 @@ export async function generateNotifications(uow: GeneratorUnitOfWork, options: G
           return count;
         });
       } catch (error) {
-        options.log?.('Notification generation skipped an event', { eventId: event.id, kind: event.kind, error: (error as Error).message });
+        const message = (error as Error).message ?? String(error);
+        const attempts = await ports.recordFailure(event.id, message);
+        if (attempts < GENERATION_MAX_ATTEMPTS) {
+          options.log?.('Notification generation failed; the event will be retried', { eventId: event.id, kind: event.kind, attempts, error: message });
+          if (done !== null) await ports.advanceCursor(done);
+          return { processed, created, stalled: true };
+        }
+        await ports.deadLetter(event.id);
+        options.log?.('Notification generation gave up on an event (dead-lettered)', { eventId: event.id, kind: event.kind, attempts, error: message });
       }
+      done = event.seq;
+      processed++;
     }
-    const last = events.at(-1);
-    if (last) await ports.advanceCursor(last.seq);
-    return { processed: events.length, created };
+    if (done !== null) await ports.advanceCursor(done);
+    return { processed, created, stalled: false };
   });
 }

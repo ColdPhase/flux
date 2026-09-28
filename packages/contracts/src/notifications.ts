@@ -98,6 +98,8 @@ export interface VerifyNotificationAddressCommand {
 
 /** Which address stopped receiving email; the choice can be changed back in settings. */
 export interface UnsubscribeResponse {
+  /** `stale`: the link belongs to an address that is no longer yours (replaced or changed); nothing changed. */
+  result: 'stopped' | 'stale';
   stopped: 'account' | 'extra';
   destination: EmailDestination;
 }

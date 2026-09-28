@@ -793,6 +793,21 @@ export const notificationCursor = pgTable('notification_cursor', {
   seq: bigint('seq', { mode: 'number' }).notNull(),
 });
 
+export const notificationGenerationFailures = pgTable('notification_generation_failures', {
+  eventId: uuid('event_id').primaryKey(),
+  attempts: integer('attempts').notNull().default(0),
+  lastError: text('last_error'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  deadAt: timestamp('dead_at', { withTimezone: true }),
+});
+
+export const notificationVerificationSends = pgTable('notification_verification_sends', {
+  userId: text('user_id').primaryKey(),
+  windowStart: timestamp('window_start', { withTimezone: true }).notNull(),
+  sent: integer('sent').notNull(),
+  lastSentAt: timestamp('last_sent_at', { withTimezone: true }).notNull(),
+});
+
 export const notificationPreferences = pgTable('notification_preferences', {
   userId: text('user_id').primaryKey().references(() => authUsers.id, { onDelete: 'cascade' }),
   channels: jsonb('channels').$type<Record<string, Record<string, boolean>>>().notNull().default({}),

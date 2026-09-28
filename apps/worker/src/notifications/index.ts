@@ -27,8 +27,11 @@ export function startNotificationGenerator(options: { db: Database; boss: PgBoss
   let running = false;
   let again = false;
   let stopped = false;
+  // After a failed event the generator waits 2, 4, 8 … 60 s before retrying it.
+  let stalls = 0;
+  let retryAt = 0;
   const tick = async () => {
-    if (stopped) return;
+    if (stopped || Date.now() < retryAt) return;
     if (running) { again = true; return; }
     running = true;
     try {
@@ -39,6 +42,13 @@ export function startNotificationGenerator(options: { db: Database; boss: PgBoss
           const result = await generateNotifications(uow, { emailAvailable, log });
           processed = result.processed;
           if (result.created) console.log(JSON.stringify({ job: 'notification.generate', ...result }));
+          if (result.stalled) {
+            stalls += 1;
+            retryAt = Date.now() + Math.min(60_000, 1000 * 2 ** stalls);
+            again = false;
+            break;
+          }
+          stalls = 0;
         }
       } while (again && !stopped);
     } catch (error) {
@@ -77,9 +87,21 @@ export async function registerNotificationEmailWorker(boss: PgBoss, db: Database
   // A few sends at once and a short poll: one slow SMTP answer never holds up everyone's mail.
   await boss.work<EmailJob>(NOTIFICATION_EMAIL_JOB, { localConcurrency: 4, pollingIntervalSeconds: 0.5 }, async (jobs) => {
     for (const job of jobs) {
-      const result = await deliverNotificationEmail(options, job.data);
+      const result = await handleEmailJob(boss, options, job.data);
       console.log(JSON.stringify({ job: NOTIFICATION_EMAIL_JOB, id: job.id, emailId: job.data.emailId, ...result }));
     }
   });
   return { available: config.status === 'available', close: () => (smtp && 'close' in smtp ? (smtp as { close(): void }).close() : undefined) };
+}
+
+/**
+ * One email job: deliver, or when the person's quiet hours cover now, queue the same row again
+ * for the end of the window (the row stays `queued`, so it is still sent at most once).
+ */
+export async function handleEmailJob(boss: PgBoss, options: Parameters<typeof deliverNotificationEmail>[0], job: EmailJob) {
+  const result = await deliverNotificationEmail(options, job);
+  if (result.outcome === 'deferred') {
+    await boss.send(NOTIFICATION_EMAIL_JOB, job, { startAfter: result.until, singletonKey: `${job.emailId}:${result.until.getTime()}` });
+  }
+  return result;
 }

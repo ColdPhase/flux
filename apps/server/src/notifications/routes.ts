@@ -11,7 +11,7 @@ import {
   type UpdateNotificationPreferencesCommand,
   type VerifyNotificationAddressCommand,
 } from '@flux/contracts';
-import { unsubscribe, type Database } from '@flux/core';
+import { TooSoonError, unsubscribe, type Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import type { SmtpConfig } from '../identity/config.js';
 import { useDomainErrors } from '../http/commands.js';
@@ -33,6 +33,10 @@ const channel = { type: 'object', additionalProperties: false, properties: { inA
  */
 export async function notificationRoutes(app: FastifyInstance, { db, sessions, smtp, publicOrigin }: NotificationRoutesOptions) {
   useDomainErrors(app);
+  // A throttled verification send says when to try again (HTTP 429 + Retry-After).
+  app.addHook('onError', async (_request, reply, error) => {
+    if (error instanceof TooSoonError) reply.header('retry-after', String(error.retryAfterSeconds));
+  });
   const mailer = verificationMailer(smtp);
   app.addHook('onClose', async () => mailer.close());
   const settings = notificationSettings(db, mailer, publicOrigin);

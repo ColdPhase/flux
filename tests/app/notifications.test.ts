@@ -15,7 +15,8 @@ import {
   type PushSendJob,
 } from '@flux/core';
 import type { InboxItem, InboxResponse, NotificationPreferences, NotificationReason } from '@flux/contracts';
-import { emailUnitOfWork, smtpNotificationMailer } from '../../apps/worker/src/notifications/index.js';
+import { emailUnitOfWork, handleEmailJob, smtpNotificationMailer } from '../../apps/worker/src/notifications/index.js';
+import { PgBoss } from 'pg-boss';
 import { deliverPush } from '../../apps/worker/src/push/index.js';
 import { loadPushSenderConfig } from '@flux/core';
 import { Browser, mailpitUrl, publicOrigin, register, signIn, uniqueEmail } from './support/http.js';
@@ -311,7 +312,7 @@ describe('email and push delivery', () => {
       method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'List-Unsubscribe=One-Click',
     });
     assert.equal(oneClick.status, 200, await oneClick.clone().text());
-    assert.deepEqual(await oneClick.json(), { stopped: 'account', destination: 'none' });
+    assert.deepEqual(await oneClick.json(), { result: 'stopped', stopped: 'account', destination: 'none' });
     const settings = expectStatus(await reader.browser.request('GET', '/api/v1/notification-preferences'), 200) as NotificationPreferences;
     assert.equal(settings.email.destination, 'none');
     // Unsubscribing changes nothing about sign-in.
@@ -369,6 +370,8 @@ describe('email and push delivery', () => {
     const thread = await conversation(owner, projectId, '@Quinn Hale please water the trays');
     await waitForItem(quiet, (entry) => entry.url?.endsWith(thread.messages[0]!.id) === true, 'Quinn\'s mention');
     const [email] = await waitFor(async () => { const rows = await emailRows(quiet.id); return rows.length ? rows : null; }, 'the queued email');
+    // Quiet hours held the job; end them so the in-process deliveries below may send.
+    await prefs(quiet, { quietHours: { enabled: false } });
     const options = { available: true, origin, uow: emailUnitOfWork(db) };
 
     // SMTP refuses: the row goes back to queued and the job is retried.
@@ -540,6 +543,7 @@ describe('recipient matrix and operator TLS (#113)', () => {
     const thread = await conversation(lead, room, '@Sam Ruiz boiler service is booked');
     await waitForItem(target, (item) => item.url?.endsWith(thread.messages[0]!.id) === true, 'the in-app record');
     const [email] = await waitFor(async () => { const rows = await emailRows(target.id); return rows.length ? rows : null; }, 'the queued email');
+    await prefs(target, { quietHours: { enabled: false } });
     const failing: NotificationMailer = { send: async () => ({ kind: 'failed', message: 'connect ECONNREFUSED' }) };
     await assert.rejects(deliverNotificationEmail({ available: true, origin, uow: emailUnitOfWork(db), mailer: failing }, { emailId: email!.id }));
     const view = expectStatus(await target.browser.request('GET', '/api/v1/notification-preferences'), 200) as NotificationPreferences;
@@ -547,6 +551,143 @@ describe('recipient matrix and operator TLS (#113)', () => {
     assert.ok(view.email.lastFailureAt, 'the person can see that email delivery failed');
     assert.equal((await inbox(target)).items.filter((item) => item.url?.endsWith(thread.messages[0]!.id)).length, 1, 'the inbox keeps it');
     assert.equal((await emailRows(target.id))[0]!.status, 'queued');
+  });
+});
+
+async function verifyExtra(someone: Person, address: string) {
+  expectStatus(await someone.browser.request('POST', '/api/v1/notification-address', { body: { email: address } }), 200);
+  const [mail] = await waitForMails(address, 1, 'the verification email');
+  const token = new URL(/(http\S+verify\?token=\S+)/.exec((await mailText(mail!.ID)).Text)![1]!).searchParams.get('token')!;
+  expectStatus(await someone.browser.request('POST', '/api/v1/notification-address/verify', { body: { token } }), 200);
+}
+
+/** Lets the next verification send pass the 60 s cooldown (the hourly window still counts). */
+async function skipCooldown(someone: Person) {
+  await pool.query("UPDATE notification_verification_sends SET last_sent_at = now() - interval '2 minutes' WHERE user_id = $1", [someone.id]);
+}
+
+function unsubscribeUrl(headers: Record<string, string[]>) {
+  const url = /^<(.+)>$/.exec(headers['List-Unsubscribe']?.[0] ?? '')?.[1];
+  assert.ok(url, 'the email has a one-click unsubscribe link');
+  const target = new URL(url);
+  return new URL(`${target.pathname}${target.search}`, process.env.FLUX_API_URL ?? 'http://api:8080');
+}
+
+async function oneClick(url: URL) {
+  const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'List-Unsubscribe=One-Click' });
+  assert.equal(response.status, 200);
+  return await response.json() as { result: string; stopped: string; destination: string };
+}
+
+describe('review fixes: exact unsubscribe, bounded verification, quiet hours at delivery', () => {
+  const boss = new PgBoss({ connectionString: connectionString!, migrate: false });
+  before(() => boss.start());
+  after(() => boss.stop());
+
+  test('an old unsubscribe link cannot stop a newer address, or a changed sign-in address', async () => {
+    const lead = await person('Uma Kerr');
+    const reader = await person('Vic Lamb');
+    const space = (await workspace(lead, 'Link lane')).id;
+    await addMember(lead, space, reader, 'member');
+    const first = `vic.a-${randomUUID()}@example.test`;
+    const second = `vic.b-${randomUUID()}@example.test`;
+    await verifyExtra(reader, first);
+    await prefs(reader, { emailDestination: 'extra' });
+    const mention = async (name: string) => {
+      const room = (await project(lead, space, name, 'workspace')).id;
+      const thread = await conversation(lead, room, `@Vic Lamb ${name} is ready`);
+      await waitForItem(reader, (item) => item.url?.endsWith(thread.messages[0]!.id) === true, name);
+    };
+    await mention('Rota A');
+    const [toFirst] = await waitForMails(first, 2, 'the email to address A');
+    const staleLink = unsubscribeUrl((await mailText(toFirst!.ID)).headers);
+
+    // Replace A with a verified B; B is the extra address now.
+    await skipCooldown(reader);
+    await verifyExtra(reader, second);
+    assert.deepEqual(await oneClick(staleLink), { result: 'stale', stopped: 'extra', destination: 'extra' });
+    const settings = expectStatus(await reader.browser.request('GET', '/api/v1/notification-preferences'), 200) as NotificationPreferences;
+    assert.equal(settings.email.destination, 'extra');
+    await mention('Rota B');
+    const [toSecond] = await waitForMails(second, 2, 'B still receives email');
+    assert.equal((await mailText(toSecond!.ID)).Subject, 'New activity in Flux');
+
+    // A sign-in address that changed since the email: its old link changes nothing either.
+    await prefs(reader, { emailDestination: 'account' });
+    await mention('Rota C');
+    const [toAccount] = await waitForMails(reader.email, 1, 'the email to the sign-in address');
+    const accountLink = unsubscribeUrl((await mailText(toAccount!.ID)).headers);
+    const renamed = `vic.new-${randomUUID()}@example.test`;
+    await pool.query('UPDATE auth_users SET email = $1 WHERE id = $2', [renamed, reader.id]);
+    assert.deepEqual(await oneClick(accountLink), { result: 'stale', stopped: 'account', destination: 'account' });
+    await pool.query('UPDATE auth_users SET email = $1 WHERE id = $2', [reader.email, reader.id]);
+    // The current link still works.
+    assert.deepEqual(await oneClick(accountLink), { result: 'stopped', stopped: 'account', destination: 'none' });
+  });
+
+  test('verification sends are bounded across add, replace and resend, also when requests race', async () => {
+    const someone = await person('Wes Moor');
+    const target = `wes.target-${randomUUID()}@example.test`;
+    expectStatus(await someone.browser.request('POST', '/api/v1/notification-address', { body: { email: target } }), 200);
+    const again = await someone.browser.request('POST', '/api/v1/notification-address', { body: { email: target } });
+    assert.equal(again.status, 429, 'replacing does not reset the cooldown');
+    assert.ok(Number(again.headers.get('retry-after')) >= 1);
+    assert.equal((await someone.browser.request('POST', '/api/v1/notification-address/resend')).status, 429);
+
+    // Concurrent replacements after the cooldown: exactly one sends.
+    await skipCooldown(someone);
+    const racing = await Promise.all([1, 2, 3, 4].map(() => someone.browser.request('POST', '/api/v1/notification-address', { body: { email: target } })));
+    assert.deepEqual(racing.map((response) => response.status).sort(), [200, 429, 429, 429]);
+
+    // Even with the cooldown out of the way, at most 5 per hour.
+    const statuses: number[] = [];
+    for (let i = 0; i < 6; i += 1) {
+      await skipCooldown(someone);
+      const response = await someone.browser.request('POST', '/api/v1/notification-address', { body: { email: target } });
+      statuses.push(response.status);
+      if (response.status === 429) assert.ok(Number(response.headers.get('retry-after')) > 60, 'the hourly limit says when it resets');
+    }
+    assert.deepEqual(statuses, [200, 200, 200, 429, 429, 429], 'two sends before plus three here make five');
+    await sleep(1000);
+    assert.equal((await mailsTo(target)).length, 5, 'five verification emails, no more');
+  });
+
+  test('quiet hours switched on after a job was queued hold its email and push until they end', async () => {
+    const lead = await person('Xia Holt');
+    const reader = await person('Yan Frost');
+    const space = (await workspace(lead, 'Quiet lane')).id;
+    await addMember(lead, space, reader, 'member');
+    const room = (await project(lead, space, 'Night shift', 'workspace')).id;
+    const { subscription, id: subscriptionId } = await subscribe(reader.browser);
+    // A notification and its email queued while quiet hours were off (no job runs them yet).
+    const notificationId = randomUUID();
+    const emailId = randomUUID();
+    await pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, title, body, url, reason)
+      VALUES ($1, $2, $3, 'project', $4, 'Xia Holt mentioned you in Night shift', 'hello', $5, 'mention')`, [notificationId, reader.id, space, room, `/projects/${room}`]);
+    await pool.query(`INSERT INTO notification_emails (id, notification_id, user_id, address_kind) VALUES ($1, $2, $3, 'account')`, [emailId, notificationId, reader.id]);
+
+    // Then the person turns quiet hours on, covering now.
+    await prefs(reader, { quietHours: quietNow() });
+    const options = { available: true, origin, uow: emailUnitOfWork(db), mailer: smtp };
+    const deferred = await handleEmailJob(boss, options, { emailId });
+    assert.equal(deferred.outcome, 'deferred');
+    const until = (deferred as { until: Date }).until;
+    assert.ok(until.getTime() > Date.now() + 60_000);
+    const requeued = await pool.query(`SELECT start_after FROM pgboss.job WHERE name = $1 AND data->>'emailId' = $2`, [NOTIFICATION_EMAIL_JOB, emailId]);
+    assert.equal(requeued.rowCount, 1, 'the email job is queued again for the end of quiet hours');
+    assert.equal(new Date(requeued.rows[0].start_after).getTime(), until.getTime());
+    const push = await deliverPush({ db, config: loadPushSenderConfig() }, { notificationId, subscriptionId, userId: reader.id });
+    assert.equal(push.outcome, 'deferred');
+    assert.equal((await emailRows(reader.id))[0]!.status, 'queued');
+    assert.equal((await mailsTo(reader.email)).length, 0);
+    assert.equal((await recordedPushes(subscription.mockId)).length, 0);
+
+    // When quiet hours end (here: turned off), the same row and subscription send once.
+    await prefs(reader, { quietHours: { enabled: false } });
+    assert.deepEqual(await deliverNotificationEmail(options, { emailId }), { outcome: 'sent', addressKind: 'account' });
+    assert.equal((await deliverPush({ db, config: loadPushSenderConfig() }, { notificationId, subscriptionId, userId: reader.id })).outcome, 'sent');
+    await waitForMails(reader.email, 1, 'the released email');
+    assert.equal((await recordedPushes(subscription.mockId)).length, 1);
   });
 });
 

@@ -331,20 +331,24 @@ export function VerifyAddress() {
 export function UnsubscribePage() {
   const [params] = useSearchParams();
   const token = params.get('token') ?? '';
-  const [state, setState] = useState<'ask' | 'working' | 'done' | 'failed'>('ask');
+  const [state, setState] = useState<'ask' | 'working' | 'done' | 'stale' | 'failed'>('ask');
   const stop = () => {
     setState('working');
-    unsubscribe(token).then(() => setState('done'), () => setState('failed'));
+    unsubscribe(token).then((result) => setState(result.result === 'stale' ? 'stale' : 'done'), () => setState('failed'));
   };
+  const copy = {
+    ask: ['Stop notification emails?', 'Flux will stop sending notification email to the address this message went to. Nothing else changes, including how you sign in.'],
+    working: ['Stop notification emails?', 'Flux will stop sending notification email to the address this message went to. Nothing else changes, including how you sign in.'],
+    done: ['Emails stopped', 'Flux will not send notification email to this address. Your inbox and push are unchanged, and you can turn email back on in notification settings.'],
+    stale: ['This link no longer applies', 'It was for an address that is no longer the one Flux emails, so nothing changed. You can choose where email goes in notification settings.'],
+    failed: ['This link has expired', 'You can change email in notification settings after signing in.'],
+  }[state];
   return (
     <div className="auth__head unsub">
-      <h1 className="auth__title">{state === 'done' ? 'Emails stopped' : state === 'failed' ? 'This link has expired' : 'Stop notification emails?'}</h1>
-      <p className="auth__lead">{state === 'done'
-        ? 'Flux will not send notification email to this address. Your inbox and push are unchanged, and you can turn email back on in notification settings.'
-        : state === 'failed' ? 'This link is no longer valid. You can change email in notification settings after signing in.'
-          : 'Flux will stop sending notification email to the address this message went to. Nothing else changes, including how you sign in.'}</p>
+      <h1 className="auth__title">{copy[0]}</h1>
+      <p className="auth__lead">{copy[1]}</p>
       {state === 'ask' || state === 'working' ? <Button variant="primary" size="lg" busy={state === 'working'} onClick={stop}>Stop these emails</Button> : null}
-      <p className="unsub__link"><Link className={`ui-btn ${state === 'failed' ? 'ui-btn--primary' : 'ui-btn--secondary'} ui-btn--lg`} to="/settings/notifications">Notification settings</Link></p>
+      <p className="unsub__link"><Link className={`ui-btn ${state === 'failed' || state === 'stale' ? 'ui-btn--primary' : 'ui-btn--secondary'} ui-btn--lg`} to="/settings/notifications">Notification settings</Link></p>
     </div>
   );
 }

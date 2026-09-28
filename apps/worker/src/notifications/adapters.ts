@@ -12,6 +12,7 @@ import {
   NOTIFICATION_EMAIL_JOB,
   PUSH_SEND_JOB,
   channelOn,
+  deliverableAt,
   policySourceReader,
   preferenceRepository,
   type Database,
@@ -45,6 +46,8 @@ function generatorPorts(tx: Transaction, boss: PgBoss): GeneratorPorts {
     insertEmail: (row) => rows.insertEmail(row),
     enqueuePush: (job, startAfter) => boss.send(PUSH_SEND_JOB, job, { db: queueDb, singletonKey: `${job.notificationId}:${job.subscriptionId}`, ...later(startAfter) }),
     enqueueEmail: (job, startAfter) => boss.send(NOTIFICATION_EMAIL_JOB, job, { db: queueDb, singletonKey: job.emailId, ...later(startAfter) }),
+    recordFailure: (eventId, error) => rows.recordFailure(eventId, error),
+    deadLetter: (eventId) => rows.deadLetter(eventId),
     isolate: (work) => tx.transaction(() => work()),
   };
 }
@@ -94,5 +97,15 @@ export function pushPreferenceCheck(db: Database) {
   return async (userId: string, notification: NotificationRecord) => {
     if (await preferences.isMuted(userId, notification.source)) return false;
     return !notification.reason || channelOn(await preferences.get(userId), notification.reason, 'push');
+  };
+}
+
+/** Push rechecks the person's current quiet hours before sending (#116). */
+export function pushQuietCheck(db: Database, now = () => new Date()) {
+  const preferences = preferenceRepository(notificationPreferenceRows(db));
+  return async (userId: string) => {
+    const at = now();
+    const until = deliverableAt(await preferences.get(userId), at);
+    return until.getTime() > at.getTime() ? until : null;
   };
 }

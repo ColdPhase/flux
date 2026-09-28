@@ -22,7 +22,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** A deliberately plain check; verification proves the mailbox. */
 const EMAIL = /^[^\s@<>()[\],;:"]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
 export const VERIFICATION_TTL_MS = 24 * 3600_000;
-export const VERIFICATION_RESEND_MS = 60_000;
+/** Verification sends per person, across add, replace and resend (#113: bounded send attempts). */
+export const VERIFICATION_LIMITS = { cooldownSeconds: 60, perWindow: 5, windowSeconds: 3600 } as const;
 
 export class MailUnavailableError extends DomainError {
   constructor() {
@@ -37,8 +38,11 @@ export class MailSendError extends DomainError {
 }
 
 export class TooSoonError extends DomainError {
-  constructor() {
-    super(429, 'VERIFICATION_RECENTLY_SENT', 'A verification link was sent less than a minute ago');
+  constructor(readonly retryAfterSeconds: number) {
+    super(429, 'VERIFICATION_RECENTLY_SENT', retryAfterSeconds > VERIFICATION_LIMITS.cooldownSeconds
+      ? 'Too many verification links this hour; try again later'
+      : 'A verification link was sent less than a minute ago');
+    this.details = { retryAfterSeconds };
   }
 }
 
@@ -92,6 +96,11 @@ export function createNotificationSettings(ports: SettingsPorts) {
     };
   }
 
+  async function reserveSend(userId: string) {
+    const reserved = await ports.addresses.reserveVerificationSend(userId, VERIFICATION_LIMITS);
+    if (!reserved.allowed) throw new TooSoonError(reserved.retryAfterSeconds);
+  }
+
   async function sendVerification(address: AddressRecord) {
     const token = newToken();
     await ports.addresses.issueToken(address.id, hashToken(token), new Date(now().getTime() + VERIFICATION_TTL_MS));
@@ -133,6 +142,8 @@ export function createNotificationSettings(ports: SettingsPorts) {
       if (email.toLowerCase() === account.email.toLowerCase()) {
         throw new ConflictError('This is already your sign-in address; choose it under "Where email goes"', 'ADDRESS_IS_ACCOUNT');
       }
+      // Reserved before the address changes, so replacing it cannot reset the limit.
+      await reserveSend(account.userId);
       const address = await ports.addresses.replace(account.userId, randomUUID(), email);
       await sendVerification(address);
       return view(account);
@@ -142,7 +153,7 @@ export function createNotificationSettings(ports: SettingsPorts) {
       if (!ports.mailer.available) throw new MailUnavailableError();
       const address = await ports.addresses.find(account.userId);
       if (!address || address.verifiedAt) throw new NotFoundError('Unverified address', 'ADDRESS_NOT_PENDING');
-      if (address.lastSentAt && now().getTime() - address.lastSentAt.getTime() < VERIFICATION_RESEND_MS) throw new TooSoonError();
+      await reserveSend(account.userId);
       await sendVerification(address);
       return view(account);
     },
@@ -171,8 +182,10 @@ export function createNotificationSettings(ports: SettingsPorts) {
 }
 
 /**
- * One-click unsubscribe (RFC 8058) with the token from one email: that address stops receiving
- * notification email. It needs no session and changes nothing but the email destination.
+ * One-click unsubscribe (RFC 8058) with the token from one email. It stops email only to the
+ * exact address that email went to, and only while that address is still the person's current
+ * one of that kind: a link from a replaced extra address or a changed sign-in address is
+ * harmless (`stale`). It needs no session and changes nothing but the email destination.
  * Repeating it is harmless.
  */
 export async function unsubscribe(ports: Pick<SettingsPorts, 'preferences' | 'unsubscribes'>, token: unknown): Promise<UnsubscribeResponse> {
@@ -181,7 +194,11 @@ export async function unsubscribe(ports: Pick<SettingsPorts, 'preferences' | 'un
   const email = await ports.unsubscribes.findByToken(hashToken(value));
   if (!email) throw new NotFoundError('Unsubscribe link', 'UNSUBSCRIBE_INVALID');
   const stored = await ports.preferences.get(email.userId);
+  const current = email.addressKind === 'account' ? await ports.unsubscribes.accountAddress(email.userId) : await ports.unsubscribes.verifiedExtraAddress(email.userId);
+  if (!email.address || !current || current.toLowerCase() !== email.address.toLowerCase()) {
+    return { result: 'stale', stopped: email.addressKind, destination: stored.emailDestination };
+  }
   const destination = withoutAddress(stored.emailDestination, email.addressKind);
   if (destination !== stored.emailDestination) await ports.preferences.save(email.userId, { ...stored, emailDestination: destination });
-  return { stopped: email.addressKind, destination };
+  return { result: 'stopped', stopped: email.addressKind, destination };
 }

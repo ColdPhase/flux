@@ -23,6 +23,16 @@ CREATE TABLE notification_cursor (
 );
 INSERT INTO notification_cursor(id, seq) VALUES ('generator', coalesce((SELECT max(seq) FROM events), 0));
 
+-- Events whose generation failed. The cursor stops before such an event and retries it with
+-- backoff; after 5 attempts it is dead-lettered here (dead_at set) and passed.
+CREATE TABLE notification_generation_failures (
+  event_id uuid PRIMARY KEY REFERENCES events(id) ON DELETE CASCADE,
+  attempts integer NOT NULL DEFAULT 0,
+  last_error text,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  dead_at timestamptz
+);
+
 -- One row per person once they change anything; missing rows mean the documented defaults.
 -- `channels` holds only the choices the person changed: {"mention": {"email": false}, ...}.
 CREATE TABLE notification_preferences (
@@ -54,6 +64,16 @@ CREATE TABLE notification_addresses (
   verified_at timestamptz,
   last_sent_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Verification sends per person, bounded across add, replace and resend: at least 60 s apart
+-- and at most 5 per rolling hour window. One conditional upsert decides, so concurrent
+-- requests cannot both pass.
+CREATE TABLE notification_verification_sends (
+  user_id text PRIMARY KEY REFERENCES auth_users(id) ON DELETE CASCADE,
+  window_start timestamptz NOT NULL,
+  sent integer NOT NULL CHECK (sent >= 0),
+  last_sent_at timestamptz NOT NULL
 );
 
 -- Single-use, expiring verification links. Only the SHA-256 of the token is stored.

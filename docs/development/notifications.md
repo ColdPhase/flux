@@ -29,7 +29,11 @@ The worker (`apps/worker/src/notifications`) runs the core use case
 locks `notification_cursor`, reads up to 100 events after it (events commit in `seq` order,
 migration 0004), creates their notifications and advances the cursor. A LISTEN on
 `flux_events` wakes it right after a commit; a 2-second poll is the backstop. Worker replicas
-serialize on the cursor row. An event that fails is logged and skipped in its own savepoint.
+serialize on the cursor row. Each event runs in its own savepoint. When one fails, the cursor
+stops just before it (earlier events commit), the attempt is counted in
+`notification_generation_failures`, and the worker retries with backoff (2, 4 … 60 s), so a
+transient error never loses an event's notifications. After 5 failed attempts the event is
+dead-lettered (`dead_at` set, logged) and passed, so one poisoned event cannot block everyone.
 
 For each candidate the generator requires, in this order:
 
@@ -55,8 +59,10 @@ tap-time rechecks apply unchanged. The URL opens the exact message
 - **Mute a place** (a project or DM the person can read): nothing from it notifies, on any
   channel.
 - **Quiet hours** (`start`/`end` as `HH:MM`, may cross midnight, IANA `timeZone`): push and
-  email jobs get `startAfter` at the end of the window in the person's own time zone; the
-  inbox is never held back.
+  email jobs get `startAfter` at the end of the window in the person's own time zone, and each
+  send re-evaluates the person's *current* quiet hours: a job queued before they were turned on
+  is deferred (queued again with `startAfter` at the window's end, the email row stays
+  `queued`). The inbox is never held back.
 - **Where email goes**: `account` (the sign-in/SSO address, default), `extra` (the verified
   extra address), `both`, or `none` (in-app only).
 
@@ -69,7 +75,10 @@ One extra address per person, in `notification_addresses` — not an auth table.
 reads it, so it can never sign in, receive a password reset, or change sessions or grants, and
 turning it off never changes the account. `POST /api/v1/notification-address` replaces it and
 emails a single-use link (SHA-256 of the token stored, 24 hours, earlier links invalidated);
-`POST …/resend` at most once a minute (`429`); `POST …/verify` with the token, signed in as the
+`POST …/resend`. Verification sends are bounded per person across add, replace and resend — at
+least 60 s apart and at most 5 per rolling hour — by one conditional upsert on
+`notification_verification_sends` (concurrent requests cannot both pass); otherwise `429
+VERIFICATION_RECENTLY_SENT` with `Retry-After`; `POST …/verify` with the token, signed in as the
 account that added it (anyone else, a used or an expired token get the same `400
 VERIFICATION_INVALID`); `DELETE` removes it and moves `extra`→`none`, `both`→`account`, never
 starting mail to the sign-in address by itself. The sign-in address cannot be added as extra.
@@ -102,8 +111,11 @@ starting mail to the sign-in address by itself. The sign-in address cannot be ad
   unsubscribe link: no project, person or message text, so nothing leaks to someone removed
   since. `Message-ID` is `<notification-<row id>@host>`.
 - **Unsubscribe.** `List-Unsubscribe: <…/api/v1/notifications/unsubscribe?token=…>` and
-  `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058). The POST needs no session and
-  only removes that address from the destination (`both`→ the other one, else `none`). The body
+  `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058). The token is bound to the exact
+  address the email went to. The POST needs no session and removes that address kind from the
+  destination (`both`→ the other one, else `none`) only while that address is still the current
+  one; a link for a replaced extra address or a changed sign-in address answers `result:
+  "stale"`, changes nothing, and the page says "This link no longer applies". The body
   links to `/unsubscribe?token=…`, a page with one button.
 
 ## Inbox UI

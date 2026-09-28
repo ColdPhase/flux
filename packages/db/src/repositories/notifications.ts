@@ -65,6 +65,17 @@ export function notificationGeneratorRows(db: DbExecutor) {
         .where(and(eq(ob.userId, userId), eq(n.sourceType, source.type as SourceType), eq(n.sourceId, source.id), gte(ob.createdAt, since))).limit(1);
       return rows.length > 0;
     },
+    async recordFailure(eventId: string, error: string) {
+      const f = schema.notificationGenerationFailures;
+      const [row] = await db.insert(f).values({ eventId, attempts: 1, lastError: error.slice(0, 500) })
+        .onConflictDoUpdate({ target: f.eventId, set: { attempts: sql`${f.attempts} + 1`, lastError: error.slice(0, 500), updatedAt: sql`now()` } })
+        .returning({ attempts: f.attempts });
+      return row!.attempts;
+    },
+    async deadLetter(eventId: string) {
+      const f = schema.notificationGenerationFailures;
+      await db.update(f).set({ deadAt: sql`now()` }).where(eq(f.eventId, eventId));
+    },
     async insertEmail(row: { id: string; notificationId: string; userId: string; addressKind: 'account' | 'extra' }) {
       const inserted = await db.insert(ob).values(row).onConflictDoNothing().returning({ id: ob.id });
       return inserted.length > 0;
@@ -225,6 +236,31 @@ export function notificationAddressRows(db: DbExecutor) {
     async remove(userId: string) {
       return (await db.delete(a).where(eq(a.userId, userId)).returning({ id: a.id })).length > 0;
     },
+    /**
+     * Reserves one verification send for the person, or answers how long to wait. A single
+     * conditional upsert (row-locked by ON CONFLICT) enforces at least `cooldownSeconds` between
+     * sends and at most `perWindow` per `windowSeconds`, so concurrent requests cannot both pass.
+     */
+    async reserveVerificationSend(userId: string, limits: { cooldownSeconds: number; perWindow: number; windowSeconds: number }) {
+      const v = schema.notificationVerificationSends;
+      const cooldown = sql`make_interval(secs => ${limits.cooldownSeconds})`;
+      const window = sql`make_interval(secs => ${limits.windowSeconds})`;
+      const reserved = await db.execute(sql`
+        INSERT INTO ${v} (user_id, window_start, sent, last_sent_at) VALUES (${userId}, now(), 1, now())
+        ON CONFLICT (user_id) DO UPDATE SET
+          window_start = CASE WHEN ${v}.window_start <= now() - ${window} THEN now() ELSE ${v}.window_start END,
+          sent = CASE WHEN ${v}.window_start <= now() - ${window} THEN 1 ELSE ${v}.sent + 1 END,
+          last_sent_at = now()
+        WHERE ${v}.last_sent_at <= now() - ${cooldown}
+          AND (${v}.window_start <= now() - ${window} OR ${v}.sent < ${limits.perWindow})
+        RETURNING user_id`);
+      if (reserved.rows.length) return { allowed: true as const };
+      const [row] = await db.select().from(v).where(eq(v.userId, userId));
+      const now = Date.now();
+      const untilCooldown = row ? row.lastSentAt.getTime() + limits.cooldownSeconds * 1000 - now : 0;
+      const untilWindow = row && row.sent >= limits.perWindow ? row.windowStart.getTime() + limits.windowSeconds * 1000 - now : 0;
+      return { allowed: false as const, retryAfterSeconds: Math.max(1, Math.ceil(Math.max(untilCooldown, untilWindow) / 1000)) };
+    },
     async issueToken(addressId: string, tokenHash: string, expiresAt: Date) {
       await db.delete(t).where(eq(t.addressId, addressId));
       await db.insert(t).values({ tokenHash, addressId, expiresAt });
@@ -285,7 +321,7 @@ export function notificationEmailRows(db: DbExecutor) {
       return row?.at ?? null;
     },
     async findByToken(tokenHash: string) {
-      const [row] = await db.select({ userId: ob.userId, addressKind: ob.addressKind }).from(ob).where(eq(ob.unsubscribeHash, tokenHash));
+      const [row] = await db.select({ userId: ob.userId, addressKind: ob.addressKind, address: ob.address }).from(ob).where(eq(ob.unsubscribeHash, tokenHash));
       return row ?? null;
     },
   };

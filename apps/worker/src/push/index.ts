@@ -17,6 +17,8 @@ export async function registerPushWorker(boss: PgBoss, db: Database, env: NodeJS
   await boss.work<PushSendJob>(PUSH_SEND_JOB, async (jobs) => {
     for (const job of jobs) {
       const result = await deliverPush({ db, config, agent, log }, job.data);
+      // Quiet hours began after this job was queued: the same send waits until they end (#116).
+      if (result.outcome === 'deferred') await boss.send(PUSH_SEND_JOB, job.data, { startAfter: result.until, singletonKey: `${job.data.notificationId}:${job.data.subscriptionId}:${result.until.getTime()}` });
       console.log(JSON.stringify({ job: PUSH_SEND_JOB, id: job.id, subscriptionId: job.data.subscriptionId, ...result }));
     }
   });

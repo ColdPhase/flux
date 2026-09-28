@@ -123,6 +123,10 @@ export interface GeneratorPorts {
   insertEmail(row: { id: string; notificationId: string; userId: string; addressKind: EmailAddressKind }): Promise<boolean>;
   enqueuePush(job: PushSendJob, startAfter: Date | null): Promise<string | null>;
   enqueueEmail(job: EmailJob, startAfter: Date | null): Promise<string | null>;
+  /** Counts a failed generation of the event (outside its savepoint) and returns the attempts so far. */
+  recordFailure(eventId: string, error: string): Promise<number>;
+  /** Marks the event as given up on, for operators to inspect. */
+  deadLetter(eventId: string): Promise<void>;
   /** Runs `work` in a savepoint so one event that fails does not undo the batch. */
   isolate<T>(work: () => Promise<T>): Promise<T>;
 }
@@ -191,6 +195,9 @@ export interface AddressRepository {
   issueToken(addressId: string, tokenHash: string, expiresAt: Date): Promise<void>;
   /** Consumes a token that belongs to `userId`'s address and has not expired; marks it verified. */
   consumeToken(userId: string, tokenHash: string): Promise<AddressRecord | null>;
+  /** Atomically reserves one verification send within the limits, or says how long to wait. */
+  reserveVerificationSend(userId: string, limits: { cooldownSeconds: number; perWindow: number; windowSeconds: number }):
+    Promise<{ allowed: true } | { allowed: false; retryAfterSeconds: number }>;
 }
 
 export interface VerificationMailer {
@@ -200,8 +207,12 @@ export interface VerificationMailer {
 }
 
 export interface UnsubscribeRepository {
-  /** The email the token was placed in: its recipient and address kind. */
-  findByToken(tokenHash: string): Promise<{ userId: string; addressKind: EmailAddressKind } | null>;
+  /** The email the token was placed in: its recipient, address kind and the exact address used. */
+  findByToken(tokenHash: string): Promise<{ userId: string; addressKind: EmailAddressKind; address: string | null } | null>;
+  /** The current sign-in address. */
+  accountAddress(userId: string): Promise<string | null>;
+  /** The current verified extra address. */
+  verifiedExtraAddress(userId: string): Promise<string | null>;
   /** The latest SMTP failure of an email to this person that is still unsent, since `since`. */
   lastFailure(userId: string, since: Date): Promise<Date | null>;
 }

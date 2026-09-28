@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { NOTIFICATION_EMAIL_SUBJECT, NOTIFICATION_UNSUBSCRIBE_PATH } from '@flux/contracts';
 import { readsSource } from '../push/notifications.js';
 import type { EmailDeliveryUnitOfWork, EmailJob, NotificationMailer, OutgoingMail } from './ports.js';
-import { channelOn, emailKinds } from './preferences.js';
+import { channelOn, deliverableAt, emailKinds } from './preferences.js';
 
 // Notification email (issue #116, founder direction on #44). Email is a channel above the same
 // permissioned inbox as push: every message is the same generic notice with an authorized link,
@@ -51,6 +51,8 @@ export function buildNotificationEmail(input: { origin: string; to: string; emai
 
 export type EmailOutcome =
   | { outcome: 'sent'; addressKind: 'account' | 'extra' }
+  /** Quiet hours started after the job was queued: send it again at `until`. */
+  | { outcome: 'deferred'; until: Date }
   | { outcome: 'skipped'; reason: string };
 
 /** Thrown when SMTP did not accept the message, so the queue retries with bounded backoff. */
@@ -62,6 +64,7 @@ export interface EmailDeliveryOptions {
   origin: string;
   uow: EmailDeliveryUnitOfWork;
   mailer: NotificationMailer;
+  now?: () => Date;
 }
 
 /**
@@ -87,11 +90,16 @@ export async function deliverNotificationEmail(options: EmailDeliveryOptions, jo
     if (!emailKinds(preferences.emailDestination).includes(row.addressKind)) return skip('address no longer chosen');
     const address = row.addressKind === 'account' ? await ports.accountAddress(row.userId) : await ports.verifiedExtraAddress(row.userId);
     if (!address) return skip('no verified address');
+    // Quiet hours are the person's current choice, not the one at enqueue time.
+    const now = options.now?.() ?? new Date();
+    const until = deliverableAt(preferences, now);
+    if (until.getTime() > now.getTime()) return { defer: until } as const;
     const token = newToken();
     await ports.markSending(row.id, address, hashToken(token));
     return { row, address, token } as const;
   });
   if ('skip' in claim) return { outcome: 'skipped', reason: claim.skip! };
+  if ('defer' in claim) return { outcome: 'deferred', until: claim.defer! };
 
   const { row, address, token } = claim;
   const mail = buildNotificationEmail({ origin: options.origin, to: address, emailId: row.id, notificationId: row.notification.id, token });
