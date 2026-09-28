@@ -80,3 +80,6 @@
   .dm-index__head { align-items: center; }
   .dm-index__head p { display: none; }
 }
+.dm-msg.is-arrived { box-shadow: inset 3px 0 0 var(--accent); border-radius: 2px; }
+.dm-msg:focus { outline: none; }
+.dm-msg:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }

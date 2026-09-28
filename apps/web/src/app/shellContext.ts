@@ -29,9 +29,11 @@ export type DetailsView = 'place' | 'connect-ai' | ObjectView | WorkFormView | A
 
 export interface ShellActions {
   openDetails(view?: DetailsView): void;
+  /** Opens Jump to… (⌘K), the search across everything the person may open (#114). */
+  openSearch(): void;
 }
 
-export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined });
+export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, openSearch: () => undefined });
 
 export function useShellActions(): ShellActions {
   return useContext(ShellContext);

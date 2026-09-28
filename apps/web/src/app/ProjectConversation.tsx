@@ -4,6 +4,7 @@ import type { Conversation, ConversationSummary, Draft, Material, Project, SendM
 import { ApiError } from '../api/client';
 import { Avatar, Button, EmptyState, Icon, Input } from '../ui';
 import { getConversation, getMaterialVersion, getProject, listConversations, listDrafts, listMaterials, listWorkspaceMembers, olderMessages, publishMaterial, reply, startConversation } from './conversation-api';
+import { pageBackTo } from './seekMessage';
 import { useShellData } from './data';
 import { MessageActions, MessageObjects, useCreateWorkFromMessage } from '../work/inline';
 import { audienceLine, replyTo, useProjectShell } from '../project/data';
@@ -179,8 +180,22 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
   }, [refresh]);
   const hash = useLocation().hash;
   const arrived = hash.startsWith('#message-') ? hash.slice('#message-'.length) : null;
+  const arrivedLoaded = !!arrived && messages.some((message) => message.id === arrived);
+  // A search result or source older than the loaded window (#114): page back until it is loaded.
   useEffect(() => {
-    // A source link from "Since you left" opens on that whole message; otherwise on the latest.
+    if (!conversation || !arrived || arrivedLoaded || !olderCursor) return;
+    let cancelled = false;
+    void pageBackTo(arrived, olderCursor, (before, limit) => olderMessages(conversation.id, before, undefined, limit)).then(({ pages, cursor }) => {
+      if (cancelled) return;
+      setMessages((current) => pages.reduce((all, page) => mergeMessages(all, page.messages), current));
+      setOlderCursor(cursor);
+    }).catch((cause: unknown) => { hideIfDenied(cause); });
+    return () => { cancelled = true; };
+    // Seek once per conversation and target; later pages come from "Load earlier replies".
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversation?.id, arrived]);
+  useEffect(() => {
+    // A source link from "Since you left" or search opens on that whole message; otherwise on the latest.
     const anchor = arrived ? document.getElementById(`message-${arrived}`) : null;
     if (anchor) { anchor.scrollIntoView({ block: 'start' }); anchor.focus({ preventScroll: true }); return; }
     const feed = scrollRef.current;
@@ -211,7 +226,7 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
     const timer = window.setTimeout(stop, 2000);
     for (const type of ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const) feed.addEventListener(type, stop, { once: true, passive: true });
     return () => { stop(); window.clearTimeout(timer); for (const type of ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const) feed.removeEventListener(type, stop); };
-  }, [conversation?.id, arrived]);
+  }, [conversation?.id, arrived, arrivedLoaded]);
 
   function changeDraft(value: string) {
     setDraft(value); putDraft(draftKey, value);
