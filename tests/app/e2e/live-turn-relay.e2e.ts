@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { appendFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { after, test } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium, type Browser, type Page } from 'playwright';
@@ -42,8 +43,8 @@ async function receiverReports(page: Page): Promise<RtcStatsRecord[]> {
   });
 }
 
-async function connect(page: Page, media: LiveJoinGrant): Promise<void> {
-  await page.goto(media.mediaUrl.replace(/^ws/, 'http'));
+async function connect(page: Page, media: LiveJoinGrant, pageUrl?: string): Promise<void> {
+  await page.goto(pageUrl ?? media.mediaUrl.replace(/^ws/, 'http'));
   await page.evaluate(() => {
     const pcs: RTCPeerConnection[] = [];
     const w = window as Window & { fluxPcs?: RTCPeerConnection[]; fluxIceErrors?: unknown[];
@@ -523,4 +524,148 @@ test('four authorized clients receive two simultaneous code-sized screen tracks 
     }
     markResourcePhase('four_media_verified');
     for (const page of pages) await page.close();
+  });
+
+test('isolated headed Chromium publishes real display capture and virtual camera/mic through TURN/TLS',
+  { timeout: 180_000 }, async () => {
+    const owner = await person('isolated-capture-owner');
+    const viewer = await person('isolated-capture-viewer');
+    const ws = await workspace(owner, 'Browser capture proof');
+    await addMember(owner, ws.id, viewer, 'member');
+    const place = await project(owner, ws.id, 'Xvfb source', 'workspace');
+    await grant(owner, place.id, viewer, 'viewer');
+    const conversation = expectStatus(await owner.browser.request('POST',
+      `/api/v1/projects/${place.id}/conversations`, {
+        body: { body: 'Browser media API anchor', clientMessageId: randomUUID() },
+      }), 201) as Conversation;
+    const session = expectStatus(await owner.browser.request('POST', '/api/v1/live-sessions', {
+      body: { context: { type: 'conversation', id: conversation.id }, clientSessionId: randomUUID() },
+    }), 201) as LiveSession;
+    const ownerMedia = expectStatus(await owner.browser.request('POST',
+      `/api/v1/live-sessions/${session.id}/join`), 200) as LiveJoinGrant;
+    const viewerMedia = expectStatus(await viewer.browser.request('POST',
+      `/api/v1/live-sessions/${session.id}/join`), 200) as LiveJoinGrant;
+
+    // The page is on localhost because getDisplayMedia requires a trustworthy
+    // origin. Xvfb supplies a separate display; browser flags substitute
+    // camera/mic devices and auto-select that virtual screen, never host media.
+    const pageServer = createServer((_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      response.end(`<!doctype html><meta charset="utf-8"><title>Flux isolated capture</title>
+        <style>body{background:#172033;color:#f4f8ff;font:16px monospace;padding:24px}</style>
+        <h1>Flux isolated browser capture</h1><p>const source = "Xvfb only";</p>
+        <button id="share">Share isolated screen</button>
+        <button id="devices">Use virtual camera and mic</button>
+        <script>
+          document.querySelector('#share').addEventListener('click', () => {
+            window.screenPending = navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+          });
+          document.querySelector('#devices').addEventListener('click', () => {
+            window.devicesPending = navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          });
+        </script>`);
+    });
+    await new Promise<void>((resolve) => pageServer.listen(0, '127.0.0.1', resolve));
+    const address = pageServer.address();
+    assert.ok(address && typeof address !== 'string');
+    let publisherBrowser: Browser | undefined;
+    let viewerBrowser: Browser | undefined;
+    try {
+      publisherBrowser = await chromium.launch({ headless: false, args: [
+        '--no-sandbox', '--autoplay-policy=no-user-gesture-required',
+        '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream',
+        '--auto-select-desktop-capture-source=Entire screen',
+      ] });
+      viewerBrowser = await chromium.launch({ args: ['--no-sandbox'] });
+      const publisherPage = await publisherBrowser.newPage({ viewport: { width: 1280, height: 800 } });
+      await connect(publisherPage, ownerMedia, `http://127.0.0.1:${address.port}/`);
+      assert.equal(await publisherPage.evaluate(() => window.isSecureContext), true,
+        'localhost capture page must be a secure context');
+      await publisherPage.click('#share');
+      const screen = await publisherPage.evaluate(async () => {
+        const w = window as Window & { screenPending?: Promise<MediaStream>; fluxRoom?: {
+          localParticipant: { publishTrack(track: MediaStreamTrack,
+            options: { source: string }): Promise<unknown> } } };
+        const stream = await Promise.race([w.screenPending,
+          new Promise<never>((_resolve, reject) => window.setTimeout(() =>
+            reject(new Error('Xvfb display picker did not produce a stream in 25 seconds')), 25_000))]);
+        const track = stream?.getVideoTracks()[0];
+        if (!track || !w.fluxRoom) throw new Error('Display capture or live room unavailable');
+        await w.fluxRoom.localParticipant.publishTrack(track, { source: 'screen_share' });
+        return { readyState: track.readyState, settings: track.getSettings() };
+      });
+      assert.equal(screen.readyState, 'live');
+      assert.ok((screen.settings.width ?? 0) > 0 && (screen.settings.height ?? 0) > 0,
+        `display capture must expose real track dimensions: ${JSON.stringify(screen)}`);
+
+      await publisherPage.click('#devices');
+      const devices = await publisherPage.evaluate(async () => {
+        const w = window as Window & { devicesPending?: Promise<MediaStream>; fluxRoom?: {
+          localParticipant: { publishTrack(track: MediaStreamTrack,
+            options: { source: string }): Promise<unknown> } } };
+        const stream = await Promise.race([w.devicesPending,
+          new Promise<never>((_resolve, reject) => window.setTimeout(() =>
+            reject(new Error('Virtual camera/microphone did not produce a stream in 25 seconds')), 25_000))]);
+        const camera = stream?.getVideoTracks()[0];
+        const microphone = stream?.getAudioTracks()[0];
+        if (!camera || !microphone || !w.fluxRoom)
+          throw new Error('Virtual camera/microphone or live room unavailable');
+        await w.fluxRoom.localParticipant.publishTrack(camera, { source: 'camera' });
+        await w.fluxRoom.localParticipant.publishTrack(microphone, { source: 'microphone' });
+        return { camera: camera.getSettings(), microphoneState: microphone.readyState };
+      });
+      assert.ok((devices.camera.width ?? 0) > 0 && (devices.camera.height ?? 0) > 0);
+      assert.equal(devices.microphoneState, 'live');
+
+      const viewerPage = await viewerBrowser.newPage();
+      await connect(viewerPage, viewerMedia);
+      await viewerPage.waitForFunction(() => {
+        const w = window as Window & { fluxRoom?: { remoteParticipants: Map<string, {
+          audioTrackPublications: Map<string, { isSubscribed: boolean }>;
+          videoTrackPublications: Map<string, { isSubscribed: boolean }>
+        }> } };
+        const remote = [...(w.fluxRoom?.remoteParticipants.values() ?? [])];
+        const twoVideos = remote.some((person) =>
+          [...person.videoTrackPublications.values()].filter((pub) => pub.isSubscribed).length >= 2);
+        const audio = remote.some((person) =>
+          [...person.audioTrackPublications.values()].some((pub) => pub.isSubscribed));
+        return twoVideos && audio;
+      }, undefined, { timeout: 40_000 });
+      await viewerPage.evaluate(() => {
+        const room = (window as Window & { fluxRoom?: { remoteParticipants: Map<string, {
+          videoTrackPublications: Map<string, { track?: { attach(): HTMLVideoElement } }>
+        }> } }).fluxRoom;
+        document.body.replaceChildren();
+        document.body.style.cssText = 'margin:0;background:#0b1020;display:flex;gap:12px';
+        for (const person of room?.remoteParticipants.values() ?? [])
+          for (const publication of person.videoTrackPublications.values())
+            if (publication.track) {
+              const video = publication.track.attach();
+              video.style.cssText = 'width:640px;max-height:800px;object-fit:contain';
+              document.body.append(video);
+            }
+      });
+      await viewerPage.waitForFunction(async () => {
+        const w = window as Window & { fluxPcs?: RTCPeerConnection[] };
+        const stats = (await Promise.all((w.fluxPcs ?? []).map((pc) => pc.getStats())))
+          .flatMap((report) => [...report.values()]);
+        return stats.filter((item) => item.type === 'inbound-rtp' && item.kind === 'video' &&
+          item.framesDecoded > 0).length >= 2 && stats.some((item) =>
+          item.type === 'inbound-rtp' && item.kind === 'audio' && item.packetsReceived >= 3);
+      }, undefined, { timeout: 40_000 });
+      await viewerPage.screenshot({ path: '/artifacts/isolated-device-viewer.png', fullPage: true });
+      const publisherCandidates = await selectedCandidates(publisherPage);
+      const viewerCandidates = await selectedCandidates(viewerPage);
+      assert.ok(publisherCandidates.length > 0 && viewerCandidates.length > 0);
+      for (const candidate of [...publisherCandidates, ...viewerCandidates]) {
+        assert.equal(candidate.candidateType, 'relay', JSON.stringify(candidate));
+        assert.equal(candidate.relayProtocol, 'tls', JSON.stringify(candidate));
+      }
+      console.log(JSON.stringify({ isolatedCapture: true, screen, devices,
+        publisherCandidates, viewerCandidates, physicalDevicesUsed: false,
+        display: 'separate Xvfb display' }));
+    } finally {
+      await Promise.all([publisherBrowser?.close(), viewerBrowser?.close()]);
+      await new Promise<void>((resolve) => pageServer.close(() => resolve()));
+    }
   });

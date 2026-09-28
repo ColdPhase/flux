@@ -68,6 +68,22 @@ requires relay over TLS with received bytes. The temporary certificate is
 accepted only by this test browser; it does not prove a real public CA or NAT.
 The script removes its volumes, images and certificate on exit. It is a local
 heavy check, not a per-push GitHub Action.
+
+The suite also starts a **separate Xvfb display** and headed Chromium to call
+the actual browser `getDisplayMedia()` from a clicked button on a localhost
+page. Browser flags select that virtual display and supply fake camera and
+microphone devices; the test publishes all three tracks through the Flux room
+and checks received screen/camera video and microphone RTP over TURN/TLS.
+It never connects to the operator's Wayland/X11 desktop, webcam or microphone.
+This is an isolated browser API and transport check, not a physical-device,
+human picker, system-audio or #62 UI result. A failed capture is a failed test;
+do not replace it with `canvas.captureStream()` or count the existing synthetic
+screen test as its substitute. [MDN](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getDisplayMedia)
+documents the secure-context, user-activation and per-invocation picker rules;
+the isolated test uses localhost and a real click to meet the first two.
+This new case has no completed Docker result at the current unpublished head;
+its pass status and screenshot remain unverified until the next full run.
+
 Set `FLUX_LIVE_TURN_ARTIFACT_DIR` to retain browser screenshots and the SFU
 resource trace at a chosen path (otherwise the script prints a new `/tmp` path).
 `livekit-container-stats.jsonl` records timestamped Docker container CPU,
