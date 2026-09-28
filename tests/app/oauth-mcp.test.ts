@@ -181,7 +181,14 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
   assert.equal(lostGrant.status, 403, 'grant loss invalidates the bearer before tool dispatch');
   assert.ok(!JSON.stringify(lostGrant.message).includes('Battery observation'));
 
+  const restoredGrant = expect(await browser.request('POST', `/api/v1/projects/${projectId}/grants`,
+    { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201);
+  assert.notEqual(restoredGrant.id, agentGrant.id, 'the restored grant is a new authority');
+  const restoredSources = await mcp(bearer, 10, 'tools/call', { name: 'flux_list_materials', arguments: { projectId } });
+  assert.equal(restoredSources.status, 200, 'the original connection works again after a current grant is restored');
+  assert.equal(toolValue(restoredSources.message).total, 3);
+
   expect(await browser.request('DELETE', `/api/v1/agent-connections/${connectionId}`), 204);
-  const revoked = await mcp(bearer, 4, 'tools/call', { name: 'flux_list_contexts', arguments: {} });
+  const revoked = await mcp(bearer, 11, 'tools/call', { name: 'flux_list_materials', arguments: { projectId } });
   assert.equal(revoked.status, 403, 'the same already-issued bearer loses access before expiry');
 });
