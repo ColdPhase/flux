@@ -81,7 +81,8 @@ Drafts shared with the project are also left out in format version 1: a shared n
 project content when it is published as a material. Links whose target the export leaves out
 are dropped, so an export never names an object it does not contain. `tests/app/export.test.ts`
 checks this with distinctive text in another project, a DM, a private note (published from, so
-its id is referenced internally) and a private sketch that places the note, and also checks that
+its id is referenced internally), a private sketch that places the note, and another member's
+extra notification address, quiet hours and mute, and also checks that
 no e-mail address, private note id, client mutation id, agent connection id or other project
 id appears.
 `scripts/check_backup.sh` checks the same for `./flux export` on the demo data.

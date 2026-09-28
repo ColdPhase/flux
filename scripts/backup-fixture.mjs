@@ -152,7 +152,13 @@ async function snapshot(ada, jonas, state) {
   const push = (await ada.expect('GET', '/api/v1/push/subscriptions')).map((item) => [item.endpointOrigin, item.deviceLabel]).sort();
   const members = (await ada.expect('GET', `/api/v1/workspaces/${workspaceId}/members`)).map((member) => [member.email, member.role]).sort();
   const connections = (await ada.expect('GET', '/api/v1/agent-connections')).map((item) => [item.id, item.revokedAt]).sort();
-  return { exported, threads, docVersions, dmMessages, adaDrafts, jonasDrafts, push, members, connections };
+  const inbox = async (session) => (await session.expect('GET', '/api/v1/inbox?limit=100')).items.map((item) => [item.id, item.reason, item.readAt, item.url]).sort();
+  const notifications = {
+    ada: await inbox(ada), jonas: await inbox(jonas),
+    adaPreferences: await ada.expect('GET', '/api/v1/notification-preferences'),
+    jonasPreferences: await jonas.expect('GET', '/api/v1/notification-preferences'),
+  };
+  return { exported, threads, docVersions, dmMessages, adaDrafts, jonasDrafts, push, members, connections, notifications };
 }
 
 async function seed() {
@@ -178,7 +184,21 @@ async function seed() {
   const note = await ada.expect('POST', `/api/v1/workspaces/${workspaceId}/drafts`, { title: token('BACKUP-private-note'), body: token('BACKUP-private-body'), projectId });
   const dm = (await all(ada, `/api/v1/workspaces/${workspaceId}/dms`))[0];
   assert.ok(dm, 'the demo DM exists');
-  await jonas.expect('POST', `/api/v1/dms/${dm.id}/messages`, { body: token('BACKUP-dm'), clientMessageId: ids() });
+  const dmMessage = await jonas.expect('POST', `/api/v1/dms/${dm.id}/messages`, { body: token('BACKUP-dm'), clientMessageId: ids() });
+
+  // Notifications (#116): wait until the worker generated Ada's notification for that DM message
+  // (the last event that notifies, and events are processed in order), read it, and set
+  // preferences and a mute that the restore must keep.
+  const deadline = Date.now() + 30_000;
+  let dmNotice;
+  while (!dmNotice && Date.now() < deadline) {
+    dmNotice = (await ada.expect('GET', '/api/v1/inbox?limit=100')).items.find((item) => item.url?.endsWith(`#message-${dmMessage.id}`));
+    if (!dmNotice) await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  assert.ok(dmNotice, 'the worker notified Ada of the DM message');
+  await ada.expect('POST', `/api/v1/inbox/${dmNotice.id}/read`);
+  await ada.expect('PATCH', '/api/v1/notification-preferences', { channels: { reply: { push: false } }, quietHours: { enabled: true, start: '22:30', end: '06:45', timeZone: 'Pacific/Chatham' } });
+  await jonas.expect('PUT', '/api/v1/notification-preferences/mutes', { type: 'dm', id: dm.id, muted: true });
 
   const ecdh = createECDH('prime256v1');
   ecdh.generateKeys();
@@ -239,6 +259,9 @@ async function verify() {
   assert.ok(actual.exported.links.some((link) => link.from.type === 'doc' && link.role === 'mentions' && link.to.type === 'work'), 'doc link restored');
   assert.deepEqual(actual.push, [['https://push.example.test', 'Backup test phone']], 'push subscription restored');
   assert.ok(!text.includes(state.liveConnection), 'the export leaves out agent connections');
+  assert.ok(actual.notifications.ada.some(([, reason, readAt]) => reason === 'dm' && readAt), 'the read DM notification restored');
+  assert.equal(actual.notifications.adaPreferences.quietHours.timeZone, 'Pacific/Chatham', 'notification preferences restored');
+  assert.ok(!text.includes('Pacific/Chatham'), 'the export leaves out notification preferences');
   // Agent access as of the backup: revoked before it stays revoked; the connection revoked
   // after the backup is live again (the documented caveat of restoring an older backup).
   assert.equal(await mcpStatus(state.bearers.revoked), 403, 'a connection revoked before the backup stays revoked');

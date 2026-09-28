@@ -97,6 +97,16 @@ Restore keeps everything in the dump, including private notes, direct messages, 
 revoked sessions (they stay revoked), push subscriptions and notification rows. Access is
 decided by the same policy rows, so permissions are exactly as they were.
 
+### Notifications and email
+
+Notification rows, preferences, mutes, the extra delivery address and its verification state,
+the generator's cursor and the email outbox (#116, migration 0015) are in the dump. The worker
+is stopped during the backup, so the cursor and the outbox match the events in it. After a
+restore the worker continues from that cursor: events after it are notified once, and outbox
+rows that were still `queued` at backup time are sent. If the original instance kept running
+after the backup, an email it sent from such a queued row can be sent once more by the
+restored instance; the notification id in `Message-ID` lets mail clients spot it.
+
 ### Agent connections and OAuth tokens
 
 Personal agent connections (#52) and their OAuth clients, hashed refresh tokens, access token
@@ -134,12 +144,14 @@ Compose projects, ports and images, and removes them afterwards. It seeds `./flu
 conversations, a DM, a private note, a project sketch with links, work, a decision and a
 result with links, a doc with two versions, a push subscription, a revoked and a live session,
 two agent connections with OAuth bearers (one revoked before the backup, one right after it),
+a read DM notification, notification preferences with quiet hours and a muted DM,
 an outsider account and a 300 kB file in the files volume; backs up twice (`--keep 1`);
 checks the manifest and checksums; checks that restore is refused without confirmation, for a
 damaged archive, for an older schema without `--migrate` and for a newer schema; destroys the
 volumes; restores into a **fresh** checkout without `.env`; and verifies through its API that
 the project export, conversations, doc versions, DM messages, drafts, members and push
-subscriptions equal the data before the backup, that the old session still works and the
+subscriptions, inbox items with their read state, notification preferences and agent connections
+equal the data before the backup, that the old session still works and the
 revoked one does not, that sign-in works, that the private note stays private, and that the
 outsider is denied the project, its export, the DM and the note. The bearer of the connection
 revoked before the backup is still denied (`403` from `/mcp`); the one revoked after the backup
@@ -151,5 +163,5 @@ byte identical and owned by the API user. The same script covers [upgrade](upgra
 
 Not covered yet: very large databases (the dump is streamed through `docker compose exec`,
 which is fine for gigabytes but untested there), point-in-time recovery (WAL archiving), and
-backups while writers keep running. Notification preferences (#116) are not on `main` yet;
-they are ordinary database rows and will be part of the dump.
+backups while writers keep running, and email outbox rows (`check_backup.sh` runs without SMTP;
+the outbox is covered by the dump like every other table).

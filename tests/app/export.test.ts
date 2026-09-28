@@ -144,6 +144,14 @@ describe('project export', () => {
     connectionId = json<{ id: string }>(await post(owner, '/api/v1/agent-connections',
       { agentId, selectedProjectIds: [lamp.id], scopes: ['flux.context.read'] }), 201, 'agent connection').id;
 
+    // Notification data of another person (#116): an extra delivery address and preferences.
+    const address = await post(partner, '/api/v1/notification-address', { email: token('extra-address') + '@example.test' });
+    assert.ok(address.status < 300, `notification address: ${address.status} ${address.text}`);
+    json(await partner.browser.request('PATCH', '/api/v1/notification-preferences', {
+      body: { quietHours: { enabled: true, start: '21:15', end: '07:05', timeZone: 'Pacific/Chatham' } },
+    }), 200, 'notification preferences');
+    json(await partner.browser.request('PUT', '/api/v1/notification-preferences/mutes', { body: { type: 'project', id: lamp.id, muted: true } }), 200, 'mute');
+
     // Content that must stay out: another project, a DM, a workspace-level private note.
     json(await post(owner, `/api/v1/projects/${other.id}/conversations`, { body: token('OTHERPROJECT-message'), clientMessageId: randomUUID() }), 201, 'other conversation');
     json(await post(owner, `/api/v1/projects/${other.id}/docs`, { title: token('OTHERPROJECT-doc'), body: token('OTHERPROJECT-doc-body') }), 201, 'other doc');
@@ -211,7 +219,7 @@ describe('project export', () => {
     for (const [someone, name] of [[owner, 'export-owner'], [partner, 'export-partner']] as const) assert.equal(names.get(someone.id), name);
 
     const text = JSON.stringify(data);
-    for (const hidden of ['OTHERPROJECT', 'DMSECRET', 'PRIVATENOTE', 'PRIVATESKETCH']) assert.ok(!text.includes(hidden), `export leaks ${hidden}`);
+    for (const hidden of ['OTHERPROJECT', 'DMSECRET', 'PRIVATENOTE', 'PRIVATESKETCH', 'extra-address', 'Pacific/Chatham', '21:15']) assert.ok(!text.includes(hidden), `export leaks ${hidden}`);
     for (const hidden of [privateDraftId, materialMutationId, connectionId, other.id, owner.email, partner.email, outsider.id]) assert.ok(!text.includes(hidden), `export leaks ${hidden}`);
 
     const validate = await validator();
