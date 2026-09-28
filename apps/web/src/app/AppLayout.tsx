@@ -100,20 +100,21 @@ export function AppLayout() {
   const where = placeOf(location.pathname);
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const activeProject = projects.find((project) => project.id === projectId);
-  // The Conversation tab returns to the conversation that was open before Tasks.
-  const onTasks = location.pathname.endsWith('/tasks');
+  // The Conversation tab returns to the conversation that was open before Tasks or Docs.
+  const onOtherView = /^\/projects\/[^/]+\/(tasks|docs)(\/|$)/.test(location.pathname);
   useEffect(() => {
-    if (!projectId || onTasks) return;
+    if (!projectId || onOtherView) return;
     try { sessionStorage.setItem(`flux.project-conversation.${projectId}`, location.pathname); } catch { /* private mode */ }
-  }, [projectId, onTasks, location.pathname]);
+  }, [projectId, onOtherView, location.pathname]);
   const projectViews = projectId ? [
-    { id: 'conversation', label: 'Conversation', to: onTasks ? lastConversationPath(projectId) : location.pathname },
+    { id: 'conversation', label: 'Conversation', to: onOtherView ? lastConversationPath(projectId) : location.pathname },
     { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks` },
+    { id: 'docs', label: 'Docs', to: `/projects/${projectId}/docs`, end: false },
   ] : null;
   const dmId = location.pathname.match(/^\/dm\/([^/]+)/)?.[1];
   const activeDm = directMessages.find((dm) => dm.id === dmId);
   const place = activeProject
-    ? { crumb: activeProject.workspaceName ?? null, title: activeProject.name, topic: 'Conversation, work and decisions', views: false }
+    ? { crumb: activeProject.workspaceName ?? null, title: activeProject.name, topic: 'Conversation, work, decisions and docs', views: false }
     : where === 'dm'
       ? activeDm
         // A DM's header names its exact audience (design principle 5).

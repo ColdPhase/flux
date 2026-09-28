@@ -22,6 +22,8 @@ export type WorkStatus = (typeof WORK_STATUSES)[number];
 export type DecisionStatus = 'proposed' | 'accepted' | 'superseded';
 export type ResultFinding = 'positive' | 'negative';
 export type WorkObjectType = 'work' | 'decision' | 'result';
+/** Objects that own links: work objects and project docs (#112). */
+export type LinkOwnerType = WorkObjectType | 'doc';
 
 export const WORK_LIMITS = { title: 200, outcome: 4000, blocker: 2000, rationale: 20_000, evidence: 20_000, links: 50 } as const;
 
@@ -31,27 +33,31 @@ export type ObjectRef =
   /** A thought on one of the project's sketches (#69); private sketches are never linkable. */
   | { type: 'thought'; id: string }
   | { type: 'material'; id: string; version: number }
+  /** A project doc (#112) as it currently reads, or a project sketch (#69). */
+  | { type: 'doc'; id: string }
+  | { type: 'sketch'; id: string }
   | { type: WorkObjectType; id: string };
 
 /**
  * `source`: created from, or based on, a message or material version (the source stays in place).
  * `affects`: a decision concerns this work. `still_applies`: at a pivot, work that remains useful.
  * `about`: a result reports on this work or decision. `related`: any other connection.
+ * `mentions`: the current text of a doc refers to it (#112); rewritten with each doc version.
  */
-export type LinkRole = 'source' | 'affects' | 'still_applies' | 'about' | 'related';
+export type LinkRole = 'source' | 'affects' | 'still_applies' | 'about' | 'related' | 'mentions';
 
 export interface ObjectLink {
   id: string;
   projectId: string;
   role: LinkRole;
-  from: { type: WorkObjectType; id: string };
+  from: { type: LinkOwnerType; id: string };
   to: ObjectRef;
   /** Current titles of both ends (a message's opening words), so a reader can follow the link. */
   fromTitle: string;
   toTitle: string;
   /** The conversation of a message target, else null. */
   conversationId: string | null;
-  /** The sketch of a thought target, else null. */
+  /** The sketch of a thought or sketch target, else null. */
   sketchId: string | null;
   createdAt: string;
 }

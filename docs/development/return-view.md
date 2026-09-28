@@ -57,10 +57,11 @@ conversation points are deleted with their place.
 | message | "Ari and Kai replied in “…”", grouped per conversation, opening on the first new message. | Never. |
 | material | "New material: …", "Updated material: …, now version N". | Never. |
 | sketch | "Ari started a sketch: …", "Sketch changed: …" (project sketches; private ones reach only their author). | Never. |
+| doc | "Ari started a doc: …" (with its reason), "Doc updated: …" with "Version N by Ari · latest: <reason>" or "2 new versions by …" ([#112](docs-wiki.md)). The source opens the doc, or its history comparing the last version before these changes with the current one. | Never. |
 
 A missing explanation is said plainly: "No reason was recorded." for a rule or a blocker, and
 "No evidence was recorded." for a result. Every item has a `source`: a message, material version,
-sketch, or a work item, decision or result, which the client opens in Details on its project.
+doc (with `since`, the version before the changes), sketch, or a work item, decision or result, which the client opens in Details on its project.
 
 **Next step.** One step is derived from the items that need you, in this order: a question
 addressed to you, a question in your conversation, a result about your work, a rule waiting for

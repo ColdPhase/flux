@@ -42,14 +42,16 @@ export interface ReturnPoint {
   canRestore: boolean;
 }
 
-export type ReturnItemKind = 'decision' | 'result' | 'work' | 'question' | 'message' | 'material' | 'sketch';
+export type ReturnItemKind = 'decision' | 'result' | 'work' | 'question' | 'message' | 'material' | 'sketch' | 'doc';
 
 /** Where an item came from; the client turns it into a link. */
 export type ReturnSource =
   | { type: 'work' | 'decision' | 'result'; id: string; projectId: string }
   | { type: 'message'; projectId: string; conversationId: string; messageId: string }
   | { type: 'material'; projectId: string; materialId: string; version: number }
-  | { type: 'sketch'; sketchId: string; projectId: string | null };
+  | { type: 'sketch'; sketchId: string; projectId: string | null }
+  /** A project doc (#112): `since` is the last version before these changes, so the client can show what changed. */
+  | { type: 'doc'; projectId: string; docId: string; version: number; since: number | null };
 
 export interface ReturnItem {
   /** Stable within one summary (the source object). */
