@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
-import { Link, useLoaderData, useNavigate, useRevalidator, type LoaderFunctionArgs } from 'react-router';
+import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, type LoaderFunctionArgs } from 'react-router';
 import type { Conversation, ConversationSummary, Draft, Material, Project, SendMessageCommand, WorkspaceMember } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Button, EmptyState, Icon, Input } from '../ui';
@@ -7,6 +7,7 @@ import { getConversation, getMaterialVersion, getProject, listConversations, lis
 import { useShellData } from './data';
 import { loadProjectWork, type ProjectWork } from '../work/api';
 import { MessageActions, MessageObjects, ProjectStateLine, useCreateWorkFromMessage } from '../work/inline';
+import { SinceYouLeftLine } from '../returns/SinceYouLeft';
 import './project-conversation.css';
 
 interface ProjectData { project: Project; conversations: ConversationSummary[]; conversationTotal: number; materials: Material[]; materialTotal: number; members: WorkspaceMember[]; conversation: Conversation | null; work: ProjectWork }
@@ -65,7 +66,11 @@ function mergeMessages(current: Conversation['messages'], incoming: Conversation
 
 export function ProjectConversation() {
   const data = useLoaderData() as ProjectData;
-  return <ProjectConversationContent key={`${data.project.id}:${data.conversation?.id ?? 'new'}`} data={data} />;
+  // The return line belongs to the project, so switching threads keeps what was shown on arrival.
+  return <div className="project-page">
+    <SinceYouLeftLine key={data.project.id} projectId={data.project.id} conversationId={data.conversation?.id} />
+    <ProjectConversationContent key={`${data.project.id}:${data.conversation?.id ?? 'new'}`} data={data} />
+  </div>;
 }
 
 function ProjectConversationContent({ data }: { data: ProjectData }) {
@@ -168,7 +173,14 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
     const interval = window.setInterval(onFocus, 15000);
     return () => { window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVisible); window.clearInterval(interval); };
   }, [refresh]);
-  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [conversation?.id]);
+  const hash = useLocation().hash;
+  const arrived = hash.startsWith('#message-') ? hash.slice('#message-'.length) : null;
+  useEffect(() => {
+    // A source link from "Since you left" opens on that whole message; otherwise on the latest.
+    const anchor = arrived ? document.getElementById(`message-${arrived}`) : null;
+    if (anchor) { anchor.scrollIntoView({ block: 'start' }); anchor.focus({ preventScroll: true }); return; }
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [conversation?.id, arrived]);
 
   function changeDraft(value: string) {
     setDraft(value); putDraft(draftKey, value);
@@ -259,7 +271,7 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
           <section aria-label="Messages" className="project-convo__messages">
             {conversation ? <>
               {olderCursor ? <Button variant="quiet" busy={olderBusy} onClick={() => void loadOlder()}>Load earlier replies</Button> : null}
-              <ol className="project-convo__message-list">{messages.map((message) => <li key={message.id} id={`message-${message.id}`} className="project-convo__message"><div className="project-convo__message-meta"><strong>{author(message.authorId)}{message.authorId === me.user.id ? ' · you' : ''}</strong><time dateTime={message.createdAt}>{when(message.createdAt)}</time><span>#{message.sequence}</span></div><p>{message.body}</p>{message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={hideIfDenied} /> : null}<MessageObjects messageId={message.id} lists={data.work} />{writable ? <MessageActions projectId={project.id} message={message} busy={makeWork.busy === message.id} onCreateWork={() => void makeWork.create(message)} /> : null}{makeWork.failed?.messageId === message.id ? <p className="ws-act-error" role="alert">{makeWork.failed.text} <button type="button" onClick={() => void makeWork.create(message)}>Retry</button></p> : null}</li>)}</ol>
+              <ol className="project-convo__message-list">{messages.map((message) => <li key={message.id} id={`message-${message.id}`} tabIndex={-1} className={`project-convo__message${arrived === message.id ? ' is-arrived' : ''}`}><div className="project-convo__message-meta"><strong>{message.authorId === me.user.id ? `${author(message.authorId)} · you` : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${author(message.authorId)} directly`}>{author(message.authorId)}</Link>}</strong><time dateTime={message.createdAt}>{when(message.createdAt)}</time><span>#{message.sequence}</span></div><p>{message.body}</p>{message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={hideIfDenied} /> : null}<MessageObjects messageId={message.id} lists={data.work} />{writable ? <MessageActions projectId={project.id} message={message} busy={makeWork.busy === message.id} onCreateWork={() => void makeWork.create(message)} /> : null}{makeWork.failed?.messageId === message.id ? <p className="ws-act-error" role="alert">{makeWork.failed.text} <button type="button" onClick={() => void makeWork.create(message)}>Retry</button></p> : null}</li>)}</ol>
             </> : <EmptyState icon="chat" title="Start a conversation"><p>Share a thought with the people in {project.name}. No material form is required.</p></EmptyState>}
           </section>
           <section aria-label="Project materials" className="project-convo__materials"><div className="project-convo__section-head"><h3>Materials</h3><span>{materialTotal}</span></div>

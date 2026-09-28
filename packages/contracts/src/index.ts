@@ -44,3 +44,5 @@ export * from './conversation.js';
 export * from './sketch.js';
 export * from './work.js';
 export * from './agent-proposals.js';
+export * from './returns.js';
+export * from './direct-message.js';
