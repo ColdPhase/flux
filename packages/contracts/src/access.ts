@@ -15,6 +15,8 @@ export const workspaceAgentsPath = (workspaceId: string) => `${workspacePath(wor
 export const workspaceDraftsPath = (workspaceId: string) => `${workspacePath(workspaceId)}/drafts`;
 export const projectPath = (projectId: string) => `${PROJECTS_PATH}/${projectId}`;
 export const projectGrantsPath = (projectId: string) => `${projectPath(projectId)}/grants`;
+/** GET: the people and agents who can read the project now (#117), for its audience line. */
+export const projectPeoplePath = (projectId: string) => `${projectPath(projectId)}/people`;
 export const projectGrantPath = (projectId: string, grantId: string) => `${projectGrantsPath(projectId)}/${grantId}`;
 export const agentPath = (agentId: string) => `${AGENTS_PATH}/${agentId}`;
 export const draftPath = (draftId: string) => `${DRAFTS_PATH}/${draftId}`;
@@ -105,6 +107,19 @@ export interface Project {
   access: ProjectAccess;
   version: number;
   createdAt: string;
+}
+
+/**
+ * One principal who can read a project now (#117). Readable by everyone who can read the
+ * project, so its audience is never a guess: workspace owners and admins (managers), people
+ * and agents with a grant, and members of a workspace-visible project. Denied and inactive
+ * principals never appear. Ordered people first, then by name.
+ */
+export interface ProjectPerson {
+  kind: 'human' | 'agent';
+  id: string;
+  name: string;
+  access: ProjectAccess;
 }
 
 export interface ProjectGrant {

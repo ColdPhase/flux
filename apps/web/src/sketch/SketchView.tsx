@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { Link, useLocation, useParams } from 'react-router';
+import { Link, Navigate, useLocation, useParams } from 'react-router';
 import { DEFAULT_THOUGHT_SIZE, THOUGHT_SHAPES, type SketchDetail } from '@flux/contracts';
 import { Button, EmptyState, Icon, MEDIA, Spinner, useMediaQuery } from '../ui';
 import { getProject } from '../api/sketches';
@@ -42,8 +42,9 @@ function useProjectName(projectId: string | null | undefined) {
 
 /** `/map/:sketchId`: a fresh view (and document) per sketch. */
 export function SketchRoute() {
-  const { sketchId = '' } = useParams();
-  return <SketchView key={sketchId} sketchId={sketchId} />;
+  const { sketchId = '', projectId } = useParams();
+  // Opened from a project's Map tab (#117), the way back stays in that project.
+  return <SketchView key={sketchId} sketchId={sketchId} projectId={projectId} back={projectId ? `/projects/${projectId}/map` : '/map'} />;
 }
 
 /**
@@ -51,7 +52,7 @@ export function SketchRoute() {
  * a List. Everything is edited in place; there is no management panel. Changes save as they
  * happen and arrive live from the other people who can see the sketch.
  */
-export function SketchView({ sketchId }: { sketchId: string }) {
+export function SketchView({ sketchId, projectId, back = '/map' }: { sketchId: string; projectId?: string; back?: string }) {
   const { me } = useShellData();
   const doc = useSketchDoc(sketchId, { id: me.user.id, name: me.user.name });
   const { sketch } = doc;
@@ -249,13 +250,18 @@ export function SketchView({ sketchId }: { sketchId: string }) {
     }
   };
 
+  // Under a project (#117) only that project's sketches are shown, so the header's audience is
+  // never wrong: another project's sketch moves to its own project, a private one to Home's Map.
+  if (sketch && projectId && (sketch.scope !== 'project' || sketch.projectId !== projectId)) {
+    return <Navigate replace to={sketch.scope === 'project' && sketch.projectId ? `/projects/${sketch.projectId}/map/${sketch.id}` : `/map/${sketch.id}`} />;
+  }
   if (doc.load === 'loading' && !sketch) return <div className="sk-page sk-page--center"><Spinner label="Opening the sketch" /></div>;
   if (doc.load === 'not-found' || (!sketch && doc.load === 'failed')) {
     return (
       <div className="sk-page">
         <div className="view-empty">
           <EmptyState icon="map" title={doc.load === 'not-found' ? 'This sketch isn’t available' : 'The sketch couldn’t be opened'}
-            action={doc.load === 'not-found' ? <Link className="ui-btn ui-btn--secondary" to="/map">All sketches</Link> : <Button onClick={() => void doc.reload()}>Try again</Button>}>
+            action={doc.load === 'not-found' ? <Link className="ui-btn ui-btn--secondary" to={back}>All sketches</Link> : <Button onClick={() => void doc.reload()}>Try again</Button>}>
             <p>{doc.load === 'not-found' ? 'It may have been shared with other people only, or you no longer have access to where it lives.' : 'Flux could not be reached. Your changes are safe; try again in a moment.'}</p>
           </EmptyState>
         </div>
@@ -272,7 +278,7 @@ export function SketchView({ sketchId }: { sketchId: string }) {
       <div className="sk">
         <div className="sk-head">
           <p className="sk-lead">
-            <Link to="/map" className="sk-back">Sketches</Link>
+            <Link to={back} className="sk-back">Sketches</Link>
             <span aria-hidden="true" className="sk-sep">·</span>
             {renaming && canWrite ? (
               <TitleEditor sketch={sketch} onDone={(title) => {

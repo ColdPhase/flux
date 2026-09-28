@@ -33,6 +33,7 @@ import {
   listDrafts,
   listMembers,
   listProjectGrants,
+  listProjectPeople,
   listProjects,
   listWorkspaces,
   moveDraft,
@@ -126,6 +127,8 @@ export async function accessRoutes(app: FastifyInstance, { db, sessions, boss }:
     getProject(await principal(request), request.params.projectId, db));
   app.get<{ Params: { projectId: string } }>(`${PROJECTS_PATH}/:projectId/grants`, async (request) =>
     listProjectGrants(await principal(request), request.params.projectId, db));
+  app.get<{ Params: { projectId: string } }>(`${PROJECTS_PATH}/:projectId/people`, async (request) =>
+    listProjectPeople(await principal(request), request.params.projectId, db));
   app.post<{ Params: { projectId: string }; Body: GrantProjectCommand }>(`${PROJECTS_PATH}/:projectId/grants`, {
     schema: {
       body: {

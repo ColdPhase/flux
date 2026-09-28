@@ -1,9 +1,9 @@
-import { useCallback, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useRevalidator } from 'react-router';
 import type { ConversationMessage, Decision, Project, WorkItem, WorkResult } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Icon, useMediaQuery } from '../ui';
-import { useShellActions } from '../app/shellContext';
+import { useShellActions, type ObjectView } from '../app/shellContext';
 import { createWork, type ProjectWork } from './api';
 import { decisionLine, firstLine, fromMessage, resultLine, workLine } from './format';
 import './work.css';
@@ -11,37 +11,89 @@ import './work.css';
 // Work objects inside the conversation (#101, C direction): the calm state line under the
 // header, the quiet actions of a message and the framed objects that were made from it.
 
+/** One part of the project's current state: what it says and the object it opens. */
+export interface StatePart {
+  key: 'rule' | 'work' | 'blocked' | 'result' | 'proposal';
+  icon: 'rule' | 'result' | 'alert' | null;
+  dot?: 'progress' | 'need';
+  text: string;
+  /** Shorter wording for the phone's one-line summary. */
+  short: string;
+  /** The object's own title, for lists such as the Details overview. */
+  title: string;
+  tone?: 'warn' | 'need';
+  open: ObjectView;
+}
+
 /**
- * The project's current state in one line: the rule in force, work in progress and a proposal
- * waiting for a person. Each part opens its object in Details.
+ * The project's current state from real records: the rule in force, work in progress, blocked
+ * work, the latest result and a proposal waiting for a person (#101, #117).
  */
-export function ProjectStateLine({ lists, canDecide }: { lists: ProjectWork; canDecide: boolean }) {
-  const { openDetails } = useShellActions();
+export function stateParts(lists: ProjectWork, canDecide: boolean): StatePart[] {
   const rule = lists.decisions.find((decision) => decision.status === 'accepted');
   const proposal = lists.decisions.find((decision) => decision.status === 'proposed');
   const active = lists.work.filter((item) => item.status === 'in_progress' && !item.parked);
   const blocked = lists.work.filter((item) => item.status === 'blocked' && !item.parked);
-  const parts: { key: string; node: ReactNode }[] = [];
-  if (rule) parts.push({ key: 'rule', node: <button type="button" className="ws-seg" onClick={() => openDetails({ kind: 'decision', id: rule.id })}><Icon name="rule" size={13} /><span>Current rule: {rule.title}</span></button> });
+  const result = [...lists.results].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  const parts: StatePart[] = [];
+  if (rule) parts.push({ key: 'rule', icon: 'rule', text: `Current rule: ${rule.title}`, short: `Rule: ${rule.title}`, title: rule.title, open: { kind: 'decision', id: rule.id } });
   if (active.length) {
-    const names = [...new Set(active.map((item) => item.owner?.name).filter(Boolean))];
-    parts.push({ key: 'work', node: <button type="button" className="ws-seg" onClick={() => openDetails({ kind: 'work', id: active[0]!.id })}><span className="ws-dot ws-dot--progress" aria-hidden="true" /><span>{active.length === 1 ? `In progress: ${active[0]!.title}` : `${active.length} in progress`}{names.length ? ` (${names.join(', ')})` : ''}</span></button> });
+    const names = [...new Set(active.map((item) => item.owner?.name.trim().split(/\s+/)[0]).filter(Boolean))];
+    const who = names.length ? ` (${names.join(', ')})` : '';
+    parts.push({ key: 'work', icon: null, dot: 'progress', text: `${active.length === 1 ? `In progress: ${active[0]!.title}` : `${active.length} in progress`}${who}`, short: `Work in progress${who}`, title: active.length === 1 ? `${active[0]!.title}${who}` : `${active.length} items in progress${who}`, open: { kind: 'work', id: active[0]!.id } });
   }
-  if (blocked.length) parts.push({ key: 'blocked', node: <button type="button" className="ws-seg ws-seg--warn" onClick={() => openDetails({ kind: 'work', id: blocked[0]!.id })}><Icon name="alert" size={13} /><span>{blocked.length} blocked</span></button> });
-  if (proposal) parts.push({ key: 'proposal', node: <button type="button" className={`ws-seg${canDecide ? ' ws-seg--need' : ''}`} onClick={() => openDetails({ kind: 'decision', id: proposal.id })}><span className="ws-dot ws-dot--need" aria-hidden="true" /><span>{canDecide ? 'Needs you: a proposed decision' : 'A decision is proposed'}</span></button> });
-  if (!parts.length) return <p className="ws-state ws-state--empty" aria-label="Current state">No decisions or work yet. Anything said here can become one.</p>;
-  return <p className="ws-state" aria-label="Current state">{parts.map((part, index) => <span key={part.key} className="ws-part">{index ? <span className="ws-sep" aria-hidden="true">·</span> : null}{part.node}</span>)}</p>;
+  if (blocked.length) parts.push({ key: 'blocked', icon: 'alert', tone: 'warn', text: `${blocked.length} blocked`, short: `${blocked.length} blocked`, title: blocked.length === 1 ? blocked[0]!.title : `${blocked.length} blocked items`, open: { kind: 'work', id: blocked[0]!.id } });
+  if (result) parts.push({ key: 'result', icon: 'result', text: `${result.finding === 'negative' ? 'Negative result' : 'Result'}: ${result.title}`, short: result.finding === 'negative' ? 'Negative result' : 'New result', title: result.title, open: { kind: 'result', id: result.id } });
+  if (proposal) parts.push({ key: 'proposal', icon: null, dot: 'need', tone: canDecide ? 'need' : undefined, text: canDecide ? 'Needs you: a proposed decision' : 'A decision is proposed', short: canDecide ? 'Decision needs you' : 'Decision proposed', title: proposal.title, open: { kind: 'decision', id: proposal.id } });
+  return parts;
 }
 
-function ObjectCard({ icon, kind, title, need, onOpen, label }: { icon: 'tasks' | 'rule' | 'result'; kind: string; title: string; need?: boolean; onOpen: () => void; label: string }) {
+const EMPTY_STATE = 'No decisions or work yet. Anything said here can become one.';
+
+/**
+ * The project's current state in one line. Each part opens its object in Details. The line
+ * reads like a sentence: what needs you, the rule, the work and what came out of it.
+ */
+export function ProjectStateLine({ lists, canDecide }: { lists: ProjectWork; canDecide: boolean }) {
+  const { openDetails } = useShellActions();
+  // What needs the reader leads, so a narrow header never truncates it away (#117 review).
+  const parts = stateParts(lists, canDecide).sort((a, b) => Number(b.tone === 'need') - Number(a.tone === 'need'));
+  if (!parts.length) return <p className="ws-state ws-state--empty" aria-label="Current state">{EMPTY_STATE}</p>;
+  return <p className="ws-state" aria-label="Current state">{parts.map((part, index) => <span key={part.key} className="ws-part">{index ? <span className="ws-sep" aria-hidden="true">·</span> : null}<button type="button" className={`ws-seg${part.tone ? ` ws-seg--${part.tone}` : ''}`} data-seg={part.key} onClick={() => openDetails(part.open)}>{part.icon ? <Icon name={part.icon} size={13} /> : <span className={`ws-dot ws-dot--${part.dot}`} aria-hidden="true" />}<span>{part.text}</span></button></span>)}</p>;
+}
+
+/**
+ * On the phone the state line is one 44 px row that opens the project's overview in Details,
+ * where every part opens its object (#117).
+ */
+export function ProjectStateRow({ lists, canDecide }: { lists: ProjectWork; canDecide: boolean }) {
+  const { openDetails } = useShellActions();
+  // What needs the reader leads, since the row truncates.
+  const parts = stateParts(lists, canDecide).sort((a, b) => Number(b.tone === 'need') - Number(a.tone === 'need'));
+  const need = parts.find((part) => part.tone === 'need');
   return (
-    <button type="button" className="ws-obj" onClick={onOpen} aria-label={`${label}: ${title}`}>
-      <span className="ws-obj__ic" aria-hidden="true"><Icon name={icon} size={16} /></span>
-      <span className="ws-obj__b"><span className={`ws-obj__k${need ? ' ws-need' : ''}`}>{kind}</span><span className="ws-obj__t">{title}</span></span>
+    <button type="button" className="ws-state-row" onClick={() => openDetails('place')} aria-haspopup="dialog">
+      {need ? <span className="ws-dot ws-dot--need" aria-hidden="true" /> : <Icon name={parts[0]?.icon ?? 'tasks'} size={13} />}
+      <span className="ws-state-row__t">{parts.length ? parts.map((part) => part.short).join(' · ') : 'No decisions or work yet'}</span>
+      <span className="ui-vh">, open project details</span>
       <Icon name="chevron-right" size={16} />
     </button>
   );
 }
+
+/** A calm chip under a message for an object made from it: icon, title and a quiet state. */
+function ObjectChip({ icon, kind, title, need, onOpen, label }: { icon: 'tasks' | 'rule' | 'result'; kind: string; title: string; need?: boolean; onOpen: () => void; label: string }) {
+  return (
+    <button type="button" className={`ws-chip${need ? ' ws-chip--need' : ''}`} onClick={onOpen} aria-label={`${label}: ${title}`}>
+      <Icon name={icon} size={14} />
+      <span className="ws-chip__t">{title}</span>
+      <span className="ws-chip__k">{kind}</span>
+    </button>
+  );
+}
+
+/** The icon already says "work": "Work · In progress · Kai" → "In progress · Kai". */
+const rest = (line: string) => line.replace(/^Work · /, '');
 
 /** Objects made from this message. The message itself is unchanged; these link back to it. */
 export function MessageObjects({ messageId, lists }: { messageId: string; lists: ProjectWork }) {
@@ -52,9 +104,9 @@ export function MessageObjects({ messageId, lists }: { messageId: string; lists:
   if (!work.length && !decisions.length && !results.length) return null;
   return (
     <div className="ws-attach">
-      {work.map((item) => <ObjectCard key={item.id} icon="tasks" kind={workLine(item)} title={item.title} label="Work" onOpen={() => openDetails({ kind: 'work', id: item.id })} />)}
-      {decisions.map((item) => <ObjectCard key={item.id} icon="rule" kind={decisionLine(item)} title={item.title} need={item.status === 'proposed'} label="Decision" onOpen={() => openDetails({ kind: 'decision', id: item.id })} />)}
-      {results.map((item) => <ObjectCard key={item.id} icon="result" kind={resultLine(item)} title={item.title} label="Result" onOpen={() => openDetails({ kind: 'result', id: item.id })} />)}
+      {work.map((item) => <ObjectChip key={item.id} icon="tasks" kind={rest(workLine(item))} title={item.title} label="Work" onOpen={() => openDetails({ kind: 'work', id: item.id })} />)}
+      {decisions.map((item) => <ObjectChip key={item.id} icon="rule" kind={decisionLine(item)} title={item.title} need={item.status === 'proposed'} label="Decision" onOpen={() => openDetails({ kind: 'decision', id: item.id })} />)}
+      {results.map((item) => <ObjectChip key={item.id} icon="result" kind={resultLine(item)} title={item.title} label="Result" onOpen={() => openDetails({ kind: 'result', id: item.id })} />)}
     </div>
   );
 }
@@ -88,20 +140,26 @@ export function useCreateWorkFromMessage(project: Project) {
 /**
  * Quiet actions under a message: shown on hover and focus with a pointer and keyboard; on touch
  * one "Make from this message" button opens them, so a phone feed is not a wall of buttons.
+ * On a pointer they float over the message's corner and take no room in the feed. "Details" shows everything linked to this message (#117); readers without write access
+ * get only that.
  */
-export function MessageActions({ projectId, message, onCreateWork, busy }: { projectId: string; message: ConversationMessage; onCreateWork: () => void; busy: boolean }) {
+export function MessageActions({ projectId, message, onCreateWork, busy, writable = true }: { projectId: string; message: ConversationMessage; onCreateWork: () => void; busy: boolean; writable?: boolean }) {
   const { openDetails } = useShellActions();
   const touch = useMediaQuery('(hover: none)');
   const [open, setOpen] = useState(false);
   const source = { messageId: message.id, text: message.body };
+  const details = <button type="button" className="ws-act" onClick={() => openDetails({ kind: 'overview', messageId: message.id })} aria-label="Details of this message"><Icon name="panel" size={14} />Details</button>;
+  if (!writable) return <div className="ws-acts">{details}</div>;
   if (touch && !open) {
-    return <div className="ws-acts"><button type="button" className="ws-act" aria-expanded="false" onClick={() => setOpen(true)}><Icon name="plus" size={14} />Make from this message</button></div>;
+    // One quiet 44 px overflow button in the message's corner instead of a row under every message.
+    return <div className="ws-acts ws-acts--more"><button type="button" className="ws-act ws-more" aria-expanded="false" aria-label="Make from this message" onClick={() => setOpen(true)}><Icon name="more" size={16} /></button></div>;
   }
   return (
     <div className="ws-acts" role="group" aria-label="Make something from this message">
       <button type="button" className="ws-act" onClick={onCreateWork} aria-busy={busy || undefined} disabled={busy}><Icon name="tasks" size={14} />{busy ? 'Creating…' : 'Create work'}</button>
       <button type="button" className="ws-act" onClick={() => openDetails({ kind: 'propose-decision', projectId, source })}><Icon name="rule" size={14} />Propose decision</button>
       <button type="button" className="ws-act" onClick={() => openDetails({ kind: 'attach-result', projectId, source })}><Icon name="result" size={14} />Attach result</button>
+      {details}
     </div>
   );
 }

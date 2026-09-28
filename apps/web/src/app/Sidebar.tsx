@@ -1,9 +1,11 @@
 import { Link, NavLink, useLocation, useNavigate } from 'react-router';
 import { Avatar, Icon, IconButton } from '../ui';
-import type { DirectMessageSummary, ProjectSummary, WorkspaceSummary } from './data';
+import { useShellData, type DirectMessageSummary, type ProjectSummary, type WorkspaceSummary } from './data';
 import { Rail, placeOf } from './Rail';
 import { startCapture } from './views';
 import { UserMenu } from './UserMenu';
+import { ProjectThreads } from '../project/ProjectThreads';
+import { audienceLine, useProjectShell } from '../project/data';
 
 export interface SidebarProps {
   workspace: WorkspaceSummary | null;
@@ -28,10 +30,12 @@ export function Sidebar({ workspace, projects, directMessages, user, session, on
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const activeProject = projects.find((project) => project.id === projectId);
   const navigate = onClose ? () => onClose() : undefined;
+  const shell = useProjectShell();
+  const me = useShellData().me.user.id;
   const head = place === 'dm'
     ? { title: 'Direct messages', sub: 'Only the people in each conversation' }
     : activeProject
-      ? { title: activeProject.name, sub: activeProject.workspaceName ?? 'Project conversation' }
+      ? { title: activeProject.name, sub: shell?.project.id === activeProject.id ? audienceLine(shell.people, me) : activeProject.workspaceName ?? 'Project conversation' }
       : { title: 'Home', sub: workspace ? `Yours · ${workspace.name}` : 'Only you see Home' };
   return (
     <div className="side-wrap">
@@ -74,6 +78,8 @@ export function Sidebar({ workspace, projects, directMessages, user, session, on
                   <Icon name="plus" className="side__ic" />New thought<span className="side__hint"><Icon name="lock" size={12} />Private</span>
                 </button>
               </div>
+              {/* Inside a project the sidebar shows its conversations (#117); the rail lists the projects. */}
+              {activeProject ? <ProjectThreads key={activeProject.id} projectId={activeProject.id} onNavigate={navigate} /> : (
               <section className="side__sec" aria-labelledby="side-projects">
                 <h2 className="side__h" id="side-projects">Projects</h2>
                 {projects.length ? (
@@ -92,6 +98,7 @@ export function Sidebar({ workspace, projects, directMessages, user, session, on
                 )}
                 <Link to="/projects/new" className="side__item" onClick={navigate}><Icon name="plus" className="side__ic" />New project</Link>
               </section>
+              )}
             </>
           )}
         </nav>

@@ -4,6 +4,8 @@ import { leaveDm } from '../api/direct-messages';
 import { Avatar, Button, Icon } from '../ui';
 import { WorkDetails } from '../work/WorkDetails';
 import { AddToDoc } from '../docs/AddToDoc';
+import { ProjectOverview } from '../project/ProjectOverview';
+import { useProjectShell } from '../project/data';
 import type { WorkspaceSummary } from './data';
 import type { DetailsView } from './shellContext';
 
@@ -20,9 +22,13 @@ export function Details({ view, workspace, placeTitle, dm = null, onBack }: {
   dm?: { id: string; kind: 'pair' | 'group'; title: string; me: string; people: string[]; audience: string } | null;
   onBack: () => void;
 }) {
+  const inProject = !!useProjectShell();
   if (view === 'connect-ai') return <ConnectAi onBack={onBack} />;
   if (typeof view === 'object' && view.kind === 'add-to-doc') return <AddToDoc key={`${view.from.type}:${view.from.id}`} view={view} />;
+  if (typeof view === 'object' && view.kind === 'overview') return <ProjectOverview key={view.messageId ?? 'all'} messageId={view.messageId} onBack={onBack} />;
   if (typeof view === 'object') return <WorkDetails view={view} />;
+  // A project's Details start with its overview (#117).
+  if (inProject) return <ProjectOverview onBack={onBack} />;
   if (dm) {
     return (
       <div className="details">
