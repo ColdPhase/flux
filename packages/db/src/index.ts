@@ -4,6 +4,7 @@ import * as schema from './schema.js';
 
 export { schema };
 export { sql } from 'drizzle-orm';
+export type { SQL } from 'drizzle-orm';
 export * from './repositories/sessions.js';
 export * from './repositories/agent-proposals.js';
 export * from './repositories/agent-connections.js';
@@ -77,3 +78,4 @@ export * from './repositories/background-connections.js';
 export * from './repositories/proactive-outbox.js';
 export * from './background-key-crypto.js';
 export * from './repositories/notifications.js';
+export * from './repositories/search.js';

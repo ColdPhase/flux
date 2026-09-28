@@ -51,3 +51,4 @@ export * from './docs.js';
 export * from './proactive-comparison.js';
 export * from './background-compute.js';
 export * from './notifications.js';
+export * from './search.js';

@@ -311,3 +311,6 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   .auth__top { padding: 0 16px; }
   .auth__main { padding-top: 4vh; }
 }
+.note.is-arrived { box-shadow: inset 3px 0 0 var(--accent); padding-left: 12px; }
+.note:focus { outline: none; }
+.note:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
