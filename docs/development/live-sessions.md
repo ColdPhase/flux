@@ -19,8 +19,20 @@ restrictive-network acceptance remain in [#63](https://github.com/ColdPhase/flux
   session. The SFU participant list is queried for actual connected people; a
   failed query appears as unknown rather than zero people.
 - `POST /api/v1/live-sessions/:id/leave` disconnects that human from media.
+  A repeated leave returns `204` after the SFU confirms the person is absent.
   Device capture and playback remain client actions; receiving a grant never
   enables a microphone, camera or screen by itself.
+- Starts are capped at eight non-ended sessions per project and three per
+  creator. A room that never gets a connected participant has a five-minute
+  grace period; after everyone departs, the empty grace is 90 seconds. Durable
+  `ending` state fences admission before room deletion. Signed LiveKit webhooks
+  only prompt reconciliation; a periodic SFU occupancy sweep and startup
+  recovery provide the independent path. A room that disappears cannot be
+  recreated by an old join request or old token.
+- A person may invite another authorized project reader. The invitation stores
+  only identities, response choice and dates. The recipient's bounded,
+  encrypted-cursor inbox rechecks project and anchor access on every page;
+  replying `later` or `text` never sends a message on the person's behalf.
 - `GET /api/v1/projects/:projectId/live-sessions` lists currently readable,
   available sessions in bounded pages. The server rechecks each session's
   project and anchor before returning it. The response contains opaque session
@@ -38,26 +50,37 @@ restrictive-network acceptance remain in [#63](https://github.com/ColdPhase/flux
   rotating, these access changes return `503 LIVE_MEDIA_UNAVAILABLE` without
   changing policy. Ordinary work and conversation endpoints remain available.
 
+The project and anchor are checked again for GET, JOIN and presentation. A
+project sketch cannot be changed into a private sketch while its live session
+references it under the current schema; any future scope-change API must also
+retire existing media grants before changing that scope.
+
 ## Required before #61 acceptance or merge
 
-The revocation coordinator now serializes joins with access changes and rotates
-rooms after deletion. Database and mock-SFU tests exercise grant/membership
-revocation, admission races and recovery. A separate two-client test on the
-pinned self-hosted LiveKit server confirmed that deleting a room disconnects
-both clients, and neither an original JWT nor an actual SFU-refreshed JWT can
-reconnect while `room.auto_create` is disabled. An end-to-end Flux API/SFU
-revocation test, including the remaining member's rejoin, is still required
-before calling this an accepted access boundary. LiveKit's
+The revocation coordinator serializes joins with access changes, retires the
+old room and creates the new generation before reopening admission. Database
+and mock-SFU tests exercise grant/membership revocation, admission races,
+ending-room recovery and the remaining member's rejoin. The isolated Flux
+API/two-Chromium/real-SFU test confirmed that deleting a room disconnects
+both clients, neither an original JWT nor an actual SFU-refreshed JWT can
+reconnect, and the remaining authorized member joins generation 2. Repeated
+leave returned `204` twice and ordinary saved work remained usable. LiveKit's
 [token documentation](https://docs.livekit.io/frontends/reference/tokens-grants/)
 states that self-hosted `RemoveParticipant` does not invalidate existing tokens;
 room retirement supplies the immediate cutoff instead.
 
-Also pending: a bounded session lifecycle and room count, invitations,
-verified webhook or equivalent participant events,
-idempotent leave/end and last-person expiry, authorized presentation delivery,
-screen-track sharing, reconnect/media-failure tests and independent review.
-The dated [lifecycle plan](live-lifecycle-plan.md) records proposed tables,
-locks and failure tests; it is not an implemented acceptance result.
+The pinned real-SFU test observed a signed LiveKit `EV_` webhook in the durable
+deduplication table after two browser clients joined. The endpoint verifies the
+raw signed request before mapping it to the current room generation; records
+older than seven days are pruned in bounded batches. LiveKit webhook delivery
+is advisory, so the periodic SFU sweep remains required. See the
+[LiveKit self-hosted webhook configuration](https://docs.livekit.io/intro/basics/rooms-participants-tracks/webhooks-events/).
+
+Also pending: end-to-end expiry timing, authorized presentation delivery,
+screen-track sharing,
+reconnect/media-failure tests and independent review. The dated
+[lifecycle plan](live-lifecycle-plan.md) records the intended tables, locks
+and failure tests; implementation is in progress and is not an accepted result.
 Source-version checks now run inside the trace transaction and have targeted
 regressions. #62 owns the integrated
 interface and [#63](https://github.com/ColdPhase/flux/issues/63) owns receiver,

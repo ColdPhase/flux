@@ -19,6 +19,8 @@ export interface LiveRepository {
   /** Idempotent on (creator, clientSessionId); a changed context must conflict. */
   createOrGet(principal: Principal, projectId: string, context: LiveContextRef, clientSessionId: string, ensureRoom: (roomId: string) => Promise<void>): Promise<LiveSessionRecord>;
   find(sessionId: string): Promise<LiveSessionRecord | null>;
+  /** Holds current project, anchor and session read locks through the response. */
+  withRead<T>(principal: Principal, sessionId: string, read: (session: LiveSessionRecord) => Promise<T>): Promise<T>;
   /** Holds policy and session locks through room creation and JWT signing. */
   withAdmission<T>(principal: Principal, sessionId: string, issue: (session: LiveSessionRecord) => Promise<T>): Promise<T>;
   /** Idempotent on (session, creator, clientEventId); a changed ref must conflict. */
@@ -26,12 +28,16 @@ export interface LiveRepository {
 }
 
 export interface LiveMedia {
-  /** Explicitly creates the room. The SFU must run with auto_create=false. */
+  /** Creates a fresh generation once. The SFU must run with auto_create=false. */
   ensureRoom(roomId: string): Promise<void>;
+  /** Existing-session admission must never recreate a retired/missing room ID. */
+  requireRoom(roomId: string): Promise<void>;
   /** The returned token grants one human identity, one room and no room administration. */
   grant(roomId: string, userId: string): Promise<{ token: string; expiresAt: Date }>;
   /** Actual connected identities, never identities merely issued a token. */
   participants(roomId: string): Promise<{ userId: string; joinedAt: string }[]>;
+  /** Raw SFU occupancy, including identities/statuses hidden from user-visible presence. */
+  occupancy(roomId: string): Promise<number>;
   /** Disconnects a participant; generation rollover still handles old tokens. */
   removeParticipant(roomId: string, userId: string): Promise<void>;
   /** Deletes a generation room so stale self-hosted tokens cannot rejoin it. */

@@ -4,6 +4,9 @@ export const liveSessionPath = (id: string) => `${LIVE_SESSIONS_PATH}/${id}`;
 export const liveJoinPath = (id: string) => `${liveSessionPath(id)}/join`;
 export const liveLeavePath = (id: string) => `${liveSessionPath(id)}/leave`;
 export const livePresentPath = (id: string) => `${liveSessionPath(id)}/present`;
+export const liveInvitePath = (id: string) => `${liveSessionPath(id)}/invitations`;
+export const LIVE_INVITATIONS_PATH = '/api/v1/live-invitations';
+export const liveInvitationReplyPath = (id: string) => `${LIVE_INVITATIONS_PATH}/${id}/reply`;
 
 /** The anchor is an existing object; a live session does not duplicate its saved work. */
 export type LiveContextRef =
@@ -31,12 +34,16 @@ export interface PresentLiveContextCommand {
   clientEventId: string;
 }
 
+/** The recipient is an opaque Flux user ID, not necessarily a UUID. */
+export interface InviteLiveSessionCommand { recipientId: string }
+export interface ReplyLiveInvitationCommand { choice: 'later' | 'text' }
+
 export interface LiveSession {
   id: string;
   projectId: string;
   context: LiveContextRef;
-  /** `rotating` is a fail-closed media fence during access changes/recovery. */
-  state: 'available' | 'rotating' | 'ended';
+  /** `rotating` and `ending` both deny admission while the old room is retired. */
+  state: 'available' | 'rotating' | 'ending' | 'ended';
   generation: number;
   createdBy: string;
   createdAt: string;

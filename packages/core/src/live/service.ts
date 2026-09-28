@@ -42,13 +42,13 @@ export function liveUseCases(ports: LivePorts) {
 
     async get(principal: Principal, sessionId: string): Promise<LiveSession> {
       human(principal);
-      return visible(await current(principal, sessionId));
+      return ports.sessions.withRead(principal, uuid(sessionId, 'sessionId'), visible);
     },
 
     async join(principal: Principal, sessionId: string): Promise<LiveJoinGrant> {
       human(principal);
       return ports.sessions.withAdmission(principal, uuid(sessionId, 'sessionId'), async (session) => {
-        await ports.media.ensureRoom(session.roomId);
+        await ports.media.requireRoom(session.roomId);
         const grant = await ports.media.grant(session.roomId, principal.id);
         return { session: await visible(session), mediaUrl: ports.mediaUrl, token: grant.token, expiresAt: grant.expiresAt.toISOString() };
       });
@@ -58,6 +58,7 @@ export function liveUseCases(ports: LivePorts) {
       human(principal);
       const session = await ports.sessions.find(uuid(sessionId, 'sessionId'));
       if (!session) return;
+      if (session.state === 'ending' || session.state === 'ended') return;
       // A person may disconnect their own media even after project access was revoked.
       await ports.media.removeParticipant(session.roomId, principal.id);
     },

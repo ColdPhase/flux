@@ -6,7 +6,7 @@ export { schema };
 export { sql } from 'drizzle-orm';
 export * from './repositories/sessions.js';
 // Highest numbered file in packages/db/migrations. The API refuses other versions.
-export const FLUX_SCHEMA_VERSION = 14;
+export const FLUX_SCHEMA_VERSION = 17;
 // pg-boss 12.35.0 declares schema 43. Update this with the pinned package.
 export const PG_BOSS_SCHEMA_VERSION = 43;
 

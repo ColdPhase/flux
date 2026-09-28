@@ -95,8 +95,17 @@ export async function discoverLiveSessions(
       participants,
     };
   }));
-  // Presence is fetched after the SQL reads; recheck the project before disclosing it.
-  await liveAccess(db).requireProject(principal, projectId);
+  // SFU reads can wait while a session ends or its anchor changes. Revalidate
+  // each returned row after those awaits before disclosing identifiers or presence.
+  for (const row of page) {
+    const [current] = await db.select().from(sessions).where(and(
+      eq(sessions.id, row.id), eq(sessions.projectId, projectId), eq(sessions.state, 'available'),
+    ));
+    if (!current || current.generation !== row.generation || current.roomId !== row.roomId)
+      throw new NotFoundError('Live session', 'LIVE_SESSION_NOT_FOUND');
+    await requireLiveContext(principal, anchor(current), projectId, db);
+  }
+  if (!page.length) await liveAccess(db).requireProject(principal, projectId);
   return { items, nextBefore: visible.length > limit ? page.at(-1)!.id : null };
 }
 

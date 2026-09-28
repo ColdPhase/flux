@@ -46,11 +46,13 @@ test('live discovery pages only currently authorized project anchors and reports
   const foreign = await store.createOrGet(principal, another.id, { type: 'conversation', id: third.id }, randomUUID(), async () => {});
   const media: LiveMedia = {
     async ensureRoom() {},
+    async requireRoom() {},
     async grant() { return { token: 'unused', expiresAt: new Date(Date.now() + 90_000) }; },
     async participants(roomId) {
       if (roomId === a.roomId) return [{ userId: owner.id, joinedAt: '2026-09-28T00:00:00.000Z' }];
       throw new Error('SFU is unavailable');
     },
+    async occupancy() { return 0; },
     async removeParticipant() {},
     async deleteRoom() {},
   };
@@ -82,4 +84,23 @@ test('live discovery pages only currently authorized project anchors and reports
   await pool.query('UPDATE live_sessions SET state = $1 WHERE id = $2', ['ended', a.id]);
   const ownerPage = await discoverLiveSessions(db, media, principal, place.id);
   assert.deepEqual(ownerPage.items.map((item) => item.id), [b.id]);
+});
+
+test('live discovery does not return presence for a session ended during the SFU read', async () => {
+  const owner = await person('live-discovery-ending-owner');
+  const ws = await workspace(owner, 'Live discovery ending');
+  const place = await project(owner, ws.id, 'Ending project', 'restricted');
+  const conversation = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`, {
+    body: { body: 'Ending anchor', clientMessageId: randomUUID() },
+  }), 201) as Conversation;
+  const principal = { kind: 'human' as const, id: owner.id };
+  const session = await liveSessionStore(db).createOrGet(principal, place.id,
+    { type: 'conversation', id: conversation.id }, randomUUID(), async () => {});
+
+  await assert.rejects(discoverLiveSessions(db, {
+    async participants() {
+      await pool.query("UPDATE live_sessions SET state = 'ended' WHERE id = $1", [session.id]);
+      return [{ userId: owner.id, joinedAt: new Date().toISOString() }];
+    },
+  }, principal, place.id), missing('LIVE_SESSION_NOT_FOUND'));
 });

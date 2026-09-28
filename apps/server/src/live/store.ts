@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import { schema } from '@flux/db';
 import {
   ConflictError,
@@ -16,6 +16,8 @@ import type { LiveContextRef, LivePresentationRef } from '@flux/contracts';
 import { requireLiveContext, requireLivePresentationSource } from './access.js';
 
 type SessionRow = typeof schema.liveSessions.$inferSelect;
+const MAX_PROJECT_SESSIONS = 8;
+const MAX_CREATOR_SESSIONS = 3;
 
 function contextColumns(context: LiveContextRef) {
   return {
@@ -83,9 +85,28 @@ export function liveSessionStore(db: Database): LiveRepository {
         const { project } = enforce(await evaluateProject(principal, 'project.read', projectId, tx, { lock: true }), 'project');
         await requireClearFence(tx, workspaceId, projectId);
         await requireLiveContext(principal, context, projectId, tx, true);
+        // One project lock serializes the count and insert across API replicas.
+        // Resolve replay first: an existing key stays valid even at the cap.
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(62062, hashtext(${projectId}))`);
+        const [replay] = await tx.select().from(sessions).where(and(
+          eq(sessions.createdBy, principal.id), eq(sessions.clientSessionId, clientSessionId),
+        ));
+        if (replay) {
+          if (!sameContext(replay, projectId, context))
+            throw new ConflictError('This clientSessionId was used for another context', 'IDEMPOTENCY_CONFLICT');
+          if (replay.state === 'rotating') throw new RuleViolationError('Live media access is being refreshed', 'LIVE_SESSION_ROTATING');
+          if (replay.state !== 'available') throw new RuleViolationError('This session has ended', 'LIVE_SESSION_ENDED');
+          return record(replay);
+        }
+        const [counts] = await tx.select({
+          project: sql<number>`count(*)::int`,
+          creator: sql<number>`count(*) FILTER (WHERE ${sessions.createdBy} = ${principal.id})::int`,
+        }).from(sessions).where(and(eq(sessions.projectId, projectId), ne(sessions.state, 'ended')));
+        if ((counts?.project ?? 0) >= MAX_PROJECT_SESSIONS || (counts?.creator ?? 0) >= MAX_CREATOR_SESSIONS)
+          throw new RuleViolationError('Too many active live sessions', 'LIVE_SESSION_LIMIT');
         const [inserted] = await tx.insert(sessions).values({
           id: randomUUID(), workspaceId: project!.workspaceId, projectId, ...contextColumns(context),
-          createdBy: principal.id, clientSessionId,
+          createdBy: principal.id, clientSessionId, emptySince: new Date(),
           // Fresh random identity per generation; never encode the project or human ID.
           roomId: `live_${randomBytes(24).toString('base64url')}`,
         }).onConflictDoNothing({ target: [sessions.createdBy, sessions.clientSessionId] }).returning();
@@ -99,8 +120,7 @@ export function liveSessionStore(db: Database): LiveRepository {
         if (!existing || !sameContext(existing, projectId, context))
           throw new ConflictError('This clientSessionId was used for another context', 'IDEMPOTENCY_CONFLICT');
         if (existing.state === 'rotating') throw new RuleViolationError('Live media access is being refreshed', 'LIVE_SESSION_ROTATING');
-        if (existing.state === 'ended') throw new RuleViolationError('This session has ended', 'LIVE_SESSION_ENDED');
-        await ensureRoom(existing.roomId);
+        if (existing.state !== 'available') throw new RuleViolationError('This session has ended', 'LIVE_SESSION_ENDED');
         return record(existing);
       });
     },
@@ -108,6 +128,21 @@ export function liveSessionStore(db: Database): LiveRepository {
     async find(sessionId) {
       const [row] = await db.select().from(sessions).where(eq(sessions.id, sessionId));
       return row ? record(row) : null;
+    },
+
+    async withRead(principal, sessionId, read) {
+      return db.transaction(async (tx) => {
+        const [located] = await tx.select({ projectId: sessions.projectId }).from(sessions)
+          .where(eq(sessions.id, sessionId));
+        if (!located) throw new NotFoundError('Live session', 'LIVE_SESSION_NOT_FOUND');
+        await lockAdmissionScope(tx, located.projectId);
+        enforce(await evaluateProject(principal, 'project.read', located.projectId, tx, { lock: true }), 'project');
+        const [row] = await tx.select().from(sessions).where(eq(sessions.id, sessionId)).for('share');
+        if (!row || row.projectId !== located.projectId) throw new NotFoundError('Live session', 'LIVE_SESSION_NOT_FOUND');
+        const session = record(row);
+        await requireLiveContext(principal, session.context, row.projectId, tx, true);
+        return read(session);
+      });
     },
 
     async withAdmission(principal, sessionId, issue) {
@@ -118,11 +153,17 @@ export function liveSessionStore(db: Database): LiveRepository {
         const workspaceId = await lockAdmissionScope(tx, located.projectId);
         enforce(await evaluateProject(principal, 'project.read', located.projectId, tx, { lock: true }), 'project');
         await requireClearFence(tx, workspaceId, located.projectId);
-        const [row] = await tx.select().from(sessions).where(eq(sessions.id, sessionId)).for('share');
+        const [row] = await tx.select().from(sessions).where(eq(sessions.id, sessionId)).for('no key update');
         if (!row || row.projectId !== located.projectId) throw new NotFoundError('Live session', 'LIVE_SESSION_NOT_FOUND');
         if (row.state === 'rotating') throw new RuleViolationError('Live media access is being refreshed', 'LIVE_SESSION_ROTATING');
-        if (row.state === 'ended') throw new RuleViolationError('This session has ended', 'LIVE_SESSION_ENDED');
-        return issue(record(row));
+        if (row.state !== 'available') throw new RuleViolationError('This session has ended', 'LIVE_SESSION_ENDED');
+        await requireLiveContext(principal, record(row).context, row.projectId, tx, true);
+        const result = await issue(record(row));
+        // A freshly issued grant gets a full reconnect window. The next
+        // authoritative empty observation starts its empty interval anew.
+        await tx.update(sessions).set({ lastGrantAt: new Date(), emptySince: null, updatedAt: new Date() })
+          .where(eq(sessions.id, sessionId));
+        return result;
       });
     },
 
@@ -136,6 +177,7 @@ export function liveSessionStore(db: Database): LiveRepository {
         const [row] = await tx.select().from(sessions).where(eq(sessions.id, sessionId)).for('update');
         if (!row || row.projectId !== located.projectId) throw new NotFoundError('Live session', 'LIVE_SESSION_NOT_FOUND');
         if (row.state !== 'available') throw new RuleViolationError('This session has ended', 'LIVE_SESSION_ENDED');
+        await requireLiveContext(principal, record(row).context, row.projectId, tx, true);
         const ids = selected(ref);
         const [existing] = await tx.select().from(presentations).where(and(
           eq(presentations.sessionId, sessionId), eq(presentations.createdBy, principal.id),

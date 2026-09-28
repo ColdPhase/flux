@@ -2,9 +2,12 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
 import Fastify from 'fastify';
-import { createDatabase } from '@flux/db';
-import { DomainError, grantProject, removeMember as removeWorkspaceMember, type LiveMedia } from '@flux/core';
+import { eq } from 'drizzle-orm';
+import { createDatabase, schema } from '@flux/db';
+import { DomainError, grantProject, liveUseCases, removeMember as removeWorkspaceMember, type LiveMedia } from '@flux/core';
 import type { Conversation } from '@flux/contracts';
+import { liveAccess } from '../../apps/server/src/live/access.js';
+import { liveLifecycle } from '../../apps/server/src/live/lifecycle.js';
 import { liveSessionStore } from '../../apps/server/src/live/store.js';
 import { liveRevocationCoordinator, withNoMediaAccessChange } from '../../apps/server/src/live/revocation.js';
 import { accessRoutes } from '../../apps/server/src/access/routes.js';
@@ -22,8 +25,13 @@ function mediaFixture() {
   let failOnCall = 0;
   const media: LiveMedia = {
     async ensureRoom(roomId) { rooms.add(roomId); },
-    async grant(roomId) { return { token: `jwt:${roomId}`, expiresAt: new Date(Date.now() + 90_000) }; },
+    async requireRoom(roomId) { if (!rooms.has(roomId)) throw new Error('Room missing'); },
+    async grant(roomId) {
+      if (!rooms.has(roomId)) throw new Error('Cannot grant a missing room');
+      return { token: `jwt:${roomId}`, expiresAt: new Date(Date.now() + 90_000) };
+    },
     async participants() { return []; },
+    async occupancy() { return 0; },
     async removeParticipant() {},
     async deleteRoom(roomId) {
       deleteCalls += 1;
@@ -72,11 +80,12 @@ test('grant revocation retires the old room before commit and leaves only a new-
   await assert.rejects(f.store.withAdmission(f.principal, f.session.id, async () => 'unexpected'),
     (error) => error instanceof DomainError && error.code === 'PROJECT_NOT_FOUND');
   const owner = { kind: 'human' as const, id: f.owner.id };
-  const replacement = await f.store.withAdmission(owner, f.session.id, async (session) => {
-    await f.transport.media.ensureRoom(session.roomId);
-    return f.transport.media.grant(session.roomId, f.owner.id);
-  });
+  const live = liveUseCases({ access: liveAccess(db), sessions: f.store, media: f.transport.media,
+    mediaUrl: 'wss://media.example.test' });
+  const replacement = await live.join(owner, f.session.id);
+  assert.equal(f.transport.rooms.has(next!.roomId), true, 'rotation created the new room before admitting anyone');
   assert.equal(replacement.token, `jwt:${next?.roomId}`);
+  assert.equal(replacement.session.generation, 2);
 });
 
 test('an in-flight join finishes before the revocation fence and old-room deletion', async () => {
@@ -116,9 +125,42 @@ test('workspace membership removal retires all old media while a remaining membe
   });
   await assert.rejects(f.store.withAdmission(f.principal, f.session.id, async () => 'unexpected'),
     (error) => error instanceof DomainError && error.code === 'PROJECT_NOT_FOUND');
-  const replacement = await f.store.withAdmission(remainingPrincipal, f.session.id, async (session) => session.roomId);
-  assert.notEqual(replacement, original);
-  assert.equal((await f.store.find(f.session.id))?.generation, 2);
+  const live = liveUseCases({ access: liveAccess(db), sessions: f.store, media: f.transport.media,
+    mediaUrl: 'wss://media.example.test' });
+  const replacement = await live.join(remainingPrincipal, f.session.id);
+  const next = (await f.store.find(f.session.id))!;
+  assert.notEqual(next.roomId, original);
+  assert.equal(f.transport.rooms.has(next.roomId), true);
+  assert.equal(replacement.token, `jwt:${next.roomId}`);
+  assert.equal(replacement.session.generation, 2);
+});
+
+test('failed ending-room deletion blocks a policy change before its mutation commits', async () => {
+  const f = await fixture('live-ending-policy');
+  // Simulate a crash after the durable ending fence but before DeleteRoom.
+  await db.update(schema.liveSessions).set({ state: 'ending' })
+    .where(eq(schema.liveSessions.id, f.session.id));
+  const lifecycle = liveLifecycle(db, pool, f.transport.media);
+  const coordinator = liveRevocationCoordinator(db, pool, f.transport.media, lifecycle);
+  f.transport.failNextDelete();
+  let mutationRan = false;
+  await assert.rejects(coordinator.withProjectChange(f.place.id, async () => {
+    mutationRan = true;
+    await grantProject({ kind: 'human', id: f.owner.id }, f.place.id,
+      { principal: f.principal, role: 'denied' }, db);
+  }), /SFU unavailable/);
+  assert.equal(mutationRan, false);
+  assert.equal((await f.store.find(f.session.id))?.state, 'ending');
+  assert.equal(f.transport.rooms.has(f.session.roomId), true);
+  assert.equal((await f.member.browser.request('GET', `/api/v1/projects/${f.place.id}`)).status, 200);
+
+  await coordinator.withProjectChange(f.place.id, async () => {
+    await grantProject({ kind: 'human', id: f.owner.id }, f.place.id,
+      { principal: f.principal, role: 'denied' }, db);
+  });
+  assert.equal((await f.store.find(f.session.id))?.state, 'ended');
+  assert.equal(f.transport.rooms.has(f.session.roomId), false);
+  assert.equal((await f.member.browser.request('GET', `/api/v1/projects/${f.place.id}`)).status, 404);
 });
 
 test('API without an SFU rejects revocation while a live room may still exist', async () => {

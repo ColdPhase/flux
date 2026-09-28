@@ -4,8 +4,9 @@ import { LIVE_SESSIONS_PATH, liveJoinPath, liveLeavePath, livePresentPath, liveS
 import { liveUseCases, type LivePorts } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
+import type { LiveLifecycle } from './lifecycle.js';
 
-interface Options { ports: LivePorts; sessions: SessionResolver }
+interface Options { ports: LivePorts; sessions: SessionResolver; lifecycle?: Pick<LiveLifecycle, 'reconcile'> }
 
 const id = { type: 'string', pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' } as const;
 const context = { type: 'object', required: ['type', 'id'], additionalProperties: false,
@@ -15,7 +16,7 @@ const presentation = { type: 'object', required: ['type', 'id', 'version'], addi
     version: { type: 'integer', minimum: 1 }, selectedThoughtIds: { type: 'array', maxItems: 100, uniqueItems: true, items: id } } } as const;
 
 /** API policy runs before transport grants; the browser starts with all devices off. */
-export async function liveRoutes(app: FastifyInstance, { ports, sessions }: Options) {
+export async function liveRoutes(app: FastifyInstance, { ports, sessions, lifecycle }: Options) {
   useDomainErrors(app);
   const live = liveUseCases(ports);
   const principal = async (request: Parameters<SessionResolver['requirePrincipal']>[0]) => (await sessions.requirePrincipal(request)).principal;
@@ -33,6 +34,7 @@ export async function liveRoutes(app: FastifyInstance, { ports, sessions }: Opti
 
   app.post<{ Params: { sessionId: string } }>(liveLeavePath(':sessionId'), async (request, reply) => {
     await live.leave(await principal(request), request.params.sessionId);
+    await lifecycle?.reconcile(request.params.sessionId);
     return reply.code(204).send();
   });
 

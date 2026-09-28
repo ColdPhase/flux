@@ -44,6 +44,9 @@ export { policySketchAccess } from './access/sketch-access.js';
 export * from './work/index.js';
 export { liveUseCases } from './live/service.js';
 export type { LiveAccess, LiveMedia, LivePorts, LiveRepository, LiveSessionRecord } from './live/ports.js';
+export { liveInvitationUseCases } from './live/invitations.js';
+export type { LiveInvitation, LiveInvitationPorts, LiveInvitationTarget, LiveInvitationReply,
+  LiveInvitationCursor, LiveInvitationPage, LiveInvitationPageRow } from './live/invitations.js';
 
 export const SAMPLE_JOB = 'sample.process';
 

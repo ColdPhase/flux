@@ -20,9 +20,12 @@ import { workRoutes } from './work/routes.js';
 import { liveRoutes } from './live/routes.js';
 import { liveAccess } from './live/access.js';
 import { liveSessionStore } from './live/store.js';
-import { createLiveMediaFromEnv } from './live/media.js';
+import { createLiveMediaFromEnv, liveMediaConfig } from './live/media.js';
 import { liveRevocationCoordinator } from './live/revocation.js';
 import { liveDiscoveryRoutes } from './live/discovery.js';
+import { liveLifecycle } from './live/lifecycle.js';
+import { liveWebhookRoutes } from './live/webhook.js';
+import { liveInvitationRoutes } from './live/invitation-routes.js';
 
 const connectionString = process.env.DATABASE_URL;
 const fixtureToken = process.env.FLUX_FIXTURE_TOKEN;
@@ -39,7 +42,8 @@ await boss.start();
 app.addHook('onClose', async () => boss.stop());
 const identity = registerIdentity(app, { db, config: identityConfig });
 const liveMedia = createLiveMediaFromEnv();
-const liveRevocation = liveMedia ? liveRevocationCoordinator(db, pool, liveMedia.media) : null;
+const lifecycle = liveMedia ? liveLifecycle(db, pool, liveMedia.media) : null;
+const liveRevocation = liveMedia ? liveRevocationCoordinator(db, pool, liveMedia.media, lifecycle!) : null;
 await app.register(accessRoutes, { db, sessions: identity, boss, liveRevocation });
 await app.register(sketchRoutes, { db, sessions: identity });
 await app.register(pushRoutes, { db, sessions: identity, config: pushConfig });
@@ -55,8 +59,40 @@ app.get('/api/v1/live-sessions/capabilities', async () => ({ status: liveMedia ?
 if (liveMedia) await app.register(liveRoutes, {
   sessions: identity,
   ports: { access: liveAccess(db), sessions: liveSessionStore(db), ...liveMedia },
+  lifecycle: lifecycle!,
 });
 if (liveMedia) await app.register(liveDiscoveryRoutes, { db, sessions: identity, media: liveMedia.media });
+if (liveMedia) await app.register(liveInvitationRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret });
+if (lifecycle) {
+  const config = liveMediaConfig(process.env);
+  await app.register(liveWebhookRoutes, { pool, apiKey: config.apiKey, apiSecret: config.apiSecret,
+    requestReconcile: (sessionId, generation) => lifecycle.reconcile(sessionId, generation).then(() => undefined) });
+  const pruneWebhooks = async () => {
+    try {
+      await pool.query(`DELETE FROM live_webhook_events WHERE event_id IN (
+        SELECT event_id FROM live_webhook_events
+        WHERE received_at < now() - interval '7 days'
+        ORDER BY received_at LIMIT 1000)`);
+    } catch (error) { app.log.warn({ error }, 'Live webhook event retention is pending'); }
+  };
+  const webhookRetentionTimer = setInterval(() => { void pruneWebhooks(); }, 600_000);
+  webhookRetentionTimer.unref();
+  app.addHook('onClose', async () => clearInterval(webhookRetentionTimer));
+  void pruneWebhooks();
+  let sweeping = false;
+  const sweep = async () => {
+    if (sweeping) return;
+    sweeping = true;
+    try { await lifecycle.sweep(); }
+    catch (error) { app.log.error({ error }, 'Live session lifecycle sweep is pending'); }
+    finally { sweeping = false; }
+  };
+  const sweepTimer = setInterval(() => { void sweep(); }, 30_000);
+  sweepTimer.unref();
+  app.addHook('onClose', async () => clearInterval(sweepTimer));
+  void lifecycle.recoverPending().catch((error) => app.log.error({ error }, 'Live session lifecycle recovery is pending'));
+  void sweep();
+}
 if (liveRevocation) {
   let recovering = false;
   const recover = async () => {

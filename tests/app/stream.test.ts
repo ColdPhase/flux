@@ -79,14 +79,16 @@ async function examined(query: { toSQL(): { sql: string; params: unknown[] } }) 
   const plan = (result.rows[0]['QUERY PLAN'] as { Plan: PlanNode }[])[0]!.Plan;
   let rows = 0;
   const nodes: string[] = [];
-  const walk = (node: PlanNode) => {
+  const walk = (node: PlanNode, bitmapHeapAncestor = false) => {
     // Rows read from a table or index by scan nodes, including rows a filter then discarded.
-    if (node['Node Type'].includes('Scan')) {
+    // A Bitmap Heap Scan consumes the same matching row IDs reported by its Bitmap Index Scan;
+    // count the heap's examined rows once instead of counting both sides of that access path.
+    if (node['Node Type'].includes('Scan') && !(bitmapHeapAncestor && node['Node Type'] === 'Bitmap Index Scan')) {
       const loops = node['Actual Loops'] ?? 1;
       rows += ((node['Actual Rows'] ?? 0) + (node['Rows Removed by Filter'] ?? 0) + (node['Rows Removed by Index Recheck'] ?? 0)) * loops;
     }
     nodes.push(`${node['Node Type']}${node['Index Name'] ? ` ${node['Index Name']}` : node['Relation Name'] ? ` ${node['Relation Name']}` : ''}`);
-    for (const child of node.Plans ?? []) walk(child);
+    for (const child of node.Plans ?? []) walk(child, bitmapHeapAncestor || node['Node Type'] === 'Bitmap Heap Scan');
   };
   walk(plan);
   return { rows, nodes };
@@ -202,6 +204,13 @@ describe('event stream', () => {
     await addMember(alice, vault.id, erin, 'member');
     const room = await project(alice, vault.id, 'Vault room', 'restricted');
     const erinKey: Principal = { kind: 'human', id: erin.id };
+    // Keep the planner on the recipient index on both sides of the comparison. On an
+    // almost empty table PostgreSQL can choose a sequential scan only for the baseline.
+    for (let i = 0; i < 250; i += 25) {
+      await Promise.all(Array.from({ length: 25 }, (_, offset) => draft(dave, vault.id, `Earlier private ${i + offset}`)));
+    }
+    await pool.query('ANALYZE event_audience, events');
+    const { rows: [{ n: eventsAtBaseline }] } = await pool.query('SELECT count(*)::int AS n FROM events WHERE workspace_id = $1', [vault.id]);
     const baseline = await head(erin);
     const erinBefore = await openToReady(erin, 7);
     const resumeBefore = await openToReady(erin, 3, baseline);
@@ -215,12 +224,12 @@ describe('event stream', () => {
     for (let i = 0; i < 125; i += 1) tasks.push(async () => share(alice, await draft(alice, vault.id, `Vault ${i}`, { projectId: room.id }), 'project'));
     for (let i = 0; i < tasks.length; i += 25) await Promise.all(tasks.slice(i, i + 25).map((task) => task()));
     const { rows: [{ n }] } = await pool.query('SELECT count(*)::int AS n FROM events WHERE workspace_id = $1', [vault.id]);
-    assert.ok(n >= 500, `the workspace has at least 500 new events (${n})`);
+    assert.ok(n - eventsAtBaseline >= 500, `the workspace has at least 500 new events (${n - eventsAtBaseline})`);
 
     const erinAfter = await openToReady(erin, 7);
     const resumeAfter = await openToReady(erin, 3, baseline);
     const plansAfter = [await examined(lastAudienceSeqQuery(db, audienceKey(erinKey))), await examined(audiencePageQuery(db, audienceKey(erinKey), 0, 200))];
-    console.log(JSON.stringify({ hiddenEvents: n, openToReadyMs: { before: erinBefore.median, after: erinAfter.median }, work: { before: erinBefore.works[0], after: erinAfter.works[0] }, resumeWork: { before: resumeBefore.works[0], after: resumeAfter.works[0] }, rowsExamined: { before: plansBefore.map((p) => p.rows), after: plansAfter.map((p) => p.rows) }, plans: plansAfter.map((p) => p.nodes) }));
+    console.log(JSON.stringify({ hiddenEvents: n - eventsAtBaseline, openToReadyMs: { before: erinBefore.median, after: erinAfter.median }, work: { before: erinBefore.works[0], after: erinAfter.works[0] }, resumeWork: { before: resumeBefore.works[0], after: resumeAfter.works[0] }, rowsExamined: { before: plansBefore.map((p) => p.rows), after: plansAfter.map((p) => p.rows) }, plans: plansAfter.map((p) => p.nodes) }));
 
     // Deterministic: identical stream work and identical rows examined by PostgreSQL.
     for (const work of [...erinBefore.works, ...erinAfter.works]) assert.deepEqual(work, erinBefore.works[0], 'fresh open→ready work is constant');

@@ -12,10 +12,15 @@ services:
         port: 7880
         keys:
           "${FLUX_LIVEKIT_API_KEY:?Set a disposable test key}": "${FLUX_LIVEKIT_API_SECRET:?Set a disposable test secret}"
+        webhook:
+          api_key: "${FLUX_LIVEKIT_API_KEY:?Set a disposable test key}"
+          urls:
+            - http://api:8080/api/v1/internal/livekit/webhook
         room:
           auto_create: false
           max_participants: 16
-          empty_timeout: 300
+          empty_timeout: 420
+          departure_timeout: 180
         rtc:
           tcp_port: 7881
           udp_port: 7882
@@ -33,6 +38,7 @@ services:
       FLUX_API_URL: http://api:8080
       FLUX_PUBLIC_ORIGIN: ${FLUX_PUBLIC_ORIGIN:?Set a loopback test origin}
       FLUX_LIVEKIT_WS_URL: ws://livekit:7880
+      DATABASE_URL: postgres://${POSTGRES_USER:-flux}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-flux}
     depends_on:
       api:
         condition: service_healthy

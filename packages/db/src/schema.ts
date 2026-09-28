@@ -458,9 +458,13 @@ export const liveSessions = pgTable('live_sessions', {
   sketchId: uuid('sketch_id'),
   createdBy: text('created_by').notNull().references(() => authUsers.id),
   clientSessionId: uuid('client_session_id').notNull(),
-  state: text('state', { enum: ['available', 'rotating', 'ended'] }).notNull().default('available'),
+  state: text('state', { enum: ['available', 'rotating', 'ending', 'ended'] }).notNull().default('available'),
   generation: integer('generation').notNull().default(1),
   roomId: text('room_id').notNull().unique(),
+  emptySince: timestamp('empty_since', { withTimezone: true }),
+  lastGrantAt: timestamp('last_grant_at', { withTimezone: true }),
+  connectedOnce: boolean('connected_once').notNull().default(false),
+  endedAt: timestamp('ended_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
@@ -471,6 +475,7 @@ export const liveSessions = pgTable('live_sessions', {
   foreignKey({ columns: [table.workspaceId, table.projectId, table.workId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.sketchId], foreignColumns: [sketches.workspaceId, sketches.projectId, sketches.id] }),
   index('live_sessions_project_idx').on(table.projectId, table.createdAt.desc(), table.id.desc()),
+  index('live_sessions_lifecycle_idx').on(table.state, table.updatedAt, table.id),
 ]);
 
 /** Durable admission fence for access changes that also retire LiveKit rooms. */
@@ -498,4 +503,22 @@ export const livePresentations = pgTable('live_presentations', {
   unique().on(table.sessionId, table.createdBy, table.clientEventId),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.sessionId], foreignColumns: [liveSessions.workspaceId, liveSessions.projectId, liveSessions.id] }).onDelete('cascade'),
   index('live_presentations_session_idx').on(table.sessionId, table.createdAt, table.id),
+]);
+
+/** Identifier-only session invitations. Replies select a navigation choice. */
+export const liveInvitations = pgTable('live_invitations', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  sessionId: uuid('session_id').notNull(),
+  inviterId: text('inviter_id').notNull().references(() => authUsers.id),
+  recipientId: text('recipient_id').notNull().references(() => authUsers.id),
+  response: text('response', { enum: ['pending', 'later', 'text'] }).notNull().default('pending'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  respondedAt: timestamp('responded_at', { withTimezone: true }),
+}, (table) => [
+  unique().on(table.sessionId, table.recipientId),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.sessionId],
+    foreignColumns: [liveSessions.workspaceId, liveSessions.projectId, liveSessions.id] }).onDelete('cascade'),
+  index('live_invitations_recipient_idx').on(table.recipientId, table.createdAt.desc(), table.id.desc()),
 ]);

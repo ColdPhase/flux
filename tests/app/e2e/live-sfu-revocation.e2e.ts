@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
 import { chromium, type Browser as ChromiumBrowser, type Page } from 'playwright';
+import { createDatabase } from '@flux/db';
 import type { Conversation, LiveJoinGrant, LiveSession } from '@flux/contracts';
 import { addMember, expectStatus, grant, person, project, workspace } from '../support/people.js';
 
@@ -12,7 +13,10 @@ import { addMember, expectStatus, grant, person, project, workspace } from '../s
  */
 const sdkPath = '/opt/live-sfu/node_modules/livekit-client/dist/livekit-client.umd.js';
 let browser: ChromiumBrowser | undefined;
-after(async () => { await browser?.close(); });
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) throw new Error('DATABASE_URL is required for signed LiveKit webhook observation');
+const { pool: webhookPool } = createDatabase(connectionString);
+after(async () => { await browser?.close(); await webhookPool.end(); });
 
 interface BrowserRoom {
   connect(url: string, token: string, options?: { maxRetries?: number }): Promise<void>;
@@ -120,6 +124,18 @@ test('Flux revocation retires the real SFU room, rejects original and refreshed 
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
     assert.deepEqual(new Set(connected?.participants?.map((p) => p.userId)), new Set([owner.id, revoked.id]));
+    // The pinned SFU must deliver a real signed presence webhook through the
+    // private Compose network; a synthetic SDK signature test alone is not enough.
+    let delivered = 0;
+    const webhookDeadline = Date.now() + 10_000;
+    while (Date.now() < webhookDeadline) {
+      const result = await webhookPool.query<{ count: number }>(
+        'SELECT count(*)::int AS count FROM live_webhook_events WHERE session_id = $1', [session.id]);
+      delivered = result.rows[0]?.count ?? 0;
+      if (delivered > 0) break;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    assert.ok(delivered > 0, 'signed webhook from the actual SFU reached the current session');
     const discovered = expectStatus(await owner.browser.request('GET',
       `/api/v1/projects/${place.id}/live-sessions`), 200) as { items: LiveSession[] };
     assert.equal(discovered.items.find((item) => item.id === session.id)?.participants?.length, 2);
@@ -144,6 +160,21 @@ test('Flux revocation retires the real SFU room, rejects original and refreshed 
     assert.equal(next.session.generation, session.generation + 1);
     assert.notEqual(roomName(next.token), oldRoom);
     await openRoom(ownerPage, next.mediaUrl, next.token);
+
+    // Leave is idempotent against the real SFU: the second request confirms
+    // absence instead of turning a completed disconnect into an API failure.
+    expectStatus(await owner.browser.request('POST', `/api/v1/live-sessions/${session.id}/leave`), 204);
+    await ownerPage.waitForFunction(() => (window as MediaPage).fluxRoom?.state === 'disconnected',
+      undefined, { timeout: 15_000 });
+    expectStatus(await owner.browser.request('POST', `/api/v1/live-sessions/${session.id}/leave`), 204);
+
+    // Media departure never changes ordinary durable project work.
+    const work = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, {
+      body: { title: 'Follow up after the live room' },
+    }), 201) as { id: string; title: string };
+    const saved = expectStatus(await owner.browser.request('GET', `/api/v1/work/${work.id}`), 200) as { title: string };
+    assert.equal(saved.title, work.title);
     console.log(JSON.stringify({ oldRoom, newRoom: roomName(next.token), generation: next.session.generation,
-      oldTokenRejected: originalFailure, refreshedTokenRejected: refreshedFailure, remainingConnected: true }));
+      oldTokenRejected: originalFailure, refreshedTokenRejected: refreshedFailure,
+      remainingRejoined: true, repeatedLeave: 204, signedWebhooks: delivered, workSurvived: work.id }));
   });

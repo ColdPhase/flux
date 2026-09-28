@@ -1,5 +1,5 @@
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk';
-import type { LiveMedia } from '@flux/core';
+import { ServiceUnavailableError, type LiveMedia } from '@flux/core';
 
 const ROOM_ID = /^[A-Za-z0-9_-]{16,128}$/;
 const GRANT_TTL_SECONDS = 90;
@@ -76,7 +76,13 @@ export function createLiveMedia(config: LiveMediaConfig): LiveMediaAdapter {
     async ensureRoom(roomId) {
       // The SFU config has room.auto_create=false. An old grant cannot create a room.
       // LiveKit returns the existing room on a repeated createRoom call.
-      await rooms.createRoom({ name: room(roomId), emptyTimeout: 300, maxParticipants: 16 });
+      await rooms.createRoom({ name: room(roomId), emptyTimeout: 420, departureTimeout: 180, maxParticipants: 16 });
+    },
+    async requireRoom(roomId) {
+      const name = room(roomId);
+      const existing = await rooms.listRooms([name]);
+      if (!existing.some((candidate) => candidate.name === name))
+        throw new ServiceUnavailableError('This live room has ended; start a new session', 'LIVE_ROOM_GONE');
     },
     async grant(roomId, userId) {
       const issuedAt = Date.now();
@@ -110,8 +116,32 @@ export function createLiveMedia(config: LiveMediaConfig): LiveMediaAdapter {
         return [{ userId, joinedAt: new Date(Number(participant.joinedAt) * 1000).toISOString() }];
       });
     },
+    async occupancy(roomId) {
+      const name = room(roomId);
+      try { return (await rooms.listParticipants(name)).length; }
+      catch (error) {
+        // A disappeared room is empty, while an unavailable SFU remains unknown.
+        const existing = await rooms.listRooms([name]);
+        if (!existing.some((candidate) => candidate.name === name)) return 0;
+        throw error;
+      }
+    },
     async removeParticipant(roomId, userId) {
-      await rooms.removeParticipant(room(roomId), participantIdentity(userId));
+      const name = room(roomId);
+      const identity = participantIdentity(userId);
+      try { await rooms.removeParticipant(name, identity); }
+      catch (error) {
+        // A repeated leave is complete when the person or room is confirmed
+        // absent. An unavailable SFU is still an error, not proof of absence.
+        try {
+          const connected = await rooms.listParticipants(name);
+          if (!connected.some((participant) => participant.identity === identity)) return;
+        } catch {
+          const existing = await rooms.listRooms([name]);
+          if (!existing.some((candidate) => candidate.name === name)) return;
+        }
+        throw error;
+      }
     },
     async deleteRoom(roomId) {
       const name = room(roomId);

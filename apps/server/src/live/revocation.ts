@@ -3,6 +3,7 @@ import { and, eq, ne, sql } from 'drizzle-orm';
 import type { Pool } from 'pg';
 import { schema } from '@flux/db';
 import { NotFoundError, ServiceUnavailableError, type Database, type LiveMedia } from '@flux/core';
+import type { LiveLifecycle } from './lifecycle.js';
 
 type Scope = { workspaceId: string; projectId: string | null };
 const key = (scope: Scope) => scope.projectId ? `p:${scope.projectId}` : `w:${scope.workspaceId}`;
@@ -38,7 +39,8 @@ export async function withNoMediaAccessChange<T>(db: Database, scope: Scope,
  * The workspace advisory lock coordinates API replicas and startup recovery; the
  * SQL fence keeps admission closed across process crashes and SFU failures.
  */
-export function liveRevocationCoordinator(db: Database, pool: Pool, media: LiveMedia) {
+export function liveRevocationCoordinator(db: Database, pool: Pool, media: LiveMedia,
+  lifecycle?: Pick<LiveLifecycle, 'recoverWorkspaceUnderLock'>) {
   async function locked<T>(workspaceId: string, work: () => Promise<T>): Promise<T> {
     const client = await pool.connect();
     try {
@@ -69,19 +71,26 @@ export function liveRevocationCoordinator(db: Database, pool: Pool, media: LiveM
   }
 
   async function retireAndFinish(scope: Scope): Promise<void> {
-    const rows = await db.select({ roomId: schema.liveSessions.roomId }).from(schema.liveSessions)
+    const rows = await db.select({ id: schema.liveSessions.id, roomId: schema.liveSessions.roomId }).from(schema.liveSessions)
       .where(and(sessionFilter(scope), eq(schema.liveSessions.state, 'rotating')));
     // DeleteRoom forcibly ejects active users. With room.auto_create=false, neither
     // original nor LiveKit-refreshed JWTs can resurrect the retired room.
     for (const row of rows) await media.deleteRoom(row.roomId);
+    const replacement = new Map<string, string>();
+    for (const row of rows) {
+      const roomId = `live_${randomBytes(24).toString('base64url')}`;
+      await media.ensureRoom(roomId);
+      replacement.set(row.id, roomId);
+    }
     await db.transaction(async (tx) => {
       const current = await tx.select({ id: schema.liveSessions.id }).from(schema.liveSessions)
         .where(and(sessionFilter(scope), eq(schema.liveSessions.state, 'rotating'))).for('update');
       for (const row of current) {
         await tx.update(schema.liveSessions).set({
-          roomId: `live_${randomBytes(24).toString('base64url')}`,
+          roomId: replacement.get(row.id)!,
           generation: sql`${schema.liveSessions.generation} + 1`,
-          state: 'available', updatedAt: new Date(),
+          state: 'available', emptySince: new Date(), connectedOnce: false,
+          lastGrantAt: null, endedAt: null, updatedAt: new Date(),
         }).where(eq(schema.liveSessions.id, row.id));
       }
       await tx.delete(schema.liveAccessFences).where(eq(schema.liveAccessFences.scopeKey, key(scope)));
@@ -97,6 +106,7 @@ export function liveRevocationCoordinator(db: Database, pool: Pool, media: LiveM
 
   async function change<T>(scope: Scope, mutation: () => Promise<T>): Promise<T> {
     return locked(scope.workspaceId, async () => {
+      await lifecycle?.recoverWorkspaceUnderLock(scope.workspaceId);
       await recoverUnderLock(scope.workspaceId);
       await fence(scope);
       // On failure the fence stays durable. A retry or startup reconciliation can
@@ -130,7 +140,10 @@ export function liveRevocationCoordinator(db: Database, pool: Pool, media: LiveM
     async recoverPending(): Promise<void> {
       const pending = await db.select({ workspaceId: schema.liveAccessFences.workspaceId })
         .from(schema.liveAccessFences).groupBy(schema.liveAccessFences.workspaceId);
-      for (const row of pending) await locked(row.workspaceId, () => recoverUnderLock(row.workspaceId));
+      for (const row of pending) await locked(row.workspaceId, async () => {
+        await lifecycle?.recoverWorkspaceUnderLock(row.workspaceId);
+        await recoverUnderLock(row.workspaceId);
+      });
     },
   };
 }

@@ -31,13 +31,16 @@ test('a standard UUID can start a live session; malformed context and retry ids 
         return record;
       },
       async find() { return record; },
+      async withRead(_principal, _sessionId, read) { return read(record); },
       async withAdmission(_principal, _sessionId, issue) { return issue(record); },
       async present() {},
     },
     media: {
       async ensureRoom() {},
+      async requireRoom() {},
       async grant() { return { token: 'unused', expiresAt: new Date() }; },
       async participants() { return []; },
+      async occupancy() { return 0; },
       async removeParticipant() {},
       async deleteRoom() {},
     },
