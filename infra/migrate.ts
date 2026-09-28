@@ -2,7 +2,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createDatabase, FLUX_SCHEMA_VERSION } from '@flux/db';
 import { PgBoss } from 'pg-boss';
-import { PUSH_SEND_JOB, PUSH_SEND_QUEUE } from '@flux/core';
+import { NOTIFICATION_EMAIL_JOB, NOTIFICATION_EMAIL_QUEUE, PUSH_SEND_JOB, PUSH_SEND_QUEUE } from '@flux/core';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
@@ -48,6 +48,8 @@ try {
   // Existing queues keep their stored policy; updateQueue applies the reviewed retry bounds.
   await boss.createQueue(PUSH_SEND_JOB, PUSH_SEND_QUEUE);
   await boss.updateQueue(PUSH_SEND_JOB, PUSH_SEND_QUEUE);
+  await boss.createQueue(NOTIFICATION_EMAIL_JOB, NOTIFICATION_EMAIL_QUEUE);
+  await boss.updateQueue(NOTIFICATION_EMAIL_JOB, NOTIFICATION_EMAIL_QUEUE);
   await boss.stop();
   console.log(`Flux schema ${FLUX_SCHEMA_VERSION} and pg-boss ready`);
 } finally {

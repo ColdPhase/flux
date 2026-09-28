@@ -1,3 +1,5 @@
+import type { NotificationReason } from './notifications.js';
+
 /** Web Push and in-app inbox wire contract (issue #41). */
 export const PUSH_PUBLIC_KEY_PATH = '/api/v1/push/public-key';
 export const PUSH_SUBSCRIPTIONS_PATH = '/api/v1/push/subscriptions';
@@ -48,7 +50,7 @@ export type PushPayload =
   }
   | { preview: 'generic'; notificationId: string; title: string };
 
-export type NotificationSourceType = 'workspace' | 'project' | 'draft';
+export type NotificationSourceType = 'workspace' | 'project' | 'draft' | 'dm';
 
 /** The object a notification is about. Its `<type>.read` decides who may see the notification. */
 export interface NotificationSourceRef {
@@ -60,6 +62,8 @@ export interface NotificationSourceRef {
 export interface InboxItem {
   id: string;
   source: NotificationSourceRef;
+  /** Why it reached you (#116); null for notifications created directly (#41). */
+  reason: NotificationReason | null;
   title: string;
   body: string;
   url: string | null;
@@ -69,5 +73,6 @@ export interface InboxItem {
 
 export interface InboxResponse {
   items: InboxItem[];
+  /** The client shows at most a quiet dot for this, never a count (#44 no guilt). */
   unread: number;
 }

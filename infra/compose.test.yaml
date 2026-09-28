@@ -15,8 +15,8 @@ services:
       - -c
       - >-
         openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 2
-        -subj /CN=pushmock -addext subjectAltName=DNS:pushmock
-        -keyout /tls/key.pem -out /tls/cert.pem 2>/dev/null &&
+        -subj /CN=pushmock -addext subjectAltName=DNS:pushmock,DNS:mailpit-starttls,DNS:mailpit-smtps
+        -keyout /tls/key.pem -out /tls/cert.pem 2>/dev/null && chmod 644 /tls/key.pem &&
         exec node_modules/.bin/tsx tests/app/support/push-mock.ts
     volumes:
       - pushtls:/tls
@@ -25,6 +25,34 @@ services:
       interval: 2s
       timeout: 2s
       retries: 30
+  # Operator TLS paths for notification email (#116, #113): SMTP catchers that refuse plain
+  # text, one requiring STARTTLS (port 587 style) and one implicit TLS (smtps, port 465 style).
+  # They use the per-run throwaway certificate, which the test container trusts.
+  mailpit-starttls: &tls-mailpit
+    profiles: ["test"]
+    image: axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_TLS_CERT: /tls/cert.pem
+      MP_SMTP_TLS_KEY: /tls/key.pem
+      MP_SMTP_REQUIRE_STARTTLS: "true"
+    volumes:
+      - pushtls:/tls:ro
+    depends_on:
+      pushmock:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+  mailpit-smtps:
+    <<: *tls-mailpit
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_TLS_CERT: /tls/cert.pem
+      MP_SMTP_TLS_KEY: /tls/key.pem
+      MP_SMTP_REQUIRE_TLS: "true"
   worker:
     environment:
       FLUX_PUSH_ALLOW_PRIVATE_NETWORK: "true"
@@ -41,6 +69,8 @@ services:
       FLUX_VAPID_SUBJECT: ${FLUX_VAPID_SUBJECT:-}
       FLUX_PUSH_ALLOW_PRIVATE_NETWORK: "true"
       FLUX_PUSHMOCK_URL: http://pushmock:8081
+      FLUX_MAILPIT_STARTTLS_URL: http://mailpit-starttls:8025
+      FLUX_MAILPIT_SMTPS_URL: http://mailpit-smtps:8025
       NODE_EXTRA_CA_CERTS: /tls/cert.pem
     volumes:
       - pushtls:/tls:ro
@@ -48,6 +78,10 @@ services:
       worker:
         condition: service_started
       pushmock:
+        condition: service_healthy
+      mailpit-starttls:
+        condition: service_healthy
+      mailpit-smtps:
         condition: service_healthy
   e2e:
     profiles: ["test"]

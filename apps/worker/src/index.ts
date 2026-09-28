@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { createDatabase, schema } from '@flux/db';
 import { deleteExpiredIdempotencyKeys, DRAFT_SUMMARY_JOB, IDEMPOTENCY_CLEANUP_JOB, processDraftSummary, SAMPLE_JOB } from '@flux/core';
 import { registerPushWorker } from './push/index.js';
+import { registerNotificationEmailWorker, startNotificationGenerator } from './notifications/index.js';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
@@ -19,6 +20,9 @@ await boss.work<{ sampleId: string }>(SAMPLE_JOB, async (jobs) => {
   }
 });
 await registerPushWorker(boss, db);
+// Notifications from committed events and their email (#116).
+const email = await registerNotificationEmailWorker(boss, db);
+const generator = startNotificationGenerator({ db, boss, connectionString, emailAvailable: email.available });
 // The payload is a result id only. processDraftSummary rechecks the requester's access
 // before reading the draft and inside the commit transaction.
 await boss.work<{ resultId: string }>(DRAFT_SUMMARY_JOB, async (jobs) => {
@@ -34,6 +38,6 @@ await boss.work(IDEMPOTENCY_CLEANUP_JOB, async () => {
 // Hourly; idempotency keys are retained for 24 hours (see docs/development/access-policy.md).
 await boss.schedule(IDEMPOTENCY_CLEANUP_JOB, '17 * * * *');
 console.log('Flux worker ready');
-const stop = async () => { await boss.stop(); await pool.end(); process.exit(0); };
+const stop = async () => { await generator.stop(); await boss.stop(); email.close(); await pool.end(); process.exit(0); };
 process.on('SIGTERM', stop);
 process.on('SIGINT', stop);
