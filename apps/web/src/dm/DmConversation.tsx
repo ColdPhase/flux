@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { Link, useLoaderData, useRevalidator, type LoaderFunctionArgs } from 'react-router';
+import { Link, useLoaderData, useLocation, useRevalidator, type LoaderFunctionArgs } from 'react-router';
 import type { ConversationMessage, Dm, DmPerson, SendDmMessageCommand } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { getDm, olderDmMessages, sendDmMessage } from '../api/direct-messages';
@@ -142,7 +142,14 @@ function DmContent({ initial }: { initial: Dm }) {
     window.addEventListener('focus', onVisible);
     return () => { document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('focus', onVisible); };
   }, [refresh]);
-  useLayoutEffect(() => { const el = feedRef.current; if (el) el.scrollTop = el.scrollHeight; }, []);
+  // A search result opens on that whole message when it is in the loaded window (#114); otherwise on the latest.
+  const hash = useLocation().hash;
+  const arrived = hash.startsWith('#message-') ? hash.slice('#message-'.length) : null;
+  useLayoutEffect(() => {
+    const anchor = arrived ? document.getElementById(`message-${arrived}`) : null;
+    if (anchor) { anchor.scrollIntoView({ block: 'start' }); anchor.focus({ preventScroll: true }); return; }
+    const el = feedRef.current; if (el) el.scrollTop = el.scrollHeight;
+  }, [arrived]);
 
   const autosize = () => {
     const el = textareaRef.current;
@@ -235,7 +242,7 @@ function DmContent({ initial }: { initial: Dm }) {
               {rows.map(({ message, label, newDay, continued }) => {
                 const mine = message.authorId === me.user.id;
                 return (
-                  <li key={message.id} className={`dm-msg${continued ? ' dm-msg--cont' : ''}`} data-sequence={message.sequence}>
+                  <li key={message.id} id={`message-${message.id}`} tabIndex={-1} className={`dm-msg${continued ? ' dm-msg--cont' : ''}${arrived === message.id ? ' is-arrived' : ''}`} data-sequence={message.sequence}>
                     {newDay ? <p className="dm__day"><span>{label}</span></p> : null}
                     <div className="dm-msg__row">
                       <span className="dm-msg__face">{continued ? null : <Avatar name={mine ? me.user.name : nameOf(message.authorId)} size="md" tone={mine ? 'me' : 'neutral'} />}</span>

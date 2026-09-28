@@ -14,6 +14,7 @@ import { VIEWS, viewIndex } from './views';
 import { ProjectStateLine, ProjectStateRow } from '../work/inline';
 import { audienceLine, useProjectShell } from '../project/data';
 import type { ProjectPerson } from '@flux/contracts';
+import { JumpTo } from '../search/JumpTo';
 
 function lastConversationPath(projectId: string) {
   try { return sessionStorage.getItem(`flux.project-conversation.${projectId}`) ?? `/projects/${projectId}`; }
@@ -46,6 +47,7 @@ export function AppLayout() {
   const [navOpen, setNavOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsView, setDetailsView] = useState<DetailsView>('place');
+  const [jumpOpen, setJumpOpen] = useState(false);
   const detailsButtonRef = useRef<HTMLButtonElement>(null);
   const paneRef = useRef<HTMLDivElement>(null);
   const previousView = useRef(viewOrder(location.pathname));
@@ -84,6 +86,7 @@ export function AppLayout() {
       setDetailsView(view);
       toggleDetails(true);
     },
+    openSearch() { setNavOpen(false); setJumpOpen(true); },
   }), [toggleDetails]);
 
   // A link inside an overlaid panel or sheet (#117 overview) leads to its destination.
@@ -103,6 +106,17 @@ export function AppLayout() {
     navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true });
     shell.openDetails({ kind: match[1]!.toLowerCase() as 'work' | 'decision' | 'result', id: match[2]!.toLowerCase() });
   }, [location.search, location.pathname, location.hash, navigate, shell]);
+  // ⌘K / Ctrl+K opens Jump to… from anywhere, also while typing, as the sidebar hint says.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== 'k') return;
+      event.preventDefault();
+      setNavOpen(false);
+      setJumpOpen((open) => !open);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   // "]" toggles Details, as in the header tooltip.
   useEffect(() => {
@@ -152,7 +166,9 @@ export function AppLayout() {
   const openOverview = () => { setDetailsView('place'); toggleDetails(true); };
   const dmId = location.pathname.match(/^\/dm\/([^/]+)/)?.[1];
   const activeDm = directMessages.find((dm) => dm.id === dmId);
-  const place = activeProject
+  const place = location.pathname === '/search'
+    ? { crumb: null, title: 'Search', topic: 'Only what you can open is searched', views: false }
+    : activeProject
     ? { crumb: activeProject.workspaceName ?? null, title: activeProject.name, topic: audience, views: false }
     : where === 'inbox'
       ? location.pathname.startsWith('/settings/')
@@ -226,6 +242,7 @@ export function AppLayout() {
         </div>
       </div>
 
+      <JumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
       <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title="Details" id="details">
         <Details view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} />
       </SidePanel>
