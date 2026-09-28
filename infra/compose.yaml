@@ -53,6 +53,8 @@ services:
       PORT: 8080
     volumes:
       - files:/data/files:z
+      # Optional 32-byte operator secret; empty tracked placeholder means unavailable.
+      - ${FLUX_BACKGROUND_KEY_HOST_FILE:-./background-key-unavailable}:/run/secrets/flux_background_key:ro,z
     ports:
       - 127.0.0.1:${FLUX_PORT:-8081}:8080
     depends_on:
@@ -75,6 +77,7 @@ services:
       FLUX_VAPID_SUBJECT: ${FLUX_VAPID_SUBJECT:-}
     volumes:
       - files:/data/files:z
+      - ${FLUX_BACKGROUND_KEY_HOST_FILE:-./background-key-unavailable}:/run/secrets/flux_background_key:ro,z
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -110,6 +113,7 @@ services:
       FLUX_STREAM_HEARTBEAT_MS: ${FLUX_STREAM_HEARTBEAT_MS:-25000}
     volumes:
       - teststate:/state
+      - ${FLUX_BACKGROUND_KEY_HOST_FILE:-./background-key-unavailable}:/run/secrets/flux_background_key:ro,z
     depends_on:
       migrate:
         condition: service_completed_successfully

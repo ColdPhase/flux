@@ -1,6 +1,6 @@
-# O-007 proposal — owner-authorized background comparison
+# O-007 — owner-authorized background comparison
 
-**Status:** proposed for independent review, 2026-09-28. **Decision owner:**
+**Status:** accepted after [independent review of `2a2fa82`](https://github.com/ColdPhase/flux/pull/108#pullrequestreview-5332961366), merged as [`841ddc97`](https://github.com/ColdPhase/flux/pull/108) on 2026-09-28. **Decision owner:**
 `@PelikanFix16`; **evaluator:** `@Zamojski5`. This resolves the compute-source
 dependency of [#58](https://github.com/ColdPhase/flux/issues/58), not its
 implementation or acceptance. O-005's user-operated Claude Code → Flux MCP path
@@ -142,7 +142,7 @@ dispatch ownership isolated reopens this decision before enabling the rule.
 | Vendor documentation | [Rate/spend limits](https://platform.claude.com/docs/en/api/rate-limits) describes provider organization/workspace spend limits; [API errors](https://platform.claude.com/docs/en/api/errors) says official SDKs retry transient errors twice by default; [usage/cost API](https://platform.claude.com/docs/en/manage-claude/usage-cost-api) requires admin credentials and may report at daily granularity. | Payer configures a provider cap independently. Flux does not ingest an overprivileged admin key or infer real-time per-owner invoices from that report; disable automatic retries. |
 | Vendor SDK documentation | [TypeScript SDK](https://platform.claude.com/docs/en/cli-sdks-libraries/sdks/typescript) exposes response usage and stream cancellation. | Actual usage can reconcile a completed request. Aborting a transport is not proof of no provider charge. |
 | Existing Flux research | [O-005](first-agent-path.md) and [provider feasibility](own-ai-feasibility.md) distinguish a user's official CLI, API billing and self-hosted endpoints. | The Claude Code subscription/MCP connection cannot fund or execute this background run. |
-| Flux observation | This PR inspects the current contracts only. No Flux background provider call, key-custody test, billing observation or low-light comparison has been run. | #58 remains open after this decision review. Its Docker, real-runtime and UI acceptance must be proved in implementation. |
+| Flux observation | The accepted decision PR inspected contracts only. No Flux background provider call, key-custody test, billing observation or low-light comparison had been run at acceptance. | #58 remains open after this decision review. Its Docker, real-runtime and UI acceptance must be proved in implementation. |
 
 **Reconsider** a local model as the first source if a pinned model on documented
 minimum hardware produces useful comparisons with cited supplied project facts,

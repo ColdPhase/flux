@@ -26,6 +26,13 @@ export function proactiveRuleRows(db: DbExecutor) {
         .where(and(eq(schema.agents.id, agentId), eq(schema.agents.ownerUserId, ownerId), isNull(schema.agents.revokedAt)));
       return Boolean(row);
     },
+    async backgroundBudget(ownerId: string) {
+      const c = schema.backgroundComputeConnections;
+      const [row] = await db.select({ maxRunsPerDay: c.maxRunsPerDay, periodDays: c.periodDays,
+        periodBudgetCents: c.periodBudgetCents, perRunCents: c.perRunCents }).from(c)
+        .where(and(eq(c.ownerUserId, ownerId), isNull(c.revokedAt))).for('share');
+      return row ?? null;
+    },
     async create(input: { id: string; workspaceId: string; projectId: string; ownerUserId: string; command: CreateProactiveComparisonRule }): Promise<ProactiveComparisonRule | 'EXISTS'> {
       const [row] = await db.insert(table).values({
         id: input.id, workspaceId: input.workspaceId, projectId: input.projectId, ownerUserId: input.ownerUserId,

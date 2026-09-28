@@ -5,7 +5,7 @@ import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
 import { PgBoss } from 'pg-boss';
-import { FLUX_SCHEMA_VERSION, PG_BOSS_SCHEMA_VERSION } from '@flux/db';
+import { FLUX_SCHEMA_VERSION, PG_BOSS_SCHEMA_VERSION, loadBackgroundMasterKey } from '@flux/db';
 import { SAMPLE_COMMAND_PATH, type SampleCommand } from '@flux/contracts';
 import { createSample, SAMPLE_JOB } from '@flux/core';
 import { registerDatabase } from './plugins/database.js';
@@ -50,7 +50,7 @@ await app.register(streamRoutes, { db, sessions: identity, publicOrigin: identit
 await app.register(conversationRoutes, { db, sessions: identity });
 await app.register(workRoutes, { db, sessions: identity });
 await app.register(agentProposalRoutes, { db, sessions: identity });
-await app.register(proactiveComparisonRoutes, { db, sessions: identity });
+await app.register(proactiveComparisonRoutes, { db, sessions: identity, backgroundMasterKey: loadBackgroundMasterKey() });
 registerMcpRoute(app, db, identity.auth, identityConfig.publicOrigin);
 await app.register(returnRoutes, { db, sessions: identity });
 await app.register(docRoutes, { db, sessions: identity });

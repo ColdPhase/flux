@@ -9,6 +9,7 @@ export interface RuleAccess {
 export interface RuleRows {
   /** The agent is personal to the caller and currently has a contributor grant here. */
   agentMayPropose(ownerId: string, projectId: string, agentId: string): Promise<boolean>;
+  backgroundBudget(ownerId: string): Promise<{ maxRunsPerDay: number; periodDays: number; periodBudgetCents: number; perRunCents: number } | null>;
   create(input: { id: string; workspaceId: string; projectId: string; ownerUserId: string; command: CreateProactiveComparisonRule }): Promise<ProactiveComparisonRule | 'EXISTS'>;
   list(ownerId: string, projectId: string): Promise<ProactiveComparisonRule[]>;
   find(ownerId: string, ruleId: string): Promise<ProactiveComparisonRule | null>;
@@ -66,10 +67,14 @@ export function proactiveRuleUseCases(unit: RuleUnitOfWork) {
         if (status === 'enabled') {
           if (!await rules.agentMayPropose(ownerUserId, current.projectId, current.agentId))
             throw new NotFoundError('Personal project agent', 'AGENT_NOT_FOUND');
-          // O-007 requires owner-supplied background compute and payer consent before
-          // a rule can run. This first slice stores a paused rule; key custody and
-          // execution are separate slices, so activation fails closed for now.
-          throw new ConflictError('Connect an authorized background compute source before enabling', 'BACKGROUND_CONNECTION_REQUIRED');
+          const budget = await rules.backgroundBudget(ownerUserId);
+          if (!budget) throw new ConflictError('Connect an authorized background compute source before enabling', 'BACKGROUND_CONNECTION_REQUIRED');
+          if (budget.periodDays !== 30 || current.maxRunsPerDay > budget.maxRunsPerDay
+            || current.periodBudgetCents > budget.periodBudgetCents || current.perRunCents > budget.perRunCents)
+            throw new ConflictError('The rule exceeds the owner-approved background budget', 'BACKGROUND_BUDGET_TOO_LOW');
+          // Key custody and consent are necessary, but a worker with reservation,
+          // interruption and current-access checks must exist before activation.
+          throw new ConflictError('Background execution is not available yet', 'BACKGROUND_RUNTIME_UNAVAILABLE');
         }
         return (await rules.change(ownerUserId, ruleId, expectedVersion, status))!;
       });

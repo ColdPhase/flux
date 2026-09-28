@@ -1,12 +1,18 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
-import type { CreateProactiveComparisonRule } from '@flux/contracts';
-import { proactiveRuleRows } from '@flux/db';
-import { DomainError, enforce, evaluateProject, proactiveRuleUseCases, type Database } from '@flux/core';
+import type { ConnectBackgroundComputeCommand, CreateProactiveComparisonRule } from '@flux/contracts';
+import { backgroundConnectionRepository, proactiveRuleRows, sealBackgroundKey } from '@flux/db';
+import { backgroundConnectionUseCases, ConflictError, DomainError, enforce, evaluateProject, proactiveRuleUseCases, type Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 
-interface Options { db: Database; sessions: SessionResolver }
+interface Options { db: Database; sessions: SessionResolver; backgroundMasterKey: Buffer | null }
 
-export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sessions }: Options) {
+export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sessions, backgroundMasterKey }: Options) {
+  const connections = backgroundConnectionUseCases(backgroundConnectionRepository(db), {
+    seal(plainKey, ownerUserId, connectionId) {
+      if (!backgroundMasterKey) throw new ConflictError('Background key custody is unavailable on this instance', 'BACKGROUND_KEY_CUSTODY_UNAVAILABLE');
+      return sealBackgroundKey(plainKey, ownerUserId, connectionId, backgroundMasterKey);
+    },
+  });
   const rules = proactiveRuleUseCases({ run: (action) => db.transaction(async (tx) => action({
     access: { async requireProject(principal, projectId, mode) {
       const result = enforce(await evaluateProject(principal, mode === 'write' ? 'project.write' : 'project.read', projectId, tx,
@@ -19,6 +25,29 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
     if (error instanceof DomainError) return reply.code(error.status).send({ error: error.message, code: error.code, ...error.details });
     if ((error as FastifyError).statusCode === 401) return reply.code(401).send({ error: 'Authentication required', code: 'UNAUTHENTICATED' });
     throw error;
+  });
+  app.post<{ Body: ConnectBackgroundComputeCommand }>('/api/v1/background-compute-connections', {
+    schema: { body: { type: 'object', additionalProperties: false,
+      required: ['apiKey', 'payerOrganization', 'providerWorkspace', 'workspaceScopedKeyConfirmed',
+        'payerAuthorityConfirmed', 'providerBillingAcknowledged', 'projectDataDisclosureAcknowledged',
+        'maxRunsPerDay', 'periodDays', 'periodBudgetCents', 'perRunCents'],
+      properties: {
+        apiKey: { type: 'string', minLength: 24, maxLength: 263 },
+        payerOrganization: { type: 'string', minLength: 2, maxLength: 120 },
+        providerWorkspace: { type: 'string', minLength: 2, maxLength: 120 },
+        workspaceScopedKeyConfirmed: { const: true }, payerAuthorityConfirmed: { const: true },
+        providerBillingAcknowledged: { const: true }, projectDataDisclosureAcknowledged: { const: true },
+        maxRunsPerDay: { type: 'integer', minimum: 1, maximum: 3 }, periodDays: { const: 30 },
+        periodBudgetCents: { type: 'integer', minimum: 5, maximum: 1000 },
+        perRunCents: { type: 'integer', minimum: 5, maximum: 50 },
+      } } },
+  }, async (request, reply) => reply.code(201).send(await connections.connect(
+    (await sessions.requirePrincipal(request)).principal, request.body)));
+  app.get('/api/v1/background-compute-connections/current', async (request) => connections.current(
+    (await sessions.requirePrincipal(request)).principal));
+  app.delete<{ Params: { connectionId: string } }>('/api/v1/background-compute-connections/:connectionId', async (request, reply) => {
+    await connections.revoke((await sessions.requirePrincipal(request)).principal, request.params.connectionId);
+    return reply.code(204).send();
   });
   app.post<{ Params: { projectId: string }; Body: CreateProactiveComparisonRule }>('/api/v1/projects/:projectId/proactive-comparison-rules',
     async (request, reply) => reply.code(201).send(await rules.create(

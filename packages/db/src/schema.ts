@@ -1,3 +1,4 @@
+import { isNull } from 'drizzle-orm';
 import { pgTable, text, timestamp, uuid, integer, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
 export const samples = pgTable('samples', {
@@ -723,6 +724,29 @@ export const agentProposals = pgTable('agent_proposals', {
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.sourceMaterialId, table.sourceMaterialVersion], foreignColumns: [projectMaterialVersions.workspaceId, projectMaterialVersions.projectId, projectMaterialVersions.materialId, projectMaterialVersions.version] }),
+]);
+
+export const backgroundComputeConnections = pgTable('background_compute_connections', {
+  id: uuid('id').primaryKey(),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  provider: text('provider', { enum: ['anthropic'] }).notNull(),
+  model: text('model', { enum: ['claude-sonnet-5'] }).notNull(),
+  payerOrganization: text('payer_organization').notNull(),
+  providerWorkspace: text('provider_workspace').notNull(),
+  encryptedKey: text('encrypted_key'),
+  keyLastFour: text('key_last_four').notNull(),
+  keyFingerprint: text('key_fingerprint').notNull(),
+  maxRunsPerDay: integer('max_runs_per_day').notNull(),
+  periodDays: integer('period_days').notNull(),
+  periodBudgetCents: integer('period_budget_cents').notNull(),
+  perRunCents: integer('per_run_cents').notNull(),
+  consentVersion: text('consent_version', { enum: ['o-007-2026-09-28'] }).notNull(),
+  consentedAt: timestamp('consented_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, (table) => [
+  uniqueIndex('background_compute_connections_active_owner_idx').on(table.ownerUserId).where(isNull(table.revokedAt)),
+  index('background_compute_connections_owner_idx').on(table.ownerUserId, table.createdAt, table.id),
 ]);
 
 export const proactiveComparisonRules = pgTable('proactive_comparison_rules', {
