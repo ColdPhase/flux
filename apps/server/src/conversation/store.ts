@@ -213,6 +213,31 @@ export function conversationStore(db: Database) {
       return { items, total: count?.total ?? 0, ...page };
     },
 
+    /** Metadata for the MCP source picker; bodies and private draft provenance stay out of the list. */
+    async listSourceMaterials(principal: Principal, projectId: string, query: PageQuery = {}) {
+      const page = parsePage(query);
+      return db.transaction(async (tx) => {
+        // Hold the access rows through the count and page, so a racing grant revoke
+        // cannot leave a partly authorized listing behind.
+        await requireProject(principal, projectId, tx, false, true);
+        const where = eq(schema.projectMaterials.projectId, projectId);
+        const [count] = await tx.select({ total: sql<number>`count(*)::int` }).from(schema.projectMaterials).where(where);
+        const rows = await tx.select({
+          materialId: schema.projectMaterials.id,
+          kind: schema.projectMaterials.kind,
+          version: schema.projectMaterials.currentVersion,
+          title: schema.projectMaterialVersions.title,
+          updatedAt: schema.projectMaterials.updatedAt,
+        }).from(schema.projectMaterials).innerJoin(schema.projectMaterialVersions, and(
+          eq(schema.projectMaterialVersions.materialId, schema.projectMaterials.id),
+          eq(schema.projectMaterialVersions.version, schema.projectMaterials.currentVersion),
+        )).where(where).orderBy(desc(schema.projectMaterials.updatedAt), desc(schema.projectMaterials.id))
+          .limit(page.limit).offset(page.offset);
+        return { items: rows.map((row) => ({ ...row, updatedAt: row.updatedAt.toISOString() })),
+          total: count?.total ?? 0, ...page };
+      });
+    },
+
     async getMaterial(principal: Principal, materialId: string): Promise<Material> {
       const row = await locateMaterial(principal, materialId, db);
       return material(row, await currentVersion(row, db), principal);

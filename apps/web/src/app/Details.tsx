@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useRevalidator } from 'react-router';
+import { Link, useNavigate, useRevalidator } from 'react-router';
 import { leaveDm } from '../api/direct-messages';
 import { Avatar, Button, Icon } from '../ui';
 import { WorkDetails } from '../work/WorkDetails';
@@ -71,28 +71,25 @@ export function Details({ view, workspace, placeTitle, dm = null, onBack }: {
   );
 }
 
-/**
- * "Connect your AI" (#57, PR #64). An assistant always belongs to one person and only its owner
- * can use it. No compute path exists in this version, so the options are listed honestly as
- * not available yet and nothing here calls a model.
- */
+/** Personal connection setup. The in-app assistant still needs its separate runtime (#58). */
 function ConnectAi({ onBack }: { onBack: () => void }) {
   return (
     <div className="details">
       <button type="button" className="details__back" aria-label="Back to Details" onClick={onBack}><Icon name="chevron-left" size={14} />Details</button>
       <p className="details__eyebrow">Optional</p>
       <h3 className="details__title">Connect your AI</h3>
-      <p className="details__lead">Flux works fully without AI. If you connect an assistant, it is yours: only you can use it, you pay for it, and it sees only what you can see.</p>
+      <p className="details__lead">Flux works fully without AI. Your own Claude Code client can connect to selected projects, read context and suggest proposals for human review.</p>
       <section className="details__sec" aria-labelledby="details-ai-ways">
         <h4 id="details-ai-ways">Ways to connect</h4>
         <ul className="details__rows">
-          <li><b>Claude Code on your computer</b><span>Through a personal Flux grant, using its own plan · not available yet</span></li>
+          <li><b>Claude Code on your computer</b><span>Uses your account for compute and your personal Flux grant. Flux never receives your provider credentials.</span></li>
           <li><b>A personal API key</b><span>Asks for your spending cap before the first run · not available yet</span></li>
         </ul>
+        <p><Link className="ui-link" to="/connect-agent">Set up or revoke a Claude Code connection</Link></p>
       </section>
       <section className="details__sec" aria-labelledby="details-ai-now">
-        <h4 id="details-ai-now">Until then</h4>
-        <p>The ✦ button explains this and sends nothing. Your notes and unsent text stay as they are.</p>
+        <h4 id="details-ai-now">In-app assistant</h4>
+        <p>The ✦ button does not start Claude Code or spend your plan. It remains unavailable until a separate in-app assistant runtime is connected.</p>
       </section>
     </div>
   );

@@ -1,11 +1,13 @@
 import type { FastifyInstance } from 'fastify';
-import { createSessionRepository, type DbExecutor } from '@flux/db';
+import { createSessionRepository } from '@flux/db';
+import type { Database } from '@flux/core';
 import type { ApiError, IdentityCapabilities } from '@flux/contracts';
-import { createAuth } from './auth.js';
+import { createAuth, type FluxAuth } from './auth.js';
 import { registerAuthBridge } from './bridge.js';
 import type { IdentityConfig } from './config.js';
 import { createSmtpMailer, type Mailer } from './mailer.js';
 import { originViolation } from './origin.js';
+import { registerAgentOauthContext } from './oauth-context.js';
 import { registerIdentityRoutes } from './routes.js';
 import { createSessionResolver, type SessionResolver } from './session.js';
 
@@ -13,7 +15,7 @@ export { loadIdentityConfig, type IdentityConfig } from './config.js';
 export { UnauthenticatedError, type SessionContext, type SessionResolver } from './session.js';
 
 export interface IdentityOptions {
-  db: DbExecutor;
+  db: Database;
   config: IdentityConfig;
   /** Defaults to SMTP from config; pass null to force password reset unavailable. */
   mailer?: Mailer | null;
@@ -21,6 +23,7 @@ export interface IdentityOptions {
 
 export interface Identity extends SessionResolver {
   passwordReset: IdentityCapabilities['passwordReset'];
+  auth: FluxAuth;
 }
 
 /**
@@ -32,6 +35,9 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
   const mailer = options.mailer === undefined ? (config.smtp ? createSmtpMailer(config.smtp) : null) : options.mailer;
   if (mailer) app.addHook('onClose', async () => mailer.close());
   const auth = createAuth({ db, config, mailer, onMailError: (error) => app.log.error({ error }, 'Password reset mail failed') });
+  // OAuth resource seeding runs during Better Auth initialization. Complete it before
+  // accepting requests or allowing an in-process server to close its database pool.
+  app.addHook('onReady', async () => { await auth.$context; });
   const sessions = createSessionResolver(auth);
   const passwordReset: IdentityCapabilities['passwordReset'] = mailer ? 'available' : 'unavailable';
 
@@ -45,6 +51,7 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
 
   registerAuthBridge(app, { auth, publicOrigin: config.publicOrigin, passwordReset });
   registerIdentityRoutes(app, { sessions, store: createSessionRepository(db), passwordReset });
+  registerAgentOauthContext(app, db, sessions, auth);
 
-  return { ...sessions, passwordReset };
+  return { ...sessions, passwordReset, auth };
 }
