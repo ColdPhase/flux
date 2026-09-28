@@ -87,9 +87,11 @@ A committed conversation start, reply, material publication or material revision
 records exactly one project-scoped event in the same PostgreSQL transaction:
 `project.conversation_created.v1`, `project.message_sent.v1`,
 `project.material_created.v1` or `project.material_updated.v1` respectively.
-The event's `object_id` is the project id and its `data` is `{}`. The stream frame
-therefore carries the kind, project id and workspace id, never message text,
-material title/body/URL, a private draft id, or a client mutation key. A client
+The event's `object_id` is the project id. Its `data` holds identifiers only: `{
+conversationId, messageId }` for conversation and message events and `{ materialId, version }`
+for material events (added for the [return view](return-view.md), #106). The stream frame
+carries the kind, project id and workspace id, and never `data`. Neither ever holds message
+text, a material title/body/URL, a private draft id or a client mutation key. A client
 with current project access may refetch the conversation/material HTTP endpoints.
 The first message is included in `conversation_created`; there is no second event
 for that initial message. Idempotent retries return the original result without a

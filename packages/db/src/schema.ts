@@ -446,3 +446,16 @@ export const projectObjectLinks = pgTable('project_object_links', {
   index('project_object_links_to_idx').on(table.toId),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
 ]);
+
+// Return points: where each person last looked at a place (migration 0009, issue #106).
+export const returnPoints = pgTable('return_points', {
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  placeKey: text('place_key').notNull(),
+  placeType: text('place_type', { enum: ['home', 'project', 'conversation'] }).notNull(),
+  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+  conversationId: uuid('conversation_id').references(() => projectConversations.id, { onDelete: 'cascade' }),
+  seq: bigint('seq', { mode: 'number' }).notNull(),
+  savedAt: timestamp('saved_at', { withTimezone: true }).notNull().defaultNow(),
+  previousSeq: bigint('previous_seq', { mode: 'number' }),
+  previousSavedAt: timestamp('previous_saved_at', { withTimezone: true }),
+}, (table) => [primaryKey({ columns: [table.userId, table.placeKey] })]);

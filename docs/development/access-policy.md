@@ -341,6 +341,10 @@ heavy activity anywhere can slow everyone's writes and deliveries. That is load,
 per-recipient work, and it is not padded to constant time. Each API process relies
 on its own `LISTEN` for wake-ups.
 
+**Return view** (#106). "Since you left" (`GET /api/v1/return`) reads the same per-recipient
+rows after the person's saved return point, calls `authorizeEvent` again for every event and,
+on Home, also applies `visibleFilter` to each project. See [return-view.md](return-view.md).
+
 ## Worker jobs
 
 `draft.summarize.v1` (`packages/core/src/jobs/draft-summary.ts`) is a placeholder

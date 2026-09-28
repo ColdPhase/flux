@@ -1,3 +1,7 @@
+/* The project page: the return line (#106) above the conversation. */
+.project-page { display: flex; flex: 1; min-height: 0; flex-direction: column; }
+.project-convo__message:focus { outline: none; }
+.project-convo__message.is-arrived { box-shadow: inset 3px 0 0 var(--accent); padding-left: 12px; }
 .project-convo { display: flex; flex: 1; min-height: 0; flex-direction: column; }
 .project-convo__feed { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .project-convo__in { max-width: 1280px; margin: 0 auto; padding: 24px; container-type: inline-size; }

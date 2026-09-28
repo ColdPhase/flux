@@ -60,8 +60,9 @@ project readers and the client refetches. Idempotent replays and failed changes 
 ## Not yet
 
 Sketch thoughts as link sources and sources of new work depend on #69/#100 merging; the link
-table accepts a new target type through a small migration. Handoffs (a follow-up slice), agent
-execution (#52/#68) and the return view (8.8) are out of scope. The UI refreshes by route
+table accepts a new target type through a small migration. Handoffs (a follow-up slice) and agent
+execution (#52/#68) are out of scope. The return view (8.8) reads these events; see
+[return-view.md](return-view.md). The UI refreshes by route
 revalidation and polling and does not subscribe to the stream yet.
 
 ## Tests
