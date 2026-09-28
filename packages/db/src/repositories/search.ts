@@ -53,6 +53,8 @@ export interface SearchPlanRows {
   prefix: string | null;
   /** Also match titles by trigram similarity (plain words only; never with `-word` or quotes). */
   fuzzy: boolean;
+  /** Index key suffixes of the query words (`3:sen`, `2:ai`); at least one. */
+  terms: string[];
   kinds: SearchKind[] | null;
   place: { type: 'project' | 'dm'; id: string } | { type: 'private' } | null;
   author: { kind: 'human' | 'agent'; id: string } | null;
@@ -122,6 +124,18 @@ function tsquery(plan: SearchPlanRows): SQL {
     : sql`websearch_to_tsquery('simple', ${plan.text})`;
 }
 
+/**
+ * The reader's visible audience keys, and the index keys to look up: every visible audience
+ * combined with every query word prefix (`project:<id>|3:sen`). Postings of other audiences are
+ * never read.
+ */
+function audienceCte(audiences: SearchAudienceRows[], plan: SearchPlanRows): SQL {
+  const terms = sql`ARRAY[${sql.join(plan.terms.map((term) => sql`${term}`), sql`, `)}]::text[]`;
+  return sql`aud AS MATERIALIZED (
+      SELECT v.keys, ARRAY(SELECT key || '|' || term FROM unnest(v.keys) AS key CROSS JOIN unnest(${terms}) AS term) AS lookups
+      FROM (SELECT ${visibleKeys(audiences)} AS keys) v)`;
+}
+
 function visibleKeys(audiences: SearchAudienceRows[]): SQL {
   return sql`ARRAY(${sql.join(audiences.map((audience) => AUDIENCE_KEYS[audience.type](audience)), sql` UNION ALL `)})`;
 }
@@ -129,6 +143,7 @@ function visibleKeys(audiences: SearchAudienceRows[]): SQL {
 /** Everything a hit must satisfy apart from the cursor. `withKinds` is false for the per-type counts. */
 function hitConditions(plan: SearchPlanRows, withKinds: boolean): SQL {
   const conditions: SQL[] = [
+    sql`sd.keys && (SELECT lookups FROM aud)`,
     sql`sd.audience_key = ANY ((SELECT keys FROM aud)::text[])`,
     plan.fuzzy ? sql`(sd.tsv @@ ${tsquery(plan)} OR sd.title %> ${plan.text})` : sql`sd.tsv @@ ${tsquery(plan)}`,
   ];
@@ -148,7 +163,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows): S
     : sql``;
   const clean = (column: SQL) => sql`translate(left(${column}, ${HEADLINE_INPUT}), ${START + STOP}, '')`;
   return sql`
-    WITH aud AS MATERIALIZED (SELECT ${visibleKeys(audiences)} AS keys),
+    WITH ${audienceCte(audiences, plan)},
     matched AS (
       SELECT sd.id, sd.kind, sd.workspace_id, sd.object_id, sd.parent_id, sd.project_id, sd.version, sd.status, sd.title, sd.body,
         sd.author_kind, sd.author_id, sd.at,
@@ -183,7 +198,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows): S
 
 function countStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, cap: number): SQL {
   return sql`
-    WITH aud AS MATERIALIZED (SELECT ${visibleKeys(audiences)} AS keys)
+    WITH ${audienceCte(audiences, plan)}
     SELECT kind, count(DISTINCT object_id)::int AS n, count(*)::int AS sampled
     FROM (SELECT sd.kind, sd.object_id FROM search_documents sd WHERE ${hitConditions(plan, false)} LIMIT ${cap + 1}) x GROUP BY kind`;
 }
@@ -193,11 +208,6 @@ interface PageRow {
   object_id: string; parent_id: string | null; project_id: string | null; project_name: string | null; version: number | null;
   current_version: number | null; status: string | null; sketch_title: string | null; author_name: string | null; has_body: boolean;
   title_headline: string | null; body_headline: string | null; dm_name: string | null;
-}
-
-interface PlanNode {
-  'Node Type': string; 'Actual Rows'?: number; 'Actual Loops'?: number; 'Rows Removed by Filter'?: number;
-  'Rows Removed by Index Recheck'?: number; 'Relation Name'?: string; 'Index Name'?: string; Plans?: PlanNode[];
 }
 
 /**
@@ -212,24 +222,49 @@ async function planned(db: SearchExecutor, statement: SQL) {
   }, { accessMode: 'read only' });
 }
 
-/** Rows PostgreSQL read in the scan nodes of a statement (EXPLAIN ANALYZE), including rows a filter discarded. */
-async function examined(db: SearchExecutor, statement: SQL) {
-  const result = await planned(db, sql`EXPLAIN (ANALYZE, FORMAT JSON) ${statement}`);
+interface PlanNode {
+  'Node Type': string; 'Actual Rows'?: number; 'Actual Loops'?: number; 'Rows Removed by Filter'?: number;
+  'Rows Removed by Index Recheck'?: number; 'Relation Name'?: string; 'Index Name'?: string; Plans?: PlanNode[];
+  'Shared Hit Blocks'?: number; 'Shared Read Blocks'?: number; 'Actual Total Time'?: number;
+}
+
+/** What a statement read (EXPLAIN ANALYZE, BUFFERS), from its scan nodes. */
+export interface ExaminedWork {
+  /** Table rows read by scan nodes, including rows a filter discarded (bitmap index scans only list addresses). */
+  rows: number;
+  /** Row addresses the `search_documents` bitmap index scans produced. */
+  indexRows: number;
+  /** Buffers (hit + read) of the scan nodes on `search_documents` and its indexes, index work included. */
+  searchBuffers: number;
+  /** Buffers (hit + read) of the whole statement. */
+  buffers: number;
+  nodes: string[];
+}
+
+const blocks = (node: PlanNode) => (node['Shared Hit Blocks'] ?? 0) + (node['Shared Read Blocks'] ?? 0);
+
+async function examined(db: SearchExecutor, statement: SQL): Promise<ExaminedWork> {
+  const result = await planned(db, sql`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${statement}`);
   const plan = ((result.rows[0] as Record<string, unknown>)['QUERY PLAN'] as { Plan: PlanNode }[])[0]!.Plan;
-  let rows = 0;
-  const nodes: string[] = [];
-  const walk = (node: PlanNode) => {
+  const work: ExaminedWork = { rows: 0, indexRows: 0, searchBuffers: 0, buffers: blocks(plan), nodes: [] };
+  // A node's buffers include its children's: count the topmost scan on search_documents once.
+  const walk = (node: PlanNode, inSearchScan: boolean) => {
+    const type = node['Node Type'];
+    const name = node['Index Name'] ?? node['Relation Name'] ?? '';
+    const loops = node['Actual Loops'] ?? 1;
     let read = 0;
-    // Table rows read: a bitmap index scan only lists row addresses for the heap scan above it.
-    if (node['Node Type'].includes('Scan') && node['Node Type'] !== 'Bitmap Index Scan') {
-      read = ((node['Actual Rows'] ?? 0) + (node['Rows Removed by Filter'] ?? 0) + (node['Rows Removed by Index Recheck'] ?? 0)) * (node['Actual Loops'] ?? 1);
-      rows += read;
+    if (type.includes('Scan') && type !== 'Bitmap Index Scan') {
+      read = ((node['Actual Rows'] ?? 0) + (node['Rows Removed by Filter'] ?? 0) + (node['Rows Removed by Index Recheck'] ?? 0)) * loops;
+      work.rows += read;
     }
-    nodes.push(`${node['Node Type']}${node['Index Name'] ? ` ${node['Index Name']}` : node['Relation Name'] ? ` ${node['Relation Name']}` : ''}${read ? ` (${read})` : ''}`);
-    for (const child of node.Plans ?? []) walk(child);
+    const onSearch = name.startsWith('search_documents') && type.includes('Scan');
+    if (onSearch && type === 'Bitmap Index Scan') work.indexRows += (node['Actual Rows'] ?? 0) * loops;
+    if (onSearch && !inSearchScan) work.searchBuffers += blocks(node);
+    work.nodes.push(`${type}${name ? ` ${name}` : ''}${read ? ` rows=${read}` : ''}${onSearch ? ` buffers=${blocks(node)}` : ''}`);
+    for (const child of node.Plans ?? []) walk(child, inSearchScan || onSearch);
   };
-  walk(plan);
-  return { rows, nodes };
+  walk(plan, false);
+  return work;
 }
 
 export function searchRows(db: SearchExecutor) {
@@ -250,7 +285,7 @@ export function searchRows(db: SearchExecutor) {
 
     /** One page (up to `limit + 1` rows, best first) of the visible matches after `plan.after`. */
     async page(audiences: SearchAudienceRows[], plan: SearchPlanRows): Promise<SearchRowRecord[]> {
-      if (!audiences.length) return [];
+      if (!audiences.length || !plan.terms.length) return [];
       const result = await planned(db, pageStatement(audiences, plan));
       return (result.rows as unknown as PageRow[]).map((row) => ({
         position: { score: row.score, at: row.at_key, id: row.id },
@@ -277,7 +312,7 @@ export function searchRows(db: SearchExecutor) {
     /** Visible matches per kind, over every kind, counting at most `cap + 1` rows. */
     async counts(audiences: SearchAudienceRows[], plan: SearchPlanRows, cap: number) {
       const counts = new Map<SearchKind, number>();
-      if (!audiences.length) return { counts, capped: false };
+      if (!audiences.length || !plan.terms.length) return { counts, capped: false };
       const result = await planned(db, countStatement(audiences, plan, cap));
       let total = 0;
       for (const row of result.rows as unknown as { kind: SearchKind; n: number; sampled: number }[]) { counts.set(row.kind, row.n); total += row.sampled; }
@@ -287,10 +322,11 @@ export function searchRows(db: SearchExecutor) {
 
     /** Test support: the rows examined by the page and count statements of this plan. */
     async explain(audiences: SearchAudienceRows[], plan: SearchPlanRows, cap: number) {
-      if (!audiences.length) return { rows: 0, nodes: [] as string[] };
+      if (!audiences.length || !plan.terms.length) return { rows: 0, indexRows: 0, searchBuffers: 0, buffers: 0, nodes: [] as string[] };
       const page = await examined(db, pageStatement(audiences, plan));
       const count = await examined(db, countStatement(audiences, plan, cap));
-      return { rows: page.rows + count.rows, nodes: [...page.nodes, '|', ...count.nodes] };
+      return { rows: page.rows + count.rows, indexRows: page.indexRows + count.indexRows, searchBuffers: page.searchBuffers + count.searchBuffers,
+        buffers: page.buffers + count.buffers, nodes: [...page.nodes, '|', ...count.nodes] };
     },
   };
 }

@@ -5,10 +5,26 @@
 -- deleted object disappears with it. Rows hold content only: who may read a row is decided at
 -- query time by the access policy (`visibleFilter`) through `audience_key`, the object that
 -- carries the permission (docs, as project materials, use `project:<id>`; `dm:<id>`, `sketch:<id>`, `draft:<id>`, `members:<workspace>`).
--- The GIN indexes lead with audience_key (btree_gin), so the index scan itself is limited to
--- the audiences the reader may see: hidden matches are never fetched, ranked or counted.
+--
+-- The one text index is keyed by audience: every key is `<audience_key>|<word prefix>`, so the
+-- posting list of a key holds only rows of that audience. A search looks up the keys of the
+-- audiences the reader may see and never touches another audience's postings: hidden matches
+-- are never fetched, ranked, counted or even read from the index. The exact match (full-text,
+-- prefix, trigram similarity) is then checked on those candidate rows.
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
-CREATE EXTENSION IF NOT EXISTS btree_gin;
+
+-- The audience-scoped keys of a row: for every word (lexeme of the `simple` configuration) of
+-- two or more characters, its first two characters (`2:ab`) and, for longer words, its first
+-- three (`3:abc`). A query word of two characters looks up `2:`, a longer one `3:`.
+CREATE FUNCTION search_keys(p_audience text, p_title text, p_body text) RETURNS text[]
+LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
+  SELECT coalesce(array_agg(DISTINCT p_audience || '|' || k), '{}')
+  FROM (
+    SELECT lexeme FROM unnest(to_tsvector('simple', coalesce(p_title, '') || ' ' || left(coalesce(p_body, ''), 100000)))
+  ) words,
+  LATERAL (VALUES ('2:' || left(words.lexeme, 2)), (CASE WHEN length(words.lexeme) >= 3 THEN '3:' || left(words.lexeme, 3) END)) AS prefixes(k)
+  WHERE length(words.lexeme) >= 2 AND k IS NOT NULL
+$$;
 
 CREATE TABLE search_documents (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -31,10 +47,13 @@ CREATE TABLE search_documents (
   at timestamptz NOT NULL,
   tsv tsvector GENERATED ALWAYS AS (
     setweight(to_tsvector('simple', title), 'A') || setweight(to_tsvector('simple', left(body, 100000)), 'B')
-  ) STORED
+  ) STORED,
+  keys text[] GENERATED ALWAYS AS (search_keys(audience_key, title, body)) STORED
 );
-CREATE INDEX search_documents_text_idx ON search_documents USING gin (audience_key, tsv);
-CREATE INDEX search_documents_title_idx ON search_documents USING gin (audience_key, title gin_trgm_ops);
+-- fastupdate off: a GIN pending list holds recent inserts of every audience and each search would
+-- scan all of it, so a reader's work would grow with other people's writes. Without it, inserts go
+-- straight into the index and a search reads only the postings of its own keys.
+CREATE INDEX search_documents_keys_idx ON search_documents USING gin (keys) WITH (fastupdate = off);
 CREATE INDEX search_documents_parent_idx ON search_documents (parent_id) WHERE parent_id IS NOT NULL;
 CREATE INDEX search_documents_person_idx ON search_documents (object_id) WHERE kind = 'person';
 

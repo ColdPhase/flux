@@ -30,6 +30,8 @@ export interface SearchPlan {
   text: string;
   prefix: string | null;
   fuzzy: boolean;
+  /** Audience-scoped index key suffixes of the query words, see `searchTerms`. */
+  terms: string[];
   kinds: SearchKind[] | null;
   place: { type: 'project' | 'dm'; id: string } | { type: 'private' } | null;
   author: { kind: 'human' | 'agent'; id: string } | null;
@@ -59,12 +61,25 @@ export interface SearchRow {
   at: Date;
 }
 
+/** What the statements of a search read (EXPLAIN ANALYZE, BUFFERS): test support. */
+export interface SearchWork {
+  /** Table rows read by scan nodes, including rows a filter discarded. */
+  rows: number;
+  /** Row addresses produced by the search index scans. */
+  indexRows: number;
+  /** Buffers read by the scans of the search table and its index, index pages included. */
+  searchBuffers: number;
+  /** Buffers of the whole statements. */
+  buffers: number;
+  nodes: string[];
+}
+
 /** Rows only; every statement composes the audiences' conditions before ranking, limit and counts. */
 export interface SearchRepository<C> {
   page(audiences: SearchAudience<C>[], plan: SearchPlan): Promise<SearchRow[]>;
   counts(audiences: SearchAudience<C>[], plan: SearchPlan, cap: number): Promise<{ counts: Map<SearchKind, number>; capped: boolean }>;
   /** Test support: rows examined by the statements of a plan. */
-  explain(audiences: SearchAudience<C>[], plan: SearchPlan, cap: number): Promise<{ rows: number; nodes: string[] }>;
+  explain(audiences: SearchAudience<C>[], plan: SearchPlan, cap: number): Promise<SearchWork>;
 }
 
 /** Seals a position to one principal and one query; anything else opens to null. */

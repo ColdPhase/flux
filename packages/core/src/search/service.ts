@@ -46,6 +46,25 @@ export function prefixQuery(text: string): string | null {
   return [...words, `${last}:*`].join(' & ');
 }
 
+/**
+ * The index keys of a query (migration 0014 `search_keys`): the first two characters of a
+ * two-character word (`2:ai`) and the first three of a longer one (`3:sen`). Excluded words
+ * (`-word`) and `or` add none, and one-character words are not searched.
+ */
+export function searchTerms(text: string): string[] {
+  const terms = new Set<string>();
+  for (const match of text.matchAll(/(^|\s)(-?)("?)([^\s]+)/gu)) {
+    if (match[2] === '-') continue;
+    for (const word of match[4]!.match(WORD) ?? []) {
+      const lower = word.toLowerCase();
+      if (lower === 'or' || [...lower].length < 2) continue;
+      const chars = [...lower];
+      terms.add(chars.length >= 3 ? `3:${chars.slice(0, 3).join('')}` : `2:${lower}`);
+    }
+  }
+  return [...terms].slice(0, 16);
+}
+
 export interface NormalizedSearch {
   text: string;
   type: SearchFilterType | null;
@@ -120,6 +139,7 @@ export function createSearchUseCases<C>(ports: SearchPorts<C>) {
       text: search.text,
       prefix: prefixQuery(search.text),
       fuzzy: !usesSearchSyntax(search.text),
+      terms: searchTerms(search.text),
       kinds: search.type ? searchKindsOf(search.type) : null,
       place: search.place,
       author: search.author,
@@ -129,7 +149,7 @@ export function createSearchUseCases<C>(ports: SearchPorts<C>) {
     };
     // Access is decided now, on every request: a revocation applies to the very next search.
     const audiences = await ports.access.audiences(principal);
-    const searchable = /[\p{L}\p{N}]/u.test(search.text);
+    const searchable = plan.terms.length > 0;
     return { plan, scope, audiences, searchable };
   }
 
@@ -159,7 +179,7 @@ export function createSearchUseCases<C>(ports: SearchPorts<C>) {
     /** Test support (served only with test failure injection): rows examined by this search. */
     async explain(principal: Principal, query: Partial<SearchQuery>) {
       const { plan, audiences, searchable } = await prepare(principal, query);
-      if (!searchable) return { rows: 0, nodes: [] };
+      if (!searchable) return { rows: 0, indexRows: 0, searchBuffers: 0, buffers: 0, nodes: [] };
       return ports.rows.explain(audiences, plan, SEARCH_LIMITS.countCap);
     },
   };

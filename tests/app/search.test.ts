@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { createDatabase } from '@flux/db';
+import type { SearchWork } from '@flux/core';
 import type { Conversation, Decision, Dm, Draft, Material, Project, SearchResponse, SearchResult, Sketch, CreatedThought, WorkItem, WorkResult, Workspace } from '@flux/contracts';
 import { register, uniqueEmail, type ClientResponse } from './support/http.js';
 import { addMember, draft as createDraft, expectStatus, grant, password, project as createProject, workspace, type Person } from './support/people.js';
@@ -24,7 +25,7 @@ interface Params { q: string; type?: string; place?: string; author?: string; cu
 const qs = (params: Params) => new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])).toString();
 const searchRaw = (someone: Person, params: Params) => someone.browser.request('GET', `/api/v1/search?${qs(params)}`);
 const search = async (someone: Person, params: Params | string) => json<SearchResponse>(await searchRaw(someone, typeof params === 'string' ? { q: params } : params), 200, 'search');
-const explain = async (someone: Person, params: Params) => json<{ rows: number; nodes: string[] }>(await someone.browser.request('GET', `/api/v1/search/explain?${qs(params)}`), 200, 'explain');
+const explain = async (someone: Person, params: Params) => json<SearchWork>(await someone.browser.request('GET', `/api/v1/search/explain?${qs(params)}`), 200, 'explain');
 /** A person with a full display name, as the search results show it. */
 async function person(name: string): Promise<Person> {
   const email = uniqueEmail(name.toLowerCase().replace(/[^a-z]+/g, '-'));
@@ -328,7 +329,8 @@ describe('search: hidden matches never change the answer or the work', () => {
     // Writes leave dead row versions in the audience tables (a DM's or sketch's activity time
     // changes with every message or thought) until autovacuum removes them. That is write load,
     // not matching, so both measurements start from a vacuumed state.
-    const settle = () => pool.query('VACUUM ANALYZE search_documents, projects, dms, dm_participants, sketches, drafts');
+    // search_documents itself is only analyzed: its GIN indexes have no pending list to flush.
+    const settle = async () => { await pool.query('VACUUM ANALYZE projects, dms, dm_participants, sketches, drafts'); await pool.query('ANALYZE search_documents'); };
     await settle();
     const baseline = await search(olek, query);
     const baselineWork = await explain(olek, query);
@@ -349,15 +351,21 @@ describe('search: hidden matches never change the answer or the work', () => {
     assert.deepEqual(saturated, baseline, 'identical answer, counts and `next`');
     assert.equal(saturated.next, null, 'hidden matches never make `more` true');
     const saturatedWork = await explain(olek, query);
-    assert.equal((await explain(olek, query)).rows, saturatedWork.rows, 'the metric is deterministic');
-    assert.equal(saturatedWork.rows, baselineWork.rows,
-      `rows examined do not grow with hidden matches (before: ${baselineWork.nodes.join(', ')}; after: ${saturatedWork.nodes.join(', ')})`);
+    console.log(JSON.stringify({ search: 'saturation', before: baselineWork, after: saturatedWork }));
+    const work = ({ rows, indexRows, searchBuffers }: SearchWork) => ({ rows, indexRows, searchBuffers });
+    assert.deepEqual(work(await explain(olek, query)), work(saturatedWork), 'the metric is deterministic');
+    // Deterministic privacy evidence, index work included: the same table rows, the same row
+    // addresses from the index and the same buffers of the search table and its index.
+    assert.equal(saturatedWork.rows, baselineWork.rows, `rows examined (after: ${saturatedWork.nodes.join(', ')})`);
+    assert.equal(saturatedWork.indexRows, baselineWork.indexRows, 'row addresses from the index');
+    assert.equal(saturatedWork.searchBuffers, baselineWork.searchBuffers, `search table and index buffers (before: ${baselineWork.nodes.join(', ')}; after: ${saturatedWork.nodes.join(', ')})`);
     // The reader who can see them does get them, with `more` and a count.
     const insider = await search(nia, query);
     assert.ok(insider.next, 'Nia has more pages');
     assert.ok((insider.counts.message ?? 0) > 300);
-    // Coarse timing: the hidden matches do not slow the outsider's search.
+    // Only a very coarse wall-clock sanity bound: other test files run concurrently on the same
+    // database, so timing is not the privacy evidence (the buffers above are).
     const saturatedTime = await median();
-    assert.ok(saturatedTime < baselineTime * 2 + 25, `median ${saturatedTime.toFixed(1)} ms with hidden matches vs ${baselineTime.toFixed(1)} ms before`);
+    assert.ok(saturatedTime < baselineTime * 5 + 250, `median ${saturatedTime.toFixed(1)} ms with hidden matches vs ${baselineTime.toFixed(1)} ms before`);
   });
 });
