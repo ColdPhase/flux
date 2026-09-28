@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { appendFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium, type Browser, type Page } from 'playwright';
@@ -11,6 +12,11 @@ import { addMember, expectStatus, grant, person, project, workspace } from '../s
 
 let browser: Browser | undefined;
 after(async () => browser?.close());
+
+function markResourcePhase(phase: string): void {
+  appendFileSync('/artifacts/livekit-phases.jsonl',
+    `${JSON.stringify({ timestampUtc: new Date().toISOString(), phase })}\n`);
+}
 
 type CandidateEvidence = { candidateType: string; protocol: string; relayProtocol?: string;
   pairState: string; bytesSent: number; bytesReceived: number };
@@ -379,6 +385,7 @@ test('four authorized clients receive two simultaneous code-sized screen tracks 
       const room = (window as Window & { fluxRoom?: { remoteParticipants: Map<string, unknown> } }).fluxRoom;
       return room?.remoteParticipants.size === 3;
     }, undefined, { timeout: 30_000 });
+    markResourcePhase('four_connected');
     const screens = [
       { title: 'review.ts · merge conflict', lines: [
         'const review = await loadPullRequest(124);',
@@ -453,6 +460,7 @@ test('four authorized clients receive two simultaneous code-sized screen tracks 
       oscillator.start();
       await room.localParticipant.publishTrack(output.stream.getAudioTracks()[0]!);
     });
+    markResourcePhase('four_media_active');
     for (const page of pages.slice(2)) {
       await page.waitForFunction(() => {
         const room = (window as Window & { fluxRoom?: { remoteParticipants: Map<string, {
@@ -513,5 +521,6 @@ test('four authorized clients receive two simultaneous code-sized screen tracks 
         assert.equal(candidate.relayProtocol, 'tls', JSON.stringify(candidate));
       }
     }
+    markResourcePhase('four_media_verified');
     for (const page of pages) await page.close();
   });

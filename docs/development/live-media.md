@@ -68,6 +68,15 @@ requires relay over TLS with received bytes. The temporary certificate is
 accepted only by this test browser; it does not prove a real public CA or NAT.
 The script removes its volumes, images and certificate on exit. It is a local
 heavy check, not a per-push GitHub Action.
+Set `FLUX_LIVE_TURN_ARTIFACT_DIR` to retain browser screenshots and the SFU
+resource trace at a chosen path (otherwise the script prints a new `/tmp` path).
+`livekit-container-stats.jsonl` records timestamped Docker container CPU,
+reported memory usage and cumulative receive/transmit network traffic every two
+seconds; `livekit-phases.jsonl` marks `four_connected`, `four_media_active` and
+`four_media_verified`. Compare samples inside the media-active interval and
+the cumulative transmit bytes at its endpoints. These are local-container
+measurements, not public-link capacity or a four-person service limit. Keep
+raw trace files with the tested commit when reporting performance results.
 
 The test overlay alone allows TURN to relay to Docker's `172.16.0.0/12`
 bridge network, because the SFU's test ICE address is private. LiveKit denies

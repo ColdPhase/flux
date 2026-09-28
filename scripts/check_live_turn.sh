@@ -37,6 +37,10 @@ export FLUX_LIVEKIT_METRICS_PORT="${FLUX_LIVE_TURN_TEST_METRICS_PORT:-18866}"
 compose="docker compose -p $project -f infra/compose.yaml -f infra/compose.live.yaml -f infra/compose.live.test.yaml -f infra/compose.live.turn.yaml -f infra/compose.live.turn.test.yaml --profile live-test"
 cleanup() {
   status=$?
+  if [ -n "${stats_sampler_pid:-}" ]; then
+    kill "$stats_sampler_pid" 2>/dev/null || true
+    wait "$stats_sampler_pid" 2>/dev/null || true
+  fi
   if [ "$status" -ne 0 ]; then
     $compose logs --no-color --tail=80 db migrate api livekit live-sfu-test || true
   fi
@@ -63,4 +67,23 @@ docker run --rm --entrypoint sh -v "$cert_dir:/certs:z" "flux-e2e:$project" -ec 
 '
 $compose build migrate live-sfu-test
 $compose up -d --wait api livekit
+livekit_container=$($compose ps -q livekit)
+test -n "$livekit_container"
+stats_path="$artifact_dir/livekit-container-stats.jsonl"
+# Sample the actual SFU container through both local browser profiles. Docker
+# reports container CPU, working-set memory and receive/transmit network bytes;
+# phase markers from the browser test identify the four-person interval.
+(
+  while :; do
+    snapshot=$(docker stats --no-stream --no-trunc --format '{{json .}}' "$livekit_container" 2>/dev/null) || exit 0
+    printf '{"timestampUtc":"%s","stats":%s}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$snapshot" >> "$stats_path"
+    sleep 2
+  done
+) &
+stats_sampler_pid=$!
 $compose run --rm live-sfu-test
+kill "$stats_sampler_pid" 2>/dev/null || true
+wait "$stats_sampler_pid" 2>/dev/null || true
+stats_sampler_pid=
+test -s "$stats_path"
+printf 'SFU resource samples: %s\n' "$stats_path"
