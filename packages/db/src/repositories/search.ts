@@ -1,6 +1,9 @@
 import { sql, type SQL } from 'drizzle-orm';
 import * as schema from '../schema.js';
-import type { DbExecutor } from './push.js';
+import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+
+/** Search needs its own read-only transaction to pin the plan (see {@link planned}). */
+export type SearchExecutor = Pick<NodePgDatabase<typeof schema>, 'select' | 'execute' | 'transaction'>;
 
 /**
  * Rows for search (issue #114). They satisfy the `SearchRepository` port of
@@ -48,6 +51,8 @@ export interface SearchPlanRows {
   text: string;
   /** A sanitized `to_tsquery` input whose last word is a prefix (`lamp & sens:*`), or null. */
   prefix: string | null;
+  /** Also match titles by trigram similarity (plain words only; never with `-word` or quotes). */
+  fuzzy: boolean;
   kinds: SearchKind[] | null;
   place: { type: 'project' | 'dm'; id: string } | { type: 'private' } | null;
   author: { kind: 'human' | 'agent'; id: string } | null;
@@ -85,6 +90,8 @@ const STOP = '⦄';
 const TITLE_OPTIONS = `StartSel=${START}, StopSel=${STOP}, HighlightAll=true`;
 const BODY_OPTIONS = `StartSel=${START}, StopSel=${STOP}, MaxWords=26, MinWords=10, ShortWord=2, MaxFragments=2, FragmentDelimiter=" … "`;
 const HEADLINE_INPUT = 20_000;
+/** Text up to this length is shown whole, with every match marked. */
+const WHOLE = 240;
 
 /** Splits `ts_headline` output into plain and matched parts. */
 export function highlightParts(value: string): SearchText {
@@ -122,8 +129,8 @@ function visibleKeys(audiences: SearchAudienceRows[]): SQL {
 /** Everything a hit must satisfy apart from the cursor. `withKinds` is false for the per-type counts. */
 function hitConditions(plan: SearchPlanRows, withKinds: boolean): SQL {
   const conditions: SQL[] = [
-    sql`sd.audience_key = ANY ((SELECT keys FROM aud))`,
-    sql`(sd.tsv @@ ${tsquery(plan)} OR sd.title %> ${plan.text})`,
+    sql`sd.audience_key = ANY ((SELECT keys FROM aud)::text[])`,
+    plan.fuzzy ? sql`(sd.tsv @@ ${tsquery(plan)} OR sd.title %> ${plan.text})` : sql`sd.tsv @@ ${tsquery(plan)}`,
   ];
   if (withKinds && plan.kinds?.length) conditions.push(sql`sd.kind IN (${sql.join(plan.kinds.map((kind) => sql`${kind}`), sql`, `)})`);
   const place = plan.place;
@@ -142,24 +149,29 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows): S
   const clean = (column: SQL) => sql`translate(left(${column}, ${HEADLINE_INPUT}), ${START + STOP}, '')`;
   return sql`
     WITH aud AS MATERIALIZED (SELECT ${visibleKeys(audiences)} AS keys),
-    hits AS (
+    matched AS (
       SELECT sd.id, sd.kind, sd.workspace_id, sd.object_id, sd.parent_id, sd.project_id, sd.version, sd.status, sd.title, sd.body,
         sd.author_kind, sd.author_id, sd.at,
-        round((ts_rank(sd.tsv, ${q}) + 0.5 * word_similarity(${plan.text}, sd.title))::numeric, 6) AS score
+        round((ts_rank(sd.tsv, ${q}) + 0.5 * word_similarity(${plan.text}, sd.title))::numeric, 6) AS score,
+        row_number() OVER (PARTITION BY sd.kind, sd.object_id ORDER BY sd.version DESC NULLS LAST) AS newest
       FROM search_documents sd
       WHERE ${hitConditions(plan, true)}
-    )
+    ),
+    -- One result per object: of several matching versions of a material, the newest.
+    hits AS (SELECT * FROM matched WHERE newest = 1)
     SELECT h.id::text AS id, h.score::text AS score, h.at::text AS at_key, h.at, h.kind, h.workspace_id, w.name AS workspace_name,
       h.object_id, h.parent_id, h.project_id, p.name AS project_name, h.version, pm.current_version, h.status, sk.title AS sketch_title,
       coalesce(au.name, ag.name) AS author_name, length(h.body) > 0 AS has_body,
       ts_headline('simple', ${clean(sql`h.title`)}, ${q}, ${TITLE_OPTIONS}) AS title_headline,
-      CASE WHEN length(h.body) > 0 THEN ts_headline('simple', ${clean(sql`h.body`)}, ${q}, ${BODY_OPTIONS}) END AS body_headline,
+      CASE WHEN length(h.body) = 0 THEN NULL
+        WHEN length(h.body) <= ${WHOLE} THEN ts_headline('simple', ${clean(sql`h.body`)}, ${q}, ${TITLE_OPTIONS})
+        ELSE ts_headline('simple', ${clean(sql`h.body`)}, ${q}, ${BODY_OPTIONS}) END AS body_headline,
       CASE WHEN d.id IS NULL THEN NULL WHEN d.title IS NOT NULL THEN d.title
         WHEN d.kind = 'pair' THEN (SELECT u.name FROM auth_users u WHERE u.id IN (split_part(d.pair_key, ':', 1), split_part(d.pair_key, ':', 2)) AND u.id <> ${plan.reader} LIMIT 1)
         ELSE (SELECT string_agg(u.name, ', ' ORDER BY u.name) FROM dm_participants dp JOIN auth_users u ON u.id = dp.user_id WHERE dp.dm_id = d.id AND dp.user_id <> ${plan.reader})
       END AS dm_name
     FROM (SELECT * FROM hits ${after} ORDER BY hits.score DESC, hits.at DESC, hits.id DESC LIMIT ${plan.limit + 1}) h
-    LEFT JOIN projects p ON p.id = h.project_id AND ('project:' || p.id) = ANY ((SELECT keys FROM aud))
+    LEFT JOIN projects p ON p.id = h.project_id AND ('project:' || p.id) = ANY ((SELECT keys FROM aud)::text[])
     LEFT JOIN workspaces w ON w.id = h.workspace_id
     LEFT JOIN auth_users au ON h.author_kind = 'human' AND au.id = h.author_id
     LEFT JOIN agents ag ON h.author_kind = 'agent' AND ag.id::text = h.author_id
@@ -172,7 +184,8 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows): S
 function countStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, cap: number): SQL {
   return sql`
     WITH aud AS MATERIALIZED (SELECT ${visibleKeys(audiences)} AS keys)
-    SELECT kind, count(*)::int AS n FROM (SELECT sd.kind FROM search_documents sd WHERE ${hitConditions(plan, false)} LIMIT ${cap + 1}) x GROUP BY kind`;
+    SELECT kind, count(DISTINCT object_id)::int AS n, count(*)::int AS sampled
+    FROM (SELECT sd.kind, sd.object_id FROM search_documents sd WHERE ${hitConditions(plan, false)} LIMIT ${cap + 1}) x GROUP BY kind`;
 }
 
 interface PageRow {
@@ -187,25 +200,38 @@ interface PlanNode {
   'Rows Removed by Index Recheck'?: number; 'Relation Name'?: string; 'Index Name'?: string; Plans?: PlanNode[];
 }
 
+/**
+ * Runs a search statement in its own read-only transaction with sequential scans disabled, so
+ * PostgreSQL always reaches `search_documents` through the audience-leading GIN indexes, also
+ * while the table is small. The work then depends only on the audiences the reader may see.
+ */
+async function planned(db: SearchExecutor, statement: SQL) {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL enable_seqscan = off`);
+    return tx.execute(statement);
+  }, { accessMode: 'read only' });
+}
+
 /** Rows PostgreSQL read in the scan nodes of a statement (EXPLAIN ANALYZE), including rows a filter discarded. */
-async function examined(db: DbExecutor, statement: SQL) {
-  const result = await db.execute(sql`EXPLAIN (ANALYZE, FORMAT JSON) ${statement}`);
+async function examined(db: SearchExecutor, statement: SQL) {
+  const result = await planned(db, sql`EXPLAIN (ANALYZE, FORMAT JSON) ${statement}`);
   const plan = ((result.rows[0] as Record<string, unknown>)['QUERY PLAN'] as { Plan: PlanNode }[])[0]!.Plan;
   let rows = 0;
   const nodes: string[] = [];
   const walk = (node: PlanNode) => {
+    let read = 0;
     if (node['Node Type'].includes('Scan')) {
-      const loops = node['Actual Loops'] ?? 1;
-      rows += ((node['Actual Rows'] ?? 0) + (node['Rows Removed by Filter'] ?? 0) + (node['Rows Removed by Index Recheck'] ?? 0)) * loops;
+      read = ((node['Actual Rows'] ?? 0) + (node['Rows Removed by Filter'] ?? 0) + (node['Rows Removed by Index Recheck'] ?? 0)) * (node['Actual Loops'] ?? 1);
+      rows += read;
     }
-    nodes.push(`${node['Node Type']}${node['Index Name'] ? ` ${node['Index Name']}` : node['Relation Name'] ? ` ${node['Relation Name']}` : ''}`);
+    nodes.push(`${node['Node Type']}${node['Index Name'] ? ` ${node['Index Name']}` : node['Relation Name'] ? ` ${node['Relation Name']}` : ''}${read ? ` (${read})` : ''}`);
     for (const child of node.Plans ?? []) walk(child);
   };
   walk(plan);
   return { rows, nodes };
 }
 
-export function searchRows(db: DbExecutor) {
+export function searchRows(db: SearchExecutor) {
   return {
     /** The workspaces a person belongs to now. */
     async memberWorkspaces(userId: string) {
@@ -224,7 +250,7 @@ export function searchRows(db: DbExecutor) {
     /** One page (up to `limit + 1` rows, best first) of the visible matches after `plan.after`. */
     async page(audiences: SearchAudienceRows[], plan: SearchPlanRows): Promise<SearchRowRecord[]> {
       if (!audiences.length) return [];
-      const result = await db.execute(pageStatement(audiences, plan));
+      const result = await planned(db, pageStatement(audiences, plan));
       return (result.rows as unknown as PageRow[]).map((row) => ({
         position: { score: row.score, at: row.at_key, id: row.id },
         kind: row.kind,
@@ -251,9 +277,10 @@ export function searchRows(db: DbExecutor) {
     async counts(audiences: SearchAudienceRows[], plan: SearchPlanRows, cap: number) {
       const counts = new Map<SearchKind, number>();
       if (!audiences.length) return { counts, capped: false };
-      const result = await db.execute(countStatement(audiences, plan, cap));
+      const result = await planned(db, countStatement(audiences, plan, cap));
       let total = 0;
-      for (const row of result.rows as unknown as { kind: SearchKind; n: number }[]) { counts.set(row.kind, row.n); total += row.n; }
+      for (const row of result.rows as unknown as { kind: SearchKind; n: number; sampled: number }[]) { counts.set(row.kind, row.n); total += row.sampled; }
+      // Counting stopped when the sample of `cap + 1` rows was full (versions of one material count once).
       return { counts, capped: total > cap };
     },
 

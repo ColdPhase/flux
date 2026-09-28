@@ -29,6 +29,7 @@ export interface SearchPosition { score: string; at: string; id: string }
 export interface SearchPlan {
   text: string;
   prefix: string | null;
+  fuzzy: boolean;
   kinds: SearchKind[] | null;
   place: { type: 'project' | 'dm'; id: string } | { type: 'private' } | null;
   author: { kind: 'human' | 'agent'; id: string } | null;

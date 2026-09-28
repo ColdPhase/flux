@@ -32,8 +32,13 @@ function reader(principal: Principal) {
  * letters and digits reach it, so it cannot carry query operators. Queries that use the web
  * search syntax (quotes, `or`, `-word`) are left to `websearch_to_tsquery` alone.
  */
+/** Whether the text uses web search syntax: quotes, `or` or `-word`. */
+export function usesSearchSyntax(text: string) {
+  return /["]|(^|\s)-|(^|\s)or(\s|$)/i.test(text);
+}
+
 export function prefixQuery(text: string): string | null {
-  if (/["]|(^|\s)-|(^|\s)or(\s|$)/i.test(text)) return null;
+  if (usesSearchSyntax(text)) return null;
   if (!/[\p{L}\p{N}]$/u.test(text)) return null;
   const words = (text.match(WORD) ?? []).slice(-MAX_PREFIX_WORDS).map((word) => word.toLowerCase());
   if (!words.length) return null;
@@ -114,6 +119,7 @@ export function createSearchUseCases<C>(ports: SearchPorts<C>) {
     const plan: SearchPlan = {
       text: search.text,
       prefix: prefixQuery(search.text),
+      fuzzy: !usesSearchSyntax(search.text),
       kinds: search.type ? searchKindsOf(search.type) : null,
       place: search.place,
       author: search.author,

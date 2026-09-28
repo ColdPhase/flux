@@ -1,4 +1,4 @@
-import { searchRows, type DbExecutor, type SQL } from '@flux/db';
+import { searchRows, type SearchExecutor, type SQL } from '@flux/db';
 import {
   authorize,
   createSearchUseCases,
@@ -20,7 +20,7 @@ import {
  * audience type in one workspace, or whether the principal may read it at all. A new audience
  * type adds one entry here and one in `@flux/db`'s search rows.
  */
-const POLICY_AUDIENCES: Record<SearchAudienceType, (principal: Principal, workspaceId: string, db: DbExecutor) => Promise<SQL | null | false>> = {
+const POLICY_AUDIENCES: Record<SearchAudienceType, (principal: Principal, workspaceId: string, db: Database) => Promise<SQL | null | false>> = {
   project: (principal, workspaceId, db) => visibleFilter(principal, workspaceId, 'project', db),
   dm: (principal, workspaceId, db) => visibleFilter(principal, workspaceId, 'dm', db),
   sketch: (principal, workspaceId, db) => visibleFilter(principal, workspaceId, 'sketch', db),
@@ -31,7 +31,7 @@ const POLICY_AUDIENCES: Record<SearchAudienceType, (principal: Principal, worksp
 };
 
 /** Audiences through `visibleFilter` and `authorize`, read fresh for every search. */
-export function policySearchAccess(db: DbExecutor): SearchAccess<SQL> {
+export function policySearchAccess(db: Database): SearchAccess<SQL> {
   const rows = searchRows(db);
   return {
     async audiences(principal) {
@@ -49,7 +49,7 @@ export function policySearchAccess(db: DbExecutor): SearchAccess<SQL> {
   };
 }
 
-export function searchRepository(db: DbExecutor): SearchRepository<SQL> {
+export function searchRepository(db: SearchExecutor): SearchRepository<SQL> {
   return searchRows(db);
 }
 
