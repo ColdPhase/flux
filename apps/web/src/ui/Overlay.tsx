@@ -36,7 +36,8 @@ export function trapTab(event: KeyboardEvent<HTMLElement>, root: HTMLElement | n
   return false;
 }
 
-export type OverlayPlacement = 'left' | 'right' | 'bottom';
+/** `center` is a floating dialog near the top (the Jump to… palette); the others slide in from their edge. */
+export type OverlayPlacement = 'left' | 'right' | 'bottom' | 'center';
 
 export interface OverlayProps {
   open: boolean;
@@ -56,6 +57,7 @@ const offstage: Record<OverlayPlacement, string> = {
   left: 'translateX(calc(-100% - 24px))',
   right: 'translateX(100%)',
   bottom: 'translateY(100%)',
+  center: 'translateY(-8px) scale(.98)',
 };
 
 /**

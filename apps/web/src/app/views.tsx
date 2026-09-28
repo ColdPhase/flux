@@ -88,7 +88,14 @@ export function ConversationView() {
   const endRef = useRef<HTMLDivElement>(null);
   const firstName = me.user.name.trim().split(/\s+/)[0] || me.user.name;
   const canSend = draft.text.trim().length > 0 && !asking && !saving;
-  const captureRequest = (useLocation().state as { capture?: number } | null)?.capture;
+  const { state: routeState, hash } = useLocation();
+  const captureRequest = (routeState as { capture?: number } | null)?.capture;
+  // A search result (#114) opens Home on that private draft.
+  const arrivedDraft = hash.startsWith('#draft-') ? hash.slice('#draft-'.length) : null;
+  useEffect(() => {
+    const anchor = arrivedDraft ? document.getElementById(`draft-${arrivedDraft}`) : null;
+    if (anchor) { anchor.scrollIntoView({ block: 'center' }); anchor.focus({ preventScroll: true }); }
+  }, [arrivedDraft, serverDrafts]);
   useEffect(() => { if (captureRequest) textareaRef.current?.focus(); }, [captureRequest]);
 
   const autosize = () => {
@@ -130,7 +137,7 @@ export function ConversationView() {
           <p>Jot down a thought, a link or a half-formed idea. It stays with you until you choose to share it.</p>
         </div>
         <SinceYouLeftHome onShown={setReturning} />
-        {serverDrafts.length ? <section className="notes" aria-label="Private drafts"><p className="notes__h"><Icon name="lock" size={13} />Private drafts · saved in your space</p><ol className="notes__list">{serverDrafts.map((item) => <li className="note" key={item.id}><p className="note__text">{item.body}</p><div className="note__meta">You · v{item.version} · <time dateTime={item.updatedAt}>{when(item.updatedAt)}</time></div></li>)}</ol></section> : null}
+        {serverDrafts.length ? <section className="notes" aria-label="Private drafts"><p className="notes__h"><Icon name="lock" size={13} />Private drafts · saved in your space</p><ol className="notes__list">{serverDrafts.map((item) => <li className={`note${arrivedDraft === item.id ? ' is-arrived' : ''}`} key={item.id} id={`draft-${item.id}`} tabIndex={-1}><p className="note__text">{item.body}</p><div className="note__meta">You · v{item.version} · <time dateTime={item.updatedAt}>{when(item.updatedAt)}</time></div></li>)}</ol></section> : null}
         {items.length ? (
           <section className="notes" aria-label="Your private notes">
             <p className="notes__h"><Icon name="lock" size={13} />Only you can see these</p>

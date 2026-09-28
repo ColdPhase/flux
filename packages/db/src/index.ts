@@ -4,6 +4,7 @@ import * as schema from './schema.js';
 
 export { schema };
 export { sql } from 'drizzle-orm';
+export type { SQL } from 'drizzle-orm';
 export * from './repositories/sessions.js';
 export * from './repositories/agent-proposals.js';
 export * from './repositories/agent-connections.js';
@@ -74,3 +75,4 @@ export function listen(connectionString: string, channel: string, onNotify: (pay
 }
 export * from './repositories/returns.js';
 export * from './repositories/notifications.js';
+export * from './repositories/search.js';
