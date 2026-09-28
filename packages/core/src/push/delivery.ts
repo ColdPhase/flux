@@ -7,7 +7,9 @@ export type DeliveryOutcome =
   | { outcome: 'sent'; status: number; preview: PushPayload['preview'] }
   | { outcome: 'removed'; status: number | null; reason: string }
   | { outcome: 'rejected'; status: number | null; reason: string }
-  | { outcome: 'skipped'; reason: string };
+  | { outcome: 'skipped'; reason: string }
+  /** The recipient's quiet hours cover now (#116): send again at `until`. */
+  | { outcome: 'deferred'; until: Date };
 
 /** Thrown for 429, 5xx and network failures so the queue retries with bounded backoff. */
 export class RetryableDeliveryError extends Error {
@@ -34,6 +36,13 @@ export interface DeliveryPorts {
   targets: PushDeliveryRepository;
   authorizer: SourceReadAuthorizer;
   sender: PushSender;
+  /**
+   * The recipient's current notification preferences (#116): false when push is now off for the
+   * notification's reason or its place is muted. Absent for callers without preferences.
+   */
+  stillWanted?: (userId: string, notification: NotificationRecord) => Promise<boolean>;
+  /** When the recipient's current quiet hours end, if they cover now; null otherwise. */
+  quietUntil?: (userId: string) => Promise<Date | null>;
   log?: (message: string, details?: Record<string, unknown>) => void;
 }
 
@@ -60,6 +69,9 @@ export async function deliverPushJob(ports: DeliveryPorts, job: PushSendJob): Pr
   }
   const decision = await ports.authorizer.canRead(job.userId, notification.source);
   if (!decision.visible) return { outcome: 'skipped', reason: 'recipient can no longer see the notification source' };
+  if (ports.stillWanted && !await ports.stillWanted(job.userId, notification)) return { outcome: 'skipped', reason: 'push turned off or place muted' };
+  const until = await ports.quietUntil?.(job.userId);
+  if (until) return { outcome: 'deferred', until };
   const violation = pushEndpointViolation(subscription.endpoint);
   if (violation) {
     await ports.targets.recordFailure(subscription.id, null);

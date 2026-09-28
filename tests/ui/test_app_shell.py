@@ -231,12 +231,12 @@ class AppShellJourney(unittest.TestCase):
         page.goto("/")
         sidebar = page.get_by_role("complementary", name="Sidebar")
         expect(sidebar).to_be_visible()
-        # Identity rail: the Flux mark, Home and Direct messages; no project monograms yet.
+        # Identity rail: the Flux mark, Home, Inbox (#116) and Direct messages; no project monograms yet.
         rail = sidebar.get_by_role("navigation", name="Places")
         expect(rail.get_by_role("img", name="Flux")).to_be_visible()
         expect(rail.get_by_role("link", name="Home")).to_have_attribute("aria-current", "page")
         expect(rail.get_by_role("link", name="Direct messages")).not_to_have_attribute("aria-current", "page")
-        self.assertEqual(rail.get_by_role("link").count(), 2, "only Home and Direct messages until projects exist")
+        self.assertEqual(rail.get_by_role("link").count(), 3, "only Home, Inbox and Direct messages until projects exist")
         rail_box = box(page, rail)
         self.assertEqual((round(rail_box["x"]), round(rail_box["width"])), (0, 60), "a 60px rail at the far left")
         self.assertEqual(rail.evaluate("el => getComputedStyle(el).backgroundColor"), "rgb(17, 19, 16)")
@@ -473,7 +473,7 @@ class AppShellJourney(unittest.TestCase):
         drawer_rail = drawer.get_by_role("navigation", name="Places")
         expect(drawer_rail).to_be_visible()
         self.assertEqual(round(box(page, drawer_rail)["width"]), 60)
-        for name in ("Home", "Direct messages"):
+        for name in ("Home", "Inbox", "Direct messages"):
             self.assertGreaterEqual(box(page, drawer_rail.get_by_role("link", name=name))["height"], 44, f"44px rail target: {name}")
         self.assertTrue(drawer.evaluate("el => el.contains(document.activeElement)"), "focus moves into the drawer")
         self.assertTrue(page.evaluate("document.getElementById('root').inert"), "the page behind the drawer is inert")

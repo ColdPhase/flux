@@ -1,6 +1,6 @@
 import type { Executor } from '../types.js';
 import type { SourceLookup, SourceReadAuthorizer, SourceReadDecision } from '../push/ports.js';
-import { evaluateDraft, evaluateProject, evaluateWorkspace } from './policy.js';
+import { evaluateDm, evaluateDraft, evaluateProject, evaluateWorkspace } from './policy.js';
 
 /**
  * The access policy as the notification use cases' `SourceReadAuthorizer` port: a person may
@@ -16,7 +16,10 @@ export function policySourceReader(db: Executor): SourceReadAuthorizer {
         ? await evaluateWorkspace(principal, 'workspace.read', source.id, db)
         : source.type === 'project'
           ? await evaluateProject(principal, 'project.read', source.id, db)
-          : await evaluateDraft(principal, 'draft.read', source.id, db);
+          : source.type === 'dm'
+            // Direct messages (#116): readable only by current participants (#107).
+            ? await evaluateDm(principal, 'dm.read', source.id, db)
+            : await evaluateDraft(principal, 'draft.read', source.id, db);
       const { visible, allowed } = evaluation;
       return { visible, allowed, workspaceId: visible ? evaluation.actor?.workspaceId ?? null : null };
     },

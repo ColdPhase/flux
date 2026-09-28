@@ -15,6 +15,7 @@ export interface SidebarProps {
   session: { expiresAt: string };
   /** In the drawer: a close button and closing after navigation. */
   onClose?: () => void;
+  inboxUnread?: boolean;
   titleId?: string;
 }
 
@@ -23,7 +24,7 @@ export interface SidebarProps {
  * holds private capture and the projects you belong to; Direct messages lists conversations
  * with people. A project never reveals another project.
  */
-export function Sidebar({ workspace, projects, directMessages, user, session, onClose, titleId }: SidebarProps) {
+export function Sidebar({ workspace, projects, directMessages, user, session, onClose, titleId, inboxUnread = false }: SidebarProps) {
   const go = useNavigate();
   const location = useLocation();
   const place = placeOf(location.pathname);
@@ -34,19 +35,31 @@ export function Sidebar({ workspace, projects, directMessages, user, session, on
   const me = useShellData().me.user.id;
   const head = place === 'dm'
     ? { title: 'Direct messages', sub: 'Only the people in each conversation' }
+    : place === 'inbox'
+      ? { title: 'Inbox', sub: 'Only what involves you' }
     : activeProject
       ? { title: activeProject.name, sub: shell?.project.id === activeProject.id ? audienceLine(shell.people, me) : activeProject.workspaceName ?? 'Project conversation' }
       : { title: 'Home', sub: workspace ? `Yours · ${workspace.name}` : 'Only you see Home' };
   return (
     <div className="side-wrap">
-      <Rail place={place} projects={projects} onNavigate={navigate} titleId={titleId} />
+      <Rail place={place} projects={projects} inboxUnread={inboxUnread} onNavigate={navigate} titleId={titleId} />
       <div className="side">
         <div className="side__ws">
           <span className="side__place"><b>{head.title}</b><span>{head.sub}</span></span>
           {onClose ? <IconButton icon="x" label="Close navigation" onClick={onClose} /> : null}
         </div>
         <nav className="side__nav" aria-label={head.title}>
-          {place === 'dm' ? (
+          {place === 'inbox' ? (
+            <div className="side__sec">
+              <NavLink to="/inbox" end className="side__item" onClick={navigate}>
+                <Icon name="inbox" className="side__ic" /><span className="side__label">Inbox</span>
+                {inboxUnread ? <span className="ui-dot ui-dot--accent side__new"><span className="ui-vh">, something new</span></span> : null}
+              </NavLink>
+              <NavLink to="/settings/notifications" className="side__item" onClick={navigate}>
+                <Icon name="bell" className="side__ic" /><span className="side__label">Notification settings</span>
+              </NavLink>
+            </div>
+          ) : place === 'dm' ? (
             <>
               <div className="side__sec">
                 <NavLink to="/dm/new" className="side__item side__capture" onClick={navigate}>

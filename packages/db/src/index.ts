@@ -75,3 +75,4 @@ export * from './repositories/returns.js';
 export * from './repositories/proactive-comparison.js';
 export * from './repositories/background-connections.js';
 export * from './background-key-crypto.js';
+export * from './repositories/notifications.js';

@@ -74,3 +74,7 @@ $compose run --rm test pnpm exec tsx tests/app/session-restart.ts verify
 # Without VAPID keys the API must report push unavailable rather than fail silently.
 FLUX_VAPID_PUBLIC_KEY= $compose up -d --wait api
 $compose run --rm --no-deps test pnpm exec tsx --test tests/app/push-unavailable.check.ts
+
+# Without SMTP, notification email is reported unavailable and the inbox keeps working (#116, #113).
+FLUX_SMTP_URL= FLUX_MAIL_FROM= $compose up -d --wait api worker
+$compose run --rm --no-deps test pnpm exec tsx --test tests/app/email-unavailable.check.ts

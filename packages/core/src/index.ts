@@ -71,6 +71,7 @@ export async function createSample(principal: Principal, command: SampleCommand,
 }
 
 export * from './push/index.js';
+export * from './notifications/index.js';
 export { policySourceReader } from './access/source-reader.js';
 export * from './proactive-comparison/rules.js';
 export * from './proactive-comparison/connections.js';

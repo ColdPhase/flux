@@ -138,7 +138,8 @@ the same audience as the thing it is about ([#41](https://github.com/ColdPhase/f
 [access policy](../development/access-policy.md)):
 
 - A notification exists only for a recipient who can read its source (a workspace,
-  project or draft; later conversations and DMs) when it is created.
+  project, draft or direct message) when it is created, and follows that person's
+  preferences, muted places and quiet hours ([#116](../development/notifications.md)).
 - Right before sending, the worker rechecks the source through the access policy. A
   recipient who can no longer see the source receives nothing. The title and body
   are included only while the recipient can read the source; otherwise the device

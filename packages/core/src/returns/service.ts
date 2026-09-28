@@ -2,6 +2,7 @@ import type {
   ReturnItem, ReturnNextStep, ReturnPlace, ReturnPoint, ReturnSource, ReturnSummary, ReturnSummaryQuery, SaveReturnPointCommand,
 } from '@flux/contracts';
 import { InvalidInputError } from '../access/errors.js';
+import { isQuestion, mentions } from '../notifications/addressing.js';
 import type { Principal } from '../principal.js';
 import type { AudienceEvent, ResolvedPlace, ReturnMessage, ReturnPorts, ReturnSketch, StoredReturnPoint } from './ports.js';
 
@@ -63,23 +64,6 @@ function list(names: string[]) {
   if (unique.length === 2) return `${unique[0]} and ${unique[1]}`;
   return `${unique.slice(0, -1).join(', ')} and ${unique.at(-1)}`;
 }
-
-function escape(text: string) {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/** Whether a message addresses the reader: "@Ari", "@Ari Kowal", or opening with "Ari," / "Ari:". */
-function mentions(body: string, name: string) {
-  const full = name.trim();
-  if (full.length < 2) return false;
-  const first = full.split(/\s+/)[0]!;
-  const names = [...new Set([full, first])].filter((item) => item.length >= 2).map(escape);
-  const at = new RegExp(`(^|[^\\p{L}\\p{N}_])@(${names.join('|')})(?![\\p{L}\\p{N}_])`, 'iu');
-  const opening = new RegExp(`^\\s*(${names.join('|')})\\s*[,:]`, 'iu');
-  return at.test(body) || opening.test(body);
-}
-
-const isQuestion = (body: string) => /\?\s*(\p{Emoji_Presentation})?\s*$/u.test(body.trim()) || /\?\s/.test(body);
 
 /** An item plus the next step it would suggest (lower priority first). */
 type Built = ReturnItem & { step?: { priority: number; text: string; reason: string } };

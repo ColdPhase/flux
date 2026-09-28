@@ -18,7 +18,7 @@ import {
 const workspaceId = randomUUID();
 const notification: NotificationRecord = {
   id: randomUUID(), userId: 'user-1', source: { workspaceId, type: 'project', id: randomUUID() },
-  title: 'Q3 numbers are in', body: 'Revenue 4.2M', url: '/projects/x', createdAt: new Date(), readAt: null,
+  title: 'Q3 numbers are in', body: 'Revenue 4.2M', url: '/projects/x', createdAt: new Date(), readAt: null, reason: null,
 };
 const subscription: PushSubscriptionRecord = {
   id: randomUUID(), userId: 'user-1', sessionId: 'session-1', endpoint: 'https://fcm.googleapis.com/fcm/send/abc', p256dh: 'k', auth: 'a',
@@ -84,6 +84,7 @@ describe('push payload privacy (core)', () => {
       findForRecipient: async (userId: string, id: string) => (userId === notification.userId && id === notification.id ? notification : null),
       listReadable: async () => ({ items: [], unread: 0 }),
       markRead: async () => null,
+      markAllRead: async () => 0,
     };
     const readable = { notifications, authorizer: { canRead: async () => reads } };
     assert.equal((await getInboxItem(readable, 'user-1', notification.id)).id, notification.id);
