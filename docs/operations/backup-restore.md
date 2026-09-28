@@ -101,8 +101,11 @@ In this order, stopping at the first problem:
    subscriptions keep working. An existing `.env` is kept, and the restore warns when its
    signing secret or VAPID key differ (everyone signs in again; devices turn push on again).
 6. **Replace the data.** It builds this checkout, removes this project's containers and
-   volumes (`down -v`, never another project's), starts an empty database, runs `pg_restore
-   --no-owner --no-privileges --exit-on-error --single-transaction`, unpacks the files, runs
+   volumes (`down -v`, never another project's), starts an empty database, converts the dump with
+   `pg_restore --no-owner --no-privileges -f -` and replays it with `psql --single-transaction
+   -v ON_ERROR_STOP=1`, with `public` on pg_dump's otherwise empty `search_path` (the #114
+   `search_keys` function calls `show_trgm` unqualified; migration `0026_search_restore_path.sql`
+   pins its path for new dumps, the replay keeps older backups restorable), unpacks the files, runs
    `files-init` (owner `1000:1000` for the non-root API) and the migration, which applies
    forward migrations after `--migrate` and otherwise only validates the schema.
 7. **Check.** It starts API and worker, waits for their health checks (which verify the exact

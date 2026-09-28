@@ -718,8 +718,14 @@ cmd_restore() {
   say "Replacing the data of $PROJECT..."
   compose_main --profile ops --profile setup down -v --remove-orphans >/dev/null 2>&1
   compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" db >/dev/null || die "The new database did not start."
-  compose_main exec -T db pg_restore -U "$(pg_user)" -d "$(pg_db)" --no-owner --no-privileges --exit-on-error --single-transaction \
-    < "$RESTORE_DIR/database.dump" || die "pg_restore failed. The archive is unchanged; fix the cause and run ./flux restore again."
+  # pg_dump pins an empty search_path; functions written before 0026 that call others
+  # unqualified (search_keys, #114) then fail while COPY fills generated columns. The dump is
+  # our own, checksummed archive, so it is replayed with the public schema on the path.
+  compose_main exec -T db pg_restore --no-owner --no-privileges -f - < "$RESTORE_DIR/database.dump" > "$RESTORE_DIR/database.sql" \
+    || die "pg_restore could not read the dump. Nothing was restored into the new database."
+  sed "s/pg_catalog\.set_config('search_path', '', false)/pg_catalog.set_config('search_path', 'public, pg_catalog', false)/g" "$RESTORE_DIR/database.sql" |
+    compose_main exec -T db psql -X -q -v ON_ERROR_STOP=1 --single-transaction -U "$(pg_user)" -d "$(pg_db)" >/dev/null \
+    || die "Restoring the database failed. The archive is unchanged; fix the cause and run ./flux restore again."
   compose_main --profile ops run --rm --no-deps -T files-archive tar -C /data/files -xzf - < "$RESTORE_DIR/files.tar.gz" \
     || die "Restoring the files volume failed; run ./flux restore again."
   compose_main --profile setup run --rm files-init >/dev/null
