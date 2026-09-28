@@ -44,6 +44,13 @@ export class ConflictError extends DomainError {
   }
 }
 
+/** An external dependency is required to enforce a security boundary safely. */
+export class ServiceUnavailableError extends DomainError {
+  constructor(message: string, code = 'SERVICE_UNAVAILABLE') {
+    super(503, code, message);
+  }
+}
+
 /**
  * The caller's expected version is stale. The change was not applied. `details` carries
  * the latest version and object the caller is authorized to read.
