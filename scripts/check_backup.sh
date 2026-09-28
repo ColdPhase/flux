@@ -140,7 +140,8 @@ printf '#!/bin/sh\n[ "$*" = "-u +%%Y%%m%%dT%%H%%M%%SZ" ] && { echo 20260101T0000
 chmod +x "$work/shim-stop/docker" "$work/shim-date/date"
 api_started() { docker inspect -f '{{.State.StartedAt}}' "$(compose_in "$A" ps -q api)"; }
 before_start=$(api_started)
-if PATH="$work/shim-stop:$PATH" flux_a backup --output "$work/backups" > "$work/stopfail.out" 2>&1; then fail "a backup ran although the writers were not stopped"; fi
+# Subshells: an assignment before a shell function call can outlive the call in sh.
+if (PATH="$work/shim-stop:$PATH"; export PATH; flux_a backup --output "$work/backups") > "$work/stopfail.out" 2>&1; then fail "a backup ran although the writers were not stopped"; fi
 grep -q 'Could not confirm that API and worker are stopped (still running: api worker; stop failed). No backup was written.' "$work/stopfail.out" \
   || fail "no stop refusal: $(cat "$work/stopfail.out")"
 [ -z "$(ls -A "$work/backups" 2>/dev/null)" ] || fail "the refused backup left files: $(ls -A "$work/backups")"
@@ -149,12 +150,12 @@ grep -q 'Could not confirm that API and worker are stopped (still running: api w
 curl -fsS "http://127.0.0.1:$port_a/api/v1/health" | grep -q '"status":"ok"' || fail "API not healthy after the refused backup"
 
 step "./flux backup (twice in one second, then --keep 1) stops the writers, writes checked archives and restarts them"
-PATH="$work/shim-date:$PATH" flux_a backup --output "$work/backups" > "$work/backup1.out"
+(PATH="$work/shim-date:$PATH"; export PATH; flux_a backup --output "$work/backups") > "$work/backup1.out"
 cat "$work/backup1.out"
 grep -q 'Stopping api worker so the database and files are captured at one point in time' "$work/backup1.out" || fail "backup did not stop API and worker"
 first=$(sed -n 's/^Backup written: \(.*\.tar\) (.*/\1/p' "$work/backup1.out")
 [ -f "$first" ] || fail "no archive reported"
-PATH="$work/shim-date:$PATH" flux_a backup --output "$work/backups" > "$work/backup2.out"
+(PATH="$work/shim-date:$PATH"; export PATH; flux_a backup --output "$work/backups") > "$work/backup2.out"
 second=$(sed -n 's/^Backup written: \(.*\.tar\) (.*/\1/p' "$work/backup2.out")
 case "$first$second" in *20260101T000000Z-*20260101T000000Z-*) ;; *) fail "the date shim did not apply: $first $second" ;; esac
 [ -f "$first" ] && [ -f "$second" ] && [ "$first" != "$second" ] || fail "a backup in the same second replaced the first ($first, $second)"

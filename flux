@@ -513,13 +513,13 @@ backup_to() {
   db_was_running=0; if is_running db; then db_was_running=1; fi
   if [ -n "$writers" ]; then say "Stopping$writers so the database and files are captured at one point in time..."; fi
   stop_ok=1
-  compose_main stop api worker >/dev/null 2>&1 || stop_ok=0
+  stop_error=$(compose_main stop api worker 2>&1 >/dev/null) || stop_ok=0
   # Restart exactly what was running before and is stopped now; never start anything else.
   still=''
   for service in api worker; do if is_running "$service"; then still="$still $service"; fi; done
   for service in $writers; do case " $still " in *" $service "*) ;; *) BACKUP_RESTART="$BACKUP_RESTART $service" ;; esac; done
   if [ "$stop_ok" != 1 ] || [ -n "$still" ]; then
-    die "Could not confirm that API and worker are stopped (still running:${still:- none}; stop $( [ "$stop_ok" = 1 ] && echo succeeded || echo failed)). No backup was written."
+    die "Could not confirm that API and worker are stopped (still running:${still:- none}; stop $( [ "$stop_ok" = 1 ] && echo succeeded || echo failed)). No backup was written.${stop_error:+ ($(printf '%s' "$stop_error" | tail -n 1))}"
   fi
   compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" db >/dev/null 2>&1 || die "The database of $PROJECT did not start."
   schema=$(db_query 'SELECT max(version) FROM flux_schema_version') || die "Could not read the schema version of $PROJECT."
