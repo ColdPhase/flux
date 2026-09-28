@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
 import { chromium, type Browser, type Page } from 'playwright';
 import type { Conversation, LiveJoinGrant, LiveSession } from '@flux/contracts';
+import { assessReceiverQuality, readReceiverSample, RECEIVER_QUALITY_LIMITS,
+  type RtcStatsRecord } from '../../../apps/web/src/live/receiver-quality.js';
 import { addMember, expectStatus, grant, person, project, workspace } from '../support/people.js';
 
 let browser: Browser | undefined;
@@ -10,6 +14,27 @@ after(async () => browser?.close());
 
 type CandidateEvidence = { candidateType: string; protocol: string; relayProtocol?: string;
   pairState: string; bytesSent: number; bytesReceived: number };
+
+async function receiverReports(page: Page): Promise<RtcStatsRecord[]> {
+  return page.evaluate(async () => {
+    const pcs = (window as Window & { fluxPcs?: RTCPeerConnection[] }).fluxPcs ?? [];
+    const records: RtcStatsRecord[] = [];
+    for (const [index, pc] of pcs.entries()) {
+      for (const report of (await pc.getStats()).values()) {
+        records.push({ id: `${index}:${report.id}`, type: report.type,
+          kind: report.kind, selected: report.selected,
+          selectedCandidatePairId: report.selectedCandidatePairId
+            ? `${index}:${report.selectedCandidatePairId}` : undefined,
+          currentRoundTripTime: report.currentRoundTripTime,
+          packetsReceived: report.packetsReceived, packetsLost: report.packetsLost,
+          bytesReceived: report.bytesReceived, jitter: report.jitter,
+          framesPerSecond: report.framesPerSecond, framesDecoded: report.framesDecoded,
+          frameWidth: report.frameWidth, frameHeight: report.frameHeight });
+      }
+    }
+    return records;
+  });
+}
 
 async function connect(page: Page, media: LiveJoinGrant): Promise<void> {
   await page.goto(media.mediaUrl.replace(/^ws/, 'http'));
@@ -119,7 +144,8 @@ test('two authorized Chromium clients exchange media when UDP and direct ICE/TCP
     await Promise.all([connect(ownerPage, ownerMedia), connect(memberPage, memberMedia)]);
     await ownerPage.evaluate(async () => {
       const room = (window as Window & { fluxRoom?: { localParticipant: {
-        publishTrack(track: MediaStreamTrack): Promise<unknown> } }; fluxAudioContext?: AudioContext }).fluxRoom;
+        publishTrack(track: MediaStreamTrack): Promise<unknown> } }; fluxAudioContext?: AudioContext;
+        fluxVideoTimer?: number }).fluxRoom;
       if (!room) throw new Error('Owner room absent');
       // A generated Web Audio tone is an actual encoded track without asking
       // a microphone or assuming getUserMedia on this private HTTP test origin.
@@ -132,20 +158,55 @@ test('two authorized Chromium clients exchange media when UDP and direct ICE/TCP
       oscillator.connect(output);
       oscillator.start();
       await room.localParticipant.publishTrack(output.stream.getAudioTracks()[0]!);
+      const canvas = document.createElement('canvas');
+      canvas.width = 640;
+      canvas.height = 360;
+      const brush = canvas.getContext('2d');
+      if (!brush) throw new Error('Canvas unavailable');
+      let frame = 0;
+      brush.fillStyle = '#172033';
+      brush.fillRect(0, 0, canvas.width, canvas.height);
+      brush.fillStyle = '#f4f8ff';
+      brush.font = '20px monospace';
+      brush.fillText(`Flux receiver quality frame ${++frame}`, 20, 48);
+      (window as Window & { fluxVideoTimer?: number }).fluxVideoTimer = window.setInterval(() => {
+        brush.fillStyle = '#172033';
+        brush.fillRect(0, 0, canvas.width, canvas.height);
+        brush.fillStyle = '#f4f8ff';
+        brush.font = '20px monospace';
+        brush.fillText(`Flux receiver quality frame ${++frame}`, 20, 48);
+      }, 67);
+      await room.localParticipant.publishTrack(canvas.captureStream(15).getVideoTracks()[0]!);
     });
     await memberPage.waitForFunction(() => {
       const room = (window as Window & { fluxRoom?: { remoteParticipants: Map<string, {
-        audioTrackPublications: Map<string, { isSubscribed: boolean }> }> } }).fluxRoom;
+        audioTrackPublications: Map<string, { isSubscribed: boolean }>;
+        videoTrackPublications: Map<string, { isSubscribed: boolean }> }> } }).fluxRoom;
       return [...(room?.remoteParticipants.values() ?? [])].some((participant) =>
-        [...participant.audioTrackPublications.values()].some((track) => track.isSubscribed));
+        [...participant.audioTrackPublications.values()].some((track) => track.isSubscribed) &&
+        [...participant.videoTrackPublications.values()].some((track) => track.isSubscribed));
     }, undefined, { timeout: 20_000 });
+    await memberPage.evaluate(() => {
+      const room = (window as Window & { fluxRoom?: { remoteParticipants: Map<string, {
+        videoTrackPublications: Map<string, { track?: { attach(): HTMLVideoElement } }> }> } }).fluxRoom;
+      for (const participant of room?.remoteParticipants.values() ?? []) {
+        for (const publication of participant.videoTrackPublications.values()) {
+          if (publication.track) document.body.append(publication.track.attach());
+        }
+      }
+    });
     await memberPage.waitForFunction(async () => {
       const pcs = (window as Window & { fluxPcs?: RTCPeerConnection[] }).fluxPcs ?? [];
       for (const pc of pcs) {
         const stats = await pc.getStats();
         for (const report of stats.values()) {
           if (report.type === 'inbound-rtp' && report.kind === 'audio' &&
-            report.packetsReceived >= 3 && report.bytesReceived > 0) return true;
+            report.packetsReceived >= 3 && report.bytesReceived > 0) {
+            const video = [...stats.values()].find((item) => item.type === 'inbound-rtp' &&
+              item.kind === 'video' && item.packetsReceived >= 3 && item.bytesReceived > 0 &&
+              item.framesDecoded > 0);
+            if (video) return true;
+          }
         }
       }
       return false;
@@ -165,6 +226,49 @@ test('two authorized Chromium clients exchange media when UDP and direct ICE/TCP
     }
     assert.ok(memberCandidates.some((candidate) => candidate.bytesReceived > 0),
       'receiver must get data from the SFU through the relay');
+    const initialReports = await receiverReports(memberPage);
+    await delay(2_000);
+    const baselineReports = await receiverReports(memberPage);
+    const baseline = readReceiverSample(baselineReports, initialReports, 2_000);
+    assert.ok(baseline.tracks.some((track) => track.kind === 'audio' && track.packetsReceived > 0),
+      'receiver must expose inbound audio stats');
+    assert.ok(baseline.tracks.some((track) => track.kind === 'video' && track.packetsReceived > 0 &&
+      (track.width ?? 0) > 0 && (track.height ?? 0) > 0 && track.fps !== undefined),
+    'receiver must expose decoded video dimensions and fps');
+
+    // Fixed netem delay is reproducible and does not pretend to model random
+    // loss, jitter, a real Wi-Fi network or a hardware device.
+    const mediaIp = execFileSync('getent', ['ahostsv4', 'livekit'], { encoding: 'utf8' }).split(/\s+/)[0]!;
+    const route = execFileSync('ip', ['route', 'get', mediaIp], { encoding: 'utf8' });
+    const iface = route.match(/\bdev (\S+)/)?.[1];
+    assert.ok(iface, `cannot find client route to ${mediaIp}: ${route}`);
+    let weak = baseline;
+    let quality = assessReceiverQuality(weak, ['audio', 'video']);
+    execFileSync('tc', ['qdisc', 'replace', 'dev', iface, 'root', 'netem', 'delay', '450ms']);
+    try {
+      const start = Date.now();
+      const beforeWeak = await receiverReports(memberPage);
+      for (let attempt = 0; attempt < 25; attempt++) {
+        await delay(1_000);
+        weak = readReceiverSample(await receiverReports(memberPage), beforeWeak, Date.now() - start);
+        quality = assessReceiverQuality(weak, ['audio', 'video']);
+        if (weak.rttMs !== undefined && weak.rttMs > RECEIVER_QUALITY_LIMITS.rttWarningMs &&
+          weak.tracks.some((track) => track.kind === 'audio' && (track.bitrateKbps ?? 0) > 0) &&
+          weak.tracks.some((track) => track.kind === 'video' && (track.bitrateKbps ?? 0) > 0)) break;
+      }
+      assert.ok(weak.rttMs !== undefined && weak.rttMs > RECEIVER_QUALITY_LIMITS.rttWarningMs,
+        `selected receiver RTT did not reflect 450ms netem delay: ${JSON.stringify(weak)}`);
+      assert.notEqual(quality.status, 'good', JSON.stringify(quality));
+      assert.ok(quality.warnings.some((warning) => warning.includes('Network round trip')),
+        JSON.stringify(quality));
+      assert.ok(weak.tracks.some((track) => track.kind === 'audio' && (track.bitrateKbps ?? 0) > 0),
+        'audio must still reach the receiver under fixed delay');
+      assert.ok(weak.tracks.some((track) => track.kind === 'video' && (track.bitrateKbps ?? 0) > 0),
+        'video must still reach the receiver under fixed delay');
+    } finally {
+      execFileSync('tc', ['qdisc', 'del', 'dev', iface, 'root']);
+    }
     console.log(JSON.stringify({ ownerCandidates, memberCandidates, subscribedAudio: true,
-      receivedAudioPackets: true, blocked: ['UDP to SFU', 'TCP/7881 direct ICE'], participants: 2 }));
+      receivedAudioPackets: true, receivedVideo: true, baseline, weak, quality,
+      fixedClientDelayMs: 450, blocked: ['UDP to SFU', 'TCP/7881 direct ICE'], participants: 2 }));
   });

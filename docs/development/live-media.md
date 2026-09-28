@@ -87,8 +87,47 @@ UDP packets and three rejected direct TCP/7881 packets. Those are local bridge
 measurements, not external-network or hardware quality results.
 
 This proof does not cover four people, real microphones/screens/cameras,
-14–16px receiver text, weak-link metrics, Android/iOS devices, or k3s. Those
+14–16px receiver text, real weak-link loss/jitter, Android/iOS devices, or k3s. Those
 remain required by [#63](https://github.com/ColdPhase/flux/issues/63).
+
+## Receiver quality measurement slice
+
+[`receiver-quality.ts`](../../apps/web/src/live/receiver-quality.ts) reads
+receiver `getStats()` samples: selected ICE round-trip time; inbound audio/video
+packets, interval bitrate and loss; audio jitter; and decoded video fps and
+dimensions. A counter reset or absent report is unknown, never fabricated as
+zero loss or good throughput. The module returns specific warning reasons for
+the live interface in [#62](https://github.com/ColdPhase/flux/issues/62) to
+present on demand; #62 has not yet wired it into UI on this branch.
+
+These **provisional diagnostic thresholds** are test gates, not release quality
+promises. Peer calibration against receiver recordings and real links is still
+required before the final #63 acceptance run:
+
+| Receiver metric | Warning | Poor |
+| --- | ---: | ---: |
+| Selected ICE round-trip time | >300 ms | >600 ms |
+| Audio jitter | >30 ms | >80 ms |
+| Interval audio/video packet loss | >3% | >10% |
+| Decoded video frame rate, when receiving video | <10 fps | <5 fps |
+
+The restrictive Docker test adds a fixed 450 ms outbound delay with `tc netem`
+**after** both receivers connect. It checks that real received audio and video
+remain visible in `getStats()` and that the measured RTT crosses the
+warning threshold. A constant delay is reproducible but does not emulate
+random loss, jitter, weak radio, device switching, screen readability or
+four-person capacity. Those need separate profiles and real receivers.
+
+**Observed 2026-09-28, isolated Docker rerun:**
+`./scripts/check_live_turn.sh` exited 0 (1/1). Before impairment, receiver
+audio was 97.8 kbps, 2 ms jitter and 0% interval loss; decoded video was
+640×360 at 16 fps and 73.1 kbps. With a fixed 450 ms client outbound delay,
+selected ICE RTT measured 450 ms, audio continued at 88.7 kbps, and decoded
+video continued at 320×180, 10 fps and 40.7 kbps. The classifier returned
+`warning` with “Network round trip 450 ms”. Both browsers still selected
+TURN/TLS relay candidate pairs; the client firewall rejected 60 UDP packets
+and three direct TCP/7881 packets. These values are one local synthetic-media
+observation, not code-text readability or network/device acceptance.
 
 ## Sources and inference
 
