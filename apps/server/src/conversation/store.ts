@@ -39,7 +39,7 @@ function version(row: VersionRow, principal: Principal): MaterialVersion {
 }
 
 function material(row: MaterialRow, current: VersionRow, principal: Principal): Material {
-  return { ...version(current, principal), projectId: row.projectId, workspaceId: row.workspaceId,
+  return { ...version(current, principal), kind: row.kind, projectId: row.projectId, workspaceId: row.workspaceId,
     audience: { kind: 'project', projectId: row.projectId },
     createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
@@ -180,7 +180,7 @@ export function conversationStore(db: Database) {
           id: randomUUID(), workspaceId: project.workspaceId, projectId, createdBy: authorId,
         }).returning();
         const first = await sendInTransaction(tx, row!, authorId, input);
-        if (first.inserted) await recordEvent(tx, principal, project.workspaceId, 'project.conversation_created.v1', projectId, {});
+        if (first.inserted) await recordEvent(tx, principal, project.workspaceId, 'project.conversation_created.v1', projectId, { conversationId: row!.id, messageId: first.message.id });
         return { id: row!.id, projectId, workspaceId: project.workspaceId,
           audience: { kind: 'project' as const, projectId }, createdBy: authorId,
           createdAt: row!.createdAt.toISOString(), firstMessageBody: first.message.body, messages: [first.message],
@@ -196,7 +196,7 @@ export function conversationStore(db: Database) {
         const sent = await sendInTransaction(tx, row, authorId, input);
         if (sent.message.sequence === 1)
           throw new ConflictError('This clientMessageId was used to start the conversation', 'IDEMPOTENCY_CONFLICT');
-        if (sent.inserted) await recordEvent(tx, principal, row.workspaceId, 'project.message_sent.v1', row.projectId, {});
+        if (sent.inserted) await recordEvent(tx, principal, row.workspaceId, 'project.message_sent.v1', row.projectId, { conversationId: row.id, messageId: sent.message.id });
         return sent.message;
       });
     },
@@ -204,9 +204,10 @@ export function conversationStore(db: Database) {
     async listMaterials(principal: Principal, projectId: string, query: PageQuery = {}): Promise<Page<Material>> {
       const page = parsePage(query);
       await requireProject(principal, projectId, db);
-      const [count] = await db.select({ total: sql<number>`count(*)::int` }).from(schema.projectMaterials)
-        .where(eq(schema.projectMaterials.projectId, projectId));
-      const rows = await db.select().from(schema.projectMaterials).where(eq(schema.projectMaterials.projectId, projectId))
+      // Docs (#112) are materials of kind 'doc' with their own list; citations of them still resolve below.
+      const materials = and(eq(schema.projectMaterials.projectId, projectId), eq(schema.projectMaterials.kind, 'material'));
+      const [count] = await db.select({ total: sql<number>`count(*)::int` }).from(schema.projectMaterials).where(materials);
+      const rows = await db.select().from(schema.projectMaterials).where(materials)
         .orderBy(desc(schema.projectMaterials.createdAt), desc(schema.projectMaterials.id)).limit(page.limit).offset(page.offset);
       const items = await Promise.all(rows.map(async (row) => material(row, await currentVersion(row, db), principal)));
       return { items, total: count?.total ?? 0, ...page };
@@ -263,7 +264,7 @@ export function conversationStore(db: Database) {
           title: input.title, body: input.body, url: input.url, authorId,
           sourceDraftId: input.sourceDraftId, sourceDraftVersion: input.sourceDraftVersion,
         }).returning();
-        await recordEvent(tx, principal, project.workspaceId, 'project.material_created.v1', projectId, {});
+        await recordEvent(tx, principal, project.workspaceId, 'project.material_created.v1', projectId, { materialId: id, version: 1 });
         return material(created, first!, principal);
       });
     },
@@ -272,6 +273,7 @@ export function conversationStore(db: Database) {
       const authorId = human(principal);
       return db.transaction(async (tx) => {
         const row = await locateMaterial(principal, materialId, tx, true, true);
+        if (row.kind === 'doc') throw new ConflictError('Docs are edited through the doc API with If-Match', 'USE_DOC_API');
         const [locked] = await tx.select().from(schema.projectMaterials).where(eq(schema.projectMaterials.id, row.id)).for('update');
         const [priorEdit] = await tx.select().from(schema.projectMaterialVersions).where(and(
           eq(schema.projectMaterialVersions.materialId, row.id), eq(schema.projectMaterialVersions.authorId, authorId),
@@ -294,7 +296,7 @@ export function conversationStore(db: Database) {
           version: updated!.currentVersion, ...next, authorId,
           clientMutationId: input.clientMutationId, requestFingerprint: input.fingerprint,
         }).returning();
-        await recordEvent(tx, principal, row.workspaceId, 'project.material_updated.v1', row.projectId, {});
+        await recordEvent(tx, principal, row.workspaceId, 'project.material_updated.v1', row.projectId, { materialId: row.id, version: updated!.currentVersion });
         return material(updated!, snapshot!, principal);
       });
     },

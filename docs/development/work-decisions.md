@@ -12,7 +12,7 @@ principals with current read access to the project; there is no second audience.
 | Work item | title, outcome (may be empty), owner (person or #29 agent, or nobody), status `open` · `in_progress` · `blocked` · `done` · `not_pursued`, optional blocker (only while blocked), `parked`, version | The owner must currently be able to read the project (`OWNER_WITHOUT_ACCESS`). Leaving `blocked` clears the blocker. Small tasks need only a title; no report is required. |
 | Decision | title, rationale, status `proposed` · `accepted` · `superseded`, proposed by, decided by (a person), `supersedes` / `supersededBy`, version | People and agents with write access propose. Only a person with write access accepts (`DECISION_NEEDS_PERSON`). Only an accepted decision can be superseded (`SUPERSEDES_NOT_CURRENT`); accepting the replacement marks the earlier one `superseded` and keeps its title and rationale. |
 | Result | title, finding `positive` · `negative`, evidence | Immutable once recorded, so later thinking never rewrites it. `finishes: { id, expectedVersion }` names one of its linked work items, which becomes `done`: a negative result can finish an experiment. A stale version is `409 VERSION_CONFLICT` with the current work; parked or `not_pursued` work is `409 WORK_NOT_FINISHABLE` (bring parked work back first). Nothing is stored when finishing is refused. |
-| Link | role, from (work/decision/result), to (message, material version, work, decision, result), titles of both ends | Roles: `source` (created from / based on), `affects`, `still_applies`, `about`, `related`. Every target must exist in the same project (`LINK_TARGET_NOT_FOUND`). Identical links are stored once. |
+| Link | role, from (work/decision/result, or a [doc](docs-wiki.md)), to (message, thought, material version, work, decision, result, doc, project sketch), titles of both ends | Roles: `source` (created from / based on), `affects`, `still_applies`, `about`, `related`, and `mentions` (the current text of a doc refers to it, #112). Every target must exist in the same project (`LINK_TARGET_NOT_FOUND`). Identical links are stored once. |
 
 **Pivot.** Accepting a decision that supersedes an earlier rule is a pivot. The request may name
 `stillApplies` (linked to the new decision as `still_applies`) and `park` work. Parked work keeps
@@ -60,8 +60,9 @@ project readers and the client refetches. Idempotent replays and failed changes 
 ## Not yet
 
 Sketch thoughts as link sources and sources of new work depend on #69/#100 merging; the link
-table accepts a new target type through a small migration. Handoffs (a follow-up slice), agent
-execution (#52/#68) and the return view (8.8) are out of scope. The UI refreshes by route
+table accepts a new target type through a small migration. Handoffs (a follow-up slice) and agent
+execution (#52/#68) are out of scope. The return view (8.8) reads these events; see
+[return-view.md](return-view.md). The UI refreshes by route
 revalidation and polling and does not subscribe to the stream yet.
 
 ## Tests

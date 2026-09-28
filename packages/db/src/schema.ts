@@ -260,8 +260,10 @@ export const projectMaterials = pgTable('project_materials', {
   workspaceId: uuid('workspace_id').notNull(),
   projectId: uuid('project_id').notNull(),
   createdBy: text('created_by').notNull(),
-  clientMutationId: uuid('client_mutation_id').notNull(),
-  requestFingerprint: text('request_fingerprint').notNull(),
+  /** 'doc' for project docs (#112, migration 0013); docs have no client mutation id. */
+  kind: text('kind', { enum: ['material', 'doc'] }).notNull().default('material'),
+  clientMutationId: uuid('client_mutation_id'),
+  requestFingerprint: text('request_fingerprint'),
   currentVersion: integer('current_version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -284,6 +286,9 @@ export const projectMaterialVersions = pgTable('project_material_versions', {
   requestFingerprint: text('request_fingerprint'),
   sourceDraftId: uuid('source_draft_id'),
   sourceDraftVersion: integer('source_draft_version'),
+  /** Doc versions only (#112): draft or published, and why this version was made. */
+  state: text('state', { enum: ['draft', 'published'] }),
+  reason: text('reason').notNull().default(''),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   primaryKey({ columns: [table.materialId, table.version] }),
@@ -433,10 +438,10 @@ export const projectObjectLinks = pgTable('project_object_links', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),
   projectId: uuid('project_id').notNull(),
-  role: text('role', { enum: ['source', 'affects', 'still_applies', 'about', 'related'] }).notNull(),
-  fromType: text('from_type', { enum: ['work', 'decision', 'result'] }).notNull(),
+  role: text('role', { enum: ['source', 'affects', 'still_applies', 'about', 'related', 'mentions'] }).notNull(),
+  fromType: text('from_type', { enum: ['work', 'decision', 'result', 'doc'] }).notNull(),
   fromId: uuid('from_id').notNull(),
-  toType: text('to_type', { enum: ['message', 'thought', 'material', 'work', 'decision', 'result'] }).notNull(),
+  toType: text('to_type', { enum: ['message', 'thought', 'material', 'work', 'decision', 'result', 'doc', 'sketch'] }).notNull(),
   toId: uuid('to_id').notNull(),
   toVersion: integer('to_version'),
   createdByKind: text('created_by_kind', { enum: ['human', 'agent'] }).notNull(),
@@ -444,5 +449,64 @@ export const projectObjectLinks = pgTable('project_object_links', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   index('project_object_links_to_idx').on(table.toId),
+  index('project_object_links_from_idx').on(table.fromId),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
 ]);
+
+// Direct messages: private conversations between people of one workspace (migration 0010, issue #107).
+export const dms = pgTable('dms', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  kind: text('kind', { enum: ['pair', 'group'] }).notNull(),
+  pairKey: text('pair_key'),
+  title: text('title'),
+  createdBy: text('created_by').notNull().references(() => authUsers.id),
+  version: integer('version').notNull().default(1),
+  nextSequence: integer('next_sequence').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
+}, (table) => [
+  unique().on(table.workspaceId, table.id),
+  unique().on(table.workspaceId, table.pairKey),
+]);
+
+export const dmParticipants = pgTable('dm_participants', {
+  workspaceId: uuid('workspace_id').notNull(),
+  dmId: uuid('dm_id').notNull(),
+  userId: text('user_id').notNull(),
+  joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.dmId, table.userId] }),
+  foreignKey({ columns: [table.workspaceId, table.dmId], foreignColumns: [dms.workspaceId, dms.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.userId], foreignColumns: [workspaceMembers.workspaceId, workspaceMembers.userId] }).onDelete('cascade'),
+  index('dm_participants_user_idx').on(table.workspaceId, table.userId, table.dmId),
+]);
+
+export const dmMessages = pgTable('dm_messages', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  dmId: uuid('dm_id').notNull(),
+  authorId: text('author_id').notNull().references(() => authUsers.id),
+  clientMessageId: uuid('client_message_id').notNull(),
+  requestFingerprint: text('request_fingerprint').notNull(),
+  sequence: integer('sequence').notNull(),
+  body: text('body').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique().on(table.dmId, table.sequence),
+  unique().on(table.dmId, table.authorId, table.clientMessageId),
+  foreignKey({ columns: [table.workspaceId, table.dmId], foreignColumns: [dms.workspaceId, dms.id] }).onDelete('cascade'),
+]);
+
+// Return points: where each person last looked at a place (migration 0009, issue #106).
+export const returnPoints = pgTable('return_points', {
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  placeKey: text('place_key').notNull(),
+  placeType: text('place_type', { enum: ['home', 'project', 'conversation'] }).notNull(),
+  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+  conversationId: uuid('conversation_id').references(() => projectConversations.id, { onDelete: 'cascade' }),
+  seq: bigint('seq', { mode: 'number' }).notNull(),
+  savedAt: timestamp('saved_at', { withTimezone: true }).notNull().defaultNow(),
+  previousSeq: bigint('previous_seq', { mode: 'number' }),
+  previousSavedAt: timestamp('previous_saved_at', { withTimezone: true }),
+}, (table) => [primaryKey({ columns: [table.userId, table.placeKey] })]);

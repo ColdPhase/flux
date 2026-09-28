@@ -15,7 +15,7 @@ exports:
 | --- | --- |
 | `authorize(principal, action, resource, db)` | Returns `{ allowed, visible }` for one object. |
 | `assertAuthorized(principal, action, resource, db)` | Throws `NotFoundError` (404) when `visible` is false, and `ForbiddenError` (403) when the object is visible but the action is not allowed. |
-| `visibleFilter(principal, workspaceId, 'project' \| 'draft', db)` | Returns a SQL condition. Put it in the `WHERE` clause of both the list query and its count, so invisible rows never reach counts, pages or payloads. |
+| `visibleFilter(principal, workspaceId, 'project' \| 'draft' \| 'sketch' \| 'dm', db)` | Returns a SQL condition. Put it in the `WHERE` clause of both the list query and its count, so invisible rows never reach counts, pages or payloads. |
 | `authorizeEvent(principal, event, db)` | Whether a recipient may receive one event now: the principal is active in the event's workspace and can read the object the event is about. `recordEvent` calls it per member/agent to write the stream audience, and the stream calls it again for every event at delivery time. |
 | `visibleWorkspaceOf(principal, resource, db)` | The workspace of an object the principal can see, or `null`. Used to scope records such as idempotency keys without revealing invisible objects. |
 
@@ -142,6 +142,13 @@ Owners, admins and agents (including the author's own agent) never see it. DM-bo
 sketches follow #36 in a separate issue. Sketch events (`sketch.*.v1`) are
 authorized as `sketch.read` on the sketch.
 
+**Direct messages** (#107, details in [direct-messages.md](direct-messages.md)). A DM's
+audience is exactly its current participants (`dm_participants`). `dm.read` and `dm.write` need
+an active person who is a participant; workspace owners and admins outside the DM get `404`, and
+agents see no DMs in this slice. `dm.create` is for owners, admins and members. Leaving deletes
+the participant row, and removing a membership cascades to it, so access ends on the next
+request. DM events (`dm.*.v1`) are authorized as `dm.read` on the DM.
+
 **Membership.** Owners and admins manage members and create projects. Only an owner
 can grant, change or remove the owner role (`403 OWNER_REQUIRED`). The last owner
 cannot leave or step down (`409 LAST_OWNER`). Any member may leave. Members can
@@ -190,10 +197,12 @@ and is then refused with `404` or `403` without writing.
 
 | Resource | Actions |
 | --- | --- |
-| workspace | `workspace.read`, `workspace.read_members`, `workspace.manage_members`, `workspace.manage_agents`, `project.create`, `draft.create`, `agent.create` |
+| workspace | `workspace.read`, `workspace.read_members`, `workspace.manage_members`, `workspace.manage_agents`, `project.create`, `draft.create`, `agent.create`, `sketch.create`, `dm.create` |
 | project | `project.read`, `project.write`, `project.manage` |
 | draft | `draft.read`, `draft.write`, `draft.share`, `draft.move` |
 | agent | `agent.read`, `agent.revoke` |
+| sketch | `sketch.read`, `sketch.write` |
+| dm | `dm.read`, `dm.write` |
 
 ## HTTP API
 
@@ -212,6 +221,7 @@ forbidden action answers `403`. Error bodies are `{ error, code }`.
 | `PATCH/DELETE /api/v1/workspaces/:id/members/:userId` | `changeRole`, `removeMember` |
 | `GET/POST /api/v1/workspaces/:id/projects` | `listProjects` (`limit`, `offset`), `createProject` |
 | `GET /api/v1/projects/:id` | `getProject` |
+| `GET /api/v1/projects/:id/people` | `listProjectPeople` (#117): the people and agents who can read the project now, each with `access`. Needs `project.read`; every candidate's level comes from `evaluateProject`, so denied, removed and revoked principals are left out. Names only the project's audience, never the workspace roster. |
 | `GET/POST /api/v1/projects/:id/grants` | `listProjectGrants`, `grantProject` (create or replace) |
 | `DELETE /api/v1/projects/:id/grants/:grantId` | `revokeProjectGrant` |
 | `GET/POST /api/v1/workspaces/:id/agents` | `listAgents`, `createAgent` |
@@ -256,8 +266,8 @@ workspace's members and agents; readers never pay for events outside their audie
 Events recorded before migration 0004 have no audience rows and are not replayed.
 
 The event's object type comes from the first segment of its kind: `workspace`,
-`project`, `draft` or `agent`. The read action for that type decides delivery:
-`workspace.read`, `project.read`, `draft.read` or `agent.read`. Events without a
+`project`, `draft`, `agent`, `sketch` or `dm`. The read action for that type decides delivery:
+`workspace.read`, `project.read`, `draft.read`, `agent.read`, `sketch.read` or `dm.read`. Events without a
 workspace (the sample fixture) and unknown kinds are never delivered.
 
 ## WebSocket stream
@@ -340,6 +350,15 @@ is global: event writes serialize on the seq lock and the database is shared, so
 heavy activity anywhere can slow everyone's writes and deliveries. That is load, not
 per-recipient work, and it is not padded to constant time. Each API process relies
 on its own `LISTEN` for wake-ups.
+
+**Return view** (#106). "Since you left" (`GET /api/v1/return`) reads the same per-recipient
+rows after the person's saved return point, calls `authorizeEvent` again for every event and,
+on Home, also applies `visibleFilter` to each project. See [return-view.md](return-view.md).
+
+**Project docs** (#112). Doc reads and writes use the project policy (`evaluateProject`, write
+under the access-row lock); an invisible doc is `404 DOC_NOT_FOUND`. The workspace doc list
+applies `visibleFilter` before the page and total. `flux:` references resolve only inside the
+doc's project, so a doc never shows titles of other audiences. See [docs-wiki.md](docs-wiki.md).
 
 ## Worker jobs
 

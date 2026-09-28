@@ -7,7 +7,8 @@ import type { PageWindow } from './ports.js';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const OBJECT_TYPES: readonly WorkObjectType[] = ['work', 'decision', 'result'];
 export const SOURCE_TYPES: readonly ObjectRef['type'][] = ['message', 'thought', 'material'];
-export const ANY_TYPES: readonly ObjectRef['type'][] = [...SOURCE_TYPES, ...OBJECT_TYPES];
+/** Anything in the project a link can reach: sources, work objects, docs (#112) and project sketches. */
+export const ANY_TYPES: readonly ObjectRef['type'][] = [...SOURCE_TYPES, ...OBJECT_TYPES, 'doc', 'sketch'];
 
 export function isId(value: unknown): value is string {
   return typeof value === 'string' && UUID.test(value);

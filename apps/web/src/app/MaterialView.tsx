@@ -1,10 +1,12 @@
-import { Link, useLoaderData, type LoaderFunctionArgs } from 'react-router';
+import { Link, redirect, useLoaderData, type LoaderFunctionArgs } from 'react-router';
 import type { Material, MaterialVersion } from '@flux/contracts';
 import { getMaterial, getMaterialVersion } from './conversation-api';
 import { useShellData } from './data';
 
 export async function materialLoader({ params, request }: LoaderFunctionArgs) {
   const material = await getMaterial(params.materialId!, request.signal);
+  // A cited doc version (#112) opens in the doc reader, rendered.
+  if (material.kind === 'doc') throw redirect(`/projects/${material.projectId}/docs/${material.materialId}${params.version ? `/versions/${params.version}` : ''}`);
   const version = params.version ? await getMaterialVersion(material.materialId, Number(params.version), request.signal) : material;
   return { material, version };
 }

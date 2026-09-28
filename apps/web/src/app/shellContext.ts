@@ -10,8 +10,22 @@ export interface WorkFormView {
   workId?: string;
 }
 
+/** "Add to docs" for a result or decision (#112); `inDocs` are the docs that already have it. */
+export interface AddToDocView {
+  kind: 'add-to-doc';
+  projectId: string;
+  from: { type: 'result' | 'decision'; id: string; title: string };
+  inDocs: string[];
+}
+
+/**
+ * The project's overview in Details (#117): linked work, decisions, results, sources and
+ * sketches of the open conversation, or of one message when `messageId` is set.
+ */
+export interface OverviewView { kind: 'overview'; messageId?: string }
+
 /** What the Details panel shows: the current place, a project object or form, or how to connect a personal AI (#57). */
-export type DetailsView = 'place' | 'connect-ai' | ObjectView | WorkFormView;
+export type DetailsView = 'place' | 'connect-ai' | ObjectView | WorkFormView | AddToDocView | OverviewView;
 
 export interface ShellActions {
   openDetails(view?: DetailsView): void;

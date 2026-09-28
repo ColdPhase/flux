@@ -48,6 +48,12 @@ describe('architecture boundaries', () => {
     assert.deepEqual(reachableImports(root, entries, ['@flux/db', 'drizzle-orm', 'pg', 'pg-boss', 'fastify', 'web-push']), []);
   });
 
+  test('the direct-message use cases in core stay free of adapters, including through helpers (#107)', () => {
+    const entries = files(join(root, 'packages/core/src/direct-messages'));
+    assert.ok(entries.length >= 3, 'the direct-message use cases and ports exist');
+    assert.deepEqual(reachableImports(root, entries, ['@flux/db', 'drizzle-orm', 'pg', 'pg-boss', 'fastify', 'web-push']), []);
+  });
+
   test('the rules reject each kind of boundary violation (self-test)', () => {
     const source = (path: string, text: string) => ({ path, text });
     const found = checkSources([

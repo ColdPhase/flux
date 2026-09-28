@@ -1,19 +1,19 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { useLoaderData, useRevalidator, type LoaderFunctionArgs } from 'react-router';
+import { useLoaderData, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { Decision, Project, WorkItem, WorkResult } from '@flux/contracts';
 import { Button, EmptyState, Icon } from '../ui';
 import { getProject } from '../app/conversation-api';
 import { useShellActions } from '../app/shellContext';
-import { createWork, loadProjectWork, type ProjectWork } from './api';
+import { createWork, type ProjectWork } from './api';
+import { useProjectShell } from '../project/data';
 import { STATUS_LABEL, isFinished, linked, shortDate } from './format';
-import { ProjectStateLine } from './inline';
 import './work.css';
 
-interface TasksData { project: Project; lists: ProjectWork }
+interface TasksData { project: Project }
 
+/** Work, decisions and results come with the project's parent route (#117). */
 export async function projectTasksLoader({ params, request }: LoaderFunctionArgs): Promise<TasksData> {
-  const project = await getProject(params.projectId!, request.signal);
-  return { project, lists: await loadProjectWork(project.id, request.signal) };
+  return { project: await getProject(params.projectId!, request.signal) };
 }
 
 function Group({ id, title, count, children }: { id: string; title: string; count: number; children: ReactNode }) {
@@ -57,7 +57,8 @@ const dot = (kind: string) => <span className={`ws-dot ws-dot--${kind}`} />;
 
 /** The project's Tasks tab: committed work, the rules it follows and what was learned. */
 export function ProjectTasks() {
-  const { project, lists } = useLoaderData() as TasksData;
+  const { project } = useLoaderData() as TasksData;
+  const lists: ProjectWork = useProjectShell()?.work ?? { work: [], decisions: [], results: [] };
   const { openDetails } = useShellActions();
   const revalidator = useRevalidator();
   const writable = project.access !== 'viewer';
@@ -65,6 +66,16 @@ export function ProjectTasks() {
   const [attempt, setAttempt] = useState(() => crypto.randomUUID());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [search, setSearch] = useSearchParams();
+
+  // `?open=work:<id>` (a doc reference opened in a new tab, #112) opens that object's details.
+  const open = search.get('open');
+  useEffect(() => {
+    const match = /^(work|decision|result):([0-9a-f-]{36})$/i.exec(open ?? '');
+    if (!match) return;
+    openDetails({ kind: match[1] as 'work' | 'decision' | 'result', id: match[2]! });
+    setSearch((current) => { current.delete('open'); return current; }, { replace: true });
+  }, [open, openDetails, setSearch]);
 
   useEffect(() => {
     const refresh = () => { if (document.visibilityState === 'visible') revalidator.revalidate(); };
@@ -102,8 +113,6 @@ export function ProjectTasks() {
   return (
     <div className="pane-scroll">
       <div className="pane-in ws-tasks" data-shift>
-        <ProjectStateLine lists={lists} canDecide={writable} />
-        <p className="ws-audience"><Icon name="lock" size={13} />{project.name} · Everyone with project access sees this work</p>
         {writable ? (
           <form className="ws-add" onSubmit={(event) => void add(event)}>
             <label className="ui-vh" htmlFor="ws-add">New work</label>

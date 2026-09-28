@@ -22,6 +22,7 @@ export {
   AGENT_ACTIONS,
   DRAFT_ACTIONS,
   SKETCH_ACTIONS,
+  DM_ACTIONS,
   PROJECT_ACTIONS,
   WORKSPACE_ACTIONS,
   type Action,
@@ -42,6 +43,10 @@ export * from './conversation/service.js';
 export * from './sketches/index.js';
 export { policySketchAccess } from './access/sketch-access.js';
 export * from './work/index.js';
+export * from './returns/index.js';
+export * from './direct-messages/index.js';
+export { policyDmAccess } from './access/dm-access.js';
+export * from './docs/index.js';
 
 export const SAMPLE_JOB = 'sample.process';
 

@@ -7,10 +7,16 @@ import { ProjectConversation, projectConversationLoader } from './app/ProjectCon
 import { ProjectSetup } from './app/ProjectSetup';
 import { MaterialView, materialLoader } from './app/MaterialView';
 import { ProjectTasks, projectTasksLoader } from './work/ProjectTasks';
+import { DocHistory, DocReader, ProjectDocs, WorkspaceDocs, docHistoryLoader, docLoader, projectDocsLoader } from './docs/DocViews';
+import { DocEditor, docEditLoader } from './docs/DocEditor';
 import { Booting, RouteErrorPage } from './app/errors';
-import { ConversationView, DirectMessagesView, DocsView, NotFoundView, TasksView } from './app/views';
+import { ConversationView, NotFoundView, TasksView } from './app/views';
+import { DmIndex, NewDm } from './dm/DmIndex';
+import { DmConversation, dmLoader } from './dm/DmConversation';
 import { SketchIndex } from './sketch/SketchIndex';
 import { SketchRoute } from './sketch/SketchView';
+import { projectShellLoader } from './project/data';
+import { ProjectMap } from './project/ProjectViews';
 import {
   forgotPasswordAction,
   forgotPasswordLoader,
@@ -53,16 +59,34 @@ export const router = createBrowserRouter([
         children: [
           { index: true, Component: ConversationView },
           { path: 'projects/new', Component: ProjectSetup },
-          { path: 'projects/:projectId', loader: projectConversationLoader, Component: ProjectConversation },
-          { path: 'projects/:projectId/conversations/:conversationId', loader: projectConversationLoader, Component: ProjectConversation },
-          { path: 'projects/:projectId/tasks', loader: projectTasksLoader, Component: ProjectTasks },
+          {
+            // One project (#117): its header, audience, state line and view tabs share this data.
+            id: 'project',
+            path: 'projects/:projectId',
+            loader: projectShellLoader,
+            children: [
+              { index: true, loader: projectConversationLoader, Component: ProjectConversation },
+              { path: 'conversations/:conversationId', loader: projectConversationLoader, Component: ProjectConversation },
+              { path: 'tasks', loader: projectTasksLoader, Component: ProjectTasks },
+              { path: 'map', Component: ProjectMap },
+              { path: 'map/:sketchId', Component: SketchRoute },
+              { path: 'docs', loader: projectDocsLoader, Component: ProjectDocs },
+              { path: 'docs/new', loader: docEditLoader, Component: DocEditor },
+              { path: 'docs/:docId', loader: docLoader, Component: DocReader },
+              { path: 'docs/:docId/versions/:version', loader: docLoader, Component: DocReader },
+              { path: 'docs/:docId/edit', loader: docEditLoader, Component: DocEditor },
+              { path: 'docs/:docId/history', loader: docHistoryLoader, Component: DocHistory },
+            ],
+          },
           { path: 'materials/:materialId', loader: materialLoader, Component: MaterialView },
           { path: 'materials/:materialId/versions/:version', loader: materialLoader, Component: MaterialView },
           { path: 'tasks', Component: TasksView },
           { path: 'map', Component: SketchIndex },
           { path: 'map/:sketchId', Component: SketchRoute },
-          { path: 'docs', Component: DocsView },
-          { path: 'dm', Component: DirectMessagesView },
+          { path: 'docs', Component: WorkspaceDocs },
+          { path: 'dm', Component: DmIndex },
+          { path: 'dm/new', Component: NewDm },
+          { path: 'dm/:dmId', loader: dmLoader, Component: DmConversation },
           { path: '*', Component: NotFoundView },
         ],
       },

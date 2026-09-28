@@ -9,6 +9,7 @@ import { useShellData } from '../app/data';
 import { useShellActions, type ObjectView, type WorkFormView } from '../app/shellContext';
 import { acceptDecision, createResult, getDecision, getResult, getWork, listAgents, loadProjectWork, proposeDecision, updateWork, type ProjectWork } from './api';
 import { STATUS_LABEL, decisionLine, firstLine, isFinished, linked, resultLine, shortDate } from './format';
+import { docsLinking } from '../docs/AddToDoc';
 
 // The Details panel for work items, decisions and results, and the two forms that start from a
 // message (#101). Everything shown here is visible to the people with access to the project;
@@ -102,11 +103,27 @@ function Sources({ links, id, project }: { links: ObjectLink[]; id: string; proj
         const to = link.to.type === 'message'
           ? `/projects/${project.id}/conversations/${link.conversationId}#message-${link.to.id}`
           : link.to.type === 'material' ? `/materials/${link.to.id}/versions/${link.to.version}`
-            : link.to.type === 'thought' && link.sketchId ? `/map/${link.sketchId}` : null;
+            : link.to.type === 'thought' && link.sketchId ? `/projects/${project.id}/map/${link.sketchId}` : null;
         const kind = link.to.type === 'message' ? 'Message' : link.to.type === 'thought' ? 'Thought' : `Material v${link.to.type === 'material' ? link.to.version : ''}`;
         return <li key={link.id}>{to ? <Link className="wd-link" to={to}><span><b>{kind}:</b> {link.toTitle}</span><Icon name="chevron-right" size={14} /></Link> : null}</li>;
       })}
     </ul>
+  );
+}
+
+/** Docs that include or mention this result or decision (#112), and "Add to docs". */
+function InDocs({ object, kind, project }: { object: { id: string; title: string; links: ObjectLink[] }; kind?: 'result' | 'decision'; project: Project }) {
+  const { openDetails } = useShellActions();
+  const docs = docsLinking(object.links, object.id);
+  const writable = project.access !== 'viewer';
+  return (
+    <section className="details__sec" aria-labelledby={`wd-docs-${object.id}`}>
+      <h4 id={`wd-docs-${object.id}`}>In docs</h4>
+      {docs.length ? (
+        <ul className="wd-links">{docs.map((doc) => <li key={doc.id}><Link className="wd-link" to={`/projects/${project.id}/docs/${doc.id}`}><span>{doc.title}</span>{doc.role === 'source' ? <small>added</small> : <small>mentioned</small>}<Icon name="chevron-right" size={14} /></Link></li>)}</ul>
+      ) : <p className="wd-muted">Not in a doc yet.</p>}
+      {writable && kind ? <div className="wd-actions"><Button variant="secondary" icon="doc" onClick={() => openDetails({ kind: 'add-to-doc', projectId: project.id, from: { type: kind, id: object.id, title: object.title }, inDocs: docs.filter((doc) => doc.role === 'source').map((doc) => doc.id) })}>Add to docs</Button></div> : null}
+    </section>
   );
 }
 
@@ -198,6 +215,7 @@ function WorkPanel({ item, context, reload }: { item: WorkItem; context: Context
         {writable ? <div className="wd-actions"><Button variant="secondary" icon="plus" onClick={() => openDetails({ kind: 'attach-result', projectId: item.projectId, workId: item.id })}>Attach a result</Button></div> : null}
       </section>
 
+      <InDocs object={item} project={context.project} />
       <Audience project={context.project} />
       <IdsLine>Added by {item.createdBy.name} · {shortDate(item.createdAt)} · version {item.version}</IdsLine>
     </div>
@@ -303,6 +321,7 @@ function DecisionPanel({ decision, context, reload }: { decision: Decision; cont
         </form>
       ) : null}
 
+      <InDocs object={decision} kind="decision" project={context.project} />
       <Audience project={context.project} />
       <IdsLine>Version {decision.version}{decision.supersedes ? ' · supersedes an earlier rule' : ''}</IdsLine>
     </div>
@@ -328,6 +347,7 @@ function ResultPanel({ result, context }: { result: WorkResult; context: Context
         <Linked empty="Not linked to work or a decision." items={about.map((entry) => ({ key: entry.link.id, label: entry.title, hint: entry.link.to.type === 'decision' ? 'decision' : 'work', open: () => openDetails({ kind: entry.link.to.type as 'work' | 'decision', id: entry.id }) }))} />
         {related.length ? <p className="wd-muted">{related.length} more {related.length === 1 ? 'link' : 'links'}</p> : null}
       </section>
+      <InDocs object={result} kind="result" project={context.project} />
       <Audience project={context.project} />
     </div>
   );

@@ -85,6 +85,14 @@ def start_forwarder(origin: str, upstream: str) -> None:
     threading.Thread(target=accept, daemon=True).start()
 
 
+def open_sources(page: Page) -> None:
+    """Opens the project's sources above the composer (#117), where materials are saved and cited."""
+    button = page.get_by_role("button", name=re.compile("^Sources"))
+    if button.get_attribute("aria-expanded") != "true":
+        button.click()
+    expect(page.get_by_role("region", name="Project materials")).to_be_visible()
+
+
 def shot(page: Page, name: str) -> None:
     if not SHOTS:
         return
@@ -301,7 +309,8 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Direct messages")).to_be_visible()
         expect(page.get_by_role("heading", name="No direct messages yet")).to_be_visible()
         expect(rail.get_by_role("link", name="Direct messages")).to_have_attribute("aria-current", "page")
-        expect(sidebar.get_by_text("No messages yet")).to_be_visible()
+        expect(sidebar.get_by_text("No conversations yet", exact=False)).to_be_visible()
+        expect(sidebar.get_by_role("link", name="New message")).to_be_visible()
         expect(page.get_by_role("navigation", name="Views")).to_have_count(0)
         shot(page, "desktop-1440-dm-light")
         rail.get_by_role("link", name="Home").click()
@@ -673,6 +682,7 @@ class AppShellJourney(unittest.TestCase):
         expect(owner.locator(".project-convo__message > p").filter(has_text="Try a PIR sensor before considering a camera")).to_be_visible()
         expect(owner).to_have_url(re.compile(r"/conversations/[0-9a-f-]+$"))
         conversation_id = owner.url.split("/conversations/")[-1]
+        open_sources(owner)
         owner.get_by_role("button", name="Add material").click()
         owner.get_by_label("Start from a private draft").select_option(draft_id)
         expect(owner.get_by_label("Text")).to_have_value("home address 123; PIR avoids storing images")
@@ -751,7 +761,8 @@ class AppShellJourney(unittest.TestCase):
         owner.goto(f"/projects/{project_id}?new=1")
         expect(owner.get_by_label("Start a conversation")).to_have_value("Revisit after lost opening")
         owner.get_by_role("button", name="Start conversation").click()
-        expect(owner.get_by_text("Revisit after lost opening", exact=True)).to_be_visible()
+        # The sidebar lists the same thread (#117); the message itself is in the feed.
+        expect(owner.get_by_role("region", name="Messages").get_by_text("Revisit after lost opening", exact=True)).to_be_visible()
         threads = owner.context.request.get(f"{ORIGIN}/api/v1/projects/{project_id}/conversations").json()["items"]
         self.assertEqual(sum(thread["firstMessageBody"] == "Revisit after lost opening" for thread in threads), 1)
         owner.goto(f"/projects/{project_id}/conversations/{conversation_id}")
@@ -766,6 +777,7 @@ class AppShellJourney(unittest.TestCase):
                 route.continue_()
         owner.route("**/api/v1/materials/*/versions/1", fail_first_citation)
         owner.get_by_label("Reply", exact=True).fill("Do not send this draft on read retry")
+        open_sources(owner)
         owner.get_by_role("button", name="Discuss this version").click()
         expect(owner.get_by_role("button", name="Retry read")).to_be_visible()
         owner.get_by_role("button", name="Retry read").click()
@@ -842,6 +854,7 @@ class AppShellJourney(unittest.TestCase):
 
         denial = owner.context.request.post(f"{ORIGIN}/api/v1/projects/{project_id}/grants", data={"principal": {"kind": "human", "id": partner_id}, "role": "denied"}, headers={"Origin": ORIGIN})
         self.assertEqual(denial.status, 201, denial.text())
+        open_sources(phone)
         phone.get_by_role("button", name="Discuss this version").click()
         expect(phone.get_by_text("Agreed. Test low light too.", exact=True)).to_have_count(0)
         expect(phone.get_by_label("Reply", exact=True)).to_have_count(0)
@@ -876,6 +889,7 @@ class AppShellJourney(unittest.TestCase):
             self.assertEqual(material.status, 201, material.text())
         self.assertTrue(first_id)
         owner.reload()
+        open_sources(owner)
         expect(owner.get_by_role("button", name="Load more conversations")).to_be_visible()
         expect(owner.get_by_role("button", name="Load more materials")).to_be_visible()
         owner.get_by_role("button", name="Load more conversations").click()
@@ -933,6 +947,7 @@ class AppShellJourney(unittest.TestCase):
         expect(owner.get_by_text("Held reply", exact=True)).to_be_visible()
         expect(reply_box).to_have_value("")
 
+        open_sources(owner)
         owner.get_by_role("button", name="Add material").click()
         owner.get_by_label("Title").fill("Held material")
         owner.get_by_label("Text").fill("Do not lose this text")

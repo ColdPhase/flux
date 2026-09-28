@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { createDatabase } from '@flux/db';
-import type { Draft, Page, Project, ProjectGrant, Workspace, WorkspaceMember, WorkspaceRole } from '@flux/contracts';
+import type { Draft, Page, Project, ProjectGrant, ProjectPerson, Workspace, WorkspaceMember, WorkspaceRole } from '@flux/contracts';
 import { Browser, register, uniqueEmail, type ClientResponse } from './support/http.js';
 
 // Workspace, project, grant and draft policy through the running API (issue #29, AC-2/AC-3).
@@ -323,5 +323,37 @@ describe('workspace access policy over HTTP', () => {
     expect(await member.browser.request('GET', `/api/v1/drafts/${workspaceWide.id}`), 404, 'deny also hides workspace-visible drafts of that project');
     const listed = expect(await drafts(member, team.id, '?limit=100'), 200) as Page<Draft>;
     assert.equal(listed.total, 0);
+  });
+
+  test('a project names exactly the people who can read it, for everyone who can read it (#117)', async () => {
+    const team = await workspace(owner, 'Audience');
+    await addMember(owner, team.id, admin, 'admin');
+    await addMember(owner, team.id, member, 'member');
+    await addMember(owner, team.id, other, 'member');
+    await addMember(owner, team.id, guest, 'guest');
+    const closed = await project(owner, team.id, 'Closed room', 'restricted');
+    await grant(owner, closed.id, member, 'viewer');
+    await grant(owner, closed.id, guest, 'contributor');
+    await grant(owner, closed.id, admin, 'denied');
+    const people = (who: Person, id = closed.id) => who.browser.request('GET', `/api/v1/projects/${id}/people`);
+    const listed = expect(await people(guest), 200, 'a guest with a grant reads the audience') as ProjectPerson[];
+    const byId = new Map(listed.map((entry) => [entry.id, entry]));
+    assert.equal(byId.get(owner.id)?.access, 'manager');
+    assert.equal(byId.get(member.id)?.access, 'viewer');
+    assert.equal(byId.get(guest.id)?.access, 'contributor');
+    assert.equal(byId.has(admin.id), false, 'a denied admin is not in the audience');
+    assert.equal(byId.has(other.id), false, 'a member without a grant cannot read a restricted project');
+    assert.equal(listed.length, 3);
+    assert.ok(listed.every((entry) => entry.kind === 'human' && typeof entry.name === 'string'));
+    expect(await people(member), 200, 'a viewer reads the audience');
+    expect(await people(other), 404, 'someone who cannot read the project learns nothing');
+    expect(await people(admin), 404, 'deny wins for the audience too');
+    expect(await people(outsider), 404);
+    const open = await project(owner, team.id, 'Open floor', 'workspace');
+    const everyone = (expect(await people(other, open.id), 200) as ProjectPerson[]).map((entry) => entry.id).sort();
+    assert.deepEqual(everyone, [owner.id, admin.id, member.id, other.id].sort(), 'members read a workspace-visible project; a guest without a grant does not');
+    await grant(owner, open.id, other, 'denied');
+    expect(await people(other, open.id), 404, 'a new deny applies on the very next request');
+    assert.equal((expect(await people(member, open.id), 200) as ProjectPerson[]).some((entry) => entry.id === other.id), false);
   });
 });

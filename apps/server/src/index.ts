@@ -12,11 +12,14 @@ import { registerDatabase } from './plugins/database.js';
 import { loadIdentityConfig, registerIdentity } from './identity/index.js';
 import { accessRoutes } from './access/routes.js';
 import { sketchRoutes } from './sketches/routes.js';
+import { dmRoutes } from './direct-messages/routes.js';
 import { loadPushServerConfig, pushRoutes } from './push/index.js';
 import { setStaticHeaders } from './pwa/static-headers.js';
 import { streamRoutes } from './stream/index.js';
 import { conversationRoutes } from './conversation/routes.js';
 import { workRoutes } from './work/routes.js';
+import { returnRoutes } from './returns/routes.js';
+import { docRoutes } from './docs/routes.js';
 
 const connectionString = process.env.DATABASE_URL;
 const fixtureToken = process.env.FLUX_FIXTURE_TOKEN;
@@ -34,6 +37,7 @@ app.addHook('onClose', async () => boss.stop());
 const identity = registerIdentity(app, { db, config: identityConfig });
 await app.register(accessRoutes, { db, sessions: identity, boss });
 await app.register(sketchRoutes, { db, sessions: identity });
+await app.register(dmRoutes, { db, sessions: identity });
 await app.register(pushRoutes, { db, sessions: identity, config: pushConfig });
 if (pushConfig.status === 'unavailable') app.log.warn(pushConfig.reason);
 await app.register(websocket, { options: { maxPayload: 1024 } });
@@ -42,6 +46,8 @@ if (!Number.isInteger(heartbeatMs) || heartbeatMs < 100) throw new Error('FLUX_S
 await app.register(streamRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, connectionString, heartbeatMs, cursorSecret: identityConfig.secret, exposeWork: testFailureInjection });
 await app.register(conversationRoutes, { db, sessions: identity });
 await app.register(workRoutes, { db, sessions: identity });
+await app.register(returnRoutes, { db, sessions: identity });
+await app.register(docRoutes, { db, sessions: identity });
 
 app.get('/api/v1/health', async (_request, reply) => {
   try {
