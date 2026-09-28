@@ -725,6 +725,31 @@ export const agentProposals = pgTable('agent_proposals', {
   foreignKey({ columns: [table.workspaceId, table.projectId, table.sourceMaterialId, table.sourceMaterialVersion], foreignColumns: [projectMaterialVersions.workspaceId, projectMaterialVersions.projectId, projectMaterialVersions.materialId, projectMaterialVersions.version] }),
 ]);
 
+export const proactiveComparisonRules = pgTable('proactive_comparison_rules', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  agentId: uuid('agent_id').notNull(),
+  triggerKind: text('trigger_kind', { enum: ['human_negative_result'] }).notNull().default('human_negative_result'),
+  purpose: text('purpose', { enum: ['camera_sensor_comparison'] }).notNull().default('camera_sensor_comparison'),
+  dataScope: text('data_scope', { enum: ['current_project_published'] }).notNull().default('current_project_published'),
+  permittedEffect: text('permitted_effect', { enum: ['quiet_project_proposal'] }).notNull().default('quiet_project_proposal'),
+  maxRunsPerDay: integer('max_runs_per_day').notNull(),
+  periodBudgetCents: integer('period_budget_cents').notNull(),
+  perRunCents: integer('per_run_cents').notNull(),
+  status: text('status', { enum: ['enabled', 'paused', 'revoked'] }).notNull().default('paused'),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, (table) => [
+  unique().on(table.ownerUserId, table.projectId, table.purpose),
+  index('proactive_comparison_rules_owner_idx').on(table.ownerUserId, table.projectId),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }),
+]);
+
 // Direct messages: private conversations between people of one workspace (migration 0010, issue #107).
 export const dms = pgTable('dms', {
   id: uuid('id').primaryKey(),
