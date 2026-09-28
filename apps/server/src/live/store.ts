@@ -1,10 +1,12 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { and, eq, inArray, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { schema } from '@flux/db';
 import {
   ConflictError,
+  DomainError,
   NotFoundError,
   RuleViolationError,
+  ServiceUnavailableError,
   enforce,
   evaluateProject,
   type Database,
@@ -12,12 +14,14 @@ import {
   type LiveRepository,
   type LiveSessionRecord,
 } from '@flux/core';
-import type { LiveContextRef, LivePresentationRef } from '@flux/contracts';
+import type { LiveContextRef, LivePresentation, LivePresentationRef } from '@flux/contracts';
 import { requireLiveContext, requireLivePresentationSource } from './access.js';
 
 type SessionRow = typeof schema.liveSessions.$inferSelect;
 const MAX_PROJECT_SESSIONS = 8;
 const MAX_CREATOR_SESSIONS = 3;
+const PRESENTATION_BATCH = 100;
+const MAX_PRESENTATION_SCAN = 500;
 
 function contextColumns(context: LiveContextRef) {
   return {
@@ -54,6 +58,19 @@ function record(row: SessionRow): LiveSessionRecord {
 
 function selected(ref: LivePresentationRef): string[] {
   return ref.type === 'sketch' ? [...new Set(ref.selectedThoughtIds ?? [])].sort() : [];
+}
+
+type PresentationRow = typeof schema.livePresentations.$inferSelect;
+
+function presentationRef(row: PresentationRow): LivePresentationRef {
+  if (row.refType === 'sketch') return { type: 'sketch', id: row.refId,
+    version: row.refVersion, selectedThoughtIds: row.selectedThoughtIds };
+  return { type: row.refType, id: row.refId, version: row.refVersion };
+}
+
+function presentationView(row: PresentationRow): LivePresentation {
+  return { id: row.id, generation: row.generation, createdBy: row.createdBy,
+    ref: presentationRef(row), createdAt: row.createdAt.toISOString() };
 }
 
 /** The matching fence writer takes NO KEY UPDATE on these rows before commit. */
@@ -206,6 +223,68 @@ export function liveSessionStore(db: Database): LiveRepository {
           throw new ConflictError('This clientEventId was used for another presentation', 'IDEMPOTENCY_CONFLICT');
         // The source was checked under this transaction. Receivers still reauthorize
         // through the ordinary object API because a source can change later.
+      });
+    },
+
+    async pagePresentations(principal, sessionId, after, limit) {
+      return db.transaction(async (tx) => {
+        const [located] = await tx.select({ projectId: sessions.projectId }).from(sessions)
+          .where(eq(sessions.id, sessionId));
+        if (!located) throw new NotFoundError('Live session', 'LIVE_SESSION_NOT_FOUND');
+        const workspaceId = await lockAdmissionScope(tx, located.projectId);
+        enforce(await evaluateProject(principal, 'project.read', located.projectId, tx, { lock: true }), 'project');
+        await requireClearFence(tx, workspaceId, located.projectId);
+        const [session] = await tx.select().from(sessions).where(eq(sessions.id, sessionId)).for('share');
+        if (!session || session.projectId !== located.projectId)
+          throw new NotFoundError('Live session', 'LIVE_SESSION_NOT_FOUND');
+        if (session.state !== 'available')
+          throw new RuleViolationError('This session is not available', 'LIVE_SESSION_UNAVAILABLE');
+        await requireLiveContext(principal, record(session).context, session.projectId, tx, true);
+
+        if (after !== null) {
+          const [cursor] = await tx.select().from(presentations).where(and(
+            eq(presentations.id, after), eq(presentations.sessionId, sessionId),
+            eq(presentations.generation, session.generation),
+          ));
+          if (!cursor) throw new NotFoundError('Live presentation', 'LIVE_PRESENTATION_NOT_FOUND');
+          try { await requireLivePresentationSource(principal, session.projectId, presentationRef(cursor), tx, true); }
+          catch (error) {
+            if (error instanceof DomainError && error.status === 404)
+              throw new NotFoundError('Live presentation', 'LIVE_PRESENTATION_NOT_FOUND');
+            throw error;
+          }
+        }
+
+        const visible: PresentationRow[] = [];
+        let scanned = 0;
+        let scannedAfter = after;
+        while (scanned < MAX_PRESENTATION_SCAN) {
+          const take = Math.min(PRESENTATION_BATCH, MAX_PRESENTATION_SCAN - scanned);
+          // Resolve the cursor inside PostgreSQL: JS Date loses PostgreSQL's
+          // microseconds and can otherwise repeat or skip same-millisecond rows.
+          const position = scannedAfter === null ? undefined : sql`
+            (${presentations.createdAt}, ${presentations.id}) >
+            (SELECT created_at, id FROM live_presentations WHERE id = ${scannedAfter}::uuid)`;
+          const rows = await tx.select().from(presentations).where(and(
+            eq(presentations.sessionId, sessionId), eq(presentations.generation, session.generation), position,
+          )).orderBy(asc(presentations.createdAt), asc(presentations.id)).limit(take);
+          if (!rows.length) return { items: visible.map(presentationView), nextAfter: null };
+          for (const row of rows) {
+            scannedAfter = row.id;
+            scanned++;
+            try { await requireLivePresentationSource(principal, session.projectId, presentationRef(row), tx, true); }
+            catch (error) {
+              if (error instanceof DomainError && error.code === 'LIVE_SOURCE_NOT_FOUND') continue;
+              throw error;
+            }
+            if (visible.length === limit)
+              return { items: visible.map(presentationView), nextAfter: visible.at(-1)!.id };
+            visible.push(row);
+          }
+          if (rows.length < take) return { items: visible.map(presentationView), nextAfter: null };
+        }
+        // A hidden tail cannot produce an observable continuation or count.
+        throw new ServiceUnavailableError('Live presentations are temporarily unavailable', 'LIVE_PRESENTATIONS_UNAVAILABLE');
       });
     },
   };

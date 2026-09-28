@@ -1,4 +1,4 @@
-import type { LiveContextRef, LivePresentationRef, LiveSession } from '@flux/contracts';
+import type { LiveContextRef, LivePresentationPage, LivePresentationRef, LiveSession } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 
 /** Media rooms are opaque and generation-scoped; an old token never joins a replacement room. */
@@ -25,6 +25,8 @@ export interface LiveRepository {
   withAdmission<T>(principal: Principal, sessionId: string, issue: (session: LiveSessionRecord) => Promise<T>): Promise<T>;
   /** Idempotent on (session, creator, clientEventId); a changed ref must conflict. */
   present(sessionId: string, principal: Principal, ref: LivePresentationRef, clientEventId: string): Promise<void>;
+  /** One transaction rechecks project, anchor, session generation and every returned source. */
+  pagePresentations(principal: Principal, sessionId: string, after: string | null, limit: number): Promise<LivePresentationPage>;
 }
 
 export interface LiveMedia {

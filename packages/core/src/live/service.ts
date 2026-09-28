@@ -78,5 +78,14 @@ export function liveUseCases(ports: LivePorts) {
       await ports.access.requirePresentation(principal, session.projectId, ref);
       await ports.sessions.present(session.id, principal, ref, clientEventId);
     },
+
+    async presentations(principal: Principal, sessionId: string, after: string | null = null, limit = 50) {
+      human(principal);
+      uuid(sessionId, 'sessionId');
+      if (after !== null) uuid(after, 'after');
+      if (!Number.isInteger(limit) || limit < 1 || limit > 50)
+        throw new InvalidInputError('limit must be between 1 and 50');
+      return ports.sessions.pagePresentations(principal, sessionId, after, limit);
+    },
   };
 }

@@ -4,6 +4,7 @@ export const liveSessionPath = (id: string) => `${LIVE_SESSIONS_PATH}/${id}`;
 export const liveJoinPath = (id: string) => `${liveSessionPath(id)}/join`;
 export const liveLeavePath = (id: string) => `${liveSessionPath(id)}/leave`;
 export const livePresentPath = (id: string) => `${liveSessionPath(id)}/present`;
+export const livePresentationsPath = (id: string) => `${liveSessionPath(id)}/presentations`;
 export const liveInvitePath = (id: string) => `${liveSessionPath(id)}/invitations`;
 export const LIVE_INVITATIONS_PATH = '/api/v1/live-invitations';
 export const liveInvitationReplyPath = (id: string) => `${LIVE_INVITATIONS_PATH}/${id}/reply`;
@@ -32,6 +33,21 @@ export interface PresentLiveContextCommand {
   ref: LivePresentationRef;
   /** Caller-chosen UUID deduplicates a presentation retry. */
   clientEventId: string;
+}
+
+/** Committed references only; the object body is loaded through its own authorized API. */
+export interface LivePresentation {
+  id: string;
+  generation: number;
+  createdBy: string;
+  ref: LivePresentationRef;
+  createdAt: string;
+}
+
+export interface LivePresentationPage {
+  items: LivePresentation[];
+  /** ID of the last visible item, or null when there is no further visible item. */
+  nextAfter: string | null;
 }
 
 /** The recipient is an opaque Flux user ID, not necessarily a UUID. */

@@ -34,6 +34,7 @@ test('a standard UUID can start a live session; malformed context and retry ids 
       async withRead(_principal, _sessionId, read) { return read(record); },
       async withAdmission(_principal, _sessionId, issue) { return issue(record); },
       async present() {},
+      async pagePresentations() { return { items: [], nextAfter: null }; },
     },
     media: {
       async ensureRoom() {},

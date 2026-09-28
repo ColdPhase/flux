@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { LiveContextRef, LivePresentationRef, PresentLiveContextCommand, StartLiveSessionCommand } from '@flux/contracts';
-import { LIVE_SESSIONS_PATH, liveJoinPath, liveLeavePath, livePresentPath, liveSessionPath } from '@flux/contracts';
+import { LIVE_SESSIONS_PATH, liveJoinPath, liveLeavePath, livePresentPath, livePresentationsPath, liveSessionPath } from '@flux/contracts';
 import { liveUseCases, type LivePorts } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
@@ -45,4 +45,12 @@ export async function liveRoutes(app: FastifyInstance, { ports, sessions, lifecy
     await live.present(await principal(request), request.params.sessionId, request.body.ref as LivePresentationRef, request.body.clientEventId);
     return reply.code(204).send();
   });
+
+  app.get<{ Params: { sessionId: string }; Querystring: { after?: string; limit?: number } }>(
+    livePresentationsPath(':sessionId'), {
+      schema: { params: { type: 'object', required: ['sessionId'], properties: { sessionId: id } },
+        querystring: { type: 'object', additionalProperties: false,
+          properties: { after: id, limit: { type: 'integer', minimum: 1, maximum: 50 } } } },
+    }, async (request) => live.presentations(await principal(request), request.params.sessionId,
+      request.query.after ?? null, request.query.limit ?? 50));
 }

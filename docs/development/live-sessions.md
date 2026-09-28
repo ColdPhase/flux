@@ -55,6 +55,19 @@ project sketch cannot be changed into a private sketch while its live session
 references it under the current schema; any future scope-change API must also
 retire existing media grants before changing that scope.
 
+## Presentation delivery contract
+
+`GET /api/v1/live-sessions/:id/presentations?after=<id>&limit=1..50`
+returns chronological, identifier-only committed references from the current
+room generation. The `after` cursor must belong to the same currently readable
+session/generation; stale or foreign cursors fail without disclosing source
+metadata. Each returned reference is checked against the recipient's **current**
+project, anchor and source access in one transaction, including after a room
+rotation. Hidden or deleted sources consume no visible page slot and contribute
+no title, body, count or preview. The browser loads the object through its
+ordinary authorized API. Flux stream may carry only a project-scoped wakeup,
+never the reference payload; the GET path remains sufficient to catch up.
+
 ## Required before #61 acceptance or merge
 
 The revocation coordinator serializes joins with access changes, retires the
@@ -76,9 +89,15 @@ older than seven days are pruned in bounded batches. LiveKit webhook delivery
 is advisory, so the periodic SFU sweep remains required. See the
 [LiveKit self-hosted webhook configuration](https://docs.livekit.io/intro/basics/rooms-participants-tracks/webhooks-events/).
 
-Also pending: end-to-end expiry timing, authorized presentation delivery,
-screen-track sharing,
-reconnect/media-failure tests and independent review. The dated
+Also pending: media-restart reconnect recovery, screen-track sharing and
+independent review. A real-SFU test observed natural post-departure expiry at
+about 104 seconds, rejected an old join and a still-valid refreshed JWT, and
+confirmed saved work remained readable. The presentation feed has a focused
+Docker integration test for authorization, cursor handling, generation changes,
+revocation and a bounded hidden tail. A confirmed LiveKit restart currently
+leaves an available Flux session pointing at a gone room, so new join returns
+`503 LIVE_ROOM_GONE`; this must be corrected and retested before #61 review.
+The dated
 [lifecycle plan](live-lifecycle-plan.md) records the intended tables, locks
 and failure tests; implementation is in progress and is not an accepted result.
 Source-version checks now run inside the trace transaction and have targeted
