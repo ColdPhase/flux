@@ -85,7 +85,7 @@ export function LivePanel({ live, presentable, onShow, onClose }: { live: LiveVa
           )}
         </div>
         {presentable ? (
-          <Button variant="secondary" icon="show" block onClick={onShow}>Show “{presentable.label}”</Button>
+          <Button variant="secondary" icon="show" block className="lv-panel__show" onClick={onShow} title={`Show “${presentable.label}”`}><span>Show “{presentable.label}”</span></Button>
         ) : <p className="lv-panel__text">Open a task, result, doc or map in this project to show it here.</p>}
         <button type="button" role="switch" aria-checked={live.quiet} className="lv-switch" onClick={() => { live.setQuiet(!live.quiet); }}>
           <span className="lv-switch__track" aria-hidden="true"><span className="lv-switch__knob" /></span>

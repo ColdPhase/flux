@@ -116,3 +116,28 @@ the fake device's test card, not real content. Captured by `scripts/check_live_u
 | `live-phone-390-sheet.png` | Phone: the session sheet |
 | `live-phone-390-stage.png` | Phone: viewing a shared screen |
 | `live-tablet-820-session.png` | Tablet portrait in a session |
+
+## Separate visual review (2026-09-28)
+
+A separate reviewer looked at the screenshots above with a neutral brief: **accept with
+fixes**. Strengths it named:
+
+- the session extends the existing C surfaces;
+- the work stays primary;
+- live, sending and sharing states are clear;
+- the invitation is a calm row;
+- the phone strip never covers the composer.
+
+Its findings, and what happened to each:
+
+- **Fixed.** The panel's long **Show “…”** label now truncates on one line.
+- **Open, not live-specific.** The task Details panel stacks empty sections densely. This
+  is the existing #101 work panel.
+- **Open.** Other people's microphone and camera state is only a small badge on their face.
+  Full state is in **More**.
+- **Open.** The stage's own toolbar sits under the strip, and on a 390 px phone the state
+  line, the strip and a "sharing a screen" line can stack three rows high. Both are
+  candidates for merging after the device checks in #63.
+- **Open.** The screen stage has no card framing.
+- **Not assessable from an image.** Sheet dismissal. Keyboard, focus and reduced motion are
+  exercised by `tests/ui/test_live_sessions.py`.

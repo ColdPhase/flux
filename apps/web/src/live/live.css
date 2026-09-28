@@ -241,3 +241,7 @@
   .lv-stage--cams .lv-cam { flex: none; }
   .lv-stage__foot { padding: 4px 12px 8px; padding-bottom: max(8px, env(safe-area-inset-bottom)); }
 }
+
+/* Long titles stay on one line in the panel's Show button (visual review, #62). */
+.lv-panel__show { justify-content: flex-start; }
+.lv-panel__show > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
