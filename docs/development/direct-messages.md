@@ -10,8 +10,7 @@ audience ([direction](../design/direction.md), principle 5).
 
 ## Model
 
-Migration `0010_direct_messages.sql` adds three tables. It is numbered 0010 because 0009 is
-reserved by an open PR. The migration runner applies files in order and accepts gaps.
+Migration `0010_direct_messages.sql` adds three tables.
 
 | Table | Meaning |
 | --- | --- |
@@ -123,6 +122,12 @@ on their behalf and no message goes to an audience of one:
 - **When the other person left.** Choosing them (in New message or from their name) shows the
   server's calm explanation instead of a thread. An open 1:1 whose other person left keeps its
   history, shows a quiet notice above the composer, and disables sending.
+
+## Not yet connected
+
+The "since you left" return view (#106) summarizes project and sketch events only. Showing DM
+activity there ("Kai wrote to you", audience = participants) needs a DM place in its place
+resolution and wording, and is a follow-up.
 
 ## Tests
 

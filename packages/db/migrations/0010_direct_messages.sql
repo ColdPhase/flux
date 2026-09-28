@@ -2,8 +2,7 @@
 -- independent of projects. The audience is exactly the rows in dm_participants. Removing a
 -- workspace membership deletes that person's participant rows (composite foreign key with
 -- ON DELETE CASCADE), so access ends with the membership. Authorization lives in
--- packages/core (docs/development/direct-messages.md). Numbered 0010: 0008 and 0009 are
--- reserved by open pull requests; the runner applies files in order and accepts gaps.
+-- packages/core (docs/development/direct-messages.md).
 
 CREATE TABLE dms (
   id uuid PRIMARY KEY,
