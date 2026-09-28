@@ -1,19 +1,24 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { useLoaderData, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
-import type { Decision, Project, WorkItem, WorkResult } from '@flux/contracts';
+import type { Decision, Project, ProactiveComparisonProposal, WorkItem, WorkResult } from '@flux/contracts';
 import { Button, EmptyState, Icon } from '../ui';
 import { getProject } from '../app/conversation-api';
 import { useShellActions } from '../app/shellContext';
 import { createWork, type ProjectWork } from './api';
 import { useProjectShell } from '../project/data';
+import { ProjectProposals } from '../project/ProjectProposals';
+import { listComparisonProposals } from '../project/proposals';
 import { STATUS_LABEL, isFinished, linked, shortDate } from './format';
 import './work.css';
 
-interface TasksData { project: Project }
+interface TasksData { project: Project; proposals: ProactiveComparisonProposal[] }
 
 /** Work, decisions and results come with the project's parent route (#117). */
 export async function projectTasksLoader({ params, request }: LoaderFunctionArgs): Promise<TasksData> {
-  return { project: await getProject(params.projectId!, request.signal) };
+  const [project, proposals] = await Promise.all([
+    getProject(params.projectId!, request.signal), listComparisonProposals(params.projectId!, request.signal),
+  ]);
+  return { project, proposals };
 }
 
 function Group({ id, title, count, children }: { id: string; title: string; count: number; children: ReactNode }) {
@@ -57,8 +62,9 @@ const dot = (kind: string) => <span className={`ws-dot ws-dot--${kind}`} />;
 
 /** The project's Tasks tab: committed work, the rules it follows and what was learned. */
 export function ProjectTasks() {
-  const { project } = useLoaderData() as TasksData;
-  const lists: ProjectWork = useProjectShell()?.work ?? { work: [], decisions: [], results: [] };
+  const { project, proposals } = useLoaderData() as TasksData;
+  const shell = useProjectShell();
+  const lists: ProjectWork = shell?.work ?? { work: [], decisions: [], results: [] };
   const { openDetails } = useShellActions();
   const revalidator = useRevalidator();
   const writable = project.access !== 'viewer';
@@ -108,7 +114,8 @@ export function ProjectTasks() {
   const openDecision = (item: Decision) => () => openDetails({ kind: 'decision', id: item.id });
   const openResult = (item: WorkResult) => () => openDetails({ kind: 'result', id: item.id });
   const workRow = (item: WorkItem, muted = false) => <Row key={item.id} icon={dot(item.parked ? 'parked' : item.status)} title={item.title} sub={workSub(item, lists)} right={item.owner ? <span className="ws-av" aria-hidden="true">{item.owner.name.slice(0, 1)}</span> : null} onOpen={openWork(item)} muted={muted} />;
-  const nothing = !lists.work.length && !lists.decisions.length && !lists.results.length;
+  const nothing = !lists.work.length && !lists.decisions.length && !lists.results.length
+    && !proposals.some((proposal) => proposal.status === 'proposed');
 
   return (
     <div className="pane-scroll">
@@ -128,6 +135,11 @@ export function ProjectTasks() {
           </EmptyState></div>
         ) : null}
 
+        <ProjectProposals proposals={proposals} people={shell?.people ?? null} projectName={project.name}
+          resultTitles={new Map(lists.results.map((result) => [result.id, result.title]))}
+          writable={writable} refresh={() => revalidator.revalidate()}
+          openResult={(id) => openDetails({ kind: 'result', id })}
+          openWork={(item) => openDetails({ kind: 'work', id: item.id })} />
         <Group id="proposed" title={writable ? 'Needs you' : 'Waiting for a decision'} count={proposed.length}>
           {proposed.map((item) => <Row key={item.id} icon={<Icon name="rule" size={16} />} iconClass="ws-need" title={item.title} sub={<>Proposed by {item.proposedBy.name}{item.proposedBy.kind === 'agent' ? ' (agent)' : ''}{item.supersedes ? ' · would replace the current rule' : ''}{writable ? <> · <span className="ws-need">you can accept it</span></> : null}</>} right={shortDate(item.createdAt)} onOpen={openDecision(item)} />)}
         </Group>

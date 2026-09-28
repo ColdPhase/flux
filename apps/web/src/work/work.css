@@ -138,3 +138,22 @@
 .project-convo__message .ws-acts--more { position: absolute; top: 0; right: -10px; margin: 0; }
 .ws-more { justify-content: center; width: 44px; height: 44px; padding: 0; color: var(--text-3); }
 .project-convo__message:has(.ws-acts--more) .project-convo__message-meta { padding-right: 36px; }
+/* Quiet, project-scoped comparison proposals on the Tasks return surface. */
+.ws-proposals__intro { margin: 0 0 8px; color: var(--text-2); font-size: var(--fs-sm); }
+.ws-proposal { padding: 10px 14px; margin: 0 0 8px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg); }
+.ws-proposal__title { margin: 0 0 2px; font-size: var(--fs-md); font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.ws-proposal__origin { margin: 0 0 7px; color: var(--text-3); font-size: var(--fs-xs); }
+.ws-proposal p { line-height: 1.4; overflow-wrap: anywhere; }
+.ws-proposal__detail { display: grid; grid-template-columns: 108px minmax(0, 1fr); gap: 8px; margin: 3px 0; }
+.ws-proposal__detail strong { color: var(--text-2); font-size: var(--fs-sm); font-weight: 600; }
+.ws-proposal__sources { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 7px; padding-top: 6px; border-top: 1px solid var(--line); font-size: var(--fs-sm); }
+.ws-proposal__sources ul { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; padding: 0; list-style: none; }
+.ws-proposal__sources a, .ws-proposal__sources button { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.ws-proposal__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.ws-proposal label { display: block; margin: 8px 0; color: var(--text-2); font-size: var(--fs-sm); font-weight: 600; }
+.ws-proposal textarea { display: block; width: 100%; min-height: 66px; margin-top: 4px; padding: 8px 10px; resize: vertical; color: var(--text); background: var(--bg); border: 1px solid var(--line-strong); border-radius: var(--r); font: inherit; font-weight: 400; }
+.ws-proposal textarea:focus-visible, .ws-proposal__sources a:focus-visible, .ws-proposal__sources button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 640px) {
+  .ws-proposal__detail { display: block; }
+  .ws-proposal__detail strong { display: block; }
+}

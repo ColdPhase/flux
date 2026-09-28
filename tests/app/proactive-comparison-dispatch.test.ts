@@ -6,7 +6,7 @@ import type { AddressInfo } from 'node:net';
 import { after, before, describe, test } from 'node:test';
 import { createDatabase } from '@flux/db';
 import type { ComparisonProvider } from '@flux/core';
-import type { Material, ProactiveComparisonProposal, WorkResult } from '@flux/contracts';
+import type { Conversation, Material, ProactiveComparisonProposal, WorkResult } from '@flux/contracts';
 import { dispatchProactiveComparison } from '../../apps/worker/src/proactive-comparison/dispatch.js';
 import { addMember, draft, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 
@@ -22,6 +22,7 @@ describe('controlled background comparison dispatch (#58)', () => {
   let projectId: string;
   let agentGrantId: string;
   let material: Material;
+  let conversation: Conversation;
   let mock: Server;
   let endpoint: string;
   let responseMode: 'good' | 'bad_citation' | 'outage' = 'good';
@@ -33,7 +34,8 @@ describe('controlled background comparison dispatch (#58)', () => {
     'SELECT id FROM proactive_comparison_outbox WHERE result_id=$1', [resultId])).rows[0].id as string;
   const negative = async (title: string) => expectStatus(await peer.browser.request('POST',
     `/api/v1/projects/${projectId}/results`, { body: { title, finding: 'negative', evidence: 'Camera misses at 5 lux',
-      sources: [{ type: 'material', id: material.materialId, version: 1 }] } }), 201) as WorkResult;
+      sources: [{ type: 'material', id: material.materialId, version: 1 },
+        { type: 'message', id: conversation.messages[0]!.id }] } }), 201) as WorkResult;
 
   before(async () => {
     [owner, peer, outsider] = await Promise.all(['dispatch-owner', 'dispatch-peer', 'dispatch-outsider'].map(person));
@@ -59,6 +61,8 @@ describe('controlled background comparison dispatch (#58)', () => {
     await pool.query("UPDATE proactive_comparison_rules SET status='enabled' WHERE id=$1", [rule.id]);
     material = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/materials`,
       { body: { clientMutationId: randomUUID(), title: 'Sensor measurement', body: 'Camera A captured 38% of gestures at 5 lux.' } }), 201) as Material;
+    conversation = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/conversations`,
+      { body: { body: 'Compare sensor measurements after the low-light trial.', clientMessageId: randomUUID() } }), 201) as Conversation;
     await draft(owner, ws.id, 'Private camera note', { body: privateToken });
     const privateSketch = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/sketches`,
       { body: { title: `Private sketch ${privateToken}`, scope: 'private' } }), 201) as { id: string };
@@ -125,16 +129,51 @@ describe('controlled background comparison dispatch (#58)', () => {
     assert.equal(peerView.length, 1);
     assert.equal(peerView[0]?.id, outcome.status === 'proposal' ? outcome.proposalId : '');
     assert.deepEqual(peerView[0]?.audience, { kind: 'project', projectId });
-    assert.deepEqual(peerView[0]?.sources.map(({ type, version }) => [type, version]), [['result', 1], ['material', 1]]);
+    assert.deepEqual(peerView[0]?.sources.map(({ type, version }) => [type, version]), [['result', 1], ['material', 1], ['message', 1]]);
+    const citedMessage = peerView[0]?.sources.find((source) => source.type === 'message');
+    assert.equal(citedMessage?.conversationId, conversation.id,
+      'project message citation resolves to its inspectable conversation');
     assert.equal(peerView[0]?.computeSource, 'owner_background_claude_platform');
     assert.equal((await outsider.browser.request('GET', `/api/v1/projects/${projectId}/proactive-comparison-proposals`)).status, 404);
     assert.ok(seen.every((body) => !body.includes(privateToken)), 'private draft/sketch never enters the provider request');
     assert.ok(!JSON.stringify(peerView).includes(privateToken), 'private draft/sketch never enters the proposal');
     const notices = await pool.query('SELECT count(*)::int AS n FROM notifications WHERE source_id=$1', [good.id]);
     assert.equal(notices.rows[0].n, 0, 'the proposal does not emit a notification');
+
+    const proposal = peerView[0]!;
+    assert.equal((await outsider.browser.request('PATCH', `/api/v1/proactive-comparison-proposals/${proposal.id}`,
+      { body: { expectedVersion: proposal.version, status: 'dismissed' } })).status, 404);
+    const edited = expectStatus(await peer.browser.request('PATCH', `/api/v1/proactive-comparison-proposals/${proposal.id}`,
+      { body: { expectedVersion: proposal.version, interpretation: 'Check sensor timing before changing hardware.' } }), 200) as ProactiveComparisonProposal;
+    assert.equal(edited.version, proposal.version + 1);
+    assert.equal(edited.editedByUserId, peer.id);
+    assert.equal((await peer.browser.request('PATCH', `/api/v1/proactive-comparison-proposals/${proposal.id}`,
+      { body: { expectedVersion: proposal.version, status: 'dismissed' } })).status, 409);
+    const used = expectStatus(await peer.browser.request('POST', `/api/v1/proactive-comparison-proposals/${proposal.id}/use`,
+      { body: { expectedVersion: edited.version, title: 'Compare low-light sensors' } }), 200) as {
+      proposal: ProactiveComparisonProposal; work: { id: string; title: string } };
+    assert.equal(used.proposal.status, 'used');
+    assert.equal(used.proposal.usedWorkId, used.work.id);
+    assert.equal(used.work.title, 'Compare low-light sensors');
+    assert.equal((await peer.browser.request('POST', `/api/v1/proactive-comparison-proposals/${proposal.id}/use`,
+      { body: { expectedVersion: used.proposal.version, title: 'Duplicate work' } })).status, 409);
+    assert.equal(seen.length, beforeReplay, 'human use and edit do not request more compute');
+
+    const dismissResult = await negative('Failure to dismiss');
+    assert.equal((await dispatchProactiveComparison({ db, candidateId: await candidates(dismissResult.id), masterKey, provider })).status, 'proposal');
+    const all = expectStatus(await peer.browser.request('GET', `/api/v1/projects/${projectId}/proactive-comparison-proposals`), 200) as ProactiveComparisonProposal[];
+    const toDismiss = all.find((item) => item.resultId === dismissResult.id)!;
+    const dismissed = expectStatus(await peer.browser.request('PATCH', `/api/v1/proactive-comparison-proposals/${toDismiss.id}`,
+      { body: { expectedVersion: toDismiss.version, status: 'dismissed' } }), 200) as ProactiveComparisonProposal;
+    assert.equal(dismissed.status, 'dismissed');
+    const beforeDismissReplay = seen.length;
+    assert.equal((await dispatchProactiveComparison({ db, candidateId: await candidates(dismissResult.id), masterKey, provider })).status, 'proposal');
+    assert.equal(seen.length, beforeDismissReplay, 'dismissal suppresses this unchanged result/source candidate');
   });
 
   test('provider outage preserves uncertainty; stale source, missing key and lost grant stop before any request', async () => {
+    // This scenario starts in a later budget period than the preceding three dispatches.
+    await pool.query("UPDATE proactive_comparison_outbox SET reserved_at = now() - interval '31 days' WHERE owner_user_id=$1 AND reserved_at IS NOT NULL", [owner.id]);
     const outage = await negative('Third failed camera trial');
     responseMode = 'outage';
     assert.deepEqual(await dispatchProactiveComparison({ db, candidateId: await candidates(outage.id), masterKey, provider }),
@@ -159,5 +198,11 @@ describe('controlled background comparison dispatch (#58)', () => {
     assert.deepEqual(await dispatchProactiveComparison({ db, candidateId: await candidates(accessLost.id), masterKey, provider }),
       { status: 'blocked', reason: 'OWNER_OR_AGENT_ACCESS' });
     assert.equal(seen.length, afterOutage);
+    const connection = expectStatus(await owner.browser.request('GET', '/api/v1/background-compute-connections/current'), 200) as { id: string };
+    expectStatus(await owner.browser.request('DELETE', `/api/v1/background-compute-connections/${connection.id}`), 204);
+    const manual = expectStatus(await peer.browser.request('POST', `/api/v1/projects/${projectId}/work`,
+      { body: { title: 'Compare the low-light sensors by hand' }, headers: { 'idempotency-key': randomUUID() } }), 201) as { title: string };
+    assert.equal(manual.title, 'Compare the low-light sensors by hand');
+    assert.equal(seen.length, afterOutage, 'human continuation does not need background compute');
   });
 });

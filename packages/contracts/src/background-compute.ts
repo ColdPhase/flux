@@ -43,11 +43,14 @@ export interface ProactiveComparisonProposal {
   computeSource: 'owner_background_claude_platform';
   model: 'claude-sonnet-5';
   /** Cited project source revisions, including the triggering result. */
-  sources: Array<{ type: 'result' | 'message' | 'material'; id: string; version: number }>;
+  sources: Array<{ type: 'result' | 'message' | 'material'; id: string; version: number; conversationId?: string }>;
   fact: string;
   interpretation: string;
   suggestedAction: string;
-  status: 'proposed' | 'dismissed';
+  status: 'proposed' | 'dismissed' | 'used';
+  version: number;
+  editedByUserId: string | null;
+  usedWorkId: string | null;
   createdAt: string;
   updatedAt: string;
 }

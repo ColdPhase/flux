@@ -17,7 +17,8 @@ function proposalView(row: ProposalRow): ProactiveComparisonProposal {
     agentId: row.agentId, audience: { kind: 'project', projectId: row.projectId },
     computeSource: 'owner_background_claude_platform', model: 'claude-sonnet-5',
     sources: row.sources, fact: row.fact, interpretation: row.interpretation,
-    suggestedAction: row.suggestedAction, status: row.status,
+    suggestedAction: row.suggestedAction, status: row.status, version: row.version,
+    editedByUserId: row.editedByUserId, usedWorkId: row.usedWorkId,
     createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
 
@@ -41,6 +42,16 @@ export function proactiveOutboxRows(db: DbExecutor) {
     },
     async proposalForCandidate(candidateId: string): Promise<ProactiveComparisonProposal | null> {
       const [row] = await db.select().from(proposals).where(eq(proposals.outboxId, candidateId));
+      return row ? proposalView(row) : null;
+    },
+    async lockProposal(id: string) {
+      const [row] = await db.select().from(proposals).where(eq(proposals.id, id)).for('update');
+      return row ?? null;
+    },
+    async reviseProposal(id: string, patch: { fact?: string; interpretation?: string; suggestedAction?: string;
+      status?: 'dismissed' | 'used'; editedByUserId: string; usedWorkId?: string }) {
+      const [row] = await db.update(proposals).set({ ...patch, version: sql`${proposals.version} + 1`, updatedAt: new Date() })
+        .where(eq(proposals.id, id)).returning();
       return row ? proposalView(row) : null;
     },
     async complete(input: { candidateId: string; id: string; ownerUserId: string; agentId: string;
@@ -69,6 +80,11 @@ export function proactiveOutboxRows(db: DbExecutor) {
       }).where(and(eq(q.id, candidateId), eq(q.status, 'reserved')));
     },
     sourceSnapshot: (resultId: string) => resultSourceFingerprint(db, resultId),
+    async messageConversation(projectId: string, messageId: string) {
+      const [row] = await db.select({ conversationId: schema.projectMessages.conversationId }).from(schema.projectMessages)
+        .where(and(eq(schema.projectMessages.projectId, projectId), eq(schema.projectMessages.id, messageId))).for('share');
+      return row?.conversationId ?? null;
+    },
     async sourceCurrent(projectId: string, source: { type: string; id: string; version: number | null }) {
       if (source.type !== 'message' && source.type !== 'result' && source.type !== 'material') return false;
       const ref = source.type === 'material'

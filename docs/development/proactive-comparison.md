@@ -40,19 +40,38 @@ result transaction **only for an enabled rule**; production activation is
 still disabled, so current production rules do not create candidates. The worker
 adapter can recheck current owner/agent access, result authorship, explicit source
 links and budget before reserving; there is no scheduled dispatch yet. An explicitly
-invoked controlled-provider path in the worker decrypts only the owner's active
+invoked dispatch path in the worker decrypts only the owner's active
 key, token-counts up to 8,000 inputs, makes at most one 1,200-output-token call,
 validates cited output and persists a separate quiet proposal. It checks current
 owner/agent project write access and pinned project-audience sources before the
 call and again within the commit transaction. It records usage estimates
 separately from the conservative reservation; failed or lost responses stay
 `unknown` and are never retried automatically. The project-read API exposes a
-proposal to current project readers without a notification. This path has only
-been exercised with a local controlled HTTP provider inside Docker; it is not
-registered in the running worker and does not claim a real Claude Platform call.
+proposal to current project readers without a notification. The adapter for
+Claude Platform uses fixed token-count and Messages requests, a structured
+answer schema, no tools and no automatic retry. Local HTTP fixtures exercise
+the wire format; the adapter is not registered in the running worker and no
+real Claude Platform call has been observed. Project contributors can inspect,
+edit or dismiss a proposal, or explicitly use it to create work in one database
+transaction. Citations retain source versions and project-message conversation
+links. These controls are available only after a proposal has been created by
+the still-disabled background rule.
 Another project member may author a qualifying result under the owner's standing
 rule, but cannot read or revoke that owner's connection or directly command it.
 The API has no route to change the rule's owner, audience, scope or purpose.
+The Docker browser journey in `tests/app/e2e/proactive-comparison.e2e.ts` seeds two
+proposals for a restricted project, renders them at 1440×900, follows an exact
+project-message citation, then edits, uses and dismisses them. It verifies the
+stored versions and resulting work through the API after reload. A person also
+creates work manually after both proposals are gone, so the continuing project
+workflow does not depend on an available model connection.
+
+The adapter shape was checked on 2026-09-28 against the provider's
+[token-count endpoint](https://platform.claude.com/docs/en/api/http/messages/count_tokens),
+[Messages endpoint](https://platform.claude.com/docs/en/api/http/messages) and
+[structured-output guide](https://platform.claude.com/docs/en/build-with-claude/structured-outputs).
+Those pages describe the request fields; the local HTTP fixture proves only
+Flux's serialization and parsing, not acceptance by the live provider.
 
 ## Key file, restore and rotation
 
@@ -103,8 +122,9 @@ tokens and $10/M output tokens, and notes that its tokenizer differs from Sonnet
 worker records `usage_estimated_cents` using these dated standard rates and
 continues to hold at least the original reservation in the local budget.
 
-Remaining #58 work: a real configured provider adapter and authorized test call,
-cancel/pause behavior during an in-flight request, broader versioned project
-source selection, dismissal suppression, proposal inspect/edit/dismiss/use UI and
-no-AI continuation evidence, plus #118 migration-upgrade proof. This file
+Remaining #58 work: an authorized real-provider test call and actual billing
+observation, cancel/pause behavior during an in-flight request, broader versioned
+project source selection, reopening dismissed suggestions only after relevant
+evidence changes, insufficient-evidence state, rendered UI/interaction
+and independent visual evidence, plus #118 migration-upgrade proof. This file
 describes a controlled integration slice, not completion of #58.

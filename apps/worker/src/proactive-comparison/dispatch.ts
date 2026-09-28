@@ -93,9 +93,15 @@ export async function dispatchProactiveComparison(input: { db: Database; candida
       if (finalSnapshot.fingerprint !== candidate.sourceFingerprint) throw new Stop('SOURCE_CHANGED_AFTER_RESPONSE', usage);
       for (const source of finalSnapshot.sources) if (!await rows.sourceCurrent(candidate.projectId, source))
         throw new Stop('SOURCE_CHANGED_AFTER_RESPONSE', usage);
+      const cited = await Promise.all(answer.citations.map(async (citation) => {
+        if (citation.type !== 'message') return citation;
+        const conversationId = await rows.messageConversation(candidate.projectId, citation.id);
+        if (!conversationId) throw new Stop('SOURCE_CHANGED_AFTER_RESPONSE', usage);
+        return { ...citation, conversationId };
+      }));
       const created = await rows.complete({ candidateId: candidate.id, id: randomUUID(), ownerUserId: candidate.ownerUserId,
         agentId: rule.agentId, projectId: candidate.projectId, resultId: candidate.resultId,
-        sourceFingerprint: candidate.sourceFingerprint, sources: answer.citations,
+        sourceFingerprint: candidate.sourceFingerprint, sources: cited,
         fact: answer.fact, interpretation: answer.interpretation, suggestedAction: answer.suggestedAction,
         inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, estimatedCents: usage.estimatedCents });
       if (!created) throw new Stop('RESERVATION_CHANGED', usage);

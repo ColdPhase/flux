@@ -12,7 +12,10 @@ CREATE TABLE proactive_comparison_proposals (
   fact text NOT NULL CHECK (length(btrim(fact)) BETWEEN 1 AND 10000),
   interpretation text NOT NULL CHECK (length(btrim(interpretation)) BETWEEN 1 AND 10000),
   suggested_action text NOT NULL CHECK (length(btrim(suggested_action)) BETWEEN 1 AND 10000),
-  status text NOT NULL DEFAULT 'proposed' CHECK (status IN ('proposed', 'dismissed')),
+  status text NOT NULL DEFAULT 'proposed' CHECK (status IN ('proposed', 'dismissed', 'used')),
+  version integer NOT NULL DEFAULT 1 CHECK (version > 0),
+  edited_by_user_id text REFERENCES auth_users(id),
+  used_work_id uuid UNIQUE REFERENCES project_work_items(id),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
