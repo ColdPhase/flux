@@ -11,7 +11,7 @@ import type { DecisionStatus, LinkOwnerType, LinkRole, ObjectRef, ResultFinding,
  * materials and docs with every version, project sketches with thoughts and links, work,
  * decisions and results with their typed links, members and roles, and who made what. It never
  * holds other projects, direct messages, private notes (drafts), private sketches, sessions,
- * push subscriptions, notifications or events. Re-import is not part of format version 1.
+ * push subscriptions, notifications, agent connections, OAuth tokens, agent proposals or events. Re-import is not part of format version 1.
  */
 export const projectExportPath = (projectId: string) => `/api/v1/projects/${projectId}/export`;
 /** `GET projectExportPath(id)?format=bundle` answers the `application/gzip` bundle. */
@@ -27,6 +27,7 @@ export const PROJECT_EXPORT_EXCLUDED = [
   'private notes (drafts), including the private source of a published material',
   'private sketches and placements of notes on a sketch',
   'accounts, e-mail addresses, sessions, push subscriptions and notifications',
+  'agent connections, OAuth clients and tokens, and pending agent proposals',
   'events, idempotency records and other internal rows',
 ] as const;
 

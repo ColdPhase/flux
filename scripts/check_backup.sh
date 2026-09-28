@@ -6,13 +6,15 @@
 #  1. Fresh restore with real data: checkout A runs ./flux up and ./flux demo, then
 #     scripts/backup-fixture.mjs adds conversations, a DM, a private note, a project sketch,
 #     work/decision/result with links, a doc with two versions, a push subscription, a revoked
-#     and a live session and an outsider; a file is put into the files volume. ./flux export
+#     and a live session, two OAuth agent connections with bearers (#52; one revoked before the
+#     backup, one after it) and an outsider; a file is put into the files volume. ./flux export
 #     is checked for content and exclusions. ./flux backup runs twice (--keep 1); restore is
 #     refused when not confirmed, for a damaged archive and for another schema version. A's
 #     volumes are destroyed, a fresh checkout B restores the archive, and the fixture verifies
-#     through B's API: the same data, versions and links, sessions, sign-in and permissions.
-#  2. Upgrade: checkout U starts the previous main's version (the newest main commit with an
-#     older schema, or FLUX_UPGRADE_FROM) with its demo, its files are replaced by this tree,
+#     through B's API: the same data, versions and links, sessions, sign-in, permissions and
+#     agent access as of the backup; restore --revoke-agent-connections then ends all of it.
+#  2. Upgrade: checkout U starts the previous main's version (the newest commit on main's
+#     first-parent history with other migrations than this tree, or FLUX_UPGRADE_FROM) with its demo, its files are replaced by this tree,
 #     ./flux upgrade migrates forward and the demo data is verified. A broken migration then
 #     makes ./flux upgrade fail with restore instructions, which are followed.
 set -eu
@@ -30,7 +32,8 @@ fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
 # Each checkout gets its own ports; its Compose project comes from its path.
 flux_a() { FLUX_PORT=$port_a FLUX_DEV_PORT=$((port_a + 1)) FLUX_MAILPIT_PORT=$((port_a + 2)) "$A/flux" "$@"; }
-flux_b() { FLUX_PORT=$port_b FLUX_PUBLIC_ORIGIN="http://127.0.0.1:$port_b" FLUX_DEV_PORT=$((port_b + 1)) FLUX_MAILPIT_PORT=$((port_b + 2)) "$B/flux" "$@"; }
+# B replaces A on A's address after A is destroyed: OAuth issuer and audience are the origin.
+flux_b() { FLUX_PORT=$port_a FLUX_PUBLIC_ORIGIN="http://127.0.0.1:$port_a" FLUX_DEV_PORT=$((port_b + 1)) FLUX_MAILPIT_PORT=$((port_b + 2)) "$B/flux" "$@"; }
 flux_u() { FLUX_PORT=$port_u FLUX_DEV_PORT=$((port_u + 1)) FLUX_MAILPIT_PORT=$((port_u + 2)) "$U/flux" "$@"; }
 project_of() { sed -n 's/^FLUX_PROJECT=//p' "$1/.env"; }
 env_of() { sed -n "s/^$2=//p" "$1/.env" | tail -n 1; }
@@ -40,7 +43,7 @@ compose_in() { # checkout args...
 }
 # Runs scripts/backup-fixture.mjs inside a checkout's API container.
 fixture() { # checkout mode [state-json]
-  compose_in "$1" exec -T -e FLUX_FIXTURE_MODE="$2" -e FLUX_FIXTURE_STATE="${3:-}" \
+  compose_in "$1" exec -T -e FLUX_FIXTURE_MODE="$2" -e FLUX_FIXTURE_STATE="${3:-}" -e FLUX_FIXTURE_OAUTH_CLIENT="$oauth_client" \
     -e FLUX_PUBLIC_ORIGIN="$(env_of "$1" FLUX_PUBLIC_ORIGIN)" \
     -e FLUX_DEMO_OWNER_PASSWORD="$(env_of "$1" FLUX_DEMO_OWNER_PASSWORD)" -e FLUX_DEMO_PARTNER_PASSWORD="$(env_of "$1" FLUX_DEMO_PARTNER_PASSWORD)" \
     api node --input-type=module - < "$here/scripts/backup-fixture.mjs"
@@ -51,7 +54,11 @@ copy_tree() { # target
   (cd "$here" && git ls-files -z --cached --others --exclude-standard | xargs -0 tar -cf - 2>/dev/null) | (cd "$1" && tar -xf -)
 }
 schema_of_tree() { ls "$1/packages/db/migrations" | sed -n 's/^\([0-9]\{4\}\)_.*\.sql$/\1/p' | sort | tail -n 1 | sed 's/^0*//'; }
-schema_of_ref() { git -C "$here" ls-tree --name-only "$1" packages/db/migrations/ | sed -n 's#^.*/\([0-9]\{4\}\)_.*\.sql$#\1#p' | sort | tail -n 1 | sed 's/^0*//'; }
+migrations_of_ref() { git -C "$here" ls-tree --name-only "$1" packages/db/migrations/ | sed -n 's#^.*/\([0-9]\{4\}_.*\.sql\)$#\1#p' | sort; }
+migrations_of_tree() { ls "$1/packages/db/migrations" | grep -E '^[0-9]{4}_.*\.sql$' | sort; }
+schema_of_ref() { migrations_of_ref "$1" | tail -n 1 | sed 's/^\([0-9]*\)_.*/\1/; s/^0*//'; }
+
+oauth_client="flux-backup-check-$$"
 
 cleanup() {
   status=$?
@@ -80,6 +87,11 @@ step "Checkout A: ./flux up, ./flux demo and the real-data fixture"
 flux_a up >/dev/null
 flux_a demo >/dev/null
 run_a=$(project_of "$A")
+# A local OAuth client, inserted as tests/app/oauth-mcp.test.ts does (no external client metadata).
+compose_in "$A" exec -T db psql -X -q -v ON_ERROR_STOP=1 -U flux -d flux -c "
+  INSERT INTO oauth_client (id, client_id, name, redirect_uris, token_endpoint_auth_method, grant_types, response_types, scopes, require_pkce, created_at, updated_at)
+  VALUES (gen_random_uuid()::text, '$oauth_client', 'Backup check client', ARRAY['http://127.0.0.1:19737/callback'], 'none', ARRAY['authorization_code'], ARRAY['code'], ARRAY['flux.context.read'], true, now(), now());
+  INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at) VALUES (gen_random_uuid()::text, '$oauth_client', 'http://127.0.0.1:$port_a/mcp', now());"
 seed_out=$(fixture "$A" seed)
 state=$(printf '%s\n' "$seed_out" | sed -n 's/^FLUX_FIXTURE //p')
 [ -n "$state" ] || fail "the fixture did not report its state: $seed_out"
@@ -141,6 +153,7 @@ for part in database.dump files.tar.gz flux.env; do
     || fail "manifest checksum of $part is wrong"
 done
 tar -tzf "$work/unpacked/files.tar.gz" | grep -q 'uploads/sentinel.bin' || fail "files archive lacks the uploaded file"
+fixture "$A" revoke-live "$state"
 
 step "./flux restore asks first, and refuses damaged archives and other versions"
 if echo n | flux_a restore "$archive" > "$work/cancel.out" 2>&1; then fail "restore without confirmation succeeded"; fi
@@ -169,34 +182,43 @@ for volume in "${run_a}_pgdata" "${run_a}_files"; do
   if docker volume inspect "$volume" >/dev/null 2>&1; then fail "reset left $volume"; fi
 done
 [ ! -f "$B/.env" ] || fail "B is not fresh"
-flux_b restore "$archive" -y > "$work/restore.out"
-tail -n 5 "$work/restore.out"
+flux_b restore "$archive" -y > "$work/restore.out" 2>&1 || { cat "$work/restore.out"; fail "restore into B failed"; }
+tail -n 7 "$work/restore.out"
+grep -q 'NOTE: 1 agent connection(s) are active as of the backup' "$work/restore.out" || fail "restore did not warn about restored agent connections"
 run_b=$(project_of "$B")
 [ -n "$run_b" ] && [ "$run_b" != "$run_a" ] || fail "B did not use its own project ($run_b)"
 [ "$(ls -l "$B/.env" | cut -c1-10)" = "-rw-------" ] || fail "restored .env is not private"
 [ "$(env_of "$B" FLUX_AUTH_SECRET)" = "$(env_of "$A" FLUX_AUTH_SECRET)" ] || fail "restored .env has other secrets"
-[ "$(env_of "$B" FLUX_PUBLIC_ORIGIN)" = "http://127.0.0.1:$port_b" ] || fail "restored .env did not take B's origin"
+[ "$(env_of "$B" FLUX_PORT)" = "$port_a" ] || fail "restored .env did not take the port from the shell"
 grep -q "Health: {\"status\":\"ok\",\"schemaVersion\":$schema}" "$work/restore.out" || fail "restore did not report the health and schema check"
 fixture "$B" verify "$state"
 compose_in "$B" --profile ops run --rm --no-deps -T files-archive cat /data/files/uploads/sentinel.bin > "$work/restored.bin"
 [ "$(sha256 "$work/restored.bin")" = "$upload_sha" ] || fail "the uploaded file changed in the restore"
 owner_uid=$(compose_in "$B" --profile ops run --rm --no-deps -T files-archive stat -c %u /data/files/uploads/sentinel.bin | tr -d '\r')
 [ "$owner_uid" = 1000 ] || fail "restored file belongs to uid $owner_uid, not the API user"
+flux_b restore "$archive" --revoke-agent-connections -y > "$work/revoke.out" 2>&1 || { cat "$work/revoke.out"; fail "restore --revoke-agent-connections failed"; }
+grep -q 'Revoked 1 agent connection(s)' "$work/revoke.out" || fail "no revocation report: $(tail -n 5 "$work/revoke.out")"
+fixture "$B" agents-revoked "$state"
 flux_b clean -y >/dev/null
 flux_a clean -y >/dev/null
 
 step "Upgrade from the previous main's schema"
 current=$(schema_of_tree "$here")
+migrations_of_tree "$here" > "$work/migrations.now"
 from=${FLUX_UPGRADE_FROM:-}
 if [ -z "$from" ]; then
   main_ref=$(git -C "$here" merge-base HEAD origin/main 2>/dev/null || git -C "$here" merge-base HEAD main)
   for commit in $(git -C "$here" rev-list --first-parent --max-count=200 "$main_ref"); do
-    if [ "$(schema_of_ref "$commit")" -lt "$current" ]; then from=$commit; break; fi
+    migrations_of_ref "$commit" > "$work/migrations.from"
+    if ! cmp -s "$work/migrations.from" "$work/migrations.now"; then from=$commit; break; fi
   done
 fi
-[ -n "$from" ] || fail "no main commit with a schema older than $current; set FLUX_UPGRADE_FROM"
+[ -n "$from" ] || fail "no main commit with other migrations than this tree; set FLUX_UPGRADE_FROM"
+migrations_of_ref "$from" > "$work/migrations.from"
+new_migrations=$(comm -13 "$work/migrations.from" "$work/migrations.now")
+[ -n "$new_migrations" ] || fail "$from has no migration that this tree adds"
 from_schema=$(schema_of_ref "$from")
-echo "upgrading from $(git -C "$here" log -1 --format='%h %s' "$from") (schema $from_schema) to this tree (schema $current)"
+echo "upgrading from $(git -C "$here" log -1 --format='%h %s' "$from") (schema $from_schema) to this tree (schema $current); new migrations:" $new_migrations
 mkdir -p "$U"
 git -C "$here" archive "$from" | tar -xf - -C "$U"
 flux_u up >/dev/null
@@ -209,6 +231,9 @@ if echo n | flux_u upgrade > "$work/upgrade-cancel.out" 2>&1; then fail "upgrade
 flux_u upgrade -y > "$work/upgrade.out" 2>&1 || { cat "$work/upgrade.out"; fail "upgrade failed"; }
 tail -n 4 "$work/upgrade.out"
 grep -q "Upgraded $run_u from schema $from_schema to $current" "$work/upgrade.out" || fail "upgrade did not report schema $from_schema -> $current"
+for migration in $new_migrations; do
+  grep -q "Applied migration $migration" "$work/upgrade.out" || fail "upgrade did not apply $migration"
+done
 upgrade_archive=$(sed -n 's/^Backup written: \(.*\.tar\) (.*/\1/p' "$work/upgrade.out")
 [ -f "$upgrade_archive" ] || fail "upgrade wrote no backup"
 tar -xOf "$upgrade_archive" manifest.json | grep -q "\"schemaVersion\": $from_schema," || fail "the upgrade backup is not of schema $from_schema"
@@ -225,4 +250,4 @@ flux_u restore "$broken_archive" -y > "$work/after-broken.out" 2>&1 || { cat "$w
 fixture "$U" demo
 flux_u clean -y >/dev/null
 
-step "PASS: backup, restore into a fresh project, export, upgrade from schema $from_schema and failed-upgrade recovery"
+step "PASS: backup, restore into a fresh project, agent access, export, upgrade from $(git -C "$here" rev-parse --short "$from") (+$(printf '%s\n' "$new_migrations" | wc -l | tr -d ' ') migrations) and failed-upgrade recovery"

@@ -73,6 +73,8 @@ names.
   material's text is exported, its source note and the note's id are not;
 - private sketches, and the placement of a note on any sketch;
 - accounts, e-mail addresses, sessions, push subscriptions and notifications;
+- agent connections, OAuth clients, access and refresh tokens and signing keys (secrets of this
+  instance), and pending agent proposals (#52), which are not part of format version 1;
 - events, idempotency records and other internal rows.
 
 Drafts shared with the project are also left out in format version 1: a shared note becomes
@@ -80,7 +82,8 @@ project content when it is published as a material. Links whose target the expor
 are dropped, so an export never names an object it does not contain. `tests/app/export.test.ts`
 checks this with distinctive text in another project, a DM, a private note (published from, so
 its id is referenced internally) and a private sketch that places the note, and also checks that
-no e-mail address, private note id, client mutation id or other project id appears.
+no e-mail address, private note id, client mutation id, agent connection id or other project
+id appears.
 `scripts/check_backup.sh` checks the same for `./flux export` on the demo data.
 
 ## Compatibility

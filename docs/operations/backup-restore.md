@@ -64,6 +64,7 @@ runs on the host except `sh`, `tar` and a SHA-256 tool.
 
 ```sh
 ./flux restore backups/flux-backup-flux-3f2a9c1d-20260928T091502Z.tar
+./flux restore <archive> --revoke-agent-connections   # also end every agent connection and OAuth token
 ```
 
 In this order, stopping at the first problem:
@@ -96,6 +97,26 @@ Restore keeps everything in the dump, including private notes, direct messages, 
 revoked sessions (they stay revoked), push subscriptions and notification rows. Access is
 decided by the same policy rows, so permissions are exactly as they were.
 
+### Agent connections and OAuth tokens
+
+Personal agent connections (#52) and their OAuth clients, hashed refresh tokens, access token
+rows and JWT signing keys are ordinary database rows, so a backup keeps them as stored and a
+restore brings them back **as they were when the backup was taken**:
+
+- a connection revoked *before* the backup stays revoked, and its bearer tokens stay denied;
+- a connection or token revoked *after* the backup is **active again** after the restore, and
+  so is anything else the owners changed since (grants, memberships, sessions).
+
+When a restore brings back active connections, it prints `NOTE: N agent connection(s) are
+active as of the backup`. After restoring an older backup, or whenever a token may have leaked,
+run the restore with `--revoke-agent-connections`: after the migration and before API and
+worker start, it revokes every agent connection and every OAuth access and refresh token
+(`infra/operations.ts`, SQL in `packages/db/src/repositories/operations.ts`). People then
+connect their agents again from `/connect-agent`. Changing `FLUX_AUTH_SECRET` in `.env` signs
+everyone out of the browser as well, which is heavier; revoking the connections is the targeted
+step for agents. Revoke sessions that ended after the backup through
+`/api/v1/sessions` or ask people to sign out other sessions.
+
 ### Restore on a fresh machine or checkout
 
 ```sh
@@ -112,6 +133,7 @@ The new checkout gets its own project name; the data and secrets come from the a
 Compose projects, ports and images, and removes them afterwards. It seeds `./flux demo` plus
 conversations, a DM, a private note, a project sketch with links, work, a decision and a
 result with links, a doc with two versions, a push subscription, a revoked and a live session,
+two agent connections with OAuth bearers (one revoked before the backup, one right after it),
 an outsider account and a 300 kB file in the files volume; backs up twice (`--keep 1`);
 checks the manifest and checksums; checks that restore is refused without confirmation, for a
 damaged archive, for an older schema without `--migrate` and for a newer schema; destroys the
@@ -119,7 +141,12 @@ volumes; restores into a **fresh** checkout without `.env`; and verifies through
 the project export, conversations, doc versions, DM messages, drafts, members and push
 subscriptions equal the data before the backup, that the old session still works and the
 revoked one does not, that sign-in works, that the private note stays private, and that the
-outsider is denied the project, its export, the DM and the note. The file must be byte for
+outsider is denied the project, its export, the DM and the note. The bearer of the connection
+revoked before the backup is still denied (`403` from `/mcp`); the one revoked after the backup
+works again and the restore prints the note; a second restore with `--revoke-agent-connections`
+denies both bearers and lists every connection as revoked. Fresh checkout B takes A's address
+after A is destroyed, as a replacement machine would, because OAuth issuer and audience are
+the public origin. The file must be byte for
 byte identical and owned by the API user. The same script covers [upgrade](upgrade.md).
 
 Not covered yet: very large databases (the dump is streamed through `docker compose exec`,

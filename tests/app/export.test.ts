@@ -80,6 +80,8 @@ describe('project export', () => {
   let result: WorkResult;
   let privateDraftId: string;
   let materialMutationId: string;
+  let agentId: string;
+  let connectionId: string;
 
   before(async () => {
     [owner, admin, partner, viewer, outsider] = await Promise.all(['export-owner', 'export-admin', 'export-partner', 'export-viewer', 'export-outsider'].map(person));
@@ -135,6 +137,13 @@ describe('project export', () => {
       headers: { 'if-match': `"${doc.version}"` },
     }), 200, 'doc v2');
 
+    // An agent with a grant and an MCP connection selection (#52): the agent is part of the
+    // audience, its connection never leaves the instance.
+    agentId = json<{ id: string }>(await post(owner, `/api/v1/workspaces/${ws.id}/agents`, { name: 'export-agent', owner: 'self' }), 201, 'agent').id;
+    json(await post(owner, `/api/v1/projects/${lamp.id}/grants`, { principal: { kind: 'agent', id: agentId }, role: 'contributor' }), 201, 'agent grant');
+    connectionId = json<{ id: string }>(await post(owner, '/api/v1/agent-connections',
+      { agentId, selectedProjectIds: [lamp.id], scopes: ['flux.context.read'] }), 201, 'agent connection').id;
+
     // Content that must stay out: another project, a DM, a workspace-level private note.
     json(await post(owner, `/api/v1/projects/${other.id}/conversations`, { body: token('OTHERPROJECT-message'), clientMessageId: randomUUID() }), 201, 'other conversation');
     json(await post(owner, `/api/v1/projects/${other.id}/docs`, { title: token('OTHERPROJECT-doc'), body: token('OTHERPROJECT-doc-body') }), 201, 'other doc');
@@ -167,7 +176,8 @@ describe('project export', () => {
     assert.deepEqual(people.get(partner.id), ['contributor', 'member']);
     assert.deepEqual(people.get(viewer.id), ['viewer', 'member']);
     assert.equal(people.has(outsider.id), false);
-    assert.deepEqual(data.grants.map((item) => [item.principal.id, item.role]).sort(), [[partner.id, 'contributor'], [viewer.id, 'viewer']].sort());
+    assert.deepEqual(data.grants.map((item) => [item.principal.id, item.role]).sort(), [[agentId, 'contributor'], [partner.id, 'contributor'], [viewer.id, 'viewer']].sort());
+    assert.deepEqual(data.people.find((someone) => someone.id === agentId), { kind: 'agent', id: agentId, name: 'export-agent', access: 'contributor', workspaceRole: null });
 
     assert.equal(data.conversations.length, 1);
     assert.deepEqual(data.conversations[0]!.messages.map((message) => [message.sequence, message.body, message.author.id]),
@@ -202,7 +212,7 @@ describe('project export', () => {
 
     const text = JSON.stringify(data);
     for (const hidden of ['OTHERPROJECT', 'DMSECRET', 'PRIVATENOTE', 'PRIVATESKETCH']) assert.ok(!text.includes(hidden), `export leaks ${hidden}`);
-    for (const hidden of [privateDraftId, materialMutationId, other.id, owner.email, partner.email, outsider.id]) assert.ok(!text.includes(hidden), `export leaks ${hidden}`);
+    for (const hidden of [privateDraftId, materialMutationId, connectionId, other.id, owner.email, partner.email, outsider.id]) assert.ok(!text.includes(hidden), `export leaks ${hidden}`);
 
     const validate = await validator();
     const checked = await validate(data);

@@ -9,7 +9,7 @@ host and never touches another Compose project or a volume that is not this chec
 | Task | Command | Guide |
 | --- | --- | --- |
 | Back up database, files and settings | `./flux backup [--output DIR] [--keep N]` | [Backup and restore](backup-restore.md) |
-| Restore a backup, here or on a new machine | `./flux restore <archive> [--migrate] [-y]` | [Backup and restore](backup-restore.md#restore) |
+| Restore a backup, here or on a new machine | `./flux restore <archive> [--migrate] [--revoke-agent-connections] [-y]` | [Backup and restore](backup-restore.md#restore) |
 | Export one project as open JSON plus files | `./flux export <project> [--as EMAIL]`, `GET /api/v1/projects/:id/export` | [Project export](export.md) |
 | Move to a newer version | `./flux upgrade [--pull] [-y]` | [Upgrade](upgrade.md) |
 
@@ -41,6 +41,9 @@ production upgrade path between releases.
   hashes, session and push subscription rows, and a copy of `.env` with the database password,
   the signing secret and the VAPID private key. It is written with mode `600`; keep it
   encrypted at rest when it leaves the machine.
+- **After restoring an older backup**, access revoked since the backup is active again,
+  including agent connections: use `--revoke-agent-connections`
+  ([details](backup-restore.md#agent-connections-and-oauth-tokens)).
 - **Test a restore now and then** into a second checkout (see [a fresh machine](backup-restore.md#restore-on-a-fresh-machine-or-checkout)).
   `./scripts/check_backup.sh` does exactly that on disposable copies.
 

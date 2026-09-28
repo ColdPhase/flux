@@ -1,4 +1,4 @@
-/* global fetch, process, console, crypto, URL, setTimeout */
+/* global fetch, process, console, crypto, URL, URLSearchParams, setTimeout */
 // Real-data fixture for scripts/check_backup.sh (issue #123). Runs with plain Node inside the API
 // container, fed on stdin like scripts/flux-demo.mjs, and uses only the public HTTP API.
 //
@@ -10,12 +10,17 @@
 //   FLUX_FIXTURE_MODE=verify  with FLUX_FIXTURE_STATE={json} from seed, against a restored or
 //                             upgraded instance: the same snapshot, sign-in, the sessions policy
 //                             and permissions (outsider denied, private note still private).
+//   FLUX_FIXTURE_MODE=revoke-live   after the backup: revokes the live agent connection.
+//   FLUX_FIXTURE_MODE=agents-revoked after restore --revoke-agent-connections: no bearer works.
 //   FLUX_FIXTURE_MODE=demo    after an upgrade from an older version: the demo data is readable.
+//
+// Agent connections (#52) need the OAuth client FLUX_FIXTURE_OAUTH_CLIENT, which
+// check_backup.sh inserts, as the #52 tests do, with the redirect URI below.
 //
 // Input: FLUX_PUBLIC_ORIGIN, FLUX_DEMO_OWNER_PASSWORD, FLUX_DEMO_PARTNER_PASSWORD.
 
 import assert from 'node:assert/strict';
-import { createECDH, randomBytes } from 'node:crypto';
+import { createECDH, createHash, randomBytes } from 'node:crypto';
 
 const api = 'http://127.0.0.1:8080';
 const origin = process.env.FLUX_PUBLIC_ORIGIN;
@@ -49,7 +54,7 @@ class Session {
         await new Promise((resolve) => setTimeout(resolve, (Number(response.headers.get('retry-after')) || 10) * 1000));
         continue;
       }
-      return { status: response.status, json, text };
+      return { status: response.status, json, text, location: response.headers.get('location') };
     }
   }
 
@@ -69,6 +74,48 @@ async function signIn(person) {
 }
 
 const ids = () => crypto.randomUUID();
+const oauthClient = process.env.FLUX_FIXTURE_OAUTH_CLIENT;
+const redirectUri = 'http://127.0.0.1:19737/callback';
+
+/** The #52 authorization-code flow with PKCE for one connection, in a fresh browser session. */
+async function bearerFor(connectionId) {
+  const browser = await signIn(owner);
+  await browser.expect('POST', `/api/v1/agent-connections/${connectionId}/select-for-oauth`, undefined, [204]);
+  const verifier = randomBytes(32).toString('base64url');
+  const query = new URLSearchParams({
+    client_id: oauthClient, redirect_uri: redirectUri, response_type: 'code',
+    code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256',
+    state: ids(), scope: 'flux.context.read', resource: `${origin}/mcp`,
+  });
+  const start = await browser.request('GET', `/api/auth/oauth2/authorize?${query}`, undefined, { accept: 'text/html' });
+  const location = new URL((start.status === 302 ? start.location : start.json?.url) ?? '', origin);
+  assert.equal(location.pathname, '/consent', `OAuth authorize answered ${start.status}: ${start.text}`);
+  const oauthQuery = location.search.slice(1);
+  const consent = await browser.expect('POST', '/api/auth/oauth2/consent', { accept: true, oauth_query: oauthQuery }, [200]);
+  const code = new URL(consent.url).searchParams.get('code');
+  const token = await fetch(new URL('/api/auth/oauth2/token', api), {
+    method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirectUri, client_id: oauthClient, code_verifier: verifier }),
+  });
+  assert.equal(token.status, 200, 'OAuth token issued');
+  return (await token.json()).access_token;
+}
+
+/** HTTP status of one MCP tool call with a bearer (200 allowed, 401/403 denied). */
+async function mcpStatus(bearer) {
+  const response = await fetch(new URL('/mcp', api), {
+    method: 'POST',
+    headers: { authorization: `Bearer ${bearer}`, 'content-type': 'application/json', accept: 'application/json',
+      'mcp-protocol-version': '2026-07-28', 'mcp-method': 'tools/call', 'mcp-name': 'flux_list_contexts' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'flux_list_contexts', arguments: {}, _meta: {
+      'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+      'io.modelcontextprotocol/clientInfo': { name: 'flux-backup-check', version: '1' },
+      'io.modelcontextprotocol/clientCapabilities': {},
+    } } }),
+  });
+  await response.text();
+  return response.status;
+}
 const all = async (session, path) => {
   const items = [];
   for (let offset = 0; ; offset += 100) {
@@ -104,7 +151,8 @@ async function snapshot(ada, jonas, state) {
   const jonasDrafts = (await all(jonas, `/api/v1/workspaces/${workspaceId}/drafts`)).map((draft) => draft.id).sort();
   const push = (await ada.expect('GET', '/api/v1/push/subscriptions')).map((item) => [item.endpointOrigin, item.deviceLabel]).sort();
   const members = (await ada.expect('GET', `/api/v1/workspaces/${workspaceId}/members`)).map((member) => [member.email, member.role]).sort();
-  return { exported, threads, docVersions, dmMessages, adaDrafts, jonasDrafts, push, members };
+  const connections = (await ada.expect('GET', '/api/v1/agent-connections')).map((item) => [item.id, item.revokedAt]).sort();
+  return { exported, threads, docVersions, dmMessages, adaDrafts, jonasDrafts, push, members, connections };
 }
 
 async function seed() {
@@ -145,11 +193,23 @@ async function seed() {
   await ada.expect('DELETE', `/api/v1/sessions/${revokedId}`, undefined, [204]);
   assert.equal((await revoked.request('GET', '/api/v1/me')).status, 401);
 
+  // Agent connections (#52): one revoked before the backup, one live (revoked after it).
+  const agent = await ada.expect('POST', `/api/v1/workspaces/${workspaceId}/agents`, { name: 'Ada\'s laptop agent', owner: 'self' });
+  await ada.expect('POST', `/api/v1/projects/${projectId}/grants`, { principal: { kind: 'agent', id: agent.id }, role: 'contributor' });
+  const connection = async () => (await ada.expect('POST', '/api/v1/agent-connections', { agentId: agent.id, selectedProjectIds: [projectId], scopes: ['flux.context.read'] })).id;
+  const revokedConnection = await connection();
+  const liveConnection = await connection();
+  const bearers = { revoked: await bearerFor(revokedConnection), live: await bearerFor(liveConnection) };
+  assert.equal(await mcpStatus(bearers.revoked), 200, 'a fresh bearer works');
+  await ada.expect('DELETE', `/api/v1/agent-connections/${revokedConnection}`, undefined, [204]);
+  assert.equal(await mcpStatus(bearers.revoked), 403, 'a revoked connection denies its bearer');
+  assert.equal(await mcpStatus(bearers.live), 200, 'the live connection works');
+
   // An outsider: an account that is not a member of the demo workspace.
   const outsider = { email: `outsider-${tag}@example.test`, password: `outsider-${tag}-password` };
   await new Session().expect('POST', '/api/auth/sign-up/email', { ...outsider, name: 'Olga Outsider' }, [200]);
 
-  const state = { tag, workspaceId, projectId, adaId, jonasId, dmId: dm.id, noteId: note.id, docId: doc.id, outsider };
+  const state = { tag, workspaceId, projectId, adaId, jonasId, dmId: dm.id, noteId: note.id, docId: doc.id, outsider, liveConnection, bearers };
   const expected = await snapshot(ada, jonas, state);
   assert.ok(expected.adaDrafts.some(([id]) => id === note.id), 'Ada sees her private note');
   assert.ok(!expected.jonasDrafts.includes(note.id), 'Jonas cannot see Ada\'s private note');
@@ -178,6 +238,11 @@ async function verify() {
   assert.equal(actual.exported.docs.find((doc) => doc.id === state.docId).versions.length, 2, 'both doc versions restored');
   assert.ok(actual.exported.links.some((link) => link.from.type === 'doc' && link.role === 'mentions' && link.to.type === 'work'), 'doc link restored');
   assert.deepEqual(actual.push, [['https://push.example.test', 'Backup test phone']], 'push subscription restored');
+  assert.ok(!text.includes(state.liveConnection), 'the export leaves out agent connections');
+  // Agent access as of the backup: revoked before it stays revoked; the connection revoked
+  // after the backup is live again (the documented caveat of restoring an older backup).
+  assert.equal(await mcpStatus(state.bearers.revoked), 403, 'a connection revoked before the backup stays revoked');
+  assert.equal(await mcpStatus(state.bearers.live), 200, 'a connection revoked only after the backup is live again');
 
   // Permissions: the private note is still private, and an outsider is still denied.
   assert.equal((await jonas.request('GET', `/api/v1/drafts/${noteId}`)).status, 404, 'Jonas cannot open Ada\'s private note');
@@ -194,6 +259,23 @@ async function verify() {
   assert.ok(after.sequence > 0);
   console.log(`verified: ${actual.threads.length} conversations, ${actual.exported.docs.length} docs, ${actual.exported.sketches.length} sketches, `
     + `${actual.exported.work.length} work items, ${actual.exported.links.length} links, ${actual.dmMessages.flat().length} DM messages, sessions and permissions`);
+}
+
+async function revokeLive() {
+  const state = JSON.parse(process.env.FLUX_FIXTURE_STATE ?? '');
+  const ada = await signIn(owner);
+  await ada.expect('DELETE', `/api/v1/agent-connections/${state.liveConnection}`, undefined, [204]);
+  assert.equal(await mcpStatus(state.bearers.live), 403);
+  console.log('revoked the live agent connection after the backup');
+}
+
+async function agentsRevoked() {
+  const state = JSON.parse(process.env.FLUX_FIXTURE_STATE ?? '');
+  const ada = await signIn(owner);
+  for (const [name, bearer] of Object.entries(state.bearers)) assert.equal(await mcpStatus(bearer), 403, `the ${name} bearer is denied`);
+  const connections = await ada.expect('GET', '/api/v1/agent-connections');
+  assert.ok(connections.length === 2 && connections.every((item) => item.revokedAt), 'every agent connection is revoked');
+  console.log('verified --revoke-agent-connections: both bearers denied, every connection revoked');
 }
 
 /** After an upgrade from an older Flux: the demo seeded by that version is intact and readable. */
@@ -223,4 +305,6 @@ async function demo() {
 if (mode === 'seed') await seed();
 else if (mode === 'verify') await verify();
 else if (mode === 'demo') await demo();
+else if (mode === 'revoke-live') await revokeLive();
+else if (mode === 'agents-revoked') await agentsRevoked();
 else throw new Error(`unknown FLUX_FIXTURE_MODE ${mode}`);

@@ -42,11 +42,14 @@ the old version on the partly migrated database.
 ## Verified behavior
 
 `./scripts/check_backup.sh` starts a checkout of the **previous main's schema**: the newest
-commit on `main`'s first-parent history whose highest migration is older than this tree's
-(`FLUX_UPGRADE_FROM=<ref>` picks another). It seeds that version's `./flux demo`, replaces the
+commit on `main`'s first-parent history whose set of migrations differs from this tree's
+(`FLUX_UPGRADE_FROM=<ref>` picks another). On 2026-09-28 that is `f1fa114`, which has
+`0013_docs.sql` but not the later-merged `0011_agent_connection.sql` and `0012_agent_oauth.sql`,
+so the upgrade also proves that migrations numbered below the current maximum are applied. It seeds that version's `./flux demo`, replaces the
 checkout's files with this tree (as `git pull` would, keeping `.env` and the data), checks that
 `./flux upgrade` without confirmation does nothing, runs `./flux upgrade -y`, and verifies the
-reported schema change, the backup's schema, and through the API the demo conversation, DM,
+reported schema change, an `Applied migration` line for every migration the old version lacked,
+the backup's schema, and through the API the demo conversation, DM,
 private note and sketch, a new doc, and the export. It then adds a failing migration, checks that
 the upgrade fails with the restore instruction for its backup, removes the migration and follows
 the instruction; the demo data is verified again.

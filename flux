@@ -19,6 +19,7 @@ BACKUP_DIR="${FLUX_BACKUP_DIR:-$FLUX_ROOT/backups}"
 EXPORT_DIR="$FLUX_ROOT/exports"
 # Inside the Flux image (paths relative to its working directory).
 IMAGE_EXPORT_CLI=apps/server/dist/export/cli.js
+IMAGE_OPERATIONS=infra/dist/operations.js
 
 WAIT_TIMEOUT="${FLUX_WAIT_TIMEOUT:-300}"
 OWNER_LABEL=com.flux.checkout
@@ -620,16 +621,17 @@ env_from_archive() {
 archived_env_value() { sed -n "s/^$2=//p" "$1" | tail -n 1; }
 
 cmd_restore() {
-  archive='' migrate=0 ASSUME_YES=0
+  archive='' migrate=0 revoke_agents=0 ASSUME_YES=0
   for arg in "$@"; do
     case "$arg" in
       --migrate) migrate=1 ;;
+      --revoke-agent-connections) revoke_agents=1 ;;
       -y|--yes) ASSUME_YES=1 ;;
-      -*) die "restore: unknown option $arg (use --migrate, -y)" ;;
+      -*) die "restore: unknown option $arg (use --migrate, --revoke-agent-connections, -y)" ;;
       *) [ -z "$archive" ] || die "restore: only one archive"; archive=$arg ;;
     esac
   done
-  [ -n "$archive" ] || die "usage: ./flux restore <archive.tar> [--migrate] [-y]"
+  [ -n "$archive" ] || die "usage: ./flux restore <archive.tar> [--migrate] [--revoke-agent-connections] [-y]"
   need_docker
   open_archive "$archive"
   manifest="$RESTORE_DIR/manifest.json"
@@ -679,6 +681,17 @@ cmd_restore() {
   compose_main --profile setup run --rm files-init >/dev/null
   if [ "$from_schema" != "$to_schema" ]; then say "Migrating from schema $from_schema to $to_schema..."; fi
   compose_main run --rm migrate || die "The migration after restore failed. See the output above; the archive is unchanged."
+  # Agent connections and OAuth tokens come back as they were at backup time: one revoked
+  # after the backup is live again. --revoke-agent-connections ends all of them.
+  if [ "$revoke_agents" = 1 ]; then
+    compose_main run --rm -T migrate node "$IMAGE_OPERATIONS" revoke-agent-access || die "Revoking agent connections failed; API and worker were not started."
+  else
+    access=$(compose_main run --rm -T migrate node "$IMAGE_OPERATIONS" agent-access | sed -n 's/^FLUX_AGENT_ACCESS //p')
+    if [ -n "$access" ] && [ "${access%% *}" != 0 ]; then
+      warn "NOTE: ${access%% *} agent connection(s) are active as of the backup. A connection or token revoked after the backup was taken is active again."
+      warn "      Review them on /connect-agent (GET /api/v1/agent-connections), or run ./flux restore again with --revoke-agent-connections to end them all."
+    fi
+  fi
   compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" api worker \
     || { compose_main logs --no-color --tail 60 api worker >&2 || true; die "Flux did not become healthy after the restore."; }
   verify_running || die "The restored instance failed its health or schema check."
@@ -798,10 +811,11 @@ Flux launcher. Everything runs in Docker; only sh and Docker Compose are needed.
   ./flux backup [--output DIR] [--keep N]
                          Stop API and worker, write a timestamped archive (database dump, files
                          volume, .env, manifest with checksums) to backups/, restart them.
-  ./flux restore <archive> [--migrate] [-y]
+  ./flux restore <archive> [--migrate] [--revoke-agent-connections] [-y]
                          Check the archive, confirm, replace this project's data with it, migrate
                          and run health and schema checks. Refuses another Flux version unless
-                         --migrate.
+                         --migrate. --revoke-agent-connections ends every agent connection and
+                         OAuth token from the backup (they need connecting again).
   ./flux export <project> [--as EMAIL] [--output FILE]
                          Write a project's JSON-plus-files bundle to exports/ (as the workspace
                          owner by default; the account needs project.manage).
