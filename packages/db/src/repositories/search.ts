@@ -15,7 +15,7 @@ export type SearchExecutor = Pick<NodePgDatabase<typeof schema>, 'select' | 'exe
  */
 
 /** `search_documents.kind` (the contracts' `SearchKind`; this package does not depend on contracts). */
-export type SearchKindRow = 'message' | 'dm_message' | 'material' | 'work' | 'decision' | 'result' | 'sketch' | 'thought' | 'draft' | 'person';
+export type SearchKindRow = 'message' | 'dm_message' | 'material' | 'doc' | 'work' | 'decision' | 'result' | 'sketch' | 'thought' | 'draft' | 'person';
 type SearchKind = SearchKindRow;
 /** Highlighted text: plain and matched parts. */
 export type SearchTextRow = { text: string; match: boolean }[];
@@ -175,7 +175,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows): S
     LEFT JOIN workspaces w ON w.id = h.workspace_id
     LEFT JOIN auth_users au ON h.author_kind = 'human' AND au.id = h.author_id
     LEFT JOIN agents ag ON ag.id = (CASE WHEN h.author_kind = 'agent' THEN h.author_id::uuid END)
-    LEFT JOIN project_materials pm ON pm.id = (CASE WHEN h.kind = 'material' THEN h.object_id::uuid END)
+    LEFT JOIN project_materials pm ON pm.id = (CASE WHEN h.kind IN ('material', 'doc') THEN h.object_id::uuid END)
     LEFT JOIN sketches sk ON h.kind = 'thought' AND sk.id = h.parent_id
     LEFT JOIN dms d ON h.kind = 'dm_message' AND d.id = h.parent_id
     ORDER BY h.score DESC, h.at DESC, h.id DESC`;

@@ -4,7 +4,7 @@
 -- the same transaction as the object itself, so a committed edit is searchable at once and a
 -- deleted object disappears with it. Rows hold content only: who may read a row is decided at
 -- query time by the access policy (`visibleFilter`) through `audience_key`, the object that
--- carries the permission (`project:<id>`, `dm:<id>`, `sketch:<id>`, `draft:<id>`, `members:<workspace>`).
+-- carries the permission (docs, as project materials, use `project:<id>`; `dm:<id>`, `sketch:<id>`, `draft:<id>`, `members:<workspace>`).
 -- The GIN indexes lead with audience_key (btree_gin), so the index scan itself is limited to
 -- the audiences the reader may see: hidden matches are never fetched, ranked or counted.
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
@@ -13,7 +13,7 @@ CREATE EXTENSION IF NOT EXISTS btree_gin;
 CREATE TABLE search_documents (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   doc_key text NOT NULL UNIQUE,
-  kind text NOT NULL CHECK (kind IN ('message', 'dm_message', 'material', 'work', 'decision', 'result', 'sketch', 'thought', 'draft', 'person')),
+  kind text NOT NULL CHECK (kind IN ('message', 'dm_message', 'material', 'doc', 'work', 'decision', 'result', 'sketch', 'thought', 'draft', 'person')),
   workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   audience_key text NOT NULL,
   -- The place: the object's project, or NULL for private drafts, private sketches and people.
@@ -71,12 +71,16 @@ BEGIN
 END $$;
 CREATE TRIGGER search_index AFTER INSERT OR UPDATE OR DELETE ON dm_messages FOR EACH ROW EXECUTE FUNCTION search_index_dm_message();
 
--- Material versions (#36) are immutable; each one is its own row.
+-- Material and doc versions (#36, #112) are immutable; each one is its own row. A doc is a
+-- material of kind 'doc' whose version also has a state (draft or published).
 CREATE FUNCTION search_index_material_version() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  material_kind text;
 BEGIN
   IF TG_OP = 'DELETE' THEN DELETE FROM search_documents WHERE doc_key = 'material:' || OLD.material_id || ':' || OLD.version; RETURN OLD; END IF;
-  PERFORM search_put('material:' || NEW.material_id || ':' || NEW.version, 'material', NEW.workspace_id, 'project:' || NEW.project_id,
-    NEW.project_id, NEW.material_id::text, NULL, NEW.version, NULL, NEW.title, concat_ws(E'\n', NEW.body, NEW.url), 'human', NEW.author_id, NEW.created_at);
+  SELECT pm.kind INTO material_kind FROM project_materials pm WHERE pm.id = NEW.material_id;
+  PERFORM search_put('material:' || NEW.material_id || ':' || NEW.version, coalesce(material_kind, 'material'), NEW.workspace_id, 'project:' || NEW.project_id,
+    NEW.project_id, NEW.material_id::text, NULL, NEW.version, NEW.state, NEW.title, concat_ws(E'\n', NEW.body, NEW.url), 'human', NEW.author_id, NEW.created_at);
   RETURN NEW;
 END $$;
 CREATE TRIGGER search_index AFTER INSERT OR UPDATE OR DELETE ON project_material_versions FOR EACH ROW EXECUTE FUNCTION search_index_material_version();
@@ -175,8 +179,9 @@ SELECT search_put('message:' || m.id, 'message', m.workspace_id, 'project:' || m
   NULL, NULL, '', m.body, 'human', m.author_id, m.created_at) FROM project_messages m;
 SELECT search_put('dm_message:' || m.id, 'dm_message', m.workspace_id, 'dm:' || m.dm_id, NULL, m.id::text, m.dm_id,
   NULL, NULL, '', m.body, 'human', m.author_id, m.created_at) FROM dm_messages m;
-SELECT search_put('material:' || v.material_id || ':' || v.version, 'material', v.workspace_id, 'project:' || v.project_id, v.project_id,
-  v.material_id::text, NULL, v.version, NULL, v.title, concat_ws(E'\n', v.body, v.url), 'human', v.author_id, v.created_at) FROM project_material_versions v;
+SELECT search_put('material:' || v.material_id || ':' || v.version, pm.kind, v.workspace_id, 'project:' || v.project_id, v.project_id,
+  v.material_id::text, NULL, v.version, v.state, v.title, concat_ws(E'\n', v.body, v.url), 'human', v.author_id, v.created_at)
+FROM project_material_versions v JOIN project_materials pm ON pm.id = v.material_id;
 SELECT search_put('work:' || w.id, 'work', w.workspace_id, 'project:' || w.project_id, w.project_id, w.id::text, NULL, NULL,
   CASE WHEN w.parked_by_decision_id IS NOT NULL THEN 'parked' ELSE w.status END, w.title, concat_ws(E'\n', nullif(w.outcome, ''), w.blocker),
   w.created_by_kind, w.created_by_id, w.updated_at) FROM project_work_items w;

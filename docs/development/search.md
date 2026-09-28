@@ -1,7 +1,7 @@
 # Search across Flux (issue #114)
 
 Foundation 8.12: a person knows something exists but not where or under which name. One search
-covers project messages, direct messages, materials and every version of them, work items,
+covers project messages, direct messages, docs and materials and every version of them, work items,
 decisions, results, sketches and their thoughts, drafts and people. It runs in PostgreSQL only
 (`tsvector`, GIN, `websearch_to_tsquery`, `ts_headline`, `pg_trgm`), in line with O-002: there is
 no separate search server. The #16 rule applies throughout: **access filtering happens before
@@ -15,7 +15,7 @@ searchable object:
 
 | Column | Meaning |
 | --- | --- |
-| `kind` | `message`, `dm_message`, `material`, `work`, `decision`, `result`, `sketch`, `thought`, `draft` or `person`. |
+| `kind` | `message`, `dm_message`, `material`, `doc`, `work`, `decision`, `result`, `sketch`, `thought`, `draft` or `person`. |
 | `audience_key` | The object that carries the row's permission: `project:<id>`, `dm:<id>`, `sketch:<id>`, `draft:<id>` or `members:<workspace>`. |
 | `project_id`, `parent_id`, `object_id`, `version` | The place and the exact target: the conversation of a message, the DM of a DM message, the sketch of a thought, and the material version. |
 | `title`, `body`, `status`, `author_kind`/`author_id`, `at` | Content, the status that names it ("Task · blocked"), who wrote it and when. |
@@ -32,9 +32,14 @@ searchable object:
   `audience_key`, so a revoked grant, a left DM, a deny grant or a membership removal applies on
   the next search without touching the index. A sketch's scope and a draft's visibility are
   read from their own rows by the policy.
-- **Old citations still resolve.** Every material version has its own row. A search that
-  matches only an older version finds that version ("Material · version 1 of 2") and opens it;
-  when several versions match, the newest matching one is shown and the material counts once.
+- **Old citations still resolve.** Every material and doc version has its own row. A search that
+  matches only an older version finds that version ("Material · version 1 of 2", "Doc · version 1
+  of 2, draft") and opens it; when several versions match, the newest matching one is shown and
+  the object counts once.
+- **Docs (#112)** are project materials of kind `doc`, so the material version trigger indexes them
+  with kind `doc` and the version's state. Their audience is the project: draft is a state, not a
+  second audience, as in [docs-wiki.md](docs-wiki.md). A result says "Doc · draft" or "Doc ·
+  published" and opens the doc reader at the matched version.
 - **Language.** The `simple` configuration lowercases without stemming, so every language is
   treated the same way. The last word also matches as a prefix while typing (`sens` finds
   "sensor"), and titles and names also match by trigram similarity, which tolerates small typos.
@@ -75,7 +80,7 @@ needs a live session and answers `Cache-Control: no-store`.
 
 - `q`: 1–200 characters (`400 QUERY_REQUIRED` / `QUERY_TOO_LONG`). A query without any letter or
   digit returns an empty answer. Queries are always parameters; operators, quotes and SQL are data.
-- `type`: `message` (project and direct messages), `material`, `work`, `decision`, `result`,
+- `type`: `message` (project and direct messages), `doc`, `material`, `work`, `decision`, `result`,
   `sketch` (sketches and thoughts), `draft` or `person`.
 - `place`: `project:<id>`, `dm:<id>` or `private` (your private drafts and sketches). A place
   the reader cannot see gives the same empty answer as a place without matches.
@@ -102,9 +107,8 @@ A source is registered in three small places plus its trigger:
 3. if it brings a new audience type, one entry in `AUDIENCE_KEYS` (`@flux/db` search rows) and one
    in `POLICY_AUDIENCES` (server adapter) that returns the policy's `visibleFilter` condition.
 
-Direct messages were added this way (`dm_message`, audience `dm`). **Docs (#112)** follow the same
-steps: a `doc` kind and its trigger, and either the `project` audience or a new `doc` audience
-backed by the docs rule in `policy.ts`. They are not indexed yet.
+Direct messages were added this way (`dm_message`, audience `dm`), and docs (`doc`, reusing the
+`project` audience and the material version trigger).
 
 ## Web
 
@@ -119,7 +123,7 @@ backed by the docs rule in `policy.ts`. They are not indexed yet.
   links (↓ from the field moves into them, ↑ from the first returns), and "Show more results" with
   the cursor.
 - **Opening a result** goes to the exact object: a message or DM message opens on that whole
-  message (`#message-<id>`, highlighted and focused), a material at the matched version, a thought
+  message (`#message-<id>`, highlighted and focused), a material or doc at the matched version, a thought
   selected in its sketch (`#thought-<id>`), a private draft on Home (`#draft-<id>`), a person to a
   direct message with them, and work, decisions and results in Details on their project. A DM
   message outside the loaded window opens the DM at its latest messages; drafts shared with a
@@ -135,7 +139,8 @@ backed by the docs rule in `policy.ts`. They are not indexed yet.
   and target; the restricted project and a DM leaking nothing to an outsider, including when he
   filters by their ids; private drafts and sketches reaching only their author, and a group DM
   hidden from the workspace owner; people for members but not guests; type filters and counts;
-  an edit searchable at once and an old material version; revocation by a deny grant and by
+  an edit searchable at once and an old material version; docs as drafts and published, at the
+  version that matched and once per doc; revocation by a deny grant and by
   leaving a DM on the very next search; ranking and typo tolerance; injection-safe queries; and
   sealed keyset pagination (another reader, another query or filter, or a forged cursor get
   `400`). **Saturation:** 300 hidden project messages, 100 thoughts in another person's private

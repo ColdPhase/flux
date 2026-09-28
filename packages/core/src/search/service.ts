@@ -95,7 +95,7 @@ function toResult(row: SearchRow): SearchResult {
   const source = SEARCH_SOURCES[row.kind];
   const main = source.textIsTitle && row.snippet ? row.snippet : row.title;
   return {
-    id: `${row.kind}:${row.objectId}${row.version !== null && row.kind === 'material' ? `:${row.version}` : ''}`,
+    id: `${row.kind}:${row.objectId}${row.version !== null && (row.kind === 'material' || row.kind === 'doc') ? `:${row.version}` : ''}`,
     kind: row.kind,
     label: source.label(row),
     title: main.length ? main : [{ text: 'Untitled', match: false }],

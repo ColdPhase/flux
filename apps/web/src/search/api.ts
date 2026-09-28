@@ -19,6 +19,7 @@ export function targetHref(target: SearchTarget): string {
     case 'message': return `/projects/${target.projectId}/conversations/${target.conversationId}#message-${target.messageId}`;
     case 'dm_message': return `/dm/${target.dmId}#message-${target.messageId}`;
     case 'material': return `/materials/${target.materialId}/versions/${target.version}`;
+    case 'doc': return `/projects/${target.projectId}/docs/${target.docId}/versions/${target.version}`;
     case 'sketch': return `/map/${target.sketchId}`;
     case 'thought': return `/map/${target.sketchId}#thought-${target.thoughtId}`;
     case 'draft': return `/#draft-${target.draftId}`;

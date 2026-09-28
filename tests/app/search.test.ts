@@ -208,6 +208,29 @@ describe('search: one query across Flux, only what you may read', () => {
     assert.ok(old.items[0]!.snippet?.some((part) => part.match && part.text.toLowerCase() === 'humidity'));
   });
 
+  test('docs are found at the version that matched, as drafts or published, only by project readers', async () => {
+    const created = json<{ id: string; version: number }>(await post(ari, `/api/v1/projects/${lamp.id}/docs`, {
+      title: 'Lamp wiring guide', body: 'Solder the dimmer before the brass fitting.', state: 'draft',
+    }), 201, 'doc');
+    const draftHit = await search(nia, 'dimmer');
+    assert.equal(draftHit.items.length, 1);
+    assert.equal(draftHit.items[0]!.kind, 'doc');
+    assert.equal(draftHit.items[0]!.label, 'Doc · draft');
+    assert.deepEqual(draftHit.items[0]!.target, { type: 'doc', projectId: lamp.id, docId: created.id, version: 1 });
+    json(await patch(ari, `/api/v1/docs/${created.id}`, { body: 'Fit the brass collar first, then the switch.', state: 'published' },
+      { 'if-match': `"${created.version}"` }), 200, 'publish doc');
+    const published = await search(nia, 'collar');
+    assert.equal(published.items[0]!.label, 'Doc · published');
+    assert.deepEqual(published.items[0]!.target, { type: 'doc', projectId: lamp.id, docId: created.id, version: 2 });
+    const old = await search(nia, 'dimmer');
+    assert.equal(old.items[0]!.label, 'Doc · version 1 of 2, draft', 'the old text is found at its own version');
+    const both = await search(nia, 'brass');
+    assert.equal(both.items.filter((item) => item.kind === 'doc').length, 1, 'one result per doc');
+    assert.equal(both.counts.doc, 1);
+    assert.deepEqual((await search(olek, 'brass')).items, [], 'not outside the project');
+    assert.deepEqual(kinds(await search(nia, { q: 'brass', type: 'doc' })), ['doc']);
+  });
+
   test('revoking access removes results on the very next search, and leaving a DM removes its messages', async () => {
     assert.ok((await search(nia, 'infrared')).items.length >= 4);
     await grant(ari, lamp.id, nia, 'denied');

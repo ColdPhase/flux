@@ -30,6 +30,13 @@ function materialLabel(row: SearchRow) {
   return version >= current ? `Material · version ${version}, current` : `Material · version ${version} of ${current}`;
 }
 
+function docLabel(row: SearchRow) {
+  const version = row.version ?? 1;
+  const current = row.currentVersion ?? version;
+  const state = row.status === 'draft' ? 'draft' : 'published';
+  return version >= current ? `Doc · ${state}` : `Doc · version ${version} of ${current}, ${state}`;
+}
+
 const quote = (text: string) => `“${text}”`;
 
 function inProject(row: SearchRow) {
@@ -48,6 +55,10 @@ export const SEARCH_SOURCES: Record<SearchKind, SearchSource> = {
   material: {
     filter: 'material', audience: 'project', textIsTitle: false, label: materialLabel,
     target: (row) => ({ type: 'material', projectId: inProject(row), materialId: row.objectId, version: row.version ?? 1 }),
+  },
+  doc: {
+    filter: 'doc', audience: 'project', textIsTitle: false, label: docLabel,
+    target: (row) => ({ type: 'doc', projectId: inProject(row), docId: row.objectId, version: row.version ?? 1 }),
   },
   work: {
     filter: 'work', audience: 'project', textIsTitle: false, label: (row) => WORK_STATUS[row.status ?? ''] ?? 'Task',

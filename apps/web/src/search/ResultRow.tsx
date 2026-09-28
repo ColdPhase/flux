@@ -5,7 +5,7 @@ import { Icon, type IconName } from '../ui';
 // matched words marked, and where it lives, who wrote it and when. Shared by Jump to… and the page.
 
 const ICONS: Record<SearchKind, IconName> = {
-  message: 'chat', dm_message: 'chat', material: 'doc', work: 'tasks', decision: 'rule', result: 'result',
+  message: 'chat', dm_message: 'chat', material: 'link', doc: 'doc', work: 'tasks', decision: 'rule', result: 'result',
   sketch: 'map', thought: 'map', draft: 'edit', person: 'people',
 };
 

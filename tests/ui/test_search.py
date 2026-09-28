@@ -127,13 +127,14 @@ class SearchJourney(unittest.TestCase):
         self.api(nia, "POST", f"/api/v1/projects/{p}/results", {"title": "Infrared sensor passed the low-light test", "finding": "positive", "evidence": "20 gestures at 5 lux"}, status=201)
         sketch = self.api(nia, "POST", f"/api/v1/workspaces/{ws['id']}/sketches", {"title": "Sensing options", "scope": "project", "projectId": p}, status=201)
         thought = self.api(nia, "POST", f"/api/v1/sketches/{sketch['id']}/thoughts", {"text": "Sensor hidden behind the walnut veneer", "x": 0, "y": 0}, status=201)
+        doc = self.api(ari, "POST", f"/api/v1/projects/{p}/docs", {"title": "Lamp wiring guide", "body": "Fit the brass collar before the sensor board.", "state": "published"}, status=201)
         self.api(nia, "POST", f"/api/v1/workspaces/{ws['id']}/drafts", {"title": "Sensor questions for Ari", "body": "Ask about the lens"}, status=201)
         dm = self.api(ari, "POST", f"/api/v1/workspaces/{ws['id']}/dms", {"participantIds": [PEOPLE["nia"]["id"]]}, status=201)
         self.api(ari, "POST", f"/api/v1/dms/{dm['id']}/messages", {"body": "Did the spare sensor arrive at your place?", "clientMessageId": str(uuid.uuid4())}, status=201)
         olek = self.page("olek")
         open_thread = self.api(olek, "POST", f"/api/v1/projects/{notes['id']}/conversations", {"body": "The workshop is on Thursday, bring a sensor kit.", "clientMessageId": str(uuid.uuid4())}, status=201)
         type(self).ids = {"workspace": ws["id"], "lamp": p, "thread": thread["id"], "material": material["materialId"], "rule": rule["id"],
-                          "sketch": sketch["id"], "thought": thought["thought"]["id"], "dm": dm["id"], "open_thread": open_thread["id"]}
+                          "sketch": sketch["id"], "thought": thought["thought"]["id"], "dm": dm["id"], "open_thread": open_thread["id"], "doc": doc["id"]}
 
     # ---------------------------------------------------------------- Jump to…
 
@@ -200,6 +201,12 @@ class SearchJourney(unittest.TestCase):
         field.press("Enter")
         expect(page).to_have_url(re.compile(rf"/dm/{self.ids['dm']}#message-"))
         expect(page.locator(".dm-msg.is-arrived")).to_contain_text("spare sensor")
+        dialog, field = self.jump(page, "brass collar")
+        first = dialog.get_by_role("option").first
+        expect(first).to_contain_text("Doc · published")
+        field.press("Enter")
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['lamp']}/docs/{self.ids['doc']}(/versions/1)?$"))
+        expect(page.get_by_role("heading", name="Lamp wiring guide").first).to_be_visible()
         dialog, field = self.jump(page, "zeppelin")
         expect(dialog).to_contain_text("Nothing you can open matches “zeppelin”.")
         shot(page, "search-jump-desktop-1440-empty")
@@ -220,6 +227,7 @@ class SearchJourney(unittest.TestCase):
         chips = page.get_by_role("group", name="Kind of result")
         expect(chips.get_by_role("button", name=re.compile(r"^All"))).to_have_attribute("aria-pressed", "true")
         expect(chips.get_by_role("button", name=re.compile(r"^Messages"))).to_contain_text("6")
+        expect(chips.get_by_role("button", name=re.compile(r"^Docs"))).to_contain_text("1")
         shot(page, "search-page-desktop-1440")
         tasks = chips.get_by_role("button", name=re.compile(r"^Tasks"))
         tasks.click()
