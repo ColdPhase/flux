@@ -43,7 +43,12 @@ export function dmRows(db: DbExecutor) {
   }
   async function records(rows: { row: DmRow; lastMessageBody: string | null }[]) {
     const people = await participants(rows.map(({ row }) => row.id));
+    const pairIds = [...new Set(rows.flatMap(({ row }) => row.pairKey?.split(':') ?? []))];
+    const pairNames = new Map(pairIds.length
+      ? (await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, pairIds))).map((u) => [u.id, u.name])
+      : []);
     return rows.map(({ row, lastMessageBody }) => ({
+      pair: row.pairKey ? row.pairKey.split(':').map((id) => ({ id, name: pairNames.get(id) ?? '' })) : null,
       id: row.id, workspaceId: row.workspaceId, kind: row.kind, title: row.title, createdBy: row.createdBy, version: row.version,
       createdAt: row.createdAt, lastMessageAt: row.lastMessageAt, lastMessageBody, participants: people.get(row.id) ?? [],
     }));

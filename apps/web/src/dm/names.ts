@@ -15,10 +15,11 @@ function joinNames(names: string[]): string {
 }
 
 /** The DM's name: a group's title, otherwise the other people ("Kai Tanaka", "Kai, Lee and Mo"). */
-export function dmTitle(dm: Pick<DmSummary, 'participants' | 'title'>, meId: string): string {
+export function dmTitle(dm: Pick<DmSummary, 'participants' | 'title' | 'counterpart'>, meId: string): string {
   if (dm.title) return dm.title;
   const others = othersIn(dm, meId);
-  if (!others.length) return 'Only you';
+  // A 1:1 keeps the other person's name after they left; its audience line then says "Only you".
+  if (!others.length) return dm.counterpart?.name ?? 'Only you';
   if (others.length === 1) return others[0]!.name;
   if (others.length > 3) return `${others.slice(0, 2).map((p) => firstName(p.name)).join(', ')} and ${others.length - 2} others`;
   return joinNames(others.map((p) => firstName(p.name)));

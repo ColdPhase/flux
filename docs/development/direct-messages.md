@@ -80,16 +80,30 @@ accept `Idempotency-Key` through `apps/server/src/http/commands.ts`. A replay fi
 | Method and path | Use |
 | --- | --- |
 | `GET /api/v1/workspaces/:workspaceId/dms?limit&offset` | The caller's DMs, latest activity first, with participants and the last message. |
-| `POST /api/v1/workspaces/:workspaceId/dms` | `{ participantIds, title? }`. One other person opens the pair's 1:1 DM: `201` when it is created, `200` when it already exists, and the caller joins again if they had left. Two or more people create a new group (up to 8 people). Retry with the same `Idempotency-Key`. |
+| `POST /api/v1/workspaces/:workspaceId/dms` | `{ participantIds, title? }`. One other person opens the pair's 1:1 DM: `201` when it is created, `200` when it already exists, and the caller joins again if they had left. `409 DM_RECIPIENT_LEFT` / `DM_RECIPIENT_UNAVAILABLE` when the other person no longer takes part (see below). Two or more people create a new group (up to 8 people). Retry with the same `Idempotency-Key`. |
 | `GET /api/v1/dms/:dmId?limit&beforeSequence` | The DM with its newest message window (`ETag: "<version>"`). `people` also names former participants who wrote in the window. |
 | `PATCH /api/v1/dms/:dmId` | Rename a group: `{ title }` with `If-Match` or `expectedVersion` (`428` when missing, `409 VERSION_CONFLICT` when stale). A 1:1 DM has no title (`422`). |
-| `POST /api/v1/dms/:dmId/messages` | `{ body, clientMessageId }` returns `201`. A retry with the same `clientMessageId` returns the original message. The same id with other content returns `409 IDEMPOTENCY_CONFLICT`. |
+| `POST /api/v1/dms/:dmId/messages` | `{ body, clientMessageId }` returns `201`. A retry with the same `clientMessageId` returns the original message. The same id with other content returns `409 IDEMPOTENCY_CONFLICT`. A 1:1 whose other person is gone answers `409 DM_RECIPIENT_LEFT` / `DM_RECIPIENT_UNAVAILABLE`. |
 | `POST /api/v1/dms/:dmId/leave` | `204`. Access ends on the next request. Leaving again answers `404`, because the DM is invisible by then. |
 
 Leaving a group is final unless someone starts a new conversation with the person. Participants
 cannot be added to an existing group in this slice, so a new person never sees earlier messages.
-Someone who left a 1:1 DM rejoins by opening it again. The other person is not added back
-against their will, and the header then reads "Only you".
+
+**When the other person of a 1:1 is gone** (decided by the evaluator on #111), nobody is re-added
+on their behalf and no message goes to an audience of one:
+
+- Opening the pair's DM ("Message Kai") while Kai has left answers `409 DM_RECIPIENT_LEFT`
+  ("Kai left this conversation. They can reopen it by messaging you."). If Kai was removed from
+  the workspace the code is `409 DM_RECIPIENT_UNAVAILABLE`. No thread is returned, nothing is
+  written and no event is recorded.
+- Posting into such a DM answers the same `409`. The remaining person can still read its history.
+- Only Kai can reopen it, by opening the 1:1 with the other person; that restores both
+  participants. A person removed from the workspace and added back must also reopen it themselves
+  (their participant row went with the membership, so the answer is then `DM_RECIPIENT_LEFT`).
+- If both people left, whoever opens it first takes their own place back, and still cannot send
+  until the other reopens it.
+- `counterpart` in DM responses names the other person of a 1:1 even after they left, so the UI
+  can explain the state.
 
 ## Web
 
@@ -106,6 +120,9 @@ against their will, and the header then reads "Only you".
   stream events and when the tab regains focus. A failed send keeps the text and its
   `clientMessageId` in session storage, so **Retry** never duplicates. **Leave** asks for
   confirmation first. A DM that is no longer visible shows one quiet line and no old content.
+- **When the other person left.** Choosing them (in New message or from their name) shows the
+  server's calm explanation instead of a thread. An open 1:1 whose other person left keeps its
+  history, shows a quiet notice above the composer, and disables sending.
 
 ## Tests
 
@@ -113,10 +130,13 @@ against their will, and the header then reads "Only you".
   concurrent 1:1 creation; `404` for the owner, the admin, a non-participant member, a guest and
   another tenant, with lists and counts excluding the DM; agent exclusion through `authorize`;
   message retries, `Idempotency-Key` replay, concurrent sequences and paging; group DMs with
-  `If-Match` renames; leaving; workspace removal; and stream and replay audiences.
+  `If-Match` renames; leaving; workspace removal; and stream and replay audiences. It also covers
+  opening or posting to a 1:1 after the other person left or was removed (409, nothing stored, no
+  event), removal followed by readdition, and the other person reopening it with delivery to both.
 - `tests/ui/test_direct_messages.py` (in `./scripts/check_ui.sh`) signs up three people. It covers
   starting a DM from the sidebar, a reply from a second browser that arrives live, a lost response
   retried without a duplicate, an outsider being refused, the phone layout, and a group DM with
-  Details and leaving. Screenshots are in [`docs/design/direct-messages/`](../design/direct-messages/).
+  Details and leaving, and clicking a person's name after they left (a notice, then a disabled
+  composer until they reopen it). Screenshots are in [`docs/design/direct-messages/`](../design/direct-messages/).
 - `./flux demo` seeds a 1:1 DM between the two demo accounts through the public API, and
   `scripts/check_flux_cli.sh` reads it back as the partner.

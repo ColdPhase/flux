@@ -62,10 +62,31 @@ function page(query: PageQuery = {}) {
   return { limit, offset };
 }
 
-function toSummary(record: DmRecord): DmSummary {
+function counterpartOf(record: DmRecord, self: string): DmPerson | null {
+  return record.pair?.find((p) => p.id !== self) ?? null;
+}
+
+const firstName = (name: string) => name.trim().split(/\s+/)[0] || 'They';
+
+/** 409 when the other person of a 1:1 no longer takes part: nothing is created, re-added or sent. */
+async function requireCounterpart(ports: DmPorts, record: DmRecord, self: string) {
+  const other = counterpartOf(record, self);
+  if (!other || record.participants.some((p) => p.id === other.id)) return;
+  const active = await ports.access.activePeople(record.workspaceId, [other.id]);
+  if (!active.has(other.id)) {
+    const error = new ConflictError(`${firstName(other.name)} is no longer in this workspace, so this conversation has nobody to send to.`, 'DM_RECIPIENT_UNAVAILABLE');
+    error.details = { recipient: other };
+    throw error;
+  }
+  const error = new ConflictError(`${firstName(other.name)} left this conversation. They can reopen it by messaging you.`, 'DM_RECIPIENT_LEFT');
+  error.details = { recipient: other };
+  throw error;
+}
+
+function toSummary(record: DmRecord, self: string): DmSummary {
   return {
     id: record.id, workspaceId: record.workspaceId, kind: record.kind, title: record.title,
-    participants: record.participants, audience: { kind: 'dm', participantIds: record.participants.map((p) => p.id) },
+    participants: record.participants, counterpart: counterpartOf(record, self), audience: { kind: 'dm', participantIds: record.participants.map((p) => p.id) },
     createdBy: record.createdBy, version: record.version, createdAt: record.createdAt.toISOString(),
     lastMessageAt: iso(record.lastMessageAt), lastMessageBody: record.lastMessageBody,
   };
@@ -82,14 +103,14 @@ async function found(ports: DmPorts, dmId: string): Promise<DmRecord> {
 }
 
 /** The DM with a message window. Former participants who wrote in the window keep their names. */
-async function detail(ports: DmPorts, record: DmRecord, window: { limit: number; beforeSequence: number | null }): Promise<Dm> {
+async function detail(ports: DmPorts, record: DmRecord, self: string, window: { limit: number; beforeSequence: number | null }): Promise<Dm> {
   const { messages, hasMoreBefore } = await ports.dms.window(record.id, window);
   const known = new Map<string, DmPerson>(record.participants.map((p) => [p.id, p]));
   const missing = [...new Set(messages.map((m) => m.authorId).filter((id) => !known.has(id)))];
   for (const extra of missing.length ? await ports.dms.names(missing) : []) known.set(extra.id, extra);
   const items = messages.map(toMessage);
   return {
-    ...toSummary(record), messages: items, people: [...known.values()],
+    ...toSummary(record, self), messages: items, people: [...known.values()],
     messagePage: { hasMoreBefore, nextBeforeSequence: hasMoreBefore ? items[0]!.sequence : null, limit: window.limit },
   };
 }
@@ -101,7 +122,7 @@ export function createDmUseCases(uow: DmUnitOfWork) {
       return uow.run(async (ports) => {
         await ports.access.requireWorkspace(principal, workspaceId);
         const { items, total } = await ports.dms.listVisible(principal, workspaceId, bounds);
-        return { items: items.map(toSummary), total, ...bounds };
+        return { items: items.map((item) => toSummary(item, principal.id)), total, ...bounds };
       });
     },
 
@@ -117,27 +138,33 @@ export function createDmUseCases(uow: DmUnitOfWork) {
       const window = normalizeConversationWindow();
       return uow.run(async (ports) => {
         await ports.access.requireCreate(principal, workspaceId);
-        const active = await ports.access.activePeople(workspaceId, others);
-        if (others.some((id) => !active.has(id))) throw new RuleViolationError('Everyone in a direct message must be a person in this workspace', 'DM_PARTICIPANT_UNAVAILABLE');
         if (others.length === 1) {
           const pairKey = [self, others[0]!].sort().join(':');
           await ports.dms.lockPair(workspaceId, pairKey);
           const existing = await ports.dms.findPair(workspaceId, pairKey);
+          // The caller's own pair: if the other person left (or was removed), say so and stop.
+          // Only they can reopen it, by messaging the caller; nobody is re-added on their behalf.
+          // When both have left, the caller may take their own place again (and still cannot send).
+          if (existing && existing.participants.length) await requireCounterpart(ports, existing, self);
+          const active = await ports.access.activePeople(workspaceId, others);
+          if (!active.has(others[0]!)) throw new RuleViolationError('Everyone in a direct message must be a person in this workspace', 'DM_PARTICIPANT_UNAVAILABLE');
           if (existing) {
             const rejoined = await ports.dms.addParticipant(workspaceId, existing.id, self);
             if (rejoined) await ports.dms.bumpVersion(existing.id);
-            const dm = await detail(ports, await found(ports, existing.id), window);
+            const dm = await detail(ports, await found(ports, existing.id), self, window);
             // Events are the last statement of a change: the seq lock is held from here to commit.
             if (rejoined) await ports.events.record(principal, workspaceId, 'dm.changed.v1', existing.id, { op: 'rejoined' });
             return { dm, created: false };
           }
           const record = await ports.dms.insert({ id: randomUUID(), workspaceId, kind: 'pair', pairKey, title: null, createdBy: self, participantIds: [self, others[0]!] });
-          const dm = await detail(ports, record, window);
+          const dm = await detail(ports, record, self, window);
           await ports.events.record(principal, workspaceId, 'dm.created.v1', record.id, { kind: 'pair' });
           return { dm, created: true };
         }
+        const active = await ports.access.activePeople(workspaceId, others);
+        if (others.some((id) => !active.has(id))) throw new RuleViolationError('Everyone in a direct message must be a person in this workspace', 'DM_PARTICIPANT_UNAVAILABLE');
         const record = await ports.dms.insert({ id: randomUUID(), workspaceId, kind: 'group', pairKey: null, title: name, createdBy: self, participantIds: [self, ...others] });
-        const dm = await detail(ports, record, window);
+        const dm = await detail(ports, record, self, window);
         await ports.events.record(principal, workspaceId, 'dm.created.v1', record.id, { kind: 'group' });
         return { dm, created: true };
       });
@@ -147,7 +174,7 @@ export function createDmUseCases(uow: DmUnitOfWork) {
       const window = normalizeConversationWindow(query);
       return uow.run(async (ports) => {
         await ports.access.requireDm(principal, 'dm.read', dmId);
-        return detail(ports, await found(ports, dmId), window);
+        return detail(ports, await found(ports, dmId), principal.id, window);
       });
     },
 
@@ -166,6 +193,8 @@ export function createDmUseCases(uow: DmUnitOfWork) {
           if (existing.requestFingerprint !== input.fingerprint) throw new ConflictError('This clientMessageId was used for another message', 'IDEMPOTENCY_CONFLICT');
           return toMessage(existing);
         }
+        // A 1:1 whose other person left has no audience besides the sender: refuse, do not store.
+        await requireCounterpart(ports, dm, authorId);
         const message = await ports.dms.appendMessage({
           id: randomUUID(), workspaceId: dm.workspaceId, dmId: dm.id, authorId,
           clientMessageId: input.clientMessageId, requestFingerprint: input.fingerprint, body: input.body,
@@ -185,9 +214,9 @@ export function createDmUseCases(uow: DmUnitOfWork) {
         const expected = command?.expectedVersion;
         if (expected === undefined || expected === null) throw new PreconditionRequiredError();
         if (typeof expected !== 'number' || !Number.isInteger(expected) || expected < 1) throw new InvalidInputError('expectedVersion must be a positive integer');
-        if (dm.version !== expected) throw new VersionConflictError(dm.version, toSummary(dm));
+        if (dm.version !== expected) throw new VersionConflictError(dm.version, toSummary(dm, principal.id));
         await ports.dms.rename(dm.id, next);
-        const renamed = toSummary(await found(ports, dm.id));
+        const renamed = toSummary(await found(ports, dm.id), principal.id);
         await ports.events.record(principal, dm.workspaceId, 'dm.changed.v1', dm.id, { op: 'renamed' });
         return renamed;
       });

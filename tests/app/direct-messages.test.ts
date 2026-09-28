@@ -240,15 +240,46 @@ describe('direct messages', () => {
     } finally {
       await Promise.all([leeLive.close(), joLive.close()]);
     }
+  });
 
-    // A person who left a 1:1 rejoins by opening it again; the other side is not re-added.
+  test('a 1:1 whose other person left is not reopened for them: 409, nothing sent, until they reopen it', async () => {
     const { dm: pair } = await openDm(lee, ws.id, [max]);
+    expectStatus(await say(lee, pair.id, 'Can you check the sensor order?'), 201);
     expectStatus(await max.browser.request('POST', `/api/v1/dms/${pair.id}/leave`), 204);
     const leeView = expectStatus(await read(lee, pair.id), 200) as Dm;
     assert.deepEqual(leeView.audience.participantIds, [lee.id], 'only Lee is left');
+    assert.deepEqual(leeView.counterpart, { id: max.id, name: 'dm-max' }, 'the pair still names the other person');
+    const eventsBefore = (await pool.query('SELECT count(*)::int AS n FROM events WHERE object_id = $1', [pair.id])).rows[0].n;
+
+    // Lee's "Message Max" does not return a thread or re-add Max.
+    const again = await lee.browser.request('POST', dmsOf(ws.id), { body: { participantIds: [max.id] } });
+    expectStatus(again, 409, 'open a 1:1 after the other left');
+    assert.equal((again.json as { code: string }).code, 'DM_RECIPIENT_LEFT');
+    assert.match((again.json as { error: string }).error, /dm-max left this conversation\. They can reopen it by messaging you\./);
+    assert.ok(!again.text.includes('sensor order'), 'no thread content in the refusal');
+    const sent = await say(lee, pair.id, 'Hello?');
+    expectStatus(sent, 409, 'send into a 1:1 whose other person left');
+    assert.equal((sent.json as { code: string }).code, 'DM_RECIPIENT_LEFT');
+    const rows = await pool.query('SELECT user_id FROM dm_participants WHERE dm_id = $1', [pair.id]);
+    assert.deepEqual(rows.rows.map((row) => row.user_id), [lee.id], 'Max was not re-added');
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM dm_messages WHERE dm_id = $1', [pair.id])).rows[0].n, 1, 'nothing stored');
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM events WHERE object_id = $1', [pair.id])).rows[0].n, eventsBefore, 'no event with an audience of only Lee');
+    expectStatus(await read(max, pair.id), 404, 'Max still sees nothing');
+
+    // Max reopens it himself: both take part again and messages reach both.
     const reopened = await openDm(max, ws.id, [lee]);
+    assert.equal(reopened.status, 200);
     assert.equal(reopened.dm.id, pair.id);
     assert.deepEqual(new Set(reopened.dm.audience.participantIds), new Set([lee.id, max.id]));
+    const [leeLive, maxLive] = await Promise.all([StreamClient.connect(lee.browser), StreamClient.connect(max.browser)]);
+    try {
+      await Promise.all([leeLive.ready(), maxLive.ready()]);
+      expectStatus(await say(lee, pair.id, 'Welcome back'), 201);
+      await Promise.all([leeLive.event(pair.id, 'dm.message_sent.v1'), maxLive.event(pair.id, 'dm.message_sent.v1')]);
+    } finally { await Promise.all([leeLive.close(), maxLive.close()]); }
+    const last = await pool.query(`SELECT a.recipient FROM event_audience a JOIN events e ON e.id = a.event_id
+      WHERE e.object_id = $1 AND e.kind = 'dm.message_sent.v1' ORDER BY a.seq DESC LIMIT 2`, [pair.id]);
+    assert.deepEqual(new Set(last.rows.map((row) => row.recipient)), new Set([`human:${lee.id}`, `human:${max.id}`]));
   });
 
   test('removal from the workspace ends DM access at once and is not undone by rejoining', async () => {
@@ -262,7 +293,12 @@ describe('direct messages', () => {
       await removeMember(ada, ws.id, nia);
       expectStatus(await read(nia, dm.id), 404, 'read after removal');
       expectStatus(await say(nia, dm.id, 'hello'), 404, 'send after removal');
-      expectStatus(await say(jo, dm.id, 'Are you still there?'), 201);
+      const unavailable = await say(jo, dm.id, 'Are you still there?');
+      expectStatus(unavailable, 409, 'send after the other person was removed');
+      assert.equal((unavailable.json as { code: string }).code, 'DM_RECIPIENT_UNAVAILABLE');
+      const reopenRemoved = await jo.browser.request('POST', dmsOf(ws.id), { body: { participantIds: [nia.id] } });
+      expectStatus(reopenRemoved, 409, 'open a 1:1 with a removed person');
+      assert.equal((reopenRemoved.json as { code: string }).code, 'DM_RECIPIENT_UNAVAILABLE');
       await new Promise((resolve) => setTimeout(resolve, 1500));
       assert.ok(!niaLive.events.some((event) => event.objectId === dm.id), 'no DM events after removal');
     } finally { await niaLive.close(); }
@@ -270,6 +306,16 @@ describe('direct messages', () => {
     assert.deepEqual(rows.rows.map((row) => row.user_id), [jo.id], 'the participant row went with the membership');
     await addMember(ada, ws.id, nia, 'member');
     expectStatus(await read(nia, dm.id), 404, 'rejoining the workspace does not restore the DM');
+    // Back in the workspace, Jo still cannot re-add Nia; Nia reopens it herself.
+    const reopenReadded = await jo.browser.request('POST', dmsOf(ws.id), { body: { participantIds: [nia.id] } });
+    expectStatus(reopenReadded, 409, 'open a 1:1 with a re-added person who has not reopened it');
+    assert.equal((reopenReadded.json as { code: string }).code, 'DM_RECIPIENT_LEFT');
+    expectStatus(await say(jo, dm.id, 'Still nobody here'), 409);
+    const byNia = await openDm(nia, ws.id, [jo]);
+    assert.equal(byNia.dm.id, dm.id);
+    assert.deepEqual(new Set(byNia.dm.audience.participantIds), new Set([jo.id, nia.id]));
+    expectStatus(await say(jo, dm.id, 'Welcome back, Nia'), 201);
+    assert.ok((expectStatus(await read(nia, dm.id), 200) as Dm).messages.some((m) => m.body === 'Welcome back, Nia'));
     // A guest can take part when a member adds them.
     const { dm: withGuest } = await openDm(jo, ws.id, [gus]);
     expectStatus(await say(gus, withGuest.id, 'Guest reply'), 201, 'guest replies in a DM they are in');

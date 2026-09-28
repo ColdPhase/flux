@@ -82,6 +82,7 @@ function DmContent({ initial }: { initial: Dm }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [gone, setGone] = useState(false);
+  const [leftNotice, setLeftNotice] = useState('');
   const feedRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef(messages);
@@ -170,6 +171,11 @@ function DmContent({ initial }: { initial: Dm }) {
       requestAnimationFrame(autosize);
       toBottom();
     } catch (cause) {
+      if (cause instanceof ApiError && (cause.code === 'DM_RECIPIENT_LEFT' || cause.code === 'DM_RECIPIENT_UNAVAILABLE')) {
+        // The other person left meanwhile: nothing was stored. Keep the text, show why, refresh.
+        setPending(null); store(pendingKey, ''); setLeftNotice(cause.message); void refresh();
+        return;
+      }
       if (!denied(cause)) setError('Not sent. Your message is kept here; Retry sends it once.');
     } finally { setBusy(false); }
   }
@@ -194,7 +200,13 @@ function DmContent({ initial }: { initial: Dm }) {
   }
 
   if (gone) return <DmUnavailable />;
-  const canSend = draft.trim().length > 0 && !busy;
+  // A 1:1 whose other person left (or was removed) has nobody to send to: say so, disable sending.
+  const counterpart = dm.kind === 'pair' ? dm.counterpart : null;
+  const recipientGone = Boolean(counterpart && !dm.participants.some((p) => p.id === counterpart.id));
+  const goneNotice = recipientGone
+    ? leftNotice || `${counterpart!.name.split(/\s+/)[0]} left this conversation. They can reopen it by messaging you.`
+    : '';
+  const canSend = draft.trim().length > 0 && !busy && !recipientGone;
   const rows = messages.map((message, index) => {
     const previous = messages[index - 1];
     const label = dayLabel(message.createdAt);
@@ -209,7 +221,7 @@ function DmContent({ initial }: { initial: Dm }) {
             // The start of the conversation: who is in it. The top bar keeps the name and audience in view.
             <header className="dm__head">
               <span className="dm__faces" aria-hidden="true">
-                {(others.length ? others : [{ id: me.user.id, name: me.user.name }]).slice(0, 3).map((person) => <Avatar key={person.id} name={person.name} size="lg" />)}
+                {(others.length ? others : dm.counterpart ? [dm.counterpart] : [{ id: me.user.id, name: me.user.name }]).slice(0, 3).map((person) => <Avatar key={person.id} name={person.name} size="lg" />)}
               </span>
               <div className="dm__who">
                 <h2>{title}</h2>
@@ -244,10 +256,11 @@ function DmContent({ initial }: { initial: Dm }) {
       <div className="composer dm__composer">
         <div className="composer__in">
           <p className="composer__audience" id={audienceId}><Icon name="lock" size={13} />{audience}<span aria-hidden="true"> · </span><span className="composer__where">direct message</span></p>
-          <div className="composer__box">
+          {goneNotice ? <p className="dm__notice" role="status"><Icon name="lock" size={13} />{goneNotice}</p> : null}
+          <div className="composer__box" aria-disabled={recipientGone || undefined}>
             <label className="ui-vh" htmlFor="dm-composer">Message {title}</label>
             <textarea id="dm-composer" ref={textareaRef} rows={1} value={draft} onChange={(event) => change(event.target.value)} onKeyDown={onKey}
-              disabled={busy} placeholder={`Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title}…`} aria-describedby={`${audienceId} ${hintId}`} />
+              disabled={busy || recipientGone} placeholder={recipientGone ? 'Nobody else is in this conversation' : `Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title}…`} aria-describedby={`${audienceId} ${hintId}`} />
             <button type="button" className="composer__send" aria-label="Send message" aria-disabled={!canSend} onClick={() => void send()}><Icon name="send" /></button>
           </div>
           {error ? <p className="dm__error" role="alert"><Icon name="alert" size={13} />{error}{pending ? <button type="button" onClick={() => void send()}>Retry</button> : null}</p> : null}

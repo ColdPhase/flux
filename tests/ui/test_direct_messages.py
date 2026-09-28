@@ -14,6 +14,7 @@ import json
 import re
 import time
 import unittest
+import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
@@ -36,6 +37,7 @@ class DirectMessageJourney(unittest.TestCase):
     states: dict[str, dict] = {}
     ids: dict[str, str] = {}
     workspace_id = ""
+    project_id = ""
     dm_path = ""
 
     @classmethod
@@ -64,6 +66,7 @@ class DirectMessageJourney(unittest.TestCase):
             assert added.status == 201, added.text()
         project = post(f"/api/v1/workspaces/{cls.workspace_id}/projects", {"name": "Garden sensors", "visibility": "workspace"})
         assert project.status == 201, project.text()
+        cls.project_id = project.json()["id"]
         ada.close()
 
     @classmethod
@@ -283,6 +286,47 @@ class DirectMessageJourney(unittest.TestCase):
         light.goto("/dm")
         expect(light.get_by_role("list", name="Conversations").get_by_role("link")).to_have_count(2)
         shot(light, "dm-desktop-1440-index")
+
+    def test_08_messaging_someone_who_left_explains_instead_of_opening_a_thread(self) -> None:
+        post = lambda page, path, body: page.request.post(path, data=body, headers={"origin": ORIGIN})  # noqa: E731
+        lee = self.page("lee")
+        lee.goto("/")
+        said = post(lee, f"/api/v1/projects/{self.project_id}/conversations", {"body": "Housing printed; it fits the sensor.", "clientMessageId": str(uuid.uuid4())})
+        self.assertEqual(said.status, 201, said.text())
+        ada = self.page("ada")
+        ada.goto("/")
+        opened = post(ada, f"/api/v1/workspaces/{self.workspace_id}/dms", {"participantIds": [self.ids["lee"]]})
+        self.assertIn(opened.status, (200, 201), opened.text())
+        pair_id = opened.json()["id"]
+        self.assertEqual(post(ada, f"/api/v1/dms/{pair_id}/messages", {"body": "Thanks for the housing!", "clientMessageId": str(uuid.uuid4())}).status, 201)
+        self.assertEqual(post(lee, f"/api/v1/dms/{pair_id}/leave", {}).status, 204)
+
+        # Ada clicks Lee's name in the project conversation: a calm notice, no thread for "Only you".
+        ada.goto(f"/projects/{self.project_id}")
+        ada.get_by_role("link", name="Lee Moreno").first.click()
+        notice = ada.get_by_role("status").filter(has_text="Lee left this conversation. They can reopen it by messaging you.")
+        expect(notice).to_be_visible()
+        expect(ada.get_by_label(re.compile(r"^Message "))).to_have_count(0)
+        self.assertNotIn(pair_id, ada.url)
+
+        # The existing 1:1 stays readable for Ada, with a quiet notice and sending disabled.
+        ada.goto(f"/dm/{pair_id}")
+        expect(ada.get_by_text("Thanks for the housing!")).to_be_visible()
+        expect(ada.locator(".dm__notice")).to_have_text("Lee left this conversation. They can reopen it by messaging you.")
+        expect(self.composer(ada)).to_be_disabled()
+        expect(ada.get_by_role("button", name="Send message")).to_have_attribute("aria-disabled", "true")
+        status, dm = self.api(ada, f"/api/v1/dms/{pair_id}")
+        self.assertEqual(dm["audience"]["participantIds"], [self.ids["ada"]])
+        shot(ada, "dm-desktop-1440-recipient-left")
+
+        # Lee reopens it himself: both take part again and Ada can send.
+        reopened = post(lee, f"/api/v1/workspaces/{self.workspace_id}/dms", {"participantIds": [self.ids["ada"]]})
+        self.assertEqual(reopened.status, 200, reopened.text())
+        ada.reload()
+        expect(ada.locator(".dm__notice")).to_have_count(0)
+        self.send(ada, "Welcome back, Lee.")
+        lee.goto(f"/dm/{pair_id}")
+        expect(lee.get_by_text("Welcome back, Lee.")).to_be_visible()
 
 
 if __name__ == "__main__":

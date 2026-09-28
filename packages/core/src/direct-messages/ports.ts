@@ -21,6 +21,8 @@ export interface DmRecord {
   lastMessageBody: string | null;
   /** Current participants, ordered by when they joined, then by name. */
   participants: DmPerson[];
+  /** For a 1:1 DM, both people of the pair (from its pair key), whether or not they still take part. */
+  pair: DmPerson[] | null;
 }
 
 export interface DmMessageRecord {

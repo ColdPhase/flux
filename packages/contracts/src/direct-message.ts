@@ -33,6 +33,12 @@ export interface DmSummary {
   title: string | null;
   /** Current participants, the caller included. They are the whole audience. */
   participants: DmPerson[];
+  /**
+   * 1:1 DMs: the other person of the pair, even after they left or were removed; null for groups.
+   * When they are not among `participants`, nobody receives new messages and sending answers
+   * 409 DM_RECIPIENT_LEFT (or DM_RECIPIENT_UNAVAILABLE after a workspace removal).
+   */
+  counterpart: DmPerson | null;
   audience: { kind: 'dm'; participantIds: string[] };
   createdBy: string;
   /** Changes with the title and the participant set. `ETag` on single-DM responses. */
@@ -53,7 +59,9 @@ export interface Dm extends DmSummary {
 /**
  * `POST /api/v1/workspaces/:workspaceId/dms`. `participantIds` names the other people (the
  * caller is always included). One other person opens the existing 1:1 DM of the pair, or
- * creates it (201; an existing one answers 200). Two or more create a new group DM; send an
+ * creates it (201; an existing one answers 200). If that person left the pair's DM, or is no
+ * longer in the workspace, the answer is 409 DM_RECIPIENT_LEFT / DM_RECIPIENT_UNAVAILABLE and
+ * nobody is re-added: only they can reopen it, by messaging the caller. Two or more create a new group DM; send an
  * `Idempotency-Key` to make a retry safe.
  */
 export interface CreateDmCommand {

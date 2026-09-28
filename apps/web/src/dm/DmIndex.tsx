@@ -62,6 +62,8 @@ export function NewDm() {
   const [title, setTitle] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  /** The other person left the 1:1 (or the workspace): a calm explanation instead of a thread. */
+  const [notice, setNotice] = useState('');
   const attempt = useRef<{ signature: string; key: string } | null>(null);
   const autoOpened = useRef(false);
 
@@ -85,11 +87,14 @@ export function NewDm() {
     const signature = JSON.stringify([workspaceId, [...ids].sort(), name]);
     // The same attempt reuses its Idempotency-Key, so a retry after a lost response opens one group.
     if (attempt.current?.signature !== signature) attempt.current = { signature, key: crypto.randomUUID() };
-    setBusy(true); setError('');
+    setBusy(true); setError(''); setNotice('');
     try {
       const dm = await openDm(workspaceId, ids, attempt.current.key, name || undefined);
       navigate(`/dm/${dm.id}`, { replace: Boolean(direct) });
     } catch (cause) {
+      if (cause instanceof ApiError && (cause.code === 'DM_RECIPIENT_LEFT' || cause.code === 'DM_RECIPIENT_UNAVAILABLE')) {
+        setNotice(cause.message); setBusy(false); return;
+      }
       setError(cause instanceof ApiError && cause.code === 'DM_PARTICIPANT_UNAVAILABLE'
         ? 'Someone you chose is no longer in this workspace.'
         : cause instanceof ApiError && cause.status === 403 ? 'You can’t start conversations in this workspace.' : 'Could not open the conversation. Try again.');
@@ -110,13 +115,22 @@ export function NewDm() {
   }, [members, query]);
   const nameOf = (id: string) => members?.find((member) => member.userId === id)?.name ?? '';
   const toggle = (id: string) => {
-    setError('');
+    setError(''); setNotice('');
     setSelected((current) => current.includes(id) ? current.filter((item) => item !== id)
       : current.length >= DM_LIMITS.others ? current : [...current, id]);
   };
   const only = selected.length === 1 ? nameOf(selected[0]!) : '';
   const audience = selected.length ? audienceOf(selected.map(nameOf)) : 'Choose who can read it';
 
+  if (notice) {
+    return (
+      <div className="pane-scroll"><div className="pane-in dm-gone" role="status">
+        <Icon name="lock" size={16} />
+        <div><h2>No one to message here</h2><p>{notice}</p>
+          <Link className="ui-btn ui-btn--secondary" to="/dm">Back to direct messages</Link></div>
+      </div></div>
+    );
+  }
   if (direct && !error) {
     return <div className="pane-scroll"><div className="pane-in"><p className="dm-new__opening" role="status">Opening your conversation…</p></div></div>;
   }

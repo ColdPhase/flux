@@ -21,6 +21,8 @@
 .dm-msg__meta b { font-size: var(--fs-sm); font-weight: 600; color: var(--text); }
 .dm-msg__body { margin-top: 1px; font-size: var(--fs-base); line-height: 1.55; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
 .dm__composer { border-top: 1px solid var(--line); background: var(--bg); padding-top: 10px; }
+.dm__notice { display: flex; align-items: center; gap: 6px; margin: 0 2px 8px; padding: 8px 10px; border-radius: var(--r); background: var(--bg-side); font-size: var(--fs-sm); color: var(--text-2); }
+.dm__notice svg { flex: none; color: var(--text-3); }
 .dm__error { display: flex; align-items: center; gap: 6px; margin: 6px 2px 0; font-size: var(--fs-sm); color: var(--danger); }
 .dm__error button { margin-left: 4px; min-height: 32px; padding: 0 8px; border-radius: var(--r-sm); font-weight: 500; color: var(--text); text-decoration: underline; }
 .dm-gone { display: flex; gap: 10px; align-items: flex-start; padding-top: 48px; color: var(--text-2); }
