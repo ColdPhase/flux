@@ -44,10 +44,13 @@ export async function notificationRoutes(app: FastifyInstance, { db, sessions, s
     const { user } = await sessions.requirePrincipal(request);
     return { userId: user.id, email: user.email };
   };
-  // Mail clients POST `List-Unsubscribe=One-Click` as a form (RFC 8058); only this plugin parses it.
-  app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_request, body, done) => {
-    done(null, Object.fromEntries(new URLSearchParams(String(body))));
-  });
+  // Mail clients POST `List-Unsubscribe=One-Click` as a form (RFC 8058). The identity bridge may
+  // already accept forms app-wide (as a raw string); the token is read from the query either way.
+  if (!app.hasContentTypeParser('application/x-www-form-urlencoded')) {
+    app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_request, body, done) => {
+      done(null, Object.fromEntries(new URLSearchParams(String(body))));
+    });
+  }
 
   app.get(NOTIFICATION_PREFERENCES_PATH, async (request) => settings.view(await account(request)));
 
