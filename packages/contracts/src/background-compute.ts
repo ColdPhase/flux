@@ -31,3 +31,26 @@ export interface ConnectBackgroundComputeCommand {
   periodBudgetCents: number;
   perRunCents: number;
 }
+
+/** Project-readable, quiet suggestion from one owner-funded background candidate. */
+export interface ProactiveComparisonProposal {
+  id: string;
+  projectId: string;
+  resultId: string;
+  ownerUserId: string;
+  agentId: string;
+  audience: { kind: 'project'; projectId: string };
+  computeSource: 'owner_background_claude_platform';
+  model: 'claude-sonnet-5';
+  /** Cited project source revisions, including the triggering result. */
+  sources: Array<{ type: 'result' | 'message' | 'material'; id: string; version: number }>;
+  fact: string;
+  interpretation: string;
+  suggestedAction: string;
+  status: 'proposed' | 'dismissed';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const proactiveComparisonProposalsPath = (projectId: string) =>
+  `/api/v1/projects/${projectId}/proactive-comparison-proposals`;

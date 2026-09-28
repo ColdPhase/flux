@@ -854,6 +854,12 @@ export const proactiveComparisonOutbox = pgTable('proactive_comparison_outbox', 
   connectionId: uuid('connection_id').references(() => backgroundComputeConnections.id),
   reservedCents: integer('reserved_cents').notNull().default(0),
   reservedAt: timestamp('reserved_at', { withTimezone: true }),
+  proposalId: uuid('proposal_id'),
+  usageInputTokens: integer('usage_input_tokens'),
+  usageOutputTokens: integer('usage_output_tokens'),
+  usageEstimatedCents: integer('usage_estimated_cents'),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+  failureCode: text('failure_code'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
@@ -862,6 +868,23 @@ export const proactiveComparisonOutbox = pgTable('proactive_comparison_outbox', 
   uniqueIndex('proactive_comparison_outbox_owner_inflight_idx').on(table.ownerUserId).where(eq(table.status, 'reserved')),
   index('proactive_comparison_outbox_queued_idx').on(table.createdAt, table.id).where(eq(table.status, 'queued')),
 ]);
+
+export const proactiveComparisonProposals = pgTable('proactive_comparison_proposals', {
+  id: uuid('id').primaryKey(),
+  outboxId: uuid('outbox_id').notNull().unique().references(() => proactiveComparisonOutbox.id),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
+  agentId: uuid('agent_id').notNull().references(() => agents.id),
+  projectId: uuid('project_id').notNull().references(() => projects.id),
+  resultId: uuid('result_id').notNull().references(() => projectResults.id),
+  sourceFingerprint: text('source_fingerprint').notNull(),
+  sources: jsonb('sources').$type<Array<{ type: 'result' | 'message' | 'material'; id: string; version: number }>>().notNull(),
+  fact: text('fact').notNull(),
+  interpretation: text('interpretation').notNull(),
+  suggestedAction: text('suggested_action').notNull(),
+  status: text('status', { enum: ['proposed', 'dismissed'] }).notNull().default('proposed'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [index('proactive_comparison_proposals_project_idx').on(table.projectId, table.createdAt.desc(), table.id.desc())]);
 
 export const notificationGenerationFailures = pgTable('notification_generation_failures', {
   eventId: uuid('event_id').primaryKey(),

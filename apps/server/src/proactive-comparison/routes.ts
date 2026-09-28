@@ -1,6 +1,6 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
-import type { ConnectBackgroundComputeCommand, CreateProactiveComparisonRule } from '@flux/contracts';
-import { backgroundConnectionRepository, proactiveRuleRows, sealBackgroundKey } from '@flux/db';
+import { proactiveComparisonProposalsPath, type ConnectBackgroundComputeCommand, type CreateProactiveComparisonRule } from '@flux/contracts';
+import { backgroundConnectionRepository, proactiveOutboxRows, proactiveRuleRows, sealBackgroundKey } from '@flux/db';
 import { backgroundConnectionUseCases, ConflictError, DomainError, enforce, evaluateProject, proactiveRuleUseCases, type Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 
@@ -54,6 +54,12 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
       (await sessions.requirePrincipal(request)).principal, request.params.projectId, request.body)));
   app.get<{ Params: { projectId: string } }>('/api/v1/projects/:projectId/proactive-comparison-rules',
     async (request) => rules.list((await sessions.requirePrincipal(request)).principal, request.params.projectId));
+  app.get<{ Params: { projectId: string } }>(proactiveComparisonProposalsPath(':projectId'),
+    async (request) => db.transaction(async (tx) => {
+      const principal = (await sessions.requirePrincipal(request)).principal;
+      enforce(await evaluateProject(principal, 'project.read', request.params.projectId, tx, { lock: true }), 'project');
+      return proactiveOutboxRows(tx).listProposals(request.params.projectId);
+    }));
   app.patch<{ Params: { ruleId: string }; Body: { expectedVersion: number; status: 'enabled' | 'paused' | 'revoked' } }>(
     '/api/v1/proactive-comparison-rules/:ruleId', async (request) => rules.setStatus(
       (await sessions.requirePrincipal(request)).principal, request.params.ruleId, request.body?.expectedVersion, request.body?.status));

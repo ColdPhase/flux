@@ -39,9 +39,20 @@ deduplicated outbox candidate for each opted-in owner of that named project in t
 result transaction **only for an enabled rule**; production activation is
 still disabled, so current production rules do not create candidates. The worker
 adapter can recheck current owner/agent access, result authorship, explicit source
-links and budget before reserving; there is no scheduled dispatch yet. Peers cannot
-read, revoke or spend another person's connection. The
-API has no route to change the rule's owner, audience, scope or purpose.
+links and budget before reserving; there is no scheduled dispatch yet. An explicitly
+invoked controlled-provider path in the worker decrypts only the owner's active
+key, token-counts up to 8,000 inputs, makes at most one 1,200-output-token call,
+validates cited output and persists a separate quiet proposal. It checks current
+owner/agent project write access and pinned project-audience sources before the
+call and again within the commit transaction. It records usage estimates
+separately from the conservative reservation; failed or lost responses stay
+`unknown` and are never retried automatically. The project-read API exposes a
+proposal to current project readers without a notification. This path has only
+been exercised with a local controlled HTTP provider inside Docker; it is not
+registered in the running worker and does not claim a real Claude Platform call.
+Another project member may author a qualifying result under the owner's standing
+rule, but cannot read or revoke that owner's connection or directly command it.
+The API has no route to change the rule's owner, audience, scope or purpose.
 
 ## Key file, restore and rotation
 
@@ -52,7 +63,7 @@ configured it mounts an empty tracked placeholder and connection creation fails 
 host file outside the checkout, PostgreSQL volume and database backup, and make
 the containing directory private. The API only seals a submitted key with
 AES-256-GCM, a fresh nonce, and authenticated data binding the Flux owner and
-connection IDs. The worker's future dispatch path is the only application path
+connection IDs. The worker's controlled dispatch path is the only application path
 that should open it. API responses, events and jobs contain no key. Database
 backups need this same instance secret to recover stored connections; after a
 lost secret, revoke and reconnect each owner rather than treating ciphertext
@@ -78,14 +89,22 @@ restarting API and worker. If that final file switch fails, **do not restart**:
 finish the switch or restore the paired database and old secret backup. Rotate
 the provider keys separately if compromise is suspected.
 
-Migrations `0021`–`0023` include the standing rule, encrypted connection and
-candidate/reservation ledger. The outbox retains reserved possible charges when
-a rule or result would otherwise be deleted, so removal cannot reset the owner's
+Migrations `0021`–`0024` include the standing rule, encrypted connection,
+candidate/reservation ledger and separate project proposal. The outbox retains
+reserved possible charges when a rule or result would otherwise be deleted, so
+removal cannot reset the owner's
 allowance. The migrator applies individual files in numeric order; #118 must add
 the strict migration ledger and same-volume upgrade proof before release.
 
-Remaining #58 work: enabling with a complete runtime, budgeted worker/provider
-execution and cancellation, rechecking sources/access immediately before dispatch
-and proposal commit, reconciling actual usage, quiet proposal and UI;
-real provider, privacy and no-AI continuation evidence. This file describes a
-working configuration slice, not completion of #58.
+The [Claude Sonnet 5 model page](https://platform.claude.com/docs/en/models/sonnet-5/whats-new-sonnet-5),
+checked 2026-09-28, lists API model ID `claude-sonnet-5`, standard $2/M input
+tokens and $10/M output tokens, and notes that its tokenizer differs from Sonnet
+4.6. This is provider documentation, not an observation of a Flux bill; the
+worker records `usage_estimated_cents` using these dated standard rates and
+continues to hold at least the original reservation in the local budget.
+
+Remaining #58 work: a real configured provider adapter and authorized test call,
+cancel/pause behavior during an in-flight request, broader versioned project
+source selection, dismissal suppression, proposal inspect/edit/dismiss/use UI and
+no-AI continuation evidence, plus #118 migration-upgrade proof. This file
+describes a controlled integration slice, not completion of #58.
