@@ -43,6 +43,7 @@ export function toNotificationRecord(row: NotificationRow) {
     url: row.url,
     createdAt: row.createdAt,
     readAt: row.readAt,
+    reason: row.reason ?? null,
   };
 }
 
@@ -94,12 +95,13 @@ export function notificationRows(db: DbExecutor) {
       return (await db.selectDistinct({ id: n.workspaceId }).from(n).where(eq(n.userId, userId))).map((row) => row.id);
     },
     async listForRecipient(userId: string, audience: SQL, limit: number) {
-      const rows = await db.select().from(n).where(and(eq(n.userId, userId), audience))
+      // Rows kept only for push or email (the person turned the inbox off for that reason) stay out.
+      const rows = await db.select().from(n).where(and(eq(n.userId, userId), eq(n.inInbox, true), audience))
         .orderBy(desc(n.createdAt), desc(n.id)).limit(limit);
       return rows.map(toNotificationRecord);
     },
     async countUnread(userId: string, audience: SQL) {
-      const [row] = await db.select({ unread: count() }).from(n).where(and(eq(n.userId, userId), isNull(n.readAt), audience));
+      const [row] = await db.select({ unread: count() }).from(n).where(and(eq(n.userId, userId), eq(n.inInbox, true), isNull(n.readAt), audience));
       return row?.unread ?? 0;
     },
     async markRead(userId: string, id: string) {

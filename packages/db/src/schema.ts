@@ -401,13 +401,17 @@ export const notifications = pgTable('notifications', {
   userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
   // The object the notification is about; its `<type>.read` decides who may see the row.
-  sourceType: text('source_type').$type<'workspace' | 'project' | 'draft'>().notNull(),
+  sourceType: text('source_type').$type<'workspace' | 'project' | 'draft' | 'dm'>().notNull(),
   sourceId: uuid('source_id').notNull(),
   title: text('title').notNull(),
   body: text('body').notNull().default(''),
   url: text('url'),
   readAt: timestamp('read_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  // Migration 0015 (#116): why it exists, the event it came from, and whether the inbox lists it.
+  reason: text('reason').$type<'mention' | 'question' | 'reply' | 'dm' | 'assigned' | 'review'>(),
+  eventId: uuid('event_id'),
+  inInbox: boolean('in_inbox').notNull().default(true),
 }, (table) => [
   index('notifications_user_created_idx').on(table.userId, table.createdAt.desc()),
   index('notifications_source_idx').on(table.sourceType, table.sourceId),
@@ -859,3 +863,74 @@ export const returnPoints = pgTable('return_points', {
   previousSeq: bigint('previous_seq', { mode: 'number' }),
   previousSavedAt: timestamp('previous_saved_at', { withTimezone: true }),
 }, (table) => [primaryKey({ columns: [table.userId, table.placeKey] })]);
+
+// Notification generation, preferences, delivery addresses and the email outbox (migration 0015, #116).
+export const notificationCursor = pgTable('notification_cursor', {
+  id: text('id').primaryKey(),
+  seq: bigint('seq', { mode: 'number' }).notNull(),
+});
+
+export const notificationGenerationFailures = pgTable('notification_generation_failures', {
+  eventId: uuid('event_id').primaryKey(),
+  attempts: integer('attempts').notNull().default(0),
+  lastError: text('last_error'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  deadAt: timestamp('dead_at', { withTimezone: true }),
+});
+
+export const notificationVerificationSends = pgTable('notification_verification_sends', {
+  userId: text('user_id').primaryKey(),
+  windowStart: timestamp('window_start', { withTimezone: true }).notNull(),
+  sent: integer('sent').notNull(),
+  lastSentAt: timestamp('last_sent_at', { withTimezone: true }).notNull(),
+});
+
+export const notificationPreferences = pgTable('notification_preferences', {
+  userId: text('user_id').primaryKey().references(() => authUsers.id, { onDelete: 'cascade' }),
+  channels: jsonb('channels').$type<Record<string, Record<string, boolean>>>().notNull().default({}),
+  emailDestination: text('email_destination').$type<'account' | 'extra' | 'both' | 'none'>().notNull().default('account'),
+  quietEnabled: boolean('quiet_enabled').notNull().default(false),
+  quietStart: integer('quiet_start').notNull().default(1320),
+  quietEnd: integer('quiet_end').notNull().default(420),
+  timeZone: text('time_zone').notNull().default('UTC'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const notificationMutes = pgTable('notification_mutes', {
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  sourceType: text('source_type').$type<'project' | 'dm'>().notNull(),
+  sourceId: uuid('source_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [primaryKey({ columns: [table.userId, table.sourceType, table.sourceId] })]);
+
+export const notificationAddresses = pgTable('notification_addresses', {
+  id: uuid('id').primaryKey(),
+  userId: text('user_id').notNull().unique().references(() => authUsers.id, { onDelete: 'cascade' }),
+  email: text('email').notNull(),
+  verifiedAt: timestamp('verified_at', { withTimezone: true }),
+  lastSentAt: timestamp('last_sent_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const notificationAddressTokens = pgTable('notification_address_tokens', {
+  tokenHash: text('token_hash').primaryKey(),
+  addressId: uuid('address_id').notNull().references(() => notificationAddresses.id, { onDelete: 'cascade' }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const notificationEmails = pgTable('notification_emails', {
+  id: uuid('id').primaryKey(),
+  notificationId: uuid('notification_id').notNull().references(() => notifications.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  addressKind: text('address_kind').$type<'account' | 'extra'>().notNull(),
+  address: text('address'),
+  status: text('status').$type<'queued' | 'sending' | 'sent' | 'skipped'>().notNull().default('queued'),
+  skipReason: text('skip_reason'),
+  attempts: integer('attempts').notNull().default(0),
+  unsubscribeHash: text('unsubscribe_hash').unique(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+  lastError: text('last_error'),
+  lastErrorAt: timestamp('last_error_at', { withTimezone: true }),
+}, (table) => [unique().on(table.notificationId, table.addressKind)]);

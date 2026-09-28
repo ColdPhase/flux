@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { Outlet, useLocation, useRevalidator } from 'react-router';
+import { Outlet, useLocation, useNavigate, useRevalidator } from 'react-router';
 import { useStreamEvents } from '../api/stream';
 import { Avatar, Button, Drawer, Icon, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useSidePanelMode } from '../ui';
 import { useShellData } from './data';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
 import { Details } from './Details';
+import { useInboxDot } from '../notifications/dot';
 import { placeOf } from './Rail';
 import { ShellContext, type DetailsView } from './shellContext';
 import { Sidebar } from './Sidebar';
@@ -76,6 +77,8 @@ export function AppLayout() {
     if (!known || event.kind !== 'dm.message_sent.v1' || location.pathname === '/dm') revalidator.revalidate();
   }, () => revalidator.revalidate());
 
+  const inboxUnread = useInboxDot(me.user.id, location.pathname);
+
   const shell = useMemo(() => ({
     openDetails(view: DetailsView = 'place') {
       setDetailsView(view);
@@ -89,6 +92,17 @@ export function AppLayout() {
     setShownPath(location.pathname);
     if (panelMode !== 'docked' && detailsOpen) setDetailsOpen(false);
   }
+  // `?open=work:<id>` (a notification's link, #116) opens that object in Details on its project.
+  const navigate = useNavigate();
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const match = /^(work|decision|result):([0-9a-f-]{36})$/i.exec(params.get('open') ?? '');
+    if (!match) return;
+    params.delete('open');
+    const search = params.toString();
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true });
+    shell.openDetails({ kind: match[1]!.toLowerCase() as 'work' | 'decision' | 'result', id: match[2]!.toLowerCase() });
+  }, [location.search, location.pathname, location.hash, navigate, shell]);
 
   // "]" toggles Details, as in the header tooltip.
   useEffect(() => {
@@ -113,7 +127,7 @@ export function AppLayout() {
     void play(paneRef.current, [{ opacity: 0, transform: `translateX(${direction * 12}px)` }, { opacity: 1, transform: 'none' }], duration('--dur-2'), '--ease-out', { fill: 'backwards' });
   }, [location.pathname]);
 
-  const sidebarProps = { workspace, projects, directMessages, user: me.user, session: me.session };
+  const sidebarProps = { workspace, projects, directMessages, user: me.user, session: me.session, inboxUnread };
   const where = placeOf(location.pathname);
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const activeProject = projects.find((project) => project.id === projectId);
@@ -140,6 +154,10 @@ export function AppLayout() {
   const activeDm = directMessages.find((dm) => dm.id === dmId);
   const place = activeProject
     ? { crumb: activeProject.workspaceName ?? null, title: activeProject.name, topic: audience, views: false }
+    : where === 'inbox'
+      ? location.pathname.startsWith('/settings/')
+        ? { crumb: null, title: 'Notification settings', topic: 'What reaches you, where and when', views: false, noDetails: true }
+        : { crumb: null, title: 'Inbox', topic: 'What involves you, with a link to each source', views: false, noDetails: true }
     : where === 'dm'
       ? activeDm
         // A DM's header names its exact audience (design principle 5).
@@ -189,11 +207,12 @@ export function AppLayout() {
           )}
           <div className="top__right" data-shift>
             {project?.people && !phone ? <Faces people={project.people} meId={me.user.id} /> : null}
-            <Button ref={detailsButtonRef} variant="quiet" icon="panel" className="top__details" aria-expanded={detailsOpen}
+            {/* The inbox and its settings have nothing to show in Details. */}
+            {'noDetails' in place ? null : <Button ref={detailsButtonRef} variant="quiet" icon="panel" className="top__details" aria-expanded={detailsOpen}
               aria-controls={detailsOpen ? 'details' : undefined} aria-keyshortcuts="]" data-tip={'Toggle details   ]'}
               onClick={() => { setDetailsView('place'); toggleDetails(); }}>
               Details
-            </Button>
+            </Button>}
           </div>
         </header>
         {project && phone ? <ProjectStateRow lists={project.work} canDecide={project.project.access !== 'viewer'} /> : null}

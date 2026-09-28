@@ -12,7 +12,7 @@ import type {
 } from './ports.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const SOURCE_TYPES = new Set(['workspace', 'project', 'draft']);
+const SOURCE_TYPES = new Set(['workspace', 'project', 'draft', 'dm']);
 
 export interface NotificationInput {
   userId: string;
@@ -49,7 +49,7 @@ export async function createNotification(uow: NotificationUnitOfWork, input: Not
   const url = input.url ?? null;
   if (url !== null && !isSafeAppPath(url)) throw new InvalidInputError('Notification url must be a same-origin path');
   if (!input.source || !SOURCE_TYPES.has(input.source.type) || !UUID.test(input.source.id)) {
-    throw new InvalidInputError('Notification source must name a workspace, project or draft', 'NOTIFICATION_SOURCE_REQUIRED');
+    throw new InvalidInputError('Notification source must name a workspace, project, draft or direct message', 'NOTIFICATION_SOURCE_REQUIRED');
   }
   const id = randomUUID();
   return uow.run(async ({ authorizer, notifications, subscriptions, queue }) => {
@@ -86,6 +86,11 @@ export async function getInboxItem(ports: InboxPorts, userId: string, id: string
   if (!row) throw new NotificationNotFoundError();
   if (!readsSource(await ports.authorizer.canRead(userId, row.source), row.source)) throw new NotificationNotFoundError();
   return row;
+}
+
+/** Marks everything in the inbox read. Nothing forces this; it only quiets the dot. */
+export async function markAllInboxRead(ports: Pick<InboxPorts, 'notifications'>, userId: string) {
+  return { updated: await ports.notifications.markAllRead(userId) };
 }
 
 export async function markInboxItemRead(ports: InboxPorts, userId: string, id: string) {
