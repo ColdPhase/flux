@@ -17,6 +17,8 @@ APP_PACKAGE="$FLUX_ROOT/apps/server/package.json"
 # Default output of ./flux backup and ./flux export (both ignored by git); FLUX_BACKUP_DIR overrides.
 BACKUP_DIR="${FLUX_BACKUP_DIR:-$FLUX_ROOT/backups}"
 EXPORT_DIR="$FLUX_ROOT/exports"
+# One backup at a time per project: <prefix>-<project> is a lock directory (ignored by git).
+BACKUP_LOCK_PREFIX="$FLUX_ROOT/.flux-backup-lock"
 # Inside the Flux image (paths relative to its working directory).
 IMAGE_EXPORT_CLI=apps/server/dist/export/cli.js
 IMAGE_OPERATIONS=infra/dist/operations.js
@@ -459,10 +461,21 @@ verify_running() {
   health=$(api_health) || { warn "API health check failed: $health"; return 1; }
   expected=$(code_schema)
   printf '%s' "$health" | grep -q "\"schemaVersion\":${expected}[,}]" || { warn "API reports $health, expected schema $expected"; return 1; }
-  stored=$(db_query 'SELECT max(version) FROM flux_schema_version') || return 1
-  [ "$stored" = "$expected" ] || { warn "database schema is $stored, expected $expected"; return 1; }
-  say "Health: $health (database schema $stored)"
+  ledger=$(image_op migration-ledger | sed -n 's/^FLUX_MIGRATIONS //p') || return 1
+  files=$(image_op migration-files | sed -n 's/^FLUX_MIGRATIONS //p') || return 1
+  [ -n "$files" ] && [ "$ledger" = "$files" ] || { warn "database migration ledger {$ledger} is not exactly this image's migrations {$files}"; return 1; }
+  say "Health: $health (migration ledger matches this image: $ledger)"
 }
+
+# Runs infra/operations.ts in this project's image (the migrate service).
+image_op() { compose_main run --rm -T migrate node "$IMAGE_OPERATIONS" "$@"; }
+image_op_nodb() { compose_main run --rm --no-deps -T migrate node "$IMAGE_OPERATIONS" "$@"; }
+# The migration ledger stored in a pg_dump custom archive (read from the dump, not the manifest).
+dump_ledger() {
+  compose_main --profile ops run --rm --no-deps -T files-archive pg_restore --data-only --table=flux_schema_version -f - < "$1" |
+    awk '/^COPY .*flux_schema_version/ { copy = 1; next } copy && /^\\\.$/ { copy = 0 } copy { print $1 }' | sort -n | paste -sd, -
+}
+manifest_ledger() { sed -n 's/^  "appliedMigrations": \[\([0-9,]*\)\],$/\1/p' "$1" | head -n 1; }
 
 # Reads "key": value from a manifest written by write_manifest (one key per line).
 manifest_value() { sed -n "s/^  \"$2\": \"\{0,1\}\([^\",]*\)\"\{0,1\},\{0,1\}\$/\1/p" "$1" | head -n 1; }
@@ -471,6 +484,7 @@ manifest_part() { sed -n "s/^    {\"name\": \"$2\", \"bytes\": \([0-9]*\), \"sha
 # Restarts what a backup stopped; used by its trap so a failed backup never leaves Flux down.
 backup_cleanup() {
   [ -z "${BACKUP_STAGING:-}" ] || rm -rf "${BACKUP_STAGING:?}"
+  [ -z "${BACKUP_LOCK:-}" ] || rmdir "${BACKUP_LOCK:?}" 2>/dev/null || true
   if [ -n "${BACKUP_RESTART:-}" ]; then
     # shellcheck disable=SC2086
     compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" $BACKUP_RESTART >/dev/null 2>&1 || true
@@ -483,20 +497,34 @@ backup_cleanup() {
 backup_to() {
   mkdir -p "$1"
   out=$(CDPATH='' cd -- "$1" && pwd -P)
+  BACKUP_LOCK="$BACKUP_LOCK_PREFIX-$PROJECT"
+  mkdir "$BACKUP_LOCK" 2>/dev/null \
+    || die "Another backup or upgrade of $PROJECT is running (lock ${BACKUP_LOCK#"$FLUX_ROOT"/}). If none is, remove that directory and retry."
+  BACKUP_STAGING='' BACKUP_RESTART=''
+  trap 'status=$?; backup_cleanup; exit $status' EXIT HUP INT TERM
   stamp=$(date -u +%Y%m%dT%H%M%SZ)
-  name="flux-backup-$PROJECT-$stamp"
+  # A random suffix keeps two backups of the same second apart; nothing is ever overwritten.
+  name="flux-backup-$PROJECT-$stamp-$(random_hex 4)"
+  [ ! -e "$out/$name.tar" ] || die "$out/$name.tar already exists; nothing was written."
   BACKUP_STAGING="$out/.$name.partial"
-  rm -rf "${BACKUP_STAGING:?}"
-  old_umask=$(umask); umask 077; mkdir -p "$BACKUP_STAGING"; umask "$old_umask"
+  old_umask=$(umask); umask 077; mkdir "$BACKUP_STAGING" || die "Could not create $BACKUP_STAGING."; umask "$old_umask"
   writers=''
   for service in api worker; do if is_running "$service"; then writers="$writers $service"; fi; done
   db_was_running=0; if is_running db; then db_was_running=1; fi
-  BACKUP_RESTART=$writers
-  trap 'status=$?; backup_cleanup; exit $status' EXIT HUP INT TERM
   if [ -n "$writers" ]; then say "Stopping$writers so the database and files are captured at one point in time..."; fi
-  compose_main stop api worker >/dev/null 2>&1 || true
+  stop_ok=1
+  compose_main stop api worker >/dev/null 2>&1 || stop_ok=0
+  # Restart exactly what was running before and is stopped now; never start anything else.
+  still=''
+  for service in api worker; do if is_running "$service"; then still="$still $service"; fi; done
+  for service in $writers; do case " $still " in *" $service "*) ;; *) BACKUP_RESTART="$BACKUP_RESTART $service" ;; esac; done
+  if [ "$stop_ok" != 1 ] || [ -n "$still" ]; then
+    die "Could not confirm that API and worker are stopped (still running:${still:- none}; stop $( [ "$stop_ok" = 1 ] && echo succeeded || echo failed)). No backup was written."
+  fi
   compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" db >/dev/null 2>&1 || die "The database of $PROJECT did not start."
   schema=$(db_query 'SELECT max(version) FROM flux_schema_version') || die "Could not read the schema version of $PROJECT."
+  applied=$(db_query "SELECT coalesce(string_agg(version::text, ',' ORDER BY version), '') FROM flux_schema_version") \
+    || die "Could not read the migration ledger of $PROJECT."
   pg_version=$(compose_main exec -T db pg_dump --version | sed 's/^pg_dump (PostgreSQL) //')
   say "Dumping the database (schema $schema, PostgreSQL $pg_version)..."
   compose_main exec -T db pg_dump -U "$(pg_user)" -d "$(pg_db)" --format=custom --compress=6 > "$BACKUP_STAGING/database.dump" \
@@ -513,13 +541,16 @@ backup_to() {
     compose_main stop db >/dev/null 2>&1 || true
   fi
   BACKUP_RESTART=''
-  write_manifest "$BACKUP_STAGING" "$stamp" "$schema" "$pg_version" > "$BACKUP_STAGING/manifest.json"
-  (cd "$BACKUP_STAGING" && tar -cf "$out/$name.tar.partial" manifest.json database.dump files.tar.gz flux.env)
-  chmod 600 "$out/$name.tar.partial"
-  mv "$out/$name.tar.partial" "$out/$name.tar"
+  write_manifest "$BACKUP_STAGING" "$stamp" "$schema" "$pg_version" "$applied" > "$BACKUP_STAGING/manifest.json"
+  (cd "$BACKUP_STAGING" && tar -cf archive.tar manifest.json database.dump files.tar.gz flux.env)
+  chmod 600 "$BACKUP_STAGING/archive.tar"
+  # ln refuses an existing name, so an archive is never replaced.
+  ln "$BACKUP_STAGING/archive.tar" "$out/$name.tar" || die "$out/$name.tar already exists; nothing was written."
   printf '%s  %s\n' "$(sha256_of "$out/$name.tar")" "$name.tar" > "$out/$name.tar.sha256"
   rm -rf "${BACKUP_STAGING:?}"
   BACKUP_STAGING=''
+  rmdir "$BACKUP_LOCK" 2>/dev/null || true
+  BACKUP_LOCK=''
   trap - EXIT HUP INT TERM
   BACKUP_ARCHIVE="$out/$name.tar"
   say "Backup written: $BACKUP_ARCHIVE ($(file_bytes "$BACKUP_ARCHIVE") bytes, schema $schema)"
@@ -539,6 +570,7 @@ write_manifest() {
   "createdAt": "$(printf '%s' "$2" | sed 's/^\(....\)\(..\)\(..\)T\(..\)\(..\)\(..\)Z$/\1-\2-\3T\4:\5:\6Z/')",
   "project": "$PROJECT",
   "schemaVersion": $3,
+  "appliedMigrations": [$5],
   "appVersion": "$(app_version)",
   "appCommit": "$(image_commit)",
   "checkoutDirty": $dirty,
@@ -555,12 +587,13 @@ write_manifest() {
 EOF
 }
 
-# Keeps the newest N archives of this project in DIR (names sort by their UTC timestamp).
+# Keeps the newest N archives of this project in DIR (by modification time; archives are
+# never modified after they are written).
 prune_backups() {
   dir=$1 keep=$2
-  total=$(ls "$dir" 2>/dev/null | grep -c "^flux-backup-$PROJECT-[0-9TZ]*\.tar\$" || true)
-  [ "$total" -gt "$keep" ] || return 0
-  ls "$dir" | grep "^flux-backup-$PROJECT-[0-9TZ]*\.tar\$" | sort | head -n $((total - keep)) | while read -r old; do
+  pattern="^flux-backup-$PROJECT-[0-9]\{8\}T[0-9]\{6\}Z-[0-9a-f]*\.tar\$"
+  # shellcheck disable=SC2012
+  ls -t "$dir" 2>/dev/null | grep "$pattern" | tail -n +$((keep + 1)) | while read -r old; do
     rm -f "${dir:?}/${old:?}" "${dir:?}/${old:?}.sha256"
     say "Removed old backup $dir/$old"
   done
@@ -602,6 +635,7 @@ open_archive() {
     [ "$actual" = "$expected" ] || die "restore: $part does not match its checksum in the manifest; the archive is damaged or was changed. Nothing was restored."
   done
   case "$(manifest_value "$manifest" schemaVersion)" in ''|*[!0-9]*) die "restore: the manifest has no valid schemaVersion." ;; esac
+  grep -q '^  "appliedMigrations": \[' "$manifest" || die "restore: the manifest has no appliedMigrations; it was written by an older ./flux. Nothing was restored."
 }
 
 # Writes a missing .env from the archive's copy, as this checkout's project. FLUX_PORT,
@@ -645,7 +679,6 @@ cmd_restore() {
     die "restore: the backup has schema $from_schema, newer than this checkout's $to_schema. Check out the Flux version that wrote it (commit $from_commit) and restore there."
   fi
   mismatch=''
-  [ "$from_schema" = "$to_schema" ] || mismatch="schema $from_schema -> $to_schema"
   [ "$from_version" = "$to_version" ] || mismatch="${mismatch:+$mismatch, }version $from_version -> $to_version"
   if [ "$from_commit" != unknown ] && [ "$to_commit" != unknown ] && [ "$from_commit" != "$to_commit" ]; then
     mismatch="${mismatch:+$mismatch, }commit $from_commit -> $to_commit"
@@ -654,10 +687,7 @@ cmd_restore() {
     die "restore: the backup was written by another Flux version ($mismatch). Restore it with the matching checkout, or pass --migrate to restore here and migrate it forward."
   fi
   check_owner "$PROJECT"
-  if project_has_resources "$PROJECT"; then
-    confirm "Replace ALL data (database and files) of Compose project $PROJECT with this backup? The current data is deleted." \
-      || { say "Cancelled; nothing was changed."; return 1; }
-  fi
+  had_data=0; if project_has_resources "$PROJECT"; then had_data=1; fi
   claim_project "$PROJECT"
   if [ -f "$ENV_FILE" ]; then
     say "Keeping the existing ${ENV_FILE#"$FLUX_ROOT"/}."
@@ -671,6 +701,20 @@ cmd_restore() {
     env_from_archive "$RESTORE_DIR/flux.env"
   fi
   build_main
+  # The exact migration ledger (#118) of the dump, checked against the manifest and this image
+  # before anything is replaced.
+  from_ledger=$(dump_ledger "$RESTORE_DIR/database.dump") || die "restore: could not read the migration ledger from the dump. Nothing was restored."
+  [ "$from_ledger" = "$(manifest_ledger "$manifest")" ] \
+    || die "restore: the dump's migration ledger {$from_ledger} differs from the manifest's {$(manifest_ledger "$manifest")}. Nothing was restored."
+  [ "${from_ledger##*,}" = "$from_schema" ] \
+    || die "restore: the manifest's schemaVersion $from_schema is not the highest version of its migration ledger {$from_ledger}. Nothing was restored."
+  if [ "$migrate" = 1 ]; then gate=$(image_op_nodb migration-gate "$from_ledger" --migrate); else gate=$(image_op_nodb migration-gate "$from_ledger"); fi \
+    || die "restore: refused before replacing any data: $(printf '%s' "$gate" | sed -n 's/^FLUX_MIGRATION_GATE refused //p')"
+  say "Migrations: $(printf '%s' "$gate" | sed -n 's/^FLUX_MIGRATION_GATE ok //p')."
+  if [ "$had_data" = 1 ]; then
+    confirm "Replace ALL data (database and files) of Compose project $PROJECT with this backup? The current data is deleted." \
+      || { say "Cancelled; nothing was changed."; return 1; }
+  fi
   say "Replacing the data of $PROJECT..."
   compose_main --profile ops --profile setup down -v --remove-orphans >/dev/null 2>&1
   compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" db >/dev/null || die "The new database did not start."
@@ -679,14 +723,14 @@ cmd_restore() {
   compose_main --profile ops run --rm --no-deps -T files-archive tar -C /data/files -xzf - < "$RESTORE_DIR/files.tar.gz" \
     || die "Restoring the files volume failed; run ./flux restore again."
   compose_main --profile setup run --rm files-init >/dev/null
-  if [ "$from_schema" != "$to_schema" ]; then say "Migrating from schema $from_schema to $to_schema..."; fi
+  if [ "$from_schema" != "$to_schema" ] || [ "$migrate" = 1 ]; then say "Migrating from ledger {$from_ledger}..."; fi
   compose_main run --rm migrate || die "The migration after restore failed. See the output above; the archive is unchanged."
   # Agent connections and OAuth tokens come back as they were at backup time: one revoked
   # after the backup is live again. --revoke-agent-connections ends all of them.
   if [ "$revoke_agents" = 1 ]; then
-    compose_main run --rm -T migrate node "$IMAGE_OPERATIONS" revoke-agent-access || die "Revoking agent connections failed; API and worker were not started."
+    image_op revoke-agent-access || die "Revoking agent connections failed; API and worker were not started."
   else
-    access=$(compose_main run --rm -T migrate node "$IMAGE_OPERATIONS" agent-access | sed -n 's/^FLUX_AGENT_ACCESS //p')
+    access=$(image_op agent-access | sed -n 's/^FLUX_AGENT_ACCESS //p')
     if [ -n "$access" ] && [ "${access%% *}" != 0 ]; then
       warn "NOTE: ${access%% *} agent connection(s) are active as of the backup. A connection or token revoked after the backup was taken is active again."
       warn "      Review them on /connect-agent (GET /api/v1/agent-connections), or run ./flux restore again with --revoke-agent-connections to end them all."

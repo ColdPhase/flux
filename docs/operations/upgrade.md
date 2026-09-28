@@ -51,7 +51,8 @@ migrations numbered below the current maximum are applied too. It seeds that ver
 checkout's files with this tree (as `git pull` would, keeping `.env` and the data), checks that
 `./flux upgrade` without confirmation does nothing, runs `./flux upgrade -y`, and verifies the
 reported schema change, an `Applied migration` line for every migration the old version lacked,
-the backup's schema, and through the API the demo conversation, DM,
+the backup's schema, that this pre-upgrade backup (a subset of the new image's migrations) is
+refused by restore without `--migrate` and restored with it, and through the API the demo conversation, DM,
 private note and sketch, a new doc, and the export. It then adds a failing migration, checks that
 the upgrade fails with the restore instruction for its backup, removes the migration and follows
 the instruction; the demo data is verified again.

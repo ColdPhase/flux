@@ -8,14 +8,18 @@
 #     work/decision/result with links, a doc with two versions, a push subscription, a revoked
 #     and a live session, two OAuth agent connections with bearers (#52; one revoked before the
 #     backup, one after it) and an outsider; a file is put into the files volume. ./flux export
-#     is checked for content and exclusions. ./flux backup runs twice (--keep 1); restore is
-#     refused when not confirmed, for a damaged archive and for another schema version. A's
+#     is checked for content and exclusions. ./flux backup refuses when the writers cannot be
+#     confirmed stopped, keeps two backups of the same second apart, and prunes with --keep 1;
+#     restore is refused when not confirmed, for a damaged archive, a manifest that disagrees
+#     with its dump's migration ledger, a newer schema, and a ledger version this image lacks
+#     (before any data is replaced). An exact ledger restores plainly. A's
 #     volumes are destroyed, a fresh checkout B restores the archive, and the fixture verifies
 #     through B's API: the same data, versions and links, sessions, sign-in, permissions and
 #     agent access as of the backup; restore --revoke-agent-connections then ends all of it.
 #  2. Upgrade: checkout U starts the previous main's version (the newest commit on main's
 #     first-parent history with other migrations than this tree, or FLUX_UPGRADE_FROM) with its demo, its files are replaced by this tree,
-#     ./flux upgrade migrates forward and the demo data is verified. A broken migration then
+#     ./flux upgrade migrates forward and the demo data is verified. The pre-upgrade backup (a
+#     subset of this image's migrations) is refused without --migrate and restored with it. A broken migration then
 #     makes ./flux upgrade fail with restore instructions, which are followed.
 set -eu
 
@@ -126,18 +130,40 @@ if flux_a export 'Community garden sensors' --as jonas@demo.flux.test --output "
 grep -q 'may not manage' "$work/denied.out" || fail "no project.manage refusal: $(cat "$work/denied.out")"
 [ ! -e "$work/denied.tar.gz" ] || fail "a refused export left a file"
 
-step "./flux backup (twice, --keep 1) stops the writers, writes a checked archive and restarts them"
-flux_a backup --output "$work/backups" > "$work/backup1.out"
+step "./flux backup refuses when the writers cannot be confirmed stopped, and restarts nothing it did not stop"
+# A docker shim whose `compose ... stop` fails without stopping anything.
+real_docker=$(command -v docker)
+mkdir -p "$work/shim-stop" "$work/shim-date"
+printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = stop ] && { echo "shim: stop refused" >&2; exit 1; }; done\nexec %s "$@"\n' "$real_docker" > "$work/shim-stop/docker"
+# A date shim: every backup starts in the same UTC second.
+printf '#!/bin/sh\n[ "$*" = "-u +%%Y%%m%%dT%%H%%M%%SZ" ] && { echo 20260101T000000Z; exit 0; }\nexec /bin/date "$@"\n' > "$work/shim-date/date"
+chmod +x "$work/shim-stop/docker" "$work/shim-date/date"
+api_started() { docker inspect -f '{{.State.StartedAt}}' "$(compose_in "$A" ps -q api)"; }
+before_start=$(api_started)
+if PATH="$work/shim-stop:$PATH" flux_a backup --output "$work/backups" > "$work/stopfail.out" 2>&1; then fail "a backup ran although the writers were not stopped"; fi
+grep -q 'Could not confirm that API and worker are stopped (still running: api worker; stop failed). No backup was written.' "$work/stopfail.out" \
+  || fail "no stop refusal: $(cat "$work/stopfail.out")"
+[ -z "$(ls -A "$work/backups" 2>/dev/null)" ] || fail "the refused backup left files: $(ls -A "$work/backups")"
+[ "$(api_started)" = "$before_start" ] || fail "the refused backup restarted the API it had not stopped"
+[ ! -e "$A/.flux-backup-lock-$run_a" ] || fail "the refused backup left its lock"
+curl -fsS "http://127.0.0.1:$port_a/api/v1/health" | grep -q '"status":"ok"' || fail "API not healthy after the refused backup"
+
+step "./flux backup (twice in one second, then --keep 1) stops the writers, writes checked archives and restarts them"
+PATH="$work/shim-date:$PATH" flux_a backup --output "$work/backups" > "$work/backup1.out"
 cat "$work/backup1.out"
 grep -q 'Stopping api worker so the database and files are captured at one point in time' "$work/backup1.out" || fail "backup did not stop API and worker"
 first=$(sed -n 's/^Backup written: \(.*\.tar\) (.*/\1/p' "$work/backup1.out")
 [ -f "$first" ] || fail "no archive reported"
-sleep 1
-flux_a backup --output "$work/backups" --keep 1 > "$work/backup2.out"
-archive=$(sed -n 's/^Backup written: \(.*\.tar\) (.*/\1/p' "$work/backup2.out")
-[ -f "$archive" ] && [ "$archive" != "$first" ] || fail "second archive missing"
-[ ! -e "$first" ] || fail "--keep 1 kept the older archive"
-grep -q "Removed old backup" "$work/backup2.out" || fail "--keep 1 did not report the pruning"
+PATH="$work/shim-date:$PATH" flux_a backup --output "$work/backups" > "$work/backup2.out"
+second=$(sed -n 's/^Backup written: \(.*\.tar\) (.*/\1/p' "$work/backup2.out")
+case "$first$second" in *20260101T000000Z-*20260101T000000Z-*) ;; *) fail "the date shim did not apply: $first $second" ;; esac
+[ -f "$first" ] && [ -f "$second" ] && [ "$first" != "$second" ] || fail "a backup in the same second replaced the first ($first, $second)"
+flux_a backup --output "$work/backups" --keep 1 > "$work/backup3.out"
+archive=$(sed -n 's/^Backup written: \(.*\.tar\) (.*/\1/p' "$work/backup3.out")
+[ -f "$archive" ] || fail "third archive missing"
+[ ! -e "$first" ] && [ ! -e "$second" ] || fail "--keep 1 kept an older archive"
+[ "$(ls "$work/backups" | grep -c '\.tar$')" = 1 ] || fail "--keep 1 left $(ls "$work/backups")"
+grep -q "Removed old backup" "$work/backup3.out" || fail "--keep 1 did not report the pruning"
 [ "$(ls -l "$archive" | cut -c1-10)" = "-rw-------" ] || fail "archive is not private"
 (cd "$(dirname "$archive")" && if command -v sha256sum >/dev/null 2>&1; then sha256sum -c "$(basename "$archive").sha256"; else shasum -a 256 -c "$(basename "$archive").sha256"; fi) >/dev/null || fail "archive .sha256 does not match"
 curl -fsS "http://127.0.0.1:$port_a/api/v1/health" | grep -q '"status":"ok"' || fail "API not healthy after the backup"
@@ -146,6 +172,8 @@ tar -xf "$archive" -C "$work/unpacked"
 manifest="$work/unpacked/manifest.json"
 schema=$(schema_of_tree "$A")
 grep -q "\"schemaVersion\": $schema," "$manifest" || fail "manifest schema is not $schema: $(cat "$manifest")"
+ledger=$(migrations_of_tree "$A" | sed 's/_.*//; s/^0*//' | paste -sd, -)
+grep -q "\"appliedMigrations\": \[$ledger\]," "$manifest" || fail "manifest ledger is not [$ledger]: $(cat "$manifest")"
 grep -q '"appVersion": "0.1.0"' "$manifest" && grep -q '"consistency": "api and worker stopped' "$manifest" || fail "manifest fields missing"
 grep -q '"image": "sha256:' "$manifest" && grep -q '"postgresImage": "postgres@sha256:' "$manifest" || fail "manifest image digests missing"
 for part in database.dump files.tar.gz flux.env; do
@@ -168,13 +196,29 @@ repack() { # name manifest-sed dump-append
 repack damaged 's/x/x/' 'tampered'
 if flux_a restore "$work/damaged.tar" -y > "$work/damaged.out" 2>&1; then fail "a damaged archive was restored"; fi
 grep -q 'database.dump does not match its checksum' "$work/damaged.out" || fail "no checksum refusal: $(cat "$work/damaged.out")"
-repack older "s/\"schemaVersion\": $schema,/\"schemaVersion\": $((schema - 1)),/" ''
-if flux_a restore "$work/older.tar" -y > "$work/older.out" 2>&1; then fail "another schema version was restored without --migrate"; fi
-grep -q "written by another Flux version (schema $((schema - 1)) -> $schema)" "$work/older.out" || fail "no version refusal: $(cat "$work/older.out")"
+repack edited "s/\"appliedMigrations\": \[$ledger\]/\"appliedMigrations\": [${ledger%,*}]/" ''
+if flux_a restore "$work/edited.tar" --migrate -y > "$work/edited.out" 2>&1; then fail "a manifest that disagrees with its dump was restored"; fi
+grep -q "the dump's migration ledger {$ledger} differs from the manifest's" "$work/edited.out" || fail "no ledger/manifest refusal: $(cat "$work/edited.out")"
 repack newer "s/\"schemaVersion\": $schema,/\"schemaVersion\": $((schema + 1)),/" ''
 if flux_a restore "$work/newer.tar" --migrate -y > "$work/newer.out" 2>&1; then fail "a newer schema was restored"; fi
 grep -q "newer than this checkout" "$work/newer.out" || fail "no newer-schema refusal: $(cat "$work/newer.out")"
 curl -fsS "http://127.0.0.1:$port_a/api/v1/health" >/dev/null || fail "refused restores stopped A"
+
+step "A backup whose ledger has a version this image lacks is refused before any data is replaced"
+# The checkout loses a migration below the highest one: the backup's ledger now names a
+# version without a file here (same max(version)), as a backup from another branch would.
+foreign=$(migrations_of_tree "$A" | tail -n 2 | head -n 1)
+mv "$A/packages/db/migrations/$foreign" "$work/$foreign"
+before_start=$(api_started)
+messages_before=$(compose_in "$A" exec -T db psql -X -tA -U flux -d flux -c 'SELECT count(*) FROM project_messages')
+if flux_a restore "$archive" --migrate -y > "$work/foreign.out" 2>&1; then fail "a backup with a foreign migration version was restored"; fi
+grep -q "refused before replacing any data: the backup's migration ledger has versions without files in this image: $(printf '%s' "$foreign" | sed 's/_.*//; s/^0*//')" "$work/foreign.out" \
+  || fail "no foreign-version refusal: $(cat "$work/foreign.out")"
+if grep -q 'Replacing the data' "$work/foreign.out"; then fail "the foreign-version restore started replacing data"; fi
+[ "$(api_started)" = "$before_start" ] || fail "the refused restore restarted A"
+[ "$(compose_in "$A" exec -T db psql -X -tA -U flux -d flux -c 'SELECT count(*) FROM project_messages')" = "$messages_before" ] || fail "the refused restore changed A's data"
+curl -fsS "http://127.0.0.1:$port_a/api/v1/health" | grep -q '"status":"ok"' || fail "A is not healthy after the refused restore"
+mv "$work/$foreign" "$A/packages/db/migrations/$foreign"
 
 step "Destroy A's volumes, then restore the archive into a fresh checkout B"
 flux_a reset -y >/dev/null
@@ -190,7 +234,8 @@ run_b=$(project_of "$B")
 [ "$(ls -l "$B/.env" | cut -c1-10)" = "-rw-------" ] || fail "restored .env is not private"
 [ "$(env_of "$B" FLUX_AUTH_SECRET)" = "$(env_of "$A" FLUX_AUTH_SECRET)" ] || fail "restored .env has other secrets"
 [ "$(env_of "$B" FLUX_PORT)" = "$port_a" ] || fail "restored .env did not take the port from the shell"
-grep -q "Health: {\"status\":\"ok\",\"schemaVersion\":$schema}" "$work/restore.out" || fail "restore did not report the health and schema check"
+grep -q "Migrations: the backup's migration ledger matches this image exactly" "$work/restore.out" || fail "restore did not report the exact ledger match"
+grep -q "Health: {\"status\":\"ok\",\"schemaVersion\":$schema}.*(migration ledger matches this image: $ledger)" "$work/restore.out" || fail "restore did not report the health and exact ledger check"
 fixture "$B" verify "$state"
 compose_in "$B" --profile ops run --rm --no-deps -T files-archive cat /data/files/uploads/sentinel.bin > "$work/restored.bin"
 [ "$(sha256 "$work/restored.bin")" = "$upload_sha" ] || fail "the uploaded file changed in the restore"
@@ -237,6 +282,18 @@ done
 upgrade_archive=$(sed -n 's/^Backup written: \(.*\.tar\) (.*/\1/p' "$work/upgrade.out")
 [ -f "$upgrade_archive" ] || fail "upgrade wrote no backup"
 tar -xOf "$upgrade_archive" manifest.json | grep -q "\"schemaVersion\": $from_schema," || fail "the upgrade backup is not of schema $from_schema"
+fixture "$U" demo
+
+step "The pre-upgrade backup (a subset of this image's migrations) restores only with --migrate"
+if flux_u restore "$upgrade_archive" -y > "$work/subset.out" 2>&1; then fail "a backup lacking migrations was restored without --migrate"; fi
+grep -q 'refused before replacing any data: the backup lacks migrations of this image' "$work/subset.out" || fail "no subset refusal: $(cat "$work/subset.out")"
+curl -fsS "http://127.0.0.1:$port_u/api/v1/health" | grep -q '"status":"ok"' || fail "U stopped by the refused restore"
+flux_u restore "$upgrade_archive" --migrate -y > "$work/subset-migrate.out" 2>&1 || { cat "$work/subset-migrate.out"; fail "restore --migrate of the pre-upgrade backup failed"; }
+grep -q "they are applied after the restore" "$work/subset-migrate.out" || fail "restore --migrate did not list the missing migrations"
+for migration in $new_migrations; do
+  grep -q "Applied migration $migration" "$work/subset-migrate.out" || fail "restore --migrate did not apply $migration"
+done
+grep -q "migration ledger matches this image" "$work/subset-migrate.out" || fail "restore --migrate did not end with an exact ledger"
 fixture "$U" demo
 
 step "A failing upgrade prints restore instructions that work"
