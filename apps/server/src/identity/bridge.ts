@@ -29,12 +29,12 @@ export interface AuthBridgeOptions {
   passwordReset: IdentityCapabilities['passwordReset'];
 }
 
-/** Forwards `/api/auth/*` to Better Auth with a server-built URL, trusted client IP and redacted tokens. */
+/** Forwards auth endpoints and the exact OAuth discovery paths to Better Auth. */
 export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, passwordReset }: AuthBridgeOptions) {
-  app.route({
-    method: ['GET', 'POST'],
-    url: `${AUTH_BASE_PATH}/*`,
-    handler: async (request: FastifyRequest, reply: FastifyReply) => {
+  // OAuth token and revocation endpoints use HTML form encoding. Preserve the
+  // bounded raw payload so Better Auth validates it, rather than Fastify's 415.
+  app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_request, body, done) => done(null, body));
+  const forward = async (request: FastifyRequest, reply: FastifyReply) => {
       // Build the URL from the configured origin, never from Host or an absolute-form target.
       const target = new URL(request.url, publicOrigin);
       const url = new URL(`${target.pathname}${target.search}`, publicOrigin);
@@ -54,6 +54,12 @@ export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, p
       if (cookies.length) reply.header('set-cookie', cookies);
       const text = response.body ? await response.text() : null;
       return reply.send(text && response.headers.get('content-type')?.includes('application/json') ? redactSessionTokens(text) : text);
-    },
-  });
+  };
+  app.route({ method: ['GET', 'POST'], url: `${AUTH_BASE_PATH}/*`, handler: forward });
+  for (const url of [
+    '/.well-known/oauth-protected-resource',
+    '/.well-known/oauth-protected-resource/mcp',
+    '/.well-known/oauth-authorization-server/api/auth',
+    '/.well-known/openid-configuration/api/auth',
+  ]) app.route({ method: ['GET', 'HEAD'], url, handler: forward });
 }

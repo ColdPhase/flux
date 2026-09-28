@@ -27,6 +27,8 @@ import { liveDiscoveryRoutes } from './live/discovery.js';
 import { liveLifecycle } from './live/lifecycle.js';
 import { liveWebhookRoutes } from './live/webhook.js';
 import { liveInvitationRoutes } from './live/invitation-routes.js';
+import { agentProposalRoutes } from './agent-connection/routes.js';
+import { registerMcpRoute } from './agent-connection/mcp-route.js';
 import { returnRoutes } from './returns/routes.js';
 import { docRoutes } from './docs/routes.js';
 
@@ -112,6 +114,8 @@ if (liveRevocation) {
   app.addHook('onClose', async () => clearInterval(recoveryTimer));
   void recover();
 }
+await app.register(agentProposalRoutes, { db, sessions: identity });
+registerMcpRoute(app, db, identity.auth, identityConfig.publicOrigin);
 await app.register(returnRoutes, { db, sessions: identity });
 await app.register(docRoutes, { db, sessions: identity });
 

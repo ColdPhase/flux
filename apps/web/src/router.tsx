@@ -28,6 +28,7 @@ import {
   signUpAction,
 } from './auth/logic';
 import { AuthLayout, ForgotPasswordPage, ResetPasswordPage, SignInPage, SignOutPage, SignUpPage } from './auth/pages';
+import { AgentConnectionPage, AgentConsentPage, agentConnectionLoader, agentConsentLoader } from './agent-connection/pages';
 
 function Root() {
   // The update prompt is shown on every page, signed in or not; reloading is the person's choice.
@@ -48,6 +49,8 @@ export const router = createBrowserRouter([
           { path: 'forgot-password', loader: forgotPasswordLoader, action: forgotPasswordAction, Component: ForgotPasswordPage },
           { path: 'reset-password', action: resetPasswordAction, Component: ResetPasswordPage },
           { path: 'sign-out', loader: signOutLoader, action: signOutAction, Component: SignOutPage },
+          { path: 'connect-agent', loader: agentConnectionLoader, Component: AgentConnectionPage },
+          { path: 'consent', loader: agentConsentLoader, Component: AgentConsentPage },
         ],
       },
       {

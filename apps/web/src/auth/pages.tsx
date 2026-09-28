@@ -16,13 +16,14 @@ function Brand() {
 /** Quiet single-column frame for signing in and account recovery. */
 export function AuthLayout() {
   const location = useLocation();
+  const connectionFlow = location.pathname === '/connect-agent' || location.pathname === '/consent';
   return (
     <div className="auth">
       <a className="ui-skip" href="#auth-main">Skip to content</a>
       <header className="auth__top"><Brand /></header>
       <main className="auth__main" id="auth-main" tabIndex={-1}>
         {/* Keyed by path so each page settles in when it replaces the previous one. */}
-        <div className="auth__col" key={location.pathname}>
+        <div className={`auth__col${connectionFlow ? ' auth__col--connection' : ''}`} key={location.pathname}>
           <Outlet />
         </div>
       </main>

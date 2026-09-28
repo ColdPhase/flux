@@ -8,7 +8,7 @@ always with its reason.
 
 ## Return points
 
-`return_points` (migration `0009_return_points.sql`, `FLUX_SCHEMA_VERSION` 9) keeps one row per
+`return_points` (migration `0009_return_points.sql`, introduced at schema version 9) keeps one row per
 person and place: `home`, `project:<id>` or `conversation:<id>`. A point is a position in the
 person's **own** `event_audience` rows (an event `seq`). It is never sent to clients. Project and
 conversation points are deleted with their place.
