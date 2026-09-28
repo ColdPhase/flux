@@ -20,6 +20,7 @@ import {
 } from '@flux/contracts';
 import {
   addMember,
+  assertAuthorized,
   changeRole,
   createAgent,
   createDraft,
@@ -50,11 +51,13 @@ import {
 } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { bodyId, commandRunner, expectedVersion, requires, useDomainErrors, versionEtag } from '../http/commands.js';
+import { withNoMediaAccessChange, type LiveRevocationCoordinator } from '../live/revocation.js';
 
 export interface AccessRouteOptions {
   db: Database;
   sessions: SessionResolver;
   boss: Pick<PgBoss, 'send'>;
+  liveRevocation?: LiveRevocationCoordinator | null;
 }
 
 const nameSchema = { type: 'string', minLength: 1, maxLength: 200 } as const;
@@ -72,13 +75,21 @@ const visibilitySchema = { type: 'string', enum: ['private', 'project', 'workspa
  * current session (no caching) and calls one core domain method, which authorizes.
  * POST/PATCH commands accept `Idempotency-Key`; draft update/share/move need `If-Match`.
  */
-export async function accessRoutes(app: FastifyInstance, { db, sessions, boss }: AccessRouteOptions) {
+export async function accessRoutes(app: FastifyInstance, { db, sessions, boss, liveRevocation }: AccessRouteOptions) {
   useDomainErrors(app);
-  const { principal, command } = commandRunner(db, sessions);
+  const { principal, command, runCommand, sendCommand } = commandRunner(db, sessions);
 
   const workspaceScope = (id: string): ResourceRef => ({ type: 'workspace', id });
   const projectScope = (id: string): ResourceRef => ({ type: 'project', id });
   const draftScope = (id: string): ResourceRef => ({ type: 'draft', id });
+  const workspaceChange = <T>(id: string, mutation: (connection: Database) => Promise<T>): Promise<T> => {
+    if (liveRevocation) return liveRevocation.withWorkspaceChange(id, () => mutation(db));
+    return withNoMediaAccessChange(db, { workspaceId: id, projectId: null }, mutation);
+  };
+  const projectChange = <T>(id: string, mutation: (connection: Database) => Promise<T>): Promise<T> => {
+    if (liveRevocation) return liveRevocation.withProjectChange(id, () => mutation(db));
+    return withNoMediaAccessChange(db, { workspaceId: '', projectId: id }, mutation);
+  };
 
   // Workspaces and membership
   app.get(WORKSPACES_PATH, async (request) => listWorkspaces(await principal(request), db));
@@ -103,13 +114,20 @@ export async function accessRoutes(app: FastifyInstance, { db, sessions, boss }:
   }));
   app.patch<{ Params: { workspaceId: string; userId: string }; Body: ChangeRoleCommand }>(`${WORKSPACES_PATH}/:workspaceId/members/:userId`, {
     schema: { body: { type: 'object', required: ['role'], additionalProperties: false, properties: { role: roleSchema } } },
-  }, async (request, reply) => command(request, reply, {
-    operation: `PATCH ${WORKSPACES_PATH}/:workspaceId/members/:userId`, scope: workspaceScope(request.params.workspaceId),
-    run: (actor, conn) => changeRole(actor, request.params.workspaceId, request.params.userId, request.body, conn),
-    replay: requires('workspace', 'workspace.read_members', () => request.params.workspaceId),
-  }));
+  }, async (request, reply) => {
+    await assertAuthorized(await principal(request), 'workspace.manage_members', workspaceScope(request.params.workspaceId), db);
+    const result = await workspaceChange(request.params.workspaceId, (conn) => runCommand(request, {
+      operation: `PATCH ${WORKSPACES_PATH}/:workspaceId/members/:userId`, scope: workspaceScope(request.params.workspaceId),
+      run: (actor, conn) => changeRole(actor, request.params.workspaceId, request.params.userId, request.body, conn),
+      replay: requires('workspace', 'workspace.read_members', () => request.params.workspaceId),
+    }, conn));
+    return sendCommand(reply, result);
+  });
   app.delete<{ Params: { workspaceId: string; userId: string } }>(`${WORKSPACES_PATH}/:workspaceId/members/:userId`, async (request, reply) => {
-    await removeMember(await principal(request), request.params.workspaceId, request.params.userId, db);
+    const actor = await principal(request);
+    await assertAuthorized(actor, actor.kind === 'human' && actor.id === request.params.userId
+      ? 'workspace.read' : 'workspace.manage_members', workspaceScope(request.params.workspaceId), db);
+    await workspaceChange(request.params.workspaceId, (conn) => removeMember(actor, request.params.workspaceId, request.params.userId, conn));
     return reply.code(204).send();
   });
 
@@ -139,13 +157,19 @@ export async function accessRoutes(app: FastifyInstance, { db, sessions, boss }:
         },
       },
     },
-  }, async (request, reply) => command(request, reply, {
-    operation: `POST ${PROJECTS_PATH}/:projectId/grants`, scope: projectScope(request.params.projectId), status: 201,
-    run: (actor, conn) => grantProject(actor, request.params.projectId, request.body, conn),
-    replay: requires('project', 'project.manage', () => request.params.projectId),
-  }));
+  }, async (request, reply) => {
+    await assertAuthorized(await principal(request), 'project.manage', projectScope(request.params.projectId), db);
+    const result = await projectChange(request.params.projectId, (conn) => runCommand(request, {
+      operation: `POST ${PROJECTS_PATH}/:projectId/grants`, scope: projectScope(request.params.projectId), status: 201,
+      run: (actor, conn) => grantProject(actor, request.params.projectId, request.body, conn),
+      replay: requires('project', 'project.manage', () => request.params.projectId),
+    }, conn));
+    return sendCommand(reply, result);
+  });
   app.delete<{ Params: { projectId: string; grantId: string } }>(`${PROJECTS_PATH}/:projectId/grants/:grantId`, async (request, reply) => {
-    await revokeProjectGrant(await principal(request), request.params.projectId, request.params.grantId, db);
+    const actor = await principal(request);
+    await assertAuthorized(actor, 'project.manage', projectScope(request.params.projectId), db);
+    await projectChange(request.params.projectId, (conn) => revokeProjectGrant(actor, request.params.projectId, request.params.grantId, conn));
     return reply.code(204).send();
   });
 

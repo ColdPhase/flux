@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { after, describe, test } from 'node:test';
 import {
   assertExactMigrationLedger,
@@ -12,6 +14,7 @@ import {
   readMigrationManifest,
 } from '@flux/db';
 
+const migrationsDir = 'packages/db/migrations';
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
 const { pool } = createDatabase(connectionString);
@@ -22,9 +25,15 @@ const late = { name: '0015_late.sql', version: 15 };
 const lowerGap = { name: '0014_lower_gap.sql', version: 14 };
 
 describe('exact Flux migration ledger (#118)', () => {
-  test('the shipped SQL manifest and running database have exactly the same versions', async () => {
-    const manifest = await readMigrationManifest('packages/db/migrations', FLUX_SCHEMA_VERSION);
+  test('the shipped SQL manifest, embedded versions and running database agree', async () => {
+    const manifest = await readMigrationManifest(migrationsDir, FLUX_SCHEMA_VERSION);
     assert.ok(manifest.length >= 14);
+    for (const file of manifest) {
+      const sql = await readFile(join(migrationsDir, file.name), 'utf8');
+      const embedded = [...sql.matchAll(/INSERT\s+INTO\s+flux_schema_version\s*\(version\)\s*VALUES\s*\((\d+)\)/gi)];
+      assert.ok(embedded.length <= 1, `${file.name} must not write multiple ledger versions`);
+      if (embedded.length) assert.equal(Number(embedded[0]![1]), file.version, `${file.name} writes a foreign ledger version`);
+    }
     assertExactMigrationLedger(manifest, await readAppliedMigrationVersions(pool));
   });
 

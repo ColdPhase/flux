@@ -95,7 +95,7 @@ export function commandRunner(db: Database, sessions: SessionResolver) {
   const principal = async (request: Parameters<SessionResolver['requirePrincipal']>[0]) => (await sessions.requirePrincipal(request)).principal;
 
   /** Runs a state-changing command, at most once per Idempotency-Key when one is sent. */
-  async function command(request: FastifyRequest, reply: FastifyReply, spec: CommandSpec) {
+  async function runCommand(request: FastifyRequest, spec: CommandSpec, connection: Database = db) {
     const actor = await principal(request);
     const key = parseIdempotencyKey(single(request.headers[IDEMPOTENCY_KEY_HEADER]));
     const etagOf = spec.etag === true ? versionEtag : spec.etag || (() => null);
@@ -106,18 +106,27 @@ export function commandRunner(db: Database, sessions: SessionResolver) {
     };
     let response: CommandResponse & { replayed?: boolean };
     if (key === null) {
-      response = await execute(db);
+      response = await execute(connection);
     } else {
-      const workspaceId = spec.scope ? await visibleWorkspaceOf(actor, spec.scope, db) : null;
+      const workspaceId = spec.scope ? await visibleWorkspaceOf(actor, spec.scope, connection) : null;
       const hash = requestHash({ params: request.params, query: request.query, body: request.body ?? null, ifMatch: request.headers[IF_MATCH_HEADER] ?? null });
-      response = await runIdempotent(db, { principal: actor, workspaceId, operation: spec.operation, key, requestHash: hash }, execute,
+      response = await runIdempotent(connection, { principal: actor, workspaceId, operation: spec.operation, key, requestHash: hash }, execute,
         (stored, conn) => spec.replay(actor, stored.body, conn));
     }
+    return response;
+  }
+
+  /** Only send after any enclosing media fence and SQL transaction have completed. */
+  function sendCommand(reply: FastifyReply, response: CommandResponse & { replayed?: boolean }) {
     if (response.etag) reply.header('etag', response.etag);
     if (response.replayed) reply.header(IDEMPOTENT_REPLAYED_HEADER, 'true');
     if (response.status === 204) return reply.code(204).send();
     return reply.code(response.status).send(response.body);
   }
 
-  return { principal, command };
+  async function command(request: FastifyRequest, reply: FastifyReply, spec: CommandSpec) {
+    return sendCommand(reply, await runCommand(request, spec));
+  }
+
+  return { principal, command, runCommand, sendCommand };
 }
