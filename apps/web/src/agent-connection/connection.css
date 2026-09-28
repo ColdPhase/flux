@@ -16,8 +16,10 @@
 .connection__summary { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
 .connection__summary > strong { overflow-wrap: anywhere; font-size: var(--fs-base); font-weight: 600; }
 .connection__meta { color: var(--text-3); font-size: var(--fs-sm); }
-.connection__projects { display: flex; flex-wrap: wrap; gap: 5px; margin: 9px 0 0; padding: 0; list-style: none; }
-.connection__projects li { max-width: 100%; padding: 2px 8px; border-radius: var(--r-sm); background: var(--bg-active); color: var(--text-2); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+.connection__project-access { margin-top: 12px; }
+.connection__project-access > span { color: var(--text-2); font-size: var(--fs-sm); font-weight: 600; }
+.connection__projects { display: flex; flex-wrap: wrap; gap: 5px; margin: 5px 0 0; padding: 0; list-style: none; }
+.connection__projects li { max-width: 100%; padding: 5px 9px; border-radius: var(--r-sm); background: var(--bg-active); color: var(--text); font-size: var(--fs-sm); font-weight: 600; overflow-wrap: anywhere; }
 .connection__scopes { display: flex; flex-direction: column; gap: 6px; margin: 12px 0 0; padding: 0; list-style: none; }
 .connection__scopes li { display: flex; align-items: flex-start; gap: 7px; color: var(--text-2); font-size: var(--fs-sm); }
 .connection__scopes svg { margin-top: 2px; color: var(--ok); }
@@ -25,6 +27,7 @@
 .connection__scopes small { display: block; color: var(--text-3); font-size: var(--fs-xs); }
 .connection__requested { padding-top: 15px; border-top: 1px solid var(--line); }
 .connection__requested h2 { font-size: var(--fs-sm); color: var(--text-2); }
+.connection__requested p { margin-top: 7px; color: var(--text-2); font-size: var(--fs-sm); line-height: 1.5; }
 .connection__create { display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 16px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg-side); }
 .connection__create h2 { font-size: var(--fs-lg); }
 .connection__create > p, .connection__group > p, .connection__help { color: var(--text-3); font-size: var(--fs-sm); line-height: 1.55; }

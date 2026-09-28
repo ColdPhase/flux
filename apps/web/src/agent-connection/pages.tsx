@@ -104,16 +104,20 @@ function ScopeList({ scopes }: { scopes: string[] }) {
   })}</ul>;
 }
 
-function ConnectionSummary({ connection, agentName, projectNames }: {
+function ConnectionSummary({ connection, agentName, projectNames, showScopes = true }: {
   connection: AgentConnection;
   agentName: string;
   projectNames: Map<string, string>;
+  showScopes?: boolean;
 }) {
   return <div className="connection__summary">
     <strong>{agentName}</strong>
     <span className="connection__meta">{connection.selectedProjectIds.length} {connection.selectedProjectIds.length === 1 ? 'project' : 'projects'} · {connection.scopes.length === 2 ? 'Read and propose' : connection.scopes[0] === 'flux.context.read' ? 'Read only' : 'Propose only'}</span>
-    <ul className="connection__projects">{connection.selectedProjectIds.map((id) => <li key={id}>{projectNames.get(id) ?? `Project ${id.slice(0, 8)}`}</li>)}</ul>
-    <ScopeList scopes={connection.scopes} />
+    <div className="connection__project-access">
+      <span>Selected {connection.selectedProjectIds.length === 1 ? 'project' : 'projects'}</span>
+      <ul className="connection__projects">{connection.selectedProjectIds.map((id) => <li key={id}>{projectNames.get(id) ?? `Project ${id.slice(0, 8)}`}</li>)}</ul>
+    </div>
+    {showScopes ? <ScopeList scopes={connection.scopes} /> : null}
   </div>;
 }
 
@@ -156,7 +160,7 @@ export function AgentConnectionPage() {
     try {
       const agent = await createPersonalAgent(workspaceId, agentName.trim());
       setPersonalAgents((current) => [...current, agent]);
-      setAgentId(agent.id); setProjectIds([]); setAgentName(''); setCreatingAgent(false);
+      setAgentId(agent.id); setProjectIds([]); setAgentName(''); setCreatingAgent(false); setAdding(true);
     } catch (cause) { setError(describeError(cause)); }
     finally { setBusy(false); }
   }
@@ -238,7 +242,7 @@ export function AgentConnectionPage() {
       <div className="connection__actions"><Button type="submit" variant="secondary" busy={busy} disabled={!workspaceId || !agentName.trim()}>Create personal agent</Button>
         {personalAgents.length ? <Button onClick={() => setCreatingAgent(false)}>Cancel</Button> : null}</div>
     </form> : <Button variant="link" onClick={() => setCreatingAgent(true)}>Create personal agent</Button>}
-    {adding ? <form className="connection__create" onSubmit={(event) => { void addConnection(event); }}>
+    {personalAgents.length > 0 && adding ? <form className="connection__create" onSubmit={(event) => { void addConnection(event); }}>
       <h2>New selection</h2>
       <p>Flux accepts only projects already granted to your agent. Saving this selection does not change project access.</p>
       <label className="connection__label" htmlFor="connection-agent">Your agent</label>
@@ -282,8 +286,7 @@ export function AgentConnectionPage() {
       </fieldset>
       <div className="connection__actions"><Button type="submit" variant="secondary" busy={busy} disabled={!agentId || !projectIds.length || !scopes.length}>Save selection</Button>
         {items.length ? <Button onClick={() => setAdding(false)}>Cancel</Button> : null}</div>
-      {!personalAgents.length ? <p className="connection__help">Create a personal agent above before saving a selection.</p> : null}
-    </form> : <Button variant="link" onClick={() => setAdding(true)}>Create another selection</Button>}
+    </form> : personalAgents.length ? <Button variant="link" onClick={() => setAdding(true)}>Create another selection</Button> : null}
     <div className="connection__footer">
       {oauthQuery ? <Button variant="primary" size="lg" onClick={() => { void connect(); }} busy={busy} disabled={!selected}>Continue to consent</Button> : null}
       <Link className="ui-link" to="/">Back to Flux</Link>
@@ -296,6 +299,9 @@ export function AgentConsentPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const projectNames = new Map(context.selectedProjects?.map((project) => [project.id, project.name]) ?? []);
+  const requestedProjectActions = context.scopes.filter((scope) => ALL_SCOPES.includes(scope as AgentScope));
+  const projectActionsMatch = requestedProjectActions.length === context.connection.scopes.length
+    && context.connection.scopes.every((scope) => requestedProjectActions.includes(scope));
   async function decide(accept: boolean) {
     setBusy(true); setError(null);
     try { followOAuthRedirect(await decideAgentConsent(accept, oauthQuery)); }
@@ -306,9 +312,10 @@ export function AgentConsentPage() {
       <strong>{context.clientName}</strong> is asking to connect to Flux. Check the selected projects and actions below.
     </FlowHeader>
     {error ? <div className="connection__alert" role="alert">{error}</div> : null}
-    <ConnectionSummary connection={context.connection} agentName={context.agentName ?? `Agent ${context.connection.agentId.slice(0, 8)}`} projectNames={projectNames} />
+    <ConnectionSummary connection={context.connection} agentName={context.agentName ?? `Agent ${context.connection.agentId.slice(0, 8)}`} projectNames={projectNames} showScopes={false} />
     <div className="connection__requested">
-      <h2>Requested in this authorization</h2>
+      <h2>Requested by this client</h2>
+      <p>{projectActionsMatch ? 'The requested project actions match your saved selection.' : 'This client requests fewer project actions than your saved selection.'} Approval does not add projects or agent grants.</p>
       <ScopeList scopes={context.scopes} />
     </div>
     <p className="connection__help">The agent uses your Claude Code account for compute. Flux does not receive your provider credentials. You can revoke this connection in Flux; access also ends if a project grant is removed.</p>

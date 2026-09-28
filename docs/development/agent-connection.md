@@ -34,6 +34,13 @@ signed consent screen shows the same connection, client, project names and
 requested scopes. OAuth carries the server-owned connection ID in its signed
 token; it never accepts project or agent IDs from the external client.
 
+The browser setup reveals project selection after a personal agent exists. The
+consent review names the selected projects prominently, lists the requested
+actions once, and says whether those project actions match or narrow the saved
+selection. It explains that approval cannot add projects or agent grants. Any
+extra OAuth permission, such as renewal access, remains visible in the requested
+permission list.
+
 The OAuth protected resource is the configured public HTTPS origin's `/mcp`.
 The server advertises resource and authorization metadata, validates redirect
 clients, PKCE, `resource`, issuer, audience and token expiry. Codes expire
