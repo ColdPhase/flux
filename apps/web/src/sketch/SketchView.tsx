@@ -72,6 +72,7 @@ export function SketchView({ sketchId, projectId, back = '/map' }: { sketchId: s
   const [connectState, setConnectFrom] = useState<string | null>(null);
   const [editingState, setEditing] = useState<Editing | null>(null);
   const [status, setStatus] = useState<{ text: string; change: boolean }>({ text: '', change: false });
+  const { hash } = location;
   const [renaming, setRenaming] = useState<boolean>(!!(location.state as { fresh?: boolean } | null)?.fresh);
   const [heights] = useState(() => new Map<string, number>());
   const rootRef = useRef<HTMLDivElement>(null);
@@ -145,6 +146,19 @@ export function SketchView({ sketchId, projectId, back = '/map' }: { sketchId: s
     setSelection(next);
     describe(next);
   };
+
+  // A search result (#114) opens the sketch with its thought selected and focused, once.
+  const arrivedThought = hash.startsWith('#thought-') ? hash.slice('#thought-'.length) : null;
+  const handledArrival = useRef<string | null>(null);
+  useEffect(() => {
+    if (!arrivedThought || handledArrival.current === arrivedThought || !sketch?.thoughts.some((t) => t.id === arrivedThought)) return;
+    handledArrival.current = arrivedThought;
+    setSelection([arrivedThought]);
+    describe([arrivedThought]);
+    focusThought(`.sk-node[data-id="${arrivedThought}"], .sk-li-t[data-id="${arrivedThought}"]`);
+    // describe/focusThought only read state that this effect's dependencies already cover.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arrivedThought, sketch]);
 
   const escape = () => {
     if (connectFrom) { setConnectFrom(null); say('Connect cancelled'); return true; }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { Link, useLoaderData, useRevalidator, type LoaderFunctionArgs } from 'react-router';
+import { Link, useLoaderData, useLocation, useRevalidator, type LoaderFunctionArgs } from 'react-router';
 import type { ConversationMessage, Dm, DmPerson, SendDmMessageCommand } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { getDm, olderDmMessages, sendDmMessage } from '../api/direct-messages';
@@ -7,6 +7,7 @@ import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { Avatar, Button, Icon } from '../ui';
 import { audienceLine, dmTitle, othersIn } from './names';
+import { pageBackTo } from '../app/seekMessage';
 import './dm.css';
 
 /**
@@ -142,7 +143,29 @@ function DmContent({ initial }: { initial: Dm }) {
     window.addEventListener('focus', onVisible);
     return () => { document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('focus', onVisible); };
   }, [refresh]);
-  useLayoutEffect(() => { const el = feedRef.current; if (el) el.scrollTop = el.scrollHeight; }, []);
+  // A search result opens on that whole message when it is in the loaded window (#114); otherwise on the latest.
+  const hash = useLocation().hash;
+  const arrived = hash.startsWith('#message-') ? hash.slice('#message-'.length) : null;
+  const arrivedLoaded = !!arrived && messages.some((message) => message.id === arrived);
+  // Older than the loaded window: page back until the message is loaded, then show it.
+  useEffect(() => {
+    if (!arrived || arrivedLoaded || !olderCursor) return;
+    let cancelled = false;
+    void pageBackTo(arrived, olderCursor, (before, limit) => olderDmMessages(initial.id, before, undefined, limit)).then(({ pages, cursor }) => {
+      if (cancelled) return;
+      for (const page of pages) learn(page.people);
+      setMessages((current) => pages.reduce((all, page) => merge(all, page.messages), current));
+      setOlderCursor(cursor);
+    }).catch((cause: unknown) => { denied(cause); });
+    return () => { cancelled = true; };
+    // Seek once per target; later pages come from "Show earlier messages".
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arrived]);
+  useLayoutEffect(() => {
+    const anchor = arrived ? document.getElementById(`message-${arrived}`) : null;
+    if (anchor) { anchor.scrollIntoView({ block: 'start' }); anchor.focus({ preventScroll: true }); return; }
+    const el = feedRef.current; if (el) el.scrollTop = el.scrollHeight;
+  }, [arrived, arrivedLoaded]);
 
   const autosize = () => {
     const el = textareaRef.current;
@@ -235,7 +258,7 @@ function DmContent({ initial }: { initial: Dm }) {
               {rows.map(({ message, label, newDay, continued }) => {
                 const mine = message.authorId === me.user.id;
                 return (
-                  <li key={message.id} className={`dm-msg${continued ? ' dm-msg--cont' : ''}`} data-sequence={message.sequence}>
+                  <li key={message.id} id={`message-${message.id}`} tabIndex={-1} className={`dm-msg${continued ? ' dm-msg--cont' : ''}${arrived === message.id ? ' is-arrived' : ''}`} data-sequence={message.sequence}>
                     {newDay ? <p className="dm__day"><span>{label}</span></p> : null}
                     <div className="dm-msg__row">
                       <span className="dm-msg__face">{continued ? null : <Avatar name={mine ? me.user.name : nameOf(message.authorId)} size="md" tone={mine ? 'me' : 'neutral'} />}</span>

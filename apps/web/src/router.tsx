@@ -20,6 +20,7 @@ import { SketchRoute } from './sketch/SketchView';
 import { projectShellLoader } from './project/data';
 import { ProjectMap } from './project/ProjectViews';
 import { LiveOpen } from './live/LiveOpen';
+import { SearchPage } from './search/SearchPage';
 import {
   forgotPasswordAction,
   forgotPasswordLoader,
@@ -94,6 +95,7 @@ export const router = createBrowserRouter([
           { path: 'map', Component: SketchIndex },
           { path: 'map/:sketchId', Component: SketchRoute },
           { path: 'docs', Component: WorkspaceDocs },
+          { path: 'search', Component: SearchPage },
           { path: 'dm', Component: DmIndex },
           { path: 'dm/new', Component: NewDm },
           { path: 'dm/:dmId', loader: dmLoader, Component: DmConversation },
