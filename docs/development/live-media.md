@@ -86,17 +86,22 @@ at least three received packets. Client firewall counters recorded 12 rejected
 UDP packets and three rejected direct TCP/7881 packets. Those are local bridge
 measurements, not external-network or hardware quality results.
 
-This proof does not cover four people, real microphones/screens/cameras,
-14–16px receiver text, real weak-link loss/jitter, Android/iOS devices, or k3s. Those
-remain required by [#63](https://github.com/ColdPhase/flux/issues/63).
+The initial two-person proof does not cover four people, real microphones/screens/cameras,
+14–16px receiver text, real weak-link loss/jitter, Android/iOS devices, or k3s.
+The later four-person synthetic-screen proof below extends only the local
+media and text evidence. The remaining conditions are tracked in
+[#63](https://github.com/ColdPhase/flux/issues/63).
 
 ## Receiver quality measurement slice
 
 [`receiver-quality.ts`](../../apps/web/src/live/receiver-quality.ts) reads
 receiver `getStats()` samples: selected ICE round-trip time; inbound audio/video
 packets, interval bitrate and loss; audio jitter; and decoded video fps and
-dimensions. A counter reset or absent report is unknown, never fabricated as
-zero loss or good throughput. The module returns specific warning reasons for
+dimensions. A counter reset, absent report or short interval without fresh
+packets is unknown, never fabricated as zero loss or good throughput. An
+expected receiver with no new packets for at least two seconds is poor even
+if its cumulative packet count and ICE round-trip time look healthy. The
+module returns specific warning reasons for
 the live interface in [#62](https://github.com/ColdPhase/flux/issues/62) to
 present on demand; #62 has not yet wired it into UI on this branch.
 
@@ -110,13 +115,14 @@ required before the final #63 acceptance run:
 | Audio jitter | >30 ms | >80 ms |
 | Interval audio/video packet loss | >3% | >10% |
 | Decoded video frame rate, when receiving video | <10 fps | <5 fps |
+| Expected receiver track with no fresh packets | — | ≥2 seconds |
 
 The restrictive Docker test adds a fixed 450 ms outbound delay with `tc netem`
 **after** both receivers connect. It checks that real received audio and video
 remain visible in `getStats()` and that the measured RTT crosses the
 warning threshold. A constant delay is reproducible but does not emulate
-random loss, jitter, weak radio, device switching, screen readability or
-four-person capacity. Those need separate profiles and real receivers.
+random loss, jitter, weak radio, device switching or screen readability.
+Those need separate profiles and real receivers.
 
 **Observed 2026-09-28, isolated Docker rerun:**
 `./scripts/check_live_turn.sh` exited 0 (1/1). Before impairment, receiver
@@ -128,6 +134,33 @@ video continued at 320×180, 10 fps and 40.7 kbps. The classifier returned
 TURN/TLS relay candidate pairs; the client firewall rejected 60 UDP packets
 and three direct TCP/7881 packets. These values are one local synthetic-media
 observation, not code-text readability or network/device acceptance.
+
+## Four-person, two-screen local evidence
+
+**Observed 2026-09-28, isolated Docker rerun:**
+`./scripts/check_live_turn.sh` exited 0 (2/2 E2E, full Compose cleanup).
+Four authorized Chromium clients joined the same LiveKit room under the
+restrictive firewall. Two participants published separate 960×540, 10 fps
+canvas screen tracks containing 12 lines each of code and release checklist
+text in 16 px monospace; one also published generated audio. Both observers
+decoded both screens at 960×540 and displayed them at 960×540 (1:1), with
+fresh packets for both video tracks and audio over a two-second interval.
+All four clients selected `relay` candidates with `relayProtocol=tls`.
+OpenSSL verified the test TURN certificate hostname/SNI. The two full-page
+receiver screenshots are retained at
+[viewer 3](evidence/live-turn/receiver-3.png) and
+[viewer 4](evidence/live-turn/receiver-4.png).
+
+At the measured observer samples, both videos decoded at 10 fps with 0%
+interval packet loss; received audio was about 98.8 kbps with 0 ms reported
+jitter and 0% interval loss. The screenshot text is visually readable at
+original pixels, but the publishers use `canvas.captureStream()` marked as
+`screen_share`, not browser `getDisplayMedia()`. This is desktop Chromium on a
+local Docker bridge. It is not evidence that #62's final screen-selection/zoom UI,
+real device capture, tablets, external restricted networks or k3s deployment
+meet #63's acceptance criteria. Receiver warning presentation depends on
+[#62](https://github.com/ColdPhase/flux/issues/62) wiring the diagnostic
+module into the live interface.
 
 ## Sources and inference
 

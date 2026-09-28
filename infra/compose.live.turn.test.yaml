@@ -38,6 +38,7 @@ services:
     cap_add: [NET_ADMIN]
     volumes:
       - ${FLUX_LIVEKIT_TURN_CERT_DIR:?Set a disposable test cert directory}:/run/livekit-turn-certs:ro,z
+      - ${FLUX_LIVE_TURN_ARTIFACT_DIR:?Set a local test evidence directory}:/artifacts:z
     command:
       - sh
       - -ec

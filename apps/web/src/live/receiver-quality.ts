@@ -9,6 +9,7 @@ export const RECEIVER_QUALITY_LIMITS = {
   packetLossPoorPercent: 10,
   videoFpsWarning: 10,
   videoFpsPoor: 5,
+  stalledTrackAfterMs: 2_000,
 } as const;
 
 export interface RtcStatsRecord {
@@ -32,6 +33,7 @@ export interface ReceiverTrackSample {
   id: string;
   kind: 'audio' | 'video';
   packetsReceived: number;
+  packetsDelta?: number;
   lossPercent?: number;
   bitrateKbps?: number;
   jitterMs?: number;
@@ -41,6 +43,7 @@ export interface ReceiverTrackSample {
 }
 
 export interface ReceiverSample {
+  intervalMs: number;
   rttMs?: number;
   tracks: ReceiverTrackSample[];
 }
@@ -93,27 +96,39 @@ export function readReceiverSample(
         ? frameDelta * 1000 / elapsedMs : undefined)
       : undefined;
     tracks.push({ id: record.id, kind: record.kind, packetsReceived: received,
+      packetsDelta: receivedDelta,
       lossPercent, bitrateKbps,
       jitterMs: record.kind === 'audio' && nonnegative(record.jitter) !== undefined
         ? record.jitter! * 1000 : undefined,
       fps, width: record.kind === 'video' ? nonnegative(record.frameWidth) : undefined,
       height: record.kind === 'video' ? nonnegative(record.frameHeight) : undefined });
   }
-  return { rttMs, tracks };
+  return { intervalMs: elapsedMs, rttMs, tracks };
 }
 
 /** Numeric reasons are intended for an on-demand diagnostic surface in #62.
  * Missing stats remain unknown; they never become a fabricated green status. */
 export function assessReceiverQuality(sample: ReceiverSample, expectedKinds: Array<'audio' | 'video'> = []): ReceiverQuality {
   const warnings: string[] = [];
+  let unverified = false;
   let severity: 'good' | 'warning' | 'poor' = 'good';
   const flag = (message: string, level: 'warning' | 'poor') => {
     warnings.push(message);
     if (level === 'poor' || severity === 'good') severity = level;
   };
   for (const kind of expectedKinds) {
-    if (!sample.tracks.some((track) => track.kind === kind && track.packetsReceived > 0))
-      flag(`${kind} has no received packets`, 'poor');
+    const matching = sample.tracks.filter((track) => track.kind === kind);
+    if (matching.length === 0) {
+      if (sample.intervalMs >= RECEIVER_QUALITY_LIMITS.stalledTrackAfterMs)
+        flag(`${kind} has no received packets`, 'poor');
+      else unverified = true;
+    }
+    for (const track of matching) {
+      if (track.packetsDelta === 0 && sample.intervalMs >= RECEIVER_QUALITY_LIMITS.stalledTrackAfterMs)
+        flag(`${kind} stopped receiving for ${Math.round(sample.intervalMs / 1000)} s`, 'poor');
+      else if (track.packetsDelta === undefined || track.packetsDelta === 0)
+        unverified = true;
+    }
   }
   if (sample.rttMs !== undefined) {
     if (sample.rttMs > RECEIVER_QUALITY_LIMITS.rttPoorMs)
@@ -142,6 +157,7 @@ export function assessReceiverQuality(sample: ReceiverSample, expectedKinds: Arr
     }
   }
   if (warnings.length) return { status: severity, warnings };
+  if (unverified) return { status: 'unknown', warnings: [] };
   if (sample.rttMs === undefined && sample.tracks.every((track) => track.packetsReceived === 0))
     return { status: 'unknown', warnings: [] };
   return { status: 'good', warnings: [] };

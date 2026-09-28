@@ -20,9 +20,11 @@ test('receiver sample derives actual interval bitrate, loss, fps, jitter and sel
     { ...before[3]!, packetsReceived: 300, bytesReceived: 700_000, framesDecoded: 110 },
   ];
   const sample = readReceiverSample(after, before, 2000);
+  assert.equal(sample.intervalMs, 2000);
   assert.equal(sample.rttMs, 50);
   assert.deepEqual(sample.tracks.map((track) => track.kind), ['audio', 'video']);
   assert.equal(sample.tracks[0]!.bitrateKbps, 40);
+  assert.equal(sample.tracks[0]!.packetsDelta, 100);
   assert.ok(Math.abs(sample.tracks[0]!.lossPercent! - 100 / 101) < 0.001);
   assert.equal(sample.tracks[0]!.jitterMs, 12);
   assert.equal(sample.tracks[1]!.bitrateKbps, 800);
@@ -57,6 +59,21 @@ test('counter reset or absent receiver stats cannot fabricate healthy throughput
   ], before, 1000);
   assert.equal(reset.tracks[0]!.bitrateKbps, undefined);
   assert.equal(reset.tracks[0]!.lossPercent, undefined);
-  assert.equal(assessReceiverQuality({ tracks: [] }).status, 'unknown');
-  assert.equal(assessReceiverQuality({ tracks: [] }, ['audio']).status, 'poor');
+  assert.equal(assessReceiverQuality(reset, ['audio']).status, 'unknown');
+  assert.equal(assessReceiverQuality({ intervalMs: 1000, tracks: [] }).status, 'unknown');
+  assert.equal(assessReceiverQuality({ intervalMs: 1000, tracks: [] }, ['audio']).status, 'unknown');
+  assert.equal(assessReceiverQuality({ intervalMs: 2500, tracks: [] }, ['audio']).status, 'poor');
+});
+
+test('cumulative packets and healthy RTT cannot hide a stalled expected receiver', () => {
+  const stalled = readReceiverSample(before, before, 2500);
+  assert.equal(stalled.rttMs, 40);
+  assert.equal(stalled.tracks[0]!.packetsReceived, 100);
+  assert.equal(stalled.tracks[0]!.packetsDelta, 0);
+  assert.equal(stalled.tracks[0]!.bitrateKbps, 0);
+  const result = assessReceiverQuality(stalled, ['audio']);
+  assert.equal(result.status, 'poor');
+  assert.ok(result.warnings.some((warning) => warning.includes('audio stopped receiving')));
+  const shortSample = readReceiverSample(before, before, 1000);
+  assert.equal(assessReceiverQuality(shortSample, ['audio']).status, 'unknown');
 });

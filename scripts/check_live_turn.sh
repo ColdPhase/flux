@@ -4,7 +4,11 @@ set -eu
 cd "$(dirname "$0")/.."
 project="flux-live-turn-$(date +%s)-$$"
 cert_dir=$(mktemp -d)
+artifact_dir=${FLUX_LIVE_TURN_ARTIFACT_DIR:-$(mktemp -d /tmp/flux-live-turn-artifacts.XXXXXX)}
+mkdir -p "$artifact_dir"
 chmod 755 "$cert_dir"
+export FLUX_LIVE_TURN_ARTIFACT_DIR="$artifact_dir"
+printf 'TURN visual evidence directory: %s\n' "$artifact_dir"
 export POSTGRES_USER=flux
 export POSTGRES_DB=flux
 export POSTGRES_PASSWORD="flux-live-turn-$$-$(date +%s)"

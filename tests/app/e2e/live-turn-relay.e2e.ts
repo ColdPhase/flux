@@ -138,7 +138,7 @@ test('two authorized Chromium clients exchange media when UDP and direct ICE/TCP
     const ownerMedia = expectStatus(await owner.browser.request('POST', `/api/v1/live-sessions/${session.id}/join`), 200) as LiveJoinGrant;
     const memberMedia = expectStatus(await member.browser.request('POST', `/api/v1/live-sessions/${session.id}/join`), 200) as LiveJoinGrant;
 
-    browser = await chromium.launch({ args: ['--no-sandbox', '--autoplay-policy=no-user-gesture-required'] });
+    browser ??= await chromium.launch({ args: ['--no-sandbox', '--autoplay-policy=no-user-gesture-required'] });
     const ownerPage = await browser.newPage();
     const memberPage = await browser.newPage();
     await Promise.all([connect(ownerPage, ownerMedia), connect(memberPage, memberMedia)]);
@@ -271,4 +271,171 @@ test('two authorized Chromium clients exchange media when UDP and direct ICE/TCP
     console.log(JSON.stringify({ ownerCandidates, memberCandidates, subscribedAudio: true,
       receivedAudioPackets: true, receivedVideo: true, baseline, weak, quality,
       fixedClientDelayMs: 450, blocked: ['UDP to SFU', 'TCP/7881 direct ICE'], participants: 2 }));
+    await Promise.all([ownerPage.close(), memberPage.close()]);
+  });
+
+test('four authorized clients receive two simultaneous code-sized screen tracks through TURN/TLS',
+  { timeout: 180_000 }, async () => {
+    const people = await Promise.all(['owner', 'editor', 'reviewer', 'observer']
+      .map((role) => person(`screen-${role}`)));
+    const [owner, editor, reviewer, observer] = people;
+    const ws = await workspace(owner!, 'Four-person screen proof');
+    for (const member of [editor!, reviewer!, observer!])
+      await addMember(owner!, ws.id, member, 'member');
+    const place = await project(owner!, ws.id, 'Readable screens', 'workspace');
+    await grant(owner!, place.id, editor!, 'contributor');
+    for (const member of [reviewer!, observer!])
+      await grant(owner!, place.id, member, 'viewer');
+    const conversation = expectStatus(await owner!.browser.request('POST',
+      `/api/v1/projects/${place.id}/conversations`, {
+        body: { body: 'Two screen discussion', clientMessageId: randomUUID() },
+      }), 201) as Conversation;
+    const session = expectStatus(await owner!.browser.request('POST', '/api/v1/live-sessions', {
+      body: { context: { type: 'conversation', id: conversation.id }, clientSessionId: randomUUID() },
+    }), 201) as LiveSession;
+    const grants = await Promise.all(people.map(async (member) => expectStatus(
+      await member!.browser.request('POST', `/api/v1/live-sessions/${session.id}/join`), 200) as LiveJoinGrant));
+
+    browser ??= await chromium.launch({ args: ['--no-sandbox', '--autoplay-policy=no-user-gesture-required'] });
+    const pages = await Promise.all(grants.map(() => browser!.newPage()));
+    await Promise.all(pages.map((page, index) => connect(page, grants[index]!)));
+    for (const page of pages) await page.waitForFunction(() => {
+      const room = (window as Window & { fluxRoom?: { remoteParticipants: Map<string, unknown> } }).fluxRoom;
+      return room?.remoteParticipants.size === 3;
+    }, undefined, { timeout: 30_000 });
+    const screens = [
+      { title: 'review.ts · merge conflict', lines: [
+        'const review = await loadPullRequest(124);',
+        'const head = await git.resolve(review.headRef);',
+        'const checks = review.requiredChecks;',
+        'const reviewers = review.approvals.filter(a => a.commit === head.sha);',
+        'const unresolved = review.threads.filter(t => !t.resolved);',
+        'if (checks.some(check => !check.passed)) {',
+        '  return { mergeable: false, reason: "CI" };',
+        '}',
+        'if (unresolved.length > 0 || reviewers.length === 0) {',
+        '  return { mergeable: false, reason: "review" };',
+        '}',
+        'return { mergeable: true, commit: head.sha };',
+      ] },
+      { title: 'Release checklist · v0.1.0', lines: [
+        '[x] Migrations run on clean database',
+        '[x] Required checks match candidate commit',
+        '[x] Four participants join same room',
+        '[x] Two screen tracks decoded at both viewers',
+        '[x] Audio RTP continues during screen sharing',
+        '[ ] Verify screen text on tablet',
+        '[ ] Check notification on iPhone',
+        '[ ] Review TURN/TLS on external restrictive link',
+        '[ ] Publish pinned container digest',
+        '[ ] Verify clean self-host install guide',
+        '[ ] Link release notes to closed issues',
+        'Owner: Release team    Updated: today',
+      ] },
+    ];
+    for (const [index, screen] of screens.entries()) {
+      await pages[index]!.evaluate(async ({ title, lines }) => {
+        const room = (window as Window & { fluxRoom?: { localParticipant: {
+          publishTrack(track: MediaStreamTrack, options?: { name: string; source: string }): Promise<unknown>
+        } }; fluxScreenTimer?: number }).fluxRoom;
+        if (!room) throw new Error('Screen publisher room absent');
+        const canvas = document.createElement('canvas');
+        canvas.width = 960;
+        canvas.height = 540;
+        const brush = canvas.getContext('2d');
+        if (!brush) throw new Error('Screen canvas unavailable');
+        let frame = 0;
+        brush.fillStyle = '#101827';
+        brush.fillRect(0, 0, 960, 540);
+        (window as Window & { fluxScreenTimer?: number }).fluxScreenTimer = window.setInterval(() => {
+          brush.fillStyle = '#101827';
+          brush.fillRect(0, 0, 960, 540);
+          brush.fillStyle = '#edf3fa';
+          brush.font = 'bold 18px monospace';
+          brush.fillText(title, 28, 44);
+          brush.fillStyle = '#acc7e0';
+          brush.font = '16px monospace';
+          lines.forEach((line, row) => brush.fillText(line, 28, 88 + row * 32));
+          brush.fillStyle = '#92e1bd';
+          brush.fillText(`LIVE · frame ${++frame}`, 28, 504);
+        }, 100);
+        await room.localParticipant.publishTrack(canvas.captureStream(10).getVideoTracks()[0]!,
+          { name: title, source: 'screen_share' });
+      }, screen);
+    }
+    await pages[0]!.evaluate(async () => {
+      const room = (window as Window & { fluxRoom?: { localParticipant: {
+        publishTrack(track: MediaStreamTrack): Promise<unknown> } }; fluxAudioContext?: AudioContext }).fluxRoom;
+      if (!room) throw new Error('Audio publisher room absent');
+      const context = new AudioContext();
+      (window as Window & { fluxAudioContext?: AudioContext }).fluxAudioContext = context;
+      await context.resume();
+      const oscillator = context.createOscillator();
+      const output = context.createMediaStreamDestination();
+      oscillator.frequency.value = 523;
+      oscillator.connect(output);
+      oscillator.start();
+      await room.localParticipant.publishTrack(output.stream.getAudioTracks()[0]!);
+    });
+    for (const page of pages.slice(2)) {
+      await page.waitForFunction(() => {
+        const room = (window as Window & { fluxRoom?: { remoteParticipants: Map<string, {
+          videoTrackPublications: Map<string, { isSubscribed: boolean; track?: unknown }>
+        }> } }).fluxRoom;
+        return [...(room?.remoteParticipants.values() ?? [])].reduce((count, participant) =>
+          count + [...participant.videoTrackPublications.values()]
+            .filter((pub) => pub.isSubscribed && pub.track).length, 0) >= 2;
+      }, undefined, { timeout: 30_000 });
+      await page.evaluate(() => {
+        const room = (window as Window & { fluxRoom?: { remoteParticipants: Map<string, {
+          videoTrackPublications: Map<string, { track?: { attach(): HTMLVideoElement } }>
+        }> } }).fluxRoom;
+        document.body.replaceChildren();
+        document.body.style.cssText = 'margin:0;background:#0b1020;display:flex;flex-direction:column;gap:16px;padding:16px';
+        for (const participant of room?.remoteParticipants.values() ?? [])
+          for (const publication of participant.videoTrackPublications.values())
+            if (publication.track) {
+              const video = publication.track.attach();
+              video.style.cssText = 'width:960px;height:540px;object-fit:contain';
+              document.body.append(video);
+            }
+      });
+      await page.waitForFunction(() => [...document.querySelectorAll('video')].length === 2 &&
+        [...document.querySelectorAll('video')].every((video) => video.videoWidth >= 640 &&
+          video.videoHeight >= 360 && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA),
+      undefined, { timeout: 30_000 });
+      const reportsA = await receiverReports(page);
+      await delay(2_000);
+      const sample = readReceiverSample(await receiverReports(page), reportsA, 2_000);
+      const videos = sample.tracks.filter((track) => track.kind === 'video' &&
+        (track.packetsDelta ?? 0) > 0 && (track.width ?? 0) >= 640 &&
+        (track.height ?? 0) >= 360 && (track.fps ?? 0) > 0);
+      assert.equal(videos.length, 2, `both live screens must decode at viewer: ${JSON.stringify(sample)}`);
+      assert.ok(sample.tracks.some((track) => track.kind === 'audio' && (track.packetsDelta ?? 0) > 0),
+        `audio must continue with both screens at viewer: ${JSON.stringify(sample)}`);
+      const candidates = await selectedCandidates(page);
+      assert.ok(candidates.length > 0, 'viewer needs selected candidate pair');
+      for (const candidate of candidates) {
+        assert.equal(candidate.candidateType, 'relay', JSON.stringify(candidate));
+        assert.equal(candidate.relayProtocol, 'tls', JSON.stringify(candidate));
+      }
+      await page.screenshot({ path: `/artifacts/screen-viewer-${pages.indexOf(page) + 1}.png`,
+        fullPage: true });
+      console.log(JSON.stringify({ screenViewer: pages.indexOf(page), sample,
+        videos: await page.locator('video').evaluateAll((elements) => elements.map((item) => {
+          const video = item as HTMLVideoElement;
+          return { naturalWidth: video.videoWidth, naturalHeight: video.videoHeight,
+            renderedWidth: video.getBoundingClientRect().width,
+            renderedHeight: video.getBoundingClientRect().height };
+        })), candidates }));
+    }
+    for (const page of pages.slice(0, 2)) {
+      const candidates = await selectedCandidates(page);
+      assert.ok(candidates.length > 0, 'screen publisher needs selected candidate pair');
+      for (const candidate of candidates) {
+        assert.equal(candidate.candidateType, 'relay', JSON.stringify(candidate));
+        assert.equal(candidate.relayProtocol, 'tls', JSON.stringify(candidate));
+      }
+    }
+    for (const page of pages) await page.close();
   });
