@@ -47,22 +47,37 @@ export function prefixQuery(text: string): string | null {
 }
 
 /**
- * The index keys of a query (migration 0014 `search_keys`): the first two characters of a
- * two-character word (`2:ai`) and the first three of a longer one (`3:sen`). Excluded words
- * (`-word`) and `or` add none, and one-character words are not searched.
+ * What the query asks for, in web search syntax: whether it has a positive word (quoted words
+ * count, a quoted `"or"` too), an exclusion (`-word`, `-"a phrase"`) and an unquoted `or`.
  */
-export function searchTerms(text: string): string[] {
-  const terms = new Set<string>();
-  for (const match of text.matchAll(/(^|\s)(-?)("?)([^\s]+)/gu)) {
-    if (match[2] === '-') continue;
-    for (const word of match[4]!.match(WORD) ?? []) {
-      const lower = word.toLowerCase();
-      if (lower === 'or' || [...lower].length < 2) continue;
-      const chars = [...lower];
-      terms.add(chars.length >= 3 ? `3:${chars.slice(0, 3).join('')}` : `2:${lower}`);
+export function searchGrammar(text: string) {
+  let positive = false; let negation = false; let or = false;
+  let quoted = false; let token = ''; let tokenNegated = false; let tokenQuoted = false;
+  const flush = () => {
+    if (token) {
+      const word = /[\p{L}\p{N}]/u.test(token);
+      if (!tokenQuoted && !tokenNegated && token.toLowerCase() === 'or') or = true;
+      else if (tokenNegated) negation = true;
+      else if (word) positive = true;
     }
+    token = ''; tokenNegated = false; tokenQuoted = false;
+  };
+  for (const char of text) {
+    if (char === '"') { quoted = !quoted; tokenQuoted = true; continue; }
+    if (!quoted && /\s/u.test(char)) { flush(); continue; }
+    if (!quoted && !token && !tokenQuoted && char === '-') { tokenNegated = true; continue; }
+    token += char;
   }
-  return [...terms].slice(0, 16);
+  flush();
+  return { positive, negation, or };
+}
+
+/** Unsupported grammar is refused rather than answered incompletely. */
+export function checkSearchGrammar(text: string) {
+  const grammar = searchGrammar(text);
+  if (!grammar.positive && grammar.negation) throw new InvalidInputError('Search for at least one word, not only words to leave out', 'QUERY_NEEDS_WORD');
+  if (grammar.or && grammar.negation) throw new InvalidInputError('Leaving words out (-word) cannot be combined with “or”', 'QUERY_UNSUPPORTED');
+  return grammar;
 }
 
 export interface NormalizedSearch {
@@ -79,6 +94,7 @@ export function normalizeSearch(query: Partial<SearchQuery> | null | undefined):
   const text = raw.replace(/\s+/gu, ' ').trim();
   if (!text) throw new InvalidInputError('Type something to search for', 'QUERY_REQUIRED');
   if (text.length > SEARCH_LIMITS.query) throw new InvalidInputError(`A search is at most ${SEARCH_LIMITS.query} characters`, 'QUERY_TOO_LONG');
+  checkSearchGrammar(text);
   let type: SearchFilterType | null = null;
   if (query?.type !== undefined && query.type !== null && (query.type as string) !== '') {
     if (!SEARCH_FILTER_TYPES.includes(query.type)) throw new InvalidInputError('Unknown result type', 'INVALID_TYPE');
@@ -139,7 +155,7 @@ export function createSearchUseCases<C>(ports: SearchPorts<C>) {
       text: search.text,
       prefix: prefixQuery(search.text),
       fuzzy: !usesSearchSyntax(search.text),
-      terms: searchTerms(search.text),
+      words: (search.text.match(WORD) ?? []).map((word) => word.toLowerCase()).join(' '),
       kinds: search.type ? searchKindsOf(search.type) : null,
       place: search.place,
       author: search.author,
@@ -149,7 +165,7 @@ export function createSearchUseCases<C>(ports: SearchPorts<C>) {
     };
     // Access is decided now, on every request: a revocation applies to the very next search.
     const audiences = await ports.access.audiences(principal);
-    const searchable = plan.terms.length > 0;
+    const searchable = /[\p{L}\p{N}]/u.test(search.text);
     return { plan, scope, audiences, searchable };
   }
 

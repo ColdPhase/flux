@@ -53,8 +53,8 @@ export interface SearchPlanRows {
   prefix: string | null;
   /** Also match titles by trigram similarity (plain words only; never with `-word` or quotes). */
   fuzzy: boolean;
-  /** Index key suffixes of the query words (`3:sen`, `2:ai`); at least one. */
-  terms: string[];
+  /** The plain words of the prefix query, also looked up in the index (see `audienceCte`). */
+  words: string;
   kinds: SearchKind[] | null;
   place: { type: 'project' | 'dm'; id: string } | { type: 'private' } | null;
   author: { kind: 'human' | 'agent'; id: string } | null;
@@ -126,11 +126,14 @@ function tsquery(plan: SearchPlanRows): SQL {
 
 /**
  * The reader's visible audience keys, and the index keys to look up: every visible audience
- * combined with every query word prefix (`project:<id>|3:sen`) and, for plain words, every query
+ * combined with every query word's term (`project:<id>|3:sen`) and, for plain words, every query
  * trigram (`project:<id>|t:ens`). Postings of other audiences are never read.
  */
 function audienceCte(audiences: SearchAudienceRows[], plan: SearchPlanRows): SQL {
-  const words = sql`ARRAY[${sql.join(plan.terms.map((term) => sql`${term}`), sql`, `)}]::text[]`;
+  // Every lexeme the parser finds in the query text (negated words and `or` included: that only adds
+  // candidates) plus the words of the prefix query, as their index terms. A row that matches the
+  // full-text or prefix query contains one of them, so no match is dropped by the lookup.
+  const words = sql`ARRAY(SELECT DISTINCT search_term(lexeme) FROM unnest(to_tsvector('simple', ${plan.text} || ' ' || ${plan.words})))`;
   // Trigram similarity: the query's trigrams, so a title with a typo anywhere is still a candidate.
   const terms = plan.fuzzy ? sql`(${words} || ARRAY(SELECT 't:' || trigram FROM unnest(show_trgm(${plan.text})) AS trigram))` : words;
   return sql`aud AS MATERIALIZED (
@@ -289,7 +292,7 @@ export function searchRows(db: SearchExecutor) {
 
     /** One page (up to `limit + 1` rows, best first) of the visible matches after `plan.after`. */
     async page(audiences: SearchAudienceRows[], plan: SearchPlanRows): Promise<SearchRowRecord[]> {
-      if (!audiences.length || !plan.terms.length) return [];
+      if (!audiences.length) return [];
       const result = await planned(db, pageStatement(audiences, plan));
       return (result.rows as unknown as PageRow[]).map((row) => ({
         position: { score: row.score, at: row.at_key, id: row.id },
@@ -316,7 +319,7 @@ export function searchRows(db: SearchExecutor) {
     /** Visible matches per kind, over every kind, counting at most `cap + 1` rows. */
     async counts(audiences: SearchAudienceRows[], plan: SearchPlanRows, cap: number) {
       const counts = new Map<SearchKind, number>();
-      if (!audiences.length || !plan.terms.length) return { counts, capped: false };
+      if (!audiences.length) return { counts, capped: false };
       const result = await planned(db, countStatement(audiences, plan, cap));
       let total = 0;
       for (const row of result.rows as unknown as { kind: SearchKind; n: number; sampled: number }[]) { counts.set(row.kind, row.n); total += row.sampled; }
@@ -326,7 +329,7 @@ export function searchRows(db: SearchExecutor) {
 
     /** Test support: what the page and count statements of this plan read, and the keys each index scan looks up. */
     async explain(audiences: SearchAudienceRows[], plan: SearchPlanRows, cap: number) {
-      if (!audiences.length || !plan.terms.length) return { rows: 0, indexRows: 0, searchBuffers: 0, buffers: 0, indexScans: 0, lookups: 0, nodes: [] as string[] };
+      if (!audiences.length) return { rows: 0, indexRows: 0, searchBuffers: 0, buffers: 0, indexScans: 0, lookups: 0, nodes: [] as string[] };
       const page = await examined(db, pageStatement(audiences, plan));
       const count = await examined(db, countStatement(audiences, plan, cap));
       const keys = await planned(db, sql`WITH ${audienceCte(audiences, plan)} SELECT cardinality(lookups) AS n FROM aud`);

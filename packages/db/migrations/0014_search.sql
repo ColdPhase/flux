@@ -14,11 +14,15 @@
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 -- The audience-scoped keys of a row, each one `<audience_key>|<term>`:
--- - for every word (lexeme of the `simple` configuration) of two or more characters, its first
---   two characters (`2:ab`) and, for longer words, its first three (`3:abc`), for full-text and
---   prefix matching: a query word of two characters looks up `2:`, a longer one `3:`;
+-- - for every word (lexeme of the `simple` configuration), its first character (`1:a`), first two
+--   (`2:ab`) and first three (`3:abc`) as far as it is long, for full-text and prefix matching. A
+--   query word looks up the key of its own length up to three (`search_term`), so any row that
+--   contains the word, or a word it is a prefix of, is a candidate;
 -- - every trigram of the title (`t:<trigram>`, as `show_trgm` gives them), for trigram similarity:
 --   a title similar to the query shares at least one trigram with it, wherever the typo is.
+CREATE FUNCTION search_term(p_lexeme text) RETURNS text
+LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$ SELECT least(length(p_lexeme), 3)::text || ':' || left(p_lexeme, 3) $$;
+
 -- Keys are stored as 64-bit hashes (`search_key`): short index entries keep the shared GIN entry
 -- tree shallow. A collision only adds a candidate, which the audience and match checks drop.
 CREATE FUNCTION search_key(p_audience text, p_term text) RETURNS bigint
@@ -30,8 +34,8 @@ LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
   FROM (
     SELECT prefixes.k
     FROM (SELECT lexeme FROM unnest(to_tsvector('simple', coalesce(p_title, '') || ' ' || left(coalesce(p_body, ''), 100000)))) words,
-    LATERAL (VALUES ('2:' || left(words.lexeme, 2)), (CASE WHEN length(words.lexeme) >= 3 THEN '3:' || left(words.lexeme, 3) END)) AS prefixes(k)
-    WHERE length(words.lexeme) >= 2
+    LATERAL (VALUES ('1:' || left(words.lexeme, 1)), (CASE WHEN length(words.lexeme) >= 2 THEN '2:' || left(words.lexeme, 2) END),
+      (CASE WHEN length(words.lexeme) >= 3 THEN '3:' || left(words.lexeme, 3) END)) AS prefixes(k)
     UNION ALL
     SELECT 't:' || trigram FROM unnest(show_trgm(left(coalesce(p_title, ''), 1000))) AS trigram
   ) keys

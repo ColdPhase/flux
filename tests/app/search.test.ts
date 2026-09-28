@@ -269,6 +269,8 @@ describe('search: one query across Flux, only what you may read', () => {
     ];
     for (const q of attempts) {
       const response = await searchRaw(olek, { q });
+      // Only-exclusions are refused explicitly rather than answered incompletely.
+      if (q === '-sensor') { assert.equal((response.json as { code: string }).code, 'QUERY_NEEDS_WORD'); continue; }
       assert.equal(response.status, 200, `${q}: ${response.text}`);
       const body = JSON.stringify(response.json);
       for (const hidden of ['Gesture lamp', 'infrared', 'Secret sensor']) assert.equal(body.includes(hidden), false, `${q} leaks ${hidden}`);
@@ -279,6 +281,24 @@ describe('search: one query across Flux, only what you may read', () => {
     assert.ok(excluded.items.every((item) => !JSON.stringify(item).toLowerCase().includes('infrared')));
     const table = await pool.query("SELECT to_regclass('search_documents') AS name");
     assert.equal(table.rows[0]!.name, 'search_documents');
+  });
+
+  test('every word of the query can find a match: long or-lists, a quoted "or", one-letter words', async () => {
+    const thread = await conversation(olek, open.id, 'Completeness checks');
+    await say(olek, thread.id, 'The aq cable is in the drawer.');
+    await say(olek, thread.id, 'Choose or ignore the second lamp.');
+    await say(olek, thread.id, 'Vitamin D levels were fine.');
+    const longOr = 'aa or ab or ac or ad or ae or af or ag or ah or ai or aj or ak or al or am or an or ao or ap or aq';
+    assert.ok(titles(await search(nia, longOr)).includes('The aq cable is in the drawer.'), 'the 17th alternative still matches');
+    assert.equal((await search(nia, { q: longOr, type: 'message' })).counts.message, 1);
+    assert.ok(titles(await search(nia, '"or"')).includes('Choose or ignore the second lamp.'), 'a quoted "or" is a word');
+    assert.ok(titles(await search(nia, 'vitamin d')).includes('Vitamin D levels were fine.'), 'a one-letter word');
+    assert.ok(titles(await search(nia, 'd levels')).includes('Vitamin D levels were fine.'), 'a one-letter word first');
+    const excluded = await searchRaw(nia, { q: 'sensor or -lamp' });
+    assert.equal(excluded.status, 400);
+    assert.equal((excluded.json as { code: string }).code, 'QUERY_UNSUPPORTED');
+    const only = await searchRaw(nia, { q: '-lamp -"brass fitting"' });
+    assert.equal((only.json as { code: string }).code, 'QUERY_NEEDS_WORD');
   });
 
   test('pages follow a sealed cursor: no repeats, no gaps, and a cursor works only for its reader and query', async () => {

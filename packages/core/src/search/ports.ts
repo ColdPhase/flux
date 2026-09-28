@@ -30,8 +30,8 @@ export interface SearchPlan {
   text: string;
   prefix: string | null;
   fuzzy: boolean;
-  /** Audience-scoped index key suffixes of the query words, see `searchTerms`. */
-  terms: string[];
+  /** The plain words of the prefix query (letters and digits), also looked up in the index. */
+  words: string;
   kinds: SearchKind[] | null;
   place: { type: 'project' | 'dm'; id: string } | { type: 'private' } | null;
   author: { kind: 'human' | 'agent'; id: string } | null;
