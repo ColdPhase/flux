@@ -5,7 +5,8 @@ import { KIND_WORD, type Presentable } from './anchors';
 import { DeviceButton } from './DeviceButton';
 import { audienceOf } from './LiveEntry';
 import type { LiveValue } from './LiveProvider';
-import { canPublishScreen, type DiagnosticRow, type MediaPerson } from './media';
+import { canPublishScreen } from './capture';
+import type { DiagnosticRow, MediaPerson } from './media';
 
 function presence(person: MediaPerson): string {
   const parts = [person.mic ? 'microphone on' : 'microphone off'];
@@ -49,7 +50,7 @@ export function LivePanel({ live, presentable, onShow, onClose }: { live: LiveVa
           <ul className="lv-people">
             {people.map((person) => (
               <li key={person.userId} className={`lv-person${person.speaking ? ' is-speaking' : ''}`}>
-                <Avatar name={person.local ? live.nameOf(live.meId) : live.nameOf(person.userId)} size="md" tone={person.local ? 'me' : 'neutral'} />
+                <Avatar name={live.fullName(person.userId)} size="md" tone={person.local ? 'me' : 'neutral'} />
                 <span className="lv-person__b"><b>{person.local ? 'You' : live.nameOf(person.userId)}</b><span>{person.local && live.quiet ? 'quiet: not sending or hearing' : presence(person)}</span></span>
                 {person.speaking ? <span className="lv-person__speaking">speaking</span> : null}
               </li>

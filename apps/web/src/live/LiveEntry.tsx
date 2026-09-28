@@ -21,7 +21,8 @@ export function namesLine(ids: string[], nameOf: (id: string) => string, meId: s
 export function audienceOf(people: ProjectPerson[] | null | undefined, meId: string): string {
   const humans = (people ?? []).filter((person) => person.kind === 'human' && person.id !== meId).map((person) => firstName(person.name));
   if (!humans.length) return 'Only you can join';
-  if (humans.length <= 3) return `${humans.join(', ')} can join`;
+  if (humans.length === 1) return `${humans[0]} can join`;
+  if (humans.length <= 3) return `${humans.slice(0, -1).join(', ')} and ${humans.at(-1)} can join`;
   return `${humans.slice(0, 2).join(', ')} and ${humans.length - 2} others can join`;
 }
 
@@ -55,7 +56,7 @@ export function LiveEntry({ variant = 'header', anchor: given }: { variant?: 'he
     if (variant === 'inline') return <p className="lv-inline-note"><Icon name="together" size={14} />Live sessions are not set up on this Flux server. Text work here is unaffected.</p>;
     return (
       <span className="lv-entry">
-        <Button ref={buttonRef} variant="quiet" icon="together" className="lv-entry__btn" aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen((v) => !v)}>
+        <Button ref={buttonRef} variant="quiet" icon="together" className="lv-entry__btn" aria-expanded={open} aria-haspopup="dialog" aria-label="Together" onClick={() => setOpen((v) => !v)}>
           <span className="lv-entry__label">Together</span>
         </Button>
         <Popover open={open} onClose={() => setOpen(false)} anchorRef={buttonRef} label="Live sessions" className="lv-pop--narrow">
@@ -96,7 +97,7 @@ export function LiveEntry({ variant = 'header', anchor: given }: { variant?: 'he
     <span className="lv-entry">
       {others.length && !joinable ? (
         <>
-          <Button ref={buttonRef} variant="quiet" className="lv-entry__live" aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen((v) => !v)}>
+          <Button ref={buttonRef} variant="quiet" className="lv-entry__live" aria-expanded={open} aria-haspopup="dialog" aria-label={`Live now, ${others.length} ${others.length === 1 ? 'session' : 'sessions'} in this project`} onClick={() => setOpen((v) => !v)}>
             <span className="lv-dot" aria-hidden="true" /><span className="lv-entry__label">Live now</span><span className="ui-vh">, {others.length} {others.length === 1 ? 'session' : 'sessions'} in this project</span>
           </Button>
           <Popover open={open} onClose={() => setOpen(false)} anchorRef={buttonRef} label="Live in this project">
@@ -112,10 +113,11 @@ export function LiveEntry({ variant = 'header', anchor: given }: { variant?: 'he
         </>
       ) : null}
       <Button variant={joinable ? 'primary' : 'quiet'} icon={joinable ? undefined : 'together'} busy={busy} className={`lv-entry__btn${joinable ? ' lv-entry__btn--join' : ''}`}
-        onClick={act} data-tip={joinable ? 'Join with microphone and camera off' : `${audience}. Nothing turns on until you choose.`} aria-describedby={noteId}>
+        onClick={act} data-tip={joinable ? 'Join with microphone and camera off' : `${audience}. Nothing turns on until you choose.`} aria-describedby={noteId}
+        aria-label={joinable ? 'Join' : 'Together'}>
         {joinable ? <span className="lv-dot lv-dot--on" aria-hidden="true" /> : null}
-        {joinable && present.length ? <span className="lv-faces" aria-hidden="true">{present.slice(0, 3).map((id) => <Avatar key={id} name={nameOf(id)} size="sm" />)}</span> : null}
-        <span className="lv-entry__label">{joinable ? (present.length ? 'Join' : 'Join') : 'Together'}</span>
+        {joinable && present.length ? <span className="lv-faces" aria-hidden="true">{present.slice(0, 3).map((id) => <Avatar key={id} name={live.fullName(id)} size="sm" />)}</span> : null}
+        <span className="lv-entry__label">{joinable ? 'Join' : 'Together'}</span>
       </Button>
       <span id={noteId} className="ui-vh">{joinable ? `${label}. Microphone and camera stay off.` : `Work on this ${word} together. ${audience}. Nothing turns on until you choose.`}</span>
     </span>

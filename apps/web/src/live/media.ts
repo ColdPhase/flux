@@ -2,6 +2,7 @@ import {
   ConnectionQuality, DisconnectReason, LocalAudioTrack, LocalVideoTrack, RemoteAudioTrack, RemoteVideoTrack, Room, RoomEvent, Track,
   type LocalTrackPublication, type Participant, type RemoteTrack, type RemoteTrackPublication, type TrackPublication,
 } from 'livekit-client';
+import { canPublishScreen } from './capture';
 
 /**
  * The browser side of the self-hosted media connection (#59 §6). This is the only module
@@ -81,10 +82,6 @@ export function userIdOf(identity: string): string | null {
   } catch { return null; }
 }
 
-/** Screen publishing needs the browser's picker; Android and iOS browsers do not have it. */
-export function canPublishScreen(): boolean {
-  return typeof navigator !== 'undefined' && typeof navigator.mediaDevices?.getDisplayMedia === 'function';
-}
 
 function quality(value: ConnectionQuality): Quality {
   switch (value) {

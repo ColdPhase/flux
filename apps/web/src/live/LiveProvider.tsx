@@ -9,7 +9,7 @@ import {
   discoverSessions, getSession, joinSession, leaveSession, listPresentations, liveCapability, pendingInvitations,
   presentInSession, replyToInvitation, startSession, type LiveCapability,
 } from './api';
-import { LiveMediaConnection, type DeviceKind, type MediaSnapshot } from './media';
+import type { DeviceKind, LiveMediaConnection, MediaSnapshot } from './media';
 
 /**
  * One live session per tab (#59 §2): it lives above the routes, so moving between the
@@ -46,8 +46,10 @@ export interface LiveValue {
   following: string | null;
   shown: ShownFragment | null;
   invitation: PendingInvitation | null;
-  /** Names of the session project's people. */
+  /** Names of the session project's people; "You" for yourself. */
   nameOf(userId: string): string;
+  /** The person's own name, also for yourself (initials on faces). */
+  fullName(userId: string): string;
   people: ProjectPerson[];
   meId: string;
   start(anchor: LiveAnchor): Promise<void>;
@@ -153,11 +155,19 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
     return () => controller.abort();
   }, []);
 
+  // The update prompt (outside this provider) says that reloading would leave the session.
+  useEffect(() => {
+    const on = phase === 'in' || phase === 'rejoining' || phase === 'joining';
+    document.documentElement.dataset.live = on ? 'on' : 'off';
+    return () => { document.documentElement.dataset.live = 'off'; };
+  }, [phase]);
+
   // Leaving the app (sign-out, closing the tab) releases every device and the room.
   useEffect(() => () => { connection?.dispose(); }, [connection]);
 
   const names = useMemo(() => new Map(people.map((person) => [person.id, person.name])), [people]);
   const nameOf = useCallback((userId: string) => (userId === meId ? 'You' : names.get(userId) ?? 'Someone'), [names, meId]);
+  const fullName = useCallback((userId: string) => names.get(userId) ?? (userId === meId ? 'You' : 'Someone'), [names, meId]);
 
   const loadPeople = useCallback((projectId: string) => {
     void listProjectPeople(projectId).then(setPeople, () => undefined);
@@ -187,7 +197,13 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
     setPhase(mode);
     const grant = await joinSession(target.id);
     let next = connectionRef.current;
-    if (!next) { next = new LiveMediaConnection(); connectionRef.current = next; setConnection(next); }
+    if (!next) {
+      // The media SDK is loaded only when someone actually joins a session.
+      const { LiveMediaConnection } = await import('./media');
+      next = connectionRef.current ?? new LiveMediaConnection();
+      connectionRef.current = next;
+      setConnection(next);
+    }
     await next.connect(grant.mediaUrl, grant.token);
     next.setHearing(!quietRef.current);
     setSession(grant.session);
@@ -227,7 +243,10 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
     if (phaseRef.current !== 'idle' && phaseRef.current !== 'ended') return;
     setPhase('starting');
     try {
-      const created = await startSession(target.context, crypto.randomUUID());
+      // Someone may have started one here a moment ago: join it instead of opening a second.
+      const running = await discoverSessions(target.projectId).then((page) => page.items, () => [] as LiveSession[]);
+      const existing = running.find((item) => sameContext(item.context, target.context));
+      const created = existing ?? await startSession(target.context, crypto.randomUUID());
       await join(created, target);
     } catch (error) {
       setPhase('idle');
@@ -343,24 +362,27 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
   }, [following, names, toast]);
 
   // An invitation link lands on the anchor with a quiet card: join, later or reply in text.
+  // It is taken from the navigation once, because the anchor view may tidy its own URL.
   const invitedBy = (location.state as { liveInvitation?: { sessionId: string; invitationId: string } } | null)?.liveInvitation;
+  const [invited, setInvited] = useState<{ sessionId: string; invitationId: string } | null>(null);
+  if (invitedBy && invitedBy.invitationId !== invited?.invitationId) setInvited(invitedBy);
   useEffect(() => {
-    if (!invitedBy) return;
+    if (!invited) return;
     let cancelled = false;
     void (async () => {
-      const [target, pending] = await Promise.all([getSession(invitedBy.sessionId), pendingInvitations().catch(() => ({ items: [] }))]);
-      const row = pending.items.find((item) => item.id === invitedBy.invitationId);
+      const [target, pending] = await Promise.all([getSession(invited.sessionId), pendingInvitations().catch(() => ({ items: [] }))]);
+      const row = pending.items.find((item) => item.id === invited.invitationId);
       const label = await anchorLabel(target.projectId, target.context);
       if (cancelled || label === null) return;
       loadPeople(target.projectId);
       if (sessionRef.current?.id === target.id) return;
       setInvitation({
-        invitationId: invitedBy.invitationId, sessionId: target.id, projectId: target.projectId,
+        invitationId: invited.invitationId, sessionId: target.id, projectId: target.projectId,
         inviterId: row?.inviterId ?? target.createdBy, anchor: { projectId: target.projectId, context: target.context, label },
       });
     })().catch(() => { if (!cancelled) toast({ message: 'This invitation is no longer open. The session may have ended.' }); });
     return () => { cancelled = true; };
-  }, [invitedBy, loadPeople, toast]);
+  }, [invited, loadPeople, toast]);
 
   const answerInvitation = useCallback(async (choice: 'join' | 'later' | 'text') => {
     const current = invitation;
@@ -432,14 +454,14 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
   const startAudio = useCallback(async () => { await connectionRef.current?.startAudio(); }, []);
 
   const value = useMemo<LiveValue>(() => ({
-    capability, phase, session, anchor, notice, media, quiet, following, shown, invitation, nameOf, people, meId,
+    capability, phase, session, anchor, notice, media, quiet, following, shown, invitation, nameOf, fullName, people, meId,
     start, join, leave, setDevice, setQuiet, startAudio, present, view, follow, answerInvitation,
     dismissNotice: () => setNotice(null),
     diagnostics: connection ? connection.diagnostics.bind(connection) : null,
     stage,
     openStage: (focus: string | null = null) => setStage({ open: true, focus }),
     closeStage: () => setStage((current) => ({ ...current, open: false })),
-  }), [capability, phase, session, anchor, notice, media, quiet, following, shown, invitation, nameOf, people, meId,
+  }), [capability, phase, session, anchor, notice, media, quiet, following, shown, invitation, nameOf, fullName, people, meId,
     start, join, leave, setDevice, setQuiet, startAudio, present, view, follow, answerInvitation, connection, stage]);
 
   // The registry of what the current views are about.

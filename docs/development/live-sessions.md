@@ -54,7 +54,7 @@ restrictive-network acceptance remain in [#63](https://github.com/ColdPhase/flux
   SFU participant list contains them (`apps/server/src/live/signout.ts`). It runs
   after the response with a 15-second bound; SFU failures are logged and never fail
   or delay sign-out. The SFU identity is the person, not the device, so their other
-  signed-in devices are disconnected too and rejoin with a fresh grant.
+  signed-in devices are disconnected too; they can join again with a fresh grant.
   `RemoveParticipant` does not invalidate an unexpired grant (90 s); a signed-out
   client has no session to request a new one.
 - `POST /api/v1/live-sessions/:id/join` allows at most 20 attempts per person per
@@ -146,6 +146,35 @@ regressions. #62 owns the integrated
 interface and [#63](https://github.com/ColdPhase/flux/issues/63) owns receiver,
 network and real-device evidence.
 
+## Interface (#62)
+
+The browser client is `apps/web/src/live/`. [Live sessions at the work](../design/live-ux/README.md)
+describes what people see, the placement decisions and the screenshots.
+
+- `media.ts` is the only module that imports `livekit-client` (`2.17.2`, the same version
+  as the SFU proof). It turns the room into a plain snapshot: people, speaking, link
+  quality, published tracks, device states and audio playback. It exposes a few verbs:
+  connect, `setDevice`, hearing on or off, `startAudio`, disconnect and diagnostics.
+  Devices start off. A device is `on` only after its track is published, and turning it off
+  unpublishes and stops the capture.
+- `LiveProvider.tsx` holds one session per tab above the routes. It handles start or join
+  (start joins an existing session at the same anchor instead of opening a second),
+  presentation polling every 2.5 s through the identifier-only feed, View and Follow, quiet,
+  invitations and rejoin. A drop other than your own leave rejoins through `POST …/join` at
+  most three times: current access is checked again and a rotated room is joined fresh.
+  Every device is off afterwards. `DUPLICATE_IDENTITY` (the same person joining elsewhere)
+  and removal end the local session with a notice instead of fighting over the identity.
+- Views register what they are about with `useRegisterLiveHere(anchor, presentable)`: the
+  conversation, a task or result in Details, a project sketch with its selected thoughts, or
+  a doc at the shown version. Nothing is published from navigation. Only **Show this** calls
+  `POST …/present`.
+- `/projects/:p/live/:session?invitation=:id` (the inbox link) resolves the session and
+  replaces the URL with the anchor. It passes the invitation in navigation state for one
+  quiet card; **Later** and **Reply in text** use `POST /api/v1/live-invitations/:id/reply`.
+- `scripts/check_live_ui.sh` runs `tests/ui/test_live_sessions.py` against the application
+  and the pinned SFU, using Chromium's fake devices. The ordinary `check_ui.sh` runs the
+  same file without a media server and checks the unavailable state.
+
 ## Reproducing this checkpoint
 
 Use an isolated Compose project and free ports:
@@ -153,6 +182,7 @@ Use an isolated Compose project and free ports:
 ```sh
 FLUX_TEST_PORT=18661 FLUX_TEST_MAILPIT_PORT=18662 ./scripts/check_application.sh
 FLUX_LIVE_TEST_PORT=18771 ./scripts/check_live_sfu.sh
+FLUX_LIVE_UI_PORT=18781 ./scripts/check_live_ui.sh
 ```
 
 That script builds and runs the application, PostgreSQL migration, API tests,

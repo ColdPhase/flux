@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router';
 import { Avatar, Button, Icon, IconButton, MEDIA, Sheet, Spinner, useMediaQuery } from '../ui';
 import { anchorPath, KIND_WORD } from './anchors';
 import { useLive, useLiveHere, type LiveValue } from './LiveProvider';
-import { canPublishScreen, type MediaPerson } from './media';
+import { canPublishScreen } from './capture';
+import type { MediaPerson } from './media';
 import { DeviceButton } from './DeviceButton';
 import { LivePanel } from './LivePanel';
 import { Popover } from './Popover';
@@ -38,7 +39,7 @@ export function LiveBar() {
     return (
       <section className="lv-bar lv-bar--invite" aria-label="Invitation to work together">
         <div className="lv-row">
-          <span className="lv-row__lead"><Avatar name={live.nameOf(invitation.inviterId)} size="sm" /></span>
+          <span className="lv-row__lead"><Avatar name={live.fullName(invitation.inviterId)} size="sm" /></span>
           <p className="lv-row__text"><b>{live.nameOf(invitation.inviterId)}</b> asked you to work together on <b>“{invitation.anchor.label}”</b>
             <span className="lv-row__muted"> · {KIND_WORD[invitation.anchor.context.type]}, microphone and camera stay off</span></p>
           <span className="lv-row__acts">
@@ -87,7 +88,7 @@ export function LiveBar() {
 
   const faces = (
     <span className="lv-faces lv-faces--room" aria-label={`In the session: ${namesLine(people.map((p) => p.userId), live.nameOf, live.meId)}`}>
-      {people.slice(0, phone ? 3 : 5).map((person) => <Face key={person.userId} person={person} name={person.local ? live.nameOf(live.meId) : live.nameOf(person.userId)} />)}
+      {people.slice(0, phone ? 3 : 5).map((person) => <Face key={person.userId} person={person} name={live.fullName(person.userId)} />)}
       {people.length > (phone ? 3 : 5) ? <span className="lv-face lv-face--more">+{people.length - (phone ? 3 : 5)}</span> : null}
     </span>
   );

@@ -72,15 +72,17 @@
 .lv-where:hover { background: var(--bg-hover); }
 .lv-where__t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-md); font-weight: 500; }
 .lv-where__k { flex: none; font-size: var(--fs-xs); color: var(--text-3); }
-.lv-faces--room { margin-left: 2px; }
+.lv-faces--room { margin-left: 2px; gap: 6px; }
+.lv-faces--room > * + * { margin-left: 0; }
+.lv-faces--room .ui-avatar { width: 24px; height: 24px; font-size: 10px; box-shadow: none; }
 .lv-face { position: relative; display: inline-grid; border-radius: 50%; transition: box-shadow var(--dur-2) var(--ease-out); box-shadow: 0 0 0 2px var(--bg-side); }
 .lv-face.is-speaking { box-shadow: 0 0 0 2px var(--bg-side), 0 0 0 3.5px var(--ok); }
 .lv-face.is-weak .ui-avatar { opacity: .55; }
 .lv-face__muted {
-  position: absolute; right: -3px; bottom: -3px; display: grid; place-items: center; width: 13px; height: 13px;
+  position: absolute; right: -4px; bottom: -4px; display: grid; place-items: center; width: 13px; height: 13px;
   border-radius: 50%; background: var(--bg-side); color: var(--text-3); box-shadow: 0 0 0 1px var(--line-strong);
 }
-.lv-face--more { width: 22px; height: 22px; place-items: center; background: var(--bg-active); font-size: 10px; font-weight: 600; color: var(--text-2); }
+.lv-face--more { width: 24px; height: 24px; place-items: center; background: var(--bg-active); font-size: 10px; font-weight: 600; color: var(--text-2); }
 
 /* Device buttons: slashed and quiet when off, solid when really sending. */
 .lv-dev {
@@ -177,7 +179,7 @@
 .lv-stage__zoom { display: flex; align-items: center; gap: 2px; }
 .lv-stage__zoom .ui-btn { padding: 0 10px; }
 .lv-stage__zoom .ui-btn[aria-pressed="true"] { background: var(--bg-active); color: var(--text); }
-.lv-stage__pct { min-width: 44px; text-align: center; font-size: var(--fs-sm); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.lv-stage__pct { min-width: 40px; text-align: center; font-size: var(--fs-sm); color: var(--text-3); font-variant-numeric: tabular-nums; }
 .lv-stage__end { display: flex; gap: 6px; margin-left: auto; }
 .lv-stage__end .ui-btn[aria-pressed="true"] { color: var(--text); }
 .lv-stage__body { flex: 1; min-height: 0; display: flex; gap: 12px; padding: 12px; background: var(--bg-side); }

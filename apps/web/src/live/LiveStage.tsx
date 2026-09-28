@@ -94,7 +94,7 @@ export function LiveStage() {
             <button type="button" className="ui-btn ui-btn--quiet" aria-pressed={zoom.mode === 'fit'} onClick={() => setZoom({ mode: 'fit' })} aria-keyshortcuts="0">Fit</button>
             <button type="button" className="ui-btn ui-btn--quiet" aria-pressed={scale === 1} onClick={() => setZoom({ mode: 'scale', scale: 1 })} aria-keyshortcuts="1" data-tip="One screen pixel per display pixel">1:1</button>
             <IconButton icon="zoom-out" label="Zoom out" onClick={() => step(-1)} aria-keyshortcuts="-" />
-            <span className="lv-stage__pct" aria-live="polite">{scale === null ? 'Fit' : `${Math.round(scale * 100)}%`}</span>
+            <span className="lv-stage__pct" aria-live="polite">{scale === null ? <span className="ui-vh">Fitted to the window</span> : `${Math.round(scale * 100)}%`}</span>
             <IconButton icon="zoom-in" label="Zoom in" onClick={() => step(1)} aria-keyshortcuts="+" />
           </div>
         ) : null}
@@ -123,7 +123,7 @@ export function LiveStage() {
 function CameraTile({ person, video, name }: { person: MediaPerson; video: VideoRef; name: string }) {
   return (
     <li className={`lv-cam${person.speaking ? ' is-speaking' : ''}`}>
-      <LiveVideo video={video} className={`lv-cam__video${person.local ? ' is-mirror' : ''}`} aria-label={`${name}’s camera`} />
+      <LiveVideo video={video} className={`lv-cam__video${person.local ? ' is-mirror' : ''}`} aria-label={`${name === 'You' ? 'Your' : `${name}’s`} camera`} />
       <span className="lv-cam__name">{name}{!person.mic ? <Icon name="mic-off" size={11} /> : null}</span>
     </li>
   );
