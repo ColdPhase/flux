@@ -34,7 +34,8 @@ signed consent screen shows the same connection, client, project names and
 requested scopes. OAuth carries the server-owned connection ID in its signed
 token; it never accepts project or agent IDs from the external client.
 
-The browser setup reveals project selection after a personal agent exists. The
+The browser setup presents personal-agent creation before client commands and
+reveals project selection after a personal agent exists. The
 consent review names the selected projects prominently, lists the requested
 actions once, and says whether those project actions match or narrow the saved
 selection. It explains that approval cannot add projects or agent grants. Any

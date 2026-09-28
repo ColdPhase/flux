@@ -212,12 +212,6 @@ export function AgentConnectionPage() {
     <FlowHeader step={oauthQuery ? 'Agent connection · 1 of 2' : 'Personal agent access'} title={oauthQuery ? 'Choose what your agent can use' : 'Your agent connections'}>
       Select your own agent and its permitted projects. Access is checked again whenever the agent calls Flux.
     </FlowHeader>
-    {!oauthQuery ? <div className="connection__guide"><h2>Connect Claude Code</h2>
-      <p>Use your self-hosted Flux HTTPS address in Claude Code. The client opens this page to ask for your consent.</p>
-      <code>claude mcp add --transport http flux {window.location.origin}/mcp</code>
-      <code>claude mcp login flux</code>
-      <p>Use your own Claude Code account for compute. Flux receives no provider credentials. This connection only lets your client read selected projects and submit proposals for review.</p>
-    </div> : null}
     {error ? <div className="connection__alert" role="alert">{error}</div> : null}
     {items.length ? <fieldset className="connection__group" disabled={busy}>
       <legend>Saved selections</legend>
@@ -242,6 +236,12 @@ export function AgentConnectionPage() {
       <div className="connection__actions"><Button type="submit" variant="secondary" busy={busy} disabled={!workspaceId || !agentName.trim()}>Create personal agent</Button>
         {personalAgents.length ? <Button onClick={() => setCreatingAgent(false)}>Cancel</Button> : null}</div>
     </form> : <Button variant="link" onClick={() => setCreatingAgent(true)}>Create personal agent</Button>}
+    {!oauthQuery ? <div className="connection__guide"><h2>Connect Claude Code</h2>
+      <p>Use your self-hosted Flux HTTPS address in Claude Code. The client opens this page to ask for your consent.</p>
+      <code>claude mcp add --transport http flux {window.location.origin}/mcp</code>
+      <code>claude mcp login flux</code>
+      <p>Use your own Claude Code account for compute. Flux receives no provider credentials. This connection only lets your client read selected projects and submit proposals for review.</p>
+    </div> : null}
     {personalAgents.length > 0 && adding ? <form className="connection__create" onSubmit={(event) => { void addConnection(event); }}>
       <h2>New selection</h2>
       <p>Flux accepts only projects already granted to your agent. Saving this selection does not change project access.</p>
@@ -307,7 +307,7 @@ export function AgentConsentPage() {
     try { followOAuthRedirect(await decideAgentConsent(accept, oauthQuery)); }
     catch (cause) { setError(describeError(cause)); setBusy(false); }
   }
-  return <section className="connection" aria-label="Agent access consent">
+  return <section className="connection connection--consent" aria-label="Agent access consent">
     <FlowHeader step="Agent connection · 2 of 2" title="Review access before connecting">
       <strong>{context.clientName}</strong> is asking to connect to Flux. Check the selected projects and actions below.
     </FlowHeader>

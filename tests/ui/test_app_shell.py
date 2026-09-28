@@ -975,6 +975,8 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("heading", name="New selection")).to_have_count(0)
         shot(page, "agent-first-desktop")
         page.set_viewport_size(PHONE)
+        create_button = box(page, page.get_by_role("button", name="Create personal agent"))
+        self.assertLessEqual(create_button["y"] + create_button["height"], PHONE["height"])
         shot(page, "agent-first-phone")
         page.set_viewport_size(DESKTOP)
         page.get_by_label("Agent name").fill("My research agent")

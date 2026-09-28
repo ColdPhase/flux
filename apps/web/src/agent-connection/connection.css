@@ -54,4 +54,7 @@
 @media (max-width: 600px) {
   .connection__choice, .connection__create { padding: 13px; }
   .connection__footer .ui-btn--primary { width: 100%; }
+  .connection--consent { gap: 18px; }
+  .connection--consent .connection__footer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding-top: 12px; }
+  .connection--consent .connection__footer .ui-btn { width: 100%; min-height: 44px; }
 }
