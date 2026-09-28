@@ -3,3 +3,5 @@
 .git
 .worktrees
 .env
+backups
+exports

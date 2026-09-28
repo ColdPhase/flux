@@ -21,6 +21,7 @@ the top of the script; the planned `app/` + `docker/` move (#76) changes only th
 | `./flux down` | Stops both the `up` and `dev` stacks; keeps volumes. |
 | `./flux logs [--dev] [service]` | Follows logs. |
 | `./flux reset [-y]` | After a `y/N` prompt, removes the containers and volumes of this checkout's two Compose projects. `.env` stays. |
+| `./flux backup`, `restore`, `export`, `upgrade` | Operations (#123): consistent backups with a checked manifest, restore with version checks, project export bundles and upgrades with a backup first. See [operations](../operations/README.md). |
 | `./flux clean [-y]` | `reset` plus removal of the `flux-*` images tagged with this checkout's project names. It does **not** prune the BuildKit build cache: that cache is shared by every checkout and Compose project on the Docker host and cannot be attributed to one project, so pruning it would slow or disturb other work. `clean` prints the `docker system df` / `docker builder prune --filter until=72h` commands for the owner of the machine to run deliberately. Base images and other projects are never touched. This is how #72 AC-4 ("removes this project's images and caches") is met: project images and volumes are removed; the shared cache is advice only. |
 
 `FLUX_PROJECT` is the Compose project for `up`/`demo`; `dev` uses `<project>-dev`, with
@@ -183,6 +184,10 @@ Actual image size varies by platform and later dependency changes.
 
 ## Initial backup and restore
 
+**Superseded by `./flux backup`, `./flux restore`, `./flux export` and `./flux upgrade`
+(#123); see [operations](../operations/README.md).** The manual commands below remain as a
+record of the procedure those commands automate.
+
 Stop API and worker before backup so database rows and file bytes share one point
 in time. The files volume is empty until file upload work arrives, but back it up
 now so the procedure remains paired. Keep backup files outside the repository.
@@ -214,5 +219,5 @@ FLUX_PORT=8082 docker compose --env-file .env -p flux28restore -f infra/compose.
 FLUX_PORT=8082 docker compose --env-file .env -p flux28restore -f infra/compose.yaml up -d --wait api worker
 ```
 
-An application release needs a full restore acceptance test with real uploaded
-files and authorized project access. This foundation procedure does not claim it.
+The restore acceptance test with real data and project access is
+`./scripts/check_backup.sh` ([backup and restore](../operations/backup-restore.md#verified-behavior)).

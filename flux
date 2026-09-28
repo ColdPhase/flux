@@ -12,6 +12,13 @@ COMPOSE_DEV="$FLUX_ROOT/infra/compose.dev.yaml"
 ENV_EXAMPLE="$FLUX_ROOT/.env.example"
 ENV_FILE="$FLUX_ROOT/.env"
 DEMO_SEED="$FLUX_ROOT/scripts/flux-demo.mjs"
+MIGRATIONS_DIR="$FLUX_ROOT/packages/db/migrations"
+APP_PACKAGE="$FLUX_ROOT/apps/server/package.json"
+# Default output of ./flux backup and ./flux export (both ignored by git); FLUX_BACKUP_DIR overrides.
+BACKUP_DIR="${FLUX_BACKUP_DIR:-$FLUX_ROOT/backups}"
+EXPORT_DIR="$FLUX_ROOT/exports"
+# Inside the Flux image (paths relative to its working directory).
+IMAGE_EXPORT_CLI=apps/server/dist/export/cli.js
 
 WAIT_TIMEOUT="${FLUX_WAIT_TIMEOUT:-300}"
 OWNER_LABEL=com.flux.checkout
@@ -406,6 +413,374 @@ cmd_clean() {
   say "  docker builder prune --filter until=72h"
 }
 
+# --- Operations (issue #123): backup, restore, project export and upgrade. Everything runs in
+# Docker: pg_dump/pg_restore in the pinned PostgreSQL container, the files volume through the
+# `files-archive` helper (the same image, no network), and the export through the API image.
+# Documented in docs/operations/.
+
+pg_user() { v=$(env_value POSTGRES_USER); printf '%s' "${v:-flux}"; }
+pg_db() { v=$(env_value POSTGRES_DB); printf '%s' "${v:-flux}"; }
+db_query() { compose_main exec -T db psql -X -v ON_ERROR_STOP=1 -U "$(pg_user)" -d "$(pg_db)" -tAc "$1"; }
+running_services() { compose_main ps --status running --services 2>/dev/null || true; }
+is_running() { running_services | grep -qx "$1"; }
+
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
+  elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | cut -d' ' -f1
+  else compose_main --profile ops run --rm --no-deps -T files-archive sha256sum < "$1" | cut -d' ' -f1
+  fi
+}
+file_bytes() { wc -c < "$1" | tr -d ' '; }
+
+# Highest numbered migration of this checkout: the schema its code expects.
+code_schema() {
+  ls "$MIGRATIONS_DIR" | sed -n 's/^\([0-9][0-9][0-9][0-9]\)_[a-z0-9_]*\.sql$/\1/p' | sort | tail -n 1 | sed 's/^0*//'
+}
+app_version() { sed -n 's/^.*"version" *: *"\([^"]*\)".*$/\1/p' "$APP_PACKAGE" | head -n 1; }
+# The commit of this checkout, or "unknown" outside a git work tree of its own (e.g. a copy).
+git_commit() {
+  top=$(git -C "$FLUX_ROOT" rev-parse --show-toplevel 2>/dev/null) || { printf unknown; return 0; }
+  [ "$(CDPATH='' cd -- "$top" && pwd -P)" = "$FLUX_ROOT" ] || { printf unknown; return 0; }
+  git -C "$FLUX_ROOT" rev-parse HEAD 2>/dev/null || printf unknown
+}
+image_ref() { printf 'flux-foundation:%s' "$PROJECT"; }
+# The commit label of the built image (what is running), else this checkout's commit.
+image_commit() {
+  label=$(docker image inspect -f '{{ index .Config.Labels "com.flux.commit" }}' "$(image_ref)" 2>/dev/null || true)
+  case "$label" in ''|'<no value>'|unknown) git_commit ;; *) printf '%s' "$label" ;; esac
+}
+
+api_health() {
+  compose_main exec -T api node -e "fetch('http://127.0.0.1:8080/api/v1/health',{signal:AbortSignal.timeout(5000)}).then(async r=>{process.stdout.write(await r.text());process.exit(r.ok?0:1)}).catch(e=>{console.error(e.message);process.exit(1)})"
+}
+# Health plus the schema the database reports; both must match this checkout.
+verify_running() {
+  health=$(api_health) || { warn "API health check failed: $health"; return 1; }
+  expected=$(code_schema)
+  printf '%s' "$health" | grep -q "\"schemaVersion\":${expected}[,}]" || { warn "API reports $health, expected schema $expected"; return 1; }
+  stored=$(db_query 'SELECT max(version) FROM flux_schema_version') || return 1
+  [ "$stored" = "$expected" ] || { warn "database schema is $stored, expected $expected"; return 1; }
+  say "Health: $health (database schema $stored)"
+}
+
+# Reads "key": value from a manifest written by write_manifest (one key per line).
+manifest_value() { sed -n "s/^  \"$2\": \"\{0,1\}\([^\",]*\)\"\{0,1\},\{0,1\}\$/\1/p" "$1" | head -n 1; }
+manifest_part() { sed -n "s/^    {\"name\": \"$2\", \"bytes\": \([0-9]*\), \"sha256\": \"\([0-9a-f]*\)\"}.*\$/\1 \2/p" "$1" | head -n 1; }
+
+# Restarts what a backup stopped; used by its trap so a failed backup never leaves Flux down.
+backup_cleanup() {
+  [ -z "${BACKUP_STAGING:-}" ] || rm -rf "${BACKUP_STAGING:?}"
+  if [ -n "${BACKUP_RESTART:-}" ]; then
+    # shellcheck disable=SC2086
+    compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" $BACKUP_RESTART >/dev/null 2>&1 || true
+  fi
+}
+
+# backup_to DIR [keep-stopped]: writes DIR/flux-backup-<project>-<UTC>.tar and sets BACKUP_ARCHIVE.
+# API and worker are stopped while the database is dumped and the files volume is archived, so
+# both show one point in time; they are restarted afterwards unless keep-stopped is given.
+backup_to() {
+  mkdir -p "$1"
+  out=$(CDPATH='' cd -- "$1" && pwd -P)
+  stamp=$(date -u +%Y%m%dT%H%M%SZ)
+  name="flux-backup-$PROJECT-$stamp"
+  BACKUP_STAGING="$out/.$name.partial"
+  rm -rf "${BACKUP_STAGING:?}"
+  old_umask=$(umask); umask 077; mkdir -p "$BACKUP_STAGING"; umask "$old_umask"
+  writers=''
+  for service in api worker; do if is_running "$service"; then writers="$writers $service"; fi; done
+  db_was_running=0; if is_running db; then db_was_running=1; fi
+  BACKUP_RESTART=$writers
+  trap 'status=$?; backup_cleanup; exit $status' EXIT HUP INT TERM
+  if [ -n "$writers" ]; then say "Stopping$writers so the database and files are captured at one point in time..."; fi
+  compose_main stop api worker >/dev/null 2>&1 || true
+  compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" db >/dev/null 2>&1 || die "The database of $PROJECT did not start."
+  schema=$(db_query 'SELECT max(version) FROM flux_schema_version') || die "Could not read the schema version of $PROJECT."
+  pg_version=$(compose_main exec -T db pg_dump --version | sed 's/^pg_dump (PostgreSQL) //')
+  say "Dumping the database (schema $schema, PostgreSQL $pg_version)..."
+  compose_main exec -T db pg_dump -U "$(pg_user)" -d "$(pg_db)" --format=custom --compress=6 > "$BACKUP_STAGING/database.dump" \
+    || die "pg_dump failed; no backup was written."
+  say "Archiving the files volume..."
+  compose_main --profile ops run --rm --no-deps -T files-archive tar -C /data/files -czf - . > "$BACKUP_STAGING/files.tar.gz" \
+    || die "Archiving the files volume failed; no backup was written."
+  cp "$ENV_FILE" "$BACKUP_STAGING/flux.env"
+  if [ -n "$writers" ] && [ "${2:-}" != keep-stopped ]; then
+    say "Restarting$writers..."
+    # shellcheck disable=SC2086
+    compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" $writers >/dev/null || die "Flux did not become healthy after the backup."
+  elif [ -z "$writers" ] && [ "$db_was_running" = 0 ]; then
+    compose_main stop db >/dev/null 2>&1 || true
+  fi
+  BACKUP_RESTART=''
+  write_manifest "$BACKUP_STAGING" "$stamp" "$schema" "$pg_version" > "$BACKUP_STAGING/manifest.json"
+  (cd "$BACKUP_STAGING" && tar -cf "$out/$name.tar.partial" manifest.json database.dump files.tar.gz flux.env)
+  chmod 600 "$out/$name.tar.partial"
+  mv "$out/$name.tar.partial" "$out/$name.tar"
+  printf '%s  %s\n' "$(sha256_of "$out/$name.tar")" "$name.tar" > "$out/$name.tar.sha256"
+  rm -rf "${BACKUP_STAGING:?}"
+  BACKUP_STAGING=''
+  trap - EXIT HUP INT TERM
+  BACKUP_ARCHIVE="$out/$name.tar"
+  say "Backup written: $BACKUP_ARCHIVE ($(file_bytes "$BACKUP_ARCHIVE") bytes, schema $schema)"
+  say "It holds all data and the secrets of ${ENV_FILE#"$FLUX_ROOT"/}: keep it private and copy it off this machine."
+}
+
+write_manifest() {
+  dir=$1
+  image_id=$(docker image inspect -f '{{.Id}}' "$(image_ref)" 2>/dev/null || printf unknown)
+  dirty=false
+  if [ "$(git_commit)" != unknown ] && ! git -C "$FLUX_ROOT" diff --quiet HEAD 2>/dev/null; then dirty=true; fi
+  pg_image=$(compose_main config --images 2>/dev/null | grep '^postgres@' | head -n 1)
+  cat <<EOF
+{
+  "format": "flux-backup",
+  "formatVersion": 1,
+  "createdAt": "$(printf '%s' "$2" | sed 's/^\(....\)\(..\)\(..\)T\(..\)\(..\)\(..\)Z$/\1-\2-\3T\4:\5:\6Z/')",
+  "project": "$PROJECT",
+  "schemaVersion": $3,
+  "appVersion": "$(app_version)",
+  "appCommit": "$(image_commit)",
+  "checkoutDirty": $dirty,
+  "image": "$image_id",
+  "postgresImage": "$pg_image",
+  "postgresVersion": "$4",
+  "consistency": "api and worker stopped during dump and files archive",
+  "parts": [
+    {"name": "database.dump", "bytes": $(file_bytes "$dir/database.dump"), "sha256": "$(sha256_of "$dir/database.dump")"},
+    {"name": "files.tar.gz", "bytes": $(file_bytes "$dir/files.tar.gz"), "sha256": "$(sha256_of "$dir/files.tar.gz")"},
+    {"name": "flux.env", "bytes": $(file_bytes "$dir/flux.env"), "sha256": "$(sha256_of "$dir/flux.env")"}
+  ]
+}
+EOF
+}
+
+# Keeps the newest N archives of this project in DIR (names sort by their UTC timestamp).
+prune_backups() {
+  dir=$1 keep=$2
+  total=$(ls "$dir" 2>/dev/null | grep -c "^flux-backup-$PROJECT-[0-9TZ]*\.tar\$" || true)
+  [ "$total" -gt "$keep" ] || return 0
+  ls "$dir" | grep "^flux-backup-$PROJECT-[0-9TZ]*\.tar\$" | sort | head -n $((total - keep)) | while read -r old; do
+    rm -f "${dir:?}/${old:?}" "${dir:?}/${old:?}.sha256"
+    say "Removed old backup $dir/$old"
+  done
+}
+
+positive_int() { case "$1" in ''|*[!0-9]*|0) return 1 ;; esac; }
+
+cmd_backup() {
+  out_dir=$BACKUP_DIR keep=''
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -o|--output) [ $# -ge 2 ] || die "backup: $1 needs a directory"; out_dir=$2; shift 2 ;;
+      --keep) { [ $# -ge 2 ] && positive_int "$2"; } || die "backup: --keep needs a positive number"; keep=$2; shift 2 ;;
+      *) die "backup: unknown option $1 (use --output DIR, --keep N)" ;;
+    esac
+  done
+  need_docker
+  [ -f "$ENV_FILE" ] || die "No ${ENV_FILE#"$FLUX_ROOT"/}; there is nothing to back up."
+  check_owner "$PROJECT"
+  docker volume inspect "${PROJECT}_pgdata" >/dev/null 2>&1 || die "Compose project $PROJECT has no database volume; there is nothing to back up."
+  backup_to "$out_dir"
+  [ -z "$keep" ] || prune_backups "$(dirname -- "$BACKUP_ARCHIVE")" "$keep"
+}
+
+# Unpacks and checks an archive into $RESTORE_DIR: format, part sizes and SHA-256 checksums.
+open_archive() {
+  [ -f "$1" ] || die "restore: no such archive: $1"
+  RESTORE_DIR=$(mktemp -d "${TMPDIR:-/tmp}/flux-restore.XXXXXX")
+  trap 'rm -rf "${RESTORE_DIR:?}"' EXIT HUP INT TERM
+  tar -xf "$1" -C "$RESTORE_DIR" manifest.json database.dump files.tar.gz flux.env 2>/dev/null \
+    || die "restore: $1 is not a Flux backup (expected manifest.json, database.dump, files.tar.gz and flux.env)."
+  manifest="$RESTORE_DIR/manifest.json"
+  { [ "$(manifest_value "$manifest" format)" = flux-backup ] && [ "$(manifest_value "$manifest" formatVersion)" = 1 ]; } \
+    || die "restore: $1 has an unknown manifest format."
+  for part in database.dump files.tar.gz flux.env; do
+    expected=$(manifest_part "$manifest" "$part")
+    [ -n "$expected" ] || die "restore: the manifest does not list $part."
+    actual="$(file_bytes "$RESTORE_DIR/$part") $(sha256_of "$RESTORE_DIR/$part")"
+    [ "$actual" = "$expected" ] || die "restore: $part does not match its checksum in the manifest; the archive is damaged or was changed. Nothing was restored."
+  done
+  case "$(manifest_value "$manifest" schemaVersion)" in ''|*[!0-9]*) die "restore: the manifest has no valid schemaVersion." ;; esac
+}
+
+# Writes a missing .env from the archive's copy, as this checkout's project. FLUX_PORT,
+# FLUX_PUBLIC_ORIGIN, FLUX_DEV_PORT and FLUX_MAILPIT_PORT from the shell replace the archived ones.
+env_from_archive() {
+  draft="$ENV_FILE.flux-new"
+  old_umask=$(umask); umask 077; cp "$1" "$draft"; umask "$old_umask"
+  set_env_line "$draft" FLUX_PROJECT "$PROJECT"
+  for key in FLUX_PORT FLUX_PUBLIC_ORIGIN FLUX_DEV_PORT FLUX_MAILPIT_PORT; do
+    eval "value=\${$key-}"
+    [ -z "$value" ] || set_env_line "$draft" "$key" "$value"
+  done
+  mv "$draft" "$ENV_FILE"
+  say "Wrote ${ENV_FILE#"$FLUX_ROOT"/} from the backup (same secrets, so sessions and push subscriptions stay valid)."
+}
+
+archived_env_value() { sed -n "s/^$2=//p" "$1" | tail -n 1; }
+
+cmd_restore() {
+  archive='' migrate=0 ASSUME_YES=0
+  for arg in "$@"; do
+    case "$arg" in
+      --migrate) migrate=1 ;;
+      -y|--yes) ASSUME_YES=1 ;;
+      -*) die "restore: unknown option $arg (use --migrate, -y)" ;;
+      *) [ -z "$archive" ] || die "restore: only one archive"; archive=$arg ;;
+    esac
+  done
+  [ -n "$archive" ] || die "usage: ./flux restore <archive.tar> [--migrate] [-y]"
+  need_docker
+  open_archive "$archive"
+  manifest="$RESTORE_DIR/manifest.json"
+  from_schema=$(manifest_value "$manifest" schemaVersion)
+  from_version=$(manifest_value "$manifest" appVersion)
+  from_commit=$(manifest_value "$manifest" appCommit)
+  to_schema=$(code_schema) to_version=$(app_version) to_commit=$(git_commit)
+  say "Backup of $(manifest_value "$manifest" project) taken $(manifest_value "$manifest" createdAt): schema $from_schema, Flux $from_version ($from_commit)."
+  say "This checkout: schema $to_schema, Flux $to_version ($to_commit)."
+  if [ "$from_schema" -gt "$to_schema" ]; then
+    die "restore: the backup has schema $from_schema, newer than this checkout's $to_schema. Check out the Flux version that wrote it (commit $from_commit) and restore there."
+  fi
+  mismatch=''
+  [ "$from_schema" = "$to_schema" ] || mismatch="schema $from_schema -> $to_schema"
+  [ "$from_version" = "$to_version" ] || mismatch="${mismatch:+$mismatch, }version $from_version -> $to_version"
+  if [ "$from_commit" != unknown ] && [ "$to_commit" != unknown ] && [ "$from_commit" != "$to_commit" ]; then
+    mismatch="${mismatch:+$mismatch, }commit $from_commit -> $to_commit"
+  fi
+  if [ -n "$mismatch" ] && [ "$migrate" != 1 ]; then
+    die "restore: the backup was written by another Flux version ($mismatch). Restore it with the matching checkout, or pass --migrate to restore here and migrate it forward."
+  fi
+  check_owner "$PROJECT"
+  if project_has_resources "$PROJECT"; then
+    confirm "Replace ALL data (database and files) of Compose project $PROJECT with this backup? The current data is deleted." \
+      || { say "Cancelled; nothing was changed."; return 1; }
+  fi
+  claim_project "$PROJECT"
+  if [ -f "$ENV_FILE" ]; then
+    say "Keeping the existing ${ENV_FILE#"$FLUX_ROOT"/}."
+    if [ "$(archived_env_value "$RESTORE_DIR/flux.env" FLUX_AUTH_SECRET)" != "$(env_value FLUX_AUTH_SECRET)" ]; then
+      warn "NOTE: FLUX_AUTH_SECRET differs from the backup: everyone must sign in again. The backup's .env is in the archive (flux.env)."
+    fi
+    if [ "$(archived_env_value "$RESTORE_DIR/flux.env" FLUX_VAPID_PUBLIC_KEY)" != "$(env_value FLUX_VAPID_PUBLIC_KEY)" ]; then
+      warn "NOTE: the VAPID keys differ from the backup: devices must turn push notifications on again."
+    fi
+  else
+    env_from_archive "$RESTORE_DIR/flux.env"
+  fi
+  build_main
+  say "Replacing the data of $PROJECT..."
+  compose_main --profile ops --profile setup down -v --remove-orphans >/dev/null 2>&1
+  compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" db >/dev/null || die "The new database did not start."
+  compose_main exec -T db pg_restore -U "$(pg_user)" -d "$(pg_db)" --no-owner --no-privileges --exit-on-error --single-transaction \
+    < "$RESTORE_DIR/database.dump" || die "pg_restore failed. The archive is unchanged; fix the cause and run ./flux restore again."
+  compose_main --profile ops run --rm --no-deps -T files-archive tar -C /data/files -xzf - < "$RESTORE_DIR/files.tar.gz" \
+    || die "Restoring the files volume failed; run ./flux restore again."
+  compose_main --profile setup run --rm files-init >/dev/null
+  if [ "$from_schema" != "$to_schema" ]; then say "Migrating from schema $from_schema to $to_schema..."; fi
+  compose_main run --rm migrate || die "The migration after restore failed. See the output above; the archive is unchanged."
+  compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" api worker \
+    || { compose_main logs --no-color --tail 60 api worker >&2 || true; die "Flux did not become healthy after the restore."; }
+  verify_running || die "The restored instance failed its health or schema check."
+  say "Restored $archive into $PROJECT: $(public_origin)"
+}
+
+cmd_export() {
+  target='' as='' output=''
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --as) [ $# -ge 2 ] || die "export: --as needs an e-mail address"; as=$2; shift 2 ;;
+      -o|--output) [ $# -ge 2 ] || die "export: $1 needs a file name"; output=$2; shift 2 ;;
+      -*) die "export: unknown option $1 (use --as EMAIL, --output FILE)" ;;
+      *) [ -z "$target" ] || die "export: only one project"; target=$1; shift ;;
+    esac
+  done
+  [ -n "$target" ] || die "usage: ./flux export <project id or exact name> [--as EMAIL] [--output FILE]"
+  need_docker
+  [ -f "$ENV_FILE" ] || die "No ${ENV_FILE#"$FLUX_ROOT"/}; start Flux with ./flux up first."
+  check_owner "$PROJECT"
+  is_running api || die "Flux is not running; start it with ./flux up."
+  if [ -n "$output" ]; then dir=$(dirname -- "$output"); else dir=$EXPORT_DIR; fi
+  mkdir -p "$dir"
+  EXPORT_PARTIAL="$dir/.flux-export-$$.partial"
+  EXPORT_LOG="$dir/.flux-export-$$.log"
+  trap 'rm -f "${EXPORT_PARTIAL:?}" "${EXPORT_LOG:?}"' EXIT HUP INT TERM
+  if [ -n "$as" ]; then set -- "$target" --as "$as"; else set -- "$target"; fi
+  if ! compose_main exec -T api node "$IMAGE_EXPORT_CLI" "$@" > "$EXPORT_PARTIAL" 2> "$EXPORT_LOG"; then
+    grep -v '^FLUX_EXPORT_FILE ' "$EXPORT_LOG" >&2 || true
+    die "export failed; nothing was written."
+  fi
+  grep -v '^FLUX_EXPORT_FILE ' "$EXPORT_LOG" || true
+  [ -n "$output" ] || output="$dir/$(sed -n 's/^FLUX_EXPORT_FILE //p' "$EXPORT_LOG")"
+  mv "$EXPORT_PARTIAL" "$output"
+  say "Export written: $output ($(file_bytes "$output") bytes, sha256 $(sha256_of "$output"))"
+}
+
+upgrade_failed() {
+  warn ""
+  warn "UPGRADE FAILED: $1"
+  warn "Your data from before the upgrade is in $UPGRADE_ARCHIVE (schema $UPGRADE_FROM_SCHEMA, commit $UPGRADE_FROM_COMMIT)."
+  warn "API and worker are stopped, so nothing was written after that backup. To go back:"
+  if [ "$UPGRADE_FROM_COMMIT" != unknown ]; then
+    warn "  git -C '$FLUX_ROOT' checkout $UPGRADE_FROM_COMMIT"
+  else
+    warn "  check out the Flux version you ran before (its commit was not recorded)"
+  fi
+  warn "  ./flux restore '$UPGRADE_ARCHIVE'"
+  warn "Or fix the cause in this checkout and run ./flux restore '$UPGRADE_ARCHIVE' --migrate to retry the upgrade."
+  exit 1
+}
+
+# The second half of an upgrade, after the backup (and, with --pull, in the pulled launcher).
+upgrade_apply() {
+  UPGRADE_ARCHIVE=$1 UPGRADE_FROM_SCHEMA=$2 UPGRADE_FROM_COMMIT=$3
+  to_schema=$(code_schema)
+  say "Building the new version (schema $to_schema, commit $(git_commit))..."
+  build_main || upgrade_failed "the build failed"
+  compose_main --profile setup run --rm files-init >/dev/null || upgrade_failed "preparing the files volume failed"
+  say "Migrating from schema $UPGRADE_FROM_SCHEMA to $to_schema..."
+  compose_main run --rm migrate || upgrade_failed "the migration failed"
+  compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" api worker \
+    || { compose_main logs --no-color --tail 60 api worker >&2 || true; upgrade_failed "Flux did not become healthy"; }
+  verify_running || upgrade_failed "the health or schema check failed"
+  say ""
+  say "Upgraded $PROJECT from schema $UPGRADE_FROM_SCHEMA to $to_schema: $(public_origin)"
+  say "The backup from before the upgrade stays in $UPGRADE_ARCHIVE."
+}
+
+cmd_upgrade() {
+  pull=0 ASSUME_YES=0 out_dir=$BACKUP_DIR
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --pull) pull=1; shift ;;
+      -y|--yes) ASSUME_YES=1; shift ;;
+      -o|--output) [ $# -ge 2 ] || die "upgrade: $1 needs a directory"; out_dir=$2; shift 2 ;;
+      *) die "upgrade: unknown option $1 (use --pull, --output DIR, -y)" ;;
+    esac
+  done
+  need_docker
+  [ -f "$ENV_FILE" ] || die "No ${ENV_FILE#"$FLUX_ROOT"/}; for a first installation use ./flux up."
+  check_owner "$PROJECT"
+  docker volume inspect "${PROJECT}_pgdata" >/dev/null 2>&1 || die "Compose project $PROJECT has no data yet; use ./flux up."
+  if [ "$pull" = 1 ] && [ "$(git_commit)" = unknown ]; then die "upgrade --pull needs a git checkout; update the files yourself and run ./flux upgrade."; fi
+  compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" db >/dev/null || die "The database of $PROJECT did not start."
+  from_schema=$(db_query 'SELECT max(version) FROM flux_schema_version') || die "Could not read the schema version of $PROJECT."
+  from_commit=$(image_commit)
+  if [ "$pull" = 1 ]; then plan="pull the new version with git"; else plan="build this checkout (schema $(code_schema))"; fi
+  confirm "Upgrade $PROJECT (schema $from_schema): back up, $plan, migrate and restart? API and worker stay stopped from the backup until the new version runs." \
+    || { say "Cancelled; nothing was changed."; return 1; }
+  backup_to "$out_dir" keep-stopped
+  if [ "$pull" = 1 ]; then
+    UPGRADE_ARCHIVE=$BACKUP_ARCHIVE UPGRADE_FROM_SCHEMA=$from_schema UPGRADE_FROM_COMMIT=$from_commit
+    say "Pulling the new version..."
+    git -C "$FLUX_ROOT" pull --ff-only || upgrade_failed "git pull --ff-only failed"
+    # The pull may have replaced this script: continue in the new launcher.
+    if [ "$FORCE_PROJECT" = 1 ]; then exec "$FLUX_ROOT/flux" --force-project _upgrade-apply "$BACKUP_ARCHIVE" "$from_schema" "$from_commit"; fi
+    exec "$FLUX_ROOT/flux" _upgrade-apply "$BACKUP_ARCHIVE" "$from_schema" "$from_commit"
+  fi
+  upgrade_apply "$BACKUP_ARCHIVE" "$from_schema" "$from_commit"
+}
+
 cmd_help() {
   cat <<EOF
 Flux launcher. Everything runs in Docker; only sh and Docker Compose are needed.
@@ -420,15 +795,29 @@ Flux launcher. Everything runs in Docker; only sh and Docker Compose are needed.
   ./flux logs [--dev] [service]   Follow logs (api, worker, web, db, migrate, mailpit).
   ./flux reset [-y]      Delete this checkout's data volumes after confirmation.
   ./flux clean [-y]      reset, plus remove the images this checkout built.
+  ./flux backup [--output DIR] [--keep N]
+                         Stop API and worker, write a timestamped archive (database dump, files
+                         volume, .env, manifest with checksums) to backups/, restart them.
+  ./flux restore <archive> [--migrate] [-y]
+                         Check the archive, confirm, replace this project's data with it, migrate
+                         and run health and schema checks. Refuses another Flux version unless
+                         --migrate.
+  ./flux export <project> [--as EMAIL] [--output FILE]
+                         Write a project's JSON-plus-files bundle to exports/ (as the workspace
+                         owner by default; the account needs project.manage).
+  ./flux upgrade [--pull] [-y]
+                         Back up, (git pull,) build this checkout, migrate and check health; on
+                         failure print the restore instructions.
   ./flux help            This text.
 
-Commands that start, stop or delete refuse a Compose project that belongs to another
+Commands that start, stop, back up, restore or delete refuse a Compose project that belongs to another
 checkout; --force-project overrides that check.
 
 Environment: FLUX_PROJECT (Compose project; default flux-<dir>-<hash of this checkout's path>,
 stored in .env on first use; dev uses <project>-dev),
 FLUX_PORT (8081, used when creating .env), FLUX_DEV_PORT (5173), FLUX_MAILPIT_PORT (8025),
-FLUX_NO_CACHE=1 (build without the Docker cache).
+FLUX_NO_CACHE=1 (build without the Docker cache), FLUX_BACKUP_DIR (default backups/).
+Operations guide: docs/operations/README.md.
 EOF
 }
 
@@ -442,7 +831,9 @@ command=${1:-help}
 case "$command" in
   _is-loopback-origin) is_loopback_origin "${1:-}"; exit ;;  # used by scripts/check_flux_cli.sh
   help|-h|--help) ;;
-  *) resolve_project ;;
+  *) resolve_project
+     # Recorded as an image label and in backup manifests (issue #123).
+     FLUX_GIT_COMMIT=${FLUX_GIT_COMMIT:-$(git_commit)}; export FLUX_GIT_COMMIT ;;
 esac
 case "$command" in
   up) cmd_up "$@" ;;
@@ -452,6 +843,11 @@ case "$command" in
   logs) cmd_logs "$@" ;;
   reset) cmd_reset "$@" ;;
   clean) cmd_clean "$@" ;;
+  backup) cmd_backup "$@" ;;
+  restore) cmd_restore "$@" ;;
+  export) cmd_export "$@" ;;
+  upgrade) cmd_upgrade "$@" ;;
+  _upgrade-apply) upgrade_apply "$@" ;;  # continues ./flux upgrade --pull in the pulled launcher
   help|-h|--help) cmd_help ;;
   *) warn "unknown command: $command"; cmd_help >&2; exit 2 ;;
 esac
