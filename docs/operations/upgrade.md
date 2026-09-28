@@ -43,9 +43,11 @@ the old version on the partly migrated database.
 
 `./scripts/check_backup.sh` starts a checkout of the **previous main's schema**: the newest
 commit on `main`'s first-parent history whose set of migrations differs from this tree's
-(`FLUX_UPGRADE_FROM=<ref>` picks another). On 2026-09-28 that is `f1fa114`, which has
-`0013_docs.sql` but not the later-merged `0011_agent_connection.sql` and `0012_agent_oauth.sql`,
-so the upgrade also proves that migrations numbered below the current maximum are applied. It seeds that version's `./flux demo`, replaces the
+(`FLUX_UPGRADE_FROM=<ref>` picks another). Observed on 2026-09-28: with `main` at `f18c0cb`
+the previous main is `705ed25` (schema 13) and the upgrade applied `0015_notifications.sql`;
+an earlier run with `main` at `705ed25` started from `f1fa114`, which had `0013_docs.sql` but not
+the later-merged `0011_agent_connection.sql` and `0012_agent_oauth.sql`, and applied both, so
+migrations numbered below the current maximum are applied too. It seeds that version's `./flux demo`, replaces the
 checkout's files with this tree (as `git pull` would, keeping `.env` and the data), checks that
 `./flux upgrade` without confirmation does nothing, runs `./flux upgrade -y`, and verifies the
 reported schema change, an `Applied migration` line for every migration the old version lacked,
