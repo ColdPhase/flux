@@ -42,18 +42,22 @@ export function SearchPage() {
   useEffect(() => {
     if (draft.trim() === q.trim()) return;
     const timer = window.setTimeout(() => {
-      const next = new URLSearchParams(params);
-      if (draft.trim()) next.set('q', draft.trim()); else next.delete('q');
-      setParams(next, { replace: true });
+      setParams((current) => {
+        const next = new URLSearchParams(current);
+        if (draft.trim()) next.set('q', draft.trim()); else next.delete('q');
+        return next;
+      }, { replace: true });
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [draft, q, params, setParams]);
+  }, [draft, q, setParams]);
 
   const set = (key: 'type' | 'place', value: string | null) => {
-    const next = new URLSearchParams(params);
-    if (draft.trim()) next.set('q', draft.trim());
-    if (value) next.set(key, value); else next.delete(key);
-    setParams(next, { replace: true });
+    setParams((current) => {
+      const next = new URLSearchParams(current);
+      if (draft.trim()) next.set('q', draft.trim());
+      if (value) next.set(key, value); else next.delete(key);
+      return next;
+    }, { replace: true });
   };
 
   const answer = state.status === 'ready' ? state.answer : state.status === 'loading' ? state.previous : null;
@@ -105,15 +109,14 @@ export function SearchPage() {
               );
             })}
           </div>
-          <label className="search__place">
-            <span className="ui-vh">Place</span>
-            <select value={place ?? ''} onChange={(event) => set('place', event.target.value || null)}>
+          <div className="search__place">
+            <select aria-label="Place" value={place ?? ''} onChange={(event) => set('place', event.target.value || null)}>
               <option value="">All places</option>
               {projects.map((project) => <option key={project.id} value={`project:${project.id}`}># {project.name}</option>)}
               {directMessages.map((dm) => <option key={dm.id} value={`dm:${dm.id}`}>{dm.title}</option>)}
               <option value="private">Only you</option>
             </select>
-          </label>
+          </div>
         </div>
 
         <p className="ui-vh" role="status">{state.status === 'ready' ? (items.length ? `${total} results` : 'No results') : ''}</p>

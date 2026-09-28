@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { createDatabase } from '@flux/db';
-import type { Conversation, Decision, Dm, Draft, Material, Project, SearchResponse, SearchResult, Sketch, Thought, WorkItem, WorkResult, Workspace } from '@flux/contracts';
+import type { Conversation, Decision, Dm, Draft, Material, Project, SearchResponse, SearchResult, Sketch, CreatedThought, WorkItem, WorkResult, Workspace } from '@flux/contracts';
 import { register, uniqueEmail, type ClientResponse } from './support/http.js';
 import { addMember, draft as createDraft, expectStatus, grant, password, project as createProject, workspace, type Person } from './support/people.js';
 
@@ -46,7 +46,7 @@ async function sketch(someone: Person, workspaceId: string, title: string, proje
   return json<Sketch>(await post(someone, `/api/v1/workspaces/${workspaceId}/sketches`, projectId ? { title, scope: 'project', projectId } : { title, scope: 'private' }), 201, 'sketch');
 }
 async function thought(someone: Person, sketchId: string, textValue: string, x = 0) {
-  return json<Thought>(await post(someone, `/api/v1/sketches/${sketchId}/thoughts`, { text: textValue, x, y: 0 }), 201, 'thought');
+  return json<CreatedThought>(await post(someone, `/api/v1/sketches/${sketchId}/thoughts`, { text: textValue, x, y: 0 }), 201, 'thought');
 }
 async function dm(someone: Person, workspaceId: string, others: Person[]) {
   const response = await post(someone, `/api/v1/workspaces/${workspaceId}/dms`, { participantIds: others.map((other) => other.id) });
