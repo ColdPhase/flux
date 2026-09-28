@@ -48,6 +48,16 @@ own Compose path; the attached `compose.yaml` is the pull-only operator path.
 GitHub immutable Releases were enabled in the repository on 2026-09-27 and
 read back as `enabled: true` using the [repository setting
 API](https://docs.github.com/en/rest/repos/repos#check-if-immutable-releases-are-enabled-for-a-repository).
-The publish workflow verifies the final release's `immutable` field. GHCR
-version tags remain governed by the explicit never-retag checks because GitHub
-Release immutability does not control package tags.
+Before running the publication workflow, configure the repository Actions secret
+`FLUX_RELEASE_ADMIN_READ_TOKEN` as a fine-grained token limited to this repository
+with **Administration (read)** permission. The built-in `GITHUB_TOKEN` cannot
+request that permission. The token is used only to read this setting; release
+edits still use the job's scoped `GITHUB_TOKEN`. Without the secret, or if the
+token has expired or lacks access, publication stops. Give the token a bounded
+expiration and renew the secret before the next release; do not place it in the
+repository or release assets. If the setting is disabled, publication also stops.
+The workflow checks the setting before
+accepting the draft and again immediately before making it public, then verifies
+the final release's `immutable` field. GHCR version tags remain governed by the
+explicit never-retag checks because GitHub Release immutability does not control
+package tags.

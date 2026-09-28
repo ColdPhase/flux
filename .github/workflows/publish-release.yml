@@ -46,6 +46,7 @@ jobs:
         id: check
         env:
           GH_TOKEN: ${{ github.token }}
+          FLUX_RELEASE_ADMIN_READ_TOKEN: ${{ secrets.FLUX_RELEASE_ADMIN_READ_TOKEN }}
           RELEASE_VERSION: ${{ inputs.version }}
           SOURCE_SHA: ${{ inputs.source_sha }}
           IMAGE_DIGEST: ${{ inputs.image_digest }}
@@ -58,6 +59,13 @@ jobs:
           [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
           [[ "$REVIEW_ISSUE" =~ ^[1-9][0-9]*$ ]]
           git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+          test -n "$FLUX_RELEASE_ADMIN_READ_TOKEN" || {
+            echo 'Configure FLUX_RELEASE_ADMIN_READ_TOKEN with repository Administration (read) permission.' >&2
+            exit 1
+          }
+          GH_TOKEN="$FLUX_RELEASE_ADMIN_READ_TOKEN" \
+            gh api "repos/$GITHUB_REPOSITORY/immutable-releases" | \
+            python3 scripts/release/check_immutable_releases.py
           bash scripts/release/check_release_target.sh "$RELEASE_VERSION" "$SOURCE_SHA" draft
           mkdir -p "$RUNNER_TEMP/reviewed-assets"
           gh release download "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" \
@@ -103,6 +111,7 @@ jobs:
       - name: Promote reviewed digest and publish draft
         env:
           GH_TOKEN: ${{ github.token }}
+          FLUX_RELEASE_ADMIN_READ_TOKEN: ${{ secrets.FLUX_RELEASE_ADMIN_READ_TOKEN }}
           RELEASE_VERSION: ${{ inputs.version }}
           SOURCE_SHA: ${{ inputs.source_sha }}
           IMAGE_DIGEST: ${{ inputs.image_digest }}
@@ -135,6 +144,13 @@ jobs:
             docker buildx imagetools inspect "$tag" >/dev/null
           bash "$GITHUB_WORKSPACE/scripts/release/check_release_target.sh" \
             "$RELEASE_VERSION" "$SOURCE_SHA" draft
+          test -n "$FLUX_RELEASE_ADMIN_READ_TOKEN" || {
+            echo 'Configure FLUX_RELEASE_ADMIN_READ_TOKEN with repository Administration (read) permission.' >&2
+            exit 1
+          }
+          GH_TOKEN="$FLUX_RELEASE_ADMIN_READ_TOKEN" \
+            gh api "repos/$GITHUB_REPOSITORY/immutable-releases" | \
+            python3 "$GITHUB_WORKSPACE/scripts/release/check_immutable_releases.py"
           gh release edit "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --draft=false
           bash "$GITHUB_WORKSPACE/scripts/release/check_release_target.sh" \
             "$RELEASE_VERSION" "$SOURCE_SHA" published
