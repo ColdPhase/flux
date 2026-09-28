@@ -125,9 +125,10 @@ Direct messages were added this way (`dm_message`, audience `dm`), and docs (`do
 - **Opening a result** goes to the exact object: a message or DM message opens on that whole
   message (`#message-<id>`, highlighted and focused), a material or doc at the matched version, a thought
   selected in its sketch (`#thought-<id>`), a private draft on Home (`#draft-<id>`), a person to a
-  direct message with them, and work, decisions and results in Details on their project. A DM
-  message outside the loaded window opens the DM at its latest messages; drafts shared with a
-  project have no view of their own yet and open Home.
+  direct message with them, and work, decisions and results in Details on their project. A message
+  older than the conversation's first window is reached by paging back (`apps/web/src/app/seekMessage.ts`,
+  pages of 100 through the same authorized DM and conversation reads, at most 10,000 messages) and
+  then shown and focused. Drafts shared with a project have no view of their own yet and open Home.
 - **Recent searches** (`apps/web/src/search/recent.ts`) are kept in this browser only, per account
   (`flux.search.recent.<userId>`, the person's own words, never results), and every account's list
   is removed on sign-out.
@@ -151,5 +152,6 @@ Direct messages were added this way (`dm_message`, audience `dm`), and docs (`do
   opening the exact message, the sidebar entry, arrow keys, an old material version, a rule in
   Details, a thought selected in its sketch, Esc, a DM message, no results, the search page with
   chips, counts, the place menu and keyboard movement, an outsider seeing only the open project,
-  recent searches per account and their removal on sign-out, and the phone (full-screen sheet from
+  recent searches per account and their removal on sign-out, a DM message and a project message
+  with 130 newer messages after them (outside the first window) opening exactly, and the phone (full-screen sheet from
   the drawer, 44 px targets, no horizontal scroll). Screenshots: [`docs/design/search/`](../design/search/).

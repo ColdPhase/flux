@@ -344,5 +344,31 @@ class SearchJourney(unittest.TestCase):
         shot(page, "search-page-desktop-1440-dark")
 
 
+    def test_10_an_old_message_opens_exactly_even_outside_the_first_window(self) -> None:
+        """More messages than one window (50) arrive after the target, in a DM and in a project."""
+        ari = self.page("ari")
+        dm, lamp = self.ids["dm"], self.ids["lamp"]
+        self.api(ari, "POST", f"/api/v1/dms/{dm}/messages", {"body": "The oak veneer quote came back at 480 euros.", "clientMessageId": str(uuid.uuid4())}, status=201)
+        thread = self.api(ari, "POST", f"/api/v1/projects/{lamp}/conversations", {"body": "Where should the dimmer knob go?", "clientMessageId": str(uuid.uuid4())}, status=201)
+        self.api(ari, "POST", f"/api/v1/conversations/{thread['id']}/messages", {"body": "The brass knob sample weighs 42 grams.", "clientMessageId": str(uuid.uuid4())}, status=201)
+        for index in range(130):
+            self.api(ari, "POST", f"/api/v1/dms/{dm}/messages", {"body": f"Packing list item {index + 1}", "clientMessageId": str(uuid.uuid4())}, status=201)
+            self.api(ari, "POST", f"/api/v1/conversations/{thread['id']}/messages", {"body": f"Assembly step {index + 1}", "clientMessageId": str(uuid.uuid4())}, status=201)
+        page = self.page("nia")
+        page.goto("/")
+        for query, selector, url in (("oak veneer quote", ".dm-msg.is-arrived", rf"/dm/{dm}#message-"),
+                                     ("brass knob sample", ".project-convo__message.is-arrived", rf"/projects/{lamp}/conversations/{thread['id']}#message-")):
+            dialog, field = self.jump(page, query)
+            expect(dialog.get_by_role("option").first).to_contain_text(query.split()[0])
+            field.press("Enter")
+            expect(page).to_have_url(re.compile(url))
+            target = page.locator(selector)
+            expect(target).to_contain_text("480 euros" if "oak" in query else "42 grams")
+            expect(target).to_be_focused()
+            expect(target).to_be_in_viewport()
+            if "oak" in query:
+                shot(page, "search-open-old-dm-message-desktop-1440")
+
+
 if __name__ == "__main__":
     unittest.main()

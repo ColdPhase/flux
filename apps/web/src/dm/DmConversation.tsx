@@ -7,6 +7,7 @@ import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { Avatar, Button, Icon } from '../ui';
 import { audienceLine, dmTitle, othersIn } from './names';
+import { pageBackTo } from '../app/seekMessage';
 import './dm.css';
 
 /**
@@ -145,11 +146,26 @@ function DmContent({ initial }: { initial: Dm }) {
   // A search result opens on that whole message when it is in the loaded window (#114); otherwise on the latest.
   const hash = useLocation().hash;
   const arrived = hash.startsWith('#message-') ? hash.slice('#message-'.length) : null;
+  const arrivedLoaded = !!arrived && messages.some((message) => message.id === arrived);
+  // Older than the loaded window: page back until the message is loaded, then show it.
+  useEffect(() => {
+    if (!arrived || arrivedLoaded || !olderCursor) return;
+    let cancelled = false;
+    void pageBackTo(arrived, olderCursor, (before, limit) => olderDmMessages(initial.id, before, undefined, limit)).then(({ pages, cursor }) => {
+      if (cancelled) return;
+      for (const page of pages) learn(page.people);
+      setMessages((current) => pages.reduce((all, page) => merge(all, page.messages), current));
+      setOlderCursor(cursor);
+    }).catch((cause: unknown) => { denied(cause); });
+    return () => { cancelled = true; };
+    // Seek once per target; later pages come from "Show earlier messages".
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arrived]);
   useLayoutEffect(() => {
     const anchor = arrived ? document.getElementById(`message-${arrived}`) : null;
     if (anchor) { anchor.scrollIntoView({ block: 'start' }); anchor.focus({ preventScroll: true }); return; }
     const el = feedRef.current; if (el) el.scrollTop = el.scrollHeight;
-  }, [arrived]);
+  }, [arrived, arrivedLoaded]);
 
   const autosize = () => {
     const el = textareaRef.current;
