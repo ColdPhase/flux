@@ -29,6 +29,7 @@ test('receiver sample derives actual interval bitrate, loss, fps, jitter and sel
   assert.equal(sample.tracks[0]!.jitterMs, 12);
   assert.equal(sample.tracks[1]!.bitrateKbps, 800);
   assert.equal(sample.tracks[1]!.fps, 15);
+  assert.equal(sample.tracks[1]!.framesDelta, 30);
   assert.equal(sample.tracks[1]!.width, 640);
   assert.equal(assessReceiverQuality(sample, ['audio', 'video']).status, 'good');
 });
@@ -76,4 +77,13 @@ test('cumulative packets and healthy RTT cannot hide a stalled expected receiver
   assert.ok(result.warnings.some((warning) => warning.includes('audio stopped receiving')));
   const shortSample = readReceiverSample(before, before, 1000);
   assert.equal(assessReceiverQuality(shortSample, ['audio']).status, 'unknown');
+});
+
+test('interval decoded frames override a stale instantaneous browser fps report', () => {
+  const sample = readReceiverSample([
+    { ...before[3]!, packetsReceived: 170, framesDecoded: 92, framesPerSecond: 0 },
+  ], before, 2000);
+  assert.equal(sample.tracks[0]!.packetsDelta, 20);
+  assert.equal(sample.tracks[0]!.framesDelta, 12);
+  assert.equal(sample.tracks[0]!.fps, 6);
 });

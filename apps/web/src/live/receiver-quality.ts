@@ -38,6 +38,7 @@ export interface ReceiverTrackSample {
   bitrateKbps?: number;
   jitterMs?: number;
   fps?: number;
+  framesDelta?: number;
   width?: number;
   height?: number;
 }
@@ -92,15 +93,16 @@ export function readReceiverSample(
       ? (byteDelta * 8) / elapsedMs : undefined;
     const frameDelta = counterDelta(record.framesDecoded, prior?.framesDecoded);
     const fps = record.kind === 'video'
-      ? nonnegative(record.framesPerSecond) ?? (frameDelta !== undefined && elapsedMs > 0
-        ? frameDelta * 1000 / elapsedMs : undefined)
+      ? (frameDelta !== undefined && elapsedMs > 0
+        ? frameDelta * 1000 / elapsedMs : nonnegative(record.framesPerSecond))
       : undefined;
     tracks.push({ id: record.id, kind: record.kind, packetsReceived: received,
       packetsDelta: receivedDelta,
       lossPercent, bitrateKbps,
       jitterMs: record.kind === 'audio' && nonnegative(record.jitter) !== undefined
         ? record.jitter! * 1000 : undefined,
-      fps, width: record.kind === 'video' ? nonnegative(record.frameWidth) : undefined,
+      fps, framesDelta: record.kind === 'video' ? frameDelta : undefined,
+      width: record.kind === 'video' ? nonnegative(record.frameWidth) : undefined,
       height: record.kind === 'video' ? nonnegative(record.frameHeight) : undefined });
   }
   return { intervalMs: elapsedMs, rttMs, tracks };
@@ -149,7 +151,7 @@ export function assessReceiverQuality(sample: ReceiverSample, expectedKinds: Arr
       else if (track.jitterMs > RECEIVER_QUALITY_LIMITS.audioJitterWarningMs)
         flag(`Audio jitter ${Math.round(track.jitterMs)} ms`, 'warning');
     }
-    if (track.kind === 'video' && track.fps !== undefined && track.packetsReceived > 0) {
+    if (track.kind === 'video' && track.fps !== undefined && (track.packetsDelta ?? 0) > 0) {
       if (track.fps < RECEIVER_QUALITY_LIMITS.videoFpsPoor)
         flag(`Video receiving ${track.fps.toFixed(1)} fps`, 'poor');
       else if (track.fps < RECEIVER_QUALITY_LIMITS.videoFpsWarning)

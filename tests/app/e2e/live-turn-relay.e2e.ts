@@ -122,7 +122,7 @@ async function selectedCandidates(page: Page): Promise<CandidateEvidence[]> {
 }
 
 test('two authorized Chromium clients exchange media when UDP and direct ICE/TCP are blocked',
-  { timeout: 120_000 }, async () => {
+  { timeout: 180_000 }, async () => {
     const owner = await person('relay-owner');
     const member = await person('relay-member');
     const ws = await workspace(owner, 'Relay proof');
@@ -268,9 +268,85 @@ test('two authorized Chromium clients exchange media when UDP and direct ICE/TCP
     } finally {
       execFileSync('tc', ['qdisc', 'del', 'dev', iface, 'root']);
     }
+    let betweenProfiles = weak;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const prior = await receiverReports(memberPage);
+      await delay(1_000);
+      betweenProfiles = readReceiverSample(await receiverReports(memberPage), prior, 1_000);
+      if (betweenProfiles.rttMs !== undefined &&
+        betweenProfiles.rttMs < RECEIVER_QUALITY_LIMITS.rttWarningMs &&
+        betweenProfiles.tracks.some((track) => track.kind === 'audio' && (track.packetsDelta ?? 0) > 0) &&
+        betweenProfiles.tracks.some((track) => track.kind === 'video' && (track.framesDelta ?? 0) > 0)) break;
+    }
+    assert.ok(betweenProfiles.rttMs !== undefined &&
+      betweenProfiles.rttMs < RECEIVER_QUALITY_LIMITS.rttWarningMs,
+    `first impairment must clear before testing packet loss: ${JSON.stringify(betweenProfiles)}`);
+    // A fixed netem profile now introduces variable delay and packet drops
+    // on the client's outbound interface. TURN/TLS carries media over TCP:
+    // kernel drops can become retransmission/latency rather than RTP loss.
+    // This image's iproute2 does not support a random seed: the configured
+    // impairment is repeatable, while the exact random drop sequence varies.
+    let lossy = baseline;
+    let lossyQuality = assessReceiverQuality(lossy, ['audio', 'video']);
+    let qdisc = '';
+    execFileSync('tc', ['qdisc', 'replace', 'dev', iface, 'root', 'netem',
+      'delay', '350ms', '80ms', 'distribution', 'normal', 'loss', 'random', '15%']);
+    try {
+      const start = Date.now();
+      const beforeLossy = await receiverReports(memberPage);
+      for (let attempt = 0; attempt < 25; attempt++) {
+        await delay(1_000);
+        lossy = readReceiverSample(await receiverReports(memberPage), beforeLossy, Date.now() - start);
+        lossyQuality = assessReceiverQuality(lossy, ['audio', 'video']);
+        qdisc = execFileSync('tc', ['-s', 'qdisc', 'show', 'dev', iface], { encoding: 'utf8' });
+        if (lossy.rttMs !== undefined && lossy.rttMs > RECEIVER_QUALITY_LIMITS.rttWarningMs &&
+          Number(qdisc.match(/dropped (\d+)/)?.[1] ?? 0) > 0 &&
+          lossy.tracks.some((track) => track.kind === 'audio' && (track.packetsDelta ?? 0) > 0) &&
+          lossy.tracks.some((track) => track.kind === 'video' && (track.packetsDelta ?? 0) > 0)) break;
+      }
+      assert.ok(Number(qdisc.match(/dropped (\d+)/)?.[1] ?? 0) > 0,
+        `netem must actually drop outbound packets: ${qdisc}`);
+      assert.ok(lossy.rttMs !== undefined && lossy.rttMs > RECEIVER_QUALITY_LIMITS.rttWarningMs,
+        `selected ICE RTT must show variable-delay impairment: ${JSON.stringify(lossy)}`);
+      assert.ok(lossyQuality.warnings.some((warning) => warning.includes('Network round trip')),
+        JSON.stringify(lossyQuality));
+      for (const kind of ['audio', 'video'] as const)
+        assert.ok(lossy.tracks.some((track) => track.kind === kind && (track.packetsDelta ?? 0) > 0),
+          `${kind} must still be received under the lossy profile`);
+    } finally {
+      execFileSync('tc', ['qdisc', 'del', 'dev', iface, 'root']);
+    }
+    let recovered = lossy;
+    const recoveryStart = Date.now();
+    for (let attempt = 0; attempt < 25; attempt++) {
+      const beforeRecovery = await receiverReports(memberPage);
+      await delay(1_000);
+      recovered = readReceiverSample(await receiverReports(memberPage), beforeRecovery, 1_000);
+      if (recovered.rttMs !== undefined && recovered.rttMs < RECEIVER_QUALITY_LIMITS.rttWarningMs &&
+        recovered.tracks.some((track) => track.kind === 'audio' && (track.packetsDelta ?? 0) > 0) &&
+        recovered.tracks.some((track) => track.kind === 'video' &&
+          (track.packetsDelta ?? 0) > 0 && (track.framesDelta ?? 0) > 0)) break;
+    }
+    assert.ok(recovered.rttMs !== undefined && recovered.rttMs < RECEIVER_QUALITY_LIMITS.rttWarningMs,
+      `selected ICE RTT must recover after removing netem: ${JSON.stringify(recovered)}`);
+    for (const kind of ['audio', 'video'] as const)
+      assert.ok(recovered.tracks.some((track) => track.kind === kind && (track.packetsDelta ?? 0) > 0),
+        `${kind} reception must recover after removing netem`);
+    assert.ok(recovered.tracks.some((track) => track.kind === 'video' &&
+      (track.framesDelta ?? 0) > 0),
+    `video must decode fresh frames after removing netem: ${JSON.stringify(recovered)}`);
+    const recoveryMs = Date.now() - recoveryStart;
+    const recoveredCandidates = await selectedCandidates(memberPage);
+    for (const candidate of recoveredCandidates) {
+      assert.equal(candidate.candidateType, 'relay', JSON.stringify(candidate));
+      assert.equal(candidate.relayProtocol, 'tls', JSON.stringify(candidate));
+    }
     console.log(JSON.stringify({ ownerCandidates, memberCandidates, subscribedAudio: true,
-      receivedAudioPackets: true, receivedVideo: true, baseline, weak, quality,
-      fixedClientDelayMs: 450, blocked: ['UDP to SFU', 'TCP/7881 direct ICE'], participants: 2 }));
+      receivedAudioPackets: true, receivedVideo: true, baseline, weak, quality, betweenProfiles,
+      lossy, lossyQuality, netemOutboundDropped: Number(qdisc.match(/dropped (\d+)/)?.[1] ?? 0),
+      recovered, recoveryMs, recoveredCandidates,
+      fixedClientDelayMs: 450, configuredLossPercent: 15, variableDelayMs: [350, 80],
+      blocked: ['UDP to SFU', 'TCP/7881 direct ICE'], participants: 2 }));
     await Promise.all([ownerPage.close(), memberPage.close()]);
   });
 

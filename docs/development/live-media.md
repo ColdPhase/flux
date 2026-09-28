@@ -49,12 +49,11 @@ then rolling back to the previous digest/config if the call fails. A restart
 interrupts current media; Flux's room-generation recovery is tested by
 `scripts/check_live_sfu.sh` but quality/recovery time is still unmeasured.
 
-For k3s, use host networking for SFU media ports or explicit L4 TCP/UDP
-LoadBalancer services with a stable public media address. Terminate signaling
-WSS at ingress; mount TURN TLS materials from a namespaced Kubernetes Secret,
-and expose TCP/443 at L4 on the TURN DNS address. A generic HTTP Ingress alone
-cannot expose the media or TURN ports. This is a topology requirement, not a
-verified chart/install path; #63 still requires that deployment run.
+For k3s, follow the separate
+[operator deployment contract](live-media-k3s.md). It records inputs, port
+ownership, security and external validation gates. This is a topology
+requirement, not a verified chart/install path; #63 still requires a real
+deployment run.
 
 ## Local restrictive-network proof
 
@@ -134,6 +133,34 @@ video continued at 320×180, 10 fps and 40.7 kbps. The classifier returned
 TURN/TLS relay candidate pairs; the client firewall rejected 60 UDP packets
 and three direct TCP/7881 packets. These values are one local synthetic-media
 observation, not code-text readability or network/device acceptance.
+
+The same two-client test also applies a second `tc netem` profile after the
+fixed-delay phase has cleared: 350 ms mean delay with 80 ms variation and
+15% configured random outbound packet loss. The installed `iproute2` cannot
+seed the random sequence. Reproduction therefore fixes the parameters and
+checks the observed kernel drop counter, receiver warning/degradation and
+recovery, not an exact count, percentage or bitrate. TURN/TLS uses TCP on the
+client hop: TCP retransmission can turn a dropped network packet into delay
+without incrementing receiver RTP `packetsLost`. The test removes the qdisc,
+then requires fresh audio RTP, fresh decoded video frames and selected ICE RTT
+below the warning threshold. This is a bounded local recovery observation;
+it does not measure real Wi-Fi loss, microphone intelligibility or external
+NAT behavior.
+
+**Observed 2026-09-28, final local Docker rerun:**
+`./scripts/check_live_turn.sh` exited 0 (2/2 E2E and full Compose cleanup).
+The first fixed-delay phase warned at 450 ms selected ICE RTT. A clean sample
+between profiles returned to 0 ms RTT and decoded nine video frames in one
+second. Under the 350±80 ms/15% random-loss profile, `tc -s qdisc` recorded
+19 dropped outbound packets. The receiver measured 304 ms selected ICE RTT,
+37 ms audio jitter and 7.2 decoded video frames/s, yielding `warning` with
+specific RTT, jitter and video reasons. RTP interval loss remained 0%; this
+does not contradict the network drop counter because the client used TURN/TLS
+over TCP. After removing the profile, within about 2.0 seconds the receiver
+measured 0 ms RTT, fresh audio packets and 16 newly decoded video frames in a
+one-second sample. The selected pair remained a TLS relay candidate. These
+are one local generated-media observation, not quality targets or a promise
+of recovery timing on other links/devices.
 
 ## Four-person, two-screen local evidence
 
