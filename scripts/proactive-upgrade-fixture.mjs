@@ -41,7 +41,7 @@ if (phase === 'prepare') {
     rationale: 'Compare sensor options under identical light.', sources: [{ type: 'message', id: conversation.messages[0].id }] }, 201);
   const result = await request('POST', `/api/v1/projects/${project.id}/results`, { title: 'Camera trial failed', finding: 'negative',
     evidence: 'Detection was below the target.', sources: [{ type: 'material', id: material.materialId, version: 2 },
-      { type: 'message', id: conversation.messages[0].id }], related: [{ type: 'work', id: work.id }, { type: 'decision', id: decision.id }] }, 201);
+      { type: 'message', id: conversation.messages[0].id }], work: [work.id], decisions: [decision.id] }, 201);
   console.log(`FLUX_UPGRADE_STATE ${JSON.stringify({ cookie, userId: me.user.id, workspaceId: ws.id, projectId: project.id,
     agentId: agent.id, materialId: material.materialId, conversationId: conversation.id, draftId: draft.id, resultId: result.id,
     workId: work.id, decisionId: decision.id })}`);
@@ -58,7 +58,7 @@ if (phase === 'prepare') {
   const results = await request('GET', `/api/v1/projects/${state.projectId}/results`);
   const result = results.items.find((item) => item.id === state.resultId);
   same(result.finding, 'negative', 'Negative result');
-  same(result.links.filter((link) => link.role === 'related').map((link) => link.to.id).sort(),
+  same(result.links.filter((link) => link.role === 'about').map((link) => link.to.id).sort(),
     [state.workId, state.decisionId].sort(), 'Work/decision result links');
   const rule = await request('POST', `/api/v1/projects/${state.projectId}/proactive-comparison-rules`, {
     agentId: state.agentId, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
