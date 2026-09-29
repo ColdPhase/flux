@@ -426,6 +426,12 @@ pg_db() { v=$(env_value POSTGRES_DB); printf '%s' "${v:-flux}"; }
 db_query() { compose_main exec -T db psql -X -v ON_ERROR_STOP=1 -U "$(pg_user)" -d "$(pg_db)" -tAc "$1"; }
 running_services() { compose_main ps --status running --services 2>/dev/null || true; }
 is_running() { running_services | grep -qx "$1"; }
+# The running writers (api, worker) separated by spaces, or failure when Compose cannot say:
+# an unanswered question is never read as "nothing is running".
+running_writers() {
+  listed=$(compose_main ps --status running --services 2>/dev/null) || return 1
+  printf '%s\n' "$listed" | grep -xE 'api|worker' | paste -sd' ' - || true
+}
 
 sha256_of() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
@@ -514,12 +520,17 @@ backup_to() {
   if [ -n "$writers" ]; then say "Stopping$writers so the database and files are captured at one point in time..."; fi
   stop_ok=1
   stop_error=$(compose_main stop api worker 2>&1 >/dev/null) || stop_ok=0
+  still='' inspected=1
+  still=$(running_writers) || inspected=0
   # Restart exactly what was running before and is stopped now; never start anything else.
-  still=''
-  for service in api worker; do if is_running "$service"; then still="$still $service"; fi; done
-  for service in $writers; do case " $still " in *" $service "*) ;; *) BACKUP_RESTART="$BACKUP_RESTART $service" ;; esac; done
+  if [ "$inspected" = 1 ]; then
+    for service in $writers; do case " $still " in *" $service "*) ;; *) BACKUP_RESTART="$BACKUP_RESTART $service" ;; esac; done
+  fi
+  if [ "$inspected" != 1 ]; then
+    die "Could not check whether API and worker stopped (docker compose ps failed). No backup was written."
+  fi
   if [ "$stop_ok" != 1 ] || [ -n "$still" ]; then
-    die "Could not confirm that API and worker are stopped (still running:${still:- none}; stop $( [ "$stop_ok" = 1 ] && echo succeeded || echo failed)). No backup was written.${stop_error:+ ($(printf '%s' "$stop_error" | tail -n 1))}"
+    die "Could not confirm that API and worker are stopped (still running: ${still:-none}; stop $( [ "$stop_ok" = 1 ] && echo succeeded || echo failed)). No backup was written.${stop_error:+ ($(printf '%s' "$stop_error" | tail -n 1))}"
   fi
   compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" db >/dev/null 2>&1 || die "The database of $PROJECT did not start."
   schema=$(db_query 'SELECT max(version) FROM flux_schema_version') || die "Could not read the schema version of $PROJECT."
@@ -718,7 +729,7 @@ cmd_restore() {
   say "Replacing the data of $PROJECT..."
   compose_main --profile ops --profile setup down -v --remove-orphans >/dev/null 2>&1
   compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" db >/dev/null || die "The new database did not start."
-  # pg_dump pins an empty search_path; functions written before 0026 that call others
+  # pg_dump pins an empty search_path; functions written before 0021 that call others
   # unqualified (search_keys, #114) then fail while COPY fills generated columns. The dump is
   # our own, checksummed archive, so it is replayed with the public schema on the path.
   compose_main exec -T db pg_restore --no-owner --no-privileges -f - < "$RESTORE_DIR/database.dump" > "$RESTORE_DIR/database.sql" \
@@ -785,11 +796,14 @@ upgrade_failed() {
   # Whatever failed, stop the writers and confirm it before recommending a restore: a restore
   # replaces the data, so anything the new version accepted since it started would be lost.
   stop_error=$(compose_main stop api worker 2>&1 >/dev/null) || true
-  still=''
-  for service in api worker; do if is_running "$service"; then still="$still $service"; fi; done
+  still='' inspected=1
+  still=$(running_writers) || inspected=0
   warn "Your data from before the upgrade is in $UPGRADE_ARCHIVE (schema $UPGRADE_FROM_SCHEMA, commit $UPGRADE_FROM_COMMIT)."
-  if [ -n "$still" ]; then
-    warn "Could not stop$still${stop_error:+ ($(printf '%s' "$stop_error" | tail -n 1))}. It may still accept work that is NOT in that backup."
+  if [ "$inspected" != 1 ]; then
+    warn "Could not check whether API and worker stopped (docker compose ps failed${stop_error:+; stop: $(printf '%s' "$stop_error" | tail -n 1)}). Treat them as running: they may still accept work that is NOT in that backup."
+    warn "Stop them (docker compose -p $PROJECT stop api worker), confirm with docker compose -p $PROJECT ps, and check what they accepted before you restore."
+  elif [ -n "$still" ]; then
+    warn "Could not stop $still${stop_error:+ ($(printf '%s' "$stop_error" | tail -n 1))}. It may still accept work that is NOT in that backup."
     warn "Stop it first (docker compose -p $PROJECT stop api worker) and check what it accepted before you restore."
   elif [ -n "${UPGRADE_STARTED_AT:-}" ]; then
     warn "API and worker of the new version ran from $UPGRADE_STARTED_AT until this failure and are stopped now."

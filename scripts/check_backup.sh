@@ -332,6 +332,22 @@ if (PATH="$work/shim-health-stop:$PATH"; export PATH; flux_u upgrade -y) > "$wor
 grep -q 'Could not stop api worker' "$work/upgrade-nostop.out" || { cat "$work/upgrade-nostop.out"; fail "an unconfirmed stop was not reported"; }
 if grep -q 'nothing was written after\|are stopped now' "$work/upgrade-nostop.out"; then fail "an unconfirmed stop was reported as stopped"; fi
 [ "$(running_u)" = "api worker" ] || fail "the shim should have left both writers running: $(running_u)"
+# Health fails, then both stopping and asking Compose what runs fail: nothing is claimed.
+mkdir -p "$work/shim-noinspect"; rm -f "$work/health-failed"
+printf '#!/bin/sh\ncase "$*" in *exec*api*/api/v1/health*) : > "%s/health-failed"; exit 1 ;; *" stop "*|*" ps "*) [ -e "%s/health-failed" ] && { echo "shim: refused" >&2; exit 1; } ;; esac\nexec %s "$@"\n' "$work" "$work" "$real_docker" > "$work/shim-noinspect/docker"
+chmod +x "$work/shim-noinspect/docker"
+if (PATH="$work/shim-noinspect:$PATH"; export PATH; flux_u upgrade -y) > "$work/upgrade-noinspect.out" 2>&1; then fail "upgrade with failing health, stop and ps succeeded"; fi
+grep -q 'Could not check whether API and worker stopped' "$work/upgrade-noinspect.out" || { cat "$work/upgrade-noinspect.out"; fail "an unknown writer state was not reported"; }
+if grep -q 'nothing was written after\|are stopped now' "$work/upgrade-noinspect.out"; then fail "an unknown writer state was reported as stopped"; fi
+[ "$(running_u)" = "api worker" ] || fail "the shim should have left both writers running: $(running_u)"
+# A backup whose stop cannot be checked writes nothing.
+mkdir -p "$work/shim-ps"
+printf '#!/bin/sh\ncase "$*" in *" ps --status running"*) exit 1 ;; esac\nexec %s "$@"\n' "$real_docker" > "$work/shim-ps/docker"
+chmod +x "$work/shim-ps/docker"
+before_ps=$(ls "$work/backups" | wc -l)
+if (PATH="$work/shim-ps:$PATH"; export PATH; flux_u backup --output "$work/backups") > "$work/backup-noinspect.out" 2>&1; then fail "a backup ran although the writer state was unknown"; fi
+grep -q 'Could not check whether API and worker stopped' "$work/backup-noinspect.out" || { cat "$work/backup-noinspect.out"; fail "no unknown-state refusal"; }
+[ "$(ls "$work/backups" | wc -l)" = "$before_ps" ] || fail "a backup archive was written although the writer state was unknown"
 flux_u clean -y >/dev/null
 
 step "PASS: backup, restore into a fresh project, agent access, export, upgrade from $(git -C "$here" rev-parse --short "$from") (+$(printf '%s\n' "$new_migrations" | wc -l | tr -d ' ') migrations) and failed-upgrade recovery"
