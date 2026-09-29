@@ -95,6 +95,16 @@ test('real project UI presents sourced quiet suggestions, then persists edits, u
     try {
       await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks`);
       await viewportCards.first().waitFor();
+      if (viewport.width === 390) {
+        for (const title of await viewportCards.locator('.ws-proposal__action').all()) {
+          assert.ok(await title.evaluate((element) => element.scrollHeight <= element.clientHeight + 1),
+            'the compact phone experiment title keeps its 5-lux condition visible');
+        }
+        for (const fact of await viewportCards.locator('.ws-proposal__fact').all()) {
+          assert.ok(await fact.evaluate((element) => element.scrollHeight <= element.clientHeight + 1),
+            'the compact phone observation keeps its quantitative evidence visible');
+        }
+      }
       await page.screenshot({ path: `/state/proactive-ui-${viewport.width}-collapsed.png`, fullPage: true });
       await activate(viewportCards.first().locator('.ws-proposal__toggle'));
       const workSource = viewportCards.first().getByRole('link', { name: /^Measure ToF response at 5 lux/ });
@@ -111,7 +121,7 @@ test('real project UI presents sourced quiet suggestions, then persists edits, u
         assert.equal(await page.evaluate(() => matchMedia('(pointer: coarse)').matches), true);
         for (const control of await page.locator('.ws-proposal__sources a, .ws-proposal__sources button, .ws-proposals__jumps button').all()) {
           const bounds = await control.boundingBox();
-          assert.ok(bounds && bounds.height >= 44, 'source links and section jumps have 44px touch targets');
+          assert.ok(bounds && bounds.height >= 44 && bounds.width >= 44, 'source links and section jumps have 44×44px touch targets');
         }
       }
       await page.screenshot({ path: `/state/proactive-ui-${viewport.width}-expanded.png`, fullPage: true });
@@ -140,6 +150,23 @@ test('real project UI presents sourced quiet suggestions, then persists edits, u
       const thought = await api('GET', `/api/v1/sketches/${fixture.sketchId}`);
       assert.equal(thought.status, 200);
       assert.ok((thought.data as { thoughts: Array<{ id: string }> }).thoughts.some((item) => item.id === fixture.thoughtId));
+      await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks`);
+      await activate(viewportCards.first().locator('.ws-proposal__toggle'));
+      const edit = viewportCards.first().getByRole('button', { name: 'Edit', exact: true });
+      await edit.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: `/state/proactive-ui-${viewport.width}-actions.png`, fullPage: true });
+      await activate(edit);
+      const interpretation = viewportCards.first().getByLabel('Interpretation');
+      const originalInterpretation = await interpretation.inputValue();
+      await activate(interpretation);
+      if (touch) assert.ok(await interpretation.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize) >= 16),
+        'touch editing uses readable 16px input text');
+      await interpretation.fill('An unsaved human interpretation.');
+      await page.screenshot({ path: `/state/proactive-ui-${viewport.width}-editing.png`, fullPage: true });
+      await activate(viewportCards.first().getByRole('button', { name: 'Cancel', exact: true }));
+      assert.ok((await viewportCards.first().innerText()).includes(originalInterpretation));
+      assert.equal((await proposals()).find((item) => item.id === initial[0]?.id)?.version, 1,
+        'cancelling a draft edit does not change the persisted proposal');
     } finally {
       page = originalPage;
       await viewportContext.close();

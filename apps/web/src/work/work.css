@@ -169,7 +169,12 @@
   .ws-proposal__detail strong { display: block; }
   .ws-proposal { padding: 10px 0; }
   .ws-proposal__toggle { min-height: 44px; }
+  .ws-proposal__action, .ws-proposal__fact { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; white-space: normal; }
+  .ws-proposal__source { white-space: normal; }
+  .ws-proposal__trigger { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ws-proposal__separator { display: none; }
 }
 @media (pointer: coarse) {
-  .ws-proposal__sources a, .ws-proposal__sources button, .ws-proposals__jumps button { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; min-height: 44px; }
+  .ws-proposal__sources a, .ws-proposal__sources button, .ws-proposals__jumps button { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 44px; min-height: 44px; }
+  .ws-proposal textarea { font-size: 16px; }
 }
