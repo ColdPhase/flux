@@ -72,6 +72,8 @@ INSTRUMENT = """
       if (window.__denyCamera && constraints && constraints.video) throw new DOMException('Permission denied', 'NotAllowedError');
       const stream = await gum(constraints);
       stream.getTracks().forEach((track) => state.tracks.push(track));
+      // A test can hold a capture as a slow permission prompt would, then release it later.
+      if (window.__holdCapture) await new Promise((resolve) => { window.__releaseCapture = resolve; });
       return stream;
     };
     if (md.getDisplayMedia) {
@@ -456,8 +458,36 @@ class LiveJourney(LiveBase):
         expect(self.bar(nia).get_by_role("button", name=re.compile("^Microphone off"))).to_have_attribute("aria-pressed", "false")
         self.assertTrue(nia.evaluate("[...document.querySelectorAll('[data-live-audio] audio')].every((a) => !a.muted)"), "listening resumes")
 
+        # A capture that finishes after Quiet sends nothing: hold Nia's microphone prompt, choose
+        # Work quietly, then let the browser return the live track (review of #131).
+        expect(ada.locator("[data-live-audio] audio")).to_have_count(0)
+        nia.evaluate("window.__holdCapture = true")
+        self.bar(nia).get_by_role("button", name=re.compile("^Microphone off")).click()
+        nia.wait_for_function("() => typeof window.__releaseCapture === 'function'")
+        self.bar(nia).get_by_role("button", name="Session details and more").click()
+        nia.get_by_role("dialog", name="Live session").get_by_role("switch", name=re.compile("Work quietly")).click()
+        nia.keyboard.press("Escape")
+        expect(self.bar(nia).get_by_role("status").first).to_contain_text("Quiet")
+        nia.evaluate("window.__holdCapture = false; window.__releaseCapture()")
+        nia.wait_for_function("() => window.__live.tracks.every((t) => t.readyState === 'ended')")
+        nia.wait_for_timeout(2500)
+        self.assertEqual(nia.evaluate("window.__live.tracks.filter((t) => t.readyState === 'live').length"), 0, "the late track was stopped")
+        expect(ada.locator("[data-live-audio] audio")).to_have_count(0)
+        expect(self.bar(nia).get_by_role("button", name=re.compile("^Microphone off"))).to_have_attribute("aria-pressed", "false")
+        # The same for leaving while a capture is pending.
+        self.bar(nia).get_by_role("button", name="Return").click()
+        nia.evaluate("window.__holdCapture = true; window.__releaseCapture = undefined")
+        self.bar(nia).get_by_role("button", name=re.compile("^Microphone off")).click()
+        nia.wait_for_function("() => typeof window.__releaseCapture === 'function'")
+        self.bar(nia).get_by_role("button", name="Leave", exact=True).click()
+        expect(self.bar(nia)).to_have_count(0)
+        nia.evaluate("window.__holdCapture = false; window.__releaseCapture()")
+        nia.wait_for_function("() => window.__live.tracks.every((t) => t.readyState === 'ended')")
+        expect(ada.locator("[data-live-audio] audio")).to_have_count(0)
+        expect(self.bar(ada).locator(".lv-face")).to_have_count(3)
+
         # Everyone leaves; the last one is told the session closes; the doc is unchanged.
-        for who in ("kai", "nia", "jonas", "ada"):
+        for who in ("kai", "jonas", "ada"):
             self.bar(pages[who]).get_by_role("button", name="Leave", exact=True).click()
             expect(self.bar(pages[who])).to_have_count(0)
         self.assertEqual(self.api(ada, "GET", f"/api/v1/docs/{self.ids['doc']}", status=200)["version"], 1)
@@ -493,7 +523,16 @@ class LiveJourney(LiveBase):
         sheet = phone.get_by_role("dialog", name="Live session")
         expect(sheet.get_by_role("heading", name=re.compile("night camera test"))).to_be_visible()
         shot(phone, "live-phone-390-sheet")
-        phone.keyboard.press("Escape")
+        # A labelled way back is in the first screen of the sheet, as a touch target (review of #131).
+        back = sheet.get_by_role("button", name="Back to work")
+        box = back.bounding_box()
+        assert box
+        self.assertGreaterEqual(min(box["width"], box["height"]), 43.5, "touch target")
+        self.assertLessEqual(box["y"] + box["height"], PHONE["height"], "visible without scrolling")
+        back.tap()
+        expect(sheet).to_be_hidden()
+        expect(self.bar(phone).get_by_role("status").first).to_contain_text("Live")
+        expect(self.bar(phone).get_by_role("button", name="Session details and more")).to_be_focused()
         # Nia shares her screen; the phone views it and zooms without publishing anything.
         self.bar(nia).get_by_role("button", name="Share a window, tab or screen").click()
         bar.get_by_role("button", name="View").click()

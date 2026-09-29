@@ -118,7 +118,9 @@
 
 /* ---------- Panel (desktop popover, phone sheet) ---------- */
 .lv-panel { display: flex; flex-direction: column; }
-.lv-panel__head { padding: 16px 16px 12px; border-bottom: 1px solid var(--line); }
+.lv-panel__head { position: relative; padding: 16px 52px 12px 16px; border-bottom: 1px solid var(--line); }
+.lv-panel__close { position: absolute; top: 8px; right: 8px; }
+@media (pointer: coarse) { .lv-panel__close { width: 44px; height: 44px; } }
 .lv-panel__k { font-size: var(--fs-xs); color: var(--text-3); font-weight: 500; }
 .lv-panel__t { margin-top: 2px; font-size: var(--fs-lg); line-height: var(--lh-tight); letter-spacing: -0.01em; }
 .lv-panel__aud { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: var(--fs-sm); color: var(--text-3); }

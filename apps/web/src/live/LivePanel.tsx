@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Avatar, Button, Icon } from '../ui';
+import { Avatar, Button, Icon, IconButton } from '../ui';
 import { inviteToSession } from './api';
 import { KIND_WORD, type Presentable } from './anchors';
 import { DeviceButton } from './DeviceButton';
@@ -39,6 +39,8 @@ export function LivePanel({ live, presentable, onShow, onClose }: { live: LiveVa
   return (
     <div className="lv-panel">
       <header className="lv-panel__head">
+        {/* Always in the first screen: on a phone the sheet fills the view and has no Escape. */}
+        <IconButton icon="x" label="Back to work" onClick={onClose} className="lv-panel__close" />
         <p className="lv-panel__k">Working together on this {KIND_WORD[anchor.context.type]}</p>
         <h2 className="lv-panel__t">{anchor.label}</h2>
         <p className="lv-panel__aud"><Icon name="lock" size={12} />{audienceOf(live.people, live.meId)} · the same people who can open it</p>

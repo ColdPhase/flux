@@ -1,5 +1,5 @@
 import {
-  ConnectionQuality, DisconnectReason, LocalAudioTrack, LocalVideoTrack, RemoteAudioTrack, RemoteVideoTrack, Room, RoomEvent, Track,
+  ConnectionQuality, DisconnectReason, LocalAudioTrack, createLocalAudioTrack, createLocalScreenTracks, createLocalVideoTrack, type LocalTrack, LocalVideoTrack, RemoteAudioTrack, RemoteVideoTrack, Room, RoomEvent, Track,
   type LocalTrackPublication, type Participant, type RemoteTrack, type RemoteTrackPublication, type TrackPublication,
 } from 'livekit-client';
 import { canPublishScreen } from './capture';
@@ -128,6 +128,12 @@ export class LiveMediaConnection {
   private readonly audioHost: HTMLElement;
   private hearing = true;
   private devices: Record<DeviceKind, DeviceStatus> = { ...IDLE_DEVICES };
+  /**
+   * Each on/off request of a device takes the next number. Capture can take seconds (a permission
+   * prompt, a screen picker); a request that is no longer the latest when capture or publication
+   * finishes stops its tracks instead of sending them. Quiet, off and leave all take a number.
+   */
+  private generation: Record<DeviceKind, number> = { mic: 0, camera: 0, screen: 0 };
   private connection: ConnectionState = 'idle';
   private endReason: EndReason | null = null;
   private leaving = false;
@@ -214,24 +220,40 @@ export class LiveMediaConnection {
   /** Turns one device on or off. Only a person's direct action calls this. */
   async setDevice(kind: DeviceKind, on: boolean): Promise<DeviceStatus> {
     if (!on) return this.stopDevice(kind, { state: 'off', note: null });
+    const request = ++this.generation[kind];
+    const device = kind === 'mic' ? 'microphone' : kind === 'camera' ? 'camera' : 'screen';
+    /** Why this request may no longer send: a newer request (Quiet, off, leave) or a lost connection. */
+    const stale = () => request !== this.generation[kind] ? 'superseded' : this.leaving || this.connection !== 'connected' ? 'offline' : null;
+    const drop = (reason: 'superseded' | 'offline') => reason === 'superseded' || this.leaving ? this.devices[kind]
+      : this.set(kind, { state: 'off', note: `The connection dropped before the ${device} started, so nothing was sent. It is off.` });
     if (this.connection !== 'connected') return this.devices[kind];
     if (kind === 'screen' && !canPublishScreen()) return this.set(kind, { state: 'unsupported', note: 'This browser cannot share a screen. You can still see screens others share.' });
     if (kind !== 'screen' && (await hasInput(kind === 'mic' ? 'audioinput' : 'videoinput')) === false)
-      return this.set(kind, { state: 'missing', note: `No ${kind === 'mic' ? 'microphone' : 'camera'} was found on this device.` });
+      return stale() ? drop(stale()!) : this.set(kind, { state: 'missing', note: `No ${device} was found on this device.` });
+    if (stale()) return drop(stale()!);
     this.set(kind, { state: 'starting', note: null });
+    let captured: LocalTrack[] = [];
     try {
       const local = this.room.localParticipant;
-      if (kind === 'mic') await local.setMicrophoneEnabled(true);
-      else if (kind === 'camera') await local.setCameraEnabled(true, { resolution: { width: 1280, height: 720, frameRate: 30 } });
+      // Capture first, publish only if this request is still the latest: a late permission
+      // answer after Quiet, off or leave must never reach anyone.
+      if (kind === 'mic') captured = [await createLocalAudioTrack({ echoCancellation: true, noiseSuppression: true, autoGainControl: true })];
+      else if (kind === 'camera') captured = [await createLocalVideoTrack({ resolution: { width: 1280, height: 720, frameRate: 30 } })];
       else {
-        await local.setScreenShareEnabled(true, {
+        captured = (await createLocalScreenTracks({
           audio: false,
           contentHint: 'detail',
           resolution: { width: 2560, height: 1440, frameRate: 15 },
           selfBrowserSurface: 'exclude',
           surfaceSwitching: 'include',
-        }, { degradationPreference: 'maintain-resolution', simulcast: false });
+        })).filter((track) => track.kind === Track.Kind.Video);
       }
+      if (stale()) { captured.forEach((track) => track.stop()); return drop(stale()!); }
+      const track = captured[0];
+      if (!track) return this.set(kind, { state: 'off', note: kind === 'screen' ? 'Nothing was chosen, so nothing is shared.' : null });
+      await local.publishTrack(track, kind === 'screen' ? { degradationPreference: 'maintain-resolution', simulcast: false } : {});
+      // Superseded while publishing: take it back at once.
+      if (stale()) { await this.unpublish(track); return drop(stale()!); }
       const publication = local.getTrackPublication(kind === 'mic' ? Track.Source.Microphone : kind === 'camera' ? Track.Source.Camera : Track.Source.ScreenShare);
       if (!publication?.track) return this.set(kind, { state: 'off', note: kind === 'screen' ? 'Nothing was chosen, so nothing is shared.' : null });
       publication.track.mediaStreamTrack.addEventListener('ended', () => {
@@ -240,6 +262,8 @@ export class LiveMediaConnection {
       }, { once: true });
       return this.set(kind, { state: 'on', note: null });
     } catch (error) {
+      await Promise.all(captured.map((track) => this.unpublish(track)));
+      if (stale()) return drop(stale()!);
       await this.release(kind);
       return this.set(kind, failure(kind, error));
     }
@@ -263,6 +287,7 @@ export class LiveMediaConnection {
 
   async disconnect(): Promise<void> {
     this.leaving = true;
+    for (const kind of ['mic', 'camera', 'screen'] as const) this.generation[kind]++;
     await Promise.all((['mic', 'camera', 'screen'] as const).map((kind) => this.release(kind)));
     this.devices = { ...IDLE_DEVICES };
     await this.room.disconnect(true);
@@ -347,7 +372,15 @@ export class LiveMediaConnection {
     try { await this.room.localParticipant.unpublishTrack(track, true); } catch { track.stop(); }
   }
 
+  /** Stops a captured track and takes back its publication, if it has one. */
+  private async unpublish(track: LocalTrack) {
+    const published = [...this.room.localParticipant.trackPublications.values()].some((publication) => publication.track === track);
+    if (published) { try { await this.room.localParticipant.unpublishTrack(track, true); } catch { /* stopped below */ } }
+    track.stop();
+  }
+
   private async stopDevice(kind: DeviceKind, status: DeviceStatus): Promise<DeviceStatus> {
+    this.generation[kind]++;
     await this.release(kind);
     return this.set(kind, status);
   }

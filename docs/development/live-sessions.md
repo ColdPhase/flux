@@ -48,15 +48,10 @@ restrictive-network acceptance remain in [#63](https://github.com/ColdPhase/flux
   opens `/projects/:p/live/:session?invitation=:id`. If the recipient lost project
   access, answered, or the session stopped being available before generation, nothing
   is created ([notifications](notifications.md)).
-- Signing out (`POST /api/auth/sign-out`, when live media is configured) resolves the
-  person before Better Auth deletes the session and, after a 2xx response, removes
-  them from each available room of their workspaces (at most 50, newest first) whose
-  SFU participant list contains them (`apps/server/src/live/signout.ts`). It runs
-  after the response with a 15-second bound; SFU failures are logged and never fail
-  or delay sign-out. The SFU identity is the person, not the device, so their other
-  signed-in devices are disconnected too; they can join again with a fresh grant.
-  `RemoveParticipant` does not invalidate an unexpired grant (90 s); a signed-out
-  client has no session to request a new one.
+- Signing out does not yet end an active media connection or revoke its grant. That is
+  [#128](https://github.com/ColdPhase/flux/issues/128), which binds media admission to
+  the authentication session; until then a grant stays valid for its 90-second lifetime
+  plus any SFU refresh.
 - `POST /api/v1/live-sessions/:id/join` allows at most 20 attempts per person per
   rolling 60 seconds **per API instance** (in-memory, created in the composition
   root; bounded to 10,000 tracked people). Beyond that it answers

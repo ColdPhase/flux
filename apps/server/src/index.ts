@@ -28,7 +28,6 @@ import { liveLifecycle } from './live/lifecycle.js';
 import { liveWebhookRoutes } from './live/webhook.js';
 import { liveInvitationRoutes } from './live/invitation-routes.js';
 import { joinRateLimiter } from './live/rate-limit.js';
-import { disconnectOnSignOut } from './live/signout.js';
 import { agentProposalRoutes } from './agent-connection/routes.js';
 import { registerMcpRoute } from './agent-connection/mcp-route.js';
 import { returnRoutes } from './returns/routes.js';
@@ -75,7 +74,6 @@ if (liveMedia) await app.register(liveRoutes, {
   joinLimiter: joinRateLimiter(),
 });
 // Signing out also ends that person's media connections (after the response, never failing it).
-if (liveMedia) disconnectOnSignOut(app, { db, sessions: identity, media: liveMedia.media });
 if (liveMedia) await app.register(liveDiscoveryRoutes, { db, sessions: identity, media: liveMedia.media });
 if (liveMedia) await app.register(liveInvitationRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret });
 if (lifecycle) {
