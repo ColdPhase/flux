@@ -123,7 +123,8 @@ for (const scenario of changes) {
     try {
       const signal = await promptly(entered.promise, 'dispatch');
       await promptly(scenario.change(f), scenario.name);
-      assert.deepEqual(await promptly(running, 'cancellation'), { status: 'unknown', reason: scenario.reason });
+      assert.deepEqual(await promptly(running, 'cancellation'),
+        { status: scenario.phase === 'count' ? 'not_run' : 'unknown', reason: scenario.reason });
       assert.equal(signal.aborted, true, 'the adapter receives cancellation');
       release.resolve();
       // Drain the deliberately late promise, then inspect persistence and replay behavior.
@@ -131,9 +132,11 @@ for (const scenario of changes) {
       assert.equal((await pool.query('SELECT count(*)::int AS n FROM proactive_comparison_proposals WHERE outbox_id=$1',
         [f.candidateId])).rows[0].n, 0);
       assert.deepEqual((await pool.query('SELECT status, reserved_cents, usage_estimated_cents FROM proactive_comparison_outbox WHERE id=$1',
-        [f.candidateId])).rows[0], { status: 'unknown', reserved_cents: 5, usage_estimated_cents: null });
+        [f.candidateId])).rows[0], scenario.phase === 'count'
+        ? { status: 'cancelled', reserved_cents: 0, usage_estimated_cents: 0 }
+        : { status: 'unknown', reserved_cents: 5, usage_estimated_cents: null });
       assert.deepEqual(await dispatchProactiveComparison({ db, candidateId: f.candidateId, masterKey, provider }),
-        { status: 'blocked', reason: 'NOT_QUEUED' }, 'an uncertain possible charge cannot silently retry');
+        { status: 'blocked', reason: 'NOT_QUEUED' }, 'a stopped candidate cannot silently retry');
       assert.deepEqual(calls, scenario.phase === 'count' ? ['count'] : ['count', 'message']);
     } finally { release.resolve(); await running; }
   });
@@ -158,4 +161,25 @@ test('the final locked check rejects a response after a rapid pause and resume',
     { status: 'unknown', reason: 'AUTHORIZATION_CHANGED' });
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM proactive_comparison_proposals WHERE outbox_id=$1',
     [f.candidateId])).rows[0].n, 0, 'reenabling a newer rule cannot revive the old call');
+});
+
+test('an input-token refusal records not-run with zero usage and releases only its unspent reservation', async () => {
+  const f = await fixture();
+  let messages = 0;
+  const provider: ComparisonProvider = {
+    async countInputTokens() { return 8_001; },
+    async createMessage() { messages++; throw new Error('must not start a paid request'); },
+  };
+  assert.deepEqual(await dispatchProactiveComparison({ db, candidateId: f.candidateId, masterKey, provider }),
+    { status: 'not_run', reason: 'INPUT_TOKEN_LIMIT' });
+  assert.equal(messages, 0);
+  const row = (await pool.query(`SELECT status, reserved_cents, reserved_at, connection_id,
+    usage_input_tokens, usage_output_tokens, usage_estimated_cents, failure_code, finished_at
+    FROM proactive_comparison_outbox WHERE id=$1`, [f.candidateId])).rows[0];
+  assert.deepEqual({ ...row, finished_at: !!row.finished_at }, { status: 'cancelled', reserved_cents: 0,
+    reserved_at: null, connection_id: null, usage_input_tokens: 0, usage_output_tokens: 0,
+    usage_estimated_cents: 0, failure_code: 'INPUT_TOKEN_LIMIT', finished_at: true });
+  assert.deepEqual(await dispatchProactiveComparison({ db, candidateId: f.candidateId, masterKey, provider }),
+    { status: 'blocked', reason: 'NOT_QUEUED' });
+  assert.equal(messages, 0, 'the not-run candidate is not retried automatically');
 });

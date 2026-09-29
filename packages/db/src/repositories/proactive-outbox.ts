@@ -72,6 +72,13 @@ export function proactiveOutboxRows(db: DbExecutor) {
           usageEstimatedCents: usage.estimatedCents } : {}),
       }).where(and(eq(q.id, candidateId), eq(q.status, 'reserved')));
     },
+    /** Only the dispatch path that has not entered createMessage may release this reservation. */
+    async markNotRun(candidateId: string, failureCode: string) {
+      await db.update(q).set({ status: 'cancelled', failureCode, connectionId: null,
+        reservedAt: null, reservedCents: 0, usageInputTokens: 0, usageOutputTokens: 0,
+        usageEstimatedCents: 0, finishedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(q.id, candidateId), eq(q.status, 'reserved')));
+    },
     sourceSnapshot: (resultId: string, ruleId: string) => comparisonSources(db).snapshot(resultId, ruleId),
     async messageConversation(projectId: string, messageId: string) {
       const [row] = await db.select({ conversationId: schema.projectMessages.conversationId }).from(schema.projectMessages)

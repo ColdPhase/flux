@@ -10,6 +10,7 @@ import { abortableComparisonCall, authorizedComparison, ComparisonStopped as Sto
 type Outcome =
   | { status: 'proposal'; proposalId: string }
   | { status: 'blocked'; reason: string }
+  | { status: 'not_run'; reason: string }
   | { status: 'unknown'; reason: string };
 
 /**
@@ -26,6 +27,7 @@ export async function dispatchProactiveComparison(input: { db: Database; candida
   if (reservation.status === 'blocked') return reservation;
   let watch: ReturnType<typeof watchComparisonAuthorization> | undefined;
   let usage: ObservedUsage | undefined;
+  let paidRequestStarted = false;
   try {
     const prepared = await input.db.transaction(async (tx) => {
       const { rows, candidate, rule, snapshot } =
@@ -60,8 +62,12 @@ export async function dispatchProactiveComparison(input: { db: Database; candida
       throw new Stop('INPUT_TOKEN_LIMIT');
     // A pause during token counting must not start a paid message request.
     await watch.check();
-    const response = await abortableComparisonCall(signal, () => input.provider.createMessage({ ...providerInput,
-      maxTokens: BACKGROUND_COMPARISON_MAX_OUTPUT_TOKENS, effort: 'low' }));
+    const response = await abortableComparisonCall(signal, () => {
+      // Set this inside the abortable callback: an abort before adapter entry made no request.
+      paidRequestStarted = true;
+      return input.provider.createMessage({ ...providerInput,
+        maxTokens: BACKGROUND_COMPARISON_MAX_OUTPUT_TOKENS, effort: 'low' });
+    });
     usage = response?.usage && Number.isSafeInteger(response.usage.inputTokens)
       && response.usage.inputTokens >= 0 && response.usage.inputTokens <= BACKGROUND_COMPARISON_MAX_INPUT_TOKENS
       && Number.isSafeInteger(response.usage.outputTokens) && response.usage.outputTokens >= 0
@@ -93,6 +99,10 @@ export async function dispatchProactiveComparison(input: { db: Database; candida
     return { status: 'proposal', proposalId: proposal.id };
   } catch (error) {
     const stopped = error instanceof Stop ? error : new Stop('PROVIDER_OR_STORAGE_FAILURE');
+    if (!paidRequestStarted) {
+      await proactiveOutboxRows(input.db).markNotRun(input.candidateId, stopped.code);
+      return { status: 'not_run', reason: stopped.code };
+    }
     await proactiveOutboxRows(input.db).markUnknown(input.candidateId, stopped.code, stopped.usage ?? usage);
     return { status: 'unknown', reason: stopped.code };
   } finally {

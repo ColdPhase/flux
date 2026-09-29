@@ -51,8 +51,13 @@ connection replacement/revocation, owner/agent access loss or source revision.
 It rechecks before starting a paid Messages request after token counting. A newer
 rule version cannot revive an earlier call. Cancellation returns even if an
 adapter ignores its AbortSignal; a late answer cannot enter the proposal commit.
-An already accepted provider request may still incur a charge, so cancellation
-keeps the conservative reservation as `unknown`, without automatic retry.
+After the Messages adapter has been entered, cancellation keeps the conservative
+possible-charge reservation as `unknown`, without automatic retry. Before that
+point, a preparation/token-count refusal or cancellation records `not_run` with
+zero usage, releases its unspent reservation and leaves the candidate terminal.
+The provider's [token-count documentation](https://platform.claude.com/docs/en/build-with-claude/token-counting#pricing-and-rate-limits),
+checked 2026-09-30, describes token counting as free with separate rate limits;
+this is vendor billing documentation, not observation of a Flux invoice.
 Docker regressions exercise these changes through the running API while a local
 provider fixture is pending; they do not prove live-provider cancellation or billing.
 It records usage estimates
@@ -128,8 +133,8 @@ proposal preserves those project relationships and does not add that generated
 work back into comparison evidence.
 
 Source-change scheduling/coalescing, saved full inspected-source/outcome metadata,
-the distinct insufficient-evidence/not-run surface and zero-charge accounting
-before a paid request remain separate implementation portions. No production
+the distinct insufficient-evidence/not-run surface and not-run reasons for
+pre-reservation refusals remain separate implementation portions. No production
 provider scheduling or rule activation was added by this snapshot change.
 
 ## Key file, restore and rotation
