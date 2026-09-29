@@ -32,6 +32,7 @@ import {
 } from './auth/logic';
 import { AuthLayout, ForgotPasswordPage, ResetPasswordPage, SignInPage, SignOutPage, SignUpPage } from './auth/pages';
 import { AgentConnectionPage, AgentConsentPage, agentConnectionLoader, agentConsentLoader } from './agent-connection/pages';
+import { BackgroundComputeSettings, backgroundComputeLoader } from './proactive-comparison/BackgroundComputeSettings';
 
 function Root() {
   // The update prompt is shown on every page, signed in or not; reloading is the person's choice.
@@ -99,6 +100,7 @@ export const router = createBrowserRouter([
           { path: 'inbox', Component: InboxView },
           { path: 'inbox/:id', Component: InboxOpen },
           { path: 'settings/notifications', Component: NotificationSettings },
+          { path: 'settings/background-compute', loader: backgroundComputeLoader, Component: BackgroundComputeSettings },
           { path: 'settings/notifications/verify', Component: VerifyAddress },
           { path: '*', Component: NotFoundView },
         ],

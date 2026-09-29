@@ -171,6 +171,41 @@ The current controlled integration still has production activation disabled.
 Source selection, source-change scheduling and outcome/accounting changes are
 separate verifiable implementation portions of this amendment.
 
+### Outcome audience and migration amendment (accepted 2026-09-30)
+
+The evaluator [accepted the outcome split](https://github.com/ColdPhase/flux/issues/58#issuecomment-5900710170)
+before the new schema/API implementation:
+
+- Save the full inspected type/id/version/navigation vector separately from the
+  model's cited subset. Project readers may see an independently authorized quiet
+  `insufficient_evidence` item with its reason and inspected references, no
+  fact/action/work and no push/email.
+- Credential, budget and access refusals, plus unknown-charge details, are
+  owner-only. Project readers do not gain another person's payer/provider
+  metadata, spending limits or failed authorization context. A pre-paid
+  `not_run` records a stable reason and zero usage; observed/possible charges
+  after a paid attempt still count toward caps.
+- Add an explicitly typed outcome surface alongside the compatible proposal
+  shape. Do not invent comparison fields to encode a failure.
+- Unmerged migration numbers follow merge order. A later merger renumbers its
+  new migration to the next free version after current main, with relevant
+  checks/review repeated; a missing contiguous baseline must not be bypassed.
+  Existing `0021`–`0024` are unchanged by this amendment.
+
+This is an accepted implementation contract, not evidence of implemented outcomes
+or production activation.
+
+### Rule renewal amendment (accepted 2026-09-30)
+
+The evaluator [accepted fresh authorization after revocation](https://github.com/ColdPhase/flux/issues/58#issuecomment-5900813869).
+Keep a revoked row as terminal history; it is never re-enabled. Permit at most one
+non-revoked rule per owner/project/purpose using a partial unique index in a new
+migration, without rewriting `0021`. A fresh rule starts paused and repeats
+current personal-agent/project checks and scope/allowance confirmation. Historical
+dismissals and all owner-level observed/possible charges remain counted across
+rule identities. Verify revoke → fresh create with unchanged old row, and
+concurrent fresh creation with one success and one conflict.
+
 ## Evidence and limits (checked 2026-09-28)
 
 | Evidence class | Source and relevant observation | Implication / limit |

@@ -1,4 +1,4 @@
-import { eq, isNull } from 'drizzle-orm';
+import { eq, isNull, ne } from 'drizzle-orm';
 import { pgTable, text, timestamp, uuid, integer, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
 export const samples = pgTable('samples', {
@@ -772,7 +772,8 @@ export const proactiveComparisonRules = pgTable('proactive_comparison_rules', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
 }, (table) => [
-  unique().on(table.ownerUserId, table.projectId, table.purpose),
+  uniqueIndex('proactive_comparison_rules_active_owner_project_idx').on(table.ownerUserId, table.projectId, table.purpose)
+    .where(ne(table.status, 'revoked')),
   index('proactive_comparison_rules_owner_idx').on(table.ownerUserId, table.projectId),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }),

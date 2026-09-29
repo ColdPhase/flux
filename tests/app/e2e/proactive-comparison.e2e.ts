@@ -4,7 +4,7 @@ import http from 'node:http';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser, type BrowserContext, type Locator, type Page } from 'playwright';
 
-interface Fixture { email: string; password: string; projectId: string; proposalIds: string[];
+interface Fixture { email: string; peerEmail: string; password: string; workspaceId: string; projectId: string; proposalIds: string[];
   conversationId: string; messageId: string; workId: string; sketchId: string; thoughtId: string }
 const fixture = JSON.parse(readFileSync('/state/proactive-ui.json', 'utf8')) as Fixture;
 const upstream = new URL(process.env.FLUX_API_URL ?? 'http://api:8080');
@@ -18,6 +18,7 @@ const proxy = http.createServer((request, response) => {
   forward.on('error', () => response.destroy());
   request.pipe(forward);
 });
+
 let browser: Browser;
 let context: BrowserContext;
 let page: Page;
@@ -209,5 +210,205 @@ test('real project UI presents sourced quiet suggestions, then persists edits, u
   assert.equal(manual.status, 200);
   assert.ok((manual.data as { items: Array<{ title: string }> }).items.some((item) =>
     item.title === 'Repeat the sensor test with a manual switch'));
+  assert.deepEqual(errors, []);
+});
+
+test('owner-only background setup persists consent, clears keys and preserves another person without a connection', async () => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.getByRole('button', { name: /account and sign out/ }).click();
+  await page.getByRole('link', { name: 'Your background suggestions', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await page.getByRole('heading', { name: 'Your background suggestions', exact: true }).waitFor();
+  assert.equal(await page.getByRole('dialog', { name: 'Account', exact: true }).count(), 0);
+  assert.match(await page.getByRole('note').innerText(), /not available/);
+  assert.equal((await api('GET', '/api/v1/background-compute-connections/current')).data, null);
+  let writes = 0;
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/v1/background-compute-connections') writes++;
+  });
+  await page.getByLabel('Background API key', { exact: true }).fill('sk-ant-fixture-background-setup-key-ABCD');
+  await page.getByLabel('Provider organization', { exact: true }).fill('Fixture Sensor Research');
+  await page.getByLabel('Provider workspace', { exact: true }).fill('Fixture Only');
+  await page.getByLabel('Maximum requests a day').fill('2');
+  await page.getByLabel('30-day local allowance (USD)').fill('0.25');
+  await page.getByLabel('Per-request local allowance (USD)').fill('0.05');
+  await page.getByRole('button', { name: 'Save connection and consent', exact: true }).click();
+  assert.equal(writes, 0, 'missing consent cannot send a credential request');
+  for (const check of await page.locator('.background-settings__check input').all()) await check.check();
+  await page.getByRole('button', { name: 'Save connection and consent', exact: true }).click();
+  await page.getByRole('heading', { name: 'Your saved connection', exact: true }).waitFor();
+  assert.equal(writes, 1);
+  assert.equal(await page.locator('input[name="apiKey"]').count(), 0, 'saved keys leave no editable input');
+  await page.waitForFunction(() => document.querySelector('.background-settings__saved') === document.activeElement);
+  assert.equal(await page.locator('.background-settings__saved').evaluate((element) => element === document.activeElement), true,
+    'save completion restores keyboard focus to its status');
+  const first = (await api('GET', '/api/v1/background-compute-connections/current')).data as {
+    id: string; ownerUserId: string; keyLastFour: string; periodBudgetCents: number; maxRunsPerDay: number; perRunCents: number;
+  };
+  assert.equal(first.keyLastFour, 'ABCD'); assert.equal(first.periodBudgetCents, 25);
+  assert.equal(first.maxRunsPerDay, 2); assert.equal(first.perRunCents, 5);
+  assert.ok(!JSON.stringify(first).includes('sk-ant-'));
+  assert.ok(!await page.evaluate(() => JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage } }).includes('sk-ant-')),
+    'credentials never enter browser storage');
+  await page.reload();
+  assert.match(await page.locator('.background-settings__metadata').innerText(), /Fixture Sensor Research[\s\S]*ABCD[\s\S]*\$0.25/);
+  await page.locator('.background-settings__help').first().click();
+  await page.screenshot({ path: '/state/background-setup-1440-saved.png', fullPage: true });
+
+  const ownerPage = page;
+  const peerContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  page = await peerContext.newPage();
+  page.on('pageerror', (error) => errors.push(error.message));
+  try {
+    await page.goto(origin.origin);
+    assert.equal((await api('POST', '/api/auth/sign-in/email', { email: fixture.peerEmail, password: fixture.password })).status, 200);
+    await page.goto(`${origin.origin}/settings/background-compute`);
+    await page.getByRole('heading', { name: 'Connect your background source', exact: true }).waitFor();
+    assert.equal(await page.getByRole('heading', { name: 'Your saved connection', exact: true }).count(), 0);
+    assert.ok(!(await page.locator('.background-settings').innerText()).includes('Fixture Sensor Research'));
+    assert.equal((await api('GET', '/api/v1/background-compute-connections/current')).data, null);
+    assert.equal((await api('DELETE', `/api/v1/background-compute-connections/${first.id}`)).status, 404);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await page.locator('.background-settings__help').first().tap();
+    await page.screenshot({ path: '/state/background-setup-390-empty.png', fullPage: true });
+  } finally { page = ownerPage; await peerContext.close(); }
+  assert.equal(((await api('GET', '/api/v1/background-compute-connections/current')).data as { id: string }).id, first.id);
+
+  for (const viewport of [{ width: 390, height: 844 }, { width: 1024, height: 768 }]) {
+  const touchContext = await browser.newContext({ viewport, isMobile: viewport.width === 390,
+    hasTouch: true, storageState: await context.storageState() });
+  page = await touchContext.newPage();
+  page.on('pageerror', (error) => errors.push(error.message));
+  try {
+    await page.goto(`${origin.origin}/settings/background-compute`);
+    await page.getByRole('heading', { name: 'Your saved connection', exact: true }).waitFor();
+    await page.locator('.background-settings__help').first().tap();
+    await page.screenshot({ path: `/state/background-setup-${viewport.width}-saved.png`, fullPage: true });
+    await page.getByRole('button', { name: 'Replace connection', exact: true }).tap();
+    const key = page.getByLabel('Background API key', { exact: true });
+    assert.equal(await key.inputValue(), '');
+    assert.ok(await key.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize) >= 16));
+    for (const check of await page.locator('.background-settings__check').all()) {
+      const bounds = await check.boundingBox();
+      assert.ok(bounds && bounds.height >= 44 && bounds.width >= 44);
+    }
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await page.screenshot({ path: `/state/background-setup-${viewport.width}-replace.png`, fullPage: true });
+    await page.locator('input[name="providerBilling"]').scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `/state/background-setup-${viewport.width}-consent.png`, fullPage: true });
+    await key.fill('sk-ant-fixture-unsaved-touch-key-ABCD');
+    await page.getByRole('button', { name: 'Cancel', exact: true }).tap();
+    assert.equal(await key.count(), 0);
+    assert.equal(((await api('GET', '/api/v1/background-compute-connections/current')).data as { id: string }).id, first.id);
+  } finally { page = ownerPage; await touchContext.close(); }
+  }
+
+  await page.evaluate(() => { document.documentElement.style.zoom = '2'; });
+  await page.getByRole('button', { name: 'Replace connection', exact: true }).click();
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.getByRole('button', { name: 'Cancel', exact: true }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '/state/background-setup-1440-zoom2.png', fullPage: true });
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.evaluate(() => { document.documentElement.style.zoom = ''; });
+  await page.getByRole('button', { name: 'Replace connection', exact: true }).click();
+  for (const check of await page.locator('.background-settings__check input').all()) assert.equal(await check.isChecked(), false,
+    'replacement requires fresh consent');
+  await page.getByLabel('Background API key', { exact: true }).fill('invalid-fixture-key');
+  for (const check of await page.locator('.background-settings__check input').all()) await check.check();
+  // Native minimum-length validation would stop this fixture; a syntactically long invalid key reaches server validation.
+  await page.getByLabel('Background API key', { exact: true }).fill('invalid-fixture-key-with-enough-characters');
+  await page.getByRole('button', { name: 'Replace and save consent', exact: true }).click();
+  await page.getByRole('alert').waitFor();
+  await page.waitForFunction(() => document.querySelector('.background-settings__error') === document.activeElement);
+  await page.screenshot({ path: '/state/background-setup-1440-error.png', fullPage: true });
+  assert.equal(await page.getByLabel('Background API key', { exact: true }).inputValue(), '', 'failed requests also clear the key');
+  assert.equal(((await api('GET', '/api/v1/background-compute-connections/current')).data as { id: string }).id, first.id,
+    'a failed replacement preserves the earlier connection');
+  await page.getByLabel('Background API key', { exact: true }).fill('sk-ant-fixture-background-setup-key-WXYZ');
+  await page.getByRole('button', { name: 'Replace and save consent', exact: true }).click();
+  await page.getByRole('heading', { name: 'Replace your connection', exact: true }).waitFor({ state: 'hidden' });
+  const replacement = (await api('GET', '/api/v1/background-compute-connections/current')).data as { id: string; keyLastFour: string };
+  assert.notEqual(replacement.id, first.id); assert.equal(replacement.keyLastFour, 'WXYZ');
+  await page.getByRole('button', { name: 'Disconnect', exact: true }).click();
+  await page.getByRole('heading', { name: 'Connect your background source', exact: true }).waitFor();
+  assert.equal((await api('GET', '/api/v1/background-compute-connections/current')).data, null);
+  await page.reload();
+  assert.equal((await api('GET', '/api/v1/background-compute-connections/current')).data, null);
+  await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks`);
+  await page.getByLabel('New work').fill('Manual comparison without a background key');
+  await page.getByRole('button', { name: 'Add work', exact: true }).click();
+  await page.getByRole('heading', { name: 'Manual comparison without a background key', exact: true }).waitFor();
+  const manual = await api('GET', `/api/v1/projects/${fixture.projectId}/work?limit=100`);
+  assert.ok((manual.data as { items: Array<{ title: string }> }).items.some((item) => item.title === 'Manual comparison without a background key'));
+  assert.deepEqual(errors, []);
+});
+
+test('an owner creates a personal project agent and a paused rule, then pauses, revokes and renews an earlier rule without AI', async () => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  const project = await api('POST', `/api/v1/workspaces/${fixture.workspaceId}/projects`,
+    { name: 'Independent sensor benchmark', visibility: 'restricted' });
+  assert.equal(project.status, 201);
+  const projectId = (project.data as { id: string }).id;
+  await page.goto(`${origin.origin}/settings/background-compute`);
+  assert.equal(await page.getByRole('button', { name: 'Details', exact: true }).count(), 0,
+    'private settings do not offer unrelated place details');
+  await page.keyboard.press(']');
+  assert.equal(await page.getByRole('heading', { name: 'Details', exact: true }).count(), 0);
+  await page.getByLabel('Project', { exact: true }).selectOption(projectId);
+  await page.getByText('Create another personal agent', { exact: true }).click();
+  await page.getByLabel('New personal agent name').fill('My opt-in comparison helper');
+  await page.getByRole('button', { name: 'Create personal agent', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('select:has(option:checked)') &&
+    [...document.querySelectorAll('select option:checked')].some((option) => option.textContent === 'My opt-in comparison helper'));
+  const agentId = await page.getByLabel('Your personal agent', { exact: true }).inputValue();
+  assert.ok(agentId);
+  await page.getByRole('button', { name: 'Grant project contributor access', exact: true }).click();
+  await page.getByRole('button', { name: 'Grant project contributor access', exact: true }).waitFor({ state: 'hidden' });
+  await page.getByLabel('Rule maximum requests a day').fill('1');
+  await page.getByLabel('Rule 30-day allowance (USD)').fill('0.15');
+  await page.getByLabel('Rule per-request allowance (USD)').fill('0.05');
+  await page.locator('input[name="ruleConsent"]').check();
+  await page.getByRole('button', { name: 'Create paused rule', exact: true }).click();
+  await page.getByRole('button', { name: 'Enable unavailable', exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Enable unavailable', exact: true }).isDisabled(), true);
+  const rules = await api('GET', `/api/v1/projects/${projectId}/proactive-comparison-rules`);
+  assert.equal(rules.status, 200);
+  const [rule] = rules.data as Array<{ id: string; agentId: string; status: string; maxRunsPerDay: number; periodBudgetCents: number }>;
+  assert.equal(rule?.status, 'paused'); assert.equal(rule?.agentId, agentId);
+  assert.equal(rule?.maxRunsPerDay, 1); assert.equal(rule?.periodBudgetCents, 15);
+  await page.reload();
+  await page.getByLabel('Project', { exact: true }).selectOption(projectId);
+  await page.getByRole('button', { name: 'Enable unavailable', exact: true }).waitFor();
+  await page.locator('.background-settings__metadata').last().click();
+  await page.screenshot({ path: '/state/background-rules-1440-paused.png', fullPage: true });
+
+  await page.getByLabel('Project', { exact: true }).selectOption(fixture.projectId);
+  await page.getByRole('button', { name: 'Pause rule', exact: true }).click();
+  await page.getByRole('button', { name: 'Enable unavailable', exact: true }).waitFor();
+  let earlier = (await api('GET', `/api/v1/projects/${fixture.projectId}/proactive-comparison-rules`)).data as Array<{ id: string; version: number; status: string }>;
+  assert.equal(earlier[0]?.status, 'paused');
+  const pausedVersion = earlier[0]!.version;
+  await page.getByRole('button', { name: 'Revoke rule', exact: true }).click();
+  await page.getByText('Your earlier rule is permanently revoked. A fresh rule needs your new scope and allowance confirmation and starts paused.', { exact: true }).waitFor();
+  earlier = (await api('GET', `/api/v1/projects/${fixture.projectId}/proactive-comparison-rules`)).data as typeof earlier;
+  assert.equal(earlier[0]?.status, 'revoked'); assert.equal(earlier[0]?.version, pausedVersion + 1);
+  const revoked = earlier[0]!;
+  assert.equal(await page.locator('input[name="ruleConsent"]').isChecked(), false, 'renewal needs fresh scope consent');
+  await page.getByLabel('Your personal agent', { exact: true }).selectOption(agentId);
+  await page.getByRole('button', { name: 'Grant project contributor access', exact: true }).click();
+  await page.getByRole('button', { name: 'Grant project contributor access', exact: true }).waitFor({ state: 'hidden' });
+  await page.locator('input[name="ruleConsent"]').check();
+  await page.getByRole('button', { name: 'Create paused rule', exact: true }).click();
+  await page.getByRole('button', { name: 'Enable unavailable', exact: true }).waitFor();
+  const renewed = (await api('GET', `/api/v1/projects/${fixture.projectId}/proactive-comparison-rules`)).data as typeof earlier;
+  assert.deepEqual(renewed.find((rule) => rule.id === revoked.id), revoked);
+  const fresh = renewed.find((rule) => rule.id !== revoked.id)!;
+  assert.ok(fresh); assert.equal(fresh.status, 'paused'); assert.equal(fresh.version, 1);
+  await page.reload();
+  await page.getByLabel('Project', { exact: true }).selectOption(fixture.projectId);
+  await page.getByRole('button', { name: 'Enable unavailable', exact: true }).waitFor();
+  assert.deepEqual((await api('GET', `/api/v1/projects/${fixture.projectId}/proactive-comparison-rules`)).data, renewed);
   assert.deepEqual(errors, []);
 });

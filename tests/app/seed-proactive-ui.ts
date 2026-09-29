@@ -8,6 +8,7 @@ if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
 const { pool } = createDatabase(process.env.DATABASE_URL);
 try {
   const owner = await person('proactive-ui-owner');
+  const peer = await person('background-ui-no-connection');
   const ws = await workspace(owner, 'Sensor comparison studio');
   const prj = await project(owner, ws.id, 'Bedroom gesture controller', 'restricted');
   const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
@@ -58,7 +59,7 @@ try {
       'Compare a ToF distance sensor under the same 5 lux test.']);
     proposalIds.push(id);
   }
-  writeFileSync('/state/proactive-ui.json', JSON.stringify({ email: owner.email, password,
+  writeFileSync('/state/proactive-ui.json', JSON.stringify({ email: owner.email, password, peerEmail: peer.email, workspaceId: ws.id,
     projectId: prj.id, proposalIds, conversationId: conversation.id, messageId: conversation.messages[0]!.id,
     workId: work.id, sketchId: sketch.id, thoughtId: thought.id }));
   process.stdout.write('proactive-ui fixture ready\n');

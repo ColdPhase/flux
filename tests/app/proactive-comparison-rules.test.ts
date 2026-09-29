@@ -138,4 +138,21 @@ describe('owner standing comparison rule', () => {
     assert.equal((await change(owner, 3, 'enabled')).status, 409);
     assert.ok(rule.revokedAt);
   });
+
+  test('revocation preserves its row while concurrent fresh authorizations admit only one paused rule', async () => {
+    const oldRow = (await pool.query('SELECT * FROM proactive_comparison_rules WHERE id=$1', [rule.id])).rows[0];
+    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${project.id}/grants`,
+      { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201);
+    const attempts = await Promise.all([1, 2].map(() => owner.browser.request('POST', path(project.id), { body: body(agentId) })));
+    assert.deepEqual(attempts.map((response) => response.status).sort(), [201, 409]);
+    const fresh = expectStatus(attempts.find((response) => response.status === 201)!, 201) as ProactiveComparisonRule;
+    assert.notEqual(fresh.id, rule.id); assert.equal(fresh.status, 'paused'); assert.equal(fresh.version, 1);
+    assert.deepEqual((await pool.query('SELECT * FROM proactive_comparison_rules WHERE id=$1', [rule.id])).rows[0], oldRow,
+      'fresh authorization leaves the revoked row and its timestamps unchanged');
+    const all = expectStatus(await owner.browser.request('GET', path(project.id)), 200) as ProactiveComparisonRule[];
+    assert.equal(all.filter((row) => row.status !== 'revoked').length, 1);
+    assert.equal(all.find((row) => row.id === rule.id)?.status, 'revoked');
+    assert.equal(codeOf(await owner.browser.request('PATCH', `/api/v1/proactive-comparison-rules/${rule.id}`,
+      { body: { expectedVersion: rule.version, status: 'enabled' } })), 'RULE_REVOKED');
+  });
 });

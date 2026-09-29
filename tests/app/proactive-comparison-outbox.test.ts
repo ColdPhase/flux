@@ -140,4 +140,31 @@ describe('negative-result candidate and budget reservation (#58)', () => {
     assert.equal(await db.transaction((tx) => proactiveOutboxRows(tx).enqueueHumanNegative(agentResultId, projectId, agentId, [ruleId])), 0);
     assert.equal(await candidate(agentResultId), undefined);
   });
+
+  test('a fresh rule after revocation cannot reset the owner’s unknown charges or daily use', async () => {
+    const charged = (await pool.query("SELECT * FROM proactive_comparison_outbox WHERE owner_user_id=$1 AND status='unknown'", [owner.id])).rows[0];
+    assert.ok(charged);
+    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/grants`,
+      { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201);
+    expectStatus(await owner.browser.request('PATCH', `/api/v1/proactive-comparison-rules/${ruleId}`,
+      { body: { expectedVersion: 2, status: 'revoked' } }), 200);
+    const fresh = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/proactive-comparison-rules`,
+      { body: { agentId, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
+        dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal',
+        maxRunsPerDay: 1, periodBudgetCents: 5, perRunCents: 5 } }), 201) as { id: string; status: string };
+    assert.notEqual(fresh.id, ruleId); assert.equal(fresh.status, 'paused');
+    // Only this fixture activates the internal reservation path; no provider is called.
+    await pool.query("UPDATE proactive_comparison_rules SET status='enabled' WHERE id=$1", [fresh.id]);
+    const negative = await result(owner, 'negative', 'Fresh rule still shares the owner allowance');
+    const queued = (await candidate(negative.id))!;
+    assert.equal(queued.rule_id, fresh.id);
+    assert.deepEqual(await reservations.reserve(queued.id), { status: 'blocked', reason: 'BUDGET_EXHAUSTED' });
+    const now = new Date();
+    const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const periodStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    assert.deepEqual(await db.transaction((tx) => proactiveOutboxRows(tx).usage(owner.id, dayStart, periodStart)),
+      { dayRuns: 1, periodCents: 5, inFlight: 0 });
+    assert.deepEqual((await pool.query('SELECT * FROM proactive_comparison_outbox WHERE id=$1', [charged.id])).rows[0], charged);
+    assert.equal((await candidate(negative.id))!.reserved_cents, 0);
+  });
 });
