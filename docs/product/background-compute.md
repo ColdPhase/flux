@@ -119,8 +119,10 @@ conversation. Flux never converts a #52 MCP grant into background-run consent.
    path. Neither the model nor the rule changes a decision, task, audience or
    shared source. Accept citations only for IDs/revisions in the supplied source
    set; label model-knowledge claims as unsourced interpretation. Only committed,
-   human-authored negative results can trigger this rule; agent events and
-   proposal-origin events cannot retrigger it. Human continuation works with no
+   human-authored negative results start this rule. A committed human change to
+   admitted project evidence may reconsider an existing qualifying negative
+   result only with a changed source fingerprint, under its still-enabled rule;
+   unchanged, agent and proposal-origin events cannot retrigger it. Human continuation works with no
    model connection. O-007 decides this #58 background purpose only; #68 may
    reuse the owner/secret/cap/revocation pattern but needs its own manual-run
    consent and acceptance.
@@ -129,6 +131,44 @@ The budget algorithm and provider model are implementation details for #58, but
 the above guarantees are review criteria. A pricing change, model retirement,
 failed source-citation quality test, or inability to keep ciphertext and
 dispatch ownership isolated reopens this decision before enabling the rule.
+
+### Source and outcome amendment (accepted 2026-09-29)
+
+The owner/evaluator agreed the [source/reopening proposal](https://github.com/ColdPhase/flux/issues/58#issuecomment-5899774832)
+and its [independent amendments](https://github.com/ColdPhase/flux/issues/58#issuecomment-5899835828).
+This records the required final behavior; it does not assert that all of it is implemented.
+
+- Keep the triggering human negative result and every valid admitted explicit
+  reference. Add a deterministic bounded selection of current project-published
+  material/doc versions, human messages, work, results and project-scope thoughts.
+  Leave agent-authored content out of evidence, including earlier proposal output.
+  Exclude placements, private/workspace drafts, DMs and other projects. Select only
+  after checking current owner access through the existing policy, and recheck
+  owner/agent access before dispatch and commit. Record selection limits and
+  excerpt markers; more than 8,000 counted input tokens stops without a paid request.
+- Fingerprint the sorted selected type/id/version vector, explicit-reference set,
+  rule id/version and owner id. Recheck the selected sources before dispatch and
+  commit; preserve historical proposals, dismissals and possible charges. A
+  rule change never reuses an earlier dismissal. Thoughts need their actual
+  revision and sketch navigation identity; the existing contract has independent
+  thought versions, so the [citation correction](https://github.com/ColdPhase/flux/issues/58#issuecomment-5900046920)
+  is being reconciled with the evaluator before that portion is implemented.
+- Only committed human project-source changes, including an owner's edit, can
+  reconsider a qualifying negative result. Coalesce edit bursts in a short
+  window. Deduplicate result/rule/snapshot; an unchanged or dismissed fingerprint
+  stays suppressed. Keep one in-flight run and count possible charges toward
+  daily and rolling-period limits; never retry an unknown charge automatically.
+- Insufficient evidence has its own quiet reason and inspected references,
+  separate from a comparison's fact/interpretation/action. It sends no push or
+  email and creates no work. Missing, capped or truncated evidence/output cannot
+  fabricate a comparison or start a second paid attempt. When a paid request was
+  made, retain its observed usage or possible charge and count it toward caps.
+  Without a request, record `not run: <reason>` and zero usage. Manual work remains
+  available regardless of the rule or provider.
+
+The current controlled integration still has production activation disabled.
+Source selection, source-change scheduling and outcome/accounting changes are
+separate verifiable implementation portions of this amendment.
 
 ## Evidence and limits (checked 2026-09-28)
 
