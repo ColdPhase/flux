@@ -43,10 +43,10 @@ try {
     if (!candidate) throw new Error('UI fixture candidate missing');
     const id = randomUUID();
     const citations = [{ type: 'result', id: result.id, version: 1 },
-      { type: 'material', id: material.materialId, version: 1 },
-      { type: 'message', id: conversation.messages[0]!.id, version: 1, conversationId: conversation.id },
-      { type: 'work', id: work.id, version: work.version },
-      { type: 'thought', id: thought.id, version: thought.version, sketchId: sketch.id }];
+      { type: 'material', id: material.materialId, version: 1, title: 'Low-light measurement, 5 lux' },
+      { type: 'message', id: conversation.messages[0]!.id, version: 1, conversationId: conversation.id, title: 'Could a ToF distance sensor work better than our camera in a dark bedroom?' },
+      { type: 'work', id: work.id, version: work.version, title: 'Measure ToF response at 5 lux' },
+      { type: 'thought', id: thought.id, version: thought.version, sketchId: sketch.id, title: 'Test a ToF sensor using the same 5 lux protocol.' }];
     await pool.query(`INSERT INTO proactive_comparison_proposals
       (id, outbox_id, owner_user_id, agent_id, project_id, result_id, source_fingerprint,
         sources, fact, interpretation, suggested_action)

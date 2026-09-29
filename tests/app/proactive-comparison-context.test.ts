@@ -97,7 +97,8 @@ test('bounded current human context preserves explicit references and excludes p
       return { stopReason: 'end_turn', usage: { inputTokens: 300, outputTokens: 100 }, answer: {
         fact: 'The camera captured 38% at 5 lux.', interpretation: 'A controlled ToF comparison may help.',
         suggestedAction: 'Compare the ToF sensor under the same human protocol.',
-        citations: input.sources.map(({ type, id, version }) => ({ type, id, version })),
+        citations: input.sources.map(({ type, id, version }) => ({ type, id, version,
+          title: 'Model-invented source name', sketchId: randomUUID() })),
       } };
     },
   };
@@ -108,17 +109,19 @@ test('bounded current human context preserves explicit references and excludes p
     assert.ok(supplied.some((source) => source.type === type && source.id === id), 'unlinked current project evidence is supplied');
   assert.ok(supplied.some((source) => source.type === 'result' && source.id === benchmark.id));
   assert.deepEqual(supplied.find((source) => source.id === thought.id),
-    { type: 'thought', id: thought.id, version: thought.version, sketchId: sketch.id, text: 'Repeat the ToF trial at 5 lux.' });
+    { type: 'thought', id: thought.id, version: thought.version, sketchId: sketch.id, title: 'Repeat the ToF trial at 5 lux.', text: 'Repeat the ToF trial at 5 lux.' });
   const excerpt = supplied.find((source) => source.id === work.id)!;
   assert.equal(excerpt.excerpted, true);
   assert.ok(excerpt.originalCharacters! > excerpt.text.length);
   assert.match(excerpt.text, /Excerpt: remaining source text was omitted/);
   assert.ok(!JSON.stringify(supplied).includes(canary));
-  const proposals = expectStatus(await f.peer.browser.request('GET', `/api/v1/projects/${f.projectId}/proactive-comparison-proposals`), 200) as Array<{ id: string; version: number; sources: Array<{ type: string; id: string; version: number; sketchId?: string }> }>;
+  const proposals = expectStatus(await f.peer.browser.request('GET', `/api/v1/projects/${f.projectId}/proactive-comparison-proposals`), 200) as Array<{ id: string; version: number; sources: Array<{ type: string; id: string; version: number; sketchId?: string; title?: string }> }>;
   assert.ok(proposals[0]!.sources.some((source) => source.type === 'work' && source.id === work.id && source.version === 1));
   assert.ok(proposals[0]!.sources.some((source) => source.type === 'thought' && source.id === thought.id && source.version === 1));
   assert.equal(proposals[0]!.sources.find((source) => source.type === 'thought')?.sketchId, sketch.id,
-    'the server supplies the thought navigation identity omitted by the provider');
+    'the server supplies the thought navigation identity rather than trusting the provider');
+  assert.equal(proposals[0]!.sources.find((source) => source.type === 'thought')?.title, 'Repeat the ToF trial at 5 lux.',
+    'the citation label comes from the inspected source revision rather than model output');
   expectStatus(await f.peer.browser.request('POST', `/api/v1/proactive-comparison-proposals/${proposals[0]!.id}/use`,
     { body: { expectedVersion: proposals[0]!.version, title: 'Follow the reviewed suggestion' } }), 200);
   assert.equal((await rows.sourceSnapshot(result.id, f.rule.id)).fingerprint, before.fingerprint,

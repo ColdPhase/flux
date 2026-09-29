@@ -4,9 +4,10 @@ import type { ProactiveComparisonProposal, ProjectPerson, WorkItem } from '@flux
 import { Button } from '../ui';
 import { applyComparisonProposal, comparisonSourceHref, editComparisonProposal } from './proposals';
 
-export function ProjectProposals({ proposals, people, projectName, resultTitles, writable, refresh, openResult, openWork }: {
+export function ProjectProposals({ proposals, people, projectName, resultTitles, workJumpId, workCount, resultCount, writable, refresh, openResult, openWork }: {
   proposals: ProactiveComparisonProposal[]; people: ProjectPerson[] | null; projectName: string; writable: boolean;
   resultTitles: Map<string, string>;
+  workJumpId: string; workCount: number; resultCount: number;
   refresh: () => void; openResult: (id: string) => void; openWork: (item: WorkItem) => void;
 }) {
   const [editing, setEditing] = useState<string | null>(null);
@@ -45,6 +46,10 @@ export function ProjectProposals({ proposals, people, projectName, resultTitles,
   return (
     <section className="ws-group ws-proposals" aria-labelledby="g-comparison-proposals">
       <h2 className="ws-group__h" id="g-comparison-proposals">Suggestions to review <span>{open.length}</span></h2>
+      <nav className="ws-proposals__jumps" aria-label="Project work sections">
+        {workCount ? <button type="button" onClick={() => document.getElementById(workJumpId)?.scrollIntoView({ block: 'start' })}>Work {workCount}</button> : null}
+        {resultCount ? <button type="button" onClick={() => document.getElementById('g-results')?.scrollIntoView({ block: 'start' })}>Results {resultCount}</button> : null}
+      </nav>
       <p className="ws-proposals__intro">Quiet project suggestions. The agent has not changed any work or decision.</p>
       {open.map((proposal) => {
         const isEditing = editing === proposal.id;
@@ -71,17 +76,17 @@ export function ProjectProposals({ proposals, people, projectName, resultTitles,
           <div className="ws-proposal__sources"><strong>Sources</strong>
             <ul>{proposal.sources.map((source) => <li key={`${source.type}:${source.id}:${source.version}`}>
               {source.type === 'material'
-                ? <Link title={`Material ${source.id}, version ${source.version}`} to={comparisonSourceHref(proposal.projectId, source)!}>Material · version {source.version}</Link>
+                ? <Link title={`Material ${source.id}, version ${source.version}`} to={comparisonSourceHref(proposal.projectId, source)!}>{source.title ?? `Material ${source.id.slice(0, 8)}`} <small>· version {source.version}</small></Link>
                 : source.type === 'result'
-                  ? <button type="button" title={`Result ${source.id}, version ${source.version}`} onClick={() => openResult(source.id)}>Result · {resultTitles.get(source.id) ?? source.id.slice(0, 8)}</button>
+                  ? <button type="button" title={`Result ${source.id}, version ${source.version}`} onClick={() => openResult(source.id)}>{source.title ?? resultTitles.get(source.id) ?? `Result ${source.id.slice(0, 8)}`} <small>· cited version {source.version}</small></button>
                   : source.type === 'work'
-                    ? <Link title={`Cited work version ${source.version}; opens current work`} to={comparisonSourceHref(proposal.projectId, source)!}>Work · cited version {source.version}</Link>
+                    ? <Link title={`Cited work version ${source.version}; opens current work`} to={comparisonSourceHref(proposal.projectId, source)!}>{source.title ?? `Work ${source.id.slice(0, 8)}`} <small>· cited version {source.version}</small></Link>
                   : source.type === 'thought'
                     ? comparisonSourceHref(proposal.projectId, source)
-                      ? <Link title={`Cited thought version ${source.version}; opens current thought`} to={comparisonSourceHref(proposal.projectId, source)!}>Thought · cited version {source.version}</Link>
+                      ? <Link title={`Cited thought version ${source.version}; opens current thought`} to={comparisonSourceHref(proposal.projectId, source)!}>{source.title ?? `Thought ${source.id.slice(0, 8)}`} <small>· cited version {source.version}</small></Link>
                       : <span>Thought · cited version {source.version} (source unavailable)</span>
                   : source.conversationId
-                    ? <Link title={`Message ${source.id}, version ${source.version}`} to={comparisonSourceHref(proposal.projectId, source)!}>Project message · {source.id.slice(0, 8)}</Link>
+                    ? <Link title={`Message ${source.id}, version ${source.version}`} to={comparisonSourceHref(proposal.projectId, source)!}>{source.title ?? `Project message ${source.id.slice(0, 8)}`}</Link>
                     : <span title={`Message ${source.id}, version ${source.version}`}>Project message · {source.id.slice(0, 8)} (source unavailable)</span>}
             </li>)}</ul>
           </div>

@@ -954,7 +954,7 @@ export const proactiveComparisonProposals = pgTable('proactive_comparison_propos
   projectId: uuid('project_id').notNull().references(() => projects.id),
   resultId: uuid('result_id').notNull().references(() => projectResults.id),
   sourceFingerprint: text('source_fingerprint').notNull(),
-  sources: jsonb('sources').$type<Array<{ type: 'result' | 'message' | 'material' | 'work' | 'thought'; id: string; version: number; conversationId?: string; sketchId?: string }>>().notNull(),
+  sources: jsonb('sources').$type<Array<{ type: 'result' | 'message' | 'material' | 'work' | 'thought'; id: string; version: number; conversationId?: string; sketchId?: string; title?: string }>>().notNull(),
   fact: text('fact').notNull(),
   interpretation: text('interpretation').notNull(),
   suggestedAction: text('suggested_action').notNull(),

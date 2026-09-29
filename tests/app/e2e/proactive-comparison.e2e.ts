@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import { after, before, test } from 'node:test';
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+import { chromium, type Browser, type BrowserContext, type Locator, type Page } from 'playwright';
 
 interface Fixture { email: string; password: string; projectId: string; proposalIds: string[];
   conversationId: string; messageId: string; workId: string; sketchId: string; thoughtId: string }
@@ -76,36 +76,74 @@ test('real project UI presents sourced quiet suggestions, then persists edits, u
   await page.keyboard.press('Enter');
   assert.equal(await cards.first().locator('.ws-proposal__toggle').getAttribute('aria-expanded'), 'true');
   assert.match(await cards.first().innerText(), /Observed fact[\s\S]*Interpretation[\s\S]*Suggested next step[\s\S]*Sources/);
-  const message = cards.first().getByRole('link', { name: /Project message/ });
+  const message = cards.first().getByRole('link', { name: 'Could a ToF distance sensor work better than our camera in a dark bedroom?' });
   assert.equal(await message.getAttribute('href'),
     `/projects/${fixture.projectId}/conversations/${fixture.conversationId}#message-${fixture.messageId}`);
   await message.click();
   await page.locator(`#message-${fixture.messageId}`).waitFor();
 
+  const originalPage = page;
+  const storageState = await context.storageState();
   for (const viewport of [{ width: 390, height: 844 }, { width: 1024, height: 768 }, { width: 1440, height: 900 }]) {
-    await page.setViewportSize(viewport);
-    await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks`);
-    await cards.first().locator('.ws-proposal__toggle').click();
-    const workSource = cards.first().getByRole('link', { name: /^Work ·/ });
-    assert.equal(await workSource.getAttribute('href'), `/projects/${fixture.projectId}/tasks?open=work:${fixture.workId}`);
-    const thoughtSource = cards.first().getByRole('link', { name: /^Thought ·/ });
-    assert.equal(await thoughtSource.getAttribute('href'), `/projects/${fixture.projectId}/map/${fixture.sketchId}#thought-${fixture.thoughtId}`);
-    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'expanded sources fit the viewport');
-    await page.screenshot({ path: `/state/proactive-ui-${viewport.width}-expanded.png`, fullPage: true });
-    await workSource.click();
-    await page.getByRole('heading', { name: 'Measure ToF response at 5 lux', exact: true }).waitFor();
-    await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks`);
-    await cards.first().locator('.ws-proposal__toggle').click();
-    await cards.first().getByRole('link', { name: /^Thought ·/ }).click();
-    const selected = page.locator(`.sk-node[data-id="${fixture.thoughtId}"], .sk-li-t[data-id="${fixture.thoughtId}"]`).first();
-    await selected.waitFor();
-    await page.waitForFunction((id) => {
-      const node = document.querySelector(`.sk-node[data-id="${id}"], .sk-li-t[data-id="${id}"]`);
-      return node?.getAttribute('aria-selected') === 'true' || node?.getAttribute('aria-pressed') === 'true';
-    }, fixture.thoughtId);
-    const thought = await api('GET', `/api/v1/sketches/${fixture.sketchId}`);
-    assert.equal(thought.status, 200);
-    assert.ok((thought.data as { thoughts: Array<{ id: string }> }).thoughts.some((item) => item.id === fixture.thoughtId));
+    const touch = viewport.width < 1440;
+    const viewportContext = await browser.newContext({ viewport, storageState, deviceScaleFactor: 1,
+      isMobile: viewport.width === 390, hasTouch: touch });
+    page = await viewportContext.newPage();
+    page.on('pageerror', (error) => errors.push(error.message));
+    const activate = async (control: Locator) => touch ? control.tap() : control.click();
+    const viewportCards = page.locator('.ws-proposal');
+    try {
+      await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks`);
+      await viewportCards.first().waitFor();
+      await page.screenshot({ path: `/state/proactive-ui-${viewport.width}-collapsed.png`, fullPage: true });
+      await activate(viewportCards.first().locator('.ws-proposal__toggle'));
+      const workSource = viewportCards.first().getByRole('link', { name: /^Measure ToF response at 5 lux/ });
+      assert.equal(await workSource.getAttribute('href'), `/projects/${fixture.projectId}/tasks?open=work:${fixture.workId}`);
+      const thoughtSource = viewportCards.first().getByRole('link', { name: /^Test a ToF sensor using the same 5 lux protocol/ });
+      assert.equal(await thoughtSource.getAttribute('href'), `/projects/${fixture.projectId}/map/${fixture.sketchId}#thought-${fixture.thoughtId}`);
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'expanded sources fit the viewport');
+      for (const source of await viewportCards.first().locator('.ws-proposal__sources li').all()) {
+        const bounds = await source.boundingBox();
+        assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= viewport.width,
+          'each source label stays within the visible column');
+      }
+      if (touch) {
+        assert.equal(await page.evaluate(() => matchMedia('(pointer: coarse)').matches), true);
+        for (const control of await page.locator('.ws-proposal__sources a, .ws-proposal__sources button, .ws-proposals__jumps button').all()) {
+          const bounds = await control.boundingBox();
+          assert.ok(bounds && bounds.height >= 44, 'source links and section jumps have 44px touch targets');
+        }
+      }
+      await page.screenshot({ path: `/state/proactive-ui-${viewport.width}-expanded.png`, fullPage: true });
+      const jumps = page.getByRole('navigation', { name: 'Project work sections' });
+      await activate(jumps.getByRole('button', { name: 'Work 1', exact: true }));
+      await page.waitForFunction(() => {
+        const bounds = document.getElementById('g-open')?.getBoundingClientRect();
+        return !!bounds && bounds.y > 0 && bounds.bottom < innerHeight;
+      });
+      await activate(jumps.getByRole('button', { name: 'Results 2', exact: true }));
+      await page.waitForFunction(() => {
+        const bounds = document.getElementById('g-results')?.getBoundingClientRect();
+        return !!bounds && bounds.y > 0 && bounds.bottom < innerHeight;
+      });
+      await activate(workSource);
+      await page.getByRole('heading', { name: 'Measure ToF response at 5 lux', exact: true }).waitFor();
+      await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks`);
+      await activate(viewportCards.first().locator('.ws-proposal__toggle'));
+      await activate(viewportCards.first().getByRole('link', { name: /^Test a ToF sensor using the same 5 lux protocol/ }));
+      const selected = page.locator(`.sk-node[data-id="${fixture.thoughtId}"], .sk-li-t[data-id="${fixture.thoughtId}"]`).first();
+      await selected.waitFor();
+      await page.waitForFunction((id) => {
+        const node = document.querySelector(`.sk-node[data-id="${id}"], .sk-li-t[data-id="${id}"]`);
+        return node?.getAttribute('aria-selected') === 'true' || node?.getAttribute('aria-pressed') === 'true';
+      }, fixture.thoughtId);
+      const thought = await api('GET', `/api/v1/sketches/${fixture.sketchId}`);
+      assert.equal(thought.status, 200);
+      assert.ok((thought.data as { thoughts: Array<{ id: string }> }).thoughts.some((item) => item.id === fixture.thoughtId));
+    } finally {
+      page = originalPage;
+      await viewportContext.close();
+    }
   }
   await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks`);
   await cards.first().waitFor();

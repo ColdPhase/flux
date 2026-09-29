@@ -7,6 +7,7 @@ export interface ComparisonSource {
   id: string;
   version: number;
   sketchId?: string;
+  title?: string;
   text: string;
   /** Explicitly marked bounded excerpt, not the complete source. */
   excerpted?: boolean;
@@ -16,7 +17,7 @@ export interface ComparisonAnswer {
   fact: string;
   interpretation: string;
   suggestedAction: string;
-  citations: Array<Pick<ComparisonSource, 'type' | 'id' | 'version' | 'sketchId'>>;
+  citations: Array<Pick<ComparisonSource, 'type' | 'id' | 'version' | 'sketchId' | 'title'>>;
 }
 export interface ComparisonProviderResponse {
   stopReason: string;
@@ -52,7 +53,8 @@ export function validateComparisonResponse(response: ComparisonProviderResponse,
     suggestedAction: response.answer.suggestedAction.trim(),
     citations: response.answer.citations.map(({ type, id, version }) => {
       const source = supplied.find((item) => key(item) === key({ type, id, version }))!;
-      return { type, id, version, ...(type === 'thought' ? { sketchId: source.sketchId } : {}) };
+      return { type, id, version, ...(source.title ? { title: source.title } : {}),
+        ...(type === 'thought' ? { sketchId: source.sketchId } : {}) };
     }) };
 }
 

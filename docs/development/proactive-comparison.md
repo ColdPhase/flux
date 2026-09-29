@@ -79,7 +79,11 @@ The Docker browser journey in `tests/app/e2e/proactive-comparison.e2e.ts` seeds
 one human work item and two proposals for a restricted project, renders their
 compact review rows alongside ordinary work and results at 1440×900, opens one
 by keyboard, follows an exact project-message citation, then edits, uses and
-dismisses them. It verifies the
+dismisses them. It also follows work/thought citations and the Work/Results
+section jumps in separate desktop, touch phone and touch tablet browser contexts
+at 1440×900, 390×844 and 1024×768. Touch source links and jumps have at least
+44 px height, and source labels remain inside the visible column. Browser touch
+emulation is not real-device installation or notification evidence. It verifies the
 stored versions and resulting work through the API after reload. A person also
 creates work manually after both proposals are gone, so the continuing project
 workflow does not depend on an available model connection.
@@ -127,7 +131,9 @@ reusing their earlier authorization.
 
 Only supplied ids/versions can be cited. The server attaches message conversation
 ids and thought sketch ids from its selected sources, rather than trusting model
-navigation data. Work/thought links display their cited version and open the current
+navigation data. Compact citation labels use the first 100 characters of the
+selected revision's title or first line, ignoring any model-supplied label.
+Work/thought links display their cited version and open the current
 object, since those objects have no historical content API. Creating work from a
 proposal preserves those project relationships and does not add that generated
 work back into comparison evidence.

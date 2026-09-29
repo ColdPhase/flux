@@ -137,6 +137,8 @@ export function ProjectTasks() {
 
         <ProjectProposals proposals={proposals} people={shell?.people ?? null} projectName={project.name}
           resultTitles={new Map(lists.results.map((result) => [result.id, result.title]))}
+          workCount={lists.work.length} resultCount={lists.results.length}
+          workJumpId={by('in_progress').length ? 'g-progress' : by('blocked').length ? 'g-blocked' : by('open').length ? 'g-open' : parked.length ? 'g-parked' : 'g-finished'}
           writable={writable} refresh={() => revalidator.revalidate()}
           openResult={(id) => openDetails({ kind: 'result', id })}
           openWork={(item) => openDetails({ kind: 'work', id: item.id })} />

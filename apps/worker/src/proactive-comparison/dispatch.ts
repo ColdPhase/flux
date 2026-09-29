@@ -44,6 +44,7 @@ export async function dispatchProactiveComparison(input: { db: Database; candida
         if (text === null) throw new Stop('SOURCE_CHANGED');
         const cap = COMPARISON_CONTEXT_LIMITS.excerptCharacters;
         selected.push({ type: source.type, id: source.id, version: revision, ...(source.sketchId ? { sketchId: source.sketchId } : {}),
+          title: text.split('\n', 1)[0]!.trim().slice(0, 100),
           text: text.length > cap ? `${text.slice(0, cap)}\n[Excerpt: remaining source text was omitted.]` : text,
           ...(text.length > cap ? { excerpted: true, originalCharacters: text.length } : {}) });
       }
