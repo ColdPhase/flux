@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type MouseEvent } from 'react';
 import { Link } from 'react-router';
 import type { ReturnDigest, ReturnPeriod, ReturnScope, ReturnSummary } from '@flux/contracts';
-import { Button, Icon, Spinner } from '../ui';
+import { Button, Icon, Spinner, useSidePanelMode } from '../ui';
 import { useShellData } from '../app/data';
 import { getRecap, saveReturnPoint, sourceHref } from './api';
 import { Item, NextStep } from './SinceYouLeft';
@@ -72,9 +72,10 @@ function Digest({ digest }: { digest: ReturnDigest }) {
   );
 }
 
-/** The panel body. `onDone` closes the panel after "I have the context". */
+/** The panel body. `onDone` closes the panel (after "I have the context", or for a source on a phone). */
 export function WhatMatters({ projectId, projectName, onDone }: { projectId: string; projectName: string; onDone: () => void }) {
   const { me } = useShellData();
+  const mode = useSidePanelMode();
   const store = keptKey(me.user.id, projectId);
   const initial = kept.get(store);
   const [scope, setScope] = useState<ReturnScope>(initial?.scope ?? 'all');
@@ -151,8 +152,15 @@ export function WhatMatters({ projectId, projectName, onDone }: { projectId: str
   const changes = shown?.items.filter((item) => !item.needsYou && item.id !== shown.nextStep?.item) ?? [];
   const empty = !!shown && !shown.items.length && !shown.nextStep;
 
+  // An overlaid panel or sheet gives way to the source a link opens, even in the same conversation
+  // (only the #message changes). Work, decisions and results open in Details instead (handled).
+  const onLink = (event: MouseEvent) => {
+    if (mode === 'docked' || event.defaultPrevented || !(event.target as Element).closest('a[href]')) return;
+    onDone();
+  };
+
   return (
-    <div className="wm">
+    <div className="wm" onClick={onLink}>
       <div className="wm__scroll" ref={scroller} onScroll={onScroll}>
         <div className="wm__head">
           <div className="wm-seg" role="radiogroup" aria-label="Whose changes">

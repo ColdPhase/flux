@@ -64,7 +64,7 @@ describe('private recap: scope, period, snapshot and digest (#133)', () => {
   test('whole project or only what concerns me', async () => {
     other = await start(kai, lamp.id, 'Which enclosure colour do we print?');
     await say(ari, other.id, 'Grey, like the prototype.');
-    await say(ari, hers.id, 'Sensor. Nia, can you check the ToF at 5 lux?');
+    await say(ari, hers.id, 'Nia, can you check the ToF at 5 lux? I think a sensor wins.');
     await say(kai, hers.id, 'I can lend you my ToF board.');
     const result = json<WorkResult>(await post(kai, `/api/v1/projects/${lamp.id}/results`,
       { title: 'ToF sees a hand at 30 cm', finding: 'positive', evidence: '18 of 20 at 5 lux', work: [niaWork.id] }), 201, 'result');
@@ -99,7 +99,7 @@ describe('private recap: scope, period, snapshot and digest (#133)', () => {
     const digest = (await recap(nia, lamp.id, '&digest=1')).digest!;
     const talk = digest.conversations.find((entry) => entry.conversationId === hers.id)!;
     assert.deepEqual(talk.quotes.map((quote) => [quote.author, quote.excerpt]), [
-      ['Ari', 'Sensor. Nia, can you check the ToF at 5 lux?'], ['Kai', 'I can lend you my ToF board.'],
+      ['Ari', 'Nia, can you check the ToF at 5 lux? I think a sensor wins.'], ['Kai', 'I can lend you my ToF board.'],
     ]);
     assert.equal(talk.opening, 'Camera or sensor for the lamp?');
     assert.ok(digest.conversations.some((entry) => entry.conversationId === other.id));
@@ -131,12 +131,13 @@ describe('private recap: scope, period, snapshot and digest (#133)', () => {
   });
 
   test('it stays private: per person, current access only, nothing shared', async () => {
-    const before = await pool.query("SELECT count(*)::int AS n FROM events WHERE kind NOT LIKE 'return.%'");
+    const count = "SELECT count(*)::int AS n FROM events WHERE workspace_id = $1";
+    const before = await pool.query(count, [ws.id]);
     const niaView = await recap(nia, lamp.id, '&digest=1');
     const kaiView = await recap(kai, lamp.id, '&digest=1');
     assert.notDeepEqual(texts(niaView), texts(kaiView), 'each person has their own recap');
     assert.ok(!texts(kaiView).some((text) => text.startsWith('Ari asked you')), 'a question to Nia is not "asked you" for Kai');
-    const after = await pool.query("SELECT count(*)::int AS n FROM events WHERE kind NOT LIKE 'return.%'");
+    const after = await pool.query(count, [ws.id]);
     assert.equal(after.rows[0]!.n, before.rows[0]!.n, 'reading a recap records no shared event');
     const outsider = await olek.browser.request('GET', `/api/v1/return?place=project&id=${lamp.id}&digest=1`);
     assert.equal(outsider.status, 404);

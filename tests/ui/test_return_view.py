@@ -149,8 +149,9 @@ class ReturnViewJourney(unittest.TestCase):
         page.wait_for_timeout(500)
         self.assertIsNone(self.point(page), "viewing alone saves nothing")
         panel = self.open_recap(page)
-        expect(panel).to_contain_text("From the beginning of the project")
-        expect(panel).to_contain_text("Nothing new yet.")
+        # Never viewed: the project starts from Home's point, which Nia just saw.
+        expect(panel).to_contain_text(re.compile(r"Since \d+ \w+, \d\d:\d\d"))
+        expect(panel).to_contain_text("Nothing new since your last visit.")
         self.have_context(page, panel)
         self.assertIsNotNone(self.point(page), "I have the context saves the point")
 
@@ -315,11 +316,14 @@ class ReturnViewJourney(unittest.TestCase):
                 break
             page.wait_for_timeout(50)
         self.assertTrue(held, "the whole-project request is in flight")
-        page.unroute(pattern)
         panel.get_by_role("radio", name="Relevant to me").click()
         expect(panel.locator(".since__next")).to_contain_text("is the clip printed")
+        page.unroute(pattern, behavior="wait")
         for route in held:
-            route.continue_()
+            try:
+                route.continue_()
+            except Exception:
+                pass  # already answered when the handler was removed
         page.wait_for_timeout(800)
         # The whole-project answer arrived last and was dropped: the list is still "relevant to me".
         expect(panel.get_by_role("radio", name="Relevant to me")).to_have_attribute("aria-checked", "true")
