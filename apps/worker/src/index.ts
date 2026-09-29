@@ -1,6 +1,6 @@
 import { PgBoss } from 'pg-boss';
 import { eq } from 'drizzle-orm';
-import { createDatabase, schema } from '@flux/db';
+import { assertExactMigrationLedger, createDatabase, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest, schema } from '@flux/db';
 import { deleteExpiredIdempotencyKeys, DRAFT_SUMMARY_JOB, IDEMPOTENCY_CLEANUP_JOB, processDraftSummary, SAMPLE_JOB } from '@flux/core';
 import { registerPushWorker } from './push/index.js';
 import { registerNotificationEmailWorker, startNotificationGenerator } from './notifications/index.js';
@@ -8,6 +8,7 @@ import { registerNotificationEmailWorker, startNotificationGenerator } from './n
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
 const { pool, db } = createDatabase(connectionString);
+assertExactMigrationLedger(await readMigrationManifest('packages/db/migrations', FLUX_SCHEMA_VERSION), await readAppliedMigrationVersions(pool));
 pool.on('error', (error) => console.error('Database connection interrupted', error));
 const boss = new PgBoss({ connectionString, migrate: false });
 boss.on('error', (error) => console.error(error));

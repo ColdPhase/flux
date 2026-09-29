@@ -99,6 +99,36 @@ To rerun the reviewed migration after a restore or source update:
 docker compose --env-file .env -p flux28 -f infra/compose.yaml run --rm migrate
 ```
 
+### Migration ledger mismatch (#118)
+
+The migration image rejects duplicate numbered SQL files and a stale compiled
+`FLUX_SCHEMA_VERSION` before changing the database. Under its migration lock it
+rejects ledger versions for which that image has no SQL file, then applies any
+missing files and requires the final ledger to contain exactly the file versions.
+A newly landed lower-numbered file may fill a gap in an existing installation;
+gaps in an active feature branch do not by themselves mark a database corrupt.
+Each SQL migration runs in one transaction. A legacy file may record its own
+version, but inserting another version or deleting an earlier record rolls back.
+The API and worker also check the exact ledger before starting; API health checks
+it again on every request.
+
+If `migrate` reports a mismatch, leave API and worker stopped. Inspect the error
+and the ledger with the same Compose project and database volume (replace `flux28`
+with the installation's project name):
+
+```sh
+docker compose --env-file .env -p flux28 -f infra/compose.yaml logs migrate
+docker compose --env-file .env -p flux28 -f infra/compose.yaml exec -T db \
+  psql -U flux -d flux -c 'SELECT version, applied_at FROM flux_schema_version ORDER BY version'
+```
+
+Check that the intended application image contains the corresponding SQL files.
+Restore the matching image if the database is newer than the image; otherwise
+take a database and files backup before diagnosing or repairing an interrupted
+upgrade. Do not delete ledger rows, reset the volume, or replay SQL manually to
+make a health check pass. A data-preserving repair needs its own review and a
+same-volume rehearsal before production use.
+
 ## Integration fixture
 
 The fixture requires the secret bearer token from `.env`. It writes a sample row,
