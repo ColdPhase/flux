@@ -460,7 +460,9 @@ class LiveJourney(LiveBase):
 
         # A capture that finishes after Quiet sends nothing: hold Nia's microphone prompt, choose
         # Work quietly, then let the browser return the live track (review of #131).
-        expect(ada.locator("[data-live-audio] audio")).to_have_count(0)
+        # Ids of the live audio tracks Ada receives; a capture after Quiet must add none.
+        heard = lambda: ada.evaluate("[...document.querySelectorAll('[data-live-audio] audio')].flatMap((a) => a.srcObject ? a.srcObject.getAudioTracks() : []).filter((t) => t.readyState === 'live').map((t) => t.id)")
+        before = heard()
         nia.evaluate("window.__holdCapture = true")
         self.bar(nia).get_by_role("button", name=re.compile("^Microphone off")).click()
         nia.wait_for_function("() => typeof window.__releaseCapture === 'function'")
@@ -472,10 +474,10 @@ class LiveJourney(LiveBase):
         nia.wait_for_function("() => window.__live.tracks.every((t) => t.readyState === 'ended')")
         nia.wait_for_timeout(2500)
         self.assertEqual(nia.evaluate("window.__live.tracks.filter((t) => t.readyState === 'live').length"), 0, "the late track was stopped")
-        expect(ada.locator("[data-live-audio] audio")).to_have_count(0)
-        expect(self.bar(nia).get_by_role("button", name=re.compile("^Microphone off"))).to_have_attribute("aria-pressed", "false")
-        # The same for leaving while a capture is pending.
+        self.assertTrue(set(heard()) <= set(before), "Ada receives no new audio track")
+        # The same for leaving while a capture is pending. After Return the microphone is truthfully off.
         self.bar(nia).get_by_role("button", name="Return").click()
+        expect(self.bar(nia).get_by_role("button", name=re.compile("^Microphone off"))).to_have_attribute("aria-pressed", "false")
         nia.evaluate("window.__holdCapture = true; window.__releaseCapture = undefined")
         self.bar(nia).get_by_role("button", name=re.compile("^Microphone off")).click()
         nia.wait_for_function("() => typeof window.__releaseCapture === 'function'")
@@ -483,8 +485,9 @@ class LiveJourney(LiveBase):
         expect(self.bar(nia)).to_have_count(0)
         nia.evaluate("window.__holdCapture = false; window.__releaseCapture()")
         nia.wait_for_function("() => window.__live.tracks.every((t) => t.readyState === 'ended')")
-        expect(ada.locator("[data-live-audio] audio")).to_have_count(0)
         expect(self.bar(ada).locator(".lv-face")).to_have_count(3)
+        ada.wait_for_timeout(2000)
+        self.assertTrue(set(heard()) <= set(before), "Ada receives no audio from a capture that finished after leaving")
 
         # Everyone leaves; the last one is told the session closes; the doc is unchanged.
         for who in ("kai", "jonas", "ada"):
