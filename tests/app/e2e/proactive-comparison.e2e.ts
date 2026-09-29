@@ -31,6 +31,41 @@ async function api(method: string, path: string, body?: unknown) {
     return { status: response.status, data: await response.json() };
   }, { method, path, body });
 }
+async function assertBackgroundContrast() {
+  const checks = await page.evaluate(() => {
+    const root = document.documentElement;
+    const previous = root.dataset.theme;
+    const luminance = (color: string) => {
+      const channels = color.match(/[\d.]+/g)!.slice(0, 3).map((value) => {
+        const n = Number(value) / 255;
+        return n <= 0.04045 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4;
+      });
+      return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
+    };
+    const ratio = (a: string, b: string) => {
+      const values = [luminance(a), luminance(b)].sort((a, b) => b - a);
+      return (values[0]! + 0.05) / (values[1]! + 0.05);
+    };
+    const checks: Array<{ theme: string; part: string; ratio: number; minimum: number }> = [];
+    for (const theme of ['light', 'dark']) {
+      root.dataset.theme = theme;
+      const bg = getComputedStyle(document.querySelector('.pane')!).backgroundColor;
+      for (const part of ['.background-settings__help', '.background-settings__note', '.background-settings__fields label']) {
+        const node = document.querySelector(part)!;
+        checks.push({ theme, part, ratio: ratio(getComputedStyle(node).color, bg), minimum: 4.5 });
+      }
+      for (const node of document.querySelectorAll('.background-settings input:not([type=checkbox]), .background-settings select')) {
+        const style = getComputedStyle(node);
+        checks.push({ theme, part: `${node.tagName} boundary`, ratio: ratio(style.borderTopColor, style.backgroundColor), minimum: 3 });
+      }
+    }
+    if (previous === undefined) delete root.dataset.theme; else root.dataset.theme = previous;
+    return checks;
+  });
+  for (const check of checks) assert.ok(check.ratio >= check.minimum,
+    `${check.theme} ${check.part}: ${check.ratio.toFixed(2)}:1 must reach ${check.minimum}:1`);
+}
+
 async function proposals() {
   const response = await api('GET', `/api/v1/projects/${fixture.projectId}/proactive-comparison-proposals`);
   assert.equal(response.status, 200);
@@ -233,6 +268,7 @@ test('owner-only background setup persists consent, clears keys and preserves an
   await page.getByLabel('Maximum requests a day').fill('2');
   await page.getByLabel('30-day local allowance (USD)').fill('0.25');
   await page.getByLabel('Per-request local allowance (USD)').fill('0.05');
+  await assertBackgroundContrast();
   await page.getByRole('button', { name: 'Save connection and consent', exact: true }).click();
   assert.equal(writes, 0, 'missing consent cannot send a credential request');
   for (const check of await page.locator('.background-settings__check input').all()) await check.check();
@@ -255,6 +291,9 @@ test('owner-only background setup persists consent, clears keys and preserves an
   assert.match(await page.locator('.background-settings__metadata').innerText(), /Fixture Sensor Research[\s\S]*ABCD[\s\S]*\$0.25/);
   await page.locator('.background-settings__help').first().click();
   await page.screenshot({ path: '/state/background-setup-1440-saved.png', fullPage: true });
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
+  await page.screenshot({ path: '/state/background-setup-1440-saved-dark.png', fullPage: true });
+  await page.evaluate(() => { delete document.documentElement.dataset.theme; });
 
   const ownerPage = page;
   const peerContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
