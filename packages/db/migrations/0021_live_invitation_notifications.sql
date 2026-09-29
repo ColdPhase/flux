@@ -5,4 +5,4 @@ ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_reason_check;
 ALTER TABLE notifications ADD CONSTRAINT notifications_reason_check
   CHECK (reason IN ('mention', 'question', 'reply', 'dm', 'assigned', 'review', 'invitation'));
 
-INSERT INTO flux_schema_version(version) VALUES (27) ON CONFLICT DO NOTHING;
+INSERT INTO flux_schema_version(version) VALUES (21) ON CONFLICT DO NOTHING;

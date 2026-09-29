@@ -92,8 +92,21 @@ INSTRUMENT = """
     };
   }
   const Native = window.WebSocket;
+  // A test can hold the media server's answers (for example "track published") and release them
+  // in order later, so a publication stays pending after capture has finished.
+  const heldSignals = [];
+  window.__releaseSignals = () => { window.__holdSignals = false; heldSignals.splice(0).forEach(([socket, data]) => { const event = new MessageEvent('message', { data }); event.__released = true; socket.dispatchEvent(event); }); };
   window.WebSocket = class extends Native {
-    constructor(url, protocols) { super(url, protocols); if (String(url).includes('/rtc')) state.sockets += 1; }
+    constructor(url, protocols) {
+      super(url, protocols);
+      if (!String(url).includes('/rtc')) return;
+      state.sockets += 1;
+      this.addEventListener('message', (event) => {
+        if (!window.__holdSignals || event.__released) return;
+        event.stopImmediatePropagation();
+        heldSignals.push([this, event.data]);
+      });
+    }
   };
 })();
 """
@@ -475,9 +488,27 @@ class LiveJourney(LiveBase):
         nia.wait_for_timeout(2500)
         self.assertEqual(nia.evaluate("window.__live.tracks.filter((t) => t.readyState === 'live').length"), 0, "the late track was stopped")
         self.assertTrue(set(heard()) <= set(before), "Ada receives no new audio track")
-        # The same for leaving while a capture is pending. After Return the microphone is truthfully off.
+        # After Return the microphone is truthfully off.
         self.bar(nia).get_by_role("button", name="Return").click()
         expect(self.bar(nia).get_by_role("button", name=re.compile("^Microphone off"))).to_have_attribute("aria-pressed", "false")
+
+        # Capture finished, publication still pending (the server's answer is held): Quiet stops the
+        # microphone at once, before publication resolves, and the late publication sends nothing.
+        nia.evaluate("window.__holdSignals = true")
+        self.bar(nia).get_by_role("button", name=re.compile("^Microphone off")).click()
+        nia.wait_for_function("() => window.__live.tracks.some((t) => t.kind === 'audio' && t.readyState === 'live')")
+        self.bar(nia).get_by_role("button", name="Session details and more").click()
+        nia.get_by_role("dialog", name="Live session").get_by_role("switch", name=re.compile("Work quietly")).click()
+        nia.keyboard.press("Escape")
+        nia.wait_for_function("() => window.__live.tracks.every((t) => t.readyState === 'ended')", timeout=3000)
+        self.assertTrue(nia.evaluate("window.__holdSignals"), "still before the publication answer")
+        nia.evaluate("window.__releaseSignals()")
+        nia.wait_for_timeout(2500)
+        self.assertEqual(nia.evaluate("window.__live.tracks.filter((t) => t.readyState === 'live').length"), 0, "nothing captures after the publication answer")
+        self.assertTrue(set(heard()) <= set(before), "Ada receives no audio from a publication that finished after Quiet")
+        self.bar(nia).get_by_role("button", name="Return").click()
+        expect(self.bar(nia).get_by_role("button", name=re.compile("^Microphone off"))).to_have_attribute("aria-pressed", "false")
+        # The same for leaving while a capture is pending.
         nia.evaluate("window.__holdCapture = true; window.__releaseCapture = undefined")
         self.bar(nia).get_by_role("button", name=re.compile("^Microphone off")).click()
         nia.wait_for_function("() => typeof window.__releaseCapture === 'function'")

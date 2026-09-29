@@ -134,6 +134,8 @@ export class LiveMediaConnection {
    * finishes stops its tracks instead of sending them. Quiet, off and leave all take a number.
    */
   private generation: Record<DeviceKind, number> = { mic: 0, camera: 0, screen: 0 };
+  /** Tracks captured but not yet confirmed as published: Quiet, off and leave stop them at once. */
+  private pending: Record<DeviceKind, Set<LocalTrack>> = { mic: new Set(), camera: new Set(), screen: new Set() };
   private connection: ConnectionState = 'idle';
   private endReason: EndReason | null = null;
   private leaving = false;
@@ -160,8 +162,10 @@ export class LiveMediaConnection {
     const room = this.room;
     room
       .on(RoomEvent.Connected, () => { this.connection = 'connected'; update(); })
-      .on(RoomEvent.Reconnecting, () => { this.connection = 'reconnecting'; update(); })
-      .on(RoomEvent.SignalReconnecting, () => { this.connection = 'reconnecting'; update(); })
+      // A capture still waiting to publish is stopped when the connection drops; its request then
+      // reports that nothing was sent (see `setDevice`).
+      .on(RoomEvent.Reconnecting, () => { this.connection = 'reconnecting'; this.stopAllPending(); update(); })
+      .on(RoomEvent.SignalReconnecting, () => { this.connection = 'reconnecting'; this.stopAllPending(); update(); })
       .on(RoomEvent.Reconnected, () => { this.connection = 'connected'; update(); })
       .on(RoomEvent.Disconnected, (reason?: DisconnectReason) => this.onDisconnected(reason))
       .on(RoomEvent.ParticipantConnected, update)
@@ -248,12 +252,14 @@ export class LiveMediaConnection {
           surfaceSwitching: 'include',
         })).filter((track) => track.kind === Track.Kind.Video);
       }
+      captured.forEach((track) => this.pending[kind].add(track));
       if (stale()) { captured.forEach((track) => track.stop()); return drop(stale()!); }
       const track = captured[0];
       if (!track) return this.set(kind, { state: 'off', note: kind === 'screen' ? 'Nothing was chosen, so nothing is shared.' : null });
       await local.publishTrack(track, kind === 'screen' ? { degradationPreference: 'maintain-resolution', simulcast: false } : {});
-      // Superseded while publishing: take it back at once.
+      // Superseded while publishing: the track was already stopped; take the publication back too.
       if (stale()) { await this.unpublish(track); return drop(stale()!); }
+      this.pending[kind].clear();
       const publication = local.getTrackPublication(kind === 'mic' ? Track.Source.Microphone : kind === 'camera' ? Track.Source.Camera : Track.Source.ScreenShare);
       if (!publication?.track) return this.set(kind, { state: 'off', note: kind === 'screen' ? 'Nothing was chosen, so nothing is shared.' : null });
       publication.track.mediaStreamTrack.addEventListener('ended', () => {
@@ -262,6 +268,7 @@ export class LiveMediaConnection {
       }, { once: true });
       return this.set(kind, { state: 'on', note: null });
     } catch (error) {
+      captured.forEach((track) => this.pending[kind].delete(track));
       await Promise.all(captured.map((track) => this.unpublish(track)));
       if (stale()) return drop(stale()!);
       await this.release(kind);
@@ -287,7 +294,7 @@ export class LiveMediaConnection {
 
   async disconnect(): Promise<void> {
     this.leaving = true;
-    for (const kind of ['mic', 'camera', 'screen'] as const) this.generation[kind]++;
+    for (const kind of ['mic', 'camera', 'screen'] as const) { this.generation[kind]++; this.stopPending(kind); }
     await Promise.all((['mic', 'camera', 'screen'] as const).map((kind) => this.release(kind)));
     this.devices = { ...IDLE_DEVICES };
     await this.room.disconnect(true);
@@ -379,8 +386,17 @@ export class LiveMediaConnection {
     track.stop();
   }
 
+  /** Stops every capture of a device that has not finished publishing; its request is already superseded. */
+  private stopPending(kind: DeviceKind) {
+    for (const track of this.pending[kind]) track.stop();
+    this.pending[kind].clear();
+  }
+
+  private stopAllPending() { for (const kind of ['mic', 'camera', 'screen'] as const) this.stopPending(kind); }
+
   private async stopDevice(kind: DeviceKind, status: DeviceStatus): Promise<DeviceStatus> {
     this.generation[kind]++;
+    this.stopPending(kind);
     await this.release(kind);
     return this.set(kind, status);
   }
