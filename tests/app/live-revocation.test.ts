@@ -76,7 +76,7 @@ async function joinApp(f: Awaited<ReturnType<typeof fixture>>,
   revocation: { recoverMissingRoom(sessionId: string): Promise<void> } = f.coordinator) {
   const app = Fastify();
   await app.register(liveRoutes, {
-    sessions: { requirePrincipal: async () => ({ principal: f.principal }) } as never,
+    sessions: { requirePrincipal: async () => ({ principal: f.principal, sessionId: 'auth-member' }) } as never,
     ports: { access: liveAccess(db), sessions: f.store, media: f.transport.media,
       mediaUrl: 'wss://media.example.test' },
     revocation,
@@ -161,7 +161,7 @@ test('lost-room join rechecks policy after repair before issuing a replacement t
 
 test('grant revocation retires the old room before commit and leaves only a new-generation owner room', async () => {
   const f = await fixture('live-revoke');
-  const old = await f.store.withAdmission(f.principal, f.session.id, async (session) => f.transport.media.grant(session.roomId, f.member.id));
+  const old = await f.store.withAdmission(f.principal, f.session.id, async (session) => f.transport.media.grant(session.roomId, f.member.id, 'AAAAAAAAAAAAAAAAAAAAAA'));
   assert.equal(old.token, `jwt:${f.session.roomId}`);
   await f.coordinator.withProjectChange(f.place.id, async () => {
     assert.equal(f.transport.rooms.has(f.session.roomId), false);
@@ -178,7 +178,7 @@ test('grant revocation retires the old room before commit and leaves only a new-
   const owner = { kind: 'human' as const, id: f.owner.id };
   const live = liveUseCases({ access: liveAccess(db), sessions: f.store, media: f.transport.media,
     mediaUrl: 'wss://media.example.test' });
-  const replacement = await live.join(owner, f.session.id);
+  const replacement = await live.join(owner, f.session.id, 'auth-owner');
   assert.equal(f.transport.rooms.has(next!.roomId), true, 'rotation created the new room before admitting anyone');
   assert.equal(replacement.token, `jwt:${next?.roomId}`);
   assert.equal(replacement.session.generation, 2);
@@ -223,7 +223,7 @@ test('workspace membership removal retires all old media while a remaining membe
     (error) => error instanceof DomainError && error.code === 'PROJECT_NOT_FOUND');
   const live = liveUseCases({ access: liveAccess(db), sessions: f.store, media: f.transport.media,
     mediaUrl: 'wss://media.example.test' });
-  const replacement = await live.join(remainingPrincipal, f.session.id);
+  const replacement = await live.join(remainingPrincipal, f.session.id, 'auth-remaining');
   const next = (await f.store.find(f.session.id))!;
   assert.notEqual(next.roomId, original);
   assert.equal(f.transport.rooms.has(next.roomId), true);

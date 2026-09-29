@@ -1,4 +1,6 @@
+import { EventEmitter } from 'node:events';
 import { open, unlink } from 'node:fs/promises';
+import type { Server } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import Fastify from 'fastify';
@@ -21,7 +23,8 @@ import { workRoutes } from './work/routes.js';
 import { liveRoutes } from './live/routes.js';
 import { liveAccess } from './live/access.js';
 import { liveSessionStore } from './live/store.js';
-import { createLiveMediaFromEnv, liveMediaConfig } from './live/media.js';
+import { createLiveMediaFromEnv } from './live/media.js';
+import { registerLiveSignaling } from './live/signaling.js';
 import { liveRevocationCoordinator } from './live/revocation.js';
 import { liveDiscoveryRoutes } from './live/discovery.js';
 import { liveLifecycle } from './live/lifecycle.js';
@@ -51,7 +54,7 @@ boss.on('error', (error) => app.log.error(error));
 await boss.start();
 app.addHook('onClose', async () => boss.stop());
 const identity = registerIdentity(app, { db, config: identityConfig });
-const liveMedia = createLiveMediaFromEnv();
+const liveMedia = createLiveMediaFromEnv(process.env, identityConfig.publicOrigin);
 const lifecycle = liveMedia ? liveLifecycle(db, pool, liveMedia.media) : null;
 const liveRevocation = liveMedia ? liveRevocationCoordinator(db, pool, liveMedia.media, lifecycle!) : null;
 await app.register(accessRoutes, { db, sessions: identity, boss, liveRevocation });
@@ -59,7 +62,10 @@ await app.register(sketchRoutes, { db, sessions: identity });
 await app.register(dmRoutes, { db, sessions: identity });
 await app.register(pushRoutes, { db, sessions: identity, config: pushConfig });
 if (pushConfig.status === 'unavailable') app.log.warn(pushConfig.reason);
-await app.register(websocket, { options: { maxPayload: 1024 } });
+// Upgrades reach @fastify/websocket through this emitter, except `/media/*`, which the live
+// signaling gate takes before any Fastify WebSocket handling (see the dispatch below).
+const streamUpgrades = new EventEmitter();
+await app.register(websocket, { options: { maxPayload: 1024, server: streamUpgrades as unknown as Server } });
 const heartbeatMs = Number(process.env.FLUX_STREAM_HEARTBEAT_MS ?? 25_000);
 if (!Number.isInteger(heartbeatMs) || heartbeatMs < 100) throw new Error('FLUX_STREAM_HEARTBEAT_MS must be an integer of at least 100');
 await app.register(streamRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, connectionString, heartbeatMs, cursorSecret: identityConfig.secret, exposeWork: testFailureInjection });
@@ -67,21 +73,29 @@ await app.register(conversationRoutes, { db, sessions: identity });
 await app.register(workRoutes, { db, sessions: identity });
 // Configuration alone does not prove the SFU, DNS/TLS or receiver path is healthy.
 app.get('/api/v1/live-sessions/capabilities', async () => ({ status: liveMedia ? 'configured' : 'unavailable' }));
+const livePorts = liveMedia ? { access: liveAccess(db), sessions: liveSessionStore(db), media: liveMedia.media, mediaUrl: liveMedia.mediaUrl } : null;
 if (liveMedia) await app.register(liveRoutes, {
   sessions: identity,
-  ports: { access: liveAccess(db), sessions: liveSessionStore(db), ...liveMedia },
+  ports: livePorts!,
   lifecycle: lifecycle!,
   revocation: liveRevocation!,
   // Per API instance: N replicas allow N times the limit (docs/development/live-sessions.md).
   joinLimiter: joinRateLimiter(),
 });
-// Signing out also ends that person's media connections (after the response, never failing it).
+// Browsers signal only through this gate; ending an auth session revokes its media admission (#128).
+const liveSignaling = liveMedia ? registerLiveSignaling(app, { db, connectionString, publicOrigin: identityConfig.publicOrigin,
+  sessions: identity, ports: livePorts!, media: liveMedia.media, config: liveMedia.config }) : null;
+app.server.on('upgrade', (request, socket, head) => {
+  if (liveSignaling?.gate.handleUpgrade(request, socket, head)) return;
+  streamUpgrades.emit('upgrade', request, socket, head);
+});
 if (liveMedia) await app.register(liveDiscoveryRoutes, { db, sessions: identity, media: liveMedia.media });
 if (liveMedia) await app.register(liveInvitationRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret });
 if (lifecycle) {
-  const config = liveMediaConfig(process.env);
+  const config = liveMedia!.config;
   await app.register(liveWebhookRoutes, { pool, apiKey: config.apiKey, apiSecret: config.apiSecret,
-    requestReconcile: (sessionId, generation) => lifecycle.reconcile(sessionId, generation).then(() => undefined) });
+    requestReconcile: (sessionId, generation) => lifecycle.reconcile(sessionId, generation).then(() => undefined),
+    reconcileAdmissions: (roomId) => liveSignaling!.revocation.reconcileRoom(roomId) });
   const pruneWebhooks = async () => {
     try {
       await pool.query(`DELETE FROM live_webhook_events WHERE event_id IN (

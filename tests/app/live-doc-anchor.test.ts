@@ -56,6 +56,7 @@ test('wiki doc is a project-bound live anchor; non-doc, foreign and hidden ancho
   await app.register(liveRoutes, {
     sessions: { requirePrincipal: async (request: { headers: Record<string, unknown> }) => ({
       principal: { kind: 'human', id: String(request.headers['x-test-user'] ?? owner.id) },
+      sessionId: `auth-${String(request.headers['x-test-user'] ?? owner.id)}`,
     }) } as never,
     ports: { access: liveAccess(db), sessions: store, media, mediaUrl: 'wss://media.example.test' },
   });

@@ -39,16 +39,17 @@ export async function liveRoutes(app: FastifyInstance, { ports, sessions, lifecy
     async (request) => live.get(await principal(request), request.params.sessionId));
 
   app.post<{ Params: { sessionId: string } }>(liveJoinPath(':sessionId'), async (request) => {
-    const caller = await principal(request);
+    const { principal: caller, sessionId: authSessionId } = await sessions.requirePrincipal(request);
     // Counted before any database or SFU work, so a runaway client stays cheap.
     joinLimiter?.take(caller.id);
-    try { return await live.join(caller, request.params.sessionId); }
+    // The grant is admitted only with this same cookie session at the signaling gate (#128).
+    try { return await live.join(caller, request.params.sessionId, authSessionId); }
     catch (error) {
       if (!revocation || !(error instanceof DomainError) ||
         !['LIVE_ROOM_GONE', 'LIVE_SESSION_ROTATING'].includes(error.code)) throw error;
       await revocation.recoverMissingRoom(request.params.sessionId);
       // This is a new admission, including current project and anchor checks.
-      return live.join(caller, request.params.sessionId);
+      return live.join(caller, request.params.sessionId, authSessionId);
     }
   });
 

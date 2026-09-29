@@ -26,43 +26,76 @@ function userIdFromIdentity(identity: string): string | null {
   }
 }
 
+/** A connected SFU participant and the admission id its grant carries as metadata. */
+export interface ParticipantAdmission {
+  userId: string;
+  /** Null for a participant without a well-formed Flux admission id. */
+  admissionId: string | null;
+}
+
 export interface LiveMediaAdapter extends LiveMedia {
   participants(roomId: string): Promise<{ userId: string; joinedAt: string }[]>;
+  /** Every Flux participant the SFU still holds in the room, whatever its connection state. */
+  participantAdmissions(roomId: string): Promise<ParticipantAdmission[]>;
   removeParticipant(roomId: string, userId: string): Promise<void>;
+  /**
+   * Drops every publish/subscribe/data permission, then disconnects the participant. The
+   * permission drop comes first so a token the SFU refreshes meanwhile carries none (#128).
+   * Absence of the person or room counts as done.
+   */
+  revokeParticipant(roomId: string, userId: string): Promise<void>;
   deleteRoom(roomId: string): Promise<void>;
 }
 
 export interface LiveMediaConfig {
+  /** Private SFU origin, reachable only by the API: room service calls and proxied signaling. */
   apiUrl: string;
+  /** Private signaling origin (the API origin with a ws/wss scheme). */
+  signalUrl: string;
+  /** What browsers receive: the Flux signaling gate at `<public origin>/media`. */
   mediaUrl: string;
   apiKey: string;
   apiSecret: string;
 }
 
-/** No LiveKit defaults: the operator must name an owned SFU and supply its signing key. */
-export function liveMediaConfig(env: NodeJS.ProcessEnv): LiveMediaConfig {
+export const MEDIA_GATE_PATH = '/media';
+export const ADMISSION_ID = /^[A-Za-z0-9_-]{22}$/;
+
+/**
+ * No LiveKit defaults: the operator must name an owned SFU and supply its signing key.
+ * Browsers never receive the SFU address. They signal through the Flux gate (#128).
+ */
+export function liveMediaConfig(env: NodeJS.ProcessEnv, publicOrigin: string): LiveMediaConfig {
   const apiUrl = env.FLUX_LIVEKIT_API_URL;
-  const mediaUrl = env.FLUX_LIVEKIT_WS_URL;
   const apiKey = env.FLUX_LIVEKIT_API_KEY;
   const apiSecret = env.FLUX_LIVEKIT_API_SECRET;
-  if (!apiUrl || !mediaUrl || !apiKey || !apiSecret)
-    throw new Error('Live media requires FLUX_LIVEKIT_API_URL, FLUX_LIVEKIT_WS_URL, FLUX_LIVEKIT_API_KEY and FLUX_LIVEKIT_API_SECRET');
+  if (env.FLUX_LIVEKIT_WS_URL)
+    throw new Error('FLUX_LIVEKIT_WS_URL is no longer used: browsers signal through <FLUX_PUBLIC_ORIGIN>/media, and the SFU signal port must stay private (docs/development/live-sessions.md)');
+  if (!apiUrl || !apiKey || !apiSecret)
+    throw new Error('Live media requires FLUX_LIVEKIT_API_URL, FLUX_LIVEKIT_API_KEY and FLUX_LIVEKIT_API_SECRET');
   if (!/^[A-Za-z0-9_-]{8,128}$/.test(apiKey) || !/^[A-Za-z0-9_-]{32,128}$/.test(apiSecret))
     throw new Error('Invalid LiveKit API key or signing secret');
 
   const api = new URL(apiUrl);
-  const media = new URL(mediaUrl);
-  if (api.username || api.password || media.username || media.password || api.search || media.search || api.hash || media.hash)
+  if (api.username || api.password || api.search || api.hash)
     throw new Error('LiveKit URLs must not contain credentials, query parameters or fragments');
-  const localHosts = new Set(['localhost', '127.0.0.1', '[::1]', 'livekit']);
+  // `livekit` is the Compose service on the internal signal network (compose.live.yaml),
+  // reachable only by the API. Loopback plain HTTP is for local development only.
   const insecureLocal = env.NODE_ENV !== 'production' && env.FLUX_LIVEKIT_ALLOW_INSECURE_LOCAL === 'true';
-  if (api.protocol !== 'https:' && !(insecureLocal && api.protocol === 'http:' && localHosts.has(api.hostname)))
-    throw new Error('LiveKit API URL must use HTTPS');
-  if (media.protocol !== 'wss:' && !(insecureLocal && media.protocol === 'ws:' && localHosts.has(media.hostname)))
-    throw new Error('LiveKit browser URL must use WSS');
-  if (api.pathname !== '/' || media.pathname !== '/')
+  const privateService = api.protocol === 'http:' && api.hostname === 'livekit';
+  const loopback = api.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(api.hostname);
+  if (api.protocol !== 'https:' && !privateService && !(insecureLocal && loopback))
+    throw new Error('LiveKit API URL must use HTTPS, or http://livekit on the private Compose signal network');
+  if (api.pathname !== '/')
     throw new Error('LiveKit URLs must be origins without paths');
-  return { apiUrl: api.origin, mediaUrl: media.origin, apiKey, apiSecret };
+  const origin = new URL(publicOrigin);
+  return {
+    apiUrl: api.origin,
+    signalUrl: `${api.protocol === 'https:' ? 'wss:' : 'ws:'}//${api.host}`,
+    mediaUrl: `${origin.protocol === 'https:' ? 'wss:' : 'ws:'}//${origin.host}${MEDIA_GATE_PATH}`,
+    apiKey,
+    apiSecret,
+  };
 }
 
 /** Infrastructure adapter only. Flux core decides admission before calling grant(). */
@@ -89,10 +122,13 @@ export function createLiveMedia(config: LiveMediaConfig): LiveMediaAdapter {
       if (!existing.some((candidate) => candidate.name === name))
         throw new ServiceUnavailableError('This live room has ended; start a new session', 'LIVE_ROOM_GONE');
     },
-    async grant(roomId, userId) {
+    async grant(roomId, userId, admissionId) {
+      if (!ADMISSION_ID.test(admissionId)) throw new Error('Invalid live admission ID');
       const issuedAt = Date.now();
       const token = new AccessToken(config.apiKey, config.apiSecret, {
         identity: participantIdentity(userId),
+        // Opaque; SFU-refreshed tokens keep it, so the gate recognises them too.
+        metadata: admissionId,
         ttl: GRANT_TTL_SECONDS,
       });
       token.addGrant({
@@ -120,6 +156,38 @@ export function createLiveMedia(config: LiveMediaConfig): LiveMediaAdapter {
         if (!userId) return [];
         return [{ userId, joinedAt: new Date(Number(participant.joinedAt) * 1000).toISOString() }];
       });
+    },
+    async participantAdmissions(roomId) {
+      return (await rooms.listParticipants(room(roomId))).flatMap((participant) => {
+        const userId = userIdFromIdentity(participant.identity);
+        if (!userId) return [];
+        return [{ userId, admissionId: ADMISSION_ID.test(participant.metadata) ? participant.metadata : null }];
+      });
+    },
+    async revokeParticipant(roomId, userId) {
+      const name = room(roomId);
+      const identity = participantIdentity(userId);
+      const absent = async () => {
+        try { return !(await rooms.listParticipants(name)).some((participant) => participant.identity === identity); }
+        catch {
+          const existing = await rooms.listRooms([name]);
+          return !existing.some((candidate) => candidate.name === name);
+        }
+      };
+      try {
+        // Permissions are replaced as a whole; unset fields are false as well.
+        await rooms.updateParticipant(name, identity, { permission: {
+          canPublish: false, canSubscribe: false, canPublishData: false, canUpdateMetadata: false,
+        } });
+      } catch (error) {
+        if (await absent()) return;
+        throw error;
+      }
+      try { await rooms.removeParticipant(name, identity); }
+      catch (error) {
+        if (await absent()) return;
+        throw error;
+      }
     },
     async occupancy(roomId) {
       const name = room(roomId);
@@ -161,9 +229,10 @@ export function createLiveMedia(config: LiveMediaConfig): LiveMediaAdapter {
   };
 }
 
-export function createLiveMediaFromEnv(env: NodeJS.ProcessEnv = process.env): { media: LiveMediaAdapter; mediaUrl: string } | null {
+export function createLiveMediaFromEnv(env: NodeJS.ProcessEnv, publicOrigin: string):
+  { media: LiveMediaAdapter; mediaUrl: string; config: LiveMediaConfig } | null {
   if (!env.FLUX_LIVEKIT_API_URL && !env.FLUX_LIVEKIT_WS_URL && !env.FLUX_LIVEKIT_API_KEY && !env.FLUX_LIVEKIT_API_SECRET)
     return null;
-  const config = liveMediaConfig(env);
-  return { media: createLiveMedia(config), mediaUrl: config.mediaUrl };
+  const config = liveMediaConfig(env, publicOrigin);
+  return { media: createLiveMedia(config), mediaUrl: config.mediaUrl, config };
 }

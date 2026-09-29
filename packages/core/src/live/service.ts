@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type { LiveContextRef, LiveJoinGrant, LivePresentationRef, LiveSession } from '@flux/contracts';
 import { InvalidInputError, NotFoundError, RuleViolationError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
@@ -45,12 +46,33 @@ export function liveUseCases(ports: LivePorts) {
       return ports.sessions.withRead(principal, uuid(sessionId, 'sessionId'), visible);
     },
 
-    async join(principal: Principal, sessionId: string): Promise<LiveJoinGrant> {
+    /**
+     * `authSessionId` is the caller's authentication session. The grant works only through
+     * the Flux signaling gate, and only with that same session's cookie (#128).
+     */
+    async join(principal: Principal, sessionId: string, authSessionId: string): Promise<LiveJoinGrant> {
       human(principal);
+      if (typeof authSessionId !== 'string' || !authSessionId)
+        throw new RuleViolationError('Live media needs a signed-in session', 'HUMAN_SESSION_REQUIRED');
+      // 128 random bits; the SFU keeps it as participant metadata across token refreshes.
+      const admission = { id: randomBytes(16).toString('base64url'), authSessionId };
       return ports.sessions.withAdmission(principal, uuid(sessionId, 'sessionId'), async (session) => {
         await ports.media.requireRoom(session.roomId);
-        const grant = await ports.media.grant(session.roomId, principal.id);
+        const grant = await ports.media.grant(session.roomId, principal.id, admission.id);
         return { session: await visible(session), mediaUrl: ports.mediaUrl, token: grant.token, expiresAt: grant.expiresAt.toISOString() };
+      }, admission);
+    },
+
+    /**
+     * Rechecked by the signaling gate before every connect, resume and reconnect: current
+     * project and anchor access, and an available session. Returns the room the caller's
+     * grant must name; an older generation's grant no longer matches it.
+     */
+    async signalRoom(principal: Principal, sessionId: string): Promise<string> {
+      human(principal);
+      return ports.sessions.withRead(principal, uuid(sessionId, 'sessionId'), async (session) => {
+        if (session.state !== 'available') throw new NotFoundError('Live session', 'LIVE_SESSION_NOT_FOUND');
+        return session.roomId;
       });
     },
 
