@@ -1,4 +1,7 @@
-# Isolated real-SFU integration profile. Use only through scripts/check_live_sfu.sh.
+# Isolated real-SFU integration profile. Use only through scripts/check_live_sfu.sh and
+# scripts/check_live_ui.sh. Test browsers join the SFU's media network for ICE, as a person's
+# browser reaches the published ICE ports; like that browser, they cannot reach the SFU's
+# signaling port and signal through the API's /media gate at the public origin (#128).
 services:
   api:
     environment:
@@ -33,14 +36,19 @@ services:
       args:
         E2E_IMAGE: flux-e2e:${FLUX_IMAGE_TAG:?Set an isolated image tag}
     image: flux-live-sfu-test:${FLUX_IMAGE_TAG:?Set an isolated image tag}
-    command: ["node_modules/.bin/tsx", "--test", "tests/app/e2e/live-sfu-revocation.e2e.ts"]
+    # One file at a time: each binds the public origin's loopback port for its browsers.
+    command: ["node_modules/.bin/tsx", "--test", "--test-concurrency=1", "tests/app/e2e/live-sfu-revocation.e2e.ts", "tests/app/e2e/live-sfu-signout.e2e.ts"]
     environment:
       FLUX_API_URL: http://api:8080
       FLUX_PUBLIC_ORIGIN: ${FLUX_PUBLIC_ORIGIN:?Set a loopback test origin}
-      FLUX_LIVEKIT_WS_URL: ws://livekit:7880
+      # Used only to prove the SFU's signaling port is unreachable from the browser network.
+      FLUX_LIVEKIT_DIRECT_URL: ws://livekit:7880
       DATABASE_URL: postgres://${POSTGRES_USER:-flux}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-flux}
     depends_on:
       api:
         condition: service_healthy
       livekit:
         condition: service_healthy
+    networks: [default, livekit-media]
+  ui-test:
+    networks: [default, livekit-media]

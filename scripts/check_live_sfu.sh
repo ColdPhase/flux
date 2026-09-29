@@ -14,13 +14,10 @@ export FLUX_AUTH_RATE_LIMIT=false
 export FLUX_IMAGE_TAG="$project"
 export FLUX_LIVEKIT_API_KEY="fluxlivetestingkey"
 export FLUX_LIVEKIT_API_SECRET="fluxlivetestingsecretwithatleast32characters"
-export FLUX_LIVEKIT_API_URL="http://livekit:7880"
-export FLUX_LIVEKIT_WS_URL="ws://livekit:7880"
 # The test overlay replaces LiveKit's public ICE configuration. These satisfy
 # the operator profile's required-variable interpolation before Compose merges.
 export FLUX_LIVEKIT_PUBLIC_IP="127.0.0.1"
 export FLUX_LIVEKIT_DOMAIN="localhost"
-export FLUX_LIVEKIT_SIGNAL_PORT="${FLUX_LIVE_TEST_SIGNAL_PORT:-18762}"
 export FLUX_LIVEKIT_ICE_TCP_PORT="${FLUX_LIVE_TEST_ICE_TCP_PORT:-18763}"
 export FLUX_LIVEKIT_ICE_UDP_PORT="${FLUX_LIVE_TEST_ICE_UDP_PORT:-18764}"
 export FLUX_LIVEKIT_TURN_UDP_PORT="${FLUX_LIVE_TEST_TURN_UDP_PORT:-18765}"
