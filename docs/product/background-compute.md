@@ -206,6 +206,30 @@ dismissals and all owner-level observed/possible charges remain counted across
 rule identities. Verify revoke → fresh create with unchanged old row, and
 concurrent fresh creation with one success and one conflict.
 
+## Private owner setup (partial implementation)
+
+Open the account menu → **Your background suggestions**. Saving the connection
+requires a fresh key, named provider organization/workspace, daily and rolling
+30-day local allowances, and four explicit confirmations. Only the authenticated
+owner can read its safe metadata, replace it or disconnect. The password input
+is cleared after successful or failed requests and removed when a saved connection
+is shown; replacement never retrieves the earlier key. A failed replacement
+preserves that earlier connection. Disconnecting removes Flux's ciphertext; the
+payer must revoke the provider key separately when appropriate.
+
+Select an accessible project and your own personal agent. A project manager can
+explicitly grant that agent contributor access; creating the agent or grant does
+not authorize paid computation. Confirm the project scope, quiet effect and
+allowance to create a **paused** rule. Pause/revoke remain versioned; a revoked
+rule is terminal history. Fresh authorization creates another paused rule under
+the partial uniqueness constraint, while owner usage across old and new rules
+continues counting toward caps.
+
+This checkpoint deliberately reports the actual runtime state: background
+execution and enabling remain unavailable. These controls do not prove provider
+quality, scheduling, real billing, complete owner usage/outcome presentation, or
+whole-task acceptance. People can continue ordinary work without a connection.
+
 ## Evidence and limits (checked 2026-09-28)
 
 | Evidence class | Source and relevant observation | Implication / limit |

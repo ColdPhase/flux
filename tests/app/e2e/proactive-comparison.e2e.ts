@@ -35,35 +35,34 @@ async function assertBackgroundContrast() {
   const checks = await page.evaluate(() => {
     const root = document.documentElement;
     const previous = root.dataset.theme;
-    const luminance = (color: string) => {
-      const channels = color.match(/[\d.]+/g)!.slice(0, 3).map((value) => {
-        const n = Number(value) / 255;
-        return n <= 0.04045 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4;
-      });
-      return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
-    };
-    const ratio = (a: string, b: string) => {
-      const values = [luminance(a), luminance(b)].sort((a, b) => b - a);
-      return (values[0]! + 0.05) / (values[1]! + 0.05);
-    };
-    const checks: Array<{ theme: string; part: string; ratio: number; minimum: number }> = [];
+    const checks: Array<{ theme: string; part: string; foreground: string; background: string; minimum: number }> = [];
     for (const theme of ['light', 'dark']) {
       root.dataset.theme = theme;
-      const bg = getComputedStyle(document.querySelector('.pane')!).backgroundColor;
+      const bg = getComputedStyle(document.querySelector('.app__main')!).backgroundColor;
       for (const part of ['.background-settings__help', '.background-settings__note', '.background-settings__fields label']) {
         const node = document.querySelector(part)!;
-        checks.push({ theme, part, ratio: ratio(getComputedStyle(node).color, bg), minimum: 4.5 });
+        checks.push({ theme, part, foreground: getComputedStyle(node).color, background: bg, minimum: 4.5 });
       }
       for (const node of document.querySelectorAll('.background-settings input:not([type=checkbox]), .background-settings select')) {
         const style = getComputedStyle(node);
-        checks.push({ theme, part: `${node.tagName} boundary`, ratio: ratio(style.borderTopColor, style.backgroundColor), minimum: 3 });
+        checks.push({ theme, part: `${node.tagName} boundary`, foreground: style.borderTopColor, background: style.backgroundColor, minimum: 3 });
       }
     }
     if (previous === undefined) delete root.dataset.theme; else root.dataset.theme = previous;
     return checks;
   });
-  for (const check of checks) assert.ok(check.ratio >= check.minimum,
-    `${check.theme} ${check.part}: ${check.ratio.toFixed(2)}:1 must reach ${check.minimum}:1`);
+  const luminance = (color: string) => {
+    const channels = color.match(/[\d.]+/g)!.slice(0, 3).map((value) => {
+      const n = Number(value) / 255;
+      return n <= 0.04045 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4;
+    });
+    return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
+  };
+  for (const check of checks) {
+    const values = [luminance(check.foreground), luminance(check.background)].sort((a, b) => b - a);
+    const ratio = (values[0]! + 0.05) / (values[1]! + 0.05);
+    assert.ok(ratio >= check.minimum, `${check.theme} ${check.part}: ${ratio.toFixed(2)}:1 must reach ${check.minimum}:1`);
+  }
 }
 
 async function proposals() {
