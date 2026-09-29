@@ -28,6 +28,10 @@ Required application follow-ups: [#133 compact private recap](https://github.com
 and [#136 integrated calm UI / phone work navigation](https://github.com/ColdPhase/flux/issues/136).
 Their issue contracts carry owners, dependencies and verification. They remain
 proposed implementation work; this reference does not count as feature delivery.
+The later conversation clarification belongs to #136: own messages clearly on
+the right, other people's on the left, with readable text width and useful space
+beside open panels. #132 includes a runnable refined preview and matched
+before/after screenshots so this direction is inspectable by both agents.
 Review realistic complete views separately from actual interaction/data tests,
 including #44’s three journeys with no AI. Do not copy demo storage, permissions,
 AI/media simulation or unchecked historical test claims into production.

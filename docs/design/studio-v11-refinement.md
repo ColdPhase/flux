@@ -1,6 +1,6 @@
 # Flux Studio v11 direction and focused UX refinements
 
-**Date:** 2026-09-29. **Founder direction:** F-013, [#132](https://github.com/ColdPhase/flux/issues/132). **Implementation status:** the reference/audit is a documentation deliverable; [#133–#136](#implementation-contracts) are proposed application work. The real application still has its merged C-based components and behavior. This document does not declare those follow-ups implemented or release-accepted.
+**Date:** 2026-09-29. **Founder direction:** F-013, [#132](https://github.com/ColdPhase/flux/issues/132). **Implementation status:** the reference/audit and [runnable refined preview](references/studio-v11/preview/README.md) are a shared design deliverable; [#133–#136](#implementation-contracts) are proposed application work. The real application still has its merged C-based components and behavior. This document does not declare those follow-ups implemented or release-accepted.
 
 Hubert identified the supplied Flux Studio v11 as approximately the intended finished appearance and functional experience, while acknowledging useful improvements in the current repository. Preserve its calm, connected creative character; improve the specific remaining friction. This supersedes the v8-only visual baseline and the fixed rail/indigo treatment of O-003. The accepted human/AI, audience, graph, live, architecture and mobile contracts continue to apply. Earlier C choices remain valuable history, not a reason to ignore this later instruction.
 
@@ -46,7 +46,13 @@ The independent visual assessment also found repeated actions far away at the ri
 
 Offer three named choices, **one active at a time**, with six theme-specific token sets. Switching theme keeps the family and resolves its appropriate light/dark values. Status/error/success/warning colors remain semantic and separately defined, with text/icons. No custom HEX picker or simultaneous three-accent decoration. Record hover/pressed/focus/selected/on-accent states through shared tokens, verify their composited pairs, and use a safe documented fallback for older preferences.
 
-## 4. Remaining UX polish
+## 4. Conversation alignment
+
+**Later founder clarification, 2026-09-29:** the conversation is too tightly centered. The current user's messages should sit clearly on the right; other people's messages on the left. The reference already reverses own-message rows, but `.messages` reserves an 800 px centered lane on wide surfaces, weakening the separation.
+
+Use the available conversation pane with modest responsive edge spacing. Keep long bubbles at a readable width, with the existing author, timestamp, reply and source hierarchy. Own-message alignment follows the signed-in author, not a fixed demo name. Check project conversation, DM, long text, phone/tablet and the conversation narrowed by an open details/return panel. Source opening, drafts and chronological order remain intact. Carry the production change in #136 and show a matched before/after in the #132 preview.
+
+## 5. Remaining UX polish
 
 A separate reviewer examined nine supplied screens without code or the author’s rationale. [Full report](references/studio-v11/inspection/visual-review.md). The three material findings were:
 
@@ -62,11 +68,11 @@ All follow-ups belong to [milestone 2](https://github.com/ColdPhase/flux/milesto
 
 | Task | Owner / independent evaluator | Scope and dependencies |
 | --- | --- | --- |
-| [#132 reference and shared direction](https://github.com/ColdPhase/flux/issues/132) | codex-hubert / claude-maurycy | Byte-preserved package, audit, entry points, milestone and proposed follow-ups; no production feature changes |
+| [#132 reference and shared direction](https://github.com/ColdPhase/flux/issues/132) | codex-hubert / claude-maurycy | Byte-preserved package, audit, separately marked runnable refined preview with before/after evidence, entry points, milestone and proposed follow-ups; no production feature changes |
 | [#133 compact private recap](https://github.com/ColdPhase/flux/issues/133) | claude-maurycy / codex-hubert | Extends merged #106/#117; coordinate with #87; #68 only for optional model use |
 | [#134 stable deep map relations](https://github.com/ColdPhase/flux/issues/134) | codex-hubert / claude-maurycy | Extends #69; coordinate #96/#94 on shared sketch components |
 | [#135 three light/dark accents](https://github.com/ColdPhase/flux/issues/135) | codex-hubert / claude-maurycy | Shared tokens from #40; token review before dependent styling |
-| [#136 calm integrated UI/phone work](https://github.com/ColdPhase/flux/issues/136) | claude-maurycy / codex-hubert | Final affected-slice integration; coordinate #62/#96/#94, preserve completed functional slices |
+| [#136 calm integrated UI/phone work](https://github.com/ColdPhase/flux/issues/136) | claude-maurycy / codex-hubert | Own messages right / other people's left, phone work navigation and final affected-slice integration; coordinate #62/#96/#94, preserve completed functional slices |
 
 Founder requirements are current direction. Each proposed implementation contract still receives concise independent peer agreement, implementation and current-head review; no founder approval queue. An assigned backlog task is not a claim that implementation has started.
 
@@ -77,3 +83,5 @@ Founder requirements are current direction. Each proposed implementation contrac
 - Retain #44’s three integrated journeys, #57 personal compute, #59 live work and MOB-1–MOB-7. Real phone/tablet installation and OS push remain #20 acceptance; screenshots cannot substitute for them.
 - Primary standards checked 2026-09-29: [W3C text contrast](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html) (normal text 4.5:1), [non-text contrast](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html) (applicable essential graphics/controls 3:1), [target size](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html) (24×24 minimum or specified exceptions), and [cognitive usability guidance](https://www.w3.org/TR/coga-usable/). Flux retains a 44×44 starting target for primary touch actions. Reducing repeated copy and progressive disclosure are our design inferences, not evidence of a user study.
 - Fresh reference inspection rendered 13 views with zero page errors and measured selected pairs. Supplied-suite rerun: 168 interaction passes, one failure, 108 standalone contrast passes. The [reports](references/studio-v11/README.md#evidence-boundaries) list limits; this task did not run the full application suite or test hardware, screen readers or real users.
+- The separately marked refined preview shows all four requested corrections with matched before/after states. Its [Docker report](references/studio-v11/preview/evidence/report.json) records 75 focused passes, 38 screenshots and zero page errors; current application Docker build/typecheck/lint passed. This does not resolve the original supplied-suite failure or complete production follow-ups.
+- A [fresh independent visual review](references/studio-v11/preview/evidence/visual-review.md) inspected 14 final images. Its phone-toolbar density finding was resolved by sharing the search/create row; no material visible issue remains in that reviewed scope. Exact image/source/report hashes are recorded separately, and eligible GitHub peer review remains required.

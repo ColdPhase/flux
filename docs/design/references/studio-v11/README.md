@@ -2,6 +2,11 @@
 
 **Received:** 2026-09-29 from Hubert. **Authority:** [#132](https://github.com/ColdPhase/flux/issues/132), recorded as F-013. This is the primary reference for Flux’s intended appearance and connected workflows, with targeted UX refinements and the useful improvements already in the real application. The current contract is [studio-v11-refinement.md](../../studio-v11-refinement.md); it takes precedence over the historical nine-palette instructions inside the supplied package.
 
+**Requested corrections:** [runnable refined preview and matched before/after](preview/README.md)
+now show the compact recap, deep-map links, three light/dark accents and own-right /
+others-left conversation alignment. The original below stays unchanged. The preview
+is a local prototype; application implementation remains #133–#136.
+
 ## Inspect the same artifact
 
 - [Open the complete HTML](supplied/flux-studio-v11.html) after downloading/cloning it; it also works through a static local server.
@@ -21,7 +26,7 @@ Open <http://127.0.0.1:18089/docs/design/references/studio-v11/supplied/flux-stu
 
 Preserve the restrained conversation, clear authors/audience, compact optional goal, stable work tabs and “Co ważne” entry, source links, distinct maps/work/wiki and on-demand details. The founder wants this coherent direction refined rather than replaced. Current production persistence, policy, personal AI, real-time behavior and self-hosting contracts remain authoritative.
 
-Improve the oversized recap generation block, stable reading of deep map relations and the small curated theme-aware palette. The [refinement contract](../../studio-v11-refinement.md) also covers phone work navigation and the integrated calm-UX pass.
+Improve the oversized recap generation block, stable reading of deep map relations, the small curated theme-aware palette and clear own-right / others-left conversation alignment. The [refinement contract](../../studio-v11-refinement.md) also covers phone work navigation and the integrated calm-UX pass.
 
 ## Evidence boundaries
 

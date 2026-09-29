@@ -11,8 +11,9 @@ This later direction qualifies O-003 and replaces the earlier v8-only visual bas
 3. Keep the private recap compact. “Podsumuj rozmowy dla mnie” loses its large full-width accent treatment; “Mam kontekst” retains its useful completion role and scale. Useful changes/actions appear before a long setup explanation.
 4. Separate the map-list reading hierarchy from ordinary graph relationships. A relation to a deep thought does not silently move a shallow/root thought. Use named nearby cross-links and readable theme-aware guides, with a phone/keyboard route.
 5. Offer Mint (default), Iris and Sky, one chosen family at a time, with separately tuned light/dark values. Status colors retain their meaning and accompanying text/icons. The [contract](studio-v11-refinement.md#3-three-theme-aware-accent-families) lists measured candidates; final production states and tokens are verified in #135.
-6. Improve density through grouping, fewer repeated controls/copy and restrained saturated area. Do not globally scale the view or shrink important text. Retain visible focus, modal containment, usable touch targets and reduced motion.
-7. Preserve #57 personal AI and human continuation without AI, #59 contextual live work, and MOB-1–MOB-7. Demo AI/media/local storage and historical test claims never establish production behavior.
+6. Align the current user's conversation messages to the right and other people's to the left. Use the available conversation width with restrained edge spacing, while limiting long message text to a readable measure. Keep authors, chronology, replies and source cards clear; check the narrower conversation beside an open panel as well as phone views.
+7. Improve density through grouping, fewer repeated controls/copy and restrained saturated area. Do not globally scale the view or shrink important text. Retain visible focus, modal containment, usable touch targets and reduced motion.
+8. Preserve #57 personal AI and human continuation without AI, #59 contextual live work, and MOB-1–MOB-7. Demo AI/media/local storage and historical test claims never establish production behavior.
 
 ## Implementation and evidence
 
