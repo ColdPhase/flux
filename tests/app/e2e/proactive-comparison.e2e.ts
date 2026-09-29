@@ -335,6 +335,11 @@ test('owner-only background setup persists consent, clears keys and preserves an
     await page.screenshot({ path: `/state/background-setup-${viewport.width}-saved.png`, fullPage: true });
     await page.getByRole('button', { name: 'Replace connection', exact: true }).tap();
     const key = page.getByLabel('Background API key', { exact: true });
+    const cancel = page.getByRole('button', { name: 'Cancel replacement', exact: true });
+    const openingCancelBounds = await cancel.boundingBox();
+    assert.ok(openingCancelBounds && openingCancelBounds.y >= 0 &&
+      openingCancelBounds.y + openingCancelBounds.height <= viewport.height,
+    'replacement cancellation is visible beside the opening fields');
     assert.equal(await key.inputValue(), '');
     assert.ok(await key.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize) >= 16));
     for (const check of await page.locator('.background-settings__check').all()) {
@@ -346,10 +351,7 @@ test('owner-only background setup persists consent, clears keys and preserves an
     await page.locator('input[name="providerBilling"]').scrollIntoViewIfNeeded();
     await page.screenshot({ path: `/state/background-setup-${viewport.width}-consent.png`, fullPage: true });
     await key.fill('sk-ant-fixture-unsaved-touch-key-ABCD');
-    const cancel = page.getByRole('button', { name: 'Cancel replacement', exact: true });
-    await key.scrollIntoViewIfNeeded();
-    const bounds = await cancel.boundingBox();
-    assert.ok(bounds && bounds.y >= 0 && bounds.y + bounds.height <= viewport.height, 'replacement cancellation is beside the opening fields');
+    await page.getByRole('heading', { name: 'Replace your connection', exact: true }).scrollIntoViewIfNeeded();
     await cancel.tap();
     await page.waitForFunction(() => document.querySelector('.background-settings__actions button') === document.activeElement);
     assert.equal(await key.count(), 0);
