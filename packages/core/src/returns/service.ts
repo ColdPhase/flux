@@ -488,7 +488,7 @@ export function createReturnUseCases(ports: ReturnPorts) {
           excerpt: excerpt(message.body, 160), at: message.createdAt.toISOString() })),
         more: Math.max(0, list.length - DIGEST_QUOTES),
       })),
-      results: digestResults.filter((result) => scope === 'all' || result.relevant).map(({ relevant: _relevant, ...result }) => result),
+      results: digestResults.filter((result) => scope === 'all' || result.relevant).map(({ id, projectId, title, finding, author, at }) => ({ id, projectId, title, finding, author, at })),
       messages: talks.reduce((total, talk) => total + talk.list.length, 0),
     };
     return { items, digest };
