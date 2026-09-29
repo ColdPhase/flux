@@ -23,13 +23,21 @@ The downtime is the backup, the build and the migration. It prints
 
 ## When it fails
 
-If the build, migration, start or health check fails, the API and worker stay stopped and it
-prints how to go back, for example:
+If any step fails, the launcher stops the API and worker, confirms that both are stopped, and
+prints how to go back. What it says about your data depends on how far the upgrade got:
+
+- **Before the new version started** (build, files volume or migration failed): the writers were
+  stopped since the backup, so nothing was written after it.
+- **After the new version started** (start, health or schema check failed): the new API and worker
+  may have accepted work between the start time it prints and the failure. That work is not in the
+  backup, and restoring the backup discards it; take another `./flux backup` first if you need it.
+- **If a writer cannot be stopped**, it says so and names it; stop it yourself before restoring.
 
 ```text
 UPGRADE FAILED: the migration failed
 Your data from before the upgrade is in /srv/flux/backups/flux-backup-flux-3f2a9c1d-20260928T091502Z.tar (schema 10, commit 841ddc9…).
-API and worker are stopped, so nothing was written after that backup. To go back:
+API and worker stayed stopped since that backup, so nothing was written after it.
+To go back:
   git -C '/srv/flux' checkout 841ddc9…
   ./flux restore '/srv/flux/backups/flux-backup-flux-3f2a9c1d-20260928T091502Z.tar'
 Or fix the cause in this checkout and run ./flux restore '…' --migrate to retry the upgrade.

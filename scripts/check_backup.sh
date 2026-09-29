@@ -20,7 +20,9 @@
 #     first-parent history with other migrations than this tree, or FLUX_UPGRADE_FROM) with its demo, its files are replaced by this tree,
 #     ./flux upgrade migrates forward and the demo data is verified. The pre-upgrade backup (a
 #     subset of this image's migrations) is refused without --migrate and restored with it. A broken migration then
-#     makes ./flux upgrade fail with restore instructions, which are followed.
+#     makes ./flux upgrade fail with restore instructions, which are followed. Failures after the
+#     new version started (health probe, partial start) stop and confirm the writers and warn that
+#     work since the start is not in the backup; an unconfirmed stop is reported as such.
 set -eu
 
 here=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)
@@ -306,6 +308,30 @@ grep -q "./flux restore '$broken_archive'" "$work/broken.out" || fail "no restor
 rm -f "$U/packages/db/migrations/9998_broken_upgrade_check.sql"
 flux_u restore "$broken_archive" -y > "$work/after-broken.out" 2>&1 || { cat "$work/after-broken.out"; fail "following the restore instructions failed"; }
 fixture "$U" demo
+
+running_u() { "$real_docker" compose -p "$run_u" ps --status running --services 2>/dev/null | grep -E '^(api|worker)$' | sort | paste -sd' ' -; }
+step "A failure after the new version started stops the writers and says work may be missing"
+# Only the final health probe fails; `up --wait` has already started API and worker.
+mkdir -p "$work/shim-health" "$work/shim-partial" "$work/shim-health-stop"
+printf '#!/bin/sh\ncase "$*" in *exec*api*/api/v1/health*) echo "shim: health probe failed" >&2; exit 1 ;; esac\nexec %s "$@"\n' "$real_docker" > "$work/shim-health/docker"
+# The start itself reports failure after starting the containers (a partial start).
+printf '#!/bin/sh\ncase "$*" in *" up -d --wait "*api*worker*) %s "$@"; exit 1 ;; esac\nexec %s "$@"\n' "$real_docker" "$real_docker" > "$work/shim-partial/docker"
+# Health fails, and every stop after that is refused (the backup before it may stop them).
+printf '#!/bin/sh\ncase "$*" in *exec*api*/api/v1/health*) : > "%s/health-failed"; exit 1 ;; *" stop "*) [ -e "%s/health-failed" ] && { echo "shim: stop refused" >&2; exit 1; } ;; esac\nexec %s "$@"\n' "$work" "$work" "$real_docker" > "$work/shim-health-stop/docker"
+chmod +x "$work/shim-health/docker" "$work/shim-partial/docker" "$work/shim-health-stop/docker"
+for case_name in health partial; do
+  if (PATH="$work/shim-$case_name:$PATH"; export PATH; flux_u upgrade -y) > "$work/upgrade-$case_name.out" 2>&1; then fail "upgrade with a failing $case_name step succeeded"; fi
+  grep -q 'UPGRADE FAILED' "$work/upgrade-$case_name.out" || { cat "$work/upgrade-$case_name.out"; fail "no failure report ($case_name)"; }
+  grep -q 'API and worker of the new version ran from .* and are stopped now' "$work/upgrade-$case_name.out" || { cat "$work/upgrade-$case_name.out"; fail "the report does not say the new version ran ($case_name)"; }
+  grep -q 'NOT in that backup' "$work/upgrade-$case_name.out" || fail "the report does not warn about work after the backup ($case_name)"
+  if grep -q 'nothing was written after' "$work/upgrade-$case_name.out"; then fail "the report claims nothing was written ($case_name)"; fi
+  [ -z "$(running_u)" ] || fail "API/worker still running after a failed upgrade ($case_name): $(running_u)"
+  flux_u up > /dev/null 2>&1 || fail "could not start again after the $case_name case"
+done
+if (PATH="$work/shim-health-stop:$PATH"; export PATH; flux_u upgrade -y) > "$work/upgrade-nostop.out" 2>&1; then fail "upgrade with failing health and stop succeeded"; fi
+grep -q 'Could not stop api worker' "$work/upgrade-nostop.out" || { cat "$work/upgrade-nostop.out"; fail "an unconfirmed stop was not reported"; }
+if grep -q 'nothing was written after\|are stopped now' "$work/upgrade-nostop.out"; then fail "an unconfirmed stop was reported as stopped"; fi
+[ "$(running_u)" = "api worker" ] || fail "the shim should have left both writers running: $(running_u)"
 flux_u clean -y >/dev/null
 
 step "PASS: backup, restore into a fresh project, agent access, export, upgrade from $(git -C "$here" rev-parse --short "$from") (+$(printf '%s\n' "$new_migrations" | wc -l | tr -d ' ') migrations) and failed-upgrade recovery"

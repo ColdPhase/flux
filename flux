@@ -782,8 +782,23 @@ cmd_export() {
 upgrade_failed() {
   warn ""
   warn "UPGRADE FAILED: $1"
+  # Whatever failed, stop the writers and confirm it before recommending a restore: a restore
+  # replaces the data, so anything the new version accepted since it started would be lost.
+  stop_error=$(compose_main stop api worker 2>&1 >/dev/null) || true
+  still=''
+  for service in api worker; do if is_running "$service"; then still="$still $service"; fi; done
   warn "Your data from before the upgrade is in $UPGRADE_ARCHIVE (schema $UPGRADE_FROM_SCHEMA, commit $UPGRADE_FROM_COMMIT)."
-  warn "API and worker are stopped, so nothing was written after that backup. To go back:"
+  if [ -n "$still" ]; then
+    warn "Could not stop$still${stop_error:+ ($(printf '%s' "$stop_error" | tail -n 1))}. It may still accept work that is NOT in that backup."
+    warn "Stop it first (docker compose -p $PROJECT stop api worker) and check what it accepted before you restore."
+  elif [ -n "${UPGRADE_STARTED_AT:-}" ]; then
+    warn "API and worker of the new version ran from $UPGRADE_STARTED_AT until this failure and are stopped now."
+    warn "Anything people saved in that time is NOT in that backup; restoring it discards that work. Back it up first if you need it:"
+    warn "  ./flux backup --output '$(dirname -- "$UPGRADE_ARCHIVE")'"
+  else
+    warn "API and worker stayed stopped since that backup, so nothing was written after it."
+  fi
+  warn "To go back:"
   if [ "$UPGRADE_FROM_COMMIT" != unknown ]; then
     warn "  git -C '$FLUX_ROOT' checkout $UPGRADE_FROM_COMMIT"
   else
@@ -803,6 +818,8 @@ upgrade_apply() {
   compose_main --profile setup run --rm files-init >/dev/null || upgrade_failed "preparing the files volume failed"
   say "Migrating from schema $UPGRADE_FROM_SCHEMA to $to_schema..."
   compose_main run --rm migrate || upgrade_failed "the migration failed"
+  # From here the new version may accept work, even if a later check fails.
+  UPGRADE_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" api worker \
     || { compose_main logs --no-color --tail 60 api worker >&2 || true; upgrade_failed "Flux did not become healthy"; }
   verify_running || upgrade_failed "the health or schema check failed"
