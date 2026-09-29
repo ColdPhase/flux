@@ -22,6 +22,7 @@ compose() {
 cleanup() {
   status=$?
   if [ -f "$checkout/.env" ]; then
+    project=$(sed -n 's/^FLUX_PROJECT=//p' "$checkout/.env")
     if [ "$status" -ne 0 ]; then compose logs --no-color --tail 50 db migrate api worker || true; fi
     "$checkout/flux" clean -y >/dev/null 2>&1 || true
   fi
@@ -59,7 +60,7 @@ find "$checkout" -mindepth 1 -maxdepth 1 ! -name .env -exec rm -rf {} +
 git -C "$here" archive "$candidate" | tar -xf - -C "$checkout"
 new_files=$(expected_ledger)
 "$checkout/flux" up > "$work/candidate-up.log" 2>&1 || { cat "$work/candidate-up.log"; exit 1; }
-grep 'Applied migration' "$work/candidate-up.log" || true
+compose logs --no-color migrate | sed -n '/Applied migration /p'
 [ "$(docker volume inspect -f '{{.CreatedAt}}' "$volume")" = "$volume_created" ] || { echo 'PostgreSQL volume was replaced'; exit 1; }
 [ "$(ledger)" = "$new_files" ] || { echo 'Candidate ledger is not exact'; exit 1; }
 snapshot > "$work/after.snapshot"

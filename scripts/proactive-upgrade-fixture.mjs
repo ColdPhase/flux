@@ -35,11 +35,16 @@ if (phase === 'prepare') {
   const conversation = await request('POST', `/api/v1/projects/${project.id}/conversations`, { clientMessageId: crypto.randomUUID(),
     body: 'Repeat the controlled low-light comparison.', source: { materialId: material.materialId, version: 1 } }, 201);
   const draft = await request('POST', `/api/v1/workspaces/${ws.id}/drafts`, { title: 'Private upgrade note', body: 'Keep this draft private.' }, 201);
+  const work = await request('POST', `/api/v1/projects/${project.id}/work`, { title: 'Measure camera detection at 5 lux',
+    sources: [{ type: 'material', id: material.materialId, version: 2 }] }, 201);
+  const decision = await request('POST', `/api/v1/projects/${project.id}/decisions`, { title: 'Keep the trial controlled',
+    rationale: 'Compare sensor options under identical light.', sources: [{ type: 'message', id: conversation.messages[0].id }] }, 201);
   const result = await request('POST', `/api/v1/projects/${project.id}/results`, { title: 'Camera trial failed', finding: 'negative',
     evidence: 'Detection was below the target.', sources: [{ type: 'material', id: material.materialId, version: 2 },
-      { type: 'message', id: conversation.messages[0].id }] }, 201);
+      { type: 'message', id: conversation.messages[0].id }], related: [{ type: 'work', id: work.id }, { type: 'decision', id: decision.id }] }, 201);
   console.log(`FLUX_UPGRADE_STATE ${JSON.stringify({ cookie, userId: me.user.id, workspaceId: ws.id, projectId: project.id,
-    agentId: agent.id, materialId: material.materialId, conversationId: conversation.id, draftId: draft.id, resultId: result.id })}`);
+    agentId: agent.id, materialId: material.materialId, conversationId: conversation.id, draftId: draft.id, resultId: result.id,
+    workId: work.id, decisionId: decision.id })}`);
 } else if (phase === 'verify') {
   same((await request('GET', '/api/v1/me')).user.id, state.userId, 'Original browser session');
   const material = await request('GET', `/api/v1/materials/${state.materialId}`);
@@ -48,6 +53,13 @@ if (phase === 'prepare') {
   const conversation = await request('GET', `/api/v1/conversations/${state.conversationId}`);
   same(conversation.messages[0].source, { materialId: state.materialId, version: 1 }, 'Historical citation');
   same((await request('GET', `/api/v1/drafts/${state.draftId}`)).body, 'Keep this draft private.', 'Private draft');
+  same((await request('GET', `/api/v1/work/${state.workId}`)).title, 'Measure camera detection at 5 lux', 'Human work');
+  same((await request('GET', `/api/v1/decisions/${state.decisionId}`)).status, 'proposed', 'Decision state');
+  const results = await request('GET', `/api/v1/projects/${state.projectId}/results`);
+  const result = results.items.find((item) => item.id === state.resultId);
+  same(result.finding, 'negative', 'Negative result');
+  same(result.links.filter((link) => link.role === 'related').map((link) => link.to.id).sort(),
+    [state.workId, state.decisionId].sort(), 'Work/decision result links');
   const rule = await request('POST', `/api/v1/projects/${state.projectId}/proactive-comparison-rules`, {
     agentId: state.agentId, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
     dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal',
@@ -63,5 +75,5 @@ if (phase === 'prepare') {
   same(rules[0].status, 'paused', 'Activation failure preserves paused rule');
   same(await request('GET', `/api/v1/projects/${state.projectId}/proactive-comparison-proposals`), [], 'No retroactive proposal');
   await request('POST', `/api/v1/projects/${state.projectId}/work`, { title: 'Compare the next sensor manually' }, 201);
-  console.log('Verified original session, material revisions, historical citation, private draft, new rule/key storage and manual continuation; no provider invoked.');
+  console.log('Verified original session, material revisions, historical citation, private draft, work/decision/result links, new rule/key storage and manual continuation; no provider invoked.');
 } else throw new Error('FLUX_UPGRADE_PHASE must be prepare or verify');
