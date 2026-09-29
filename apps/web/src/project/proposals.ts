@@ -6,6 +6,8 @@ export function comparisonSourceHref(projectId: string, source: ProactiveCompari
   if (source.type === 'material') return `/materials/${source.id}/versions/${source.version}`;
   if (source.type === 'message' && source.conversationId)
     return `/projects/${projectId}/conversations/${source.conversationId}#message-${source.id}`;
+  if (source.type === 'work') return `/projects/${projectId}/tasks?open=work:${source.id}`;
+  if (source.type === 'thought' && source.sketchId) return `/projects/${projectId}/map/${source.sketchId}#thought-${source.id}`;
   return null;
 }
 export const listComparisonProposals = (projectId: string, signal?: AbortSignal) =>

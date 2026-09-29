@@ -151,8 +151,9 @@ This records the required final behavior; it does not assert that all of it is i
   commit; preserve historical proposals, dismissals and possible charges. A
   rule change never reuses an earlier dismissal. Thoughts need their actual
   revision and sketch navigation identity; the existing contract has independent
-  thought versions, so the [citation correction](https://github.com/ColdPhase/flux/issues/58#issuecomment-5900046920)
-  is being reconciled with the evaluator before that portion is implemented.
+  thought versions. The evaluator [accepted the correction](https://github.com/ColdPhase/flux/issues/58#issuecomment-5900083579):
+  cite thought id/version plus sketch id, and recheck project scope, no placement,
+  human authorship and that version before dispatch and commit.
 - Only committed human project-source changes, including an owner's edit, can
   reconsider a qualifying negative result. Coalesce edit bursts in a short
   window. Deduplicate result/rule/snapshot; an unchanged or dismissed fingerprint

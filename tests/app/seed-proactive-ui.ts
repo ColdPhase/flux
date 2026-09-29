@@ -24,8 +24,12 @@ try {
       body: 'Camera A recognized 38% of 20 gestures. The target is 90%.' } }), 201) as Material;
   const conversation = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${prj.id}/conversations`,
     { body: { clientMessageId: randomUUID(), body: 'Could a ToF distance sensor work better than our camera in a dark bedroom?' } }), 201) as Conversation;
-  expectStatus(await owner.browser.request('POST', `/api/v1/projects/${prj.id}/work`,
-    { body: { title: 'Measure ToF response at 5 lux' }, headers: { 'idempotency-key': randomUUID() } }), 201);
+  const work = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${prj.id}/work`,
+    { body: { title: 'Measure ToF response at 5 lux' }, headers: { 'idempotency-key': randomUUID() } }), 201) as { id: string; version: number };
+  const sketch = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/sketches`,
+    { body: { title: 'Human sensor ideas', scope: 'project', projectId: prj.id } }), 201) as { id: string };
+  const { thought } = expectStatus(await owner.browser.request('POST', `/api/v1/sketches/${sketch.id}/thoughts`,
+    { body: { text: 'Test a ToF sensor using the same 5 lux protocol.', x: 0, y: 0 } }), 201) as { thought: { id: string; version: number } };
   const results: WorkResult[] = [];
   for (const title of ['Camera trial failed at 5 lux', 'Second low-light trial missed the target']) {
     results.push(expectStatus(await owner.browser.request('POST', `/api/v1/projects/${prj.id}/results`,
@@ -40,7 +44,9 @@ try {
     const id = randomUUID();
     const citations = [{ type: 'result', id: result.id, version: 1 },
       { type: 'material', id: material.materialId, version: 1 },
-      { type: 'message', id: conversation.messages[0]!.id, version: 1, conversationId: conversation.id }];
+      { type: 'message', id: conversation.messages[0]!.id, version: 1, conversationId: conversation.id },
+      { type: 'work', id: work.id, version: work.version },
+      { type: 'thought', id: thought.id, version: thought.version, sketchId: sketch.id }];
     await pool.query(`INSERT INTO proactive_comparison_proposals
       (id, outbox_id, owner_user_id, agent_id, project_id, result_id, source_fingerprint,
         sources, fact, interpretation, suggested_action)
@@ -53,6 +59,7 @@ try {
     proposalIds.push(id);
   }
   writeFileSync('/state/proactive-ui.json', JSON.stringify({ email: owner.email, password,
-    projectId: prj.id, proposalIds, conversationId: conversation.id, messageId: conversation.messages[0]!.id }));
+    projectId: prj.id, proposalIds, conversationId: conversation.id, messageId: conversation.messages[0]!.id,
+    workId: work.id, sketchId: sketch.id, thoughtId: thought.id }));
   process.stdout.write('proactive-ui fixture ready\n');
 } finally { await pool.end(); }

@@ -38,8 +38,8 @@ negative result authored by any currently authorized human contributor creates a
 deduplicated outbox candidate for each opted-in owner of that named project in the
 result transaction **only for an enabled rule**; production activation is
 still disabled, so current production rules do not create candidates. The worker
-adapter can recheck current owner/agent access, result authorship, explicit source
-links and budget before reserving; there is no scheduled dispatch yet. An explicitly
+adapter rechecks current owner/agent access, result authorship, the selected source
+snapshot and budget before reserving; there is no scheduled dispatch yet. An explicitly
 invoked dispatch path in the worker decrypts only the owner's active
 key, token-counts up to 8,000 inputs, makes at most one 1,200-output-token call,
 validates cited output and persists a separate quiet proposal. It checks current
@@ -85,6 +85,52 @@ The adapter shape was checked on 2026-09-28 against the provider's
 [structured-output guide](https://platform.claude.com/docs/en/build-with-claude/structured-outputs).
 Those pages describe the request fields; the local HTTP fixture proves only
 Flux's serialization and parsing, not acceptance by the live provider.
+
+## Deterministic human context snapshot
+
+The [accepted source amendment](../product/background-compute.md#source-and-outcome-amendment-accepted-2026-09-29)
+now has a controlled selection implementation. The result transaction checks the
+standing rule owner's and personal agent's current project-write access through
+the shared policy before selecting metadata. Reservation, content collection,
+the cancellation watcher and final publication repeat that policy/source check.
+Reservation and cancellation read source metadata, not content or decrypted keys.
+
+Keep the triggering human negative result and all explicit admitted references;
+an unsupported or no-longer-current mandatory reference fails closed. Add up to
+six current human material/published-doc versions, twelve recent human project
+messages, eight human work items, four positive human benchmark results and eight
+human project-scope thoughts. Additional negative results enter only when
+explicitly referenced, rather than automatically combining independent failures.
+Each category orders by most recent update/creation and stable ascending id.
+Mandatory explicit sources survive the category limits; duplicates are removed.
+Do not read draft/private/DM/other-project content, placements, agent-created
+sources, work made from a previous comparison proposal, or work/thoughts with an
+agent content-change event. Published material/doc authors and message authors
+must be current human identity records.
+
+Fingerprint the sorted selected references, explicit-reference set, rule id/version
+and owner id. Work uses its actual version. Thoughts use their actual id/version
+and sketch id; changing thought text changes the fingerprint even when the sketch
+title/version stays the same. Recheck current scope, authorship, no placement and
+version before reading or committing. Each provider source is bounded to 2,000
+characters with an explicit excerpt marker and original character count; the
+8,000-input-token preflight remains an independent gate, without a paid fallback.
+The full snapshot fingerprint is immutable on a candidate; completed proposals
+and dismissals keep their earlier fingerprints. Pending candidates from an older
+snapshot implementation fail the current fingerprint gate instead of silently
+reusing their earlier authorization.
+
+Only supplied ids/versions can be cited. The server attaches message conversation
+ids and thought sketch ids from its selected sources, rather than trusting model
+navigation data. Work/thought links display their cited version and open the current
+object, since those objects have no historical content API. Creating work from a
+proposal preserves those project relationships and does not add that generated
+work back into comparison evidence.
+
+Source-change scheduling/coalescing, saved full inspected-source/outcome metadata,
+the distinct insufficient-evidence/not-run surface and zero-charge accounting
+before a paid request remain separate implementation portions. No production
+provider scheduling or rule activation was added by this snapshot change.
 
 ## Key file, restore and rotation
 
@@ -161,8 +207,8 @@ worker records `usage_estimated_cents` using these dated standard rates and
 continues to hold at least the original reservation in the local budget.
 
 Remaining #58 work: an authorized real-provider test call and actual billing
-observation including live-provider cancellation, broader versioned
-project source selection, reopening dismissed suggestions only after relevant
+observation including live-provider cancellation, independent full-context quality
+evaluation, reopening dismissed suggestions only after relevant
 evidence changes, insufficient-evidence state, rendered UI/interaction
 and independent visual evidence, plus independent/current release migration
 acceptance. This file

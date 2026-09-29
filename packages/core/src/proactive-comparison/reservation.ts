@@ -5,12 +5,12 @@ export type ReservationResult =
       'SOURCE_SCOPE_UNVERIFIED' | 'CONNECTION_REQUIRED' | 'BUDGET_EXHAUSTED' | 'OWNER_IN_FLIGHT' };
 
 type Candidate = { id: string; status: string; ruleId: string; ownerUserId: string; projectId: string; resultId: string; sourceFingerprint: string };
-type Rule = { id: string; status: string; ownerUserId: string; projectId: string; agentId: string;
+type Rule = { id: string; version: number; status: string; ownerUserId: string; projectId: string; agentId: string;
   maxRunsPerDay: number; periodBudgetCents: number; perRunCents: number };
 type Result = { projectId: string; finding: string; createdByKind: string; createdById: string };
 type Connection = { id: string; encryptedKey: string | null; periodDays: number; consentVersion: string;
   maxRunsPerDay: number; periodBudgetCents: number; perRunCents: number };
-type Source = { type: string; id: string; version: number | null };
+type Source = { type: string; id: string; version: number | null; sketchId?: string };
 
 export interface ReservationPorts {
   rows: {
@@ -18,7 +18,7 @@ export interface ReservationPorts {
     lockOwner(ownerId: string): Promise<boolean>;
     rule(id: string): Promise<Rule | null>;
     result(id: string): Promise<Result | null>;
-    sourceSnapshot(resultId: string): Promise<{ fingerprint: string; sources: Source[] }>;
+    sourceSnapshot(resultId: string, ruleId: string): Promise<{ fingerprint: string; sources: Source[]; ruleVersion: number | null }>;
     sourceCurrent(projectId: string, source: Source): Promise<boolean>;
     connection(ownerId: string): Promise<Connection | null>;
     usage(ownerId: string, startOfDay: Date, startOfPeriod: Date): Promise<{ dayRuns: number; periodCents: number; inFlight: number }>;
@@ -60,17 +60,21 @@ export function reservationUseCases(unit: ReservationUnitOfWork) {
           await rows.cancel(candidate.id);
           return blocked('OWNER_OR_AGENT_ACCESS');
         }
-        const snapshot = await rows.sourceSnapshot(candidate.resultId);
+        const snapshot = await rows.sourceSnapshot(candidate.resultId, candidate.ruleId);
+        if (snapshot.ruleVersion !== rule.version) {
+          await rows.cancel(candidate.id);
+          return blocked('RULE_STOPPED');
+        }
         if (snapshot.fingerprint !== candidate.sourceFingerprint) {
           await rows.cancel(candidate.id);
           return blocked('SOURCE_CHANGED');
         }
         for (const source of snapshot.sources) {
-          // Only immutable messages/results and pinned current material revisions are
-          // supported by this first preflight. A mutable source needs a versioned reader.
-          if (source.type !== 'message' && source.type !== 'result' && source.type !== 'material')
+          // Immutable human messages/results and pinned current human material/work/thought
+          // revisions are checked again before reading content, dispatch and publication.
+          if (source.type !== 'message' && source.type !== 'result' && source.type !== 'material' && source.type !== 'work' && source.type !== 'thought')
             return blocked('SOURCE_SCOPE_UNVERIFIED');
-          if (source.type === 'material' && (!source.version || source.version < 1))
+          if ((source.type === 'material' || source.type === 'work' || source.type === 'thought') && (!source.version || source.version < 1))
             return blocked('SOURCE_SCOPE_UNVERIFIED');
           if (!await rows.sourceCurrent(candidate.projectId, source)) {
             await rows.cancel(candidate.id);

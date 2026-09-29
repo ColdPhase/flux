@@ -3,16 +3,20 @@ export const BACKGROUND_COMPARISON_MAX_INPUT_TOKENS = 8_000;
 export const BACKGROUND_COMPARISON_MAX_OUTPUT_TOKENS = 1_200;
 
 export interface ComparisonSource {
-  type: 'result' | 'message' | 'material';
+  type: 'result' | 'message' | 'material' | 'work' | 'thought';
   id: string;
   version: number;
+  sketchId?: string;
   text: string;
+  /** Explicitly marked bounded excerpt, not the complete source. */
+  excerpted?: boolean;
+  originalCharacters?: number;
 }
 export interface ComparisonAnswer {
   fact: string;
   interpretation: string;
   suggestedAction: string;
-  citations: Array<Pick<ComparisonSource, 'type' | 'id' | 'version'>>;
+  citations: Array<Pick<ComparisonSource, 'type' | 'id' | 'version' | 'sketchId'>>;
 }
 export interface ComparisonProviderResponse {
   stopReason: string;
@@ -46,7 +50,10 @@ export function validateComparisonResponse(response: ComparisonProviderResponse,
   if (!response.answer.citations.some((citation) => citation.type === 'result' && citation.id === supplied[0]?.id)) return null;
   return { fact: response.answer.fact.trim(), interpretation: response.answer.interpretation.trim(),
     suggestedAction: response.answer.suggestedAction.trim(),
-    citations: response.answer.citations.map(({ type, id, version }) => ({ type, id, version })) };
+    citations: response.answer.citations.map(({ type, id, version }) => {
+      const source = supplied.find((item) => key(item) === key({ type, id, version }))!;
+      return { type, id, version, ...(type === 'thought' ? { sketchId: source.sketchId } : {}) };
+    }) };
 }
 
 /** Dated standard-rate estimate; separate from the provider invoice. */

@@ -5,7 +5,7 @@ import { after, before, test } from 'node:test';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 
 interface Fixture { email: string; password: string; projectId: string; proposalIds: string[];
-  conversationId: string; messageId: string }
+  conversationId: string; messageId: string; workId: string; sketchId: string; thoughtId: string }
 const fixture = JSON.parse(readFileSync('/state/proactive-ui.json', 'utf8')) as Fixture;
 const upstream = new URL(process.env.FLUX_API_URL ?? 'http://api:8080');
 const origin = new URL(process.env.FLUX_PUBLIC_ORIGIN ?? 'http://127.0.0.1:18089');
@@ -81,6 +81,32 @@ test('real project UI presents sourced quiet suggestions, then persists edits, u
     `/projects/${fixture.projectId}/conversations/${fixture.conversationId}#message-${fixture.messageId}`);
   await message.click();
   await page.locator(`#message-${fixture.messageId}`).waitFor();
+
+  for (const viewport of [{ width: 390, height: 844 }, { width: 1024, height: 768 }, { width: 1440, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks`);
+    await cards.first().locator('.ws-proposal__toggle').click();
+    const workSource = cards.first().getByRole('link', { name: /^Work ·/ });
+    assert.equal(await workSource.getAttribute('href'), `/projects/${fixture.projectId}/tasks?open=work:${fixture.workId}`);
+    const thoughtSource = cards.first().getByRole('link', { name: /^Thought ·/ });
+    assert.equal(await thoughtSource.getAttribute('href'), `/projects/${fixture.projectId}/map/${fixture.sketchId}#thought-${fixture.thoughtId}`);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'expanded sources fit the viewport');
+    await page.screenshot({ path: `/state/proactive-ui-${viewport.width}-expanded.png`, fullPage: true });
+    await workSource.click();
+    await page.getByRole('heading', { name: 'Measure ToF response at 5 lux', exact: true }).waitFor();
+    await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks`);
+    await cards.first().locator('.ws-proposal__toggle').click();
+    await cards.first().getByRole('link', { name: /^Thought ·/ }).click();
+    const selected = page.locator(`.sk-node[data-id="${fixture.thoughtId}"], .sk-li-t[data-id="${fixture.thoughtId}"]`).first();
+    await selected.waitFor();
+    await page.waitForFunction((id) => {
+      const node = document.querySelector(`.sk-node[data-id="${id}"], .sk-li-t[data-id="${id}"]`);
+      return node?.getAttribute('aria-selected') === 'true' || node?.getAttribute('aria-pressed') === 'true';
+    }, fixture.thoughtId);
+    const thought = await api('GET', `/api/v1/sketches/${fixture.sketchId}`);
+    assert.equal(thought.status, 200);
+    assert.ok((thought.data as { thoughts: Array<{ id: string }> }).thoughts.some((item) => item.id === fixture.thoughtId));
+  }
   await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks`);
   await cards.first().waitFor();
   await cards.first().locator('.ws-proposal__toggle').click();

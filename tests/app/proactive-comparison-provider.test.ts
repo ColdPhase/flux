@@ -71,4 +71,7 @@ test('a cited project message opens the exact message in its conversation', () =
   assert.equal(comparisonSourceHref('project-1', { type: 'message', id: 'message-1', version: 1,
     conversationId: 'conversation-1' }), '/projects/project-1/conversations/conversation-1#message-message-1');
   assert.equal(comparisonSourceHref('project-1', { type: 'message', id: 'message-1', version: 1 }), null);
+  assert.equal(comparisonSourceHref('project-1', { type: 'work', id: 'work-1', version: 2 }), '/projects/project-1/tasks?open=work:work-1');
+  assert.equal(comparisonSourceHref('project-1', { type: 'thought', id: 'thought-1', version: 3, sketchId: 'sketch-1' }),
+    '/projects/project-1/map/sketch-1#thought-thought-1');
 });

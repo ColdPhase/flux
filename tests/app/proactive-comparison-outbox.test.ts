@@ -81,8 +81,8 @@ describe('negative-result candidate and budget reservation (#58)', () => {
     const replay = expectStatus(await owner.browser.request('POST', resultPath,
       { body: command, headers: { 'Idempotency-Key': key } }), 201) as WorkResult;
     assert.equal(replay.id, negative.id, 'the result, event and candidate share one idempotent commit');
-    assert.equal(await db.transaction((tx) => proactiveOutboxRows(tx).enqueueHumanNegative(negative.id, projectId, owner.id)), 0);
-    assert.equal(await db.transaction((tx) => proactiveOutboxRows(tx).enqueueHumanNegative(peerNegative.id, projectId, peer.id)), 0);
+    assert.equal(await db.transaction((tx) => proactiveOutboxRows(tx).enqueueHumanNegative(negative.id, projectId, owner.id, [ruleId])), 0);
+    assert.equal(await db.transaction((tx) => proactiveOutboxRows(tx).enqueueHumanNegative(peerNegative.id, projectId, peer.id, [ruleId])), 0);
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM proactive_comparison_outbox WHERE result_id=$1', [negative.id])).rows[0].n, 1);
   });
 
@@ -136,8 +136,8 @@ describe('negative-result candidate and budget reservation (#58)', () => {
     const ws = await pool.query('SELECT workspace_id FROM projects WHERE id=$1', [projectId]);
     await pool.query(`INSERT INTO project_results (id, workspace_id, project_id, title, finding, created_by_kind, created_by_id)
       VALUES ($1, $2, $3, 'Agent-derived finding', 'negative', 'agent', $4)`, [agentResultId, ws.rows[0].workspace_id, projectId, agentId]);
-    assert.equal(await db.transaction((tx) => proactiveOutboxRows(tx).enqueueHumanNegative(agentResultId, projectId, owner.id)), 0);
-    assert.equal(await db.transaction((tx) => proactiveOutboxRows(tx).enqueueHumanNegative(agentResultId, projectId, agentId)), 0);
+    assert.equal(await db.transaction((tx) => proactiveOutboxRows(tx).enqueueHumanNegative(agentResultId, projectId, owner.id, [ruleId])), 0);
+    assert.equal(await db.transaction((tx) => proactiveOutboxRows(tx).enqueueHumanNegative(agentResultId, projectId, agentId, [ruleId])), 0);
     assert.equal(await candidate(agentResultId), undefined);
   });
 });

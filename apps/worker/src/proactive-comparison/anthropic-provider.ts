@@ -9,7 +9,7 @@ const OUTPUT_SCHEMA = {
     fact: { type: 'string' }, interpretation: { type: 'string' }, suggestedAction: { type: 'string' },
     citations: { type: 'array', items: { type: 'object', additionalProperties: false,
       required: ['type', 'id', 'version'], properties: {
-        type: { type: 'string', enum: ['result', 'message', 'material'] },
+        type: { type: 'string', enum: ['result', 'message', 'material', 'work', 'thought'] },
         id: { type: 'string' }, version: { type: 'integer' },
       } } },
   },
@@ -18,7 +18,7 @@ const OUTPUT_SCHEMA = {
 function requestBody(model: string, sources: ComparisonSource[]) {
   return { model, system: SYSTEM,
     messages: [{ role: 'user', content: JSON.stringify({ task: 'Compare the negative result with the cited project evidence.',
-      sources: sources.map(({ type, id, version, text }) => ({ type, id, version, text })) }) }],
+      sources: sources.map(({ type, id, version, text, sketchId, excerpted, originalCharacters }) => ({ type, id, version, text, sketchId, excerpted, originalCharacters })) }) }],
     output_config: { effort: 'low', format: { type: 'json_schema', schema: OUTPUT_SCHEMA } },
   };
 }

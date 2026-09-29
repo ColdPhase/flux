@@ -110,8 +110,8 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
       const created = await workUseCases(tx).createWork(principal, current.projectId, {
         title: body.title.trim(), outcome: current.suggestedAction,
         sources: sourceRefs,
-        related: current.sources.flatMap((source) => source.type === 'result'
-          ? [{ type: 'result' as const, id: source.id }] : []),
+        related: current.sources.flatMap((source) => source.type === 'result' || source.type === 'work' || source.type === 'thought'
+          ? [{ type: source.type, id: source.id }] : []),
       });
       const proposal = await rows.reviseProposal(current.id, { status: 'used', usedWorkId: created.id, editedByUserId: principal.id });
       return { proposal, work: created };

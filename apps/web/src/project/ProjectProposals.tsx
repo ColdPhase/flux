@@ -74,6 +74,12 @@ export function ProjectProposals({ proposals, people, projectName, resultTitles,
                 ? <Link title={`Material ${source.id}, version ${source.version}`} to={comparisonSourceHref(proposal.projectId, source)!}>Material · version {source.version}</Link>
                 : source.type === 'result'
                   ? <button type="button" title={`Result ${source.id}, version ${source.version}`} onClick={() => openResult(source.id)}>Result · {resultTitles.get(source.id) ?? source.id.slice(0, 8)}</button>
+                  : source.type === 'work'
+                    ? <Link title={`Cited work version ${source.version}; opens current work`} to={comparisonSourceHref(proposal.projectId, source)!}>Work · cited version {source.version}</Link>
+                  : source.type === 'thought'
+                    ? comparisonSourceHref(proposal.projectId, source)
+                      ? <Link title={`Cited thought version ${source.version}; opens current thought`} to={comparisonSourceHref(proposal.projectId, source)!}>Thought · cited version {source.version}</Link>
+                      : <span>Thought · cited version {source.version} (source unavailable)</span>
                   : source.conversationId
                     ? <Link title={`Message ${source.id}, version ${source.version}`} to={comparisonSourceHref(proposal.projectId, source)!}>Project message · {source.id.slice(0, 8)}</Link>
                     : <span title={`Message ${source.id}, version ${source.version}`}>Project message · {source.id.slice(0, 8)} (source unavailable)</span>}

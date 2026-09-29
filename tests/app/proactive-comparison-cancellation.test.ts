@@ -54,11 +54,17 @@ async function fixture() {
   await pool.query("UPDATE proactive_comparison_rules SET status='enabled' WHERE id=$1", [rule.id]);
   const material = expectStatus(await admin.browser.request('POST', `/api/v1/projects/${projectId}/materials`,
     { body: { clientMutationId: randomUUID(), title: 'Camera A measurements', body: '38% gesture detection at 5 lux.' } }), 201) as Material;
+  const work = expectStatus(await admin.browser.request('POST', `/api/v1/projects/${projectId}/work`,
+    { body: { title: 'Run a controlled sensor benchmark', outcome: 'Measure the same gestures at 5 lux.' } }), 201) as { id: string; version: number };
+  const sketch = expectStatus(await admin.browser.request('POST', `/api/v1/workspaces/${ws.id}/sketches`,
+    { body: { title: 'Human test ideas', scope: 'project', projectId } }), 201) as { id: string };
+  const { thought } = expectStatus(await admin.browser.request('POST', `/api/v1/sketches/${sketch.id}/thoughts`,
+    { body: { text: 'Check sensor exposure at 5 lux.', x: 0, y: 0 } }), 201) as { thought: { id: string; version: number } };
   const result = expectStatus(await admin.browser.request('POST', `/api/v1/projects/${projectId}/results`,
     { body: { title: 'Low-light trial failed', finding: 'negative', evidence: 'The camera missed gestures.',
       sources: [{ type: 'material', id: material.materialId, version: 1 }] } }), 201) as { id: string };
   const candidateId = (await pool.query('SELECT id FROM proactive_comparison_outbox WHERE result_id=$1', [result.id])).rows[0].id as string;
-  return { admin, owner, projectId, rule, connection, agentGrantId, material, candidateId };
+  return { admin, owner, projectId, rule, connection, agentGrantId, material, work, sketch, thought, candidateId };
 }
 
 type Fixture = Awaited<ReturnType<typeof fixture>>;
@@ -81,6 +87,12 @@ const changes: Array<{ name: string; phase: 'count' | 'message'; reason: string;
   { name: 'source revision', phase: 'message', reason: 'SOURCE_CHANGED',
     async change(f) { expectStatus(await f.admin.browser.request('PATCH', `/api/v1/materials/${f.material.materialId}`,
       { body: { clientMutationId: randomUUID(), expectedVersion: 1, body: 'The original measurement was corrected.' } }), 200); } },
+  { name: 'unlinked human work revision', phase: 'message', reason: 'SOURCE_CHANGED',
+    async change(f) { expectStatus(await f.admin.browser.request('PATCH', `/api/v1/work/${f.work.id}`,
+      { body: { outcome: 'Repeat at 10 lux instead.', expectedVersion: f.work.version }, headers: { 'If-Match': `"${f.work.version}"` } }), 200); } },
+  { name: 'unlinked human thought revision', phase: 'message', reason: 'SOURCE_CHANGED',
+    async change(f) { expectStatus(await f.admin.browser.request('PATCH', `/api/v1/sketches/${f.sketch.id}/thoughts/${f.thought.id}`,
+      { body: { text: 'Exposure was already long enough.' }, headers: { 'If-Match': `"${f.thought.version}"` } }), 200); } },
 ];
 
 for (const scenario of changes) {

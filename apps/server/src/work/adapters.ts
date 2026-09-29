@@ -48,8 +48,16 @@ function workPorts(tx: DbExecutor): WorkPorts {
     access: policyWorkAccess(tx),
     work: workRepository(tx),
     events: { record: async (principal, workspaceId, kind, projectId, data) => { await recordEvent(tx, principal, workspaceId, kind, projectId, data); } },
-    backgroundComparison: { enqueueHumanNegative: (resultId, projectId, authorId) =>
-      proactiveOutboxRows(tx).enqueueHumanNegative(resultId, projectId, authorId) },
+    backgroundComparison: { async enqueueHumanNegative(resultId, projectId, authorId) {
+      const rows = proactiveOutboxRows(tx);
+      const eligible: string[] = [];
+      for (const rule of await rows.enabledRules(projectId)) {
+        const owner = await evaluateProject({ kind: 'human', id: rule.ownerUserId }, 'project.write', projectId, tx, { lock: true });
+        const agent = await evaluateProject({ kind: 'agent', id: rule.agentId }, 'project.write', projectId, tx, { lock: true });
+        if (owner.allowed && agent.allowed && agent.actor?.agent?.ownerUserId === rule.ownerUserId) eligible.push(rule.id);
+      }
+      return rows.enqueueHumanNegative(resultId, projectId, authorId, eligible);
+    } },
   };
 }
 

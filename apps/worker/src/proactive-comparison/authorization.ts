@@ -29,7 +29,8 @@ export async function authorizedComparison(db: Executor, candidateId: string, co
   const result = await rows.resultState(candidate.resultId);
   if (!result || result.projectId !== candidate.projectId || result.finding !== 'negative' || result.createdByKind !== 'human')
     throw new ComparisonStopped('AUTHORIZATION_CHANGED');
-  const snapshot = await rows.sourceSnapshot(candidate.resultId);
+  const snapshot = await rows.sourceSnapshot(candidate.resultId, candidate.ruleId);
+  if (snapshot.ruleVersion !== rule.version) throw new ComparisonStopped('AUTHORIZATION_CHANGED');
   if (snapshot.fingerprint !== candidate.sourceFingerprint) throw new ComparisonStopped('SOURCE_CHANGED');
   for (const source of snapshot.sources) {
     if (!await rows.sourceCurrent(candidate.projectId, source)) throw new ComparisonStopped('SOURCE_CHANGED');

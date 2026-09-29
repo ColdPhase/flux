@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { openBackgroundKey, proactiveOutboxRows } from '@flux/db';
+import { COMPARISON_CONTEXT_LIMITS, openBackgroundKey, proactiveOutboxRows } from '@flux/db';
 import { BACKGROUND_COMPARISON_MAX_INPUT_TOKENS, BACKGROUND_COMPARISON_MAX_OUTPUT_TOKENS,
   BACKGROUND_COMPARISON_MODEL, estimatedUsageCents, validateComparisonResponse,
   type ComparisonProvider, type ComparisonSource, type Database } from '@flux/core';
@@ -28,25 +28,24 @@ export async function dispatchProactiveComparison(input: { db: Database; candida
   let usage: ObservedUsage | undefined;
   try {
     const prepared = await input.db.transaction(async (tx) => {
-      const { rows, candidate, rule, result, snapshot } =
+      const { rows, candidate, rule, snapshot } =
         await authorizedComparison(tx, input.candidateId, reservation.connectionId, undefined, true);
-      const resultText = await rows.sourceText(candidate.projectId, { type: 'result', id: result.id, version: 1 });
-      if (resultText === null) throw new Stop('SOURCE_CHANGED');
-      const selected: ComparisonSource[] = [{ type: 'result', id: result.id, version: 1,
-        text: resultText }];
+      const selected: ComparisonSource[] = [];
       for (const source of snapshot.sources) {
-        if (source.type !== 'result' && source.type !== 'message' && source.type !== 'material')
+        if (source.type !== 'result' && source.type !== 'message' && source.type !== 'material' && source.type !== 'work' && source.type !== 'thought')
           throw new Stop('SOURCE_SCOPE_UNVERIFIED');
-        if (source.type === 'material' && (!source.version || source.version < 1))
+        if (!source.version || source.version < 1)
           throw new Stop('SOURCE_SCOPE_UNVERIFIED');
         if (!await rows.sourceCurrent(candidate.projectId, source)) throw new Stop('SOURCE_CHANGED');
-        const revision = source.type === 'material' ? source.version! : 1;
+        const revision = source.version;
         const text = await rows.sourceText(candidate.projectId, { type: source.type, id: source.id, version: revision });
         if (text === null) throw new Stop('SOURCE_CHANGED');
-        selected.push({ type: source.type, id: source.id, version: revision, text });
+        const cap = COMPARISON_CONTEXT_LIMITS.excerptCharacters;
+        selected.push({ type: source.type, id: source.id, version: revision, ...(source.sketchId ? { sketchId: source.sketchId } : {}),
+          text: text.length > cap ? `${text.slice(0, cap)}\n[Excerpt: remaining source text was omitted.]` : text,
+          ...(text.length > cap ? { excerpted: true, originalCharacters: text.length } : {}) });
       }
       const sources = [...new Map(selected.map((source) => [`${source.type}:${source.id}:${source.version}`, source])).values()];
-      if (sources.some((source) => source.text.length > 20_000)) throw new Stop('INPUT_TOO_LARGE');
       const connection = await rows.connection(candidate.ownerUserId);
       if (connection?.id !== reservation.connectionId || !connection.encryptedKey) throw new Stop('AUTHORIZATION_CHANGED');
       const apiKey = openBackgroundKey(connection.encryptedKey, candidate.ownerUserId, connection.id, input.masterKey!);
