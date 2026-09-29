@@ -346,7 +346,12 @@ test('owner-only background setup persists consent, clears keys and preserves an
     await page.locator('input[name="providerBilling"]').scrollIntoViewIfNeeded();
     await page.screenshot({ path: `/state/background-setup-${viewport.width}-consent.png`, fullPage: true });
     await key.fill('sk-ant-fixture-unsaved-touch-key-ABCD');
-    await page.getByRole('button', { name: 'Cancel', exact: true }).tap();
+    const cancel = page.getByRole('button', { name: 'Cancel replacement', exact: true });
+    await key.scrollIntoViewIfNeeded();
+    const bounds = await cancel.boundingBox();
+    assert.ok(bounds && bounds.y >= 0 && bounds.y + bounds.height <= viewport.height, 'replacement cancellation is beside the opening fields');
+    await cancel.tap();
+    await page.waitForFunction(() => document.querySelector('.background-settings__actions button') === document.activeElement);
     assert.equal(await key.count(), 0);
     assert.equal(((await api('GET', '/api/v1/background-compute-connections/current')).data as { id: string }).id, first.id);
   } finally { page = ownerPage; await touchContext.close(); }
@@ -417,6 +422,8 @@ test('an owner creates a personal project agent and a paused rule, then pauses, 
   await page.getByLabel('Rule maximum requests a day').fill('1');
   await page.getByLabel('Rule 30-day allowance (USD)').fill('0.15');
   await page.getByLabel('Rule per-request allowance (USD)').fill('0.05');
+  await page.getByLabel('Rule maximum requests a day').focus();
+  await page.screenshot({ path: '/state/background-rules-1440-create.png', fullPage: true });
   await page.locator('input[name="ruleConsent"]').check();
   await page.getByRole('button', { name: 'Create paused rule', exact: true }).click();
   await page.getByRole('button', { name: 'Enable unavailable', exact: true }).waitFor();
@@ -431,6 +438,24 @@ test('an owner creates a personal project agent and a paused rule, then pauses, 
   await page.getByRole('button', { name: 'Enable unavailable', exact: true }).waitFor();
   await page.locator('.background-settings__metadata').last().click();
   await page.screenshot({ path: '/state/background-rules-1440-paused.png', fullPage: true });
+  const desktopPage = page;
+  for (const viewport of [{ width: 390, height: 844 }, { width: 1024, height: 768 }]) {
+    const touchContext = await browser.newContext({ viewport, isMobile: viewport.width === 390, hasTouch: true,
+      storageState: await context.storageState() });
+    page = await touchContext.newPage();
+    page.on('pageerror', (error) => errors.push(error.message));
+    try {
+      await page.goto(`${origin.origin}/settings/background-compute?project=${projectId}`);
+      await page.getByRole('button', { name: 'Revoke rule', exact: true }).waitFor();
+      await page.locator('.background-settings__metadata').last().scrollIntoViewIfNeeded();
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      for (const control of await page.locator('.background-settings__actions .ui-btn').all()) {
+        const bounds = await control.boundingBox();
+        assert.ok(bounds && bounds.height >= 44 && bounds.width >= 44);
+      }
+      await page.screenshot({ path: `/state/background-rules-${viewport.width}-paused.png`, fullPage: true });
+    } finally { page = desktopPage; await touchContext.close(); }
+  }
 
   await page.getByLabel('Project', { exact: true }).selectOption(fixture.projectId);
   await page.getByRole('button', { name: 'Pause rule', exact: true }).click();

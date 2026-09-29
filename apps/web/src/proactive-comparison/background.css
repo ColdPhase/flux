@@ -8,6 +8,8 @@
 .background-settings__error { margin-top: 8px; font-size: var(--fs-md); color: var(--danger); }
 .background-settings__section { padding: 18px 0; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
 .background-settings__section h3 { font-size: var(--fs-base); margin-bottom: 8px; }
+.background-settings__section-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.background-settings__section-head h3 { margin: 0; }
 .background-settings__metadata { margin: 0 0 10px; display: grid; gap: 6px; font-size: var(--fs-md); line-height: 1.45; }
 .background-settings__metadata > div { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 8px; }
 .background-settings__metadata dt { color: var(--text-3); }

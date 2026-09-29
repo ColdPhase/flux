@@ -33,11 +33,16 @@ export function BackgroundComputeSettings() {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const statusRef = useRef<HTMLParagraphElement>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
+  const replaceRef = useRef<HTMLButtonElement>(null);
   useEffect(() => { headingRef.current?.focus(); }, []);
   const announce = (message: string) => {
     setSaved(message);
     requestAnimationFrame(() => statusRef.current?.focus());
   };
+  function cancelReplacement() {
+    formRef.current?.reset(); setEditing(false); setError('');
+    requestAnimationFrame(() => replaceRef.current?.focus());
+  }
 
   async function connect(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -89,7 +94,6 @@ export function BackgroundComputeSettings() {
     </header>
     <p className="background-settings__note" role="note">Background execution is not available on this instance yet. Saving a connection does not enable a rule. You can keep working without AI.</p>
     <p ref={statusRef} className="background-settings__saved" tabIndex={-1} role="status">{saved}</p>
-    {error ? <p ref={errorRef} className="background-settings__error" role="alert" tabIndex={-1}>{error}</p> : null}
 
     {connection ? <section className="background-settings__section" aria-labelledby="background-current">
       <h3 id="background-current">Your saved connection</h3>
@@ -100,14 +104,21 @@ export function BackgroundComputeSettings() {
         <div><dt>Local allowance</dt><dd>{money(connection.periodBudgetCents)} over rolling 30 days · up to {connection.maxRunsPerDay} requests a UTC day · {money(connection.perRunCents)} per request</dd></div>
       </dl>
       <p className="background-settings__help">The key-owning organization pays Anthropic. Flux limits new requests; this allowance does not guarantee the provider invoice. Interrupted requests can still be charged.</p>
+      {error && !editing ? <p ref={errorRef} className="background-settings__error" role="alert" tabIndex={-1}>{error}</p> : null}
       <div className="background-settings__actions">
-        <Button disabled={busy} onClick={() => { setEditing(true); setError(''); setSaved(''); }}>Replace connection</Button>
+        <Button ref={replaceRef} disabled={busy} onClick={() => { setEditing(true); setError(''); setSaved('');
+          requestAnimationFrame(() => formRef.current?.querySelector<HTMLInputElement>('input[name="apiKey"]')?.focus());
+        }}>Replace connection</Button>
         <Button disabled={busy} onClick={() => void disconnect()}>Disconnect</Button>
       </div>
     </section> : null}
 
     {!connection || editing ? <section className="background-settings__section" aria-labelledby="background-connect">
-      <h3 id="background-connect">{connection ? 'Replace your connection' : 'Connect your background source'}</h3>
+      <div className="background-settings__section-head">
+        <h3 id="background-connect">{connection ? 'Replace your connection' : 'Connect your background source'}</h3>
+        {connection ? <Button disabled={busy} onClick={cancelReplacement}>Cancel replacement</Button> : null}
+      </div>
+      {error ? <p ref={errorRef} className="background-settings__error" role="alert" tabIndex={-1}>{error}</p> : null}
       <p className="background-settings__help">Claude Platform · claude-sonnet-5. A named-project rule may send its published human evidence for one camera/sensor comparison. It can prepare a quiet suggestion; people choose whether to use it.</p>
       <form ref={formRef} onSubmit={(event) => void connect(event)}>
         <fieldset disabled={busy} className="background-settings__fields">
@@ -126,7 +137,7 @@ export function BackgroundComputeSettings() {
           <label className="background-settings__check"><input name="projectDisclosure" type="checkbox" required /><span>I allow human evidence published in the projects I enable to be sent to this provider; suggestions are visible to that project's readers.</span></label>
           <div className="background-settings__actions">
             <Button type="submit" variant="primary" busy={busy}>{connection ? 'Replace and save consent' : 'Save connection and consent'}</Button>
-            {connection ? <Button onClick={() => { formRef.current?.reset(); setEditing(false); setError(''); }}>Cancel</Button> : null}
+            {connection ? <Button onClick={cancelReplacement}>Cancel</Button> : null}
           </div>
         </fieldset>
       </form>
