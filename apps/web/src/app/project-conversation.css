@@ -1,7 +1,7 @@
 /* The project page: the return line (#106) above the conversation. */
 .project-page { display: flex; flex: 1; min-height: 0; flex-direction: column; }
 .project-convo__message:focus { outline: none; }
-.project-convo__message.is-arrived { box-shadow: inset 3px 0 0 var(--accent); padding-left: 12px; }
+.project-convo__message.is-arrived { box-shadow: inset 3px 0 0 var(--accent); }
 .project-convo { display: flex; flex: 1; min-height: 0; flex-direction: column; }
 .project-convo__feed { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 /* One reading column (direction C): conversations live in the sidebar, sources in the composer. */
@@ -75,3 +75,29 @@
 .project-convo__publication { padding: 9px; border-radius: var(--r-sm); background: var(--bg-active); font-size: var(--fs-sm); color: var(--text-2); }
 .project-convo__person { color: inherit; text-decoration: none; border-radius: 4px; }
 .project-convo__person:hover { text-decoration: underline; text-underline-offset: 2px; }
+
+/* Who said what at a glance (#132/#136): the signed-in person's messages sit on the right, other
+   people's on the left, in the width of the conversation pane rather than a narrow centred lane.
+   Each message is only as wide as its content (up to a readable measure), so its hover actions
+   stay beside it; authors, time, sources and actions stay with the bubble. */
+.project-convo__in { max-width: 1000px; }
+.project-convo__composer .composer__in { max-width: calc(1000px - 48px); }
+.project-convo__message { display: flex; flex-direction: column; align-items: flex-start; width: fit-content; min-width: min(260px, 100%); max-width: min(700px, 86%); }
+/* With a mouse the actions appear over the top edge; a wider box keeps them clear of the name. */
+@media (hover: hover) and (min-width: 641px) { .project-convo__message { min-width: min(640px, 100%); } }
+.project-convo__message > p { max-width: 100%; padding: 8px 12px; border-radius: 4px 14px 14px 14px; background: var(--bg-side); }
+.project-convo__message.is-mine { margin-left: auto; align-items: flex-end; padding-left: 0; padding-right: 46px; }
+.project-convo__message.is-mine > .ui-avatar { left: auto; right: 0; }
+.project-convo__message.is-mine > p { border-radius: 14px 4px 14px 14px; background: var(--accent-soft); }
+.project-convo__message.is-mine .project-convo__message-meta { flex-direction: row-reverse; }
+.project-convo__message.is-mine .ws-acts { justify-content: flex-end; margin-left: 0; margin-right: -6px; }
+.project-convo__message.is-arrived { padding-left: 58px; }
+.project-convo__message.is-mine.is-arrived { box-shadow: inset -3px 0 0 var(--accent); padding-left: 0; padding-right: 58px; }
+@media (hover: hover) { .project-convo__message.is-mine .ws-acts { right: auto; left: 0; margin: 0; } }
+.project-convo__message.is-mine .ws-acts--more { right: auto; left: -10px; }
+.project-convo__message.is-mine:has(.ws-acts--more) .project-convo__message-meta { padding-right: 0; padding-left: 36px; }
+@media (max-width: 640px) {
+  .project-convo__message { max-width: 100%; }
+  .project-convo__message > p { max-width: calc(100% - 8px); }
+  .project-convo__message.is-mine { padding-left: 0; padding-right: 44px; }
+}

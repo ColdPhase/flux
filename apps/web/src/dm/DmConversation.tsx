@@ -258,7 +258,7 @@ function DmContent({ initial }: { initial: Dm }) {
               {rows.map(({ message, label, newDay, continued }) => {
                 const mine = message.authorId === me.user.id;
                 return (
-                  <li key={message.id} id={`message-${message.id}`} tabIndex={-1} className={`dm-msg${continued ? ' dm-msg--cont' : ''}${arrived === message.id ? ' is-arrived' : ''}`} data-sequence={message.sequence}>
+                  <li key={message.id} id={`message-${message.id}`} tabIndex={-1} className={`dm-msg${mine ? ' is-mine' : ''}${continued ? ' dm-msg--cont' : ''}${arrived === message.id ? ' is-arrived' : ''}`} data-sequence={message.sequence}>
                     {newDay ? <p className="dm__day"><span>{label}</span></p> : null}
                     <div className="dm-msg__row">
                       <span className="dm-msg__face">{continued ? null : <Avatar name={mine ? me.user.name : nameOf(message.authorId)} size="md" tone={mine ? 'me' : 'neutral'} />}</span>

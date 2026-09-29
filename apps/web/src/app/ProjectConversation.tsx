@@ -312,7 +312,7 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
               const divider = label !== lastDay ? <li className="project-convo__day" key={`day-${message.id}`}><span>{label}</span></li> : null;
               lastDay = label;
               const mine = message.authorId === me.user.id;
-              return [divider, <li key={message.id} id={`message-${message.id}`} tabIndex={-1} className={`project-convo__message${arrived === message.id ? ' is-arrived' : ''}`}>
+              return [divider, <li key={message.id} id={`message-${message.id}`} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived === message.id ? ' is-arrived' : ''}`}>
                 <Avatar name={author(message.authorId)} size="md" tone={mine ? 'me' : 'neutral'} />
                 <div className="project-convo__message-meta"><strong>{mine ? `${author(message.authorId)} · you` : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${author(message.authorId)} directly`}>{author(message.authorId)}</Link>}</strong><time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time><span>#{message.sequence}</span></div>
                 <p>{message.body}</p>

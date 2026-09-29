@@ -83,3 +83,17 @@
 .dm-msg.is-arrived { box-shadow: inset 3px 0 0 var(--accent); border-radius: 2px; }
 .dm-msg:focus { outline: none; }
 .dm-msg:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* Own messages on the right, the other people's on the left (#132/#136), in the pane's width. */
+.dm__in { max-width: 1000px; }
+.dm__composer .composer__in { max-width: calc(1000px - 48px); }
+.dm-msg__main { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+.dm-msg__body { max-width: min(640px, 82%); padding: 7px 12px; border-radius: 4px 14px 14px 14px; background: var(--bg-side); }
+.dm-msg--cont .dm-msg__body { border-radius: 14px; }
+.dm-msg.is-mine .dm-msg__row { grid-template-columns: minmax(0, 1fr) 26px; }
+.dm-msg.is-mine .dm-msg__face { order: 2; }
+.dm-msg.is-mine .dm-msg__main { align-items: flex-end; }
+.dm-msg.is-mine .dm-msg__meta { flex-direction: row-reverse; }
+.dm-msg.is-mine .dm-msg__body { border-radius: 14px 4px 14px 14px; background: var(--accent-soft); }
+.dm-msg.is-mine.dm-msg--cont .dm-msg__body { border-radius: 14px; }
+@media (max-width: 640px) { .dm-msg__body { max-width: 92%; } }

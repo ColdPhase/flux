@@ -161,6 +161,14 @@ class DirectMessageJourney(unittest.TestCase):
         expect(ada.get_by_text("A VL53L1X sees a hand at 30 cm")).to_be_visible(timeout=15000)
         self.send(ada, "Perfect. Let’s keep it between us until we know it works in low light.")
         expect(kai.get_by_text("keep it between us")).to_be_visible(timeout=15000)
+        # Ada's own message sits on the right, Kai's on the left (#136 AC-1).
+        own = ada.locator(".dm-msg.is-mine .dm-msg__body", has_text="keep it between us").bounding_box()
+        other = ada.locator(".dm-msg:not(.is-mine) .dm-msg__body", has_text="A VL53L1X").bounding_box()
+        feed = ada.locator(".dm__in").bounding_box()
+        assert own and other and feed
+        self.assertGreater(own["x"] + own["width"], feed["x"] + feed["width"] / 2)
+        self.assertLess(other["x"], feed["x"] + feed["width"] / 2)
+        self.assertGreater(own["x"] + own["width"], other["x"] + other["width"])
         shot(ada, "dm-desktop-1440-conversation")
 
         # Opening the DM again from Kai's side (e.g. from Ada's name) reaches the same one.
