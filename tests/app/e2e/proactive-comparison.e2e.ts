@@ -32,16 +32,23 @@ async function api(method: string, path: string, body?: unknown) {
   }, { method, path, body });
 }
 async function assertBackgroundContrast() {
-  const checks = await page.evaluate(() => {
+  const checks = await page.evaluate(async () => {
     const root = document.documentElement;
     const previous = root.dataset.theme;
     const checks: Array<{ theme: string; part: string; foreground: string; background: string; minimum: number }> = [];
     for (const theme of ['light', 'dark']) {
       root.dataset.theme = theme;
+      await new Promise((resolve) => setTimeout(resolve, 250));
       const bg = getComputedStyle(document.querySelector('.app__main')!).backgroundColor;
       for (const part of ['.background-settings__help', '.background-settings__note', '.background-settings__fields label']) {
-        const node = document.querySelector(part)!;
+        const node = document.querySelector(part);
+        if (!node) continue;
         checks.push({ theme, part, foreground: getComputedStyle(node).color, background: bg, minimum: 4.5 });
+      }
+      for (const node of document.querySelectorAll('.background-settings .ui-btn:not(:disabled)')) {
+        const style = getComputedStyle(node);
+        checks.push({ theme, part: node.textContent ?? 'button', foreground: style.color,
+          background: style.backgroundColor === 'rgba(0, 0, 0, 0)' ? bg : style.backgroundColor, minimum: 4.5 });
       }
       for (const node of document.querySelectorAll('.background-settings input:not([type=checkbox]), .background-settings select')) {
         const style = getComputedStyle(node);
@@ -290,9 +297,12 @@ test('owner-only background setup persists consent, clears keys and preserves an
   assert.match(await page.locator('.background-settings__metadata').innerText(), /Fixture Sensor Research[\s\S]*ABCD[\s\S]*\$0.25/);
   await page.locator('.background-settings__help').first().click();
   await page.screenshot({ path: '/state/background-setup-1440-saved.png', fullPage: true });
+  await assertBackgroundContrast();
   await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('.background-settings .ui-btn--secondary')!).color === getComputedStyle(document.body).color);
   await page.screenshot({ path: '/state/background-setup-1440-saved-dark.png', fullPage: true });
   await page.evaluate(() => { delete document.documentElement.dataset.theme; });
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('.background-settings .ui-btn--secondary')!).color === getComputedStyle(document.body).color);
 
   const ownerPage = page;
   const peerContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
