@@ -129,6 +129,30 @@ allowance. The migrator applies individual files in numeric order and the #118
 strict guard rejects any gap or unknown version in the application ledger.
 Same-volume upgrade proof through `0021`–`0024` remains required before release.
 
+### Same-volume rehearsal
+
+Run `./scripts/check_proactive_upgrade.sh` from this branch. It archives an
+immutable baseline (`origin/main`, or `FLUX_UPGRADE_FROM`) and the committed
+candidate into an isolated checkout, starts/seeds the baseline, then replaces
+only its source and starts the candidate on the same PostgreSQL/files volumes.
+`FLUX_PROACTIVE_UPGRADE_PORT` selects the base port; use a separate port for
+concurrent runs. Application execution and builds stay in Docker.
+
+Observed 2026-09-29: baseline `9d27e994ce2b770e98139a14bedc51fd687cb76b`
+to rehearsal commit `4fb57c6ea6d0dc099834b51c6dbe980085739a7d` passed.
+The exact ledger changed from `1`–`20` to `1`–`24`, with all four real
+comparison migrations applied. Before/after full-row count/hash snapshots
+matched for 16 existing content/grant tables, including nonempty human work,
+decision, negative result and six object links. The original browser session,
+two material revisions, historical message citation and private draft remained
+usable through the API. The new paused rule and encrypted connection were
+usable; enabling still failed with `BACKGROUND_RUNTIME_UNAVAILABLE`, and manual
+work creation succeeded. A second migration/start left the exact ledger intact.
+The rehearsal removed its project, volumes and image tags. This is local
+candidate evidence; independent #58 evaluation and the final integrated
+release candidate still require their own acceptance pass, including any later
+migrations from other branches.
+
 The [Claude Sonnet 5 model page](https://platform.claude.com/docs/en/models/sonnet-5/whats-new-sonnet-5),
 checked 2026-09-28, lists API model ID `claude-sonnet-5`, standard $2/M input
 tokens and $10/M output tokens, and notes that its tokenizer differs from Sonnet
@@ -140,5 +164,6 @@ Remaining #58 work: an authorized real-provider test call and actual billing
 observation including live-provider cancellation, broader versioned
 project source selection, reopening dismissed suggestions only after relevant
 evidence changes, insufficient-evidence state, rendered UI/interaction
-and independent visual evidence, plus #118 migration-upgrade proof. This file
+and independent visual evidence, plus independent/current release migration
+acceptance. This file
 describes a controlled integration slice, not completion of #58.
