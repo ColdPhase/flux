@@ -90,7 +90,7 @@ export function ProjectRuleSettings({ connection }: { connection: BackgroundComp
     <h3 id="background-rules">Rules for your projects</h3>
     <p className="background-settings__help">Each rule belongs to you. A contributor's committed negative result can ask your agent for a quiet camera/sensor comparison; people retain decisions and work changes.</p>
     <div className="background-settings__select"><label htmlFor="background-rule-project">Project</label><select id="background-rule-project" value={projectId} disabled={busy || !projects} onChange={(event) => {
-      setProjectId(event.target.value); setSetup(null); setRefresh(0); setError(''); setSaved('');
+      setProjectId(event.target.value); setSetup(null); setAgentId(''); setRefresh(0); setError(''); setSaved('');
     }}><option value="">Choose a project</option>{projects?.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></div>
     {selected && !ready && !error ? <Spinner label="Loading your project rules" /> : null}
     {error ? <p ref={errorRef} className="background-settings__error" role="alert" tabIndex={-1}>{error}</p> : null}

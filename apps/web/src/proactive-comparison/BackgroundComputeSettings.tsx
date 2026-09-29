@@ -111,7 +111,7 @@ export function BackgroundComputeSettings() {
       <p className="background-settings__help">Claude Platform · claude-sonnet-5. A named-project rule may send its published human evidence for one camera/sensor comparison. It can prepare a quiet suggestion; people choose whether to use it.</p>
       <form ref={formRef} onSubmit={(event) => void connect(event)}>
         <fieldset disabled={busy} className="background-settings__fields">
-          <label>Background API key<input name="apiKey" type="password" autoComplete="off" spellCheck={false} required minLength={23} maxLength={263} /></label>
+          <label>Background API key<input name="apiKey" type="password" autoComplete="off" spellCheck={false} required minLength={24} maxLength={263} /></label>
           <label>Provider organization<input name="payerOrganization" autoComplete="off" required minLength={2} maxLength={120} defaultValue={connection?.payerOrganization} /></label>
           <label>Provider workspace<input name="providerWorkspace" autoComplete="off" required minLength={2} maxLength={120} defaultValue={connection?.providerWorkspace} /></label>
           <div className="background-settings__limits">
