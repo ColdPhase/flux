@@ -5,7 +5,7 @@ import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
 import { PgBoss } from 'pg-boss';
-import { FLUX_SCHEMA_VERSION, PG_BOSS_SCHEMA_VERSION } from '@flux/db';
+import { assertExactMigrationLedger, FLUX_SCHEMA_VERSION, PG_BOSS_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
 import { SAMPLE_COMMAND_PATH, type SampleCommand } from '@flux/contracts';
 import { createSample, SAMPLE_JOB } from '@flux/core';
 import { registerDatabase } from './plugins/database.js';
@@ -43,6 +43,8 @@ const identityConfig = loadIdentityConfig();
 const pushConfig = loadPushServerConfig();
 const app = Fastify({ logger: true, trustProxy: identityConfig.trustedProxies.length ? identityConfig.trustedProxies : false });
 const { pool, db } = registerDatabase(app, connectionString);
+const migrationManifest = await readMigrationManifest('packages/db/migrations', FLUX_SCHEMA_VERSION);
+assertExactMigrationLedger(migrationManifest, await readAppliedMigrationVersions(pool));
 const boss = new PgBoss({ connectionString, migrate: false });
 boss.on('error', (error) => app.log.error(error));
 await boss.start();
@@ -125,8 +127,7 @@ await app.register(searchRoutes, { db, sessions: identity, cursorSecret: identit
 
 app.get('/api/v1/health', async (_request, reply) => {
   try {
-    const version = await pool.query('SELECT max(version) AS version FROM flux_schema_version');
-    if (Number(version.rows[0]?.version) !== FLUX_SCHEMA_VERSION) throw new Error('Schema mismatch');
+    assertExactMigrationLedger(migrationManifest, await readAppliedMigrationVersions(pool));
     if ((await boss.schemaVersion()) !== PG_BOSS_SCHEMA_VERSION) throw new Error('Queue schema mismatch');
     const probe = join(filesDir, `.flux-health-${randomUUID()}`);
     const file = await open(probe, 'wx');
