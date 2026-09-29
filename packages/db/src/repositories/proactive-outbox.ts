@@ -147,6 +147,18 @@ export function proactiveOutboxRows(db: DbExecutor) {
       const [row] = await db.select().from(results).where(eq(results.id, id)).for('share');
       return row ?? null;
     },
+    async resultState(id: string) {
+      const [row] = await db.select({ id: results.id, projectId: results.projectId,
+        finding: results.finding, createdByKind: results.createdByKind }).from(results)
+        .where(eq(results.id, id)).for('share');
+      return row ?? null;
+    },
+    async connectionState(ownerId: string) {
+      const [row] = await db.select({ id: connections.id, perRunCents: connections.perRunCents,
+        keyAvailable: sql<boolean>`${connections.encryptedKey} IS NOT NULL` }).from(connections)
+        .where(and(eq(connections.ownerUserId, ownerId), isNull(connections.revokedAt))).for('share');
+      return row ?? null;
+    },
     async connection(ownerId: string) {
       const [row] = await db.select().from(connections)
         .where(and(eq(connections.ownerUserId, ownerId), isNull(connections.revokedAt))).for('share');

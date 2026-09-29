@@ -44,7 +44,18 @@ invoked dispatch path in the worker decrypts only the owner's active
 key, token-counts up to 8,000 inputs, makes at most one 1,200-output-token call,
 validates cited output and persists a separate quiet proposal. It checks current
 owner/agent project write access and pinned project-audience sources before the
-call and again within the commit transaction. It records usage estimates
+call and again within the commit transaction. Provider calls hold no SQL locks:
+short transactions collect authorized input and publish the result, while a
+250 ms metadata check aborts a pending request after rule pause/revocation,
+connection replacement/revocation, owner/agent access loss or source revision.
+It rechecks before starting a paid Messages request after token counting. A newer
+rule version cannot revive an earlier call. Cancellation returns even if an
+adapter ignores its AbortSignal; a late answer cannot enter the proposal commit.
+An already accepted provider request may still incur a charge, so cancellation
+keeps the conservative reservation as `unknown`, without automatic retry.
+Docker regressions exercise these changes through the running API while a local
+provider fixture is pending; they do not prove live-provider cancellation or billing.
+It records usage estimates
 separately from the conservative reservation; failed or lost responses stay
 `unknown` and are never retried automatically. The project-read API exposes a
 proposal to current project readers without a notification. The adapter for
@@ -114,8 +125,9 @@ Migrations `0021`–`0024` include the standing rule, encrypted connection,
 candidate/reservation ledger and separate project proposal. The outbox retains
 reserved possible charges when a rule or result would otherwise be deleted, so
 removal cannot reset the owner's
-allowance. The migrator applies individual files in numeric order; #118 must add
-the strict migration ledger and same-volume upgrade proof before release.
+allowance. The migrator applies individual files in numeric order and the #118
+strict guard rejects any gap or unknown version in the application ledger.
+Same-volume upgrade proof through `0021`–`0024` remains required before release.
 
 The [Claude Sonnet 5 model page](https://platform.claude.com/docs/en/models/sonnet-5/whats-new-sonnet-5),
 checked 2026-09-28, lists API model ID `claude-sonnet-5`, standard $2/M input
@@ -125,7 +137,7 @@ worker records `usage_estimated_cents` using these dated standard rates and
 continues to hold at least the original reservation in the local budget.
 
 Remaining #58 work: an authorized real-provider test call and actual billing
-observation, cancel/pause behavior during an in-flight request, broader versioned
+observation including live-provider cancellation, broader versioned
 project source selection, reopening dismissed suggestions only after relevant
 evidence changes, insufficient-evidence state, rendered UI/interaction
 and independent visual evidence, plus #118 migration-upgrade proof. This file
