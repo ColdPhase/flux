@@ -305,10 +305,12 @@ class ReturnViewJourney(unittest.TestCase):
         # A conversation Nia is not part of: in the whole project, not in "relevant to me".
         self.api(ari, "POST", f"/api/v1/projects/{self.project_id}/conversations", {"body": "Which shade of grey for the base?", "clientMessageId": str(uuid.uuid4())}, status=201)
         page = self.page("nia")
-        page.goto(f"/projects/{self.project_id}")
+        # Load the project first (its header count asks the same whole-project question).
+        with page.expect_response(re.compile(r"/api/v1/return\?.*scope=all")):
+            page.goto(f"/projects/{self.project_id}")
         held: list = []
         pattern = re.compile(r"/api/v1/return\?.*scope=all.*from=last-visit")
-        page.route(pattern, lambda route: held.append(route))
+        page.route(pattern, lambda route: held.append(route) if not held else route.continue_())
         page.locator("header.top").get_by_role("button", name=re.compile("^What matters")).click()
         panel = page.locator("#details")
         for _ in range(40):
@@ -318,12 +320,7 @@ class ReturnViewJourney(unittest.TestCase):
         self.assertTrue(held, "the whole-project request is in flight")
         panel.get_by_role("radio", name="Relevant to me").click()
         expect(panel.locator(".since__next")).to_contain_text("is the clip printed")
-        page.unroute(pattern, behavior="wait")
-        for route in held:
-            try:
-                route.continue_()
-            except Exception:
-                pass  # already answered when the handler was removed
+        held[0].continue_()
         page.wait_for_timeout(800)
         # The whole-project answer arrived last and was dropped: the list is still "relevant to me".
         expect(panel.get_by_role("radio", name="Relevant to me")).to_have_attribute("aria-checked", "true")

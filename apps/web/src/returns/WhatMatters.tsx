@@ -153,9 +153,11 @@ export function WhatMatters({ projectId, projectName, onDone }: { projectId: str
   const empty = !!shown && !shown.items.length && !shown.nextStep;
 
   // An overlaid panel or sheet gives way to the source a link opens, even in the same conversation
-  // (only the #message changes). Work, decisions and results open in Details instead (handled).
+  // (only the #message changes). Work, decisions and results link to their project and open in
+  // Details instead, so those links keep the panel.
   const onLink = (event: MouseEvent) => {
-    if (mode === 'docked' || event.defaultPrevented || !(event.target as Element).closest('a[href]')) return;
+    const href = (event.target as Element).closest('a[href]')?.getAttribute('href');
+    if (mode === 'docked' || !href || /^\/projects\/[^/?#]+$/.test(href)) return;
     onDone();
   };
 
@@ -239,7 +241,7 @@ export function WhatMatters({ projectId, projectName, onDone }: { projectId: str
         ) : null}
       </div>
       <div className="wm__foot">
-        <Button variant="primary" icon="check" block busy={done === 'busy'} disabled={!shown} onClick={() => void haveContext()}>I have the context</Button>
+        <Button variant="primary" size="lg" icon="check" block busy={done === 'busy'} disabled={!shown} onClick={() => void haveContext()}>I have the context</Button>
         <p className="wm-foot__note" role={done === 'failed' ? 'alert' : undefined}>
           {done === 'failed' ? 'Could not save. Try again; nothing was changed.' : 'Only this project. Nothing is posted and the chat is not marked read.'}
         </p>
