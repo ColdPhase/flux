@@ -347,7 +347,8 @@ class ReturnViewJourney(unittest.TestCase):
         self.api(ari, "POST", f"/api/v1/projects/{quiet['id']}/grants", {"principal": {"kind": "human", "id": NIA["id"]}, "role": "contributor"}, status=201)
         broken.goto(f"/projects/{quiet['id']}")
         qpanel = self.open_recap(broken)
-        expect(qpanel).to_contain_text("Nothing new yet.")
+        # A new project starts from Nia's Home point; nothing happened in it since.
+        expect(qpanel).to_contain_text("Nothing new since your last visit.")
         broken.keyboard.press("Escape")
         self.api(ari, "POST", f"/api/v1/projects/{quiet['id']}/results", {"title": "Shelf holds 4 kg", "finding": "positive", "evidence": "sandbags"}, status=201)
         broken.reload()
