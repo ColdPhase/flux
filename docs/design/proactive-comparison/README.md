@@ -4,7 +4,8 @@ The [1440×900 screenshot](project-tasks-1440.png) shows a restricted sensor
 project's Tasks surface at 100% zoom with one human work item, two negative
 low-light results, two collapsed, separately sourced agent suggestions and the
 ordinary work/result lists. It was rendered from persisted Docker seed data
-on 2026-09-28. The two result titles are intentionally distinct. Opening a
+on 2026-09-28. Each collapsed row leads with its proposed next step; the
+triggering result and observed fact sit underneath as context. Opening a
 suggestion reveals its fact, interpretation, next step, citations and human
 actions; the collapsed state keeps ordinary work visible before review.
 

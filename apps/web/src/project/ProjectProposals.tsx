@@ -53,9 +53,9 @@ export function ProjectProposals({ proposals, people, projectName, resultTitles,
           <button type="button" className="ws-proposal__toggle" aria-expanded={isExpanded}
             aria-controls={`comparison-proposal-${proposal.id}`} disabled={busy}
             onClick={() => { setExpanded(isExpanded ? null : proposal.id); setEditing(null); setError(''); }}>
-            <span className="ws-proposal__title">After: {resultTitles.get(proposal.resultId) ?? 'Project result'}</span>
+            <span className="ws-proposal__action">{proposal.suggestedAction}</span>
             <span className="ws-proposal__expand">{isExpanded ? 'Hide details' : 'Review'}</span>
-            <span className="ws-proposal__cue">{proposal.fact}</span>
+            <span className="ws-proposal__source">After: {resultTitles.get(proposal.resultId) ?? 'Project result'} · {proposal.fact}</span>
           </button>
           <p className="ws-proposal__origin">From {name(proposal.ownerUserId)}’s agent · visible to readers of {projectName}</p>
           {isExpanded ? <div id={`comparison-proposal-${proposal.id}`} className="ws-proposal__body">

@@ -60,8 +60,9 @@ test('real project UI presents sourced quiet suggestions, then persists edits, u
   assert.equal(await cards.count(), 2);
   const initial = (await proposals()).filter((item) => item.status === 'proposed');
   assert.equal(initial.length, 2);
-  assert.match(await cards.first().locator('.ws-proposal__title').innerText(), /Second low-light trial/);
-  assert.match(await cards.nth(1).locator('.ws-proposal__title').innerText(), /Camera trial failed/);
+  assert.match(await cards.first().locator('.ws-proposal__action').innerText(), /Compare a ToF distance sensor/);
+  assert.match(await cards.first().locator('.ws-proposal__source').innerText(), /Second low-light trial/);
+  assert.match(await cards.nth(1).locator('.ws-proposal__source').innerText(), /Camera trial failed/);
   assert.equal(await cards.first().locator('.ws-proposal__toggle').getAttribute('aria-expanded'), 'false');
   assert.match(await page.locator('.ws-proposals__intro').innerText(), /has not changed any work or decision/);
   const workRow = await page.locator('#g-open + .ws-list .ws-item').first().boundingBox();
