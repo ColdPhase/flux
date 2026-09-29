@@ -173,6 +173,12 @@
 .top__right { display: flex; align-items: center; gap: 4px; flex: none; }
 .top__details { gap: 7px; padding: 0 10px; }
 .top__details[aria-expanded="true"] { background: var(--bg-active); color: var(--text); }
+/* "What matters" (#133): one stable entry beside Details, with a quiet count of what needs you. */
+.top__recap { gap: 7px; padding: 0 10px; }
+.top__recap[aria-expanded="true"] { background: var(--bg-active); color: var(--text); }
+.top__recap--icon { width: 44px; padding: 0; justify-content: center; position: relative; }
+.top__recap-n { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 600; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; }
+.top__recap--icon .top__recap-n { position: absolute; top: 4px; right: 2px; }
 .views { flex: none; border-bottom: 1px solid var(--line); }
 .views .ui-tabs__bar { padding: 0 12px; }
 .views--none { height: 0; }

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import type { ReturnItem, ReturnNextStep, ReturnPlace, ReturnSource, ReturnSummary } from '@flux/contracts';
 import { Icon } from '../ui';
@@ -6,9 +6,10 @@ import { useShellActions } from '../app/shellContext';
 import { getReturnSummary, restoreReturnPoint, saveReturnPoint, sourceHref } from './api';
 import './since.css';
 
-// "Since you left" (#106, direction C `#since`). One slim line that expands into a short list in
-// human language; every item opens its source. No guilt: nothing to clear, no streaks, one next
-// step with its reason, and "Keep these for next time" moves the saved point back.
+// "Since you left" (#106) on Home: a short list in human language; every item opens its source.
+// No guilt: nothing to clear, no streaks, one next step with its reason, and "Keep these for next
+// time" moves the saved point back. A project's recap is "What matters" (#133, WhatMatters.tsx),
+// which reuses the rows below.
 
 const day = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
 const dayTime = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -22,9 +23,9 @@ type Keep = 'idle' | 'busy' | 'kept' | 'failed';
 
 /**
  * Loads the summary of a place and then saves the return point at what was shown, so the next
- * visit starts after it. `alsoSave` saves the same mark for a narrower place (the open conversation).
+ * visit starts after it.
  */
-function useReturn(place: ReturnPlace, alsoSave?: ReturnPlace) {
+function useReturn(place: ReturnPlace) {
   const placeKey = place.type === 'home' ? 'home' : `${place.type}:${place.id}`;
   // Only the current request's authorized response is ever shown: nothing is kept on the client
   // between mounts, accounts or visits, so a revoked item or another account's item never appears.
@@ -32,7 +33,6 @@ function useReturn(place: ReturnPlace, alsoSave?: ReturnPlace) {
   const [keep, setKeep] = useState<Keep>('idle');
   // "Keep these" must run after the save of this visit, or the save would overwrite it.
   const saving = useRef<Promise<unknown>>(Promise.resolve());
-  const alsoKey = alsoSave && alsoSave.type !== 'home' ? `${alsoSave.type}:${alsoSave.id}` : '';
   // A summary is shown only for the place it was loaded for.
   const summary = loadedFor?.key === placeKey ? loadedFor.summary : null;
   useEffect(() => {
@@ -46,23 +46,17 @@ function useReturn(place: ReturnPlace, alsoSave?: ReturnPlace) {
     }).catch(() => { /* the line is optional; the place works without it */ });
     return () => controller.abort();
   }, [placeKey]);
-  useEffect(() => {
-    if (!alsoKey || !summary) return;
-    const conversation = alsoKey.split(':')[1]!;
-    saving.current = saving.current.then(() => saveReturnPoint({ type: 'conversation', id: conversation }, summary.mark).catch(() => undefined));
-  }, [alsoKey, summary]);
   const keepForLater = async () => {
     setKeep('busy');
     try {
       await saving.current;
-      // Both points this visit saved move back, or the conversation's would still hide its messages.
-      await Promise.all([restoreReturnPoint(place), ...(alsoKey ? [restoreReturnPoint({ type: 'conversation', id: alsoKey.split(':')[1]! })] : [])]); setKeep('kept'); } catch { setKeep('failed'); }
+      await restoreReturnPoint(place); setKeep('kept'); } catch { setKeep('failed'); }
   };
   return { summary, keep, keepForLater };
 }
 
 /** Opens a source: a link for messages, materials and sketches; Details on the project for work objects. */
-function SourceLink({ source, className, children, label }: { source: ReturnSource; className: string; children: ReactNode; label?: string }) {
+export function SourceLink({ source, className, children, label }: { source: ReturnSource; className: string; children: ReactNode; label?: string }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { openDetails } = useShellActions();
@@ -78,7 +72,7 @@ function SourceLink({ source, className, children, label }: { source: ReturnSour
   return <Link to={href} className={className} onClick={onClick} aria-label={label}>{children}</Link>;
 }
 
-function Item({ item, showProject }: { item: ReturnItem; showProject?: boolean }) {
+export function Item({ item, showProject }: { item: ReturnItem; showProject?: boolean }) {
   return (
     <li>
       <SourceLink source={item.source} className={`since__item${item.needsYou ? ' is-need' : ''}`}>
@@ -96,20 +90,7 @@ function Item({ item, showProject }: { item: ReturnItem; showProject?: boolean }
   );
 }
 
-const FIRST = 6;
-
-/** Whole rows only: the first few, then "Show N more". The next step is not repeated here. */
-function Items({ summary, showProject }: { summary: ReturnSummary; showProject?: boolean }) {
-  const [all, setAll] = useState(false);
-  const rest = summary.items.filter((item) => item.id !== summary.nextStep?.item);
-  const visible = all ? rest : rest.slice(0, FIRST);
-  return <>
-    <ul className="since__list">{visible.map((item) => <Item key={item.id} item={item} showProject={showProject} />)}</ul>
-    {rest.length > visible.length ? <button type="button" className="since__more" onClick={() => setAll(true)}>Show {rest.length - visible.length} more</button> : null}
-  </>;
-}
-
-function NextStep({ step }: { step: ReturnNextStep }) {
+export function NextStep({ step }: { step: ReturnNextStep }) {
   return (
     <div className="since__next">
       <span className="since__next-k">Next step</span>
@@ -135,32 +116,6 @@ function headline(summary: ReturnSummary) {
   const count = summary.items.length;
   return <><b>{summary.more ? `${count}+ updates` : `${count} ${count === 1 ? 'update' : 'updates'}`}</b> since {since(summary.point.savedAt!)}
     {summary.needsYou ? <> · <span className="since__need">{summary.needsYou} {summary.needsYou === 1 ? 'needs' : 'need'} you</span></> : null}</>;
-}
-
-/** The slim line at the top of a project conversation. Nothing is shown when nothing changed. */
-export function SinceYouLeftLine({ projectId, conversationId }: { projectId: string; conversationId?: string }) {
-  const panelId = useId();
-  const [open, setOpen] = useState(false);
-  const { summary, keep, keepForLater } = useReturn({ type: 'project', id: projectId }, conversationId ? { type: 'conversation', id: conversationId } : undefined);
-  if (!summary || !summary.point.savedAt || !summary.items.length) return null;
-  return (
-    <section className="since" aria-label="Since you left">
-      <div className="since__in">
-        <button type="button" className="since__btn" aria-expanded={open} aria-controls={panelId} onClick={() => setOpen(!open)}>
-          <span className={`since__dot${summary.needsYou ? ' since__dot--need' : ''}`} aria-hidden="true" />
-          <span className="since__line">{headline(summary)}</span>
-          <Icon name="chevron-down" size={16} className="since__chev" />
-        </button>
-        <div id={panelId} className={`since__coll${open ? ' is-open' : ''}`} inert={!open}>
-          <div className="since__clip">
-            {summary.nextStep ? <NextStep step={summary.nextStep} /> : null}
-            <Items summary={summary} />
-            <Foot summary={summary} keep={keep} onKeep={() => void keepForLater()} />
-          </div>
-        </div>
-      </div>
-    </section>
-  );
 }
 
 /** Home: the personal return view across the places the person can see now, grouped by place. */

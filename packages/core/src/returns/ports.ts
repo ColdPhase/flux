@@ -80,6 +80,8 @@ export interface ReturnRepository {
   audienceAfter(recipient: string, afterSeq: number, limit: number, beforeSeq?: number | null): Promise<AudienceEvent[]>;
   /** The recipient's own audience position of an event, or null when it is not theirs. */
   audienceSeq(recipient: string, eventId: string): Promise<number | null>;
+  /** The recipient's last audience position at or before `at`, 0 when there is none. */
+  audienceSeqAt(recipient: string, at: Date): Promise<number>;
   /** The recipient's last audience row. */
   lastEvent(recipient: string): Promise<{ id: string; seq: number } | null>;
   projects(ids: string[]): Promise<Map<string, { id: string; name: string }>>;

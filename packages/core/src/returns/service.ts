@@ -1,5 +1,6 @@
 import type {
-  ReturnItem, ReturnNextStep, ReturnPlace, ReturnPoint, ReturnSource, ReturnSummary, ReturnSummaryQuery, SaveReturnPointCommand,
+  ReturnDigest, ReturnItem, ReturnNextStep, ReturnPeriod, ReturnPlace, ReturnPoint, ReturnScope, ReturnSource, ReturnSummary,
+  ReturnSummaryQuery, SaveReturnPointCommand,
 } from '@flux/contracts';
 import { InvalidInputError } from '../access/errors.js';
 import { isQuestion, mentions } from '../notifications/addressing.js';
@@ -31,6 +32,21 @@ const RELEVANT = new Set([
   'project.result_recorded.v1', 'sketch.created.v1', 'sketch.changed.v1', 'project.doc_created.v1', 'project.doc_updated.v1',
 ]);
 const MESSAGE_KINDS = new Set(['project.conversation_created.v1', 'project.message_sent.v1']);
+const PERIOD_MS: Record<Exclude<ReturnPeriod, 'last-visit'>, number> = { '24h': 86_400_000, '7d': 7 * 86_400_000 };
+/** The digest quotes the latest few messages of the most recently active conversations. */
+const DIGEST_CONVERSATIONS = 8;
+const DIGEST_QUOTES = 3;
+
+/** Validates the optional #133 query fields; absent fields keep the #106 behavior. */
+function parseOptions(query: Partial<ReturnSummaryQuery> | null | undefined) {
+  const scope = query?.scope ?? 'all';
+  if (scope !== 'all' && scope !== 'mine') throw new InvalidInputError('scope must be all or mine', 'INVALID_SCOPE');
+  const period = query?.from ?? 'last-visit';
+  if (period !== 'last-visit' && period !== '24h' && period !== '7d') throw new InvalidInputError('from must be last-visit, 24h or 7d', 'INVALID_PERIOD');
+  const until = query?.until;
+  if (until !== undefined && (typeof until !== 'string' || !UUID.test(until))) throw new InvalidInputError('until must be a mark from a summary', 'INVALID_MARK');
+  return { scope: scope as ReturnScope, period: period as ReturnPeriod, until: until?.toLowerCase() ?? null, digest: query?.digest === '1' };
+}
 
 function human(principal: Principal) {
   if (principal.kind !== 'human' || !principal.id) throw new InvalidInputError('A signed-in person is required');
@@ -66,11 +82,12 @@ function list(names: string[]) {
 }
 
 /** An item plus the next step it would suggest (lower priority first). */
-type Built = ReturnItem & { step?: { priority: number; text: string; reason: string } };
+type Built = ReturnItem & { step?: { priority: number; text: string; reason: string }; relevant?: boolean };
 
 function publicItem(item: Built): ReturnItem {
   const copy: Built = { ...item };
   delete copy.step;
+  delete copy.relevant;
   return copy;
 }
 
@@ -100,16 +117,34 @@ export function createReturnUseCases(ports: ReturnPorts) {
     const userId = human(principal);
     const recipient = `human:${userId}`;
     const place = parseReturnPlace(placeInput);
+    const options = parseOptions(placeInput && 'place' in placeInput ? placeInput : null);
     const resolved = await resolve(principal, place);
     const baseKeys = resolved.type === 'home' ? ['home']
       : resolved.type === 'project' ? [resolved.key, 'home'] : [resolved.key, key('project', resolved.projectId!)];
     const stored = await returns.points(userId, baseKeys);
     const own = stored.get(resolved.key);
-    // A place never viewed starts from the enclosing place's point (a project from Home).
-    const base = own ?? (resolved.type === 'home' ? undefined : stored.get(baseKeys[1]!));
+    // A place never viewed starts from the enclosing place's point (a project from Home); a
+    // project or conversation seen nowhere yet starts from its beginning (#133, first visit).
+    let base: { seq: number } | undefined = own ?? (resolved.type === 'home' ? undefined : stored.get(baseKeys[1]!) ?? { seq: 0 });
+    let since = own?.savedAt ?? (resolved.type === 'home' ? null : stored.get(baseKeys[1]!)?.savedAt ?? null);
+    const period = options.period !== 'last-visit';
+    if (options.period !== 'last-visit') {
+      const start = new Date(Date.now() - PERIOD_MS[options.period]);
+      base = { seq: await returns.audienceSeqAt(recipient, start) };
+      since = start;
+    }
     // The mark is read before the events, so a change that lands in between shows again next time.
-    const last = await returns.lastEvent(recipient);
-    const empty: ReturnSummary = { place, point: pointOf(place, own), mark: last?.id ?? null, items: [], needsYou: 0, more: false, nextStep: null };
+    // `until` keeps the snapshot the reader is looking at (a scope change or "Summarize").
+    const last = options.until
+      ? { id: options.until, seq: await returns.audienceSeq(recipient, options.until) }
+      : await returns.lastEvent(recipient);
+    if (last && last.seq === null) throw new InvalidInputError('until must be a mark from a summary', 'INVALID_MARK');
+    const untilSeq = last?.seq ?? 0;
+    const empty: ReturnSummary = {
+      place, point: pointOf(place, own), scope: options.scope, period: options.period, since: since ? since.toISOString() : null,
+      mark: last?.id ?? null, items: [], needsYou: 0, more: false, nextStep: null,
+      ...(options.digest ? { digest: { conversations: [], results: [], messages: 0 } } : {}),
+    };
     if (!base) return empty;
 
     // Pages of the reader's own rows, newest first. Scanning stops at the end, once enough
@@ -152,9 +187,11 @@ export function createReturnUseCases(ports: ReturnPorts) {
         for (const item of missing) narrower.set(item, found.get(item) ?? null);
       }
       for (const event of events) {
+        if (event.seq > untilSeq) continue;
         const project = projectOf(event);
         const conversation = conversationOf(event);
-        const seen = Math.max(base.seq,
+        // A chosen period shows everything in it; a return point also skips what a narrower place showed.
+        const seen = period ? base.seq : Math.max(base.seq,
           resolved.type === 'home' && project ? narrower.get(key('project', project))?.seq ?? 0 : 0,
           resolved.type !== 'conversation' && conversation ? narrower.get(key('conversation', conversation))?.seq ?? 0 : 0);
         if (event.seq <= seen) continue;
@@ -174,18 +211,21 @@ export function createReturnUseCases(ports: ReturnPorts) {
       before = page.at(-1)!.seq;
     }
 
-    const built = await build(principal, userId, kept, projectOf);
+    const { items: all, digest } = await build(principal, userId, kept, projectOf, options.scope);
+    const built = options.scope === 'mine' ? all.filter((item) => item.relevant || item.needsYou) : all;
     const needs = built.filter((item) => item.needsYou);
     const items = [...needs, ...built.filter((item) => !item.needsYou)].slice(0, MAX_ITEMS).map(publicItem);
     return {
       ...empty, items, needsYou: needs.length,
       more: built.length > MAX_ITEMS || enough,
       nextStep: nextStep(built),
+      ...(options.digest ? { digest } : {}),
     };
   }
 
   /** Groups events by the object they are about and describes each in human language. */
-  async function build(principal: Principal, userId: string, events: AudienceEvent[], projectOf: (event: AudienceEvent) => string | null): Promise<Built[]> {
+  async function build(principal: Principal, userId: string, events: AudienceEvent[], projectOf: (event: AudienceEvent) => string | null,
+    scope: ReturnScope = 'all'): Promise<{ items: Built[]; digest: ReturnDigest }> {
     const me = `human:${userId}`;
     const groups = new Map<string, Group>();
     const add = (groupKey: string, kind: ReturnItem['kind'], event: AudienceEvent) => {
@@ -254,6 +294,9 @@ export function createReturnUseCases(ports: ReturnPorts) {
 
     const items: Built[] = [];
     const conversationGroups = new Map<string, ReturnMessage[]>();
+    /** Every visible message of the period per conversation, questions included, for the digest. */
+    const said = new Map<string, ReturnMessage[]>();
+    const digestResults: (ReturnDigest['results'][number] & { relevant: boolean })[] = [];
     for (const group of groups.values()) {
       const latest = group.events.reduce((a, b) => (b.seq > a.seq ? b : a));
       const at = latest.createdAt.toISOString();
@@ -293,7 +336,7 @@ export function createReturnUseCases(ports: ReturnPorts) {
         const step = !needsYou ? undefined : item.status === 'blocked'
           ? { priority: 5, text: `See what blocks ${quote(item.title)}`, reason: `It is yours. ${detail}` }
           : { priority: 6, text: `Pick up ${quote(item.title)}`, reason: created ? `${actor} added it for you.` : `It is yours, and ${actor} changed it.` };
-        items.push({ ...base, kind: 'work', text, detail, needsYou, source, step });
+        items.push({ ...base, kind: 'work', text, detail, needsYou, source, step, relevant: mine || item.createdByKey === me });
         continue;
       }
 
@@ -323,7 +366,7 @@ export function createReturnUseCases(ports: ReturnPorts) {
         }
         const step = needsYou ? { priority: 4, text: 'Decide on the proposed rule',
           reason: `${nameOf(item.proposedByKey)} proposed ${quote(item.title)}. Only a person with write access can accept it.` } : undefined;
-        items.push({ ...base, kind: 'decision', text, detail, needsYou, source, step });
+        items.push({ ...base, kind: 'decision', text, detail, needsYou, source, step, relevant: needsYou || item.proposedByKey === me });
         continue;
       }
 
@@ -341,7 +384,8 @@ export function createReturnUseCases(ports: ReturnPorts) {
         const step = needsYou ? { priority: 3, text: `Review the result ${author} attached`,
           reason: `It reports on ${quote(yours!.title)}, which ${yours!.ownerKey === me ? 'is yours' : 'you created'}.` } : undefined;
         items.push({ ...base, kind: 'result', text: `${author} recorded a result: ${item.title}`, detail,
-          needsYou, source: { type: 'result', id: item.id, projectId: item.projectId }, step });
+          needsYou, source: { type: 'result', id: item.id, projectId: item.projectId }, step, relevant: !!yours });
+        digestResults.push({ id: item.id, projectId: item.projectId, title: item.title, finding: item.finding, author, at, relevant: !!yours });
         continue;
       }
 
@@ -390,6 +434,7 @@ export function createReturnUseCases(ports: ReturnPorts) {
       if (!message || !inProject(message.projectId)) continue;
       const conversation = conversations.get(message.conversationId);
       if (!conversation) continue;
+      said.set(conversation.id, [...(said.get(conversation.id) ?? []), message]);
       const lastPost = lastPosts.get(conversation.id);
       const answered = !!lastPost && lastPost > message.createdAt;
       const addressed = mentions(message.body, myName);
@@ -424,10 +469,29 @@ export function createReturnUseCases(ports: ReturnPorts) {
         detail: excerpt(latest.body, 110), needsYou: false,
         // Opens on the first new message, a whole message and never mid-way.
         source: { type: 'message', projectId: conversation.projectId, conversationId, messageId: first.id },
+        relevant: conversation.createdBy === userId || lastPosts.has(conversationId),
       });
     }
     items.sort((a, b) => b.at.localeCompare(a.at));
-    return items;
+
+    // "Summarize": whole-message quotes of the most recently active conversations, in the same
+    // scope as the list ("relevant to me" = conversations you started or wrote in, or that ask you).
+    const asksMe = (conversationId: string) => items.some((item) => item.kind === 'question' && item.source.type === 'message' && item.source.conversationId === conversationId);
+    const talks = [...said.entries()]
+      .filter(([conversationId]) => scope === 'all' || conversations.get(conversationId)!.createdBy === userId || lastPosts.has(conversationId) || asksMe(conversationId))
+      .map(([conversationId, list]) => ({ conversation: conversations.get(conversationId)!, list: [...list].sort((a, b) => a.sequence - b.sequence) }))
+      .sort((a, b) => b.list.at(-1)!.createdAt.getTime() - a.list.at(-1)!.createdAt.getTime());
+    const digest: ReturnDigest = {
+      conversations: talks.slice(0, DIGEST_CONVERSATIONS).map(({ conversation, list }) => ({
+        conversationId: conversation.id, projectId: conversation.projectId, opening: excerpt(conversation.opening, 90),
+        quotes: list.slice(-DIGEST_QUOTES).map((message) => ({ messageId: message.id, author: nameOf(`human:${message.authorId}`)!,
+          excerpt: excerpt(message.body, 160), at: message.createdAt.toISOString() })),
+        more: Math.max(0, list.length - DIGEST_QUOTES),
+      })),
+      results: digestResults.filter((result) => scope === 'all' || result.relevant).map(({ relevant: _relevant, ...result }) => result),
+      messages: talks.reduce((total, talk) => total + talk.list.length, 0),
+    };
+    return { items, digest };
   }
 
   /**

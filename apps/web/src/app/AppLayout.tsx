@@ -20,6 +20,7 @@ import { LiveBar } from '../live/LiveBar';
 import { LiveStage } from '../live/LiveStage';
 import '../live/live.css';
 import { JumpTo } from '../search/JumpTo';
+import { useNeedsYou } from '../returns/useNeedsYou';
 
 function lastConversationPath(projectId: string) {
   try { return sessionStorage.getItem(`flux.project-conversation.${projectId}`) ?? `/projects/${projectId}`; }
@@ -171,6 +172,9 @@ export function AppLayout() {
   const projectIndex = projects.findIndex((item) => item.id === projectId);
   const audience = project ? audienceLine(project.people, me.user.id) : 'People with project access';
   const openOverview = () => { setDetailsView('place'); toggleDetails(true); };
+  const recapOpen = detailsOpen && typeof detailsView === 'object' && detailsView.kind === 'recap';
+  // "What matters" (#133): a quiet count of what needs you; refreshed when the panel closes.
+  const needsYou = useNeedsYou(activeProject ? projectId ?? null : null, recapOpen);
   const dmId = location.pathname.match(/^\/dm\/([^/]+)/)?.[1];
   const activeDm = directMessages.find((dm) => dm.id === dmId);
   const place = location.pathname === '/search'
@@ -233,10 +237,18 @@ export function AppLayout() {
           <div className="top__right" data-shift>
             {activeProject ? <LiveEntry /> : null}
             {project?.people && !phone ? <Faces people={project.people} meId={me.user.id} /> : null}
+            {activeProject && projectId ? (
+              <Button variant="quiet" icon="leaf" className={`top__recap${phone ? ' top__recap--icon' : ''}`} aria-expanded={recapOpen}
+                aria-controls={recapOpen ? 'details' : undefined} aria-label={phone ? `What matters${needsYou ? `, ${needsYou} ${needsYou === 1 ? 'needs' : 'need'} you` : ''}` : undefined}
+                onClick={() => { if (recapOpen) toggleDetails(false); else { setDetailsView({ kind: 'recap', projectId }); toggleDetails(true); } }}>
+                {phone ? null : 'What matters'}
+                {needsYou ? <span className="top__recap-n" aria-hidden={phone || undefined}>{needsYou}<span className="ui-vh"> {needsYou === 1 ? 'needs' : 'need'} you</span></span> : null}
+              </Button>
+            ) : null}
             {/* The inbox and its settings have nothing to show in Details. */}
-            {'noDetails' in place ? null : <Button ref={detailsButtonRef} variant="quiet" icon="panel" className="top__details" aria-expanded={detailsOpen}
+            {'noDetails' in place ? null : <Button ref={detailsButtonRef} variant="quiet" icon="panel" className="top__details" aria-expanded={detailsOpen && !recapOpen}
               aria-controls={detailsOpen ? 'details' : undefined} aria-keyshortcuts="]" data-tip={'Toggle details   ]'}
-              onClick={() => { setDetailsView('place'); toggleDetails(); }}>
+              onClick={() => { setDetailsView('place'); if (!recapOpen) toggleDetails(); }}>
               Details
             </Button>}
           </div>
@@ -255,8 +267,8 @@ export function AppLayout() {
       </div>
 
       <JumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
-      <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title="Details" id="details">
-        <Details view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} />
+      <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title={recapOpen ? 'What matters' : 'Details'} id="details">
+        <Details view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />
       </SidePanel>
     </div>
     </LiveProvider>
