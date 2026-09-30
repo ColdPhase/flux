@@ -21,6 +21,7 @@ import { LiveBar } from '../live/LiveBar';
 import { LiveStage } from '../live/LiveStage';
 import '../live/live.css';
 import { JumpTo } from '../search/JumpTo';
+import { useNeedsYou } from '../returns/useNeedsYou';
 
 function lastConversationPath(projectId: string) {
   try { return sessionStorage.getItem(`flux.project-conversation.${projectId}`) ?? `/projects/${projectId}`; }
@@ -178,6 +179,19 @@ export function AppLayout() {
   const projectIndex = projects.findIndex((item) => item.id === projectId);
   const audience = project ? audienceLine(project.people, me.user.id) : 'People with project access';
   const openOverview = () => { setDetailsView('place'); toggleDetails(true); };
+  const recapOpen = detailsOpen && typeof detailsView === 'object' && detailsView.kind === 'recap';
+  // "What matters" (#133): a quiet count of what needs you; refreshed when the panel closes.
+  const needsYou = useNeedsYou(activeProject ? projectId ?? null : null, recapOpen);
+  // One stable entry at the end of the project's view tabs, as in Studio v11, so the header keeps
+  // its room for the title, audience and state line.
+  const recapEntry = activeProject && projectId ? (
+    <Button variant="quiet" icon="leaf" className="views__recap" aria-expanded={recapOpen}
+      aria-controls={recapOpen ? 'details' : undefined}
+      onClick={() => { if (recapOpen) toggleDetails(false); else { setDetailsView({ kind: 'recap', projectId }); toggleDetails(true); } }}>
+      What matters
+      {needsYou ? <span className="views__recap-n">{needsYou}<span className="ui-vh"> {needsYou === 1 ? 'needs' : 'need'} you</span></span> : null}
+    </Button>
+  ) : null;
   const dmId = location.pathname.match(/^\/dm\/([^/]+)/)?.[1];
   const activeDm = directMessages.find((dm) => dm.id === dmId);
   // Messages · Sketches: a DM's sketches stay inside it, for exactly its people (#96).
@@ -249,18 +263,19 @@ export function AppLayout() {
             {activeProject ? <LiveEntry /> : null}
             {project?.people && !phone ? <Faces people={project.people} meId={me.user.id} /> : null}
             {/* The inbox and its settings have nothing to show in Details. */}
-            {'noDetails' in place ? null : <Button ref={detailsButtonRef} variant="quiet" icon="panel" className="top__details" aria-expanded={detailsOpen}
+            {'noDetails' in place ? null : <Button ref={detailsButtonRef} variant="quiet" icon="panel" className="top__details" aria-expanded={detailsOpen && !recapOpen}
               aria-controls={detailsOpen ? 'details' : undefined} aria-keyshortcuts="]" data-tip={'Toggle details   ]'}
-              onClick={() => { setDetailsView('place'); toggleDetails(); }}>
+              onClick={() => { setDetailsView('place'); if (!recapOpen) toggleDetails(); }}>
               Details
             </Button>}
           </div>
         </header>
-        {project && phone ? <ProjectStateRow lists={project.work} canDecide={project.project.access !== 'viewer'} /> : null}
+        {/* On a phone the tab row has no room: the entry joins the one-line project state row. */}
+        {project && phone ? <div className="state-row"><ProjectStateRow lists={project.work} canDecide={project.project.access !== 'viewer'} />{recapEntry}</div> : null}
         {place.views
           ? <Tabs className="views" label="Views" items={VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path }))} />
           : activeProject && projectViews
-            ? <Tabs className="views" label="Project views" items={projectViews} />
+            ? <div className="views views--project"><Tabs className="views__tabs" label="Project views" items={projectViews} />{phone ? null : recapEntry}</div>
             : dmViews
               ? <Tabs className="views" label="Direct message views" items={dmViews} />
               : <div className="views views--none" aria-hidden="true" />}
@@ -272,8 +287,8 @@ export function AppLayout() {
       </div>
 
       <JumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
-      <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title="Details" id="details">
-        <Details view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} />
+      <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title={recapOpen ? 'What matters' : 'Details'} id="details">
+        <Details view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />
       </SidePanel>
     </div>
     </LiveProvider>

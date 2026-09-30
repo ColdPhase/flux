@@ -26,7 +26,7 @@ function memoryMedia(): LiveMedia {
     async grant(roomId) { return { token: `jwt:${roomId}`, expiresAt: new Date(Date.now() + 90_000) }; },
     async participants() { return []; },
     async occupancy() { return 0; },
-    async removeParticipant() {},
+    async removeAdmissions() {},
     async deleteRoom(roomId) { rooms.delete(roomId); },
   };
 }
@@ -61,7 +61,8 @@ test('the 21st join within the window is 429 LIVE_JOIN_RATE_LIMITED with Retry-A
   const app = Fastify();
   await app.register(liveRoutes, {
     sessions: { requirePrincipal: async (request: { headers: Record<string, unknown> }) =>
-      ({ principal: { kind: 'human', id: String(request.headers['x-test-user']) } }) } as never,
+      ({ principal: { kind: 'human', id: String(request.headers['x-test-user']) },
+        sessionId: `auth-${String(request.headers['x-test-user'])}` }) } as never,
     ports: { access: liveAccess(db), sessions: store, media, mediaUrl: 'wss://media.example.test' },
     joinLimiter: joinRateLimiter({ now: () => clock }),
   });

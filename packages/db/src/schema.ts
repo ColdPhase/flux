@@ -569,7 +569,7 @@ export const sketches = pgTable('sketches', {
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
   scope: text('scope', { enum: ['project', 'private', 'dm'] }).notNull(),
   projectId: uuid('project_id'),
-  // A DM sketch's direct message (migration 0023, #96): composite FK to dms(workspace_id, id).
+  // A DM sketch's direct message (migration 0024, #96): composite FK to dms(workspace_id, id).
   dmId: uuid('dm_id'),
   copiedFromSketchId: uuid('copied_from_sketch_id'),
   copiedByUserId: text('copied_by_user_id').references(() => authUsers.id),
@@ -599,7 +599,7 @@ export const sketchThoughts = pgTable('sketch_thoughts', {
   shape: text('shape', { enum: ['card', 'pill', 'circle'] }).notNull().default('card'),
   placementType: text('placement_type', { enum: ['draft'] }),
   placementId: uuid('placement_id'),
-  // The message a thought was started from (migration 0023, #96).
+  // The message a thought was started from (migration 0024, #96).
   sourceAuthorId: text('source_author_id').references(() => authUsers.id),
   sourceAuthorName: text('source_author_name'),
   sourceSentAt: timestamp('source_sent_at', { withTimezone: true }),
@@ -816,6 +816,20 @@ export const liveInvitations = pgTable('live_invitations', {
   foreignKey({ columns: [table.workspaceId, table.projectId, table.sessionId],
     foreignColumns: [liveSessions.workspaceId, liveSessions.projectId, liveSessions.id] }).onDelete('cascade'),
   index('live_invitations_recipient_idx').on(table.recipientId, table.createdAt.desc(), table.id.desc()),
+]);
+/**
+ * A media admission bound to the auth session that requested it (#128). The id is the
+ * LiveKit participant metadata; a trigger revokes rows when their session row is deleted.
+ */
+export const liveAdmissions = pgTable('live_admissions', {
+  id: text('id').primaryKey(),
+  liveSessionId: uuid('live_session_id').notNull().references(() => liveSessions.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  authSessionId: text('auth_session_id').notNull(),
+  issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, (table) => [
+  index('live_admissions_session_idx').on(table.liveSessionId, table.userId, table.issuedAt.desc()),
 ]);
 // Direct messages: private conversations between people of one workspace (migration 0010, issue #107).
 export const dms = pgTable('dms', {
