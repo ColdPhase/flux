@@ -149,3 +149,17 @@ criteria/dependency/plan-intent task commands, #160 activation and real-client
 acceptance remain required. This checkpoint does not complete AC-2–AC-5 or #152.
 
 The concrete next phase is recorded in [scoped-runtime.md](scoped-runtime.md).
+
+### Canonical read extension under verification (2026-10-01)
+
+The next additive tools expose bounded native task/decision/result, wiki,
+conversation, project map and project search reads. Each request rechecks the
+actual OAuth binding/client and live connection inside the same transaction as
+its central-policy authorization and content projection. A metadata-only
+core port applies the selected-project/workspace ceiling before canonical
+readers load any content; private/DM maps never pass it. Search uses the canonical
+index with project and project-map policy audiences and an exact selected-project
+filter before ranking/snippets/counts. Text pages declare total coverage and
+require the original source version for continuation; map pages require their
+updatedAt checkpoint. This extension does not enable domain writes or establish
+real-client activation.

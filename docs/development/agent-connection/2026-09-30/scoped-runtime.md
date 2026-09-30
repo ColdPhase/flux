@@ -44,10 +44,17 @@ transaction and checks live OAuth binding/runtime/connection, central project
 policy and exact grant matching; locks access/grant rows in stable order before
 actor command/task/conversation locks. In that same transaction it checks the
 canonical request receipt, debits a new grant use and invokes the existing domain
-command against that transaction. The domain row, its events, use debit and receipt
-commit together or roll back together. Every replay checks current authority and
-source/version preconditions before returning its stored result. A replay never
-debits or applies the effect twice. Receipts are keyed by connection and durable
+command against that transaction. All domain/coordination rows, use debits, durable
+receipts and outgoing intents are written before the final stream-sequence events.
+Collect deferred event intents across the adapters and flush them last inside this
+same outer transaction; never call an inline-emitting adapter and then write a
+receipt. All rows/intents/events commit together or roll back together. Every replay checks current authority and
+source/version preconditions before returning its stored result. For a mutable
+target, the receipt records the command's produced post-state version: an unchanged
+produced version permits replay even though the command advanced its own input
+version; a later edit/deletion causes a visible stale-replay failure. Referenced
+plan/source versions must still match exactly. A receipt never bypasses these
+checks. A replay never debits or applies the effect twice. Receipts are keyed by connection and durable
 client command ID; conflicting normalized payloads fail explicitly.
 
 ## Native task plan correlation
@@ -93,3 +100,8 @@ MCP/domain reads must exclude guessed private sources. Existing people/helper fl
 remain working. All application checks run through Docker. Real pinned Codex and
 Claude activation and model-driven work remain required and separate from these
 HTTP/browser protocol fixtures.
+
+The exact shared #152/#153 transaction/receipt interface, including last-use retry
+and fresh DB wall time after lock waits, is recorded in
+[execution-boundary.md](execution-boundary.md). Peer acceptance of that concrete
+interface is required before its runtime writes.

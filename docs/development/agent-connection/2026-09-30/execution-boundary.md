@@ -1,0 +1,126 @@
+# Shared execution boundary for #152 and #153
+
+Recorded 2026-10-01. Concrete interface proposal for independent peer acceptance
+before runtime writes; this document is not completion evidence.
+
+## One caller-owned transaction
+
+Core owns `AgentExecutionPort<Tx>`, with a generic transaction handle so core
+imports no persistence library. The server constructs the port with the verified
+bearer identity and an **already open** `Transaction`. The port never opens or
+commits an independent transaction. #153's `CoWorkClaimUnitOfWork.run` owns the
+outer transaction and calls this port before connection-slot/task/unit locks.
+Native #152 commands open the same outer transaction themselves.
+
+```ts
+interface AgentExecutionCommand {
+  runtimeSessionId: string;
+  grantId: string;
+  clientCommandId: string;
+  projectId: string;
+  operation: AgentOperation;
+  peerRequestClass: AgentPeerRequestClass;
+  audience: { kind: 'project'; projectId: string };
+  objectId: string | null;
+  sources: { materialId: string; version: number }[];
+  payload: JsonValue;
+}
+interface AgentExecutionScope<Tx> {
+  transaction: Tx;
+  context: AuthenticatedAgentRuntime;
+  now: Date;
+  replay: AgentCommandReceipt | null;
+}
+interface AgentExecutionOutcome<T> {
+  value: T;
+  // The domain adapter supplies exact canonical produced post-state.
+  postconditions: AgentPostcondition[];
+}
+interface AgentExecutionPort<Tx> {
+  prepare(command: NormalizedAgentExecutionCommand):
+    Promise<AgentExecutionScope<Tx>>;
+  // Rechecks fresh wall time, live authority and source/post-state conditions;
+  // for a new success, debits exactly once and stores the one durable receipt.
+  // A replay requires the original stored result/postconditions; no second debit.
+  complete(scope: AgentExecutionScope<Tx>, outcome: AgentExecutionOutcome<JsonValue>):
+    Promise<void>;
+}
+```
+
+The configured verified identity is immutable owner/connection/actual OAuth
+client/durable binding reference; the runtime record adds agent/workspace,
+server-issued session and binding generation. A caller-provided runtime ID has
+no authority before exact matching. New runtime sessions require a durable
+`flux-grant:` binding; legacy bearer reads/proposals remain compatible, and do not
+silently gain standing execution grants.
+
+Core normalizes the exact typed operation/class/audience/project/object/source
+and JSON payload. Reject unknown keys/types, duplicate source IDs, non-finite
+numbers and oversized payloads. Sort source references and recursively sort JSON
+object keys. The fingerprint includes the **original authenticated runtime
+session**, grant ID, operation, class, project, audience, object, exact sources
+and payload. The canonical ledger key is `(connection_id, client_command_id)`.
+Cross-operation/project/session/grant or changed-payload reuse conflicts; it never
+creates a second independent receipt. #153 must map its `saveReceipt` to this
+receipt completion, retaining original lease ID/session/generation/outcome.
+
+## Lock and clock order
+
+1. Lock live connection/binding/runtime and current policy access rows in stable
+   order, then the exact standing grant. Reuse the existing core access policy;
+   project contributor rights alone do not authorize standing execution.
+2. Lock the canonical connection/command identity, locate any durable receipt,
+   and check its complete normalized fingerprint and original runtime identity.
+3. Only then lock connection slots, the complete sorted task set, coordination
+   unit/request rows, actor commands, conversations and mutable domain objects.
+4. Read `clock_timestamp()` **after the relevant lock waits**, never PostgreSQL's
+   transaction-start `now()`. Validate runtime/grant expiry, revocation and
+   generation, current visibility and exact source versions. A new command also
+   requires unused quota. A matching successful replay can use an exhausted last
+   use; expiry/revocation/visibility/source changes still fail closed.
+5. Apply new effects or validate the replay's canonical produced post-state.
+   For #153, replays observe the original unchanged effect and never renew or
+   reacquire its lease. Historical lease expiry alone does not prevent observing
+   that original effect; it never establishes current continued authority. The
+   current unit/version/generation/session and checkpoint readability must still
+   match the original post-state. Resumed effects require a currently live fence. For native mutable
+   targets, current version must equal the receipt's produced version; external
+   intervening edit/deletion is a visible stale failure. The effect advancing its
+   own input version is not a conflict by itself.
+6. Before completing, read fresh DB wall time again and validate authority,
+   exact sources and produced post-state. Store domain/coordination changes,
+   outgoing intents, use debit and the canonical receipt. Collect immutable event
+   intents; after **all** these writes and audience authorization, flush final
+   stream-sequence events. No further domain, receipt, debit or lock-taking work
+   follows the first stream insert. Commit once or roll back everything.
+
+Execution/review/plan classes and exact operations are enumerated. Review grants
+cannot execute, execution grants cannot review, and review publication separately
+checks actual reviewer identity differs from the artifact author and that source
+versions are current. No wildcard operations/audiences and no authority derived
+from self-reported clientInfo, labels or instruction ACKs.
+
+## Composition and tests
+
+`coWorkClaimUseCases` can keep its existing pure command shape: #153's adapter
+calls `prepare`, builds `LockedClaimScope`, and stages the outcome from
+`saveReceipt`. It calls `complete` with that outcome and canonical claim
+postconditions before its shared final event flush. On replay it performs current
+fence validation and returns the original stored outcome, without calling `save`
+or creating a new receipt. A receipt whose normalized payload differs fails
+before any unit mutation. Both implementations use the same ledger table.
+
+Required integration tests include duplicate concurrent commands, changed
+operation/project/session/payload conflicts, exhausted last-use successful retry,
+expiry after waiting on a lock, revocation/visibility before replay, source edits,
+external produced-target edits, rollback after effect/before completion, no lease
+renewal on replay, all domain/debit/receipt writes before final stream events, and
+no nested independently committed receipt. Real Codex/Claude activation remains
+separate and required by #152/#160.
+
+The independent peer accepted this boundary with the conditions recorded in
+[execution-boundary-independent-review.md](execution-boundary-independent-review.md).
+The adapter scope is internal and opaque to MCP input; completion verifies the
+same transaction/binding/command, and every typed postcondition is read from the
+canonical domain rows. Claim-specific post-state alignment remains coordinated
+with the #153 implementation owner before enabling claim writes.
