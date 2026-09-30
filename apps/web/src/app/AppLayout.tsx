@@ -255,11 +255,12 @@ export function AppLayout() {
             </Button>}
           </div>
         </header>
-        {project && phone ? <ProjectStateRow lists={project.work} canDecide={project.project.access !== 'viewer'} /> : null}
+        {/* On a phone the tab row has no room: the entry joins the one-line project state row. */}
+        {project && phone ? <div className="state-row"><ProjectStateRow lists={project.work} canDecide={project.project.access !== 'viewer'} />{recapEntry}</div> : null}
         {place.views
           ? <Tabs className="views" label="Views" items={VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path }))} />
           : activeProject && projectViews
-            ? <div className="views views--project"><Tabs className="views__tabs" label="Project views" items={projectViews} />{recapEntry}</div>
+            ? <div className="views views--project"><Tabs className="views__tabs" label="Project views" items={projectViews} />{phone ? null : recapEntry}</div>
             : <div className="views views--none" aria-hidden="true" />}
         <LiveBar />
         <div className="app__pane" id="content" ref={paneRef} tabIndex={-1}>
