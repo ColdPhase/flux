@@ -11,7 +11,7 @@ import { addMember, expectStatus, person, project, workspace, type Person } from
 const { pool, db } = createDatabase(process.env.DATABASE_URL!);
 const uow = personalRunWorkerUnitOfWork(db);
 const ownIds: string[] = [];
-let first: Person; let second: Person; let ws: Workspace; let place: Project; let conversation: Conversation;
+let first: Person; let second: Person; let third: Person; let fourth: Person; let ws: Workspace; let place: Project; let conversation: Conversation;
 const agents = new Map<string, string>();
 
 async function seed(owner: Person, status: 'queued' | 'reading' | 'dispatching' | 'completed', ageSeconds = 3600) {
@@ -41,14 +41,14 @@ after(async () => {
 
 describe('personal-run crash recovery (real SQL, no provider)', () => {
   before(async () => {
-    [first, second] = await Promise.all([person('recovery-first'), person('recovery-second')]);
+    [first, second, third, fourth] = await Promise.all(['recovery-first', 'recovery-second', 'recovery-third', 'recovery-fourth'].map(person));
     ws = await workspace(first, 'Recovery fixture');
-    await addMember(first, ws.id, second, 'member');
+    for (const member of [second, third, fourth]) await addMember(first, ws.id, member, 'member');
     place = await project(first, ws.id, 'Recovery', 'workspace');
     conversation = expectStatus(await first.browser.request('POST', `/api/v1/projects/${place.id}/conversations`, {
       body: { body: 'Recovery source', clientMessageId: randomUUID() },
     }), 201) as Conversation;
-    for (const owner of [first, second]) {
+    for (const owner of [first, second, third, fourth]) {
       const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, {
         body: { name: 'Recovery assistant', owner: 'self' },
       }), 201) as { id: string };
@@ -59,8 +59,8 @@ describe('personal-run crash recovery (real SQL, no provider)', () => {
   test('one global batch, replicas, accounting, recent/terminal preservation and owner-only progress', async () => {
     const queued = await seed(first, 'queued', 172_803);
     const reading = await seed(second, 'reading', 172_802);
-    const dispatched = await seed(first, 'dispatching', 172_801);
-    const recent = await seed(second, 'reading', 600);
+    const dispatched = await seed(third, 'dispatching', 172_801);
+    const recent = await seed(fourth, 'reading', 600);
     const completed = await seed(first, 'completed', 172_804);
     const prior = await row(completed);
     assert.equal(await recoverPersonalRuns(uow, 1), 1, 'limit is global across states');
@@ -76,7 +76,7 @@ describe('personal-run crash recovery (real SQL, no provider)', () => {
       FROM events e JOIN event_audience a ON a.event_id=e.id WHERE e.kind='assistant_run.changed.v1'
       AND e.object_id=ANY($1::uuid[]) GROUP BY e.id`, [[queued, reading, dispatched]]);
     assert.equal(events.rows.length, 3, 'exactly one progress event per recovered run');
-    for (const event of events.rows) assert.deepEqual(event.recipients, [`human:${event.object_id === reading ? second.id : first.id}`]);
+    for (const event of events.rows) assert.deepEqual(event.recipients, [`human:${event.object_id === reading ? second.id : event.object_id === dispatched ? third.id : first.id}`]);
     await recoverPersonalRuns(uow);
     assert.equal((await pool.query("SELECT count(*)::int AS n FROM events WHERE kind='assistant_run.changed.v1' AND object_id=ANY($1::uuid[])", [[queued, reading, dispatched]])).rows[0].n, 3, 'repeated sweep is inert');
   });

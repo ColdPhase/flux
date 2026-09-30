@@ -152,7 +152,7 @@ export function personalRunRows(db: DbExecutor) {
         status: sql`CASE WHEN ${r.status} = 'dispatching' THEN 'provider_failed' ELSE 'unavailable' END`,
         costState: sql`CASE WHEN ${r.status} = 'dispatching' THEN 'unknown' ELSE 'released' END`,
         chargedMicros: 0, completedAt: new Date(), updatedAt: new Date(),
-      }).where(sql`${r.id} IN (SELECT id FROM personal_runs WHERE status = ANY(${IN_FLIGHT}::text[])
+      }).where(sql`${r.id} IN (SELECT id FROM personal_runs WHERE status IN (${sql.join(IN_FLIGHT.map((state) => sql`${state}`), sql`, `)})
         AND updated_at < now() - (${olderThanSeconds}::int * interval '1 second')
         ORDER BY updated_at, id LIMIT ${limit} FOR UPDATE SKIP LOCKED)`).returning();
       return rows.map(toRun);
