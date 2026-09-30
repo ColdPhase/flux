@@ -43,10 +43,10 @@ set_env() {
   mv "$env_file.tmp" "$env_file"
 }
 
-# The same Dockerfile and final (runtime) stage that infra/compose.yaml builds.
+# The same Dockerfile and final (runtime) stage that docker/compose.source.yaml builds.
 # One retry for a transient registry or package download error.
-docker build -q -f infra/Dockerfile -t "$image" . >/dev/null ||
-  docker build -q -f infra/Dockerfile -t "$image" . >/dev/null
+docker build -q -f docker/Dockerfile -t "$image" app >/dev/null ||
+  docker build -q -f docker/Dockerfile -t "$image" app >/dev/null
 
 count=$(grep -c "image: $marker\$" docker/compose.yaml) || true
 [ "$count" = 3 ] || fail "expected the release marker on 3 services, found $count"

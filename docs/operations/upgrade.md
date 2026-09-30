@@ -14,7 +14,7 @@ git pull --ff-only && ./flux upgrade      # or: ./flux upgrade --pull
    launcher. It builds the image from the checkout (`FLUX_NO_CACHE=1` for a clean build).
    Release images (#77) are not published yet; when they are, this step can pull them instead.
 4. **Migrate forward.** `files-init`, then the one-shot migration applies every new
-   `packages/db/migrations/NNNN_*.sql` in order, each in its own transaction.
+   `app/packages/db/migrations/NNNN_*.sql` in order, each in its own transaction.
 5. **Health.** It starts API and worker, waits for their health checks, and checks that the API
    and the database report the checkout's schema.
 

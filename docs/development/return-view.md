@@ -31,7 +31,7 @@ conversation points are deleted with their place.
 ## Summary
 
 `GET /api/v1/return?place=home|project|conversation&id=` returns `ReturnSummary`
-(`packages/contracts/src/returns.ts`). It is built in `packages/core/src/returns/service.ts`:
+(`app/packages/contracts/src/returns.ts`). It is built in `app/packages/core/src/returns/service.ts`:
 
 1. Read the reader's own audience rows after the point, newest first, in pages of 400 by primary
    key. Scanning stops at the end, once 400 visible changes are kept, or after 8,000 rows.
@@ -104,13 +104,13 @@ Details (a quiet count of `needsYou`), which opens a private view of the Details
 
 ## Structure
 
-- `packages/contracts/src/returns.ts`: wire types and paths.
-- `packages/core/src/returns/`: the ports `ReturnAccess` and `ReturnRepository` and the use cases.
+- `app/packages/contracts/src/returns.ts`: wire types and paths.
+- `app/packages/core/src/returns/`: the ports `ReturnAccess` and `ReturnRepository` and the use cases.
   They import no Drizzle or `@flux/db`.
-- `packages/db/src/repositories/returns.ts`: rows only, no access decisions.
-- `apps/server/src/returns/`: the policy adapter (`authorizeEvent`, `evaluateProject`,
+- `app/packages/db/src/repositories/returns.ts`: rows only, no access decisions.
+- `app/apps/server/src/returns/`: the policy adapter (`authorizeEvent`, `evaluateProject`,
   `authorize`, `visibleFilter`) and the routes. No architecture allowlist entries were added.
-- `apps/web/src/returns/`: `SinceYouLeftHome` (on Home, grouped by place) and `SinceYouLeftLine`
+- `app/apps/web/src/returns/`: `SinceYouLeftHome` (on Home, grouped by place) and `SinceYouLeftLine`
   (above the project conversation; it collapses to one 44 px row on the phone and expands with
   the grid-rows transition from the tokens). A source link to a message opens on that whole
   message (`#message-<id>`). Only the current request's authorized answer is ever shown: the
@@ -120,12 +120,12 @@ Details (a quiet count of `needsYou`), which opens a private view of the Details
 
 ## Tests
 
-`tests/app/returns.test.ts` covers the API with two people and an outsider: the return point,
+`app/tests/app/returns.test.ts` covers the API with two people and an outsider: the return point,
 the grouping and sources, the next step and how it changes when the question is answered,
 forward-only saving and restore, revoked access, and a restricted project leaking nothing (no
-items, ids, names or counts). `tests/app/return-recap.test.ts` covers #133's scope, period, `until` snapshot, digest, privacy
+items, ids, names or counts). `app/tests/app/return-recap.test.ts` covers #133's scope, period, `until` snapshot, digest, privacy
 (per person, no shared event, outsider and revoked 404) and refused parameters.
-`tests/ui/test_return_view.py` (Playwright) covers Home's return view, and in projects the What
+`app/tests/ui/test_return_view.py` (Playwright) covers Home's return view, and in projects the What
 matters panel: the compact entry and count, scope and digest, sources (a decision in Details and
 back to the same snapshot, a message at the whole message), "I have the context" as the only
 point change, newer changes announced, empty and 7-day states, a late answer for the old scope

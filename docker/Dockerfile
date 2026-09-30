@@ -42,7 +42,7 @@ COPY --from=build /app/packages/core/dist ./packages/core/dist
 COPY --from=build /app/packages/db/dist ./packages/db/dist
 COPY --from=build /app/packages/agent-runtime/dist ./packages/agent-runtime/dist
 COPY --from=build /app/packages/db/migrations ./packages/db/migrations
-COPY --from=build /app/infra/dist ./infra/dist
+COPY --from=build /app/tooling/dist ./tooling/dist
 RUN mkdir -p /data/files && chown -R node:node /data
 USER node
 EXPOSE 8080

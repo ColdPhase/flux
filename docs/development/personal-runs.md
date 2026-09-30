@@ -15,7 +15,7 @@ lands, production composes no connection lookup and the provider switch off. So
 enabling fails with `PERSONAL_RUN_CONNECTION_REQUIRED`, every invocation fails with
 `503 PERSONAL_RUN_UNAVAILABLE`, the worker ends any queued run as `unavailable` at
 zero cost, and the UI says exactly that. Runs past dispatch are tested with the
-fakes in `tests/app/support/personal-runs.ts` (API suite) and, in the browser
+fakes in `app/tests/app/support/personal-runs.ts` (API suite) and, in the browser
 suite, with the real adapter against a mock provider server (see
 [Test-only switch](#test-only-switch)). No test is a provider, billing or
 compatibility pass.
@@ -24,18 +24,18 @@ compatibility pass.
 
 | Path | Role |
 | --- | --- |
-| `packages/contracts/src/personal-runs.ts` | Paths, wire types, the consent version `o-008-2026-09-28` and the O-008 limits (`PERSONAL_RUN_LIMITS`). |
-| `packages/core/src/personal-runs/` | Ports, input and output rules, use cases (`service.ts`), the worker processor (`processor.ts`) and assistant proposals (`proposals.ts`). |
-| `packages/core/src/access/personal-run-access.ts` | The access policy as the `PersonalRunAccess` port. |
-| `packages/core/src/access/policy.ts` | New agent action `agent.invoke`: only the person who owns the unrevoked agent. A workspace role never grants it. |
-| `packages/db/migrations/0024_personal_runs.sql`, `packages/db/src/repositories/personal-runs.ts` | Tables and rows. |
-| `apps/server/src/personal-runs/` | Routes and the per-transaction composition. The server only queues runs. |
-| `apps/worker/src/personal-runs/` | The `personal-run.dispatch.v1` handler and its composition (`composition.ts`). The queue never retries a job (`PERSONAL_RUN_QUEUE`). |
-| `packages/core/src/personal-runs/progress.ts` | Owner-only progress events (`assistant_run.changed.v1`). |
-| `packages/core/src/access/policy.ts` (`evaluateAssistantRun`) | The `assistant_run` object: its only reader is the run's owner. |
-| `packages/agent-runtime/src/anthropic.ts` | The Anthropic adapter behind `PersonalCompute` (`@anthropic-ai/sdk` 0.129.0, pinned). |
-| `apps/web/src/assistant/` | The UI (AC-8): ask mode, working line, answers, proposals, settings. |
-| `packages/core/src/personal-runs/test-fixture.ts`, `tests/ui/anthropic_mock.py` | TEST ONLY: fixture key connections and the mock provider of the browser suite. |
+| `app/packages/contracts/src/personal-runs.ts` | Paths, wire types, the consent version `o-008-2026-09-28` and the O-008 limits (`PERSONAL_RUN_LIMITS`). |
+| `app/packages/core/src/personal-runs/` | Ports, input and output rules, use cases (`service.ts`), the worker processor (`processor.ts`) and assistant proposals (`proposals.ts`). |
+| `app/packages/core/src/access/personal-run-access.ts` | The access policy as the `PersonalRunAccess` port. |
+| `app/packages/core/src/access/policy.ts` | New agent action `agent.invoke`: only the person who owns the unrevoked agent. A workspace role never grants it. |
+| `app/packages/db/migrations/0024_personal_runs.sql`, `app/packages/db/src/repositories/personal-runs.ts` | Tables and rows. |
+| `app/apps/server/src/personal-runs/` | Routes and the per-transaction composition. The server only queues runs. |
+| `app/apps/worker/src/personal-runs/` | The `personal-run.dispatch.v1` handler and its composition (`composition.ts`). The queue never retries a job (`PERSONAL_RUN_QUEUE`). |
+| `app/packages/core/src/personal-runs/progress.ts` | Owner-only progress events (`assistant_run.changed.v1`). |
+| `app/packages/core/src/access/policy.ts` (`evaluateAssistantRun`) | The `assistant_run` object: its only reader is the run's owner. |
+| `app/packages/agent-runtime/src/anthropic.ts` | The Anthropic adapter behind `PersonalCompute` (`@anthropic-ai/sdk` 0.129.0, pinned). |
+| `app/apps/web/src/assistant/` | The UI (AC-8): ask mode, working line, answers, proposals, settings. |
+| `app/packages/core/src/personal-runs/test-fixture.ts`, `app/tests/ui/anthropic_mock.py` | TEST ONLY: fixture key connections and the mock provider of the browser suite. |
 
 ## Ports
 
@@ -137,7 +137,7 @@ replies, rate limits) is its own change.
 
 ## UI (AC-8)
 
-`apps/web/src/assistant/`, on the existing conversation, Details and settings patterns and
+`app/apps/web/src/assistant/`, on the existing conversation, Details and settings patterns and
 tokens:
 
 - **Ask mode.** A ✦ *Ask my assistant* button in the composer, or `/ai <prompt>` at the start
@@ -278,17 +278,17 @@ for the project's audience.
 
 ## Tests
 
-`tests/app/personal-runs.test.ts` covers #68 AC-1 to AC-7 with two or more
+`app/tests/app/personal-runs.test.ts` covers #68 AC-1 to AC-7 with two or more
 people, plus owner-only progress events (audience rows and live streams of the owner,
 a project member and the workspace owner) and a failed preflight count. It sends HTTP
 requests to the API container's production composition and drives dispatch in-process
-with the fakes. `tests/app/personal-runs-core.test.ts` checks the pure output and cost
-rules. `tests/app/personal-runs-anthropic.test.ts` checks the adapter against a local mock
+with the fakes. `app/tests/app/personal-runs-core.test.ts` checks the pure output and cost
+rules. `app/tests/app/personal-runs-anthropic.test.ts` checks the adapter against a local mock
 HTTP server (request shape, key, retries off, abort, timeout, counting, usage, error
 mapping, limits, environment isolation) and the composition guards. Run them through
 `./scripts/check_application.sh`.
 
-`tests/ui/test_personal_assistant.py` (through `./scripts/check_ui.sh`, with the
+`app/tests/ui/test_personal_assistant.py` (through `./scripts/check_ui.sh`, with the
 test-only switch) covers the UI with three people: not set up, consent and caps,
 the manager grant, the working line only for the owner, the attributed answer and its
 citations for peers and a viewer, Stop, a provider failure, a proposal accepted only by

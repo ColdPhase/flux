@@ -7,13 +7,13 @@ set -eu
 # --- Layout. Every repository path the launcher uses is defined here, relative to this
 # file, so it works from any directory. The #76 move to app/ + docker/ changes only these.
 FLUX_ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
-COMPOSE_MAIN="$FLUX_ROOT/infra/compose.yaml"
-COMPOSE_DEV="$FLUX_ROOT/infra/compose.dev.yaml"
-ENV_EXAMPLE="$FLUX_ROOT/.env.example"
-ENV_FILE="$FLUX_ROOT/.env"
+COMPOSE_MAIN="$FLUX_ROOT/docker/compose.source.yaml"
+COMPOSE_DEV="$FLUX_ROOT/docker/compose.dev.yaml"
+ENV_EXAMPLE="$FLUX_ROOT/docker/.env.example"
+ENV_FILE="$FLUX_ROOT/docker/.env"
 DEMO_SEED="$FLUX_ROOT/scripts/flux-demo.mjs"
-MIGRATIONS_DIR="$FLUX_ROOT/packages/db/migrations"
-APP_PACKAGE="$FLUX_ROOT/apps/server/package.json"
+MIGRATIONS_DIR="$FLUX_ROOT/app/packages/db/migrations"
+APP_PACKAGE="$FLUX_ROOT/app/apps/server/package.json"
 # Default output of ./flux backup and ./flux export (both ignored by git); FLUX_BACKUP_DIR overrides.
 BACKUP_DIR="${FLUX_BACKUP_DIR:-$FLUX_ROOT/backups}"
 EXPORT_DIR="$FLUX_ROOT/exports"
@@ -21,7 +21,7 @@ EXPORT_DIR="$FLUX_ROOT/exports"
 BACKUP_LOCK_PREFIX="$FLUX_ROOT/.flux-backup-lock"
 # Inside the Flux image (paths relative to its working directory).
 IMAGE_EXPORT_CLI=apps/server/dist/export/cli.js
-IMAGE_OPERATIONS=infra/dist/operations.js
+IMAGE_OPERATIONS=tooling/dist/operations.js
 
 WAIT_TIMEOUT="${FLUX_WAIT_TIMEOUT:-300}"
 OWNER_LABEL=com.flux.checkout
@@ -39,13 +39,13 @@ need_docker() {
 # Compose for the production-mode stack (`up`, `demo`) or the hot-reload stack (`dev`).
 # The image tag follows the project so parallel checkouts and `clean` stay scoped.
 compose_main() {
-  FLUX_IMAGE_TAG="$PROJECT" docker compose --project-directory "$FLUX_ROOT/infra" \
+  FLUX_IMAGE_TAG="$PROJECT" docker compose --project-directory "$FLUX_ROOT/docker" \
     --env-file "$ENV_FILE" -p "$PROJECT" -f "$COMPOSE_MAIN" "$@"
 }
 compose_dev() {
   FLUX_IMAGE_TAG="$DEV_PROJECT" FLUX_PUBLIC_ORIGIN="$(dev_origin)" \
     FLUX_SMTP_URL="${FLUX_SMTP_URL:-smtp://mailpit:1025}" FLUX_MAIL_FROM="${FLUX_MAIL_FROM:-Flux dev <flux-dev@localhost>}" \
-    docker compose --project-directory "$FLUX_ROOT/infra" --env-file "$ENV_FILE" -p "$DEV_PROJECT" \
+    docker compose --project-directory "$FLUX_ROOT/docker" --env-file "$ENV_FILE" -p "$DEV_PROJECT" \
     -f "$COMPOSE_MAIN" -f "$COMPOSE_DEV" --profile dev "$@"
 }
 
@@ -73,6 +73,15 @@ default_project() {
   base=$(basename -- "$FLUX_ROOT" | tr 'A-Z' 'a-z' | tr -c 'a-z0-9\n' '-' | tr -d '\n' | cut -c1-24 | sed 's/^-*//; s/-*$//')
   if [ -z "$base" ] || [ "$base" = flux ]; then printf 'flux-%s' "$(path_hash)"; else printf 'flux-%s-%s' "$base" "$(path_hash)"; fi
 }
+# Upgrade the pre-#76 location once. Never overwrite either existing file.
+migrate_legacy_env() {
+  legacy="$FLUX_ROOT/.env"
+  [ -f "$legacy" ] || return 0
+  [ ! -e "$ENV_FILE" ] || die "Both .env and docker/.env exist. Keep the intended configuration in docker/.env and remove the legacy .env before continuing."
+  mv "$legacy" "$ENV_FILE"
+  say "Moved existing .env to docker/.env; secrets and project name are unchanged."
+}
+
 resolve_project() {
   stored=''
   [ ! -f "$ENV_FILE" ] || stored=$(sed -n 's/^FLUX_PROJECT=//p' "$ENV_FILE" | tail -n 1)
@@ -473,7 +482,7 @@ verify_running() {
   say "Health: $health (migration ledger matches this image: $ledger)"
 }
 
-# Runs infra/operations.ts in this project's image (the migrate service).
+# Runs app/tooling/operations.ts in this project's image (the migrate service).
 image_op() { compose_main run --rm -T migrate node "$IMAGE_OPERATIONS" "$@"; }
 image_op_nodb() { compose_main run --rm --no-deps -T migrate node "$IMAGE_OPERATIONS" "$@"; }
 # The migration ledger stored in a pg_dump custom archive (read from the dump, not the manifest).
@@ -885,7 +894,7 @@ cmd_help() {
   cat <<EOF
 Flux launcher. Everything runs in Docker; only sh and Docker Compose are needed.
 
-  ./flux up              Create .env with new secrets if it is missing (never overwrites it),
+  ./flux up              Create docker/.env with new secrets if it is missing (never overwrites it),
                          build, migrate, start and print the URL.
   ./flux demo [--dev]    Seed demo data through the public API and print two logins.
                          Refuses non-loopback (production-looking) origins unless --force.
@@ -915,7 +924,7 @@ Commands that start, stop, back up, restore or delete refuse a Compose project t
 checkout; --force-project overrides that check.
 
 Environment: FLUX_PROJECT (Compose project; default flux-<dir>-<hash of this checkout's path>,
-stored in .env on first use; dev uses <project>-dev),
+stored in docker/.env on first use; dev uses <project>-dev),
 FLUX_PORT (8081, used when creating .env), FLUX_DEV_PORT (5173), FLUX_MAILPIT_PORT (8025),
 FLUX_NO_CACHE=1 (build without the Docker cache), FLUX_BACKUP_DIR (default backups/).
 Operations guide: docs/operations/README.md.
@@ -932,7 +941,8 @@ command=${1:-help}
 case "$command" in
   _is-loopback-origin) is_loopback_origin "${1:-}"; exit ;;  # used by scripts/check_flux_cli.sh
   help|-h|--help) ;;
-  *) resolve_project
+  *) migrate_legacy_env
+     resolve_project
      # Recorded as an image label and in backup manifests (issue #123).
      FLUX_GIT_COMMIT=${FLUX_GIT_COMMIT:-$(git_commit)}; export FLUX_GIT_COMMIT ;;
 esac

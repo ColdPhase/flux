@@ -26,7 +26,7 @@ export FLUX_TEST_PERSONAL_RUNS=anthropic-mock
 export FLUX_TEST_ANTHROPIC_URL=http://anthropic-mock:8090
 if [ -n "${FLUX_UI_SCREENSHOT_DIR:-}" ]; then mkdir -p "$FLUX_UI_SCREENSHOT_DIR"; fi
 . scripts/test_images.sh
-compose="docker compose -p $project -f infra/compose.yaml --profile ui"
+compose="docker compose -p $project -f docker/compose.source.yaml --profile ui"
 
 cleanup() {
   status=$?

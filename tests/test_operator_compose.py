@@ -14,7 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 COMPOSE = ROOT / "docker" / "compose.yaml"
 ENV_EXAMPLE = ROOT / "docker" / ".env.example"
-SOURCE_ENV_EXAMPLE = ROOT / ".env.example"
+SOURCE_ENV_EXAMPLE = ROOT / "app" / ".env.example"
 MARKER = "ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST"
 FLUX_SERVICES = ("migrate", "api", "worker")
 PINNED = re.compile(r"[a-z0-9][a-z0-9._/-]*(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}\Z")
@@ -118,7 +118,12 @@ class OperatorComposeTest(unittest.TestCase):
     def test_every_variable_is_in_the_env_example(self) -> None:
         referenced = {match.group(1) for match in REFERENCE.finditer(self.body)}
         self.assertEqual(sorted(referenced - set(self.env)), [], "missing from docker/.env.example")
-        self.assertEqual(sorted(set(self.env) - referenced), [], "unused in docker/compose.yaml")
+        # One executable template also serves the source launcher/dev profile.
+        source_only = {"FLUX_MAILPIT_PORT", "FLUX_DEV_PORT", "FLUX_DEMO_OWNER_PASSWORD", "FLUX_DEMO_PARTNER_PASSWORD"}
+        self.assertEqual(set(self.env) - referenced, source_only, "unexpected unconsumed template variable")
+        consumers = (ROOT / "docker/compose.source.yaml").read_text() + (ROOT / "docker/compose.dev.yaml").read_text() + (ROOT / "flux").read_text()
+        for name in source_only:
+            self.assertIn(name, consumers, f"{name} has no source consumer")
 
     def test_defaults_match_the_env_example(self) -> None:
         for match in REFERENCE.finditer(self.body):
@@ -150,7 +155,7 @@ class OperatorComposeTest(unittest.TestCase):
 
     def test_names_and_defaults_match_the_source_env_example(self) -> None:
         source = env_entries(SOURCE_ENV_EXAMPLE)
-        self.assertEqual(sorted(set(self.env) - set(source)), [], "unknown to .env.example")
+        self.assertEqual(set(self.env), set(source), "application reference and executable template names differ")
         for name, value in self.env.items():
             if value and source[name] and not SECRET_NAME.search(name):
                 self.assertEqual(value, source[name], f"{name} differs from .env.example")
