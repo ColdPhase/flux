@@ -134,4 +134,3 @@ export async function selectedCandidates(page: Page): Promise<CandidateEvidence[
     return evidence;
   });
 }
-
