@@ -84,7 +84,7 @@ async function context(who: Person) {
   return ctx;
 }
 test('real settings UI binds, verifies PR links and removes private projections on access loss at phone/tablet/desktop sizes', { timeout: 90_000 }, async () => {
-  const owner = await person('Ada lamp maker'); const viewer = await person('Jonas Flux-only collaborator');
+  const owner = await person('Ada'); const viewer = await person('Jonas');
   const ws = await workspace(owner, 'Lamp workshop'); await addMember(owner, ws.id, viewer, 'member');
   const place = await project(owner, ws.id, 'Gesture lamp', 'restricted'); await grant(owner, place.id, viewer, 'viewer');
   const task = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: 'Verify physical off-switch behaviour after calibration fails' } }), 201) as WorkItem;
