@@ -93,3 +93,21 @@ Acceptance needs Docker API/UI/persistence/race/failure evidence, historical
 fixtures and rollback/restore evidence, real authorized agent entry paths, shared
 draft/root identity in the integrated #136 views and a separate neutral visual
 review. Missing file/MCP/import/shell or migration checks remain unverified.
+
+## Incremental canonical text implementation
+
+The current text slice uses `GET/POST /api/v1/work/:workId/discussion`. Its pure
+core use case checks current project access under a transaction, then the shared
+conversation command lock, task-row lock and conversation sequence. Normal
+conversation sends and task text contributions share the same database append
+primitive. A task-specific operation fingerprint prevents reusing an unrelated
+conversation command receipt. The binding's composite foreign keys require the
+exact sequence-1 root in the same scoped conversation. Reads return the explicit
+root even outside the bounded newest-message window and never create content.
+
+This slice supports authenticated human text and exact material-version citations.
+Agent authors remain explicitly unsupported until all actor-aware consumers are
+implemented; no agent is represented by a human user. Attachments, blocker/result/
+handoff adapters, unused-AI undo, integrated shared drafts, real MCP clients and
+compatible migration reversal remain required. This is incremental implementation,
+not a reduction of AC-1–AC-5 or whole-task acceptance.

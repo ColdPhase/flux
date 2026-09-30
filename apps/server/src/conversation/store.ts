@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, lt, sql } from 'drizzle-orm';
-import { schema } from '@flux/db';
+import { schema, taskDiscussionRows } from '@flux/db';
 import type {
   Conversation, ConversationMessage, ConversationSummary, Material,
   MaterialVersion, Page, PageQuery,
@@ -91,7 +91,7 @@ async function existingMessage(projectId: string, authorId: string, clientMessag
 async function lockIdempotency(tx: Tx, projectId: string, authorId: string, clientId: string) {
   // Serializes same-key first sends before a thread is created. The uniqueness constraint
   // remains the final guard; hash collisions only serialize unrelated sends.
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`${projectId}:${authorId}:${clientId}`}))`);
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`${projectId.toLowerCase()}:${authorId}:${clientId.toLowerCase()}`}))`);
 }
 
 async function sendInTransaction(tx: Tx, conversation: ConversationRow, authorId: string, input: Parameters<ConversationPort['sendMessage']>[2]): Promise<{ message: ConversationMessage; inserted: boolean }> {
@@ -102,21 +102,8 @@ async function sendInTransaction(tx: Tx, conversation: ConversationRow, authorId
     return { message: message(existing), inserted: false };
   }
   await sourceExists(conversation.projectId, input.source, tx);
-  const [updated] = await tx.update(schema.projectConversations)
-    .set({ nextSequence: sql`${schema.projectConversations.nextSequence} + 1` })
-    .where(eq(schema.projectConversations.id, conversation.id)).returning({ nextSequence: schema.projectConversations.nextSequence });
-  const sequence = updated!.nextSequence - 1;
-  const [inserted] = await tx.insert(schema.projectMessages).values({
-    id: randomUUID(), workspaceId: conversation.workspaceId, projectId: conversation.projectId,
-    conversationId: conversation.id, authorId, clientMessageId: input.clientMessageId,
-    requestFingerprint: input.fingerprint, sequence, body: input.body,
-    sourceMaterialId: input.source?.materialId ?? null, sourceMaterialVersion: input.source?.version ?? null,
-  }).onConflictDoNothing().returning();
-  if (inserted) return { message: message(inserted), inserted: true };
-  const raced = await existingMessage(conversation.projectId, authorId, input.clientMessageId, tx);
-  if (!raced || raced.requestFingerprint !== input.fingerprint || raced.conversationId !== conversation.id)
-    throw new ConflictError('This clientMessageId was used for another message', 'IDEMPOTENCY_CONFLICT');
-  return { message: message(raced), inserted: false };
+  const inserted = await taskDiscussionRows(tx).append(conversation, authorId, input);
+  return { message: message(inserted), inserted: true };
 }
 
 export function conversationStore(db: Database) {

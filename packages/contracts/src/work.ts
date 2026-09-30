@@ -8,6 +8,19 @@ import type { PrincipalRef, VersionPrecondition } from './access.js';
  */
 export const projectWorkPath = (projectId: string) => `/api/v1/projects/${projectId}/work`;
 export const projectTaskNoticesPath = (projectId: string) => `/api/v1/projects/${projectId}/task-notices`;
+export const taskDiscussionPath = (workId: string) => `/api/v1/work/${workId}/discussion`;
+
+/** Explicit canonical root, also returned outside the bounded newest-message window. */
+export interface TaskDiscussion {
+  workId: string;
+  workspaceId: string;
+  projectId: string;
+  conversationId: string | null;
+  rootMessageId: string | null;
+  root: import('./conversation.js').ConversationMessage | null;
+  messages: import('./conversation.js').ConversationMessage[];
+  messagePage: import('./conversation.js').Conversation['messagePage'];
+}
 export const workItemPath = (workId: string) => `/api/v1/work/${workId}`;
 export const projectDecisionsPath = (projectId: string) => `/api/v1/projects/${projectId}/decisions`;
 export const decisionPath = (decisionId: string) => `/api/v1/decisions/${decisionId}`;

@@ -1,4 +1,5 @@
-import { pgTable, text, timestamp, uuid, integer, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { pgTable, text, timestamp, uuid, integer, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, check, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
 export const samples = pgTable('samples', {
   id: uuid('id').primaryKey(),
@@ -523,6 +524,7 @@ export const projectMessages = pgTable('project_messages', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique().on(table.conversationId, table.sequence),
+  unique('project_messages_root_identity').on(table.conversationId, table.id, table.sequence),
   unique().on(table.projectId, table.authorId, table.clientMessageId),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.conversationId], foreignColumns: [projectConversations.workspaceId, projectConversations.projectId, projectConversations.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.sourceMaterialId, table.sourceMaterialVersion], foreignColumns: [projectMaterialVersions.workspaceId, projectMaterialVersions.projectId, projectMaterialVersions.materialId, projectMaterialVersions.version] }),
@@ -695,6 +697,21 @@ export const projectTaskNotices = pgTable('project_task_notices', {
   unique().on(table.workId, table.kind),
   index('project_task_notices_project_idx').on(table.projectId, table.createdAt, table.id),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.workId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+]);
+
+/** A task never manufactures a conversation. Its first genuine message binds the root. */
+export const projectTaskDiscussions = pgTable('project_task_discussions', {
+  workId: uuid('work_id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  conversationId: uuid('conversation_id').notNull().unique(),
+  rootMessageId: uuid('root_message_id').notNull().unique(),
+  rootSequence: integer('root_sequence').notNull().default(1),
+}, (table) => [
+  check('project_task_discussion_root_sequence', sql`${table.rootSequence} = 1`),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.workId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.conversationId], foreignColumns: [projectConversations.workspaceId, projectConversations.projectId, projectConversations.id] }),
+  foreignKey({ columns: [table.conversationId, table.rootMessageId, table.rootSequence], foreignColumns: [projectMessages.conversationId, projectMessages.id, projectMessages.sequence] }),
 ]);
 
 export const projectResults = pgTable('project_results', {
