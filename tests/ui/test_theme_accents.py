@@ -128,7 +128,7 @@ class ThemeAccentsJourney(unittest.TestCase):
         with page.expect_response(re.compile(r"/api/v1/return-points/restore$")) as restoring:
             page.get_by_role("button", name="Keep these for next time", exact=True).click()
         self.assertEqual(restoring.value.status, 200)
-        expect(page.get_by_text("These will be here next time.", exact=True)).to_be_visible()
+        expect(page.get_by_text("These will show again next time.", exact=True)).to_be_visible()
 
     def test_01_create_persisted_content(self):
         page = self.page()
