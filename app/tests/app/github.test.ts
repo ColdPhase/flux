@@ -11,6 +11,7 @@ import { githubWebhookRoutes } from '../../apps/server/src/github/webhook.js';
 import { githubRoutes } from '../../apps/server/src/github/routes.js';
 import { githubCredentials } from '../../apps/server/src/github/credentials.js';
 import { githubProvider } from '../../apps/server/src/github/provider.js';
+import { seal } from '../../apps/server/src/github/crypto.js';
 import type { GithubConfig } from '../../apps/server/src/github/config.js';
 import { githubTransport, type GithubTransport } from '../../apps/server/src/github/http.js';
 import { loadIdentityConfig, registerIdentity } from '../../apps/server/src/identity/index.js';
@@ -155,8 +156,10 @@ describe('GitHub App binding, provenance and durable per-binding inbox (#74)', (
 });
 
 class AuthTransportFixture implements GithubTransport {
+  requests = 0; userAction: (() => Promise<void>) | null = null;
   exchanges = 0; refreshes = 0; failRefresh = false; mismatchedApp = false; tokenExpires = 28800; staleCheck = false; neutralCheck = false;
   async json(url: string, init?: RequestInit) {
+    this.requests++;
     const u = new URL(url);
     if (u.pathname === '/login/oauth/access_token') {
       const body = JSON.parse(String(init?.body));
@@ -164,7 +167,7 @@ class AuthTransportFixture implements GithubTransport {
       else { this.exchanges++; assert.equal(body.client_id, config.clientId); assert.equal(typeof body.code_verifier, 'string'); }
       return { data: { access_token: 'ghu_fixture_private_access', refresh_token: 'ghr_fixture_private_refresh', token_type: 'bearer', scope: '', expires_in: this.tokenExpires, refresh_token_expires_in: 15897600 }, truncated: false };
     }
-    if (u.pathname === '/user') return { data: { id: 999, login: 'fixture-user' }, truncated: false };
+    if (u.pathname === '/user') { await this.userAction?.(); return { data: { id: 999, login: 'fixture-user' }, truncated: false }; }
     if (u.pathname === '/user/installations') return { data: { installations: [{ id: Number(INSTALL), app_id: Number(this.mismatchedApp ? '12346' : APP), account: { login: 'fixture' }, permissions: { metadata: 'read', pull_requests: 'read', checks: 'read', statuses: 'read' }, suspended_at: null }] }, truncated: false };
     if (u.pathname.endsWith('/repositories')) return { data: { repositories: [{ id: Number(REPO), owner: { login: 'fixture' }, name: 'repo', private: true, permissions: { pull: true } }] }, truncated: false };
     if (/\/pulls\/42$/.test(u.pathname)) return { data: { id: 77742, number: 42, title: 'Private actual provider-shaped fixture', base: { repo: { id: Number(REPO) } }, head: { sha: SHA1 }, user: { id: 765, login: 'original-author' }, state: 'open', draft: false, merged: false, created_at: '2026-09-29T10:00:00Z', updated_at: '2026-09-30T10:00:00Z', merged_at: null }, truncated: false };
@@ -214,6 +217,73 @@ test('uncertain refresh is durably fenced and copied ciphertext cannot become an
   transport.failRefresh = true;
   await rejected(credentials.token(owner.id), 'GITHUB_REFRESH_UNCERTAIN'); assert.equal(transport.refreshes, 1);
   assert.equal(await credentials.state(owner.id), 'uncertain'); await rejected(credentials.token(owner.id), 'GITHUB_AUTHORIZATION_REQUIRED'); assert.equal(transport.refreshes, 1, 'consumed refresh is never replayed');
+});
+test('changed OAuth client or old envelope requires reconnect and spends pending PKCE before any exchange', async () => {
+  const owner = await person('github-client-change'); const ws = await workspace(owner, 'Client change fixture'); const place = await project(owner, ws.id, 'Current App client', 'restricted');
+  const transport = new AuthTransportFixture(); const credentials = githubCredentials(db, config, transport); await credentials.store(owner.id, tokenReply());
+  const changed = { ...config, clientId: 'Iv1.changed-client' }; const next = githubCredentials(db, changed, transport);
+  const apps = await Promise.all([config, changed].map(async (cfg) => {
+    const app = Fastify({ logger: false }); const identity = registerIdentity(app, { db, config: loadIdentityConfig({ FLUX_PUBLIC_ORIGIN: publicOrigin, FLUX_AUTH_SECRET: process.env.FLUX_AUTH_SECRET, FLUX_AUTH_RATE_LIMIT: 'false' }), mailer: null });
+    await app.register(githubRoutes, { db, sessions: identity, config: cfg, transport, background: false }); await app.ready(); return app;
+  }));
+  const headers = { cookie: owner.browser.cookieHeader(), origin: publicOrigin };
+  try {
+    assert.equal((await apps[0]!.inject({ method: 'POST', url: `/api/v1/projects/${place.id}/github/bindings`, headers, payload: { installationId: INSTALL, repositoryId: REPO } })).statusCode, 201);
+    const started = await apps[0]!.inject({ method: 'POST', url: `/api/v1/projects/${place.id}/github/authorize`, headers }); const state = new URL(started.json().url).searchParams.get('state')!;
+    const before = transport.requests;
+    assert.equal(await next.state(owner.id), 'required'); await rejected(next.token(owner.id), 'GITHUB_AUTHORIZATION_REQUIRED');
+    const caps = await apps[1]!.inject({ method: 'GET', url: `/api/v1/projects/${place.id}/github/capabilities`, headers }); assert.equal(caps.json().authorization, 'required');
+    const bindings = await apps[1]!.inject({ method: 'GET', url: `/api/v1/projects/${place.id}/github/bindings`, headers }); assert.equal(bindings.statusCode, 503); assert.equal(bindings.body.includes('fixture/repo'), false);
+    const callback = `/api/v1/integrations/github/callback?state=${state}&code=fixture-code`;
+    assert.equal((await apps[1]!.inject({ method: 'GET', url: callback, headers })).statusCode, 400);
+    assert.equal((await apps[0]!.inject({ method: 'GET', url: callback, headers })).statusCode, 400, 'changed-config flow is spent, never replayed');
+    assert.equal(transport.requests, before); assert.equal(transport.exchanges, 0, 'client change rejected before outbound exchange or facts');
+    const [row] = (await pool.query('SELECT generation,encrypted_tokens FROM github_credentials WHERE user_id=$1', [owner.id])).rows;
+    const old = seal(config.encryptionKey, JSON.stringify({ accessToken: 'ghu_old_fixture', refreshToken: null }), `github.com:${APP}:${owner.id}:${row.generation}:v1`);
+    await pool.query('UPDATE github_credentials SET encrypted_tokens=$1 WHERE user_id=$2', [old, owner.id]);
+    assert.equal(await credentials.state(owner.id), 'required'); await rejected(credentials.token(owner.id), 'GITHUB_AUTHORIZATION_REQUIRED'); assert.equal(transport.requests, before);
+    await next.store(owner.id, tokenReply()); assert.equal(await next.state(owner.id), 'connected'); assert.equal(await credentials.state(owner.id), 'required', 'fresh auth belongs to the newly configured client');
+  } finally { await Promise.all(apps.map((app) => app.close())); }
+});
+function gate() { let release!: () => void; const promise = new Promise<void>((resolve) => { release = resolve; }); return { promise, release }; }
+async function waitForCredentialWait() {
+  for (let n = 0; n < 50; n++) {
+    const rows = await pool.query("SELECT 1 FROM pg_stat_activity WHERE wait_event_type='Lock' AND query ILIKE '%update \"github_credentials\"%'");
+    if (rows.rowCount) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.fail('revocation should serialize on the transaction-pinned credential');
+}
+test('current read and explicit/signed revoke serialize, cancel server waits and drain without poisoning the pool', async () => {
+  for (const signed of [false, true]) for (const adverse of [false, true]) {
+    const owner = await person(`github-lock-${signed}-${adverse}`); const ws = await workspace(owner, 'Lock order fixture'); const place = await project(owner, ws.id, 'Concurrent source revoke', 'restricted');
+    const transport = new AuthTransportFixture(); const credentials = githubCredentials(db, config, transport); await credentials.store(owner.id, tokenReply());
+    const cases = createGithubUseCases(db, githubProvider(credentials, config, transport)); const binding = await cases.bind(actor(owner), place.id, { installationId: INSTALL, repositoryId: REPO });
+    const app = Fastify({ logger: false }); await app.register(githubWebhookRoutes, { secret: config.webhookSecret, appId: APP, admit: cases.admit }); await app.ready();
+    const entered = gate(); const resume = gate(); let paused = false;
+    transport.userAction = async () => { if (!paused) { paused = true; entered.release(); await resume.promise; } };
+    const read = cases.bindings(actor(owner), place.id); await entered.promise;
+    const guid = randomUUID(); const body = JSON.stringify({ action: 'revoked', sender: { id: 999 } });
+    const revoke = async () => { if (signed) return webhook(app, body, guid, 'github_app_authorization'); await credentials.revoke(owner.id); return undefined; };
+    const pending = revoke().then((value) => ({ value, error: null }), (error: unknown) => ({ value: undefined, error }));
+    try {
+      await waitForCredentialWait();
+      if (adverse) {
+        await new Promise((resolve) => setTimeout(resolve, 2100));
+        const result = await pending;
+        if (signed) assert.equal(result.value?.statusCode, 500, 'failed durable admission is not acknowledged');
+        else assert.equal((result.error as { cause?: { code?: string } })?.cause?.code, '55P03', 'PostgreSQL cancels before the driver deadline');
+        assert.equal(await credentials.state(owner.id), 'connected', 'failed revoke has no claimed success');
+        assert.equal((await pool.query("SELECT count(*)::int AS n FROM pg_stat_activity WHERE state='idle in transaction' AND query ILIKE '%rollback%'" )).rows[0].n, 0);
+      }
+      resume.release(); assert.equal((await read).length, 1);
+      const result = await pending;
+      if (!adverse) { assert.equal(result.error, null); if (signed) assert.equal(result.value?.statusCode, 202); }
+      const retry = await revoke(); if (signed) assert.equal(retry?.statusCode, 202);
+      assert.equal(await credentials.state(owner.id), 'required'); assert.equal((await githubRows(db).binding(binding.id))?.state, 'revoked');
+      await rejected(credentials.token(owner.id), 'GITHUB_AUTHORIZATION_REQUIRED'); assert.equal((await pool.query('SELECT 1 AS ok')).rows[0].ok, 1);
+    } finally { resume.release(); await app.close(); }
+  }
 });
 test('provider transport fixes origins, rejects redirects, bounds bodies and suppresses private provider errors', async () => {
   const paths: string[] = [];

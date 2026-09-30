@@ -11,6 +11,8 @@ import { seal, unseal } from './crypto.js';
 const stateHash = (state: string) => createHash('sha256').update(state).digest('hex');
 export function githubOauth(db: Database, config: GithubConfig, credentials: GithubCredentials, transport: GithubTransport) {
   const flows = schema.githubOauthFlows;
+  const envelope = (session: SessionContext, projectId: string, purpose: string, flowId: string) =>
+    JSON.stringify(['github-flow:v2', 'github.com', config.appId, config.clientId, config.publicOrigin, session.principal.id, session.sessionId, projectId, purpose, flowId]);
   async function guarded(tx: Parameters<Parameters<Database['transaction']>[0]>[0], session: SessionContext, projectId: string, purpose: 'authorize' | 'install') {
     const [active] = await tx.select({ id: schema.authSessions.id }).from(schema.authSessions).where(and(eq(schema.authSessions.id, session.sessionId),
       eq(schema.authSessions.userId, session.principal.id), gt(schema.authSessions.expiresAt, new Date()))).for('share');
@@ -26,7 +28,7 @@ export function githubOauth(db: Database, config: GithubConfig, credentials: Git
         const project = await guarded(tx, session, projectId, purpose);
         await tx.insert(flows).values({ stateHash: stateHash(state), id: flowId, userId: session.principal.id, sessionId: session.sessionId,
           workspaceId: project.workspaceId, projectId, purpose, expiresAt: new Date(Date.now() + 600_000),
-          encryptedVerifier: purpose === 'authorize' ? seal(config.encryptionKey, verifier, `github-flow:${session.principal.id}:${flowId}`) : null });
+          encryptedVerifier: purpose === 'authorize' ? seal(config.encryptionKey, verifier, envelope(session, projectId, purpose, flowId)) : null });
       });
       const url = new URL(purpose === 'install' ? `https://github.com/apps/${config.appSlug}/installations/new` : 'https://github.com/login/oauth/authorize');
       url.searchParams.set('state', state);
@@ -48,7 +50,9 @@ export function githubOauth(db: Database, config: GithubConfig, credentials: Git
       }); // one-use fence commits before sending the external authorization code
       if (flow.purpose === 'authorize') {
         if (!query.code || query.code.length > 1000 || !flow.encryptedVerifier) throw new InvalidInputError('Authorization code is required', 'GITHUB_FLOW_INVALID');
-        const verifier = unseal(config.encryptionKey, flow.encryptedVerifier, `github-flow:${session.principal.id}:${flow.id}`);
+        let verifier: string;
+        try { verifier = unseal(config.encryptionKey, flow.encryptedVerifier, envelope(session, flow.projectId, flow.purpose, flow.id)); }
+        catch { throw new InvalidInputError('Authorization settings changed; start a new GitHub authorization', 'GITHUB_FLOW_INVALID'); }
         const { data } = await transport.json('https://github.com/login/oauth/access_token', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' },
           body: JSON.stringify({ client_id: config.clientId, client_secret: config.clientSecret, code: query.code,
             code_verifier: verifier, redirect_uri: `${config.publicOrigin}${GITHUB_CALLBACK_PATH}` }) });

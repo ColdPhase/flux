@@ -18,10 +18,13 @@ function bindingView(record: GithubBindingRecord): GithubBinding {
 }
 function linkView(record: GithubLinkRecord): GithubTaskLink { return { ...record, verifiedAt: record.verifiedAt.toISOString() }; }
 async function current(ports: GithubPorts, principal: Principal, record: GithubBindingRecord) {
+  if (record.state !== 'active') throw new ServiceUnavailableError('Repository integration is unavailable', 'GITHUB_BINDING_UNAVAILABLE');
+  // The production provider pins current credentials before taking any binding lock.
+  const proof = await ports.provider.repository(principal, record.installationId, record.repositoryId);
   const locked = await ports.rows.binding(record.id, true);
   if (!locked || locked.state !== 'active') throw new ServiceUnavailableError('Repository integration is unavailable', 'GITHUB_BINDING_UNAVAILABLE');
-  const proof = await ports.provider.repository(principal, record.installationId, record.repositoryId);
-  if (proof.repositoryId !== record.repositoryId || proof.installationId !== record.installationId || proof.appId !== record.appId)
+  if (proof.repositoryId !== locked.repositoryId || proof.installationId !== locked.installationId || proof.appId !== locked.appId
+    || locked.authorizationGeneration !== record.authorizationGeneration || locked.authorUserId !== record.authorUserId)
     throw new NotFoundError('Repository', 'GITHUB_REPOSITORY_NOT_FOUND');
   return proof;
 }
@@ -65,7 +68,7 @@ export function githubUseCases(uow: GithubUnitOfWork) {
         const work = await ports.rows.task(task);
         if (!work) throw new NotFoundError('Work item');
         await ports.access.requireProject(principal, 'write', work.projectId);
-        const binding = await ports.rows.binding(target, true);
+        const binding = await ports.rows.binding(target);
         if (!binding || binding.projectId !== work.projectId || binding.workspaceId !== work.workspaceId) throw new NotFoundError('Binding');
         const repository = await current(ports, principal, binding);
         const facts = await ports.provider.pull(principal, repository, input.number);
@@ -139,11 +142,11 @@ export function githubUseCases(uow: GithubUnitOfWork) {
         if (!located?.authorUserId) throw new ServiceUnavailableError('Binding authorization is unavailable', 'GITHUB_BINDING_UNAVAILABLE');
         const principal: Principal = { kind: 'human', id: located.authorUserId };
         await ports.access.requireProject(principal, 'read', located.projectId);
-        const binding = await ports.rows.binding(bindingId, true);
+        const binding = await ports.rows.binding(bindingId);
         if (!binding) throw new NotFoundError('Binding');
+        const proof = await current(ports, principal, binding);
         const pending = await ports.rows.processing(deliveryId, bindingId);
         if (pending !== 'pending') return 'already_completed';
-        const proof = await current(ports, principal, binding);
         if (proof.authorizationGeneration !== binding.authorizationGeneration || proof.githubUserId !== binding.authorGithubUserId)
           throw new ServiceUnavailableError('Reauthorize this binding before background reconciliation', 'GITHUB_AUTHORIZATION_CHANGED');
         const delivery = await ports.rows.delivery(deliveryId);

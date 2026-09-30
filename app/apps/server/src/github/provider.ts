@@ -1,5 +1,5 @@
 import type { GithubCheck, GithubPullFacts, GithubRepository, GithubReview } from '@flux/contracts';
-import { githubId, NotFoundError, ServiceUnavailableError, type GithubProvider, type Principal } from '@flux/core';
+import { githubId, NotFoundError, ServiceUnavailableError, type Database, type GithubProvider, type Principal } from '@flux/core';
 import type { GithubCredentials } from './credentials.js';
 import type { GithubConfig } from './config.js';
 import { apiHeaders, providerDate, providerText, type GithubTransport, type ProviderJson } from './http.js';
@@ -21,7 +21,8 @@ function sha(value: unknown) {
   if (!/^[a-f0-9]{40}([a-f0-9]{24})?$/.test(text)) throw new ServiceUnavailableError('GitHub returned an invalid commit', 'GITHUB_INVALID_RESPONSE');
   return text;
 }
-export function githubProvider(credentials: GithubCredentials, config: GithubConfig, transport: GithubTransport): GithubProvider & {
+export function githubProvider(credentials: Pick<GithubCredentials, 'token'> & Partial<Pick<GithubCredentials, 'forTransaction'>>, config: GithubConfig, transport: GithubTransport): GithubProvider & {
+  inTransaction(tx: Database): GithubProvider;
   installations(principal: Principal): Promise<{ id: string; account: string }[]>;
   repositories(principal: Principal, installationId: string, page?: number): Promise<{ items: GithubRepository[]; more: boolean }>;
 } {
@@ -63,6 +64,7 @@ export function githubProvider(credentials: GithubCredentials, config: GithubCon
     return { items, more: truncated };
   }
   return {
+    inTransaction: (tx) => githubProvider(credentials.forTransaction?.(tx) ?? credentials, config, transport),
     installations, repositories,
     async repository(principal, installationId, repositoryId) {
       const selected = githubId(repositoryId);
