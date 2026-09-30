@@ -75,8 +75,22 @@ test('all pages render quiet comparisons and insufficient evidence with current 
       }
       await comparison.scrollIntoViewIfNeeded();
       await page.screenshot({ path: `/state/comparison-outcomes-${viewport.width}-checked.png`, fullPage: true });
+      await insufficient.getByRole('button', { name: 'Dismiss', exact: true }).scrollIntoViewIfNeeded();
+      await page.screenshot({ path: `/state/comparison-outcomes-${viewport.width}-insufficient-footer.png`, fullPage: true });
       if (!touch) {
         await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
+        await page.waitForFunction(() => document.querySelector('.side__jump')!.getAnimations().every((animation) => animation.playState !== 'running'));
+        const contrast = await page.locator('.side__jump').evaluate((node) => {
+          const luminance = (color: string) => {
+            const channels = color.match(/[\d.]+/g)!.slice(0, 3).map((value) => { const n = Number(value) / 255; return n <= 0.04045 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4; });
+            return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
+          };
+          const style = getComputedStyle(node);
+          const [a, b] = [luminance(style.color), luminance(style.backgroundColor)].sort((x, y) => y - x);
+          return (a! + 0.05) / (b! + 0.05);
+        });
+        assert.ok(contrast >= 4.5, `settled dark search text contrast is ${contrast.toFixed(2)}:1`);
+        await comparison.scrollIntoViewIfNeeded();
         await page.screenshot({ path: '/state/comparison-outcomes-1440-dark.png', fullPage: true });
         await page.evaluate(() => {
           document.documentElement.dataset.theme = 'light';
@@ -117,17 +131,26 @@ test('owner usage distinguishes known, uncertain and no-cost requests and surviv
   try {
     await login(page);
     for (const width of [1440, 390, 1024]) {
-      await page.setViewportSize({ width, height: width === 390 ? 844 : width === 1024 ? 768 : 900 });
-      await page.goto(`${origin.origin}/settings/background-compute`);
-      const usage = page.locator('.background-usage'); await usage.waitFor();
+      const usageContext = await browser.newContext({ viewport: { width, height: width === 390 ? 844 : width === 1024 ? 768 : 900 },
+        storageState: await context.storageState(), deviceScaleFactor: 1, isMobile: width === 390, hasTouch: width < 1440 });
+      const usagePage = await usageContext.newPage();
+      try {
+      await usagePage.goto(`${origin.origin}/settings/background-compute`);
+      const usage = usagePage.locator('.background-usage'); await usage.waitFor();
       assert.match(await usage.innerText(), /3 \/ 3 requests[\s\S]*\$0.15 \/ \$0.50[\s\S]*\$0.02[\s\S]*\$0.05[\s\S]*\$0.00 reserved/);
-      await usage.locator('summary').focus(); await page.keyboard.press('Enter');
+      if (width < 1440) {
+        await usage.locator('summary').tap();
+        for (const control of [usage.locator('summary'), usage.getByRole('button', { name: 'Refresh usage', exact: true })]) {
+          assert.ok((await control.boundingBox())!.height >= 44, 'owner usage controls have 44px touch height');
+        }
+      } else { await usage.locator('summary').focus(); await usagePage.keyboard.press('Enter'); }
       assert.match(await usage.innerText(), /Did not run[\s\S]*No paid request · \$0.00 usage[\s\S]*Charge uncertain[\s\S]*Up to \$0.05 possible charge/);
       assert.ok(!(await usage.innerText()).includes('sk-ant-'));
-      await usage.scrollIntoViewIfNeeded(); await page.screenshot({ path: `/state/comparison-usage-${width}-owner.png`, fullPage: true });
-      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      await usage.scrollIntoViewIfNeeded(); await usagePage.screenshot({ path: `/state/comparison-usage-${width}-owner.png`, fullPage: true });
+      assert.ok(await usagePage.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      } finally { await usageContext.close(); }
     }
-    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${origin.origin}/settings/background-compute`);
     await page.getByRole('button', { name: 'Disconnect', exact: true }).click();
     await page.getByRole('heading', { name: 'Connect your background source', exact: true }).waitFor();
     await page.getByRole('button', { name: 'Refresh usage', exact: true }).click();
