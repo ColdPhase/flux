@@ -167,7 +167,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
     const place = isId(conversationId) ? await ports.runs.locateConversation(conversationId.toLowerCase()) : null;
     if (!place) throw new NotFoundError('Conversation', 'CONVERSATION_NOT_FOUND');
     try {
-      await ports.access.requireProject(principal, 'read', place.projectId, { lock: true });
+      // The answer is posted to the conversation: like a message, it needs project write access.
+      await ports.access.requireProject(principal, 'write', place.projectId, { lock: true });
     } catch (error) {
       if (error instanceof NotFoundError) throw new NotFoundError('Conversation', 'CONVERSATION_NOT_FOUND');
       throw error;
@@ -196,7 +197,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
     if (!agentId || !(await ports.access.canInvoke(principal, agentId, { lock: true })))
       throw new ConflictError('Choose your assistant for this workspace first', 'PERSONAL_RUN_NO_AGENT');
     const agent = { kind: 'agent' as const, id: agentId };
-    if (!(await ports.access.canReadProject(agent, place.projectId, { lock: true })))
+    if (!(await ports.access.canUseProject(agent, 'read', place.projectId, { lock: true })))
       throw new ConflictError('Your assistant has no access to this project', 'PERSONAL_RUN_NO_PROJECT_ACCESS');
     // A run a crashed worker left behind must not block the owner forever (the job expires after 5 minutes).
     await ports.runs.endStale(owner, STALE_AFTER_SECONDS);

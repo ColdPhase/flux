@@ -163,6 +163,9 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
       assert.deepEqual([response.status, (response.json as { code: string }).code], [403, 'PERSONAL_RUN_NOT_OWNER'], JSON.stringify(claim));
     }
     await assert.rejects(runs.invoke(human(maurycy), thread.id, { ...body, clientRunId: randomUUID(), connectionId: hubertConnection }), { code: 'PERSONAL_RUN_NOT_OWNER' });
+    // Someone who may only read the project cannot post an answer into it, even with their own assistant.
+    const readOnly = await viewer.browser.request('POST', invokePath, { body: { ...body, clientRunId: randomUUID() } });
+    assert.deepEqual([readOnly.status, (readOnly.json as { code: string }).code], [403, 'FORBIDDEN']);
 
     const live = await StreamClient.connect(kai.browser);
     await live.ready();

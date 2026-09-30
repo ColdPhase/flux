@@ -71,8 +71,9 @@ async function recheck(ports: PersonalRunPorts, connections: PersonalConnectionL
   const connection = await connections.resolve(run.ownerUserId);
   if (!connection || connection.status !== 'active' || connection.ownerUserId !== run.ownerUserId
     || connection.id !== run.connectionId || connection.id !== enablement.connectionId) return { refusal: 'unavailable' };
-  // The sources are the intersection of the owner's rights and the agent grant in this project.
-  if (!(await ports.access.canReadProject(owner, run.projectId, { lock })) || !(await ports.access.canReadProject(agent, run.projectId, { lock })))
+  // The sources are the intersection of the owner's rights and the agent grant in this project;
+  // the answer is posted to the place, so its owner must still be able to write there.
+  if (!(await ports.access.canUseProject(owner, 'write', run.projectId, { lock })) || !(await ports.access.canUseProject(agent, 'read', run.projectId, { lock })))
     return { refusal: 'denied' };
   if (stage === 'before_dispatch') {
     const spend = await ports.runs.spendToday(run.ownerUserId, enablement.timeZone, run.id);

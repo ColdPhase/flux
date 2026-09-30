@@ -15,8 +15,8 @@ export function policyPersonalRunAccess(db: Executor): PersonalRunAccess {
       return { workspaceId: checked.project!.workspaceId, level: accessName(checked.level)! };
     },
 
-    async canReadProject(principal, projectId, options) {
-      const evaluation = await evaluateProject(principal, 'project.read', projectId, db, { lock: options?.lock });
+    async canUseProject(principal, action, projectId, options) {
+      const evaluation = await evaluateProject(principal, action === 'write' ? 'project.write' : 'project.read', projectId, db, { lock: options?.lock });
       return evaluation.visible && evaluation.allowed;
     },
 

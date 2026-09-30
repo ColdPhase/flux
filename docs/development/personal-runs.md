@@ -110,7 +110,8 @@ from the request.
 
 The invoke checks run in this order. A body that names another `ownerId`,
 `agentId` or `connectionId` gets `403 PERSONAL_RUN_NOT_OWNER`. A conversation the
-caller cannot read gets 404. Then come the idempotent replay, the caller's own
+caller cannot read gets 404. Because the answer is posted into the conversation,
+the caller needs project write access there, as for a message (403 otherwise). Then come the idempotent replay, the caller's own
 continued run (404 otherwise) and the target thought. After that the caller's own
 enablement is checked: `409 PERSONAL_RUN_NOT_ENABLED` or `409 PERSONAL_RUN_PAUSED`.
 Then the provider and connection (`503 PERSONAL_RUN_UNAVAILABLE` with `reason`),
@@ -128,7 +129,7 @@ before dispatch and inside the commit transaction:
 - `agent.invoke` for the owner;
 - the provider switch;
 - the owner's connection, which must be the one the run reserved on;
-- the owner's and the agent's current project access;
+- the owner's current write access and the agent's current read access to the project;
 - before dispatch, the cap.
 
 A refusal before dispatch ends the run as `denied`, `paused`, `revoked`,
