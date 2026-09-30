@@ -1,0 +1,93 @@
+Original tested source: 72d743dfc662473ff8446bde6e3d69e3db362148
+Original private log SHA256: 240670cd724178a478ee03981b3812d6d86e6502fbd17fc0504ddb913e9ba661
+Observed process exit: 0
+Only test names/counts/tool stages and restart/cleanup lines are published.
+
+#15 0.541 $ pnpm -r --if-present build && tsc -p tooling/tsconfig.build.json
+#15 0.646 packages/contracts build$ tsc -p tsconfig.build.json
+#15 2.668 packages/db build$ tsc -p tsconfig.build.json
+#15 2.668 packages/sdk build$ tsc -p tsconfig.build.json
+#15 5.841 packages/core build$ tsc -p tsconfig.build.json
+#15 7.959 packages/agent-runtime build$ tsc -p tsconfig.build.json
+#15 7.959 apps/server build$ tsc -p tsconfig.build.json
+#15 9.249 apps/worker build$ tsc -p tsconfig.build.json
+#15 13.05 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#15 23.71 $ eslint .
+▶ architecture boundaries
+  ✔ the repository has no dependency violation outside the recorded allowlist (28.202711ms)
+  ✔ every allowlist entry names its tracking issue and a reason (0.360251ms)
+  ✔ the push use cases in core stay free of adapters, including through helpers (0.997132ms)
+  ✔ the sketch use cases in core stay free of adapters, including through helpers (#69) (2.107436ms)
+  ✔ the direct-message use cases in core stay free of adapters, including through helpers (#107) (0.552941ms)
+  ✔ the rules reject each kind of boundary violation (self-test) (0.471772ms)
+  ✔ the allowlist comparison reports new and fixed violations (0.190931ms)
+✔ architecture boundaries (33.907877ms)
+✔ conversation and material commits reach only current project readers through stream and replay (958.686611ms)
+▶ project capture and inline conversation
+  ✔ private draft remains private; selected redacted text becomes a versioned project material (326.558121ms)
+  ✔ two people send inline, retry safely, and keep a historical material citation (498.50481ms)
+  ✔ material publication retry and access revocation never expose cached project content (139.737998ms)
+✔ project capture and inline conversation (1254.797865ms)
+▶ project export
+  ✔ only a project manager can export; others get 403, an outsider 404 (42.754291ms)
+  ✔ the document holds the project with versions, sketches, work and links, and nothing else (120.121082ms)
+  ✔ the bundle is a tar.gz with project.json, docs as Markdown, the schema and a checked manifest (25.407893ms)
+✔ project export (1900.770605ms)
+▶ search: one query across Flux, only what you may read
+  ✔ a contributor finds every kind she may read, with places, labels and exact targets (23.760497ms)
+  ✔ a member outside the restricted project and the DM finds only the open project, and nothing hints at the rest (45.46284ms)
+  ✔ private drafts and sketches reach only their author; owners do not see other people’s private drafts or DMs they are not in (97.357117ms)
+  ✔ people are found by name by those who may read the members, and a person filters by author (42.21658ms)
+  ✔ type filters narrow results while counts cover every type (40.825217ms)
+  ✔ an edit is searchable at once, and an old material version is still found at the version it was (95.418232ms)
+  ✔ docs are found at the version that matched, as drafts or published, only by project readers (116.191741ms)
+  ✔ revoking access removes results on the very next search, and leaving a DM removes its messages (174.867888ms)
+  ✔ ranking: a title match comes before a mention in a body; typing a prefix already finds it (72.673317ms)
+  ✔ queries are data: operators, quotes and SQL never break or widen the search (141.414573ms)
+  ✔ every word of the query can find a match: long or-lists, a quoted "or", one-letter words (202.905858ms)
+  ✔ pages follow a sealed cursor: no repeats, no gaps, and a cursor works only for its reader and query (911.483377ms)
+✔ search: one query across Flux, only what you may read (2990.750269ms)
+▶ search: hidden matches never change the answer or the work
+  ✔ hundreds of hidden matches give the same results, counts, `more` and rows examined (11174.295491ms)
+✔ search: hidden matches never change the answer or the work (11174.705852ms)
+✔ actual pre-notice human rows and search provenance survive notice and agent migrations without backfill (4660.310806ms)
+✔ opening a task remains empty; simultaneous genuine authors create one exact canonical root (537.305821ms)
+✔ bounded newest/older windows retain the exact first root and never rewrite its identity (737.601791ms)
+✔ durable task retries recheck access and conflict on changed payload, task or generic thread operation (748.966574ms)
+✔ current material citations are exact; restricted or invalid first sends leave no synthetic thread (1070.098018ms)
+✔ failure after first root binding rolls back conversation, message, binding and event; exact retry creates once (1372.54046ms)
+✔ a genuine agent creates the canonical root; human and agent command identities remain distinct (1050.722203ms)
+✔ simultaneous first human/two-agent sends keep one root and kind-scoped receipts even for a colliding textual ID (1342.955985ms)
+✔ real agent history reaches bounded helper context, search, export, notifications and return summaries (1322.468697ms)
+✔ agent first-send rollback is atomic; current grant revocation blocks retries while genuine history stays readable (1027.196476ms)
+✔ co-work composition rolls back actual agent contribution before and after its final event flush (971.152817ms)
+✔ two genuine contributions defer every audience until final state and take the stream lock only during one final flush (833.565234ms)
+ℹ tests 39
+ℹ suites 5
+ℹ pass 39
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15088.16109
+▶ access and stream in Chromium against the running services
+  ✔ share to a granted member, deny a non-member, revoke and stop live events (1010.582718ms)
+✔ access and stream in Chromium against the running services (1257.140532ms)
+ℹ tests 1
+ℹ suites 1
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1675.614243
+✔ agent root renders without a human DM link, real human reply persists, and readers retain genuine history (1940.093896ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2910.675921
+Removed 3 per-run image(s) tagged :flux-test-1790808296-3863906

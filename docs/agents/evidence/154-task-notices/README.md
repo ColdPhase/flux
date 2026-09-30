@@ -1,5 +1,10 @@
 # Task creation notices — first domain slice
 
+Historical creation-only checkpoint. Later genuine human/agent roots, affected
+readers, deferred events and accepted-main layout verification are recorded in
+the [actor checkpoint](actors-and-layout/README.md); this earlier evidence keeps
+its original source and scope.
+
 Docker evidence captured on 2026-09-30 at code `30dffd7cc1761d38aece7809db9e63707071e8b7`. The later protected-main integration adds accepted CI/operator assets; the manifest pins the integrated commit and proves application/package sources, application tests, dependencies and existing infrastructure/check script unchanged. Evidence is not relabeled as a new full run.
 
 Build, type checking and lint passed. The [focused Docker log](docker-focused.log) records **23 passed, 0 failed** across task notices, work regressions, the exact migration ledger and architecture. Isolated project, ports 21863/21963, volumes and three run-tagged images were removed. Current foundation/link checks, 20 Python tests and whitespace passed after main integration.

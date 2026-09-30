@@ -94,7 +94,7 @@ fixtures and rollback/restore evidence, real authorized agent entry paths, share
 draft/root identity in the integrated #136 views and a separate neutral visual
 review. Missing file/MCP/import/shell or migration checks remain unverified.
 
-## Incremental canonical text implementation
+## Canonical text implementation and historical human checkpoint
 
 The current text slice uses `GET/POST /api/v1/work/:workId/discussion`. Its pure
 core use case checks current project access under a transaction, then the shared
@@ -105,12 +105,18 @@ conversation command receipt. The binding's composite foreign keys require the
 exact sequence-1 root in the same scoped conversation. Reads return the explicit
 root even outside the bounded newest-message window and never create content.
 
-This slice supports authenticated human text and exact material-version citations.
-Agent authors remain explicitly unsupported until all actor-aware consumers are
-implemented; no agent is represented by a human user. Attachments, blocker/result/
-handoff adapters, unused-AI undo, integrated shared drafts, real MCP clients and
-compatible migration reversal remain required. This is incremental implementation,
-not a reduction of AC-1–AC-5 or whole-task acceptance.
+The initial human checkpoint supports authenticated human text and exact
+material-version citations. Its evidence remains pinned to that historical source.
+The later actor checkpoint implements genuine trusted agent text and the affected
+conversation/list/root, helper context, Search, export, notification, Return/digest
+and browser consumers using the correlated variants below. No agent is represented
+by a human user. Actual authenticated MCP operation/grant/runtime composition and
+supported local clients remain integration requirements under #152/#153.
+
+Attachments, blocker/result/handoff adapters, unused-AI undo, integrated shared
+drafts and compatible migration reversal remain required. The current
+[source-pinned actor and layout evidence](../agents/evidence/154-task-notices/actors-and-layout/README.md)
+is incremental verification, not a reduction of AC-1–AC-5 or whole-task acceptance.
 
 ## Accepted actor compatibility delta
 

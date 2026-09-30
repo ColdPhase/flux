@@ -1,5 +1,8 @@
 # Canonical genuine task text root — 2026-09-30
 
+Historical human checkpoint. The later [actor and layout checkpoint](../actors-and-layout/README.md)
+adds genuine agent history and its affected readers without relabeling these runs.
+
 Tested accepted-main integration `e5f3ec653bdc9d0b5a80912ccc3d90b25b1dc873`, main `43b6272`. The first actual authenticated human text creates one canonical project conversation, sequence-1 message and scoped task/root binding atomically. Opening reads remain empty; bounded newest-message windows still return the exact root. Existing conversation sends share the DB append primitive. Current access and durable same-key operation/task fingerprints are rechecked before replay; UUID case variants share the retry lock.
 
 Docker build/type/lint and **31/31 focused real API/SQL/work/conversation/migration/architecture checks passed**, including concurrent two-author first sends, API/direct-core/uppercase UUID retry, generic conversation reply continuity, changed intent/task conflict, current grant revocation, bounded older windows, restricted exact material citation and injected failure after binding with complete rollback and exact retry. Initial31 pass and improved UUID-case31 pass retain separate logs.
