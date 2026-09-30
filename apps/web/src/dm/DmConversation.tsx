@@ -309,7 +309,7 @@ function DmContent({ initial }: { initial: Dm }) {
                 const mine = message.authorId === me.user.id;
                 const isPicked = selecting && picked.includes(message.id);
                 return (
-                  <li key={message.id} id={`message-${message.id}`} tabIndex={-1} className={`dm-msg${continued ? ' dm-msg--cont' : ''}${arrived === message.id ? ' is-arrived' : ''}${isPicked ? ' is-picked' : ''}`} data-sequence={message.sequence} data-message-id={message.id}>
+                  <li key={message.id} id={`message-${message.id}`} tabIndex={-1} className={`dm-msg${mine ? ' is-mine' : ''}${continued ? ' dm-msg--cont' : ''}${arrived === message.id ? ' is-arrived' : ''}${isPicked ? ' is-picked' : ''}`} data-sequence={message.sequence} data-message-id={message.id}>
                     {newDay ? <p className="dm__day"><span>{label}</span></p> : null}
                     {/* While selecting, the whole row toggles; the check is the keyboard and screen reader control. */}
                     <div className="dm-msg__row" onClick={selecting ? (event) => { if (!(event.target as HTMLElement).closest('.dm-msel')) pick(message.id); } : undefined}>

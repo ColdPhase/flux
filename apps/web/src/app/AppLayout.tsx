@@ -28,6 +28,12 @@ function lastConversationPath(projectId: string) {
   catch { return `/projects/${projectId}`; }
 }
 
+/** The Tasks view last chosen in this project (#136), e.g. `?status=blocked&show=mine`. */
+function lastTasksSearch(projectId: string) {
+  try { return sessionStorage.getItem(`flux.project-tasks.${projectId}`) ?? ''; }
+  catch { return ''; }
+}
+
 /** Tab order for the slide direction: Home's views, or a project's Conversation · Tasks · Map · Docs. */
 function viewOrder(pathname: string) {
   const inProject = pathname.match(/^\/projects\/[^/]+(?:\/(tasks|map|docs))?/);
@@ -172,7 +178,7 @@ export function AppLayout() {
   // Conversation · Tasks · Map · Docs (direction C), each a route of the project (#117).
   const projectViews = projectId ? [
     { id: 'conversation', label: 'Conversation', to: onOtherView ? lastConversationPath(projectId) : `${location.pathname}${location.search}` },
-    { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks`, ...(openWork ? { count: openWork, countLabel: `, ${openWork} open` } : {}) },
+    { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks${lastTasksSearch(projectId)}`, ...(openWork ? { count: openWork, countLabel: `, ${openWork} open` } : {}) },
     { id: 'map', label: 'Map', to: `/projects/${projectId}/map`, end: false, ...(project?.sketches?.total ? { count: project.sketches.total, countLabel: `, ${project.sketches.total} ${project.sketches.total === 1 ? 'sketch' : 'sketches'}` } : {}) },
     { id: 'docs', label: 'Docs', to: `/projects/${projectId}/docs`, end: false, ...(project?.docs?.length ? { count: project.docs.length, countLabel: `, ${project.docs.length} ${project.docs.length === 1 ? 'doc' : 'docs'}` } : {}) },
   ] : null;
