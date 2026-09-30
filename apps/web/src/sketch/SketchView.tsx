@@ -170,6 +170,19 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arrivedThought, sketch]);
 
+  // A live fragment can select several thoughts, including ones inside collapsed branches.
+  // Handle the arrival once: later deliberate collapsing must not be undone by graph updates.
+  const handledLiveArrival = useRef<string | null>(null);
+  useEffect(() => {
+    if (!liveSelect || !sketch || handledLiveArrival.current === location.key) return;
+    handledLiveArrival.current = location.key;
+    const ids = liveSelect.filter((id) => sketch.thoughts.some((thought) => thought.id === id));
+    for (const id of ids) personalOutline.reveal(id);
+    if (ids[0]) focusThought(`.sk-node[data-id="${ids[0]}"], .sk-li-t[data-id="${ids[0]}"]`);
+    // The outline is deliberately read only for this arrival, not every subsequent update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveSelect, sketch, location.key]);
+
   const escape = () => {
     if (connectFrom) { setConnectFrom(null); say('Connect cancelled'); return true; }
     if (selection.length) { setSelection([]); say(''); return true; }

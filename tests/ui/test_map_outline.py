@@ -285,6 +285,21 @@ class MapOutlineJourney(unittest.TestCase):
         expect(page.locator(f'.sk-node[data-id="{self.thoughts[4]}"]')).to_have_attribute("aria-pressed", "true")
         page.get_by_role("radio", name="List", exact=True).click()
         self.assertEqual(self.row(page, 4).get_attribute("data-depth"), "4")
+        # Exercise the real router arrival contract used by LiveProvider without a fake SFU.
+        # Media/session transport remains the separate opt-in live profile's responsibility.
+        self.row(page, 0).get_by_role("button", name=re.compile("^Collapse ")).click()
+        self.row(page, 5).get_by_role("button", name=re.compile("^Collapse ")).click()
+        page.evaluate("""ids => {
+            history.pushState({usr: {liveSelect: ids, liveFollow: true}, key: 'outline-live-arrival', idx: (history.state?.idx ?? 0) + 1}, '', location.pathname);
+            dispatchEvent(new PopStateEvent('popstate'));
+        }""", [self.thoughts[4], self.thoughts[6], "00000000-0000-4000-8000-000000000000"])
+        expect(self.title(page, 4)).to_be_focused()
+        expect(self.title(page, 4)).to_have_attribute("aria-pressed", "true")
+        expect(self.title(page, 6)).to_have_attribute("aria-pressed", "true")
+        expect(page.locator('.sk-li-t[aria-pressed="true"]')).to_have_count(2)
+        self.row(page, 0).get_by_role("button", name=re.compile("^Collapse ")).click()
+        expect(self.title(page, 4)).to_have_count(0)
+        self.row(page, 0).get_by_role("button", name=re.compile("^Expand ")).click()
         self.assertEqual(self.stored(page), before)
         self.save(page)
 
