@@ -3,12 +3,18 @@ import { Link, useFetcher } from 'react-router';
 import { Avatar, Icon, Spinner, duration, play, trapTab, useToast } from '../ui';
 import type { FormResult } from '../auth/logic';
 import { NotificationsButton } from '../pwa';
-import { setTheme, useTheme, type ThemeChoice } from './theme';
+import { setAccent, setTheme, useAccent, useTheme, type AccentChoice, type ThemeChoice } from './theme';
 
 const THEMES: { id: ThemeChoice; label: string; icon: 'monitor' | 'sun' | 'moon' }[] = [
   { id: 'system', label: 'System', icon: 'monitor' },
   { id: 'light', label: 'Light', icon: 'sun' },
   { id: 'dark', label: 'Dark', icon: 'moon' },
+];
+
+const ACCENTS: { id: AccentChoice; label: string }[] = [
+  { id: 'mint', label: 'Mint' },
+  { id: 'iris', label: 'Iris' },
+  { id: 'sky', label: 'Sky' },
 ];
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -28,6 +34,7 @@ export function UserMenu({ name, email, sessionExpiresAt }: { name: string; emai
   const popRef = useRef<HTMLDivElement>(null);
   const popId = useId();
   const theme = useTheme();
+  const accent = useAccent();
   const fetcher = useFetcher<FormResult>();
   const toast = useToast();
   const signingOut = fetcher.state !== 'idle';
@@ -68,6 +75,16 @@ export function UserMenu({ name, email, sessionExpiresAt }: { name: string; emai
     requestAnimationFrame(() => popRef.current?.querySelector<HTMLElement>(`[data-theme-option="${next.id}"]`)?.focus());
   };
 
+  const onAccentKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    const index = ACCENTS.findIndex((item) => item.id === accent);
+    const delta = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0;
+    if (!delta && event.key !== 'Home' && event.key !== 'End') return;
+    event.preventDefault();
+    const next = ACCENTS[event.key === 'Home' ? 0 : event.key === 'End' ? ACCENTS.length - 1 : (index + delta + ACCENTS.length) % ACCENTS.length]!;
+    setAccent(next.id);
+    requestAnimationFrame(() => popRef.current?.querySelector<HTMLElement>(`[data-accent-option="${next.id}"]`)?.focus());
+  };
+
   return (
     <div className="me">
       {open ? (
@@ -88,6 +105,18 @@ export function UserMenu({ name, email, sessionExpiresAt }: { name: string; emai
                 <button key={item.id} type="button" role="radio" className="seg__b" data-theme-option={item.id}
                   aria-checked={theme === item.id} tabIndex={theme === item.id ? 0 : -1} onClick={() => setTheme(item.id)}>
                   <Icon name={item.icon} size={14} />{item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="me__sec">
+            <span className="me__label" id={`${popId}-accent`}>Accent</span>
+            <div className="me-accent" role="radiogroup" aria-labelledby={`${popId}-accent`} onKeyDown={onAccentKey}>
+              {ACCENTS.map((item) => (
+                <button key={item.id} type="button" role="radio" className="me-accent__option" data-accent-option={item.id}
+                  aria-checked={accent === item.id} tabIndex={accent === item.id ? 0 : -1} onClick={() => setAccent(item.id)}>
+                  <span className="me-accent__sample" aria-hidden="true" />{item.label}
+                  <Icon name="check" size={12} className="me-accent__check" />
                 </button>
               ))}
             </div>
