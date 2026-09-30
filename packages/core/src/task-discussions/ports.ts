@@ -45,13 +45,20 @@ export interface TaskDiscussionRepository {
   append(conversation: Pick<DiscussionConversation, 'id' | 'workspaceId' | 'projectId'>, author: ActorRef, input: NewDiscussionMessage): Promise<DiscussionMessage>;
   bind(input: DiscussionBinding & { workspaceId: string; projectId: string }): Promise<void>;
 }
+export interface TaskDiscussionEventIntent {
+  readonly principal: Readonly<Principal>;
+  readonly workspaceId: string;
+  readonly kind: 'project.conversation_created.v1' | 'project.message_sent.v1';
+  readonly objectId: string;
+  readonly data: Readonly<{ conversationId: string; messageId: string; workId: string; rootMessageId: string }>;
+}
 export interface TaskDiscussionPorts {
   access: WorkAccess;
   work: Pick<WorkRepository, 'locate' | 'findWork' | 'names'>;
   discussion: TaskDiscussionRepository;
   events: {
-    record(principal: Principal, workspaceId: string, kind: 'project.conversation_created.v1' | 'project.message_sent.v1',
-      projectId: string, data: Record<string, unknown>): Promise<void>;
+    record(principal: Principal, workspaceId: string, kind: TaskDiscussionEventIntent['kind'],
+      projectId: string, data: TaskDiscussionEventIntent['data']): Promise<void>;
   };
 }
 export interface TaskDiscussionUnitOfWork {

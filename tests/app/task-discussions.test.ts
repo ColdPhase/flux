@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
-import { createDatabase, notificationFactRows, personalRunRows, projectExportRows } from '@flux/db';
+import { and, eq, sql } from 'drizzle-orm';
+import { createDatabase, notificationFactRows, personalRunRows, projectExportRows, schema } from '@flux/db';
 import { candidatesFor, ConflictError, createTaskDiscussionUseCases, NotFoundError } from '@flux/core';
 import type { GeneratorEvent } from '@flux/core';
 import { projectExportPath, type Conversation, type ConversationMessage, type Material, type Page,
@@ -309,7 +310,7 @@ test('agent first-send rollback is atomic; current grant revocation blocks retri
   assert.deepEqual(await f.counts(), { bindings: 1, messages: 1, conversations: 1, events: before.events + 2 });
 });
 
-test('co-work composition rolls back actual agent contribution and event if the outer control resolution fails', async () => {
+test('co-work composition rolls back actual agent contribution before and after its final event flush', async () => {
   const f = await scene();
   const { principal } = await agentIn(f);
   const before = await f.counts();
@@ -318,16 +319,91 @@ test('co-work composition rolls back actual agent contribution and event if the 
     (SELECT count(*)::int FROM outbox o JOIN events e ON e.id=o.event_id WHERE e.object_id=$1) AS outbox`, [f.place.id])).rows[0];
   const relatedBefore = await related();
   const command = { body: 'Actual checkpoint contribution.', clientMessageId: randomUUID() };
-  await assert.rejects(db.transaction(async (tx) => {
-    const contribution = await taskDiscussionInTransaction(tx).contribute(principal, f.task.id, command);
-    assert.equal(contribution.authorId, null);
-    // Simulates the later153 resolution failure; actual request/lease integration is separate.
-    throw new Error('outer control resolution failed after domain event');
-  }), /outer control resolution failed/);
-  assert.deepEqual(await f.counts(), before);
-  assert.deepEqual(await related(), relatedBefore);
-  assert.equal((await f.read()).root, null);
-  const sent = await db.transaction((tx) => taskDiscussionInTransaction(tx).contribute(principal, f.task.id, command));
+  for (const phase of ['before', 'after']) {
+    await assert.rejects(db.transaction(async (tx) => {
+      const session = taskDiscussionInTransaction(tx);
+      const contribution = await session.contribute(principal, f.task.id, command);
+      assert.equal(contribution.authorId, null);
+      assert.equal(session.eventIntents[0]!.data.messageId, contribution.id);
+      if (phase === 'after') await session.flushEvents();
+      // Actual153 durable request/receipt/lease integration remains separate.
+      throw new Error(`outer control resolution failed ${phase} final events`);
+    }), /outer control resolution failed/);
+    assert.deepEqual(await f.counts(), before);
+    assert.deepEqual(await related(), relatedBefore);
+    assert.equal((await f.read()).root, null);
+  }
+  const sent = await db.transaction(async (tx) => {
+    const session = taskDiscussionInTransaction(tx);
+    const contribution = await session.contribute(principal, f.task.id, command);
+    await session.flushEvents();
+    return contribution;
+  });
   assert.deepEqual(await taskDiscussionUseCases(db).contribute(principal, f.task.id, command), sent);
   assert.deepEqual(await f.counts(), { bindings: 1, messages: 1, conversations: 1, events: before.events + 1 });
+});
+
+test('two genuine contributions defer every audience until final state and take the stream lock only during one final flush', async () => {
+  const f = await scene();
+  const { principal } = await agentIn(f);
+  const before = await f.counts();
+  const commands = [
+    { body: 'The first actual checkpoint.', clientMessageId: randomUUID() },
+    { body: 'The second actual checkpoint.', clientMessageId: randomUUID() },
+  ];
+  const sent = await db.transaction(async (tx) => {
+    let eventInsertStarted = false;
+    // Use the real transaction, but fail if any audience SELECT follows the first event.
+    const checked = new Proxy(tx, { get(target, property) {
+      if (property === 'select' || property === 'selectDistinct') return (...args: unknown[]) => {
+        assert.equal(eventInsertStarted, false, 'all policy/audience reads precede the first event insert');
+        return Reflect.apply(Reflect.get(target, property), target, args);
+      };
+      if (property === 'insert') return (table: unknown) => {
+        if (table === schema.events) eventInsertStarted = true;
+        return Reflect.apply(target.insert, target, [table]);
+      };
+      const value: unknown = Reflect.get(target, property);
+      return typeof value === 'function' ? value.bind(target) : value;
+    } });
+    const session = taskDiscussionInTransaction(checked);
+    const first = session.contribute(principal, f.task.id, commands[0]!);
+    assert.throws(() => session.flushEvents(), /Await all task discussion commands/);
+    const root = await first;
+    const reply = await session.contribute(principal, f.task.id, commands[1]!);
+    const intents = session.eventIntents;
+    assert.deepEqual(intents.map((intent) => intent.data.messageId), [root.id, reply.id]);
+    assert.ok(Object.isFrozen(intents) && intents.every((intent) => Object.isFrozen(intent)
+      && Object.isFrozen(intent.principal) && Object.isFrozen(intent.data)));
+    const staged = await tx.execute(sql`SELECT
+      (SELECT count(*)::int FROM events WHERE object_id=${f.place.id}) AS events,
+      EXISTS(SELECT 1 FROM pg_locks WHERE locktype='advisory' AND pid=pg_backend_pid()
+        AND classid=((hashtext('flux.events.seq')::bigint >> 32) & 4294967295)::oid
+        AND objid=(hashtext('flux.events.seq')::bigint & 4294967295)::oid AND objsubid=1) AS stream_lock`);
+    assert.deepEqual(staged.rows[0], { events: before.events, stream_lock: false });
+    // A caller-owned authorization change/coordination write precedes the event phase.
+    await tx.delete(schema.projectGrants).where(and(eq(schema.projectGrants.projectId, f.place.id),
+      eq(schema.projectGrants.userId, f.reader.id)));
+    const flush = session.flushEvents();
+    assert.equal(session.flushEvents(), flush);
+    const eventIds = await flush;
+    assert.equal(eventIds.length, 2);
+    assert.equal(eventInsertStarted, true);
+    await assert.rejects(session.contribute(principal, f.task.id, commands[0]!), /session is closed/);
+    await assert.rejects(session.getDiscussion(principal, f.task.id), /session is closed/);
+    return { root, reply, eventIds };
+  });
+  assert.deepEqual([sent.root.sequence, sent.reply.sequence], [1, 2]);
+  const audiences = (await pool.query('SELECT event_id,recipient FROM event_audience WHERE event_id=ANY($1::uuid[])', [sent.eventIds])).rows;
+  for (const eventId of sent.eventIds) {
+    assert.ok(audiences.some((row) => row.event_id === eventId && row.recipient === `human:${f.owner.id}`));
+    assert.equal(audiences.some((row) => row.event_id === eventId && row.recipient === `human:${f.reader.id}`), false);
+  }
+  await db.transaction(async (tx) => {
+    const session = taskDiscussionInTransaction(tx);
+    assert.deepEqual(await session.contribute(principal, f.task.id, commands[0]!), sent.root);
+    assert.deepEqual(session.eventIntents, []);
+    assert.deepEqual(await session.flushEvents(), []);
+  });
+  assert.deepEqual(await f.counts(), { bindings: 1, messages: 2, conversations: 1, events: before.events + 2 });
 });
