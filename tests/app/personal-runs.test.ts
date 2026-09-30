@@ -365,9 +365,9 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     assert.deepEqual([limitedRow.status, limitedRow.cost_state, limitedRow.charged_micros, limitedRow.answer_body], ['provider_failed', 'unknown', 0, null]);
     assert.ok(limitedRow.reserved_micros > 0, 'the reservation is kept, not released');
     compute.respond = echo;
-    const again = await runs.retry(human(hubert), limited.run.id, { clientRunId: randomUUID() });
-    assert.notEqual(again.run.id, limited.run.id, 'Retry is a new run');
-    assert.equal(await processor.process(again.run.id), 'completed');
+    const retryAfterLimit = await runs.retry(human(hubert), limited.run.id, { clientRunId: randomUUID() });
+    assert.notEqual(retryAfterLimit.run.id, limited.run.id, 'Retry is a new run');
+    assert.equal(await processor.process(retryAfterLimit.run.id), 'completed');
 
     // A run a crashed worker left dispatching does not block the owner forever; its reservation stays counted.
     const stuck = await ask(hubert);
