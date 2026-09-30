@@ -117,7 +117,7 @@ checks. New JWTs match the AS-owned `client_id` to their durable grant; a disabl
 actual OAuth client is rejected by the live reference lookup. Historic singleton
 rows remain stored, but new authorization requests never consult them.
 
-`patches/oauth-provider-1.7.6-flux-refresh.patch` is applied by the locked pnpm
+`app/patches/oauth-provider-1.7.6-flux-refresh.patch` is applied by the locked pnpm
 configuration to the exact pinned provider artifact. It restricts replay cleanup
 to `authorizationCodeId`; a legacy row without that lineage can invalidate only
 itself. It also checks current connection authority before serving a cached
@@ -163,3 +163,12 @@ filter before ranking/snippets/counts. Text pages declare total coverage and
 require the original source version for continuation; map pages require their
 updatedAt checkpoint. This extension does not enable domain writes or establish
 real-client activation.
+
+### Current grant/ledger checkpoint (2026-10-01)
+
+The source checkpoint at `606c97c66d6077625d8472b2c1f8e16edc9390de` now implements
+owner standing-grant API, authenticated runtime and the caller-owned atomic
+execution/receipt port, with explicit third-scope consent. [Exact execution
+evidence](execution-checkpoint.md) records 32 focused and 347 full Docker checks,
+fresh third-scope browser evidence and the still-disabled native action tools.
+Historical consent/read checkpoints above retain their original evidence limits.
