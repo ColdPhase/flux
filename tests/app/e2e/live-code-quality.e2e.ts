@@ -196,6 +196,13 @@ test('code-1440p: two then four authorized peers receive scrolling 14/16px text 
       await pages[0]!.setViewportSize({ width: 2560, height: 1440 });
       const sourceRequestedUtcMs = Date.now();
       const sources = [await source(pages[0]!, 1, true)]; report.sources = sources;
+      await pages[0]!.evaluate(async () => {
+        const context = new AudioContext(); await context.resume();
+        const oscillator = context.createOscillator(), output = context.createMediaStreamDestination();
+        oscillator.frequency.value = 440; oscillator.connect(output); oscillator.start();
+        await (window as unknown as CodeWindow).fluxRoom.localParticipant.publishTrack(output.stream.getAudioTracks()[0]!,
+          { name: 'generated-tone-not-speech', source: 'microphone' });
+      });
       assert.equal(sources[0]!.readyState, 'live');
       await pages[0]!.screenshot({ path: '/artifacts/code-source-display.png' });
       const publishedAt = Date.now();
@@ -303,6 +310,10 @@ test('code-1440p: two then four authorized peers receive scrolling 14/16px text 
       await table.waitFor();
       await app.waitForFunction(() => [...document.querySelectorAll('.lv-diag__row')].some((row) =>
         row.textContent?.includes('Screen') && /\d+\.\d+ fps/.test(row.textContent)), undefined, { timeout: 15_000 });
+      await app.waitForFunction(() => [...document.querySelectorAll('.lv-diag__row')].some((row) =>
+        row.querySelector('.lv-diag__what')?.textContent === 'Voice' &&
+        /\d+\.\d+ % lost/.test(row.querySelector('.lv-diag__v')?.textContent ?? '') &&
+        !row.querySelector('.lv-diag__warn')), undefined, { timeout: 15_000 });
       const rows = await table.getByRole('row').allTextContents();
       assert.ok(rows.some((row) => row.includes('2560×1440') && /\d+\.\d+ fps/.test(row)));
       assert.ok(rows.every((row) => !/-\d+(?:\.\d+)? (fps|kbit\/s)/.test(row)));

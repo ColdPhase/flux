@@ -2,8 +2,8 @@ import {
   ConnectionQuality, DisconnectReason, LocalAudioTrack, createLocalAudioTrack, createLocalScreenTracks, createLocalVideoTrack, type LocalTrack, LocalVideoTrack, RemoteAudioTrack, RemoteVideoTrack, Room, RoomEvent, Track,
   type LocalTrackPublication, type Participant, type RemoteTrack, type RemoteTrackPublication, type TrackPublication,
 } from 'livekit-client';
-import { canPublishScreen } from './capture';
-import { measurement as fmt, TrackDiagnostics } from './diagnostics';
+import { canPublishScreen } from './capture.js';
+import { measurement as fmt, receiverReport, TrackDiagnostics } from './diagnostics.js';
 
 /**
  * The browser side of the self-hosted media connection (#59 §6). This is the only module
@@ -321,6 +321,7 @@ export class LiveMediaConnection {
   async diagnostics(names: (userId: string) => string): Promise<DiagnosticRow[]> {
     const rows: DiagnosticRow[] = [];
     const now = performance.now();
+    const version = this.trackDiagnostics.version;
     const keys = new Set<string>();
     rows.push({ who: 'Connection', what: this.connection === 'connected' ? 'Connected' : this.connection, values: [`${this.snapshot.people.length || 1} ${this.snapshot.people.length === 1 ? 'person' : 'people'} in the room`], warning: this.connection === 'reconnecting' ? 'Reconnecting to the media server' : null });
     const local = this.room.localParticipant;
@@ -329,6 +330,7 @@ export class LiveMediaConnection {
       const track = publication.track;
       if (track instanceof LocalVideoTrack) {
         const [stats] = await track.getSenderStats().catch(() => []);
+        if (version !== this.trackDiagnostics.version) return [];
         const key = `out:${publication.trackSid}`;
         const kbps = this.trackDiagnostics.sender(key, stats?.bytesSent, now);
         rows.push({
@@ -338,6 +340,7 @@ export class LiveMediaConnection {
         });
       } else if (track instanceof LocalAudioTrack) {
         const stats = await track.getSenderStats().catch(() => undefined);
+        if (version !== this.trackDiagnostics.version) return [];
         const kbps = this.trackDiagnostics.sender(`out:${publication.trackSid}`, stats?.bytesSent, now);
         rows.push({ who: 'You', what: publication.isMuted ? 'Microphone muted' : 'Sending voice', values: [fmt(kbps, 'kbit/s'), fmt(stats?.roundTripTime !== undefined ? stats.roundTripTime * 1000 : null, 'ms RTT'), fmt(stats?.packetsLost, 'lost total')], warning: null });
       }
@@ -350,14 +353,18 @@ export class LiveMediaConnection {
         keys.add(`in:${publication.trackSid}`);
         const track = publication.track;
         if (track instanceof RemoteVideoTrack) {
-          const stats = await track.getReceiverStats().catch(() => undefined);
-          const measured = this.trackDiagnostics.receiver(`in:${publication.trackSid}`, 'video', stats, now,
-            !publication.isMuted && track.streamState !== 'paused', stats?.mimeType?.replace('video/', ''));
+          const raw = await track.getRTCStatsReport().catch(() => undefined);
+          if (version !== this.trackDiagnostics.version) return [];
+          const stats = receiverReport(raw, 'video', track.mediaStreamTrack.id);
+          const measured = this.trackDiagnostics.receiver(`in:${publication.trackSid}`, 'video', stats?.record, now,
+            !publication.isMuted && track.streamState !== 'paused', stats?.codec);
           rows.push({ who, what: publication.source === Track.Source.ScreenShare ? 'Screen' : 'Camera',
             values: measured.values, warning: measured.warning });
         } else if (track instanceof RemoteAudioTrack) {
-          const stats = await track.getReceiverStats().catch(() => undefined);
-          const measured = this.trackDiagnostics.receiver(`in:${publication.trackSid}`, 'audio', stats, now,
+          const raw = await track.getRTCStatsReport().catch(() => undefined);
+          if (version !== this.trackDiagnostics.version) return [];
+          const stats = receiverReport(raw, 'audio', track.mediaStreamTrack.id);
+          const measured = this.trackDiagnostics.receiver(`in:${publication.trackSid}`, 'audio', stats?.record, now,
             this.hearing && !publication.isMuted, undefined, stats?.concealmentEvents);
           rows.push({ who, what: this.hearing ? 'Voice' : 'Voice (paused while quiet)',
             values: measured.values, warning: measured.warning });

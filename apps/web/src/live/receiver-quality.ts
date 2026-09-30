@@ -139,7 +139,7 @@ export function assessReceiverQuality(sample: ReceiverSample, expectedKinds: Arr
       flag(`Network round trip ${Math.round(sample.rttMs)} ms`, 'warning');
   }
   for (const track of sample.tracks) {
-    if (track.lossPercent === undefined || (track.kind === 'video' && track.fps === undefined) ||
+    if (track.lossPercent === undefined || track.bitrateKbps === undefined || (track.kind === 'video' && track.fps === undefined) ||
       (track.kind === 'audio' && track.jitterMs === undefined)) unverified = true;
     if (track.lossPercent !== undefined) {
       if (track.lossPercent > RECEIVER_QUALITY_LIMITS.packetLossPoorPercent)

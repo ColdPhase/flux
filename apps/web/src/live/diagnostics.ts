@@ -10,9 +10,11 @@ export function measurement(value: number | undefined | null, unit: string, digi
 export class TrackDiagnostics {
   private previous = new Map<string, { at: number; record?: RtcStatsRecord }>();
   private sent = new Map<string, { at: number; bytes?: number }>();
+  private epoch = 0;
+  get version(): number { return this.epoch; }
 
-  clear(): void { this.previous.clear(); this.sent.clear(); }
-  forget(sid: string): void { this.previous.delete(`in:${sid}`); this.sent.delete(`out:${sid}`); }
+  clear(): void { this.epoch++; this.previous.clear(); this.sent.clear(); }
+  forget(sid: string): void { this.epoch++; this.previous.delete(`in:${sid}`); this.sent.delete(`out:${sid}`); }
   retain(keys: Set<string>): void {
     for (const key of this.previous.keys()) if (!keys.has(key)) this.previous.delete(key);
     for (const key of this.sent.keys()) if (!keys.has(key)) this.sent.delete(key);
@@ -26,10 +28,10 @@ export class TrackDiagnostics {
     return (bytes - before.bytes) * 8 / (at - before.at);
   }
 
-  receiver(key: string, kind: 'audio' | 'video', stats: Omit<RtcStatsRecord, 'id' | 'type' | 'kind'> | undefined,
+  receiver(key: string, kind: 'audio' | 'video', stats: Partial<RtcStatsRecord> | undefined,
     at: number, expected: boolean, codec?: string, concealmentEvents?: number) {
     const before = this.previous.get(key);
-    const record: RtcStatsRecord | undefined = stats ? { ...stats, id: key, type: 'inbound-rtp', kind } : undefined;
+    const record: RtcStatsRecord | undefined = stats ? { ...stats, id: stats.id ?? key, type: 'inbound-rtp', kind } : undefined;
     this.previous.set(key, { at, record });
     const intervalMs = before ? Math.max(0, at - before.at) : 0;
     const sample = readReceiverSample(record ? [record] : [], before?.record ? [before.record] : [], intervalMs);
@@ -47,4 +49,22 @@ export class TrackDiagnostics {
       (quality.status === 'unknown' ? 'Receiver measurements unavailable; waiting for a valid interval' : null);
     return { values, warning, sample, quality };
   }
+}
+
+/** Read the actual RTCRtpReceiver report. The locked SDK's audio summary omits
+ * packet counters. Choose only this track's inbound stream; ambiguity is unknown. */
+export function receiverReport(report: RTCStatsReport | undefined, kind: 'audio' | 'video', trackId: string) {
+  if (!report) return;
+  const inbound = [...report.values()].filter((s) => s.type === 'inbound-rtp' &&
+    (s.kind === kind || s.mediaType === kind));
+  const matching = inbound.filter((s) => s.trackIdentifier === trackId);
+  const stats = matching.length === 1 ? matching[0] : inbound.length === 1 &&
+    (!inbound[0]!.trackIdentifier || inbound[0]!.trackIdentifier === trackId) ? inbound[0] : undefined;
+  if (!stats) return;
+  const record: RtcStatsRecord = { id: stats.id, type: 'inbound-rtp', kind,
+    bytesReceived: stats.bytesReceived, packetsReceived: stats.packetsReceived, packetsLost: stats.packetsLost,
+    framesDecoded: stats.framesDecoded, frameWidth: stats.frameWidth, frameHeight: stats.frameHeight,
+    jitter: stats.jitter };
+  return { record, codec: report.get(stats.codecId)?.mimeType?.replace('video/', ''),
+    concealmentEvents: stats.concealmentEvents };
 }

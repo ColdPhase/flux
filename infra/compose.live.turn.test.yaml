@@ -1,6 +1,15 @@
 # Local-only restrictive-client proof. Never deploy this overlay.
 services:
   livekit:
+    # Match RTC candidates and TURN allocation to the media interface. The
+    # signaling interface remains private and is not a second media candidate.
+    command:
+      - |
+        signal_ip=$$(getent hosts livekit-signal-bind | awk '{ print $$1; exit }')
+        media_ip=$$(getent hosts turn.flux.test | awk '{ print $$1; exit }')
+        test -n "$$signal_ip" && test -n "$$media_ip"
+        export LIVEKIT_CONFIG=$$(printf '%s' "$$LIVEKIT_CONFIG" | sed "s/FLUX_TEST_MEDIA_IP/$$media_ip/g")
+        exec /livekit-server --bind "$$signal_ip" --bind 127.0.0.1
     networks:
       livekit-media:
         aliases: [turn.flux.test]
@@ -23,6 +32,10 @@ services:
           tcp_port: 7881
           udp_port: 7882
           use_external_ip: false
+          node_ip: FLUX_TEST_MEDIA_IP
+          ips:
+            includes: [FLUX_TEST_MEDIA_IP/32]
+          stun_servers: [turn.flux.test:3478]
         turn:
           enabled: true
           domain: turn.flux.test
