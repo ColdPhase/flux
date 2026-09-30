@@ -106,7 +106,7 @@ test('real settings UI binds, verifies PR links and removes private projections 
   configuredFixture = true; await page.getByRole('button', { name: 'Check again', exact: true }).click();
   await page.getByRole('button', { name: 'Continue to GitHub', exact: true }).click();
   await page.getByRole('heading', { name: 'Connected repositories', exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Install App on repositories', exact: true }).click();
+  await Promise.all([page.waitForEvent('domcontentloaded'), page.getByRole('button', { name: 'Install App on repositories', exact: true }).click()]);
   await page.getByRole('button', { name: 'Choose installation', exact: true }).click();
   await page.getByLabel('Installation', { exact: true }).selectOption('555');
   const picker = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Add a repository', exact: true }) });
