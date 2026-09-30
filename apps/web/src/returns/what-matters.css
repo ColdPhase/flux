@@ -12,7 +12,7 @@
 .wm-seg__b:focus-visible, .wm-periods__b:focus-visible, .wm-link:focus-visible, .wm-quote:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 
 .wm-period { display: flex; align-items: baseline; gap: 10px; font-size: var(--fs-sm); color: var(--text-2); }
-.wm-link { min-height: 28px; padding: 0 2px; font: inherit; font-weight: 500; color: var(--accent); border-radius: var(--r-sm); }
+.wm-link { min-height: 28px; padding: 0 2px; font: inherit; font-weight: 500; color: var(--link); border-radius: var(--r-sm); }
 .wm-link:hover { text-decoration: underline; text-underline-offset: 3px; }
 .wm-periods { display: flex; flex-wrap: wrap; gap: 6px; }
 .wm-periods__b { min-height: 32px; padding: 0 12px; border-radius: 999px; font-size: var(--fs-sm); color: var(--text-2); box-shadow: inset 0 0 0 1px var(--line-strong); }
