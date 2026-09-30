@@ -47,6 +47,9 @@ services:
       - |
         media_ip=$$(getent ahostsv4 livekit | awk 'NR == 1 { print $$1 }')
         test -n "$$media_ip"
+        # Docker rewrites DNS/53 to a high resolver port before OUTPUT rules.
+        # Permit only its loopback resolver, then deny every direct media UDP path.
+        iptables -A OUTPUT -d 127.0.0.11 -p udp -j ACCEPT
         iptables -A OUTPUT -p udp ! --dport 53 -j REJECT
         iptables -A OUTPUT -p tcp --dport 7881 -j REJECT
         trap 'iptables -L OUTPUT -n -v' EXIT
