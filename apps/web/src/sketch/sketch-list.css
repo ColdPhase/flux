@@ -5,11 +5,11 @@
 .sk-outline-back:hover, .sk-outline-undo:hover { text-decoration: underline; }
 .sk-outline-list > li { position: relative; --outline-offset: calc(var(--outline-depth) * 18px); padding-inline-start: calc(8px + var(--outline-offset)); }
 .sk-outline-list > li:not([data-depth="0"])::before { content: ''; position: absolute; inset-inline-start: calc(var(--outline-offset) - 2px); top: 9px; bottom: 10px; width: 1px; background: var(--line-strong); pointer-events: none; }
-.sk-outline-list > li[data-selected="true"] { background: var(--selected-bg, var(--accent-soft)); }
+.sk-outline-list > li[data-selected="true"] { background: var(--accent-selected-bg, var(--accent-soft)); }
 .sk-outline-row { display: flex; align-items: flex-start; gap: 2px; min-width: 0; }
 .sk-outline-row > .sk-li-t { flex: 1; min-width: 0; align-items: flex-start; justify-content: space-between; padding: 5px 4px; font-weight: 500; }
 .sk-outline-row > .sk-li-edit { flex: 1; min-width: 0; }
-.sk-outline-selected { flex: none; display: inline-flex; margin-top: 3px; color: var(--selected-text, var(--accent)); }
+.sk-outline-selected { flex: none; display: inline-flex; margin-top: 3px; color: var(--accent-selected-text, var(--accent)); }
 .sk-outline-toggle, .sk-outline-leaf { display: grid; place-items: center; flex: none; width: 24px; min-height: 32px; border-radius: var(--r-sm); color: var(--text-3); }
 .sk-outline-toggle:hover { background: var(--bg-hover); color: var(--text); }
 .sk-outline-leaf::after { content: ''; width: 4px; height: 4px; border-radius: 50%; background: var(--text-3); }
@@ -27,7 +27,7 @@
 .sk-outline-actions > button:hover { background: var(--bg-hover); color: var(--text); }
 .sk-outline-grouping { display: grid; gap: 6px; max-width: 460px; padding: 10px 0 4px; font-size: var(--fs-sm); }
 .sk-outline-grouping label { display: grid; gap: 4px; font-weight: 500; color: var(--text-2); }
-.sk-outline-grouping select { width: 100%; min-width: 0; min-height: var(--ctl); border: 1px solid var(--input-border); border-radius: var(--r); padding: 0 8px; font: inherit; background: var(--bg); color: var(--text); }
+.sk-outline-grouping select { width: 100%; min-width: 0; min-height: var(--ctl); border: 1px solid var(--line-input); border-radius: var(--r); padding: 0 8px; font: inherit; background: var(--bg); color: var(--text); }
 .sk-outline-grouping select:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .sk-outline-grouping > div { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .sk-outline-hint { color: var(--text-3); }

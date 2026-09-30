@@ -8,7 +8,8 @@ import unittest
 
 from playwright.sync_api import expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, shot, start_forwarder
+from test_theme_accents import MEASURE
 
 STAMP = int(time.time() * 1000)
 PASSWORD = "keep the graph connected"
@@ -32,6 +33,7 @@ class MapOutlineJourney(unittest.TestCase):
     project_id = ""
     sketch_id = ""
     baseline = {}
+    work_baseline = {}
 
     @classmethod
     def setUpClass(cls):
@@ -97,6 +99,9 @@ class MapOutlineJourney(unittest.TestCase):
     def stored(self, page):
         return self.api(page, "GET", f"/api/v1/sketches/{self.sketch_id}")
 
+    def work(self, page):
+        return self.api(page, "GET", f"/api/v1/projects/{self.project_id}/work?limit=100")
+
     def row(self, page, index):
         return page.locator(f'.sk-outline-list > li[data-id="{self.thoughts[index]}"]')
 
@@ -152,6 +157,10 @@ class MapOutlineJourney(unittest.TestCase):
         type(self).baseline = self.stored(page)
         self.assertEqual(len(self.baseline["thoughts"]), 8)
         self.assertEqual(len(self.baseline["links"]), 10)
+        for title, indices in (("Compare sensor trace and receiver code", (2, 4)), ("Test quiet hold without recording people", (4, 6))):
+            self.api(page, "POST", f"/api/v1/projects/{self.project_id}/work", {"title": title, "sources": [{"type": "thought", "id": self.thoughts[index]} for index in indices]}, status=201)
+        type(self).work_baseline = self.work(page)
+        self.assertEqual(len(self.work_baseline["items"]), 2)
         page.reload()
         expect(self.title(page, 4)).to_be_visible()
         self.assertEqual(self.levels(page), expected)
@@ -169,13 +178,14 @@ class MapOutlineJourney(unittest.TestCase):
         expect(self.title(page, 4)).to_have_count(0)
         self.title(page, 5).click()
         before = self.stored(page)
-        self.row(page, 5).locator(".sk-outline-related").get_by_role("button", name=LABELS[4], exact=True).click()
+        self.row(page, 5).locator(".sk-outline-related").get_by_role("button", name=f"Related to “{LABELS[4]}”", exact=True).click()
         expect(self.title(page, 4)).to_be_focused()
         expect(self.title(page, 4)).to_have_attribute("aria-pressed", "true")
         page.get_by_role("button", name=f"Back to “{LABELS[5]}”", exact=True).click()
         expect(self.title(page, 5)).to_be_focused()
         expect(self.title(page, 4)).to_have_count(0)
         self.assertEqual(self.stored(page), before)
+        self.assertEqual(self.work(page), self.work_baseline, "many-to-many work links keep the exact thought IDs")
         self.row(page, 0).get_by_role("button", name=re.compile("^Expand ")).click()
         self.title(page, 0).focus()
         page.keyboard.press("ArrowDown")
@@ -212,6 +222,7 @@ class MapOutlineJourney(unittest.TestCase):
         self.assertEqual(options, [""], "descendants and unlinked thoughts cannot become parents")
         self.row(page, 0).get_by_role("button", name="Cancel", exact=True).click()
         self.assertEqual(self.stored(page), before, "grouping and its undo never write the graph")
+        self.assertEqual(self.work(page), self.work_baseline)
         self.save(page)
 
     def test_04_rename_delete_graph_undo_and_search_reveal_preserve_exact_ids(self):
@@ -291,6 +302,25 @@ class MapOutlineJourney(unittest.TestCase):
         return page
 
     def test_06_render_matched_light_dark_phone_tablet_and_enlarged_text(self):
+        measurements = []
+        for scheme in ("Light", "Dark"):
+            for family in ("Mint", "Iris", "Sky"):
+                page = self.page()
+                self.open(page)
+                page.locator(".me__btn").click()
+                pop = page.get_by_role("dialog", name="Account", exact=True)
+                pop.get_by_role("radio", name=scheme, exact=True).click()
+                pop.get_by_role("radio", name=family, exact=True).click()
+                page.keyboard.press("Escape")
+                self.title(page, 4).click()
+                for selector in ('.sk-li-t', '.sk-li-s', '.sk-outline-related button', '.sk-outline-selected', '.sk-outline-path summary'):
+                    page.wait_for_function("selector => { const node = document.querySelector(selector); if (!node) return false; for (let el = node; el; el = el.parentElement) if (Number(getComputedStyle(el).opacity) !== 1) return false; return true; }", arg=selector)
+                    measured = page.evaluate(MEASURE, {"selector": selector})
+                    measurements.append({"theme": scheme, "family": family, **measured})
+                    self.assertGreaterEqual(measured["ratio"], 4.5, f"{scheme}/{family} {selector} actual composite contrast")
+                shot(page, f"map-outline-{scheme.lower()}-{family.lower()}-desktop-1440")
+        if SHOTS:
+            (SHOTS / "map-outline-contrast.json").write_text(json.dumps(measurements, indent=2) + "\n")
         for scheme in ("light", "dark"):
             page = self.page()
             page.emulate_media(color_scheme=scheme)
@@ -311,7 +341,7 @@ class MapOutlineJourney(unittest.TestCase):
         self.open(touch)
         self.row(touch, 0).get_by_role("button", name=re.compile("^Collapse ")).tap()
         self.title(touch, 5).tap()
-        self.row(touch, 5).locator(".sk-outline-related").get_by_role("button", name=LABELS[4], exact=True).tap()
+        self.row(touch, 5).locator(".sk-outline-related").get_by_role("button", name=f"Related to “{LABELS[4]}”", exact=True).tap()
         expect(self.title(touch, 4)).to_have_attribute("aria-pressed", "true")
         touch.get_by_role("button", name=f"Back to “{LABELS[5]}”", exact=True).tap()
         expect(self.title(touch, 4)).to_have_count(0)
