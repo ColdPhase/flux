@@ -1,0 +1,27 @@
+{
+  "captured_commit": "8cff7ed999e7b8510c767e0e4e0ce88e66b87b2f",
+  "runtime_image_id": "sha256:cf2c82b3e6ecb6dbe6f70e00cacc514a54aab3894a26f6c5c19e85cae8bb7cb0",
+  "test_module": "tests/ui/test_map_outline.py",
+  "browser_result": "7 tests passed in 18.738s",
+  "screenshots": 17,
+  "files_sha256": {
+    "map-outline-contrast.json": "1de8f16d684f9110054de3c3e747135b280954b63366a1a63751e00c5e786fb0",
+    "map-outline-dark-desktop-1280.png": "edcf810cf518ef3aeba9eb76c56965844986c15d552b8e10ebe1b63b81caf4da",
+    "map-outline-dark-desktop-1440.png": "44ce05ba4056dcfe84983462a2807267685d95709749a1444b9122f6bd4769d0",
+    "map-outline-dark-iris-desktop-1440.png": "c246b8e02a6c88274a17fc439bb05c6c0255ef3b7820a862da8fe460b61b1cdf",
+    "map-outline-dark-mint-desktop-1440.png": "44ce05ba4056dcfe84983462a2807267685d95709749a1444b9122f6bd4769d0",
+    "map-outline-dark-phone-390.png": "815076b16d95b660b4af51a11d48b47772636551f5bcc01449b352782f85a4dd",
+    "map-outline-dark-phone-enlarged.png": "68ceb08898156f7d55d4869de3bfcfc704d867b31c58c558d8958fc797ce943f",
+    "map-outline-dark-sky-desktop-1440.png": "9507d2d6c9064c15e6e65fe3d24b33c8745c9dd2807959c0a018ab34929b86f3",
+    "map-outline-dark-tablet-820.png": "eff7d2d439168c8a03bbf353c065402e1070ca80c424d8870858e128fb6260d2",
+    "map-outline-light-desktop-1280.png": "895c4128c76c49bd523efaba6122efee3c59dd074df2d23a4cd0bc94b7ec34fa",
+    "map-outline-light-desktop-1440.png": "1967a062a6b203940afa43e26da5cbe2151f955aa33f8ae5819792a7d94fdebf",
+    "map-outline-light-iris-desktop-1440.png": "416c7f9fea180a6671f843fd22eaa42b305d8be24b91ed0d965228d558a7d500",
+    "map-outline-light-mint-desktop-1440.png": "1967a062a6b203940afa43e26da5cbe2151f955aa33f8ae5819792a7d94fdebf",
+    "map-outline-light-phone-390.png": "505ef9855bb1e825dc0c0783a995e9ff9c5d45a8721c4b6c7c7e688872910bd8",
+    "map-outline-light-phone-enlarged.png": "cbe8f77cb00b7d20b90f5ea79ef76735cfb2b800b8ae56d16b635e158f9f5b07",
+    "map-outline-light-sky-desktop-1440.png": "eb612987352624c0e0055715649f43930e20a14ae5a19e3ed5669bf3bb584eb3",
+    "map-outline-light-tablet-820.png": "2d873c95352321b41e410cd72d2a96de287c1d9512d1e791cf7322e5abfa39b7",
+    "map-outline-phone-related-follow-back.png": "b736500962c579b124e25b709768b79372d10741722f0409c55db7aea0df6aca"
+  }
+}
