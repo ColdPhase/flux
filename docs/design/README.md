@@ -1,26 +1,26 @@
 # Design work in Flux
 
 Read foundation sections 10, 17 D1–D4, and 21 in
-[FLUX-FOUNDATION.md](../product/FLUX-FOUNDATION.md). The current direction, tokens and components are in
-[direction.md](direction.md) (accepted O-003, variant C). Existing screens and
-third-party skills are references; their defaults do not establish Flux's style.
+[FLUX-FOUNDATION.md](../product/FLUX-FOUNDATION.md). The later **F-013 / Studio v11**
+founder direction, 2026-09-29, is now the primary visual and UX baseline:
+[current direction](direction.md), [refinement contract](studio-v11-refinement.md),
+and [preserved reference package](references/studio-v11/README.md). Compare real
+screens at the same viewport/zoom, preserve useful repository improvements and
+refine remaining friction; do not restart design exploration.
 
-The later [F-012 direction](../product/decisions.md) and [#44 scenarios](https://github.com/ColdPhase/flux/issues/44)
-make `flux-ux-v8.html` a concrete baseline for visual and interaction quality.
-Compare it at the same desktop and phone viewport/zoom as the candidate. Preserve
-useful discoverability, density and creative character while improving its weak
-points. O-003 is accepted: direction C with rail identity
-([direction.md](direction.md)); A/B are rejected. Implementation and visual
-evaluation continue within C. A compact messenger
-shell, static map or task dashboard alone cannot demonstrate the DM → sketch →
-project, map ↔ experiment/result or return-after-pivot scenarios.
+The earlier C direction remains the implementation starting point and
+[historical evidence](direction-c-2026-09-27.md). Its mandatory rail/indigo choices
+and the v8-only baseline yield to v11. A/B remain rejected. The [#44 journeys](https://github.com/ColdPhase/flux/issues/44),
+#57 personal AI, #59 live work, accepted architecture and mobile requirements
+continue to govern actual behavior. A compact messenger shell or static task
+screen alone cannot fulfill those connected creative journeys.
 
 ## Live collaboration reference
 
 The founder's [live collaboration requirements](../product/live-collaboration.md)
 add contextual human audio/video/screen sessions to existing work. The supplied
 [interactive reference and inspection](references/live/README.md) illustrate
-join, show/follow, quiet/return and durable outcomes. Preserve the accepted C/v8
+join, show/follow, quiet/return and durable outcomes. Preserve the current v11
 direction, personal-agent ownership and compact working surfaces while designing
 this capability. The reference is simulated; it is not evidence of working media.
 

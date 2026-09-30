@@ -1,0 +1,24 @@
+{
+  "date": "2026-09-29",
+  "unchanged_html": true,
+  "command": "python3 tests/run_all.py (in a disposable copy)",
+  "aggregate_exit_code": 1,
+  "core": {
+    "passed": 65,
+    "failed": 0
+  },
+  "experience": {
+    "passed": 45,
+    "failed": 0
+  },
+  "refinement": {
+    "passed": 58,
+    "failed": 1,
+    "failure": "Test 4: Początek skrótu wynika z ostatniej wizyty, nie sztywnego tygodnia; hard-coded 2026-09-28 baseline expectation failed. Cause not established."
+  },
+  "standalone_contrast": {
+    "passed": 108,
+    "failed": 0
+  },
+  "note": "The supplied historical aggregate claims 169 passes; this rerun did not reproduce that aggregate. Source tests and snapshot were not modified. No production behavior or full WCAG certification."
+}

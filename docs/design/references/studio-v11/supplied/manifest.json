@@ -1,0 +1,34 @@
+{
+  "app": "Flux Studio 11",
+  "schema": 11,
+  "html": "flux-studio-v11.html",
+  "sha256": "db9504f2fe1c0a8f467ef81a1a5234cda56244045fe73976d30a4d041bedcd89",
+  "testReport": "tests/report.json",
+  "passedScenarios": 169,
+  "failedScenarios": 0,
+  "contrastPairs": 108,
+  "realBackend": false,
+  "realAI": false,
+  "remoteMedia": false,
+  "nativeFilePersistenceVerified": false,
+  "readme": "README.md",
+  "sourceBuild": "src/build.py",
+  "projectArchiveFormat": "flux.workspace/1",
+  "palettes": {
+    "backgrounds": [
+      "light",
+      "dark"
+    ],
+    "accents": [
+      "mint",
+      "iris",
+      "amber",
+      "teal",
+      "sky",
+      "copper",
+      "rose",
+      "lime",
+      "slate"
+    ]
+  }
+}

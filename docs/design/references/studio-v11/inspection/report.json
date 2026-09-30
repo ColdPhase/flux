@@ -1,0 +1,272 @@
+{
+  "html_sha256": "db9504f2fe1c0a8f467ef81a1a5234cda56244045fe73976d30a4d041bedcd89",
+  "zoom": "100%",
+  "screenshots": [
+    {
+      "file": "conversation-1440-light-mint.png",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "file": "conversation-1440-light-iris.png",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "file": "conversation-1440-light-sky.png",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "file": "conversation-1440-dark-mint.png",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "file": "conversation-1440-dark-iris.png",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "file": "conversation-1440-dark-sky.png",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "file": "private-return-1440.png",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "file": "private-return-1280.png",
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      }
+    },
+    {
+      "file": "private-return-390.png",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      }
+    },
+    {
+      "file": "private-return-768.png",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      }
+    },
+    {
+      "file": "map-deep-before-1440.png",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "file": "map-deep-after-1440.png",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      }
+    },
+    {
+      "file": "map-deep-after-390.png",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      }
+    }
+  ],
+  "errors": [],
+  "limits": "Local prototype fixtures only; no production ACL/persistence, LLM, hardware, remote media or end-user study.",
+  "browser": "151.0.7922.34",
+  "fixture_clock": "2026-09-29T12:00:00Z",
+  "candidate_palettes": [
+    {
+      "theme": "light",
+      "accent": "mint",
+      "colors": {
+        "bg": "#f5f5f7",
+        "surface": "#fff",
+        "text": "#202127",
+        "muted": "#656670",
+        "accent": "#247358",
+        "on-accent": "#fff",
+        "own": "#e2f1e9",
+        "accent-soft": "#e7f4ed"
+      },
+      "contrast": {
+        "text/surface": 16.05,
+        "muted/surface": 5.69,
+        "accent/surface": 5.72,
+        "on-accent/accent": 5.72,
+        "text/own": 13.75,
+        "accent/accent-soft": 5.06
+      }
+    },
+    {
+      "theme": "light",
+      "accent": "iris",
+      "colors": {
+        "bg": "#f5f5f7",
+        "surface": "#fff",
+        "text": "#202127",
+        "muted": "#656670",
+        "accent": "#6742a6",
+        "on-accent": "#fff",
+        "own": "#eee8f9",
+        "accent-soft": "#eee8f9"
+      },
+      "contrast": {
+        "text/surface": 16.05,
+        "muted/surface": 5.69,
+        "accent/surface": 7.22,
+        "on-accent/accent": 7.22,
+        "text/own": 13.41,
+        "accent/accent-soft": 6.04
+      }
+    },
+    {
+      "theme": "light",
+      "accent": "sky",
+      "colors": {
+        "bg": "#f5f5f7",
+        "surface": "#fff",
+        "text": "#202127",
+        "muted": "#656670",
+        "accent": "#2c609b",
+        "on-accent": "#fff",
+        "own": "#e5edf8",
+        "accent-soft": "#e9f0f8"
+      },
+      "contrast": {
+        "text/surface": 16.05,
+        "muted/surface": 5.69,
+        "accent/surface": 6.45,
+        "on-accent/accent": 6.45,
+        "text/own": 13.61,
+        "accent/accent-soft": 5.62
+      }
+    },
+    {
+      "theme": "dark",
+      "accent": "mint",
+      "colors": {
+        "bg": "#111214",
+        "surface": "#17181b",
+        "text": "#ececf1",
+        "muted": "#a0a1ac",
+        "accent": "#8ed8b8",
+        "on-accent": "#11271f",
+        "own": "#21382f",
+        "accent-soft": "#1c3028"
+      },
+      "contrast": {
+        "text/surface": 15.08,
+        "muted/surface": 6.92,
+        "accent/surface": 10.71,
+        "on-accent/accent": 9.49,
+        "text/own": 10.67,
+        "accent/accent-soft": 8.43
+      }
+    },
+    {
+      "theme": "dark",
+      "accent": "iris",
+      "colors": {
+        "bg": "#111214",
+        "surface": "#17181b",
+        "text": "#ececf1",
+        "muted": "#a0a1ac",
+        "accent": "#b7a8ef",
+        "on-accent": "#211c31",
+        "own": "#2b263a",
+        "accent-soft": "#2a2539"
+      },
+      "contrast": {
+        "text/surface": 15.08,
+        "muted/surface": 6.92,
+        "accent/surface": 8.34,
+        "on-accent/accent": 7.73,
+        "text/own": 12.38,
+        "accent/accent-soft": 6.93
+      }
+    },
+    {
+      "theme": "dark",
+      "accent": "sky",
+      "colors": {
+        "bg": "#111214",
+        "surface": "#17181b",
+        "text": "#ececf1",
+        "muted": "#a0a1ac",
+        "accent": "#94bcf3",
+        "on-accent": "#182438",
+        "own": "#232e40",
+        "accent-soft": "#202c3d"
+      },
+      "contrast": {
+        "text/surface": 15.08,
+        "muted/surface": 6.92,
+        "accent/surface": 9.08,
+        "on-accent/accent": 7.97,
+        "text/own": 11.61,
+        "accent/accent-soft": 7.22
+      }
+    }
+  ],
+  "summary_button": {
+    "width": 381,
+    "height": 39,
+    "label": " Podsumuj rozmowy dla mnie"
+  },
+  "deep_relation_fixture": {
+    "before_roots": [
+      "n0",
+      "newRoot"
+    ],
+    "before_depth": {
+      "n0": 0,
+      "n1": 1,
+      "n3": 2,
+      "deep3": 3,
+      "deep4": 4,
+      "n4": 2,
+      "n2": 1,
+      "newRoot": 0
+    },
+    "after_roots": [
+      "n0"
+    ],
+    "after_depth": {
+      "n0": 0,
+      "n1": 1,
+      "n3": 2,
+      "deep3": 3,
+      "deep4": 4,
+      "newRoot": 5,
+      "n4": 2,
+      "n2": 1
+    },
+    "new_root_parent": "deep4",
+    "cross_edge_ids": [],
+    "note": "Fixture injection tests presentation only, not the node/link creation UI or persistence."
+  }
+}
