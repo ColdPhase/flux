@@ -24,6 +24,8 @@ export interface NewThought {
   height?: number;
   shape?: ThoughtShape;
   placement?: { type: 'draft'; id: string; title: string | null } | null;
+  /** The message it came from (#96); only a message of the sketch's own DM is restored on the server. */
+  source?: Thought['source'];
 }
 
 export type Op =
@@ -45,7 +47,7 @@ function localThought(me: Me, sketchId: string, input: NewThought): Thought {
   return {
     id: input.id, sketchId, text: input.text, x: input.x, y: input.y, width: input.width ?? DEFAULT_THOUGHT_SIZE.width,
     height: input.height ?? DEFAULT_THOUGHT_SIZE.height, shape: input.shape ?? 'card', placement: input.placement ?? null,
-    createdBy: { kind: 'human', id: me.id, name: me.name }, version: 0, createdAt: now, updatedAt: now,
+    source: input.source ?? null, createdBy: { kind: 'human', id: me.id, name: me.name }, version: 0, createdAt: now, updatedAt: now,
   };
 }
 
@@ -90,7 +92,7 @@ export function inverse(before: SketchDetail, op: Op): Op[] {
     case 'remove': {
       const t = before.thoughts.find((x) => x.id === op.id);
       if (!t) return [];
-      const restore: Op = { kind: 'add', thought: { id: t.id, text: t.text, x: t.x, y: t.y, width: t.width, height: t.height, shape: t.shape, placement: t.placement } };
+      const restore: Op = { kind: 'add', thought: { id: t.id, text: t.text, x: t.x, y: t.y, width: t.width, height: t.height, shape: t.shape, placement: t.placement, source: t.source } };
       const links = before.links.filter((l) => l.fromId === t.id || l.toId === t.id).map((l): Op => ({ kind: 'link', link: { id: l.id, fromId: l.fromId, toId: l.toId, label: l.label } }));
       return [restore, ...links];
     }
@@ -154,7 +156,7 @@ export function useSketchDoc(sketchId: string, me: Me) {
     const current = ref.current;
     if (!current) return;
     // The local thought may be ahead (a later change is queued); keep its intent, take the server's facts.
-    const merge = (t: Thought): Thought => (replace ? thought : { ...t, version: thought.version, createdBy: thought.createdBy, createdAt: thought.createdAt, updatedAt: thought.updatedAt, placement: thought.placement });
+    const merge = (t: Thought): Thought => (replace ? thought : { ...t, version: thought.version, createdBy: thought.createdBy, createdAt: thought.createdAt, updatedAt: thought.updatedAt, placement: thought.placement, source: thought.source });
     commit({ ...current, thoughts: current.thoughts.map((t) => (t.id === thought.id ? merge(t) : t)) });
   }, [commit]);
 
@@ -211,6 +213,7 @@ export function useSketchDoc(sketchId: string, me: Me) {
           id: op.thought.id, text: op.thought.text, x: op.thought.x, y: op.thought.y, width: op.thought.width, height: op.thought.height,
           shape: op.thought.shape, placement: op.thought.placement ? { type: op.thought.placement.type, id: op.thought.placement.id } : undefined,
           linkFrom: op.link ? { thoughtId: op.link.fromId, label: op.link.label, linkId: op.link.id } : undefined,
+          sourceMessageId: op.thought.source?.dmMessageId ?? undefined,
         }, k));
         patchThought(created.thought);
         return;

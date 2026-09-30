@@ -50,4 +50,5 @@ export * from './direct-message.js';
 export * from './docs.js';
 export * from './notifications.js';
 export * from './search.js';
+export * from './personal-runs.js';
 export * from './export.js';

@@ -153,6 +153,24 @@ O-005 Claude Code path and this key path. Human work never needs either.
    turn this provider off for the whole instance. Runs then fail closed with an
    explicit unavailable state.
 
+## Implementation notes (#68 first slice)
+
+The [personal runs](../development/personal-runs.md) contract records how this
+decision is implemented. It keeps the scope above. It resolves three details:
+
+- **Enablement scope.** One enablement per person carries the consent, caps,
+  pause and connection. The person picks their assistant agent once per
+  workspace. The daily cap and the one-in-flight rule apply across workspaces,
+  because one payer pays for all of them.
+- **Proposal object.** #52's `agent_proposals` accepts only the user-operated
+  Claude Code source, requires a pinned material version as its only source, and
+  has no accept. Consequential output is therefore an assistant proposal with
+  the same fact / interpretation / proposal shape. It adds an accept path that
+  records the result through the #101 work use case as the accepting person.
+- **Still to do.** The WebSocket commands, the real adapter and #124's custody
+  come in later slices. Until they land, production fails closed as
+  `unavailable`.
+
 ## Evidence (2026-09-28)
 
 | Class | Source / observation | Implication |

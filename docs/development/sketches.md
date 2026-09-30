@@ -4,9 +4,9 @@ Issue #69 (foundation 8.4). A sketch is a map of connected thoughts. People put
 thoughts down, link them, move them around and edit them in place. Nothing on a map
 has to become work.
 
-A sketch belongs to a project or is private to its creator. Sketches bound to a DM
-conversation depend on #36 and are tracked in a follow-up issue; this slice has no
-participant lists.
+A sketch belongs to a project, to one direct message (see
+[below](#sketches-in-a-direct-message), #96), or is private to its creator. No sketch has a
+participant list of its own.
 
 ## Model
 
@@ -25,8 +25,9 @@ caller can read in the same workspace (`404` or `422 CROSS_WORKSPACE`). The titl
 placement is returned only to readers who can open the object now; for anyone else it
 is `null`.
 
-Migration `0007_sketches.sql`. `infra/migrate.ts` applies every unapplied file in order and checks that the
-highest version equals `FLUX_SCHEMA_VERSION` (7).
+Migrations `0007_sketches.sql` and `0025_dm_sketches.sql` (#96). `infra/migrate.ts` applies
+every unapplied file in order and checks that the highest version equals `FLUX_SCHEMA_VERSION`
+(25). The ledger is contiguous from 1 to 25; `0025_dm_sketches.sql` took the next free number by merge order.
 
 ## Access
 
@@ -107,7 +108,127 @@ author receives the events of a private sketch. The stream's `objectType` is `sk
 - Motion: thoughts ease between positions (`--dur-2`) and new ones fade in. All
   durations come from the tokens, which are 0 ms under reduced motion.
 
-Out of scope: AI rearranging sketches, and promoting a sketch into a project (after #36).
+Out of scope: AI rearranging sketches.
+
+## Sketches in a direct message
+
+Issue [#96](https://github.com/ColdPhase/flux/issues/96), the "DMs and growing an idea" flow of
+[#44](https://github.com/ColdPhase/flux/issues/44) and design principle 5.
+
+**Model** (migration `0025_dm_sketches.sql`):
+
+- `sketches.scope` gains `dm`, with `dm_id`. The composite foreign key
+  `(workspace_id, dm_id) → dms(workspace_id, id)` uses `ON DELETE CASCADE`. There is no copied
+  participant list, so the audience is always the DM's `dm_participants` rows. A DM sketch is
+  created by a person, never by an agent.
+- A thought can have a **source**: `source_author_id`, `source_author_name` and
+  `source_sent_at`. Inside the DM it also has `source_dm_id` and `source_message_id`. Two
+  composite keys make the message belong to the sketch's own DM:
+  `(source_dm_id, source_message_id) → dm_messages(dm_id, id)` and
+  `(sketch_id, source_dm_id) → sketches(id, dm_id)`.
+- A project copy records `copied_from_sketch_id` (`ON DELETE SET NULL`), `copied_by_user_id`
+  and `copied_at`. The wire type exposes only `origin: { kind: 'dm_copy', copiedBy, copiedAt }`.
+  The copy never names the DM.
+
+**Access** (`evaluateSketch` and `visibleSketchesSql` in `policy.ts`):
+
+- `sketch.read` needs a current participant row for the caller. Owners, admins, agents,
+  members outside the DM and other workspaces get `404`. The row is excluded before the list
+  count as well.
+- `sketch.write` also needs the DM to be open (`dmClosedFor`). In a 1:1 whose other person left
+  or was removed, the remaining person can still read the sketch, but changes answer `403`.
+  Starting a sketch or a promotion answers `409 DM_RECIPIENT_LEFT` or
+  `DM_RECIPIENT_UNAVAILABLE`, with the #107 wording. Nobody is re-added on the other person's
+  behalf; only they can reopen the DM.
+- Changes lock the caller's participant row `FOR SHARE` after the sketch row. A concurrent leave
+  (which deletes the row) or membership removal (which cascades to it) is either seen or waits.
+- Leaving or removal ends access on the next request. Events are delivered only after
+  `sketch.read` is checked again, so live frames and replay from an older cursor skip the
+  person who left.
+
+**Start sketch from these messages.** `POST /api/v1/workspaces/:id/sketches` with
+`{ title, scope: 'dm', dmId, fromMessageIds? }` accepts up to 50 messages of that DM (`404
+MESSAGE_NOT_FOUND` otherwise). Each message becomes one thought, in conversation order and laid
+out in staggered columns. Its text is the message body (clipped to the thought limit) and its
+source names the author and time. It honours `Idempotency-Key`. `POST …/thoughts` accepts
+`sourceMessageId`, so undo restores a removed thought with its source. The server reads the
+author and time from the message itself. `GET …/sketches?dmId=` lists one DM's sketches.
+
+**Promotion into a project.**
+
+- `GET /api/v1/sketches/:id/promotion[?target=new|?projectId=]` changes nothing. It returns
+  `SketchPromotionPreview`:
+  - `audience`: everyone who could open the copy.
+    - For a new project (owners and admins only, `project.create`), the project is
+      restricted and granted to exactly the participants. Its readers are the participants and
+      the workspace's owners and admins, who manage every project.
+    - For an existing project the caller can change (`project.write`; a viewer gets `403`), the
+      readers are `listProjectPeople`.
+  - `leftOut`: participants who would not see the copy.
+  - `content`: thoughts, links, and how many thoughts came from messages.
+  - `staysInDm`: the messages not quoted.
+  - `token`: a hash of the target, the readers and every thought id, version and link id.
+- `POST /api/v1/sketches/:id/promotion` takes `{ target, token }` and `Idempotency-Key`. It runs
+  in one transaction. When the token no longer matches (a reader, a thought or a link changed),
+  the answer is `409 PROMOTION_CHANGED` with the new preview, and nothing is created.
+  Otherwise it:
+  1. creates the project through `createProject` and `grantProject`, for a new target;
+  2. inserts a `project` sketch with copies of the thoughts (text, position, size, shape and the
+     source's author and time) and of their links;
+  3. records `sketch.created.v1` for the copy and `sketch.changed.v1 { op: 'copied_to_project' }`
+     for the DM sketch.
+- **The audience is locked at commit.** Before evaluating the sketch, the promotion takes the
+  rows that every change to the copy's audience locks first, `FOR SHARE`:
+  - the workspace row, which `lockWorkspace` takes for member adds, removals and role changes;
+  - for an existing target, the project row, which grant changes lock `FOR NO KEY UPDATE`
+    (the #29 pattern);
+  - then the DM row and all of its participant rows. `leave()` takes the DM row first, so a
+    leave waits; a membership removal cascades to the participant rows, so it waits too.
+
+  The order is workspace, project, membership, sketch, DM, participants, which prevents
+  deadlocks. Every DM sketch change also takes the DM row `FOR SHARE` before the caller's
+  participant row. The participant set is read once, under those locks, and used for both the
+  token check and the grants. A change that committed before the locks makes the token stale
+  (`409`, fresh preview). A change that starts later waits until the copy has committed.
+- Placements and DM message ids are not copied. Later DM messages and changes to the DM sketch
+  never reach the copy. A test checks that the preview's readers equal the project's people
+  afterwards.
+- The DM sketch lists `copies` only when the caller can open them.
+
+**Web.**
+
+- A DM has **Messages · Sketches** tabs. `/dm/:dmId/sketches` and `/dm/:dmId/sketches/:sketchId`
+  keep the DM's header and audience. A DM sketch opened elsewhere (`/map/:id`, a return item)
+  moves there.
+- **Select** in the DM header turns on message selection. There is a check per message (the
+  row toggles too, and so does Space on the check), the picked rows are tinted, and Esc cancels.
+  The bottom bar shows the count, **Cancel** and **Start sketch from these messages**, with the
+  note "The sketch stays in this conversation: only you and Kai can see it. No project is
+  created." It then opens the new sketch with its name ready to edit and "Started from N
+  messages".
+- Thoughts show "Message from Kai · 21:14". Read-only DM sketches say why.
+- **Make it a project…** opens Details with the preview:
+  - the target (New project or Existing project), the name, and "Who can see it", with faces,
+    the exact names and why each is there;
+  - who is left out;
+  - "What goes in";
+  - "What stays in the conversation";
+  - **Create project** or **Copy into …**.
+  A stale preview is replaced in place with a quiet line. After the copy, the new project opens
+  on its sketch, with the line "Copied from a direct message". The DM sketch shows "Copied to …".
+- Motion: selection checks scale in, the bar rises, notes fade in, and the preview dims while it
+  reloads. Everything uses the duration tokens, so reduced motion turns it off.
+
+**Search** (#114). A DM sketch and its thoughts keep the sketch audience (`sketch:<id>`, checked by
+the sketch policy, so the privacy and saturation guarantees of search are unchanged). They also
+record `search_documents.dm_id`, which migration 0025 adds and the index triggers maintain.
+`place=dm:<id>` then finds the DM's messages, sketches and thoughts. `private` no longer includes
+DM sketches. Results name the DM as their place, and `target.dmId` makes them open at
+`/dm/:dmId/sketches/:sketchId` (`#thought-…` for a thought).
+
+**Tests.** `tests/app/dm-sketches.test.ts` (API, `./scripts/check_application.sh`) and
+`tests/ui/test_dm_sketches.py` (Playwright, `./scripts/check_ui.sh`, screenshots
+`dm-sketch-*.png`).
 
 ## Evidence
 

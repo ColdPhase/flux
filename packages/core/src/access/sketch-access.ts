@@ -1,7 +1,24 @@
 import type { Executor, Principal } from '../types.js';
 import type { SketchAccess } from '../sketches/ports.js';
-import { RuleViolationError } from './errors.js';
-import { enforce, evaluateDraft, evaluateProject, evaluateSketch, evaluateWorkspace } from './policy.js';
+import { ConflictError, RuleViolationError } from './errors.js';
+import { dmClosedFor, enforce, lockDmParticipants, lockPromotionScope, evaluateDm, evaluateDraft, evaluateProject, evaluateSketch, evaluateWorkspace } from './policy.js';
+
+const firstName = (name: string) => name.trim().split(/\s+/)[0] || 'They';
+
+/**
+ * The #107 answer for a 1:1 whose other person is gone: nothing is sketched or copied on their
+ * behalf, and only they can reopen it by messaging the caller.
+ */
+async function requireOpen(db: Executor, dmId: string, selfId: string) {
+  const closed = await dmClosedFor(db, dmId, selfId);
+  if (!closed) return;
+  const who = firstName(closed.recipient.name);
+  const error = closed.reason === 'left'
+    ? new ConflictError(`${who} left this conversation. They can reopen it by messaging you.`, 'DM_RECIPIENT_LEFT')
+    : new ConflictError(`${who} is no longer in this workspace, so this conversation has nobody to share with.`, 'DM_RECIPIENT_UNAVAILABLE');
+  error.details = { recipient: closed.recipient };
+  throw error;
+}
 
 /**
  * The access policy as the sketch use cases' `SketchAccess` port (issue #69). It uses the same
@@ -33,8 +50,27 @@ export function policySketchAccess(db: Executor): SketchAccess {
         if (project!.workspaceId !== target.workspaceId) throw new RuleViolationError('The project belongs to another workspace', 'CROSS_WORKSPACE');
         return;
       }
+      if (target.scope === 'dm') {
+        // Only a current participant starts a sketch in a DM (#96); invisible DMs answer 404.
+        const { dm } = enforce(await evaluateDm(principal, 'dm.write', target.dmId, db, { lock: true }), 'dm');
+        if (dm!.workspaceId !== target.workspaceId) throw new RuleViolationError('The direct message belongs to another workspace', 'CROSS_WORKSPACE');
+        await requireOpen(db, dm!.id, principal.id);
+        return;
+      }
       // A private sketch belongs to the person creating it; agents cannot own one.
       enforce(await evaluateWorkspace(principal, 'sketch.create', target.workspaceId, db, { lock: true }), 'workspace');
+    },
+
+    async lockPromotion(sketchId, projectId) {
+      await lockPromotionScope(db, sketchId, projectId);
+    },
+
+    async lockParticipants(dmId) {
+      return lockDmParticipants(db, dmId);
+    },
+
+    async requireDmOpen(principal, dmId) {
+      await requireOpen(db, dmId, principal.id);
     },
 
     async placement(principal, ref) {

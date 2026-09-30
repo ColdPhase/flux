@@ -24,19 +24,24 @@ export interface AddToDocView {
  */
 export interface OverviewView { kind: 'overview'; messageId?: string }
 
+/** "Make it a project…" for a DM sketch (#96): the exact audience and content before anything is shared. */
+export interface PromoteSketchView { kind: 'promote-sketch'; sketchId: string; title: string }
+
 /** "What matters" (#133): the private recap of one project. */
 export interface RecapView { kind: 'recap'; projectId: string }
 
 /** What the Details panel shows: the current place, a project object or form, or how to connect a personal AI (#57). */
-export type DetailsView = 'place' | 'connect-ai' | ObjectView | WorkFormView | AddToDocView | OverviewView | RecapView;
+export type DetailsView = 'place' | 'connect-ai' | ObjectView | WorkFormView | AddToDocView | OverviewView | PromoteSketchView | RecapView;
 
 export interface ShellActions {
   openDetails(view?: DetailsView): void;
   /** Opens Jump to… (⌘K), the search across everything the person may open (#114). */
   openSearch(): void;
+  /** A place in the header where the current view can put one quiet action (a DM's Select, #96). */
+  actionSlot: HTMLElement | null;
 }
 
-export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, openSearch: () => undefined });
+export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, openSearch: () => undefined, actionSlot: null });
 
 export function useShellActions(): ShellActions {
   return useContext(ShellContext);
