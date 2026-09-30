@@ -9,6 +9,9 @@ import { projectExportPath, type Conversation, type ConversationMessage, type Ma
   type ConversationSummary, type ProjectExport, type ReturnSummary, type SearchResponse, type TaskDiscussion, type WorkItem } from '@flux/contracts';
 import { taskDiscussionInTransaction, taskDiscussionUnitOfWork, taskDiscussionUseCases } from '../../apps/server/src/work/task-discussions.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
+import { nativeWorkInTransaction } from '../../apps/server/src/work/adapters.js';
+import { transactionEventSession } from '../../apps/server/src/work/transaction-events.js';
+import { guardFinalEventPhase } from './support/final-events.js';
 
 const { db, pool } = createDatabase(process.env.DATABASE_URL!);
 after(() => pool.end());
@@ -368,7 +371,7 @@ test('two genuine contributions defer every audience until final state and take 
     } });
     const session = taskDiscussionInTransaction(checked);
     const first = session.contribute(principal, f.task.id, commands[0]!);
-    assert.throws(() => session.flushEvents(), /Await all task discussion commands/);
+    assert.throws(() => session.flushEvents(), /Await all native commands/);
     const root = await first;
     const reply = await session.contribute(principal, f.task.id, commands[1]!);
     const intents = session.eventIntents;
@@ -406,4 +409,114 @@ test('two genuine contributions defer every audience until final state and take 
     assert.deepEqual(await session.flushEvents(), []);
   });
   assert.deepEqual(await f.counts(), { bindings: 1, messages: 2, conversations: 1, events: before.events + 2 });
+});
+
+test('native work, canonical result and a genuine agent root share the caller transaction and one final audience batch', async () => {
+  const f = await scene();
+  const { principal } = await agentIn(f);
+  const owner = { kind: 'human' as const, id: f.owner.id };
+  const committed = await db.transaction(async (tx) => {
+    const guarded = guardFinalEventPhase(tx);
+    const session = nativeWorkInTransaction(guarded.tx);
+    const creating = session.createWork(owner, f.place.id, { title: 'A bounded measurement', clientCommandId: randomUUID() });
+    assert.throws(() => session.flushEvents(), /Await all native commands/);
+    const work = await creating;
+    const root = await session.contribute(principal, work.id, { body: 'The real agent records the measurement.', clientMessageId: randomUUID() });
+    const result = await session.createResult(owner, f.place.id, { title: 'Measurement preserved', finding: 'positive',
+      evidence: 'A recorded actual result', work: [work.id] });
+    await session.updateWork(owner, work.id, { outcome: 'Final state before receipt and events' }, work.version);
+    assert.equal((await session.getWork(owner, work.id)).outcome, 'Final state before receipt and events');
+    assert.equal((await session.getDiscussion(owner, work.id)).rootMessageId, root.id);
+    assert.deepEqual(session.eventIntents.map((item) => item.kind), ['project.work_created.v1',
+      'project.conversation_created.v1', 'project.result_recorded.v1', 'project.work_updated.v1']);
+    const state = await tx.execute(sql`SELECT EXISTS(SELECT 1 FROM pg_locks
+      WHERE locktype='advisory' AND pid=pg_backend_pid()
+        AND classid=((hashtext('flux.events.seq')::bigint >> 32) & 4294967295)::oid
+        AND objid=(hashtext('flux.events.seq')::bigint & 4294967295)::oid AND objsubid=1) AS stream_lock`);
+    assert.equal(state.rows[0]!.stream_lock, false);
+    // This is an actual final domain/audience change, not a simulated152/153 receipt.
+    await tx.delete(schema.projectGrants).where(and(eq(schema.projectGrants.projectId, f.place.id), eq(schema.projectGrants.userId, f.reader.id)));
+    const flush = session.flushEvents();
+    assert.equal(session.flushEvents(), flush);
+    const events = await flush;
+    assert.equal(guarded.started, true);
+    await assert.rejects(session.getWork(owner, work.id), /session is closed/);
+    await assert.rejects(session.contribute(principal, work.id, { body: 'Too late', clientMessageId: randomUUID() }), /session is closed/);
+    return { work, root, result, events };
+  });
+  assert.equal(committed.events.length, 4);
+  const rows = (await pool.query('SELECT event_id,recipient FROM event_audience WHERE event_id=ANY($1::uuid[])', [committed.events])).rows;
+  for (const event of committed.events) {
+    assert.ok(rows.some((row) => row.event_id === event && row.recipient === `human:${f.owner.id}`));
+    assert.equal(rows.some((row) => row.event_id === event && row.recipient === `human:${f.reader.id}`), false);
+  }
+  assert.deepEqual((await pool.query('SELECT created_by_kind,created_by_id FROM project_results WHERE id=$1', [committed.result.id])).rows[0],
+    { created_by_kind: 'human', created_by_id: f.owner.id });
+  assert.equal((await taskDiscussionUseCases(db).getDiscussion(owner, committed.work.id)).rootMessageId, committed.root.id);
+  await db.transaction(async (tx) => {
+    const session = nativeWorkInTransaction(tx);
+    await session.getWork(owner, committed.work.id);
+    await session.getDiscussion(owner, committed.work.id);
+    assert.deepEqual(session.eventIntents, []);
+    assert.deepEqual(await session.flushEvents(), []);
+  });
+});
+
+test('native preparation and final events roll back together before or after flush, including actual final domain changes', async () => {
+  const f = await scene();
+  const { principal } = await agentIn(f);
+  const owner = { kind: 'human' as const, id: f.owner.id };
+  const counts = async () => (await pool.query(`SELECT
+    (SELECT count(*)::int FROM project_work_items WHERE project_id=$1) AS work,
+    (SELECT count(*)::int FROM project_task_notices WHERE project_id=$1) AS notices,
+    (SELECT count(*)::int FROM project_results WHERE project_id=$1) AS results,
+    (SELECT count(*)::int FROM project_object_links WHERE project_id=$1) AS links,
+    (SELECT count(*)::int FROM search_documents WHERE project_id=$1) AS search,
+    (SELECT count(*)::int FROM outbox o JOIN events e ON e.id=o.event_id WHERE e.object_id=$1) AS outbox`, [f.place.id])).rows[0];
+  const before = await counts();
+  const discussions = await f.counts();
+  const creation = { title: 'Atomic new task', clientCommandId: randomUUID() };
+  for (const phase of ['before', 'after']) {
+    await assert.rejects(db.transaction(async (tx) => {
+      const session = nativeWorkInTransaction(tx);
+      const work = await session.createWork(owner, f.place.id, creation);
+      await session.contribute(principal, work.id, { body: 'Actual agent text', clientMessageId: randomUUID() });
+      await session.createResult(owner, f.place.id, { title: 'Atomic finding', finding: 'negative', work: [work.id] });
+      await session.updateWork(owner, f.task.id, { outcome: 'Final domain marker' }, f.task.version);
+      if (phase === 'after') await session.flushEvents();
+      throw new Error(`outer native failure ${phase} events`);
+    }), /outer native failure/);
+    assert.deepEqual(await counts(), before);
+    assert.deepEqual(await f.counts(), discussions);
+    assert.deepEqual((await pool.query('SELECT outcome,version FROM project_work_items WHERE id=$1', [f.task.id])).rows[0],
+      { outcome: f.task.outcome, version: f.task.version });
+  }
+});
+
+test('the shared event collector snapshots nested canonical data and rejects early or late preparation', async () => {
+  const f = await scene();
+  await db.transaction(async (tx) => {
+    const session = transactionEventSession(tx);
+    const data = { workId: f.task.id, reference: { ids: [f.task.id] } };
+    const principal = { kind: 'human' as const, id: f.owner.id };
+    await session.record(principal, f.ws.id, 'project.work_updated.v1', f.place.id, data);
+    data.reference.ids[0] = randomUUID();
+    principal.id = f.reader.id;
+    const intent = session.eventIntents[0]!;
+    assert.equal(intent.principal.id, f.owner.id);
+    const reference = intent.data.reference as { ids: string[] };
+    assert.deepEqual(reference.ids, [f.task.id]);
+    assert.ok(Object.isFrozen(reference) && Object.isFrozen(reference.ids));
+    assert.throws(() => reference.ids.push(randomUUID()), TypeError);
+    let finish!: () => void;
+    const command = session.run(() => new Promise<void>((resolve) => { finish = resolve; }));
+    assert.throws(() => session.flushEvents(), /Await all native commands/);
+    finish();
+    await command;
+    const flush = session.flushEvents();
+    assert.equal(session.flushEvents(), flush);
+    await flush;
+    await assert.rejects(session.run(async () => undefined), /session is closed/);
+    await assert.rejects(session.record(principal, f.ws.id, 'project.work_updated.v1', f.place.id, data), /session is closed/);
+  });
 });
