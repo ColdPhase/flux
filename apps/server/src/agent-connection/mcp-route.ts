@@ -36,7 +36,11 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
         status: 403, headers: { 'content-type': 'application/json' },
       });
     }
-    const handler = createMcpHandler(() => createFluxMcpServer(db, { ownerUserId, connectionId, scopes }), { legacy: 'reject' });
+    const cursorSecret = (await auth.$context).secret;
+    const handler = createMcpHandler(() => createFluxMcpServer(db, { ownerUserId, connectionId, scopes,
+      clientId: typeof token.client_id === 'string' ? token.client_id : null,
+      grantReferenceId: typeof token.flux_grant_reference === 'string' ? token.flux_grant_reference : null,
+    }, cursorSecret), { legacy: 'reject' });
     return handler.fetch(request);
   };
   // The public origin can be a host-only loopback URL in Compose and is not

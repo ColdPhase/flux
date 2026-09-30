@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
 import { createDatabase } from '@flux/db';
+import { DomainError } from '@flux/core';
+import { withAgentConnection } from '../../apps/server/src/agent-connection/context.js';
 import { apiUrl, publicOrigin, register, uniqueEmail, type Browser, type ClientResponse } from './support/http.js';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
-const { pool } = createDatabase(connectionString);
+const { db, pool } = createDatabase(connectionString);
 after(() => pool.end());
 
 function expect(response: ClientResponse, status: number) {
@@ -127,12 +129,31 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
   const secondMaterial = expect(await browser.request('POST', `/api/v1/projects/${projectId}/materials`,
     { body: { clientMutationId: randomUUID(), title: 'Capacity observation', body: 'Capacity is limited.' } }), 201);
   const doc = expect(await browser.request('POST', `/api/v1/projects/${projectId}/docs`,
-    { body: { title: 'Experiment notes', body: 'A project doc source.' } }), 201);
+    { body: { title: 'Experiment notes', body: 'A project doc source.\n' + 'Observation. '.repeat(4000) } }), 201);
   const hiddenProject = expect(await browser.request('POST', `/api/v1/workspaces/${workspaceId}/projects`,
     { body: { name: 'Unselected private project', visibility: 'restricted' } }), 201);
   const hiddenProjectId = String(hiddenProject.id);
   const hiddenMaterial = expect(await browser.request('POST', `/api/v1/projects/${hiddenProjectId}/materials`,
     { body: { clientMutationId: randomUUID(), title: 'Secret source title', body: 'Private content.' } }), 201);
+  // The agent can read this other project via its domain grant; this connection still may not.
+  expect(await browser.request('POST', `/api/v1/projects/${hiddenProjectId}/grants`,
+    { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201);
+  const work = expect(await browser.request('POST', `/api/v1/projects/${projectId}/work`,
+    { body: { title: 'Battery comparison', outcome: 'Compare current battery runtime' } }), 201);
+  const decision = expect(await browser.request('POST', `/api/v1/projects/${projectId}/decisions`,
+    { body: { title: 'Battery comparison decision', rationale: 'Run a comparison first' } }), 201);
+  const result = expect(await browser.request('POST', `/api/v1/projects/${projectId}/results`,
+    { body: { title: 'Battery observation result', finding: 'negative', evidence: 'Four hours observed' } }), 201);
+  const conversation = expect(await browser.request('POST', `/api/v1/projects/${projectId}/conversations`,
+    { body: { body: 'Battery comparison discussion', clientMessageId: randomUUID() } }), 201);
+  const map = expect(await browser.request('POST', `/api/v1/workspaces/${workspaceId}/sketches`,
+    { body: { title: 'Battery comparison map', scope: 'project', projectId } }), 201);
+  expect(await browser.request('POST', `/api/v1/sketches/${map.id}/thoughts`,
+    { body: { text: 'Battery capacity observation', x: 0, y: 0 } }), 201);
+  expect(await browser.request('POST', `/api/v1/sketches/${map.id}/thoughts`,
+    { body: { text: 'Battery duration question', x: 200, y: 0 } }), 201);
+  const privateMap = expect(await browser.request('POST', `/api/v1/workspaces/${workspaceId}/sketches`,
+    { body: { title: 'Secret private battery map', scope: 'private' } }), 201);
   const connection = expect(await browser.request('POST', '/api/v1/agent-connections',
     { body: { agentId, selectedProjectIds: [projectId], scopes: ['flux.context.read', 'flux.proposal.write'] } }), 201);
   const connectionId = String(connection.id);
@@ -151,6 +172,13 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
     VALUES ($1, $2, $3, now())`, [randomUUID(), clientId, `${publicOrigin}/mcp`]);
 
   const bearer = (await oauthToken(browser, connectionId, clientId, redirectUri)).access_token;
+  const signedClaims = JSON.parse(Buffer.from(bearer.split('.')[1]!, 'base64url').toString()) as { flux_grant_reference: string; sub: string };
+  let projected = false;
+  await assert.rejects(withAgentConnection(db, { ownerUserId: signedClaims.sub, connectionId,
+    clientId: 'another-actual-client', grantReferenceId: signedClaims.flux_grant_reference,
+    scopes: ['flux.context.read'] }, 'flux.context.read', projectId, async () => { projected = true; }),
+  (error: unknown) => error instanceof DomainError && error.code === 'CONNECTION_NOT_FOUND');
+  assert.equal(projected, false, 'actual-client substitution is rejected inside the transaction before content');
   const listed = await mcp(bearer, 1, 'tools/call', { name: 'flux_list_contexts', arguments: {} });
   assert.equal(listed.status, 200, `MCP call returned ${listed.status}: ${JSON.stringify(listed.message)}`);
   assert.deepEqual(toolValue(listed.message).projects, [{ id: projectId,
@@ -182,6 +210,43 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
   const read = await mcp(bearer, 2, 'tools/call', { name: 'flux_read_material', arguments: { projectId, materialId } });
   assert.equal(read.status, 200);
   assert.equal(toolValue(read.message).body, 'Battery lasts four hours.');
+  const hiddenRead = await mcp(bearer, 21, 'tools/call', { name: 'flux_read_material',
+    arguments: { projectId, materialId: hiddenMaterial.materialId } });
+  assert.equal((hiddenRead.message?.result as { isError?: boolean })?.isError, true);
+  assert.ok(!JSON.stringify(hiddenRead.message).includes('Private content'));
+  for (const [name, record] of [['work', work], ['decision', decision], ['result', result], ['conversation', conversation], ['map', map]] as const) {
+    const read = toolValue((await mcp(bearer, 22, 'tools/call', { name: `flux_get_${name}`, arguments: { projectId, id: record.id } })).message);
+    assert.equal(read.id, record.id);
+  }
+  const privateMapRead = await mcp(bearer, 23, 'tools/call', { name: 'flux_get_map', arguments: { projectId, id: privateMap.id } });
+  assert.equal((privateMapRead.message?.result as { isError?: boolean })?.isError, true);
+  assert.ok(!JSON.stringify(privateMapRead.message).includes('Secret private'));
+  const docPage = toolValue((await mcp(bearer, 24, 'tools/call', { name: 'flux_get_doc', arguments: { projectId, id: doc.id } })).message);
+  assert.equal((docPage.body as string).length, 20_000);
+  assert.equal(docPage.nextOffset, 20_000);
+  assert.equal('html' in docPage, false);
+  const docNext = toolValue((await mcp(bearer, 25, 'tools/call', { name: 'flux_get_doc', arguments: { projectId, id: doc.id, offset: 20_000, version: 1 } })).message);
+  assert.equal(docNext.offset, 20_000);
+  expect(await browser.request('PATCH', `/api/v1/docs/${doc.id}`, { body: { body: 'Updated wiki observation' }, headers: { 'if-match': '"1"' } }), 200);
+  const staleDoc = await mcp(bearer, 26, 'tools/call', { name: 'flux_get_doc', arguments: { projectId, id: doc.id, offset: 20_000, version: 1 } });
+  assert.equal((staleDoc.message?.result as { isError?: boolean })?.isError, true);
+  assert.ok(JSON.stringify(staleDoc.message).includes('SOURCE_VERSION_CONFLICT'));
+  const search = toolValue((await mcp(bearer, 27, 'tools/call', { name: 'flux_search_project', arguments: { projectId, q: 'Battery', limit: 2 } })).message);
+  assert.equal((search.items as Record<string, unknown>[]).length, 2);
+  assert.ok(search.next, 'search exposes its continuation');
+  assert.ok(!JSON.stringify(search).includes('Secret private'));
+  const mapSearch = toolValue((await mcp(bearer, 28, 'tools/call', { name: 'flux_search_project', arguments: { projectId, q: 'Battery', type: 'sketch' } })).message);
+  assert.ok((mapSearch.items as Record<string, unknown>[]).some((row) => row.kind === 'thought'));
+  assert.ok(!JSON.stringify(mapSearch).includes('Secret private'));
+  const mapPage = toolValue((await mcp(bearer, 29, 'tools/call', { name: 'flux_get_map', arguments: { projectId, id: map.id, limit: 1 } })).message);
+  assert.equal((mapPage.thoughts as unknown[]).length, 1);
+  assert.equal((mapPage.thoughtPage as { nextOffset: number }).nextOffset, 1);
+  const mapNext = toolValue((await mcp(bearer, 30, 'tools/call', { name: 'flux_get_map', arguments: { projectId, id: map.id, limit: 1, offset: 1, expectedUpdatedAt: mapPage.updatedAt } })).message);
+  assert.equal((mapNext.thoughts as unknown[]).length, 1);
+  expect(await browser.request('POST', `/api/v1/sketches/${map.id}/thoughts`, { body: { text: 'A later observation', x: 0, y: 200 } }), 201);
+  const staleMap = await mcp(bearer, 31, 'tools/call', { name: 'flux_get_map', arguments: { projectId, id: map.id, offset: 1, expectedUpdatedAt: mapPage.updatedAt } });
+  assert.equal((staleMap.message?.result as { isError?: boolean })?.isError, true);
+  assert.ok(JSON.stringify(staleMap.message).includes('SOURCE_VERSION_CONFLICT'));
   const created = await mcp(bearer, 3, 'tools/call', { name: 'flux_create_proposal', arguments: {
     projectId, materialId, version: 1, clientCommandId: randomUUID(),
     fact: 'Battery lasts four hours', interpretation: 'Runtime may be short',
