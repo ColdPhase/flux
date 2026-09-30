@@ -109,6 +109,15 @@ lets the browser suite drive a whole run through the production code paths witho
 
 ## Progress events
 
+The worker recovers at most 100 stale runs on startup and every minute, without
+overlapping passes in one process. Runs untouched for 15 minutes (the dispatch
+job expires after five) end without another owner invocation: queued/reading as
+`unavailable` with zero charge and a released reservation; dispatching as
+`provider_failed` with its reservation retained as `unknown`. Recovery never
+calls the provider or enqueues a retry. Concurrent workers skip locked rows;
+terminal state and owner-only progress commit together. A late worker cannot
+publish after recovery. Shutdown waits for the active pass before closing the DB.
+
 Every status change of a run — queued, reading, dispatching and each end (completed,
 truncated, stopped, denied, paused, revoked, cap_reached, unavailable, input_too_large,
 provider_failed), and a stop request during dispatch — records `assistant_run.changed.v1`

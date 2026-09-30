@@ -3,12 +3,14 @@ import {
   createPersonalRunProcessor,
   noPersonalConnections,
   PERSONAL_RUN_JOB,
+  recoverPersonalRuns,
   unavailablePersonalCompute,
   type Database,
   type PersonalCompute,
   type PersonalConnectionLookup,
 } from '@flux/core';
 import { personalRunWorkerUnitOfWork } from './adapters.js';
+import { startPersonalRunRecovery } from './recovery.js';
 
 export { personalRunWorkerUnitOfWork } from './adapters.js';
 export { personalRunWorkerComposition } from './composition.js';
@@ -21,8 +23,9 @@ export { personalRunWorkerComposition } from './composition.js';
  * The queue never retries a dispatch (`PERSONAL_RUN_QUEUE`, created by the migrator).
  */
 export async function registerPersonalRunWorker(boss: PgBoss, db: Database, options: { connections?: PersonalConnectionLookup; compute?: PersonalCompute } = {}) {
+  const uow = personalRunWorkerUnitOfWork(db);
   const processor = createPersonalRunProcessor({
-    uow: personalRunWorkerUnitOfWork(db),
+    uow,
     connections: options.connections ?? noPersonalConnections,
     compute: options.compute ?? unavailablePersonalCompute,
   });
@@ -32,4 +35,5 @@ export async function registerPersonalRunWorker(boss: PgBoss, db: Database, opti
       console.log(JSON.stringify({ job: PERSONAL_RUN_JOB, id: job.id, runId: job.data.runId, outcome }));
     }
   });
+  return startPersonalRunRecovery({ recover: () => recoverPersonalRuns(uow) });
 }
