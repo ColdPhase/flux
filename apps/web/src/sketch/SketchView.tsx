@@ -11,6 +11,7 @@ import { audience, quote, sketchHref, when } from './format';
 import { freeSpot, rectOf } from './geometry';
 import { SketchList } from './SketchList';
 import { SketchMap } from './SketchMap';
+import { useOutline } from './useOutline';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import './sketch.css';
 
@@ -59,6 +60,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   const started = (useLocation().state as { started?: number } | null)?.started;
   const doc = useSketchDoc(sketchId, { id: me.user.id, name: me.user.name });
   const { sketch } = doc;
+  const personalOutline = useOutline(me.user.id, sketch);
   const coarse = useMediaQuery('(pointer: coarse)');
   const phone = useMediaQuery(MEDIA.phone);
   const [mode, setModeState] = useState<Mode>(storedMode);
@@ -160,6 +162,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   useEffect(() => {
     if (!arrivedThought || handledArrival.current === arrivedThought || !sketch?.thoughts.some((t) => t.id === arrivedThought)) return;
     handledArrival.current = arrivedThought;
+    personalOutline.reveal(arrivedThought);
     setSelection([arrivedThought]);
     describe([arrivedThought]);
     focusThought(`.sk-node[data-id="${arrivedThought}"], .sk-li-t[data-id="${arrivedThought}"]`);
@@ -179,6 +182,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     const rects = sketch.thoughts.map((t) => rectOf(t, heights));
     const spot = freeSpot(rects, parent ? rectOf(parent, heights) : null, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height }, phone);
     const id = doc.newId();
+    personalOutline.group(id, parent?.id ?? null, false);
     doc.perform([{ kind: 'add', thought: { id, text: 'New thought', x: spot.x, y: spot.y }, link: parent ? { id: doc.newId(), fromId: parent.id, label: null } : undefined }], 'added a thought');
     setConnectFrom(null);
     setSelection([id]);
@@ -313,6 +317,13 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
 
   const busy = doc.saving ? 'Saving…' : 'Saved';
   const shared = { sketch, meId: me.user.id, selection, connectFrom, editing, canWrite, onPick: pick, onToggle: toggle, onEdit: (id: string) => { setConnectFrom(null); setEditing({ id, isNew: false, parentId: null }); }, onFinishEdit: finishEdit, onAdd: add, onRemove: remove, onEscape: escape };
+  const navigateThought = (id: string, previous?: string[]) => {
+    if (!present.has(id)) return;
+    setConnectFrom(null);
+    const next = previous?.filter((item) => present.has(item)) ?? [id];
+    setSelection(next);
+    describe(next);
+  };
 
   return (
     <div className="sk-page" ref={rootRef} onKeyDown={onKeyDown}>
@@ -388,7 +399,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
             </>
           ) : <p className="sk-empty-list">No thoughts yet.</p>
         ) : (
-          <SketchList {...shared} />
+          <SketchList {...shared} personalOutline={personalOutline} onNavigate={navigateThought} />
         )}
 
         <p className="sk-help" id={helpId}>

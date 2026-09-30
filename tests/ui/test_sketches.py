@@ -311,7 +311,7 @@ class SketchJourney(unittest.TestCase):
         items = page.get_by_role("list", name="Thoughts in Lamp ideas")
         expect(items).to_be_visible()
         expect(items.get_by_role("listitem")).to_have_count(3)
-        expect(items).to_contain_text("Linked to")
+        expect(items).to_contain_text("Related to")
         item = items.get_by_role("button", name="Swipe to dim, hold to switch off")
         item.focus()
         page.keyboard.press("Enter")
