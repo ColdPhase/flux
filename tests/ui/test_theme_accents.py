@@ -211,6 +211,8 @@ class ThemeAccentsJourney(unittest.TestCase):
                     page.goto(self.conversation_url)
                     self.appearance(page, theme, family)
                     statuses = page.locator("html").evaluate("e => Object.fromEntries(['--ok','--danger','--warning','--attention','--resolution'].map(k => [k,getComputedStyle(e).getPropertyValue(k).trim()]))")
+                    statuses["header-attention"] = page.locator(".top--project .ws-seg--need").evaluate("e => getComputedStyle(e).color")
+                    self.measure(page, theme, family, ".top--project .ws-seg--need")
                     if theme in stable:
                         self.assertEqual(statuses, stable[theme], "semantic statuses stay fixed across families")
                     stable[theme] = statuses
