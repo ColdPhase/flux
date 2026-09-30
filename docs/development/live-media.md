@@ -91,8 +91,9 @@ do not replace it with `canvas.captureStream()` or count the existing synthetic
 screen test as its substitute. [MDN](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getDisplayMedia)
 documents the secure-context, user-activation and per-invocation picker rules;
 the isolated test uses localhost and a real click to meet the first two.
-This new case has no completed Docker result at the current unpublished head;
-its pass status and screenshot remain unverified until the next full run.
+The 2026-09-30 current-main run passed this case; source settings and receiver
+frames remain distinct from physical-device and measured receiver-fps evidence.
+See the [pinned five-case report and original artifacts](evidence/live-turn/2026-09-30/README.md).
 
 Set `FLUX_LIVE_TURN_ARTIFACT_DIR` to retain browser screenshots and the SFU
 resource trace at a chosen path (otherwise the script prints a new `/tmp` path).
