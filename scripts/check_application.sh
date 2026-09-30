@@ -36,7 +36,11 @@ cleanup() {
   unlink "$background_secret_dir/background_key"
   rmdir "$background_secret_dir"
 }
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+# An interruption ends the run; do not resume checks after cleanup removed their stack.
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 $compose build
 $compose up -d db migrate
