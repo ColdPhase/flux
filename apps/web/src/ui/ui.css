@@ -86,8 +86,8 @@ svg { flex: none; }
 .ui-icon-btn[aria-expanded="true"] { background: var(--bg-active); color: var(--text); }
 
 /* Text links inside prose */
-.ui-link { color: var(--link); text-decoration: none; border-radius: 3px; font-weight: 500; transition: var(--tr); }
-.ui-link:hover { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.ui-link { color: var(--link); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; border-radius: 3px; font-weight: 500; transition: var(--tr); }
+.ui-link:hover { text-decoration-thickness: 2px; }
 
 /* ---------- Input ---------- */
 .ui-field { display: flex; flex-direction: column; gap: 6px; }
