@@ -271,3 +271,60 @@ Claim/renew retain the prior checkpoint reference. Release requires a non-null
 checkpoint matching the original live unit, tenant, project, connection,
 generation and runtime session in its conditional SQL write, in addition to
 current source authorization supplied by the composition root.
+
+## Addressed request storage increment
+
+A lineage belongs to the original canonical native task/run. Its request/depth/
+review-round ceilings are bounded policy values, separate from #152's grant-use
+budget. A request-ID or intent-key change cannot create a fresh budget for the
+same task/run. Child requests inherit their actual persisted parent's lineage;
+deleting or acknowledging delivery never releases budget. The first lineage
+ceilings cannot be raised by a later caller; lowered current policy also applies.
+Every unit has its canonical original native-task/run binding at authorized
+creation. A child unit may explicitly inherit that binding; an enqueue cannot
+select some unrelated parent to borrow its budget. Current policy may later
+expand again within the immutable initial ceilings; narrower policy is checked
+at each command, not treated as a permanent historical revocation.
+
+Each request records one connection recipient, its original native task/unit,
+canonical source/target/criteria references, parent, depth, round, priority,
+expiry and versioned state. Results/messages use their real immutable IDs;
+materials/docs/work/thoughts pin actual versions; GitHub references carry verified
+binding/link/head identity. No title, message body, prompt, credential, URL or
+provider prose is copied into these control records. One lineage/intent key
+retains its original normalized fingerprint forever; changed reuse conflicts.
+The request and one outgoing delivery intent are inserted in the same transaction.
+
+Storage is transaction-bound and invoked only after #152 current sender/recipient
+scope, grant and source authorization, command preparation, sorted connection
+slots, and the complete sorted native task set. Parent-root task identities must
+be gathered before those locks. The request storage then locks its lineage and
+request rows. It adds no grant/receipt ledger or model invocation. A pending
+request does not claim/preempt its unit. Transport ACK marks only its delivery
+intent and never changes request/task state or removes recovery work.
+
+Recovery storage returns a bounded addressed snapshot; the composition root
+reauthorizes all referenced sources for this exact recipient before presenting
+any record and signs/validates a connection/project-bound opaque continuation.
+The continuation must be encrypted or server-held; signing a readable encoding
+of skipped private IDs or scheduling scores does not make it opaque.
+Its internal chronological key preserves PostgreSQL microseconds as timestamp
+text, rather than round-tripping through JavaScript Date milliseconds.
+No global event sequence or inaccessible-project count is a public cursor.
+Pending rows survive transport retention and ACK. Claim loss is presented as
+pending recovery, not completion. Priority plus capped aging lets old ordinary
+requests outrank newly arriving blockers. A deferred reason and concrete next
+boundary remain durable. Request claim/resolution, source supersession,
+cursor-gap resync and final authorization composition are subsequent parts of
+the same unchanged contract, not certified by the initial enqueue/ACK snapshot.
+Claim-ready candidate scans exclude every currently live claimed unit and have
+bounded ranked pagination at one server-selected aging time. A caller can keep
+scanning after inaccessible sources without repeatedly returning the same first
+page. Security/expiry and claim fences still use fresh wall time on each page
+and each effect; an old ranking snapshot never extends authority.
+
+#74 currently exposes undelivered provider references only. Its recipient needs
+its own verified repository access at delivery; stored native publications need
+provenance-aware current-reader gates as well. This storage does not activate
+that adapter or publish private GitHub facts into existing conversations/events.
+No ordinary standing-rule click substitutes for those gates.

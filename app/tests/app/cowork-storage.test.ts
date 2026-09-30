@@ -33,7 +33,7 @@ async function fixture() {
     const unitId = randomUUID();
     await db.insert(schema.projects).values({ id: projectId, workspaceId, name: 'Native project', createdBy: owner });
     await db.insert(schema.projectWorkItems).values({ id: taskId, workspaceId, projectId, title: 'Native task', createdByKind: 'human', createdById: owner });
-    await db.insert(schema.coworkUnits).values({ id: unitId, workspaceId, projectId, taskId, runId: randomUUID(), unitKey: 'first', role, assignmentConnectionId: assigned });
+    await db.insert(schema.coworkUnits).values({ id: unitId, workspaceId, projectId, taskId, lineageTaskId: taskId, runId: randomUUID(), unitKey: 'first', role, assignmentConnectionId: assigned });
     return { workspaceId, projectId, connectionId: assigned, unitId };
   };
   return { owner, workspaceId, agentId, connectionId, makeUnit };

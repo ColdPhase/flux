@@ -81,3 +81,4 @@ export * from './repositories/project-export.js';
 export * from './repositories/operations.js';
 
 export * from './repositories/cowork.js';
+export * from './repositories/cowork-requests.js';
