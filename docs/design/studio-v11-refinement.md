@@ -1,5 +1,12 @@
 # Flux Studio v11 direction and focused UX refinements
 
+**Latest direction, 2026-09-30:** [F-016 MCP co-work](../product/mcp-cowork.md)
+and [F-017 Studio 11.6](studio-v11.6.md) supersede earlier appearance targets.
+Use the [seven unchanged inputs and fresh evidence](references/studio-v11.6/README.md).
+Preserve F-015 responsiveness, #133 explicit acknowledgment and useful production
+behavior. #136 integrates the redesign; active branch owners/reviews remain.
+
+
 **Latest refinement:** [Studio 11.1 / F-014](studio-v11.1-refinement.md), received
 2026-09-30, adds the next appearance/draft targets and reconciles active work.
 This earlier record preserves the original F-013 decision and evidence; the

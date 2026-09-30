@@ -1,5 +1,12 @@
 # Design work in Flux
 
+**Latest direction, 2026-09-30:** [F-016 MCP co-work](../product/mcp-cowork.md)
+and [F-017 Studio 11.6](studio-v11.6.md) supersede earlier appearance targets.
+Use the [seven unchanged inputs and fresh evidence](references/studio-v11.6/README.md).
+Preserve F-015 responsiveness, #133 explicit acknowledgment and useful production
+behavior. #136 integrates the redesign; active branch owners/reviews remain.
+
+
 Read foundation sections 10, 17 D1–D4, and 21 in
 [FLUX-FOUNDATION.md](../product/FLUX-FOUNDATION.md). The later **F-013 / Studio v11**
 founder direction, 2026-09-29, is now the primary visual and UX baseline:

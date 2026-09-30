@@ -24,6 +24,15 @@ Polish foundation remains the original source, not a second competing roadmap.
 
 ## Current authority
 
+**Latest additions, 2026-09-30:** [F-016 local MCP co-work](mcp-cowork.md)
+and [F-017 Studio 11.6](../design/studio-v11.6.md) are required milestone-2
+outcomes: one Flux backlog, project GitHub bindings, multiple personal external
+agents per owner, bounded autonomous handoffs/review, preserved embedded helper,
+full UI redesign with continuity and subtle motion/real typing. These extend
+F-015 phone-to-ultrawide and qualify older visual/RFC descriptions below.
+Implementation and real integration evidence remain pending; #147 / PR #150
+imports references and reconciles contracts only.
+
 The [later founder delegation](autonomy.md) authorizes agents to choose and accept
 product, stack, architecture, UX, scope and delivery decisions. No human acceptance
 is required. Open decisions below are decisions for the agents to resolve and

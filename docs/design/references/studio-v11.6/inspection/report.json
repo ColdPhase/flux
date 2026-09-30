@@ -1,0 +1,290 @@
+{
+  "html_sha256": "5c0f26dd05709d18d0a8c28bfa412bc29948f4b49f2738ac5c537ddbe4f943e7",
+  "date": "2026-09-30",
+  "zoom": "100%",
+  "origin": "container loopback HTTP, native localStorage",
+  "screenshots": [
+    {
+      "file": "chat-1440-dark.png",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "7cc05cf966bb35b07df5af0c715fb26b7d63c752bd6531dfaad3316dac550136"
+    },
+    {
+      "file": "map-1440-dark.png",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "fb24e20d4f9698cc2c63c321f1508d25ba4dea9980f3ecaed99c73a883a519bd"
+    },
+    {
+      "file": "tasks-1440-dark.png",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "acbf19f6abe9a60f7207282d5c42ec93b66eade717df6a6e257f14e6f1797337"
+    },
+    {
+      "file": "wiki-1440-dark.png",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "9b3db91e2ef3b81604a2a611f20f202058475b5b85c3b397e5a03a34e26fe0c4"
+    },
+    {
+      "file": "agents-1440-dark.png",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "59c6b210c1454115f59279433b9be731ee614605011346392122565f31e22245"
+    },
+    {
+      "file": "chat-390-dark.png",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "116d98031d829a78487b4b370416072e224e4bc003d2fe8dd0ae1484cac54f69"
+    },
+    {
+      "file": "map-390-dark.png",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "f26f18f4a63fea7de7f61d39926aac24333597519fa2b28f95a1e6df49233222"
+    },
+    {
+      "file": "tasks-390-dark.png",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "cc03698df712abad81675cff9966910a731f986b0f7ec719ecfdae595bd44dd9"
+    },
+    {
+      "file": "wiki-390-dark.png",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "7bf3efa544afc2329188b38889140ba4860a717d9f4ed066bca6ae4f7385042e"
+    },
+    {
+      "file": "agents-390-dark.png",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "sha256": "f6d0d907600dd216a37fa771249db71c0b5eaaa9ddd9f708cd8078195a27cd24"
+    },
+    {
+      "file": "chat-768-dark.png",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "sha256": "ed3f17d9c1153b0d058001d7537834bc4b4828b567ebd63fe784d30879b34194"
+    },
+    {
+      "file": "map-768-dark.png",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "sha256": "00e8d60724879749181f9106c171acc318df11399987bb88847bfa1ef7ba110c"
+    },
+    {
+      "file": "tasks-768-dark.png",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "sha256": "24592893de82dbb8aa9d7292de3cd48e1951b948527db3bd8b132008b0eab145"
+    },
+    {
+      "file": "wiki-768-dark.png",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "sha256": "dacc01a4f6692388890a3c36e6db44bd41ca670aa966aac26b6e47587a25a377"
+    },
+    {
+      "file": "agents-768-dark.png",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "sha256": "6d5964f0a6fd8b0556953a46dbbc5982196273ba8127a15752b2f46cfa698819"
+    },
+    {
+      "file": "chat-320-dark.png",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "252deebffdd08893c789e0d3543fcdc183b857ddcc2116c3cf321e13778db425"
+    },
+    {
+      "file": "map-320-dark.png",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "4586bc1e7f9b22e067d2afe4eeb89151d482b427892553922fe7620946341924"
+    },
+    {
+      "file": "tasks-320-dark.png",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "4d89ba935fb773c1c5f10e1ca13ccfc9fbb0f182b10b2d19d0c905d21fec2e03"
+    },
+    {
+      "file": "wiki-320-dark.png",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "fd922a4e955e68ad01feac73c998403791cf58356adbdea9c9ea69312c87d656"
+    },
+    {
+      "file": "agents-320-dark.png",
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "sha256": "973ce5b3917a4d4071e001c320169e7709d7583dbe601938bed14ad19f160f8e"
+    },
+    {
+      "file": "chat-1920-dark.png",
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "sha256": "8ee8bbd3f2ad305ab0e1348a2dc1f4b71f2ffa67ff7386b6069757311c969a78"
+    },
+    {
+      "file": "map-1920-dark.png",
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "sha256": "16e95b875869ceeb1208f1176506893b67fb074859e49d5998b33c9d260398ca"
+    },
+    {
+      "file": "tasks-1920-dark.png",
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "sha256": "671a2e0ce6b2d76601ef304efec2f6fbe51749d7f628ad0846e3643c22a6e9a4"
+    },
+    {
+      "file": "wiki-1920-dark.png",
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "sha256": "6d45ef40f2d5f0f99c219e386756d2307d098e7a4b7f11f2c80a721e460ba04a"
+    },
+    {
+      "file": "agents-1920-dark.png",
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "sha256": "512acef6a0bcd2b293dbec10500982e59351f7531b930c639cb9a2462f9e86cc"
+    },
+    {
+      "file": "chat-1440-light.png",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "843410455820804d6f4e55eb53a1b16db94ddd399d1f569acf735e76ed879017"
+    },
+    {
+      "file": "agents-1440-light.png",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "sha256": "8f7c72e39a4ca43ac6f451520094797757c3b2a6c7c7e23ea88be843de303c78"
+    }
+  ],
+  "observations": {
+    "release": "11.6",
+    "palettes": {
+      "light": [
+        [
+          "mint",
+          "Mięta",
+          "#3f654c"
+        ],
+        [
+          "sky",
+          "Błękit",
+          "#456581"
+        ],
+        [
+          "copper",
+          "Terakota",
+          "#895c43"
+        ]
+      ],
+      "dark": [
+        [
+          "mint",
+          "Mięta",
+          "#b2c89f"
+        ],
+        [
+          "sky",
+          "Błękit",
+          "#acc1d2"
+        ],
+        [
+          "copper",
+          "Terakota",
+          "#d6b99b"
+        ]
+      ]
+    },
+    "coop_version": "11.6",
+    "coop_runs": [
+      {
+        "id": "cr1",
+        "task": "tc1",
+        "state": "waiting_review"
+      },
+      {
+        "id": "cr2",
+        "task": "tc2",
+        "state": "running"
+      }
+    ],
+    "native_storage_reload": {
+      "before": {
+        "theme": "dark",
+        "accent": "copper"
+      },
+      "after": {
+        "theme": "dark",
+        "accent": "copper"
+      }
+    }
+  },
+  "page_errors": [],
+  "limits": "Focused prototype inspection only. No supplied tests, production server/access, real users/devices, LLM, remote media or full accessibility audit. Reload checks do not prove persistence after browser restart.",
+  "fixture_clock": "2026-09-30T12:00:00Z",
+  "browser": "151.0.7922.34"
+}

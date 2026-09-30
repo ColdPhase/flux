@@ -1,5 +1,15 @@
 # Full-product coverage and evidence ledger
 
+**2026-09-30 required extension, implementation pending:** F-016
+[CO-1–CO-5](mcp-cowork.md) maps personal identity/AI (§8.1/8.12), scoped context
+and communications (§8.3–8.8), repository integration/extensions (§8.16),
+review/results and operation recovery. F-017 [UI116-1–UI116-5](../design/studio-v11.6.md)
+adds the full appearance target, first-message semantics and motion/presence.
+#74 and the linked delivery table own new functional slices; #136/#151 integrate
+UI/adaptation, #57/#68 retain the personal helper. Reference inspection is not
+completed coverage. Final release needs the two-owner/three-connection fixture,
+real GitHub/current-version reviews, no-AI regression, F-015 and #20 evidence.
+
 **Revision:** 2026-09-27, reconciled with protected `main` at `146a1c7` after [#36 / PR #60](https://github.com/ColdPhase/flux/pull/60), [#80 / PR #97](https://github.com/ColdPhase/flux/pull/97), [#81 / PR #98](https://github.com/ColdPhase/flux/pull/98) and [#75 / PR #99](https://github.com/ColdPhase/flux/pull/99) merged; [#44](https://github.com/ColdPhase/flux/issues/44) adds the creative direction. Each implementation PR owner updates its rows and its independent evaluator checks them. This ledger maps the sixteen areas and eight pillars in the [founder foundation §§7–8](FLUX-FOUNDATION.md#7-filary-produktu). The [application specification](application-specification.md) states the shared journey, sequencing and accepted O-004 release boundary. [MOB-1–MOB-7](mobile-pwa.md#required-outcomes) also gate the full product.
 
 ## Evidence rule

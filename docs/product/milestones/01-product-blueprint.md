@@ -1,5 +1,24 @@
 # Milestone 1 — Decisions that enable implementation
 
+## Latest required additions — F-016 / F-017 (2026-09-30)
+
+[Local MCP co-work](../mcp-cowork.md) and [Studio 11.6](../../design/studio-v11.6.md)
+now govern the new feature and full UI direction. #147 / PR #150 preserves the
+seven inputs and independent reference/contract review; import is not delivery.
+Flux owns the single task/thread, GitHub supplies PR/CI facts through project
+bindings (#74), several external agents may belong to one person, and standing
+owner grants allow cooperation without routine approval prompts. Keep the
+embedded helper, existing Node stack, tenant/project access and review gates.
+
+The [delivery table](../mcp-cowork.md#delivery-and-evidence--co-5) maps connection,
+co-work, task-thread and motion/presence slices. #136 owns UI integration, #151
+phone-to-ultrawide, #148 themes and #149 map drafts. Required evidence includes
+real two-owner/three-connection work, task/PR/result review, no duplicate backlog,
+revocation/reconnect, deterministic board rules/manual override, two-user typing,
+all no-AI journeys and F-015/#20 device gates. Active owners and reviews stay;
+independent ready work continues while dependencies finish. Earlier direction
+below is historical where superseded. No production completion is claimed here.
+
 Status: **agents decide and proceed**. Read the complete
 [foundation](../FLUX-FOUNDATION.md) and the later [founder delegation](../autonomy.md).
 There is no founder acceptance step for product, stack, UX or implementation scope.

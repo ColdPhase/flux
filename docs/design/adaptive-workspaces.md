@@ -1,5 +1,13 @@
 # Adaptive workspaces: small phones through 4K and ultrawide
 
+**Later F-017 extension:** apply this whole contract to Studio 11.6 and its
+Agents tab as well as Conversation/Map/Tasks/Wiki. Include Hubert's two agents
+plus Marek's one, optional related task/source/PR context on wide panes, and a
+phone composition that preserves usable stream/composer height. Consolidate
+repeated header/identity details rather than shrinking text. See
+[UI116-1–UI116-5](studio-v11.6.md) and the
+[11.6 visual findings](references/studio-v11.6/inspection/visual-review.md).
+
 **Founder requirement:** F-015, Hubert, 2026-09-30; added to [#147 / PR #150](https://github.com/ColdPhase/flux/pull/150).
 The application must use available space intelligently: a larger screen gives
 more useful working context, while moving between phone, tablet and computer

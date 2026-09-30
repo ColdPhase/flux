@@ -1,5 +1,12 @@
 # Current Flux design direction
 
+**Latest direction, 2026-09-30:** [F-016 MCP co-work](../product/mcp-cowork.md)
+and [F-017 Studio 11.6](studio-v11.6.md) supersede earlier appearance targets.
+Use the [seven unchanged inputs and fresh evidence](references/studio-v11.6/README.md).
+Preserve F-015 responsiveness, #133 explicit acknowledgment and useful production
+behavior. #136 integrates the redesign; active branch owners/reviews remain.
+
+
 **Current target:** latest [Studio 11.1 reference and reconciliation](studio-v11.1-refinement.md),
 received 2026-09-30 (F-014 / #147), continuing founder-supplied **Flux Studio v11**, received 2026-09-29, under [F-013 / #132](https://github.com/ColdPhase/flux/issues/132). Read the [focused direction and UX contract](studio-v11-refinement.md) and inspect the [preserved HTML/source/screenshots](references/studio-v11/README.md) before changing the UI. It is approximately the desired final appearance and connected experience, with deliberate improvements for usability and useful behavior already in the repository.
 

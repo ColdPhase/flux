@@ -1,5 +1,12 @@
 # Studio 11.1 — reference intake and production reconciliation
 
+**Latest direction, 2026-09-30:** [F-016 MCP co-work](../product/mcp-cowork.md)
+and [F-017 Studio 11.6](studio-v11.6.md) supersede earlier appearance targets.
+Use the [seven unchanged inputs and fresh evidence](references/studio-v11.6/README.md).
+Preserve F-015 responsiveness, #133 explicit acknowledgment and useful production
+behavior. #136 integrates the redesign; active branch owners/reviews remain.
+
+
 **Received:** 2026-09-30. **Direction:** F-014 / [#147](https://github.com/ColdPhase/flux/issues/147).
 Hubert asks us to check his next UI iteration, make it visible in the repository
 and milestones/issues, and allow further improvements where useful. This is a
