@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import process from 'node:process';
+import console from 'node:console';
 
 const directory = process.argv[2];
 assert.ok(directory, 'pass the live TURN artifact directory');

@@ -24,11 +24,11 @@ separate multi-node/Redis/failover work is accepted.
 
 | Traffic | Operator route | Validation |
 | --- | --- | --- |
-| Signal WSS/HTTPS | Public ingress TCP/443 on signaling DNS to LiveKit TCP/7880 | Join from an external browser; successful HTTP health alone is insufficient. |
+| Flux WSS/HTTPS | Public ingress TCP/443 to Flux API; `/media` proxies to private LiveKit TCP/7880 | Join through the current session/admission gate; refuse direct public SFU signaling. |
 | ICE UDP/TCP | Public node UDP/7882 and TCP/7881 direct to host-network pod | Check selected candidates and media both ways. |
 | TURN/UDP + STUN | Public node UDP/3478 direct to pod | Verify external allocation and counters. |
 | TURN/TLS | Dedicated public TCP/443 and TURN DNS direct to LiveKit, or a documented layer-4 TCP pass-through | Verify CA, hostname/SNI, TLS handshake and selected `relayProtocol=tls` with blocked UDP/direct ICE. |
-| Flux API callback | LiveKit pod to protected Flux `/api/v1/internal/livekit/webhook` | Create/join/end/revoke session; verify generation and authorization behavior. |
+| Private room service and callback | Flux API to private LiveKit TCP/7880; LiveKit pod to protected Flux `/api/v1/internal/livekit/webhook` | Create/join/end/revoke session; verify generation and authorization behavior. |
 
 Use a stable public `rtc.node_ip` with `rtc.use_external_ip: false` when the
 node address is known; verify the advertised candidate equals the reachable

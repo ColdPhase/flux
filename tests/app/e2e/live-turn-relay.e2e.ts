@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { appendFileSync } from 'node:fs';
-import { createServer } from 'node:http';
 import { after, test } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium, type Browser, type Page } from 'playwright';
@@ -10,6 +9,8 @@ import type { Conversation, LiveJoinGrant, LiveSession } from '@flux/contracts';
 import { assessReceiverQuality, readReceiverSample, RECEIVER_QUALITY_LIMITS,
   type RtcStatsRecord } from '../../../apps/web/src/live/receiver-quality.js';
 import { addMember, expectStatus, grant, person, project, workspace } from '../support/people.js';
+import { publicOrigin } from '../support/http.js';
+import { mediaPage } from '../support/live-sfu.js';
 
 let browser: Browser | undefined;
 after(async () => browser?.close());
@@ -44,7 +45,21 @@ async function receiverReports(page: Page): Promise<RtcStatsRecord[]> {
 }
 
 async function connect(page: Page, media: LiveJoinGrant, pageUrl?: string): Promise<void> {
-  await page.goto(pageUrl ?? media.mediaUrl.replace(/^ws/, 'http'));
+  const signaling: { path: string; status?: number; error?: string; frames?: number }[] = [];
+  page.on('response', (response) => {
+    if (new URL(response.url()).pathname.startsWith('/media/'))
+      signaling.push({ path: new URL(response.url()).pathname, status: response.status() });
+  });
+  page.on('requestfailed', (request) => signaling.push({
+    path: new URL(request.url()).pathname, error: request.failure()?.errorText,
+  }));
+  page.on('websocket', (socket) => {
+    const record = { path: new URL(socket.url()).pathname, frames: 0, error: undefined as string | undefined };
+    signaling.push(record);
+    socket.on('framereceived', () => { record.frames += 1; });
+    socket.on('socketerror', (error) => { record.error = error; });
+  });
+  await page.goto(pageUrl ?? `${publicOrigin}/api/v1/health`);
   await page.evaluate(() => {
     const pcs: RTCPeerConnection[] = [];
     const w = window as Window & { fluxPcs?: RTCPeerConnection[]; fluxIceErrors?: unknown[];
@@ -99,7 +114,10 @@ async function connect(page: Page, media: LiveJoinGrant, pageUrl?: string): Prom
         })),
       }))) };
     });
-    throw new Error(`Browser ICE connection failed: ${String(error)}; ${JSON.stringify(diagnosis)}`);
+    throw new Error(`Browser ICE connection failed: ${String(error)}; ${JSON.stringify({
+      ...diagnosis, signaling, origin: new URL(page.url()).origin,
+      hasSessionCookie: (await page.context().cookies()).some((cookie) => cookie.name.includes('session_token')),
+    })}`);
   }
 }
 
@@ -146,8 +164,8 @@ test('two authorized Chromium clients exchange media when UDP and direct ICE/TCP
     const memberMedia = expectStatus(await member.browser.request('POST', `/api/v1/live-sessions/${session.id}/join`), 200) as LiveJoinGrant;
 
     browser ??= await chromium.launch({ args: ['--no-sandbox', '--autoplay-policy=no-user-gesture-required'] });
-    const ownerPage = await browser.newPage();
-    const memberPage = await browser.newPage();
+    const ownerPage = await mediaPage(browser, owner.browser);
+    const memberPage = await mediaPage(browser, member.browser);
     await Promise.all([connect(ownerPage, ownerMedia), connect(memberPage, memberMedia)]);
     await ownerPage.evaluate(async () => {
       const room = (window as Window & { fluxRoom?: { localParticipant: {
@@ -380,7 +398,7 @@ test('four authorized clients receive two simultaneous code-sized screen tracks 
       await member!.browser.request('POST', `/api/v1/live-sessions/${session.id}/join`), 200) as LiveJoinGrant));
 
     browser ??= await chromium.launch({ args: ['--no-sandbox', '--autoplay-policy=no-user-gesture-required'] });
-    const pages = await Promise.all(grants.map(() => browser!.newPage()));
+    const pages = await Promise.all(people.map((member) => mediaPage(browser!, member!.browser)));
     await Promise.all(pages.map((page, index) => connect(page, grants[index]!)));
     for (const page of pages) await page.waitForFunction(() => {
       const room = (window as Window & { fluxRoom?: { remoteParticipants: Map<string, unknown> } }).fluxRoom;
@@ -552,9 +570,7 @@ test('isolated headed Chromium publishes real display capture and virtual camera
     // The page is on localhost because getDisplayMedia requires a trustworthy
     // origin. Xvfb supplies a separate display; browser flags substitute
     // camera/mic devices and auto-select that virtual screen, never host media.
-    const pageServer = createServer((_request, response) => {
-      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      response.end(`<!doctype html><meta charset="utf-8"><title>Flux isolated capture</title>
+    const captureHtml = `<!doctype html><meta charset="utf-8"><title>Flux isolated capture</title>
         <style>body{background:#172033;color:#f4f8ff;font:16px monospace;padding:24px}</style>
         <h1>Flux isolated browser capture</h1><p>const source = "Xvfb only";</p>
         <button id="share">Share isolated screen</button>
@@ -566,11 +582,7 @@ test('isolated headed Chromium publishes real display capture and virtual camera
           document.querySelector('#devices').addEventListener('click', () => {
             window.devicesPending = navigator.mediaDevices.getUserMedia({ video: true, audio: true });
           });
-        </script>`);
-    });
-    await new Promise<void>((resolve) => pageServer.listen(0, '127.0.0.1', resolve));
-    const address = pageServer.address();
-    assert.ok(address && typeof address !== 'string');
+        </script>`;
     let publisherBrowser: Browser | undefined;
     let viewerBrowser: Browser | undefined;
     try {
@@ -580,8 +592,14 @@ test('isolated headed Chromium publishes real display capture and virtual camera
         '--auto-select-desktop-capture-source=Entire screen',
       ] });
       viewerBrowser = await chromium.launch({ args: ['--no-sandbox'] });
-      const publisherPage = await publisherBrowser.newPage({ viewport: { width: 1280, height: 800 } });
-      await connect(publisherPage, ownerMedia, `http://127.0.0.1:${address.port}/`);
+      const publisherPage = await mediaPage(publisherBrowser, owner.browser);
+      await publisherPage.setViewportSize({ width: 1280, height: 800 });
+      await connect(publisherPage, ownerMedia);
+      // Keep the real same-origin network path. Document content supplies only
+      // the isolated capture buttons; no request interception touches signaling.
+      await publisherPage.setContent(captureHtml);
+      assert.equal(await publisherPage.evaluate(() =>
+        (window as Window & { fluxRoom?: { state: string } }).fluxRoom?.state), 'connected');
       assert.equal(await publisherPage.evaluate(() => window.isSecureContext), true,
         'localhost capture page must be a secure context');
       await publisherPage.click('#share');
@@ -620,7 +638,7 @@ test('isolated headed Chromium publishes real display capture and virtual camera
       assert.ok((devices.camera.width ?? 0) > 0 && (devices.camera.height ?? 0) > 0);
       assert.equal(devices.microphoneState, 'live');
 
-      const viewerPage = await viewerBrowser.newPage();
+      const viewerPage = await mediaPage(viewerBrowser, viewer.browser);
       await connect(viewerPage, viewerMedia);
       await viewerPage.waitForFunction(() => {
         const w = window as Window & { fluxRoom?: { remoteParticipants: Map<string, {
@@ -669,6 +687,5 @@ test('isolated headed Chromium publishes real display capture and virtual camera
         display: 'separate Xvfb display' }));
     } finally {
       await Promise.all([publisherBrowser?.close(), viewerBrowser?.close()]);
-      await new Promise<void>((resolve) => pageServer.close(() => resolve()));
     }
   });

@@ -2,7 +2,7 @@
 services:
   livekit:
     networks:
-      default:
+      livekit-media:
         aliases: [turn.flux.test]
     environment:
       LIVEKIT_CONFIG: |
@@ -62,9 +62,9 @@ services:
         cat /tmp/turn-tls.txt
         test ! -e /dev/video0 && test ! -e /dev/snd
         node -e "const net=require('node:net'); const s=net.connect(7881,process.argv[1]); s.on('connect',()=>process.exit(1)); s.on('error',()=>process.exit(0)); setTimeout(()=>process.exit(2),2000)" "$$media_ip"
-        node -e "fetch('http://livekit:6789/metrics').then(r=>{if(!r.ok)throw Error('metrics HTTP '+r.status);console.log('SFU metrics HTTP '+r.status)}).catch(e=>{console.error(e);process.exit(1)})"
         # The separate Xvfb display keeps Chromium's real display-capture picker
         # and fake camera/mic entirely away from the operator's desktop/devices.
         xvfb-run -a node_modules/.bin/tsx --test tests/app/e2e/live-turn-relay.e2e.ts
+        node_modules/.bin/tsx --test --test-concurrency=1 tests/app/e2e/live-sfu-revocation.e2e.ts tests/app/e2e/live-sfu-signout.e2e.ts
         node scripts/summarize_live_turn_resources.mjs /artifacts
         iptables -L OUTPUT -n -v

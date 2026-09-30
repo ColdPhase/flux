@@ -32,7 +32,6 @@ export FLUX_LIVEKIT_ICE_UDP_PORT="${FLUX_LIVE_TURN_TEST_ICE_UDP_PORT:-18864}"
 export FLUX_LIVEKIT_TURN_UDP_PORT="${FLUX_LIVE_TURN_TEST_TURN_UDP_PORT:-18865}"
 export FLUX_LIVEKIT_TURN_TLS_BIND=127.0.0.1
 export FLUX_LIVEKIT_TURN_TLS_HOST_PORT="${FLUX_LIVE_TURN_TEST_TLS_PORT:-18867}"
-export FLUX_LIVEKIT_METRICS_PORT="${FLUX_LIVE_TURN_TEST_METRICS_PORT:-18866}"
 
 compose="docker compose -p $project -f infra/compose.yaml -f infra/compose.live.yaml -f infra/compose.live.test.yaml -f infra/compose.live.turn.yaml -f infra/compose.live.turn.test.yaml --profile live-test"
 cleanup() {
@@ -67,6 +66,8 @@ docker run --rm --entrypoint sh -v "$cert_dir:/certs:z" "flux-e2e:$project" -ec 
 '
 $compose build migrate live-sfu-test
 $compose up -d --wait api livekit
+$compose exec -T livekit wget -q -O - http://127.0.0.1:6789/metrics > "$artifact_dir/livekit-metrics.prom"
+test -s "$artifact_dir/livekit-metrics.prom"
 livekit_container=$($compose ps -q livekit)
 test -n "$livekit_container"
 stats_path="$artifact_dir/livekit-container-stats.jsonl"

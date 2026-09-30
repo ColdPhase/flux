@@ -35,4 +35,3 @@ services:
       - ${FLUX_LIVEKIT_TURN_CERT_DIR:?Set the directory with fullchain.pem and privkey.pem}:/run/livekit-turn-certs:ro,z
     ports:
       - ${FLUX_LIVEKIT_TURN_TLS_BIND:-0.0.0.0}:${FLUX_LIVEKIT_TURN_TLS_HOST_PORT:-443}:443/tcp
-      - 127.0.0.1:${FLUX_LIVEKIT_METRICS_PORT:-6789}:6789/tcp

@@ -17,11 +17,12 @@ Layer `infra/compose.yaml`, `infra/compose.live.yaml`, then
 | `FLUX_LIVEKIT_TURN_CERT_DIR` | Absolute host directory with trusted-CA `fullchain.pem` and `privkey.pem`, readable by the LiveKit container. Keep the private key outside the repo. |
 | `FLUX_LIVEKIT_TURN_TLS_BIND` | Public IP dedicated to TCP/443 TURN/TLS; defaults to `0.0.0.0`, which conflicts with an HTTPS ingress on the same IP. |
 | `FLUX_LIVEKIT_TURN_TLS_HOST_PORT` | Keep `443` for a direct public deployment. The isolated Docker test uses a separate host port while browsers reach container TCP/443. |
-| `FLUX_LIVEKIT_METRICS_PORT` | Host loopback port for Prometheus metrics; defaults to `6789`. Scrape through a private monitor, not the public proxy. |
 
-The API reaches LiveKit at `http://livekit:7880`; browsers receive the
-operator's public `wss://` signaling origin. Terminate signaling HTTPS/WSS at
-the operator's reverse proxy and route to host loopback TCP/7880. TURN/TLS
+The API reaches LiveKit at `http://livekit:7880` on the internal
+`livekit-signal` network. Browsers signal through Flux's public `/media` gate,
+which rechecks the cookie session, admission and current access (#128); the
+SFU's TCP/7880 is neither published nor reachable from the media network.
+Terminate Flux HTTPS/WSS at the operator's reverse proxy. TURN/TLS
 terminates in LiveKit itself on TCP/443; an HTTP reverse proxy cannot carry
 it. Use a separate public IP or a layer-4 TCP load balancer. The LiveKit `node_ip`
 must be the publicly reachable media address; with NAT, forward the following
@@ -33,7 +34,7 @@ ports to this host and test candidates from outside its LAN:
 | UDP/3478 | Embedded TURN/UDP and STUN. |
 | UDP/7882 | SFU ICE UDP mux. |
 | TCP/7881 | SFU ICE TCP fallback. |
-| TCP/7880 loopback only | Signaling/API behind HTTPS/WSS proxy. |
+| TCP/7880 internal only | SFU signaling/room service, reachable only by the Flux API. |
 
 Keep the API key/secret in the operator's secret store or protected environment
 file; rotate them together in API and SFU. Do not put them in public browser
@@ -41,7 +42,11 @@ configuration. This profile starts no recorder, egress, ingress, transcription,
 or agent listener. The room has a 16-participant configured ceiling, which is
 not a measured capacity. The existing service health probe checks signaling
 readiness only; it does not prove media reachability. The overlay exposes
-`/metrics` on loopback TCP/6789. Monitor the host's CPU/memory/network egress
+`/metrics` on SFU TCP/6789 bound to its internal signaling interface and loopback;
+it is not published. An operator can inspect it with `docker compose exec -T
+livekit wget -q -O - http://127.0.0.1:6789/metrics` using the same Compose layers,
+or attach a private monitor to the signaling network. Media clients cannot scrape
+it. Monitor the host's CPU/memory/network egress
 and LiveKit logs, and test a real external client
 after firewall, certificate or NAT changes. Upgrade by pinning a new digest in
 one reviewed PR, testing against a preserved database and staging endpoint,
@@ -63,6 +68,11 @@ test certificate, and places the **client** container behind an egress rule
 rejecting UDP to the SFU and direct TCP/7881. Two authorized browser clients
 join the same Flux session, one publishes a generated Web Audio tone, and the
 other subscribes.
+Browser contexts carry each person's own Flux cookie and use the same public
+origin forwarder and session-bound signaling gate as the current SFU tests.
+The test obtains metrics inside the SFU container and retains them as artifacts;
+it never opens the internal signaling network to browsers. The existing real-SFU
+revocation and sign-out cases also run under the restrictive relay profile.
 The assertion reads the selected WebRTC candidate pair on both clients and
 requires relay over TLS with received bytes. The temporary certificate is
 accepted only by this test browser; it does not prove a real public CA or NAT.
