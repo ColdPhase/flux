@@ -253,7 +253,7 @@ export function SketchMap(props: SketchMapProps) {
 
   const onNodeKeyDown = (event: KeyboardEvent<HTMLButtonElement>, thought: Thought) => {
     const { key } = event;
-    if (key === 'Enter') { event.preventDefault(); if (connectFrom) props.onPick(thought.id, false); else if (canWrite) props.onEdit(thought.id); return; }
+    if (key === 'Enter' || key === 'F2') { event.preventDefault(); if (connectFrom) props.onPick(thought.id, false); else if (canWrite) props.onEdit(thought.id); return; }
     if (key === ' ') { event.preventDefault(); if (connectFrom) props.onPick(thought.id, false); else props.onToggle(thought.id); return; }
     if (key === 'Escape') { if (props.onEscape()) { event.preventDefault(); event.stopPropagation(); } return; }
     if (!canWrite) return;

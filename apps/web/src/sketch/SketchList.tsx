@@ -92,7 +92,7 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
     } else if (event.key === 'ArrowRight') {
       if (row.children.length && view.state.collapsed.includes(id)) { view.toggle(id); destination = id; }
       else destination = row.children[0];
-    } else if (event.key === 'Enter' && canWrite && !connectFrom) { event.preventDefault(); on.onEdit(id); }
+    } else if ((event.key === 'Enter' || event.key === 'F2') && canWrite && !connectFrom) { event.preventDefault(); on.onEdit(id); }
     else if (event.key === ' ') { event.preventDefault(); if (connectFrom) on.onPick(id, false); else on.onToggle(id); }
     else if ((event.key === '+' || event.key === '=') && canWrite) { event.preventDefault(); on.onAdd(id); }
     else if ((event.key === 'Delete' || event.key === 'Backspace') && canWrite) { event.preventDefault(); on.onRemove(selection.includes(id) ? selection : [id]); }

@@ -354,9 +354,45 @@ export function useSketchDoc(sketchId: string, me: Me) {
     return entry.label;
   }, [commit, enqueue, flushMoves]);
 
+  /** Explicit draft save: no optimistic shared thought or undo step before confirmation. */
+  const saveThought = useCallback(async (thought: NewThought, parent: { id: string; linkId: string } | null, key: string): Promise<boolean> => {
+    flushMoves();
+    inFlight.current += 1;
+    setSaving(true);
+    setProblem(null);
+    const operation = queue.current.then(async () => {
+      const created = await withRetry(() => api.addThought(sketchId, {
+        id: thought.id, text: thought.text, x: thought.x, y: thought.y,
+        ...(parent ? { linkFrom: { thoughtId: parent.id, linkId: parent.linkId } } : {}),
+      }, key));
+      const current = ref.current;
+      if (!current) return false;
+      versions.current.set(created.thought.id, created.thought.version);
+      commit({ ...current,
+        thoughts: [...current.thoughts.filter((item) => item.id !== created.thought.id), created.thought],
+        links: created.link ? [...current.links.filter((item) => item.id !== created.link!.id), created.link] : current.links,
+      });
+      undoStack.current.push({ label: 'added a thought', ops: [{ kind: 'remove', id: created.thought.id }], at: Date.now() });
+      if (undoStack.current.length > 50) undoStack.current.shift();
+      setUndoLabel('added a thought');
+      return true;
+    }).catch(() => {
+      setProblem('The thought could not be saved. Your draft is kept; check access and its parent, then try again.');
+      staleRef.current = true;
+      return false;
+    }).finally(() => {
+      inFlight.current -= 1;
+      if (inFlight.current) return;
+      setSaving(false);
+      if (staleRef.current) { staleRef.current = false; void reload(); }
+    });
+    queue.current = operation.then(() => undefined);
+    return operation;
+  }, [commit, flushMoves, reload, sketchId]);
+
   useEffect(() => () => flushMoves(), [flushMoves]);
 
-  return { sketch, load, saving, problem, clearProblem: () => setProblem(null), canUndo: undoLabel !== null, perform, undo, reload, newId: uuid };
+  return { sketch, load, saving, problem, clearProblem: () => setProblem(null), canUndo: undoLabel !== null, perform, saveThought, undo, reload, newId: uuid };
 }
 
 export type SketchDoc = ReturnType<typeof useSketchDoc>;

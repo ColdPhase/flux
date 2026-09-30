@@ -12,6 +12,8 @@ import { freeSpot, rectOf } from './geometry';
 import { SketchList } from './SketchList';
 import { SketchMap } from './SketchMap';
 import { useOutline } from './useOutline';
+import { useThoughtDraft } from './createdDraft';
+import { DraftCapture } from './DraftCapture';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import './sketch.css';
 
@@ -61,6 +63,9 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   const doc = useSketchDoc(sketchId, { id: me.user.id, name: me.user.name });
   const { sketch } = doc;
   const personalOutline = useOutline(me.user.id, sketch);
+  const capture = useThoughtDraft(me.user.id, sketch);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const draftSaveInFlight = useRef(false);
   const coarse = useMediaQuery('(pointer: coarse)');
   const phone = useMediaQuery(MEDIA.phone);
   const [mode, setModeState] = useState<Mode>(storedMode);
@@ -191,16 +196,31 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
 
   const add = (parentId: string | null) => {
     if (!sketch || !canWrite) return;
+    if (capture.draft) { rootRef.current?.querySelector<HTMLTextAreaElement>('.sk-draft textarea')?.focus(); say('Finish or cancel your current thought draft first'); return; }
     const parent = parentId ? find(parentId) : undefined;
     const rects = sketch.thoughts.map((t) => rectOf(t, heights));
     const spot = freeSpot(rects, parent ? rectOf(parent, heights) : null, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height }, phone);
-    const id = doc.newId();
-    personalOutline.group(id, parent?.id ?? null, false);
-    doc.perform([{ kind: 'add', thought: { id, text: 'New thought', x: spot.x, y: spot.y }, link: parent ? { id: doc.newId(), fromId: parent.id, label: null } : undefined }], 'added a thought');
+    capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text: '', x: spot.x, y: spot.y, parentId });
     setConnectFrom(null);
-    setSelection([id]);
-    setEditing({ id, isNew: true, parentId: parent?.id ?? null });
-    say(parent ? `New thought connected to ${quote(parent.text)} · Enter saves, Esc keeps “New thought”` : 'New thought · type its text, Enter saves');
+    setEditing(null);
+    say('Private thought draft · Enter saves, Escape cancels');
+  };
+
+  const saveDraft = async () => {
+    const draft = capture.draft;
+    if (!draft || draftSaveInFlight.current || !canWrite || !draft.text.trim()) return;
+    draftSaveInFlight.current = true;
+    setSavingDraft(true);
+    const saved = await doc.saveThought({ id: draft.id, text: draft.text.trim(), x: draft.x, y: draft.y },
+      draft.parentId ? { id: draft.parentId, linkId: draft.linkId } : null, draft.key);
+    setSavingDraft(false);
+    draftSaveInFlight.current = false;
+    if (!saved) { say('Your thought draft is kept. Nothing was reported as saved.'); return; }
+    personalOutline.group(draft.id, draft.parentId, false);
+    capture.set(null);
+    setSelection([draft.id]);
+    say(`Added ${quote(draft.text.trim())}`, true);
+    focusThought(`.sk-node[data-id="${draft.id}"], .sk-li-t[data-id="${draft.id}"]`);
   };
 
   const finishEdit = (text: string | null) => {
@@ -321,6 +341,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
           <EmptyState icon="map" title={doc.load === 'not-found' ? 'This sketch isn’t available' : 'The sketch couldn’t be opened'}
             action={doc.load === 'not-found' ? <Link className="ui-btn ui-btn--secondary" to={back}>All sketches</Link> : <Button onClick={() => void doc.reload()}>Try again</Button>}>
             <p>{doc.load === 'not-found' ? 'It may have been shared with other people only, or you no longer have access to where it lives.' : 'Flux could not be reached. Your changes are safe; try again in a moment.'}</p>
+            {capture.draft ? <label>Your private thought draft<textarea aria-label="Recoverable thought draft" readOnly value={capture.draft.text} /></label> : null}
           </EmptyState>
         </div>
       </div>
@@ -403,6 +424,10 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
             ? 'Nobody else is in this conversation now, so the sketch is read-only until the other person reopens it.'
             : 'You can look at this sketch; people who can change it keep it up to date.'}</p>
         )}
+
+        {capture.draft ? <DraftCapture draft={capture.draft} parent={capture.draft.parentId ? find(capture.draft.parentId)?.text ?? null : null}
+          saving={savingDraft} canWrite={canWrite} onText={(text) => { if (capture.draft) capture.set({ ...capture.draft, text, key: doc.newId() }); }}
+          onSave={() => void saveDraft()} onCancel={() => { capture.set(null); say('Thought draft cancelled'); focusThought('.sk-add'); }} /> : null}
 
         {mode === 'map' ? (
           sketch.thoughts.length || canWrite ? (
