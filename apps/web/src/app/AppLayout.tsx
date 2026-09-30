@@ -189,6 +189,8 @@ export function AppLayout() {
   const activeDm = directMessages.find((dm) => dm.id === dmId);
   const place = location.pathname === '/search'
     ? { crumb: null, title: 'Search', topic: 'Only what you can open is searched', views: false }
+    : location.pathname === '/settings/assistant'
+    ? { crumb: null, title: 'Your assistant', topic: 'Only you can use it · optional', views: false, noDetails: true }
     : activeProject
     ? { crumb: activeProject.workspaceName ?? null, title: activeProject.name, topic: audience, views: false }
     : where === 'inbox'

@@ -191,7 +191,7 @@ class PersonalAssistantJourney(unittest.TestCase):
                 route.continue_()
         page.route("**/api/v1/personal-assistant", fulfil)
         page.goto("/settings/assistant")
-        expect(page.get_by_role("heading", name="Your assistant")).to_be_visible()
+        expect(page.get_by_role("heading", level=1, name="Your assistant")).to_be_visible()
         expect(page.get_by_text("In-app AI is turned off on this Flux server.")).to_be_visible()
         expect(page.get_by_role("button", name="Turn on my assistant")).to_be_disabled()
         shot(page, "assistant-1440-settings-provider-off")
