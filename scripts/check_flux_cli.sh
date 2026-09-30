@@ -25,7 +25,7 @@ copy3="$work/c/flux"
 run=''
 sentinel="${tag}-sentinel_keep"
 # The second checkout gets its own ports; its project name comes from its own path.
-flux2() { FLUX_PORT=19564 FLUX_DEV_PORT=19565 FLUX_MAILPIT_PORT=19566 "$copy2/flux" "$@"; }
+flux2() { FLUX_PORT=$((FLUX_PORT + 3)) FLUX_DEV_PORT=$((FLUX_DEV_PORT + 3)) FLUX_MAILPIT_PORT=$((FLUX_MAILPIT_PORT + 3)) "$copy2/flux" "$@"; }
 
 step() { printf '\n== %s\n' "$*"; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }

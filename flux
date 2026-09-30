@@ -833,6 +833,10 @@ upgrade_failed() {
   else
     warn "  check out the Flux version you ran before (its commit was not recorded)"
   fi
+  warn "  # Pre-layout versions read root .env; move the same private configuration back first."
+  warn "  if [ ! -f app/package.json ] && [ -f docker/.env ]; then"
+  warn "    [ ! -e .env ] && mv docker/.env .env || { echo 'Both env files exist; choose the intended configuration before restore.' >&2; exit 1; }"
+  warn "  fi"
   warn "  ./flux restore '$UPGRADE_ARCHIVE'"
   warn "Or fix the cause in this checkout and run ./flux restore '$UPGRADE_ARCHIVE' --migrate to retry the upgrade."
   exit 1

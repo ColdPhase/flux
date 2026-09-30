@@ -64,3 +64,23 @@ refused by restore without `--migrate` and restored with it, and through the API
 private note and sketch, a new doc, and the export. It then adds a failing migration, checks that
 the upgrade fails with the restore instruction for its backup, removes the migration and follows
 the instruction; the demo data is verified again.
+
+## Returning to a version before the app/docker layout
+
+Those versions read root `.env`, while the current launcher reads `docker/.env`.
+After checking out the prior version and before its restore command, move the
+same configuration back when the old tree has no `app/package.json`:
+
+```sh
+if [ ! -f app/package.json ] && [ -f docker/.env ]; then
+  [ ! -e .env ] && mv docker/.env .env || exit 1
+fi
+./flux restore /absolute/path/to/the/pre-upgrade-backup.tar
+```
+
+Keep its stored project name, secrets and file permissions. If both files exist,
+choose the intended configuration before continuing; do not regenerate it. When
+returning to the current source, the launcher moves root `.env` forward once.
+The layout upgrade/rollback check exercises the historical launcher and restored
+original project, followed by another upgrade; a same-version restore alone does
+not establish this transition.

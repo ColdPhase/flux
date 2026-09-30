@@ -276,18 +276,26 @@ from_schema=$(schema_of_ref "$from")
 echo "upgrading from $(git -C "$here" log -1 --format='%h %s' "$from") (schema $from_schema) to this tree (schema $current); new migrations:" $new_migrations
 mkdir -p "$U"
 git -C "$here" archive "$from" | tar -xf - -C "$U"
-flux_u up >/dev/null
+(FLUX_PROJECT="flux-upgrade-check-$$"; export FLUX_PROJECT; flux_u up >/dev/null)
 flux_u demo >/dev/null
 run_u=$(project_of "$U")
 # `git pull`: the files of the checkout change, .env and the data stay.
-cp "$(env_path "$U")" "$work/upgrade.env"
+original_env=$(env_path "$U")
+env_relative=${original_env#"$U"/}
+original_env_hash=$(sha256 "$original_env")
+cp "$original_env" "$work/upgrade.env"
 find "$U" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 copy_tree "$U"
-cp "$work/upgrade.env" "$U/docker/.env"
-chmod 600 "$U/docker/.env"
+mkdir -p "$(dirname "$U/$env_relative")"
+cp "$work/upgrade.env" "$U/$env_relative"
+chmod 600 "$U/$env_relative"
 if echo n | flux_u upgrade > "$work/upgrade-cancel.out" 2>&1; then fail "upgrade without confirmation succeeded"; fi
 flux_u upgrade -y > "$work/upgrade.out" 2>&1 || { cat "$work/upgrade.out"; fail "upgrade failed"; }
 tail -n 4 "$work/upgrade.out"
+[ "$(project_of "$U")" = "$run_u" ] || fail "layout upgrade changed the stored custom project"
+[ "$(sha256 "$U/docker/.env")" = "$original_env_hash" ] || fail "layout upgrade changed env bytes"
+[ ! -e "$U/.env" ] || fail "layout upgrade left an executable root .env"
+
 grep -q "Upgraded $run_u from schema $from_schema to $current" "$work/upgrade.out" || fail "upgrade did not report schema $from_schema -> $current"
 for migration in $new_migrations; do
   grep -q "Applied migration $migration" "$work/upgrade.out" || fail "upgrade did not apply $migration"
@@ -369,6 +377,34 @@ if (PATH="$work/shim-ps-after:$PATH"; export PATH; flux_u backup --output "$work
 grep -q 'Could not check whether API and worker stopped' "$work/backup-ps-after.out" || { cat "$work/backup-ps-after.out"; fail "no refusal after the stop"; }
 [ "$(archives)" = "$before_ps" ] || fail "an archive was written although the state after the stop was unknown"
 [ "$(running_u)" = "api worker" ] || fail "the writers that were running were not brought back: $(running_u)"
+step "Roll back the actual source layout, keep the original custom project, then upgrade again"
+# The pre-upgrade archive and historical launcher share a schema. Follow the reverse env
+# move printed by the current launcher before restoring with the old launcher.
+if git -C "$here" cat-file -e "$from:app/package.json" 2>/dev/null; then
+  rollback_env=docker/.env
+else
+  rollback_env=.env
+fi
+compose_in "$U" stop api worker >/dev/null
+cp "$(env_path "$U")" "$work/rollback.env"
+find "$U" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+git -C "$here" archive "$from" | tar -xf - -C "$U"
+mkdir -p "$(dirname "$U/$rollback_env")"
+cp "$work/rollback.env" "$U/$rollback_env"
+chmod 600 "$U/$rollback_env"
+flux_u restore "$upgrade_archive" -y > "$work/layout-rollback.out" 2>&1 || { cat "$work/layout-rollback.out"; fail "old-source rollback failed"; }
+[ "$(project_of "$U")" = "$run_u" ] || fail "rollback lost the custom project"
+flux_u demo | grep -q 'already exists; nothing new was seeded' || fail "rollback lost the original demo data"
+cp "$(env_path "$U")" "$work/rollback.env"
+find "$U" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+copy_tree "$U"
+mkdir -p "$(dirname "$U/$rollback_env")"
+cp "$work/rollback.env" "$U/$rollback_env"
+chmod 600 "$U/$rollback_env"
+flux_u upgrade -y > "$work/layout-reupgrade.out" 2>&1 || { cat "$work/layout-reupgrade.out"; fail "re-upgrade after old-source rollback failed"; }
+[ "$(project_of "$U")" = "$run_u" ] || fail "re-upgrade lost the custom project"
+[ ! -e "$U/.env" ] || fail "re-upgrade left two executable env locations"
+flux_u demo | grep -q 'already exists; nothing new was seeded' || fail "re-upgrade lost restored data"
 flux_u clean -y >/dev/null
 
 step "PASS: backup, restore into a fresh project, agent access, export, upgrade from $(git -C "$here" rev-parse --short "$from") (+$(printf '%s\n' "$new_migrations" | wc -l | tr -d ' ') migrations) and failed-upgrade recovery"
