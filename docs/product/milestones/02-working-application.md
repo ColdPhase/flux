@@ -67,6 +67,27 @@ text enlargement, independent visual and running behavior review, measurable
 performance budgets and real 4K/ultrawide plus mobile evidence. Prototype screenshots do not verify the production or hardware requirement. Missing device evidence
 remains open; available implementation and layout checks continue independently.
 
+## Ready co-work instructions and addressed requests — F-018
+
+[#160](https://github.com/ColdPhase/flux/issues/160) delivers the shipped
+[playbook and onboarding](../cowork-workflow.md), using #152 bootstrap and #153
+durable inbox/claims. Users connect, authorize and invoke the supplied Start/Resume
+action. Workflow/instruction delivery is built into Flux: no required README,
+prompt copying or manual skill installation. A client without a tested integrated
+activation path does not pass acceptance. Requests wait durably while a
+peer finishes its current step, survive context loss and are handled at safe
+checkpoints. No periodic global issue/PR/comment scans or idle model calls.
+First-entry analysis covers the Flux plan/wiki/relevant conversations/decisions
+and existing tasks. Agents may create/manage native tasks within standing grants,
+prevent duplicate decomposition and link verified PRs; later read affected changes.
+#74 bridges linked GitHub events/formal reviews; #136 shows understandable pending
+work and controls without duplicating the task thread or flooding human unread.
+
+Require real supported client activation and two-owner/three-connection busy-peer,
+offline/resume, duplicate, stale-version and revocation evidence. The docs/seed
+content are not a deployed skill or completed runtime. Settle the bootstrap/inbox
+interfaces first; independent work remains available and ownership unchanged.
+
 ## Start coding
 
 Resume existing work first. In parallel with research, settle the first required

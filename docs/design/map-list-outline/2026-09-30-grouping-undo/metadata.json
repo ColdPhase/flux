@@ -1,0 +1,44 @@
+{
+  "date": "2026-09-30",
+  "testedSource": "105aadddf287cd1b3bd4e99a9ce2fac615e1938b",
+  "baseMain": "70f4d7cdee493ec03c5ace71dcb1550329af61a4",
+  "checks": {
+    "browser": {
+      "pass": 8,
+      "fail": 0,
+      "seconds": 22.321
+    },
+    "outlineAndArchitecture": {
+      "pass": 14,
+      "fail": 0
+    }
+  },
+  "sourceSha256": {
+    "apps/web/src/sketch/useOutline.ts": "9aa0aa7fbd850c6baff662f1025b279dcb9c0802ddf1f83e99a3928748e83d95",
+    "apps/web/src/sketch/outline.ts": "fd60274b0b2a518a72b1384018b842ac0c168ebcef92205fc2c02c38bacd7362",
+    "apps/web/src/sketch/SketchView.tsx": "914bf01727f072693dbfd8dd634a6bca9bbd6fc6d77c244eeab233608d884ef3",
+    "apps/web/src/sketch/sketch.css": "9b1e6304326d04e54325658b628062dba7b85c6ebbf98ac621f41cab021bf1b6",
+    "tests/ui/test_map_outline.py": "6f69aa3507d146b666d9e723860a6f77d8c7c1f0718054326c13a1520f7d4666",
+    "tests/app/sketch-outline.test.ts": "f50649e5248ac00ce46dc44d7682eb4e39c31a2cfed693850fff26c3824bb9bc"
+  },
+  "images": {
+    "map-outline-phone-related-follow-back.png": "99ce217abe6fbc2279bfe4c7bdf1cf5264c9288063d77fa5c129fb5b0a502f29",
+    "map-outline-dark-phone-enlarged.png": "a687e47dbce309390797511ea469a182a0a13e01acc3a9ecb5ad9b261956f68c",
+    "map-outline-dark-tablet-820.png": "1d046811eb0ef3146264d30b965235e43c700bca0977a9774636c1ccd8709cb9",
+    "map-outline-dark-phone-390.png": "040273298f0188c8d538b27d9f71f0dae1458dc3834d5fc9758b80c3eba18fcd",
+    "map-outline-dark-desktop-1280.png": "866d345078836f3e3a800fe500368b80fee045d4660b4df78c3c0f14dfa90e2c",
+    "map-outline-dark-desktop-1440.png": "a603d6b6d77674037057199f6350417715355945f08279b57d51304ce7d75c59",
+    "map-outline-light-phone-enlarged.png": "47478854f9a9a3b5531cc1816d576d64dfa91746cd864b5d11a2280f84def7ee",
+    "map-outline-light-tablet-820.png": "3fd63e7c4c093b8a98df3964248a80a743479dcc77bc7061cfdb31c7cecaf824",
+    "map-outline-light-phone-390.png": "2633f61d47b83b2628318332826337f920a4690783bb9994972caeabee623a88",
+    "map-outline-light-desktop-1280.png": "7dd07708c46a26204319e50f73d8ee747868d7a8e0ecfb82cd98cd5e3d5ef11c",
+    "map-outline-light-desktop-1440.png": "49b0eae47ae7a0d143446e68300b1d03cbfd47b7dcf625d6750a93457b246db5",
+    "map-outline-dark-sky-desktop-1440.png": "2bb48b67dcab354582a63b35ce104ed4a23512fa77d01933bfde24160c248af4",
+    "map-outline-dark-iris-desktop-1440.png": "58ef6c1aae6943f4202debf314c64295d52aed89c4e037d545ff075da6399508",
+    "map-outline-dark-mint-desktop-1440.png": "a603d6b6d77674037057199f6350417715355945f08279b57d51304ce7d75c59",
+    "map-outline-light-sky-desktop-1440.png": "183c25a8f2376bea0f44b0303249227caa5c2141f040572b96deae8baf4f26d1",
+    "map-outline-light-iris-desktop-1440.png": "7e2c00a09bed235f819cbff8d2b84148168b9cd54a79876b4675bfc4ca3b356a",
+    "map-outline-light-mint-desktop-1440.png": "59ebfec2c0febe74f02c466a202d7b6589cfa870dafab3e2b2b977fecf7d8b1e",
+    "map-outline-independent-child-after-grouping-undo.png": "8b2fe36f37e9ae4527627ffd6967ad38c5257db4ce3372a3e225cc87571e8ef0"
+  }
+}

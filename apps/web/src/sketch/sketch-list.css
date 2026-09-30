@@ -1,0 +1,45 @@
+/* v11 personal reading outline (#134); shared palette remains owned by #135. */
+.sk-outline { min-width: 0; }
+.sk-outline-return { position: sticky; top: 0; z-index: 4; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 16px; padding: 4px 0 8px; background: var(--bg); border-bottom: 1px solid var(--line); }
+.sk-outline-back, .sk-outline-undo { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; border-radius: var(--r-sm); color: var(--link, var(--accent)); font-size: var(--fs-sm); text-align: left; overflow-wrap: anywhere; }
+.sk-outline-back:hover, .sk-outline-undo:hover { text-decoration: underline; }
+.sk-outline-list > li { position: relative; --outline-offset: calc(var(--outline-depth) * 18px); padding-inline-start: calc(8px + var(--outline-offset)); }
+.sk-outline-list > li:not([data-depth="0"])::before { content: ''; position: absolute; inset-inline-start: calc(var(--outline-offset) - 2px); top: 9px; bottom: 10px; width: 1px; background: var(--line-strong); pointer-events: none; }
+.sk-outline-list > li[data-selected="true"] { background: var(--accent-selected-bg, var(--accent-soft)); }
+.sk-outline-row { display: flex; align-items: flex-start; gap: 2px; min-width: 0; }
+.sk-outline-row > .sk-li-t { flex: 1; min-width: 0; align-items: flex-start; justify-content: space-between; padding: 5px 4px; font-weight: 500; }
+.sk-outline-row > .sk-li-edit { flex: 1; min-width: 0; }
+.sk-outline-selected { flex: none; display: inline-flex; margin-top: 3px; color: var(--accent-selected-text, var(--accent)); }
+.sk-outline-toggle, .sk-outline-leaf { display: grid; place-items: center; flex: none; width: 24px; min-height: 32px; border-radius: var(--r-sm); color: var(--text-3); }
+.sk-outline-toggle:hover { background: var(--bg-hover); color: var(--text); }
+.sk-outline-leaf::after { content: ''; width: 4px; height: 4px; border-radius: 50%; background: var(--text-3); }
+.sk-outline-body { min-width: 0; margin-inline-start: 30px; }
+.sk-outline-related button, .sk-outline-path button { display: inline; min-height: 24px; border-radius: var(--r-sm); color: var(--link, var(--accent)); text-decoration: underline; text-underline-offset: 2px; text-align: left; white-space: normal; overflow-wrap: anywhere; font: inherit; }
+.sk-outline-related { margin-top: 3px; overflow-wrap: anywhere; }
+.sk-outline-label { color: var(--text-3); }
+.sk-outline-path, .sk-outline-more-links { color: var(--text-3); font-size: var(--fs-sm); line-height: 1.5; }
+.sk-outline-path summary, .sk-outline-more-links summary { width: fit-content; min-height: 24px; border-radius: var(--r-sm); cursor: pointer; }
+.sk-outline-path ol { list-style: none; padding: 2px 0 4px 12px; margin: 0; border-inline-start: 1px solid var(--line-strong); }
+.sk-outline-path li { padding-block: 1px; }
+.sk-outline-more-links > span { display: block; padding: 2px 0; }
+.sk-outline-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; margin-top: 4px; }
+.sk-outline-actions > button { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 4px; border-radius: var(--r-sm); font-size: var(--fs-sm); color: var(--text-2); }
+.sk-outline-actions > button:hover { background: var(--bg-hover); color: var(--text); }
+.sk-outline-grouping { display: grid; gap: 6px; max-width: 460px; padding: 10px 0 4px; font-size: var(--fs-sm); }
+.sk-outline-grouping label { display: grid; gap: 4px; font-weight: 500; color: var(--text-2); }
+.sk-outline-grouping select { width: 100%; min-width: 0; min-height: var(--ctl); border: 1px solid var(--line-input); border-radius: var(--r); padding: 0 8px; font: inherit; background: var(--bg); color: var(--text); }
+.sk-outline-grouping select:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.sk-outline-grouping > div { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sk-outline-hint { color: var(--text-3); }
+@media (max-width: 640px) {
+  .sk-outline-list > li { --outline-offset: calc(min(var(--outline-depth), 3) * 12px); }
+  .sk-outline-row > .sk-li-t { line-height: 1.45; }
+  .sk-outline-body { margin-inline-start: 28px; }
+}
+@media (pointer: coarse) {
+  .sk-outline-toggle, .sk-outline-leaf { width: 36px; min-height: 44px; }
+  .sk-outline-body { margin-inline-start: 42px; }
+  .sk-outline-actions > button, .sk-outline-back, .sk-outline-undo, .sk-outline-path summary, .sk-outline-more-links summary, .sk-outline-related button, .sk-outline-path button { min-height: 44px; }
+  .sk-outline-related button, .sk-outline-path button { display: inline-block; padding-block: 10px; }
+  .sk-outline-grouping select { min-height: 44px; }
+}

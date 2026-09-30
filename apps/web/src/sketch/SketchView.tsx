@@ -11,6 +11,7 @@ import { audience, quote, sketchHref, when } from './format';
 import { freeSpot, rectOf } from './geometry';
 import { SketchList } from './SketchList';
 import { SketchMap } from './SketchMap';
+import { useOutline } from './useOutline';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import './sketch.css';
 
@@ -59,6 +60,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   const started = (useLocation().state as { started?: number } | null)?.started;
   const doc = useSketchDoc(sketchId, { id: me.user.id, name: me.user.name });
   const { sketch } = doc;
+  const personalOutline = useOutline(me.user.id, sketch);
   const coarse = useMediaQuery('(pointer: coarse)');
   const phone = useMediaQuery(MEDIA.phone);
   const [mode, setModeState] = useState<Mode>(storedMode);
@@ -160,12 +162,26 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   useEffect(() => {
     if (!arrivedThought || handledArrival.current === arrivedThought || !sketch?.thoughts.some((t) => t.id === arrivedThought)) return;
     handledArrival.current = arrivedThought;
+    personalOutline.reveal(arrivedThought);
     setSelection([arrivedThought]);
     describe([arrivedThought]);
     focusThought(`.sk-node[data-id="${arrivedThought}"], .sk-li-t[data-id="${arrivedThought}"]`);
     // describe/focusThought only read state that this effect's dependencies already cover.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arrivedThought, sketch]);
+
+  // A live fragment can select several thoughts, including ones inside collapsed branches.
+  // Handle the arrival once: later deliberate collapsing must not be undone by graph updates.
+  const handledLiveArrival = useRef<string | null>(null);
+  useEffect(() => {
+    if (!liveSelect || !sketch || handledLiveArrival.current === location.key) return;
+    handledLiveArrival.current = location.key;
+    const ids = liveSelect.filter((id) => sketch.thoughts.some((thought) => thought.id === id));
+    for (const id of ids) personalOutline.reveal(id);
+    if (ids[0]) focusThought(`.sk-node[data-id="${ids[0]}"], .sk-li-t[data-id="${ids[0]}"]`);
+    // The outline is deliberately read only for this arrival, not every subsequent update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveSelect, sketch, location.key]);
 
   const escape = () => {
     if (connectFrom) { setConnectFrom(null); say('Connect cancelled'); return true; }
@@ -179,6 +195,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     const rects = sketch.thoughts.map((t) => rectOf(t, heights));
     const spot = freeSpot(rects, parent ? rectOf(parent, heights) : null, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height }, phone);
     const id = doc.newId();
+    personalOutline.group(id, parent?.id ?? null, false);
     doc.perform([{ kind: 'add', thought: { id, text: 'New thought', x: spot.x, y: spot.y }, link: parent ? { id: doc.newId(), fromId: parent.id, label: null } : undefined }], 'added a thought');
     setConnectFrom(null);
     setSelection([id]);
@@ -313,6 +330,13 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
 
   const busy = doc.saving ? 'Saving…' : 'Saved';
   const shared = { sketch, meId: me.user.id, selection, connectFrom, editing, canWrite, onPick: pick, onToggle: toggle, onEdit: (id: string) => { setConnectFrom(null); setEditing({ id, isNew: false, parentId: null }); }, onFinishEdit: finishEdit, onAdd: add, onRemove: remove, onEscape: escape };
+  const navigateThought = (id: string, previous?: string[]) => {
+    if (!present.has(id)) return;
+    setConnectFrom(null);
+    const next = previous?.filter((item) => present.has(item)) ?? [id];
+    setSelection(next);
+    describe(next);
+  };
 
   return (
     <div className="sk-page" ref={rootRef} onKeyDown={onKeyDown}>
@@ -388,7 +412,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
             </>
           ) : <p className="sk-empty-list">No thoughts yet.</p>
         ) : (
-          <SketchList {...shared} />
+          <SketchList {...shared} personalOutline={personalOutline} onNavigate={navigateThought} />
         )}
 
         <p className="sk-help" id={helpId}>
