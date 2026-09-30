@@ -30,7 +30,24 @@ The supplied final dark Copper soft surface `#42342D` failed production metadata
 at 4.35:1. The earlier supplied `#3B2E25` candidate passes at 4.78:1 and is used
 consistently in production. Status colors retain their existing semantic roles.
 
-Integration with #134 is recorded separately below when verified. The #136
+The [integrated #134 check](integrated-outline/docker-ui-check.txt) at
+`03f0f8d6b417cc3fc7bcaa3d0f48accf7332cb48` passes fourteen appearance/outline
+tests. [Metadata](integrated-outline/metadata.json) and
+[thirty composited text measurements](integrated-outline/browser-contrast.json)
+cover deep hierarchy, selected path, cross-links and provenance in all six
+palettes. The first full integration attempt exposed an obsolete Iris test
+selector; that failure and the corrected affected-suite pass are distinguished.
+The successor now stacks on #134, with its old accepted scope left intact. The #136
 Agents/Studio shell is still absent: those continuity checks remain unverified.
 Screenshots and browser emulation do not establish real Android/iPhone/iPad PWA,
 OS notification, screen-reader or complete accessibility acceptance.
+
+The [phone landing correction check](integrated-outline/landing-fix/docker-ui-check.txt)
+at `10ae58a08a6c1b11a6e3d8412d232d24b5ab65ca` passes the same fourteen tests
+after the independent visual finding. Its [metadata](integrated-outline/landing-fix/metadata.json),
+matched screenshots and thirty contrast measurements pin the corrected combined source.
+The earlier integrated archive remains intact as the record before that fix.
+
+The [fresh corrected combined visual report](integrated-outline/landing-fix/independent-visual.md)
+accepts the 13 supplied captures and the focused phone correction. This is separate from
+eligible GitHub review, live interaction and unavailable accent landing/Agents states.
