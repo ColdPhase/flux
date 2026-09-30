@@ -104,7 +104,7 @@ In this order, stopping at the first problem:
    volumes (`down -v`, never another project's), starts an empty database, converts the dump with
    `pg_restore --no-owner --no-privileges -f -` and replays it with `psql --single-transaction
    -v ON_ERROR_STOP=1`, with `public` on pg_dump's otherwise empty `search_path` (the #114
-   `search_keys` function calls `show_trgm` unqualified; migration `0021_search_restore_path.sql`
+   `search_keys` function calls `show_trgm` unqualified; migration `0022_search_restore_path.sql`
    pins its path for new dumps, the replay keeps older backups restorable), unpacks the files, runs
    `files-init` (owner `1000:1000` for the non-root API) and the migration, which applies
    forward migrations after `--migrate` and otherwise only validates the schema.

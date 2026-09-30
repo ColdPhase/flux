@@ -735,7 +735,7 @@ cmd_restore() {
   say "Replacing the data of $PROJECT..."
   compose_main --profile ops --profile setup down -v --remove-orphans >/dev/null 2>&1
   compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" db >/dev/null || die "The new database did not start."
-  # pg_dump pins an empty search_path; functions written before 0021 that call others
+  # pg_dump pins an empty search_path; functions written before 0022 that call others
   # unqualified (search_keys, #114) then fail while COPY fills generated columns. The dump is
   # our own, checksummed archive, so it is replayed with the public schema on the path.
   compose_main exec -T db pg_restore --no-owner --no-privileges -f - < "$RESTORE_DIR/database.dump" > "$RESTORE_DIR/database.sql" \
