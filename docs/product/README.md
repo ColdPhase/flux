@@ -56,6 +56,12 @@ thought capture (#149); #136 retains integrated continuity and phone navigation.
 Keep merged #133’s explicit acknowledgement baseline and #134’s personal outline
 semantics. The new reference invites further focused improvements, not a reset.
 
+The later **[F-015 adaptive-workspace requirement](../design/adaptive-workspaces.md)**
+(2026-09-30, [#151](https://github.com/ColdPhase/flux/issues/151)) extends the UI
+from small Android phones to 4K/ultrawide. More available space must yield useful
+work/context while navigation, objects and ongoing work stay recognizable and
+stable. #136 integrates it; #20 retains mobile/PWA evidence.
+
 The later [#57 personal AI direction](https://github.com/ColdPhase/flux/issues/57)
 binds invocation and cost to the connection owner while preserving human work
 without AI. [#59 live collaboration](https://github.com/ColdPhase/flux/issues/59)

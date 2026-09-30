@@ -59,6 +59,16 @@ Keep visible, usable controls. Check final color pairs and applicable WCAG
 requirements, including focus, keyboard access, zoom, and target size. A compact
 appearance is not evidence of accessibility.
 
+## Adaptive workspaces from phone to ultrawide
+
+The later [F-015 adaptive-workspace requirement](adaptive-workspaces.md),
+2026-09-30, makes responsive design a product capability. Use additional space
+for useful work and related context while preserving familiar navigation,
+object/source identity and active work during transitions. #151 implements the
+bounded adaptive slice under #136; #20 keeps real mobile/device acceptance.
+Use the full CSS-viewport/scaling/input matrix and measurable wide-screen gains,
+not only a desktop and phone screenshot.
+
 ## Separate visual and behavior evaluation
 
 1. Render and inspect the whole view before handoff. Record scenario, viewport,

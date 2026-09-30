@@ -58,6 +58,21 @@ parent, storage and simulated AI/media behavior do not change production
 contracts. Further useful UX refinements remain agent-owned and independently
 reviewed. Actual mobile/PWA evidence remains required under #20.
 
+### Adaptive working capacity — F-015 (2026-09-30)
+
+[#151](https://github.com/ColdPhase/flux/issues/151) delivers
+[ADAPT-1–ADAPT-5](../../design/adaptive-workspaces.md): continuous layout from
+small Android phones through 4K/ultrawide, more useful work/context on large
+screens, familiar navigation and preserved drafts/selection/source position
+during transitions. The same #136 shell owner coordinates this child; final
+#136 acceptance includes it alongside #148/#149. #20 retains mobile/PWA gates.
+
+Use the full viewport/height/scaling/input matrix, intermediate widths, real
+text enlargement, independent visual and running behavior review, measurable
+performance budgets and real 4K/ultrawide plus mobile evidence. Existing 17
+prototype screenshots do not verify this new requirement. Missing device evidence
+remains open; available implementation and layout checks continue independently.
+
 ## Start coding
 
 Resume existing work first. In parallel with research, settle the first required

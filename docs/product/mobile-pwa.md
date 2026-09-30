@@ -13,6 +13,13 @@ This supplements the original [foundation](FLUX-FOUNDATION.md), especially areas
 Include mobile use in persona journeys, architecture, design proposals, the
 coverage matrix, task contracts and final integrated verification from the start.
 
+The later [F-015 adaptive-workspace contract](../design/adaptive-workspaces.md)
+extends this to a continuous small-phone → tablet → desktop → 4K/ultrawide
+experience. ADAPT-1–ADAPT-5 and [#151](https://github.com/ColdPhase/flux/issues/151)
+add useful wide-screen capacity and cross-layout continuity without reducing any
+MOB criterion. #136 owns integrated UX; #20 remains responsible for actual mobile
+installation, interaction and notification evidence.
+
 ## Required outcomes
 
 | ID | User-visible outcome | Acceptance evidence |
@@ -36,9 +43,11 @@ coverage matrix, task contracts and final integrated verification from the start
 - Support the virtual keyboard, browser chrome changes, safe-area insets, text
   enlargement and reduced motion. Keep focused fields and send/confirm actions
   visible. Aim for at least 44 CSS px touch areas for primary actions.
-- Check 360/390 CSS px phone widths, wider phones and 768/1024 CSS px tablet
-  layouts as starting fixtures, plus actual devices and split view. These samples
-  do not replace responsive behavior between breakpoints or accessibility checks.
+- Check 320/360/390 CSS px phone widths, wider phones and 768/1024 CSS px tablet
+  layouts, plus actual devices and split view. Use the broader
+  [adaptive viewport/input matrix](../design/adaptive-workspaces.md#viewport-and-input-verification-matrix),
+  including landscape/short heights, real text enlargement and intermediate
+  widths. Samples do not replace continuous adaptation or actual device checks.
 - Measure startup, long-list rendering, scrolling, reconnection and key input on
   representative mobile hardware and constrained networks. Agents record useful
   performance budgets with measurements; a desktop screenshot is insufficient.

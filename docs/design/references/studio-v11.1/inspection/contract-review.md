@@ -37,3 +37,18 @@ reference README and the reconciliation record with no blocking findings. The
 reviewer confirmed dependencies, migration, cancellation/failed-write recovery,
 #133/#134 boundaries and the distinction between supplied claims and new
 evidence. Eligible GitHub review of the documentation PR remains required.
+
+## Adaptive workspace extension — F-015
+
+On 2026-09-30, a separate fresh-context `adaptive_contract_review` agent accepted
+the [adaptive-workspace contract](../../../adaptive-workspaces.md) and the exact
+#151 task draft with no material findings. Review covered effective CSS/pane
+space versus physical hardware/scaling, useful wide-screen gains, continuity,
+local-draft scope, the full smoke matrix with selected visual captures, input/zoom,
+performance and real-device evidence. #151 retains #136's shell owner; #20 retains
+mobile/PWA gates. This is planning acceptance, not implementation/hardware
+evidence or eligible GitHub approval.
+
+The non-blocking clarification was incorporated: numeric performance budgets,
+dataset and hardware/browser baseline are agreed at task kickoff, before
+optimization, so thresholds are not chosen retrospectively for the final result.

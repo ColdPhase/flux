@@ -30,6 +30,17 @@ where they resolve a concrete problem; use realistic data, matched viewport/zoom
 a neutral independent visual review and separate running interaction checks.
 The reference is not a pixel-perfect lock or permission to restart the stack.
 
+## Later responsiveness requirement — F-015, 2026-09-30
+
+Hubert explicitly adds excellent adaptation from small Android phones through
+4K and ultrawide: more space should offer more useful working context while the
+product remains familiar between devices. The [adaptive-workspace contract](adaptive-workspaces.md)
+defines ADAPT-1–ADAPT-5, content/pane-based layouts, continuity rules, viewport and
+scaling/input matrices, accessibility/performance and real-device evidence.
+[#151](https://github.com/ColdPhase/flux/issues/151) is the bounded adaptive child
+of #136, with the same shell owner; #20 retains mobile/PWA acceptance. Existing
+17 prototype renders do not verify these new outcomes.
+
 ## Reconciliation with work already in progress
 
 | Area | 11.1 evidence / difference | Production route and boundary |
@@ -83,5 +94,5 @@ See #147, [#148 appearance](https://github.com/ColdPhase/flux/issues/148) and
 [#149 draft capture](https://github.com/ColdPhase/flux/issues/149) for current owners, exact criteria,
 dependencies and review state. This intake delivers shared evidence and planning,
 not production implementation. Existing reviewable PRs retain their own accepted
-scope; new amendments must be explicitly tracked before the integrated UI passes. Final #136 acceptance includes #148 and #149;
+scope; new amendments must be explicitly tracked before the integrated UI passes. Final #136 acceptance includes #148, #149 and #151;
 independent integration work may proceed before those follow-ups merge.

@@ -16,6 +16,12 @@ This later direction qualifies O-003 and replaces the earlier v8-only visual bas
 7. Improve density through grouping, fewer repeated controls/copy and restrained saturated area. Do not globally scale the view or shrink important text. Retain visible focus, modal containment, usable touch targets and reduced motion.
 8. Preserve #57 personal AI and human continuation without AI, #59 contextual live work, and MOB-1–MOB-7. Demo AI/media/local storage and historical test claims never establish production behavior.
 
+9. Apply [F-015 adaptive workspaces](adaptive-workspaces.md): small Android phones
+   through 4K/ultrawide, useful additional context when space permits, stable
+   vocabulary/actions and preserved work during size/device changes. Readable
+   text, user-controlled context and the actual available pane size govern layout.
+   #151 supplies the adaptive implementation; #136 verifies the combined UI.
+
 ## Implementation and evidence
 
 Use existing shared [tokens/components](../../apps/web/src/ui/) and accepted architecture; follow current repository path amendments during #76. Record contract changes before implementation, keep tokens and components consistent, and respect active issue/branch ownership. The [follow-up table](studio-v11-refinement.md#implementation-contracts) maps #133 recap, #134 map relations, #135 theme accents and #136 integrated UI/phone work.

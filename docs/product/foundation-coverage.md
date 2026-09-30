@@ -65,6 +65,18 @@ explicit snapshot acknowledgement. #134/PR #146 (stable personal outline) and
 Reference renders and the supplied 58/84 counts do not complete production
 behavior, access, native device/PWA or release acceptance.
 
+## Adaptive workspaces — F-015, 2026-09-30
+
+[ADAPT-1–ADAPT-5](../design/adaptive-workspaces.md) are required under
+[#151](https://github.com/ColdPhase/flux/issues/151), a child of #136 with the same
+shell owner. This spans 8.2–8.8/F5/F8: effective viewport/pane-based layouts from
+320 CSS px through 4K/ultrawide fixtures, useful wide-screen gains, familiar
+cross-device flows and safe in-place transitions. **Specified, not implemented
+or verified by this documentation update.** Acceptance needs the full fixture
+matrix, separate visual/interaction/access checks, measured performance and
+actual 4K/ultrawide scaling/readability sessions; #20 retains real mobile/PWA
+evidence. Earlier Studio screenshot counts do not fulfill these outcomes.
+
 ## F-012 scenario and next-slice mapping
 
 | Unmet outcome | Existing issue/interface | Next bounded slice and evidence state |

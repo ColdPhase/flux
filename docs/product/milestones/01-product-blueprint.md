@@ -15,6 +15,11 @@ appearance/draft work in milestone 2 and #136 retains integrated phone UX. Do no
 restart direction discovery or replace accepted data/access contracts with demo
 behavior.
 
+The later [F-015 adaptive-workspace requirement](../../design/adaptive-workspaces.md)
+adds smart small-phone through 4K/ultrawide layouts and familiar cross-device
+workflows. #151 in milestone 2 implements it under #136; concrete compositions
+and performance budgets are independently reviewed without reopening the stack.
+
 Preserve and resume #8 (segment/persona) and #9 (own-AI feasibility), their accepted
 research criteria, branches and evidence. Replace their old request for a founder
 decision with an agent decision and independent peer evaluation. Do not recreate
