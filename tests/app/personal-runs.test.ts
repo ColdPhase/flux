@@ -75,6 +75,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
   const grants: Record<string, string> = {};
   let projectSketch: { id: string; thoughtId: string };
   let privateSketch: { id: string; thoughtId: string };
+  let dmSketch: { id: string; thoughtId: string };
   const hubertConnection = randomUUID();
   const maurycyConnection = randomUUID();
 
@@ -115,6 +116,9 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     assert.ok(payroll.id);
     const dm = await post<{ id: string }>(hubert, `/api/v1/workspaces/${ws.id}/dms`, { participantIds: [kai.id] });
     await post(hubert, `/api/v1/dms/${dm.id}/messages`, { body: `Between us: ${TOKENS.dm}`, clientMessageId: randomUUID() });
+    // A DM sketch (#96) the owner is part of: it belongs to the DM, never to a project run.
+    const dmMap = await post<{ id: string }>(hubert, `/api/v1/workspaces/${ws.id}/sketches`, { title: 'Our lamp ideas', scope: 'dm', dmId: dm.id });
+    dmSketch = { id: dmMap.id, thoughtId: (await post<{ thought: { id: string } }>(hubert, `/api/v1/sketches/${dmMap.id}/thoughts`, { text: `DM map: ${TOKENS.dm}`, x: 0, y: 0 })).thought.id };
     await post(hubert, `/api/v1/workspaces/${ws.id}/drafts`, { title: 'Notes', body: `Private capture ${TOKENS.draft}`, projectId: lamp.id });
     const mine = await post<{ id: string }>(hubert, `/api/v1/workspaces/${ws.id}/sketches`, { title: 'My private map', scope: 'private' });
     privateSketch = { id: mine.id, thoughtId: (await post<{ thought: { id: string } }>(hubert, `/api/v1/sketches/${mine.id}/thoughts`, { text: TOKENS.sketch, x: 0, y: 0 })).thought.id };
@@ -245,6 +249,13 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     assert.equal(compute.dispatched.length, before);
     assert.equal(compute.counted.some((request) => request.input.includes(TOKENS.sketch)), false);
     await assert.rejects(runs.invoke(human(maurycy), thread.id, { clientRunId: randomUUID(), kind: 'map_thought', prompt: 'x', target: { type: 'thought', sketchId: privateSketch.id, thoughtId: privateSketch.thoughtId } }), { code: 'THOUGHT_NOT_FOUND' });
+
+    // A thought on a DM sketch the owner is in: the assistant never reads DM content (#96, O-008).
+    const dmRun = await runs.invoke(human(hubert), thread.id, { clientRunId: randomUUID(), kind: 'map_thought', prompt: 'Expand this', target: { type: 'thought', sketchId: dmSketch.id, thoughtId: dmSketch.thoughtId } });
+    assert.equal(await processor.process(dmRun.run.id), 'denied');
+    assert.equal((await row(dmRun.run.id)).charged_micros, 0);
+    assert.equal(compute.counted.some((request) => request.input.includes(TOKENS.dm)), false, 'DM sketch text is never counted');
+    assert.equal(compute.dispatched.some((request) => request.input.includes(TOKENS.dm)), false, 'DM sketch text is never sent');
 
     const mapRun = await runs.invoke(human(hubert), thread.id, { clientRunId: randomUUID(), kind: 'map_thought', prompt: 'What next?', target: { type: 'thought', sketchId: projectSketch.id, thoughtId: projectSketch.thoughtId } });
     assert.equal(await processor.process(mapRun.run.id), 'completed');
