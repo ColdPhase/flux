@@ -112,7 +112,7 @@ export function UserMenu({ name, email, sessionExpiresAt }: { name: string; emai
           </div>
           <div className="me__sec">
             <span className="me__label" id={`${popId}-accent`}>Accent</span>
-            <span className="me__session">For {resolvedTheme} appearance · remembered separately on this device</span>
+            <span className="me__hint">For {resolvedTheme} appearance · remembered separately on this device</span>
             <div className="me-accent" role="radiogroup" aria-labelledby={`${popId}-accent`} onKeyDown={onAccentKey}>
               {ACCENTS.map((item) => (
                 <button key={item.id} type="button" role="radio" className="me-accent__option" data-accent-option={item.id}

@@ -26,14 +26,18 @@ function readAccents(): Record<ResolvedTheme, AccentChoice> {
     const legacy = localStorage.getItem(LEGACY_ACCENT_KEY);
     const migrated: AccentChoice = legacy === 'iris' || legacy === 'sky' ? 'sky' : 'mint';
     const result: Record<ResolvedTheme, AccentChoice> = { light: 'mint', dark: 'mint' };
+    const missing: ResolvedTheme[] = [];
     for (const theme of ['light', 'dark'] as const) {
       const value = localStorage.getItem(accentKey(theme));
       result[theme] = validAccent(value) ? value : value === null ? migrated : 'mint';
+      if (value === null) missing.push(theme);
     }
     // Read both slots before writing: refused persistence must not reset valid
     // readable choices, and the original key stays intact for older clients.
-    for (const theme of ['light', 'dark'] as const) {
-      try { localStorage.setItem(accentKey(theme), result[theme]); } catch { /* visit-local */ }
+    for (const theme of missing) {
+      try {
+        if (localStorage.getItem(accentKey(theme)) === null) localStorage.setItem(accentKey(theme), result[theme]);
+      } catch { /* visit-local */ }
     }
     return result;
   } catch {
