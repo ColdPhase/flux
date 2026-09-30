@@ -379,5 +379,7 @@ class ThemeAccentsJourney(unittest.TestCase):
                 page.get_by_role("button", name="Create account").click()
                 expect(page.get_by_text("Enter the name people will see.")).to_be_visible()
                 self.measure(page, theme, family, ".ui-field__error")
+                self.measure(page, theme, family, ".ui-link")
+                self.assertIn("underline", page.locator(".ui-link").first.evaluate("e => getComputedStyle(e).textDecorationLine"), "prose links remain identifiable beyond color")
                 self.measure(page, theme, family, ".ui-btn--primary")
                 shot(page, f"accent-{theme.lower()}-{family.lower()}-form-error-1440")
