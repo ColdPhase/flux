@@ -71,7 +71,20 @@ export interface ObjectLinkRecord {
   createdAt: Date;
 }
 
-export type NewWork = Omit<WorkRecord, 'version' | 'createdAt' | 'updatedAt' | 'parked'>;
+export type NewWork = Omit<WorkRecord, 'version' | 'createdAt' | 'updatedAt' | 'parked'> & {
+  clientCommandId?: string;
+  requestFingerprint?: string;
+};
+export interface TaskCreationNoticeRecord {
+  id: string;
+  workspaceId: string;
+  projectId: string;
+  workId: string;
+  workTitle: string;
+  createdBy: ActorRef;
+  sources: ObjectRef[];
+  createdAt: Date;
+}
 export type WorkChanges = Partial<Pick<WorkRecord, 'title' | 'outcome' | 'status' | 'blocker' | 'owner' | 'parked'>>;
 export type NewDecision = Pick<DecisionRecord, 'id' | 'workspaceId' | 'projectId' | 'title' | 'rationale' | 'proposedBy' | 'supersedesId'>;
 export type DecisionChanges = Partial<Pick<DecisionRecord, 'status' | 'decidedBy' | 'decidedAt' | 'supersededById' | 'supersededAt'>>;
@@ -115,6 +128,11 @@ export interface WorkRepository {
   listAssignedVisible(principal: Principal, workspaceId: string, owner: ActorRef, page: PageWindow): Promise<Paged<WorkRecord>>;
   findWork(id: string, options?: { lock?: boolean }): Promise<WorkRecord | null>;
   insertWork(work: NewWork): Promise<WorkRecord>;
+  /** Acquires the durable retry lock before looking up an earlier creation. */
+  createdWork(projectId: string, by: ActorRef, commandId: string): Promise<{ work: WorkRecord; fingerprint: string } | null>;
+  /** Called in the same transaction as the work row, links and stream event. */
+  insertCreationNotice(work: WorkRecord, sources: ObjectRef[]): Promise<void>;
+  listTaskNotices(projectId: string, page: PageWindow): Promise<Paged<TaskCreationNoticeRecord>>;
   /** Applies the changes and increments the version; the caller has checked the version. */
   updateWork(id: string, changes: WorkChanges): Promise<WorkRecord>;
   listDecisions(projectId: string, page: PageWindow): Promise<Paged<DecisionRecord>>;

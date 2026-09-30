@@ -77,7 +77,7 @@ function SourceLink({ source, index, lookups }: { source: AssistantSourceRef; in
   const { openDetails } = useShellActions();
   if (source.type === 'message') {
     const message = lookups.messages.find((item) => item.id === source.id);
-    const label = message ? `Source ${index}: message #${message.sequence} by ${lookups.author(message.authorId)}` : `Source ${index}: a message in this conversation`;
+    const label = message ? `Source ${index}: message #${message.sequence} by ${(message.authorId !== null ? lookups.author(message.authorId) : `${message.author.name ?? 'Agent'} · agent`)}` : `Source ${index}: a message in this conversation`;
     return <Link className="assistant-cite" to={{ hash: `message-${source.id}` }} aria-label={label} title={label}>{index}</Link>;
   }
   if (source.type === 'work') {

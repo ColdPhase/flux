@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   DM_LIMITS,
-  type ConversationMessage,
+  type HumanConversationMessage,
   type ConversationWindowQuery,
   type CreateDmCommand,
   type Dm,
@@ -92,7 +92,7 @@ function toSummary(record: DmRecord, self: string): DmSummary {
   };
 }
 
-function toMessage(record: DmMessageRecord): ConversationMessage {
+function toMessage(record: DmMessageRecord): HumanConversationMessage {
   return { id: record.id, conversationId: record.dmId, authorId: record.authorId, body: record.body, source: null, sequence: record.sequence, createdAt: record.createdAt.toISOString() };
 }
 
@@ -179,7 +179,7 @@ export function createDmUseCases(uow: DmUnitOfWork) {
     },
 
     /** A reply inherits the DM's audience. A retry with the same clientMessageId returns the original. */
-    async send(principal: Principal, dmId: string, command: SendDmMessageCommand): Promise<ConversationMessage> {
+    async send(principal: Principal, dmId: string, command: SendDmMessageCommand): Promise<HumanConversationMessage> {
       const authorId = person(principal);
       if (command && typeof command === 'object' && 'source' in command && (command as { source?: unknown }).source !== undefined)
         throw new RuleViolationError('Direct messages cannot cite project material yet', 'DM_SOURCE_UNSUPPORTED');

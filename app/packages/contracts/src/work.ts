@@ -7,6 +7,20 @@ import type { PrincipalRef, VersionPrecondition } from './access.js';
  * people and agents with current access to the project; there is no second audience.
  */
 export const projectWorkPath = (projectId: string) => `/api/v1/projects/${projectId}/work`;
+export const projectTaskNoticesPath = (projectId: string) => `/api/v1/projects/${projectId}/task-notices`;
+export const taskDiscussionPath = (workId: string) => `/api/v1/work/${workId}/discussion`;
+
+/** Explicit canonical root, also returned outside the bounded newest-message window. */
+export interface TaskDiscussion {
+  workId: string;
+  workspaceId: string;
+  projectId: string;
+  conversationId: string | null;
+  rootMessageId: string | null;
+  root: import('./conversation.js').ConversationMessage | null;
+  messages: import('./conversation.js').ConversationMessage[];
+  messagePage: import('./conversation.js').Conversation['messagePage'];
+}
 export const workItemPath = (workId: string) => `/api/v1/work/${workId}`;
 export const projectDecisionsPath = (projectId: string) => `/api/v1/projects/${projectId}/decisions`;
 export const decisionPath = (decisionId: string) => `/api/v1/decisions/${decisionId}`;
@@ -118,6 +132,8 @@ export interface WorkResult extends ProjectObject {
 }
 
 export interface CreateWorkCommand {
+  /** Durable domain retry identity, reused by every entry point for this exact creation. */
+  clientCommandId?: string;
   title: string;
   outcome?: string;
   owner?: PrincipalRef | null;
@@ -127,6 +143,20 @@ export interface CreateWorkCommand {
   sources?: ObjectRef[];
   /** Other objects of the project to connect (thoughts, decisions, results, messages). */
   related?: ObjectRef[];
+}
+
+/** Creation activity is separate from any canonical discussion message/root. */
+export interface TaskCreationNotice {
+  id: string;
+  workspaceId: string;
+  projectId: string;
+  workId: string;
+  kind: 'task.created';
+  /** Current task label; the exact historical identity/creator/sources below are retained. */
+  workTitle: string;
+  createdBy: NamedPrincipal;
+  sources: ObjectRef[];
+  createdAt: string;
 }
 
 export interface UpdateWorkCommand extends VersionPrecondition {
