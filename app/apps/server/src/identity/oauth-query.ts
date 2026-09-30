@@ -18,7 +18,7 @@ export function oauthFlow(params: URLSearchParams, resource: string): AgentOauth
   const expiry = Number(params.get('exp'));
   if (!clientId || params.get('response_type') !== 'code' || params.get('code_challenge_method') !== 'S256' || !params.get('code_challenge')
     || !scopes.length || new Set(scopes).size !== scopes.length
-    || scopes.some((scope) => !['flux.context.read', 'flux.proposal.write', 'offline_access'].includes(scope))
+    || scopes.some((scope) => !['flux.context.read', 'flux.proposal.write', 'flux.action.execute', 'offline_access'].includes(scope))
     || resources.length !== 1 || resources[0] !== resource || params.has('request') || params.has('request_uri')
     || !Number.isSafeInteger(expiry) || expiry <= 0) return null;
   return { fingerprint: oauthFingerprint(params), clientId, scopes, expiresAt: new Date(expiry * 1000) };

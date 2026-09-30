@@ -84,3 +84,5 @@ export { policySourceReader } from './access/source-reader.js';
 export * from './search/index.js';
 export * from './personal-runs/index.js';
 export { policyPersonalRunAccess } from './access/personal-run-access.js';
+export * from './agent-connection/execution.js';
+export * from './agent-connection/grants.js';

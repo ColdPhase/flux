@@ -7,25 +7,28 @@ type Kind = 'work' | 'decision' | 'result' | 'doc' | 'material' | 'conversation'
 /** Implements core's metadata-only AgentProjectObjectPort; policy stays in core/composition. */
 export function agentProjectObjectRows(tx: DbExecutor) {
   return {
-    async scopeOf(kind: Kind, id: string, within: { workspaceId: string; projectId: string }): Promise<{ workspaceId: string; projectId: string } | null> {
+    async scopeOf(kind: Kind, id: string, within: { workspaceId: string; projectId: string }, lock = true): Promise<{ workspaceId: string; projectId: string } | null> {
       if (kind === 'doc' || kind === 'material') {
         const table = schema.projectMaterials;
-        const [row] = await tx.select({ workspaceId: table.workspaceId, projectId: table.projectId }).from(table)
+        const query = tx.select({ workspaceId: table.workspaceId, projectId: table.projectId }).from(table)
           .where(and(eq(table.id, id), eq(table.workspaceId, within.workspaceId), eq(table.projectId, within.projectId),
-            kind === 'doc' ? eq(table.kind, 'doc') : undefined)).for('share');
+            kind === 'doc' ? eq(table.kind, 'doc') : undefined));
+        const [row] = await (lock ? query.for('share') : query);
         return row ?? null;
       }
       if (kind === 'sketch') {
         const table = schema.sketches;
-        const [row] = await tx.select({ workspaceId: table.workspaceId, projectId: table.projectId }).from(table)
+        const query = tx.select({ workspaceId: table.workspaceId, projectId: table.projectId }).from(table)
           .where(and(eq(table.id, id), eq(table.scope, 'project'), eq(table.workspaceId, within.workspaceId),
-            eq(table.projectId, within.projectId))).for('share');
+            eq(table.projectId, within.projectId)));
+        const [row] = await (lock ? query.for('share') : query);
         return row?.projectId ? { workspaceId: row.workspaceId, projectId: row.projectId } : null;
       }
       const table = kind === 'work' ? schema.projectWorkItems : kind === 'decision' ? schema.projectDecisions
         : kind === 'result' ? schema.projectResults : schema.projectConversations;
-      const [row] = await tx.select({ workspaceId: table.workspaceId, projectId: table.projectId }).from(table)
-        .where(and(eq(table.id, id), eq(table.workspaceId, within.workspaceId), eq(table.projectId, within.projectId))).for('share');
+      const query = tx.select({ workspaceId: table.workspaceId, projectId: table.projectId }).from(table)
+        .where(and(eq(table.id, id), eq(table.workspaceId, within.workspaceId), eq(table.projectId, within.projectId)));
+      const [row] = await (lock ? query.for('share') : query);
       return row ?? null;
     },
   };

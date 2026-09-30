@@ -41,7 +41,7 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
     if (!agent) return null;
     const selectedProjectIds = await projects(tx, row.id);
     if (!selectedProjectIds.length) return null;
-    const action = row.scopes.includes('flux.proposal.write') ? 'project.write' : 'project.read';
+    const action = row.scopes.some((scope) => scope === 'flux.proposal.write' || scope === 'flux.action.execute') ? 'project.write' : 'project.read';
     for (const projectId of selectedProjectIds.sort()) {
       if (await policy.authorizeProject(row.agentId, projectId, action, tx) !== row.workspaceId) return null;
     }
@@ -67,7 +67,7 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
           eq(schema.agents.id, command.agentId), eq(schema.agents.ownerUserId, ownerUserId),
           isNull(schema.agents.revokedAt))).for('share');
         if (!agent) return 'AGENT_NOT_FOUND';
-        const action = command.scopes.includes('flux.proposal.write') ? 'project.write' : 'project.read';
+        const action = command.scopes.some((scope) => scope === 'flux.proposal.write' || scope === 'flux.action.execute') ? 'project.write' : 'project.read';
         for (const projectId of [...command.selectedProjectIds].sort()) {
           const workspaceId = await policy.authorizeProject(command.agentId, projectId, action, tx);
           if (workspaceId !== agent.workspaceId) return 'AGENT_NOT_FOUND';
@@ -110,7 +110,7 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
           eq(schema.authSessions.id, sessionId), eq(schema.authSessions.userId, ownerUserId),
           gt(schema.authSessions.expiresAt, new Date()))).for('share');
         const connection = session ? await resolveCurrent(tx, ownerUserId, connectionId) : null;
-        if (!connection || flow.expiresAt <= new Date() || flow.scopes.some((scope) => scope !== 'offline_access' && !connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write')))
+        if (!connection || flow.expiresAt <= new Date() || flow.scopes.some((scope) => scope !== 'offline_access' && !connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write' | 'flux.action.execute')))
           return 'CONNECTION_NOT_FOUND';
         const [client] = await tx.select({ id: schema.oauthClient.clientId }).from(schema.oauthClient)
           .where(and(eq(schema.oauthClient.clientId, flow.clientId), or(eq(schema.oauthClient.disabled, false), isNull(schema.oauthClient.disabled)))).for('share');
@@ -135,7 +135,7 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
       return db.transaction(async (tx) => {
         const grant = await resolveFlow(tx, ownerUserId, sessionId, flow.fingerprint);
         if (!grant || grant.clientId !== flow.clientId || flow.scopes.some((scope) => scope !== 'offline_access'
-          && !grant.connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write'))) return null;
+          && !grant.connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write' | 'flux.action.execute'))) return null;
         const [client] = await tx.select({ name: schema.oauthClient.name }).from(schema.oauthClient).where(and(
           eq(schema.oauthClient.clientId, flow.clientId), or(eq(schema.oauthClient.disabled, false), isNull(schema.oauthClient.disabled)))).for('share');
         if (!client) return null;

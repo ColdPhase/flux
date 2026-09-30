@@ -112,11 +112,12 @@ export function sketchRows(db: DbExecutor) {
       return (await findSketch(sketch.id))!;
     },
     async renameSketch(id: string, title: string) {
-      await db.update(s).set({ title, version: sql`${s.version} + 1`, updatedAt: new Date() }).where(eq(s.id, id));
+      await db.update(s).set({ title, version: sql`${s.version} + 1`,
+        updatedAt: sql`GREATEST(clock_timestamp(), ${s.updatedAt} + interval '1 millisecond')` }).where(eq(s.id, id));
       return (await findSketch(id))!;
     },
     async touchSketch(id: string) {
-      await db.update(s).set({ updatedAt: new Date() }).where(eq(s.id, id));
+      await db.update(s).set({ updatedAt: sql`GREATEST(clock_timestamp(), ${s.updatedAt} + interval '1 millisecond')` }).where(eq(s.id, id));
     },
     async thoughts(sketchId: string, page?: { limit: number; offset: number }) {
       // Thoughts started from messages in one change share created_at: they follow the conversation.

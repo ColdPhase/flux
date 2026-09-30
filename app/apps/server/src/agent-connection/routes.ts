@@ -1,9 +1,10 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
-import type { CreateAgentConnectionCommand, PageQuery } from '@flux/contracts';
+import { AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES, type CreateAgentConnectionCommand, type CreateAgentStandingGrantCommand, type PageQuery } from '@flux/contracts';
 import { agentProposalRepository } from '@flux/db';
 import { agentConnectionUseCases, agentOauthUseCases, agentProposalUseCases, DomainError, enforce, evaluateProject, recordEvent, type Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { createAgentConnectionStore } from './store.js';
+import { agentStandingGrants } from './grants.js';
 import { oauthFlow, verifiedOauthQuery } from '../identity/oauth-query.js';
 
 interface Options { db: Database; sessions: SessionResolver; oauthSecret: string; publicOrigin: string }
@@ -12,6 +13,7 @@ interface Options { db: Database; sessions: SessionResolver; oauthSecret: string
 export async function agentProposalRoutes(app: FastifyInstance, { db, sessions, oauthSecret, publicOrigin }: Options) {
   const connectionStore = createAgentConnectionStore(db);
   const connections = agentConnectionUseCases(connectionStore);
+  const actionGrants = agentStandingGrants(db);
   const oauth = agentOauthUseCases(connectionStore);
   const store = agentProposalUseCases(agentProposalRepository(db, {
     async authorizeWrite(principal, projectId, tx) {
@@ -34,13 +36,31 @@ export async function agentProposalRoutes(app: FastifyInstance, { db, sessions, 
   app.post<{ Body: CreateAgentConnectionCommand }>('/api/v1/agent-connections', {
     schema: { body: { type: 'object', required: ['agentId', 'selectedProjectIds', 'scopes'], additionalProperties: false,
       properties: { agentId: { type: 'string' }, selectedProjectIds: { type: 'array', minItems: 1, maxItems: 50,
-        items: { type: 'string' } }, scopes: { type: 'array', minItems: 1, maxItems: 2,
-        items: { type: 'string', enum: ['flux.context.read', 'flux.proposal.write'] } },
+        items: { type: 'string' } }, scopes: { type: 'array', minItems: 1, maxItems: 3,
+        items: { type: 'string', enum: ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'] } },
         name: { type: 'string', minLength: 1, maxLength: 120 }, clientDesignation: { type: 'string', enum: ['claude_code', 'codex', 'other'] } } } },
   }, async (request, reply) => reply.code(201).send(await connections.create(
     (await sessions.requirePrincipal(request)).principal, request.body)));
   app.get('/api/v1/agent-connections', async (request) => connections.list(
     (await sessions.requirePrincipal(request)).principal));
+  app.post<{ Params: { connectionId: string }; Body: CreateAgentStandingGrantCommand }>('/api/v1/agent-connections/:connectionId/action-grants', {
+    schema: { body: { type: 'object', additionalProperties: false,
+      required: ['clientCommandId', 'projectId', 'operation', 'peerRequestClass', 'maximumUses', 'expiresAt'], properties: {
+        clientCommandId: { type: 'string' }, projectId: { type: 'string' }, operation: { type: 'string', enum: [...AGENT_OPERATIONS] },
+        peerRequestClass: { type: 'string', enum: [...AGENT_PEER_REQUEST_CLASSES] }, objectId: { type: 'string' },
+        maximumUses: { type: 'integer', minimum: 1, maximum: 1000 }, expiresAt: { type: 'string', maxLength: 40 },
+      } } },
+  }, async (request, reply) => reply.code(201).send(await actionGrants.create((await sessions.requirePrincipal(request)).principal, request.params.connectionId, request.body)));
+  app.get<{ Params: { connectionId: string }; Querystring: PageQuery }>('/api/v1/agent-connections/:connectionId/action-grants', {
+    schema: { querystring: { type: 'object', additionalProperties: false, properties: {
+      limit: { type: 'integer', minimum: 1, maximum: 50 }, offset: { type: 'integer', minimum: 0, maximum: 10_000 },
+    } } },
+  }, async (request) => actionGrants.list((await sessions.requirePrincipal(request)).principal, request.params.connectionId, request.query));
+  app.delete<{ Params: { connectionId: string; grantId: string } }>('/api/v1/agent-connections/:connectionId/action-grants/:grantId',
+    async (request, reply) => {
+      await actionGrants.revoke((await sessions.requirePrincipal(request)).principal, request.params.connectionId, request.params.grantId);
+      return reply.code(204).send();
+    });
   app.delete<{ Params: { connectionId: string } }>('/api/v1/agent-connections/:connectionId', async (request, reply) => {
     await connections.revoke((await sessions.requirePrincipal(request)).principal, request.params.connectionId);
     return reply.code(204).send();

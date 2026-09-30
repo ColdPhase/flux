@@ -288,7 +288,7 @@ async function refresh(clientId: string, token: string) {
 test('three named connections share one actual client; same-session choices, refresh families and revocation remain independent', async () => {
   const owner = (await register(uniqueEmail('connections-owner'), 'correct horse battery staple')).browser;
   const peer = (await register(uniqueEmail('connections-peer'), 'correct horse battery staple')).browser;
-  async function connection(browser: Browser, name: string, clientDesignation: 'codex' | 'claude_code') {
+  async function connection(browser: Browser, name: string, clientDesignation: 'codex' | 'claude_code', actions = false) {
     const workspace = expect(await browser.request('POST', '/api/v1/workspaces', { body: { name } }), 201);
     const project = expect(await browser.request('POST', `/api/v1/workspaces/${workspace.id}/projects`,
       { body: { name: `${name} project`, visibility: 'restricted' } }), 201);
@@ -297,13 +297,14 @@ test('three named connections share one actual client; same-session choices, ref
     expect(await browser.request('POST', `/api/v1/projects/${project.id}/grants`,
       { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
     const saved = expect(await browser.request('POST', '/api/v1/agent-connections', { body: {
-      name, clientDesignation, agentId: agent.id, selectedProjectIds: [project.id], scopes: ['flux.context.read', 'flux.proposal.write'],
+      name, clientDesignation, agentId: agent.id, selectedProjectIds: [project.id],
+      scopes: ['flux.context.read', 'flux.proposal.write', ...(actions ? ['flux.action.execute'] : [])],
     } }), 201);
     assert.equal(saved.name, name); assert.equal(saved.clientDesignation, clientDesignation);
     assert.equal(saved.computeSource, 'user_operated_external_client');
     return { id: String(saved.id), projectId: String(project.id) };
   }
-  const [a, b, c] = await Promise.all([connection(owner, 'Hubert research', 'codex'),
+  const [a, b, c] = await Promise.all([connection(owner, 'Hubert research', 'codex', true),
     connection(owner, 'Hubert delivery', 'claude_code'), connection(peer, 'Peer research', 'codex')]);
   const clientId = `flux-test-${randomUUID()}`;
   const redirectUri = 'http://127.0.0.1:19737/callback';
@@ -312,22 +313,34 @@ test('three named connections share one actual client; same-session choices, ref
      response_types, scopes, require_pkce, created_at, updated_at)
     VALUES ($1, $2, 'Flux HTTP test client', $3, 'none', $4, $5, $6, true, now(), now())`,
   [randomUUID(), clientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'],
-    ['flux.context.read', 'flux.proposal.write', 'offline_access']]);
+    ['flux.context.read', 'flux.proposal.write', 'flux.action.execute', 'offline_access']]);
   await pool.query('INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at) VALUES ($1, $2, $3, now())',
     [randomUUID(), clientId, `${publicOrigin}/mcp`]);
-  const [flowA, flowB, flowC] = await Promise.all([beginOauth(owner, clientId, redirectUri, { prompt: 'consent' }),
+  const actionScope = 'flux.context.read flux.proposal.write flux.action.execute offline_access';
+  const [flowA, flowB, flowC] = await Promise.all([beginOauth(owner, clientId, redirectUri, { prompt: 'consent', scope: actionScope }),
     beginOauth(owner, clientId, redirectUri), beginOauth(peer, clientId, redirectUri)]);
   const tampered = new URLSearchParams(flowA.oauthQuery); tampered.set('state', randomUUID());
   expect(await owner.request('POST', `/api/v1/agent-connections/${a.id}/select-for-oauth`,
     { body: { oauth_query: tampered.toString() } }), 400);
+  const substitutedScope = new URLSearchParams(flowB.oauthQuery); substitutedScope.set('scope', actionScope);
+  expect(await owner.request('POST', `/api/v1/agent-connections/${b.id}/select-for-oauth`,
+    { body: { oauth_query: substitutedScope.toString() } }), 400);
   expect(await peer.request('POST', `/api/v1/agent-connections/${a.id}/select-for-oauth`,
     { body: { oauth_query: flowC.oauthQuery } }), 404);
   expect(await owner.request('POST', `/api/v1/agent-connections/${a.id}/select-for-oauth`,
     { body: { oauth_query: flowA.oauthQuery } }), 204);
   expect(await owner.request('POST', `/api/v1/agent-connections/${b.id}/select-for-oauth`,
-    { body: { oauth_query: flowA.oauthQuery } }), 409);
+    { body: { oauth_query: flowA.oauthQuery } }), 404); // A read/propose connection cannot accept action scope.
+  expect(await owner.request('POST', `/api/v1/agent-connections/${b.id}/select-for-oauth`,
+    { body: { oauth_query: flowB.oauthQuery } }), 204);
+  expect(await owner.request('POST', `/api/v1/agent-connections/${a.id}/select-for-oauth`,
+    { body: { oauth_query: flowB.oauthQuery } }), 409);
   const [tokensA, tokensB, tokensC] = await Promise.all([oauthToken(owner, a.id, clientId, redirectUri, flowA),
     oauthToken(owner, b.id, clientId, redirectUri, flowB), oauthToken(peer, c.id, clientId, redirectUri, flowC)]);
+  for (const [tokens, actions] of [[tokensA, true], [tokensB, false], [tokensC, false]] as const) {
+    const claims = JSON.parse(Buffer.from(tokens.access_token.split('.')[1]!, 'base64url').toString()) as { scope: string };
+    assert.equal(claims.scope.split(' ').includes('flux.action.execute'), actions, 'only explicitly requested/selected action scope is issued');
+  }
   for (const [tokens, connection] of [[tokensA, a], [tokensB, b], [tokensC, c]] as const) {
     const listed = await mcp(tokens.access_token, 1, 'tools/call', { name: 'flux_list_contexts', arguments: {} });
     assert.equal(listed.status, 200);
@@ -340,7 +353,7 @@ test('three named connections share one actual client; same-session choices, ref
   const cachedA = await refresh(clientId, tokensA.refresh_token);
   assert.equal(cachedA.status, 200, 'an immediate retry uses the configured provider reuse window');
   assert.equal(cachedA.tokens.refresh_token, rotatedA.tokens.refresh_token);
-  const reconnectedA = await oauthToken(owner, a.id, clientId, redirectUri);
+  const reconnectedA = await oauthToken(owner, a.id, clientId, redirectUri, await beginOauth(owner, clientId, redirectUri, { scope: actionScope }));
   await pool.query(`UPDATE oauth_refresh_token SET rotation_replay_expires_at = now() - interval '1 second'
     WHERE reference_id IN (SELECT 'flux-grant:' || id::text FROM agent_oauth_bindings WHERE connection_id = $1) AND revoked IS NOT NULL`, [a.id]);
   assert.equal((await refresh(clientId, tokensA.refresh_token)).status, 400, 'reuse rejects only its original authorization family');

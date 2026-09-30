@@ -105,10 +105,25 @@ from self-reported clientInfo, labels or instruction ACKs.
 `coWorkClaimUseCases` can keep its existing pure command shape: #153's adapter
 calls `prepare`, builds `LockedClaimScope`, and stages the outcome from
 `saveReceipt`. It calls `complete` with that outcome and canonical claim
-postconditions before its shared final event flush. On replay it performs current
-fence validation and returns the original stored outcome, without calling `save`
+postconditions before its shared final event flush. On replay it verifies the
+unchanged canonical post-state and returns the original stored outcome, without calling `save`
 or creating a new receipt. A receipt whose normalized payload differs fails
 before any unit mutation. Both implementations use the same ledger table.
+
+The exact claim condition is aligned to #153 PR #166 at
+`4ca13c9d07a603f897d213a27c6916b3fecee1ce` (layout integration later at
+`e35dbc59754d6cc100409f59dc9b43d708a7b918`): kind `cowork.claim_state`,
+workspace/project/assigned connection, unit ID, actual role, version, generation,
+state, lease ID/session/persisted ISO deadline and checkpoint ID. #152 checks the
+exact authenticated workspace/project/connection, target unit and request class;
+the #153 canonical callback checks every saved field and current checkpoint/source
+readability under its complete sorted lock set. Claimed lease session must be the
+original server-issued runtime UUID. Release has null lease fields. Expired
+historical deadlines remain valid observation evidence, never a renewed lease.
+Unknown shapes, cross-operation evidence, missing required conditions and duplicate
+condition identities fail before debit or receipt. A foreign/malformed condition
+does not reach a canonical row reader. The callback remains disabled until the
+actual #153 adapter is integrated and independently verified.
 
 Required integration tests include duplicate concurrent commands, changed
 operation/project/session/payload conflicts, exhausted last-use successful retry,

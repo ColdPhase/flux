@@ -24,7 +24,12 @@ export interface FluxAgentReadContext {
 /** Hold live binding, connection and central access locks throughout content projection/effect. */
 export function withAgentConnection<T>(db: Database, claims: FluxMcpClaims, scope: AgentScope,
   projectId: string | null, read: (context: FluxAgentReadContext) => Promise<T>): Promise<T> {
-  return db.transaction(async (tx) => {
+  return db.transaction(async (tx) => read(await agentConnectionInTransaction(tx, claims, scope, projectId)));
+}
+
+/** The same authorization boundary composed into #152/#153's caller-owned transaction. */
+export async function agentConnectionInTransaction(tx: Transaction, claims: FluxMcpClaims, scope: AgentScope,
+  projectId: string | null): Promise<FluxAgentReadContext> {
     const grant = await createAgentConnectionStore(tx).grantForOauth(claims.ownerUserId,
       claims.grantReferenceId ?? claims.connectionId);
     if (!grant || grant.connection.id !== claims.connectionId || grant.clientId !== null && grant.clientId !== claims.clientId)
@@ -39,7 +44,6 @@ export function withAgentConnection<T>(db: Database, claims: FluxMcpClaims, scop
     };
     if (projectId) requireAgentSelection(connection, projectId, scope);
     const objects = agentProjectReads(agentProjectObjectRows(tx));
-    return read({ tx, connection, workspaceId: row.workspaceId, principal: { kind: 'agent', id: row.agentId },
-      requireObject: (project, kind, id) => objects.requireObject(connection, row.workspaceId, project, kind, id) });
-  });
+    return { tx, connection, workspaceId: row.workspaceId, principal: { kind: 'agent', id: row.agentId },
+      requireObject: (project, kind, id) => objects.requireObject(connection, row.workspaceId, project, kind, id) };
 }

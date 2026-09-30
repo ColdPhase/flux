@@ -9,6 +9,10 @@ const CONNECTIONS_PATH = '/api/v1/agent-connections';
 export type ConsentContext = AgentOauthConsentContext;
 
 export const SCOPE_LABELS: Record<AgentScope, { title: string; description: string }> = {
+  'flux.action.execute': {
+    title: 'Run approved project actions',
+    description: 'Each action also needs a current grant from you, with its own limits and expiry.',
+  },
   'flux.context.read': {
     title: 'Read selected project context',
     description: 'See project materials and their current revisions.',

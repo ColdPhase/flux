@@ -1,4 +1,4 @@
-export type AgentScope = 'flux.context.read' | 'flux.proposal.write';
+export type AgentScope = 'flux.context.read' | 'flux.proposal.write' | 'flux.action.execute';
 export type ExternalComputeSource = 'user_operated_claude_code' | 'user_operated_external_client';
 export type ExternalClientDesignation = 'claude_code' | 'codex' | 'other';
 

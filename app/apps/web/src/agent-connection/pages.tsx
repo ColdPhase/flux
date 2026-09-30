@@ -14,7 +14,7 @@ import {
 } from './api';
 import './connection.css';
 
-const ALL_SCOPES: AgentScope[] = ['flux.context.read', 'flux.proposal.write'];
+const ALL_SCOPES: AgentScope[] = ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'];
 const EXTRA_SCOPE_LABELS: Record<string, { title: string; description: string }> = {
   offline_access: { title: 'Stay connected', description: 'Allow the client to renew its access until you revoke the connection.' },
   openid: { title: 'Identify your Flux account', description: 'Confirm which account approved this connection.' },
@@ -113,7 +113,7 @@ function ConnectionSummary({ connection, agentName, projectNames, showScopes = t
   return <div className="connection__summary">
     <strong>{connection.name}</strong>
     <span className="connection__meta"><span>{agentName}</span> · Your client label: {connection.clientDesignation === 'claude_code' ? 'Claude Code' : connection.clientDesignation === 'codex' ? 'Codex' : 'External client'}</span>
-    <span className="connection__meta">{connection.selectedProjectIds.length} {connection.selectedProjectIds.length === 1 ? 'project' : 'projects'} · {connection.scopes.length === 2 ? 'Read and propose' : connection.scopes[0] === 'flux.context.read' ? 'Read only' : 'Propose only'}</span>
+    <span className="connection__meta">{connection.selectedProjectIds.length} {connection.selectedProjectIds.length === 1 ? 'project' : 'projects'} · {connection.scopes.map((scope) => scope === 'flux.context.read' ? 'Read' : scope === 'flux.proposal.write' ? 'Suggest' : 'Approved actions').join(' · ')}</span>
     <div className="connection__project-access">
       <span>Selected {connection.selectedProjectIds.length === 1 ? 'project' : 'projects'}</span>
       <ul className="connection__projects">{connection.selectedProjectIds.map((id) => <li key={id}>{projectNames.get(id) ?? `Project ${id.slice(0, 8)}`}</li>)}</ul>
@@ -138,7 +138,7 @@ export function AgentConnectionPage() {
   const [grantRoles, setGrantRoles] = useState<Record<string, 'viewer' | 'contributor'>>({});
   const [revoking, setRevoking] = useState<string | null>(null);
   const [projectIds, setProjectIds] = useState<string[]>([]);
-  const [scopes, setScopes] = useState<AgentScope[]>(ALL_SCOPES);
+  const [scopes, setScopes] = useState<AgentScope[]>(['flux.context.read', 'flux.proposal.write']);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const projectNames = new Map(projects.map((project) => [project.id, project.name]));
@@ -153,7 +153,7 @@ export function AgentConnectionPage() {
   function canSelect(project: Project) {
     if (!currentGrants[project.id]) return true; // A non-manager cannot inspect grants; the server validates on save.
     const role = grantFor(project)?.role;
-    return role === 'contributor' || (role === 'viewer' && !scopes.includes('flux.proposal.write'));
+    return role === 'contributor' || (role === 'viewer' && !scopes.some((scope) => scope === 'flux.proposal.write' || scope === 'flux.action.execute'));
   }
 
   async function addPersonalAgent(event: FormEvent<HTMLFormElement>) {
@@ -172,7 +172,7 @@ export function AgentConnectionPage() {
     if (!agentId) return;
     setBusy(true); setError(null);
     try {
-      const grant = await grantAgentProject(project.id, agentId, grantRoles[project.id] ?? (scopes.includes('flux.proposal.write') ? 'contributor' : 'viewer'));
+      const grant = await grantAgentProject(project.id, agentId, grantRoles[project.id] ?? (scopes.some((scope) => scope === 'flux.proposal.write' || scope === 'flux.action.execute') ? 'contributor' : 'viewer'));
       setCurrentGrants((current) => ({ ...current, [project.id]: [...(current[project.id] ?? []).filter((item) => !(item.principal.kind === 'agent' && item.principal.id === agentId)), grant] }));
     } catch (cause) { setError(describeError(cause)); }
     finally { setBusy(false); }
@@ -272,7 +272,7 @@ export function AgentConnectionPage() {
           </label>
           {project.access === 'manager' && !selectable ? <div className="connection__grant">
             <label htmlFor={`grant-${project.id}`}>Grant agent access</label>
-            <select id={`grant-${project.id}`} value={grantRoles[project.id] ?? (scopes.includes('flux.proposal.write') ? 'contributor' : 'viewer')} onChange={(event) => setGrantRoles((current) => ({ ...current, [project.id]: event.target.value as 'viewer' | 'contributor' }))} disabled={busy}>
+            <select id={`grant-${project.id}`} value={grantRoles[project.id] ?? (scopes.some((scope) => scope === 'flux.proposal.write' || scope === 'flux.action.execute') ? 'contributor' : 'viewer')} onChange={(event) => setGrantRoles((current) => ({ ...current, [project.id]: event.target.value as 'viewer' | 'contributor' }))} disabled={busy}>
               <option value="viewer">Read only</option><option value="contributor">Read and propose</option>
             </select>
             <Button variant="secondary" onClick={() => { void grantProject(project); }}>Grant</Button>
@@ -286,7 +286,7 @@ export function AgentConnectionPage() {
         <div className="connection__checks">{ALL_SCOPES.map((scope) => <label key={scope}>
           <input type="checkbox" checked={scopes.includes(scope)} onChange={(event) => {
             setScopes((current) => event.target.checked ? [...current, scope] : current.filter((item) => item !== scope));
-            if (scope === 'flux.proposal.write' && event.target.checked) setProjectIds((current) => current.filter((id) => {
+            if ((scope === 'flux.proposal.write' || scope === 'flux.action.execute') && event.target.checked) setProjectIds((current) => current.filter((id) => {
               const project = eligibleProjects.find((item) => item.id === id);
               return project && (!currentGrants[id] || grantFor(project)?.role === 'contributor');
             }));

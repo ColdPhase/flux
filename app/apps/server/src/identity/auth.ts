@@ -34,7 +34,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests }: A
     if (!request || request.clearedSessionId && request.clearedSessionId !== sessionId) throw new Error('OAuth flow is unavailable');
     const grant = await connections.flowForOauth(userId, sessionId, request.fingerprint);
     const connection = grant?.connection;
-    if (!connection || scopes.some((scope) => scope !== 'offline_access' && !connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write'))) {
+    if (!connection || scopes.some((scope) => scope !== 'offline_access' && !connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write' | 'flux.action.execute'))) {
       throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Agent connection is unavailable' });
     }
     return grant!;
@@ -71,7 +71,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests }: A
       jwt(),
       mcp({
         loginPage: '/login', consentPage: '/consent', resource,
-        scopes: ['flux.context.read', 'flux.proposal.write', 'offline_access'],
+        scopes: ['flux.context.read', 'flux.proposal.write', 'flux.action.execute', 'offline_access'],
         grantTypes: ['authorization_code', 'refresh_token'],
         postLogin: {
           page: '/connect-agent',
@@ -88,7 +88,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests }: A
           }
           const grant = await connections.grantForOauth(user.id, referenceId);
           const connection = grant?.connection;
-          if (!connection || scopes.some((scope) => scope !== 'offline_access' && !connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write'))) {
+          if (!connection || scopes.some((scope) => scope !== 'offline_access' && !connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write' | 'flux.action.execute'))) {
             throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Agent connection is unavailable' });
           }
           return { flux_connection_id: connection.id, flux_owner_user_id: user.id, flux_grant_reference: grant!.referenceId };

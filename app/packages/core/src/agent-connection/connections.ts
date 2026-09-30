@@ -10,7 +10,7 @@ export interface AgentConnectionPort {
   resolve(ownerUserId: string, connectionId: string): Promise<AgentConnection | null>;
 }
 
-const SCOPES: readonly AgentScope[] = ['flux.context.read', 'flux.proposal.write'];
+const SCOPES: readonly AgentScope[] = ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'];
 
 /** Consent selects a ceiling; it cannot create an agent or project grant. */
 export function validateConnectionCommand(input: CreateAgentConnectionCommand): CreateAgentConnectionCommand {

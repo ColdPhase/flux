@@ -39,22 +39,22 @@ test('named connections and two tabs in one login complete distinct consent flow
     const agent = await post(`/api/v1/workspaces/${workspace.id}/agents`, { name: 'Research agent', owner: 'self' });
     await post(`/api/v1/projects/${project.id}/grants`, { principal: { kind: 'agent', id: agent.id }, role: 'contributor' });
     const a = await post('/api/v1/agent-connections', { name: 'Research laptop', clientDesignation: 'codex', agentId: agent.id,
-      selectedProjectIds: [project.id], scopes: ['flux.context.read', 'flux.proposal.write'] });
+      selectedProjectIds: [project.id], scopes: ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'] });
     const b = await post('/api/v1/agent-connections', { name: 'Delivery laptop', clientDesignation: 'claude_code', agentId: agent.id,
-      selectedProjectIds: [project.id], scopes: ['flux.context.read', 'flux.proposal.write'] });
+      selectedProjectIds: [project.id], scopes: ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'] });
     const clientId = `flux-browser-${randomUUID()}`; const redirectUri = 'http://127.0.0.1:19737/callback';
     await pool.query(`INSERT INTO oauth_client (id, client_id, name, redirect_uris, token_endpoint_auth_method,
       grant_types, response_types, scopes, require_pkce, created_at, updated_at)
       VALUES ($1, $2, 'Browser protocol fixture', $3, 'none', $4, $5, $6, true, now(), now())`,
     [randomUUID(), clientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'],
-      ['flux.context.read', 'flux.proposal.write', 'offline_access']]);
+      ['flux.context.read', 'flux.proposal.write', 'flux.action.execute', 'offline_access']]);
     await pool.query('INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at) VALUES ($1,$2,$3,now())',
       [randomUUID(), clientId, `${origin}/mcp`]);
     function authorization() {
       const verifier = randomBytes(32).toString('base64url');
       const query = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri, response_type: 'code',
         code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256',
-        scope: 'flux.context.read flux.proposal.write offline_access', resource: `${origin}/mcp`, state: randomUUID(), prompt: 'consent' });
+        scope: 'flux.context.read flux.proposal.write flux.action.execute offline_access', resource: `${origin}/mcp`, state: randomUUID(), prompt: 'consent' });
       return { url: `${origin}/api/auth/oauth2/authorize?${query}`, verifier, state: query.get('state')! };
     }
     const context = await browser.newContext({ viewport: { width: 1280, height: 900 } }); contexts.push(context);
@@ -74,6 +74,10 @@ test('named connections and two tabs in one login complete distinct consent flow
     }));
     await pageA.locator('.connection__summary').filter({ hasText: 'Research laptop' }).waitFor({ state: 'visible' });
     await pageB.locator('.connection__summary').filter({ hasText: 'Delivery laptop' }).waitFor({ state: 'visible' });
+    for (const page of [pageA, pageB]) {
+      await page.getByText('Run approved project actions', { exact: true }).waitFor({ state: 'visible' });
+      await page.getByText('Each action also needs a current grant from you, with its own limits and expiry.', { exact: true }).waitFor({ state: 'visible' });
+    }
     if (evidenceDir) {
       mkdirSync(evidenceDir, { recursive: true });
       await pageA.screenshot({ path: join(evidenceDir, 'agent-consent-desktop.png'), fullPage: true });
