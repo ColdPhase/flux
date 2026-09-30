@@ -52,6 +52,19 @@ before restarting writers. Original facts remain unavailable history; explicit
 authorization and binding selection are required. Portable source import remains
 pending; importing data must not restore active provider grants.
 
+Credential envelopes also bind the configured OAuth client, verified GitHub user
+and authorization generation. Changing that identity or upgrading an incompatible
+old envelope requires explicit authorization again; current capabilities report
+authorization required and no old repository facts are returned. Pending PKCE
+flows reject a changed App/client/session/project before exchanging the code.
+The integration does not silently reseal old credentials under new settings.
+
+Permission-checked operations pin current credentials in their outer transaction
+before repository-binding locks. Later provider reads reuse that exact capability.
+GitHub-local PostgreSQL lock/statement timeouts cancel before the unchanged driver
+deadline so rollback drains. Contended revocation may fail truthfully and require
+retry; a failed action is never presented as completed or allowed to poison the pool.
+
 ## Project settings and recovery
 
 A manager opens **Details → GitHub repositories**, authorizes their own GitHub
@@ -59,6 +72,9 @@ account, installs the App if needed and explicitly selects an installation and
 repository. These are distinct steps. Newly installed repositories never expand
 Flux bindings. Each reader authorizes their own GitHub account. A Flux-only
 member cannot read even cached private repository names or PR facts.
+A viewer who independently authorizes GitHub and still has repository access can
+select a task and read its existing PR references; linking/managing controls remain
+restricted to writers/managers.
 
 Select an existing Flux task, binding, exact PR number and **Required output** or
 **Related context**. The server verifies the actual PR and stable repository ID;
