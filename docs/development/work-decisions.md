@@ -40,7 +40,7 @@ replacements of the same rule at once: one wins, the other gets `409 SUPERSEDED_
 | `POST /api/v1/projects/:projectId/links` | A `related` link between any two objects of the project. |
 | `GET /api/v1/workspaces/:workspaceId/work/assigned` | The caller's unfinished, unparked work in every project the policy's `visibleFilter` lets them read. |
 
-Every POST/PATCH accepts `Idempotency-Key` (the shared runner in `apps/server/src/http/commands.ts`,
+Every POST/PATCH accepts `Idempotency-Key` (the shared runner in `app/apps/server/src/http/commands.ts`,
 also introduced by #100); a replay re-checks current project read access. Responses with a version
 carry `ETag`. An object in a project the caller cannot see is `404 <TYPE>_NOT_FOUND`, the same as a
 missing one.
@@ -55,13 +55,13 @@ project readers and the client refetches. Idempotent replays and failed changes 
 
 ## Structure
 
-- `packages/contracts/src/work.ts`: wire types and paths.
-- `packages/core/src/work/`: ports (`WorkAccess`, `WorkRepository`, `WorkEventLog`,
+- `app/packages/contracts/src/work.ts`: wire types and paths.
+- `app/packages/core/src/work/`: ports (`WorkAccess`, `WorkRepository`, `WorkEventLog`,
   `WorkUnitOfWork`), validation and use cases. No Drizzle or `@flux/db` import.
-- `packages/db/src/repositories/work.ts` and migration `0008_work.sql`: rows only, no decisions.
-- `apps/server/src/work/`: adapters (`evaluateProject`/`authorize`/`visibleFilter`, `recordEvent`)
+- `app/packages/db/src/repositories/work.ts` and migration `0008_work.sql`: rows only, no decisions.
+- `app/apps/server/src/work/`: adapters (`evaluateProject`/`authorize`/`visibleFilter`, `recordEvent`)
   and routes. No architecture allowlist entries were added.
-- `apps/web/src/work/`: loads every page of work, decisions and results (100 per request until `total`), so the state line, Tasks and inline objects are complete; the Tasks tab (`/projects/:id/tasks`), the state line, message actions
+- `app/apps/web/src/work/`: loads every page of work, decisions and results (100 per request until `total`), so the state line, Tasks and inline objects are complete; the Tasks tab (`/projects/:id/tasks`), the state line, message actions
   (Create work, Propose decision, Attach result), inline objects under their source message and
   the Details panel views and forms.
 
@@ -75,7 +75,7 @@ revalidation and polling and does not subscribe to the stream yet.
 
 ## Tests
 
-`tests/app/work.test.ts` (API, two people, viewer, outsider and an agent principal through the
-use cases) and `tests/ui/test_work_decisions.py` (Playwright: create from a message, keyboard
+`app/tests/app/work.test.ts` (API, two people, viewer, outsider and an agent principal through the
+use cases) and `app/tests/ui/test_work_decisions.py` (Playwright: create from a message, keyboard
 propose/accept, negative result by the second person, pivot with parking, phone). Screenshots:
 `docs/design/work-decisions/`.

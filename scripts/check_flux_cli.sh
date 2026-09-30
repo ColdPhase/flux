@@ -16,6 +16,7 @@ export FLUX_PORT="${FLUX_CLI_TEST_PORT:-19561}"
 export FLUX_DEV_PORT="${FLUX_CLI_TEST_DEV_PORT:-19562}"
 export FLUX_MAILPIT_PORT="${FLUX_CLI_TEST_MAILPIT_PORT:-19563}"
 base="http://127.0.0.1:$FLUX_PORT"
+base2="http://127.0.0.1:$((FLUX_PORT + 3))"
 dev="http://127.0.0.1:$FLUX_DEV_PORT"
 work=$(mktemp -d "${TMPDIR:-/tmp}/flux-cli-check.XXXXXX")
 work=$(cd "$work" && pwd -P)   # the launcher records physical paths
@@ -25,19 +26,19 @@ copy3="$work/c/flux"
 run=''
 sentinel="${tag}-sentinel_keep"
 # The second checkout gets its own ports; its project name comes from its own path.
-flux2() { FLUX_PORT=19564 FLUX_DEV_PORT=19565 FLUX_MAILPIT_PORT=19566 "$copy2/flux" "$@"; }
+flux2() { FLUX_PORT=$((FLUX_PORT + 3)) FLUX_DEV_PORT=$((FLUX_DEV_PORT + 3)) FLUX_MAILPIT_PORT=$((FLUX_MAILPIT_PORT + 3)) "$copy2/flux" "$@"; }
 
 step() { printf '\n== %s\n' "$*"; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
 cleanup() {
   status=$?
-  if [ "$status" -ne 0 ] && [ -n "$run" ] && [ -f "$copy/.env" ]; then
-    (cd "$copy" && docker compose --project-directory infra --env-file .env -p "$run" -f infra/compose.yaml logs --no-color --tail 80 2>/dev/null) || true
-    (cd "$copy" && docker compose --project-directory infra --env-file .env -p "$run-dev" -f infra/compose.yaml -f infra/compose.dev.yaml --profile dev logs --no-color --tail 80 2>/dev/null) || true
+  if [ "$status" -ne 0 ] && [ -n "$run" ] && [ -f "$copy/docker/.env" ]; then
+    (cd "$copy" && docker compose --project-directory docker --env-file docker/.env -p "$run" -f docker/compose.source.yaml logs --no-color --tail 80 2>/dev/null) || true
+    (cd "$copy" && docker compose --project-directory docker --env-file docker/.env -p "$run-dev" -f docker/compose.source.yaml -f docker/compose.dev.yaml --profile dev logs --no-color --tail 80 2>/dev/null) || true
   fi
-  if [ -x "$copy/flux" ] && [ -f "$copy/.env" ]; then "$copy/flux" clean -y >/dev/null 2>&1 || true; fi
-  if [ -x "$copy2/flux" ] && [ -f "$copy2/.env" ]; then flux2 clean -y >/dev/null 2>&1 || true; fi
+  if [ -x "$copy/flux" ] && [ -f "$copy/docker/.env" ]; then "$copy/flux" clean -y >/dev/null 2>&1 || true; fi
+  if [ -x "$copy2/flux" ] && [ -f "$copy2/docker/.env" ]; then flux2 clean -y >/dev/null 2>&1 || true; fi
   docker volume rm "$sentinel" >/dev/null 2>&1 || true
   # Ownership markers left by a run that failed before its .env existed.
   for checkout in "$copy" "$copy2"; do
@@ -55,7 +56,7 @@ step "Copy the working tree (tracked and new files, no .env) to $copy and $copy2
 for target in "$copy" "$copy2"; do
   mkdir -p "$target"
   (cd "$here" && git ls-files -z --cached --others --exclude-standard | xargs -0 tar -cf - 2>/dev/null) | (cd "$target" && tar -xf -)
-  [ ! -e "$target/.env" ] || fail ".env was copied"
+  [ ! -e "$target/docker/.env" ] || fail ".env was copied"
 done
 cd "$work"   # run the launcher from outside the checkout: paths resolve relative to ./flux
 
@@ -75,27 +76,35 @@ step "./flux up on a fresh copy creates .env and starts a healthy stack"
 start=$(date +%s)
 "$copy/flux" up
 echo "up took $(( $(date +%s) - start ))s"
-[ -f "$copy/.env" ] || fail ".env not created"
-run=$(sed -n 's/^FLUX_PROJECT=//p' "$copy/.env")
+[ -f "$copy/docker/.env" ] || fail ".env not created"
+run=$(sed -n 's/^FLUX_PROJECT=//p' "$copy/docker/.env")
 printf '%s' "$run" | grep -Eqx 'flux-[0-9a-f]{8}' || fail "default project name '$run' is not flux-<path hash>"
 [ "$(docker volume inspect -f '{{ index .Labels "com.flux.checkout" }}' "${run}_flux-checkout")" = "$copy" ] \
   || fail "no ownership marker for $run pointing at $copy"
-mode=$(ls -l "$copy/.env" | cut -c1-10)
+mode=$(ls -l "$copy/docker/.env" | cut -c1-10)
 [ "$mode" = "-rw-------" ] || fail ".env mode is $mode, expected -rw-------"
-if grep -q 'replace-with' "$copy/.env"; then fail "placeholder secrets left in .env"; fi
+if grep -q 'replace-with' "$copy/docker/.env"; then fail "placeholder secrets left in .env"; fi
 for key in POSTGRES_PASSWORD FLUX_FIXTURE_TOKEN FLUX_AUTH_SECRET FLUX_VAPID_PUBLIC_KEY FLUX_VAPID_PRIVATE_KEY FLUX_DEMO_OWNER_PASSWORD; do
-  value=$(sed -n "s/^$key=//p" "$copy/.env")
+  value=$(sed -n "s/^$key=//p" "$copy/docker/.env")
   [ "${#value}" -ge 20 ] || fail "$key is missing or short in .env"
 done
-grep -qx "FLUX_PUBLIC_ORIGIN=$base" "$copy/.env" || fail "FLUX_PUBLIC_ORIGIN is not $base"
-grep -q '^FLUX_VAPID_SUBJECT=mailto:' "$copy/.env" || fail "FLUX_VAPID_SUBJECT not set"
+grep -qx "FLUX_PUBLIC_ORIGIN=$base" "$copy/docker/.env" || fail "FLUX_PUBLIC_ORIGIN is not $base"
+grep -q '^FLUX_VAPID_SUBJECT=mailto:' "$copy/docker/.env" || fail "FLUX_VAPID_SUBJECT not set"
 curl -fsS "$base/api/v1/health" | grep -q '"status":"ok"' || fail "health not ok"
 
 step "A second ./flux up keeps .env byte for byte"
-before=$(cksum < "$copy/.env")
+before=$(cksum < "$copy/docker/.env")
 "$copy/flux" up >/dev/null
-[ "$(cksum < "$copy/.env")" = "$before" ] || fail ".env changed on the second up"
+[ "$(cksum < "$copy/docker/.env")" = "$before" ] || fail ".env changed on the second up"
 curl -fsS "$base/api/v1/health" >/dev/null || fail "health after second up"
+
+step "A legacy root .env moves once without regenerating secrets or changing the project"
+mv "$copy/docker/.env" "$copy/.env"
+"$copy/flux" up >/dev/null
+[ ! -e "$copy/.env" ] || fail "legacy .env was not moved"
+[ "$(cksum < "$copy/docker/.env")" = "$before" ] || fail "legacy env migration changed bytes"
+[ ! -e "$copy/app/.env" ] || fail "application reference became an executable env"
+
 
 step "./flux demo seeds through the API and prints working logins"
 out=$(FLUX_DEMO_JSON=1 "$copy/flux" demo)
@@ -118,7 +127,7 @@ sign_in() { # email password -> cookie jar $jar
 }
 api() { curl -fsS -b "$jar" -H "Origin: $base" "$base$1"; }
 sign_in ada@demo.flux.test "$owner_pw"
-api /api/v1/push/public-key | grep -q "\"publicKey\":\"$(sed -n 's/^FLUX_VAPID_PUBLIC_KEY=//p' "$copy/.env")\"" \
+api /api/v1/push/public-key | grep -q "\"publicKey\":\"$(sed -n 's/^FLUX_VAPID_PUBLIC_KEY=//p' "$copy/docker/.env")\"" \
   || fail "API does not serve the generated VAPID public key"
 workspaces=$(api /api/v1/workspaces)
 printf '%s' "$workspaces" | grep -q 'Riverside Makers (demo)' || fail "owner cannot see the demo workspace"
@@ -145,21 +154,21 @@ sign_in ada@demo.flux.test "$owner_pw"
 [ "$(api /api/v1/workspaces | grep -o 'Riverside Makers (demo)' | wc -l | tr -d ' ')" = 1 ] || fail "duplicate demo workspace"
 
 step "./flux demo refuses a production-looking origin"
-cp "$copy/.env" "$work/env.saved"
-sed 's#^FLUX_PUBLIC_ORIGIN=.*#FLUX_PUBLIC_ORIGIN=https://flux.example.org#' "$work/env.saved" > "$copy/.env"
+cp "$copy/docker/.env" "$work/env.saved"
+sed 's#^FLUX_PUBLIC_ORIGIN=.*#FLUX_PUBLIC_ORIGIN=https://flux.example.org#' "$work/env.saved" > "$copy/docker/.env"
 if "$copy/flux" demo > "$work/refuse.out" 2>&1; then fail "demo ran against https://flux.example.org"; fi
 grep -q 'refuses to seed https://flux.example.org' "$work/refuse.out" || fail "missing refusal message"
-cat "$work/env.saved" > "$copy/.env"
+cat "$work/env.saved" > "$copy/docker/.env"
 
 step "./flux dev serves Vite with hot reload for web and API"
 "$copy/flux" dev
 curl -fsS "$dev/" | grep -q '/@vite/client' || fail "dev server is not Vite"
 curl -fsS "$dev/api/v1/health" | grep -q '"status":"ok"' || fail "Vite does not proxy /api to the API"
 marker="hot-reload-$run"
-printf "\nexport const fluxDevMarker = '%s';\n" "$marker" >> "$copy/apps/web/src/app/theme.ts"
+printf "\nexport const fluxDevMarker = '%s';\n" "$marker" >> "$copy/app/apps/web/src/app/theme.ts"
 sed "s/return { status: 'ok', schemaVersion: FLUX_SCHEMA_VERSION };/return { status: 'ok', schemaVersion: FLUX_SCHEMA_VERSION, dev: '$marker' };/" \
-  "$copy/apps/server/src/index.ts" > "$work/index.ts" && cat "$work/index.ts" > "$copy/apps/server/src/index.ts"
-grep -q "$marker" "$copy/apps/server/src/index.ts" || fail "could not edit the server health handler"
+  "$copy/app/apps/server/src/index.ts" > "$work/index.ts" && cat "$work/index.ts" > "$copy/app/apps/server/src/index.ts"
+grep -q "$marker" "$copy/app/apps/server/src/index.ts" || fail "could not edit the server health handler"
 edit=$(date +%s); web_s='' api_s=''
 while [ $(( $(date +%s) - edit )) -lt 60 ]; do
   [ -n "$web_s" ] || { curl -fsS "$dev/src/app/theme.ts" 2>/dev/null | grep -q "$marker" && web_s=$(( $(date +%s) - edit )); } || true
@@ -180,10 +189,10 @@ grep -q "NOTE: FLUX_PROJECT=${tag}-none from the environment overrides this chec
 
 step "A second checkout with default names gets its own project and data"
 flux2 up >/dev/null
-run2=$(sed -n 's/^FLUX_PROJECT=//p' "$copy2/.env")
+run2=$(sed -n 's/^FLUX_PROJECT=//p' "$copy2/docker/.env")
 [ -n "$run2" ] && [ "$run2" != "$run" ] || fail "second checkout reused project $run"
 flux2 demo >/dev/null
-owner2_pw=$(sed -n 's/^FLUX_DEMO_OWNER_PASSWORD=//p' "$copy2/.env")
+owner2_pw=$(sed -n 's/^FLUX_DEMO_OWNER_PASSWORD=//p' "$copy2/docker/.env")
 
 step "A copied .env (another checkout's project) is refused by up, down, reset, clean, backup, export and upgrade"
 mkdir -p "$copy3"
@@ -209,11 +218,14 @@ for volume in "${run}_pgdata" "${run}_files" "${run}-dev_pgdata" "${run}-dev_fil
   if docker volume inspect "$volume" >/dev/null 2>&1; then fail "reset left $volume"; fi
 done
 docker volume inspect "$sentinel" >/dev/null 2>&1 || fail "reset removed another project's volume"
-[ -f "$copy/.env" ] || fail "reset removed .env"
+[ -f "$copy/docker/.env" ] || fail "reset removed .env"
 [ -n "$(docker ps -q --filter "label=com.docker.compose.project=$run2")" ] || fail "reset of $run stopped $run2"
 
 step "./flux up after reset starts empty with the same .env; ./flux clean removes own images"
-"$copy/flux" up >/dev/null
+"$copy/flux" up > "$work/up-after-reset.out" 2>&1 || {
+  cat "$work/up-after-reset.out"
+  fail "up after reset failed"
+}
 sign_in_code=$(curl -sS -o /dev/null -w '%{http_code}' -H "Origin: $base" -H 'Content-Type: application/json' \
   -d "{\"email\":\"ada@demo.flux.test\",\"password\":\"$owner_pw\"}" "$base/api/auth/sign-in/email")
 [ "$sign_in_code" != 200 ] || fail "demo account survived reset"
@@ -232,8 +244,8 @@ step "The second checkout survives the first one's clean with its data"
 [ -n "$(docker ps -q --filter "label=com.docker.compose.project=$run2" --filter status=running)" ] || fail "clean stopped $run2"
 docker volume inspect "${run2}_pgdata" >/dev/null 2>&1 || fail "clean removed ${run2}_pgdata"
 docker image inspect "flux-foundation:$run2" >/dev/null 2>&1 || fail "clean removed flux-foundation:$run2"
-code=$(curl -sS -o /dev/null -w '%{http_code}' -H "Origin: http://127.0.0.1:19564" -H 'Content-Type: application/json' \
-  -d "{\"email\":\"ada@demo.flux.test\",\"password\":\"$owner2_pw\"}" http://127.0.0.1:19564/api/auth/sign-in/email)
+code=$(curl -sS -o /dev/null -w '%{http_code}' -H "Origin: $base2" -H 'Content-Type: application/json' \
+  -d "{\"email\":\"ada@demo.flux.test\",\"password\":\"$owner2_pw\"}" "$base2/api/auth/sign-in/email")
 [ "$code" = 200 ] || fail "second checkout's demo login answered $code after the first clean"
 flux2 clean -y >/dev/null
 [ -z "$(docker ps -aq --filter "label=com.docker.compose.project=$run2")" ] || fail "second clean left containers"

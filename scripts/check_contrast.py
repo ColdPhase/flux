@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Checks WCAG 2.2 contrast of the web app's colour tokens in all three families and both themes.
 
-Reads apps/web/src/ui/tokens.css (light/dark roles and each family override) and
+Reads app/apps/web/src/ui/tokens.css (light/dark roles and each family override) and
 fails when a text pair is below 4.5:1 or a UI boundary/indicator pair is below 3:1.
 """
 from __future__ import annotations
@@ -10,7 +10,7 @@ import re
 import sys
 from pathlib import Path
 
-TOKENS = Path(__file__).resolve().parent.parent / "apps/web/src/ui/tokens.css"
+TOKENS = Path(__file__).resolve().parent.parent / "app/apps/web/src/ui/tokens.css"
 
 # (foreground, background, minimum ratio, purpose)
 PAIRS = [

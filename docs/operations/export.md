@@ -44,7 +44,7 @@ today materials are text and links.
 
 Format `flux.project-export`, `formatVersion` 1. The TypeScript types (`ProjectExport`) and the
 JSON Schema (`PROJECT_EXPORT_JSON_SCHEMA`) are in
-[`packages/contracts/src/export.ts`](../../packages/contracts/src/export.ts) (Apache-2.0); the
+[`app/packages/contracts/src/export.ts`](../../app/packages/contracts/src/export.ts) (Apache-2.0); the
 application tests validate real exports against the schema. Timestamps are ISO 8601 UTC.
 People and agents are referenced as `{ "kind": "human" | "agent", "id" }`; `actors` gives their
 names.
@@ -79,7 +79,7 @@ names.
 
 Drafts shared with the project are also left out in format version 1: a shared note becomes
 project content when it is published as a material. Links whose target the export leaves out
-are dropped, so an export never names an object it does not contain. `tests/app/export.test.ts`
+are dropped, so an export never names an object it does not contain. `app/tests/app/export.test.ts`
 checks this with distinctive text in another project, a DM, a private note (published from, so
 its id is referenced internally), a private sketch that places the note, and another member's
 extra notification address, quiet hours and mute, and also checks that
