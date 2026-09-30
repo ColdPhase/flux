@@ -320,6 +320,13 @@ the amount an earlier reservation and state that usage was not recorded; it is
 not an active reservation or an invoice. Interrupted recovery reasons remain
 owner-private and use fixed, safe explanations.
 
+Each history entry has a stable local Flux request reference and a generic link
+to its triggering result. Opening the existing project/result route checks current
+access; the history does not preload or retain source bodies or project/result
+titles after access loss. Local references distinguish records and are not provider
+invoice identifiers. This uses the already accepted candidate/project/result IDs
+and existing authorized result navigation, with no new API fields.
+
 ## Private owner setup (partial implementation)
 
 Open the account menu → **Your background suggestions**. Saving the connection

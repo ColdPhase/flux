@@ -182,11 +182,20 @@ test('owner usage distinguishes known, uncertain and no-cost requests and surviv
       } else { await usage.locator('summary').focus(); await usagePage.keyboard.press('Enter'); }
       assert.match(await usage.innerText(), /Did not run[\s\S]*No paid request · \$0.00 usage[\s\S]*Charge uncertain[\s\S]*Up to \$0.05 possible charge/);
       assert.match(await usage.innerText(), /Completed[\s\S]*earlier reservation · usage not recorded/);
+      const ownUsage = (await api(usagePage, 'GET', '/api/v1/background-compute-usage')).data as BackgroundComputeUsage;
+      const stopped = ownUsage.candidates.find((candidate) => candidate.status === 'not_run');
+      assert.ok(stopped);
+      const destination = usage.getByRole('link', { name: `View triggering result for request ${stopped.id}`, exact: true });
+      assert.ok((await destination.locator('..').innerText()).includes(`Request ${stopped.id.slice(0, 8)}`));
+      if (width < 1440) assert.ok((await destination.boundingBox())!.height >= 44, 'request destination has 44px touch height');
       assert.ok(!(await usage.innerText()).includes('sk-ant-'));
       await usage.scrollIntoViewIfNeeded(); await usagePage.screenshot({ path: `/state/comparison-usage-${width}-owner.png`, fullPage: true });
       await usage.locator('li').nth(4).scrollIntoViewIfNeeded();
       await usagePage.screenshot({ path: `/state/comparison-usage-${width}-history.png`, fullPage: true });
       assert.ok(await usagePage.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      if (width < 1440) await destination.tap(); else { await destination.focus(); await usagePage.keyboard.press('Enter'); }
+      await usagePage.getByRole('heading', { name: 'Request without available key', exact: true }).waitFor();
+      assert.ok(usagePage.url().includes(`/projects/${fixture.projectId}/tasks`), 'history opens the actual triggering result in its project');
       } finally { await usageContext.close(); }
     }
     await page.goto(`${origin.origin}/settings/background-compute`);
@@ -207,5 +216,19 @@ test('owner usage distinguishes known, uncertain and no-cost requests and surviv
     const work = await api(page, 'GET', `/api/v1/projects/${fixture.projectId}/work?limit=100`);
     assert.equal((work.data as { items: unknown[] }).items.length, 1, 'insufficient evidence never creates work');
     assert.equal(((await api(page, 'GET', '/api/v1/background-compute-usage')).data as BackgroundComputeUsage).startedRequestsToday, 3, 'inspect and dismiss start no paid request');
+    // A local accounting reference is not a grant to reopen its project source.
+    assert.equal((await api(page, 'POST', `/api/v1/projects/${fixture.projectId}/grants`,
+      { principal: { kind: 'user', id: fixture.ownerId }, role: 'denied' })).status, 201);
+    await page.goto(`${origin.origin}/settings/background-compute`);
+    const privateUsage = page.locator('.background-usage'); await privateUsage.waitFor();
+    assert.ok(!(await privateUsage.innerText()).includes('Bedside gesture lamp'));
+    await privateUsage.locator('summary').click();
+    const ownStopped = accounting.candidates.find((candidate) => candidate.status === 'not_run'); assert.ok(ownStopped);
+    const deniedSource = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/v1/projects/${fixture.projectId}`);
+    await privateUsage.getByRole('link', { name: `View triggering result for request ${ownStopped.id}`, exact: true }).click();
+    assert.equal((await deniedSource).status(), 404);
+    assert.ok(!(await page.locator('body').innerText()).includes('Request without available key'));
+    const retained = (await api(page, 'GET', '/api/v1/background-compute-usage')).data as BackgroundComputeUsage;
+    assert.equal(retained.conservativeCountedCents, 15); assert.equal(retained.startedRequestsToday, 3);
   } finally { await context.close(); }
 });

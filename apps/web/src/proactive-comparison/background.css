@@ -37,6 +37,8 @@
 .background-usage__history li p { color: var(--text-2); overflow-wrap: anywhere; }
 .background-usage__request { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; }
 .background-usage__request time { color: var(--text-2); }
+.background-usage__context { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; color: var(--text-2); }
+.background-usage__context a { display: inline-flex; align-items: center; min-height: 28px; color: var(--accent); text-underline-offset: 3px; }
 @media (max-width: 640px) {
   .background-settings__limits { grid-template-columns: 1fr; gap: 8px; }
   .background-settings__metadata > div { grid-template-columns: 1fr; gap: 1px; }
@@ -47,4 +49,5 @@
   .background-settings__fields .background-settings__check, .background-settings__back { min-height: 44px; }
   .background-settings__agent-option summary { min-height: 44px; }
   .background-usage__history summary { min-height: 44px; }
+  .background-usage__context a { min-height: 44px; }
 }

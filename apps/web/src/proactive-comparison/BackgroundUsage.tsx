@@ -1,4 +1,5 @@
 import type { BackgroundComputeCandidateUsage, BackgroundComputeUsage } from '@flux/contracts';
+import { Link } from 'react-router';
 import { Button } from '../ui';
 
 const money = (cents: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
@@ -49,6 +50,11 @@ export function BackgroundUsage({ usage, busy, error, refresh }: {
       <summary>Recent requests <span>{usage.candidates.length}</span></summary>
       {usage.candidates.length ? <ul>{usage.candidates.map((candidate) => <li key={candidate.id}>
         <div className="background-usage__request"><strong>{statuses[candidate.status]}</strong><time dateTime={candidate.createdAt}>{date(candidate.createdAt)} UTC</time></div>
+        <div className="background-usage__context">
+          <span title={`Flux request ${candidate.id}`}>Request {candidate.id.slice(0, 8)}</span>
+          <Link to={`/projects/${candidate.projectId}/tasks?open=result:${candidate.resultId}`}
+            aria-label={`View triggering result for request ${candidate.id}`}>View result</Link>
+        </div>
         {candidate.reason ? <p>{reasons[candidate.reason] ?? 'The request’s outcome could not be confirmed.'}</p> : null}
         <p>{candidate.status === 'not_run' ? 'No paid request · $0.00 usage'
           : candidate.status === 'unknown' ? `Up to ${money(Math.max(candidate.reservedCents, candidate.observedUsage?.estimatedCents ?? 0))} possible charge`
