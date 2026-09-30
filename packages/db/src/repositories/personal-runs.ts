@@ -146,6 +146,18 @@ export function personalRunRows(db: DbExecutor) {
       return [...undispatched, ...lost].map(toRun);
     },
 
+    async endStaleAny(olderThanSeconds: number, limit: number) {
+      // One globally bounded batch across all states. Replicas skip each other's locked rows.
+      const rows = await db.update(r).set({
+        status: sql`CASE WHEN ${r.status} = 'dispatching' THEN 'provider_failed' ELSE 'unavailable' END`,
+        costState: sql`CASE WHEN ${r.status} = 'dispatching' THEN 'unknown' ELSE 'released' END`,
+        chargedMicros: 0, completedAt: new Date(), updatedAt: new Date(),
+      }).where(sql`${r.id} IN (SELECT id FROM personal_runs WHERE status IN (${sql.join(IN_FLIGHT.map((state) => sql`${state}`), sql`, `)})
+        AND updated_at < now() - (${olderThanSeconds}::int * interval '1 second')
+        ORDER BY updated_at, id LIMIT ${limit} FOR UPDATE SKIP LOCKED)`).returning();
+      return rows.map(toRun);
+    },
+
     listOwnRuns: (ownerUserId: string, window: Window) => pagedRuns(eq(r.ownerUserId, ownerUserId), 'newest', window),
 
     listAnswers: (conversationId: string, window: Window) =>

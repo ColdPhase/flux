@@ -36,7 +36,7 @@ await boss.work<{ resultId: string }>(DRAFT_SUMMARY_JOB, async (jobs) => {
 // Personal assistant runs (#68): the payload is a run id; every step rechecks the owner.
 const personalRuns = personalRunWorkerComposition(process.env);
 if (personalRuns.mode !== 'production') console.warn(JSON.stringify({ warning: 'TEST ONLY: personal runs use fixture connections and a mock provider', mode: personalRuns.mode }));
-await registerPersonalRunWorker(boss, db, personalRuns);
+const personalRunRecovery = await registerPersonalRunWorker(boss, db, personalRuns);
 await boss.work(IDEMPOTENCY_CLEANUP_JOB, async () => {
   const deleted = await deleteExpiredIdempotencyKeys(db);
   console.log(JSON.stringify({ job: IDEMPOTENCY_CLEANUP_JOB, deleted }));
@@ -44,6 +44,6 @@ await boss.work(IDEMPOTENCY_CLEANUP_JOB, async () => {
 // Hourly; idempotency keys are retained for 24 hours (see docs/development/access-policy.md).
 await boss.schedule(IDEMPOTENCY_CLEANUP_JOB, '17 * * * *');
 console.log('Flux worker ready');
-const stop = async () => { await generator.stop(); await boss.stop(); email.close(); await pool.end(); process.exit(0); };
+const stop = async () => { await personalRunRecovery.stop(); await generator.stop(); await boss.stop(); email.close(); await pool.end(); process.exit(0); };
 process.on('SIGTERM', stop);
 process.on('SIGINT', stop);

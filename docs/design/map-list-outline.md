@@ -39,6 +39,13 @@ over the existing undirected graph; it does not add domain hierarchy.
 
 ## Reading and returning
 
+Grouping undo reverses only that thought's last explicit parent choice. Later
+independent child placements, ordering and collapse choices stay current. Consecutive
+undos restore each affected thought's prior choice, including the difference
+between no override and an explicitly remembered root. They never rewrite graph
+records. The independent #134 behavior review exposed and the operation-specific
+correction tests cover this boundary.
+
 Use quiet neutral hierarchy guides, shared selected/focus/link tokens and named
 **Related to …** buttons close to the thought. Existing graph links are undirected;
 their labels are displayed without inventing arrow direction or ownership. Core

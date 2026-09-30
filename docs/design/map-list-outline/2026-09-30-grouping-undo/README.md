@@ -1,0 +1,7 @@
+# Grouping undo correction (#134)
+
+Independent functional review of PR #146 found that restoring the whole old parent dictionary erased an independent child placement made after grouping. Code `105aadddf287cd1b3bd4e99a9ce2fac615e1938b` records and restores only the affected thought’s parent override. Missing override and explicit root remain distinct. Current order, collapse state and other thought choices are preserved.
+
+[Docker browser log](docker-ui-check.txt): build/type/lint and **8/8 real graph/API browser tests passed, 22.321s**. New regression groups Quiet hours under depth3, creates an independent child under a depth4 receiver, makes another grouping and performs consecutive undos. The new child stays depth5; the exact graph snapshot stays unchanged. A fresh preference sequence verifies two same-thought undos restore an absent override, while the original root retains explicit null. Separate graph Undo removes only the test child. The [new capture](images/map-outline-independent-child-after-grouping-undo.png) shows the retained child.
+
+[Outline/architecture Docker checks](docker-outline-core.txt): **14 passed, 0 failed** on the same source. Each isolated Docker stack, volumes and three/two tagged images was removed. Foundation/local links, 20 Python tests and whitespace passed. This correction does not change layout; earlier independent visual evidence retains its pinned scope. Fresh eligible independent behavior/code review must cover this new head. Physical devices/live transport/release acceptance remain outside these fixtures.

@@ -1,5 +1,12 @@
 # Personal agent connection (#52)
 
+**Planned extension, 2026-09-30:** [F-016](../product/mcp-cowork.md) extends this
+implemented Claude path with multiple named external connections per owner,
+request-bound authorization in one normal browser login, tested Codex support
+and shared domain tools. The whole-browser-session selection restriction below
+is a current limitation to remove, not the target UX. Existing evidence does not
+establish the new capabilities; do not copy #68 helper cardinality into MCP.
+
 This is the implementation contract for the accepted [O-005 path](../product/first-agent-path.md).
 The owner operates an official Claude Code client and its compute account. Flux owns
 OAuth consent, narrow MCP tools, current project policy and sourced proposals. No
