@@ -112,12 +112,19 @@ async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<{ s
   return { sources, earlier };
 }
 
-/** Drops the oldest conversation messages until the preflight count fits the input limit. */
-async function fit(compute: PersonalCompute, base: Omit<PersonalComputeRequest, 'input'>, run: RunRecord, read: { sources: SuppliedSource[]; earlier: string | null }) {
+/**
+ * Drops the oldest conversation messages until the preflight count fits the input limit. Each
+ * count sends the input to the provider, so `beforeCount` rechecks the run's standing before every
+ * request and ends the fit with its outcome when the run may no longer send anything.
+ */
+async function fit(compute: PersonalCompute, base: Omit<PersonalComputeRequest, 'input'>, run: RunRecord,
+  read: { sources: SuppliedSource[]; earlier: string | null }, beforeCount: () => Promise<PersonalRunOutcome | null>) {
   let sources = read.sources;
   for (;;) {
     const request = { ...base, input: requestInput(run, sources, read.earlier) };
-    if ((await compute.countInputTokens(request)) <= PERSONAL_RUN_LIMITS.maxInputTokens) return { request, sources };
+    const refused = await beforeCount();
+    if (refused) return { refused: true as const, outcome: refused };
+    if ((await compute.countInputTokens(request)) <= PERSONAL_RUN_LIMITS.maxInputTokens) return { refused: false as const, request, sources };
     const oldest = sources.findIndex((source) => source.ref.type === 'message');
     if (oldest === -1) return null;
     sources = sources.filter((_, index) => index !== oldest);
@@ -225,20 +232,32 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       }
       await hooks.afterRead?.(run);
 
-      // Preflight counting is a provider call: it runs outside any transaction, on the owner's
-      // own connection, and the dispatch recheck below confirms that connection is still current.
+      // Preflight counting is a provider call that sends the input: it runs outside any
+      // transaction, on the owner's own connection, and only after the same recheck as a dispatch
+      // (stop, enablement, agent, owner and agent access, cap, connection) before every request.
       const connection = await connections.resolve(run.ownerUserId);
-      if (!compute.enabled || !connection || connection.status !== 'active' || connection.ownerUserId !== run.ownerUserId || connection.id !== run.connectionId) {
-        return uow.run(async (ports) => {
-          const current = await ports.runs.findRun(run.id, { lock: true });
-          if (current?.status !== 'reading') return 'skipped' as const;
-          return (await ports.runs.updateRun(run.id, ended('unavailable', 'before_dispatch', free))).status;
+      const beforeSend = (): Promise<PersonalRunOutcome | null> => uow.run(async (ports) => {
+        const current = await ports.runs.findRun(run.id, { lock: true });
+        if (!current || current.status !== 'reading') return current?.status ?? 'skipped';
+        const end = async (status: RunRecord['status']) => (await ports.runs.updateRun(run.id, ended(status, 'before_dispatch', free))).status;
+        if (current.stopRequestedAt) return end('stopped');
+        const checked = await recheck(ports, connections, compute, current, 'before_dispatch', true).catch((error: unknown) => {
+          if (isAccessDenial(error)) return { refusal: 'denied' as const };
+          throw error;
         });
+        if ('refusal' in checked) return end(checked.refusal);
+        if (!connection || checked.connection.id !== connection.id) return end('unavailable');
+        return null;
+      });
+      if (!connection) {
+        const refused = await beforeSend();
+        return refused ?? 'skipped';
       }
       const fitted = await fit(compute, {
         connection: { id: connection.id, keyRef: connection.keyRef }, model: run.model,
         maxTokens: PERSONAL_RUN_LIMITS.maxOutputTokens, effort: PERSONAL_RUN_LIMITS.effort, system: SYSTEM_PROMPT,
-      }, run, read);
+      }, run, read, beforeSend);
+      if (fitted?.refused) return fitted.outcome;
 
       const ready = await uow.run(async (ports) => {
         const current = await ports.runs.findRun(run.id, { lock: true });

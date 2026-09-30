@@ -47,9 +47,15 @@ export class FakeCompute implements PersonalCompute {
   dispatched: PersonalComputeRequest[] = [];
   respond: Responder = echo;
 
+  /** Runs after each recorded count request, e.g. to change access between two counts. */
+  onCount: ((request: PersonalComputeRequest) => Promise<void>) | null = null;
+  count: (request: PersonalComputeRequest) => number = (request) => Math.ceil(request.input.length / 4);
+
   async countInputTokens(request: PersonalComputeRequest) {
     this.counted.push(request);
-    return Math.ceil(request.input.length / 4);
+    const tokens = this.count(request);
+    await this.onCount?.(request);
+    return tokens;
   }
 
   async dispatch(request: PersonalComputeRequest, signal: AbortSignal) {

@@ -123,7 +123,9 @@ invoke writes nothing and reserves nothing.
 ## Worker
 
 The job payload is `{ runId }`. The processor checks again before the read,
-before dispatch and inside the commit transaction:
+before **every** preflight token-count request (a count sends the input to the
+provider, so it gets the same check as a dispatch), before dispatch and inside
+the commit transaction:
 
 - the enablement (not paused or removed, same workspace agent);
 - `agent.invoke` for the owner;

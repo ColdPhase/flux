@@ -398,6 +398,42 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     assert.equal(events.rows[0].n, 0);
   });
 
+  test('AC-6: nothing leaves for preflight counting once the grant, a Stop or a pause arrives after the read', async () => {
+    const countsFor = (prompt: string) => compute.counted.filter((request) => request.input.includes(`Request: ${prompt}`)).length;
+    const dispatched = compute.dispatched.length;
+    const cases: [string, (runId: string) => Promise<unknown>, string, () => Promise<unknown>][] = [
+      ['grant revoked', () => revokeAgentGrant('hubert'), 'denied', () => grantAgent('hubert')],
+      ['stopped', (runId) => runs.stop(human(hubert), runId), 'stopped', async () => undefined],
+      ['paused', () => runs.pause(human(hubert)), 'paused', () => runs.resume(human(hubert))],
+    ];
+    for (const [label, change, status, undo] of cases) {
+      const prompt = `Preflight ${label} ${randomUUID()}`;
+      const run = await ask(hubert, prompt);
+      hooks.afterRead = async () => { await change(run.run.id); };
+      await processor.process(run.run.id);
+      hooks.afterRead = undefined;
+      await undo();
+      const stored = await row(run.run.id);
+      assert.deepEqual([stored.status, stored.cost_state, stored.charged_micros, stored.answer_body], [status, 'released', 0, null], label);
+      assert.equal(countsFor(prompt), 0, `${label}: no count request was sent`);
+    }
+    assert.equal(compute.dispatched.length, dispatched);
+
+    // Trimming sends one count per attempt: a change between two counts stops the next one.
+    const prompt = `Preflight trimming ${randomUUID()}`;
+    compute.count = () => 20_000;
+    compute.onCount = async (request) => { if (request.input.includes(prompt)) await revokeAgentGrant('hubert'); };
+    const trimmed = await ask(hubert, prompt);
+    assert.equal(await processor.process(trimmed.run.id), 'denied');
+    compute.count = (request) => Math.ceil(request.input.length / 4);
+    compute.onCount = null;
+    await grantAgent('hubert');
+    assert.equal(countsFor(prompt), 1, 'the second count request was never sent');
+    const stored = await row(trimmed.run.id);
+    assert.deepEqual([stored.cost_state, stored.charged_micros, stored.answer_body], ['released', 0, null]);
+    assert.equal(compute.dispatched.length, dispatched);
+  });
+
   test('AC-7: only a person with authority accepts an assistant proposal; the result records who drafted it', async () => {
     compute.respond = async (request) => {
       const label = /\[(S\d+)\] Open work item "Camera in low light"/.exec(request.input)![1];
