@@ -40,6 +40,14 @@ continues direction C. It specifies separate personal, DM and project audiences;
 selected-content evolution from DM to sketch to project; fluid maps connected to
 work and results; return after a pivot; and bounded proactive help. The three
 integrated scenarios in #44 govern later design and application evaluation.
+The later **[F-013 / Flux Studio v11 direction](../design/studio-v11-refinement.md)**
+([#132](https://github.com/ColdPhase/flux/issues/132), 2026-09-29) makes the supplied
+v11 the primary appearance/UX reference, superseding the v8-only visual baseline
+and fixed rail/indigo choices. Preserve its coherent calm character and useful
+repository improvements; refine the private recap, deep map-list links, three
+theme-aware accents and phone/integrated UX in #133–#136. The [reference package](../design/references/studio-v11/README.md)
+is shared in the repository. Demo internals do not replace production contracts.
+
 The later [#57 personal AI direction](https://github.com/ColdPhase/flux/issues/57)
 binds invocation and cost to the connection owner while preserving human work
 without AI. [#59 live collaboration](https://github.com/ColdPhase/flux/issues/59)

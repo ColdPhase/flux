@@ -15,6 +15,11 @@ import { ProjectStateLine, ProjectStateRow } from '../work/inline';
 import { audienceLine, useProjectShell } from '../project/data';
 import { useDmSketchCount } from '../dm/DmSketches';
 import type { ProjectPerson } from '@flux/contracts';
+import { LiveProvider } from '../live/LiveProvider';
+import { LiveEntry } from '../live/LiveEntry';
+import { LiveBar } from '../live/LiveBar';
+import { LiveStage } from '../live/LiveStage';
+import '../live/live.css';
 import { JumpTo } from '../search/JumpTo';
 
 function lastConversationPath(projectId: string) {
@@ -200,6 +205,8 @@ export function AppLayout() {
 
   return (
     <ShellContext.Provider value={shell}>
+    {/* One live session per tab, above the routes, so navigation keeps it (#62). */}
+    <LiveProvider meId={me.user.id}>
     <div className="app">
       <a className="ui-skip" href="#content">Skip to content</a>
       {navDrawer ? (
@@ -239,6 +246,7 @@ export function AppLayout() {
           <div className="top__right" data-shift>
             {/* A view can put one quiet action here (a DM's Select, #96). */}
             <span className="top__actions" ref={setActionSlot} />
+            {activeProject ? <LiveEntry /> : null}
             {project?.people && !phone ? <Faces people={project.people} meId={me.user.id} /> : null}
             {/* The inbox and its settings have nothing to show in Details. */}
             {'noDetails' in place ? null : <Button ref={detailsButtonRef} variant="quiet" icon="panel" className="top__details" aria-expanded={detailsOpen}
@@ -256,8 +264,10 @@ export function AppLayout() {
             : dmViews
               ? <Tabs className="views" label="Direct message views" items={dmViews} />
               : <div className="views views--none" aria-hidden="true" />}
+        <LiveBar />
         <div className="app__pane" id="content" ref={paneRef} tabIndex={-1}>
           <Outlet />
+          <LiveStage />
         </div>
       </div>
 
@@ -266,6 +276,7 @@ export function AppLayout() {
         <Details view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} />
       </SidePanel>
     </div>
+    </LiveProvider>
     </ShellContext.Provider>
   );
 }

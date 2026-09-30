@@ -1,14 +1,17 @@
 import type { FastifyInstance } from 'fastify';
 import type { LiveContextRef, LivePresentationRef, PresentLiveContextCommand, StartLiveSessionCommand } from '@flux/contracts';
 import { LIVE_SESSIONS_PATH, liveJoinPath, liveLeavePath, livePresentPath, livePresentationsPath, liveSessionPath } from '@flux/contracts';
-import { DomainError, liveUseCases, type LivePorts } from '@flux/core';
+import { DomainError, liveUseCases, RateLimitedError, type LivePorts } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
 import type { LiveLifecycle } from './lifecycle.js';
+import type { JoinRateLimiter } from './rate-limit.js';
 import type { LiveRevocationCoordinator } from './revocation.js';
 
 interface Options { ports: LivePorts; sessions: SessionResolver; lifecycle?: Pick<LiveLifecycle, 'reconcile'>;
-  revocation?: Pick<LiveRevocationCoordinator, 'recoverMissingRoom'> }
+  revocation?: Pick<LiveRevocationCoordinator, 'recoverMissingRoom'>;
+  /** Per-user join limit of this API instance, created by the composition root. */
+  joinLimiter?: JoinRateLimiter }
 
 const id = { type: 'string', pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' } as const;
 const context = { type: 'object', required: ['type', 'id'], additionalProperties: false,
@@ -18,8 +21,12 @@ const presentation = { type: 'object', required: ['type', 'id', 'version'], addi
     version: { type: 'integer', minimum: 1 }, selectedThoughtIds: { type: 'array', maxItems: 100, uniqueItems: true, items: id } } } as const;
 
 /** API policy runs before transport grants; the browser starts with all devices off. */
-export async function liveRoutes(app: FastifyInstance, { ports, sessions, lifecycle, revocation }: Options) {
+export async function liveRoutes(app: FastifyInstance, { ports, sessions, lifecycle, revocation, joinLimiter }: Options) {
   useDomainErrors(app);
+  // A limited join says when to try again (HTTP 429 + Retry-After).
+  app.addHook('onError', async (_request, reply, error) => {
+    if (error instanceof RateLimitedError) reply.header('retry-after', String(error.retryAfterSeconds));
+  });
   const live = liveUseCases(ports);
   const principal = async (request: Parameters<SessionResolver['requirePrincipal']>[0]) => (await sessions.requirePrincipal(request)).principal;
 
@@ -33,6 +40,8 @@ export async function liveRoutes(app: FastifyInstance, { ports, sessions, lifecy
 
   app.post<{ Params: { sessionId: string } }>(liveJoinPath(':sessionId'), async (request) => {
     const caller = await principal(request);
+    // Counted before any database or SFU work, so a runaway client stays cheap.
+    joinLimiter?.take(caller.id);
     try { return await live.join(caller, request.params.sessionId); }
     catch (error) {
       if (!revocation || !(error instanceof DomainError) ||

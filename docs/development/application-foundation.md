@@ -21,6 +21,7 @@ the top of the script; the planned `app/` + `docker/` move (#76) changes only th
 | `./flux down` | Stops both the `up` and `dev` stacks; keeps volumes. |
 | `./flux logs [--dev] [service]` | Follows logs. |
 | `./flux reset [-y]` | After a `y/N` prompt, removes the containers and volumes of this checkout's two Compose projects. `.env` stays. |
+| `./flux backup`, `restore`, `export`, `upgrade` | Operations (#123): consistent backups with a checked manifest, restore with version checks, project export bundles and upgrades with a backup first. See [operations](../operations/README.md). |
 | `./flux clean [-y]` | `reset` plus removal of the `flux-*` images tagged with this checkout's project names. It does **not** prune the BuildKit build cache: that cache is shared by every checkout and Compose project on the Docker host and cannot be attributed to one project, so pruning it would slow or disturb other work. `clean` prints the `docker system df` / `docker builder prune --filter until=72h` commands for the owner of the machine to run deliberately. Base images and other projects are never touched. This is how #72 AC-4 ("removes this project's images and caches") is met: project images and volumes are removed; the shared cache is advice only. |
 
 `FLUX_PROJECT` is the Compose project for `up`/`demo`; `dev` uses `<project>-dev`, with
@@ -99,6 +100,36 @@ To rerun the reviewed migration after a restore or source update:
 docker compose --env-file .env -p flux28 -f infra/compose.yaml run --rm migrate
 ```
 
+### Migration ledger mismatch (#118)
+
+The migration image rejects duplicate numbered SQL files and a stale compiled
+`FLUX_SCHEMA_VERSION` before changing the database. Under its migration lock it
+rejects ledger versions for which that image has no SQL file, then applies any
+missing files and requires the final ledger to contain exactly the file versions.
+A newly landed lower-numbered file may fill a gap in an existing installation;
+gaps in an active feature branch do not by themselves mark a database corrupt.
+Each SQL migration runs in one transaction. A legacy file may record its own
+version, but inserting another version or deleting an earlier record rolls back.
+The API and worker also check the exact ledger before starting; API health checks
+it again on every request.
+
+If `migrate` reports a mismatch, leave API and worker stopped. Inspect the error
+and the ledger with the same Compose project and database volume (replace `flux28`
+with the installation's project name):
+
+```sh
+docker compose --env-file .env -p flux28 -f infra/compose.yaml logs migrate
+docker compose --env-file .env -p flux28 -f infra/compose.yaml exec -T db \
+  psql -U flux -d flux -c 'SELECT version, applied_at FROM flux_schema_version ORDER BY version'
+```
+
+Check that the intended application image contains the corresponding SQL files.
+Restore the matching image if the database is newer than the image; otherwise
+take a database and files backup before diagnosing or repairing an interrupted
+upgrade. Do not delete ledger rows, reset the volume, or replay SQL manually to
+make a health check pass. A data-preserving repair needs its own review and a
+same-volume rehearsal before production use.
+
 ## Integration fixture
 
 The fixture requires the secret bearer token from `.env`. It writes a sample row,
@@ -153,6 +184,10 @@ Actual image size varies by platform and later dependency changes.
 
 ## Initial backup and restore
 
+**Superseded by `./flux backup`, `./flux restore`, `./flux export` and `./flux upgrade`
+(#123); see [operations](../operations/README.md).** The manual commands below remain as a
+record of the procedure those commands automate.
+
 Stop API and worker before backup so database rows and file bytes share one point
 in time. The files volume is empty until file upload work arrives, but back it up
 now so the procedure remains paired. Keep backup files outside the repository.
@@ -184,5 +219,5 @@ FLUX_PORT=8082 docker compose --env-file .env -p flux28restore -f infra/compose.
 FLUX_PORT=8082 docker compose --env-file .env -p flux28restore -f infra/compose.yaml up -d --wait api worker
 ```
 
-An application release needs a full restore acceptance test with real uploaded
-files and authorized project access. This foundation procedure does not claim it.
+The restore acceptance test with real data and project access is
+`./scripts/check_backup.sh` ([backup and restore](../operations/backup-restore.md#verified-behavior)).

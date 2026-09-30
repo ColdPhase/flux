@@ -34,7 +34,9 @@ cd flux
 Then open <http://127.0.0.1:8081/>. `./flux up` never overwrites an existing `.env`.
 Other commands: `./flux dev` (hot reload in Docker), `./flux down`, `./flux logs`,
 `./flux reset` (deletes data after confirmation), `./flux clean` (also removes the
-images this checkout built) and `./flux help`. The
+images this checkout built) and `./flux help`. Backups, restore, project export and
+upgrades (`./flux backup`, `restore`, `export`, `upgrade`) are described in
+[operations](docs/operations/README.md). The
 [application foundation guide](docs/development/application-foundation.md) covers the
 launcher, configuration, backups and the integration fixture;
 [containers](docs/development/containers.md) describes every service and variable.
@@ -44,6 +46,7 @@ Run the checks (build, type check, lint, tests and browser checks, all in Docker
 ```sh
 ./scripts/check_application.sh
 ./scripts/check_flux_cli.sh
+./scripts/check_backup.sh
 python3 scripts/check_agent_setup.py
 ```
 
@@ -62,7 +65,7 @@ python3 scripts/check_agent_setup.py
 | `examples/external-agent` | An external agent using the SDK (Apache-2.0) |
 | `infra` | Dockerfile, Compose files, migration entry point |
 | `tests` | Application tests (`tests/app`) and repository tooling tests |
-| `flux` | One-command launcher: `up`, `demo`, `dev`, `down`, `reset`, `clean` |
+| `flux` | One-command launcher: `up`, `demo`, `dev`, `down`, `reset`, `clean`, `backup`, `restore`, `export`, `upgrade` |
 | `scripts` | Check scripts, the demo seed and repository tooling |
 | `docs` | Product, design, development and agent documentation |
 

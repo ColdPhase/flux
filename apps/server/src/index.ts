@@ -5,7 +5,7 @@ import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
 import { PgBoss } from 'pg-boss';
-import { FLUX_SCHEMA_VERSION, PG_BOSS_SCHEMA_VERSION } from '@flux/db';
+import { assertExactMigrationLedger, FLUX_SCHEMA_VERSION, PG_BOSS_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
 import { SAMPLE_COMMAND_PATH, type SampleCommand } from '@flux/contracts';
 import { createSample, SAMPLE_JOB } from '@flux/core';
 import { registerDatabase } from './plugins/database.js';
@@ -27,12 +27,14 @@ import { liveDiscoveryRoutes } from './live/discovery.js';
 import { liveLifecycle } from './live/lifecycle.js';
 import { liveWebhookRoutes } from './live/webhook.js';
 import { liveInvitationRoutes } from './live/invitation-routes.js';
+import { joinRateLimiter } from './live/rate-limit.js';
 import { agentProposalRoutes } from './agent-connection/routes.js';
 import { registerMcpRoute } from './agent-connection/mcp-route.js';
 import { returnRoutes } from './returns/routes.js';
 import { docRoutes } from './docs/routes.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { searchRoutes } from './search/routes.js';
+import { exportRoutes } from './export/routes.js';
 
 const connectionString = process.env.DATABASE_URL;
 const fixtureToken = process.env.FLUX_FIXTURE_TOKEN;
@@ -43,6 +45,8 @@ const identityConfig = loadIdentityConfig();
 const pushConfig = loadPushServerConfig();
 const app = Fastify({ logger: true, trustProxy: identityConfig.trustedProxies.length ? identityConfig.trustedProxies : false });
 const { pool, db } = registerDatabase(app, connectionString);
+const migrationManifest = await readMigrationManifest('packages/db/migrations', FLUX_SCHEMA_VERSION);
+assertExactMigrationLedger(migrationManifest, await readAppliedMigrationVersions(pool));
 const boss = new PgBoss({ connectionString, migrate: false });
 boss.on('error', (error) => app.log.error(error));
 await boss.start();
@@ -69,7 +73,10 @@ if (liveMedia) await app.register(liveRoutes, {
   ports: { access: liveAccess(db), sessions: liveSessionStore(db), ...liveMedia },
   lifecycle: lifecycle!,
   revocation: liveRevocation!,
+  // Per API instance: N replicas allow N times the limit (docs/development/live-sessions.md).
+  joinLimiter: joinRateLimiter(),
 });
+// Signing out also ends that person's media connections (after the response, never failing it).
 if (liveMedia) await app.register(liveDiscoveryRoutes, { db, sessions: identity, media: liveMedia.media });
 if (liveMedia) await app.register(liveInvitationRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret });
 if (lifecycle) {
@@ -122,11 +129,11 @@ await app.register(returnRoutes, { db, sessions: identity });
 await app.register(docRoutes, { db, sessions: identity });
 await app.register(notificationRoutes, { db, sessions: identity, smtp: identityConfig.smtp, publicOrigin: identityConfig.publicOrigin });
 await app.register(searchRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret, exposeWork: testFailureInjection });
+await app.register(exportRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin });
 
 app.get('/api/v1/health', async (_request, reply) => {
   try {
-    const version = await pool.query('SELECT max(version) AS version FROM flux_schema_version');
-    if (Number(version.rows[0]?.version) !== FLUX_SCHEMA_VERSION) throw new Error('Schema mismatch');
+    assertExactMigrationLedger(migrationManifest, await readAppliedMigrationVersions(pool));
     if ((await boss.schemaVersion()) !== PG_BOSS_SCHEMA_VERSION) throw new Error('Queue schema mismatch');
     const probe = join(filesDir, `.flux-health-${randomUUID()}`);
     const file = await open(probe, 'wx');

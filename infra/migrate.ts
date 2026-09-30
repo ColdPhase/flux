@@ -1,6 +1,6 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { createDatabase, FLUX_SCHEMA_VERSION } from '@flux/db';
+import { assertExactMigrationLedger, assertKnownMigrationVersions, assertMigrationSqlLedgerChange, assertMigrationStepLedger, createDatabase, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
 import { PgBoss } from 'pg-boss';
 import { NOTIFICATION_EMAIL_JOB, NOTIFICATION_EMAIL_QUEUE, PUSH_SEND_JOB, PUSH_SEND_QUEUE } from '@flux/core';
 
@@ -10,31 +10,31 @@ const migrationsDir = 'packages/db/migrations';
 const { pool } = createDatabase(connectionString);
 try {
   // Numbered files (NNNN_name.sql) apply once, in order, each in its own transaction.
-  const files = (await readdir(migrationsDir)).filter((name) => /^\d{4}_[a-z0-9_]+\.sql$/.test(name)).sort();
+  const files = await readMigrationManifest(migrationsDir, FLUX_SCHEMA_VERSION);
   const client = await pool.connect();
   try {
     await client.query('SELECT pg_advisory_lock(hashtext($1))', ['flux-migrate']);
+    let applied = await readAppliedMigrationVersions(client);
+    assertKnownMigrationVersions(files, applied);
     for (const file of files) {
-      const version = Number(file.slice(0, 4));
-      const table = await client.query("SELECT to_regclass('flux_schema_version') AS name");
-      if (table.rows[0]?.name) {
-        const applied = await client.query('SELECT 1 FROM flux_schema_version WHERE version = $1', [version]);
-        if (applied.rowCount) continue;
-      }
-      const sql = await readFile(join(migrationsDir, file), 'utf8');
+      if (applied.includes(file.version)) continue;
+      const sql = await readFile(join(migrationsDir, file.name), 'utf8');
       await client.query('BEGIN');
       try {
         await client.query(sql);
-        await client.query('INSERT INTO flux_schema_version(version) VALUES ($1) ON CONFLICT DO NOTHING', [version]);
+        assertMigrationSqlLedgerChange(applied, await readAppliedMigrationVersions(client), file);
+        await client.query('INSERT INTO flux_schema_version(version) VALUES ($1) ON CONFLICT DO NOTHING', [file.version]);
+        const after = await readAppliedMigrationVersions(client);
+        assertMigrationStepLedger(applied, after, file);
         await client.query('COMMIT');
+        applied = after;
       } catch (error) {
         await client.query('ROLLBACK');
         throw error;
       }
-      console.log(`Applied migration ${file}`);
+      console.log(`Applied migration ${file.name}`);
     }
-    const current = await client.query('SELECT max(version) AS version FROM flux_schema_version');
-    if (Number(current.rows[0]?.version) !== FLUX_SCHEMA_VERSION) throw new Error(`Expected Flux schema ${FLUX_SCHEMA_VERSION}, found ${current.rows[0]?.version}`);
+    assertExactMigrationLedger(files, await readAppliedMigrationVersions(client));
   } finally {
     await client.query('SELECT pg_advisory_unlock(hashtext($1))', ['flux-migrate']).catch(() => undefined);
     client.release();
