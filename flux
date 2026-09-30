@@ -828,6 +828,7 @@ upgrade_failed() {
     warn "API and worker stayed stopped since that backup, so nothing was written after it."
   fi
   warn "To go back:"
+  warn "  cd '$FLUX_ROOT'"
   if [ "$UPGRADE_FROM_COMMIT" != unknown ]; then
     warn "  git -C '$FLUX_ROOT' checkout $UPGRADE_FROM_COMMIT"
   else
