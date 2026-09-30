@@ -187,9 +187,9 @@ allowance. The migrator applies individual files in numeric order and the #118
 strict guard rejects any gap or unknown version in the application ledger.
 These unmerged files were renumbered after protected main PR #131 added
 `0021_live_invitation_notifications.sql`; main's SQL is unchanged. The earlier
-same-volume evidence below applies to the original numbering at its stated
-commit. The integrated numbering needs a new rehearsal, and the final release
-candidate still needs its own upgrade acceptance.
+same-volume evidence below applies to the numbering at its stated commit.
+Later integrations and the final release candidate still need their own
+upgrade acceptance.
 
 ### Same-volume rehearsal
 
@@ -223,6 +223,17 @@ the original volume, the 16 full-row snapshots matched, original sessions and
 historical sources remained usable, the new paused rule/key worked without a
 provider invocation, and the repeat migration/start kept the ledger exact.
 This is a local branch rehearsal, not independent or integrated #118 acceptance.
+
+Observed 2026-09-30: protected baseline
+`01cb89a5edae783f02f66013ea4df30248c1dc76` to
+`e596868cef576cc79f465d7e05fe5b9a662708cc` passed with ledger `1`–`21` →
+`1`–`26`. The original main migration 21 was unchanged; the five comparison
+files applied as 22–26 on the original volume. All 16 full-row snapshots matched,
+the original session and historical sources remained usable, and paused-rule/key
+setup and manual work creation worked without a provider call. A repeat
+migration/start retained the exact ledger. The isolated stack, volumes and tags
+were removed. This proves that particular integration locally; subsequent
+renumbering or migrations require another rehearsal and independent acceptance.
 
 ### Owner setup and rule controls
 

@@ -82,4 +82,5 @@ export * from './proactive-comparison/rules.js';
 export * from './proactive-comparison/connections.js';
 export * from './proactive-comparison/reservation.js';
 export * from './proactive-comparison/dispatch.js';
+export * from './proactive-comparison/outcomes.js';
 export * from './search/index.js';
