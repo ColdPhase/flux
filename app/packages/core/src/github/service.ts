@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { GithubBinding, GithubTaskLink } from '@flux/contracts';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, ServiceUnavailableError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
@@ -91,11 +91,47 @@ export function githubUseCases(uow: GithubUnitOfWork) {
       });
     },
     async admit(delivery: GithubDelivery) {
+      if (delivery.origin === 'reconcile') id(delivery.targetBindingId, 'targetBindingId');
+      else if (delivery.targetBindingId) throw new InvalidInputError('A webhook cannot select a Flux binding');
       return uow.run(async (ports) => {
         const outcome = await ports.rows.admit(delivery);
         if (outcome === 'conflict') throw new ConflictError('Delivery identity was reused with different content', 'GITHUB_DELIVERY_CONFLICT');
         return outcome;
       });
+    },
+    async reconcile(principal: Principal, bindingId: string) {
+      human(principal); const target = id(bindingId, 'bindingId');
+      return uow.run(async (ports) => {
+        const located = await ports.rows.binding(target);
+        if (!located) throw new NotFoundError('Binding');
+        await ports.access.requireProject(principal, 'manage', located.projectId);
+        const proof = await current(ports, principal, located);
+        const pending = await ports.rows.pendingReconciliation(target);
+        if (pending) return pending;
+        const deliveryId = `reconcile-${randomUUID()}`;
+        await ports.rows.admit({ id: deliveryId, appId: proof.appId, targetBindingId: target,
+          digest: createHash('sha256').update(deliveryId).digest('hex'), event: 'reconcile', payload: {},
+          installationId: proof.installationId, repositoryId: proof.repositoryId, providerObjectId: null, origin: 'reconcile' });
+        return deliveryId;
+      });
+    },
+    async schedule(appId: string, window: string) {
+      githubId(appId); githubId(window);
+      const candidates = await uow.run((ports) => ports.rows.reconciliationCandidates(appId, window, 5));
+      let created = 0;
+      // One binding per transaction also prevents cross-project lock ordering and partial fanout.
+      for (const candidate of candidates) {
+        const outcome = await uow.run(async (ports) => {
+          const binding = await ports.rows.binding(candidate.id, true);
+          if (!binding || binding.state !== 'active' || binding.appId !== appId || await ports.rows.pendingReconciliation(binding.id)) return 'skipped';
+          const deliveryId = `gap-${binding.id}-${window}`;
+          return ports.rows.admit({ id: deliveryId, appId, targetBindingId: binding.id,
+            digest: createHash('sha256').update(deliveryId).digest('hex'), event: 'reconcile', payload: {},
+            installationId: binding.installationId, repositoryId: binding.repositoryId, providerObjectId: null, origin: 'reconcile' });
+        });
+        if (outcome === 'created') created++;
+      }
+      return created;
     },
     async process(deliveryId: string, bindingId: string) {
       return uow.run(async (ports) => {

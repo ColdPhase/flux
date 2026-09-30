@@ -8,6 +8,7 @@ type Link = typeof s.githubTaskLinks.$inferSelect;
 interface Delivery {
   id: string; appId: string; digest: string; event: string; payload: Record<string, unknown>;
   installationId: string | null; repositoryId: string | null; origin: 'webhook' | 'reconcile'; providerObjectId: string | null;
+  targetBindingId?: string | null;
 }
 const bindingView = (row: Binding) => ({ ...row, host: 'github.com' as const });
 const linkView = (row: Link) => { const { id, workspaceId, projectId, taskId, bindingId, role, facts, verifiedAt, state } = row; return { id, workspaceId, projectId, taskId, bindingId, role, facts, verifiedAt, state }; };
@@ -70,7 +71,8 @@ export function githubRows(db: DbExecutor) {
         if (ids.length) await db.update(b).set({ state: 'revoked' }).where(and(eq(b.installationId, input.installationId ?? ''), inArray(b.repositoryId, ids), eq(b.appId, input.appId)));
       }
       if (input.repositoryId && input.installationId) {
-        const bindings = await db.select({ id: b.id }).from(b).where(and(eq(b.repositoryId, input.repositoryId), eq(b.installationId, input.installationId), eq(b.state, 'active'), eq(b.appId, input.appId)));
+        const bindings = await db.select({ id: b.id }).from(b).where(and(eq(b.repositoryId, input.repositoryId), eq(b.installationId, input.installationId), eq(b.state, 'active'), eq(b.appId, input.appId),
+          input.origin === 'reconcile' && input.targetBindingId ? eq(b.id, input.targetBindingId) : undefined));
         if (bindings.length) await db.insert(p).values(bindings.map((binding) => ({ deliveryId: input.id, bindingId: binding.id }))).onConflictDoNothing();
       }
       return 'created';
@@ -82,6 +84,27 @@ export function githubRows(db: DbExecutor) {
     },
     async complete(deliveryId: string, bindingId: string) {
       await db.update(p).set({ state: 'completed', errorCode: null }).where(and(eq(p.deliveryId, deliveryId), eq(p.bindingId, bindingId)));
+    },
+    async reconciliationCandidates(appId: string, window: string, limit: number) {
+      return (await db.select().from(b).where(and(eq(b.appId, appId), eq(b.state, 'active'),
+        sql`EXISTS (SELECT 1 FROM github_task_links gl WHERE gl.binding_id=${b.id})`,
+        sql`NOT EXISTS (SELECT 1 FROM github_deliveries gd WHERE gd.id='gap-' || ${b.id}::text || '-' || ${window})`,
+        sql`NOT EXISTS (SELECT 1 FROM github_processing gp JOIN github_deliveries gd ON gd.id=gp.delivery_id
+          WHERE gp.binding_id=${b.id} AND gp.state='pending' AND gd.origin='reconcile')`)).orderBy(asc(b.id)).limit(limit)).map(bindingView);
+    },
+    async pendingReconciliation(bindingId: string) {
+      const [row] = await db.select({ id: d.id }).from(d).innerJoin(p, eq(p.deliveryId, d.id))
+        .where(and(eq(p.bindingId, bindingId), eq(p.state, 'pending'), eq(d.origin, 'reconcile'))).limit(1);
+      return row?.id ?? null;
+    },
+    /** Run in the restore transaction before restarting any API/worker. Original facts stay internal. */
+    async revokeRestored() {
+      const credentials = await db.update(s.githubCredentials).set({ state: 'revoked', encryptedTokens: null, updatedAt: new Date() }).returning({ id: s.githubCredentials.userId });
+      const bindings = await db.update(b).set({ state: 'revoked' }).returning({ id: b.id });
+      await db.update(l).set({ state: 'unavailable' });
+      await db.update(s.githubOauthFlows).set({ consumedAt: new Date(), encryptedVerifier: null });
+      await db.update(p).set({ state: 'completed', errorCode: 'GITHUB_RESTORED_AUTHORIZATION_REVOKED' });
+      return { credentials: credentials.length, bindings: bindings.length };
     },
     async bridge(delivery: Delivery, binding: Binding, link: Omit<Link, 'pullId'>, facts: GithubPullFacts) {
       // Technical metadata only. No recipient, client wake or authority is fabricated.

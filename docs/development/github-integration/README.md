@@ -3,7 +3,7 @@
 This is the first implementation slice of [#74](https://github.com/ColdPhase/flux/issues/74).
 Repository bindings and verified task/PR references are implemented under each
 reader's own GitHub authorization. Native task rules, local-agent delivery,
-external review publication, automatic gap recovery and export/import recovery
+external review publication and portable export/import recovery
 remain pending. Fixture checks do not complete the whole issue.
 
 ## Operator configuration
@@ -46,9 +46,11 @@ the page reports GitHub unavailable. Partial/invalid configuration fails startup
 Keep the encryption key with protected backup secrets. Database credentials are
 AES-256-GCM encrypted and bound to the Flux user, App and authorization generation.
 Changing the key requires explicit reconnection; no token belongs in a model,
-browser response, export or another user's row. Automatic restored/imported
-connection recovery is not implemented: restored bindings and credentials must
-be revoked before exposing a restored instance until current authority is checked.
+browser response, export or another user's row. After exact migrations, `./flux
+restore` always revokes restored GitHub credentials, bindings and OAuth flows
+before restarting writers. Original facts remain unavailable history; explicit
+authorization and binding selection are required. Portable source import remains
+pending; importing data must not restore active provider grants.
 
 ## Project settings and recovery
 
@@ -75,7 +77,9 @@ under current Flux/GitHub access, and fetch current provider state. Requests hav
 fixed origins, 10-second timeouts, 2 MiB bodies and bounded pagination.
 `POST /api/v1/github/bindings/<bindingId>/reconcile` schedules known-link recovery
 under current manager and repository authority; it is a local reconciliation,
-not a fake provider event. Automatic periodic recovery remains pending.
+not a fake provider event. Every 30-minute window, the API schedules known linked
+objects in batches of five. Each job targets one binding; pending local work is
+coalesced during an outage. No repository discovery scan or agent wake occurs.
 Completed/irrelevant raw deliveries expire after seven days; pending deliveries
 survive outages. Internal #153 bridge metadata remains undelivered until a
 recipient/subscription adapter checks current repository access. No provider

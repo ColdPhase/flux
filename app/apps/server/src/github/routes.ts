@@ -1,4 +1,3 @@
-import { createHash, randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { githubRows } from '@flux/db';
 import { GITHUB_CALLBACK_PATH, type GithubCapabilities } from '@flux/contracts';
@@ -73,13 +72,7 @@ export async function githubRoutes(app: FastifyInstance, options: Options) {
     unavailable(); return reply.code(201).send(await useCases!.link(await principal(request), request.params.taskId, request.body));
   });
   app.post<{ Params: { bindingId: string } }>('/api/v1/github/bindings/:bindingId/reconcile', async (request, reply) => {
-    unavailable(); const actor = await principal(request); const binding = await githubRows(db).binding(request.params.bindingId);
-    if (!binding) throw new InvalidInputError('Binding is unavailable');
-    await assertAuthorized(actor, 'project.manage', { type: 'project', id: binding.projectId }, db);
-    await provider!.repository(actor, binding.installationId, binding.repositoryId);
-    const id = `reconcile-${randomUUID()}`;
-    await useCases!.admit({ id, appId: config!.appId, event: 'reconcile', digest: createHash('sha256').update(id).digest('hex'), payload: {},
-      repositoryId: binding.repositoryId, installationId: binding.installationId, providerObjectId: null, origin: 'reconcile' });
+    unavailable(); await useCases!.reconcile(await principal(request), request.params.bindingId);
     return reply.code(202).send({ pending: true });
   });
   if (!config) return;
@@ -89,6 +82,7 @@ export async function githubRoutes(app: FastifyInstance, options: Options) {
   const sweep = async () => {
     if (running) return; running = true;
     try {
+      await useCases!.schedule(config.appId, String(Math.floor(Date.now() / 1_800_000)));
       for (const row of await githubRows(db).due(5)) {
         try { await useCases!.process(row.deliveryId, row.bindingId); }
         catch (error) { await githubRows(db).failed(row.deliveryId, row.bindingId, error instanceof DomainError ? error.code : 'GITHUB_UNAVAILABLE'); }

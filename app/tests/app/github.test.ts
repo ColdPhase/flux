@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHmac, randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { after, before, describe, test } from 'node:test';
 import Fastify from 'fastify';
 import { createDatabase, githubRows } from '@flux/db';
@@ -30,13 +31,14 @@ function facts(repositoryId = REPO, number = 42, headSha = SHA1): GithubPullFact
     checks: [{ id: '982', name: 'Required check', appId: '55', state: 'success', sourceUpdatedAt: '2026-09-30T10:00:00.000Z' }], reviews: [], truncated: false, execution: 'ready_for_review' };
 }
 class ProviderFixture implements GithubProvider {
+  appId = APP;
   allowed = new Map<string, Set<string>>(); generations = new Map<string, string>(); calls: string[] = []; failing = new Set<string>(); head = SHA1;
   authorize(p: Person, repositories = [REPO, '778']) { this.allowed.set(p.id, new Set(repositories)); this.generations.set(p.id, randomUUID()); }
   async repository(principal: Principal, installationId: string, repositoryId: string) {
     this.calls.push(`repository:${principal.id}:${repositoryId}`);
     if (!this.allowed.get(principal.id)?.has(repositoryId) || installationId !== INSTALL) throw new NotFoundError('Repository', 'GITHUB_ACCESS_UNAVAILABLE');
     return { host: 'github.com' as const, installationId, repositoryId, owner: 'fixture', name: `repo-${repositoryId}`, private: true,
-      url: `https://github.com/fixture/repo-${repositoryId}`, githubUserId: principal.id === 'never-real-provider-id' ? '1' : '999', appId: APP, authorizationGeneration: this.generations.get(principal.id)! };
+      url: `https://github.com/fixture/repo-${repositoryId}`, githubUserId: principal.id === 'never-real-provider-id' ? '1' : '999', appId: this.appId, authorizationGeneration: this.generations.get(principal.id)! };
   }
   async pull(principal: Principal, repository: { repositoryId: string }, number: number) {
     this.calls.push(`pull:${principal.id}:${repository.repositoryId}:${number}`);
@@ -95,6 +97,10 @@ describe('GitHub App binding, provenance and durable per-binding inbox (#74)', (
     const events = await pool.query('SELECT data FROM events WHERE object_id=$1', [place.id]);
     assert.equal(JSON.stringify(events.rows).includes('PRIVATE'), false);
     assert.equal(JSON.stringify(events.rows).includes('github.com'), false);
+    const exported = expectStatus(await owner.browser.request('GET', `/api/v1/projects/${place.id}/export`), 200);
+    assert.equal(JSON.stringify(exported).includes('PRIVATE'), false, 'ordinary project exports cannot broaden private provider facts');
+    const notifications = await pool.query('SELECT title,body FROM notifications WHERE workspace_id=$1', [place.workspaceId]);
+    assert.equal(JSON.stringify(notifications.rows).includes('PRIVATE'), false, 'no native notification embeds provider facts');
     fixture.allowed.get(owner.id)!.delete(REPO);
     await rejected(github.links(actor(owner), work.id), 'GITHUB_ACCESS_UNAVAILABLE');
     fixture.allowed.get(owner.id)!.add(REPO);
@@ -244,5 +250,59 @@ test('signed revocations stop selected App/user/repository authority; additions 
     assert.equal((await githubRows(db).binding(second.id))?.state, 'revoked');
     assert.equal((await webhook(app, JSON.stringify({ action: 'unsuspend', installation: { id: INSTALL, app_id: APP } }), randomUUID(), 'installation')).statusCode, 202);
     assert.equal((await githubRows(db).binding(second.id))?.state, 'revoked', 'unsuspension never silently restores authority');
+  } finally { await app.close(); }
+});
+test('bounded gap recovery targets only known links and one binding, coalesces pending work and retries with current rights', async () => {
+  const owner = await person('github-gap-owner'); const ws = await workspace(owner, 'Gap recovery fixture');
+  const provider = new ProviderFixture(); provider.appId = '99981'; provider.authorize(owner); const cases = createGithubUseCases(db, provider);
+  const bindings: GithubBinding[] = [];
+  for (let n = 0; n < 6; n++) {
+    const place = await project(owner, ws.id, `Known binding ${n}`, 'restricted');
+    const work = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: `Existing work ${n}` } }), 201) as WorkItem;
+    const binding = await cases.bind(actor(owner), place.id, { installationId: INSTALL, repositoryId: REPO }); bindings.push(binding);
+    await cases.link(actor(owner), work.id, { bindingId: binding.id, number: 42, role: 'required_output' });
+  }
+  const empty = await project(owner, ws.id, 'No linked objects', 'restricted');
+  await cases.bind(actor(owner), empty.id, { installationId: INSTALL, repositoryId: REPO });
+  assert.equal(await cases.schedule(provider.appId, '501'), 5); assert.equal(await cases.schedule(provider.appId, '501'), 1);
+  assert.equal(await cases.schedule(provider.appId, '501'), 0); assert.equal(await cases.schedule(provider.appId, '502'), 0, 'an outage does not accumulate local jobs');
+  const deliveryRows = await pool.query('SELECT id,target_binding_id,origin FROM github_deliveries WHERE app_id=$1', [provider.appId]);
+  assert.equal(deliveryRows.rowCount, 6);
+  for (const delivery of deliveryRows.rows) {
+    const processing = await pool.query('SELECT binding_id FROM github_processing WHERE delivery_id=$1', [delivery.id]);
+    assert.deepEqual(processing.rows.map((row) => row.binding_id), [delivery.target_binding_id], 'no fanout into another project using the same repository');
+  }
+  const first = deliveryRows.rows[0]; provider.allowed.get(owner.id)!.delete(REPO);
+  await rejected(cases.process(first.id, first.target_binding_id), 'GITHUB_ACCESS_UNAVAILABLE');
+  provider.allowed.get(owner.id)!.add(REPO); provider.head = SHA2;
+  for (const row of deliveryRows.rows) await cases.process(row.id, row.target_binding_id);
+  assert.equal(await cases.schedule(provider.appId, '502'), 5);
+  const manual = await cases.reconcile(actor(owner), bindings[0]!.id);
+  assert.equal(await cases.reconcile(actor(owner), bindings[0]!.id), manual, 'manual retry coalesces with pending local reconciliation');
+  await cases.disconnect(actor(owner), bindings[0]!.id);
+  await rejected(cases.reconcile(actor(owner), bindings[0]!.id), 'GITHUB_BINDING_UNAVAILABLE');
+});
+test('restore maintenance revokes provider credentials, flows and processing while retaining unavailable source history', async () => {
+  const owner = await person('github-restored-owner'); const ws = await workspace(owner, 'Restore fixture'); const place = await project(owner, ws.id, 'Retained source', 'restricted');
+  const provider = new ProviderFixture(); provider.authorize(owner); const cases = createGithubUseCases(db, provider);
+  const transport = new AuthTransportFixture(); const credentials = githubCredentials(db, config, transport); await credentials.store(owner.id, tokenReply());
+  const binding = await cases.bind(actor(owner), place.id, { installationId: INSTALL, repositoryId: REPO });
+  const work = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: 'Survives restore' } }), 201) as WorkItem;
+  const linked = await cases.link(actor(owner), work.id, { bindingId: binding.id, number: 42, role: 'required_output' }); await cases.reconcile(actor(owner), binding.id);
+  const app = Fastify({ logger: false }); const identity = registerIdentity(app, { db, config: loadIdentityConfig({ FLUX_PUBLIC_ORIGIN: publicOrigin, FLUX_AUTH_SECRET: process.env.FLUX_AUTH_SECRET, FLUX_AUTH_RATE_LIMIT: 'false' }), mailer: null });
+  await app.register(githubRoutes, { db, sessions: identity, config, transport, background: false }); await app.ready();
+  try {
+    const headers = { cookie: owner.browser.cookieHeader(), origin: publicOrigin };
+    const flow = await app.inject({ method: 'POST', url: `/api/v1/projects/${place.id}/github/authorize`, headers });
+    assert.equal(flow.statusCode, 200); const state = new URL(flow.json().url).searchParams.get('state')!;
+    const maintenance = execFileSync(process.execPath, ['tooling/dist/operations.js', 'revoke-github-access'], { encoding: 'utf8' });
+    assert.match(maintenance, /Revoked [1-9]\d* GitHub authorization\(s\) and [1-9]\d* GitHub binding\(s\)/);
+    assert.equal(await credentials.state(owner.id), 'required'); assert.equal((await githubRows(db).binding(binding.id))?.state, 'revoked');
+    assert.equal((await pool.query('SELECT state,facts FROM github_task_links WHERE id=$1', [linked.id])).rows[0].facts.pullId, linked.facts.pullId);
+    assert.equal((await pool.query('SELECT state FROM github_task_links WHERE id=$1', [linked.id])).rows[0].state, 'unavailable');
+    assert.equal((await githubRows(db).due()).length, 0, 'restored jobs cannot resume authority');
+    assert.equal((await app.inject({ method: 'GET', url: `/api/v1/integrations/github/callback?state=${state}&code=fixture-code`, headers })).statusCode, 400);
+    assert.equal(transport.exchanges, 0, 'restored OAuth flow cannot exchange');
+    await rejected(cases.links(actor(owner), work.id), 'GITHUB_BINDING_UNAVAILABLE');
   } finally { await app.close(); }
 });

@@ -12,6 +12,7 @@ export interface GithubDelivery {
   id: string; appId: string; digest: string; event: string; payload: Record<string, unknown>;
   installationId: string | null; repositoryId: string | null;
   origin: 'webhook' | 'reconcile'; providerObjectId: string | null;
+  targetBindingId?: string | null;
 }
 export interface GithubProcessing { deliveryId: string; bindingId: string }
 export interface GithubAccess {
@@ -35,6 +36,8 @@ export interface GithubRepositoryPort {
   delivery(id: string): Promise<GithubDelivery | null>;
   processing(deliveryId: string, bindingId: string): Promise<'pending' | 'completed' | null>;
   complete(deliveryId: string, bindingId: string): Promise<void>;
+  reconciliationCandidates(appId: string, window: string, limit: number): Promise<GithubBindingRecord[]>;
+  pendingReconciliation(bindingId: string): Promise<string | null>;
   /** Internal metadata only; cannot deliver to a client until #153's audience adapter exists. */
   bridge(delivery: GithubDelivery, binding: GithubBindingRecord, link: GithubLinkRecord, facts: GithubPullFacts): Promise<void>;
 }

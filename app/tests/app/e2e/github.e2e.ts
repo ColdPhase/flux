@@ -70,8 +70,8 @@ before(async () => {
 after(async () => {
   await browser?.close(); proxy.closeAllConnections(); await new Promise((resolve) => proxy.close(resolve)); await app.close(); await pool.end();
 });
-async function context(who: Person) {
-  const ctx = await browser.newContext({ baseURL: publicOrigin, locale: 'en-GB', timezoneId: 'Europe/Warsaw', serviceWorkers: 'block' }); contexts.push(ctx);
+async function context(who: Person, options: { viewport?: { width: number; height: number }; isMobile?: boolean; hasTouch?: boolean } = {}) {
+  const ctx = await browser.newContext({ baseURL: publicOrigin, locale: 'en-GB', timezoneId: 'Europe/Warsaw', serviceWorkers: 'block', ...options }); contexts.push(ctx);
   await ctx.addCookies([...who.browser.cookies].map(([name, value]) => ({ name, value, url: publicOrigin, httpOnly: true, sameSite: 'Lax' })));
   // Browser navigation to the external provider is the only fixture redirect; callback runs real OAuth state/PKCE/SQL.
   await ctx.route('https://github.com/**', async (route) => {
@@ -109,11 +109,20 @@ test('real settings UI binds, verifies PR links and removes private projections 
   const privatePull = page.getByRole('link', { name: '#42 · Keep a manual off switch when gesture sensing loses calibration', exact: true }); await privatePull.waitFor();
   assert.match(await linker.innerText(), /nia-firmware.*head aaaaaaaaaaaa/);
   for (const [label, width, height] of [['desktop', 1440, 900], ['tablet', 820, 1180], ['phone', 390, 844]] as const) {
-    await page.setViewportSize({ width, height });
-    assert.ok(await privatePull.isVisible());
-    assert.ok(await page.locator('body').evaluate((el) => el.scrollWidth) <= width, `${label} has no horizontal overflow`);
+    const target = label === 'desktop' ? page : await (await context(owner, { viewport: { width, height }, hasTouch: true, isMobile: label === 'phone' })).newPage();
+    await target.setViewportSize({ width, height });
+    if (target !== page) {
+      await target.goto(`/projects/${place.id}/github`); await target.getByLabel('Task', { exact: true }).selectOption(task.id);
+      await target.getByRole('link', { name: /#42 · Keep a manual off switch/ }).waitFor();
+    }
+    assert.ok(await target.locator('body').evaluate((el) => el.scrollWidth) <= width, `${label} has no horizontal overflow`);
     const directory = process.env.FLUX_E2E_EVIDENCE_DIR;
-    if (directory) { mkdirSync(directory, { recursive: true }); await page.screenshot({ path: join(directory, `github-settings-${label}.png`), fullPage: true }); }
+    if (directory) {
+      mkdirSync(directory, { recursive: true }); await target.locator('.github-settings').evaluate((el) => { el.parentElement!.scrollTop = 0; });
+      await target.screenshot({ path: join(directory, `github-settings-${label}.png`), fullPage: true });
+      await target.getByRole('link', { name: /#42 · Keep a manual off switch/ }).scrollIntoViewIfNeeded();
+      await target.screenshot({ path: join(directory, `github-settings-${label}-linked.png`), fullPage: true });
+    }
   }
   const memberPage = await (await context(viewer)).newPage(); await memberPage.goto(`/projects/${place.id}/github`);
   await memberPage.getByRole('heading', { name: 'Authorize your GitHub account', exact: true }).waitFor();

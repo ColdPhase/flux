@@ -30,7 +30,9 @@ CREATE TABLE github_task_links (
 );
 CREATE TABLE github_deliveries (
   id text PRIMARY KEY, app_id text NOT NULL, digest text NOT NULL, event text NOT NULL, payload jsonb NOT NULL,
-  installation_id text, repository_id text, provider_object_id text, origin text NOT NULL CHECK(origin IN ('webhook','reconcile')), received_at timestamptz NOT NULL DEFAULT now()
+  installation_id text, repository_id text, provider_object_id text,
+  target_binding_id uuid REFERENCES github_bindings(id) ON DELETE SET NULL,
+  origin text NOT NULL CHECK(origin IN ('webhook','reconcile')), received_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE github_processing (
   delivery_id text NOT NULL REFERENCES github_deliveries(id) ON DELETE CASCADE,

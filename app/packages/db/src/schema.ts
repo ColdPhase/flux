@@ -1100,6 +1100,7 @@ export const githubDeliveries = pgTable('github_deliveries', {
   id: text('id').primaryKey(), appId: text('app_id').notNull(), digest: text('digest').notNull(), event: text('event').notNull(),
   payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
   installationId: text('installation_id'), repositoryId: text('repository_id'), providerObjectId: text('provider_object_id'),
+  targetBindingId: uuid('target_binding_id').references(() => githubBindings.id, { onDelete: 'set null' }),
   origin: text('origin', { enum: ['webhook', 'reconcile'] }).notNull(), receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
 });
 export const githubProcessing = pgTable('github_processing', {
