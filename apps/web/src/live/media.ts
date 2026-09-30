@@ -164,8 +164,8 @@ export class LiveMediaConnection {
       .on(RoomEvent.Connected, () => { this.connection = 'connected'; update(); })
       // A capture still waiting to publish is stopped when the connection drops; its request then
       // reports that nothing was sent (see `setDevice`).
-      .on(RoomEvent.Reconnecting, () => { this.connection = 'reconnecting'; this.stopAllPending(); update(); })
-      .on(RoomEvent.SignalReconnecting, () => { this.connection = 'reconnecting'; this.stopAllPending(); update(); })
+      .on(RoomEvent.Reconnecting, () => { this.connection = 'reconnecting'; this.interruptRequests(); update(); })
+      .on(RoomEvent.SignalReconnecting, () => { this.connection = 'reconnecting'; this.interruptRequests(); update(); })
       .on(RoomEvent.Reconnected, () => { this.connection = 'connected'; update(); })
       .on(RoomEvent.Disconnected, (reason?: DisconnectReason) => this.onDisconnected(reason))
       .on(RoomEvent.ParticipantConnected, update)
@@ -392,7 +392,20 @@ export class LiveMediaConnection {
     this.pending[kind].clear();
   }
 
-  private stopAllPending() { for (const kind of ['mic', 'camera', 'screen'] as const) this.stopPending(kind); }
+  /**
+   * A dropped connection supersedes every device request still in progress, including a capture
+   * that has not returned yet (a permission prompt): its late track is stopped instead of
+   * published after the reconnect, and turning the device on again needs a new action.
+   */
+  private interruptRequests() {
+    for (const kind of ['mic', 'camera', 'screen'] as const) {
+      this.stopPending(kind);
+      if (this.devices[kind].state !== 'starting') continue;
+      this.generation[kind]++;
+      const device = kind === 'mic' ? 'microphone' : kind === 'camera' ? 'camera' : 'screen';
+      this.devices = { ...this.devices, [kind]: { state: 'off', note: `The connection dropped before the ${device} started, so nothing was sent. It is off.` } };
+    }
+  }
 
   private async stopDevice(kind: DeviceKind, status: DeviceStatus): Promise<DeviceStatus> {
     this.generation[kind]++;

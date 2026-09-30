@@ -62,7 +62,7 @@ Rev B uses the IR-cut filter from the old supplier. Check whether night mode act
 # joining asked for nothing and that navigation kept one connection.
 INSTRUMENT = """
 (() => {
-  const state = { gum: 0, gdm: 0, tracks: [], sockets: 0, gumConstraints: [] };
+  const state = { gum: 0, gdm: 0, tracks: [], sockets: 0, gumConstraints: [], rtc: [] };
   Object.defineProperty(window, '__live', { value: state });
   const md = navigator.mediaDevices;
   if (md) {
@@ -101,6 +101,7 @@ INSTRUMENT = """
       super(url, protocols);
       if (!String(url).includes('/rtc')) return;
       state.sockets += 1;
+      state.rtc.push(this);
       this.addEventListener('message', (event) => {
         if (!window.__holdSignals || event.__released) return;
         event.stopImmediatePropagation();
@@ -507,6 +508,20 @@ class LiveJourney(LiveBase):
         self.assertEqual(nia.evaluate("window.__live.tracks.filter((t) => t.readyState === 'live').length"), 0, "nothing captures after the publication answer")
         self.assertTrue(set(heard()) <= set(before), "Ada receives no audio from a publication that finished after Quiet")
         self.bar(nia).get_by_role("button", name="Return").click()
+        expect(self.bar(nia).get_by_role("button", name=re.compile("^Microphone off"))).to_have_attribute("aria-pressed", "false")
+        # A capture that spans a dropped connection is superseded by it: after the reconnect the
+        # late track ends, nothing reaches Ada, and turning the microphone on needs a new action.
+        nia.evaluate("window.__holdCapture = true; window.__releaseCapture = undefined")
+        self.bar(nia).get_by_role("button", name=re.compile("^Microphone off")).click()
+        nia.wait_for_function("() => typeof window.__releaseCapture === 'function'")
+        nia.evaluate("window.__live.rtc.filter((s) => s.readyState === 1).forEach((s) => s.close())")
+        expect(self.bar(nia).get_by_role("status").first).to_contain_text("Reconnecting", timeout=15000)
+        expect(self.bar(nia).get_by_role("status").first).to_contain_text("Live", timeout=30000)
+        nia.evaluate("window.__holdCapture = false; window.__releaseCapture()")
+        nia.wait_for_function("() => window.__live.tracks.every((t) => t.readyState === 'ended')")
+        nia.wait_for_timeout(2500)
+        self.assertEqual(nia.evaluate("window.__live.tracks.filter((t) => t.readyState === 'live').length"), 0, "the capture from before the reconnect was not published")
+        self.assertTrue(set(heard()) <= set(before), "Ada receives no audio from a capture that spanned the reconnect")
         expect(self.bar(nia).get_by_role("button", name=re.compile("^Microphone off"))).to_have_attribute("aria-pressed", "false")
         # The same for leaving while a capture is pending.
         nia.evaluate("window.__holdCapture = true; window.__releaseCapture = undefined")
