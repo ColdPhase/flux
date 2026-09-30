@@ -72,7 +72,8 @@ $compose run --rm e2e node_modules/.bin/tsx --test tests/app/e2e/access-stream.e
 # A seeded project proposal must remain editable, dismissible and usable through the actual UI.
 # The fixture bypasses rule activation, which stays unavailable until #58 runtime gates pass.
 $compose run --rm test pnpm exec tsx tests/app/seed-proactive-ui.ts
-$compose run --rm e2e node_modules/.bin/tsx --test tests/app/e2e/proactive-comparison.e2e.ts
+$compose run --rm test pnpm exec tsx tests/app/seed-proactive-outcomes-ui.ts
+$compose run --rm e2e node_modules/.bin/tsx --test --test-concurrency=1 tests/app/e2e/proactive-comparison.e2e.ts tests/app/e2e/proactive-outcomes.e2e.ts
 
 # A session created before an API container restart must still be valid afterwards.
 $compose run --rm test pnpm exec tsx tests/app/session-restart.ts prepare
