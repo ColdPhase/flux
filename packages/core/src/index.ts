@@ -54,6 +54,7 @@ export * from './returns/index.js';
 export * from './direct-messages/index.js';
 export { policyDmAccess } from './access/dm-access.js';
 export * from './docs/index.js';
+export * from './export/index.js';
 
 export const SAMPLE_JOB = 'sample.process';
 

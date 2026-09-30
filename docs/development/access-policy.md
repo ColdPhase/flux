@@ -357,6 +357,12 @@ on its own `LISTEN` for wake-ups.
 rows after the person's saved return point, calls `authorizeEvent` again for every event and,
 on Home, also applies `visibleFilter` to each project. See [return-view.md](return-view.md).
 
+**Project export** (#123). `GET /api/v1/projects/:id/export` needs `project.manage`
+(`evaluateProject`, so an invisible project is `404` and a visible one without manage rights is
+`403`). The audience in the export comes from `listProjectPeople`; the rows are read in one
+read-only snapshot and never include other projects, DMs, drafts or private sketches. See
+[export](../operations/export.md).
+
 **Project docs** (#112). Doc reads and writes use the project policy (`evaluateProject`, write
 under the access-row lock); an invisible doc is `404 DOC_NOT_FOUND`. The workspace doc list
 applies `visibleFilter` before the page and total. `flux:` references resolve only inside the
