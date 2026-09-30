@@ -77,13 +77,13 @@ digest replaces the marker.
 | Service | Image | Role |
 | --- | --- | --- |
 | `db` | `postgres@sha256:…` | PostgreSQL 18, volume `pgdata`, not published. |
-| `migrate` | release digest | One-shot `node infra/dist/migrate.js`: applies each new `packages/db/migrations/NNNN_*.sql` in its own transaction, then exits. |
+| `migrate` | release digest | One-shot `node tooling/dist/migrate.js`: applies each new `app/packages/db/migrations/NNNN_*.sql` in its own transaction, then exits. |
 | `api` | release digest | HTTP API and web app on `127.0.0.1:${FLUX_PORT}`, volume `files`; its health check verifies the exact migration ledger, the queue schema and a write to the files volume. |
 | `worker` | release digest | Background jobs (notification mail, Web Push, runs), volume `files`. |
 
 All Flux containers run as the image's non-root user; the image owns `/data/files`, so a new
 `files` volume is writable without a setup step. The optional self-hosted live-media overlay
-(`infra/compose.live.yaml`) is not part of this operator file yet.
+(`docker/compose.live.yaml`) is not part of this operator file yet.
 
 ## Upgrade, backup and restore
 
@@ -98,7 +98,7 @@ release's files, never just an older image over the migrated database.
 The release's own installation guide carries the exact backup, upgrade and restore commands
 for that version. The source-checkout equivalents are [`./flux backup` and
 `./flux restore`](backup-restore.md) and [`./flux upgrade`](upgrade.md); they use
-`infra/compose.yaml` and are not the release path.
+`docker/compose.source.yaml` and are not the release path.
 
 ## Verification
 

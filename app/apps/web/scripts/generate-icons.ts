@@ -5,8 +5,8 @@ import { chromium } from 'playwright';
 /**
  * Renders the placeholder Flux mark to the PNG icons the manifest and iOS need (issue #41).
  * Run in the Playwright image so no host browser or image tool is needed:
- *   docker compose -p flux-icons -f infra/compose.yaml -f infra/compose.test.yaml build pushmock
- *   docker run --rm -v "$PWD/apps/web/public/icons:/out" flux-e2e:flux-icons \
+ *   docker compose --env-file docker/.env -p flux-icons -f docker/compose.source.yaml -f docker/compose.test.yaml build pushmock
+ *   docker run --rm -v "$PWD/app/apps/web/public/icons:/out" flux-e2e:flux-icons \
  *     node_modules/.bin/tsx apps/web/scripts/generate-icons.ts /out
  */
 const out = process.argv[2] ?? 'apps/web/public/icons';

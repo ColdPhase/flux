@@ -12,7 +12,10 @@ this decision is not itself a release or permission to move active branches.
 `tests/test_operator_compose.py` and `scripts/check_operator_compose.sh`
 ([install guide](../operations/install-release.md)). The `app/` move, the source/dev/test
 Compose files under `docker/`, the launcher switch to `docker/.env` and the single env
-template remain open; until then `./flux` keeps the root `.env.example` and `infra/`.
+template are implemented together in the remaining #76 slice. The historical prototype stays at
+the repository root; application/configuration paths now follow the accepted map below.
+Exact-head Docker build/runtime/browser/upgrade checks and independent PR review are
+required before this slice is accepted. The observations at `603b35c` below remain historical.
 
 **Situation and decision:** A contributor should find the application in one
 place, while an operator should install a versioned Flux without cloning its

@@ -1,4 +1,4 @@
-# Hot-reload development overlay for `./flux dev` (issue #72), layered over compose.yaml.
+# Hot-reload development overlay for `./flux dev` (issue #72), layered over compose.source.yaml.
 # Never use it for a deployment: it runs TypeScript from bind-mounted source as root.
 #
 # The image is the Dockerfile's `build` stage (locked dependencies, tsx, Vite). Source is
@@ -9,33 +9,33 @@
 # so the database and files volumes are separate from `./flux up`.
 x-dev-image: &dev-image flux-dev:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
 x-source: &source
-  - ../apps/server/src:/app/apps/server/src:ro,z
-  - ../apps/worker/src:/app/apps/worker/src:ro,z
-  - ../apps/web/src:/app/apps/web/src:ro,z
-  - ../apps/web/public:/app/apps/web/public:ro,z
-  - ../apps/web/build:/app/apps/web/build:ro,z
-  - ../apps/web/index.html:/app/apps/web/index.html:ro,z
-  - ../apps/web/vite.config.ts:/app/apps/web/vite.config.ts:ro,z
-  - ../packages/contracts/src:/app/packages/contracts/src:ro,z
-  - ../packages/core/src:/app/packages/core/src:ro,z
-  - ../packages/db/src:/app/packages/db/src:ro,z
-  - ../packages/db/migrations:/app/packages/db/migrations:ro,z
-  - ../packages/sdk/src:/app/packages/sdk/src:ro,z
-  - ../packages/agent-runtime/src:/app/packages/agent-runtime/src:ro,z
-  - ../infra/migrate.ts:/app/infra/migrate.ts:ro,z
-  - ../infra/tsconfig.dev.json:/app/infra/tsconfig.dev.json:ro,z
+  - ../app/apps/server/src:/app/apps/server/src:ro,z
+  - ../app/apps/worker/src:/app/apps/worker/src:ro,z
+  - ../app/apps/web/src:/app/apps/web/src:ro,z
+  - ../app/apps/web/public:/app/apps/web/public:ro,z
+  - ../app/apps/web/build:/app/apps/web/build:ro,z
+  - ../app/apps/web/index.html:/app/apps/web/index.html:ro,z
+  - ../app/apps/web/vite.config.ts:/app/apps/web/vite.config.ts:ro,z
+  - ../app/packages/contracts/src:/app/packages/contracts/src:ro,z
+  - ../app/packages/core/src:/app/packages/core/src:ro,z
+  - ../app/packages/db/src:/app/packages/db/src:ro,z
+  - ../app/packages/db/migrations:/app/packages/db/migrations:ro,z
+  - ../app/packages/sdk/src:/app/packages/sdk/src:ro,z
+  - ../app/packages/agent-runtime/src:/app/packages/agent-runtime/src:ro,z
+  - ../app/tooling/migrate.ts:/app/tooling/migrate.ts:ro,z
+  - ../app/tooling/tsconfig.dev.json:/app/tooling/tsconfig.dev.json:ro,z
 services:
   migrate:
     build:
       target: build
     image: *dev-image
-    command: ["node_modules/.bin/tsx", "--tsconfig", "infra/tsconfig.dev.json", "infra/migrate.ts"]
+    command: ["node_modules/.bin/tsx", "--tsconfig", "tooling/tsconfig.dev.json", "tooling/migrate.ts"]
     volumes: *source
   files-init:
     image: *dev-image
   api:
     image: *dev-image
-    command: ["node_modules/.bin/tsx", "watch", "--clear-screen=false", "--tsconfig", "infra/tsconfig.dev.json", "apps/server/src/index.ts"]
+    command: ["node_modules/.bin/tsx", "watch", "--clear-screen=false", "--tsconfig", "tooling/tsconfig.dev.json", "apps/server/src/index.ts"]
     environment:
       NODE_ENV: development
     volumes: *source
@@ -45,7 +45,7 @@ services:
       retries: 60
   worker:
     image: *dev-image
-    command: ["node_modules/.bin/tsx", "watch", "--clear-screen=false", "--tsconfig", "infra/tsconfig.dev.json", "apps/worker/src/index.ts"]
+    command: ["node_modules/.bin/tsx", "watch", "--clear-screen=false", "--tsconfig", "tooling/tsconfig.dev.json", "apps/worker/src/index.ts"]
     environment:
       NODE_ENV: development
     volumes: *source
