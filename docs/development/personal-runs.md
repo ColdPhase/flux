@@ -281,6 +281,9 @@ the manager grant, the working line only for the owner, the attributed answer an
 citations for peers and a viewer, Stop, a provider failure, a proposal accepted only by
 the work's owner, paused, capped, and phone width. The production fail-closed states
 (provider off, no key) are rendered there from a stubbed status response only.
+Screenshots of that run (light theme, 1440×900 and 390×844) are in
+[`docs/design/personal-ai/app/`](../design/personal-ai/app/); they show appearance, not
+behaviour or accessibility.
 
 ## Not yet done
 
