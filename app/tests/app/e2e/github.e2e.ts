@@ -97,7 +97,11 @@ test('real settings UI binds, verifies PR links and removes private projections 
   assert.equal(await views.getByRole('link', { name: 'Conversation', exact: true }).getAttribute('href'), `/projects/${place.id}`, 'old settings destination is not a conversation');
   await views.getByRole('link', { name: 'Conversation', exact: true }).click();
   await page.waitForURL(`**/projects/${place.id}`);
-  await page.goto(`/projects/${place.id}/github`);
+  const details = page.getByRole('button', { name: 'Details', exact: true });
+  await details.click();
+  await page.getByRole('link', { name: 'GitHub repositories', exact: true }).click();
+  await page.waitForURL(`**/projects/${place.id}/github`);
+  if (await details.getAttribute('aria-expanded') === 'true') await details.click();
   await page.getByRole('heading', { name: 'GitHub is not configured on this server' }).waitFor();
   configuredFixture = true; await page.getByRole('button', { name: 'Check again', exact: true }).click();
   await page.getByRole('button', { name: 'Continue to GitHub', exact: true }).click();
@@ -135,6 +139,10 @@ test('real settings UI binds, verifies PR links and removes private projections 
   }
   const memberPage = await (await context(viewer)).newPage(); await memberPage.goto(`/projects/${place.id}/github`);
   await memberPage.getByRole('heading', { name: 'Authorize your GitHub account', exact: true }).waitFor();
+  const memberDetails = memberPage.getByRole('button', { name: 'Details', exact: true });
+  await memberDetails.click();
+  assert.equal(await memberPage.getByRole('link', { name: 'GitHub repositories', exact: true }).count(), 0, 'project management entry is absent for a viewer');
+  await memberDetails.click();
   assert.equal(await memberPage.getByText('gesture-lamp-firmware', { exact: false }).count(), 0);
   assert.equal(await memberPage.getByRole('link', { name: /Keep a manual off switch/ }).count(), 0);
   transport.denied = true; await page.getByRole('button', { name: 'Refresh access', exact: true }).click();
