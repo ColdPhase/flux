@@ -188,7 +188,10 @@
      in two even rows (#69); the status gets its own line only when it has text. */
   .sk { gap: 8px; padding-top: 10px; }
   .sk-head { gap: 6px 8px; }
-  .sk-lead { flex: 1 1 100%; gap: 2px 6px; }
+  /* Title and audience share their row with the Map/List switch; "Make it a project…" wraps below. */
+  .sk-head { flex-wrap: wrap; align-items: flex-start; }
+  .sk-lead { flex: 1 1 0; min-width: 0; gap: 2px 6px; }
+  .sk-lead .sk-aud { flex-basis: 100%; }
   .sk-back, .sk-sep { display: none; }
   .sk-promote { order: 3; flex: 1 1 auto; justify-content: center; }
   .sk-origin__long { display: none; }
