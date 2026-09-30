@@ -1,0 +1,498 @@
+ Image flux-e2e:flux-test-1790800655-2869269 Building 
+ Image flux-foundation:flux-test-1790800655-2869269 Building 
+ Image flux-test-tools:flux-test-1790800655-2869269 Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.78kB done
+#1 DONE 0.0s
+
+#2 [pushmock internal] load build definition from Dockerfile
+#2 transferring dockerfile:
+#2 transferring dockerfile: 2.81kB done
+#2 DONE 0.1s
+
+#3 [pushmock internal] load metadata for mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+#3 DONE 0.0s
+
+#4 [migrate internal] load metadata for docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#4 DONE 0.0s
+
+#5 [pushmock internal] load .dockerignore
+#5 transferring context: 282B done
+#5 DONE 0.1s
+
+#6 [pushmock e2e 1/3] FROM mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+#6 DONE 0.0s
+
+#7 [migrate build 1/6] FROM docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#7 DONE 0.0s
+
+#8 [test internal] load build context
+#8 transferring context: 11.68MB 0.1s done
+#8 transferring context: 11.68MB 0.1s done
+#8 DONE 0.1s
+
+#9 [migrate build 2/6] WORKDIR /app
+#9 CACHED
+
+#10 [pushmock build 3/6] RUN corepack enable && corepack install -g pnpm@12.6.0
+#10 CACHED
+
+#11 [migrate build 4/6] COPY . .
+#11 DONE 0.7s
+
+#12 [migrate build 5/6] RUN pnpm install --frozen-lockfile
+#12 0.472 Downloading the pnpm 12.6.0 binary for linux-x64...
+#12 3.457 Scope: all 10 workspace projects
+#12 3.480 ? Verifying lockfile against supply-chain policies (482 entries)...
+#12 3.824 Packages are hard linked from the content-addressable store to the virtual store.
+#12 3.824   Content-addressable store is at: /root/.local/share/pnpm/store/v11
+#12 3.824   Virtual store is at:             node_modules/.pnpm
+#12 4.880 Progress: resolved 411, reused 0, downloaded 132, added 128
+#12 4.912 Update available! 12.6.0 → 12.8.1.
+#12 4.912 Changelog: https://pnpm.io/v/12.8.1
+#12 4.912 To update, run: curl -fsSL https://get.pnpm.io/install.sh | sh -
+#12 5.314 [WARN] Tarball download average speed 3 KiB/s (size 6 KiB) is below 50 KiB/s: https://registry.npmjs.org/jws/-/jws-4.0.1.tgz (GET)
+#12 5.654 [WARN] Tarball download average speed 43 KiB/s (size 75 KiB) is below 50 KiB/s: https://registry.npmjs.org/entities/-/entities-4.5.0.tgz (GET)
+#12 6.236 [WARN] Tarball download average speed 32 KiB/s (size 49 KiB) is below 50 KiB/s: https://registry.npmjs.org/ts-api-utils/-/ts-api-utils-2.5.0.tgz (GET)
+#12 6.252 [WARN] Tarball download average speed 15 KiB/s (size 27 KiB) is below 50 KiB/s: https://registry.npmjs.org/@typescript-eslint/types/-/types-8.44.1.tgz (GET)
+#12 6.549 [WARN] Tarball download average speed 6 KiB/s (size 10 KiB) is below 50 KiB/s: https://registry.npmjs.org/pg-types/-/pg-types-2.2.0.tgz (GET)
+#12 6.555 [WARN] Tarball download average speed 4 KiB/s (size 7 KiB) is below 50 KiB/s: https://registry.npmjs.org/punycode.js/-/punycode.js-2.3.1.tgz (GET)
+#12 6.561 [WARN] Tarball download average speed 3 KiB/s (size 4 KiB) is below 50 KiB/s: https://registry.npmjs.org/safe-regex2/-/safe-regex2-5.1.1.tgz (GET)
+#12 6.654 [WARN] Tarball download average speed 2 KiB/s (size 4 KiB) is below 50 KiB/s: https://registry.npmjs.org/split2/-/split2-4.2.0.tgz (GET)
+#12 7.703 Progress: resolved 411, reused 0, downloaded 304, added 288
+#12 8.276 [WARN] Tarball download average speed 20 KiB/s (size 40 KiB) is below 50 KiB/s: https://registry.npmjs.org/baseline-browser-mapping/-/baseline-browser-mapping-2.11.26.tgz (GET)
+#12 8.679 Downloading @rolldown/binding-linux-x64-musl@1.2.11: 0.00 B/7.92 MB
+#12 9.379 [WARN] Tarball download average speed 15 KiB/s (size 30 KiB) is below 50 KiB/s: https://registry.npmjs.org/light-my-request/-/light-my-request-6.6.0.tgz (GET)
+#12 9.394 [WARN] Tarball download average speed 16 KiB/s (size 35 KiB) is below 50 KiB/s: https://registry.npmjs.org/@modelcontextprotocol/node/-/node-2.1.0.tgz (GET)
+#12 9.929 [WARN] Tarball download average speed 8 KiB/s (size 48 KiB) is below 50 KiB/s: https://registry.npmjs.org/@remix-run/route-pattern/-/route-pattern-0.22.1.tgz (GET)
+#12 9.930 [WARN] Tarball download average speed 33 KiB/s (size 54 KiB) is below 50 KiB/s: https://registry.npmjs.org/@babel/runtime/-/runtime-7.29.7.tgz (GET)
+#12 11.25 Progress: resolved 411, reused 0, downloaded 405, added 384
+#12 12.36 Progress: resolved 411, reused 0, downloaded 411, added 384
+#12 35.28 [WARN] Request took 20779ms: https://registry.npmjs.org/pg
+#12 35.28 ✓ Lockfile passes supply-chain policies (482 entries in 31.8s)
+#12 35.28 Lockfile is up to date, resolution step is skipped
+#12 35.29 Packages: +411
+#12 35.29 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#12 35.34 Progress: resolved 411, reused 0, downloaded 411, added 411, done
+#12 35.34 .../esbuild@0.18.20/node_modules/esbuild postinstall$ node install.js
+#12 35.34 .../esbuild@0.25.12/node_modules/esbuild postinstall$ node install.js
+#12 35.40 .../esbuild@0.25.12/node_modules/esbuild postinstall: Done
+#12 35.41 .../esbuild@0.18.20/node_modules/esbuild postinstall: Done
+#12 35.56 
+#12 35.56 dependencies:
+#12 35.56 + @flux/contracts link:packages/contracts
+#12 35.56 + @flux/core link:packages/core
+#12 35.56 + @flux/db link:packages/db
+#12 35.56 + pg-boss 12.35.0
+#12 35.56 
+#12 35.56 devDependencies:
+#12 35.56 + @eslint/js 9.37.0
+#12 35.56 + @types/node 24.6.2
+#12 35.56 + @types/nodemailer 8.0.2
+#12 35.56 + @types/pg 8.15.5
+#12 35.56 + @types/sanitize-html 2.16.1
+#12 35.56 + @types/ws 8.18.1
+#12 35.56 + drizzle-orm 0.45.3
+#12 35.56 + eslint 9.37.0
+#12 35.56 + eslint-plugin-react-hooks 7.1.1
+#12 35.56 + fastify 5.6.1
+#12 35.56 + playwright 1.63.0
+#12 35.56 + tsx 4.20.5
+#12 35.56 + typescript 5.9.2
+#12 35.56 + typescript-eslint 8.44.1
+#12 35.56 + ws 8.22.0
+#12 35.56 
+#12 35.58 Done in 32.1s using pnpm v12.6.0
+#12 DONE 36.3s
+
+#13 [migrate build 6/6] RUN pnpm build && pnpm typecheck && pnpm lint
+#13 0.443 $ pnpm -r --if-present build && tsc -p infra/tsconfig.build.json
+#13 0.527 packages/contracts build$ tsc -p tsconfig.build.json
+#13 1.994 packages/contracts build: Done
+#13 1.995 apps/web build$ vite build
+#13 1.995 packages/db build$ tsc -p tsconfig.build.json
+#13 1.995 packages/sdk build$ tsc -p tsconfig.build.json
+#13 2.181 apps/web build: vite v8.3.1 building client environment for production...
+#13 2.191 apps/web build: transforming...
+#13 2.441 apps/web build: ✓ 248 modules transformed.
+#13 2.638 apps/web build: rendering chunks...
+#13 2.792 apps/web build: computing gzip size...
+#13 2.799 apps/web build: dist/index.html                                              1.21 kB │ gzip:   0.53 kB
+#13 2.799 apps/web build: dist/sw.js                                                   6.70 kB
+#13 2.799 apps/web build: dist/assets/inter-vietnamese-wght-normal-CBcvBZtf.woff2     10.25 kB
+#13 2.799 apps/web build: dist/assets/inter-greek-ext-wght-normal-DlzME5K_.woff2      11.23 kB
+#13 2.799 apps/web build: dist/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2       18.74 kB
+#13 2.799 apps/web build: dist/assets/inter-greek-wght-normal-CkhJZR-_.woff2          18.99 kB
+#13 2.799 apps/web build: dist/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2   25.96 kB
+#13 2.799 apps/web build: dist/assets/inter-latin-wght-normal-Dx4kXJAl.woff2          48.25 kB
+#13 2.799 apps/web build: dist/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2      85.06 kB
+#13 2.799 apps/web build: dist/assets/index-DH0OD3JM.css                             153.10 kB │ gzip:  27.10 kB
+#13 2.799 apps/web build: dist/assets/media-SUOJMB2A.js                              419.65 kB │ gzip: 108.68 kB
+#13 2.799 apps/web build: dist/assets/index-B2nuJGOK.js                              734.48 kB │ gzip: 217.49 kB
+#13 2.799 apps/web build: 
+#13 2.800 apps/web build: [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "use client" in "../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js" may not be preserved when bundling.
+#13 2.800 apps/web build:     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m ../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js:11:1 [38;5;246m][0m
+#13 2.800 apps/web build:     [38;5;246m│[0m
+#13 2.800 apps/web build:  [38;5;246m11 │[0m "use client";
+#13 2.800 apps/web build:  [38;5;240m   │[0m ──────┬──────  
+#13 2.800 apps/web build:  [38;5;240m   │[0m       ╰──────── module level directive may not be preserved
+#13 2.800 apps/web build:  [38;5;240m   │[0m 
+#13 2.800 apps/web build:  [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+#13 2.800 apps/web build: [38;5;246m────╯[0m
+#13 2.800 apps/web build: 
+#13 2.800 apps/web build: [plugin builtin:vite-reporter] 
+#13 2.800 apps/web build: (!) Some chunks are larger than 500 kB after minification. Consider:
+#13 2.800 apps/web build: - Using dynamic import() to code-split the application
+#13 2.800 apps/web build: - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+#13 2.800 apps/web build: - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+#13 2.801 apps/web build: ✓ built in 619ms
+#13 2.836 apps/web build: Done
+#13 3.912 packages/sdk build: Done
+#13 4.972 packages/db build: Done
+#13 4.973 packages/core build$ tsc -p tsconfig.build.json
+#13 6.895 packages/core build: Done
+#13 6.896 packages/agent-runtime build$ tsc -p tsconfig.build.json
+#13 6.896 apps/server build$ tsc -p tsconfig.build.json
+#13 7.985 packages/agent-runtime build: Done
+#13 7.985 apps/worker build$ tsc -p tsconfig.build.json
+#13 9.022 apps/worker build: Done
+#13 10.05 apps/server build: Done
+#13 11.01 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#13 19.71 $ eslint .
+#13 DONE 29.1s
+
+#14 [test] exporting to image
+#14 exporting layers
+#14 ...
+
+#15 [migrate production-dependencies 1/1] RUN pnpm install --prod --offline --frozen-lockfile
+#15 0.458 Scope: all 10 workspace projects
+#15 0.497 ✓ Lockfile passes supply-chain policies (verified 30s ago)
+#15 0.497 Lockfile is up to date, resolution step is skipped
+#15 0.653 Packages: -199
+#15 0.653 --------------------------------------------------------------------------------
+#15 0.715 
+#15 0.715 devDependencies:
+#15 0.715 - @eslint/js 9.37.0
+#15 0.715 - @types/node 24.6.2
+#15 0.715 - @types/nodemailer 8.0.2
+#15 0.715 - @types/pg 8.15.5
+#15 0.715 - @types/sanitize-html 2.16.1
+#15 0.715 - @types/ws 8.18.1
+#15 0.715 - drizzle-orm 0.45.3
+#15 0.715 - eslint 9.37.0
+#15 0.715 - eslint-plugin-react-hooks 7.1.1
+#15 0.715 - fastify 5.6.1
+#15 0.715 - playwright 1.63.0
+#15 0.715 - tsx 4.20.5
+#15 0.715 - typescript 5.9.2
+#15 0.715 - typescript-eslint 8.44.1
+#15 0.715 - ws 8.22.0
+#15 0.715 
+#15 0.715 Done in 269ms using pnpm v12.6.0
+#15 DONE 0.9s
+
+#14 [test] exporting to image
+#14 ...
+
+#16 [pushmock e2e 2/3] WORKDIR /app
+#16 CACHED
+
+#9 [pushmock build 2/6] WORKDIR /app
+#9 CACHED
+
+#17 [migrate runtime  3/25] COPY --from=production-dependencies /app/node_modules ./node_modules
+#17 ...
+
+#14 [test] exporting to image
+#14 exporting layers 5.6s done
+#14 writing image sha256:33c2eec3cb26d0bdd2008da5841f98933feb29e28572b4b096af68adefbd14e0 done
+#14 naming to docker.io/library/flux-test-tools:flux-test-1790800655-2869269 0.0s done
+#14 DONE 5.7s
+
+#18 [pushmock e2e 3/3] COPY --from=build /app /app
+#18 ...
+
+#19 [test] resolving provenance for metadata file
+#19 DONE 0.0s
+
+#17 [migrate runtime  3/25] COPY --from=production-dependencies /app/node_modules ./node_modules
+#17 DONE 3.3s
+
+#18 [pushmock e2e 3/3] COPY --from=build /app /app
+#18 DONE 3.3s
+
+#20 [pushmock] exporting to image
+#20 ...
+
+#21 [migrate runtime  4/25] COPY --from=production-dependencies /app/apps/server/node_modules ./apps/server/node_modules
+#21 DONE 0.4s
+
+#22 [migrate runtime  5/25] COPY --from=production-dependencies /app/apps/worker/node_modules ./apps/worker/node_modules
+#22 DONE 0.4s
+
+#20 [pushmock] exporting to image
+#20 ...
+
+#23 [migrate runtime  6/25] COPY --from=production-dependencies /app/packages/core/node_modules ./packages/core/node_modules
+#23 DONE 0.3s
+
+#24 [migrate runtime  7/25] COPY --from=production-dependencies /app/packages/db/node_modules ./packages/db/node_modules
+#24 DONE 0.3s
+
+#20 [pushmock] exporting to image
+#20 ...
+
+#25 [migrate runtime  8/25] COPY --from=production-dependencies /app/packages/agent-runtime/node_modules ./packages/agent-runtime/node_modules
+#25 DONE 0.4s
+
+#26 [migrate runtime  9/25] COPY --from=build /app/package.json ./package.json
+#26 DONE 0.3s
+
+#20 [pushmock] exporting to image
+#20 ...
+
+#27 [migrate runtime 10/25] COPY --from=build /app/apps/server/package.json ./apps/server/package.json
+#27 DONE 0.3s
+
+#28 [migrate runtime 11/25] COPY --from=build /app/apps/worker/package.json ./apps/worker/package.json
+#28 DONE 0.3s
+
+#20 [pushmock] exporting to image
+#20 ...
+
+#29 [migrate runtime 12/25] COPY --from=build /app/packages/contracts/package.json ./packages/contracts/package.json
+#29 DONE 0.3s
+
+#30 [migrate runtime 13/25] COPY --from=build /app/packages/core/package.json ./packages/core/package.json
+#30 DONE 0.3s
+
+#20 [pushmock] exporting to image
+#20 ...
+
+#31 [migrate runtime 14/25] COPY --from=build /app/packages/db/package.json ./packages/db/package.json
+#31 DONE 0.3s
+
+#32 [migrate runtime 15/25] COPY --from=build /app/packages/agent-runtime/package.json ./packages/agent-runtime/package.json
+#32 DONE 0.3s
+
+#20 [pushmock] exporting to image
+#20 exporting layers 4.0s done
+#20 writing image sha256:3871447756dd0f9d34a4d3e20618e09aac074886e536c57e08b36d6ebd433205 0.0s done
+#20 naming to docker.io/library/flux-e2e:flux-test-1790800655-2869269 0.0s done
+#20 DONE 4.1s
+
+#33 [migrate runtime 16/25] COPY --from=build /app/apps/server/dist ./apps/server/dist
+#33 DONE 0.4s
+
+#34 [migrate runtime 17/25] COPY --from=build /app/apps/worker/dist ./apps/worker/dist
+#34 DONE 0.5s
+
+#35 [pushmock] resolving provenance for metadata file
+#35 DONE 0.0s
+
+#36 [migrate runtime 18/25] COPY --from=build /app/apps/web/dist ./apps/web/dist
+#36 DONE 0.3s
+
+#37 [migrate runtime 19/25] COPY --from=build /app/packages/contracts/dist ./packages/contracts/dist
+#37 DONE 0.2s
+
+#38 [migrate runtime 20/25] COPY --from=build /app/packages/core/dist ./packages/core/dist
+#38 DONE 0.3s
+
+#39 [migrate runtime 21/25] COPY --from=build /app/packages/db/dist ./packages/db/dist
+#39 DONE 0.3s
+
+#40 [migrate runtime 22/25] COPY --from=build /app/packages/agent-runtime/dist ./packages/agent-runtime/dist
+#40 DONE 0.3s
+
+#41 [migrate runtime 23/25] COPY --from=build /app/packages/db/migrations ./packages/db/migrations
+#41 DONE 0.2s
+
+#42 [migrate runtime 24/25] COPY --from=build /app/infra/dist ./infra/dist
+#42 DONE 0.2s
+
+#43 [migrate runtime 25/25] RUN mkdir -p /data/files && chown -R node:node /data
+#43 DONE 0.5s
+
+#44 [migrate] exporting to image
+#44 exporting layers 3.9s done
+#44 writing image sha256:97ce9e05c8368495a4d4e7d8f3abe5752a16a733963dcd4e96aa35398aaf491c done
+#44 naming to docker.io/library/flux-foundation:flux-test-1790800655-2869269 0.0s done
+#44 DONE 4.0s
+
+#45 [migrate] resolving provenance for metadata file
+#45 DONE 0.0s
+ Image flux-foundation:flux-test-1790800655-2869269 Built 
+ Image flux-e2e:flux-test-1790800655-2869269 Built 
+ Image flux-test-tools:flux-test-1790800655-2869269 Built 
+ Network flux-test-1790800655-2869269_default Creating 
+ Network flux-test-1790800655-2869269_default Created 
+ Volume flux-test-1790800655-2869269_pgdata Creating 
+ Volume flux-test-1790800655-2869269_pgdata Created 
+ Container flux-test-1790800655-2869269-db-1 Creating 
+ Container flux-test-1790800655-2869269-db-1 Created 
+ Container flux-test-1790800655-2869269-migrate-1 Creating 
+ Container flux-test-1790800655-2869269-migrate-1 Created 
+ Container flux-test-1790800655-2869269-db-1 Starting 
+ Container flux-test-1790800655-2869269-db-1 Started 
+ Container flux-test-1790800655-2869269-db-1 Waiting 
+ Container flux-test-1790800655-2869269-db-1 Healthy 
+ Container flux-test-1790800655-2869269-migrate-1 Starting 
+ Container flux-test-1790800655-2869269-migrate-1 Started 
+ Volume flux-test-1790800655-2869269_files Creating 
+ Volume flux-test-1790800655-2869269_files Created 
+ Container flux-test-1790800655-2869269-files-init-run-257547207d95 Creating 
+time="2026-09-30T22:39:12+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-test-1790800655-2869269-files-init-run-257547207d95 Created 
+ Container flux-test-1790800655-2869269-migrate-run-fc8931353c10 Creating 
+ Container flux-test-1790800655-2869269-migrate-run-fc8931353c10 Created 
+ Volume flux-test-1790800655-2869269_teststate Creating 
+ Volume flux-test-1790800655-2869269_teststate Created 
+ Volume flux-test-1790800655-2869269_pushtls Creating 
+ Volume flux-test-1790800655-2869269_pushtls Created 
+ Container flux-test-1790800655-2869269-mailpit-1 Creating 
+ Container flux-test-1790800655-2869269-db-1 Running 
+ Container flux-test-1790800655-2869269-api-1 Creating 
+ Container flux-test-1790800655-2869269-pushmock-1 Creating 
+time="2026-09-30T22:39:14+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-test-1790800655-2869269-mailpit-1 Created 
+ Container flux-test-1790800655-2869269-pushmock-1 Created 
+ Container flux-test-1790800655-2869269-worker-1 Creating 
+ Container flux-test-1790800655-2869269-mailpit-smtps-1 Creating 
+ Container flux-test-1790800655-2869269-mailpit-starttls-1 Creating 
+time="2026-09-30T22:39:14+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-test-1790800655-2869269-api-1 Created 
+ Container flux-test-1790800655-2869269-worker-1 Created 
+ Container flux-test-1790800655-2869269-mailpit-smtps-1 Created 
+ Container flux-test-1790800655-2869269-mailpit-starttls-1 Created 
+ Container flux-test-1790800655-2869269-mailpit-1 Starting 
+ Container flux-test-1790800655-2869269-db-1 Waiting 
+ Container flux-test-1790800655-2869269-pushmock-1 Starting 
+ Container flux-test-1790800655-2869269-mailpit-1 Started 
+ Container flux-test-1790800655-2869269-pushmock-1 Started 
+ Container flux-test-1790800655-2869269-pushmock-1 Waiting 
+ Container flux-test-1790800655-2869269-pushmock-1 Waiting 
+ Container flux-test-1790800655-2869269-db-1 Healthy 
+ Container flux-test-1790800655-2869269-migrate-1 Starting 
+ Container flux-test-1790800655-2869269-migrate-1 Started 
+ Container flux-test-1790800655-2869269-migrate-1 Waiting 
+ Container flux-test-1790800655-2869269-migrate-1 Waiting 
+ Container flux-test-1790800655-2869269-pushmock-1 Waiting 
+ Container flux-test-1790800655-2869269-migrate-1 Exited 
+ Container flux-test-1790800655-2869269-migrate-1 Exited 
+ Container flux-test-1790800655-2869269-api-1 Starting 
+ Container flux-test-1790800655-2869269-api-1 Started 
+ Container flux-test-1790800655-2869269-pushmock-1 Healthy 
+ Container flux-test-1790800655-2869269-worker-1 Starting 
+ Container flux-test-1790800655-2869269-pushmock-1 Healthy 
+ Container flux-test-1790800655-2869269-mailpit-smtps-1 Starting 
+ Container flux-test-1790800655-2869269-pushmock-1 Healthy 
+ Container flux-test-1790800655-2869269-mailpit-starttls-1 Starting 
+ Container flux-test-1790800655-2869269-worker-1 Started 
+ Container flux-test-1790800655-2869269-mailpit-smtps-1 Started 
+ Container flux-test-1790800655-2869269-mailpit-starttls-1 Started 
+ Container flux-test-1790800655-2869269-mailpit-starttls-1 Waiting 
+ Container flux-test-1790800655-2869269-mailpit-smtps-1 Waiting 
+ Container flux-test-1790800655-2869269-migrate-1 Waiting 
+ Container flux-test-1790800655-2869269-api-1 Waiting 
+ Container flux-test-1790800655-2869269-mailpit-1 Waiting 
+ Container flux-test-1790800655-2869269-pushmock-1 Waiting 
+ Container flux-test-1790800655-2869269-mailpit-1 Healthy 
+ Container flux-test-1790800655-2869269-migrate-1 Exited 
+ Container flux-test-1790800655-2869269-pushmock-1 Healthy 
+ Container flux-test-1790800655-2869269-mailpit-smtps-1 Healthy 
+ Container flux-test-1790800655-2869269-mailpit-starttls-1 Healthy 
+ Container flux-test-1790800655-2869269-api-1 Healthy 
+ Container flux-test-1790800655-2869269-test-run-4039929ce9e0 Creating 
+ Container flux-test-1790800655-2869269-test-run-4039929ce9e0 Created 
+▶ architecture boundaries
+  ✔ the repository has no dependency violation outside the recorded allowlist (28.847851ms)
+  ✔ every allowlist entry names its tracking issue and a reason (0.288941ms)
+  ✔ the push use cases in core stay free of adapters, including through helpers (0.783392ms)
+  ✔ the sketch use cases in core stay free of adapters, including through helpers (#69) (0.564842ms)
+  ✔ the direct-message use cases in core stay free of adapters, including through helpers (#107) (2.381557ms)
+  ✔ the rules reject each kind of boundary violation (self-test) (0.426261ms)
+  ✔ the allowlist comparison reports new and fixed violations (0.12444ms)
+✔ architecture boundaries (34.468528ms)
+▶ project capture and inline conversation
+  ✔ private draft remains private; selected redacted text becomes a versioned project material (248.683794ms)
+  ✔ two people send inline, retry safely, and keep a historical material citation (418.745036ms)
+  ✔ material publication retry and access revocation never expose cached project content (176.845181ms)
+✔ project capture and inline conversation (1418.433915ms)
+▶ exact Flux migration ledger (#118)
+  ✔ the shipped SQL manifest, embedded versions and running database agree (32.038821ms)
+  ✔ duplicate numbers, invalid SQL names and a stale highest-version constant fail before execution (0.570952ms)
+  ✔ a newly landed lower-numbered migration may fill a reserved gap after a higher one (0.249991ms)
+  ✔ phantom rows, missing files and a silently skipped file fail even if max is correct (0.2937ms)
+  ✔ legacy self-recording is allowed; wrong embedded inserts or deletions fail within a transaction (11.824183ms)
+✔ exact Flux migration ledger (#118) (46.20012ms)
+✔ opening a task remains empty; simultaneous genuine authors create one exact canonical root (913.725887ms)
+✔ bounded newest/older windows retain the exact first root and never rewrite its identity (644.729626ms)
+✔ durable task retries recheck access and conflict on changed payload, task or generic thread operation (619.002252ms)
+✔ current material citations are exact; restricted or invalid first sends leave no synthetic thread (499.338363ms)
+✔ failure after first root binding rolls back conversation, message, binding and event; exact retry creates once (326.849206ms)
+✔ task creation keeps source messages intact and stores exactly one distinct trusted notice (783.942469ms)
+✔ same domain command serializes simultaneous API/helper retries without relying on transport cache (631.733358ms)
+✔ no-source and legacy no-key creation are atomic; a genuine agent remains the notice creator (560.184536ms)
+✔ failure after notice insertion rolls back task, source links, notice and events together (470.114831ms)
+▶ work, decisions and results in a project
+  ✔ work is created from a message in one action and the message stays in place (320.707088ms)
+  ✔ one experiment can come from several thoughts of a project sketch; private thoughts are not linkable (270.550736ms)
+  ✔ changes need If-Match; stale and concurrent changes get 409 and retries are idempotent (324.890209ms)
+  ✔ only people accept decisions; superseding keeps history and a pivot parks obsolete work (438.27752ms)
+  ✔ a negative result finishes an experiment and links its evidence (220.648135ms)
+  ✔ a result finishes work only at the version its author saw and never reverses a disposition (295.904848ms)
+  ✔ events reach only project readers; assigned work uses the visibility filter and access loss hides everything (440.256097ms)
+✔ work, decisions and results in a project (3026.651818ms)
+ℹ tests 31
+ℹ suites 4
+ℹ pass 31
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3940.246043
+ Container flux-test-1790800655-2869269-api-1 Stopping 
+ Container flux-test-1790800655-2869269-mailpit-1 Stopping 
+ Container flux-test-1790800655-2869269-worker-1 Stopping 
+ Container flux-test-1790800655-2869269-mailpit-starttls-1 Stopping 
+ Container flux-test-1790800655-2869269-mailpit-smtps-1 Stopping 
+ Container flux-test-1790800655-2869269-worker-1 Stopped 
+ Container flux-test-1790800655-2869269-worker-1 Removing 
+ Container flux-test-1790800655-2869269-worker-1 Removed 
+ Container flux-test-1790800655-2869269-mailpit-1 Stopped 
+ Container flux-test-1790800655-2869269-mailpit-1 Removing 
+ Container flux-test-1790800655-2869269-mailpit-1 Removed 
+ Container flux-test-1790800655-2869269-mailpit-smtps-1 Stopped 
+ Container flux-test-1790800655-2869269-mailpit-smtps-1 Removing 
+ Container flux-test-1790800655-2869269-mailpit-smtps-1 Removed 
+ Container flux-test-1790800655-2869269-mailpit-starttls-1 Stopped 
+ Container flux-test-1790800655-2869269-mailpit-starttls-1 Removing 
+ Container flux-test-1790800655-2869269-mailpit-starttls-1 Removed 
+ Container flux-test-1790800655-2869269-pushmock-1 Stopping 
+ Container flux-test-1790800655-2869269-pushmock-1 Stopped 
+ Container flux-test-1790800655-2869269-pushmock-1 Removing 
+ Container flux-test-1790800655-2869269-pushmock-1 Removed 
+ Container flux-test-1790800655-2869269-api-1 Stopped 
+ Container flux-test-1790800655-2869269-api-1 Removing 
+ Container flux-test-1790800655-2869269-api-1 Removed 
+ Container flux-test-1790800655-2869269-migrate-1 Stopping 
+ Container flux-test-1790800655-2869269-migrate-1 Stopped 
+ Container flux-test-1790800655-2869269-migrate-1 Removing 
+ Container flux-test-1790800655-2869269-migrate-1 Removed 
+ Container flux-test-1790800655-2869269-db-1 Stopping 
+ Container flux-test-1790800655-2869269-db-1 Stopped 
+ Container flux-test-1790800655-2869269-db-1 Removing 
+ Container flux-test-1790800655-2869269-db-1 Removed 
+ Volume flux-test-1790800655-2869269_teststate Removing 
+ Volume flux-test-1790800655-2869269_pushtls Removing 
+ Volume flux-test-1790800655-2869269_files Removing 
+ Volume flux-test-1790800655-2869269_pgdata Removing 
+ Network flux-test-1790800655-2869269_default Removing 
+ Volume flux-test-1790800655-2869269_teststate Removed 
+ Volume flux-test-1790800655-2869269_pushtls Removed 
+ Volume flux-test-1790800655-2869269_files Removed 
+ Volume flux-test-1790800655-2869269_pgdata Removed 
+ Network flux-test-1790800655-2869269_default Removed 
+Removed 3 per-run image(s) tagged :flux-test-1790800655-2869269

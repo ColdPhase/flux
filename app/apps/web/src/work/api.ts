@@ -42,7 +42,7 @@ export const getDecision = (id: string, signal?: AbortSignal) => request<Decisio
 export const getResult = (id: string, signal?: AbortSignal) => request<WorkResult>(resultPath(id), { signal });
 /** Create commands carry an Idempotency-Key that the caller reuses when retrying the same submission. */
 export const createWork = (projectId: string, command: CreateWorkCommand, idempotencyKey: string) =>
-  request<WorkItem>(projectWorkPath(projectId), { method: 'POST', body: command, headers: key(idempotencyKey) });
+  request<WorkItem>(projectWorkPath(projectId), { method: 'POST', body: { ...command, clientCommandId: command.clientCommandId ?? idempotencyKey }, headers: key(idempotencyKey) });
 export const updateWork = (item: WorkItem, command: UpdateWorkCommand) =>
   request<WorkItem>(workItemPath(item.id), { method: 'PATCH', body: command, headers: ifMatch(item.version) });
 export const proposeDecision = (projectId: string, command: ProposeDecisionCommand, idempotencyKey: string) =>

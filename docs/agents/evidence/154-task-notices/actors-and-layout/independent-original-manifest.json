@@ -1,0 +1,147 @@
+{
+  "reviewedLocalHead": "2093a8ca69a5eb3523c80ef9eb466fce75324051",
+  "integrationTestHead": "8f4a7892e0dcb1cc42ada6bd3ecad8918b9fcb9f",
+  "equivalence": "8f\u21922093 modifies only the actor browser fixture by4 awaited response lines; production source identical",
+  "integrationTests": {
+    "passed": 99,
+    "failed": 0,
+    "fileConcurrency": 3
+  },
+  "browserTests": {
+    "passed": 1,
+    "failed": 0,
+    "sameHumanAgentDisplayName": "Casey Human"
+  },
+  "restartOnlyRetryExit": 0,
+  "earlierRuns": {
+    "8fCombined": 1,
+    "2093Combined": 1,
+    "reason": "Browser fixture race and external harness reason assertion; preserve original failed statuses."
+  },
+  "boundedVerdict": "PASS actors/deferred events",
+  "whole154Verdict": "UNVERIFIED/DRAFT",
+  "visualVerdict": "separate fresh reviewer pending",
+  "remoteSnapshot": {
+    "headRefOid": "4f708987429de971d4414d608f0a767fed73e91c",
+    "isDraft": true,
+    "reviewDecision": "REVIEW_REQUIRED",
+    "state": "OPEN",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-30T20:52:40Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/ColdPhase/flux/actions/runs/36775514658/job/110092296377",
+        "name": "Application validation",
+        "startedAt": "2026-09-30T20:51:14Z",
+        "status": "COMPLETED",
+        "workflowName": "Application checks"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-09-30T20:51:22Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/ColdPhase/flux/actions/runs/36775514451/job/110092294614",
+        "name": "Agent setup",
+        "startedAt": "2026-09-30T20:51:14Z",
+        "status": "COMPLETED",
+        "workflowName": "Repository checks"
+      }
+    ]
+  },
+  "files": [
+    {
+      "path": "/tmp/flux154-independent-actors-review.md",
+      "bytes": 8654,
+      "sha256": "5f24773aa80bc81ee96c7cafa7b4d1c52d05cc285ff7dd76935f5787b4012de5"
+    },
+    {
+      "path": "/tmp/flux154-deferred-events-design-peer.md",
+      "bytes": 6057,
+      "sha256": "d06ad7f3291e628bccd9266c2666360ec3fad7388ee9adf8fac5974e7cf9af9f"
+    },
+    {
+      "path": "/tmp/flux154-actor-visual-brief.md",
+      "bytes": 2228,
+      "sha256": "b08eb85f4118b65e7ea63f70f0a27c5e89c820945c9d15f2d107680c2032a55c"
+    },
+    {
+      "path": "/tmp/flux154-8f-to-2093.diff",
+      "bytes": 1357,
+      "sha256": "489035fe3cc7697c9b4a6b04d05b4d1cb95dec8ac55212463656ed9cac27938e"
+    },
+    {
+      "path": "/tmp/flux154-independent-pr-snapshot.json",
+      "bytes": 735,
+      "sha256": "6868890d3ba5b1dc90c8674da6727685f939701e0b47808229b905eafe7eab02"
+    },
+    {
+      "path": "/tmp/flux154-independent-actors-8f4a789.sh",
+      "bytes": 4116,
+      "sha256": "c41dbb5057a77a2bd6cd3c7498b1299f673c9a5f1e76aeb73e6ac11dbbc6ddd9"
+    },
+    {
+      "path": "/tmp/flux154-independent-actors-8f4a789.log",
+      "bytes": 1042959,
+      "sha256": "6be9b4459ad497af160ecc47c5df8316144f9d553f84e12a82de3a86c45089f3"
+    },
+    {
+      "path": "/tmp/flux154-independent-browser-restart-2093a8c.sh",
+      "bytes": 3786,
+      "sha256": "3133aff9577d383a290f3ef8c934111be781e0904d84829b24304191675d3721"
+    },
+    {
+      "path": "/tmp/flux154-independent-browser-restart-2093a8c.log",
+      "bytes": 151192,
+      "sha256": "65aa5164b8ea4699f2ffced48ad6cd6f89cd95fc5a0222bbb26fa050baada207"
+    },
+    {
+      "path": "/tmp/flux154-independent-restart-2093a8c-retry1.sh",
+      "bytes": 3603,
+      "sha256": "6a550ffb8e5a5f83e9acf86a756e20afcb863928865b0fd505f976c1ac1cab78"
+    },
+    {
+      "path": "/tmp/flux154-independent-restart-2093a8c-retry1.log",
+      "bytes": 21051,
+      "sha256": "a39f18a7a37aa9fa247637879484c805349651f29648df60d6c63de2caf62ee1"
+    },
+    {
+      "path": "/tmp/flux154-independent-actor-restart.ts",
+      "bytes": 9488,
+      "sha256": "a2b3c27e126621bddf093af1d0f9acc6462841b54810462424aac660423a5ded"
+    },
+    {
+      "path": "/tmp/flux154-independent-human-like-actor.e2e.ts",
+      "bytes": 7476,
+      "sha256": "6362245f7434a1925e5dae35d609a79adb398e74ee58007bf0f0e4f55af221ff"
+    },
+    {
+      "path": "/tmp/flux154-independent-actor-ui/agent-root-desktop.png",
+      "bytes": 76327,
+      "sha256": "cff6b1ed6370568536c2aa70fdbc885c8a3a1944f5431504615636b9cec4c171",
+      "dimensions": [
+        1280,
+        900
+      ]
+    },
+    {
+      "path": "/tmp/flux154-independent-actor-ui/mixed-authors-reader-1280.png",
+      "bytes": 77801,
+      "sha256": "dcb49b24356b665bdca1f186339ed38299706436b7d63c606ca19f86dbc0fff7",
+      "dimensions": [
+        1280,
+        900
+      ]
+    },
+    {
+      "path": "/tmp/flux154-independent-actor-ui/mixed-authors-reader-390.png",
+      "bytes": 47506,
+      "sha256": "c9cf8feb7455855cce916f4679ed8e1a3975dfb99f606a176953ffb87a448848",
+      "dimensions": [
+        390,
+        900
+      ]
+    }
+  ],
+  "privacy": "Full logs may contain generated test credentials; do not publish."
+}
