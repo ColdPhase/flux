@@ -88,7 +88,7 @@ def main() -> int:
     dark_start = css.index(':root[data-theme="dark"] {')
     dark = {**light, **parse(css[dark_start:css.index("}", dark_start)])}
     palettes = []
-    for family in ("mint", "iris", "sky"):
+    for family in ("mint", "sky", "copper"):
         override = {}
         if family != "mint":
             start = css.index(f':root[data-accent="{family}"]')

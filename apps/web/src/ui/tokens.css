@@ -1,4 +1,4 @@
-/* Flux theme tokens: F-013 Studio v11, Mint (default), Iris and Sky (#135).
+/* Flux theme tokens: F-017 Studio 11.6, Mint (default), Sky and Copper (#148).
    Neutrals and semantic statuses stay stable; appearance controls action/selection/link/focus.
    See docs/design/theme-accents.md. scripts/check_contrast.py checks all six palettes. */
 :root {
@@ -104,9 +104,9 @@
   --accent-light: #247358; --accent-light-hover: #1c6049; --accent-light-pressed: #174f3d; --accent-light-soft: #e7f4ed;
   --accent-dark: #8ed8b8; --accent-dark-hover: #a6e3ca; --accent-dark-pressed: #78c5a5; --accent-dark-soft: #1c3028;
 }
-:root[data-accent="iris"], .me-accent__option[data-accent-option="iris"] {
-  --accent-light: #6742a6; --accent-light-hover: #57358f; --accent-light-pressed: #492d78; --accent-light-soft: #eee8f9;
-  --accent-dark: #b7a8ef; --accent-dark-hover: #c9bdf7; --accent-dark-pressed: #a596de; --accent-dark-soft: #2a2539;
+:root[data-accent="copper"], .me-accent__option[data-accent-option="copper"] {
+  --accent-light: #985035; --accent-light-hover: #853f2a; --accent-light-pressed: #703521; --accent-light-soft: #f6ede7;
+  --accent-dark: #dba88c; --accent-dark-hover: #e6baa2; --accent-dark-pressed: #c69478; --accent-dark-soft: #3b2e25;
 }
 :root[data-accent="sky"], .me-accent__option[data-accent-option="sky"] {
   --accent-light: #2c609b; --accent-light-hover: #245184; --accent-light-pressed: #1d426d; --accent-light-soft: #e9f0f8;

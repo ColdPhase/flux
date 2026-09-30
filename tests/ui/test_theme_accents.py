@@ -1,4 +1,4 @@
-"""#135: real local preferences, composited palette states and persisted working surfaces.
+"""#135/#148: real local preferences, composited palette states and persisted working surfaces.
 
 All appearance changes use the running application's account controls. API setup creates
 identical project/conversation/work/map content; it does not mock browser UI responses.
@@ -14,7 +14,7 @@ import uuid
 from playwright.sync_api import expect, sync_playwright
 from test_app_shell import DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, shot, start_forwarder
 
-FAMILIES = ("Mint", "Iris", "Sky")
+FAMILIES = ("Mint", "Sky", "Copper")
 MEASURE = r"""(spec) => {
   const el = document.querySelector(spec.selector);
   if (!el) throw new Error('Missing contrast target: ' + spec.selector);
@@ -185,45 +185,53 @@ class ThemeAccentsJourney(unittest.TestCase):
         expect(mint).to_have_attribute("aria-checked", "true")
         mint.focus()
         mint.press("ArrowRight")
-        iris = group.get_by_role("radio", name="Iris", exact=True)
-        expect(iris).to_be_focused()
-        expect(iris).to_have_attribute("aria-checked", "true")
-        iris.press("End")
-        expect(group.get_by_role("radio", name="Sky", exact=True)).to_be_focused()
-        group.get_by_role("radio", name="Sky", exact=True).press("Home")
+        sky = group.get_by_role("radio", name="Sky", exact=True)
+        expect(sky).to_be_focused()
+        expect(sky).to_have_attribute("aria-checked", "true")
+        sky.press("End")
+        copper = group.get_by_role("radio", name="Copper", exact=True)
+        expect(copper).to_be_focused()
+        copper.press("Home")
         expect(mint).to_be_focused()
         mint.press("ArrowLeft")
-        expect(group.get_by_role("radio", name="Sky", exact=True)).to_be_focused()
+        expect(copper).to_be_focused()
         page.wait_for_timeout(200)
-        self.measure(page, "Light", "Sky", '[data-accent-option="sky"]', 3, property="outlineColor", backgroundSelector=".me__pop")
+        self.measure(page, "Light", "Copper", '[data-accent-option="copper"]', 3, property="outlineColor", backgroundSelector=".me__pop")
         pop.get_by_role("radio", name="Dark", exact=True).click()
+        expect(mint).to_have_attribute("aria-checked", "true")
+        sky.click()
         page.keyboard.press("Escape")
         expect(page.locator(".me__btn")).to_be_focused()
         page.reload()
         expect(page.locator("html")).to_have_attribute("data-accent", "sky")
         expect(page.locator("html")).to_have_attribute("data-theme", "dark")
-        self.assertEqual(page.evaluate("localStorage.getItem('flux.accent')"), "sky")
+        self.assertEqual(page.evaluate("localStorage.getItem('flux.accent.light')"), "copper")
+        self.assertEqual(page.evaluate("localStorage.getItem('flux.accent.dark')"), "sky")
         pop = self.account(page)
+        pop.get_by_role("radio", name="Light", exact=True).click()
+        expect(pop.get_by_role("radio", name="Copper", exact=True)).to_have_attribute("aria-checked", "true")
         pop.get_by_role("radio", name="System", exact=True).click()
         page.keyboard.press("Escape")
         page.emulate_media(color_scheme="dark")
+        expect(page.locator("html")).to_have_attribute("data-accent", "sky")
         dark = page.locator("html").evaluate("e => getComputedStyle(e).getPropertyValue('--accent').trim()")
         page.emulate_media(color_scheme="light")
+        expect(page.locator("html")).to_have_attribute("data-accent", "copper")
         light = page.locator("html").evaluate("e => getComputedStyle(e).getPropertyValue('--accent').trim()")
         self.assertNotEqual(light, dark)
-        expect(page.locator("html")).to_have_attribute("data-accent", "sky")
-        page.evaluate("localStorage.setItem('flux.accent','old-teal')")
+        # Invalid new slots fall back safely; a retained legacy key cannot override them.
+        page.evaluate("localStorage.setItem('flux.accent.light','old-teal')")
         page.reload()
         expect(page.locator("html")).to_have_attribute("data-accent", "mint")
-        pop = self.account(page)
-        expect(pop.get_by_role("radio", name="Mint", exact=True)).to_have_attribute("aria-checked", "true")
-        page.keyboard.press("Escape")
-        # Refused browser storage still permits a visit-local preference.
+        self.assertEqual(page.evaluate("localStorage.getItem('flux.accent.dark')"), "sky")
+        # Refused browser storage still permits two visit-local choices.
         blocked = self.page()
         blocked.add_init_script("Storage.prototype.setItem = () => { throw new DOMException('Refused', 'SecurityError') }; Storage.prototype.getItem = () => { throw new DOMException('Refused', 'SecurityError') }")
         blocked.goto(self.conversation_url)
-        self.appearance(blocked, "Dark", "Iris")
-        expect(blocked.locator("html")).to_have_attribute("data-accent", "iris")
+        self.appearance(blocked, "Dark", "Copper")
+        self.appearance(blocked, "Light", "Sky")
+        self.appearance(blocked, "Dark", "Copper")
+        expect(blocked.locator("html")).to_have_attribute("data-accent", "copper")
 
     def test_03_all_six_composited_surfaces(self):
         page = self.page()
@@ -256,7 +264,7 @@ class ThemeAccentsJourney(unittest.TestCase):
                     shot(page, f"accent-{theme.lower()}-{family.lower()}-conversation-1440")
                     pop = self.account(page)
                     samples = page.locator(".me-accent__sample").evaluate_all("els => els.map(e => getComputedStyle(e).backgroundColor)")
-                    expected = ["rgb(36, 115, 88)", "rgb(103, 66, 166)", "rgb(44, 96, 155)"] if theme == "Light" else ["rgb(142, 216, 184)", "rgb(183, 168, 239)", "rgb(148, 188, 243)"]
+                    expected = ["rgb(36, 115, 88)", "rgb(44, 96, 155)", "rgb(152, 80, 53)"] if theme == "Light" else ["rgb(142, 216, 184)", "rgb(148, 188, 243)", "rgb(219, 168, 140)"]
                     self.assertEqual(samples, expected, "each named sample keeps its own family regardless of the active choice")
                     self.measure(page, theme, family, f'[data-accent-option="{family.lower()}"]')
                     selected = pop.get_by_role("radio", name=family, exact=True)
@@ -375,7 +383,7 @@ class ThemeAccentsJourney(unittest.TestCase):
         for theme in ("Light", "Dark"):
             for family in FAMILIES:
                 page = self.page(signed_in=False)
-                page.add_init_script(f"localStorage.setItem('flux.theme', '{theme.lower()}'); localStorage.setItem('flux.accent', '{family.lower()}')")
+                page.add_init_script(f"localStorage.setItem('flux.theme', '{theme.lower()}'); localStorage.setItem('flux.accent.light', '{family.lower()}'); localStorage.setItem('flux.accent.dark', '{family.lower()}')")
                 page.goto("/sign-up")
                 page.get_by_role("button", name="Create account").click()
                 expect(page.get_by_text("Enter the name people will see.")).to_be_visible()
@@ -384,3 +392,28 @@ class ThemeAccentsJourney(unittest.TestCase):
                 self.assertIn("underline", page.locator(".ui-link").first.evaluate("e => getComputedStyle(e).textDecorationLine"), "prose links remain identifiable beyond color")
                 self.measure(page, theme, family, ".ui-btn--primary")
                 shot(page, f"accent-{theme.lower()}-{family.lower()}-form-error-1440")
+
+    def test_06_legacy_migration_and_explicit_slots(self):
+        cases = (("mint", None, "mint", "mint"), ("sky", None, "sky", "sky"),
+                 ("iris", None, "sky", "sky"), ("unknown", None, "mint", "mint"),
+                 ("iris", "copper", "copper", "sky"))
+        for legacy, explicit, light, dark in cases:
+            with self.subTest(legacy=legacy, explicit=explicit):
+                page = self.page()
+                page.add_init_script("""(() => {
+                  localStorage.removeItem('flux.accent.light');
+                  localStorage.removeItem('flux.accent.dark');
+                  localStorage.setItem('flux.theme','light');
+                  localStorage.setItem('flux.accent', %s);
+                  %s
+                })()""" % (json.dumps(legacy), "localStorage.setItem('flux.accent.light', 'copper');" if explicit else ""))
+                page.goto(self.conversation_url)
+                expect(page.locator("html")).to_have_attribute("data-accent", light)
+                self.assertEqual(page.evaluate("localStorage.getItem('flux.accent.light')"), light)
+                self.assertEqual(page.evaluate("localStorage.getItem('flux.accent.dark')"), dark)
+                self.assertEqual(page.evaluate("localStorage.getItem('flux.accent')"), legacy)
+                pop = self.account(page)
+                pop.get_by_role("radio", name="Dark", exact=True).click()
+                expect(page.locator("html")).to_have_attribute("data-accent", dark)
+                expect(pop.get_by_role("radio", name="Iris", exact=True)).to_have_count(0)
+                page.keyboard.press("Escape")

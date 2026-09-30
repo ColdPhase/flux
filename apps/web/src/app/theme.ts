@@ -1,8 +1,10 @@
 import { useSyncExternalStore } from 'react';
 
 export type ThemeChoice = 'system' | 'light' | 'dark';
-export type AccentChoice = 'mint' | 'iris' | 'sky';
-const ACCENT_KEY = 'flux.accent';
+export type AccentChoice = 'mint' | 'sky' | 'copper';
+type ResolvedTheme = 'light' | 'dark';
+const LEGACY_ACCENT_KEY = 'flux.accent';
+const accentKey = (theme: ResolvedTheme) => `flux.accent.${theme}`;
 const KEY = 'flux.theme';
 const listeners = new Set<() => void>();
 
@@ -15,18 +17,43 @@ function read(): ThemeChoice {
   }
 }
 
-function readAccent(): AccentChoice {
+function validAccent(value: string | null): value is AccentChoice {
+  return value === 'mint' || value === 'sky' || value === 'copper';
+}
+
+function readAccents(): Record<ResolvedTheme, AccentChoice> {
   try {
-    const value = localStorage.getItem(ACCENT_KEY);
-    return value === 'iris' || value === 'sky' ? value : 'mint';
+    const legacy = localStorage.getItem(LEGACY_ACCENT_KEY);
+    const migrated: AccentChoice = legacy === 'iris' || legacy === 'sky' ? 'sky' : 'mint';
+    const result: Record<ResolvedTheme, AccentChoice> = { light: 'mint', dark: 'mint' };
+    for (const theme of ['light', 'dark'] as const) {
+      const value = localStorage.getItem(accentKey(theme));
+      result[theme] = validAccent(value) ? value : value === null ? migrated : 'mint';
+    }
+    // Read both slots before writing: refused persistence must not reset valid
+    // readable choices, and the original key stays intact for older clients.
+    for (const theme of ['light', 'dark'] as const) {
+      try { localStorage.setItem(accentKey(theme), result[theme]); } catch { /* visit-local */ }
+    }
+    return result;
   } catch {
-    return 'mint';
+    return { light: 'mint', dark: 'mint' };
   }
 }
 
-let accent: AccentChoice = typeof window === 'undefined' ? 'mint' : readAccent();
-
+let accents: Record<ResolvedTheme, AccentChoice> = typeof window === 'undefined' ? { light: 'mint', dark: 'mint' } : readAccents();
 let current: ThemeChoice = typeof window === 'undefined' ? 'system' : read();
+const systemTheme = typeof window === 'undefined' ? null : window.matchMedia('(prefers-color-scheme: dark)');
+let listening = false;
+
+function resolvedTheme(): ResolvedTheme {
+  return current === 'system' ? systemTheme?.matches ? 'dark' : 'light' : current;
+}
+
+function publish() {
+  document.documentElement.dataset.accent = accents[resolvedTheme()];
+  listeners.forEach((listener) => listener());
+}
 
 function apply(choice: ThemeChoice) {
   const root = document.documentElement;
@@ -38,8 +65,20 @@ function apply(choice: ThemeChoice) {
 export function applyStoredTheme() {
   current = read();
   apply(current);
-  accent = readAccent();
-  document.documentElement.dataset.accent = accent;
+  accents = readAccents();
+  publish();
+  if (!listening) {
+    listening = true;
+    systemTheme?.addEventListener('change', () => { if (current === 'system') publish(); });
+    window.addEventListener('storage', (event) => {
+      if (event.key === null || [KEY, LEGACY_ACCENT_KEY, accentKey('light'), accentKey('dark')].includes(event.key)) {
+        current = read();
+        accents = readAccents();
+        apply(current);
+        publish();
+      }
+    });
+  }
 }
 
 export function setTheme(choice: ThemeChoice) {
@@ -51,7 +90,7 @@ export function setTheme(choice: ThemeChoice) {
     // Private windows may refuse storage; the choice still applies for this visit.
   }
   apply(choice);
-  listeners.forEach((listener) => listener());
+  publish();
 }
 
 export function useTheme(): ThemeChoice {
@@ -63,18 +102,26 @@ export function useTheme(): ThemeChoice {
 }
 
 export function setAccent(choice: AccentChoice) {
-  accent = choice;
-  try { localStorage.setItem(ACCENT_KEY, choice); } catch {
+  const theme = resolvedTheme();
+  accents[theme] = choice;
+  try { localStorage.setItem(accentKey(theme), choice); } catch {
     // Storage may be unavailable; retain the appearance for this visit.
   }
-  document.documentElement.dataset.accent = choice;
-  listeners.forEach((listener) => listener());
+  publish();
 }
 
 export function useAccent(): AccentChoice {
   return useSyncExternalStore(
     (listener) => { listeners.add(listener); return () => listeners.delete(listener); },
-    () => accent,
+    () => accents[resolvedTheme()],
     () => 'mint',
+  );
+}
+
+export function useResolvedTheme(): ResolvedTheme {
+  return useSyncExternalStore(
+    (listener) => { listeners.add(listener); return () => listeners.delete(listener); },
+    resolvedTheme,
+    () => 'light',
   );
 }
