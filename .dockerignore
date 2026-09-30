@@ -6,3 +6,5 @@
 backups
 exports
 .flux-backup-lock-*
+# Operator settings beside docker/compose.yaml (never part of the image build context).
+docker/.env
