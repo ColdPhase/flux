@@ -1,18 +1,12 @@
 import {
-  AUTH_BASE_PATH, projectGrantsPath, workspaceAgentsPath, type Agent, type AgentConnection, type AgentScope,
+  AUTH_BASE_PATH, projectGrantsPath, workspaceAgentsPath, type Agent, type AgentConnection, type AgentScope, type AgentOauthConsentContext,
   type CreateAgentCommand, type CreateAgentConnectionCommand, type GrantProjectCommand, type ProjectGrant,
 } from '@flux/contracts';
 import { request } from '../api/client';
 
 const CONNECTIONS_PATH = '/api/v1/agent-connections';
 
-export interface ConsentContext {
-  clientName: string;
-  scopes: string[];
-  connection: AgentConnection;
-  agentName?: string;
-  selectedProjects?: { id: string; name: string }[];
-}
+export type ConsentContext = AgentOauthConsentContext;
 
 export const SCOPE_LABELS: Record<AgentScope, { title: string; description: string }> = {
   'flux.context.read': {
@@ -51,8 +45,8 @@ export function grantAgentProject(projectId: string, agentId: string, role: 'vie
   return request<ProjectGrant>(projectGrantsPath(projectId), { method: 'POST', body });
 }
 
-export function selectAgentConnection(connectionId: string) {
-  return request<null>(`${CONNECTIONS_PATH}/${encodeURIComponent(connectionId)}/select-for-oauth`, { method: 'POST' });
+export function selectAgentConnection(connectionId: string, oauthQuery: string) {
+  return request<null>(`${CONNECTIONS_PATH}/${encodeURIComponent(connectionId)}/select-for-oauth`, { method: 'POST', body: { oauth_query: oauthQuery } });
 }
 
 /** The server checks Better Auth's signed OAuth query before returning display data. */

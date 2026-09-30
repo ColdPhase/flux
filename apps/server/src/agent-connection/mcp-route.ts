@@ -22,7 +22,15 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
     // A signed JWT remains valid until expiry, so revocation must be checked
     // against the live connection before even listing tools.
     try {
-      if (!await connections.resolve(ownerUserId, connectionId)) throw new Error('Connection revoked');
+      const referenceId = token.flux_grant_reference;
+      // New references bind the verified, AS-owned client_id to one durable grant.
+      // Explicit historic JWTs have no grant-reference claim and retain their existing format.
+      if (referenceId !== undefined) {
+        if (typeof referenceId !== 'string') throw new Error('Invalid grant');
+        const grant = await connections.grantForOauth(ownerUserId, referenceId);
+        if (!grant || grant.connection.id !== connectionId || grant.clientId !== null && grant.clientId !== token.client_id)
+          throw new Error('Invalid grant');
+      } else if (!await connections.resolve(ownerUserId, connectionId)) throw new Error('Connection revoked');
     } catch {
       return new Response(JSON.stringify({ error: 'Agent connection is unavailable' }), {
         status: 403, headers: { 'content-type': 'application/json' },

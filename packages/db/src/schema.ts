@@ -534,6 +534,9 @@ export const agentConnections = pgTable('agent_connections', {
   workspaceId: uuid('workspace_id').notNull(),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
   agentId: uuid('agent_id').notNull(),
+  name: text('name').notNull().default('External connection'),
+  clientDesignation: text('client_designation', { enum: ['claude_code', 'codex', 'other'] }).notNull().default('other'),
+  computeSource: text('compute_source', { enum: ['user_operated_claude_code', 'user_operated_external_client'] }).notNull().default('user_operated_external_client'),
   scopes: text('scopes', { enum: ['flux.context.read', 'flux.proposal.write'] }).array().notNull(),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -562,6 +565,24 @@ export const agentOauthSelections = pgTable('agent_oauth_selections', {
   connectionId: uuid('connection_id').notNull().references(() => agentConnections.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Provider references persist independently of short-lived browser flow choices. */
+export const agentOauthBindings = pgTable('agent_oauth_bindings', {
+  id: uuid('id').primaryKey(),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
+  connectionId: uuid('connection_id').notNull().references(() => agentConnections.id),
+  clientId: text('client_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [unique().on(table.ownerUserId, table.connectionId, table.clientId)]);
+
+export const agentOauthFlows = pgTable('agent_oauth_flows', {
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
+  sessionId: text('session_id').notNull().references(() => authSessions.id, { onDelete: 'cascade' }),
+  fingerprint: text('fingerprint').notNull(),
+  bindingId: uuid('binding_id').notNull().references(() => agentOauthBindings.id),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [primaryKey({ columns: [table.ownerUserId, table.sessionId, table.fingerprint] })]);
 
 // Sketches: thoughts on a map and the links between them (migration 0007, issue #69).
 export const sketches = pgTable('sketches', {
@@ -718,7 +739,7 @@ export const agentProposals = pgTable('agent_proposals', {
   projectId: uuid('project_id').notNull(),
   agentId: uuid('agent_id').notNull(),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
-  computeSource: text('compute_source', { enum: ['user_operated_claude_code'] }).notNull(),
+  computeSource: text('compute_source', { enum: ['user_operated_claude_code', 'user_operated_external_client'] }).notNull(),
   agentGrantId: uuid('agent_grant_id').notNull(),
   agentGrantRole: text('agent_grant_role', { enum: ['contributor'] }).notNull(),
   sourceMaterialId: uuid('source_material_id').notNull(),

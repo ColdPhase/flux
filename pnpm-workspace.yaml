@@ -4,3 +4,6 @@ packages:
   - examples/*
 allowBuilds:
   esbuild: true
+
+patchedDependencies:
+  '@better-auth/oauth-provider@1.7.6': patches/oauth-provider-1.7.6-flux-refresh.patch

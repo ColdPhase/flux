@@ -1,15 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { betterAuth } from 'better-auth';
+import { APIError } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { jwt } from 'better-auth/plugins';
 import { cimd } from '@better-auth/cimd';
 import { fetchClientMetadataResource } from '@better-auth/cimd/node';
 import { mcp } from '@better-auth/mcp';
 import { schema } from '@flux/db';
-import type { Database } from '@flux/core';
+import { agentOauthUseCases, type Database } from '@flux/core';
 import { createAgentConnectionStore } from '../agent-connection/store.js';
 import type { IdentityConfig } from './config.js';
 import type { Mailer } from './mailer.js';
+import type { OauthRequests } from './oauth-flow.js';
 
 /** Set by the Fastify bridge from the socket or trusted-proxy address; client copies are dropped. */
 export const CLIENT_IP_HEADER = 'x-flux-client-ip';
@@ -21,17 +23,21 @@ export interface AuthDependencies {
   config: IdentityConfig;
   mailer: Mailer | null;
   onMailError?: (error: unknown) => void;
+  oauthRequests: OauthRequests;
 }
 
-export function createAuth({ db, config, mailer, onMailError }: AuthDependencies) {
-  const connections = createAgentConnectionStore(db);
+export function createAuth({ db, config, mailer, onMailError, oauthRequests }: AuthDependencies) {
+  const connections = agentOauthUseCases(createAgentConnectionStore(db));
   const resource = `${config.publicOrigin}/mcp`;
   const connectionForGrant = async (userId: string, sessionId: string, scopes: readonly string[]) => {
-    const connection = await connections.selectedForOauth(userId, sessionId);
+    const request = oauthRequests.getStore();
+    if (!request || request.clearedSessionId && request.clearedSessionId !== sessionId) throw new Error('OAuth flow is unavailable');
+    const grant = await connections.flowForOauth(userId, sessionId, request.fingerprint);
+    const connection = grant?.connection;
     if (!connection || scopes.some((scope) => scope !== 'offline_access' && !connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write'))) {
-      throw new Error('OAuth agent connection or grant is unavailable');
+      throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Agent connection is unavailable' });
     }
-    return connection;
+    return grant!;
   };
   return betterAuth({
     appName: 'Flux',
@@ -69,19 +75,23 @@ export function createAuth({ db, config, mailer, onMailError }: AuthDependencies
         grantTypes: ['authorization_code', 'refresh_token'],
         postLogin: {
           page: '/connect-agent',
-          shouldRedirect: async ({ user, session }) => !await connections.selectedForOauth(user.id, session.id),
+          shouldRedirect: async ({ user, session }) => {
+            const request = oauthRequests.getStore();
+            return !request || !await connections.flowForOauth(user.id, session.id, request.fingerprint);
+          },
           consentReferenceId: async ({ user, session, scopes }) =>
-            (await connectionForGrant(user.id, session.id, scopes)).id,
+            (await connectionForGrant(user.id, session.id, scopes)).referenceId,
         },
         customAccessTokenClaims: async ({ user, referenceId, scopes, resources }) => {
-          if (!user || !referenceId || resources?.some((value) => value !== resource)) {
-            throw new Error('OAuth agent connection or resource is unavailable');
+          if (!user || !referenceId || resources?.length !== 1 || resources[0] !== resource) {
+            throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Agent connection is unavailable' });
           }
-          const connection = await connections.resolve(user.id, referenceId);
+          const grant = await connections.grantForOauth(user.id, referenceId);
+          const connection = grant?.connection;
           if (!connection || scopes.some((scope) => scope !== 'offline_access' && !connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write'))) {
-            throw new Error('OAuth agent connection or grant is unavailable');
+            throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Agent connection is unavailable' });
           }
-          return { flux_connection_id: connection.id, flux_owner_user_id: user.id };
+          return { flux_connection_id: connection.id, flux_owner_user_id: user.id, flux_grant_reference: grant!.referenceId };
         },
       }),
       cimd({ fetchClientMetadataResource, metadataProfile: 'mcp-2026-07-28' }),
