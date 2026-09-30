@@ -222,7 +222,10 @@ docker volume inspect "$sentinel" >/dev/null 2>&1 || fail "reset removed another
 [ -n "$(docker ps -q --filter "label=com.docker.compose.project=$run2")" ] || fail "reset of $run stopped $run2"
 
 step "./flux up after reset starts empty with the same .env; ./flux clean removes own images"
-"$copy/flux" up >/dev/null
+"$copy/flux" up > "$work/up-after-reset.out" 2>&1 || {
+  cat "$work/up-after-reset.out"
+  fail "up after reset failed"
+}
 sign_in_code=$(curl -sS -o /dev/null -w '%{http_code}' -H "Origin: $base" -H 'Content-Type: application/json' \
   -d "{\"email\":\"ada@demo.flux.test\",\"password\":\"$owner_pw\"}" "$base/api/auth/sign-in/email")
 [ "$sign_in_code" != 200 ] || fail "demo account survived reset"

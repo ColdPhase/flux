@@ -85,6 +85,18 @@ project name (stored in `docker/.env`), and destructive commands refuse a projec
 checkout. `./flux clean` removes only the `flux-*` images tagged with its own project names;
 it never prunes the shared build cache and prints the advice below instead.
 
+### Locked dependency build layer
+
+The source Dockerfile first copies `app/pnpm-lock.yaml` and
+`app/pnpm-workspace.yaml`, then runs `pnpm fetch` before copying application
+source. The full workspace installation stays `--offline --frozen-lockfile`;
+Node/pnpm pins, allowed dependency build scripts and build/type/lint/test
+commands are unchanged. This follows the [pnpm Docker fetch pattern](https://pnpm.io/cli/fetch).
+Changing either lock/config file invalidates the download layer; source edits
+reuse it while still rebuilding and checking the application. There are no
+local `file:` dependencies or package patches in the current lockfile; if
+introduced, their fetch inputs must be supplied before the fetch step.
+
 ### Disk hygiene
 
 Each `scripts/check_*.sh` run builds images tagged with its own Compose
