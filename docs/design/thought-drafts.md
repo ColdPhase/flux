@@ -31,3 +31,9 @@ text remains in the editor and must remain recoverable
 and must not force an overwrite of a newer version. Form/modal shortcuts retain
 normal scope. API/persistence tests and real two-user browser paths verify these
 states; pictures cannot certify them.
+
+Independent image assessment found that desktop failure/conflict wording was clipped
+at the toolbar's right edge. Recovery wording must wrap in a dedicated full-width
+row immediately above the current edit actions, keeping the retained text and
+next action visible. Ordinary concise status stays compact. This finding is part
+of #149's truthful failure/recovery scope.

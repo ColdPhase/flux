@@ -37,6 +37,8 @@
 .sk-div { width: 1px; height: 20px; margin: 0 4px; flex: none; background: var(--line); }
 .sk-status { flex: 1 1 16ch; min-width: 0; padding: 0 8px; font-size: var(--fs-sm); color: var(--text-3); line-height: 1.4;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sk-bar--problem { flex-wrap: wrap; }
+.sk-bar--problem .sk-status { flex-basis: 100%; padding: 4px 8px; white-space: normal; overflow: visible; overflow-wrap: anywhere; text-overflow: clip; }
 .sk-ok { color: var(--ok); }
 .sk-warn { color: var(--warning); }
 .sk-readonly { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--text-3); }

@@ -427,7 +427,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
         ) : null}
 
         {canWrite ? (
-          <div className="sk-bar">
+          <div className={`sk-bar${doc.problem ? ' sk-bar--problem' : ''}`}>
             <div className={`sk-tools${sketch.scope === 'project' ? ' sk-tools--seven' : ''}`} role="toolbar" aria-label="Sketch tools">
             <button type="button" className="ui-btn ui-btn--quiet sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={14} />Thought</button>
             <button type="button" className="ui-btn ui-btn--quiet" aria-pressed={!!connectFrom} onClick={connect} aria-label="Connect"><Icon name="link" size={14} /><span className="sk-bl">Connect</span></button>
