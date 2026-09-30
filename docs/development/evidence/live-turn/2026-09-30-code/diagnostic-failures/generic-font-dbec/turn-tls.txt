@@ -1,0 +1,10 @@
+CONNECTION ESTABLISHED
+Protocol version: TLSv1.3
+Ciphersuite: TLS_AES_128_GCM_SHA256
+Peer certificate: CN = turn.flux.test
+Hash used: SHA256
+Signature type: RSA-PSS
+Verification: OK
+Verified peername: turn.flux.test
+Server Temp Key: X25519, 253 bits
+DONE

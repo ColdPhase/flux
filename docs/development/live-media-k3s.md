@@ -1,9 +1,18 @@
 # k3s media/TURN deployment contract (#63)
 
-**Status 2026-09-28:** operator contract and review checklist. Flux has not
+**Status 2026-09-30:** operator contract and review checklist. Flux has not
 installed or tested this on a public k3s node. The Compose and local Docker
 proof in [live-media.md](live-media.md) remains the only measured deployment.
 Do not count this page as the k3s or external-network acceptance evidence.
+
+The [dated research/render archive](evidence/live-k3s/2026-09-30/ARCHIVE.md)
+contains the official chart 1.9.0 checksum, Helm 4.3.0 render/lint observations,
+independent source review and a pinned-image relative-key startup probe. The
+[private service route proposal](https://github.com/ColdPhase/flux/issues/63#issuecomment-5909081168)
+awaits peer agreement before deployment implementation. The unchanged chart's
+probes and Service endpoints require the bound private address to match Node
+InternalIP, host-network PodIP and EndpointSlice. Node firewall rules remain
+necessary; these local observations do not complete the gates below.
 
 ## Inputs and topology
 
@@ -37,6 +46,12 @@ external reachability before production use. Do not copy the Docker test's
 `turn.allow_restricted_peer_cidrs: [172.16.0.0/12]`: LiveKit's default private
 peer denial is the production boundary. If a private SFU peer is unavoidable,
 write down the exact allowed CIDR and its risk before enabling it.
+
+When rendering the pinned chart, explicitly clear both inherited RTC range
+endpoints to zero alongside UDP mux 7882. The chart's nonzero range defaults
+otherwise take precedence. Preserve the existing key Secret's mode 0600;
+relative `keys.yaml` works in the pinned image's bounded Docker probe, while an
+absolute key path needs a reviewed Secret-key/subPath adjustment.
 
 k3s [ServiceLB and bundled Traefik](https://docs.k3s.io/networking/networking-services)
 normally occupy host ports 80 and 443 on their participating nodes. Reserve

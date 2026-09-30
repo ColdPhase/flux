@@ -238,6 +238,11 @@ bounded [1440p code calibration protocol](live-code-calibration.md). The default
 revocation and sign-out regressions and receiver/diagnostic units. See that
 protocol for source kinds, production publish settings, raw frame audit and
 remaining acceptance limits.
+The [dated high-resolution checkpoint](evidence/live-turn/2026-09-30-code/README.md)
+contains actual two/four-peer decoded dimensions and frame intervals, original
+pixels and resource windows, with production/harness pins and retained failures.
+Raw receiver reports now supply the existing audio/video diagnostic rows;
+the locked SDK audio projection's missing packet fields are not synthesized.
 
 ## Sources and inference
 

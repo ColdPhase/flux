@@ -1,0 +1,378 @@
+TURN visual evidence directory: /tmp/flux63-legacy-7cfa
+ Network flux-live-turn-1790766173-822371_livekit-media Creating 
+ Network flux-live-turn-1790766173-822371_livekit-media Created 
+ Network flux-live-turn-1790766173-822371_livekit-signal Creating 
+ Network flux-live-turn-1790766173-822371_livekit-signal Created 
+ Network flux-live-turn-1790766173-822371_default Creating 
+ Network flux-live-turn-1790766173-822371_default Created 
+ Volume flux-live-turn-1790766173-822371_files Creating 
+ Volume flux-live-turn-1790766173-822371_files Created 
+ Volume flux-live-turn-1790766173-822371_pgdata Creating 
+ Volume flux-live-turn-1790766173-822371_pgdata Created 
+ Container flux-live-turn-1790766173-822371-db-1 Creating 
+ Container flux-live-turn-1790766173-822371-livekit-1 Creating 
+ Container flux-live-turn-1790766173-822371-livekit-1 Created 
+ Container flux-live-turn-1790766173-822371-db-1 Created 
+ Container flux-live-turn-1790766173-822371-migrate-1 Creating 
+ Container flux-live-turn-1790766173-822371-migrate-1 Created 
+ Container flux-live-turn-1790766173-822371-api-1 Creating 
+time="2026-09-30T13:02:54+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-live-turn-1790766173-822371-api-1 Created 
+ Container flux-live-turn-1790766173-822371-db-1 Starting 
+ Container flux-live-turn-1790766173-822371-livekit-1 Starting 
+ Container flux-live-turn-1790766173-822371-db-1 Started 
+ Container flux-live-turn-1790766173-822371-db-1 Waiting 
+ Container flux-live-turn-1790766173-822371-livekit-1 Started 
+ Container flux-live-turn-1790766173-822371-db-1 Healthy 
+ Container flux-live-turn-1790766173-822371-migrate-1 Starting 
+ Container flux-live-turn-1790766173-822371-migrate-1 Started 
+ Container flux-live-turn-1790766173-822371-livekit-1 Waiting 
+ Container flux-live-turn-1790766173-822371-migrate-1 Waiting 
+ Container flux-live-turn-1790766173-822371-livekit-1 Healthy 
+ Container flux-live-turn-1790766173-822371-migrate-1 Exited 
+ Container flux-live-turn-1790766173-822371-api-1 Starting 
+ Container flux-live-turn-1790766173-822371-api-1 Started 
+ Container flux-live-turn-1790766173-822371-api-1 Waiting 
+ Container flux-live-turn-1790766173-822371-db-1 Waiting 
+ Container flux-live-turn-1790766173-822371-livekit-1 Waiting 
+ Container flux-live-turn-1790766173-822371-migrate-1 Waiting 
+ Container flux-live-turn-1790766173-822371-migrate-1 Exited 
+ Container flux-live-turn-1790766173-822371-db-1 Healthy 
+ Container flux-live-turn-1790766173-822371-livekit-1 Healthy 
+ Container flux-live-turn-1790766173-822371-api-1 Healthy 
+ Container flux-live-turn-1790766173-822371-db-1 Running 
+ Container flux-live-turn-1790766173-822371-livekit-1 Running 
+ Container flux-live-turn-1790766173-822371-api-1 Running 
+ Container flux-live-turn-1790766173-822371-db-1 Waiting 
+ Container flux-live-turn-1790766173-822371-db-1 Healthy 
+ Container flux-live-turn-1790766173-822371-migrate-1 Starting 
+ Container flux-live-turn-1790766173-822371-migrate-1 Started 
+ Container flux-live-turn-1790766173-822371-migrate-1 Waiting 
+ Container flux-live-turn-1790766173-822371-livekit-1 Waiting 
+ Container flux-live-turn-1790766173-822371-livekit-1 Healthy 
+ Container flux-live-turn-1790766173-822371-migrate-1 Exited 
+ Container flux-live-turn-1790766173-822371-api-1 Waiting 
+ Container flux-live-turn-1790766173-822371-livekit-1 Waiting 
+ Container flux-live-turn-1790766173-822371-livekit-1 Healthy 
+ Container flux-live-turn-1790766173-822371-api-1 Healthy 
+ Container flux-live-turn-1790766173-822371-live-sfu-test-run-7beddd5d714a Creating 
+ Container flux-live-turn-1790766173-822371-live-sfu-test-run-7beddd5d714a Created 
+rehash: warning: skipping ca-certificates.crt,it does not contain exactly one certificate or CRL
+CONNECTION ESTABLISHED
+Protocol version: TLSv1.3
+Ciphersuite: TLS_AES_128_GCM_SHA256
+Peer certificate: CN = turn.flux.test
+Hash used: SHA256
+Signature type: RSA-PSS
+Verification: OK
+Verified peername: turn.flux.test
+Server Temp Key: X25519, 253 bits
+DONE
+✖ two authorized Chromium clients exchange media when UDP and direct ICE/TCP are blocked (3405.17752ms)
+{"screenViewer":2,"sample":{"intervalMs":2000,"rttMs":0,"tracks":[{"id":"0:IT01A600097512","kind":"audio","packetsReceived":298,"packetsDelta":101,"lossPercent":0,"bitrateKbps":99.788,"jitterMs":0},{"id":"0:IT01V1089786334","kind":"video","packetsReceived":183,"packetsDelta":28,"lossPercent":0,"bitrateKbps":91.828,"fps":10.5,"framesDelta":21,"width":960,"height":540},{"id":"0:IT01V3037221450","kind":"video","packetsReceived":246,"packetsDelta":133,"lossPercent":0,"bitrateKbps":551.148,"fps":10.5,"framesDelta":21,"width":960,"height":540}]},"videos":[{"naturalWidth":960,"naturalHeight":540,"renderedWidth":960,"renderedHeight":540},{"naturalWidth":960,"naturalHeight":540,"renderedWidth":960,"renderedHeight":540}],"candidates":[{"candidateType":"relay","protocol":"udp","relayProtocol":"tls","pairState":"succeeded","bytesSent":2129,"bytesReceived":517164}]}
+{"screenViewer":3,"sample":{"intervalMs":2000,"rttMs":0,"tracks":[{"id":"0:IT01A87000826","kind":"audio","packetsReceived":409,"packetsDelta":101,"lossPercent":0,"bitrateKbps":99.788,"jitterMs":0},{"id":"0:IT01V3166203055","kind":"video","packetsReceived":380,"packetsDelta":119,"lossPercent":0,"bitrateKbps":504.592,"fps":10,"framesDelta":20,"width":960,"height":540},{"id":"0:IT01V989094087","kind":"video","packetsReceived":206,"packetsDelta":20,"lossPercent":0,"bitrateKbps":64.224,"fps":10,"framesDelta":20,"width":960,"height":540}]},"videos":[{"naturalWidth":960,"naturalHeight":540,"renderedWidth":960,"renderedHeight":540},{"naturalWidth":960,"naturalHeight":540,"renderedWidth":960,"renderedHeight":540}],"candidates":[{"candidateType":"relay","protocol":"udp","relayProtocol":"tls","pairState":"succeeded","bytesSent":2952,"bytesReceived":712131}]}
+✔ four authorized clients receive two simultaneous code-sized screen tracks through TURN/TLS (13790.939853ms)
+{"isolatedCapture":true,"screen":{"readyState":"live","settings":{"aspectRatio":1.6,"cursor":"never","deviceId":"screen:-3:0","displaySurface":"monitor","frameRate":30,"height":800,"logicalSurface":true,"resizeMode":"crop-and-scale","width":1280}},"devices":{"camera":{"aspectRatio":1.3333333333333333,"deviceId":"d4b9a5413a0536e3793d36ffdf32b3f9acba76ed818d9e787f5eb315b387cffd","exposureMode":"manual","exposureTime":50,"focusDistance":50,"focusMode":"manual","frameRate":20,"groupId":"441a845af55cbd01caf853e960b734127d3ec79271e32ddf4c1073892e5ab00a","height":480,"resizeMode":"none","width":640},"microphoneState":"live"},"publisherCandidates":[{"candidateType":"relay","protocol":"udp","relayProtocol":"tls","pairState":"succeeded","bytesSent":30807,"bytesReceived":1356}],"viewerCandidates":[{"candidateType":"relay","protocol":"udp","relayProtocol":"tls","pairState":"succeeded","bytesSent":1313,"bytesReceived":5782}],"physicalDevicesUsed":false,"display":"separate Xvfb display"}
+✔ isolated headed Chromium publishes real display capture and virtual camera/mic through TURN/TLS (1861.176088ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 2
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 19455.99917
+
+✖ failing tests:
+
+test at tests/app/e2e/live-turn-relay.e2e.ts:1:644
+✖ two authorized Chromium clients exchange media when UDP and direct ICE/TCP are blocked (3405.17752ms)
+  AssertionError [ERR_ASSERTION]: receiver must expose decoded video dimensions and fps
+      at TestContext.<anonymous> (/app/tests/app/e2e/live-turn-relay.e2e.ts:127:12)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+Chain OUTPUT (policy ACCEPT 12457 packets, 6665K bytes)
+ pkts bytes target     prot opt in     out     source               destination         
+   48  3079 ACCEPT     17   --  *      *       0.0.0.0/0            127.0.0.11          
+   48  4311 ACCEPT     17   --  *      *       127.0.0.11           0.0.0.0/0           
+  534 67806 REJECT     17   --  *      *       0.0.0.0/0            0.0.0.0/0            udp dpt:!53 reject-with icmp-port-unreachable
+    5   300 REJECT     6    --  *      *       0.0.0.0/0            0.0.0.0/0            tcp dpt:7881 reject-with icmp-port-unreachable
+
+db-1  | The files belonging to this database system will be owned by user "postgres".
+db-1  | This user must also own the server process.
+db-1  | 
+db-1  | The database cluster will be initialized with locale "en_US.utf8".
+db-1  | The default database encoding has accordingly been set to "UTF8".
+db-1  | The default text search configuration will be set to "english".
+db-1  | 
+db-1  | Data page checksums are enabled.
+db-1  | 
+db-1  | fixing permissions on existing directory /var/lib/postgresql/18/docker ... ok
+db-1  | creating subdirectories ... ok
+db-1  | selecting dynamic shared memory implementation ... posix
+db-1  | selecting default "max_connections" ... 100
+db-1  | selecting default "shared_buffers" ... 128MB
+db-1  | selecting default time zone ... UTC
+db-1  | creating configuration files ... ok
+db-1  | running bootstrap script ... ok
+db-1  | sh: locale: not found
+db-1  | 2026-09-30 11:02:55.583 UTC [40] WARNING:  no usable system locales were found
+db-1  | performing post-bootstrap initialization ... ok
+db-1  | initdb: warning: enabling "trust" authentication for local connections
+db-1  | initdb: hint: You can change this by editing pg_hba.conf or using the option -A, or --auth-local and --auth-host, the next time you run initdb.
+db-1  | syncing data to disk ... ok
+db-1  | 
+db-1  | 
+db-1  | Success. You can now start the database server using:
+db-1  | 
+db-1  |     pg_ctl -D /var/lib/postgresql/18/docker -l logfile start
+db-1  | 
+db-1  | waiting for server to start....2026-09-30 11:03:02.128 UTC [64] LOG:  starting PostgreSQL 18.6 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+db-1  | 2026-09-30 11:03:02.134 UTC [64] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+db-1  | 2026-09-30 11:03:02.155 UTC [70] LOG:  database system was shut down at 2026-09-30 11:02:55 UTC
+db-1  | 2026-09-30 11:03:02.164 UTC [64] LOG:  database system is ready to accept connections
+db-1  |  done
+db-1  | server started
+db-1  | CREATE DATABASE
+db-1  | 
+db-1  | 
+db-1  | /usr/local/bin/docker-entrypoint.sh: ignoring /docker-entrypoint-initdb.d/*
+db-1  | 
+db-1  | waiting for server to shut down....2026-09-30 11:03:02.297 UTC [64] LOG:  received fast shutdown request
+db-1  | 2026-09-30 11:03:02.303 UTC [64] LOG:  aborting any active transactions
+db-1  | 2026-09-30 11:03:02.305 UTC [64] LOG:  background worker "logical replication launcher" (PID 73) exited with exit code 1
+db-1  | 2026-09-30 11:03:02.305 UTC [68] LOG:  shutting down
+db-1  | 2026-09-30 11:03:02.311 UTC [68] LOG:  checkpoint starting: shutdown immediate
+db-1  | .2026-09-30 11:03:04.263 UTC [68] LOG:  checkpoint complete: wrote 943 buffers (5.8%), wrote 3 SLRU buffers; 0 WAL file(s) added, 0 removed, 0 recycled; write=0.027 s, sync=1.888 s, total=1.958 s; sync files=303, longest=0.012 s, average=0.007 s; distance=4362 kB, estimate=4362 kB; lsn=0/1BA8858, redo lsn=0/1BA8858
+db-1  | 2026-09-30 11:03:04.290 UTC [64] LOG:  database system is shut down
+db-1  |  done
+db-1  | server stopped
+db-1  | 
+db-1  | PostgreSQL init process complete; ready for start up.
+livekit-1  | 2026-09-30T11:03:22.853Z	INFO	livekit.pub	rtc/participant.go:2423	mediaTrack published	{"room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_MzRiZjNhZTEtMGRiZS00ZTYzLTliNmEtODk3NDMzYWZmYTI1.K-qZJC_wpDF5jsilKHijMw", "participantID": "PA_Zi28RBWvFmUC", "remote": false, "kind": "video", "trackID": "TR_VSwqdDa4G8cpWS", "webrtcTrackID": "e62c4303-3a64-4f27-a277-c849e3dbfb6d", "rid": "h", "ssrc": 4133319555, "rtxSsrc": 3753095425, "mime": "video/VP8", "trackInfo": {"sid": "TR_VSwqdDa4G8cpWS", "type": "VIDEO", "name": "<redacted>", "width": 960, "height": 540, "simulcast": true, "source": "SCREEN_SHARE", "layers": [{"quality": "LOW", "width": 480, "height": 270, "bitrate": 625000, "ssrc": 843204939, "rid": "q", "repairSsrc": 619859320}, {"quality": "MEDIUM", "width": 960, "height": 540, "bitrate": 2500000, "ssrc": 4133319555, "spatialLayer": 1, "rid": "h"}], "mimeType": "video/VP8", "mid": "1", "codecs": [{"mimeType": "video/VP8", "mid": "1", "cid": "e62c4303-3a64-4f27-a277-c849e3dbfb6d", "layers": [{"quality": "LOW", "width": 480, "height": 270, "bitrate": 625000, "ssrc": 843204939, "rid": "q", "repairSsrc": 619859320}, {"quality": "MEDIUM", "width": 960, "height": 540, "bitrate": 2500000, "ssrc": 4133319555, "spatialLayer": 1, "rid": "h"}], "videoLayerMode": "ONE_SPATIAL_LAYER_PER_STREAM"}], "encryption": "NONE", "stream": "screen", "version": {"unixMicro": 1790766202462064}, "backupCodecPolicy": "PREFER_REGRESSION"}, "fromSdp": true, "isReceiverAdded": true, "sdpRids": ["", "", ""]}
+db-1       | 
+db-1       | 2026-09-30 11:03:04.326 UTC [1] LOG:  starting PostgreSQL 18.6 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+db-1       | 2026-09-30 11:03:04.326 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+livekit-1  | 2026-09-30T11:03:32.621Z	INFO	livekit	rtc/participant.go:1513	participant closing	{"room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_YmVmY2MzYzEtMWYxMC00NzRlLThmNzYtZDYzZTcxYWRkOTdh.1n3RRcpdwprUWPgTJy3QsA", "participantID": "PA_Fij8iWijshxw", "remote": false, "sendLeave": true, "reason": "CLIENT_REQUEST_LEAVE", "isExpectedToResume": false, "clientInfo": {"sdk": "JS", "version": "2.17.2", "protocol": 16, "os": "Other", "deviceModel": "Other", "browser": "Other"}, "kind": "STANDARD", "country": "", "sessionDuration": "13.02451809s"}
+db-1       | 2026-09-30 11:03:04.326 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+livekit-1  | 2026-09-30T11:03:32.621Z	INFO	livekit	telemetry/events.go:212	stats worker active	{"room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_YmVmY2MzYzEtMWYxMC00NzRlLThmNzYtZDYzZTcxYWRkOTdh.1n3RRcpdwprUWPgTJy3QsA", "participantID": "PA_Fij8iWijshxw", "worker": {"room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_YmVmY2MzYzEtMWYxMC00NzRlLThmNzYtZDYzZTcxYWRkOTdh.1n3RRcpdwprUWPgTJy3QsA", "participantID": "PA_Fij8iWijshxw", "isConnected": true, "closedAt": "0001-01-01T00:00:00.000Z", "refCount": {"count": 1}}, "guard": {"self": 27403992767416, "activated": true, "released": true}}
+db-1       | 2026-09-30 11:03:04.338 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+livekit-1  | 2026-09-30T11:03:32.622Z	WARN	livekit.transport	rtc/transport.go:958	error reading data channel	{"room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_YmVmY2MzYzEtMWYxMC00NzRlLThmNzYtZDYzZTcxYWRkOTdh.1n3RRcpdwprUWPgTJy3QsA", "participantID": "PA_Fij8iWijshxw", "remote": false, "transport": "PUBLISHER", "label": "_lossy", "error": "[0x18ec7c434388] abort chunk, with following errors: (User Initiated Abort: Close called)"}
+livekit-1  | 2026-09-30T11:03:32.622Z	WARN	livekit.transport	rtc/transport.go:958	error reading data channel	{"room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_YmVmY2MzYzEtMWYxMC00NzRlLThmNzYtZDYzZTcxYWRkOTdh.1n3RRcpdwprUWPgTJy3QsA", "participantID": "PA_Fij8iWijshxw", "remote": false, "transport": "PUBLISHER", "label": "_reliable", "error": "[0x18ec7c434388] abort chunk, with following errors: (User Initiated Abort: Close called)"}
+livekit-1  | 2026-09-30T11:03:32.622Z	ERROR	livekit.pion.turn	v5@v5.0.13/server.go:203	Failed to close conn: tls: failed to send closeNotify alert (but connection was closed anyway): write tcp 172.24.0.2:443->172.24.0.3:34768: write: broken pipe
+livekit-1  | github.com/pion/turn/v5.(*Server).readListener.func1
+livekit-1  | 	/go/pkg/mod/github.com/pion/turn/v5@v5.0.13/server.go:203
+livekit-1  | 2026-09-30T11:03:32.622Z	ERROR	livekit.pion.turn	v5@v5.0.13/server.go:203	Failed to close conn: tls: failed to send closeNotify alert (but connection was closed anyway): write tcp 172.24.0.2:443->172.24.0.3:34772: write: broken pipe
+livekit-1  | github.com/pion/turn/v5.(*Server).readListener.func1
+livekit-1  | 	/go/pkg/mod/github.com/pion/turn/v5@v5.0.13/server.go:203
+livekit-1  | 2026-09-30T11:03:32.624Z	INFO	livekit.webhook	webhook/resource_url_notifier.go:337	sent webhook	{"event": "track_unpublished", "id": "EV_7nkSZ8AqqAj5", "webhookTime": 1790766212, "url": "http://api:8080/api/v1/internal/livekit/webhook", "room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_YmVmY2MzYzEtMWYxMC00NzRlLThmNzYtZDYzZTcxYWRkOTdh.1n3RRcpdwprUWPgTJy3QsA", "participantID": "PA_Fij8iWijshxw", "trackID": "TR_AP3xPfJXSgLdo", "queueDuration": "14.03µs", "qLen": 1, "sendDuration": "2.883198ms", "status": "204 No Content", "statusCode": 204}
+livekit-1  | 2026-09-30T11:03:32.625Z	INFO	livekit.webhook	webhook/resource_url_notifier.go:337	sent webhook	{"event": "track_unpublished", "id": "EV_MvwN8VmDu2JJ", "webhookTime": 1790766212, "url": "http://api:8080/api/v1/internal/livekit/webhook", "room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_YmVmY2MzYzEtMWYxMC00NzRlLThmNzYtZDYzZTcxYWRkOTdh.1n3RRcpdwprUWPgTJy3QsA", "participantID": "PA_Fij8iWijshxw", "trackID": "TR_VSn8b3GDAAHeCE", "queueDuration": "2.916558ms", "qLen": 1, "sendDuration": "702.701µs", "status": "204 No Content", "statusCode": 204}
+livekit-1  | 2026-09-30T11:03:32.628Z	INFO	livekit	rtc/participant.go:1513	participant closing	{"room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_MzRiZjNhZTEtMGRiZS00ZTYzLTliNmEtODk3NDMzYWZmYTI1.K-qZJC_wpDF5jsilKHijMw", "participantID": "PA_Zi28RBWvFmUC", "remote": false, "sendLeave": true, "reason": "CLIENT_REQUEST_LEAVE", "isExpectedToResume": false, "clientInfo": {"sdk": "JS", "version": "2.17.2", "protocol": 16, "os": "Other", "deviceModel": "Other", "browser": "Other"}, "kind": "STANDARD", "country": "", "sessionDuration": "13.01643748s"}
+livekit-1  | 2026-09-30T11:03:32.628Z	INFO	livekit	telemetry/events.go:212	stats worker active	{"room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_MzRiZjNhZTEtMGRiZS00ZTYzLTliNmEtODk3NDMzYWZmYTI1.K-qZJC_wpDF5jsilKHijMw", "participantID": "PA_Zi28RBWvFmUC", "worker": {"room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_MzRiZjNhZTEtMGRiZS00ZTYzLTliNmEtODk3NDMzYWZmYTI1.K-qZJC_wpDF5jsilKHijMw", "participantID": "PA_Zi28RBWvFmUC", "isConnected": true, "closedAt": "0001-01-01T00:00:00.000Z", "refCount": {"count": 1}}, "guard": {"self": 27403975672632, "activated": true, "released": true}}
+livekit-1  | 2026-09-30T11:03:32.629Z	WARN	livekit.transport	rtc/transport.go:958	error reading data channel	{"room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_MzRiZjNhZTEtMGRiZS00ZTYzLTliNmEtODk3NDMzYWZmYTI1.K-qZJC_wpDF5jsilKHijMw", "participantID": "PA_Zi28RBWvFmUC", "remote": false, "transport": "PUBLISHER", "label": "_lossy", "error": "[0x18ec7ca8a008] abort chunk, with following errors: (User Initiated Abort: Close called)"}
+db-1       | 2026-09-30 11:03:04.352 UTC [92] LOG:  database system was shut down at 2026-09-30 11:03:04 UTC
+livekit-1  | 2026-09-30T11:03:32.629Z	WARN	livekit.transport	rtc/transport.go:958	error reading data channel	{"room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_MzRiZjNhZTEtMGRiZS00ZTYzLTliNmEtODk3NDMzYWZmYTI1.K-qZJC_wpDF5jsilKHijMw", "participantID": "PA_Zi28RBWvFmUC", "remote": false, "transport": "PUBLISHER", "label": "_reliable", "error": "[0x18ec7ca8a008] abort chunk, with following errors: (User Initiated Abort: Close called)"}
+livekit-1  | 2026-09-30T11:03:32.629Z	ERROR	livekit.pion.turn	v5@v5.0.13/server.go:203	Failed to close conn: tls: failed to send closeNotify alert (but connection was closed anyway): write tcp 172.24.0.2:443->172.24.0.3:34744: write: broken pipe
+livekit-1  | github.com/pion/turn/v5.(*Server).readListener.func1
+db-1       | 2026-09-30 11:03:04.361 UTC [1] LOG:  database system is ready to accept connections
+livekit-1  | 	/go/pkg/mod/github.com/pion/turn/v5@v5.0.13/server.go:203
+api-1      | {"level":30,"time":1790766199636,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1m","req":{"method":"POST","url":"/api/v1/internal/livekit/webhook","host":"api:8080","remoteAddress":"172.25.0.2","remotePort":55564},"msg":"incoming request"}
+livekit-1  | 2026-09-30T11:03:32.629Z	ERROR	livekit.pion.turn	v5@v5.0.13/server.go:203	Failed to close conn: tls: failed to send closeNotify alert (but connection was closed anyway): write tcp 172.24.0.2:443->172.24.0.3:34758: write: broken pipe
+livekit-1  | github.com/pion/turn/v5.(*Server).readListener.func1
+api-1      | {"level":30,"time":1790766199652,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1m","res":{"statusCode":204},"responseTime":16.524631023406982,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766199652,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1n","req":{"method":"POST","url":"/api/v1/internal/livekit/webhook","host":"api:8080","remoteAddress":"172.25.0.2","remotePort":55564},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766199669,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1n","res":{"statusCode":204},"responseTime":16.390591025352478,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766200174,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1o","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:8080","remoteAddress":"127.0.0.1","remotePort":49958},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766200175,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1o","res":{"statusCode":200},"responseTime":1.061682105064392,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766202306,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1p","req":{"method":"POST","url":"/api/v1/internal/livekit/webhook","host":"api:8080","remoteAddress":"172.25.0.2","remotePort":55564},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766202307,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1p","res":{"statusCode":204},"responseTime":0.8090920448303223,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766202429,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1q","req":{"method":"POST","url":"/api/v1/internal/livekit/webhook","host":"api:8080","remoteAddress":"172.25.0.2","remotePort":55564},"msg":"incoming request"}
+migrate-1  | Applied migration 0001_foundation.sql
+livekit-1  | 	/go/pkg/mod/github.com/pion/turn/v5@v5.0.13/server.go:203
+api-1      | {"level":30,"time":1790766202430,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1q","res":{"statusCode":204},"responseTime":0.8467620611190796,"msg":"request completed"}
+migrate-1  | Applied migration 0002_identity.sql
+migrate-1  | Applied migration 0003_access.sql
+migrate-1  | Applied migration 0004_stream_safe_writes.sql
+migrate-1  | Applied migration 0005_push.sql
+migrate-1  | Applied migration 0006_conversation.sql
+migrate-1  | Applied migration 0007_sketches.sql
+migrate-1  | Applied migration 0008_work.sql
+livekit-1  | 2026-09-30T11:03:32.635Z	INFO	livekit	rtc/participant.go:1513	participant closing	{"room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_MGJiN2Q0MjYtZTRlOS00ZjIyLWI1YzYtMGE0NGQ1YmUxYjBh.XzSzjuVcjehwnMTov3OzyA", "participantID": "PA_2CkeWjkQGQbi", "remote": false, "sendLeave": true, "reason": "CLIENT_REQUEST_LEAVE", "isExpectedToResume": false, "clientInfo": {"sdk": "JS", "version": "2.17.2", "protocol": 16, "os": "Other", "deviceModel": "Other", "browser": "Other"}, "kind": "STANDARD", "country": "", "sessionDuration": "13.023858349s"}
+livekit-1  | 2026-09-30T11:03:32.635Z	INFO	livekit	telemetry/events.go:212	stats worker active	{"room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_MGJiN2Q0MjYtZTRlOS00ZjIyLWI1YzYtMGE0NGQ1YmUxYjBh.XzSzjuVcjehwnMTov3OzyA", "participantID": "PA_2CkeWjkQGQbi", "worker": {"room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_MGJiN2Q0MjYtZTRlOS00ZjIyLWI1YzYtMGE0NGQ1YmUxYjBh.XzSzjuVcjehwnMTov3OzyA", "participantID": "PA_2CkeWjkQGQbi", "isConnected": true, "closedAt": "0001-01-01T00:00:00.000Z", "refCount": {"count": 1}}, "guard": {"self": 27403978040760, "activated": true, "released": true}}
+livekit-1  | 2026-09-30T11:03:32.636Z	WARN	livekit.transport	rtc/transport.go:958	error reading data channel	{"room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_MGJiN2Q0MjYtZTRlOS00ZjIyLWI1YzYtMGE0NGQ1YmUxYjBh.XzSzjuVcjehwnMTov3OzyA", "participantID": "PA_2CkeWjkQGQbi", "remote": false, "transport": "PUBLISHER", "label": "_reliable", "error": "[0x18ec7c434708] abort chunk, with following errors: (User Initiated Abort: Close called)"}
+livekit-1  | 2026-09-30T11:03:32.636Z	WARN	livekit.transport	rtc/transport.go:958	error reading data channel	{"room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_MGJiN2Q0MjYtZTRlOS00ZjIyLWI1YzYtMGE0NGQ1YmUxYjBh.XzSzjuVcjehwnMTov3OzyA", "participantID": "PA_2CkeWjkQGQbi", "remote": false, "transport": "PUBLISHER", "label": "_lossy", "error": "[0x18ec7c434708] abort chunk, with following errors: (User Initiated Abort: Close called)"}
+livekit-1  | 2026-09-30T11:03:32.636Z	ERROR	livekit.pion.turn	v5@v5.0.13/server.go:203	Failed to close conn: tls: failed to send closeNotify alert (but connection was closed anyway): write tcp 172.24.0.2:443->172.24.0.3:34782: write: broken pipe
+livekit-1  | github.com/pion/turn/v5.(*Server).readListener.func1
+livekit-1  | 	/go/pkg/mod/github.com/pion/turn/v5@v5.0.13/server.go:203
+livekit-1  | 2026-09-30T11:03:32.636Z	ERROR	livekit.pion.turn	v5@v5.0.13/server.go:203	Failed to close conn: tls: failed to send closeNotify alert (but connection was closed anyway): write tcp 172.24.0.2:443->172.24.0.3:34786: write: broken pipe
+livekit-1  | github.com/pion/turn/v5.(*Server).readListener.func1
+livekit-1  | 	/go/pkg/mod/github.com/pion/turn/v5@v5.0.13/server.go:203
+livekit-1  | 2026-09-30T11:03:32.641Z	INFO	livekit	rtc/participant.go:1513	participant closing	{"room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_NzJkNTRlNjctMzYyMy00Zjg0LWIxYjEtNjY2YTg1ODZlM2E2.1d9ke-p1WWOL-JzyQipuEA", "participantID": "PA_XD3xfPqKPJGQ", "remote": false, "sendLeave": true, "reason": "CLIENT_REQUEST_LEAVE", "isExpectedToResume": false, "clientInfo": {"sdk": "JS", "version": "2.17.2", "protocol": 16, "os": "Other", "deviceModel": "Other", "browser": "Other"}, "kind": "STANDARD", "country": "", "sessionDuration": "13.013553643s"}
+livekit-1  | 2026-09-30T11:03:32.641Z	INFO	livekit	telemetry/events.go:212	stats worker active	{"room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_NzJkNTRlNjctMzYyMy00Zjg0LWIxYjEtNjY2YTg1ODZlM2E2.1d9ke-p1WWOL-JzyQipuEA", "participantID": "PA_XD3xfPqKPJGQ", "worker": {"room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_NzJkNTRlNjctMzYyMy00Zjg0LWIxYjEtNjY2YTg1ODZlM2E2.1d9ke-p1WWOL-JzyQipuEA", "participantID": "PA_XD3xfPqKPJGQ", "isConnected": true, "closedAt": "0001-01-01T00:00:00.000Z", "refCount": {"count": 1}}, "guard": {"self": 27403988049336, "activated": true, "released": true}}
+livekit-1  | 2026-09-30T11:03:32.642Z	WARN	livekit.transport	rtc/transport.go:958	error reading data channel	{"room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_NzJkNTRlNjctMzYyMy00Zjg0LWIxYjEtNjY2YTg1ODZlM2E2.1d9ke-p1WWOL-JzyQipuEA", "participantID": "PA_XD3xfPqKPJGQ", "remote": false, "transport": "PUBLISHER", "label": "_lossy", "error": "[0x18ec7c9c2008] abort chunk, with following errors: (User Initiated Abort: Close called)"}
+livekit-1  | 2026-09-30T11:03:32.642Z	WARN	livekit.transport	rtc/transport.go:958	error reading data channel	{"room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_NzJkNTRlNjctMzYyMy00Zjg0LWIxYjEtNjY2YTg1ODZlM2E2.1d9ke-p1WWOL-JzyQipuEA", "participantID": "PA_XD3xfPqKPJGQ", "remote": false, "transport": "PUBLISHER", "label": "_reliable", "error": "[0x18ec7c9c2008] abort chunk, with following errors: (User Initiated Abort: Close called)"}
+livekit-1  | 2026-09-30T11:03:32.642Z	ERROR	livekit.pion.turn	v5@v5.0.13/server.go:203	Failed to close conn: tls: failed to send closeNotify alert (but connection was closed anyway): write tcp 172.24.0.2:443->172.24.0.3:34792: write: broken pipe
+livekit-1  | github.com/pion/turn/v5.(*Server).readListener.func1
+livekit-1  | 	/go/pkg/mod/github.com/pion/turn/v5@v5.0.13/server.go:203
+livekit-1  | 2026-09-30T11:03:32.642Z	ERROR	livekit.pion.turn	v5@v5.0.13/server.go:203	Failed to close conn: tls: failed to send closeNotify alert (but connection was closed anyway): write tcp 172.24.0.2:443->172.24.0.3:34794: write: broken pipe
+livekit-1  | github.com/pion/turn/v5.(*Server).readListener.func1
+livekit-1  | 	/go/pkg/mod/github.com/pion/turn/v5@v5.0.13/server.go:203
+livekit-1  | 2026-09-30T11:03:32.653Z	INFO	livekit.api	service/twirp.go:149	API RoomService.ListParticipants	{"service": "RoomService", "method": "ListParticipants", "room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "duration": "39.13µs", "status": "200"}
+livekit-1  | 2026-09-30T11:03:32.660Z	INFO	livekit.webhook	webhook/resource_url_notifier.go:337	sent webhook	{"event": "participant_left", "id": "EV_vLehmvWk5UJy", "webhookTime": 1790766212, "url": "http://api:8080/api/v1/internal/livekit/webhook", "room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_YmVmY2MzYzEtMWYxMC00NzRlLThmNzYtZDYzZTcxYWRkOTdh.1n3RRcpdwprUWPgTJy3QsA", "participantID": "PA_Fij8iWijshxw", "queueDuration": "3.542208ms", "qLen": 0, "sendDuration": "35.314568ms", "status": "204 No Content", "statusCode": 204}
+livekit-1  | 2026-09-30T11:03:32.661Z	INFO	livekit.webhook	webhook/resource_url_notifier.go:337	sent webhook	{"event": "track_unpublished", "id": "EV_4fAzsrmiQog2", "webhookTime": 1790766212, "url": "http://api:8080/api/v1/internal/livekit/webhook", "room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_MzRiZjNhZTEtMGRiZS00ZTYzLTliNmEtODk3NDMzYWZmYTI1.K-qZJC_wpDF5jsilKHijMw", "participantID": "PA_Zi28RBWvFmUC", "trackID": "TR_VSwqdDa4G8cpWS", "queueDuration": "32.44545ms", "qLen": 3, "sendDuration": "689.332µs", "status": "204 No Content", "statusCode": 204}
+livekit-1  | 2026-09-30T11:03:32.670Z	INFO	livekit.api	service/twirp.go:149	API RoomService.ListParticipants	{"service": "RoomService", "method": "ListParticipants", "room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "duration": "31.26µs", "status": "200"}
+livekit-1  | 2026-09-30T11:03:32.677Z	INFO	livekit.webhook	webhook/resource_url_notifier.go:337	sent webhook	{"event": "participant_left", "id": "EV_7VGzhbPbLAwo", "webhookTime": 1790766212, "url": "http://api:8080/api/v1/internal/livekit/webhook", "room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_MzRiZjNhZTEtMGRiZS00ZTYzLTliNmEtODk3NDMzYWZmYTI1.K-qZJC_wpDF5jsilKHijMw", "participantID": "PA_Zi28RBWvFmUC", "queueDuration": "33.080722ms", "qLen": 2, "sendDuration": "15.754699ms", "status": "204 No Content", "statusCode": 204}
+api-1      | {"level":30,"time":1790766202463,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1r","req":{"method":"POST","url":"/api/v1/internal/livekit/webhook","host":"api:8080","remoteAddress":"172.25.0.2","remotePort":55564},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766202463,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1r","res":{"statusCode":204},"responseTime":0.5581320524215698,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766203253,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1s","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:8080","remoteAddress":"127.0.0.1","remotePort":49990},"msg":"incoming request"}
+migrate-1  | Applied migration 0009_return_points.sql
+api-1      | {"level":30,"time":1790766203254,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1s","res":{"statusCode":200},"responseTime":0.9186218976974487,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766206333,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1t","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:8080","remoteAddress":"127.0.0.1","remotePort":50016},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766206334,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1t","res":{"statusCode":200},"responseTime":1.1523929834365845,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766209415,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1u","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:8080","remoteAddress":"127.0.0.1","remotePort":55570},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766209416,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1u","res":{"statusCode":200},"responseTime":1.1415120363235474,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766212493,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1v","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:8080","remoteAddress":"127.0.0.1","remotePort":55608},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766212494,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1v","res":{"statusCode":200},"responseTime":1.0717220306396484,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766212623,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1w","req":{"method":"POST","url":"/api/v1/internal/livekit/webhook","host":"api:8080","remoteAddress":"172.25.0.2","remotePort":55564},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766212624,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1w","res":{"statusCode":204},"responseTime":1.1125329732894897,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766212625,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1x","req":{"method":"POST","url":"/api/v1/internal/livekit/webhook","host":"api:8080","remoteAddress":"172.25.0.2","remotePort":55564},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766212625,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1x","res":{"statusCode":204},"responseTime":0.45601093769073486,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766212625,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1y","req":{"method":"POST","url":"/api/v1/internal/livekit/webhook","host":"api:8080","remoteAddress":"172.25.0.2","remotePort":55564},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766212647,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1z","req":{"method":"POST","url":"/api/auth/sign-up/email","host":"api:8080","remoteAddress":"172.26.0.4","remotePort":40880},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766212660,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1y","res":{"statusCode":204},"responseTime":35.00042700767517,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766212661,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-20","req":{"method":"POST","url":"/api/v1/internal/livekit/webhook","host":"api:8080","remoteAddress":"172.25.0.2","remotePort":55564},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766212661,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-20","res":{"statusCode":204},"responseTime":0.4313209056854248,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766212661,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-21","req":{"method":"POST","url":"/api/v1/internal/livekit/webhook","host":"api:8080","remoteAddress":"172.25.0.2","remotePort":55564},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766212677,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-21","res":{"statusCode":204},"responseTime":15.628338932991028,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766212677,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-22","req":{"method":"POST","url":"/api/v1/internal/livekit/webhook","host":"api:8080","remoteAddress":"172.25.0.2","remotePort":55564},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766212693,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-22","res":{"statusCode":204},"responseTime":15.993988990783691,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766212693,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-23","req":{"method":"POST","url":"/api/v1/internal/livekit/webhook","host":"api:8080","remoteAddress":"172.25.0.2","remotePort":55564},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766212710,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-23","res":{"statusCode":204},"responseTime":16.439621090888977,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766212731,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-1z","res":{"statusCode":200},"responseTime":84.6721099615097,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766212733,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-24","req":{"method":"GET","url":"/api/v1/me","host":"api:8080","remoteAddress":"172.26.0.4","remotePort":40884},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766212737,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-24","res":{"statusCode":200},"responseTime":3.776800036430359,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766212739,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-25","req":{"method":"POST","url":"/api/auth/sign-up/email","host":"api:8080","remoteAddress":"172.26.0.4","remotePort":40880},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766212815,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-25","res":{"statusCode":200},"responseTime":76.07501900196075,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766212817,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-26","req":{"method":"GET","url":"/api/v1/me","host":"api:8080","remoteAddress":"172.26.0.4","remotePort":40884},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766212819,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-26","res":{"statusCode":200},"responseTime":1.6759939193725586,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766212820,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-27","req":{"method":"POST","url":"/api/v1/workspaces","host":"api:8080","remoteAddress":"172.26.0.4","remotePort":40880},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766212836,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-27","res":{"statusCode":201},"responseTime":16.200000047683716,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766212838,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-28","req":{"method":"POST","url":"/api/v1/workspaces/824d5737-92d1-45a1-b93b-5f03eb8688a8/members","host":"api:8080","remoteAddress":"172.26.0.4","remotePort":40884},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766212849,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-28","res":{"statusCode":201},"responseTime":10.659897089004517,"msg":"request completed"}
+migrate-1  | Applied migration 0010_direct_messages.sql
+migrate-1  | Applied migration 0011_agent_connection.sql
+migrate-1  | Applied migration 0012_agent_oauth.sql
+migrate-1  | Applied migration 0013_docs.sql
+migrate-1  | Applied migration 0014_search.sql
+migrate-1  | Applied migration 0015_notifications.sql
+migrate-1  | Applied migration 0016_live_sessions.sql
+migrate-1  | Applied migration 0017_live_access_fences.sql
+migrate-1  | Applied migration 0018_live_lifecycle.sql
+migrate-1  | Applied migration 0019_live_webhook_events.sql
+migrate-1  | Applied migration 0020_live_invitations.sql
+migrate-1  | Applied migration 0021_live_invitation_notifications.sql
+migrate-1  | Applied migration 0022_search_restore_path.sql
+migrate-1  | Applied migration 0023_live_admissions.sql
+migrate-1  | Applied migration 0024_personal_runs.sql
+migrate-1  | Applied migration 0025_dm_sketches.sql
+migrate-1  | Flux schema 25 and pg-boss ready
+migrate-1  | Flux schema 25 and pg-boss ready
+livekit-1  | 2026-09-30T11:03:32.686Z	INFO	livekit.api	service/twirp.go:149	API RoomService.ListParticipants	{"service": "RoomService", "method": "ListParticipants", "room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "duration": "35.83µs", "status": "200"}
+livekit-1  | 2026-09-30T11:03:32.693Z	INFO	livekit.webhook	webhook/resource_url_notifier.go:337	sent webhook	{"event": "participant_left", "id": "EV_LzrcQQpRXqur", "webhookTime": 1790766212, "url": "http://api:8080/api/v1/internal/livekit/webhook", "room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_MGJiN2Q0MjYtZTRlOS00ZjIyLWI1YzYtMGE0NGQ1YmUxYjBh.XzSzjuVcjehwnMTov3OzyA", "participantID": "PA_2CkeWjkQGQbi", "queueDuration": "41.348723ms", "qLen": 1, "sendDuration": "16.21143ms", "status": "204 No Content", "statusCode": 204}
+livekit-1  | 2026-09-30T11:03:32.703Z	INFO	livekit.api	service/twirp.go:149	API RoomService.ListParticipants	{"service": "RoomService", "method": "ListParticipants", "room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "duration": "31.67µs", "status": "200"}
+livekit-1  | 2026-09-30T11:03:32.710Z	INFO	livekit.webhook	webhook/resource_url_notifier.go:337	sent webhook	{"event": "participant_left", "id": "EV_NxLrc36AMQP4", "webhookTime": 1790766212, "url": "http://api:8080/api/v1/internal/livekit/webhook", "room": "live_MM4fYbUgapdNV9N11oyf2FgJOecfi2iM", "roomID": "RM_BxFV4ENzXDU7", "participant": "u_NzJkNTRlNjctMzYyMy00Zjg0LWIxYjEtNjY2YTg1ODZlM2E2.1d9ke-p1WWOL-JzyQipuEA", "participantID": "PA_XD3xfPqKPJGQ", "queueDuration": "52.27646ms", "qLen": 0, "sendDuration": "16.775701ms", "status": "204 No Content", "statusCode": 204}
+livekit-1  | 2026-09-30T11:03:32.919Z	INFO	livekit.api	service/twirp.go:149	API RoomService.CreateRoom	{"service": "RoomService", "method": "CreateRoom", "room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "request": {"name": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "emptyTimeout": 420, "departureTimeout": 180, "maxParticipants": 16}, "duration": "314.431µs", "status": "200"}
+livekit-1  | 2026-09-30T11:03:32.920Z	INFO	livekit.webhook	webhook/resource_url_notifier.go:337	sent webhook	{"event": "room_started", "id": "EV_FJqxQCddRSTR", "webhookTime": 1790766212, "url": "http://api:8080/api/v1/internal/livekit/webhook", "room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "roomID": "RM_r8BuEQ8nMZqU", "queueDuration": "3.42µs", "qLen": 0, "sendDuration": "1.120593ms", "status": "204 No Content", "statusCode": 204}
+livekit-1  | 2026-09-30T11:03:32.926Z	INFO	livekit.api	service/twirp.go:149	API RoomService.ListParticipants	{"service": "RoomService", "method": "ListParticipants", "room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "duration": "18.8µs", "status": "200"}
+livekit-1  | 2026-09-30T11:03:32.933Z	INFO	livekit.api	service/twirp.go:149	API RoomService.ListRooms	{"service": "RoomService", "method": "ListRooms", "room": ["live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq"], "duration": "58.56µs", "status": "200"}
+livekit-1  | 2026-09-30T11:03:32.935Z	INFO	livekit.api	service/twirp.go:149	API RoomService.ListParticipants	{"service": "RoomService", "method": "ListParticipants", "room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "duration": "33.75µs", "status": "200"}
+livekit-1  | 2026-09-30T11:03:32.950Z	INFO	livekit.api	service/twirp.go:149	API RoomService.ListRooms	{"service": "RoomService", "method": "ListRooms", "room": ["live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq"], "duration": "65.84µs", "status": "200"}
+livekit-1  | 2026-09-30T11:03:32.951Z	INFO	livekit.api	service/twirp.go:149	API RoomService.ListParticipants	{"service": "RoomService", "method": "ListParticipants", "room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "duration": "20.22µs", "status": "200"}
+livekit-1  | 2026-09-30T11:03:33.479Z	INFO	livekit	service/roommanager.go:433	starting RTC session	{"room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "roomID": "RM_r8BuEQ8nMZqU", "participant": "u_YzkxMWYzZTYtYjM2Yy00OWNiLTk1YWItNDllMmU4ZGFiMDMx.Ess7tAOFKeF5mOZgmlCgqA", "participantID": "PA_B4iCQUEBkHDZ", "remote": false, "room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "nodeID": "ND_XY28t65jYytb", "numParticipants": 0, "participantInit": {"Identity": "u_YzkxMWYzZTYtYjM2Yy00OWNiLTk1YWItNDllMmU4ZGFiMDMx.Ess7tAOFKeF5mOZgmlCgqA", "Reconnect": false, "ReconnectReason": "RR_UNKNOWN", "AutoSubscribe": true, "AutoSubscribeDataTrack": false, "Client": {"sdk": "JS", "version": "2.17.2", "protocol": 16, "os": "Other", "deviceModel": "Other", "browser": "Other"}, "Grants": {"Identity": "u_YzkxMWYzZTYtYjM2Yy00OWNiLTk1YWItNDllMmU4ZGFiMDMx.Ess7tAOFKeF5mOZgmlCgqA", "Kind": "", "KindDetails": [], "Video": {"RoomCreate": false, "RoomList": false, "RoomRecord": false, "RoomAdmin": false, "RoomJoin": true, "Room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "CanPublish": true, "CanSubscribe": true, "CanPublishData": false, "CanPublishSources": [], "CanUpdateOwnMetadata": false, "IngressAdmin": false, "Hidden": false, "Recorder": false, "Agent": false, "CanSubscribeMetrics": "not-set", "CanManageAgentSession": "not-set", "DestinationRoom": ""}, "SIP": {}, "Agent": {}, "Inference": {}, "Observability": {}, "RoomConfig": {}, "RoomPreset": ""}, "TokenExpiresAt": "2026-09-30T11:05:02.000Z", "Region": "", "AdaptiveStream": false, "ID": "", "SubscriberAllowPause": false, "DisableICELite": false, "CreateRoom": {"name": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq"}, "AddTrackRequests": [], "PublisherOffer": {}, "SyncState": {}, "UseSinglePeerConnection": true}}
+livekit-1  | 2026-09-30T11:03:33.689Z	INFO	livekit	rtc/room.go:1284	participant active	{"room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "roomID": "RM_r8BuEQ8nMZqU", "participant": "u_YzkxMWYzZTYtYjM2Yy00OWNiLTk1YWItNDllMmU4ZGFiMDMx.Ess7tAOFKeF5mOZgmlCgqA", "participantID": "PA_B4iCQUEBkHDZ", "remote": false, "publisherCandidates": ["[local][selected:1][trickle] udp4 host 172.24.0.2:7882 (resolved: 172.24.0.2:7882)", "[local][trickle] tcp4 host 172.24.0.2:7881 (resolved: 172.24.0.2:7881)", "[remote][trickle] udp host 172.26.0.4:56175", "[remote][trickle] udp host 172.24.0.3:60463", "[remote][selected:1][trickle] udp relay 172.24.0.2:39695  related 172.24.0.3:36466", "[remote][trickle] tcp host 172.26.0.4:9", "[remote][trickle] tcp host 172.24.0.3:9"], "connectionType": "turn", "clientInfo": {"sdk": "JS", "version": "2.17.2", "protocol": 16, "os": "Other", "deviceModel": "Other", "browser": "Other"}, "connectTime": "210.950466ms"}
+livekit-1  | 2026-09-30T11:03:33.698Z	INFO	livekit.api	service/twirp.go:149	API RoomService.ListParticipants	{"service": "RoomService", "method": "ListParticipants", "room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "duration": "70.8µs", "status": "200"}
+livekit-1  | 2026-09-30T11:03:33.701Z	INFO	livekit.api	service/twirp.go:149	API RoomService.ListParticipants	{"service": "RoomService", "method": "ListParticipants", "room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "duration": "27.73µs", "status": "200"}
+livekit-1  | 2026-09-30T11:03:33.708Z	INFO	livekit.webhook	webhook/resource_url_notifier.go:337	sent webhook	{"event": "participant_joined", "id": "EV_7HY37WMXverz", "webhookTime": 1790766213, "url": "http://api:8080/api/v1/internal/livekit/webhook", "room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "roomID": "RM_r8BuEQ8nMZqU", "participant": "u_YzkxMWYzZTYtYjM2Yy00OWNiLTk1YWItNDllMmU4ZGFiMDMx.Ess7tAOFKeF5mOZgmlCgqA", "participantID": "PA_B4iCQUEBkHDZ", "queueDuration": "9.55µs", "qLen": 0, "sendDuration": "18.087475ms", "status": "204 No Content", "statusCode": 204}
+livekit-1  | 2026-09-30T11:03:33.851Z	INFO	livekit.pub	rtc/participant.go:2423	mediaTrack published	{"room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "roomID": "RM_r8BuEQ8nMZqU", "participant": "u_YzkxMWYzZTYtYjM2Yy00OWNiLTk1YWItNDllMmU4ZGFiMDMx.Ess7tAOFKeF5mOZgmlCgqA", "participantID": "PA_B4iCQUEBkHDZ", "remote": false, "kind": "video", "trackID": "TR_VSkKu25dcEQnbg", "webrtcTrackID": "363f34aa-c004-4d16-a9b0-65bc25ae8c9b", "rid": "q", "ssrc": 4100428375, "rtxSsrc": 0, "mime": "video/VP8", "trackInfo": {"sid": "TR_VSkKu25dcEQnbg", "type": "VIDEO", "width": 1280, "height": 800, "simulcast": true, "source": "SCREEN_SHARE", "layers": [{"quality": "LOW", "width": 640, "height": 400, "bitrate": 625000, "ssrc": 4100428375, "rid": "q"}, {"quality": "MEDIUM", "width": 1280, "height": 800, "bitrate": 2500000, "spatialLayer": 1, "rid": "h"}], "mimeType": "video/VP8", "mid": "1", "codecs": [{"mimeType": "video/VP8", "mid": "1", "cid": "363f34aa-c004-4d16-a9b0-65bc25ae8c9b", "layers": [{"quality": "LOW", "width": 640, "height": 400, "bitrate": 625000, "ssrc": 4100428375, "rid": "q"}, {"quality": "MEDIUM", "width": 1280, "height": 800, "bitrate": 2500000, "spatialLayer": 1, "rid": "h"}], "videoLayerMode": "ONE_SPATIAL_LAYER_PER_STREAM"}], "encryption": "NONE", "stream": "screen", "version": {"unixMicro": 1790766213851531}, "backupCodecPolicy": "PREFER_REGRESSION"}, "fromSdp": true, "isReceiverAdded": true, "sdpRids": ["q", "h", ""]}
+livekit-1  | 2026-09-30T11:03:33.852Z	INFO	livekit.webhook	webhook/resource_url_notifier.go:337	sent webhook	{"event": "track_published", "id": "EV_fe3Yh8gParEg", "webhookTime": 1790766213, "url": "http://api:8080/api/v1/internal/livekit/webhook", "room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "roomID": "RM_r8BuEQ8nMZqU", "participant": "u_YzkxMWYzZTYtYjM2Yy00OWNiLTk1YWItNDllMmU4ZGFiMDMx.Ess7tAOFKeF5mOZgmlCgqA", "participantID": "PA_B4iCQUEBkHDZ", "trackID": "TR_VSkKu25dcEQnbg", "queueDuration": "3.83µs", "qLen": 0, "sendDuration": "979.142µs", "status": "204 No Content", "statusCode": 204}
+livekit-1  | 2026-09-30T11:03:33.942Z	INFO	livekit.pub	rtc/participant.go:2423	mediaTrack published	{"room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "roomID": "RM_r8BuEQ8nMZqU", "participant": "u_YzkxMWYzZTYtYjM2Yy00OWNiLTk1YWItNDllMmU4ZGFiMDMx.Ess7tAOFKeF5mOZgmlCgqA", "participantID": "PA_B4iCQUEBkHDZ", "remote": false, "kind": "audio", "trackID": "TR_AM6A8cZawuzTKz", "webrtcTrackID": "ed21c68f-b8a8-40a6-89d8-9e7ce32fa615", "rid": "", "ssrc": 1763385115, "rtxSsrc": 0, "mime": "audio/red", "trackInfo": {"sid": "TR_AM6A8cZawuzTKz", "type": "AUDIO", "source": "MICROPHONE", "mimeType": "audio/red", "mid": "3", "codecs": [{"mimeType": "audio/red", "mid": "3", "cid": "ed21c68f-b8a8-40a6-89d8-9e7ce32fa615", "videoLayerMode": "ONE_SPATIAL_LAYER_PER_STREAM"}], "encryption": "NONE", "stream": "camera", "version": {"unixMicro": 1790766213942824}, "audioFeatures": ["TF_AUTO_GAIN_CONTROL", "TF_ECHO_CANCELLATION", "TF_NOISE_SUPPRESSION"], "backupCodecPolicy": "SIMULCAST"}, "fromSdp": true, "isReceiverAdded": true, "sdpRids": ["", "", ""]}
+api-1      | {"level":30,"time":1790766212850,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-29","req":{"method":"POST","url":"/api/v1/workspaces/824d5737-92d1-45a1-b93b-5f03eb8688a8/projects","host":"api:8080","remoteAddress":"172.26.0.4","remotePort":40880},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766212861,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-29","res":{"statusCode":201},"responseTime":10.817427039146423,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766212863,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2a","req":{"method":"POST","url":"/api/v1/projects/46a92471-70e8-41b8-b073-237006a253e4/grants","host":"api:8080","remoteAddress":"172.26.0.4","remotePort":40884},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766212892,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2a","res":{"statusCode":201},"responseTime":29.27176296710968,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766212894,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2b","req":{"method":"POST","url":"/api/v1/projects/46a92471-70e8-41b8-b073-237006a253e4/conversations","host":"api:8080","remoteAddress":"172.26.0.4","remotePort":40880},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766212909,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2b","res":{"statusCode":201},"responseTime":15.110598087310791,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766212911,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2c","req":{"method":"POST","url":"/api/v1/live-sessions","host":"api:8080","remoteAddress":"172.26.0.4","remotePort":40884},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766212919,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2d","req":{"method":"POST","url":"/api/v1/internal/livekit/webhook","host":"api:8080","remoteAddress":"172.25.0.2","remotePort":55564},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766212920,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2d","res":{"statusCode":204},"responseTime":0.8787829875946045,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766212926,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2c","res":{"statusCode":201},"responseTime":15.041347980499268,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766212928,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2e","req":{"method":"POST","url":"/api/v1/live-sessions/6d3b3aad-68ec-469d-9541-8fe3033d9119/join","host":"api:8080","remoteAddress":"172.26.0.4","remotePort":40880},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766212943,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2e","res":{"statusCode":200},"responseTime":14.956596970558167,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766212944,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2f","req":{"method":"POST","url":"/api/v1/live-sessions/6d3b3aad-68ec-469d-9541-8fe3033d9119/join","host":"api:8080","remoteAddress":"172.26.0.4","remotePort":40884},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766212957,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2f","res":{"statusCode":200},"responseTime":12.978312015533447,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766213296,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2g","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:19061","remoteAddress":"172.26.0.4","remotePort":55772},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766213299,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2g","res":{"statusCode":200},"responseTime":2.67160701751709,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766213308,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2h","req":{"method":"GET","url":"/favicon.ico","host":"127.0.0.1:19061","remoteAddress":"172.26.0.4","remotePort":55772},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766213309,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2h","res":{"statusCode":404},"responseTime":1.4006340503692627,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766213374,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2i","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:19061","remoteAddress":"172.26.0.4","remotePort":55772},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766213375,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2i","res":{"statusCode":200},"responseTime":1.022271990776062,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766213690,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2j","req":{"method":"POST","url":"/api/v1/internal/livekit/webhook","host":"api:8080","remoteAddress":"172.25.0.2","remotePort":55564},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766213708,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2j","res":{"statusCode":204},"responseTime":17.689364075660706,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766213852,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2k","req":{"method":"POST","url":"/api/v1/internal/livekit/webhook","host":"api:8080","remoteAddress":"172.25.0.2","remotePort":55564},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766213852,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2k","res":{"statusCode":204},"responseTime":0.5307110548019409,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766213943,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2l","req":{"method":"POST","url":"/api/v1/internal/livekit/webhook","host":"api:8080","remoteAddress":"172.25.0.2","remotePort":55564},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766213943,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2l","res":{"statusCode":204},"responseTime":0.5627709627151489,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766213964,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2m","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:19061","remoteAddress":"172.26.0.4","remotePort":55792},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766213965,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2m","res":{"statusCode":200},"responseTime":0.8813530206680298,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766214000,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2n","req":{"method":"POST","url":"/api/v1/internal/livekit/webhook","host":"api:8080","remoteAddress":"172.25.0.2","remotePort":55564},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766214001,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2n","res":{"statusCode":204},"responseTime":0.5828410387039185,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766214025,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2o","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:19061","remoteAddress":"172.26.0.4","remotePort":55792},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766214026,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2o","res":{"statusCode":200},"responseTime":1.0935629606246948,"msg":"request completed"}
+api-1      | {"level":30,"time":1790766214236,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2p","req":{"method":"POST","url":"/api/v1/internal/livekit/webhook","host":"api:8080","remoteAddress":"172.25.0.2","remotePort":55564},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790766214262,"pid":1,"hostname":"bfc8988b63e6","reqId":"req-2p","res":{"statusCode":204},"responseTime":26.083165049552917,"msg":"request completed"}
+livekit-1  | 2026-09-30T11:03:33.943Z	INFO	livekit.webhook	webhook/resource_url_notifier.go:337	sent webhook	{"event": "track_published", "id": "EV_Nc79BZx8ZZpX", "webhookTime": 1790766213, "url": "http://api:8080/api/v1/internal/livekit/webhook", "room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "roomID": "RM_r8BuEQ8nMZqU", "participant": "u_YzkxMWYzZTYtYjM2Yy00OWNiLTk1YWItNDllMmU4ZGFiMDMx.Ess7tAOFKeF5mOZgmlCgqA", "participantID": "PA_B4iCQUEBkHDZ", "trackID": "TR_AM6A8cZawuzTKz", "queueDuration": "4.58µs", "qLen": 0, "sendDuration": "855.132µs", "status": "204 No Content", "statusCode": 204}
+livekit-1  | 2026-09-30T11:03:34.000Z	INFO	livekit.pub	rtc/participant.go:2423	mediaTrack published	{"room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "roomID": "RM_r8BuEQ8nMZqU", "participant": "u_YzkxMWYzZTYtYjM2Yy00OWNiLTk1YWItNDllMmU4ZGFiMDMx.Ess7tAOFKeF5mOZgmlCgqA", "participantID": "PA_B4iCQUEBkHDZ", "remote": false, "kind": "video", "trackID": "TR_VC9dMWYjp9wLCu", "webrtcTrackID": "309b5301-2c4b-42e9-a82b-7d799e8ff582", "rid": "q", "ssrc": 2717694459, "rtxSsrc": 0, "mime": "video/VP8", "trackInfo": {"sid": "TR_VC9dMWYjp9wLCu", "type": "VIDEO", "width": 640, "height": 480, "simulcast": true, "source": "CAMERA", "layers": [{"quality": "LOW", "width": 240, "height": 180, "bitrate": 125000, "ssrc": 2717694459, "rid": "q"}, {"quality": "MEDIUM", "width": 640, "height": 480, "bitrate": 500000, "spatialLayer": 1, "rid": "h"}], "mimeType": "video/VP8", "mid": "2", "codecs": [{"mimeType": "video/VP8", "mid": "2", "cid": "309b5301-2c4b-42e9-a82b-7d799e8ff582", "layers": [{"quality": "LOW", "width": 240, "height": 180, "bitrate": 125000, "ssrc": 2717694459, "rid": "q"}, {"quality": "MEDIUM", "width": 640, "height": 480, "bitrate": 500000, "spatialLayer": 1, "rid": "h"}], "videoLayerMode": "ONE_SPATIAL_LAYER_PER_STREAM"}], "encryption": "NONE", "stream": "camera", "version": {"unixMicro": 1790766213999702}, "backupCodecPolicy": "PREFER_REGRESSION"}, "fromSdp": true, "isReceiverAdded": true, "sdpRids": ["q", "h", ""]}
+livekit-1  | 2026-09-30T11:03:34.001Z	INFO	livekit.webhook	webhook/resource_url_notifier.go:337	sent webhook	{"event": "track_published", "id": "EV_4YMjtBAz6Bbi", "webhookTime": 1790766214, "url": "http://api:8080/api/v1/internal/livekit/webhook", "room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "roomID": "RM_r8BuEQ8nMZqU", "participant": "u_YzkxMWYzZTYtYjM2Yy00OWNiLTk1YWItNDllMmU4ZGFiMDMx.Ess7tAOFKeF5mOZgmlCgqA", "participantID": "PA_B4iCQUEBkHDZ", "trackID": "TR_VC9dMWYjp9wLCu", "queueDuration": "4.32µs", "qLen": 0, "sendDuration": "957.182µs", "status": "204 No Content", "statusCode": 204}
+livekit-1  | 2026-09-30T11:03:34.110Z	INFO	livekit	service/roommanager.go:433	starting RTC session	{"room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "roomID": "RM_r8BuEQ8nMZqU", "participant": "u_ZDQ5MWYwZTItZGQxNS00NjQ2LWI4MWYtNTYyYzlkNGI1N2Ux.-2qeHtaa-y8kKQjMw8Qmzw", "participantID": "PA_5DYYhbXPbzUv", "remote": false, "room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "nodeID": "ND_XY28t65jYytb", "numParticipants": 1, "participantInit": {"Identity": "u_ZDQ5MWYwZTItZGQxNS00NjQ2LWI4MWYtNTYyYzlkNGI1N2Ux.-2qeHtaa-y8kKQjMw8Qmzw", "Reconnect": false, "ReconnectReason": "RR_UNKNOWN", "AutoSubscribe": true, "AutoSubscribeDataTrack": false, "Client": {"sdk": "JS", "version": "2.17.2", "protocol": 16, "os": "Other", "deviceModel": "Other", "browser": "Other"}, "Grants": {"Identity": "u_ZDQ5MWYwZTItZGQxNS00NjQ2LWI4MWYtNTYyYzlkNGI1N2Ux.-2qeHtaa-y8kKQjMw8Qmzw", "Kind": "", "KindDetails": [], "Video": {"RoomCreate": false, "RoomList": false, "RoomRecord": false, "RoomAdmin": false, "RoomJoin": true, "Room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "CanPublish": true, "CanSubscribe": true, "CanPublishData": false, "CanPublishSources": [], "CanUpdateOwnMetadata": false, "IngressAdmin": false, "Hidden": false, "Recorder": false, "Agent": false, "CanSubscribeMetrics": "not-set", "CanManageAgentSession": "not-set", "DestinationRoom": ""}, "SIP": {}, "Agent": {}, "Inference": {}, "Observability": {}, "RoomConfig": {}, "RoomPreset": ""}, "TokenExpiresAt": "2026-09-30T11:05:02.000Z", "Region": "", "AdaptiveStream": false, "ID": "", "SubscriberAllowPause": false, "DisableICELite": false, "CreateRoom": {"name": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq"}, "AddTrackRequests": [], "PublisherOffer": {}, "SyncState": {}, "UseSinglePeerConnection": true}}
+livekit-1  | 2026-09-30T11:03:34.236Z	INFO	livekit	rtc/room.go:1284	participant active	{"room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "roomID": "RM_r8BuEQ8nMZqU", "participant": "u_ZDQ5MWYwZTItZGQxNS00NjQ2LWI4MWYtNTYyYzlkNGI1N2Ux.-2qeHtaa-y8kKQjMw8Qmzw", "participantID": "PA_5DYYhbXPbzUv", "remote": false, "publisherCandidates": ["[local][selected:1][trickle] udp4 host 172.24.0.2:7882 (resolved: 172.24.0.2:7882)", "[local][trickle] tcp4 host 172.24.0.2:7881 (resolved: 172.24.0.2:7881)", "[remote][filtered][trickle] udp host :41695", "[remote][selected:1][trickle] udp relay 172.24.0.2:35182  related 172.24.0.3:36474", "[remote][trickle] udp relay 172.24.0.2:39425  related 172.24.0.3:36486"], "connectionType": "turn", "clientInfo": {"sdk": "JS", "version": "2.17.2", "protocol": 16, "os": "Other", "deviceModel": "Other", "browser": "Other"}, "connectTime": "126.334322ms"}
+livekit-1  | 2026-09-30T11:03:34.253Z	INFO	livekit.api	service/twirp.go:149	API RoomService.ListParticipants	{"service": "RoomService", "method": "ListParticipants", "room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "duration": "173.181µs", "status": "200"}
+livekit-1  | 2026-09-30T11:03:34.255Z	INFO	livekit.api	service/twirp.go:149	API RoomService.ListParticipants	{"service": "RoomService", "method": "ListParticipants", "room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "duration": "125.3µs", "status": "200"}
+livekit-1  | 2026-09-30T11:03:34.262Z	INFO	livekit.webhook	webhook/resource_url_notifier.go:337	sent webhook	{"event": "participant_joined", "id": "EV_w2Frjd2fsqPC", "webhookTime": 1790766214, "url": "http://api:8080/api/v1/internal/livekit/webhook", "room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "roomID": "RM_r8BuEQ8nMZqU", "participant": "u_ZDQ5MWYwZTItZGQxNS00NjQ2LWI4MWYtNTYyYzlkNGI1N2Ux.-2qeHtaa-y8kKQjMw8Qmzw", "participantID": "PA_5DYYhbXPbzUv", "queueDuration": "5.54µs", "qLen": 0, "sendDuration": "26.459826ms", "status": "204 No Content", "statusCode": 204}
+livekit-1  | 2026-09-30T11:03:34.302Z	INFO	livekit.pub	rtc/participant.go:2423	mediaTrack published	{"room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "roomID": "RM_r8BuEQ8nMZqU", "participant": "u_YzkxMWYzZTYtYjM2Yy00OWNiLTk1YWItNDllMmU4ZGFiMDMx.Ess7tAOFKeF5mOZgmlCgqA", "participantID": "PA_B4iCQUEBkHDZ", "remote": false, "kind": "video", "trackID": "TR_VC9dMWYjp9wLCu", "webrtcTrackID": "309b5301-2c4b-42e9-a82b-7d799e8ff582", "rid": "h", "ssrc": 693192278, "rtxSsrc": 0, "mime": "video/VP8", "trackInfo": {"sid": "TR_VC9dMWYjp9wLCu", "type": "VIDEO", "width": 640, "height": 480, "simulcast": true, "source": "CAMERA", "layers": [{"quality": "LOW", "width": 240, "height": 180, "bitrate": 125000, "ssrc": 2717694459, "rid": "q", "repairSsrc": 4248289264}, {"quality": "MEDIUM", "width": 640, "height": 480, "bitrate": 500000, "ssrc": 693192278, "spatialLayer": 1, "rid": "h"}], "mimeType": "video/VP8", "mid": "2", "codecs": [{"mimeType": "video/VP8", "mid": "2", "cid": "309b5301-2c4b-42e9-a82b-7d799e8ff582", "layers": [{"quality": "LOW", "width": 240, "height": 180, "bitrate": 125000, "ssrc": 2717694459, "rid": "q", "repairSsrc": 4248289264}, {"quality": "MEDIUM", "width": 640, "height": 480, "bitrate": 500000, "ssrc": 693192278, "spatialLayer": 1, "rid": "h"}], "videoLayerMode": "ONE_SPATIAL_LAYER_PER_STREAM"}], "encryption": "NONE", "stream": "camera", "version": {"unixMicro": 1790766213999702}, "backupCodecPolicy": "PREFER_REGRESSION"}, "fromSdp": true, "isReceiverAdded": true, "sdpRids": ["", "", ""]}
+livekit-1  | 2026-09-30T11:03:34.319Z	INFO	livekit	telemetry/events.go:212	stats worker active	{"room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "roomID": "RM_r8BuEQ8nMZqU", "participant": "u_ZDQ5MWYwZTItZGQxNS00NjQ2LWI4MWYtNTYyYzlkNGI1N2Ux.-2qeHtaa-y8kKQjMw8Qmzw", "participantID": "PA_5DYYhbXPbzUv", "worker": {"room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "roomID": "RM_r8BuEQ8nMZqU", "participant": "u_ZDQ5MWYwZTItZGQxNS00NjQ2LWI4MWYtNTYyYzlkNGI1N2Ux.-2qeHtaa-y8kKQjMw8Qmzw", "participantID": "PA_5DYYhbXPbzUv", "isConnected": true, "closedAt": "0001-01-01T00:00:00.000Z", "refCount": {"count": 1}}, "guard": {"self": 27403984326792, "activated": true, "released": true}}
+livekit-1  | 2026-09-30T11:03:34.332Z	INFO	livekit	telemetry/events.go:212	stats worker active	{"room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "roomID": "RM_r8BuEQ8nMZqU", "participant": "u_YzkxMWYzZTYtYjM2Yy00OWNiLTk1YWItNDllMmU4ZGFiMDMx.Ess7tAOFKeF5mOZgmlCgqA", "participantID": "PA_B4iCQUEBkHDZ", "worker": {"room": "live_z-TjCQ4bCEXj153qhmm5LiK790y7AQyq", "roomID": "RM_r8BuEQ8nMZqU", "participant": "u_YzkxMWYzZTYtYjM2Yy00OWNiLTk1YWItNDllMmU4ZGFiMDMx.Ess7tAOFKeF5mOZgmlCgqA", "participantID": "PA_B4iCQUEBkHDZ", "isConnected": true, "closedAt": "0001-01-01T00:00:00.000Z", "refCount": {"count": 1}}, "guard": {"self": 27403993307594, "activated": true, "released": true}}
+livekit-1  | 2026-09-30T11:03:34.510Z	INFO	livekit	telemetry/events.go:212	stats worker active	{"room": "live_uLlYM6MNEBmoUR3i1jNVf5pUqtKSDCiP", "roomID": "RM_BzDK38VDeoDg", "participant": "u_NGY2ZTFiZWItYTg3Yy00ZmRkLWFjNDctYTdlZjk0OGY3MTFm.PXz_Yjwory5LVp0plU-cAw", "participantID": "PA_BQvSUaTFqDUF", "worker": {"room": "live_uLlYM6MNEBmoUR3i1jNVf5pUqtKSDCiP", "roomID": "RM_BzDK38VDeoDg", "participant": "u_NGY2ZTFiZWItYTg3Yy00ZmRkLWFjNDctYTdlZjk0OGY3MTFm.PXz_Yjwory5LVp0plU-cAw", "participantID": "PA_BQvSUaTFqDUF", "isConnected": true, "closedAt": "0001-01-01T00:00:00.000Z", "refCount": {"count": 1}}, "guard": {"self": 27403968160952, "activated": true, "released": true}}
+livekit-1  | 2026-09-30T11:03:34.511Z	INFO	livekit	telemetry/events.go:212	stats worker active	{"room": "live_uLlYM6MNEBmoUR3i1jNVf5pUqtKSDCiP", "roomID": "RM_BzDK38VDeoDg", "participant": "u_Mzg0M2Y3MjQtMGY2MS00YTRkLTk4M2QtNDNjOGM1MDE5ZTAz.VhcQR6jRA1qQrOvFPWcQxQ", "participantID": "PA_3678oMaDCf72", "worker": {"room": "live_uLlYM6MNEBmoUR3i1jNVf5pUqtKSDCiP", "roomID": "RM_BzDK38VDeoDg", "participant": "u_Mzg0M2Y3MjQtMGY2MS00YTRkLTk4M2QtNDNjOGM1MDE5ZTAz.VhcQR6jRA1qQrOvFPWcQxQ", "participantID": "PA_3678oMaDCf72", "isConnected": true, "closedAt": "0001-01-01T00:00:00.000Z", "refCount": {"count": 1}}, "guard": {"self": 27403956401288, "activated": true, "released": true}}
+ Container flux-live-turn-1790766173-822371-api-1 Stopping 
+ Container flux-live-turn-1790766173-822371-api-1 Stopped 
+ Container flux-live-turn-1790766173-822371-api-1 Removing 
+ Container flux-live-turn-1790766173-822371-api-1 Removed 
+ Container flux-live-turn-1790766173-822371-livekit-1 Stopping 
+ Container flux-live-turn-1790766173-822371-migrate-1 Stopping 
+ Container flux-live-turn-1790766173-822371-migrate-1 Stopped 
+ Container flux-live-turn-1790766173-822371-migrate-1 Removing 
+ Container flux-live-turn-1790766173-822371-migrate-1 Removed 
+ Container flux-live-turn-1790766173-822371-db-1 Stopping 
+ Container flux-live-turn-1790766173-822371-db-1 Stopped 
+ Container flux-live-turn-1790766173-822371-db-1 Removing 
+ Container flux-live-turn-1790766173-822371-db-1 Removed 
+ Container flux-live-turn-1790766173-822371-livekit-1 Stopped 
+ Container flux-live-turn-1790766173-822371-livekit-1 Removing 
+ Container flux-live-turn-1790766173-822371-livekit-1 Removed 
+ Volume flux-live-turn-1790766173-822371_pgdata Removing 
+ Volume flux-live-turn-1790766173-822371_files Removing 
+ Network flux-live-turn-1790766173-822371_livekit-signal Removing 
+ Network flux-live-turn-1790766173-822371_default Removing 
+ Network flux-live-turn-1790766173-822371_livekit-media Removing 
+ Volume flux-live-turn-1790766173-822371_pgdata Removed 
+ Volume flux-live-turn-1790766173-822371_files Removed 
+ Network flux-live-turn-1790766173-822371_livekit-media Removed 
+ Network flux-live-turn-1790766173-822371_livekit-signal Removed 
+ Network flux-live-turn-1790766173-822371_default Removed 
