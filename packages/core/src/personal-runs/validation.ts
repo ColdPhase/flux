@@ -162,18 +162,23 @@ function bounded(value: unknown, maximum: number): string | null {
 
 /**
  * Splits model output into the answer body, the cited sources and at most one proposal.
- * Citations count only for supplied labels; a proposal may finish only a supplied open work item.
+ * Citations count only for supplied labels and are renumbered `[1]`… in the order of `sources`; a proposal may finish only a supplied open work item.
  * A malformed proposal is dropped, never guessed.
  */
 export function parseOutput(text: string, sources: SuppliedSource[], allowProposal: boolean) {
   const byLabel = new Map(sources.map((source) => [source.label, source]));
   const match = PROPOSAL.exec(text);
-  const body = (match ? text.replace(match[0], '') : text).trim().slice(0, 100_000);
+  const raw = (match ? text.replace(match[0], '') : text).trim().slice(0, 100_000);
+  // A committed answer cites its sources as `[1]`, `[2]`, … in the order of `sources`, so any
+  // reader can open exactly the cited object. Labels of sources that were not supplied are
+  // removed: they point at nothing the audience could open.
   const cited = new Map<string, AssistantSourceRef>();
-  for (const [, label] of body.matchAll(/\[(S\d{1,3})\]/g)) {
-    const source = byLabel.get(label!);
-    if (source) cited.set(label!, source.ref);
-  }
+  const body = raw.replace(/\s?\[(S\d{1,3})\]/g, (marker, label: string) => {
+    const source = byLabel.get(label);
+    if (!source) return '';
+    if (!cited.has(label)) cited.set(label, source.ref);
+    return `${marker.startsWith(' ') ? ' ' : ''}[${[...cited.keys()].indexOf(label) + 1}]`;
+  }).trim();
   let proposal: ParsedProposal | null = null;
   if (match && allowProposal) {
     try {

@@ -396,8 +396,8 @@ class AppShellJourney(unittest.TestCase):
         ask.click()
         expect(ask).to_have_attribute("aria-pressed", "true")
         expect(page.get_by_text("Your assistant", exact=True)).to_be_visible()
-        expect(page.get_by_text("You haven’t connected an assistant, so nothing will be sent.")).to_be_visible()
-        # Nothing is sent while no assistant is connected; the text stays.
+        expect(page.get_by_text("Your assistant answers in project conversations. Notes here stay private and are never sent.")).to_be_visible()
+        # A private note is never sent to an assistant; the text stays.
         send = page.get_by_role("button", name="Send to your assistant")
         expect(send).to_have_attribute("aria-disabled", "true")
         composer.press("Enter")
@@ -406,7 +406,7 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_role("button", name="Connect your AI").click()
         panel = page.get_by_role("complementary", name="Details")
         expect(panel.get_by_role("heading", name="Connect your AI")).to_be_visible()
-        expect(panel.get_by_text("not available yet")).to_have_count(1)
+        expect(panel.get_by_role("link", name="Set up your assistant in Flux")).to_have_attribute("href", "/settings/assistant")
         expect(panel.get_by_role("link", name="Set up or revoke a Claude Code connection")).to_have_attribute("href", "/connect-agent")
         expect(panel.get_by_text("Flux works fully without AI.", exact=False)).to_be_visible()
         panel.get_by_role("button", name="Back to Details").click()

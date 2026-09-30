@@ -133,16 +133,17 @@ export function personalRunRows(db: DbExecutor) {
 
     async endUndispatched(ownerUserId: string, status: 'paused' | 'revoked') {
       const rows = await db.update(r).set({ status, costState: 'released', chargedMicros: 0, completedAt: new Date(), updatedAt: new Date() })
-        .where(and(eq(r.ownerUserId, ownerUserId), inArray(r.status, ['queued', 'reading']))).returning({ id: r.id });
-      return rows.map((row) => row.id);
+        .where(and(eq(r.ownerUserId, ownerUserId), inArray(r.status, ['queued', 'reading']))).returning();
+      return rows.map(toRun);
     },
 
     async endStale(ownerUserId: string, olderThanSeconds: number) {
       const stale = and(eq(r.ownerUserId, ownerUserId), sql`${r.updatedAt} < now() - (${olderThanSeconds}::int * interval '1 second')`);
-      await db.update(r).set({ status: 'unavailable', costState: 'released', chargedMicros: 0, completedAt: new Date(), updatedAt: new Date() })
-        .where(and(stale, inArray(r.status, ['queued', 'reading'])));
-      await db.update(r).set({ status: 'provider_failed', costState: 'unknown', completedAt: new Date(), updatedAt: new Date() })
-        .where(and(stale, eq(r.status, 'dispatching')));
+      const undispatched = await db.update(r).set({ status: 'unavailable', costState: 'released', chargedMicros: 0, completedAt: new Date(), updatedAt: new Date() })
+        .where(and(stale, inArray(r.status, ['queued', 'reading']))).returning();
+      const lost = await db.update(r).set({ status: 'provider_failed', costState: 'unknown', completedAt: new Date(), updatedAt: new Date() })
+        .where(and(stale, eq(r.status, 'dispatching'))).returning();
+      return [...undispatched, ...lost].map(toRun);
     },
 
     listOwnRuns: (ownerUserId: string, window: Window) => pagedRuns(eq(r.ownerUserId, ownerUserId), 'newest', window),

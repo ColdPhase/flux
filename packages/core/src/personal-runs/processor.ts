@@ -8,6 +8,7 @@ import type {
   PersonalCompute, PersonalComputeRequest, PersonalComputeResult, PersonalConnection, PersonalConnectionLookup,
   PersonalRunPorts, PersonalRunUnitOfWork, RunChanges, RunRecord,
 } from './ports.js';
+import { updateAndAnnounce } from './progress.js';
 import { centsToMicros, costMicros, parseOutput, requestInput, SYSTEM_PROMPT, type SuppliedSource } from './validation.js';
 
 // The worker side of a personal run (`personal-run.dispatch.v1`, O-008 §3–§5). The job payload
@@ -168,8 +169,8 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       const charge: RunChanges = result.kind === 'completed'
         ? { costState: 'observed', chargedMicros: costMicros(result.usage), inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens }
         : result.billed === 'none' ? { ...free } : { costState: 'unknown', chargedMicros: 0 };
-      if (run.stopRequestedAt) return (await ports.runs.updateRun(run.id, ended('stopped', 'before_commit', charge))).status;
-      if (result.kind === 'failed') return (await ports.runs.updateRun(run.id, ended('provider_failed', null, charge))).status;
+      if (run.stopRequestedAt) return (await updateAndAnnounce(ports, run.id, ended('stopped', 'before_commit', charge))).status;
+      if (result.kind === 'failed') return (await updateAndAnnounce(ports, run.id, ended('provider_failed', null, charge))).status;
       let checked: Awaited<ReturnType<typeof recheck>>;
       try {
         checked = await recheck(ports, connections, compute, run, 'before_commit', true);
@@ -178,12 +179,12 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
         checked = { refusal: 'denied' };
       }
       // Access, grant, pause or connection changed after the read: the output is withheld.
-      if ('refusal' in checked) return (await ports.runs.updateRun(run.id, ended(checked.refusal, 'before_commit', charge))).status;
+      if ('refusal' in checked) return (await updateAndAnnounce(ports, run.id, ended(checked.refusal, 'before_commit', charge))).status;
       const truncated = result.stopReason === 'max_tokens';
       const parsed = parseOutput(result.text, sources, !truncated);
       const agent: Principal = { kind: 'agent', id: run.agentId };
       const committedAt = new Date();
-      const updated = await ports.runs.updateRun(run.id, ended(truncated ? 'truncated' : 'completed', null, {
+      const updated = await updateAndAnnounce(ports, run.id, ended(truncated ? 'truncated' : 'completed', null, {
         ...charge, answerBody: parsed.body || (parsed.proposal ? 'Drafted a proposal.' : '(No answer text.)'),
         answerTruncated: truncated, answerSources: parsed.sources, committedAt,
       }));
@@ -212,8 +213,8 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
           if (isAccessDenial(error)) return { refusal: 'denied' as const };
           throw error;
         });
-        if ('refusal' in checked) return { done: true as const, status: (await ports.runs.updateRun(run.id, ended(checked.refusal, 'before_read', free))).status };
-        return { done: false as const, run: await ports.runs.updateRun(run.id, { status: 'reading' }) };
+        if ('refusal' in checked) return { done: true as const, status: (await updateAndAnnounce(ports, run.id, ended(checked.refusal, 'before_read', free))).status };
+        return { done: false as const, run: await updateAndAnnounce(ports, run.id, { status: 'reading' }) };
       });
       if (!claimed) return 'skipped';
       if (claimed.done) return claimed.status;
@@ -227,7 +228,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
         return uow.run(async (ports) => {
           const current = await ports.runs.findRun(run.id, { lock: true });
           if (current?.status !== 'reading') return 'skipped' as const;
-          return (await ports.runs.updateRun(run.id, ended('denied', 'before_read', free))).status;
+          return (await updateAndAnnounce(ports, run.id, ended('denied', 'before_read', free))).status;
         });
       }
       await hooks.afterRead?.(run);
@@ -239,7 +240,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       const beforeSend = (): Promise<PersonalRunOutcome | null> => uow.run(async (ports) => {
         const current = await ports.runs.findRun(run.id, { lock: true });
         if (!current || current.status !== 'reading') return current?.status ?? 'skipped';
-        const end = async (status: RunRecord['status']) => (await ports.runs.updateRun(run.id, ended(status, 'before_dispatch', free))).status;
+        const end = async (status: RunRecord['status']) => (await updateAndAnnounce(ports, run.id, ended(status, 'before_dispatch', free))).status;
         if (current.stopRequestedAt) return end('stopped');
         const checked = await recheck(ports, connections, compute, current, 'before_dispatch', true).catch((error: unknown) => {
           if (isAccessDenial(error)) return { refusal: 'denied' as const };
@@ -253,15 +254,26 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
         const refused = await beforeSend();
         return refused ?? 'skipped';
       }
-      const fitted = await fit(compute, {
-        connection: { id: connection.id, keyRef: connection.keyRef }, model: run.model,
-        maxTokens: PERSONAL_RUN_LIMITS.maxOutputTokens, effort: PERSONAL_RUN_LIMITS.effort, system: SYSTEM_PROMPT,
-      }, run, read, beforeSend);
+      let fitted: Awaited<ReturnType<typeof fit>>;
+      try {
+        fitted = await fit(compute, {
+          connection: { id: connection.id, keyRef: connection.keyRef }, model: run.model,
+          maxTokens: PERSONAL_RUN_LIMITS.maxOutputTokens, effort: PERSONAL_RUN_LIMITS.effort, system: SYSTEM_PROMPT,
+        }, run, read, beforeSend);
+      } catch {
+        // The preflight count failed (provider down, key refused). Counting is free and nothing
+        // was dispatched: the run ends at zero cost and the owner may retry it as a new run.
+        return uow.run(async (ports) => {
+          const current = await ports.runs.findRun(run.id, { lock: true });
+          if (current?.status !== 'reading') return (current?.status ?? 'skipped') as PersonalRunOutcome;
+          return (await updateAndAnnounce(ports, run.id, ended('provider_failed', 'before_dispatch', free))).status;
+        });
+      }
       if (fitted?.refused) return fitted.outcome;
 
       const ready = await uow.run(async (ports) => {
         const current = await ports.runs.findRun(run.id, { lock: true });
-        const end = async (status: RunRecord['status']) => ({ done: true as const, outcome: (await ports.runs.updateRun(run.id, ended(status, 'before_dispatch', free))).status as PersonalRunOutcome });
+        const end = async (status: RunRecord['status']) => ({ done: true as const, outcome: (await updateAndAnnounce(ports, run.id, ended(status, 'before_dispatch', free))).status as PersonalRunOutcome });
         if (!current || current.status !== 'reading') return { done: true as const, outcome: 'skipped' as PersonalRunOutcome };
         if (current.stopRequestedAt) return end('stopped');
         const checked = await recheck(ports, connections, compute, current, 'before_dispatch', true).catch((error: unknown) => {
@@ -271,7 +283,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
         if ('refusal' in checked) return end(checked.refusal);
         if (checked.connection.id !== connection.id) return end('unavailable');
         if (!fitted) return end('input_too_large');
-        await ports.runs.updateRun(run.id, { status: 'dispatching', dispatchedAt: new Date() });
+        await updateAndAnnounce(ports, run.id, { status: 'dispatching', dispatchedAt: new Date() });
         return { done: false as const, fitted };
       });
       if (ready.done) return ready.outcome;

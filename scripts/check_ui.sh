@@ -19,6 +19,11 @@ export FLUX_SMTP_URL="smtp://mailpit:1025"
 export FLUX_MAIL_FROM="Flux <flux@example.test>"
 # The journey signs in several times from one address; rate limiting is covered by the API suite.
 export FLUX_AUTH_RATE_LIMIT=false
+# TEST ONLY (#68): personal runs use fixture key connections and the real Anthropic adapter
+# against the Compose mock provider (tests/ui/anthropic_mock.py). Never set in production.
+export FLUX_TEST_FAILURE_INJECTION=true
+export FLUX_TEST_PERSONAL_RUNS=anthropic-mock
+export FLUX_TEST_ANTHROPIC_URL=http://anthropic-mock:8090
 if [ -n "${FLUX_UI_SCREENSHOT_DIR:-}" ]; then mkdir -p "$FLUX_UI_SCREENSHOT_DIR"; fi
 . scripts/test_images.sh
 compose="docker compose -p $project -f infra/compose.yaml --profile ui"

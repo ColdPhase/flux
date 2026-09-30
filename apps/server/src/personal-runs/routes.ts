@@ -24,12 +24,19 @@ import {
   type SelectPersonalAgentCommand,
   type UpdatePersonalRunsCommand,
 } from '@flux/contracts';
-import type { Database } from '@flux/core';
+import type { Database, PersonalConnectionLookup } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, expectedVersion, useDomainErrors, versionEtag, type ReplayCheck } from '../http/commands.js';
 import { assistantProposalUseCases, personalRunUseCases, pgBossPersonalRunQueue } from './adapters.js';
 
-interface Options { db: Database; sessions: SessionResolver; boss: Pick<PgBoss, 'send'> }
+interface Options {
+  db: Database;
+  sessions: SessionResolver;
+  boss: Pick<PgBoss, 'send'>;
+  /** Production leaves both out: no connection lookup (#124) and the provider switch off. */
+  connections?: PersonalConnectionLookup;
+  providerEnabled?: boolean;
+}
 
 const page = { type: 'object', additionalProperties: false, properties: { limit: { type: 'integer' }, offset: { type: 'integer' } } } as const;
 const cents = (range: { min: number; max: number }) => ({ type: 'integer', minimum: range.min, maximum: range.max }) as const;
@@ -63,36 +70,37 @@ const ownState: ReplayCheck = async () => undefined;
  * calls one core use case. Nothing here reads an owner, agent or connection from the request:
  * the session is the owner. The server only queues runs; the worker dispatches them.
  */
-export async function personalRunRoutes(app: FastifyInstance, { db, sessions, boss }: Options) {
+export async function personalRunRoutes(app: FastifyInstance, { db, sessions, boss, connections, providerEnabled }: Options) {
   useDomainErrors(app);
   const { principal, command } = commandRunner(db, sessions);
   const queue = pgBossPersonalRunQueue(boss);
-  const runs = personalRunUseCases(db, { queue });
+  const composition = { queue, connections, providerEnabled };
+  const runs = personalRunUseCases(db, composition);
   const proposals = assistantProposalUseCases(db, queue);
 
   app.get(PERSONAL_ASSISTANT_PATH, async (request) => runs.status(await principal(request)));
   app.post<{ Body: EnablePersonalRunsCommand }>(PERSONAL_ASSISTANT_PATH, { schema: { body: enable } },
     async (request, reply) => command(request, reply, {
       operation: `POST ${PERSONAL_ASSISTANT_PATH}`, scope: null, status: 201,
-      run: (actor, conn) => personalRunUseCases(conn, { queue }).enable(actor, request.body), replay: ownState,
+      run: (actor, conn) => personalRunUseCases(conn, composition).enable(actor, request.body), replay: ownState,
     }));
   app.patch<{ Body: UpdatePersonalRunsCommand }>(PERSONAL_ASSISTANT_PATH, { schema: { body: update } },
     async (request, reply) => command(request, reply, {
       operation: `PATCH ${PERSONAL_ASSISTANT_PATH}`, scope: null,
-      run: (actor, conn) => personalRunUseCases(conn, { queue }).update(actor, request.body ?? {}, expectedVersion(request)), replay: ownState,
+      run: (actor, conn) => personalRunUseCases(conn, composition).update(actor, request.body ?? {}, expectedVersion(request)), replay: ownState,
     }));
   app.put<{ Body: SelectPersonalAgentCommand }>(PERSONAL_ASSISTANT_AGENTS_PATH, { schema: { body: selectAgent } },
     async (request, reply) => command(request, reply, {
       operation: `PUT ${PERSONAL_ASSISTANT_AGENTS_PATH}`, scope: null,
-      run: (actor, conn) => personalRunUseCases(conn, { queue }).selectAgent(actor, request.body), replay: ownState,
+      run: (actor, conn) => personalRunUseCases(conn, composition).selectAgent(actor, request.body), replay: ownState,
     }));
   app.post(PERSONAL_ASSISTANT_PAUSE_PATH, async (request, reply) => command(request, reply, {
     operation: `POST ${PERSONAL_ASSISTANT_PAUSE_PATH}`, scope: null,
-    run: (actor, conn) => personalRunUseCases(conn, { queue }).pause(actor), replay: ownState,
+    run: (actor, conn) => personalRunUseCases(conn, composition).pause(actor), replay: ownState,
   }));
   app.post(PERSONAL_ASSISTANT_RESUME_PATH, async (request, reply) => command(request, reply, {
     operation: `POST ${PERSONAL_ASSISTANT_RESUME_PATH}`, scope: null,
-    run: (actor, conn) => personalRunUseCases(conn, { queue }).resume(actor), replay: ownState,
+    run: (actor, conn) => personalRunUseCases(conn, composition).resume(actor), replay: ownState,
   }));
   app.delete(PERSONAL_ASSISTANT_PATH, async (request, reply) => {
     await runs.remove(await principal(request));
@@ -106,7 +114,7 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
       return command(request, reply, {
         operation: `POST ${conversationAssistantRunsPath(':conversationId')}`, scope: null, status: () => (created ? 202 : 200),
         run: async (actor, conn) => {
-          const started = await personalRunUseCases(conn, { queue }).invoke(actor, request.params.conversationId, request.body);
+          const started = await personalRunUseCases(conn, composition).invoke(actor, request.params.conversationId, request.body);
           created = started.created;
           return started.run;
         },
@@ -120,7 +128,7 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
   app.get<{ Params: { runId: string } }>(assistantRunPath(':runId'), async (request) => runs.get(await principal(request), request.params.runId));
   app.post<{ Params: { runId: string } }>(assistantRunStopPath(':runId'), async (request, reply) => command(request, reply, {
     operation: `POST ${assistantRunStopPath(':runId')}`, scope: null,
-    run: (actor, conn) => personalRunUseCases(conn, { queue }).stop(actor, request.params.runId), replay: ownState,
+    run: (actor, conn) => personalRunUseCases(conn, composition).stop(actor, request.params.runId), replay: ownState,
   }));
   app.post<{ Params: { runId: string }; Body: RetryAssistantRunCommand }>(assistantRunRetryPath(':runId'), { schema: { body: retry } },
     async (request, reply) => {
@@ -128,7 +136,7 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
       return command(request, reply, {
         operation: `POST ${assistantRunRetryPath(':runId')}`, scope: null, status: () => (created ? 202 : 200),
         run: async (actor, conn) => {
-          const started = await personalRunUseCases(conn, { queue }).retry(actor, request.params.runId, request.body);
+          const started = await personalRunUseCases(conn, composition).retry(actor, request.params.runId, request.body);
           created = started.created;
           return started.run;
         },

@@ -128,15 +128,15 @@ export interface PersonalRunRepository {
   updateRun(id: string, changes: RunChanges): Promise<RunRecord>;
   /**
    * Ends the owner's queued and reading runs with `status` at zero cost (the reservation is
-   * released) and returns their ids. Dispatching runs are left to the commit recheck.
+   * released) and returns them. Dispatching runs are left to the commit recheck.
    */
-  endUndispatched(ownerUserId: string, status: 'paused' | 'revoked'): Promise<string[]>;
+  endUndispatched(ownerUserId: string, status: 'paused' | 'revoked'): Promise<RunRecord[]>;
   /**
    * Ends the owner's in-flight runs untouched for `olderThanSeconds` (a crashed worker): a queued
    * or reading run as `unavailable` at zero cost, a dispatching one as `provider_failed` with its
-   * reservation kept as `unknown`.
+   * reservation kept as `unknown`. Returns the ended runs.
    */
-  endStale(ownerUserId: string, olderThanSeconds: number): Promise<void>;
+  endStale(ownerUserId: string, olderThanSeconds: number): Promise<RunRecord[]>;
   /** Only the owner's own runs, newest first. */
   listOwnRuns(ownerUserId: string, page: PageWindow): Promise<Paged<RunRecord>>;
   /** Committed answers of a conversation, oldest first. */
@@ -175,13 +175,19 @@ export interface PersonalRunQueue {
 }
 
 export type PersonalRunEventKind =
+  /** Owner-only progress of one run; the object is the run (`assistant_run`). */
+  | 'assistant_run.changed.v1'
   | 'project.assistant_answer_committed.v1'
   | 'project.assistant_proposal_created.v1'
   | 'project.assistant_proposal_decided.v1';
 
-/** Records a versioned project event in the unit of work (identifiers only, never content). */
+/**
+ * Records a versioned event in the unit of work (identifiers only, never content). `objectId` is
+ * the project for `project.*` kinds and the run for `assistant_run.*` kinds; the access policy
+ * derives each event's audience from it.
+ */
 export interface PersonalRunEventLog {
-  record(principal: Principal, workspaceId: string, kind: PersonalRunEventKind, projectId: string, data: Record<string, unknown>): Promise<void>;
+  record(principal: Principal, workspaceId: string, kind: PersonalRunEventKind, objectId: string, data: Record<string, unknown>): Promise<void>;
 }
 
 export interface PersonalRunPorts {
