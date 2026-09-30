@@ -30,6 +30,6 @@ friction within the accepted direction.
 
 ## Implementation and evidence
 
-Use existing shared [tokens/components](../../apps/web/src/ui/) and accepted architecture; follow current repository path amendments during #76. Record contract changes before implementation, keep tokens and components consistent, and respect active issue/branch ownership. The [current delivery table](../product/mcp-cowork.md#delivery-and-evidence--co-5) maps the backend/UI slices. #133 is merged; active #134/#135 foundations retain review scope, followed by #148/#149. #136 integrates the final 11.6 result.
+Use existing shared [tokens/components](../../app/apps/web/src/ui) and accepted architecture; follow current repository path amendments during #76. Record contract changes before implementation, keep tokens and components consistent, and respect active issue/branch ownership. The [current delivery table](../product/mcp-cowork.md#delivery-and-evidence--co-5) maps the backend/UI slices. #133 is merged; active #134/#135 foundations retain review scope, followed by #148/#149. #136 integrates the final 11.6 result.
 
 Render realistic states at matched desktop, phone and tablet sizes/zoom. Obtain a neutral independent visual review, then verify actual keyboard, focus, touch, contrast, persistence, access and source paths separately in Docker. #44’s three integrated journeys and real PWA/device evidence remain release requirements. Unknown outcomes stay open; a PNG or the reference import is not a production acceptance pass.

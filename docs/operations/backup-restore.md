@@ -31,7 +31,7 @@ runs on the host except `sh`, `tar` and a SHA-256 tool.
    | `manifest.json` | Format, time, project, schema and app version, checksums (below). |
    | `database.dump` | `pg_dump` custom format of the whole database, including the pg-boss queue schema. |
    | `files.tar.gz` | The files volume (uploaded files; the API's own health probe files are transient). |
-   | `flux.env` | A copy of `.env`: the database password, signing secret and VAPID keys that sessions and push subscriptions depend on. |
+   | `flux.env` | A copy of `docker/.env`: the database password, signing secret and VAPID keys that sessions and push subscriptions depend on. |
 
 3. **Manifest** (`formatVersion` 1). One key per line, so the launcher reads it without a JSON
    tool:
@@ -61,7 +61,7 @@ runs on the host except `sh`, `tar` and a SHA-256 tool.
 
    `schemaVersion` and `appliedMigrations` (the exact ledger, #118) are read from the
    database (`flux_schema_version`), not from the code. `schemaVersion` is the highest entry.
-   `appVersion` comes from `apps/server/package.json`. `appCommit` is the `com.flux.commit`
+   `appVersion` comes from `app/apps/server/package.json`. `appCommit` is the `com.flux.commit`
    label of the running image (set from `git rev-parse HEAD` when `./flux` builds it), or the
    checkout's commit, or `unknown` for a checkout without git. `image` is the image id of
    `flux-foundation:<project>`.
@@ -83,7 +83,7 @@ In this order, stopping at the first problem:
    replaced. The ledger is read from the dump itself (`pg_restore --data-only --table
    flux_schema_version`) and must equal the manifest's `appliedMigrations` and end at its
    `schemaVersion`. It is then compared with the image's migration files by
-   `infra/dist/operations.js migration-gate`, which uses the `@flux/db` ledger parser the migrator
+   `tooling/dist/operations.js migration-gate`, which uses the `@flux/db` ledger parser the migrator
    uses:
    - equal sets restore plainly;
    - a backup that lacks some of the image's migrations (an older version, including a gap below
@@ -94,11 +94,11 @@ In this order, stopping at the first problem:
 4. **Ownership and confirmation.** The ownership check of `./flux up` applies. If the project
    already has containers or volumes, the restore asks `Replace ALL data (database and files)
    … ?` (`-y` answers yes). Answering no changes nothing.
-5. **Settings.** Without a `.env`, the restore writes one from the archive's `flux.env` with
+5. **Settings.** Without a `docker/.env`, the restore writes one from the archive's `flux.env` with
    this checkout's `FLUX_PROJECT`; `FLUX_PORT`, `FLUX_PUBLIC_ORIGIN`, `FLUX_DEV_PORT` and
    `FLUX_MAILPIT_PORT` from the shell replace the archived values (for a new address or
    port). With the same `FLUX_AUTH_SECRET` and VAPID keys, signed-in sessions and push
-   subscriptions keep working. An existing `.env` is kept, and the restore warns when its
+   subscriptions keep working. An existing `docker/.env` is kept, and the restore warns when its
    signing secret or VAPID key differ (everyone signs in again; devices turn push on again).
 6. **Replace the data.** It builds this checkout, removes this project's containers and
    volumes (`down -v`, never another project's), starts an empty database, converts the dump with
@@ -143,8 +143,8 @@ When a restore brings back active connections, it prints `NOTE: N agent connecti
 active as of the backup`. After restoring an older backup, or whenever a token may have leaked,
 run the restore with `--revoke-agent-connections`: after the migration and before API and
 worker start, it revokes every agent connection and every OAuth access and refresh token
-(`infra/operations.ts`, SQL in `packages/db/src/repositories/operations.ts`). People then
-connect their agents again from `/connect-agent`. Changing `FLUX_AUTH_SECRET` in `.env` signs
+(`app/tooling/operations.ts`, SQL in `app/packages/db/src/repositories/operations.ts`). People then
+connect their agents again from `/connect-agent`. Changing `FLUX_AUTH_SECRET` in `docker/.env` signs
 everyone out of the browser as well, which is heavier; revoking the connections is the targeted
 step for agents. Revoke sessions that ended after the backup through
 `/api/v1/sessions` or ask people to sign out other sessions.
@@ -167,14 +167,14 @@ conversations, a DM, a private note, a project sketch with links, work, a decisi
 result with links, a doc with two versions, a push subscription, a revoked and a live session,
 two agent connections with OAuth bearers (one revoked before the backup, one right after it),
 a read DM notification, notification preferences with quiet hours and a muted DM,
-an outsider account and a 300 kB file in the files volume; makes `docker compose stop` fail (a PATH
+an outsider account and a 300 kB file in the files volume; makes `docker compose --env-file docker/.env stop` fail (a PATH
 shim) and checks that no archive is written and the untouched API is not restarted; runs two
 backups in the same UTC second (a `date` shim) and checks both archives exist, then prunes with
 `--keep 1`; checks the manifest, its exact ledger and checksums; checks that restore is refused
 without confirmation, for a damaged archive, for a manifest whose ledger disagrees with its dump,
 for a newer schema, and, before any data is replaced, for a ledger version the image has no file
 for (the checkout drops a migration below the highest); restores an exact ledger plainly; destroys the
-volumes; restores into a **fresh** checkout without `.env`; and verifies through its API that
+volumes; restores into a **fresh** checkout without `docker/.env`; and verifies through its API that
 the project export, conversations, doc versions, DM messages, drafts, members and push
 subscriptions, inbox items with their read state, notification preferences and agent connections
 equal the data before the backup, that the old session still works and the
@@ -187,7 +187,7 @@ after A is destroyed, as a replacement machine would, because OAuth issuer and a
 the public origin. The file must be byte for
 byte identical and owned by the API user. The same script covers [upgrade](upgrade.md).
 
-Not covered yet: very large databases (the dump is streamed through `docker compose exec`,
+Not covered yet: very large databases (the dump is streamed through `docker compose --env-file docker/.env exec`,
 which is fine for gigabytes but untested there), point-in-time recovery (WAL archiving), and
 backups while writers keep running, and email outbox rows (`check_backup.sh` runs without SMTP;
 the outbox is covered by the dump like every other table).

@@ -1,12 +1,12 @@
-# Test-only Web Push and browser wiring (issue #41), layered over compose.yaml by
+# Test-only Web Push and browser wiring (issue #41), layered over compose.source.yaml by
 # scripts/check_application.sh with the `test` profile. Never use it for a real deployment:
 # it lets the worker reach a private-network push mock and trust its throwaway certificate.
 services:
   pushmock:
     profiles: ["test"]
     build:
-      context: ..
-      dockerfile: infra/Dockerfile
+      context: ../app
+      dockerfile: ../docker/Dockerfile
       target: e2e
     image: flux-e2e:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
     # A fresh self-signed certificate per run: web-push only speaks https.

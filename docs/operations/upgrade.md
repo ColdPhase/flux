@@ -14,7 +14,7 @@ git pull --ff-only && ./flux upgrade      # or: ./flux upgrade --pull
    launcher. It builds the image from the checkout (`FLUX_NO_CACHE=1` for a clean build).
    Release images (#77) are not published yet; when they are, this step can pull them instead.
 4. **Migrate forward.** `files-init`, then the one-shot migration applies every new
-   `packages/db/migrations/NNNN_*.sql` in order, each in its own transaction.
+   `app/packages/db/migrations/NNNN_*.sql` in order, each in its own transaction.
 5. **Health.** It starts API and worker, waits for their health checks, and checks that the API
    and the database report the checkout's schema.
 
@@ -64,3 +64,29 @@ refused by restore without `--migrate` and restored with it, and through the API
 private note and sketch, a new doc, and the export. It then adds a failing migration, checks that
 the upgrade fails with the restore instruction for its backup, removes the migration and follows
 the instruction; the demo data is verified again.
+
+## Returning to a version before the app/docker layout
+
+Those versions read root `.env`, while the current launcher reads `docker/.env`.
+After checking out the prior version and before its restore command, move the
+same configuration back when the old tree has no `app/package.json`:
+
+```sh
+if [ ! -f app/package.json ] && { [ -e docker/.env ] || [ -L docker/.env ]; }; then
+  [ ! -L docker/.env ] && [ -f docker/.env ] || { echo 'Preserve the intended configuration as a private root .env before restore.' >&2; exit 1; }
+  [ ! -e .env ] && [ ! -L .env ] && mv docker/.env .env || exit 1
+fi
+./flux restore /absolute/path/to/the/pre-upgrade-backup.tar
+```
+
+Keep its stored project name, secrets and file permissions. If both files exist,
+choose the intended configuration before continuing; do not regenerate it. When
+returning to the current source, the launcher moves a regular root `.env` forward
+once. It refuses legacy symlinks before changing anything: moving a relative link
+would change its target. Preserve the intended target's contents and private
+permissions in `docker/.env`, verify its project and secrets, then remove the old
+root link. Existing dangling links at either path also require explicit resolution;
+the launcher never treats them as permission to generate replacement secrets.
+The layout upgrade/rollback check exercises the historical launcher and restored
+original project, followed by another upgrade; a same-version restore alone does
+not establish this transition.

@@ -82,7 +82,7 @@ recipient/subscription adapter checks current repository access. No provider
 facts enter ordinary tasks, discussions, notifications, events or exports.
 
 Run source and SQL/API checks in Docker with `./scripts/check_application.sh`.
-`tests/app/github.test.ts` injects typed provider transport fixtures; these are
+`app/tests/app/github.test.ts` injects typed provider transport fixtures; these are
 not real installation evidence. Full acceptance needs a least-privilege test
 App, public TLS callbacks and real PR/check/review/merge/duplicate/out-of-order/
 access-loss/recovery evidence at the pinned head, plus all remaining native rule,

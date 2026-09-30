@@ -17,13 +17,13 @@ services:
       retries: 20
   migrate:
     build:
-      context: ..
-      dockerfile: infra/Dockerfile
+      context: ../app
+      dockerfile: ../docker/Dockerfile
       labels:
         # Recorded in backup manifests (issue #123); ./flux sets it from `git rev-parse HEAD`.
         com.flux.commit: ${FLUX_GIT_COMMIT:-unknown}
     image: flux-foundation:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
-    command: ["node", "infra/dist/migrate.js"]
+    command: ["node", "tooling/dist/migrate.js"]
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-flux}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-flux}
     depends_on:
@@ -130,8 +130,8 @@ services:
   test:
     profiles: ["test"]
     build:
-      context: ..
-      dockerfile: infra/Dockerfile
+      context: ../app
+      dockerfile: ../docker/Dockerfile
       target: test
     image: flux-test-tools:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
     command: ["pnpm", "test"]
@@ -166,8 +166,8 @@ services:
     # so origin checks and cookies behave as they do for a person on the host.
     profiles: ["ui"]
     build:
-      context: ..
-      dockerfile: infra/ui-tests.Dockerfile
+      context: ../app
+      dockerfile: ../docker/ui-tests.Dockerfile
     image: flux-ui-tests:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
     environment:
       FLUX_UI_ORIGIN: ${FLUX_PUBLIC_ORIGIN:?Set FLUX_PUBLIC_ORIGIN}
@@ -177,7 +177,7 @@ services:
       # TEST ONLY (#68): the browser tests script the mock provider's next answers.
       FLUX_ANTHROPIC_MOCK_URL: http://anthropic-mock:8090
     volumes:
-      # Tests are baked into the image (see infra/ui-tests.Dockerfile). Only the screenshot
+      # Tests are baked into the image (see docker/ui-tests.Dockerfile). Only the screenshot
       # output is mounted; "z" relabels it for SELinux hosts and is ignored elsewhere.
       - ${FLUX_UI_SCREENSHOT_DIR:-uishots}:/screenshots:z
     depends_on:

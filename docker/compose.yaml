@@ -1,7 +1,7 @@
 # Flux operator Compose: runs a PUBLISHED Flux release. No source checkout, no build.
 #
 # The repository copy (docker/compose.yaml) is the example for a future release. It is NOT
-# what `./flux up` runs (that builds the checked-out source from infra/compose.yaml) and does
+# what `./flux up` runs (that builds the checked-out source from docker/compose.source.yaml) and does
 # not start as is: its placeholder digest RELEASE_DIGEST is replaced by the release workflow
 # (#77) with the accepted manifest digest of ghcr.io/coldphase/flux. Download compose.yaml and
 # .env.example from ONE GitHub Release; their image digest, migrations and variables match.
@@ -37,7 +37,7 @@ services:
     # One-shot: applies the release's SQL migrations in order, then exits. API and worker
     # start only after it succeeded.
     image: ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST
-    command: ["node", "infra/dist/migrate.js"]
+    command: ["node", "tooling/dist/migrate.js"]
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-flux}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-flux}
     depends_on:

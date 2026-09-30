@@ -19,7 +19,7 @@ export FLUX_AUTH_RATE_LIMIT=false
 # Short stream heartbeat so the suite observes pings and periodic session revalidation.
 export FLUX_STREAM_HEARTBEAT_MS=1000
 . scripts/test_images.sh
-compose="docker compose -p $project -f infra/compose.yaml -f infra/compose.test.yaml --profile test"
+compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.test.yaml --profile test"
 
 cleanup() {
   status=$?

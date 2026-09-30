@@ -3,7 +3,7 @@ import { createConnection, createServer, type Server } from 'node:net';
 import type { Browser as ChromiumBrowser, Page } from 'playwright';
 import { apiUrl, publicOrigin, type Browser } from './http.js';
 
-/** The locked browser SDK of infra/live-sfu-test, loaded from disk into each page. */
+/** The locked browser SDK of tooling/live-sfu-test, loaded from disk into each page. */
 export const sdkPath = '/opt/live-sfu/node_modules/livekit-client/dist/livekit-client.umd.js';
 
 export interface BrowserRoom {
