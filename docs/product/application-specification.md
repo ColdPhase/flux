@@ -10,6 +10,10 @@ older visual descriptions and amends new-task announcement/first-message flow.
 Standing owner grants authorize bounded agent domain actions without per-step
 confirmation; existing human-only decision acceptance is unchanged. One task
 and thread remain authoritative, with independent execution/review state.
+[F-018 / CW-1–CW-5](cowork-workflow.md) additionally requires shipped playbooks
+and supported Start/Resume, durable addressed requests, safe-checkpoint handling
+and recovery without periodic global GitHub scans. #160 packages instructions
+and onboarding over #152/#153; #74 preserves formal provider review facts.
 Historic statements below yield only on these explicit amendments.
 
 The [foundation](FLUX-FOUNDATION.md), [delegation](autonomy.md) and
