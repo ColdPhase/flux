@@ -1,6 +1,11 @@
 # Private source effects on native work — CO-3 proposal
 
 2026-10-01. **Proposed for independent review; no corresponding runtime is enabled.**
+The independent [design assessment](evidence/2026-10-01-private-source-publication-independent-design.md)
+accepts the same-task model conditionally. Its three required clarifications are
+specified in the [rule, transaction and consumer amendment](2026-10-01-private-source-effects-amendment.md),
+which takes precedence over any underspecified wording below and requires fresh
+independent agreement before implementation of these effects.
 This extends the unchanged #74 AC-3/AC-4/CW-4 contract. The accepted first slice
 continues to keep private facts and its undelivered bridge separately gated.
 An ordinary standing-rule click is not an organization sharing policy.
