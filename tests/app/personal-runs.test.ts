@@ -355,6 +355,20 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     const stoppedLate = await row(long.run.id);
     assert.deepEqual([stoppedLate.cost_state, stoppedLate.charged_micros, stoppedLate.answer_body], ['observed', 900 * 2 + 40 * 10, null]);
 
+    // A provider rejection after the request was sent (a scripted 429) is not assumed free: the run
+    // ends provider_failed, the reservation stays counted as unknown, nothing is posted, and Retry
+    // is a new capped run.
+    compute.respond = async () => ({ kind: 'failed', reason: 'rate_limited', billed: 'unknown' });
+    const limited = await ask(hubert);
+    assert.equal(await processor.process(limited.run.id), 'provider_failed');
+    const limitedRow = await row(limited.run.id);
+    assert.deepEqual([limitedRow.status, limitedRow.cost_state, limitedRow.charged_micros, limitedRow.answer_body], ['provider_failed', 'unknown', 0, null]);
+    assert.ok(limitedRow.reserved_micros > 0, 'the reservation is kept, not released');
+    compute.respond = echo;
+    const again = await runs.retry(human(hubert), limited.run.id, { clientRunId: randomUUID() });
+    assert.notEqual(again.run.id, limited.run.id, 'Retry is a new run');
+    assert.equal(await processor.process(again.run.id), 'completed');
+
     // A run a crashed worker left dispatching does not block the owner forever; its reservation stays counted.
     const stuck = await ask(hubert);
     await pool.query(`UPDATE personal_runs SET status = 'dispatching', updated_at = now() - interval '20 minutes' WHERE id = $1`, [stuck.run.id]);

@@ -75,9 +75,13 @@ dispatch is switched on.
   effort) is refused before a key is resolved;
 - usage: `input_tokens` plus cache tokens counted conservatively (reads as full input,
   5-minute writes ×1.25), and `output_tokens`. Core charges them at `PERSONAL_RUN_LIMITS.price`.
-- failures: 429 `rate_limited` and 529 `overloaded` and other 4xx `provider_error` are
-  `billed: 'none'`; other 5xx, timeouts, lost connections and aborts are `billed: 'unknown'`
-  and keep the reservation. A failed preflight count ends the run as `provider_failed` at
+- failures: only a request that was never sent (no usable key; the O-008 limits refuse before a
+  key is resolved) is `billed: 'none'`. Every failure after the request reached the provider —
+  429 `rate_limited`, 529 `overloaded`, other 4xx and 5xx `provider_error`, timeouts, lost
+  connections and aborts — is `billed: 'unknown'` and keeps the reservation counted: the
+  provider's error and pricing references (checked 2026-09-30) define these errors but promise
+  no billing outcome. Token counting is free per the provider's documentation. Retry is a new
+  capped run. A failed preflight count ends the run as `provider_failed` at
   zero cost (nothing was dispatched).
 
 ## Switching production on

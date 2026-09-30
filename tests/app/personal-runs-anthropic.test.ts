@@ -103,14 +103,14 @@ describe('Anthropic personal compute adapter (#68, local mock server: no provide
     assert.equal(seen.length, 2, 'a failed count is not retried');
   });
 
-  test('SDK retries are off: every failure is exactly one request, mapped with a billing hint', async () => {
+  test('SDK retries are off: every failure is exactly one request; once sent, the charge is unknown', async () => {
     const cases: [number, string, Record<string, string>, { reason: string; billed: string }][] = [
-      [429, 'rate_limit_error', { 'retry-after': '0' }, { reason: 'rate_limited', billed: 'none' }],
-      [529, 'overloaded_error', {}, { reason: 'overloaded', billed: 'none' }],
+      [429, 'rate_limit_error', { 'retry-after': '0' }, { reason: 'rate_limited', billed: 'unknown' }],
+      [529, 'overloaded_error', {}, { reason: 'overloaded', billed: 'unknown' }],
       [500, 'api_error', {}, { reason: 'provider_error', billed: 'unknown' }],
       [503, 'api_error', {}, { reason: 'provider_error', billed: 'unknown' }],
-      [400, 'invalid_request_error', {}, { reason: 'provider_error', billed: 'none' }],
-      [401, 'authentication_error', {}, { reason: 'provider_error', billed: 'none' }],
+      [400, 'invalid_request_error', {}, { reason: 'provider_error', billed: 'unknown' }],
+      [401, 'authentication_error', {}, { reason: 'provider_error', billed: 'unknown' }],
     ];
     for (const [status, type, headers, expected] of cases) {
       seen = [];

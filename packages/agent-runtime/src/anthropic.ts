@@ -53,19 +53,20 @@ function stopReason(value: Anthropic.StopReason | null): StopReason {
 }
 
 /**
- * The failure of one dispatch. `billed: 'none'` only when the provider documents that a rejected
- * request is not charged (4xx validation/auth, 429 rate limit, 529 overloaded). Anything that may
- * have reached the model — other 5xx, timeouts, lost connections and aborts — is `unknown`, so
- * the reservation stays counted against the owner's cap (O-008 §3).
+ * The failure of one dispatch. `billed: 'none'` only when nothing was sent: no usable key (and
+ * the O-008 limits, which throw before a key is resolved). Once a request has reached the
+ * provider, no published guarantee says a rejected one is free (checked 2026-09-30: the error
+ * and pricing references define 429/529/4xx but promise no billing outcome), so every
+ * post-entry failure — 4xx, 429, 529, 5xx, timeouts, lost connections and aborts — is
+ * `unknown` and the reservation stays counted against the owner's cap (O-008 §3).
  */
 export function failureOf(error: unknown, signal: AbortSignal): Extract<PersonalComputeResult, { kind: 'failed' }> {
   if (error instanceof PersonalKeyUnavailableError) return { kind: 'failed', reason: 'provider_error', billed: 'none' };
   if (error instanceof Anthropic.APIUserAbortError || signal.aborted) return { kind: 'failed', reason: 'aborted', billed: 'unknown' };
   if (error instanceof Anthropic.APIConnectionTimeoutError) return { kind: 'failed', reason: 'timeout', billed: 'unknown' };
   if (error instanceof Anthropic.APIConnectionError) return { kind: 'failed', reason: 'provider_error', billed: 'unknown' };
-  if (error instanceof Anthropic.RateLimitError) return { kind: 'failed', reason: 'rate_limited', billed: 'none' };
-  if (error instanceof Anthropic.APIError && error.status === 529) return { kind: 'failed', reason: 'overloaded', billed: 'none' };
-  if (error instanceof Anthropic.APIError && typeof error.status === 'number' && error.status < 500) return { kind: 'failed', reason: 'provider_error', billed: 'none' };
+  if (error instanceof Anthropic.RateLimitError) return { kind: 'failed', reason: 'rate_limited', billed: 'unknown' };
+  if (error instanceof Anthropic.APIError && error.status === 529) return { kind: 'failed', reason: 'overloaded', billed: 'unknown' };
   return { kind: 'failed', reason: 'provider_error', billed: 'unknown' };
 }
 
