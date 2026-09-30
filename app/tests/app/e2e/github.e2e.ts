@@ -89,6 +89,14 @@ test('real settings UI binds, verifies PR links and removes private projections 
   const place = await project(owner, ws.id, 'Gesture lamp', 'restricted'); await grant(owner, place.id, viewer, 'viewer');
   const task = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: 'Verify physical off-switch behaviour after calibration fails' } }), 201) as WorkItem;
   const page = await (await context(owner)).newPage(); const errors: string[] = []; page.on('pageerror', (error) => errors.push(error.message));
+  await page.addInitScript(({ projectId }) => sessionStorage.setItem(`flux.project-conversation.${projectId}`, `/projects/${projectId}/github`), { projectId: place.id });
+  await page.goto(`/projects/${place.id}/github`);
+  await page.getByRole('heading', { name: 'GitHub is not configured on this server' }).waitFor();
+  const views = page.getByRole('navigation', { name: 'Project views', exact: true });
+  assert.equal(await views.locator('[aria-current="page"]').count(), 0, 'settings do not select a conversation tab');
+  assert.equal(await views.getByRole('link', { name: 'Conversation', exact: true }).getAttribute('href'), `/projects/${place.id}`, 'old settings destination is not a conversation');
+  await views.getByRole('link', { name: 'Conversation', exact: true }).click();
+  await page.waitForURL(`**/projects/${place.id}`);
   await page.goto(`/projects/${place.id}/github`);
   await page.getByRole('heading', { name: 'GitHub is not configured on this server' }).waitFor();
   configuredFixture = true; await page.getByRole('button', { name: 'Check again', exact: true }).click();
@@ -116,11 +124,12 @@ test('real settings UI binds, verifies PR links and removes private projections 
       await target.getByRole('link', { name: /#42 · Keep a manual off switch/ }).waitFor();
     }
     assert.ok(await target.locator('body').evaluate((el) => el.scrollWidth) <= width, `${label} has no horizontal overflow`);
+    assert.equal(await target.getByRole('navigation', { name: 'Project views', exact: true }).locator('[aria-current="page"]').count(), 0, `${label} settings do not select a conversation tab`);
     const directory = process.env.FLUX_E2E_EVIDENCE_DIR;
     if (directory) {
       mkdirSync(directory, { recursive: true }); await target.locator('.github-settings').evaluate((el) => { el.parentElement!.scrollTop = 0; });
       await target.screenshot({ path: join(directory, `github-settings-${label}.png`), fullPage: true });
-      await target.getByRole('link', { name: /#42 · Keep a manual off switch/ }).scrollIntoViewIfNeeded();
+      await target.locator('.github-settings__pulls').scrollIntoViewIfNeeded();
       await target.screenshot({ path: join(directory, `github-settings-${label}-linked.png`), fullPage: true });
     }
   }
