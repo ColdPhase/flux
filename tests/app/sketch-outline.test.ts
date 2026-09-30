@@ -91,3 +91,13 @@ test('preference storage is ID-only, account-scoped and globally bounded with ol
   assert.equal(readStoredOutline(raw, keys.at(-1)!).order.length, 1000);
   assert.deepEqual(readStoredOutline(raw, `${id(701)}:${id(800)}:${id(907)}`), emptyOutline());
 });
+
+test('graphs exceeding the preference cap still render once and converge without a reconciliation loop', () => {
+  const thoughts = Array.from({ length: 2005 }, (_, index) => thought(index + 1, '2026-09-30T00:00:00.000Z'));
+  const first = rememberThoughts(emptyOutline(), thoughts);
+  assert.equal(first.order.length, 2000);
+  assert.equal(rememberThoughts(first, thoughts), first);
+  const outline = buildOutline(thoughts, [], first);
+  assert.equal(outline.rows.length, thoughts.length);
+  assert.equal(new Set(outline.rows.map((row) => row.thought.id)).size, thoughts.length);
+});

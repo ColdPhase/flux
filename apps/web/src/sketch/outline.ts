@@ -74,8 +74,9 @@ export function writeStoredOutline(raw: string | null, key: string, state: Outli
 export function rememberThoughts(state: OutlineState, thoughts: readonly Thought[]): OutlineState {
   const known = new Set(state.order);
   const added = [...thoughts].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)).filter((thought) => !known.has(thought.id)).map((thought) => thought.id);
-  if (!added.length && state.order.length <= OUTLINE_LIMIT) return state;
-  const order = [...state.order, ...added].slice(-OUTLINE_LIMIT);
+  const available = Math.max(0, OUTLINE_LIMIT - state.order.length);
+  if ((!added.length || !available) && state.order.length <= OUTLINE_LIMIT) return state;
+  const order = [...state.order, ...added.slice(0, available)].slice(-OUTLINE_LIMIT);
   const remembered = new Set(order);
   return { version: 1, order, parents: Object.fromEntries(Object.entries(state.parents).filter(([id]) => remembered.has(id))), collapsed: state.collapsed.filter((id) => remembered.has(id)) };
 }

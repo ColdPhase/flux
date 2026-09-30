@@ -121,6 +121,7 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
           });
           const placement = thought.placement ? (thought.placement.title ? `Draft · ${thought.placement.title}` : 'Draft you can’t open') : null;
           const choices = groupingChoices(thought.id, view.outline, sketch.links);
+          const parentLabel = row.parentId ? sketch.links.find((link) => (link.fromId === thought.id && link.toId === row.parentId) || (link.toId === thought.id && link.fromId === row.parentId))?.label : null;
           return (
             <li key={thought.id} data-id={thought.id} data-depth={row.depth} data-selected={selected ? 'true' : undefined} style={{ '--outline-depth': Math.min(row.depth, 8) } as CSSProperties}>
               <div className="sk-outline-row">
@@ -130,6 +131,7 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
               </div>
               <div className="sk-outline-body">
                 <span className="sk-li-s">{placement ? `${placement} · ` : ''}{provenance(thought, meId)}</span>
+                {parentLabel ? <span className="sk-li-s">Connection · {parentLabel}</span> : null}
                 {row.depth > 0 ? <details className="sk-outline-path"><summary>Path · level {row.depth}</summary><ol aria-label={`Path to ${thought.text}`}>{row.ancestors.map((id) => { const ancestor = view.outline.byId.get(id)!; return <li key={id}><button type="button" onClick={() => follow(thought.id, id)}>{ancestor.thought.text}</button></li>; })}</ol></details> : null}
                 {relations.length ? <div className="sk-li-l sk-outline-related"><span>Related to </span>{relations.slice(0, 2).map(({ link, other }, relatedIndex) => <span key={link.id}>{relatedIndex ? ', ' : ''}<button type="button" onClick={() => follow(thought.id, other.thought.id)}>{other.thought.text}</button>{link.label ? <span className="sk-outline-label"> · {link.label}</span> : null}</span>)}{relations.length > 2 ? <details className="sk-outline-more-links"><summary>More relations</summary>{relations.slice(2).map(({ link, other }) => <span key={link.id}><button type="button" onClick={() => follow(thought.id, other.thought.id)}>{other.thought.text}</button>{link.label ? ` · ${link.label}` : ''}</span>)}</details> : null}</div> : null}
                 {selected && !editing ? <div className="sk-outline-actions">

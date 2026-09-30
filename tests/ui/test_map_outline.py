@@ -85,7 +85,9 @@ class MapOutlineJourney(unittest.TestCase):
     def open(self, page, fragment=""):
         page.goto(f"/projects/{self.project_id}/map/{self.sketch_id}{fragment}")
         page.get_by_role("radio", name="List", exact=True).click()
-        expect(page.get_by_role("list", name="Thoughts in Bedside interaction directions")).to_be_visible()
+        expect(page.locator(".sk-head")).to_contain_text("Bedside interaction directions")
+        if self.stored(page)["thoughts"]:
+            expect(page.get_by_role("list", name="Thoughts in Bedside interaction directions")).to_be_visible()
 
     def api(self, page, method, path, body=None, status=200, headers=None):
         response = page.request.fetch(path, method=method, data=body, headers={"origin": ORIGIN, **(headers or {})})
@@ -230,7 +232,8 @@ class MapOutlineJourney(unittest.TestCase):
         expect(self.title(page, 3)).to_have_count(0)
         self.assertEqual(self.row(page, 4).get_attribute("data-depth"), "0")
         page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Undo", exact=True).click()
-        expect(page.locator(".sk-status")).to_contain_text("Saved")
+        expect(page.locator(".sk-status")).to_contain_text("Undid: removed a thought")
+        page.wait_for_function("async ({id, links}) => { const response = await fetch(`/api/v1/sketches/${id}`); return response.ok && (await response.json()).links.length === links; }", arg={"id": self.sketch_id, "links": len(original["links"])})
         expect(self.title(page, 3)).to_be_visible()
         self.assertEqual(self.row(page, 4).get_attribute("data-depth"), "4")
         restored = self.stored(page)
@@ -278,7 +281,7 @@ class MapOutlineJourney(unittest.TestCase):
         self.assertTrue(all(level == 0 for level in self.levels(self._fresh_owner()).values()), "viewer grouping never changes the owner's fresh view")
         self.api(owner, "POST", f"/api/v1/projects/{self.project_id}/grants", {"principal": {"kind": "human", "id": self.ids["viewer"]}, "role": "denied"}, status=201)
         self.api(viewer, "GET", f"/api/v1/sketches/{self.sketch_id}", status=404)
-        viewer.reload()
+        viewer.goto(f"/map/{self.sketch_id}")
         expect(viewer.get_by_role("heading", name="This sketch isn’t available")).to_be_visible()
         expect(viewer.locator("body")).not_to_contain_text(LABELS[4])
 
@@ -300,7 +303,8 @@ class MapOutlineJourney(unittest.TestCase):
                 title = self.title(page, 4).bounding_box()
                 self.assertGreater(title["width"], 190 if viewport["width"] == 390 else 300, "deep indentation leaves readable content")
             page.set_viewport_size(PHONE)
-            page.add_style_tag(content="html { font-size: 200% !important; }")
+            page.add_style_tag(content=":root { --fs-xs: 24px !important; --fs-sm: 26px !important; --fs-md: 28px !important; --fs-base: 30px !important; --fs-lg: 34px !important; --fs-xl: 40px !important; --fs-2xl: 48px !important; }")
+            self.assertEqual(self.title(page, 4).evaluate("node => getComputedStyle(node).fontSize"), "28px", "actual row text is enlarged")
             shot(page, f"map-outline-{scheme}-phone-enlarged")
             self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), PHONE["width"])
         touch = self.page(viewport=PHONE, is_mobile=True, has_touch=True)

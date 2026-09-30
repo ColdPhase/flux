@@ -40,5 +40,6 @@
   .sk-outline-toggle, .sk-outline-leaf { width: 36px; min-height: 44px; }
   .sk-outline-body { margin-inline-start: 42px; }
   .sk-outline-actions > button, .sk-outline-back, .sk-outline-undo, .sk-outline-path summary, .sk-outline-more-links summary, .sk-outline-related button, .sk-outline-path button { min-height: 44px; }
+  .sk-outline-related button, .sk-outline-path button { display: inline-block; padding-block: 10px; }
   .sk-outline-grouping select { min-height: 44px; }
 }
