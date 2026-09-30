@@ -141,7 +141,7 @@ async function decodedImage(page: Page, name: string, label: string) {
       { x: 1344, y: 110, width: 1000, height: 220, textPx: 16 }].map((rect) => {
       const crop = document.createElement('canvas'); crop.width = rect.width; crop.height = rect.height;
       const cg = crop.getContext('2d')!;
-      cg.drawImage(video, rect.x * scaleX, rect.y * scaleY, rect.width * scaleX,
+      cg.drawImage(decoded, rect.x * scaleX, rect.y * scaleY, rect.width * scaleX,
         rect.height * scaleY, 0, 0, rect.width, rect.height);
       const reference = original.getContext('2d')!.getImageData(rect.x, rect.y, rect.width, rect.height).data;
       const actual = cg.getImageData(0, 0, rect.width, rect.height).data;

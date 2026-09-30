@@ -20,6 +20,7 @@ const summaries = report.stages.map((stage) => {
     const inbound = s.type === 'inbound-rtp';
     const frames = delta(inbound ? s.framesDecoded : s.framesSent,
       inbound ? prior?.framesDecoded : prior?.framesSent);
+    const encoded = inbound ? null : delta(s.framesEncoded, prior?.framesEncoded);
     const bytes = delta(inbound ? s.bytesReceived : s.bytesSent,
       inbound ? prior?.bytesReceived : prior?.bytesSent);
     const packets = delta(inbound ? s.packetsReceived : s.packetsSent,
@@ -28,6 +29,8 @@ const summaries = report.stages.map((stage) => {
     return { client: client + 1, id: s.id, kind: s.kind, direction: inbound ? 'received' : 'sent',
       width: s.frameWidth ?? null, height: s.frameHeight ?? null, framesDelta: frames,
       intervalFps: frames === null ? null : frames * 1000 / intervalMs,
+      frameCounter: inbound ? 'framesDecoded' : 'framesSent', framesEncodedDelta: encoded,
+      encodedIntervalFps: encoded === null ? null : encoded * 1000 / intervalMs,
       bitrateKbps: bytes === null ? null : bytes * 8 / intervalMs,
       packetsDelta: packets, packetLossPercent: inbound && packets !== null && lost !== null && packets + lost > 0
         ? lost * 100 / (packets + lost) : null,

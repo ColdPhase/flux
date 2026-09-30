@@ -50,6 +50,7 @@ services:
         # Docker rewrites DNS/53 to a high resolver port before OUTPUT rules.
         # Permit only its loopback resolver, then deny every direct media UDP path.
         iptables -A OUTPUT -d 127.0.0.11 -p udp -j ACCEPT
+        iptables -A OUTPUT -s 127.0.0.11 -p udp -j ACCEPT
         iptables -A OUTPUT -p udp ! --dport 53 -j REJECT
         iptables -A OUTPUT -p tcp --dport 7881 -j REJECT
         trap 'iptables -L OUTPUT -n -v' EXIT
@@ -59,10 +60,15 @@ services:
         certutil -N -d sql:/root/.pki/nssdb --empty-password
         certutil -A -d sql:/root/.pki/nssdb -n turn-flux-test -t 'C,,' \
           -i /run/livekit-turn-certs/ca.pem
-        openssl s_client -connect turn.flux.test:443 -servername turn.flux.test \
+        if ! openssl s_client -connect turn.flux.test:443 -servername turn.flux.test \
           -verify_hostname turn.flux.test -verify_return_error \
           -CAfile /run/livekit-turn-certs/ca.pem -brief \
-          </dev/null >/tmp/turn-tls.txt 2>&1
+          </dev/null >/tmp/turn-tls.txt 2>&1; then
+          cp /tmp/turn-tls.txt /artifacts/turn-tls.txt
+          cat /tmp/turn-tls.txt
+          exit 1
+        fi
+        cp /tmp/turn-tls.txt /artifacts/turn-tls.txt
         grep -q 'Verification: OK' /tmp/turn-tls.txt
         cat /tmp/turn-tls.txt
         test ! -e /dev/video0 && test ! -e /dev/snd
