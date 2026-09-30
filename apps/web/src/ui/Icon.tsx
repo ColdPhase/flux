@@ -38,6 +38,8 @@ const paths = {
   key: <><circle cx="5.5" cy="10.5" r="2.75" /><path d="M7.5 8.5L13 3M11 5l1.5 1.5" /></>,
   home: <path d="M2.75 7.25L8 2.75l5.25 4.5v5.5a1 1 0 01-1 1H10v-4H6v4H3.75a1 1 0 01-1-1z" />,
   bell: <><path d="M4 11.5V7a4 4 0 018 0v4.5l1 1H3z" /><path d="M6.75 13.5a1.25 1.25 0 002.5 0" /></>,
+  /** "What matters" (#133): a private recap, no AI. */
+  leaf: <><path d="M3.25 12.75C3.25 7 6.75 3.5 12.75 3.25 12.5 9.25 9 12.75 3.25 12.75z" /><path d="M3.25 12.75l5.5-5.5" /></>,
   /** The personal assistant (#57): a filled four-point spark. */
   spark: <><path d="M8 2.5l1.3 3.2 3.2 1.3-3.2 1.3L8 11.5 6.7 8.3 3.5 7l3.2-1.3z" fill="currentColor" stroke="none" /><path d="M12.5 11l.5 1.5 1.5.5-1.5.5-.5 1.5-.5-1.5-1.5-.5 1.5-.5z" fill="currentColor" stroke="none" /></>,
   /** Work objects (#101): a decision (rule) and a result (checked document). */

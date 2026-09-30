@@ -1,19 +1,38 @@
-# Optional self-hosted media profile for issue #61. Layer with compose.yaml.
-# The operator terminates HTTPS/WSS at their ingress and points the API and browser
-# at that origin. Public ICE/TURN ports must reach this host directly.
+# Optional self-hosted media profile for issues #61 and #128. Layer with compose.yaml.
+# Browsers signal only through the Flux API at <FLUX_PUBLIC_ORIGIN>/media, which checks the
+# media admission, the cookie session and project access before proxying (#128). The SFU's
+# signaling/room-service port listens only on the internal `livekit-signal` network shared
+# with the API; it is not published and not reachable from the media network. Public ICE/TURN
+# ports must reach this host directly; they carry media only and accept no token.
 services:
   api:
     environment:
-      FLUX_LIVEKIT_API_URL: ${FLUX_LIVEKIT_API_URL:?Set the operator-owned HTTPS API origin}
-      FLUX_LIVEKIT_WS_URL: ${FLUX_LIVEKIT_WS_URL:?Set the operator-owned WSS signaling origin}
+      FLUX_LIVEKIT_API_URL: http://livekit:7880
       FLUX_LIVEKIT_API_KEY: ${FLUX_LIVEKIT_API_KEY:?Set the LiveKit API key}
       FLUX_LIVEKIT_API_SECRET: ${FLUX_LIVEKIT_API_SECRET:?Set the LiveKit API secret}
+    networks: [default, livekit-signal]
     depends_on:
       livekit:
         condition: service_healthy
   livekit:
     image: livekit/livekit-server:v1.13.7@sha256:6fd3b7088874c4d119160dd688798dfec852bc014786d392caad15f6f63912a3
     restart: unless-stopped
+    # Signaling and the room service bind only to this container's address on the internal
+    # network (plus loopback for the health check), never to the media network's interface.
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        for attempt in 1 2 3 4 5 6 7 8 9 10; do
+          signal_ip=$$(getent hosts livekit-signal-bind | awk '{ print $$1; exit }')
+          [ -n "$$signal_ip" ] && break
+          sleep 1
+        done
+        [ -n "$$signal_ip" ] || { echo 'No address on the livekit-signal network' >&2; exit 1; }
+        exec /livekit-server --bind "$$signal_ip" --bind 127.0.0.1
+    networks:
+      livekit-media: {}
+      livekit-signal:
+        aliases: [livekit-signal-bind]
     environment:
       LIVEKIT_CONFIG: |
         port: 7880
@@ -39,8 +58,8 @@ services:
           enabled: true
           domain: ${FLUX_LIVEKIT_DOMAIN:?Set the operator-owned media domain}
           udp_port: 3478
+    # No signaling port here: only the API reaches 7880, over livekit-signal.
     ports:
-      - 127.0.0.1:${FLUX_LIVEKIT_SIGNAL_PORT:-7880}:7880/tcp
       - ${FLUX_LIVEKIT_ICE_TCP_PORT:-7881}:7881/tcp
       - ${FLUX_LIVEKIT_ICE_UDP_PORT:-7882}:7882/udp
       - ${FLUX_LIVEKIT_TURN_UDP_PORT:-3478}:3478/udp
@@ -49,3 +68,9 @@ services:
       interval: 3s
       timeout: 2s
       retries: 20
+networks:
+  # Internal: no route to the host or the internet. Only the API and the SFU are attached.
+  livekit-signal:
+    internal: true
+  # Carries the published ICE/TURN ports. The API and database are not attached.
+  livekit-media: {}

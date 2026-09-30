@@ -806,6 +806,20 @@ export const liveInvitations = pgTable('live_invitations', {
     foreignColumns: [liveSessions.workspaceId, liveSessions.projectId, liveSessions.id] }).onDelete('cascade'),
   index('live_invitations_recipient_idx').on(table.recipientId, table.createdAt.desc(), table.id.desc()),
 ]);
+/**
+ * A media admission bound to the auth session that requested it (#128). The id is the
+ * LiveKit participant metadata; a trigger revokes rows when their session row is deleted.
+ */
+export const liveAdmissions = pgTable('live_admissions', {
+  id: text('id').primaryKey(),
+  liveSessionId: uuid('live_session_id').notNull().references(() => liveSessions.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  authSessionId: text('auth_session_id').notNull(),
+  issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, (table) => [
+  index('live_admissions_session_idx').on(table.liveSessionId, table.userId, table.issuedAt.desc()),
+]);
 // Direct messages: private conversations between people of one workspace (migration 0010, issue #107).
 export const dms = pgTable('dms', {
   id: uuid('id').primaryKey(),
