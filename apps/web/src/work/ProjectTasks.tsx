@@ -47,8 +47,16 @@ function TaskViews({ counts, status, mine, writable, onStatus, onMine }: {
   onStatus: (status: GroupId | null) => void; onMine: (mine: boolean) => void;
 }) {
   const row = useRef<HTMLDivElement>(null);
+  // Keep the chosen view in sight by scrolling only the row sideways; scrollIntoView would also
+  // scroll the Tasks pane and undo its restored reading position.
   useEffect(() => {
-    row.current?.querySelector<HTMLElement>('[aria-pressed="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const bar = row.current;
+    const chosen = bar?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!bar || !chosen || bar.scrollWidth <= bar.clientWidth) return;
+    const start = chosen.offsetLeft - bar.offsetLeft;
+    const end = start + chosen.offsetWidth;
+    if (start < bar.scrollLeft) bar.scrollLeft = Math.max(0, start - 16);
+    else if (end > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = end - bar.clientWidth + 16;
   }, [status]);
   const shown = GROUPS.filter((id) => counts[id] || id === status);
   return (

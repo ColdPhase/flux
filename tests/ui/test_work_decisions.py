@@ -384,6 +384,15 @@ class WorkDecisionsJourney(unittest.TestCase):
         self.assertLess(theirs["x"] - feed["x"], 80, f"{label}: another person's bubble starts at the left edge (beside its avatar)")
         self.assertLessEqual(mine["x"] + mine["width"], feed["x"] + feed["width"] + 1, f"{label}: inside the pane")
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.viewport_size["width"], f"{label}: no sideways scroll")
+        # Linked work, decisions and results stay inside the pane and the viewport on both sides.
+        chips = page.locator(".project-convo__message .ws-chip")
+        self.assertGreater(chips.count(), 0, f"{label}: the thread has linked objects")
+        for index in range(chips.count()):
+            box = chips.nth(index).bounding_box()
+            assert box
+            self.assertGreaterEqual(box["x"], feed["x"] - 1, f"{label}: linked object {index} starts inside the pane")
+            self.assertLessEqual(box["x"] + box["width"], feed["x"] + feed["width"] + 1, f"{label}: linked object {index} ends inside the pane")
+            self.assertLessEqual(box["x"] + box["width"], page.viewport_size["width"], f"{label}: linked object {index} is not cut off")
 
     def test_09_own_messages_sit_right_and_others_left(self) -> None:
         page = self.open_conversation("partner")
@@ -412,6 +421,38 @@ class WorkDecisionsJourney(unittest.TestCase):
         phone = self.open_conversation("partner", phone=True)
         self.assert_sides(phone, "phone")
         shot(phone, "conversation-sides-390")
+
+    # ---------------------------------------------------------------- reading position (#136 AC-2)
+
+    def test_10_each_task_view_keeps_its_reading_position(self) -> None:
+        owner = self.page("owner")
+        me = {"kind": "human", "id": PARTNER["id"]}
+        for index in range(1, 46):
+            self.api(owner, "POST", f"/api/v1/projects/{self.project_id}/work",
+                     {"title": f"Blocked step {index:02d}: check the ToF bracket", "status": "blocked", "blocker": "parts", "owner": me}, status=201)
+        page = self.page("partner", phone=True)
+        page.goto(f"/projects/{self.project_id}/tasks")
+        views = page.get_by_role("navigation", name="Task views")
+        views.get_by_role("button", name=re.compile("^Blocked")).tap()
+        pane = page.locator(".pane-scroll").first
+        expect(page.get_by_role("region", name=re.compile("^Blocked"))).to_contain_text("Blocked step 45")
+        pane.evaluate("(el) => { el.scrollTop = 850; }")
+        page.wait_for_timeout(300)
+        saved = pane.evaluate("(el) => el.scrollTop")
+        self.assertGreater(saved, 600, "the list is long enough to scroll")
+        # Through the Conversation tab and back through the Tasks tab.
+        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Conversation")).tap()
+        expect(page.locator(f"#message-{self.messages['idea']}")).to_be_visible()
+        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks")).tap()
+        expect(page.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^Blocked"))).to_have_attribute("aria-pressed", "true")
+        page.wait_for_timeout(300)
+        self.assertLess(abs(page.locator(".pane-scroll").first.evaluate("(el) => el.scrollTop") - saved), 8, "the Tasks tab returns to the same reading position")
+        # Switching view and back, pressing the buttons directly (no automatic scrolling into view).
+        page.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^Open")).evaluate("(button) => button.click()")
+        page.wait_for_timeout(300)
+        page.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^Blocked")).evaluate("(button) => button.click()")
+        page.wait_for_timeout(300)
+        self.assertLess(abs(page.locator(".pane-scroll").first.evaluate("(el) => el.scrollTop") - saved), 8, "switching views keeps each view's position")
 
 
 if __name__ == "__main__":
