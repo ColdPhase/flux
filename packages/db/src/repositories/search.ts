@@ -85,6 +85,7 @@ export interface SearchRowRecord {
   snippet: SearchText | null;
   hasBody: boolean;
   authorName: string | null;
+  author: { kind: 'human' | 'agent'; id: string } | null;
   at: Date;
 }
 
