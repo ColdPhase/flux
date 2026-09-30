@@ -385,6 +385,7 @@ if git -C "$here" cat-file -e "$from:app/package.json" 2>/dev/null; then
 else
   rollback_env=.env
 fi
+cp "$upgrade_archive" "$work/layout-rollback.tar"
 compose_in "$U" stop api worker >/dev/null
 cp "$(env_path "$U")" "$work/rollback.env"
 find "$U" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
@@ -392,7 +393,7 @@ git -C "$here" archive "$from" | tar -xf - -C "$U"
 mkdir -p "$(dirname "$U/$rollback_env")"
 cp "$work/rollback.env" "$U/$rollback_env"
 chmod 600 "$U/$rollback_env"
-flux_u restore "$upgrade_archive" -y > "$work/layout-rollback.out" 2>&1 || { cat "$work/layout-rollback.out"; fail "old-source rollback failed"; }
+flux_u restore "$work/layout-rollback.tar" -y > "$work/layout-rollback.out" 2>&1 || { cat "$work/layout-rollback.out"; fail "old-source rollback failed"; }
 [ "$(project_of "$U")" = "$run_u" ] || fail "rollback lost the custom project"
 flux_u demo | grep -q 'already exists; nothing new was seeded' || fail "rollback lost the original demo data"
 cp "$(env_path "$U")" "$work/rollback.env"
