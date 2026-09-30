@@ -23,17 +23,20 @@ export interface ClientResponse {
 export class Browser {
   readonly cookies = new Map<string, string>();
 
+  /** Defaults to the API container; in-process servers pass their own address and origin. */
+  constructor(readonly base = apiUrl, readonly defaultOrigin = publicOrigin) {}
+
   cookieHeader() {
     return [...this.cookies].map(([name, value]) => `${name}=${value}`).join('; ');
   }
 
   async request(method: string, path: string, options: RequestOptions = {}): Promise<ClientResponse> {
     const headers: Record<string, string> = { ...options.headers };
-    const origin = options.origin === undefined ? publicOrigin : options.origin;
+    const origin = options.origin === undefined ? this.defaultOrigin : options.origin;
     if (origin !== null) headers.origin = origin;
     if (this.cookies.size) headers.cookie = this.cookieHeader();
     if (options.body !== undefined) headers['content-type'] = 'application/json';
-    const response = await fetch(new URL(path, apiUrl), {
+    const response = await fetch(new URL(path, this.base), {
       method,
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),

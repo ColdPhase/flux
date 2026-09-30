@@ -16,11 +16,18 @@ const STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
 export function LiveStage() {
   const live = useLive();
   const people = live.media?.people ?? [];
-  const screens = people.filter((person) => person.screen && !person.local);
-  const cameras = people.filter((person) => person.camera);
+  // One entry per shared track: two devices of one person are two screens (#128).
+  const screens = live.media?.screens ?? [];
+  const cameras = live.media?.cameras ?? [];
   const open = live.stage.open && (screens.length > 0 || cameras.length > 0) && live.phase !== 'idle';
-  const focusId = screens.some((person) => person.userId === live.stage.focus) ? live.stage.focus : screens[0]?.userId ?? null;
-  const focused = screens.find((person) => person.userId === focusId) ?? null;
+  const focusId = screens.some((screen) => screen.key === live.stage.focus) ? live.stage.focus : screens[0]?.key ?? null;
+  const focused = screens.find((screen) => screen.key === focusId) ?? null;
+  const personOf = (video: VideoRef) => people.find((person) => person.userId === video.userId);
+  const screenName = (screen: VideoRef) => {
+    const same = screens.filter((other) => other.userId === screen.userId);
+    const name = `${live.nameOf(screen.userId).split(' ')[0]}’s screen`;
+    return same.length > 1 ? `${name} ${same.indexOf(screen) + 1}` : name;
+  };
   const [zoom, setZoom] = useState<Zoom>({ mode: 'fit' });
   const [showCameras, setShowCameras] = useState(true);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
@@ -72,7 +79,7 @@ export function LiveStage() {
 
   const cameraTiles = showCameras && cameras.length ? (
     <ul className="lv-cams" aria-label="Cameras">
-      {cameras.map((person) => <CameraTile key={person.userId} person={person} video={person.camera!} name={person.local ? 'You' : live.nameOf(person.userId)} />)}
+      {cameras.map((video) => <CameraTile key={video.key} person={personOf(video)} video={video} name={video.local ? 'You' : live.nameOf(video.userId)} />)}
     </ul>
   ) : null;
 
@@ -82,9 +89,9 @@ export function LiveStage() {
         {screens.length > 1 ? (
           <div className="seg lv-stage__pick" role="radiogroup" aria-labelledby={groupId}>
             <span id={groupId} className="ui-vh">Screen to focus</span>
-            {screens.map((person) => (
-              <button key={person.userId} type="button" role="radio" className="seg__b" aria-checked={person.userId === focusId}
-                onClick={() => live.openStage(person.userId)}>{live.nameOf(person.userId).split(' ')[0]}’s screen</button>
+            {screens.map((screen) => (
+              <button key={screen.key} type="button" role="radio" className="seg__b" aria-checked={screen.key === focusId}
+                onClick={() => live.openStage(screen.key)}>{screenName(screen)}</button>
             ))}
           </div>
         ) : focused ? <p className="lv-stage__title"><Icon name="screen" size={14} />{live.nameOf(focused.userId)}’s screen</p>
@@ -108,7 +115,7 @@ export function LiveStage() {
           <div ref={viewportRef} className={`lv-stage__view${zoom.mode === 'fit' ? ' is-fit' : ' is-zoomed'}`} tabIndex={0}
             aria-label={`${live.nameOf(focused.userId)}’s screen${natural ? `, ${natural.w} by ${natural.h} pixels` : ''}. Plus and minus zoom, 0 fits, 1 shows actual pixels.`}
             onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
-            <LiveVideo key={focused.screen!.key} video={focused.screen!} className="lv-stage__video"
+            <LiveVideo key={focused.key} video={focused} className="lv-stage__video"
               style={size ? { width: size.width, height: size.height, maxWidth: 'none', maxHeight: 'none' } : undefined}
               onDimensions={(w, h) => setNatural({ w, h })} />
           </div>
@@ -120,11 +127,11 @@ export function LiveStage() {
   );
 }
 
-function CameraTile({ person, video, name }: { person: MediaPerson; video: VideoRef; name: string }) {
+function CameraTile({ person, video, name }: { person: MediaPerson | undefined; video: VideoRef; name: string }) {
   return (
-    <li className={`lv-cam${person.speaking ? ' is-speaking' : ''}`}>
-      <LiveVideo video={video} className={`lv-cam__video${person.local ? ' is-mirror' : ''}`} aria-label={`${name === 'You' ? 'Your' : `${name}’s`} camera`} />
-      <span className="lv-cam__name">{name}{!person.mic ? <Icon name="mic-off" size={11} /> : null}</span>
+    <li className={`lv-cam${person?.speaking ? ' is-speaking' : ''}`}>
+      <LiveVideo video={video} className={`lv-cam__video${video.local ? ' is-mirror' : ''}`} aria-label={`${name === 'You' ? 'Your' : `${name}’s`} camera`} />
+      <span className="lv-cam__name">{name}{!person?.mic ? <Icon name="mic-off" size={11} /> : null}</span>
     </li>
   );
 }
