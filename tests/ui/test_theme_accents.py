@@ -147,7 +147,7 @@ class ThemeAccentsJourney(unittest.TestCase):
         sketch = self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/sketches", {"title": "Sensing options and evidence", "scope": "project", "projectId": pid})
         first = self.api(page, "POST", f"/api/v1/sketches/{sketch['id']}/thoughts", {"text": "Reliable gestures in a dark bedroom", "x": 20, "y": 20})
         for i, text in enumerate(("ToF sensor: compare latency and coverage", "Camera: failed at 5 lux", "Diffuser: keep the electronics accessible")):
-            self.api(page, "POST", f"/api/v1/sketches/{sketch['id']}/thoughts", {"text": text, "x": 40+i*260, "y": 180, "linkFrom": {"thoughtId": first['thought']['id']}})
+            self.api(page, "POST", f"/api/v1/sketches/{sketch['id']}/thoughts", {"text": text, "x": 40+i*260, "y": 180, "linkFrom": {"thoughtId": first['thought']['id'], "label": "Evidence for"}})
         type(self).conversation_url = f"/projects/{pid}/conversations/{cid}"
         type(self).work_url = f"/projects/{pid}/tasks"
         type(self).map_url = f"/projects/{pid}/map/{sketch['id']}"
