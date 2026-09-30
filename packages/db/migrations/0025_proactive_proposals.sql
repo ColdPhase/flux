@@ -27,4 +27,4 @@ ALTER TABLE proactive_comparison_outbox ADD COLUMN usage_output_tokens integer C
 ALTER TABLE proactive_comparison_outbox ADD COLUMN usage_estimated_cents integer CHECK (usage_estimated_cents >= 0);
 ALTER TABLE proactive_comparison_outbox ADD COLUMN finished_at timestamptz;
 ALTER TABLE proactive_comparison_outbox ADD COLUMN failure_code text;
-INSERT INTO flux_schema_version(version) VALUES (24) ON CONFLICT DO NOTHING;
+INSERT INTO flux_schema_version(version) VALUES (25) ON CONFLICT DO NOTHING;

@@ -5,4 +5,4 @@ ALTER TABLE proactive_comparison_rules
 CREATE UNIQUE INDEX proactive_comparison_rules_active_owner_project_idx
   ON proactive_comparison_rules(owner_user_id, project_id, purpose)
   WHERE status <> 'revoked';
-INSERT INTO flux_schema_version(version) VALUES (25) ON CONFLICT DO NOTHING;
+INSERT INTO flux_schema_version(version) VALUES (26) ON CONFLICT DO NOTHING;

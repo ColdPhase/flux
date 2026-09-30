@@ -24,4 +24,4 @@ CREATE UNIQUE INDEX proactive_comparison_outbox_owner_inflight_idx ON proactive_
   WHERE status = 'reserved';
 CREATE INDEX proactive_comparison_outbox_queued_idx ON proactive_comparison_outbox(created_at, id)
   WHERE status = 'queued';
-INSERT INTO flux_schema_version(version) VALUES (23) ON CONFLICT DO NOTHING;
+INSERT INTO flux_schema_version(version) VALUES (24) ON CONFLICT DO NOTHING;

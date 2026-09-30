@@ -190,7 +190,10 @@ before the new schema/API implementation:
 - Unmerged migration numbers follow merge order. A later merger renumbers its
   new migration to the next free version after current main, with relevant
   checks/review repeated; a missing contiguous baseline must not be bypassed.
-  Existing `0021`–`0024` are unchanged by this amendment.
+  Existing comparison SQL is unchanged by this amendment. After protected main
+  PR #131 takes `0021`, the five unmerged #58 files are renumbered `0022`–`0026`
+  on integration (2026-09-30); only their file numbers and ledger insertions change.
+  Main's already-applied `0021_live_invitation_notifications.sql` stays intact.
 
 This is an accepted implementation contract, not evidence of implemented outcomes
 or production activation.
@@ -249,7 +252,8 @@ before its schema/API implementation:
 The evaluator [accepted fresh authorization after revocation](https://github.com/ColdPhase/flux/issues/58#issuecomment-5900813869).
 Keep a revoked row as terminal history; it is never re-enabled. Permit at most one
 non-revoked rule per owner/project/purpose using a partial unique index in a new
-migration, without rewriting `0021`. A fresh rule starts paused and repeats
+migration, without rewriting the initial rule SQL (`0022` after main integration;
+previously unmerged `0021`). A fresh rule starts paused and repeats
 current personal-agent/project checks and scope/allowance confirmation. Historical
 dismissals and all owner-level observed/possible charges remain counted across
 rule identities. Verify revoke → fresh create with unchanged old row, and

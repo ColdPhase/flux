@@ -25,4 +25,4 @@ CREATE UNIQUE INDEX background_compute_connections_active_owner_idx
   ON background_compute_connections(owner_user_id) WHERE revoked_at IS NULL;
 CREATE INDEX background_compute_connections_owner_idx
   ON background_compute_connections(owner_user_id, created_at DESC, id);
-INSERT INTO flux_schema_version(version) VALUES (22) ON CONFLICT DO NOTHING;
+INSERT INTO flux_schema_version(version) VALUES (23) ON CONFLICT DO NOTHING;

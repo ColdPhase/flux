@@ -44,6 +44,21 @@ const paths = {
   rule: <><path d="M8 2l5.5 3v6L8 14l-5.5-3V5z" /><path d="M5.75 8.1l1.6 1.6 3-3.2" /></>,
   result: <><path d="M4 2.5h5l3 3v8H4z" /><path d="M6 9.25l1.5 1.5 2.75-3" /></>,
   flask: <><path d="M6.5 2.5h3M7 2.5v4L3.5 12.5a1 1 0 00.9 1.5h7.2a1 1 0 00.9-1.5L9 6.5v-4" /><path d="M5 10h6" /></>,
+  /** Live sessions (#62): together, microphone, camera, screen, quiet, leave, zoom, show. */
+  together: <><circle cx="5.25" cy="6" r="2" /><circle cx="10.75" cy="6" r="2" /><path d="M1.75 12.75c.4-1.9 1.75-3 3.5-3s3.1 1.1 3.5 3M7.25 12.75c.4-1.9 1.75-3 3.5-3s3.1 1.1 3.5 3" /></>,
+  mic: <><rect x="6" y="2" width="4" height="7.5" rx="2" /><path d="M3.75 8a4.25 4.25 0 008.5 0M8 12.25V14" /></>,
+  'mic-off': <><path d="M10 6.5V4a2 2 0 00-3.9-.6M6 6.5V7.5a2 2 0 003.2 1.6" /><path d="M3.75 8a4.25 4.25 0 007 3.25M12.25 8c0 .4-.05.8-.16 1.17M8 12.25V14M2.5 2.5l11 11" /></>,
+  video: <><rect x="1.75" y="4.25" width="8.5" height="7.5" rx="1.5" /><path d="M10.25 7l4-2.25v6.5l-4-2.25" /></>,
+  'video-off': <><path d="M5 4.25h3.75a1.5 1.5 0 011.5 1.5v3.5M10.25 11.2a1.5 1.5 0 01-1.5.55h-5.5a1.5 1.5 0 01-1.5-1.5v-4.5a1.5 1.5 0 01.9-1.37" /><path d="M10.25 7l4-2.25v6.5l-2.1-1.18M2 2l12 12" /></>,
+  screen: <><rect x="1.75" y="2.75" width="12.5" height="8.5" rx="1.5" /><path d="M5.5 13.75h5M8 11.25v2.5M8 8.75V5.25M6.25 6.75L8 5l1.75 1.75" /></>,
+  quiet: <><path d="M3 6h2l3-2.75v9.5L5 10H3a.75.75 0 01-.75-.75v-2.5A.75.75 0 013 6z" /><path d="M11 6.25l3 3.5M14 6.25l-3 3.5" /></>,
+  hearing: <><path d="M3 6h2l3-2.75v9.5L5 10H3a.75.75 0 01-.75-.75v-2.5A.75.75 0 013 6z" /><path d="M10.5 5.75a3 3 0 010 4.5M12.25 4a5.5 5.5 0 010 8" /></>,
+  leave: <><path d="M2.25 9.5c3.3-3.3 8.2-3.3 11.5 0l-1.5 1.75-2.25-1v-1.5a7 7 0 00-4 0v1.5l-2.25 1z" /></>,
+  'zoom-in': <><circle cx="7" cy="7" r="4.25" /><path d="M10.25 10.25L13.5 13.5M5.25 7h3.5M7 5.25v3.5" /></>,
+  'zoom-out': <><circle cx="7" cy="7" r="4.25" /><path d="M10.25 10.25L13.5 13.5M5.25 7h3.5" /></>,
+  show: <><rect x="2" y="2.75" width="12" height="8.5" rx="1.5" /><path d="M5.5 13.5h5M6.5 5.5l3 1.5-3 1.5z" /></>,
+  follow: <><path d="M3 3l4.25 10 1.5-4.25L13 7.25z" /></>,
+  pulse: <path d="M1.75 8h2.5l1.5-3.5 2.5 7 1.75-5 1 1.5h3.25" />,
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof paths;

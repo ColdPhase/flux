@@ -24,6 +24,7 @@ const ROWS: Record<NotificationReason, { label: string; hint: string }> = {
   reply: { label: 'Replies', hint: 'In conversations you started or joined' },
   assigned: { label: 'Work assigned to you', hint: 'Someone else makes you the owner' },
   review: { label: 'Reviews for you', hint: 'Decisions and results about your work or agent' },
+  invitation: { label: 'Invitations to work together', hint: 'Someone asks you to join them at a task, map, doc or conversation' },
 };
 const COLUMNS: { id: NotificationChannel; label: string }[] = [
   { id: 'inApp', label: 'Inbox' },

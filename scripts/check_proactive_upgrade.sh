@@ -30,7 +30,10 @@ cleanup() {
   rm -rf "${work:?}"
   exit "$status"
 }
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 ledger() { compose exec -T db psql -X -tA -v ON_ERROR_STOP=1 -U flux -d flux -c "SELECT string_agg(version::text, ',' ORDER BY version) FROM flux_schema_version"; }
 expected_ledger() { ls "$checkout/packages/db/migrations" | sed -n 's/^\([0-9][0-9][0-9][0-9]\)_.*\.sql$/\1/p' | sort -n | sed 's/^0*//' | paste -sd, -; }
 snapshot() {

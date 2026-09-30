@@ -19,6 +19,7 @@ import { SketchIndex } from './sketch/SketchIndex';
 import { SketchRoute } from './sketch/SketchView';
 import { projectShellLoader } from './project/data';
 import { ProjectMap } from './project/ProjectViews';
+import { LiveOpen } from './live/LiveOpen';
 import { SearchPage } from './search/SearchPage';
 import {
   forgotPasswordAction,
@@ -85,6 +86,8 @@ export const router = createBrowserRouter([
               { path: 'docs/:docId/versions/:version', loader: docLoader, Component: DocReader },
               { path: 'docs/:docId/edit', loader: docEditLoader, Component: DocEditor },
               { path: 'docs/:docId/history', loader: docHistoryLoader, Component: DocHistory },
+              // An invitation's link (#62): opens the session's work with the invitation card.
+              { path: 'live/:sessionId', Component: LiveOpen },
             ],
           },
           { path: 'materials/:materialId', loader: materialLoader, Component: MaterialView },
