@@ -188,9 +188,11 @@
      in two even rows (#69); the status gets its own line only when it has text. */
   .sk { gap: 8px; padding-top: 10px; }
   .sk-head { gap: 6px 8px; }
-  /* Title and audience share their row with the Map/List switch; "Make it a project…" wraps below. */
-  .sk-head { flex-wrap: wrap; align-items: flex-start; }
-  .sk-lead { flex: 1 1 0; min-width: 0; gap: 2px 6px; }
+  /* Without "Make it a project…" (a project copy) the Map/List switch shares the title row; a DM
+     sketch keeps the switch and that action together on one row. */
+  .sk-lead { flex: 1 1 100%; gap: 2px 6px; }
+  .sk-head:not(:has(.sk-promote)) { flex-wrap: nowrap; align-items: flex-start; }
+  .sk-head:not(:has(.sk-promote)) .sk-lead { flex: 1 1 0; min-width: 0; }
   .sk-lead .sk-aud { flex-basis: 100%; }
   .sk-back, .sk-sep { display: none; }
   .sk-promote { order: 3; flex: 1 1 auto; justify-content: center; }
