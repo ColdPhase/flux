@@ -8,12 +8,12 @@ import {
 
 // Maintenance commands of ./flux backup, restore and upgrade (issue #123), run in the migrate
 // container of the image being restored or started:
-//   node infra/dist/operations.js migration-files        FLUX_MIGRATIONS <versions of this image's SQL files>
-//   node infra/dist/operations.js migration-ledger       FLUX_MIGRATIONS <versions recorded in the database>
-//   node infra/dist/operations.js migration-gate <list> [--migrate]
+//   node tooling/dist/operations.js migration-files        FLUX_MIGRATIONS <versions of this image's SQL files>
+//   node tooling/dist/operations.js migration-ledger       FLUX_MIGRATIONS <versions recorded in the database>
+//   node tooling/dist/operations.js migration-gate <list> [--migrate]
 //                                                        whether a backup ledger may be restored on this image
-//   node infra/dist/operations.js agent-access           prints active connections and refresh tokens
-//   node infra/dist/operations.js revoke-agent-access    revokes every agent connection and OAuth token
+//   node tooling/dist/operations.js agent-access           prints active connections and refresh tokens
+//   node tooling/dist/operations.js revoke-agent-access    revokes every agent connection and OAuth token
 // The migration commands use the #118 ledger parser of @flux/db, the one the migrator trusts.
 
 const migrationsDir = 'packages/db/migrations';

@@ -25,13 +25,13 @@ caller can read in the same workspace (`404` or `422 CROSS_WORKSPACE`). The titl
 placement is returned only to readers who can open the object now; for anyone else it
 is `null`.
 
-Migrations `0007_sketches.sql` and `0025_dm_sketches.sql` (#96). `infra/migrate.ts` applies
+Migrations `0007_sketches.sql` and `0025_dm_sketches.sql` (#96). `app/tooling/migrate.ts` applies
 every unapplied file in order and checks that the highest version equals `FLUX_SCHEMA_VERSION`
 (25). The ledger is contiguous from 1 to 25; `0025_dm_sketches.sql` took the next free number by merge order.
 
 ## Access
 
-This uses the #29 policy in `packages/core/src/access/policy.ts`. It adds the
+This uses the #29 policy in `app/packages/core/src/access/policy.ts`. It adds the
 `evaluateSketch` action (`sketch.read`, `sketch.write`), the `visibleSketchesSql` list
 condition returned by `visibleFilter(…, 'sketch')`, and `sketch.create` on the
 workspace. The rules are in [access-policy.md](access-policy.md#rules). Invisible
@@ -42,19 +42,19 @@ concurrent revocation is either seen or waits.
 
 ## Clean Architecture
 
-- `packages/core/src/sketches/` holds the use cases (`createSketchUseCases`) and their
+- `app/packages/core/src/sketches/` holds the use cases (`createSketchUseCases`) and their
   ports: `SketchAccess`, `SketchRepository`, `SketchEventLog` and `SketchUnitOfWork`.
   It imports only `@flux/contracts`, the domain errors and `principal.ts`. It never
-  imports Drizzle, `@flux/db` or pg-boss (`tests/app/architecture.test.ts` also follows its relative imports).
-- `packages/core/src/access/sketch-access.ts` is the policy adapter for `SketchAccess`.
+  imports Drizzle, `@flux/db` or pg-boss (`app/tests/app/architecture.test.ts` also follows its relative imports).
+- `app/packages/core/src/access/sketch-access.ts` is the policy adapter for `SketchAccess`.
   It imports no persistence library itself; its SQL reaches it only through the existing
   `policy.ts` import chain, which the [architecture rules](architecture.md#known-debt)
   already record. No allowlist entry was added.
-- `packages/db/src/repositories/sketches.ts` holds the rows. It makes no access decisions;
+- `app/packages/db/src/repositories/sketches.ts` holds the rows. It makes no access decisions;
   lists take the policy's condition from the caller.
-- `apps/server/src/sketches/` holds the adapters: the unit of work, the `visibleFilter`
+- `app/apps/server/src/sketches/` holds the adapters: the unit of work, the `visibleFilter`
   composition and `recordEvent`. It also holds the thin Fastify routes. The shared
-  If-Match and Idempotency-Key plumbing is in `apps/server/src/http/commands.ts`.
+  If-Match and Idempotency-Key plumbing is in `app/apps/server/src/http/commands.ts`.
 
 ## HTTP API
 
@@ -107,7 +107,7 @@ author receives the events of a private sketch. The stream's `objectType` is `sk
     navigation. These preferences never mutate the graph or canvas positions.
   - Phone and tablet: tap to select, then drag. Touch targets are 44 px, and there is
     no horizontal page scroll.
-- `apps/web/src/sketch/doc.ts` applies changes locally at once and sends them in order.
+- `app/apps/web/src/sketch/doc.ts` applies changes locally at once and sends them in order.
   Each change carries its own Idempotency-Key and the last server-confirmed version as
   If-Match. Undo sends inverse operations. When a stream event arrives for the open
   sketch, the client refetches it once nothing is in flight.
@@ -232,13 +232,13 @@ record `search_documents.dm_id`, which migration 0025 adds and the index trigger
 DM sketches. Results name the DM as their place, and `target.dmId` makes them open at
 `/dm/:dmId/sketches/:sketchId` (`#thought-…` for a thought).
 
-**Tests.** `tests/app/dm-sketches.test.ts` (API, `./scripts/check_application.sh`) and
-`tests/ui/test_dm_sketches.py` (Playwright, `./scripts/check_ui.sh`, screenshots
+**Tests.** `app/tests/app/dm-sketches.test.ts` (API, `./scripts/check_application.sh`) and
+`app/tests/ui/test_dm_sketches.py` (Playwright, `./scripts/check_ui.sh`, screenshots
 `dm-sketch-*.png`).
 
 ## Evidence
 
 The screenshots in [`docs/design/sketches/`](../design/sketches/) come from
-`tests/ui/test_sketches.py`, run by `scripts/check_ui.sh`, and show realistic content.
+`app/tests/ui/test_sketches.py`, run by `scripts/check_ui.sh`, and show realistic content.
 They do not prove interaction or accessibility; the Playwright journey checks those
 against the API.

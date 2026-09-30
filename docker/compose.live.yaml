@@ -1,4 +1,4 @@
-# Optional self-hosted media profile for issues #61 and #128. Layer with compose.yaml.
+# Optional self-hosted media profile for issues #61 and #128. Layer with compose.source.yaml.
 # Browsers signal only through the Flux API at <FLUX_PUBLIC_ORIGIN>/media, which checks the
 # media admission, the cookie session and project access before proxying (#128). The SFU's
 # signaling/room-service port listens only on the internal `livekit-signal` network shared

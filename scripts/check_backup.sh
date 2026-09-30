@@ -41,11 +41,18 @@ flux_a() { FLUX_PORT=$port_a FLUX_DEV_PORT=$((port_a + 1)) FLUX_MAILPIT_PORT=$((
 # B replaces A on A's address after A is destroyed: OAuth issuer and audience are the origin.
 flux_b() { FLUX_PORT=$port_a FLUX_PUBLIC_ORIGIN="http://127.0.0.1:$port_a" FLUX_DEV_PORT=$((port_b + 1)) FLUX_MAILPIT_PORT=$((port_b + 2)) "$B/flux" "$@"; }
 flux_u() { FLUX_PORT=$port_u FLUX_DEV_PORT=$((port_u + 1)) FLUX_MAILPIT_PORT=$((port_u + 2)) "$U/flux" "$@"; }
-project_of() { sed -n 's/^FLUX_PROJECT=//p' "$1/.env"; }
-env_of() { sed -n "s/^$2=//p" "$1/.env" | tail -n 1; }
+env_path() { if [ -f "$1/docker/.env" ]; then printf '%s/docker/.env' "$1"; else printf '%s/.env' "$1"; fi; }
+migration_dir() { if [ -d "$1/app/packages/db/migrations" ]; then printf '%s/app/packages/db/migrations' "$1"; else printf '%s/packages/db/migrations' "$1"; fi; }
+project_of() { sed -n 's/^FLUX_PROJECT=//p' "$(env_path "$1")"; }
+env_of() { sed -n "s/^$2=//p" "$(env_path "$1")" | tail -n 1; }
 compose_in() { # checkout args...
   checkout=$1; shift
-  docker compose --project-directory "$checkout/infra" --env-file "$checkout/.env" -p "$(project_of "$checkout")" -f "$checkout/infra/compose.yaml" "$@"
+  if [ -f "$checkout/docker/compose.source.yaml" ]; then
+    compose_dir="$checkout/docker" compose_file="$checkout/docker/compose.source.yaml"
+  else
+    compose_dir="$checkout/infra" compose_file="$checkout/infra/compose.yaml"
+  fi
+  docker compose --project-directory "$compose_dir" --env-file "$(env_path "$checkout")" -p "$(project_of "$checkout")" -f "$compose_file" "$@"
 }
 # Runs scripts/backup-fixture.mjs inside a checkout's API container.
 fixture() { # checkout mode [state-json]
@@ -59,9 +66,9 @@ copy_tree() { # target
   mkdir -p "$1"
   (cd "$here" && git ls-files -z --cached --others --exclude-standard | xargs -0 tar -cf - 2>/dev/null) | (cd "$1" && tar -xf -)
 }
-schema_of_tree() { ls "$1/packages/db/migrations" | sed -n 's/^\([0-9]\{4\}\)_.*\.sql$/\1/p' | sort | tail -n 1 | sed 's/^0*//'; }
-migrations_of_ref() { git -C "$here" ls-tree --name-only "$1" packages/db/migrations/ | sed -n 's#^.*/\([0-9]\{4\}_.*\.sql\)$#\1#p' | sort; }
-migrations_of_tree() { ls "$1/packages/db/migrations" | grep -E '^[0-9]{4}_.*\.sql$' | sort; }
+schema_of_tree() { ls "$(migration_dir "$1")" | sed -n 's/^\([0-9]\{4\}\)_.*\.sql$/\1/p' | sort | tail -n 1 | sed 's/^0*//'; }
+migrations_of_ref() { git -C "$here" ls-tree --name-only "$1" packages/db/migrations/ app/packages/db/migrations/ | sed -n 's#^.*/\([0-9]\{4\}_.*\.sql\)$#\1#p' | sort; }
+migrations_of_tree() { ls "$(migration_dir "$1")" | grep -E '^[0-9]{4}_.*\.sql$' | sort; }
 schema_of_ref() { migrations_of_ref "$1" | tail -n 1 | sed 's/^\([0-9]*\)_.*/\1/; s/^0*//'; }
 
 oauth_client="flux-backup-check-$$"
@@ -69,8 +76,8 @@ oauth_client="flux-backup-check-$$"
 cleanup() {
   status=$?
   for checkout in "$A" "$B" "$U"; do
-    if [ "$status" -ne 0 ] && [ -f "$checkout/.env" ]; then compose_in "$checkout" logs --no-color --tail 60 2>/dev/null || true; fi
-    if [ -x "$checkout/flux" ] && [ -f "$checkout/.env" ]; then "$checkout/flux" clean -y >/dev/null 2>&1 || true; fi
+    if [ "$status" -ne 0 ] && [ -f "$(env_path "$checkout")" ]; then compose_in "$checkout" logs --no-color --tail 60 2>/dev/null || true; fi
+    if [ -x "$checkout/flux" ] && [ -f "$(env_path "$checkout")" ]; then "$checkout/flux" clean -y >/dev/null 2>&1 || true; fi
     docker volume ls -q --filter "label=com.flux.checkout=$checkout" | xargs docker volume rm >/dev/null 2>&1 || true
   done
   rm -rf "${work:?}"
@@ -211,7 +218,7 @@ step "A backup whose ledger has a version this image lacks is refused before any
 # The checkout loses a migration below the highest one: the backup's ledger now names a
 # version without a file here (same max(version)), as a backup from another branch would.
 foreign=$(migrations_of_tree "$A" | tail -n 2 | head -n 1)
-mv "$A/packages/db/migrations/$foreign" "$work/$foreign"
+mv "$A/app/packages/db/migrations/$foreign" "$work/$foreign"
 before_start=$(api_started)
 messages_before=$(compose_in "$A" exec -T db psql -X -tA -U flux -d flux -c 'SELECT count(*) FROM project_messages')
 if flux_a restore "$archive" --migrate -y > "$work/foreign.out" 2>&1; then fail "a backup with a foreign migration version was restored"; fi
@@ -221,20 +228,20 @@ if grep -q 'Replacing the data' "$work/foreign.out"; then fail "the foreign-vers
 [ "$(api_started)" = "$before_start" ] || fail "the refused restore restarted A"
 [ "$(compose_in "$A" exec -T db psql -X -tA -U flux -d flux -c 'SELECT count(*) FROM project_messages')" = "$messages_before" ] || fail "the refused restore changed A's data"
 curl -fsS "http://127.0.0.1:$port_a/api/v1/health" | grep -q '"status":"ok"' || fail "A is not healthy after the refused restore"
-mv "$work/$foreign" "$A/packages/db/migrations/$foreign"
+mv "$work/$foreign" "$A/app/packages/db/migrations/$foreign"
 
 step "Destroy A's volumes, then restore the archive into a fresh checkout B"
 flux_a reset -y >/dev/null
 for volume in "${run_a}_pgdata" "${run_a}_files"; do
   if docker volume inspect "$volume" >/dev/null 2>&1; then fail "reset left $volume"; fi
 done
-[ ! -f "$B/.env" ] || fail "B is not fresh"
+[ ! -f "$B/docker/.env" ] || fail "B is not fresh"
 flux_b restore "$archive" -y > "$work/restore.out" 2>&1 || { cat "$work/restore.out"; fail "restore into B failed"; }
 tail -n 7 "$work/restore.out"
 grep -q 'NOTE: 1 agent connection(s) are active as of the backup' "$work/restore.out" || fail "restore did not warn about restored agent connections"
 run_b=$(project_of "$B")
 [ -n "$run_b" ] && [ "$run_b" != "$run_a" ] || fail "B did not use its own project ($run_b)"
-[ "$(ls -l "$B/.env" | cut -c1-10)" = "-rw-------" ] || fail "restored .env is not private"
+[ "$(ls -l "$B/docker/.env" | cut -c1-10)" = "-rw-------" ] || fail "restored .env is not private"
 [ "$(env_of "$B" FLUX_AUTH_SECRET)" = "$(env_of "$A" FLUX_AUTH_SECRET)" ] || fail "restored .env has other secrets"
 [ "$(env_of "$B" FLUX_PORT)" = "$port_a" ] || fail "restored .env did not take the port from the shell"
 grep -q "Migrations: the backup's migration ledger matches this image exactly" "$work/restore.out" || fail "restore did not report the exact ledger match"
@@ -269,15 +276,26 @@ from_schema=$(schema_of_ref "$from")
 echo "upgrading from $(git -C "$here" log -1 --format='%h %s' "$from") (schema $from_schema) to this tree (schema $current); new migrations:" $new_migrations
 mkdir -p "$U"
 git -C "$here" archive "$from" | tar -xf - -C "$U"
-flux_u up >/dev/null
+(FLUX_PROJECT="flux-upgrade-check-$$"; export FLUX_PROJECT; flux_u up >/dev/null)
 flux_u demo >/dev/null
 run_u=$(project_of "$U")
 # `git pull`: the files of the checkout change, .env and the data stay.
-find "$U" -mindepth 1 -maxdepth 1 ! -name .env -exec rm -rf {} +
+original_env=$(env_path "$U")
+env_relative=${original_env#"$U"/}
+original_env_hash=$(sha256 "$original_env")
+cp "$original_env" "$work/upgrade.env"
+find "$U" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 copy_tree "$U"
+mkdir -p "$(dirname "$U/$env_relative")"
+cp "$work/upgrade.env" "$U/$env_relative"
+chmod 600 "$U/$env_relative"
 if echo n | flux_u upgrade > "$work/upgrade-cancel.out" 2>&1; then fail "upgrade without confirmation succeeded"; fi
 flux_u upgrade -y > "$work/upgrade.out" 2>&1 || { cat "$work/upgrade.out"; fail "upgrade failed"; }
 tail -n 4 "$work/upgrade.out"
+[ "$(project_of "$U")" = "$run_u" ] || fail "layout upgrade changed the stored custom project"
+[ "$(sha256 "$U/docker/.env")" = "$original_env_hash" ] || fail "layout upgrade changed env bytes"
+[ ! -e "$U/.env" ] || fail "layout upgrade left an executable root .env"
+
 grep -q "Upgraded $run_u from schema $from_schema to $current" "$work/upgrade.out" || fail "upgrade did not report schema $from_schema -> $current"
 for migration in $new_migrations; do
   grep -q "Applied migration $migration" "$work/upgrade.out" || fail "upgrade did not apply $migration"
@@ -300,12 +318,12 @@ grep -q "migration ledger matches this image" "$work/subset-migrate.out" || fail
 fixture "$U" demo
 
 step "A failing upgrade prints restore instructions that work"
-printf 'SELECT 1 / 0;\n' > "$U/packages/db/migrations/9998_broken_upgrade_check.sql"
+printf 'SELECT 1 / 0;\n' > "$U/app/packages/db/migrations/9998_broken_upgrade_check.sql"
 if flux_u upgrade -y > "$work/broken.out" 2>&1; then fail "an upgrade with a failing migration succeeded"; fi
 grep -q 'UPGRADE FAILED: the migration failed' "$work/broken.out" || { cat "$work/broken.out"; fail "no failure report"; }
 broken_archive=$(sed -n 's/^Backup written: \(.*\.tar\) (.*/\1/p' "$work/broken.out")
 grep -q "./flux restore '$broken_archive'" "$work/broken.out" || fail "no restore instruction for $broken_archive"
-rm -f "$U/packages/db/migrations/9998_broken_upgrade_check.sql"
+rm -f "$U/app/packages/db/migrations/9998_broken_upgrade_check.sql"
 flux_u restore "$broken_archive" -y > "$work/after-broken.out" 2>&1 || { cat "$work/after-broken.out"; fail "following the restore instructions failed"; }
 fixture "$U" demo
 
@@ -359,6 +377,35 @@ if (PATH="$work/shim-ps-after:$PATH"; export PATH; flux_u backup --output "$work
 grep -q 'Could not check whether API and worker stopped' "$work/backup-ps-after.out" || { cat "$work/backup-ps-after.out"; fail "no refusal after the stop"; }
 [ "$(archives)" = "$before_ps" ] || fail "an archive was written although the state after the stop was unknown"
 [ "$(running_u)" = "api worker" ] || fail "the writers that were running were not brought back: $(running_u)"
+step "Roll back the actual source layout, keep the original custom project, then upgrade again"
+# The pre-upgrade archive and historical launcher share a schema. Follow the reverse env
+# move printed by the current launcher before restoring with the old launcher.
+if git -C "$here" cat-file -e "$from:app/package.json" 2>/dev/null; then
+  rollback_env=docker/.env
+else
+  rollback_env=.env
+fi
+cp "$upgrade_archive" "$work/layout-rollback.tar"
+compose_in "$U" stop api worker >/dev/null
+cp "$(env_path "$U")" "$work/rollback.env"
+find "$U" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+git -C "$here" archive "$from" | tar -xf - -C "$U"
+mkdir -p "$(dirname "$U/$rollback_env")"
+cp "$work/rollback.env" "$U/$rollback_env"
+chmod 600 "$U/$rollback_env"
+flux_u restore "$work/layout-rollback.tar" -y > "$work/layout-rollback.out" 2>&1 || { cat "$work/layout-rollback.out"; fail "old-source rollback failed"; }
+[ "$(project_of "$U")" = "$run_u" ] || fail "rollback lost the custom project"
+flux_u demo | grep -q 'already exists; nothing new was seeded' || fail "rollback lost the original demo data"
+cp "$(env_path "$U")" "$work/rollback.env"
+find "$U" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+copy_tree "$U"
+mkdir -p "$(dirname "$U/$rollback_env")"
+cp "$work/rollback.env" "$U/$rollback_env"
+chmod 600 "$U/$rollback_env"
+flux_u upgrade -y > "$work/layout-reupgrade.out" 2>&1 || { cat "$work/layout-reupgrade.out"; fail "re-upgrade after old-source rollback failed"; }
+[ "$(project_of "$U")" = "$run_u" ] || fail "re-upgrade lost the custom project"
+[ ! -e "$U/.env" ] || fail "re-upgrade left two executable env locations"
+flux_u demo | grep -q 'already exists; nothing new was seeded' || fail "re-upgrade lost restored data"
 flux_u clean -y >/dev/null
 
 step "PASS: backup, restore into a fresh project, agent access, export, upgrade from $(git -C "$here" rev-parse --short "$from") (+$(printf '%s\n' "$new_migrations" | wc -l | tr -d ' ') migrations) and failed-upgrade recovery"

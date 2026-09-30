@@ -31,6 +31,6 @@ jobs:
           trap 'exit 129' HUP
           trap 'exit 130' INT
           trap 'exit 143' TERM
-          docker build --file infra/Dockerfile --target test --tag "$image" .
+          docker build --file docker/Dockerfile --target test --tag "$image" app
           docker run --rm --name "$container" --network none "$image" \
             pnpm exec tsx --test tests/app/architecture.test.ts tests/app/*-core.test.ts

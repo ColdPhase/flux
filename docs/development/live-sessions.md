@@ -2,7 +2,7 @@
 
 The optional self-hosted media adapter uses LiveKit server `v1.13.7` by image
 digest and `livekit-server-sdk` `2.19.1`. The normal Flux application starts
-without media configuration. `infra/compose.live.yaml` adds an operator-owned
+without media configuration. `docker/compose.live.yaml` adds an operator-owned
 SFU and gives the API its private address and signing key. Browsers never get
 the SFU address: they signal through the Flux API at `<FLUX_PUBLIC_ORIGIN>/media`
 ([media admission](#media-admission-and-session-end-128)). The SFU's signaling
@@ -173,7 +173,7 @@ the API stopped, a client joins the pinned SFU with an old-form grant and publis
 after the API starts it is removed (`PARTICIPANT_REMOVED`) while an admitted session in the
 same room stays connected.
 
-**Topology.** `infra/compose.live.yaml` attaches LiveKit to two networks: the internal
+**Topology.** `docker/compose.live.yaml` attaches LiveKit to two networks: the internal
 `livekit-signal` network, shared only with the API, and `livekit-media`, which carries the
 published ICE/TCP, ICE/UDP and TURN/UDP ports. LiveKit binds its signaling/room-service
 listener (7880) only to its `livekit-signal` address and loopback (for the health check),
@@ -186,7 +186,7 @@ the API refuses to start if `FLUX_LIVEKIT_WS_URL` is still set. The TLS ingress 
 `/media/*` from the API like any other path; it needs WebSocket upgrades enabled. This
 changes the ingress plan for [#63](https://github.com/ColdPhase/flux/issues/63).
 
-**Evidence.** `tests/app/live-admission.test.ts` runs Better Auth, PostgreSQL (trigger and
+**Evidence.** `app/tests/app/live-admission.test.ts` runs Better Auth, PostgreSQL (trigger and
 LISTEN), the live use cases and the gate in process against a recording WebSocket SFU:
 binding, second-session/other-person/no-cookie/forged/expired/wrong-room refusals with no
 SFU connection, header stripping, validate, resume with a refreshed token, lost project
@@ -198,7 +198,7 @@ LiveKit adapter against a fake room service (presence per person, raw occupancy,
 identity revocation, leave removing every identity of the person) and holds the production
 revocation after reading the participants (reconciliation) or before the SFU calls (session
 end) while the person's other session joins the same room: after release the newer session
-remains and is never addressed. `tests/app/e2e/live-sfu-signout.e2e.ts` (in `check_live_sfu.sh`) uses the
+remains and is never addressed. `app/tests/app/e2e/live-sfu-signout.e2e.ts` (in `check_live_sfu.sh`) uses the
 pinned SFU and Chromium with fake audio: sign-out while publishing disconnects the sender
 and the receiver observes the leave (189–2624 ms after the sign-out response in local runs
 on 2026-09-30); captured first-connect, resume and full-reconnect requests replayed with the
@@ -273,7 +273,7 @@ network and real-device evidence.
 
 ## Interface (#62)
 
-The browser client is `apps/web/src/live/`. [Live sessions at the work](../design/live-ux/README.md)
+The browser client is `app/apps/web/src/live/`. [Live sessions at the work](../design/live-ux/README.md)
 describes what people see, the placement decisions and the screenshots.
 
 - `media.ts` is the only module that imports `livekit-client` (`2.17.2`, the same version
@@ -297,7 +297,7 @@ describes what people see, the placement decisions and the screenshots.
 - `/projects/:p/live/:session?invitation=:id` (the inbox link) resolves the session and
   replaces the URL with the anchor. It passes the invitation in navigation state for one
   quiet card; **Later** and **Reply in text** use `POST /api/v1/live-invitations/:id/reply`.
-- `scripts/check_live_ui.sh` runs `tests/ui/test_live_sessions.py` against the application
+- `scripts/check_live_ui.sh` runs `app/tests/ui/test_live_sessions.py` against the application
   and the pinned SFU, using Chromium's fake devices. The ordinary `check_ui.sh` runs the
   same file without a media server and checks the unavailable state.
 
@@ -313,7 +313,7 @@ FLUX_LIVE_UI_PORT=18781 ./scripts/check_live_ui.sh
 
 That script builds and runs the application, PostgreSQL migration, API tests,
 browser access checks, restart and push checks inside Docker. The focused
-`tests/app/live-store.test.ts`, `live-source.test.ts` and
+`app/tests/app/live-store.test.ts`, `live-source.test.ts` and
 `live-revocation.test.ts` cover the persistence, policy and coordinator seams.
 The pinned LiveKit server was exercised with two actual Chromium clients and
 an audio track. `check_live_sfu.sh` separately exercises the full Flux API,

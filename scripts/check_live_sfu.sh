@@ -22,7 +22,7 @@ export FLUX_LIVEKIT_ICE_TCP_PORT="${FLUX_LIVE_TEST_ICE_TCP_PORT:-18763}"
 export FLUX_LIVEKIT_ICE_UDP_PORT="${FLUX_LIVE_TEST_ICE_UDP_PORT:-18764}"
 export FLUX_LIVEKIT_TURN_UDP_PORT="${FLUX_LIVE_TEST_TURN_UDP_PORT:-18765}"
 
-compose="docker compose -p $project -f infra/compose.yaml -f infra/compose.live.yaml -f infra/compose.live.test.yaml --profile live-test"
+compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.live.yaml -f docker/compose.live.test.yaml --profile live-test"
 marker_dir=$(mktemp -d)
 chmod 1777 "$marker_dir"
 restart_pid=""
@@ -41,7 +41,7 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 # Build the exact application and Chromium base image used by the proof.
-docker build -f infra/Dockerfile --target e2e -t "flux-e2e:$project" .
+docker build -f docker/Dockerfile --target e2e -t "flux-e2e:$project" app
 $compose build migrate live-sfu-test
 $compose up -d --wait api livekit
 $compose run --rm live-sfu-test

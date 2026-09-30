@@ -44,7 +44,7 @@ export const LAYERS: Layer[] = [
   // Apache-2.0 example of an external agent: only the public SDK and wire types.
   { name: 'examples', paths: ['examples/'], allow: ['@flux/sdk', '@flux/contracts', 'node:*'] },
   // Deployment and migration entry points.
-  { name: 'infra', paths: ['infra/'], deny: [...APPS, ...UI] },
+  { name: 'tooling', paths: ['tooling/'], deny: [...APPS, ...UI] },
 ];
 
 const SOURCE = /\.(ts|tsx|mts|js|mjs|jsx)$/;
@@ -148,7 +148,7 @@ function walk(root: string, dir: string): string[] {
 
 /** Scans the repository's layered source trees and workspace manifests. */
 export function scanRepository(root: string) {
-  const trees = ['apps', 'packages', 'examples', 'infra'];
+  const trees = ['apps', 'packages', 'examples', 'tooling'];
   const packageRoots = ['apps', 'packages', 'examples'].flatMap((group) => {
     const dir = join(root, group);
     return existsSync(dir) ? readdirSync(dir).filter((name) => existsSync(join(dir, name, 'package.json'))).map((name) => `${group}/${name}`) : [];
