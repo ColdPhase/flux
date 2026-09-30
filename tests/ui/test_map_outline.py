@@ -9,7 +9,7 @@ import unittest
 from playwright.sync_api import expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, shot, start_forwarder
-from test_theme_accents import MEASURE
+from test_theme_accents import FAMILIES, MEASURE
 
 STAMP = int(time.time() * 1000)
 PASSWORD = "keep the graph connected"
@@ -340,7 +340,7 @@ class MapOutlineJourney(unittest.TestCase):
     def test_06_render_matched_light_dark_phone_tablet_and_enlarged_text(self):
         measurements = []
         for scheme in ("Light", "Dark"):
-            for family in ("Mint", "Iris", "Sky"):
+            for family in FAMILIES:
                 page = self.page()
                 self.open(page)
                 page.locator(".me__btn").click()
