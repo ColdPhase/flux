@@ -16,6 +16,7 @@ export FLUX_PORT="${FLUX_CLI_TEST_PORT:-19561}"
 export FLUX_DEV_PORT="${FLUX_CLI_TEST_DEV_PORT:-19562}"
 export FLUX_MAILPIT_PORT="${FLUX_CLI_TEST_MAILPIT_PORT:-19563}"
 base="http://127.0.0.1:$FLUX_PORT"
+base2="http://127.0.0.1:$((FLUX_PORT + 3))"
 dev="http://127.0.0.1:$FLUX_DEV_PORT"
 work=$(mktemp -d "${TMPDIR:-/tmp}/flux-cli-check.XXXXXX")
 work=$(cd "$work" && pwd -P)   # the launcher records physical paths
@@ -240,8 +241,8 @@ step "The second checkout survives the first one's clean with its data"
 [ -n "$(docker ps -q --filter "label=com.docker.compose.project=$run2" --filter status=running)" ] || fail "clean stopped $run2"
 docker volume inspect "${run2}_pgdata" >/dev/null 2>&1 || fail "clean removed ${run2}_pgdata"
 docker image inspect "flux-foundation:$run2" >/dev/null 2>&1 || fail "clean removed flux-foundation:$run2"
-code=$(curl -sS -o /dev/null -w '%{http_code}' -H "Origin: http://127.0.0.1:19564" -H 'Content-Type: application/json' \
-  -d "{\"email\":\"ada@demo.flux.test\",\"password\":\"$owner2_pw\"}" http://127.0.0.1:19564/api/auth/sign-in/email)
+code=$(curl -sS -o /dev/null -w '%{http_code}' -H "Origin: $base2" -H 'Content-Type: application/json' \
+  -d "{\"email\":\"ada@demo.flux.test\",\"password\":\"$owner2_pw\"}" "$base2/api/auth/sign-in/email")
 [ "$code" = 200 ] || fail "second checkout's demo login answered $code after the first clean"
 flux2 clean -y >/dev/null
 [ -z "$(docker ps -aq --filter "label=com.docker.compose.project=$run2")" ] || fail "second clean left containers"
