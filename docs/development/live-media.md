@@ -140,7 +140,11 @@ expected receiver with no new packets for at least two seconds is poor even
 if its cumulative packet count and ICE round-trip time look healthy. The
 module returns specific warning reasons for
 the live interface in [#62](https://github.com/ColdPhase/flux/issues/62) to
-present on demand; #62 has not yet wired it into UI on this branch.
+present on demand. #62's integrated LivePanel already displays diagnostics and
+LiveStage provides selected-screen Fit/1:1/zoom. The #63 calibration slice now
+uses the same receiver interval reader/classifier in those diagnostic rows;
+missing samples and counter resets remain unknown. Intentional quiet/hidden
+track pauses do not warn as failed expected media flow.
 
 These **provisional diagnostic thresholds** are test gates, not release quality
 promises. Peer calibration against receiver recordings and real links is still
@@ -223,9 +227,17 @@ original pixels, but the publishers use `canvas.captureStream()` marked as
 `screen_share`, not browser `getDisplayMedia()`. This is desktop Chromium on a
 local Docker bridge. It is not evidence that #62's final screen-selection/zoom UI,
 real device capture, tablets, external restricted networks or k3s deployment
-meet #63's acceptance criteria. Receiver warning presentation depends on
-[#62](https://github.com/ColdPhase/flux/issues/62) wiring the diagnostic
-module into the live interface.
+meet #63's acceptance criteria. The existing integrated diagnostic surface is now wired to the shared
+receiver measurement/classifier by #63; release quality calibration remains open.
+
+## High-resolution calibration
+
+Select `FLUX_LIVE_TURN_PROFILE=code-1440p ./scripts/check_live_turn.sh` for the
+bounded [1440p code calibration protocol](live-code-calibration.md). The default
+`legacy` profile preserves the earlier cases. Both profiles also run the current
+revocation and sign-out regressions and receiver/diagnostic units. See that
+protocol for source kinds, production publish settings, raw frame audit and
+remaining acceptance limits.
 
 ## Sources and inference
 

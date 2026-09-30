@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
 import console from 'node:console';
@@ -26,35 +26,29 @@ function io(value) {
 }
 
 const phases = lines('livekit-phases.jsonl');
-const active = phases.find((entry) => entry.phase === 'four_media_active');
-const verified = phases.find((entry) => entry.phase === 'four_media_verified');
-assert.ok(active && verified, 'four-person media interval markers are required');
-const startMs = Date.parse(active.timestampUtc);
-const endMs = Date.parse(verified.timestampUtc);
-assert.ok(Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs,
-  'four-person phase timestamps must be ordered');
-
-const samples = lines('livekit-container-stats.jsonl')
-  .filter((entry) => Date.parse(entry.timestampUtc) >= startMs &&
-    Date.parse(entry.timestampUtc) <= endMs);
-assert.ok(samples.length >= 2, `need at least two SFU resource samples during four-person media; got ${samples.length}`);
-const cpu = samples.map((entry) => Number.parseFloat(entry.stats.CPUPerc));
-const memory = samples.map((entry) => bytes(entry.stats.MemUsage.split(' / ')[0]));
-const first = io(samples[0].stats.NetIO);
-const last = io(samples.at(-1).stats.NetIO);
-assert.ok(cpu.every(Number.isFinite) && memory.every(Number.isFinite),
-  'SFU CPU and memory samples must be numeric');
-assert.ok(last.transmit > first.transmit, 'SFU must transmit media bytes during four-person interval');
-
-console.log(JSON.stringify({
-  profile: 'four-person-two-synthetic-screens-local-TURN-TLS',
-  phaseStartUtc: active.timestampUtc,
-  phaseEndUtc: verified.timestampUtc,
-  durationMs: endMs - startMs,
-  sampleCount: samples.length,
-  cpuMeanPercent: Math.round(cpu.reduce((sum, value) => sum + value, 0) / cpu.length * 10) / 10,
-  cpuPeakPercent: Math.max(...cpu),
-  memoryPeakMiB: Math.round(Math.max(...memory) / 1024 ** 2 * 10) / 10,
-  networkReceiveBytes: Math.round(last.receive - first.receive),
-  networkTransmitBytes: Math.round(last.transmit - first.transmit),
-}));
+const summaries = [];
+for (const active of phases.filter((entry) => /(?:four_media|code_[24])_active$/.test(entry.phase))) {
+  const verified = phases.find((entry) => entry.phase === active.phase.replace(/_active$/, '_verified'));
+  assert.ok(verified, `verified marker missing for ${active.phase}`);
+  const startMs = Date.parse(active.timestampUtc), endMs = Date.parse(verified.timestampUtc);
+  assert.ok(Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs);
+  const samples = lines('livekit-container-stats.jsonl').filter((entry) =>
+    Date.parse(entry.timestampUtc) >= startMs && Date.parse(entry.timestampUtc) <= endMs);
+  assert.ok(samples.length >= 2, `need two resource samples for ${active.phase}; got ${samples.length}`);
+  const cpu = samples.map((entry) => Number.parseFloat(entry.stats.CPUPerc));
+  const memory = samples.map((entry) => bytes(entry.stats.MemUsage.split(' / ')[0]));
+  const first = io(samples[0].stats.NetIO), last = io(samples.at(-1).stats.NetIO);
+  assert.ok(cpu.every(Number.isFinite) && memory.every(Number.isFinite));
+  assert.ok(last.transmit > first.transmit, 'SFU must transmit during the interval');
+  const summary = {
+    profile: active.phase === 'four_media_active' ? 'four-person-two-synthetic-screens-local-TURN-TLS' : active.phase,
+    phaseStartUtc: active.timestampUtc, phaseEndUtc: verified.timestampUtc, durationMs: endMs - startMs,
+    sampleCount: samples.length,
+    cpuMeanPercent: Math.round(cpu.reduce((sum, value) => sum + value, 0) / cpu.length * 10) / 10,
+    cpuPeakPercent: Math.max(...cpu), memoryPeakMiB: Math.round(Math.max(...memory) / 1024 ** 2 * 10) / 10,
+    networkReceiveBytes: Math.round(last.receive - first.receive), networkTransmitBytes: Math.round(last.transmit - first.transmit),
+  };
+  summaries.push(summary); console.log(JSON.stringify(summary));
+}
+assert.ok(summaries.length > 0, 'at least one measured media interval required');
+writeFileSync(join(directory, 'livekit-resource-summary.json'), JSON.stringify(summaries, null, 2));

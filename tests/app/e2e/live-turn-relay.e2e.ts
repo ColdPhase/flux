@@ -1,150 +1,17 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { appendFileSync } from 'node:fs';
 import { after, test } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
-import { chromium, type Browser, type Page } from 'playwright';
+import { chromium, type Browser } from 'playwright';
 import type { Conversation, LiveJoinGrant, LiveSession } from '@flux/contracts';
-import { assessReceiverQuality, readReceiverSample, RECEIVER_QUALITY_LIMITS,
-  type RtcStatsRecord } from '../../../apps/web/src/live/receiver-quality.js';
+import { assessReceiverQuality, readReceiverSample, RECEIVER_QUALITY_LIMITS } from '../../../apps/web/src/live/receiver-quality.js';
 import { addMember, expectStatus, grant, person, project, workspace } from '../support/people.js';
-import { publicOrigin } from '../support/http.js';
 import { mediaPage } from '../support/live-sfu.js';
+import { connect, markResourcePhase, receiverReports, selectedCandidates } from '../support/live-turn.js';
 
 let browser: Browser | undefined;
 after(async () => browser?.close());
-
-function markResourcePhase(phase: string): void {
-  appendFileSync('/artifacts/livekit-phases.jsonl',
-    `${JSON.stringify({ timestampUtc: new Date().toISOString(), phase })}\n`);
-}
-
-type CandidateEvidence = { candidateType: string; protocol: string; relayProtocol?: string;
-  pairState: string; bytesSent: number; bytesReceived: number };
-
-async function receiverReports(page: Page): Promise<RtcStatsRecord[]> {
-  return page.evaluate(async () => {
-    const pcs = (window as Window & { fluxPcs?: RTCPeerConnection[] }).fluxPcs ?? [];
-    const records: RtcStatsRecord[] = [];
-    for (const [index, pc] of pcs.entries()) {
-      for (const report of (await pc.getStats()).values()) {
-        records.push({ id: `${index}:${report.id}`, type: report.type,
-          kind: report.kind, selected: report.selected,
-          selectedCandidatePairId: report.selectedCandidatePairId
-            ? `${index}:${report.selectedCandidatePairId}` : undefined,
-          currentRoundTripTime: report.currentRoundTripTime,
-          packetsReceived: report.packetsReceived, packetsLost: report.packetsLost,
-          bytesReceived: report.bytesReceived, jitter: report.jitter,
-          framesPerSecond: report.framesPerSecond, framesDecoded: report.framesDecoded,
-          frameWidth: report.frameWidth, frameHeight: report.frameHeight });
-      }
-    }
-    return records;
-  });
-}
-
-async function connect(page: Page, media: LiveJoinGrant, pageUrl?: string): Promise<void> {
-  const signaling: { path: string; status?: number; error?: string; frames?: number }[] = [];
-  page.on('response', (response) => {
-    if (new URL(response.url()).pathname.startsWith('/media/'))
-      signaling.push({ path: new URL(response.url()).pathname, status: response.status() });
-  });
-  page.on('requestfailed', (request) => signaling.push({
-    path: new URL(request.url()).pathname, error: request.failure()?.errorText,
-  }));
-  page.on('websocket', (socket) => {
-    const record = { path: new URL(socket.url()).pathname, frames: 0, error: undefined as string | undefined };
-    signaling.push(record);
-    socket.on('framereceived', () => { record.frames += 1; });
-    socket.on('socketerror', (error) => { record.error = error; });
-  });
-  await page.goto(pageUrl ?? `${publicOrigin}/api/v1/health`);
-  await page.evaluate(() => {
-    const pcs: RTCPeerConnection[] = [];
-    const w = window as Window & { fluxPcs?: RTCPeerConnection[]; fluxIceErrors?: unknown[];
-      fluxIceEvents?: unknown[] };
-    w.fluxPcs = pcs;
-    w.fluxIceErrors = [];
-    w.fluxIceEvents = [];
-    const original = window.RTCPeerConnection;
-    Object.defineProperty(window, 'RTCPeerConnection', { configurable: true,
-      value: new Proxy(original, { construct(target, args) {
-        const pc = Reflect.construct(target, args) as RTCPeerConnection;
-        pcs.push(pc);
-        pc.addEventListener('icecandidateerror', (event) => {
-          const failure = event as RTCPeerConnectionIceErrorEvent;
-          w.fluxIceErrors?.push({ url: failure.url, code: failure.errorCode, text: failure.errorText });
-        });
-        pc.addEventListener('icecandidate', (event) => {
-          w.fluxIceEvents?.push({ candidate: event.candidate?.candidate,
-            type: event.candidate?.type, protocol: event.candidate?.protocol,
-            address: event.candidate?.address });
-        });
-        pc.addEventListener('icegatheringstatechange', () => w.fluxIceEvents?.push({ gathering: pc.iceGatheringState }));
-        pc.addEventListener('iceconnectionstatechange', () => w.fluxIceEvents?.push({ connection: pc.iceConnectionState }));
-        return pc;
-      } }) });
-  });
-  await page.addScriptTag({ path: '/opt/live-sfu/node_modules/livekit-client/dist/livekit-client.umd.js' });
-  try { await page.evaluate(async ({ url, token }) => {
-    const w = window as Window & { LivekitClient?: { Room: new () => {
-      connect(url: string, token: string): Promise<void>; localParticipant: {
-        publishTrack(track: MediaStreamTrack): Promise<unknown> }; remoteParticipants: Map<string, unknown>;
-        state: string; disconnect(): Promise<void> } }; fluxRoom?: unknown };
-    const sdk = w.LivekitClient;
-    if (!sdk) throw new Error('Pinned LiveKit browser SDK missing');
-    const room = new sdk.Room();
-    w.fluxRoom = room;
-    await room.connect(url, token);
-  }, { url: media.mediaUrl, token: media.token }); }
-  catch (error) {
-    const diagnosis = await page.evaluate(async () => {
-      const w = window as Window & { fluxPcs?: RTCPeerConnection[]; fluxIceErrors?: unknown[];
-        fluxIceEvents?: unknown[] };
-      return { errors: w.fluxIceErrors, events: w.fluxIceEvents,
-        pcs: await Promise.all((w.fluxPcs ?? []).map(async (pc) => ({
-        state: pc.iceConnectionState,
-        iceServers: pc.getConfiguration().iceServers?.map((server) => server.urls),
-        candidates: [...(await pc.getStats()).values()].filter((item) =>
-          item.type === 'local-candidate' || item.type === 'candidate-pair').map((item) => ({
-          type: item.type, candidateType: item.candidateType, protocol: item.protocol,
-          relayProtocol: item.relayProtocol, url: item.url, state: item.state,
-          selected: item.selected, localCandidateId: item.localCandidateId,
-        })),
-      }))) };
-    });
-    throw new Error(`Browser ICE connection failed: ${String(error)}; ${JSON.stringify({
-      ...diagnosis, signaling, origin: new URL(page.url()).origin,
-      hasSessionCookie: (await page.context().cookies()).some((cookie) => cookie.name.includes('session_token')),
-    })}`);
-  }
-}
-
-async function selectedCandidates(page: Page): Promise<CandidateEvidence[]> {
-  return page.evaluate(async () => {
-    const pcs = (window as Window & { fluxPcs?: RTCPeerConnection[] }).fluxPcs ?? [];
-    const evidence: CandidateEvidence[] = [];
-    for (const pc of pcs) {
-      const stats = await pc.getStats();
-      const selectedIds = new Set<string>();
-      stats.forEach((report) => {
-        if (report.type === 'transport' && report.selectedCandidatePairId)
-          selectedIds.add(report.selectedCandidatePairId);
-      });
-      stats.forEach((report) => {
-        if (report.type !== 'candidate-pair' || report.state !== 'succeeded' ||
-          !(selectedIds.has(report.id) || report.selected)) return;
-        const candidate = stats.get(report.localCandidateId);
-        if (!candidate) return;
-        evidence.push({ candidateType: candidate.candidateType, protocol: candidate.protocol,
-          relayProtocol: candidate.relayProtocol, pairState: report.state,
-          bytesSent: report.bytesSent ?? 0, bytesReceived: report.bytesReceived ?? 0 });
-      });
-    }
-    return evidence;
-  });
-}
 
 test('two authorized Chromium clients exchange media when UDP and direct ICE/TCP are blocked',
   { timeout: 180_000 }, async () => {
@@ -255,9 +122,9 @@ test('two authorized Chromium clients exchange media when UDP and direct ICE/TCP
     await delay(2_000);
     const baselineReports = await receiverReports(memberPage);
     const baseline = readReceiverSample(baselineReports, initialReports, 2_000);
-    assert.ok(baseline.tracks.some((track) => track.kind === 'audio' && track.packetsReceived > 0),
+    assert.ok(baseline.tracks.some((track) => track.kind === 'audio' && (track.packetsReceived ?? 0) > 0),
       'receiver must expose inbound audio stats');
-    assert.ok(baseline.tracks.some((track) => track.kind === 'video' && track.packetsReceived > 0 &&
+    assert.ok(baseline.tracks.some((track) => track.kind === 'video' && (track.packetsReceived ?? 0) > 0 &&
       (track.width ?? 0) > 0 && (track.height ?? 0) > 0 && track.fps !== undefined),
     'receiver must expose decoded video dimensions and fps');
 

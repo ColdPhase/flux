@@ -32,7 +32,7 @@ export interface RtcStatsRecord {
 export interface ReceiverTrackSample {
   id: string;
   kind: 'audio' | 'video';
-  packetsReceived: number;
+  packetsReceived?: number;
   packetsDelta?: number;
   lossPercent?: number;
   bitrateKbps?: number;
@@ -82,7 +82,7 @@ export function readReceiverSample(
   for (const record of current) {
     if (record.type !== 'inbound-rtp' || (record.kind !== 'audio' && record.kind !== 'video')) continue;
     const prior = byPreviousId.get(record.id);
-    const received = nonnegative(record.packetsReceived) ?? 0;
+    const received = nonnegative(record.packetsReceived);
     const receivedDelta = counterDelta(record.packetsReceived, prior?.packetsReceived);
     const lostDelta = counterDelta(record.packetsLost, prior?.packetsLost);
     const total = (receivedDelta ?? 0) + (lostDelta ?? 0);
@@ -94,7 +94,7 @@ export function readReceiverSample(
     const frameDelta = counterDelta(record.framesDecoded, prior?.framesDecoded);
     const fps = record.kind === 'video'
       ? (frameDelta !== undefined && elapsedMs > 0
-        ? frameDelta * 1000 / elapsedMs : nonnegative(record.framesPerSecond))
+        ? frameDelta * 1000 / elapsedMs : undefined)
       : undefined;
     tracks.push({ id: record.id, kind: record.kind, packetsReceived: received,
       packetsDelta: receivedDelta,
@@ -139,6 +139,8 @@ export function assessReceiverQuality(sample: ReceiverSample, expectedKinds: Arr
       flag(`Network round trip ${Math.round(sample.rttMs)} ms`, 'warning');
   }
   for (const track of sample.tracks) {
+    if (track.lossPercent === undefined || (track.kind === 'video' && track.fps === undefined) ||
+      (track.kind === 'audio' && track.jitterMs === undefined)) unverified = true;
     if (track.lossPercent !== undefined) {
       if (track.lossPercent > RECEIVER_QUALITY_LIMITS.packetLossPoorPercent)
         flag(`${track.kind} packet loss ${track.lossPercent.toFixed(1)}%`, 'poor');
@@ -160,7 +162,7 @@ export function assessReceiverQuality(sample: ReceiverSample, expectedKinds: Arr
   }
   if (warnings.length) return { status: severity, warnings };
   if (unverified) return { status: 'unknown', warnings: [] };
-  if (sample.rttMs === undefined && sample.tracks.every((track) => track.packetsReceived === 0))
+  if (sample.rttMs === undefined && sample.tracks.every((track) => (track.packetsDelta ?? 0) === 0))
     return { status: 'unknown', warnings: [] };
   return { status: 'good', warnings: [] };
 }

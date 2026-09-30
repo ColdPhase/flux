@@ -36,6 +36,8 @@ services:
             - 172.16.0.0/12
   live-sfu-test:
     cap_add: [NET_ADMIN]
+    environment:
+      FLUX_LIVE_TURN_PROFILE: ${FLUX_LIVE_TURN_PROFILE:-legacy}
     volumes:
       - ${FLUX_LIVEKIT_TURN_CERT_DIR:?Set a disposable test cert directory}:/run/livekit-turn-certs:ro,z
       - ${FLUX_LIVE_TURN_ARTIFACT_DIR:?Set a local test evidence directory}:/artifacts:z
@@ -45,8 +47,8 @@ services:
       - |
         media_ip=$$(getent ahostsv4 livekit | awk 'NR == 1 { print $$1 }')
         test -n "$$media_ip"
-        iptables -A OUTPUT -d "$$media_ip" -p udp -j REJECT
-        iptables -A OUTPUT -d "$$media_ip" -p tcp --dport 7881 -j REJECT
+        iptables -A OUTPUT -p udp ! --dport 53 -j REJECT
+        iptables -A OUTPUT -p tcp --dport 7881 -j REJECT
         trap 'iptables -L OUTPUT -n -v' EXIT
         cp /run/livekit-turn-certs/ca.pem /usr/local/share/ca-certificates/turn-flux-test.crt
         update-ca-certificates >/dev/null
@@ -64,7 +66,13 @@ services:
         node -e "const net=require('node:net'); const s=net.connect(7881,process.argv[1]); s.on('connect',()=>process.exit(1)); s.on('error',()=>process.exit(0)); setTimeout(()=>process.exit(2),2000)" "$$media_ip"
         # The separate Xvfb display keeps Chromium's real display-capture picker
         # and fake camera/mic entirely away from the operator's desktop/devices.
-        xvfb-run -a node_modules/.bin/tsx --test tests/app/e2e/live-turn-relay.e2e.ts
+        case "$$FLUX_LIVE_TURN_PROFILE" in
+          legacy) xvfb-run -a node_modules/.bin/tsx --test tests/app/e2e/live-turn-relay.e2e.ts ;;
+          code-1440p) xvfb-run -a -s "-screen 0 2560x1440x24" node_modules/.bin/tsx --test tests/app/e2e/live-code-quality.e2e.ts ;;
+          *) exit 2 ;;
+        esac
+        node_modules/.bin/tsx --test tests/app/live-receiver-quality.test.ts tests/app/live-diagnostics.test.ts
         node_modules/.bin/tsx --test --test-concurrency=1 tests/app/e2e/live-sfu-revocation.e2e.ts tests/app/e2e/live-sfu-signout.e2e.ts
+        if [ "$$FLUX_LIVE_TURN_PROFILE" = code-1440p ]; then node scripts/summarize_live_code.mjs /artifacts; fi
         node scripts/summarize_live_turn_resources.mjs /artifacts
         iptables -L OUTPUT -n -v

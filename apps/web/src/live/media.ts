@@ -3,6 +3,7 @@ import {
   type LocalTrackPublication, type Participant, type RemoteTrack, type RemoteTrackPublication, type TrackPublication,
 } from 'livekit-client';
 import { canPublishScreen } from './capture';
+import { measurement as fmt, TrackDiagnostics } from './diagnostics';
 
 /**
  * The browser side of the self-hosted media connection (#59 §6). This is the only module
@@ -128,10 +129,6 @@ async function hasInput(kind: 'audioinput' | 'videoinput'): Promise<boolean | nu
   } catch { return null; }
 }
 
-function fmt(value: number | undefined | null, unit: string, digits = 0) {
-  return value === undefined || value === null || Number.isNaN(value) ? `– ${unit}` : `${value.toFixed(digits)} ${unit}`;
-}
-
 export class LiveMediaConnection {
   private readonly room: Room;
   private snapshot: MediaSnapshot;
@@ -150,7 +147,7 @@ export class LiveMediaConnection {
   private connection: ConnectionState = 'idle';
   private endReason: EndReason | null = null;
   private leaving = false;
-  private previous = new Map<string, { bytes: number; frames: number; at: number }>();
+  private trackDiagnostics = new TrackDiagnostics();
   private readonly stopDeviceWatch: () => void;
 
   constructor() {
@@ -184,7 +181,7 @@ export class LiveMediaConnection {
       .on(RoomEvent.TrackPublished, update)
       .on(RoomEvent.TrackUnpublished, update)
       .on(RoomEvent.TrackSubscribed, (track: RemoteTrack, publication: RemoteTrackPublication) => this.onSubscribed(track, publication))
-      .on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack) => { track.detach().forEach((element) => element.remove()); update(); })
+      .on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack, publication: RemoteTrackPublication) => { this.trackDiagnostics.forget(publication.trackSid); track.detach().forEach((element) => element.remove()); update(); })
       .on(RoomEvent.TrackMuted, update)
       .on(RoomEvent.TrackUnmuted, update)
       .on(RoomEvent.ActiveSpeakersChanged, update)
@@ -305,6 +302,7 @@ export class LiveMediaConnection {
 
   async disconnect(): Promise<void> {
     this.leaving = true;
+    this.trackDiagnostics.clear();
     for (const kind of ['mic', 'camera', 'screen'] as const) { this.generation[kind]++; this.stopPending(kind); }
     await Promise.all((['mic', 'camera', 'screen'] as const).map((kind) => this.release(kind)));
     this.devices = { ...IDLE_DEVICES };
@@ -323,21 +321,16 @@ export class LiveMediaConnection {
   async diagnostics(names: (userId: string) => string): Promise<DiagnosticRow[]> {
     const rows: DiagnosticRow[] = [];
     const now = performance.now();
-    const rate = (key: string, bytes: number, frames: number) => {
-      const before = this.previous.get(key);
-      this.previous.set(key, { bytes, frames, at: now });
-      if (!before || now <= before.at) return { kbps: null, fps: null };
-      const seconds = (now - before.at) / 1000;
-      return { kbps: ((bytes - before.bytes) * 8) / 1000 / seconds, fps: (frames - before.frames) / seconds };
-    };
+    const keys = new Set<string>();
     rows.push({ who: 'Connection', what: this.connection === 'connected' ? 'Connected' : this.connection, values: [`${this.snapshot.people.length || 1} ${this.snapshot.people.length === 1 ? 'person' : 'people'} in the room`], warning: this.connection === 'reconnecting' ? 'Reconnecting to the media server' : null });
     const local = this.room.localParticipant;
     for (const publication of local.trackPublications.values()) {
+      keys.add(`out:${publication.trackSid}`);
       const track = publication.track;
       if (track instanceof LocalVideoTrack) {
         const [stats] = await track.getSenderStats().catch(() => []);
         const key = `out:${publication.trackSid}`;
-        const { kbps } = rate(key, stats?.bytesSent ?? 0, stats?.framesSent ?? 0);
+        const kbps = this.trackDiagnostics.sender(key, stats?.bytesSent, now);
         rows.push({
           who: 'You', what: publication.source === Track.Source.ScreenShare ? 'Sending screen' : 'Sending camera',
           values: [stats ? `${stats.frameWidth}×${stats.frameHeight}` : '– ×–', fmt(stats?.framesPerSecond, 'fps'), fmt(kbps, 'kbit/s'), fmt(stats?.roundTripTime !== undefined ? stats.roundTripTime * 1000 : null, 'ms RTT')],
@@ -345,8 +338,8 @@ export class LiveMediaConnection {
         });
       } else if (track instanceof LocalAudioTrack) {
         const stats = await track.getSenderStats().catch(() => undefined);
-        const { kbps } = rate(`out:${publication.trackSid}`, stats?.bytesSent ?? 0, 0);
-        rows.push({ who: 'You', what: publication.isMuted ? 'Microphone muted' : 'Sending voice', values: [fmt(kbps, 'kbit/s'), fmt(stats?.roundTripTime !== undefined ? stats.roundTripTime * 1000 : null, 'ms RTT'), `${stats?.packetsLost ?? 0} lost`], warning: null });
+        const kbps = this.trackDiagnostics.sender(`out:${publication.trackSid}`, stats?.bytesSent, now);
+        rows.push({ who: 'You', what: publication.isMuted ? 'Microphone muted' : 'Sending voice', values: [fmt(kbps, 'kbit/s'), fmt(stats?.roundTripTime !== undefined ? stats.roundTripTime * 1000 : null, 'ms RTT'), fmt(stats?.packetsLost, 'lost total')], warning: null });
       }
     }
     for (const participant of this.room.remoteParticipants.values()) {
@@ -354,25 +347,25 @@ export class LiveMediaConnection {
       // Your own other tab or device is you, not an unknown participant.
       const who = !userId ? 'Unknown participant' : userId === userIdOf(local.identity) ? 'You (another device)' : names(userId);
       for (const publication of participant.trackPublications.values()) {
+        keys.add(`in:${publication.trackSid}`);
         const track = publication.track;
         if (track instanceof RemoteVideoTrack) {
           const stats = await track.getReceiverStats().catch(() => undefined);
-          const { kbps, fps } = rate(`in:${publication.trackSid}`, stats?.bytesReceived ?? 0, stats?.framesDecoded ?? 0);
-          const lost = stats?.packetsLost ?? 0;
-          const received = stats?.packetsReceived ?? 0;
-          rows.push({
-            who, what: publication.source === Track.Source.ScreenShare ? 'Screen' : 'Camera',
-            values: [stats?.frameWidth ? `${stats.frameWidth}×${stats.frameHeight}` : 'paused', fmt(fps, 'fps'), fmt(kbps, 'kbit/s'), received ? `${((lost / (lost + received)) * 100).toFixed(1)}% lost` : '0% lost', stats?.mimeType?.replace('video/', '') ?? ''].filter(Boolean),
-            warning: received && lost / (lost + received) > 0.05 ? 'Packet loss is high; the picture may blur' : fps !== null && fps < 5 && !!stats?.frameWidth ? 'Few frames arrive; the network may be slow' : null,
-          });
+          const measured = this.trackDiagnostics.receiver(`in:${publication.trackSid}`, 'video', stats, now,
+            !publication.isMuted && track.streamState !== 'paused', stats?.mimeType?.replace('video/', ''));
+          rows.push({ who, what: publication.source === Track.Source.ScreenShare ? 'Screen' : 'Camera',
+            values: measured.values, warning: measured.warning });
         } else if (track instanceof RemoteAudioTrack) {
           const stats = await track.getReceiverStats().catch(() => undefined);
-          const { kbps } = rate(`in:${publication.trackSid}`, stats?.bytesReceived ?? 0, 0);
-          rows.push({ who, what: this.hearing ? 'Voice' : 'Voice (paused while quiet)', values: [fmt(kbps, 'kbit/s'), fmt(stats?.jitter !== undefined ? stats.jitter * 1000 : null, 'ms jitter'), `${stats?.concealmentEvents ?? 0} gaps`], warning: null });
+          const measured = this.trackDiagnostics.receiver(`in:${publication.trackSid}`, 'audio', stats, now,
+            this.hearing && !publication.isMuted, undefined, stats?.concealmentEvents);
+          rows.push({ who, what: this.hearing ? 'Voice' : 'Voice (paused while quiet)',
+            values: measured.values, warning: measured.warning });
         }
       }
       rows.push({ who, what: 'Link quality', values: [quality(participant.connectionQuality)], warning: participant.connectionQuality === ConnectionQuality.Poor ? 'Weak connection' : null });
     }
+    this.trackDiagnostics.retain(keys);
     return rows;
   }
 
@@ -435,6 +428,7 @@ export class LiveMediaConnection {
   }
 
   private onLocalUnpublished(publication: LocalTrackPublication) {
+    this.trackDiagnostics.forget(publication.trackSid);
     const kind: DeviceKind | null = publication.source === Track.Source.Microphone ? 'mic'
       : publication.source === Track.Source.Camera ? 'camera' : publication.source === Track.Source.ScreenShare ? 'screen' : null;
     if (kind && this.devices[kind].state === 'on')
@@ -453,6 +447,7 @@ export class LiveMediaConnection {
   }
 
   private onDisconnected(reason?: DisconnectReason) {
+    this.trackDiagnostics.clear();
     this.connection = 'disconnected';
     if (this.leaving) this.endReason = 'left';
     else if (reason === DisconnectReason.ROOM_DELETED || reason === DisconnectReason.ROOM_CLOSED) this.endReason = 'room-ended';

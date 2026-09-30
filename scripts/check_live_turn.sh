@@ -5,6 +5,10 @@ cd "$(dirname "$0")/.."
 project="flux-live-turn-$(date +%s)-$$"
 cert_dir=$(mktemp -d)
 artifact_dir=${FLUX_LIVE_TURN_ARTIFACT_DIR:-$(mktemp -d /tmp/flux-live-turn-artifacts.XXXXXX)}
+case "${FLUX_LIVE_TURN_PROFILE:-legacy}" in
+  legacy|code-1440p) ;;
+  *) printf 'Unknown TURN profile: %s\n' "$FLUX_LIVE_TURN_PROFILE" >&2; exit 2 ;;
+esac
 mkdir -p "$artifact_dir"
 chmod 755 "$cert_dir"
 export FLUX_LIVE_TURN_ARTIFACT_DIR="$artifact_dir"
