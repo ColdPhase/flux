@@ -25,7 +25,7 @@ caller can read in the same workspace (`404` or `422 CROSS_WORKSPACE`). The titl
 placement is returned only to readers who can open the object now; for anyone else it
 is `null`.
 
-Migrations `0007_sketches.sql` and `0024_dm_sketches.sql` (#96). `infra/migrate.ts` applies
+Migrations `0007_sketches.sql` and `0025_dm_sketches.sql` (#96). `infra/migrate.ts` applies
 every unapplied file in order and checks that the highest version equals `FLUX_SCHEMA_VERSION`
 (25; 0021–0024 are reserved by the open PR #124, so the sequence has a gap until it lands).
 
@@ -115,7 +115,7 @@ Out of scope: AI rearranging sketches.
 Issue [#96](https://github.com/ColdPhase/flux/issues/96), the "DMs and growing an idea" flow of
 [#44](https://github.com/ColdPhase/flux/issues/44) and design principle 5.
 
-**Model** (migration `0024_dm_sketches.sql`):
+**Model** (migration `0025_dm_sketches.sql`):
 
 - `sketches.scope` gains `dm`, with `dm_id`. The composite foreign key
   `(workspace_id, dm_id) → dms(workspace_id, id)` uses `ON DELETE CASCADE`. There is no copied
@@ -221,7 +221,7 @@ author and time from the message itself. `GET …/sketches?dmId=` lists one DM's
 
 **Search** (#114). A DM sketch and its thoughts keep the sketch audience (`sketch:<id>`, checked by
 the sketch policy, so the privacy and saturation guarantees of search are unchanged). They also
-record `search_documents.dm_id`, which migration 0024 adds and the index triggers maintain.
+record `search_documents.dm_id`, which migration 0025 adds and the index triggers maintain.
 `place=dm:<id>` then finds the DM's messages, sketches and thoughts. `private` no longer includes
 DM sketches. Results name the DM as their place, and `target.dmId` makes them open at
 `/dm/:dmId/sketches/:sketchId` (`#thought-…` for a thought).

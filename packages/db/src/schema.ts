@@ -569,7 +569,7 @@ export const sketches = pgTable('sketches', {
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
   scope: text('scope', { enum: ['project', 'private', 'dm'] }).notNull(),
   projectId: uuid('project_id'),
-  // A DM sketch's direct message (migration 0024, #96): composite FK to dms(workspace_id, id).
+  // A DM sketch's direct message (migration 0025, #96): composite FK to dms(workspace_id, id).
   dmId: uuid('dm_id'),
   copiedFromSketchId: uuid('copied_from_sketch_id'),
   copiedByUserId: text('copied_by_user_id').references(() => authUsers.id),
@@ -599,7 +599,7 @@ export const sketchThoughts = pgTable('sketch_thoughts', {
   shape: text('shape', { enum: ['card', 'pill', 'circle'] }).notNull().default('card'),
   placementType: text('placement_type', { enum: ['draft'] }),
   placementId: uuid('placement_id'),
-  // The message a thought was started from (migration 0024, #96).
+  // The message a thought was started from (migration 0025, #96).
   sourceAuthorId: text('source_author_id').references(() => authUsers.id),
   sourceAuthorName: text('source_author_name'),
   sourceSentAt: timestamp('source_sent_at', { withTimezone: true }),
