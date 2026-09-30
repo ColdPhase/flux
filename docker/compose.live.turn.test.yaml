@@ -95,6 +95,6 @@ services:
         esac
         node_modules/.bin/tsx --test tests/app/live-receiver-quality.test.ts tests/app/live-diagnostics.test.ts
         node_modules/.bin/tsx --test --test-concurrency=1 tests/app/e2e/live-sfu-revocation.e2e.ts tests/app/e2e/live-sfu-signout.e2e.ts
-        if [ "$$FLUX_LIVE_TURN_PROFILE" = code-1440p ]; then node scripts/summarize_live_code.mjs /artifacts; fi
-        node scripts/summarize_live_turn_resources.mjs /artifacts
+        if [ "$$FLUX_LIVE_TURN_PROFILE" = code-1440p ]; then node tooling/live-sfu-test/summarize_live_code.mjs /artifacts; fi
+        node tooling/live-sfu-test/summarize_live_turn_resources.mjs /artifacts
         iptables -L OUTPUT -n -v

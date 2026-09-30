@@ -37,7 +37,7 @@ export FLUX_LIVEKIT_TURN_UDP_PORT="${FLUX_LIVE_TURN_TEST_TURN_UDP_PORT:-18865}"
 export FLUX_LIVEKIT_TURN_TLS_BIND=127.0.0.1
 export FLUX_LIVEKIT_TURN_TLS_HOST_PORT="${FLUX_LIVE_TURN_TEST_TLS_PORT:-18867}"
 
-compose="docker compose -p $project -f infra/compose.yaml -f infra/compose.live.yaml -f infra/compose.live.test.yaml -f infra/compose.live.turn.yaml -f infra/compose.live.turn.test.yaml --profile live-test"
+compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.live.yaml -f docker/compose.live.test.yaml -f docker/compose.live.turn.yaml -f docker/compose.live.turn.test.yaml --profile live-test"
 cleanup() {
   status=$?
   if [ -n "${stats_sampler_pid:-}" ]; then
@@ -57,7 +57,7 @@ trap cleanup EXIT HUP INT TERM
 
 # Disposable local CA signs a non-CA TURN leaf. Only this test container trusts
 # it; operators must supply a publicly trusted cert for their own TURN DNS name.
-docker build -f infra/Dockerfile --target e2e -t "flux-e2e:$project" .
+docker build -f docker/Dockerfile --target e2e -t "flux-e2e:$project" app
 printf 'subjectAltName=DNS:turn.flux.test\nbasicConstraints=critical,CA:FALSE\nextendedKeyUsage=serverAuth\nkeyUsage=digitalSignature,keyEncipherment\n' > "$cert_dir/turn.ext"
 docker run --rm --entrypoint sh -v "$cert_dir:/certs:z" "flux-e2e:$project" -ec '
   openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=Flux-local-TURN-CA \
