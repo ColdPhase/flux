@@ -26,7 +26,7 @@ billing or compatibility pass.
 | `packages/core/src/personal-runs/` | Ports, input and output rules, use cases (`service.ts`), the worker processor (`processor.ts`) and assistant proposals (`proposals.ts`). |
 | `packages/core/src/access/personal-run-access.ts` | The access policy as the `PersonalRunAccess` port. |
 | `packages/core/src/access/policy.ts` | New agent action `agent.invoke`: only the person who owns the unrevoked agent. A workspace role never grants it. |
-| `packages/db/migrations/0021_personal_runs.sql`, `packages/db/src/repositories/personal-runs.ts` | Tables and rows. |
+| `packages/db/migrations/0022_personal_runs.sql`, `packages/db/src/repositories/personal-runs.ts` | Tables and rows. |
 | `apps/server/src/personal-runs/` | Routes and the per-transaction composition. The server only queues runs. |
 | `apps/worker/src/personal-runs/` | The `personal-run.dispatch.v1` handler. The queue never retries a job (`PERSONAL_RUN_QUEUE`). |
 

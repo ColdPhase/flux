@@ -935,7 +935,7 @@ export const notificationEmails = pgTable('notification_emails', {
   lastErrorAt: timestamp('last_error_at', { withTimezone: true }),
 }, (table) => [unique().on(table.notificationId, table.addressKind)]);
 
-// Owner-invoked personal assistant runs (migration 0021, #68, O-008). No key material is stored.
+// Owner-invoked personal assistant runs (migration 0022, #68, O-008). No key material is stored.
 export const personalRunEnablements = pgTable('personal_run_enablements', {
   ownerUserId: text('owner_user_id').primaryKey().references(() => authUsers.id, { onDelete: 'cascade' }),
   // References #124's key connection once that table lands; a compared snapshot until then.
