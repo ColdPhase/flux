@@ -27,7 +27,7 @@ is `null`.
 
 Migrations `0007_sketches.sql` and `0025_dm_sketches.sql` (#96). `infra/migrate.ts` applies
 every unapplied file in order and checks that the highest version equals `FLUX_SCHEMA_VERSION`
-(25; 0021–0024 are reserved by the open PR #124, so the sequence has a gap until it lands).
+(25). The ledger is contiguous from 1 to 25; `0025_dm_sketches.sql` took the next free number by merge order.
 
 ## Access
 
