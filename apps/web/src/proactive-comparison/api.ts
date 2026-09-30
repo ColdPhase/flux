@@ -1,7 +1,9 @@
-import type { BackgroundComputeConnection, ConnectBackgroundComputeCommand, CreateProactiveComparisonRule, ProactiveComparisonRule } from '@flux/contracts';
+import { backgroundComputeUsagePath, type BackgroundComputeConnection, type BackgroundComputeUsage,
+  type ConnectBackgroundComputeCommand, type CreateProactiveComparisonRule, type ProactiveComparisonRule } from '@flux/contracts';
 import { request } from '../api/client';
 
 const connections = '/api/v1/background-compute-connections';
+export const currentBackgroundUsage = (signal?: AbortSignal) => request<BackgroundComputeUsage>(backgroundComputeUsagePath, { signal });
 
 export const currentBackgroundConnection = (signal?: AbortSignal) =>
   request<BackgroundComputeConnection | null>(`${connections}/current`, { signal });

@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import type { ProactiveComparisonProposal, ProjectPerson, WorkItem } from '@flux/contracts';
+import type { InsufficientComparisonOutcome, ProactiveComparisonOutcome, ProactiveComparisonProposal, ProjectPerson, WorkItem } from '@flux/contracts';
 import { Button } from '../ui';
 import { applyComparisonProposal, comparisonSourceHref, editComparisonProposal } from './proposals';
+import { ComparisonEvidence } from './ComparisonEvidence';
+import { InsufficientComparison } from './InsufficientComparison';
 
-export function ProjectProposals({ proposals, people, projectName, resultTitles, workJumpId, workCount, resultCount, writable, refresh, openResult, openWork }: {
-  proposals: ProactiveComparisonProposal[]; people: ProjectPerson[] | null; projectName: string; writable: boolean;
+export function ProjectProposals({ outcomes, people, projectName, resultTitles, workJumpId, workCount, resultCount, writable, refresh, openResult, openWork }: {
+  outcomes: ProactiveComparisonOutcome[]; people: ProjectPerson[] | null; projectName: string; writable: boolean;
   resultTitles: Map<string, string>;
   workJumpId: string; workCount: number; resultCount: number;
   refresh: () => void; openResult: (id: string) => void; openWork: (item: WorkItem) => void;
@@ -17,8 +19,9 @@ export function ProjectProposals({ proposals, people, projectName, resultTitles,
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
-  const open = proposals.filter((proposal) => proposal.status === 'proposed');
-  if (!open.length) return null;
+  const open = outcomes.flatMap((outcome) => outcome.kind === 'comparison' && outcome.proposal.status === 'proposed' ? [outcome] : []);
+  const insufficient = outcomes.filter((outcome): outcome is InsufficientComparisonOutcome => outcome.kind === 'insufficient_evidence' && outcome.status === 'open');
+  if (!open.length && !insufficient.length) return null;
   const name = (id: string) => people?.find((person) => person.id === id)?.name ?? 'a project member';
   const beginEdit = (proposal: ProactiveComparisonProposal) => {
     setEditing(proposal.id); setFact(proposal.fact); setInterpretation(proposal.interpretation);
@@ -45,13 +48,13 @@ export function ProjectProposals({ proposals, people, projectName, resultTitles,
   };
   return (
     <section className="ws-group ws-proposals" aria-labelledby="g-comparison-proposals">
-      <h2 className="ws-group__h" id="g-comparison-proposals">Suggestions to review <span>{open.length}</span></h2>
+      <h2 className="ws-group__h" id="g-comparison-proposals">Suggestions and checks <span>{open.length + insufficient.length}</span></h2>
       <nav className="ws-proposals__jumps" aria-label="Project work sections">
         {workCount ? <button type="button" onClick={() => document.getElementById(workJumpId)?.scrollIntoView({ block: 'start' })}>Work {workCount}</button> : null}
         {resultCount ? <button type="button" onClick={() => document.getElementById('g-results')?.scrollIntoView({ block: 'start' })}>Results {resultCount}</button> : null}
       </nav>
       <p className="ws-proposals__intro">Quiet project suggestions. The agent has not changed any work or decision.</p>
-      {open.map((proposal) => {
+      {open.map(({ proposal, inspectedSources, unavailableSourcesCount }) => {
         const isEditing = editing === proposal.id;
         const isExpanded = expanded === proposal.id;
         return <article className="ws-proposal" key={proposal.id} aria-label={`Comparison suggestion for ${projectName}`}>
@@ -73,7 +76,7 @@ export function ProjectProposals({ proposals, people, projectName, resultTitles,
             <p className="ws-proposal__detail"><strong>Interpretation</strong> <span>{proposal.interpretation}</span></p>
             <p className="ws-proposal__detail"><strong>Suggested next step</strong> <span>{proposal.suggestedAction}</span></p>
           </>}
-          <div className="ws-proposal__sources"><strong>Sources</strong>
+          <div className="ws-proposal__sources"><strong>Sources cited</strong>
             <ul>{proposal.sources.map((source) => <li key={`${source.type}:${source.id}:${source.version}`}>
               {source.type === 'material'
                 ? <Link title={`Material ${source.id}, version ${source.version}`} to={comparisonSourceHref(proposal.projectId, source)!}>{source.title ?? `Material ${source.id.slice(0, 8)}`} <small>· version {source.version}</small></Link>
@@ -90,6 +93,8 @@ export function ProjectProposals({ proposals, people, projectName, resultTitles,
                     : <span title={`Message ${source.id}, version ${source.version}`}>Project message · {source.id.slice(0, 8)} (source unavailable)</span>}
             </li>)}</ul>
           </div>
+          <ComparisonEvidence projectId={proposal.projectId} sources={inspectedSources}
+            unavailable={unavailableSourcesCount} openResult={openResult} />
           {writable ? <div className="ws-proposal__actions">
             {isEditing ? <>
               <Button variant="primary" busy={busy} disabled={!fact.trim() || !interpretation.trim() || !action.trim()}
@@ -105,6 +110,9 @@ export function ProjectProposals({ proposals, people, projectName, resultTitles,
           </div> : null}
         </article>;
       })}
+      {insufficient.map((outcome) => <InsufficientComparison key={outcome.id} outcome={outcome}
+        ownerName={name(outcome.ownerUserId)} projectName={projectName} writable={writable}
+        refresh={refresh} openResult={openResult} />)}
     </section>
   );
 }

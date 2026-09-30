@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useLoaderData, type LoaderFunctionArgs } from 'react-router';
-import type { BackgroundComputeConnection, ConnectBackgroundComputeCommand } from '@flux/contracts';
+import type { BackgroundComputeConnection, BackgroundComputeUsage, ConnectBackgroundComputeCommand } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Button } from '../ui';
-import { connectBackgroundCompute, currentBackgroundConnection, revokeBackgroundConnection } from './api';
+import { connectBackgroundCompute, currentBackgroundConnection, currentBackgroundUsage, revokeBackgroundConnection } from './api';
+import { BackgroundUsage } from './BackgroundUsage';
 import { ProjectRuleSettings } from './ProjectRuleSettings';
 import './background.css';
 
-export const backgroundComputeLoader = ({ request }: LoaderFunctionArgs) => currentBackgroundConnection(request.signal);
+export async function backgroundComputeLoader({ request }: LoaderFunctionArgs) {
+  const [connection, usage] = await Promise.all([currentBackgroundConnection(request.signal), currentBackgroundUsage(request.signal)]);
+  return { connection, usage };
+}
 const money = (cents: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
 const checks = ['workspaceScoped', 'payerAuthority', 'providerBilling', 'projectDisclosure'] as const;
 
@@ -23,8 +27,11 @@ function failure(error: unknown) {
 
 /** Owner-only payer/key setup. Saving consent does not activate background execution. */
 export function BackgroundComputeSettings() {
-  const initial = useLoaderData() as BackgroundComputeConnection | null;
-  const [connection, setConnection] = useState(initial);
+  const initial = useLoaderData() as { connection: BackgroundComputeConnection | null; usage: BackgroundComputeUsage };
+  const [connection, setConnection] = useState(initial.connection);
+  const [usage, setUsage] = useState(initial.usage);
+  const [usageBusy, setUsageBusy] = useState(false);
+  const [usageError, setUsageError] = useState('');
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -35,6 +42,12 @@ export function BackgroundComputeSettings() {
   const errorRef = useRef<HTMLParagraphElement>(null);
   const replaceRef = useRef<HTMLButtonElement>(null);
   useEffect(() => { headingRef.current?.focus(); }, []);
+  async function refreshUsage() {
+    setUsageBusy(true); setUsageError('');
+    try { setUsage(await currentBackgroundUsage()); }
+    catch { setUsageError('Usage could not be refreshed. The figures above are from the last update.'); }
+    finally { setUsageBusy(false); }
+  }
   const announce = (message: string) => {
     setSaved(message);
     requestAnimationFrame(() => statusRef.current?.focus());
@@ -67,6 +80,7 @@ export function BackgroundComputeSettings() {
     try {
       setConnection(await connectBackgroundCompute(command)); setEditing(false);
       announce('Connection saved. No rule was enabled.');
+      await refreshUsage();
     } catch (cause) { setError(failure(cause)); requestAnimationFrame(() => errorRef.current?.focus()); }
     finally {
       // The key exists only in this password input and the same-origin request, never app storage.
@@ -83,6 +97,7 @@ export function BackgroundComputeSettings() {
     try {
       await revokeBackgroundConnection(connection.id); setConnection(null); setEditing(false);
       announce('Disconnected in Flux. New requests cannot use this key.');
+      await refreshUsage();
     } catch (cause) { setError(failure(cause)); requestAnimationFrame(() => errorRef.current?.focus()); }
     finally { setBusy(false); }
   }
@@ -145,6 +160,7 @@ export function BackgroundComputeSettings() {
         </fieldset>
       </form>
     </section> : null}
+    <BackgroundUsage usage={usage} busy={usageBusy} error={usageError} refresh={() => void refreshUsage()} />
     <ProjectRuleSettings connection={connection} />
     {!connection ? <p className="background-settings__help">Disconnecting removes this key from Flux. Revoke it at Claude Platform too if it should stop working outside Flux.</p> : null}
     <Link className="background-settings__back" to="/">Continue in Flux</Link>

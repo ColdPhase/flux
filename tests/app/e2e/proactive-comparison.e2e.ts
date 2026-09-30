@@ -294,7 +294,7 @@ test('owner-only background setup persists consent, clears keys and preserves an
   assert.ok(!await page.evaluate(() => JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage } }).includes('sk-ant-')),
     'credentials never enter browser storage');
   await page.reload();
-  assert.match(await page.locator('.background-settings__metadata').innerText(), /Fixture Sensor Research[\s\S]*ABCD[\s\S]*\$0.25/);
+  assert.match(await page.locator('[aria-labelledby="background-current"] .background-settings__metadata').innerText(), /Fixture Sensor Research[\s\S]*ABCD[\s\S]*\$0.25/);
   await page.locator('.background-settings__help').first().click();
   await page.screenshot({ path: '/state/background-setup-1440-saved.png', fullPage: true });
   await assertBackgroundContrast();

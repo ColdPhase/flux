@@ -1,24 +1,24 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { useLoaderData, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
-import type { Decision, Project, ProactiveComparisonProposal, WorkItem, WorkResult } from '@flux/contracts';
+import type { Decision, Project, ProactiveComparisonOutcome, WorkItem, WorkResult } from '@flux/contracts';
 import { Button, EmptyState, Icon } from '../ui';
 import { getProject } from '../app/conversation-api';
 import { useShellActions } from '../app/shellContext';
 import { createWork, type ProjectWork } from './api';
 import { useProjectShell } from '../project/data';
 import { ProjectProposals } from '../project/ProjectProposals';
-import { listComparisonProposals } from '../project/proposals';
+import { listComparisonOutcomes } from '../project/proposals';
 import { STATUS_LABEL, isFinished, linked, shortDate } from './format';
 import './work.css';
 
-interface TasksData { project: Project; proposals: ProactiveComparisonProposal[] }
+interface TasksData { project: Project; outcomes: ProactiveComparisonOutcome[] }
 
 /** Work, decisions and results come with the project's parent route (#117). */
 export async function projectTasksLoader({ params, request }: LoaderFunctionArgs): Promise<TasksData> {
-  const [project, proposals] = await Promise.all([
-    getProject(params.projectId!, request.signal), listComparisonProposals(params.projectId!, request.signal),
+  const [project, outcomes] = await Promise.all([
+    getProject(params.projectId!, request.signal), listComparisonOutcomes(params.projectId!, request.signal),
   ]);
-  return { project, proposals };
+  return { project, outcomes };
 }
 
 function Group({ id, title, count, children }: { id: string; title: string; count: number; children: ReactNode }) {
@@ -62,7 +62,7 @@ const dot = (kind: string) => <span className={`ws-dot ws-dot--${kind}`} />;
 
 /** The project's Tasks tab: committed work, the rules it follows and what was learned. */
 export function ProjectTasks() {
-  const { project, proposals } = useLoaderData() as TasksData;
+  const { project, outcomes } = useLoaderData() as TasksData;
   const shell = useProjectShell();
   const lists: ProjectWork = shell?.work ?? { work: [], decisions: [], results: [] };
   const { openDetails } = useShellActions();
@@ -115,7 +115,7 @@ export function ProjectTasks() {
   const openResult = (item: WorkResult) => () => openDetails({ kind: 'result', id: item.id });
   const workRow = (item: WorkItem, muted = false) => <Row key={item.id} icon={dot(item.parked ? 'parked' : item.status)} title={item.title} sub={workSub(item, lists)} right={item.owner ? <span className="ws-av" aria-hidden="true">{item.owner.name.slice(0, 1)}</span> : null} onOpen={openWork(item)} muted={muted} />;
   const nothing = !lists.work.length && !lists.decisions.length && !lists.results.length
-    && !proposals.some((proposal) => proposal.status === 'proposed');
+    && !outcomes.some((outcome) => outcome.kind === 'comparison' ? outcome.proposal.status === 'proposed' : outcome.status === 'open');
 
   return (
     <div className="pane-scroll">
@@ -135,7 +135,7 @@ export function ProjectTasks() {
           </EmptyState></div>
         ) : null}
 
-        <ProjectProposals proposals={proposals} people={shell?.people ?? null} projectName={project.name}
+        <ProjectProposals outcomes={outcomes} people={shell?.people ?? null} projectName={project.name}
           resultTitles={new Map(lists.results.map((result) => [result.id, result.title]))}
           workCount={lists.work.length} resultCount={lists.results.length}
           workJumpId={by('in_progress').length ? 'g-progress' : by('blocked').length ? 'g-blocked' : by('open').length ? 'g-open' : parked.length ? 'g-parked' : 'g-finished'}

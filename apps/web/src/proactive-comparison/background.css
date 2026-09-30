@@ -29,6 +29,14 @@
 .background-settings__agent-create .background-settings__select { flex: 1 1 240px; margin: 0; }
 .background-settings__agent-option { margin: 10px 0; }
 .background-settings__agent-option summary { display: flex; align-items: center; min-height: 36px; font-size: var(--fs-sm); color: var(--accent); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.background-usage__history { margin-top: 10px; font-size: var(--fs-sm); line-height: 1.5; }
+.background-usage__history summary { display: flex; align-items: center; gap: 8px; min-height: 36px; color: var(--accent); cursor: pointer; }
+.background-usage__history summary span { color: var(--text-2); }
+.background-usage__history ul { list-style: none; padding: 0; margin: 4px 0 0; }
+.background-usage__history li { padding: 10px 0; border-top: 1px solid var(--line); }
+.background-usage__history li p { color: var(--text-2); overflow-wrap: anywhere; }
+.background-usage__request { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; }
+.background-usage__request time { color: var(--text-2); }
 @media (max-width: 640px) {
   .background-settings__limits { grid-template-columns: 1fr; gap: 8px; }
   .background-settings__metadata > div { grid-template-columns: 1fr; gap: 1px; }
@@ -38,4 +46,5 @@
   .background-settings__select input, .background-settings__select select, .background-settings__fields select { font-size: 16px; min-height: 44px; }
   .background-settings__fields .background-settings__check, .background-settings__back { min-height: 44px; }
   .background-settings__agent-option summary { min-height: 44px; }
+  .background-usage__history summary { min-height: 44px; }
 }

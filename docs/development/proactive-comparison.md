@@ -160,9 +160,18 @@ build/typecheck/lint and 35 targeted core/API/provider-fixture/persistence tests
 passed for this backend checkpoint, including access loss, source deletion,
 insufficient responses and terminal no-retry failures.
 
-The corresponding project/owner UI, source-change scheduling/coalescing,
-production provider scheduling and rule activation remain implementation work.
-No real-provider billing, cancellation or physical-device acceptance is claimed.
+The project Tasks surface loads every advertised outcome page. Comparisons show
+cited references and a separate expandable checked-source list; insufficient
+items expose their full reason and checked references with Dismiss only for
+current project writers. Legacy proposals explain that their full inspected
+list was not recorded. Source versions, excerpts and unavailable-reference
+counts remain visible without revealing hidden titles. The owner's connection
+settings show private local usage and recent request states, including zero-cost
+not-run outcomes and uncertain charges; disconnection keeps that history.
+
+Source-change scheduling/coalescing, production provider scheduling and rule
+activation remain implementation work. No real-provider billing, cancellation
+or physical-device acceptance is claimed.
 
 ## Key file, restore and rotation
 
