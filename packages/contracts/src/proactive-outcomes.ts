@@ -44,6 +44,8 @@ export interface BackgroundComputeCandidateUsage {
   id: string;
   projectId: string;
   resultId: string;
+  /** Current readable trigger labels; older-server absence and unavailable context reveal no names. */
+  context?: { projectTitle: string; resultTitle: string } | null;
   ruleId: string;
   status: 'queued' | 'reserved' | 'not_run' | 'unknown' | 'completed';
   reason: string | null;

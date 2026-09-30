@@ -49,6 +49,9 @@ export function BackgroundUsage({ usage, busy, error, refresh }: {
     <details className="background-usage__history">
       <summary>Recent requests <span>{usage.candidates.length}</span></summary>
       {usage.candidates.length ? <ul>{usage.candidates.map((candidate) => <li key={candidate.id}>
+        <p className="background-usage__trigger">{candidate.context
+          ? <><strong>{candidate.context.resultTitle}</strong><span>{candidate.context.projectTitle}</span></>
+          : <span>Result context unavailable</span>}</p>
         <div className="background-usage__request"><strong>{statuses[candidate.status]}</strong><time dateTime={candidate.createdAt}>{date(candidate.createdAt)} UTC</time></div>
         <div className="background-usage__context">
           <span title={`Flux request ${candidate.id}`}>Request {candidate.id.slice(0, 8)}</span>

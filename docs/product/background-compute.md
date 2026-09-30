@@ -1,4 +1,17 @@
-# O-007 — owner-authorized background comparison
+# Current labels in private usage history (#58)
+
+Recorded 2026-09-30 before the additive interface change. Each recent owner usage
+row may include current project and triggering-result titles, only after a current
+central project-read decision. Missing, denied or misbound context is explicit
+null; older-server payloads may omit it. Titles lead the history row so people
+can recognize its trigger. They are current labels, not historical snapshots.
+Retained accounting, IDs, amounts and uncertainty survive access loss and key
+replacement/disconnection; that history does not grant access to project names.
+Successful refresh replaces the complete projection, including redaction. Failed
+refresh retains the last fetched snapshot with its existing stale-data message.
+No prompt/output/body/provider ID is added, and no new compute or migration occurs.
+
+## O-007 — owner-authorized background comparison
 
 **Status:** accepted after [independent review of `2a2fa82`](https://github.com/ColdPhase/flux/pull/108#pullrequestreview-5332961366), merged as [`841ddc97`](https://github.com/ColdPhase/flux/pull/108) on 2026-09-28. **Decision owner:**
 `@PelikanFix16`; **evaluator:** `@Zamojski5`. This resolves the compute-source

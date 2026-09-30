@@ -185,6 +185,9 @@ test('owner usage distinguishes known, uncertain and no-cost requests and surviv
       const ownUsage = (await api(usagePage, 'GET', '/api/v1/background-compute-usage')).data as BackgroundComputeUsage;
       const stopped = ownUsage.candidates.find((candidate) => candidate.status === 'not_run');
       assert.ok(stopped);
+      assert.equal(stopped.context?.projectTitle, 'Bedside gesture lamp');
+      assert.equal(stopped.context?.resultTitle, 'Request without available key');
+      assert.match(await usage.locator('.background-usage__trigger').first().innerText(), /Request without available key[\s\S]*Bedside gesture lamp/);
       const destination = usage.getByRole('link', { name: `View triggering result for request ${stopped.id}`, exact: true });
       assert.ok((await destination.locator('..').innerText()).includes(`Request ${stopped.id.slice(0, 8)}`));
       if (width < 1440) assert.ok((await destination.boundingBox())!.height >= 44, 'request destination has 44px touch height');
@@ -199,6 +202,23 @@ test('owner usage distinguishes known, uncertain and no-cost requests and surviv
       } finally { await usageContext.close(); }
     }
     await page.goto(`${origin.origin}/settings/background-compute`);
+    const availableUsage = (await api(page, 'GET', '/api/v1/background-compute-usage')).data as BackgroundComputeUsage;
+    const oldPayload = { ...availableUsage, candidates: availableUsage.candidates.map(({ context: _context, ...row }) => row) };
+    await page.route('**/api/v1/background-compute-usage', (route) => route.fulfill({ json: oldPayload }));
+    await page.getByRole('button', { name: 'Refresh usage', exact: true }).click();
+    const history = page.locator('.background-usage__history');
+    await history.locator('summary').click();
+    await page.getByText('Result context unavailable', { exact: true }).first().waitFor();
+    assert.equal(await history.getByText('Bedside gesture lamp', { exact: true }).count(), 0, 'older payload removes previously fetched names');
+    await page.unroute('**/api/v1/background-compute-usage');
+    await page.getByRole('button', { name: 'Refresh usage', exact: true }).click();
+    await history.getByText('Bedside gesture lamp', { exact: true }).first().waitFor();
+    await page.route('**/api/v1/background-compute-usage', (route) => route.fulfill({ status: 503, json: { message: 'temporary test failure' } }));
+    await page.getByRole('button', { name: 'Refresh usage', exact: true }).click();
+    await page.locator('.background-usage [role="alert"]').waitFor();
+    assert.match(await page.locator('.background-usage [role="alert"]').innerText(), /last|previous|showing|fetched/i);
+    assert.ok(await history.getByText('Bedside gesture lamp', { exact: true }).count() > 0, 'failed refresh retains the explicit stale snapshot');
+    await page.unroute('**/api/v1/background-compute-usage');
     await page.getByRole('button', { name: 'Disconnect', exact: true }).click();
     await page.getByRole('heading', { name: 'Connect your background source', exact: true }).waitFor();
     await page.getByRole('button', { name: 'Refresh usage', exact: true }).click();
@@ -223,12 +243,16 @@ test('owner usage distinguishes known, uncertain and no-cost requests and surviv
     const privateUsage = page.locator('.background-usage'); await privateUsage.waitFor();
     assert.ok(!(await privateUsage.innerText()).includes('Bedside gesture lamp'));
     await privateUsage.locator('summary').click();
+    assert.ok((await privateUsage.getByText('Result context unavailable', { exact: true }).count()) > 0);
+    await page.screenshot({ path: '/state/comparison-usage-1440-redacted.png', fullPage: true });
     const ownStopped = accounting.candidates.find((candidate) => candidate.status === 'not_run'); assert.ok(ownStopped);
     const deniedSource = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/v1/projects/${fixture.projectId}`);
     await privateUsage.getByRole('link', { name: `View triggering result for request ${ownStopped.id}`, exact: true }).click();
     assert.equal((await deniedSource).status(), 404);
     assert.ok(!(await page.locator('body').innerText()).includes('Request without available key'));
     const retained = (await api(page, 'GET', '/api/v1/background-compute-usage')).data as BackgroundComputeUsage;
+    assert.ok(retained.candidates.every((row) => row.context === null));
+    assert.ok(!JSON.stringify(retained).includes('Bedside gesture lamp'));
     assert.equal(retained.conservativeCountedCents, 15); assert.equal(retained.startedRequestsToday, 3);
   } finally { await context.close(); }
 });

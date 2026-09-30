@@ -1,6 +1,6 @@
 import type { BackgroundComputeUsage, InspectedComparisonSource, InsufficientComparisonOutcome,
   Page, ProactiveComparisonOutcome } from '@flux/contracts';
-import { ConflictError, InvalidInputError, NotFoundError, VersionConflictError } from '../access/errors.js';
+import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, VersionConflictError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 
 export type ComparisonSourceRef = Pick<InspectedComparisonSource, 'type' | 'id' | 'version' | 'conversationId' | 'sketchId'>;
@@ -14,6 +14,8 @@ export interface ComparisonOutcomePorts {
     lockInsufficient(id: string): Promise<InsufficientComparisonOutcome | null>;
     dismissInsufficient(id: string, expectedVersion: number): Promise<InsufficientComparisonOutcome | null>;
     ownerUsage(ownerId: string, now: Date): Promise<BackgroundComputeUsage>;
+    /** Metadata of the exact pair; called only after successful current project-read policy. */
+    usageContext(projectId: string, resultId: string): Promise<{ projectTitle: string; resultTitle: string } | null>;
   };
 }
 export interface ComparisonOutcomeUnitOfWork {
@@ -71,7 +73,29 @@ export function comparisonOutcomeUseCases(unit: ComparisonOutcomeUnitOfWork) {
     },
     usage(principal: Principal, now = new Date()): Promise<BackgroundComputeUsage> {
       if (principal.kind !== 'human' || !principal.id) throw new InvalidInputError('A signed-in owner is required');
-      return unit.run((ports) => ports.outcomes.ownerUsage(principal.id, now));
+      return unit.run(async (ports) => {
+        const usage = await ports.outcomes.ownerUsage(principal.id, now);
+        const allowed = new Set<string>();
+        for (const projectId of [...new Set(usage.candidates.map((row) => row.projectId))].sort()) {
+          try {
+            await ports.access.requireProject(principal, projectId, 'read');
+            allowed.add(projectId);
+          } catch (error) {
+            if (!(error instanceof NotFoundError || error instanceof ForbiddenError)) throw error;
+          }
+        }
+        const contexts = new Map<string, { projectTitle: string; resultTitle: string } | null>();
+        const candidates: BackgroundComputeUsage['candidates'] = [];
+        for (const row of usage.candidates) {
+          const pair = `${row.projectId}:${row.resultId}`;
+          if (!contexts.has(pair)) {
+            const found = allowed.has(row.projectId) ? await ports.outcomes.usageContext(row.projectId, row.resultId) : null;
+            contexts.set(pair, found ? { projectTitle: found.projectTitle, resultTitle: found.resultTitle } : null);
+          }
+          candidates.push({ ...row, context: contexts.get(pair)! });
+        }
+        return { ...usage, candidates };
+      });
     },
   };
 }

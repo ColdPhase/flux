@@ -35,6 +35,8 @@
 .background-usage__history ul { list-style: none; padding: 0; margin: 4px 0 0; }
 .background-usage__history li { padding: 10px 0; border-top: 1px solid var(--line); }
 .background-usage__history li p { color: var(--text-2); overflow-wrap: anywhere; }
+.background-usage__trigger { display: flex; flex-direction: column; gap: 2px; margin: 0 0 6px; }
+.background-usage__trigger strong { color: var(--text); font-weight: 600; }
 .background-usage__request { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; }
 .background-usage__request time { color: var(--text-2); }
 .background-usage__context { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; color: var(--text-2); }

@@ -1,4 +1,19 @@
-# Proactive comparison rule (#58, first implementation slice)
+# Authorized accounting context refinement
+
+The 2026-09-30 independent planning assessment accepts optional current
+`context: { projectTitle, resultTitle } | null` for the newest 50 owner usage rows.
+Core obtains unchanged owner accounting first, then authorizes sorted distinct
+project IDs sequentially in the existing unit of work. Only successful central
+policy decisions permit a separate metadata lookup; the policy's internal project
+read is not claimed to be title-free. Exact project/result/workspace matching
+prevents the noncomposite legacy result FK from disclosing a misbound title.
+Pair lookups are request-local and deduplicated. Denied/missing context yields
+null without dropping rows or totals; unexpected policy/storage errors propagate.
+UI/API use this one projection. No global title cache or historical source names
+may replace redacted metadata. This bounded refinement does not complete the
+remaining runtime/provider, review and integrated acceptance gates of #58.
+
+## Proactive comparison rule (#58, first implementation slice)
 
 A person can configure one standing low-light comparison rule for a named project
 and their own agent. The saved authorization is separate from a committed human

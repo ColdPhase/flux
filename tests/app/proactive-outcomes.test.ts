@@ -1,8 +1,9 @@
 import { comparisonDispatchFixtureDue } from './support/comparison-dispatch-fixture.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
-import { createDatabase } from '@flux/db';
+import { comparisonOutcomeRows, createDatabase } from '@flux/db';
 import type { ComparisonProvider, ComparisonSource } from '@flux/core';
 import type { BackgroundComputeUsage, Page, ProactiveComparisonOutcome } from '@flux/contracts';
 import { dispatchProactiveComparison } from '../../apps/worker/src/proactive-comparison/dispatch.js';
@@ -150,11 +151,39 @@ test('terminal pre-paid refusals persist zero usage without retry, while owner a
   const initial = await f.usage();
   assert.deepEqual([initial.startedRequestsToday, initial.conservativeCountedCents, initial.observedEstimatedCents], [0, 0, 0]);
   assert.deepEqual(initial.candidates[0]!.observedUsage, { inputTokens: 0, outputTokens: 0, estimatedCents: 0 });
+  assert.deepEqual(initial.candidates[0]!.context, { projectTitle: 'Low-light comparison', resultTitle: 'Camera missed gestures' });
   assert.equal(initial.candidates[0]!.reservedAt, null); assert.equal(initial.candidates[0]!.startedAt, null);
   await grant(f.owner, f.projectId, f.owner, 'denied');
   expectStatus(await f.owner.browser.request('DELETE', `/api/v1/background-compute-connections/${f.connection.id}`), 204);
   const afterLoss = await f.usage();
+  assert.equal(afterLoss.candidates[0]!.context, null);
+  assert.ok(!JSON.stringify(afterLoss).includes('Low-light comparison'));
+  assert.ok(!JSON.stringify(afterLoss).includes('Camera missed gestures'));
+  assert.deepEqual(afterLoss.candidates.map(({ context: _context, ...row }) => row), initial.candidates.map(({ context: _context, ...row }) => row));
   assert.equal(afterLoss.currentLimits, null); assert.equal(afterLoss.candidates.length, 1);
   assert.ok(!JSON.stringify(afterLoss).includes('38% detected')); assert.ok(!JSON.stringify(afterLoss).includes('cipher'));
   assert.equal((await f.owner.browser.request('GET', `/api/v1/projects/${f.projectId}/proactive-comparison-outcomes`)).status, 404);
+});
+
+
+test('usage metadata requires the exact project/result pair and follows current names', async () => {
+  const f = await fixture();
+  const { result } = await f.negative();
+  const foreign = await project(f.owner, f.ws.id, 'Private parallel protocol', 'restricted');
+  const foreignResult = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${foreign.id}/results`,
+    { body: { title: 'Private sensor threshold', finding: 'positive' } }), 201) as { id: string };
+  assert.equal(await comparisonOutcomeRows(db).usageContext(f.projectId, foreignResult.id), null);
+  assert.equal(await comparisonOutcomeRows(db).usageContext(f.projectId, randomUUID()), null);
+  await pool.query('UPDATE projects SET name=$1 WHERE id=$2', ['Renamed low-light protocol', f.projectId]);
+  await pool.query('UPDATE project_results SET title=$1 WHERE id=$2', ['Rechecked camera miss rate', result.id]);
+  const usage = await f.usage();
+  assert.deepEqual(usage.candidates[0]!.context, { projectTitle: 'Renamed low-light protocol', resultTitle: 'Rechecked camera miss rate' });
+  assert.ok(!JSON.stringify(usage).includes('Private sensor threshold'));
+  assert.equal((await f.usage(f.peer)).candidates.length, 0);
+  await pool.query('UPDATE proactive_comparison_outbox SET result_id=$1 WHERE id=$2', [foreignResult.id, usage.candidates[0]!.id]);
+  const misbound = await f.usage();
+  assert.equal(misbound.candidates[0]!.context, null);
+  assert.equal(misbound.candidates.length, usage.candidates.length);
+  assert.equal(misbound.conservativeCountedCents, usage.conservativeCountedCents);
+  assert.ok(!JSON.stringify(misbound).includes('Private sensor threshold'));
 });

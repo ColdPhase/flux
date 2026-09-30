@@ -76,12 +76,21 @@ export function comparisonOutcomeRows(db: DbExecutor) {
         observedEstimatedCents: totals?.observedEstimatedCents ?? 0,
         unknownPossibleCents: totals?.unknownPossibleCents ?? 0, inFlightCents: totals?.inFlightCents ?? 0,
         currentLimits: connection ? { ...connection, periodDays: 30 } : null,
-        candidates: candidates.map((row) => ({ id: row.id, projectId: row.projectId, resultId: row.resultId,
+        candidates: candidates.map((row) => ({ id: row.id, projectId: row.projectId, resultId: row.resultId, context: null,
           ruleId: row.ruleId, status: row.status, reason: row.reason, createdAt: row.createdAt.toISOString(),
           reservedAt: row.reservedAt?.toISOString() ?? null, startedAt: row.startedAt?.toISOString() ?? null,
           finishedAt: row.finishedAt?.toISOString() ?? null, reservedCents: row.reservedCents,
           observedUsage: row.input !== null && row.output !== null && row.estimate !== null
             ? { inputTokens: row.input, outputTokens: row.output, estimatedCents: row.estimate } : null })) };
+    },
+    /** Exact current labels, read only after core authorizes this project. Accounting queries stay unchanged. */
+    async usageContext(projectId: string, resultId: string) {
+      const result = schema.projectResults;
+      const project = schema.projects;
+      const [row] = await db.select({ projectTitle: project.name, resultTitle: result.title }).from(result)
+        .innerJoin(project, and(eq(project.id, result.projectId), eq(project.workspaceId, result.workspaceId)))
+        .where(and(eq(result.id, resultId), eq(result.projectId, projectId)));
+      return row ?? null;
     },
     /** Existence and navigation of the historical reference, without reading its body or title. */
     async sourceExists(projectId: string, source: SourceRef): Promise<boolean> {

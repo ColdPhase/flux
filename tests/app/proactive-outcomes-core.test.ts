@@ -50,6 +50,10 @@ function scene(items: ProactiveComparisonOutcome[] = [insufficient]) {
           conservativeCountedCents: 0, observedEstimatedCents: 0, unknownPossibleCents: 0,
           inFlightCents: 0, currentLimits: null, candidates: [] } satisfies BackgroundComputeUsage;
       },
+      async usageContext(place, resultId) {
+        calls.push(`context:${place}:${resultId}`);
+        return { projectTitle: 'Low-light trials', resultTitle: 'Camera missed gestures' };
+      },
     },
   };
   return { ports, calls, cases: comparisonOutcomeUseCases({ run: (action) => action(ports) }),
@@ -110,4 +114,52 @@ test('invalid page bounds never reach storage', () => {
   for (const [limit, offset] of [[101, 0], [0, 0], [1, -1], [1, 10001]])
     assert.throws(() => s.cases.list(owner, projectId, limit, offset), InvalidInputError);
   assert.deepEqual(s.calls, []);
+});
+
+
+test('usage enriches only current allowed exact pairs, with sorted locks and unchanged owner accounting', async () => {
+  const s = scene();
+  const denied = '00000000-0000-0000-0000-000000000001';
+  const allowed = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+  const resultId = randomUUID();
+  const base = await s.ports.outcomes.ownerUsage(owner.id, now);
+  const candidate = { id: randomUUID(), projectId: allowed, resultId, ruleId: randomUUID(), status: 'unknown' as const,
+    reason: 'DISPATCH_LOST', createdAt: now.toISOString(), reservedAt: now.toISOString(), startedAt: now.toISOString(),
+    finishedAt: now.toISOString(), reservedCents: 5, observedUsage: null };
+  const original = { ...base, conservativeCountedCents: 15, unknownPossibleCents: 5,
+    candidates: [candidate, { ...candidate, id: randomUUID(), projectId: denied, context: { projectTitle: 'Never return stored title', resultTitle: 'Private' } },
+      { ...candidate, id: randomUUID() }, { ...candidate, id: randomUUID(), resultId: randomUUID() }] };
+  s.calls.length = 0;
+  s.ports.outcomes.ownerUsage = async () => structuredClone(original);
+  s.ports.access.requireProject = async (_principal, place, mode) => {
+    s.calls.push(`access:${place}:${mode}`);
+    if (place === denied) throw new NotFoundError('Project');
+  };
+  s.ports.outcomes.usageContext = async (place, result) => {
+    s.calls.push(`context:${place}:${result}`);
+    return result === resultId ? { projectTitle: 'Low-light trials', resultTitle: 'Camera missed gestures' } : null;
+  };
+  const actual = await s.cases.usage(owner, now);
+  assert.deepEqual(s.calls, [`access:${denied}:read`, `access:${allowed}:read`,
+    `context:${allowed}:${resultId}`, `context:${allowed}:${original.candidates[3]!.resultId}`]);
+  assert.deepEqual(actual.candidates.map((row) => row.context), [
+    { projectTitle: 'Low-light trials', resultTitle: 'Camera missed gestures' }, null,
+    { projectTitle: 'Low-light trials', resultTitle: 'Camera missed gestures' }, null]);
+  const withoutContext = (value: BackgroundComputeUsage) => ({ ...value, candidates: value.candidates.map(({ context: _context, ...row }) => row) });
+  assert.deepEqual(withoutContext(actual), withoutContext(original));
+  assert.ok(!JSON.stringify(actual).includes('Private'));
+});
+
+test('unexpected usage policy and metadata failures propagate rather than claim successful redaction', async () => {
+  const s = scene();
+  const base = await s.ports.outcomes.ownerUsage(owner.id, now);
+  s.ports.outcomes.ownerUsage = async () => ({ ...base, candidates: [{ id: randomUUID(), projectId, resultId: randomUUID(),
+    ruleId: randomUUID(), status: 'queued', reason: null, createdAt: now.toISOString(), reservedAt: null,
+    startedAt: null, finishedAt: null, reservedCents: 0, observedUsage: null }] });
+  s.ports.access.requireProject = async () => { throw new Error('policy unavailable'); };
+  await assert.rejects(s.cases.usage(owner, now), /policy unavailable/);
+  assert.ok(!s.calls.some((call) => call.startsWith('context:')));
+  s.ports.access.requireProject = async () => undefined;
+  s.ports.outcomes.usageContext = async () => { throw new Error('metadata unavailable'); };
+  await assert.rejects(s.cases.usage(owner, now), /metadata unavailable/);
 });
