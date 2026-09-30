@@ -118,15 +118,25 @@ test('two authorized Chromium clients exchange media when UDP and direct ICE/TCP
     }
     assert.ok(memberCandidates.some((candidate) => candidate.bytesReceived > 0),
       'receiver must get data from the SFU through the relay');
-    const initialReports = await receiverReports(memberPage);
-    await delay(2_000);
-    const baselineReports = await receiverReports(memberPage);
-    const baseline = readReceiverSample(baselineReports, initialReports, 2_000);
+    // Initial simulcast negotiation can replace the inbound RTP id. A new
+    // stream has no valid decoded-frame interval yet: wait for actual fresh
+    // frames on a stable stream rather than borrowing instantaneous browser fps.
+    let initialReports = await receiverReports(memberPage);
+    let baseline = readReceiverSample([], [], 0);
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const start = Date.now();
+      await delay(2_000);
+      const reports = await receiverReports(memberPage);
+      baseline = readReceiverSample(reports, initialReports, Date.now() - start);
+      initialReports = reports;
+      if (baseline.tracks.some((track) => track.kind === 'video' &&
+        (track.framesDelta ?? 0) > 0 && (track.width ?? 0) > 0 && (track.height ?? 0) > 0)) break;
+    }
     assert.ok(baseline.tracks.some((track) => track.kind === 'audio' && (track.packetsReceived ?? 0) > 0),
       'receiver must expose inbound audio stats');
     assert.ok(baseline.tracks.some((track) => track.kind === 'video' && (track.packetsReceived ?? 0) > 0 &&
-      (track.width ?? 0) > 0 && (track.height ?? 0) > 0 && track.fps !== undefined),
-    'receiver must expose decoded video dimensions and fps');
+      (track.width ?? 0) > 0 && (track.height ?? 0) > 0 && (track.framesDelta ?? 0) > 0 && track.fps !== undefined),
+    `receiver must expose fresh decoded video dimensions and interval fps: ${JSON.stringify({ baseline, reports: initialReports })}`);
 
     // Fixed netem delay is reproducible and does not pretend to model random
     // loss, jitter, a real Wi-Fi network or a hardware device.
