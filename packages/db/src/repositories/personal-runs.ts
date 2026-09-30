@@ -147,14 +147,15 @@ export function personalRunRows(db: DbExecutor) {
     },
 
     async endStaleAny(olderThanSeconds: number, limit: number) {
-      // One statement per state: pick stale rows without waiting for rows another sweep holds.
-      const pick = (states: string[]) => sql`${r.id} IN (SELECT id FROM personal_runs WHERE status = ANY(${states}::text[])
-        AND updated_at < now() - (${olderThanSeconds}::int * interval '1 second') ORDER BY updated_at LIMIT ${limit} FOR UPDATE SKIP LOCKED)`;
-      const undispatched = await db.update(r).set({ status: 'unavailable', costState: 'released', chargedMicros: 0, completedAt: new Date(), updatedAt: new Date() })
-        .where(pick(['queued', 'reading'])).returning();
-      const lost = await db.update(r).set({ status: 'provider_failed', costState: 'unknown', completedAt: new Date(), updatedAt: new Date() })
-        .where(pick(['dispatching'])).returning();
-      return [...undispatched, ...lost].map(toRun);
+      // One globally bounded batch across all states. Replicas skip each other's locked rows.
+      const rows = await db.update(r).set({
+        status: sql`CASE WHEN ${r.status} = 'dispatching' THEN 'provider_failed' ELSE 'unavailable' END`,
+        costState: sql`CASE WHEN ${r.status} = 'dispatching' THEN 'unknown' ELSE 'released' END`,
+        chargedMicros: 0, completedAt: new Date(), updatedAt: new Date(),
+      }).where(sql`${r.id} IN (SELECT id FROM personal_runs WHERE status = ANY(${IN_FLIGHT}::text[])
+        AND updated_at < now() - (${olderThanSeconds}::int * interval '1 second')
+        ORDER BY updated_at, id LIMIT ${limit} FOR UPDATE SKIP LOCKED)`).returning();
+      return rows.map(toRun);
     },
 
     listOwnRuns: (ownerUserId: string, window: Window) => pagedRuns(eq(r.ownerUserId, ownerUserId), 'newest', window),
