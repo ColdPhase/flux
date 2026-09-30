@@ -58,6 +58,30 @@ export interface ClaimOutcome {
   checkpointId: string | null;
 }
 
+/** Canonical domain condition consumed by #152 completion; all fields come from locked rows. */
+export interface CoWorkClaimPostcondition {
+  kind: 'cowork.claim_state';
+  workspaceId: string;
+  projectId: string;
+  connectionId: string;
+  unitId: string;
+  role: CoWorkRole;
+  version: number;
+  generation: number;
+  state: UnitState;
+  leaseId: string | null;
+  leaseSessionId: string | null;
+  leaseExpiresAt: string | null;
+  checkpointId: string | null;
+}
+export function coWorkClaimPostcondition(unit: CoWorkUnit): CoWorkClaimPostcondition {
+  return { kind: 'cowork.claim_state', workspaceId: unit.workspaceId, projectId: unit.projectId,
+    connectionId: unit.assignmentConnectionId, unitId: unit.id, role: unit.role,
+    version: unit.version, generation: unit.generation, state: unit.state,
+    leaseId: unit.lease?.id ?? null, leaseSessionId: unit.lease?.runtimeSessionId ?? null,
+    leaseExpiresAt: unit.lease?.expiresAt.toISOString() ?? null, checkpointId: unit.checkpointId };
+}
+
 /**
  * Scope is constructed under current authorization and locks by the #153 adapter.
  * `now` is fresh DB wall time AFTER lock acquisition. activeConnectionUnits counts
@@ -75,7 +99,9 @@ export interface LockedClaimScope {
   requireCheckpoint(id: string, fence: ClaimFence): Promise<void>;
   /** Conditional SQL write rechecks current fencing/expiry with DB wall time;
    * a stale scope snapshot must not publish after waiting on another lock. */
-  save(unit: CoWorkUnit): Promise<void>;
+  save(unit: CoWorkUnit): Promise<CoWorkUnit>;
+  /** Current access to a historical checkpoint and every source it references. */
+  requireReadableCheckpoint(id: string, unitId: string): Promise<void>;
   saveReceipt(outcome: ClaimOutcome): Promise<void>;
 }
 
@@ -144,10 +170,30 @@ function outcome(unit: CoWorkUnit): ClaimOutcome {
     state: unit.state, lease: unit.lease, checkpointId: unit.checkpointId };
 }
 async function commit(scope: LockedClaimScope, unit: CoWorkUnit): Promise<ClaimOutcome> {
-  await scope.save(unit);
-  const result = outcome(unit);
+  const saved = await scope.save(unit);
+  if (saved.id !== unit.id || saved.workspaceId !== unit.workspaceId || saved.projectId !== unit.projectId
+    || saved.assignmentConnectionId !== unit.assignmentConnectionId || saved.role !== unit.role
+    || saved.state !== unit.state || saved.generation !== unit.generation || saved.version !== unit.version
+    || saved.checkpointId !== unit.checkpointId || saved.lease?.id !== unit.lease?.id
+    || saved.lease?.runtimeSessionId !== unit.lease?.runtimeSessionId
+    || (saved.lease && !Number.isFinite(saved.lease.expiresAt.getTime())))
+    throw new Error('Persistence returned a different claim effect');
+  const result = outcome(saved);
   await scope.saveReceipt(result);
   return result;
+}
+
+async function replay(scope: LockedClaimScope): Promise<ClaimOutcome> {
+  const original = scope.replay!;
+  const current = outcome(scope.unit);
+  if (current.unitId !== original.unitId || current.generation !== original.generation
+    || current.version !== original.version || current.state !== original.state
+    || current.checkpointId !== original.checkpointId || current.lease?.id !== original.lease?.id
+    || current.lease?.runtimeSessionId !== original.lease?.runtimeSessionId
+    || current.lease?.expiresAt.getTime() !== original.lease?.expiresAt.getTime())
+    throw new ConflictError('The recorded claim effect changed; recover current state', 'COWORK_RECEIPT_STALE');
+  if (original.checkpointId) await scope.requireReadableCheckpoint(original.checkpointId, original.unitId);
+  return original;
 }
 
 /** Pure core commands. SQL/current grants and real client activation remain adapter responsibilities. */
@@ -157,7 +203,7 @@ export function coWorkClaimUseCases(uow: CoWorkClaimUnitOfWork) {
       input = normalized(input);
       return uow.run(context, 'claim', input, async (scope) => {
         const unit = scopeUnit(context, scope, input.unitId);
-        if (scope.replay) return scope.replay;
+        if (scope.replay) return replay(scope);
         version(unit, input.expectedVersion);
         if (unit.state === 'completed' || unit.state === 'stopped')
           throw new ConflictError('This unit is no longer claimable', 'COWORK_UNIT_CLOSED');
@@ -177,7 +223,7 @@ export function coWorkClaimUseCases(uow: CoWorkClaimUnitOfWork) {
       input = normalized(input);
       return uow.run(context, 'renew', input, async (scope) => {
         scopeUnit(context, scope, input.unitId);
-        if (scope.replay) return scope.replay;
+        if (scope.replay) return replay(scope);
         const unit = fence(context, scope, input);
         return commit(scope, { ...unit, version: unit.version + 1,
           lease: { ...unit.lease!, expiresAt: deadline(scope) } });
@@ -188,7 +234,7 @@ export function coWorkClaimUseCases(uow: CoWorkClaimUnitOfWork) {
       if (!identifier(input.checkpointId)) throw new InvalidInputError('A persisted checkpoint is required');
       return uow.run(context, 'release', input, async (scope) => {
         scopeUnit(context, scope, input.unitId);
-        if (scope.replay) return scope.replay;
+        if (scope.replay) return replay(scope);
         const unit = fence(context, scope, input);
         await scope.requireCheckpoint(input.checkpointId, input);
         return commit(scope, { ...unit, state: 'paused', lease: null, generation: unit.generation + 1,

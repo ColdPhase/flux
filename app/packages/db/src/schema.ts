@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid, integer, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, uuid, integer, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, type AnyPgColumn, type PgTableExtraConfigValue } from 'drizzle-orm/pg-core';
 
 export const samples = pgTable('samples', {
   id: uuid('id').primaryKey(),
@@ -1054,4 +1054,55 @@ export const assistantProposals = pgTable('assistant_proposals', {
 }, (table) => [
   index('assistant_proposals_project_idx').on(table.projectId, table.createdAt, table.id),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.runId], foreignColumns: [personalRuns.workspaceId, personalRuns.projectId, personalRuns.id] }).onDelete('cascade'),
+]);
+
+
+// Durable co-work control metadata (#153, migration0035). Domain content stays native.
+export const coworkConnectionSlots = pgTable('cowork_connection_slots', {
+  connectionId: uuid('connection_id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+}, (table) => [
+  foreignKey({ columns: [table.workspaceId, table.connectionId], foreignColumns: [agentConnections.workspaceId, agentConnections.id] }).onDelete('cascade'),
+]);
+
+export const coworkUnits = pgTable('cowork_units', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  taskId: uuid('work_id').notNull(),
+  runId: uuid('run_id').notNull(),
+  unitKey: text('unit_key').notNull(),
+  role: text('role', { enum: ['execute', 'review', 'plan'] }).notNull(),
+  assignmentConnectionId: uuid('assignment_connection_id').notNull(),
+  state: text('state', { enum: ['pending', 'claimed', 'paused', 'completed', 'stopped'] }).notNull().default('pending'),
+  generation: integer('generation').notNull().default(0),
+  version: integer('version').notNull().default(1),
+  leaseId: uuid('lease_id'),
+  leaseSessionId: text('lease_session_id'),
+  leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
+  checkpointId: uuid('checkpoint_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table): PgTableExtraConfigValue[] => [
+  unique().on(table.workspaceId, table.projectId, table.id),
+  unique().on(table.workspaceId, table.projectId, table.taskId, table.runId, table.unitKey),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.taskId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.id, table.checkpointId], foreignColumns: [coworkCheckpoints.workspaceId, coworkCheckpoints.projectId, coworkCheckpoints.unitId, coworkCheckpoints.id] }),
+  index('cowork_units_connection_idx').on(table.assignmentConnectionId, table.state, table.leaseExpiresAt),
+  index('cowork_units_work_idx').on(table.workspaceId, table.projectId, table.taskId),
+]);
+
+export const coworkCheckpoints = pgTable('cowork_checkpoints', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  unitId: uuid('unit_id').notNull(),
+  connectionId: uuid('connection_id').notNull(),
+  runtimeSessionId: text('runtime_session_id').notNull(),
+  generation: integer('generation').notNull(),
+  progress: jsonb('progress').$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table): PgTableExtraConfigValue[] => [
+  unique().on(table.workspaceId, table.projectId, table.unitId, table.id),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.unitId], foreignColumns: [coworkUnits.workspaceId, coworkUnits.projectId, coworkUnits.id] }).onDelete('cascade'),
 ]);

@@ -102,6 +102,12 @@ order. The current HTTP idempotency adapter locks its command key before domain
 authorization and retains responses for only 24 hours; it is not the durable
 coordination receipt or the outer transaction wrapper. Coordination adapters
 must use the accepted order and reauthorize original outcomes on every replay.
+The concrete shared [execution boundary](https://github.com/ColdPhase/flux/blob/47d0ea92a5888e786442f84b42287b4ce9336c7c/docs/development/agent-connection/2026-09-30/execution-boundary.md)
+uses #152's transaction-bound `AgentExecutionPort.prepare/complete` and one
+connection/command ledger. #153 supplies canonical claim postconditions; no
+separate receipt transaction or grant-use store is introduced. Operations are
+`cowork.claim`, `cowork.renew`, `cowork.release`, with the exact actual unit role
+`execute`, `review` or `plan` as the request class.
 
 Native contribution adapters currently write stream events immediately. The
 stream sequence trigger retains its serialization lock until commit; a composed
@@ -210,13 +216,58 @@ The core `co-work/claims` module implements claim, renewal and checkpoint-backed
 release behind one transaction port. It normalizes durable command identities,
 checks the requested unit/tenant/project/assigned connection, and fences session,
 version, generation, lease and expiry. Release leaves work paused and unfinished;
-retry returns the original effect without creating another lease. Historical
+retry returns the original effect without creating another lease. Replay
+requires current unit version, generation, assignment, lease/session identity,
+expiry value and checkpoint reference to match its original produced post-state;
+checkpoint source access is rechecked. Historical lease expiry alone does not
+prevent observing an otherwise unchanged effect. Intervening renewal, release,
+reassignment or checkpoint change makes the receipt stale. Historical
 receipt state is not current readiness: consumers must recover current claim
 facts before further work, and every subsequent effect must pass its own fence.
 
-This increment has no SQL adapter, public MCP endpoint, grant storage, response
-publication or supported-client scheduler. The adapter must provide the actual
+The storage adapter below implements SQL slots/units/checkpoints, but this
+increment has no integrated authorization/receipt unit of work, public MCP
+endpoint, grant storage, response publication or supported-client scheduler.
+The composition must provide the actual
 current role/assignment/session authorization, durable fingerprints and receipts,
 connection-wide capacity, fresh wall time, atomic checkpoint/request updates and
-conditional SQL fencing described above. Those remain implementation work;
-in-memory port tests do not prove database concurrency or real clients.
+conditional SQL fencing described above. Those composition dependencies remain
+implementation work; in-memory port tests do not prove database concurrency or
+real clients.
+
+## SQL storage increment boundary
+
+Migration `0035` introduces connection slot mutexes, native-task-bound units
+and canonical checkpoints. It references the existing stable connection/project/
+work tables, not guessed #152 grant/runtime columns. The slot mutex is separate
+from access/grant rows so taking it never upgrades a shared authorization lock.
+After current authorization and command preparation, storage locks the connection
+slot, the complete sorted native-task set for the requested unit and existing
+claims, then sorted unit rows. Capacity covers all roles/sessions/projects for
+that connection. Expired leases do not occupy capacity; their old generations
+still cannot publish. Conditional writes use fresh DB wall time and return the
+actual persisted deadline, which becomes the canonical receipt post-state.
+
+Checkpoint identity retains its unit, generation, connection and runtime session.
+A release references a currently readable persisted checkpoint, never a guessed
+identifier. Historical checkpoint references survive later claims; they do not
+make a past lease active. Database foreign keys enforce tenant/project/native
+unit association. The composition root supplies current source access and grant
+checks. SQL storage tests prove storage races and fences only; they do not replace
+the pending real #152/#154/runtime/client integration.
+
+Connection IDs on units and checkpoints are immutable historical provenance,
+not credential foreign keys. Deleting a connection must neither erase that
+history nor be blocked by it. Only the operational slot cascades with the live
+connection. Revocation/deletion fences all unfinished units, clears their leases
+and marks them stopped under connection → slot → sorted tasks → sorted units
+locks. Completed/stopped history is unchanged; nothing is reassigned or resumed.
+Current #152 authorization still precedes every new effect; an inert identifier
+does not establish live authority. Bulk lifecycle transactions may be retried
+after a database deadlock, but cannot commit a partial fence. This storage hook
+does not emit chat/stream events or invoke a model.
+
+Claim/renew retain the prior checkpoint reference. Release requires a non-null
+checkpoint matching the original live unit, tenant, project, connection,
+generation and runtime session in its conditional SQL write, in addition to
+current source authorization supplied by the composition root.

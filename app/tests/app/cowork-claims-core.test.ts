@@ -14,7 +14,7 @@ function fixture() {
     projectId: context.projectId, assignmentConnectionId: context.connectionId, role: 'review',
     state: 'pending', generation: 0, version: 1, lease: null, checkpointId: null };
   let now = new Date('2026-09-30T22:00:00Z');
-  let authorized = true, activeOthers = 0, maximum = 1, failReceipt = false;
+  let authorized = true, readableCheckpoints = true, activeOthers = 0, maximum = 1, failReceipt = false;
   const checkpoints = new Map<string, { unitId: string; generation: number; sessionId: string }>();
   const receipts = new Map<string, { fingerprint: string; outcome: ClaimOutcome }>();
   let writes = 0;
@@ -34,7 +34,10 @@ function fixture() {
           if (checkpoint.unitId !== fence.unitId || checkpoint.generation !== fence.generation
             || checkpoint.sessionId !== ctx.runtimeSessionId) throw new ConflictError('Checkpoint fence mismatch');
         },
-        async save(next) { pendingUnit = structuredClone(next); },
+        async save(next) { pendingUnit = structuredClone(next); return structuredClone(next); },
+        async requireReadableCheckpoint(id, unitId) {
+          if (!readableCheckpoints || checkpoints.get(id)?.unitId !== unitId) throw new ForbiddenError('Checkpoint source no longer readable');
+        },
         async saveReceipt(outcome) { if (failReceipt) throw new Error('Injected failure after unit write'); pendingReceipt = structuredClone(outcome); },
       });
       if (pendingReceipt) { unit = pendingUnit; receipts.set(key, { fingerprint, outcome: pendingReceipt }); writes++; }
@@ -45,7 +48,7 @@ function fixture() {
   const command = () => ({ commandId: randomUUID(), unitId: unit.id, expectedVersion: unit.version });
   return { context, use, command, get unit() { return structuredClone(unit); }, get writes() { return writes; },
     advance(seconds: number) { now = new Date(now.getTime() + seconds * 1000); },
-    revoke() { authorized = false; }, busy(count: number, capacity = 1) { activeOthers = count; maximum = capacity; },
+    revoke() { authorized = false; }, hideCheckpointSources() { readableCheckpoints = false; }, busy(count: number, capacity = 1) { activeOthers = count; maximum = capacity; },
     failReceipt() { failReceipt = true; }, allowReceipt() { failReceipt = false; },
     checkpoint(overrides: Partial<{ unitId: string; generation: number; sessionId: string }> = {}) {
       const id = randomUUID();
@@ -189,4 +192,32 @@ test('UUID casing is normalized before the durable command fingerprint', async (
   assert.equal(f.writes, 1);
   const renewed = await f.use.renew(f.context, { ...f.command(), generation: first.generation, leaseId: first.lease!.id.toUpperCase() });
   assert.equal(renewed.lease!.id, first.lease!.id);
+});
+
+
+test('intervening renewal or release makes the original produced state stale for replay', async () => {
+  const f = fixture(), claim = f.command();
+  const first = await f.use.claim(f.context, claim);
+  const renew = { ...f.command(), generation: first.generation, leaseId: first.lease!.id };
+  const renewed = await f.use.renew(f.context, renew);
+  await assert.rejects(f.use.claim(f.context, claim), conflict('COWORK_RECEIPT_STALE'));
+  assert.deepEqual(await f.use.renew(f.context, renew), renewed);
+  await f.use.release(f.context, { ...f.command(), generation: renewed.generation,
+    leaseId: renewed.lease!.id, checkpointId: f.checkpoint() });
+  await assert.rejects(f.use.renew(f.context, renew), conflict('COWORK_RECEIPT_STALE'));
+  assert.equal(f.writes, 3);
+});
+
+test('unchanged release replay requires current checkpoint source access and cannot survive reclaim', async () => {
+  const f = fixture();
+  const first = await f.use.claim(f.context, f.command());
+  const release = { ...f.command(), generation: first.generation, leaseId: first.lease!.id, checkpointId: f.checkpoint() };
+  const released = await f.use.release(f.context, release);
+  assert.deepEqual(await f.use.release(f.context, release), released);
+  f.hideCheckpointSources();
+  await assert.rejects(f.use.release(f.context, release), ForbiddenError);
+  assert.equal(f.writes, 2);
+  await f.use.claim(f.context, f.command());
+  await assert.rejects(f.use.release(f.context, release), conflict('COWORK_RECEIPT_STALE'));
+  assert.equal(f.writes, 3);
 });
