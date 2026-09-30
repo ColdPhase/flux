@@ -126,7 +126,11 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   const startEdit = (id: string) => {
     const thought = find(id);
     if (!thought || !canWrite || editSaveInFlight.current) return;
-    if (editingState && editingState.id !== id) { say('Finish or cancel your current edit first'); return; }
+    if (editingState) {
+      rootRef.current?.querySelector<HTMLTextAreaElement>('.sk-edit, .sk-li-edit')?.focus();
+      say('Finish or cancel your current edit first');
+      return;
+    }
     setConnectFrom(null);
     doc.clearProblem();
     setEditing({ id, initial: thought.text, version: thought.version, key: doc.newId(), attempt: 0, saving: false });
