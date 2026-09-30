@@ -3,3 +3,6 @@
 .git
 .worktrees
 .env
+backups
+exports
+.flux-backup-lock-*

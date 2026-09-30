@@ -36,6 +36,9 @@ The `files` mounts on `files-init`, API and worker all use `:z` so SELinux gives
 the shared volume a label accessible to both running services. `files-init`
 still sets ownership for their non-root UID; all three mounts must keep the
 shared label option or one container can deny another's writes on SELinux hosts.
+The one-shot `files-archive` service (profile `ops`, the pinned PostgreSQL image, no
+network, `:z` mount of `files`) exists only for `./flux backup` and `./flux restore`, which
+stream the files volume through it; see [operations](../operations/backup-restore.md).
 
 ## Local task worktrees
 
