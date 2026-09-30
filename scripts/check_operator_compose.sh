@@ -30,7 +30,10 @@ cleanup() {
   docker image rm -f "$image" >/dev/null 2>&1 || true
   rm -rf "$work"
 }
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 fail() { echo "check_operator_compose: $*" >&2; exit 1; }
 random_hex() { od -An -N32 -tx1 /dev/urandom | tr -d ' \n'; }
@@ -69,15 +72,22 @@ set_env FLUX_VAPID_PUBLIC_KEY "$(printf '%s' "$keys" | sed -n 's/.*"publicKey":"
 set_env FLUX_VAPID_PRIVATE_KEY "$(printf '%s' "$keys" | sed -n 's/.*"privateKey":"\([^"]*\)".*/\1/p')"
 set_env FLUX_VAPID_SUBJECT "mailto:operator-check@example.test"
 grep -q '^FLUX_VAPID_PUBLIC_KEY=.' "$env_file" && grep -q '^FLUX_VAPID_PRIVATE_KEY=.' "$env_file" ||
-  fail "VAPID key generation failed: $keys"
+  fail "VAPID key generation did not return both keys"
 
 $compose up -d --wait --wait-timeout 300
 
 # Migration: one-shot, exited 0, ledger equals the image's schema, reported by health.
 [ "$($compose ps -a --format '{{.ExitCode}}' migrate)" = 0 ] || fail "migrate did not exit 0"
-expected=$(sed -n 's/^export const FLUX_SCHEMA_VERSION = \([0-9]*\);$/\1/p' packages/db/src/index.ts)
-ledger=$($compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA -c "SELECT count(*), max(version) FROM flux_schema_version"')
-[ "$ledger" = "$expected|$expected" ] || fail "migration ledger $ledger, expected $expected|$expected"
+manifest=$($compose run --rm --no-deps -T migrate node --input-type=module -e '
+  import { FLUX_SCHEMA_VERSION, readMigrationManifest } from "./packages/db/dist/index.js";
+  const files = await readMigrationManifest("packages/db/migrations", FLUX_SCHEMA_VERSION);
+  console.log(`${FLUX_SCHEMA_VERSION}|${files.map(file => file.version).join(",")}`);
+')
+expected=${manifest%%|*}
+expected_ledger=${manifest#*|}
+ledger_sql="SELECT string_agg(version::text, ',' ORDER BY version) FROM flux_schema_version"
+ledger=$($compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA -c "$1"' operator-ledger "$ledger_sql")
+[ "$ledger" = "$expected_ledger" ] || fail "migration ledger $ledger, expected $expected_ledger"
 health=$(curl -fsS "$origin/api/v1/health")
 [ "$health" = "{\"status\":\"ok\",\"schemaVersion\":$expected}" ] || fail "health: $health"
 $compose logs --no-color migrate | grep -q "Flux schema $expected and pg-boss ready" || fail "no migration completion log"

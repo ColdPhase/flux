@@ -105,7 +105,8 @@ for that version. The source-checkout equivalents are [`./flux backup` and
 `./scripts/check_operator_compose.sh` exercises this file without a published image: it builds
 the checked-out source image, writes a temporary copy of `docker/compose.yaml` with the marker
 replaced by that local image and a `.env` generated from `docker/.env.example`, then runs
-`config`, `up -d --wait`, health and schema checks, the migration ledger, sign-up, a workspace,
+`config`, `up -d --wait`, health and schema checks, the exact ledger against the migration
+manifest inside that image, sign-up, a workspace,
 a worker job and a restart, and removes the project, volumes and image. Ports default to
 `18951`; set `FLUX_OPERATOR_TEST_PORT` for a concurrent run.
 `python3 -m unittest tests.test_operator_compose` checks the file statically (pull-only, one
