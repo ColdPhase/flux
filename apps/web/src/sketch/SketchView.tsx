@@ -345,7 +345,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
         {sketch.copies.length ? (
           <ul className="sk-copies" aria-label="Project copies">
             {sketch.copies.map((copy) => (
-              <li key={copy.sketchId}><Icon name="check" size={12} />Copied to <Link to={`/projects/${copy.projectId}/map/${copy.sketchId}`}>{copy.projectName}</Link> · {when(copy.copiedAt)} · later changes here stay in this conversation</li>
+              <li key={copy.sketchId}><Icon name="check" size={12} />Copied to <Link to={`/projects/${copy.projectId}/map/${copy.sketchId}`}>{copy.projectName}</Link> · {when(copy.copiedAt)}<span className="sk-origin__long"> · later changes here stay in this conversation</span><span className="sk-origin__short"> · not synced</span></li>
             ))}
           </ul>
         ) : null}
