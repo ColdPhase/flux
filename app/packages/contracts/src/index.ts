@@ -53,3 +53,4 @@ export * from './search.js';
 export * from './personal-runs.js';
 export * from './export.js';
 export * from './agent-execution.js';
+export * from './agent-bootstrap.js';

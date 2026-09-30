@@ -1,4 +1,4 @@
-import type { McpServer } from '@modelcontextprotocol/server';
+import type { AgentToolRegistrar } from './tool-registry.js';
 import { z } from 'zod';
 import { conversationUseCases, createSearchUseCases, DomainError, getProject, type Database } from '@flux/core';
 import { conversationStore } from '../conversation/store.js';
@@ -28,7 +28,7 @@ function textChunk(body: string, version: number, offset: number, expected?: num
 }
 
 /** Canonical readers under the selected-project ceiling. No separate MCP object model. */
-export function registerAgentDomainReads(server: McpServer, db: Database, claims: FluxMcpClaims, cursorSecret: string) {
+export function registerAgentDomainReads(server: AgentToolRegistrar, db: Database, claims: FluxMcpClaims, cursorSecret: string) {
   const cursors = new SearchCursorCodec(cursorSecret);
   async function result<T>(projectId: string | null, read: Parameters<typeof withAgentConnection<T>>[4]) {
     try { return toolResult(await withAgentConnection(db, claims, 'flux.context.read', projectId, read)); }

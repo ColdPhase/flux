@@ -212,6 +212,57 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
   assert.equal((deniedSources.message?.result as { isError?: boolean })?.isError, true);
   assert.ok(!JSON.stringify(deniedSources.message).includes('Secret source title'));
   assert.ok(!JSON.stringify(deniedSources.message).includes(String(hiddenMaterial.materialId)));
+  const recorded: Record<string, unknown>[] = [];
+  for (const [kind, id] of [['material', materialId], ['doc', doc.id], ['work', work.id], ['decision', decision.id],
+    ['result', result.id], ['conversation', conversation.id], ['map', map.id]] as const) {
+    const index = toolValue((await mcp(bearer, 40, 'tools/call', { name: 'flux_project_orientation', arguments: { projectId, kind, limit: 1 } })).message);
+    assert.equal(index.coverage, 'canonical_metadata_page'); assert.equal((index.items as unknown[]).length, 1);
+    const window = toolValue((await mcp(bearer, 41, 'tools/call', { name: 'flux_project_orientation', arguments: { projectId, kind, limit: 50 } })).message);
+    const refs = window.items as { checkpoint: Record<string, unknown>; title: string; state: string | null }[];
+    const own = refs.find((row) => row.checkpoint.id === id); assert.ok(own, `${kind} is indexed by its canonical ID`);
+    assert.ok(!JSON.stringify(refs).includes('Battery lasts four hours.'), 'metadata omits bodies');
+    if (kind === 'conversation') assert.equal(own.checkpoint.sequence, 1);
+    if (kind === 'map') assert.equal(own.checkpoint.version, 1);
+    if (kind === 'doc') assert.equal(own.state, 'draft', 'publication state is separate from source version');
+    recorded.push(own.checkpoint);
+  }
+  const hiddenIndex = await mcp(bearer, 42, 'tools/call', { name: 'flux_project_orientation', arguments: { projectId: hiddenProjectId, kind: 'material' } });
+  assert.equal((hiddenIndex.message?.result as { isError?: boolean })?.isError, true);
+  assert.ok(!JSON.stringify(hiddenIndex.message).includes('Secret source title'));
+  const privateComparison = toolValue((await mcp(bearer, 43, 'tools/call', { name: 'flux_changes_since', arguments: { projectId, known: [
+    { kind: 'map', id: privateMap.id, version: 1, updatedAt: new Date().toISOString() },
+    { kind: 'material', id: hiddenMaterial.materialId, version: 1 }, { kind: 'work', id: randomUUID(), version: 1 },
+  ] } })).message);
+  assert.equal((privateComparison.unavailable as unknown[]).length, 3);
+  assert.ok(!JSON.stringify(privateComparison).includes('Secret'));
+  assert.ok((privateComparison.unavailable as Record<string, unknown>[]).every((row) => Object.keys(row).sort().join(',') === 'id,kind'));
+  const originalChanges = toolValue((await mcp(bearer, 44, 'tools/call', { name: 'flux_changes_since', arguments: { projectId, known: recorded } })).message);
+  assert.equal((originalChanges.unchanged as unknown[]).length, 7); assert.deepEqual(originalChanges.changed, []);
+  for (const [name, arguments_] of [
+    ['flux_project_orientation', { projectId, kind: 'work', limit: 51 }],
+    ['flux_changes_since', { projectId, known: [recorded[0], recorded[0]] }],
+    ['flux_changes_since', { projectId, known: Array.from({ length: 51 }, () => ({ kind: 'result', id: randomUUID() })) }],
+    ['flux_bootstrap', { projectId, clientSessionId: randomUUID(), clientInfo: { name: 'trusted' }, loadedInstructions: true }],
+  ] as const) {
+    const denied = await mcp(bearer, 45, 'tools/call', { name, arguments: arguments_ });
+    assert.ok(denied.message?.error || (denied.message?.result as { isError?: boolean })?.isError, name);
+  }
+  const clientSessionId = randomUUID();
+  const bootstrap = toolValue((await mcp(bearer, 46, 'tools/call', { name: 'flux_bootstrap', arguments: { projectId, clientSessionId } })).message);
+  const repeatedBootstrap = toolValue((await mcp(bearer, 47, 'tools/call', { name: 'flux_bootstrap', arguments: { projectId, clientSessionId } })).message);
+  assert.deepEqual(repeatedBootstrap.runtime, bootstrap.runtime, 'runtime retry preserves original identity and expiry');
+  assert.equal((bootstrap.readiness as { state: string }).state, 'pending');
+  assert.deepEqual(bootstrap.trusted, { playbook: null, approvedPolicy: null, coordination: null, repositoryReferences: null });
+  assert.ok((bootstrap.gaps as string[]).includes('trusted_playbook_unavailable'));
+  assert.equal((bootstrap.runtime as { clientId: string }).clientId, clientId);
+  const discovery = await mcp(bearer, 48, 'tools/list');
+  const tools = (discovery.message?.result as { tools: { name: string }[] }).tools;
+  assert.deepEqual(new Set((bootstrap.capabilities as { name: string }[]).map((row) => row.name)), new Set(tools.map((row) => row.name)),
+    'bootstrap capability names come from actual registered MCP tools');
+  assert.ok((bootstrap.capabilities as { operation: string | null }[]).every((row) => row.operation === null), 'pending native writes are not advertised');
+  await pool.query("UPDATE agent_runtime_sessions SET expires_at=now()-interval '1 second' WHERE id=$1", [(bootstrap.runtime as { id: string }).id]);
+  const expiredRuntime = await mcp(bearer, 49, 'tools/call', { name: 'flux_bootstrap', arguments: { projectId, clientSessionId } });
+  assert.ok(JSON.stringify(expiredRuntime.message).includes('RUNTIME_UNAVAILABLE'));
   const read = await mcp(bearer, 2, 'tools/call', { name: 'flux_read_material', arguments: { projectId, materialId } });
   assert.equal(read.status, 200);
   assert.equal(toolValue(read.message).body, 'Battery lasts four hours.');
@@ -252,6 +303,12 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
   const staleMap = await mcp(bearer, 31, 'tools/call', { name: 'flux_get_map', arguments: { projectId, id: map.id, offset: 1, expectedUpdatedAt: mapPage.updatedAt } });
   assert.equal((staleMap.message?.result as { isError?: boolean })?.isError, true);
   assert.ok(JSON.stringify(staleMap.message).includes('SOURCE_VERSION_CONFLICT'));
+  expect(await browser.request('PATCH', `/api/v1/work/${work.id}`, { body: { expectedVersion: 1, outcome: 'A revised comparison' } }), 200);
+  expect(await browser.request('POST', `/api/v1/conversations/${conversation.id}/messages`, { body: { body: 'A later real contribution', clientMessageId: randomUUID() } }), 201);
+  const changed = toolValue((await mcp(bearer, 50, 'tools/call', { name: 'flux_changes_since', arguments: { projectId, known: recorded } })).message);
+  assert.deepEqual(new Set((changed.changed as { checkpoint: { kind: string } }[]).map((row) => row.checkpoint.kind)), new Set(['doc', 'work', 'conversation', 'map']));
+  assert.equal((changed.unchanged as unknown[]).length, 3);
+  assert.equal(changed.coverage, 'supplied_references_only'); assert.equal(changed.newObjectDiscovery, 'use_project_orientation');
   const created = await mcp(bearer, 3, 'tools/call', { name: 'flux_create_proposal', arguments: {
     projectId, materialId, version: 1, clientCommandId: randomUUID(),
     fact: 'Battery lasts four hours', interpretation: 'Runtime may be short',
@@ -351,6 +408,33 @@ test('three named connections share one actual client; same-session choices, ref
     assert.equal(listed.status, 200);
     assert.deepEqual((toolValue(listed.message).projects as { id: string }[]).map((p) => p.id), [connection.projectId]);
   }
+  const manifestGrants: Record<string, unknown>[] = [];
+  for (let i = 0; i < 4; i++) manifestGrants.push(expect(await owner.request('POST', `/api/v1/agent-connections/${a.id}/action-grants`, { body: {
+    clientCommandId: randomUUID(), projectId: a.projectId, operation: 'work.create', peerRequestClass: 'plan', maximumUses: 1,
+    expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+  } }), 201));
+  await pool.query('UPDATE agent_standing_grants SET used=maximum_uses WHERE id=$1', [manifestGrants[1]!.id]);
+  await pool.query("UPDATE agent_standing_grants SET expires_at=now()-interval '1 second' WHERE id=$1", [manifestGrants[2]!.id]);
+  expect(await owner.request('DELETE', `/api/v1/agent-connections/${a.id}/action-grants/${manifestGrants[3]!.id}`), 204);
+  const liveManifest = toolValue((await mcp(tokensA.access_token, 60, 'tools/call', { name: 'flux_bootstrap', arguments: {
+    projectId: a.projectId, clientSessionId: randomUUID(), grantLimit: 1,
+  } })).message).grants as { items: { id: string; remainingUses: number }[]; total: number; nextOffset: number | null };
+  assert.equal(liveManifest.total, 2); assert.equal(liveManifest.items.length, 1); assert.equal(liveManifest.nextOffset, 1);
+  const allManifest = toolValue((await mcp(tokensA.access_token, 61, 'tools/call', { name: 'flux_bootstrap', arguments: {
+    projectId: a.projectId, clientSessionId: randomUUID(), grantLimit: 50,
+  } })).message).grants as { items: { id: string; remainingUses: number }[] };
+  assert.deepEqual(new Set(allManifest.items.map((row) => row.id)), new Set(manifestGrants.slice(0, 2).map((row) => row.id)));
+  assert.equal(allManifest.items.find((row) => row.id === manifestGrants[1]!.id)?.remainingUses, 0, 'exhausted live grants explain receipt observation without authorizing new actions');
+  const anotherConnection = toolValue((await mcp(tokensB.access_token, 62, 'tools/call', { name: 'flux_bootstrap', arguments: {
+    projectId: b.projectId, clientSessionId: randomUUID(),
+  } })).message);
+  assert.equal((anotherConnection.grants as { total: number }).total, 0, 'the same actual OAuth client cannot see another connection manifest');
+  assert.equal((anotherConnection.runtime as { connectionId: string }).connectionId, b.id);
+  const hiddenBootstrap = await mcp(tokensB.access_token, 63, 'tools/call', { name: 'flux_bootstrap', arguments: {
+    projectId: a.projectId, clientSessionId: randomUUID(),
+  } });
+  assert.equal((hiddenBootstrap.message?.result as { isError?: boolean })?.isError, true);
+  assert.ok(!JSON.stringify(hiddenBootstrap.message).includes('Hubert research project'));
   // The signed browser query expires independently of the durable token grant.
   await pool.query(`UPDATE agent_oauth_flows SET expires_at = now() - interval '1 second'
     WHERE binding_id IN (SELECT id FROM agent_oauth_bindings WHERE connection_id = $1)`, [a.id]);
