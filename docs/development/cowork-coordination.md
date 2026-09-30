@@ -98,8 +98,18 @@ No separate transaction may publish a response and later try to mark it done.
 Accepted lock order is current access/connection-grant rows, durable command
 identity, sorted task IDs, then conversation sequence; domain changes precede
 final stream writes. #153's unit/connection-slot fencing must compose with this
-order. Revoke versus publish, renewal versus expiry and reassignment versus late
-result need actual PostgreSQL race evidence before acceptance.
+order. The current HTTP idempotency adapter locks its command key before domain
+authorization and retains responses for only 24 hours; it is not the durable
+coordination receipt or the outer transaction wrapper. Coordination adapters
+must use the accepted order and reauthorize original outcomes on every replay.
+
+Native contribution adapters currently write stream events immediately. The
+stream sequence trigger retains its serialization lock until commit; a composed
+co-work transaction must defer those event writes until its request, receipt,
+claim and outgoing-intent rows are complete. #154/#153 must agree the concrete
+transaction-bound event-intent boundary before the actor-aware consumer is wired. Revoke versus publish, renewal versus
+expiry and reassignment versus late result need actual PostgreSQL race evidence
+before acceptance.
 
 ## Core ports and consumers
 
@@ -110,11 +120,25 @@ Server/worker composition supplies transaction-bound adapters.
 | Port responsibility | Required behavior |
 | --- | --- |
 | Current authorization/context | #152 supplies trusted context and transactional grant/access/compatibility checks. |
-| Claims and slots | One active author per logical unit; generation/session/DB-time fencing before every domain effect; bounded per-connection execution/review concurrency. Two sessions do not evade a connection slot. |
+| Claims and slots | One active author per logical unit; generation/session/DB-time fencing before every domain effect; one active unit across roles/sessions by default; additional capacity requires an explicit current grant. Two sessions do not evade a connection slot. |
 | Addressed requests and receipts | Atomic deduplication, versioned transitions, exact target supersession, durable pending state and one recipient. |
 | Checkpoint/recovery | Bounded current-authorized pending replay and snapshots after context loss or cursor gaps; last checkpoint and active claim facts remain distinct. |
 | Task contribution/artifact | #154 publishes truthful canonical actors/content inside the outer transaction; exact immutable or versioned target references. |
 | Delivery intent | A durable outbox intent commits with its request. Delivery is at least once; a hint/ACK/renewal adds no ordinary unread chat event and invokes no model. |
+
+For slot-changing commands, extend the agreed lock order with sorted connection
+slots before sorted native tasks, then sorted request/unit rows. Inspect the
+expired slot's task identity first and lock the complete task set; do not acquire
+an additional task after contribution or stream publication. Transfer locks both
+connections in the same order. Lease and grant expiry use fresh database wall
+clock after waiting for locks (`clock_timestamp()`), never transaction-start
+`now()` or a client timestamp. Renewal cannot resurrect expired authority.
+
+A unit's versioned publication binding identifies the current exact artifact and
+its actual publishing connection. Immutable result IDs themselves have no
+version. Changing the binding atomically supersedes dependent requests; old
+reviews remain history. Two connections sharing one agent ID do not become the
+same author merely because the domain row has only agent provenance.
 
 HTTP and supported MCP adapters call the same use cases. Their public names and
 bootstrap surface are coordinated with #152/#160, not declared by a separate
@@ -149,7 +173,9 @@ zero idle model calls; server mocks do not prove them.
 ## Migrations and verification
 
 The accepted reservations are #58 `0026–0032`, #154 `0033`, #152 `0034`,
-#153 `0035` and #74 `0036`. Do not edit already merged migrations. #153 must
+#153 `0035`, #74 `0036`, and #154's actor extension `0037`.
+The human-only `0033` checkpoint is frozen; it does not supply agent authors.
+Do not edit already merged migrations. #153 must
 compose with #152's real identity/grant storage, #154's actual contribution
 schema and both migration arrival orders; a guessed foreign table is not a
 working dependency. Test exact image ledger, upgrade/backup/recovery and current
@@ -177,3 +203,20 @@ Run application checks in isolated Docker projects with separate ports/volumes.
 Record only executed checks at their tested head. Backend, real-client and UI
 readiness remain separate until the complete integrated flow passes independent
 review; neither this contract nor a green fixture closes #153.
+
+## Current implementation increment
+
+The core `co-work/claims` module implements claim, renewal and checkpoint-backed
+release behind one transaction port. It normalizes durable command identities,
+checks the requested unit/tenant/project/assigned connection, and fences session,
+version, generation, lease and expiry. Release leaves work paused and unfinished;
+retry returns the original effect without creating another lease. Historical
+receipt state is not current readiness: consumers must recover current claim
+facts before further work, and every subsequent effect must pass its own fence.
+
+This increment has no SQL adapter, public MCP endpoint, grant storage, response
+publication or supported-client scheduler. The adapter must provide the actual
+current role/assignment/session authorization, durable fingerprints and receipts,
+connection-wide capacity, fresh wall time, atomic checkpoint/request updates and
+conditional SQL fencing described above. Those remain implementation work;
+in-memory port tests do not prove database concurrency or real clients.
