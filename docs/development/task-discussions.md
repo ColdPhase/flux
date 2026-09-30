@@ -139,12 +139,24 @@ required migration acceptance, not an implied completed rollback.
 
 ## Transaction-bound co-work composition
 
-The #153 composition root may call `taskDiscussionInTransaction(tx)` with its
-actual open database transaction. It reuses the same mandatory current-access,
-command, task, sequence and event ports; it opens no separate transaction and
-commits nothing itself. Thus a current authenticated agent contribution and its
-fenced control-request resolution can commit or roll back together. The caller
-still establishes the authenticated connection/action grant and locks that
-authority before the agreed domain locks. A receipt, claim ACK, client payload or
-agent display name never supplies that authority. Ordinary HTTP contribution
-keeps its existing single-transaction unit of work.
+The #153 composition root prepares a `taskDiscussionInTransaction(tx)` session
+inside its actual open exported core `Transaction`. The trusted use cases return
+canonical contribution IDs and collect immutable actor/workspace/project/kind
+event intents; they acquire no stream-sequence lock during preparation. The
+session opens no transaction and commits nothing itself. The caller establishes
+current authenticated connection/runtime/action-grant authority and locks it
+before command identity and sorted domain task/conversation locks. It then writes
+its fenced control-request resolution, use debit, durable receipt and outgoing
+intent before awaiting `flushEvents()` as its final domain operation. A receipt,
+claim ACK, client payload or display name never supplies that authority.
+
+The flush resolves **all** queued audiences before the first event insert takes
+the stream-sequence lock. Only final event storage and its derived audience/outbox
+rows follow that lock. A loop of the old inline recorder is insufficient because
+it would evaluate later audiences while already holding the lock. The session
+closes when flush begins, rejects later commands and returns the same flush promise
+on repeat; a replay queues no event. Any preparation or flush failure must escape
+and roll back the caller's transaction. There is no asynchronous/post-commit flush.
+Ordinary HTTP keeps one transaction and automatically awaits final flush after its
+action completes. Actual #153 receipt/generation/claim recovery remains a separate
+integration obligation, not proved by this adapter's rollback fixture.
