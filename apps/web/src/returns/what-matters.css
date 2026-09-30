@@ -39,7 +39,12 @@
 .wm-note { margin: 4px 0; font-size: var(--fs-xs); color: var(--text-3); line-height: 1.5; }
 
 .wm-quotes { list-style: none; margin: 0; padding: 0; }
-.wm-quote { display: grid; gap: 1px; margin: 0 -8px; padding: 6px 8px; border-radius: var(--r); color: var(--text); text-decoration: none; }
+.wm-quote { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px; row-gap: 1px; margin: 0 -8px; padding: 6px 8px; border-radius: var(--r); color: var(--text); text-decoration: none; }
+.wm-quote__who { grid-column: 1; }
+.wm-quote__text { grid-column: 1; }
+/* The same quiet opening cue as the change rows: every quote opens its message or result. */
+.wm-quote__go { grid-column: 2; grid-row: 1 / span 2; align-self: center; color: var(--text-3); opacity: .7; transition: opacity var(--dur-1) var(--ease-out); }
+.wm-quote:hover .wm-quote__go, .wm-quote:focus-visible .wm-quote__go { opacity: 1; color: var(--text-2); }
 .wm-quote:hover { background: var(--bg-hover); }
 .wm-quote__who { font-size: var(--fs-xs); font-weight: 600; color: var(--text-3); }
 .wm-quote__who time { font-weight: 400; margin-left: 4px; }

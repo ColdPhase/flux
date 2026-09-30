@@ -52,6 +52,7 @@ function Digest({ digest }: { digest: ReturnDigest }) {
             <li key={result.id}><Link className="wm-quote" to={sourceHref({ type: 'result', id: result.id, projectId: result.projectId })}>
               <span className="wm-quote__who">{result.author} · {result.finding === 'negative' ? 'did not work out' : 'worked'}</span>
               <span className="wm-quote__text">{result.title}</span>
+              <Icon name="chevron-right" size={14} className="wm-quote__go" />
             </Link></li>
           ))}</ul>
         </section>
@@ -63,6 +64,7 @@ function Digest({ digest }: { digest: ReturnDigest }) {
             <li key={quote.messageId}><Link className="wm-quote" to={sourceHref({ type: 'message', projectId: talk.projectId, conversationId: talk.conversationId, messageId: quote.messageId })}>
               <span className="wm-quote__who">{quote.author} <time dateTime={quote.at}>{time.format(new Date(quote.at))}</time></span>
               <span className="wm-quote__text">{quote.excerpt}</span>
+              <Icon name="chevron-right" size={14} className="wm-quote__go" />
             </Link></li>
           ))}</ul>
           {talk.more ? <p className="wm-note">{talk.more} earlier {talk.more === 1 ? 'message' : 'messages'} in this period. Open the conversation for all of them.</p> : null}

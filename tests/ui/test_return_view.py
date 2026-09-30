@@ -610,7 +610,15 @@ class ReturnViewJourney(unittest.TestCase):
         self.no_horizontal_scroll(page)
         shot(page, "recap-project-phone-390-open")
         panel.get_by_role("button", name="Summarize").tap()
-        expect(panel.locator("section[aria-labelledby=wm-digest]")).to_contain_text("photo of the PIR mount")
+        digest = panel.locator("section[aria-labelledby=wm-digest]")
+        expect(digest).to_contain_text("photo of the PIR mount")
+        # The quotes themselves, scrolled into view, with their opening cue and clear of the footer.
+        quote = digest.locator(".wm-quote").first
+        quote.scroll_into_view_if_needed()
+        expect(quote.locator(".wm-quote__go")).to_be_visible()
+        q_box, f_box = quote.bounding_box(), panel.get_by_role("button", name="I have the context").bounding_box()
+        assert q_box and f_box
+        self.assertLessEqual(q_box["y"] + q_box["height"], f_box["y"], "a quote scrolls clear of the footer on a phone")
         shot(page, "recap-project-phone-390-digest")
         # A source closes the sheet on the phone and opens the whole message; reopening returns to
         # the same snapshot with the digest still open.
@@ -623,6 +631,11 @@ class ReturnViewJourney(unittest.TestCase):
         page.evaluate("document.documentElement.style.fontSize = '125%'")
         expect(panel.get_by_role("button", name="I have the context")).to_be_in_viewport()
         self.no_horizontal_scroll(page)
+        big_quote = panel.locator("section[aria-labelledby=wm-digest] .wm-quote").first
+        big_quote.scroll_into_view_if_needed()
+        q_box, f_box = big_quote.bounding_box(), panel.get_by_role("button", name="I have the context").bounding_box()
+        assert q_box and f_box
+        self.assertLessEqual(q_box["y"] + q_box["height"], f_box["y"], "a quote scrolls clear of the footer with enlarged text")
         shot(page, "recap-project-phone-390-text-125")
         page.evaluate("document.documentElement.style.fontSize = ''")
         panel.get_by_role("button", name="I have the context").tap()
