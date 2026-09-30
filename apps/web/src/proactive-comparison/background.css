@@ -2,6 +2,7 @@
 .background-settings__head { padding: 16px 0 14px; border-bottom: 1px solid var(--line); }
 .background-settings__head h2 { font-size: var(--fs-xl); letter-spacing: -.015em; }
 .background-settings__head p { margin-top: 4px; font-size: var(--fs-md); line-height: 1.5; color: var(--text-2); }
+.background-settings__history-shortcut { margin-top: 8px; }
 .background-settings__note { margin: 12px 0 4px; padding-left: 12px; border-left: 2px solid var(--line-strong); font-size: var(--fs-sm); line-height: 1.5; color: var(--text-2); }
 .background-settings__saved { margin-top: 8px; font-size: var(--fs-sm); color: var(--ok); }
 .background-settings__saved:empty { margin: 0; }

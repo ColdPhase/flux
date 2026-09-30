@@ -254,11 +254,14 @@ Owner history explains uncertain attempts and legacy earlier reservations.
 Local request references and generic triggering-result links passed keyboard and
 phone/tablet touch checks. After explicit owner denial, usage/amounts remain
 available privately but the result route returns 404 without its title/body.
-The [current independent visual checkpoint](../design/proactive-comparison/main-integration-2026-09-30/)
-still finds those opaque references insufficient for recognizing past work.
-An [additive current-access metadata interface](https://github.com/ColdPhase/flux/issues/58#issuecomment-5905429595)
-is proposed but not implemented; it needs peer agreement before the new public
-wire/permission projection. This finding remains a partial-review blocker.
+The [earlier independent visual checkpoint](../design/proactive-comparison/main-integration-2026-09-30/)
+found those opaque references insufficient for recognizing past work. The later
+independently assessed current-access metadata contract below is implemented:
+authorized result/project names lead each row, while denied context alone is
+redacted. Its current screenshots and live checks are recorded separately; the
+earlier checkpoint retains its original scope. A compact header action opens and
+focuses recent requests directly, retaining the full connection/accounting
+disclosures for people inspecting setup and estimates.
 
 Actual protected main `3cd91d798a8767ba8a87ceecde98b49f76aed15a` is integrated.
 Its SQL 1–25 remains unchanged; only unmerged comparison migrations use 26–32.

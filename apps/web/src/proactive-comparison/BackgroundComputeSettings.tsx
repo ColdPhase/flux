@@ -38,6 +38,7 @@ export function BackgroundComputeSettings() {
   const [saved, setSaved] = useState('');
   const formRef = useRef<HTMLFormElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const historyRef = useRef<HTMLDetailsElement>(null);
   const statusRef = useRef<HTMLParagraphElement>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
   const replaceRef = useRef<HTMLButtonElement>(null);
@@ -106,6 +107,14 @@ export function BackgroundComputeSettings() {
     <header className="background-settings__head">
       <h2 ref={headingRef} tabIndex={-1}>Your background suggestions</h2>
       <p>Only you can configure this connection and its allowance. Each project needs your separate rule.</p>
+      <Button variant="link" className="background-settings__history-shortcut" onClick={() => {
+        const history = historyRef.current;
+        if (!history) return;
+        history.open = true;
+        const summary = history.querySelector('summary');
+        summary?.focus({ preventScroll: true });
+        summary?.scrollIntoView({ block: 'start' });
+      }}>View recent requests</Button>
     </header>
     <p className="background-settings__note" role="note">Background execution is not available on this instance yet. Saving a connection does not enable a rule. You can keep working without AI.</p>
     <p ref={statusRef} className="background-settings__saved" tabIndex={-1} role="status">{saved}</p>
@@ -160,7 +169,7 @@ export function BackgroundComputeSettings() {
         </fieldset>
       </form>
     </section> : null}
-    <BackgroundUsage usage={usage} busy={usageBusy} error={usageError} refresh={() => void refreshUsage()} />
+    <BackgroundUsage usage={usage} busy={usageBusy} error={usageError} refresh={() => void refreshUsage()} historyRef={historyRef} />
     <ProjectRuleSettings connection={connection} />
     {!connection ? <p className="background-settings__help">Disconnecting removes this key from Flux. Revoke it at Claude Platform too if it should stop working outside Flux.</p> : null}
     <Link className="background-settings__back" to="/">Continue in Flux</Link>

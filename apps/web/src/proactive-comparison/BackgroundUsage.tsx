@@ -1,5 +1,6 @@
 import type { BackgroundComputeCandidateUsage, BackgroundComputeUsage } from '@flux/contracts';
 import { Link } from 'react-router';
+import type { Ref } from 'react';
 import { Button } from '../ui';
 
 const money = (cents: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
@@ -27,8 +28,8 @@ const reasons: Record<string, string> = {
 };
 
 /** Owner-private local accounting persists across disconnect and access loss. */
-export function BackgroundUsage({ usage, busy, error, refresh }: {
-  usage: BackgroundComputeUsage; busy: boolean; error: string; refresh: () => void;
+export function BackgroundUsage({ usage, busy, error, refresh, historyRef }: {
+  usage: BackgroundComputeUsage; busy: boolean; error: string; refresh: () => void; historyRef: Ref<HTMLDetailsElement>;
 }) {
   return <section className="background-settings__section background-usage" aria-labelledby="background-usage-heading">
     <div className="background-settings__section-head">
@@ -46,7 +47,7 @@ export function BackgroundUsage({ usage, busy, error, refresh }: {
     <p className="background-settings__help">Counted attempts may include requests whose sending or charge could not be confirmed after an interruption.</p>
     <p className="background-settings__help">Updated {date(usage.asOf)} UTC. Earlier charges remain counted after replacing or disconnecting a connection.</p>
     {error ? <p className="background-settings__error" role="alert">{error}</p> : null}
-    <details className="background-usage__history">
+    <details ref={historyRef} className="background-usage__history">
       <summary>Recent requests <span>{usage.candidates.length}</span></summary>
       {usage.candidates.length ? <ul>{usage.candidates.map((candidate) => <li key={candidate.id}>
         <p className="background-usage__trigger">{candidate.context

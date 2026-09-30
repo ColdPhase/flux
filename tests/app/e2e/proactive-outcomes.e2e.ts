@@ -174,12 +174,20 @@ test('owner usage distinguishes known, uncertain and no-cost requests and surviv
       assert.match(await usage.innerText(), /3 \/ 3 requests[\s\S]*\$0.15 \/ \$0.50[\s\S]*\$0.02[\s\S]*\$0.05[\s\S]*\$0.00 reserved/);
       await usage.getByRole('button', { name: 'Refresh usage', exact: true }).scrollIntoViewIfNeeded();
       await usagePage.screenshot({ path: `/state/comparison-usage-${width}-summary.png`, fullPage: true });
+      const shortcut = usagePage.getByRole('button', { name: 'View recent requests', exact: true });
+      await shortcut.scrollIntoViewIfNeeded();
+      await usagePage.screenshot({ path: `/state/comparison-usage-${width}-shortcut.png`, fullPage: true });
       if (width < 1440) {
-        await usage.locator('summary').tap();
+        assert.ok((await shortcut.boundingBox())!.height >= 44, 'history shortcut has 44px touch height');
+        await shortcut.tap();
         for (const control of [usage.locator('summary'), usage.getByRole('button', { name: 'Refresh usage', exact: true })]) {
           assert.ok((await control.boundingBox())!.height >= 44, 'owner usage controls have 44px touch height');
         }
-      } else { await usage.locator('summary').focus(); await usagePage.keyboard.press('Enter'); }
+      } else { await shortcut.focus(); await usagePage.keyboard.press('Enter'); }
+      assert.ok(await usage.locator('summary').evaluate((node) => node === document.activeElement), 'history shortcut moves keyboard focus to the request summary');
+      assert.ok(await usage.locator('summary').evaluate((node) => { const bounds = node.getBoundingClientRect(); return bounds.top >= 0 && bounds.bottom <= innerHeight; }), 'request summary lands inside the viewport');
+      assert.ok(await usage.locator('.background-usage__history').evaluate((node) => (node as HTMLDetailsElement).open), 'shortcut expands recent requests');
+      await usagePage.screenshot({ path: `/state/comparison-usage-${width}-shortcut-open.png`, fullPage: true });
       assert.match(await usage.innerText(), /Did not run[\s\S]*No paid request · \$0.00 usage[\s\S]*Charge uncertain[\s\S]*Up to \$0.05 possible charge/);
       assert.match(await usage.innerText(), /Completed[\s\S]*earlier reservation · usage not recorded/);
       const ownUsage = (await api(usagePage, 'GET', '/api/v1/background-compute-usage')).data as BackgroundComputeUsage;
