@@ -1,5 +1,13 @@
 # Work items, decisions and results (issue #101)
 
+**Later required amendment, 2026-09-30:** [F-016](../product/mcp-cowork.md)
+adds separate local-agent execution/review records and disclosed GitHub rules
+for the same work item, with manual correction suspending automation. Existing
+work statuses, parking and human-only domain decision acceptance remain.
+[UI116-3](../design/studio-v11.6.md) changes new-task notice/first-contribution flow
+without rewriting historical threads. Implementation is tracked in the new
+contract's delivery table; this notice is not runtime evidence.
+
 Foundation 8.5/8.6 and the #44 product contract: conversation, task, decision and result keep
 their own meaning and stable ids and are connected by many-to-many links. Creating work from a
 message keeps the message where it is. Everything described here is visible exactly to the

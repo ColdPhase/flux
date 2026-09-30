@@ -1,5 +1,15 @@
 # Full-product coverage and evidence ledger
 
+**2026-09-30 required extension, implementation pending:** F-016
+[CO-1–CO-5](mcp-cowork.md) maps personal identity/AI (§8.1/8.12), scoped context
+and communications (§8.3–8.8), repository integration/extensions (§8.16),
+review/results and operation recovery. F-017 [UI116-1–UI116-5](../design/studio-v11.6.md)
+adds the full appearance target, first-message semantics and motion/presence.
+#74 and the linked delivery table own new functional slices; #136/#151 integrate
+UI/adaptation, #57/#68 retain the personal helper. Reference inspection is not
+completed coverage. Final release needs the two-owner/three-connection fixture,
+real GitHub/current-version reviews, no-AI regression, F-015 and #20 evidence.
+
 **Revision:** 2026-09-27, reconciled with protected `main` at `146a1c7` after [#36 / PR #60](https://github.com/ColdPhase/flux/pull/60), [#80 / PR #97](https://github.com/ColdPhase/flux/pull/97), [#81 / PR #98](https://github.com/ColdPhase/flux/pull/98) and [#75 / PR #99](https://github.com/ColdPhase/flux/pull/99) merged; [#44](https://github.com/ColdPhase/flux/issues/44) adds the creative direction. Each implementation PR owner updates its rows and its independent evaluator checks them. This ledger maps the sixteen areas and eight pillars in the [founder foundation §§7–8](FLUX-FOUNDATION.md#7-filary-produktu). The [application specification](application-specification.md) states the shared journey, sequencing and accepted O-004 release boundary. [MOB-1–MOB-7](mobile-pwa.md#required-outcomes) also gate the full product.
 
 ## Evidence rule
@@ -48,6 +58,38 @@ At this revision protected `main` includes [#28 / PR #34](https://github.com/Col
 | **F7 Extensible ownership** | Operator can self-host, export usable linked work and use a versioned extension without forking core. | 8.13, 8.16, #28 skeleton. | Install, export, restore, run external example and upgrade its contract. | **gap** — initial #28 start does not provide export or extension. |
 | **F8 Design quality** | Realistic daily surfaces stay calm and readable, with one clear focus and details available on demand; they remain usable with touch, keyboard, enlarged text and reduced motion. | [#15](https://github.com/ColdPhase/flux/issues/15) accepted C direction; [#40](https://github.com/ColdPhase/flux/issues/40) production shell and [#20](https://github.com/ColdPhase/flux/issues/20) mobile work. | Independent visual comparison plus running browser/device interaction and contrast tests on real content. | **planned** — C prototype and production shell are merged; integrated real-content and device evaluation remains. |
 
+## Current Studio 11.6 and co-work tracking — 2026-09-30
+
+[F-017](../design/studio-v11.6.md) is the only current appearance target;
+[F-016](mcp-cowork.md) defines the required new cooperation capability. This
+intake updates contracts, not production acceptance.
+
+| Required outcome | Route | Evidence state |
+| --- | --- | --- |
+| Full 11.6 UI and coherent five-tab workflow | #136 | Planned; prototype reference/visual review only |
+| Mint/Sky/Copper, separate preferences and migration | #148 after #135 | Planned; retain earlier accepted migration contract |
+| Draft-before-save and protected editing | #149 after #134 | Planned; retain personal outline semantics |
+| Multiple personal MCP connections, local handoffs and current-version review | #152/#153 with #57/#68 helper retained | Planned; completed #52 is a narrower verified foundation |
+| Project GitHub and deterministic same-task automation | #74 | Planned; no GitHub Issue mirror |
+| One task-created notice and first true thread root | #154 | Planned; existing threads/history protected |
+| Subtle motion and scoped ephemeral typing | #155 | Planned; real network/motion tests required |
+
+Preserve merged #133's explicit snapshot acknowledgment. Active #134/#135 reviews
+retain scope. Source claims, prototype renders and imported documents do not
+complete behavior/access/client/GitHub/device acceptance.
+
+## Adaptive workspaces — F-015, 2026-09-30
+
+[ADAPT-1–ADAPT-5](../design/adaptive-workspaces.md) are required under
+[#151](https://github.com/ColdPhase/flux/issues/151), a child of #136 with the same
+shell owner. This spans 8.2–8.8/F5/F8: effective viewport/pane-based layouts from
+320 CSS px through 4K/ultrawide fixtures, useful wide-screen gains, familiar
+cross-device flows and safe in-place transitions. **Specified, not implemented
+or verified by this documentation update.** Acceptance needs the full fixture
+matrix, separate visual/interaction/access checks, measured performance and
+actual 4K/ultrawide scaling/readability sessions; #20 retains real mobile/PWA
+evidence. Earlier Studio screenshot counts do not fulfill these outcomes.
+
 ## F-012 scenario and next-slice mapping
 
 | Unmet outcome | Existing issue/interface | Next bounded slice and evidence state |
@@ -72,12 +114,12 @@ notes. Their design/reference PRs are separate and do not prove running agent or
 media behavior. Keep #29/#20 and the linked implementation tasks in scope, and
 update the corresponding area/pillar rows at each merge.
 
-## F-013 visual/UX refinement mapping (2026-09-29)
+## Historical F-013 implementation origins (2026-09-29)
 
 [#132](https://github.com/ColdPhase/flux/issues/132) imports the shared [Studio v11 reference](../design/references/studio-v11/README.md)
-and records the later primary appearance/UX direction. It qualifies the older C/v8
-appearance assertions above; historical behavior evidence and all existing area
-states remain unchanged. The reference/documentation PR is not application delivery.
+recorded the former appearance direction, now superseded by F-017. This table
+retains task origins only; current targets are in the 11.6 table above. Historical
+behavior evidence and all existing area states remain unchanged. The reference/documentation PR is not application delivery.
 
 | Required refinement | Foundation coverage | Planned application evidence |
 | --- | --- | --- |

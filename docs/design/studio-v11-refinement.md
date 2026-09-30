@@ -1,4 +1,11 @@
-# Flux Studio v11 direction and focused UX refinements
+# Historical Studio v11 refinement record — superseded visual target
+
+**History only.** The current appearance and UX contract is
+[Studio 11.6 / F-017](studio-v11.6.md), with its
+[current source/screenshots](references/studio-v11.6/README.md). The dated record
+below explains earlier choices and preserves their evidence; its selected
+Mint/Iris/Sky palette and old screenshots are not the final implementation target.
+Useful production behavior survives under the current contract and #148/#149.
 
 **Date:** 2026-09-29. **Founder direction:** F-013, [#132](https://github.com/ColdPhase/flux/issues/132). **Implementation status:** the reference/audit and [runnable refined preview](references/studio-v11/preview/README.md) are a shared design deliverable; [#133–#136](#implementation-contracts) are proposed application work. The real application still has its merged C-based components and behavior. This document does not declare those follow-ups implemented or release-accepted.
 
@@ -44,7 +51,7 @@ The independent visual assessment also found repeated actions far away at the ri
 
 **Reasoned choice, not a usability finding:** mint preserves v11’s recognizable default; iris offers a distinct creative alternative; sky offers another restrained cool alternative. Teal overlaps mint for a deliberately small menu. The warm and other remaining candidates are not inherently unusable; reducing preference decisions matters more than keeping nine variants. The separate visual reviewer found the six renders coherent; one prototype resolution marker (“To pytanie ma rozwiązanie”) still follows the appearance accent and must receive a stable semantic treatment in #135. The shortlist has measured readable text pairs in this fixture. That does not certify all production states or prove which colors users prefer.
 
-Offer three named choices, **one active at a time**, with six theme-specific token sets. Switching theme keeps the family and resolves its appropriate light/dark values. Status/error/success/warning colors remain semantic and separately defined, with text/icons. No custom HEX picker or simultaneous three-accent decoration. Record hover/pressed/focus/selected/on-accent states through shared tokens, verify their composited pairs, and use a safe documented fallback for older preferences.
+The [production token and preference contract](theme-accents.md) records the three-family implementation for #135. Offer three named choices, **one active at a time**, with six theme-specific token sets. Switching theme keeps the family and resolves its appropriate light/dark values. Status/error/success/warning colors remain semantic and separately defined, with text/icons. No custom HEX picker or simultaneous three-accent decoration. Record hover/pressed/focus/selected/on-accent states through shared tokens, verify their composited pairs, and use a safe documented fallback for older preferences.
 
 ## 4. Conversation alignment
 

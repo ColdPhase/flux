@@ -130,7 +130,7 @@
 .me__pop {
   position: absolute; left: 8px; width: max(calc(100% - 16px), 280px); bottom: calc(100% - 2px); z-index: var(--z-menu);
   padding: 6px; border-radius: var(--r-lg); background: var(--bg-raised); box-shadow: var(--shadow), inset 0 0 0 1px var(--line);
-  transform-origin: 50% 100%;
+  transform-origin: 50% 100%; max-height: calc(100dvh - 84px); overflow-y: auto; overscroll-behavior: contain;
 }
 .me__who { display: flex; flex-direction: column; padding: 8px 10px 10px; line-height: 1.35; }
 .me__who .me__session { margin-top: 4px; white-space: normal; }
@@ -163,6 +163,18 @@
 .seg__b:hover { color: var(--text); }
 .seg__b[aria-checked="true"] { background: var(--bg-raised); color: var(--text); box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--line); }
 .seg__b:focus-visible { outline-offset: 0; }
+
+.me-accent { display: flex; gap: 4px; }
+.me-accent__option { flex: 1; min-width: 0; min-height: var(--ctl); display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  padding: 0 5px; border-radius: var(--r-sm); color: var(--text-2); font-size: var(--fs-sm); font-weight: 500; transition: var(--tr); }
+.me-accent__option:hover { background: var(--bg-hover); }
+.me-accent__option[aria-checked="true"] { background: var(--accent-selected-bg); color: var(--accent-selected-text); box-shadow: inset 0 0 0 1px var(--accent-selected-border); }
+.me-accent__sample { width: 9px; height: 9px; flex: none; border-radius: 50%; background: var(--accent-light); }
+.me-accent__check { visibility: hidden; }
+.me-accent__option[aria-checked="true"] .me-accent__check { visibility: visible; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .me-accent__sample { background: var(--accent-dark); } }
+:root[data-theme="dark"] .me-accent__sample { background: var(--accent-dark); }
+
 
 /* ---------- Header and views ---------- */
 .top { display: flex; align-items: center; gap: 8px; height: var(--header-h); flex: none; padding: 0 12px 0 20px; }
@@ -222,6 +234,7 @@
 .composer__send[aria-disabled="true"]::before { background: var(--bg-active); transform: scale(.84); }
 .composer__send[aria-disabled="true"] svg { transform: scale(.9); }
 .composer__send:not([aria-disabled="true"]):hover::before { background: var(--accent-hover); }
+.composer__send:not([aria-disabled="true"]):active::before { background: var(--accent-pressed); }
 .composer__send:not([aria-disabled="true"]):active::before { transform: scale(.9); transition-duration: calc(var(--dur-1) / 2); }
 /* ✦ Ask my assistant (#57): one quiet button in the box; no connection means an honest note. */
 .composer__ask { display: grid; place-items: center; width: 32px; height: 32px; flex: none; margin-left: -8px; border-radius: var(--r); color: var(--text-3); transition: var(--tr); }
