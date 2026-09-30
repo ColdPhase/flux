@@ -139,7 +139,7 @@ treats `401` from `…/validate` as final. An admitted request is proxied frame 
 the private signal URL (the path without `/media`, the same query, no browser headers or
 cookie). Messages are bounded at 1 MiB; the Flux stream keeps its own 1 KiB bound.
 
-**Session end.** A trigger on `auth_sessions` deletion (migration 0022) marks that
+**Session end.** A trigger on `auth_sessions` deletion (migration 0023) marks that
 session's admissions revoked in the deleting transaction, which covers Better Auth sign-out
 and password reset, `DELETE /api/v1/sessions/:id`, `revoke-others`, expiry cleanup and
 user deletion. It notifies `flux_live_admissions`; each API instance then terminates its

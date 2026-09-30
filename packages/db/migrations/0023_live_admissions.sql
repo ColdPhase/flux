@@ -36,4 +36,4 @@ CREATE TRIGGER auth_sessions_revoke_live_admissions
   AFTER DELETE ON auth_sessions
   FOR EACH ROW EXECUTE FUNCTION flux_revoke_live_admissions();
 
-INSERT INTO flux_schema_version(version) VALUES (22) ON CONFLICT DO NOTHING;
+INSERT INTO flux_schema_version(version) VALUES (23) ON CONFLICT DO NOTHING;

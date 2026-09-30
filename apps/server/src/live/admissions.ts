@@ -20,7 +20,7 @@ export interface RevokedAdmission {
 
 /**
  * Persistence of media admissions. Rows are inserted by the join transaction (`store.ts`)
- * and revoked by the `auth_sessions` deletion trigger (migration 0022); nothing here grants
+ * and revoked by the `auth_sessions` deletion trigger (migration 0023); nothing here grants
  * access. Project access is always rechecked by the live use cases.
  */
 export interface LiveAdmissionStore {
