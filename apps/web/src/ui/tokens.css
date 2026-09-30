@@ -1,10 +1,6 @@
-/*
-  Flux design tokens (O-003 direction C, "calm messenger").
-  Near-monochrome neutrals, one indigo accent for "needs you" and the primary action, a dark
-  identity rail with a lime marker (the "rail" identity option),
-  1px rules instead of boxes, Inter. Status is a small dot or icon with text, never colour alone.
-  Contrast ratios are checked by scripts/check_contrast.py; keep the comments in sync.
-*/
+/* Flux theme tokens: F-013 Studio v11, Mint (default), Iris and Sky (#135).
+   Neutrals and semantic statuses stay stable; appearance controls action/selection/link/focus.
+   See docs/design/theme-accents.md. scripts/check_contrast.py checks all six palettes. */
 :root {
   color-scheme: light;
 
@@ -23,16 +19,26 @@
   --line: #e7e7ea;
   --line-strong: #d5d6da;
   --line-input: #8b8f97; /* 3.2:1 on --bg: input borders are a non-text UI boundary (WCAG 1.4.11) */
-  /* One accent */
-  --accent: #5159c8;       /* 5.8:1 on --bg; --on-accent on it 5.8:1 */
-  --accent-hover: #454cb5;
-  --accent-soft: #eeeffb;
+  /* Theme-specific family primitives; every component consumes the semantic roles below. */
+  --accent-light: #247358; --accent-light-hover: #1c6049; --accent-light-pressed: #174f3d; --accent-light-soft: #e7f4ed;
+  --accent-dark: #8ed8b8; --accent-dark-hover: #a6e3ca; --accent-dark-pressed: #78c5a5; --accent-dark-soft: #1c3028;
+  --accent: var(--accent-light);
+  --accent-hover: var(--accent-light-hover);
+  --accent-pressed: var(--accent-light-pressed);
+  --accent-soft: var(--accent-light-soft);
   --on-accent: #ffffff;
+  --accent-selected-bg: var(--accent-soft);
+  --accent-selected-text: var(--accent);
+  --accent-selected-border: var(--accent);
+  --link: var(--accent);
+  --focus: var(--accent);
+  --map-guide: var(--text-3);
+  --attention: #5159c8;
+  --resolution: var(--ok);
   /* Status */
   --danger: #b42318;  /* 6.6:1 on --bg */
   --warning: #8a5300; /* 6.3:1 on --bg */
   --ok: #1a7f4b;      /* 5.0:1 on --bg */
-  --focus: #5159c8;
   /* Identity rail (founder decision on #40: variant C "rail"): v8's dark rail beside the light
      sidebar, with a lime mark and current-place marker. Dark in both themes. */
   --rail-bg: #111310;
@@ -93,6 +99,20 @@
   --z-panel: 20; --z-scrim: 30; --z-overlay: 40; --z-menu: 50; --z-toast: 60;
 }
 
+/* The default-family sample owns its primitives even when the root uses another family. */
+.me-accent__option[data-accent-option="mint"] {
+  --accent-light: #247358; --accent-light-hover: #1c6049; --accent-light-pressed: #174f3d; --accent-light-soft: #e7f4ed;
+  --accent-dark: #8ed8b8; --accent-dark-hover: #a6e3ca; --accent-dark-pressed: #78c5a5; --accent-dark-soft: #1c3028;
+}
+:root[data-accent="iris"], .me-accent__option[data-accent-option="iris"] {
+  --accent-light: #6742a6; --accent-light-hover: #57358f; --accent-light-pressed: #492d78; --accent-light-soft: #eee8f9;
+  --accent-dark: #b7a8ef; --accent-dark-hover: #c9bdf7; --accent-dark-pressed: #a596de; --accent-dark-soft: #2a2539;
+}
+:root[data-accent="sky"], .me-accent__option[data-accent-option="sky"] {
+  --accent-light: #2c609b; --accent-light-hover: #245184; --accent-light-pressed: #1d426d; --accent-light-soft: #e9f0f8;
+  --accent-dark: #94bcf3; --accent-dark-hover: #acccf8; --accent-dark-pressed: #80aae3; --accent-dark-soft: #202c3d;
+}
+
 /* Dark: follows the system unless the person chose a theme (data-theme on <html>). */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -101,8 +121,9 @@
     --tint-danger: #231716;
     --text: #ededef; --text-2: #c9cace; --text-3: #9a9ca3;
     --line: #26272b; --line-strong: #34353a; --line-input: #6b6e76;
-    --accent: #8b90f0; --accent-hover: #9ea3f5; --accent-soft: #1f2140; --on-accent: #101113;
-    --danger: #f08a80; --warning: #e0a650; --ok: #5fc08a; --focus: #9ea3f5;
+    --accent: var(--accent-dark); --accent-hover: var(--accent-dark-hover); --accent-pressed: var(--accent-dark-pressed); --accent-soft: var(--accent-dark-soft); --on-accent: #101113;
+    --accent-selected-bg: var(--accent-soft); --accent-selected-text: var(--accent); --accent-selected-border: var(--accent); --link: var(--accent); --focus: var(--accent);
+    --danger: #f08a80; --warning: #e0a650; --ok: #5fc08a; --attention: #8b90f0;
     --rail-bg: #0b0c0a; --rail-line: #22261e;
     --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 10px 32px rgba(0, 0, 0, .45);
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, .3), 0 2px 8px rgba(0, 0, 0, .3);
@@ -115,8 +136,9 @@
   --tint-danger: #231716;
   --text: #ededef; --text-2: #c9cace; --text-3: #9a9ca3;
   --line: #26272b; --line-strong: #34353a; --line-input: #6b6e76;
-  --accent: #8b90f0; --accent-hover: #9ea3f5; --accent-soft: #1f2140; --on-accent: #101113;
-  --danger: #f08a80; --warning: #e0a650; --ok: #5fc08a; --focus: #9ea3f5;
+  --accent: var(--accent-dark); --accent-hover: var(--accent-dark-hover); --accent-pressed: var(--accent-dark-pressed); --accent-soft: var(--accent-dark-soft); --on-accent: #101113;
+  --accent-selected-bg: var(--accent-soft); --accent-selected-text: var(--accent); --accent-selected-border: var(--accent); --link: var(--accent); --focus: var(--accent);
+  --danger: #f08a80; --warning: #e0a650; --ok: #5fc08a; --attention: #8b90f0;
   --rail-bg: #0b0c0a; --rail-line: #22261e;
   --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 10px 32px rgba(0, 0, 0, .45);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, .3), 0 2px 8px rgba(0, 0, 0, .3);

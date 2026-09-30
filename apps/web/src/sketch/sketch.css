@@ -4,7 +4,7 @@
 
 .sk-page { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
 .sk-page--center { display: grid; place-items: center; min-height: 240px; color: var(--text-3); }
-.sk { --sk-edge: color-mix(in srgb, var(--text-3) 42%, transparent);
+.sk { --sk-edge: var(--map-guide);
   display: flex; flex-direction: column; gap: 10px; max-width: 1080px; margin: 0 auto; padding: 20px 24px 40px; }
 .sk--index { max-width: calc(var(--col) + 48px); }
 
@@ -209,5 +209,5 @@
   .sk-status:empty { display: none; }
   .sk-canvas { height: clamp(360px, calc(100dvh - 250px), 620px); }
   .sk-el:not(.is-on) { display: none; }
-  .sk-edges path:not(.is-on) { stroke-opacity: .6; }
+  .sk-edges path:not(.is-on) { stroke-opacity: 1; }
 }
