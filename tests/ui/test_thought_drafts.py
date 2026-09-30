@@ -283,7 +283,9 @@ class ThoughtDraftJourney(unittest.TestCase):
     def test_07_failed_existing_edit_keeps_text_and_retries(self):
         page = self.owner
         self.open(page)
-        page.locator(f'.sk-li-t[data-id="{self.parent}"]').press("F2")
+        row = page.locator(f'.sk-li-t[data-id="{self.parent}"]')
+        row.click()
+        row.press("F2")
         field = page.get_by_label("Thought text")
         field.fill("Keep the manual off switch")
         path = f"**/api/v1/sketches/{self.sketch}/thoughts/{self.parent}"
