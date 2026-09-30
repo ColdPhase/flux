@@ -62,6 +62,11 @@ async function oauthToken(browser: Browser, connectionId: string, clientId: stri
     callback = new URL(String(consent.url ?? consent.redirect_uri));
   }
   assert.equal(callback.origin, new URL(redirectUri).origin);
+  assert.equal(callback.pathname, new URL(redirectUri).pathname);
+  assert.equal(callback.searchParams.get('state'), new URLSearchParams(selectedQuery).get('state'),
+    'the callback retains the original requesting client state');
+  assert.equal(callback.searchParams.get('iss'), `${publicOrigin}/api/auth`,
+    'the advertised issuer response is present before the client exchanges the code');
   const code = callback.searchParams.get('code');
   assert.ok(code, 'consent returned an authorization code');
   const token = await fetch(new URL('/api/auth/oauth2/token', apiUrl), {
