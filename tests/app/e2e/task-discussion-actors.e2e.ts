@@ -93,7 +93,11 @@ test('agent root renders without a human DM link, real human reply persists, and
     assert.equal(await row.locator('a[href*="/dm/new"]').count(), 0);
     assert.equal(await row.locator('.project-convo__message-meta time').getAttribute('datetime'), root.createdAt);
     await page.getByRole('textbox', { name: 'Reply', exact: true }).fill('I checked the trial: the counterexample is real.');
+    const savedReply = page.waitForResponse((response) => response.request().method() === 'POST'
+      && new URL(response.url()).pathname === `/api/v1/conversations/${root.conversationId}/messages`);
     await page.getByRole('button', { name: 'Send reply', exact: true }).click();
+    const replyResponse = await savedReply;
+    assert.equal(replyResponse.status(), 201, await replyResponse.text());
     await page.getByText('I checked the trial: the counterexample is real.', { exact: true }).waitFor();
     const read = expectStatus(await owner.browser.request('GET', `/api/v1/conversations/${root.conversationId}`), 200) as { messages: ConversationMessage[] };
     const human = read.messages[1]!;
