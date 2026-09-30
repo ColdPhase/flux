@@ -236,6 +236,15 @@ controlled recovery evidence, not an actual killed worker or provider billing te
 The dispatch timestamp/count is an intent/attempt, not proof of sending or charging.
 Owner history explains uncertain attempts and legacy earlier reservations.
 
+Local request references and generic triggering-result links passed keyboard and
+phone/tablet touch checks. After explicit owner denial, usage/amounts remain
+available privately but the result route returns 404 without its title/body.
+The [current independent visual checkpoint](../design/proactive-comparison/main-integration-2026-09-30/)
+still finds those opaque references insufficient for recognizing past work.
+An [additive current-access metadata interface](https://github.com/ColdPhase/flux/issues/58#issuecomment-5905429595)
+is proposed but not implemented; it needs peer agreement before the new public
+wire/permission projection. This finding remains a partial-review blocker.
+
 Actual protected main `3cd91d798a8767ba8a87ceecde98b49f76aed15a` is integrated.
 Its SQL 1–25 remains unchanged; only unmerged comparison migrations use 26–32.
 Before recovery and usage wording changes, clean application head
@@ -244,8 +253,8 @@ Before recovery and usage wording changes, clean application head
 browser journeys, restart persistence and unavailable push/email checks. The
 subsequent usage wording passed Docker build/typecheck/lint and three outcome/owner
 browser journeys in independent desktop/phone/tablet contexts. Those touch flags
-do not establish physical-device operation. Current same-volume upgrade and
-independent full-head functional acceptance remain separate checks.
+do not establish physical-device operation. Independent full-head functional
+acceptance remains a separate check.
 
 ## Key file, restore and rotation
 
@@ -339,6 +348,18 @@ setup and manual work creation worked without a provider call. A repeat
 migration/start retained the exact ledger. The isolated stack, volumes and tags
 were removed. This proves that particular integration locally; subsequent
 renumbering or migrations require another rehearsal and independent acceptance.
+
+Observed 2026-09-30: actual protected baseline
+`3cd91d798a8767ba8a87ceecde98b49f76aed15a` to
+`44b9cd774bafb12cc2963cc8db87ae9d7cfdc3b4` passed with exact ledger
+`1`–`25` → `1`–`32` on the same original PostgreSQL volume. Only comparison
+migrations 26–32 applied. All 16 full-row snapshots matched, and the original
+session, published historical material/source versions, private draft and object
+links remained usable. New paused rule/key setup and manual work creation passed
+without a provider call; rerunning migrations and restarting preserved the exact
+ledger. The isolated stack, volumes and images were removed. The subsequent
+capture-only test changes do not alter those application or migration sources.
+This is local candidate evidence, not independent #118 or release acceptance.
 
 ### Owner setup and rule controls
 

@@ -7,7 +7,16 @@ tablet/phone and difficult states, independent appearance reviews, separate
 running verification and remaining acceptance. Creating a rule stays paused;
 background runtime and real-provider/billing acceptance remain open.
 
-## Current bounded-context surface
+## Main integration and quiet outcomes
+
+The [current controlled checkpoint](main-integration-2026-09-30/) records actual
+main integration, separate quiet insufficient outcomes, private usage and
+authorized request/result navigation. It preserves independent visual reports
+with the unresolved history-recognition finding and the pending access-safe
+context proposal. This is partial evidence; production enabling and whole #58
+acceptance remain open.
+
+## Earlier bounded-context surface
 
 The [2026-09-30 evidence](context-2026-09-30/) renders code commit
 `e302d5effc157a7b1a5f8cc5b0b016bd1b361222` from persisted Docker seed data.

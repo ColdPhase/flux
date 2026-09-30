@@ -1,5 +1,9 @@
 # Quiet comparison outcomes and private owner usage
 
+For actual main integration and the unresolved history-recognition finding, use
+the [later checkpoint](../main-integration-2026-09-30/). The original captures and
+checks below retain their earlier scope.
+
 Observed 2026-09-30 from persisted controlled Docker fixtures. Captures were taken
 at local commit `7f9a4e4b6c79931060c639d6bc98f50fe73ac727` with source-scheduling
 work in progress; the product frontend remains `bc8e7e1`. This is recorded capture
