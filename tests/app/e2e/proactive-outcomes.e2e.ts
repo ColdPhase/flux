@@ -62,8 +62,8 @@ test('all pages render quiet comparisons and insufficient evidence with current 
       await insufficient.locator('.ws-proposal__toggle').click();
       await insufficient.locator('summary').click();
       assert.match(await insufficient.innerText(), /no matching ToF measurement/);
-      assert.equal(await insufficient.locator('.ws-proposal__body > p').innerText(), 'The camera trial has no matching ToF measurement under the same lighting. ' +
-        'Record a comparable sensor trial before choosing which approach to continue. '.repeat(7), 'inspection retains the complete reason');
+      assert.equal(await insufficient.locator('.ws-proposal__body > p').innerText(), ('The camera trial has no matching ToF measurement under the same lighting. ' +
+        'Record a comparable sensor trial before choosing which approach to continue. '.repeat(7)).trim(), 'inspection retains the complete reason');
       assert.equal(await insufficient.getByRole('button', { name: 'Use as work', exact: true }).count(), 0);
       assert.equal(await insufficient.getByRole('button', { name: 'Edit', exact: true }).count(), 0);
       assert.equal(await insufficient.getByRole('button', { name: 'Dismiss', exact: true }).count(), 1);
