@@ -11,7 +11,8 @@ command below is a fixture, not a collaboration UI.
 The root [`flux`](../../flux) launcher is a POSIX `sh` script that needs only Docker with
 Compose. It resolves every path relative to its own file, so it works from any directory.
 Its layout constants (Compose files, env file, template, demo seed) are defined once at
-the top of the script; the planned `app/` + `docker/` move (#76) changes only those.
+the top of the script. The #76 layout uses the self-contained `app/` workspace and
+Docker inputs plus executable configuration under `docker/`.
 
 | Command | What it does |
 | --- | --- |
@@ -50,7 +51,8 @@ Not yet measured on Linux/SELinux hosts or a machine without the base images.
 
 ### Hot-reload development: `./flux dev`
 
-[`docker/compose.dev.yaml`](../../docker/compose.dev.yaml) layers over `compose.yaml`. It uses
+[`docker/compose.dev.yaml`](../../docker/compose.dev.yaml) layers over
+[`docker/compose.source.yaml`](../../docker/compose.source.yaml). It uses
 the Dockerfile's `build` stage (locked dependencies, `tsx`, Vite) and bind-mounts the source
 directories read-only with `:z` (SELinux relabel; ignored on macOS). The `web` service runs
 the Vite dev server on `FLUX_DEV_PORT` (default 5173) and proxies `/api`, including the

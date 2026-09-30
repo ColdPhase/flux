@@ -40,8 +40,10 @@ and migration ordering as the production-mode services here. They are not used b
 the checks below; see [install from a release](../operations/install-release.md).
 `./scripts/check_operator_compose.sh` runs them against the locally built source image
 (port `FLUX_OPERATOR_TEST_PORT`, default `18951`) and `tests/test_operator_compose.py`
-checks them statically. The rest of the #75 layout (`app/`, the source Compose files under
-`docker/`) is later #76 work.
+checks them statically. The #75 layout is implemented with the application workspace
+under `app/` and source/dev/test/live Docker inputs under `docker/` (#76).
+`./flux` and the source checks use `docker/compose.source.yaml`; the operator file
+remains pull-only.
 
 The `files` mounts on `files-init`, API and worker all use `:z` so SELinux gives
 the shared volume a label accessible to both running services. `files-init`
