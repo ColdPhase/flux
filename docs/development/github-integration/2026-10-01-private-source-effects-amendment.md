@@ -99,23 +99,26 @@ that recipient; unknown source proof prevents the effect. Recipient identity is
 the actual human or current connection owner, never the rule/binding author.
 
 The following is the **proposed complete shared order**, not a claim that the
-current #152/#153 implementations already follow it. At #152 `867b925`, prepare
-locks current access/binding/runtime/action grant, connection-command ledger and
-sorted current material versions before native graphs/tasks; #153 reserves
-connection slots before project graphs. Inserting credential pins ahead of that
-ledger therefore needs an explicit shared interface/ordering review and hook,
-including the material-source lock category. No source adapter is usable until
-the complete order is agreed and tested together. Within one caller-owned
-transaction the proposed order is:
+current #152/#153 implementations already compose a source adapter. Following
+the coordinator's bounded correction, preserve #152 `867b925`'s current
+authority → ONE ledger → sorted material-source fences. Source credential pins
+then precede #153 slots/project graphs and native tasks. Do not move slots ahead
+of current authority or graphs/credential pins ahead of the existing ledger
+without explicit all-owner agreement and tests. A new preparation hook and
+concrete complete integration still require independent shared review. No source
+adapter is usable until that order is agreed and tested together. Within one
+caller-owned transaction the proposed order is:
 
-1. Sorted connection slots and their verified runtime/action-grant authority,
-   then complete sorted project policy graphs, when applicable.
+1. Current access/connection binding/runtime/action-grant authority, the single
+   connection-command ledger/claim boundary and complete sorted current native
+   material-version rows, preserving #152's existing preparation fences.
 2. Sorted `(provider host, Flux user ID)` credential share pins for every source
    author and actual recipient needed by this operation. Recheck current
    App/client/GitHub user/generation/expiry against preflight before continuing.
    No provider method can open a second credential transaction after this point.
-3. The single connection-command ledger/claim boundary and complete sorted
-   current native material-version rows, when applicable; these precede tasks.
+3. Complete sorted connection slots, then complete sorted project graph locks,
+   when applicable. Discover every held claim's project/task scope before graphs
+   and collect every dependency task before the first native task lock.
 4. Complete sorted native task IDs.
 5. Complete sorted GitHub binding IDs, then sorted delivery/processing IDs,
    rule IDs and effect IDs, each category in that order.
@@ -148,7 +151,11 @@ enter the composed sorted work-first order; wrapping today's processor is
 insufficient. The same rule applies to link changes/disconnect and recipient
 preparation. Today's #152 ledger has no #74 provenance pin/replay publication
 hook; composition stays unavailable until that hook and current-source receipt
-read checks are implemented and independently verified.
+read checks are implemented and independently verified. Its hook must accept an
+already prepared external capability and pin it in the exact outer transaction;
+calling today's lazy `credentials.forTransaction` for the first time after the
+ledger/material fences would open a separate preflight transaction and is not
+the required implementation. No network/refresh occurs in that locked phase.
 
 Verified #154 seam at `d1d03f70f1ddb7c78d05216ac570c9359cb5290c`:
 `app/apps/server/src/work/transaction-events.ts` exports
@@ -161,6 +168,11 @@ provenance and recipients are prepared through the operation-local source
 authority port before the one final insert batch; ordinary manual intents use
 their existing policy. Until that extension is accepted and tested, private
 events remain internal/pending and no generic work refresh is broadcast.
+Source observations and request intents never create a separate task root/chat
+or call ordinary canonical `contribute` implicitly. The existing #154 canonical
+root stays unchanged. Any later actual contribution publication must use that
+same canonical primitive under a complete independently accepted source audience
+and consumer policy; neither this effect relation nor a rule click supplies it.
 
 ## 4. Semantic causal identity, delivery and replay
 
