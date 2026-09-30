@@ -159,7 +159,7 @@ test('terminal pre-paid refusals persist zero usage without retry, while owner a
   assert.equal(afterLoss.candidates[0]!.context, null);
   assert.ok(!JSON.stringify(afterLoss).includes('Low-light comparison'));
   assert.ok(!JSON.stringify(afterLoss).includes('Camera missed gestures'));
-  assert.deepEqual(afterLoss.candidates.map(({ context: _context, ...row }) => row), initial.candidates.map(({ context: _context, ...row }) => row));
+  assert.deepEqual(afterLoss.candidates.map((row) => Object.fromEntries(Object.entries(row).filter(([field]) => field !== 'context'))), initial.candidates.map((row) => Object.fromEntries(Object.entries(row).filter(([field]) => field !== 'context'))));
   assert.equal(afterLoss.currentLimits, null); assert.equal(afterLoss.candidates.length, 1);
   assert.ok(!JSON.stringify(afterLoss).includes('38% detected')); assert.ok(!JSON.stringify(afterLoss).includes('cipher'));
   assert.equal((await f.owner.browser.request('GET', `/api/v1/projects/${f.projectId}/proactive-comparison-outcomes`)).status, 404);

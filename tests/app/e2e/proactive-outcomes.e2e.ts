@@ -203,7 +203,7 @@ test('owner usage distinguishes known, uncertain and no-cost requests and surviv
     }
     await page.goto(`${origin.origin}/settings/background-compute`);
     const availableUsage = (await api(page, 'GET', '/api/v1/background-compute-usage')).data as BackgroundComputeUsage;
-    const oldPayload = { ...availableUsage, candidates: availableUsage.candidates.map(({ context: _context, ...row }) => row) };
+    const oldPayload = { ...availableUsage, candidates: availableUsage.candidates.map((row) => Object.fromEntries(Object.entries(row).filter(([field]) => field !== 'context'))) };
     await page.route('**/api/v1/background-compute-usage', (route) => route.fulfill({ json: oldPayload }));
     await page.getByRole('button', { name: 'Refresh usage', exact: true }).click();
     const history = page.locator('.background-usage__history');

@@ -145,7 +145,7 @@ test('usage enriches only current allowed exact pairs, with sorted locks and unc
   assert.deepEqual(actual.candidates.map((row) => row.context), [
     { projectTitle: 'Low-light trials', resultTitle: 'Camera missed gestures' }, null,
     { projectTitle: 'Low-light trials', resultTitle: 'Camera missed gestures' }, null]);
-  const withoutContext = (value: BackgroundComputeUsage) => ({ ...value, candidates: value.candidates.map(({ context: _context, ...row }) => row) });
+  const withoutContext = (value: BackgroundComputeUsage) => ({ ...value, candidates: value.candidates.map((row) => Object.fromEntries(Object.entries(row).filter(([field]) => field !== 'context'))) });
   assert.deepEqual(withoutContext(actual), withoutContext(original));
   assert.ok(!JSON.stringify(actual).includes('Private'));
 });
