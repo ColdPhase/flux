@@ -33,6 +33,7 @@ Keep procedures in one place and use the guides below when relevant.
 | Mobile/tablet UX, PWA installation or push notifications | `docs/product/mobile-pwa.md` |
 | Ordinary contribution or prototype change | `docs/CONTRIBUTING.md` |
 | Agent collaboration and task lifecycle | `docs/agents/workflow.md` |
+| Product co-work playbooks, agent inbox and onboarding | `docs/product/cowork-workflow.md`, `docs/product/cowork-playbook.md` (F-018; product contract, not this repo’s operating workflow) |
 | Issue/PR messages, ownership, and handoffs | `docs/agents/github-protocol.md` |
 | Review, application verification, or release acceptance | `docs/agents/evaluation.md` |
 | GitHub Actions, required PR checks, packaging, or publication | `docs/agents/ci-and-releases.md` |

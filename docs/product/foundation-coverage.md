@@ -70,6 +70,7 @@ intake updates contracts, not production acceptance.
 | Mint/Sky/Copper, separate preferences and migration | #148 after #135 | Planned; retain earlier accepted migration contract |
 | Draft-before-save and protected editing | #149 after #134 | Planned; retain personal outline semantics |
 | Multiple personal MCP connections, local handoffs and current-version review | #152/#153 with #57/#68 helper retained | Planned; completed #52 is a narrower verified foundation |
+| Ready playbooks, supported Start/Resume and durable targeted cooperation ([F-018](cowork-workflow.md)) | #160 with #152/#153/#74/#136 | Specified only; real client loading, busy/offline/context-reset recovery and zero idle model calls still require evidence |
 | Project GitHub and deterministic same-task automation | #74 | Planned; no GitHub Issue mirror |
 | One task-created notice and first true thread root | #154 | Planned; existing threads/history protected |
 | Subtle motion and scoped ephemeral typing | #155 | Planned; real network/motion tests required |
