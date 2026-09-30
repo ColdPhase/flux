@@ -1,6 +1,6 @@
 /* v11 personal reading outline (#134); shared palette remains owned by #135. */
 .sk-outline { min-width: 0; }
-.sk-outline-return { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 16px; padding: 0 0 8px; }
+.sk-outline-return { position: sticky; top: 0; z-index: 4; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 16px; padding: 4px 0 8px; background: var(--bg); border-bottom: 1px solid var(--line); }
 .sk-outline-back, .sk-outline-undo { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; border-radius: var(--r-sm); color: var(--link, var(--accent)); font-size: var(--fs-sm); text-align: left; overflow-wrap: anywhere; }
 .sk-outline-back:hover, .sk-outline-undo:hover { text-decoration: underline; }
 .sk-outline-list > li { position: relative; --outline-offset: calc(var(--outline-depth) * 18px); padding-inline-start: calc(8px + var(--outline-offset)); }
