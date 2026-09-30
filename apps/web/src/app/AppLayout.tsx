@@ -175,6 +175,16 @@ export function AppLayout() {
   const recapOpen = detailsOpen && typeof detailsView === 'object' && detailsView.kind === 'recap';
   // "What matters" (#133): a quiet count of what needs you; refreshed when the panel closes.
   const needsYou = useNeedsYou(activeProject ? projectId ?? null : null, recapOpen);
+  // One stable entry at the end of the project's view tabs, as in Studio v11, so the header keeps
+  // its room for the title, audience and state line.
+  const recapEntry = activeProject && projectId ? (
+    <Button variant="quiet" icon="leaf" className="views__recap" aria-expanded={recapOpen}
+      aria-controls={recapOpen ? 'details' : undefined}
+      onClick={() => { if (recapOpen) toggleDetails(false); else { setDetailsView({ kind: 'recap', projectId }); toggleDetails(true); } }}>
+      What matters
+      {needsYou ? <span className="views__recap-n">{needsYou}<span className="ui-vh"> {needsYou === 1 ? 'needs' : 'need'} you</span></span> : null}
+    </Button>
+  ) : null;
   const dmId = location.pathname.match(/^\/dm\/([^/]+)/)?.[1];
   const activeDm = directMessages.find((dm) => dm.id === dmId);
   const place = location.pathname === '/search'
@@ -237,14 +247,6 @@ export function AppLayout() {
           <div className="top__right" data-shift>
             {activeProject ? <LiveEntry /> : null}
             {project?.people && !phone ? <Faces people={project.people} meId={me.user.id} /> : null}
-            {activeProject && projectId ? (
-              <Button variant="quiet" icon="leaf" className="top__recap" aria-expanded={recapOpen}
-                aria-controls={recapOpen ? 'details' : undefined}
-                onClick={() => { if (recapOpen) toggleDetails(false); else { setDetailsView({ kind: 'recap', projectId }); toggleDetails(true); } }}>
-                What matters
-                {needsYou ? <span className="top__recap-n">{needsYou}<span className="ui-vh"> {needsYou === 1 ? 'needs' : 'need'} you</span></span> : null}
-              </Button>
-            ) : null}
             {/* The inbox and its settings have nothing to show in Details. */}
             {'noDetails' in place ? null : <Button ref={detailsButtonRef} variant="quiet" icon="panel" className="top__details" aria-expanded={detailsOpen && !recapOpen}
               aria-controls={detailsOpen ? 'details' : undefined} aria-keyshortcuts="]" data-tip={'Toggle details   ]'}
@@ -257,7 +259,7 @@ export function AppLayout() {
         {place.views
           ? <Tabs className="views" label="Views" items={VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path }))} />
           : activeProject && projectViews
-            ? <Tabs className="views" label="Project views" items={projectViews} />
+            ? <div className="views views--project"><Tabs className="views__tabs" label="Project views" items={projectViews} />{recapEntry}</div>
             : <div className="views views--none" aria-hidden="true" />}
         <LiveBar />
         <div className="app__pane" id="content" ref={paneRef} tabIndex={-1}>

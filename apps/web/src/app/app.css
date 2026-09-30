@@ -173,11 +173,16 @@
 .top__right { display: flex; align-items: center; gap: 4px; flex: none; }
 .top__details { gap: 7px; padding: 0 10px; }
 .top__details[aria-expanded="true"] { background: var(--bg-active); color: var(--text); }
-/* "What matters" (#133): one stable entry beside Details, with a quiet count of what needs you. */
-.top__recap { gap: 7px; padding: 0 10px; }
-.top__recap[aria-expanded="true"] { background: var(--bg-active); color: var(--text); }
-.top__recap-n { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 600; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; }
-@media (max-width: 640px) { .top__recap { padding: 0 8px; gap: 5px; font-size: var(--fs-sm); } }
+/* "What matters" (#133): one stable entry at the end of the project's view tabs (v11), with a quiet
+   count of what needs you. The tabs keep the room they need and scroll on a narrow phone. */
+.views--project { display: flex; align-items: center; gap: 8px; padding-right: 12px; }
+.views--project .views__tabs { flex: 1; min-width: 0; }
+.views--project .ui-tabs__bar { padding: 0 12px; }
+.views__recap { flex: none; gap: 6px; padding: 0 10px; font-size: var(--fs-sm); box-shadow: inset 0 0 0 1px var(--line); }
+.views__recap[aria-expanded="true"] { background: var(--bg-active); color: var(--text); box-shadow: none; }
+.views__recap-n { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 600; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) { .views--project { padding-right: 8px; gap: 4px; } .views__recap { padding: 0 8px; gap: 4px; } }
+@media (pointer: coarse) { .views__recap { min-height: 44px; } }
 .views { flex: none; border-bottom: 1px solid var(--line); }
 .views .ui-tabs__bar { padding: 0 12px; }
 .views--none { height: 0; }

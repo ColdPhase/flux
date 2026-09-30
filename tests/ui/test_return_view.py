@@ -101,7 +101,7 @@ class ReturnViewJourney(unittest.TestCase):
         return self.summary(page, "project")["point"]["savedAt"]
 
     def open_recap(self, page: Page, *, tap: bool = False):
-        button = page.locator("header.top").get_by_role("button", name=re.compile("^What matters"))
+        button = page.get_by_role("button", name=re.compile("^What matters"))
         button.tap() if tap else button.click()
         panel = page.locator("#details")
         expect(panel.get_by_role("heading", name="What matters")).to_be_visible()
@@ -206,7 +206,7 @@ class ReturnViewJourney(unittest.TestCase):
     def test_05_what_matters_shows_the_next_step_changes_and_a_digest(self) -> None:
         page = self.page("nia")
         page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
-        entry = page.locator("header.top").get_by_role("button", name=re.compile("^What matters"))
+        entry = page.get_by_role("button", name=re.compile("^What matters"))
         expect(entry).to_contain_text("3")
         # A compact entry, not a block competing with the conversation (#133 AC-1).
         box = entry.bounding_box()
@@ -331,7 +331,7 @@ class ReturnViewJourney(unittest.TestCase):
         held: list = []
         pattern = re.compile(r"/api/v1/return\?.*scope=all.*from=last-visit")
         page.route(pattern, lambda route: held.append(route) if not held else route.continue_())
-        page.locator("header.top").get_by_role("button", name=re.compile("^What matters")).click()
+        page.get_by_role("button", name=re.compile("^What matters")).click()
         panel = page.locator("#details")
         for _ in range(40):
             if held:
@@ -357,7 +357,7 @@ class ReturnViewJourney(unittest.TestCase):
         broken.goto(f"/projects/{self.project_id}")
         failing = re.compile(r"/api/v1/return\?.*scope=")
         broken.route(failing, lambda route: route.fulfill(status=503, body="{}", content_type="application/json"))
-        broken.locator("header.top").get_by_role("button", name=re.compile("^What matters")).click()
+        broken.get_by_role("button", name=re.compile("^What matters")).click()
         bpanel = broken.locator("#details")
         expect(bpanel.get_by_role("alert")).to_contain_text("Could not load what matters.")
         shot(broken, "recap-project-desktop-1440-failure")
@@ -477,7 +477,7 @@ class ReturnViewJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile(f"/projects/{self.project_id}/conversations/{self.conversation_id}#message-"))
         expect(page.locator(".is-arrived")).to_be_in_viewport()
         # "What matters" counts the same changes (the project point is older than Home's view).
-        expect(page.locator("header.top").get_by_role("button", name=re.compile("^What matters"))).to_contain_text(re.compile(r"\d"))
+        expect(page.get_by_role("button", name=re.compile("^What matters"))).to_contain_text(re.compile(r"\d"))
         # Audience preview before writing: the composer names who will read the reply.
         expect(page.locator(".composer__audience")).to_have_text(re.compile("Ari and you · only you two · saved to Gesture lamp"))
         # Back on Home, its point is saved and only the server's fresh answer is shown: nothing repeats.
@@ -590,7 +590,7 @@ class ReturnViewJourney(unittest.TestCase):
         self.no_horizontal_scroll(page)
         shot(page, "return-home-phone-390")
         page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
-        entry = page.locator("header.top").get_by_role("button", name=re.compile("^What matters"))
+        entry = page.get_by_role("button", name=re.compile("^What matters"))
         box = entry.bounding_box()
         assert box is not None
         self.assertGreaterEqual(min(box["width"], box["height"]), 43.5, "touch target")
