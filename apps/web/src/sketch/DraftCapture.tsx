@@ -10,7 +10,7 @@ export function DraftCapture({ draft, parent, saving, canWrite, onText, onSave, 
   useLayoutEffect(() => { input.current?.focus({ preventScroll: true }); }, [draft.id]);
   return <form className="sk-draft" aria-label="New thought draft" onSubmit={(event) => { event.preventDefault(); if (!saving && canWrite && draft.text.trim()) onSave(); }}>
     <p className="sk-draft__context">New thought · {draft.parentId ? parent ? `Connected to “${parent}” on save` : 'Its parent is no longer available' : 'Top level'} · private until saved</p>
-    <textarea ref={input} rows={2} aria-label="Thought text" value={draft.text} maxLength={SKETCH_LIMITS.text} disabled={saving}
+    <textarea ref={input} className="ui-input" rows={2} aria-label="Thought text" value={draft.text} maxLength={SKETCH_LIMITS.text} disabled={saving}
       onChange={(event) => onText(event.target.value)} onKeyDown={(event) => {
         event.stopPropagation();
         if (event.nativeEvent.isComposing) return;

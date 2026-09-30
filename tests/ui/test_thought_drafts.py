@@ -2,13 +2,15 @@
 from __future__ import annotations
 
 import re
+import json
 import time
 import unittest
 import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, shot, start_forwarder
+from test_theme_accents import MEASURE
 
 STAMP = int(time.time() * 1000)
 PASSWORD = "keep private captures recoverable"
@@ -263,6 +265,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         field.press("Enter")
         expect(page.locator(".sk-status")).to_contain_text("Someone else changed")
         expect(page.get_by_label("Thought text")).to_have_value("My private proposal\n<b>Literal text</b>")
+        shot(page, 'thought-edit-conflict-desktop')
         current = next(t for t in self.stored(peer)["thoughts"] if t["id"] == self.parent)
         self.assertEqual(current["text"], "Jonas confirmed the newer sensor requirement")
         page.get_by_role("button", name="Cancel edit", exact=True).click()
@@ -291,6 +294,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         self.assertEqual(self.stored(page), self.before)
         page.get_by_role('button', name='Edit', exact=True).click()
         expect(page.get_by_label('Thought text')).to_have_value('Keep the manual off switch')
+        shot(page, 'thought-edit-failure-desktop')
         page.unroute(path)
         page.get_by_role("button", name="Save edit", exact=True).click()
         expect(page.locator(".sk-status")).to_contain_text("Saved")
@@ -313,6 +317,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         self.assertEqual(self.stored(page), self.before)
 
     def test_09_matched_desktop_phone_tablet_and_touch_save(self):
+        measurements = []
         for theme in ("light", "dark"):
             for name, viewport in (("desktop", DESKTOP), ("phone", PHONE), ("tablet", {"width": 820, "height": 1180})):
                 page = self.page(viewport=viewport, has_touch=name != "desktop", is_mobile=name == "phone", color_scheme=theme)
@@ -322,6 +327,11 @@ class ThoughtDraftJourney(unittest.TestCase):
                 expect(page.get_by_role("button", name="Save thought", exact=True)).to_be_visible()
                 expect(page.get_by_role("button", name="Cancel", exact=True)).to_be_visible()
                 self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), viewport["width"])
+                for selector in ('.sk-draft__context', '.sk-draft textarea', '.sk-draft__actions span', '.sk-draft .ui-btn--primary', '.sk-draft .ui-btn--quiet'):
+                    page.wait_for_function("selector => { const node = document.querySelector(selector); if (!node) return false; for (let el = node; el; el = el.parentElement) if (Number(getComputedStyle(el).opacity) !== 1) return false; return true; }", arg=selector)
+                    measured = page.evaluate(MEASURE, {'selector': selector})
+                    measurements.append({'theme': theme, 'viewport': name, **measured})
+                    self.assertGreaterEqual(measured['ratio'], 4.5, f'{theme}/{name}: readable actual draft text')
                 shot(page, f"thought-draft-{theme}-{name}-list")
                 page.get_by_role("radio", name="Map", exact=True).click()
                 expect(field).to_have_value("Test a deliberate hold in the dark\nKeep a manual switch within reach")
@@ -330,5 +340,15 @@ class ThoughtDraftJourney(unittest.TestCase):
                     page.get_by_role("button", name="Save thought", exact=True).tap()
                     expect(page.get_by_role("form", name="New thought draft")).to_have_count(0)
                     expect(page.locator(".sk-status")).to_contain_text("Saved")
+                    page.get_by_role('button', name='Undo', exact=True).tap()
+                    self.wait_stored(page, lambda current: len(current['thoughts']) == 2)
                 else:
                     page.get_by_role("button", name="Cancel", exact=True).click()
+                page.get_by_role('radio', name='List', exact=True).click()
+                page.locator(f'.sk-li-t[data-id="{self.parent}"]').click()
+                page.get_by_role('button', name='Edit', exact=True).click()
+                page.get_by_label('Thought text').fill('Keep the manual off switch within reach')
+                shot(page, f'thought-edit-{theme}-{name}-list')
+                page.get_by_role('button', name='Cancel edit', exact=True).click()
+        if SHOTS:
+            (SHOTS / 'thought-draft-contrast.json').write_text(json.dumps(measurements, indent=2) + '\n')

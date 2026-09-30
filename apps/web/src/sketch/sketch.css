@@ -214,7 +214,7 @@
 /* Private capture belongs to the map view and survives List/Map projection changes. */
 .sk-draft { margin: 0 var(--s-4) var(--s-3); padding: var(--s-3); border: 1px solid var(--line-input); border-radius: var(--r); background: var(--bg-raised); }
 .sk-draft__context { margin: 0 0 var(--s-2); font-size: var(--fs-sm); color: var(--text-2); overflow-wrap: anywhere; }
-.sk-draft textarea { width: 100%; min-height: 64px; resize: vertical; }
+.sk-draft textarea { width: 100%; min-height: 64px; padding: var(--s-2) var(--s-3); font-family: var(--font); resize: vertical; }
 .sk-draft__actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); }
 .sk-draft__actions span { color: var(--text-3); font-size: var(--fs-xs); }
 .sk-edit-controls { display: flex; gap: var(--s-2); margin: 0 var(--s-4) var(--s-3); }
