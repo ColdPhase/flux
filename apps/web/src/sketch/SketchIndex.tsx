@@ -5,7 +5,7 @@ import { Button, EmptyState, Icon, Spinner, useToast } from '../ui';
 import * as api from '../api/sketches';
 import { useShellData } from '../app/data';
 import { useStreamEvents } from '../api/stream';
-import { audience, when } from './format';
+import { audience, sketchHref, when } from './format';
 import './sketch.css';
 
 interface Listed { sketch: Sketch; projectName: string | null }
@@ -49,7 +49,7 @@ async function loadSketches(pages: number, signal: AbortSignal): Promise<Loaded>
  * sketch is private (only you) until it is shared; it opens with its name ready to type.
  */
 export function SketchIndex() {
-  const { me } = useShellData();
+  const { me, directMessages } = useShellData();
   const navigate = useNavigate();
   const toast = useToast();
   const [state, setState] = useState<Loaded | 'loading' | 'failed'>('loading');
@@ -112,11 +112,11 @@ export function SketchIndex() {
             <ul className="sk-index" aria-label="Your sketches">
               {state.items.map(({ sketch, projectName }) => (
                 <li key={sketch.id}>
-                  <Link to={`/map/${sketch.id}`} className="sk-index__item">
+                  <Link to={sketchHref(sketch)} className="sk-index__item">
                     <Icon name="map" size={16} />
                     <span className="sk-index__b">
                       <span className="sk-index__t">{sketch.title}</span>
-                      <span className="sk-index__s">{audience(sketch, me.user.id, projectName)} · changed {when(sketch.updatedAt)}</span>
+                      <span className="sk-index__s">{sketch.scope === 'dm' ? `${directMessages.find((dm) => dm.id === sketch.dmId)?.audience ?? 'A direct message'}, in a direct message` : audience(sketch, me.user.id, projectName)} · changed {when(sketch.updatedAt)}</span>
                     </span>
                   </Link>
                 </li>

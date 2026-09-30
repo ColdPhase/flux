@@ -33,8 +33,10 @@ Migration `0010_direct_messages.sql` adds three tables.
   tables enforce the project audience with composite foreign keys. Merging them would weaken
   those keys. `apps/server/src/conversation` is unchanged.
 - **Citations.** A DM message cannot cite project material yet (`422 DM_SOURCE_UNSUPPORTED`).
-  Every participant would first need to be able to read the cited version. DM sketches
-  ([#96](https://github.com/ColdPhase/flux/issues/96)) and the DM → project flow can add that later.
+  Every participant would first need to be able to read the cited version.
+- **Sketches.** A DM can hold sketches, and selected messages can start one
+  ([#96](https://github.com/ColdPhase/flux/issues/96), see [sketches](sketches.md#sketches-in-a-direct-message)).
+  They follow the same participant audience and the same rule for a 1:1 whose other person left.
 
 ## Access policy
 

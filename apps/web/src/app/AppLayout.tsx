@@ -13,6 +13,7 @@ import { Sidebar } from './Sidebar';
 import { VIEWS, viewIndex } from './views';
 import { ProjectStateLine, ProjectStateRow } from '../work/inline';
 import { audienceLine, useProjectShell } from '../project/data';
+import { useDmSketchCount } from '../dm/DmSketches';
 import type { ProjectPerson } from '@flux/contracts';
 import { LiveProvider } from '../live/LiveProvider';
 import { LiveEntry } from '../live/LiveEntry';
@@ -30,7 +31,11 @@ function lastConversationPath(projectId: string) {
 /** Tab order for the slide direction: Home's views, or a project's Conversation · Tasks · Map · Docs. */
 function viewOrder(pathname: string) {
   const inProject = pathname.match(/^\/projects\/[^/]+(?:\/(tasks|map|docs))?/);
-  return inProject ? ['conversation', 'tasks', 'map', 'docs'].indexOf(inProject[1] ?? 'conversation') : viewIndex(pathname);
+  if (inProject) return ['conversation', 'tasks', 'map', 'docs'].indexOf(inProject[1] ?? 'conversation');
+  // A direct message's Messages · Sketches (#96).
+  const inDm = pathname.match(/^\/dm\/(?!new$)[^/]+(\/sketches)?/);
+  if (inDm) return inDm[1] ? 1 : 0;
+  return viewIndex(pathname);
 }
 
 function isTyping(target: EventTarget | null) {
@@ -87,13 +92,15 @@ export function AppLayout() {
 
   const inboxUnread = useInboxDot(me.user.id, location.pathname);
 
+  const [actionSlot, setActionSlot] = useState<HTMLElement | null>(null);
   const shell = useMemo(() => ({
     openDetails(view: DetailsView = 'place') {
       setDetailsView(view);
       toggleDetails(true);
     },
     openSearch() { setNavOpen(false); setJumpOpen(true); },
-  }), [toggleDetails]);
+    actionSlot,
+  }), [toggleDetails, actionSlot]);
 
   // A link inside an overlaid panel or sheet (#117 overview) leads to its destination.
   const [shownPath, setShownPath] = useState(location.pathname);
@@ -187,6 +194,12 @@ export function AppLayout() {
   ) : null;
   const dmId = location.pathname.match(/^\/dm\/([^/]+)/)?.[1];
   const activeDm = directMessages.find((dm) => dm.id === dmId);
+  // Messages · Sketches: a DM's sketches stay inside it, for exactly its people (#96).
+  const dmSketches = useDmSketchCount(activeDm?.workspaceId, activeDm?.id, me.user.id);
+  const dmViews = activeDm ? [
+    { id: 'messages', label: 'Messages', to: `/dm/${activeDm.id}` },
+    { id: 'sketches', label: 'Sketches', to: `/dm/${activeDm.id}/sketches`, end: false, ...(dmSketches ? { count: dmSketches, countLabel: `, ${dmSketches} ${dmSketches === 1 ? 'sketch' : 'sketches'}` } : {}) },
+  ] : null;
   const place = location.pathname === '/search'
     ? { crumb: null, title: 'Search', topic: 'Only what you can open is searched', views: false }
     : activeProject
@@ -245,6 +258,8 @@ export function AppLayout() {
           </div>
           )}
           <div className="top__right" data-shift>
+            {/* A view can put one quiet action here (a DM's Select, #96). */}
+            <span className="top__actions" ref={setActionSlot} />
             {activeProject ? <LiveEntry /> : null}
             {project?.people && !phone ? <Faces people={project.people} meId={me.user.id} /> : null}
             {/* The inbox and its settings have nothing to show in Details. */}
@@ -261,7 +276,9 @@ export function AppLayout() {
           ? <Tabs className="views" label="Views" items={VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path }))} />
           : activeProject && projectViews
             ? <div className="views views--project"><Tabs className="views__tabs" label="Project views" items={projectViews} />{phone ? null : recapEntry}</div>
-            : <div className="views views--none" aria-hidden="true" />}
+            : dmViews
+              ? <Tabs className="views" label="Direct message views" items={dmViews} />
+              : <div className="views views--none" aria-hidden="true" />}
         <LiveBar />
         <div className="app__pane" id="content" ref={paneRef} tabIndex={-1}>
           <Outlet />

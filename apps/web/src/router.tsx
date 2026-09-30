@@ -13,6 +13,7 @@ import { Booting, RouteErrorPage } from './app/errors';
 import { ConversationView, NotFoundView, TasksView } from './app/views';
 import { DmIndex, NewDm } from './dm/DmIndex';
 import { DmConversation, dmLoader } from './dm/DmConversation';
+import { DmSketches } from './dm/DmSketches';
 import { InboxOpen, InboxView } from './notifications/InboxView';
 import { NotificationSettings, UnsubscribePage, VerifyAddress } from './notifications/NotificationSettings';
 import { SketchIndex } from './sketch/SketchIndex';
@@ -99,6 +100,8 @@ export const router = createBrowserRouter([
           { path: 'dm', Component: DmIndex },
           { path: 'dm/new', Component: NewDm },
           { path: 'dm/:dmId', loader: dmLoader, Component: DmConversation },
+          { path: 'dm/:dmId/sketches', Component: DmSketches },
+          { path: 'dm/:dmId/sketches/:sketchId', Component: SketchRoute },
           { path: 'inbox', Component: InboxView },
           { path: 'inbox/:id', Component: InboxOpen },
           { path: 'settings/notifications', Component: NotificationSettings },

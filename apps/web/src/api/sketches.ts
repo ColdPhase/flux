@@ -2,6 +2,7 @@ import {
   sketchLinkPath,
   sketchLinksPath,
   sketchPath,
+  sketchPromotionPath,
   sketchPositionsPath,
   sketchThoughtPath,
   sketchThoughtsPath,
@@ -15,6 +16,9 @@ import {
   type MovedThoughts,
   type MoveThoughtsCommand,
   type Page,
+  type PromotedSketch,
+  type PromotionTarget,
+  type SketchPromotionPreview,
   type Project,
   type Sketch,
   type SketchDetail,
@@ -41,6 +45,20 @@ export const listSketches = (workspaceId: string, limit: number, offset: number,
   request<SketchPage>(`${workspaceSketchesPath(workspaceId)}?limit=${limit}&offset=${offset}`, { signal });
 export const createPrivateSketch = (workspaceId: string, title: string, idempotencyKey: string) =>
   request<Sketch>(workspaceSketchesPath(workspaceId), { method: 'POST', body: { title, scope: 'private' }, headers: key(idempotencyKey) });
+
+/** Sketches of one direct message (#96), newest change first. */
+export const listDmSketches = (workspaceId: string, dmId: string, limit: number, offset: number, signal?: AbortSignal) =>
+  request<SketchPage>(`${workspaceSketchesPath(workspaceId)}?dmId=${dmId}&limit=${limit}&offset=${offset}`, { signal });
+/** A sketch in a DM, optionally started from selected messages (each becomes a thought with its source). */
+export const createDmSketch = (workspaceId: string, dmId: string, title: string, fromMessageIds: string[], idempotencyKey: string) =>
+  request<Sketch>(workspaceSketchesPath(workspaceId), {
+    method: 'POST', body: { title, scope: 'dm', dmId, ...(fromMessageIds.length ? { fromMessageIds } : {}) }, headers: key(idempotencyKey),
+  });
+/** Who could open a project copy of a DM sketch, and what goes in; nothing is shared. */
+export const previewPromotion = (sketchId: string, target: { kind: 'new' } | { kind: 'existing'; projectId: string } | null, signal?: AbortSignal) =>
+  request<SketchPromotionPreview>(`${sketchPromotionPath(sketchId)}${target ? (target.kind === 'new' ? '?target=new' : `?projectId=${target.projectId}`) : ''}`, { signal });
+export const promoteSketch = (sketchId: string, target: PromotionTarget, token: string, idempotencyKey: string) =>
+  request<PromotedSketch>(sketchPromotionPath(sketchId), { method: 'POST', body: { target, token }, headers: key(idempotencyKey) });
 
 export const getSketch = (sketchId: string, signal?: AbortSignal) => request<SketchDetail>(sketchPath(sketchId), { signal });
 export const renameSketch = (sketchId: string, title: string, version: number, idempotencyKey: string) =>
