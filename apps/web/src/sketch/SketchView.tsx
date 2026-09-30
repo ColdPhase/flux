@@ -355,7 +355,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
 
         {canWrite ? (
           <div className="sk-bar">
-            <div className="sk-tools" role="toolbar" aria-label="Sketch tools">
+            <div className={`sk-tools${sketch.scope === 'project' ? ' sk-tools--seven' : ''}`} role="toolbar" aria-label="Sketch tools">
             <button type="button" className="ui-btn ui-btn--quiet sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={14} />Thought</button>
             <button type="button" className="ui-btn ui-btn--quiet" aria-pressed={!!connectFrom} onClick={connect} aria-label="Connect"><Icon name="link" size={14} /><span className="sk-bl">Connect</span></button>
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={selection.length !== 1} onClick={() => {
@@ -365,7 +365,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
             }} aria-label="Edit"><Icon name="edit" size={14} /><span className="sk-bl">Edit</span></button>
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={cycleShape} aria-label="Change shape"><Icon name="shape" size={14} /><span className="sk-bl">Shape</span></button>
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={() => remove(selection)} aria-label="Remove from sketch"><Icon name="trash" size={14} /><span className="sk-bl">Remove</span></button>
-            {sketch.scope === 'project' ? <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={() => void makeWork()} aria-label="Create work from selected thoughts"><Icon name="tasks" size={14} /><span className="sk-bl">Create work</span></button> : null}
+            {sketch.scope === 'project' ? <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={() => void makeWork()} aria-label="Create work from selected thoughts"><Icon name="tasks" size={14} /><span className="sk-bl sk-bl--long">Create work</span><span className="sk-bl sk-bl--short">Task</span></button> : null}
             <span className="sk-div" aria-hidden="true" />
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!doc.canUndo} onClick={undo} aria-label="Undo"><Icon name="undo" size={14} /><span className="sk-bl">Undo</span></button>
             </div>
