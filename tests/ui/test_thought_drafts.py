@@ -86,6 +86,14 @@ class ThoughtDraftJourney(unittest.TestCase):
     def stored(self, page, sketch=None):
         return self.api(page, "GET", f"/api/v1/sketches/{sketch or self.sketch}")
 
+    def wait_stored(self, page, predicate):
+        for _ in range(50):
+            current = self.stored(page)
+            if predicate(current):
+                return current
+            page.wait_for_timeout(100)
+        self.fail('the expected committed API state did not arrive')
+
     def open(self, page, sketch=None, mode="List"):
         page.goto(f"/projects/{self.project}/map/{sketch or self.sketch}")
         expect(page.locator(".sk-head")).to_be_visible()
@@ -188,8 +196,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         self.assertEqual(submitted[0], submitted[1], "retry retains the exact payload, IDs and request key")
         self.assertEqual(self.stored(page), committed)
         page.get_by_role("button", name="Undo", exact=True).click()
-        page.wait_for_function("async id => (await (await fetch('/api/v1/sketches/'+id)).json()).thoughts.length===2", arg=self.sketch)
-        restored = self.stored(page)
+        restored = self.wait_stored(page, lambda current: len(current['thoughts']) == 2)
         self.assertEqual(restored["thoughts"], self.before["thoughts"])
         self.assertEqual(restored["links"], self.before["links"])
 
@@ -248,10 +255,11 @@ class ThoughtDraftJourney(unittest.TestCase):
         self.assertEqual(self.stored(page), self.before)
         peer = self.page("writer")
         thought = next(t for t in self.before["thoughts"] if t["id"] == self.parent)
-        self.api(peer, "PATCH", f"/api/v1/sketches/{self.sketch}/thoughts/{self.parent}", {"text": "Jonas confirmed the newer sensor requirement"}, headers={"if-match": f'"{thought["version"]}"'})
+        with page.expect_response(lambda response: response.request.method == 'GET' and response.url.endswith(f'/api/v1/sketches/{self.sketch}')) as streamed:
+            self.api(peer, "PATCH", f"/api/v1/sketches/{self.sketch}/thoughts/{self.parent}", {"text": "Jonas confirmed the newer sensor requirement"}, headers={"if-match": f'"{thought["version"]}"'})
         # The stream is allowed to refetch before Ada saves: her opened version must stay fixed.
-        page.wait_for_function("async id => (await (await fetch('/api/v1/sketches/'+id)).json()).thoughts.some(t => t.text==='Jonas confirmed the newer sensor requirement')", arg=self.sketch)
-        page.wait_for_timeout(500)
+        self.assertTrue(any(t['text'] == 'Jonas confirmed the newer sensor requirement' for t in streamed.value.json()['thoughts']))
+        page.wait_for_timeout(150)
         field.press("Enter")
         expect(page.locator(".sk-status")).to_contain_text("Someone else changed")
         expect(page.get_by_label("Thought text")).to_have_value("My private proposal\n<b>Literal text</b>")
@@ -281,6 +289,8 @@ class ThoughtDraftJourney(unittest.TestCase):
         expect(page.locator(".sk-status")).to_contain_text("text is kept")
         expect(page.get_by_label("Thought text")).to_have_value("Keep the manual off switch")
         self.assertEqual(self.stored(page), self.before)
+        page.get_by_role('button', name='Edit', exact=True).click()
+        expect(page.get_by_label('Thought text')).to_have_value('Keep the manual off switch')
         page.unroute(path)
         page.get_by_role("button", name="Save edit", exact=True).click()
         expect(page.locator(".sk-status")).to_contain_text("Saved")
