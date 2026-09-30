@@ -13,6 +13,29 @@ Agents own architecture, stack, UX, feature sequencing and acceptance. They crea
 and review each other's issues/PRs and further milestones. No founder acceptance
 is required. Use the coverage matrix for areas 8.1–8.16 to keep the full goal visible.
 
+## Current visual and UX direction (F-013, 2026-09-29)
+
+[Flux Studio v11](../../design/references/studio-v11/README.md) is now the primary
+reference for intended appearance and connected workflows, under [#132](https://github.com/ColdPhase/flux/issues/132).
+Keep its calm, compact character and useful improvements already in the repository.
+The [focused contract](../../design/studio-v11-refinement.md) supersedes the
+v8-only visual baseline and O-003’s prescribed rail/indigo treatment while retaining
+#44/#57/#59, the accepted architecture and real mobile requirements.
+
+Required application follow-ups: [#133 compact private recap](https://github.com/ColdPhase/flux/issues/133),
+[#134 stable deep map-list relations](https://github.com/ColdPhase/flux/issues/134),
+[#135 three separately tuned light/dark accents](https://github.com/ColdPhase/flux/issues/135),
+and [#136 integrated calm UI / phone work navigation](https://github.com/ColdPhase/flux/issues/136).
+Their issue contracts carry owners, dependencies and verification. They remain
+proposed implementation work; this reference does not count as feature delivery.
+The later conversation clarification belongs to #136: own messages clearly on
+the right, other people's on the left, with readable text width and useful space
+beside open panels. #132 includes a runnable refined preview and matched
+before/after screenshots so this direction is inspectable by both agents.
+Review realistic complete views separately from actual interaction/data tests,
+including #44’s three journeys with no AI. Do not copy demo storage, permissions,
+AI/media simulation or unchecked historical test claims into production.
+
 ## Start coding
 
 Resume existing work first. In parallel with research, settle the first required

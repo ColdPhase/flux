@@ -1,14 +1,17 @@
 import type { FastifyInstance } from 'fastify';
 import type { LiveContextRef, LivePresentationRef, PresentLiveContextCommand, StartLiveSessionCommand } from '@flux/contracts';
 import { LIVE_SESSIONS_PATH, liveJoinPath, liveLeavePath, livePresentPath, livePresentationsPath, liveSessionPath } from '@flux/contracts';
-import { DomainError, liveUseCases, type LivePorts } from '@flux/core';
+import { DomainError, liveUseCases, RateLimitedError, type LivePorts } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
 import type { LiveLifecycle } from './lifecycle.js';
+import type { JoinRateLimiter } from './rate-limit.js';
 import type { LiveRevocationCoordinator } from './revocation.js';
 
 interface Options { ports: LivePorts; sessions: SessionResolver; lifecycle?: Pick<LiveLifecycle, 'reconcile'>;
-  revocation?: Pick<LiveRevocationCoordinator, 'recoverMissingRoom'> }
+  revocation?: Pick<LiveRevocationCoordinator, 'recoverMissingRoom'>;
+  /** Per-user join limit of this API instance, created by the composition root. */
+  joinLimiter?: JoinRateLimiter }
 
 const id = { type: 'string', pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' } as const;
 const context = { type: 'object', required: ['type', 'id'], additionalProperties: false,
@@ -18,8 +21,12 @@ const presentation = { type: 'object', required: ['type', 'id', 'version'], addi
     version: { type: 'integer', minimum: 1 }, selectedThoughtIds: { type: 'array', maxItems: 100, uniqueItems: true, items: id } } } as const;
 
 /** API policy runs before transport grants; the browser starts with all devices off. */
-export async function liveRoutes(app: FastifyInstance, { ports, sessions, lifecycle, revocation }: Options) {
+export async function liveRoutes(app: FastifyInstance, { ports, sessions, lifecycle, revocation, joinLimiter }: Options) {
   useDomainErrors(app);
+  // A limited join says when to try again (HTTP 429 + Retry-After).
+  app.addHook('onError', async (_request, reply, error) => {
+    if (error instanceof RateLimitedError) reply.header('retry-after', String(error.retryAfterSeconds));
+  });
   const live = liveUseCases(ports);
   const principal = async (request: Parameters<SessionResolver['requirePrincipal']>[0]) => (await sessions.requirePrincipal(request)).principal;
 
@@ -32,19 +39,24 @@ export async function liveRoutes(app: FastifyInstance, { ports, sessions, lifecy
     async (request) => live.get(await principal(request), request.params.sessionId));
 
   app.post<{ Params: { sessionId: string } }>(liveJoinPath(':sessionId'), async (request) => {
-    const caller = await principal(request);
-    try { return await live.join(caller, request.params.sessionId); }
+    const { principal: caller, sessionId: authSessionId } = await sessions.requirePrincipal(request);
+    // Counted before any database or SFU work, so a runaway client stays cheap.
+    joinLimiter?.take(caller.id);
+    // The grant is admitted only with this same cookie session at the signaling gate (#128).
+    try { return await live.join(caller, request.params.sessionId, authSessionId); }
     catch (error) {
       if (!revocation || !(error instanceof DomainError) ||
         !['LIVE_ROOM_GONE', 'LIVE_SESSION_ROTATING'].includes(error.code)) throw error;
       await revocation.recoverMissingRoom(request.params.sessionId);
       // This is a new admission, including current project and anchor checks.
-      return live.join(caller, request.params.sessionId);
+      return live.join(caller, request.params.sessionId, authSessionId);
     }
   });
 
   app.post<{ Params: { sessionId: string } }>(liveLeavePath(':sessionId'), async (request, reply) => {
-    await live.leave(await principal(request), request.params.sessionId);
+    // Only this device's session leaves; the person's other sessions stay connected (#128).
+    const { principal: caller, sessionId: authSessionId } = await sessions.requirePrincipal(request);
+    await live.leave(caller, request.params.sessionId, authSessionId);
     await lifecycle?.reconcile(request.params.sessionId);
     return reply.code(204).send();
   });

@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
-import { chromium, type Browser as ChromiumBrowser, type Page } from 'playwright';
+import { chromium, type Browser as ChromiumBrowser } from 'playwright';
 import { createDatabase } from '@flux/db';
 import type { Conversation, LiveJoinGrant, LiveSession } from '@flux/contracts';
+import { publicOrigin } from '../support/http.js';
+import { mediaPage, openRoom, refreshedToken, refusedAtGate, roomName, type MediaPage } from '../support/live-sfu.js';
 import { addMember, expectStatus, grant, person, project, workspace } from '../support/people.js';
 
 /**
@@ -11,80 +13,11 @@ import { addMember, expectStatus, grant, person, project, workspace } from '../s
  * participate in one revocation. This deliberately does not mock the media port.
  * Run only through scripts/check_live_sfu.sh; the ordinary PR suite has no SFU.
  */
-const sdkPath = '/opt/live-sfu/node_modules/livekit-client/dist/livekit-client.umd.js';
 let browser: ChromiumBrowser | undefined;
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required for signed LiveKit webhook observation');
 const { pool: webhookPool } = createDatabase(connectionString);
 after(async () => { await browser?.close(); await webhookPool.end(); });
-
-interface BrowserRoom {
-  connect(url: string, token: string, options?: { maxRetries?: number }): Promise<void>;
-  disconnect(): Promise<void>;
-  state: string;
-  engine: { token?: string };
-}
-
-interface MediaPage extends Window {
-  LivekitClient?: { Room: new () => BrowserRoom };
-  LiveKitClient?: { Room: new () => BrowserRoom };
-  fluxRoom?: BrowserRoom;
-  probeRoom?: BrowserRoom;
-}
-
-async function openRoom(page: Page, url: string, token: string): Promise<void> {
-  // Signaling begins with fetch before the WebSocket upgrade. A same-origin page
-  // avoids the opaque `about:blank` origin's CORS rejection in Chromium.
-  await page.goto(url.replace(/^ws/, 'http'));
-  await page.addScriptTag({ path: sdkPath });
-  await page.evaluate(async ({ url, token }) => {
-    const w = window as MediaPage;
-    const sdk = w.LivekitClient ?? w.LiveKitClient;
-    if (!sdk) throw new Error('Pinned LiveKit browser SDK did not expose its UMD global');
-    const room = new sdk.Room();
-    w.fluxRoom = room;
-    await room.connect(url, token);
-  }, { url, token });
-  assert.equal(await page.evaluate(() => (window as MediaPage).fluxRoom?.state), 'connected');
-}
-
-async function refreshedToken(page: Page, original: string): Promise<string> {
-  await page.waitForFunction((first) => {
-    const current = (window as MediaPage).fluxRoom?.engine.token;
-    return typeof current === 'string' && current !== first;
-  }, original, { timeout: 15_000 });
-  const token = await page.evaluate(() => (window as MediaPage).fluxRoom?.engine.token);
-  assert.ok(token && token !== original, 'the token was actually refreshed by the SFU');
-  return token;
-}
-
-function roomName(token: string): string {
-  const payload = JSON.parse(Buffer.from(token.split('.')[1]!, 'base64url').toString('utf8')) as {
-    exp: number; video: { room: string };
-  };
-  assert.ok(payload.exp > Math.floor(Date.now() / 1000), 'token is still valid when tested');
-  assert.match(payload.video.room, /^live_[A-Za-z0-9_-]{32}$/);
-  return payload.video.room;
-}
-
-async function failsToReconnect(page: Page, url: string, token: string): Promise<string> {
-  // The SDK retries failed signaling for a long time. Observe the SFU's own
-  // rejection instead of waiting for the client retry policy to exhaust.
-  const refused = page.waitForResponse((response) => response.url().includes('/rtc/validate') &&
-    response.status() === 404, { timeout: 10_000 });
-  await page.evaluate(({ url, token }) => {
-    const w = window as MediaPage;
-    const sdk = w.LivekitClient ?? w.LiveKitClient;
-    if (!sdk) throw new Error('LiveKit SDK missing');
-    const room = new sdk.Room();
-    w.probeRoom = room;
-    void room.connect(url, token).catch(() => undefined);
-  }, { url, token });
-  const response = await refused;
-  assert.notEqual(await page.evaluate(() => (window as MediaPage).probeRoom?.state), 'connected');
-  await page.evaluate(() => (window as MediaPage).probeRoom?.disconnect());
-  return `HTTP ${response.status()} ${new URL(response.url()).pathname}`;
-}
 
 test('Flux revocation retires the real SFU room, rejects original and refreshed grants, and rejoins a remaining member',
   { timeout: 120_000 }, async () => {
@@ -102,13 +35,14 @@ test('Flux revocation retires the real SFU room, rejects original and refreshed 
     }), 201) as LiveSession;
     const ownerGrant = expectStatus(await owner.browser.request('POST', `/api/v1/live-sessions/${session.id}/join`), 200) as LiveJoinGrant;
     const revokedGrant = expectStatus(await revoked.browser.request('POST', `/api/v1/live-sessions/${session.id}/join`), 200) as LiveJoinGrant;
-    assert.equal(ownerGrant.mediaUrl, process.env.FLUX_LIVEKIT_WS_URL);
+    // Browsers get the Flux signaling gate, never the SFU address (#128).
+    assert.equal(ownerGrant.mediaUrl, `${publicOrigin.replace(/^http/, 'ws')}/media`);
     const oldRoom = roomName(revokedGrant.token);
     assert.equal(roomName(ownerGrant.token), oldRoom);
 
     browser = await chromium.launch({ args: ['--no-sandbox', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] });
-    const ownerPage = await browser.newPage();
-    const revokedPage = await browser.newPage();
+    const ownerPage = await mediaPage(browser, owner.browser);
+    const revokedPage = await mediaPage(browser, revoked.browser);
     await Promise.all([
       openRoom(ownerPage, ownerGrant.mediaUrl, ownerGrant.token),
       openRoom(revokedPage, revokedGrant.mediaUrl, revokedGrant.token),
@@ -151,10 +85,9 @@ test('Flux revocation retires the real SFU room, rejects original and refreshed 
     assert.equal(denied.status, 404, denied.text);
     assert.equal((denied.json as { code: string }).code, 'PROJECT_NOT_FOUND');
 
-    const originalFailure = await failsToReconnect(revokedPage, revokedGrant.mediaUrl, revokedGrant.token);
-    const refreshedFailure = await failsToReconnect(revokedPage, revokedGrant.mediaUrl, fresh);
-    assert.match(originalFailure, /room|not found|404|connect/i);
-    assert.match(refreshedFailure, /room|not found|404|connect/i);
+    // The gate refuses both before the SFU: project access is gone (and the room retired).
+    const originalFailure = await refusedAtGate(revokedPage, revokedGrant.mediaUrl, revokedGrant.token);
+    const refreshedFailure = await refusedAtGate(revokedPage, revokedGrant.mediaUrl, fresh);
 
     const next = expectStatus(await owner.browser.request('POST', `/api/v1/live-sessions/${session.id}/join`), 200) as LiveJoinGrant;
     assert.equal(next.session.generation, session.generation + 1);

@@ -8,7 +8,8 @@ import { pageBackTo } from './seekMessage';
 import { useShellData } from './data';
 import { MessageActions, MessageObjects, useCreateWorkFromMessage } from '../work/inline';
 import { audienceLine, replyTo, useProjectShell } from '../project/data';
-import { SinceYouLeftLine } from '../returns/SinceYouLeft';
+import { useRegisterLiveHere } from '../live/LiveProvider';
+import { excerpt } from '../live/anchors';
 import './project-conversation.css';
 
 export interface ProjectData { project: Project; conversations: ConversationSummary[]; conversationTotal: number; materials: Material[]; materialTotal: number; members: WorkspaceMember[]; conversation: Conversation | null }
@@ -74,15 +75,15 @@ function mergeMessages(current: Conversation['messages'], incoming: Conversation
 
 export function ProjectConversation() {
   const data = useLoaderData() as ProjectData;
-  // The return line belongs to the project, so switching threads keeps what was shown on arrival.
   return <div className="project-page">
-    <SinceYouLeftLine key={data.project.id} projectId={data.project.id} conversationId={data.conversation?.id} />
     <ProjectConversationContent key={`${data.project.id}:${data.conversation?.id ?? 'new'}`} data={data} />
   </div>;
 }
 
 function ProjectConversationContent({ data }: { data: ProjectData }) {
   const { project, materials, members, conversation } = data;
+  // The open conversation is where "Work on this together" starts; nothing is shown by itself.
+  useRegisterLiveHere(conversation ? { projectId: project.id, context: { type: 'conversation', id: conversation.id }, label: excerpt(conversation.firstMessageBody) } : null, null);
   const shell = useProjectShell();
   const work = shell?.work ?? { work: [], decisions: [], results: [] };
   const people = shell?.people ?? null;
