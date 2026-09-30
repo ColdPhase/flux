@@ -24,8 +24,11 @@ export interface AddToDocView {
  */
 export interface OverviewView { kind: 'overview'; messageId?: string }
 
+/** "What matters" (#133): the private recap of one project. */
+export interface RecapView { kind: 'recap'; projectId: string }
+
 /** What the Details panel shows: the current place, a project object or form, or how to connect a personal AI (#57). */
-export type DetailsView = 'place' | 'connect-ai' | ObjectView | WorkFormView | AddToDocView | OverviewView;
+export type DetailsView = 'place' | 'connect-ai' | ObjectView | WorkFormView | AddToDocView | OverviewView | RecapView;
 
 export interface ShellActions {
   openDetails(view?: DetailsView): void;
