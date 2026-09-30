@@ -34,6 +34,7 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
   const lastFocus = useRef<{ id: string; index: number } | null>(null);
   const [returnPoint, setReturnPoint] = useState<ReturnPoint | null>(null);
   const [groupingId, setGroupingId] = useState<string | null>(null);
+  const [pathId, setPathId] = useState<string | null>(null);
   const rows = visibleRows(view.outline, view.state.collapsed);
   const source = returnPoint ? view.outline.byId.get(returnPoint.sourceId) : null;
   const focus = (id: string, scrollTop?: number, afterRender = false) => {
@@ -132,7 +133,7 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
               <div className="sk-outline-body">
                 <span className="sk-li-s">{placement ? `${placement} · ` : ''}{provenance(thought, meId)}</span>
                 {parentLabel ? <span className="sk-li-s">Connection · {parentLabel}</span> : null}
-                {row.depth > 0 ? <details className="sk-outline-path"><summary>Path · level {row.depth}</summary><ol aria-label={`Path to ${thought.text}`}>{row.ancestors.map((id) => { const ancestor = view.outline.byId.get(id)!; return <li key={id}><button type="button" aria-label={`Go to ancestor ${ancestor.thought.text}`} onClick={() => follow(thought.id, id)}>{ancestor.thought.text}</button></li>; })}</ol></details> : null}
+                {row.depth > 0 ? <details className="sk-outline-path" open={pathId === thought.id} onToggle={(event) => { const open = event.currentTarget.open; setPathId((before) => open ? thought.id : before === thought.id ? null : before); }}><summary>Path · level {row.depth}</summary>{pathId === thought.id ? <ol aria-label={`Path to ${thought.text}`}>{row.ancestors.map((id) => { const ancestor = view.outline.byId.get(id)!; return <li key={id}><button type="button" aria-label={`Go to ancestor ${ancestor.thought.text}`} onClick={() => follow(thought.id, id)}>{ancestor.thought.text}</button></li>; })}</ol> : null}</details> : null}
                 {relations.length ? <div className="sk-li-l sk-outline-related"><span>Related to </span>{relations.slice(0, 2).map(({ link, other }, relatedIndex) => <span key={link.id}>{relatedIndex ? ', ' : ''}<button type="button" aria-label={`Related to ${other.thought.text}`} onClick={() => follow(thought.id, other.thought.id)}>{other.thought.text}</button>{link.label ? <span className="sk-outline-label"> · {link.label}</span> : null}</span>)}{relations.length > 2 ? <details className="sk-outline-more-links"><summary>More relations</summary>{relations.slice(2).map(({ link, other }) => <span key={link.id}><button type="button" aria-label={`Related to ${other.thought.text}`} onClick={() => follow(thought.id, other.thought.id)}>{other.thought.text}</button>{link.label ? ` · ${link.label}` : ''}</span>)}</details> : null}</div> : null}
                 {selected && !editing ? <div className="sk-outline-actions">
                   {canWrite ? <><button type="button" onClick={() => on.onEdit(thought.id)}><Icon name="edit" size={12} />Edit</button><button type="button" onClick={() => on.onAdd(thought.id)}><Icon name="plus" size={12} />Add thought</button></> : null}
