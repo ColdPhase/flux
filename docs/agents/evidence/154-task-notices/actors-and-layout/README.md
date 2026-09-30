@@ -48,6 +48,14 @@ events/outbox. This is not a claim of actual #153 claim/receipt/client integrati
 
 ## Visual evidence and remaining acceptance
 
+The subsequent independent [current UI assessment](independent-current-ui-review.md)
+at704042d (production identical to72d743d) passed39 affected checks, access/actor
+Chromium and fresh typecheck/lint. Its actual same-name owner/reader1280/390
+states confirm keyboard Sources, no reader reply controls, actual POST403 and
+persisted owner replies. The [manifest](independent-current-ui-manifest.json)
+separately pins those runs and four `independent-704042d` frames. Its pixel opinion
+is still LIMITED; no fresh visual certification is inferred.
+
 The [limited independent visual report](independent-visual-limited.md), at2093a8c,
 identified ambiguous audience wording and a reply-shaped reader composer. Both
 are corrected and exercised at72d743d. Current frames are
@@ -73,3 +81,34 @@ published; failed earlier attempts retain their original status in the independe
 report. Run-owned containers, volumes and image tags were cleaned without touching
 peer resources. Current foundation/Python/whitespace checks are recorded after this
 evidence-only change, separately from the application runs.
+
+## Later shared native work/result event composition
+
+Before implementation, the bounded [composition proposal](../../../../development/task-discussions/2026-10-01-native-event-composition.md)
+received an [independent acceptance](../../../../development/task-discussions/2026-10-01-native-event-composition-review.md)
+at exact proposal SHA633ad72 and existing704042d source. Runtime source
+`daa66f06ef81a31e42357adde5555f0318bbfb84` adds one shared guarded event session.
+`nativeWorkInTransaction(tx)` exposes existing work/result/decision plus genuine
+discussion on the caller's same transaction and event collector, with one final
+audience flush. Ordinary work HTTP awaits that flush; helper proposal acceptance
+prepares the actual accepting human's result and proposal decision together,
+hydrates the response and then flushes once. Nested independent native commits
+and early inline result events are removed from that composition.
+
+Fresh complete configured Docker build/type/lint/application atdaa66f0 exited0:
+**349/349**,3 PWA,1 access-stream,1 actor Chromium, actual API restart with original
+session/material/linked conversation and unavailable push/email checks. The
+[sanitized native full run](docker-native-full-daa66f0-summary.txt) and manifest
+retain its source and private raw-log SHA. Three new actual SQL cases prove
+native task/result plus genuine agent root with no pre-flush stream lock,
+final-state audience changes, no domain reads/writes after first event insertion,
+before/after-flush full rollback and immutable nested intents/lifecycle. Existing
+helper proposal acceptance now also proves rollback after the actual proposal
+decision and success through an instrumented real transaction without a nested
+native savepoint or late response/domain queries. Production deadlines are unchanged.
+
+Fresh independent **runtime** review of this new composition remains pending;
+the independently accepted design and prior704 UI review are not its acceptance.
+No #152/#153 actual authority/receipt/outgoing/claim integration is inferred.
+Blocker/result/public-handoff messages, files, undo, shared drafts and all other
+remaining original criteria above remain open.

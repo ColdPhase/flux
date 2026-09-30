@@ -166,3 +166,12 @@ and roll back the caller's transaction. There is no asynchronous/post-commit flu
 Ordinary HTTP keeps one transaction and automatically awaits final flush after its
 action completes. Actual #153 receipt/generation/claim recovery remains a separate
 integration obligation, not proved by this adapter's rollback fixture.
+
+The independently accepted [native work/result composition](task-discussions/2026-10-01-native-event-composition-review.md)
+provides `nativeWorkInTransaction(tx)` for work/result/decision and discussion
+commands sharing one collector and final flush. Use this one session when combining
+domains; do not flush a separate discussion-only session mid-composition. Ordinary
+work and helper proposal acceptance prepare their response/domain writes before
+one awaited final batch. The collector snapshots nested canonical data and tracks
+every admitted action. These primitives supply no connection/runtime/grant, quota,
+receipt or coordination authority; #152/#153 retain their own current FIRST fence.
