@@ -137,6 +137,11 @@ export interface PersonalRunRepository {
    * reservation kept as `unknown`. Returns the ended runs.
    */
   endStale(ownerUserId: string, olderThanSeconds: number): Promise<RunRecord[]>;
+  /**
+   * The same for every owner, at most `limit` runs, skipping rows another sweep holds: the
+   * background sweep, so a run a crashed worker left behind ends without the owner's next invoke.
+   */
+  endStaleAny(olderThanSeconds: number, limit: number): Promise<RunRecord[]>;
   /** Only the owner's own runs, newest first. */
   listOwnRuns(ownerUserId: string, page: PageWindow): Promise<Paged<RunRecord>>;
   /** Committed answers of a conversation, oldest first. */
