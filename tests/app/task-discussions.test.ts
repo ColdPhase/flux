@@ -6,7 +6,7 @@ import { candidatesFor, ConflictError, createTaskDiscussionUseCases, NotFoundErr
 import type { GeneratorEvent } from '@flux/core';
 import { projectExportPath, type Conversation, type ConversationMessage, type Material, type Page,
   type ConversationSummary, type ProjectExport, type ReturnSummary, type SearchResponse, type TaskDiscussion, type WorkItem } from '@flux/contracts';
-import { taskDiscussionUnitOfWork, taskDiscussionUseCases } from '../../apps/server/src/work/task-discussions.js';
+import { taskDiscussionInTransaction, taskDiscussionUnitOfWork, taskDiscussionUseCases } from '../../apps/server/src/work/task-discussions.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
 
 const { db, pool } = createDatabase(process.env.DATABASE_URL!);
@@ -199,6 +199,42 @@ test('a genuine agent creates the canonical root; human and agent command identi
   assert.equal((await f.counts()).bindings, 1);
 });
 
+test('simultaneous first human/two-agent sends keep one root and kind-scoped receipts even for a colliding textual ID', async () => {
+  const f = await scene();
+  const { principal: second } = await agentIn(f);
+  // Deliberately construct the rare UUID collision; this is a stored actor fixture,
+  // not an external client activation or a way for callers to select authorship.
+  await pool.query('INSERT INTO agents(id,workspace_id,name,owner_user_id,created_by) VALUES($1,$2,$3,$4,$4)',
+    [f.writer.id, f.ws.id, 'root-writer', f.owner.id]);
+  const collision = { kind: 'agent' as const, id: f.writer.id };
+  expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.place.id}/grants`, {
+    body: { principal: collision, role: 'contributor' },
+  }), 201);
+  const clientMessageId = randomUUID();
+  const humanCommand = { body: 'A human first contribution.', clientMessageId };
+  const agentCommand = { body: 'A distinct agent first contribution.', clientMessageId };
+  const otherCommand = { body: 'Another agent first contribution.', clientMessageId };
+  const [human, agent, other] = await Promise.all([
+    f.writer.browser.request('POST', f.path, { body: humanCommand }).then((response) => expectStatus(response, 201) as ConversationMessage),
+    taskDiscussionUseCases(db).contribute(collision, f.task.id, agentCommand),
+    taskDiscussionUseCases(db).contribute(second, f.task.id, otherCommand),
+  ]);
+  assert.equal(human.authorId, f.writer.id);
+  assert.equal(agent.authorId, null);
+  assert.equal(agent.author?.id, f.writer.id);
+  assert.deepEqual([human.sequence, agent.sequence, other.sequence].sort(), [1, 2, 3]);
+  assert.equal(new Set([human.conversationId, agent.conversationId, other.conversationId]).size, 1);
+  assert.equal(new Set([human.id, agent.id, other.id]).size, 3);
+  assert.deepEqual(expectStatus(await f.writer.browser.request('POST', f.path, { body: humanCommand }), 201), human);
+  assert.deepEqual(await taskDiscussionUseCases(db).contribute(collision, f.task.id, agentCommand), agent);
+  assert.deepEqual(await taskDiscussionUseCases(db).contribute(second, f.task.id, otherCommand), other);
+  const first = [human, agent, other].find((row) => row.sequence === 1)!;
+  const discussion = await f.read();
+  assert.deepEqual(discussion.root, first);
+  assert.equal(discussion.messages.length, 3);
+  assert.equal((await f.counts()).bindings, 1);
+});
+
 test('real agent history reaches bounded helper context, search, export, notifications and return summaries', async () => {
   const f = await scene();
   const { agent, principal } = await agentIn(f);
@@ -269,4 +305,21 @@ test('agent first-send rollback is atomic; current grant revocation blocks retri
   await assert.rejects(pool.query('DELETE FROM agents WHERE id=$1', [agent.id]), /foreign key constraint/,
     'recorded authors cannot be deleted out of genuine history');
   assert.deepEqual(await f.counts(), { bindings: 1, messages: 1, conversations: 1, events: before.events + 2 });
+});
+
+test('co-work composition rolls back actual agent contribution and event if the outer control resolution fails', async () => {
+  const f = await scene();
+  const { principal } = await agentIn(f);
+  const before = await f.counts();
+  const command = { body: 'Actual checkpoint contribution.', clientMessageId: randomUUID() };
+  await assert.rejects(db.transaction(async (tx) => {
+    const contribution = await taskDiscussionInTransaction(tx).contribute(principal, f.task.id, command);
+    assert.equal(contribution.authorId, null);
+    throw new Error('outer control resolution failed after domain event');
+  }), /outer control resolution failed/);
+  assert.deepEqual(await f.counts(), before);
+  assert.equal((await f.read()).root, null);
+  const sent = await db.transaction((tx) => taskDiscussionInTransaction(tx).contribute(principal, f.task.id, command));
+  assert.deepEqual(await taskDiscussionUseCases(db).contribute(principal, f.task.id, command), sent);
+  assert.deepEqual(await f.counts(), { bindings: 1, messages: 1, conversations: 1, events: before.events + 1 });
 });

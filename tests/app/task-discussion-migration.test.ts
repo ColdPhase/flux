@@ -12,7 +12,8 @@ test('actual pre-notice human rows and search provenance survive notice and agen
   url.pathname = `/${name}`;
   let history: ReturnType<typeof createDatabase>['pool'] | undefined;
   try {
-    await admin.query(`CREATE DATABASE "${name}"`);
+    const createFixture = { text: `CREATE DATABASE "${name}"`, query_timeout: 10_000 };
+    await admin.query(createFixture);
     history = createDatabase(url.toString()).pool;
     const dir = 'packages/db/migrations';
     const files = (await readdir(dir)).filter((file) => /^\d{4}_.*\.sql$/.test(file)).sort();
@@ -62,6 +63,9 @@ test('actual pre-notice human rows and search provenance survive notice and agen
     assert.deepEqual(await snapshot(), before);
   } finally {
     await history?.end();
-    await admin.query(`DROP DATABASE IF EXISTS "${name}"`).finally(() => admin.end());
+    // Database administration/fsync can outlast the API's2s read deadline.
+    // All history/migration assertions retain the ordinary runtime pool deadlines.
+    const cleanup = { text: `DROP DATABASE IF EXISTS "${name}"`, query_timeout: 10_000 };
+    await admin.query(cleanup).finally(() => admin.end());
   }
 });

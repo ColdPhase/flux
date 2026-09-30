@@ -136,3 +136,15 @@ this #154 actor extension**, after0034/#152,0035/#153 and0036/#74 agreed on the
 coordination issue. No old migration or historical author/time/source is rewritten.
 Guarded pre-use reversal and refusal after unrepresentable agent/file use remain
 required migration acceptance, not an implied completed rollback.
+
+## Transaction-bound co-work composition
+
+The #153 composition root may call `taskDiscussionInTransaction(tx)` with its
+actual open database transaction. It reuses the same mandatory current-access,
+command, task, sequence and event ports; it opens no separate transaction and
+commits nothing itself. Thus a current authenticated agent contribution and its
+fenced control-request resolution can commit or roll back together. The caller
+still establishes the authenticated connection/action grant and locks that
+authority before the agreed domain locks. A receipt, claim ACK, client payload or
+agent display name never supplies that authority. Ordinary HTTP contribution
+keeps its existing single-transaction unit of work.
