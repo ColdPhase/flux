@@ -359,6 +359,16 @@ class ThemeAccentsJourney(unittest.TestCase):
                     self.assertGreaterEqual(rect["y"], 0, "account popover remains on the short viewport")
                     self.assertLessEqual(rect["y"] + rect["height"], 500)
                     shot(page, f"accent-{theme.lower()}-{family.lower()}-phone-short-125-settings")
+                    sign_out = pop.get_by_role("button", name="Sign out", exact=True)
+                    sign_out.scroll_into_view_if_needed()
+                    expect(sign_out).to_be_visible()
+                    sign_out.focus()
+                    expect(sign_out).to_be_focused()
+                    end = sign_out.bounding_box()
+                    self.assertGreaterEqual(end["y"], rect["y"])
+                    self.assertLessEqual(end["y"] + end["height"], rect["y"] + rect["height"])
+                    page.keyboard.press("Shift+Tab")
+                    expect(pop.get_by_role("link", name="Your assistant", exact=True)).to_be_focused()
 
     def test_05_error_text_all_six(self):
         for theme in ("Light", "Dark"):
