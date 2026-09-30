@@ -124,3 +124,24 @@ The adapter scope is internal and opaque to MCP input; completion verifies the
 same transaction/binding/command, and every typed postcondition is read from the
 canonical domain rows. Claim-specific post-state alignment remains coordinated
 with the #153 implementation owner before enabling claim writes.
+
+## Explicit OAuth action ceiling
+
+The independent root peer accepted additive `flux.action.execute` on 2026-10-01.
+Its consent label is **Run approved project actions**, with the visible condition
+that each action also needs the owner's current standing grant. Connections must
+explicitly select it, authorization requests must explicitly request it and the
+verified bearer/runtime must retain it. Existing read/proposal selections and
+bearers are never upgraded implicitly. The current provider resource allowlist,
+signed requested-scope profile, connection validation, consent display and live
+bearer/execution checks enumerate the third scope. The command fingerprint keeps
+the authenticated scope ceiling. Contributor access alone still authorizes no
+standing effect. Coarse action scope does not substitute execution/review/plan
+class matching or actual reviewer independence.
+
+Only operations with implemented and verified canonical adapters can be advertised.
+Wiki writes and #154 conversation contributions remain unavailable until their
+real-actor storage/readers and transaction handoff are verified. Changed consent
+states need fresh visual review; the earlier two-action screenshots certify only
+their pinned historical state. Same-client two-tab consent and signed-scope
+substitution regressions remain required after this change.
