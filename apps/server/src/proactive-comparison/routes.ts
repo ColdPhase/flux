@@ -1,14 +1,17 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
-import { proactiveComparisonProposalsPath, type ConnectBackgroundComputeCommand, type CreateProactiveComparisonRule } from '@flux/contracts';
+import { backgroundComputeUsagePath, proactiveComparisonOutcomePath, proactiveComparisonOutcomesPath,
+  proactiveComparisonProposalsPath, type ConnectBackgroundComputeCommand, type CreateProactiveComparisonRule } from '@flux/contracts';
 import { backgroundConnectionRepository, proactiveOutboxRows, proactiveRuleRows, sealBackgroundKey } from '@flux/db';
 import { backgroundConnectionUseCases, ConflictError, DomainError, enforce, evaluateProject, InvalidInputError,
   isUuid, NotFoundError, proactiveRuleUseCases, VersionConflictError, type Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { workUseCases } from '../work/adapters.js';
+import { comparisonOutcomeAccess, comparisonOutcomes } from './outcome-adapter.js';
 
 interface Options { db: Database; sessions: SessionResolver; backgroundMasterKey: Buffer | null }
 
 export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sessions, backgroundMasterKey }: Options) {
+  const outcomes = comparisonOutcomes(db);
   const connections = backgroundConnectionUseCases(backgroundConnectionRepository(db), {
     seal(plainKey, ownerUserId, connectionId) {
       if (!backgroundMasterKey) throw new ConflictError('Background key custody is unavailable on this instance', 'BACKGROUND_KEY_CUSTODY_UNAVAILABLE');
@@ -60,8 +63,27 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
     async (request) => db.transaction(async (tx) => {
       const principal = (await sessions.requirePrincipal(request)).principal;
       enforce(await evaluateProject(principal, 'project.read', request.params.projectId, tx, { lock: true }), 'project');
-      return proactiveOutboxRows(tx).listProposals(request.params.projectId);
+      const access = comparisonOutcomeAccess(tx);
+      const proposals = await proactiveOutboxRows(tx).listProposals(request.params.projectId);
+      return Promise.all(proposals.map(async (proposal) => {
+        const sources: typeof proposal.sources = [];
+        for (const source of proposal.sources)
+          if (await access.canOpenSource(principal, proposal.projectId, source)) sources.push(source);
+        return { ...proposal, sources };
+      }));
     }));
+  app.get<{ Params: { projectId: string }; Querystring: { limit?: number; offset?: number } }>(
+    proactiveComparisonOutcomesPath(':projectId'), { schema: { querystring: { type: 'object', additionalProperties: false,
+      properties: { limit: { type: 'integer', minimum: 1, maximum: 100 }, offset: { type: 'integer', minimum: 0, maximum: 10000 } } } } },
+    async (request) => outcomes.list((await sessions.requirePrincipal(request)).principal, request.params.projectId,
+      request.query.limit, request.query.offset));
+  app.patch<{ Params: { outcomeId: string }; Body: { expectedVersion: number; status: 'dismissed' } }>(
+    proactiveComparisonOutcomePath(':outcomeId'), { schema: { body: { type: 'object', additionalProperties: false,
+      required: ['expectedVersion', 'status'], properties: { expectedVersion: { type: 'integer', minimum: 1 }, status: { const: 'dismissed' } } } } },
+    async (request) => outcomes.dismiss((await sessions.requirePrincipal(request)).principal,
+      request.params.outcomeId, request.body.expectedVersion));
+  app.get(backgroundComputeUsagePath, { schema: { querystring: { type: 'object', additionalProperties: false } } },
+    async (request) => outcomes.usage((await sessions.requirePrincipal(request)).principal));
   app.patch<{ Params: { proposalId: string }; Body: { expectedVersion: number; fact?: string;
     interpretation?: string; suggestedAction?: string; status?: 'dismissed' } }>(
     '/api/v1/proactive-comparison-proposals/:proposalId', async (request) => db.transaction(async (tx) => {

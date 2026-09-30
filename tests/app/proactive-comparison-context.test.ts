@@ -94,7 +94,7 @@ test('bounded current human context preserves explicit references and excludes p
   const provider: ComparisonProvider = {
     async countInputTokens(input) { supplied = input.sources; return 300; },
     async createMessage(input) {
-      return { stopReason: 'end_turn', usage: { inputTokens: 300, outputTokens: 100 }, answer: {
+      return { stopReason: 'end_turn', usage: { inputTokens: 300, outputTokens: 100 }, answer: { kind: 'comparison' as const,
         fact: 'The camera captured 38% at 5 lux.', interpretation: 'A controlled ToF comparison may help.',
         suggestedAction: 'Compare the ToF sensor under the same human protocol.',
         citations: input.sources.map(({ type, id, version }) => ({ type, id, version,
@@ -146,7 +146,7 @@ test('an explicit thought uses its actual version and sketch identity; a text ed
   assert.notEqual(after.fingerprint, before.fingerprint);
   assert.equal(after.sources.find((source) => source.type === 'thought')?.version, 2);
   const provider: ComparisonProvider = { async countInputTokens() { throw new Error('must not read old context'); }, async createMessage() { throw new Error('must not call'); } };
-  assert.deepEqual(await dispatchProactiveComparison({ db, candidateId, masterKey, provider }), { status: 'blocked', reason: 'SOURCE_CHANGED' });
+  assert.deepEqual(await dispatchProactiveComparison({ db, candidateId, masterKey, provider }), { status: 'not_run', reason: 'SOURCE_CHANGED' });
 });
 
 test('unlinked work revisions invalidate queued context, and lost owner access cannot select a new candidate', async () => {
@@ -161,7 +161,7 @@ test('unlinked work revisions invalidate queued context, and lost owner access c
   assert.notEqual((await proactiveOutboxRows(db).sourceSnapshot(result.id, f.rule.id)).fingerprint, before.fingerprint);
   let calls = 0;
   const provider: ComparisonProvider = { async countInputTokens() { calls++; return 1; }, async createMessage() { calls++; throw new Error('must not call'); } };
-  assert.deepEqual(await dispatchProactiveComparison({ db, candidateId, masterKey, provider }), { status: 'blocked', reason: 'SOURCE_CHANGED' });
+  assert.deepEqual(await dispatchProactiveComparison({ db, candidateId, masterKey, provider }), { status: 'not_run', reason: 'SOURCE_CHANGED' });
   assert.equal(calls, 0);
   await grant(f.owner, f.projectId, f.owner, 'denied');
   assert.equal((await f.negative()).candidateId, undefined, 'a permitted peer result does not select context for an owner who lost access');

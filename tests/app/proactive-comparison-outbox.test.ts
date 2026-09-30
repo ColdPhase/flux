@@ -98,7 +98,7 @@ describe('negative-result candidate and budget reservation (#58)', () => {
     await pool.query("UPDATE proactive_comparison_outbox SET status='unknown' WHERE id=$1", [reserved.id]);
     const blockedId = ids.find((id) => id !== reserved.id)!;
     assert.deepEqual(await reservations.reserve(blockedId), { status: 'blocked', reason: 'BUDGET_EXHAUSTED' });
-    assert.equal((await candidate(ids[0] === reserved.id ? second.id : peerResultId))!.status, 'queued');
+    assert.equal((await candidate(ids[0] === reserved.id ? second.id : peerResultId))!.status, 'not_run');
   });
 
   test('changed source, paused rule and revoked agent access prevent reservation', async () => {
@@ -114,21 +114,21 @@ describe('negative-result candidate and budget reservation (#58)', () => {
       randomUUID(), ws.rows[0].workspace_id, projectId, sourceChanged.id, evidence.id, owner.id,
     ]);
     assert.deepEqual(await reservations.reserve(changedId), { status: 'blocked', reason: 'SOURCE_CHANGED' });
-    assert.equal((await candidate(sourceChanged.id))!.status, 'cancelled');
+    assert.equal((await candidate(sourceChanged.id))!.status, 'not_run');
 
     const paused = await result(owner, 'negative', 'Paused after this result');
     expectStatus(await owner.browser.request('PATCH', `/api/v1/proactive-comparison-rules/${ruleId}`,
       { body: { expectedVersion: 1, status: 'paused' } }), 200);
     assert.deepEqual(await reservations.reserve((await candidate(paused.id))!.id),
       { status: 'blocked', reason: 'RULE_STOPPED' });
-    assert.equal((await candidate(paused.id))!.status, 'cancelled');
+    assert.equal((await candidate(paused.id))!.status, 'not_run');
     // Re-enable only in this fixture; production activation remains fail-closed.
     await pool.query("UPDATE proactive_comparison_rules SET status='enabled' WHERE id=$1", [ruleId]);
     const accessLost = await result(owner, 'negative', 'Access loss after result');
     expectStatus(await owner.browser.request('DELETE', `/api/v1/projects/${projectId}/grants/${grantId}`), 204);
     assert.deepEqual(await reservations.reserve((await candidate(accessLost.id))!.id),
       { status: 'blocked', reason: 'OWNER_OR_AGENT_ACCESS' });
-    assert.equal((await candidate(accessLost.id))!.status, 'cancelled');
+    assert.equal((await candidate(accessLost.id))!.status, 'not_run');
   });
 
   test('an agent-origin result cannot be enqueued even when an agent ID is supplied', async () => {

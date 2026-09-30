@@ -9,6 +9,7 @@ const source = { type: 'result' as const, id: 'result-1', version: 1, text: 'Cam
 const key = 'sk-ant-api03-local-test-secret';
 const requests: Array<{ path: string; body: Record<string, unknown> }> = [];
 let failMessage = false;
+let messageMode: 'comparison' | 'insufficient' | 'malformed' = 'comparison';
 const server = createServer(async (request, response) => {
   const chunks: Buffer[] = [];
   for await (const chunk of request) chunks.push(Buffer.from(chunk));
@@ -23,11 +24,13 @@ const server = createServer(async (request, response) => {
     response.statusCode = 503;
     response.end(JSON.stringify({ error: { message: key } }));
   } else {
-    response.end(JSON.stringify({ stop_reason: 'end_turn', usage: { input_tokens: 112, output_tokens: 78 },
-      content: [{ type: 'thinking', thinking: 'private reasoning' }, { type: 'text', text: JSON.stringify({
-        fact: 'Camera A missed gestures at 5 lux.', interpretation: 'A second sensor may help.',
+    const text = messageMode === 'malformed' ? `invalid JSON with ${key}` : JSON.stringify({ outcome: messageMode === 'insufficient'
+      ? { kind: 'insufficient_evidence', reason: 'The supplied evidence has no comparable sensor measurements.' }
+      : { kind: 'comparison', fact: 'Camera A missed gestures at 5 lux.', interpretation: 'A second sensor may help.',
         suggestedAction: 'Test another sensor.', citations: [{ type: 'result', id: source.id, version: 1 }],
-      }) }] }));
+      } });
+    response.end(JSON.stringify({ stop_reason: 'end_turn', usage: { input_tokens: 112, output_tokens: 78 },
+      content: [{ type: 'thinking', thinking: 'private reasoning' }, { type: 'text', text }] }));
   }
 });
 let provider: ReturnType<typeof anthropicComparisonProvider>;
@@ -44,6 +47,7 @@ test('real HTTP adapter sends a fixed no-tool structured request and parses a te
   const message = await provider.createMessage({ ...input, maxTokens: 1200, effort: 'low' });
   assert.equal(message.stopReason, 'end_turn');
   assert.deepEqual(message.usage, { inputTokens: 112, outputTokens: 78 });
+  assert.ok(message.answer?.kind === 'comparison');
   assert.deepEqual(message.answer.citations, [{ type: 'result', id: source.id, version: 1 }]);
   assert.deepEqual(requests.map((item) => item.path), ['/v1/messages/count_tokens', '/v1/messages']);
   for (const { body } of requests) {
@@ -53,6 +57,27 @@ test('real HTTP adapter sends a fixed no-tool structured request and parses a te
     assert.ok(JSON.stringify(body).includes(source.text));
   }
   assert.equal(requests[1]?.body.max_tokens, 1200);
+  const format = (requests[1]!.body.output_config as { format: { schema: { required: string[];
+    properties: { outcome: { anyOf: Array<{ additionalProperties: boolean; required: string[] }> } } } } }).format;
+  assert.deepEqual(format.schema.required, ['outcome']);
+  assert.equal(format.schema.properties.outcome.anyOf.length, 2, 'the provider schema distinguishes a comparison from insufficient evidence');
+  assert.ok(format.schema.properties.outcome.anyOf.every((branch) => branch.additionalProperties === false && branch.required.includes('kind')));
+});
+
+test('HTTP adapter retains observed usage for insufficient and malformed structured answers without raw output', async () => {
+  const input = { apiKey: key, model: 'claude-sonnet-5' as const, sources: [source],
+    maxTokens: 1200 as const, effort: 'low' as const, signal: AbortSignal.timeout(2000) };
+  messageMode = 'insufficient';
+  const insufficient = await provider.createMessage(input);
+  assert.deepEqual(insufficient.answer, { kind: 'insufficient_evidence', reason: 'The supplied evidence has no comparable sensor measurements.' });
+  assert.deepEqual(insufficient.usage, { inputTokens: 112, outputTokens: 78 });
+  messageMode = 'malformed';
+  const malformed = await provider.createMessage(input);
+  assert.equal(malformed.answer, null);
+  assert.deepEqual(malformed.usage, { inputTokens: 112, outputTokens: 78 });
+  assert.equal(JSON.stringify(malformed).includes(key), false);
+  assert.equal(JSON.stringify(malformed).includes('private reasoning'), false);
+  messageMode = 'comparison';
 });
 
 test('provider 503 has no automatic retry and does not reveal its error body', async () => {

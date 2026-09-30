@@ -23,7 +23,7 @@ export interface ReservationPorts {
     connection(ownerId: string): Promise<Connection | null>;
     usage(ownerId: string, startOfDay: Date, startOfPeriod: Date): Promise<{ dayRuns: number; periodCents: number; inFlight: number }>;
     reserve(id: string, connectionId: string, cents: number, at: Date): Promise<unknown | null>;
-    cancel(id: string): Promise<void>;
+    cancel(id: string, reason: string): Promise<void>;
   };
   access: { currentOwnerAndAgent(ownerId: string, agentId: string, projectId: string): Promise<boolean> };
 }
@@ -46,53 +46,52 @@ export function reservationUseCases(unit: ReservationUnitOfWork) {
       return unit.run(async ({ rows, access }) => {
         const candidate = await rows.lockCandidate(candidateId);
         if (!candidate || candidate.status !== 'queued') return blocked('NOT_QUEUED');
+        const refuse = async (reason: Extract<ReservationResult, { status: 'blocked' }>['reason']) => {
+          await rows.cancel(candidate.id, reason);
+          return blocked(reason);
+        };
         // All reservations and key replacement/revocation serialize on the owner row.
-        if (!await rows.lockOwner(candidate.ownerUserId)) return blocked('OWNER_OR_AGENT_ACCESS');
+        if (!await rows.lockOwner(candidate.ownerUserId)) return refuse('OWNER_OR_AGENT_ACCESS');
         const rule = await rows.rule(candidate.ruleId);
         const result = await rows.result(candidate.resultId);
         if (!rule || rule.status !== 'enabled' || rule.ownerUserId !== candidate.ownerUserId
           || rule.projectId !== candidate.projectId || !result || result.projectId !== candidate.projectId
           || result.finding !== 'negative' || result.createdByKind !== 'human') {
-          await rows.cancel(candidate.id);
-          return blocked('RULE_STOPPED');
+          return refuse('RULE_STOPPED');
         }
         if (!await access.currentOwnerAndAgent(candidate.ownerUserId, rule.agentId, candidate.projectId)) {
-          await rows.cancel(candidate.id);
-          return blocked('OWNER_OR_AGENT_ACCESS');
+          return refuse('OWNER_OR_AGENT_ACCESS');
         }
         const snapshot = await rows.sourceSnapshot(candidate.resultId, candidate.ruleId);
         if (snapshot.ruleVersion !== rule.version) {
-          await rows.cancel(candidate.id);
-          return blocked('RULE_STOPPED');
+          return refuse('RULE_STOPPED');
         }
         if (snapshot.fingerprint !== candidate.sourceFingerprint) {
-          await rows.cancel(candidate.id);
-          return blocked('SOURCE_CHANGED');
+          return refuse('SOURCE_CHANGED');
         }
         for (const source of snapshot.sources) {
           // Immutable human messages/results and pinned current human material/work/thought
           // revisions are checked again before reading content, dispatch and publication.
           if (source.type !== 'message' && source.type !== 'result' && source.type !== 'material' && source.type !== 'work' && source.type !== 'thought')
-            return blocked('SOURCE_SCOPE_UNVERIFIED');
+            return refuse('SOURCE_SCOPE_UNVERIFIED');
           if ((source.type === 'material' || source.type === 'work' || source.type === 'thought') && (!source.version || source.version < 1))
-            return blocked('SOURCE_SCOPE_UNVERIFIED');
+            return refuse('SOURCE_SCOPE_UNVERIFIED');
           if (!await rows.sourceCurrent(candidate.projectId, source)) {
-            await rows.cancel(candidate.id);
-            return blocked('SOURCE_CHANGED');
+            return refuse('SOURCE_CHANGED');
           }
         }
         const connection = await rows.connection(candidate.ownerUserId);
-        if (!connection || !connection.encryptedKey) return blocked('CONNECTION_REQUIRED');
+        if (!connection || !connection.encryptedKey) return refuse('CONNECTION_REQUIRED');
         if (connection.periodDays !== 30 || connection.consentVersion !== 'o-007-2026-09-28'
           || Math.min(rule.perRunCents, connection.perRunCents) < RESERVE_CENTS)
-          return blocked('BUDGET_EXHAUSTED');
+          return refuse('BUDGET_EXHAUSTED');
         const utcDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
         const periodStart = new Date(now.getTime() - 30 * DAY_MS);
         const usage = await rows.usage(candidate.ownerUserId, utcDay, periodStart);
         if (usage.inFlight) return blocked('OWNER_IN_FLIGHT');
         if (usage.dayRuns >= Math.min(rule.maxRunsPerDay, connection.maxRunsPerDay)
           || usage.periodCents + RESERVE_CENTS > Math.min(rule.periodBudgetCents, connection.periodBudgetCents))
-          return blocked('BUDGET_EXHAUSTED');
+          return refuse('BUDGET_EXHAUSTED');
         if (!await rows.reserve(candidate.id, connection.id, RESERVE_CENTS, now)) return blocked('NOT_QUEUED');
         return { status: 'reserved', id: candidate.id, ownerUserId: candidate.ownerUserId,
           ruleId: candidate.ruleId, resultId: candidate.resultId, connectionId: connection.id,

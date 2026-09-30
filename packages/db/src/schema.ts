@@ -1,4 +1,5 @@
 import { eq, isNull, ne } from 'drizzle-orm';
+import type { InspectedComparisonSource } from '@flux/contracts';
 import { pgTable, text, timestamp, uuid, integer, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
 export const samples = pgTable('samples', {
@@ -928,11 +929,14 @@ export const proactiveComparisonOutbox = pgTable('proactive_comparison_outbox', 
   projectId: uuid('project_id').notNull(),
   resultId: uuid('result_id').notNull().references(() => projectResults.id),
   sourceFingerprint: text('source_fingerprint').notNull(),
-  status: text('status', { enum: ['queued', 'reserved', 'cancelled', 'unknown', 'completed'] }).notNull().default('queued'),
+  status: text('status', { enum: ['queued', 'reserved', 'not_run', 'unknown', 'completed'] }).notNull().default('queued'),
   connectionId: uuid('connection_id').references(() => backgroundComputeConnections.id),
   reservedCents: integer('reserved_cents').notNull().default(0),
   reservedAt: timestamp('reserved_at', { withTimezone: true }),
+  dispatchStartedAt: timestamp('dispatch_started_at', { withTimezone: true }),
+  inspectedSources: jsonb('inspected_sources').$type<InspectedComparisonSource[]>(),
   proposalId: uuid('proposal_id'),
+  insufficientOutcomeId: uuid('insufficient_outcome_id'),
   usageInputTokens: integer('usage_input_tokens'),
   usageOutputTokens: integer('usage_output_tokens'),
   usageEstimatedCents: integer('usage_estimated_cents'),
@@ -966,6 +970,20 @@ export const proactiveComparisonProposals = pgTable('proactive_comparison_propos
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index('proactive_comparison_proposals_project_idx').on(table.projectId, table.createdAt.desc(), table.id.desc())]);
+
+export const proactiveComparisonInsufficientOutcomes = pgTable('proactive_comparison_insufficient_outcomes', {
+  id: uuid('id').primaryKey(),
+  outboxId: uuid('outbox_id').notNull().unique().references(() => proactiveComparisonOutbox.id),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
+  agentId: uuid('agent_id').notNull().references(() => agents.id),
+  projectId: uuid('project_id').notNull().references(() => projects.id),
+  resultId: uuid('result_id').notNull().references(() => projectResults.id),
+  reason: text('reason').notNull(),
+  status: text('status', { enum: ['open', 'dismissed'] }).notNull().default('open'),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [index('proactive_comparison_insufficient_project_idx').on(table.projectId, table.createdAt.desc(), table.id.desc())]);
 
 export const notificationGenerationFailures = pgTable('notification_generation_failures', {
   eventId: uuid('event_id').primaryKey(),

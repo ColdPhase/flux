@@ -82,7 +82,7 @@ describe('controlled background comparison dispatch (#58)', () => {
       const citations = responseMode === 'bad_citation' ? [{ type: 'result', id: randomUUID(), version: 1 }] :
         sent.sources.map(({ type, id, version }) => ({ type, id, version }));
       reply.end(JSON.stringify({ stopReason: 'end_turn', usage: { inputTokens: 100, outputTokens: 100 },
-        answer: { fact: 'Sensor A misses gestures in low light.', interpretation: 'Exposure may be too short.',
+        answer: { kind: 'comparison', fact: 'Sensor A misses gestures in low light.', interpretation: 'Exposure may be too short.',
           suggestedAction: 'Compare a second sensor in the same test.', citations } }));
     });
     await new Promise<void>((resolve) => mock.listen(0, '127.0.0.1', resolve));
@@ -106,12 +106,11 @@ describe('controlled background comparison dispatch (#58)', () => {
     },
   };
 
-  test('invalid citation keeps possible charge, then a valid sourced proposal stays quiet and project-scoped', async () => {
+  test('invalid citation records quiet insufficient evidence and usage, then a valid sourced proposal stays quiet and project-scoped', async () => {
     const invalid = await negative('Initial failed camera trial');
     responseMode = 'bad_citation';
-    assert.deepEqual(await dispatchProactiveComparison({ db, candidateId: await candidates(invalid.id), masterKey, provider }),
-      { status: 'unknown', reason: 'INVALID_OR_TRUNCATED_RESPONSE' });
-    assert.equal((await pool.query('SELECT status, usage_estimated_cents FROM proactive_comparison_outbox WHERE result_id=$1', [invalid.id])).rows[0].status, 'unknown');
+    assert.equal((await dispatchProactiveComparison({ db, candidateId: await candidates(invalid.id), masterKey, provider })).status, 'insufficient_evidence');
+    assert.equal((await pool.query('SELECT status, usage_estimated_cents FROM proactive_comparison_outbox WHERE result_id=$1', [invalid.id])).rows[0].status, 'completed');
     assert.equal((await owner.browser.request('GET', `/api/v1/projects/${projectId}/proactive-comparison-proposals`)).json instanceof Array, true);
 
     const good = await negative('Repeated low-light failure');
@@ -184,19 +183,19 @@ describe('controlled background comparison dispatch (#58)', () => {
     assert.equal(seen.length, afterOutage);
     const noKey = await negative('Trial without key file');
     assert.deepEqual(await dispatchProactiveComparison({ db, candidateId: await candidates(noKey.id), masterKey: null, provider }),
-      { status: 'blocked', reason: 'KEY_UNAVAILABLE' });
+      { status: 'not_run', reason: 'KEY_UNAVAILABLE' });
     assert.equal(seen.length, afterOutage);
 
     const stale = await negative('Trial before material revision');
     expectStatus(await owner.browser.request('PATCH', `/api/v1/materials/${material.materialId}`,
       { body: { clientMutationId: randomUUID(), expectedVersion: 1, body: 'The measurement was corrected.' } }), 200);
     assert.deepEqual(await dispatchProactiveComparison({ db, candidateId: await candidates(stale.id), masterKey, provider }),
-      { status: 'blocked', reason: 'SOURCE_CHANGED' });
+      { status: 'not_run', reason: 'SOURCE_CHANGED' });
     assert.equal(seen.length, afterOutage);
     const accessLost = await negative('Trial before agent grant removed');
     expectStatus(await owner.browser.request('DELETE', `/api/v1/projects/${projectId}/grants/${agentGrantId}`), 204);
     assert.deepEqual(await dispatchProactiveComparison({ db, candidateId: await candidates(accessLost.id), masterKey, provider }),
-      { status: 'blocked', reason: 'OWNER_OR_AGENT_ACCESS' });
+      { status: 'not_run', reason: 'OWNER_OR_AGENT_ACCESS' });
     assert.equal(seen.length, afterOutage);
     const connection = expectStatus(await owner.browser.request('GET', '/api/v1/background-compute-connections/current'), 200) as { id: string };
     expectStatus(await owner.browser.request('DELETE', `/api/v1/background-compute-connections/${connection.id}`), 204);

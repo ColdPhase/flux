@@ -60,10 +60,14 @@ checked 2026-09-30, describes token counting as free with separate rate limits;
 this is vendor billing documentation, not observation of a Flux invoice.
 Docker regressions exercise these changes through the running API while a local
 provider fixture is pending; they do not prove live-provider cancellation or billing.
-It records usage estimates
-separately from the conservative reservation; failed or lost responses stay
-`unknown` and are never retried automatically. The project-read API exposes a
-proposal to current project readers without a notification. The adapter for
+It records token-derived usage estimates separately from the conservative
+reservation. Lost responses or invalid usage stay `unknown` and are never
+retried automatically. A declared insufficient response, or a truncated or
+invalid comparison with valid observed usage, can instead become a quiet
+insufficient-evidence item after final current authorization checks. Validation
+failures use fixed safe text rather than provider output. The project-read API
+exposes proposals and insufficient items to current readers without a
+notification. The adapter for
 Claude Platform uses fixed token-count and Messages requests, a structured
 answer schema, no tools and no automatic retry. Local HTTP fixtures exercise
 the wire format; the adapter is not registered in the running worker and no
@@ -138,10 +142,27 @@ object, since those objects have no historical content API. Creating work from a
 proposal preserves those project relationships and does not add that generated
 work back into comparison evidence.
 
-Source-change scheduling/coalescing, saved full inspected-source/outcome metadata,
-the distinct insufficient-evidence/not-run surface and not-run reasons for
-pre-reservation refusals remain separate implementation portions. No production
-provider scheduling or rule activation was added by this snapshot change.
+The controlled dispatch path saves the complete inspected metadata vector
+before sending source content to compute; cited references remain a distinct
+subset. Outcome reads apply current source access per reader, returning only
+the count of unavailable references. Legacy candidates keep a null inspected
+vector rather than reconstructing it from citations. The paged outcome API
+keeps insufficient items separate from actionable proposals; dismiss requires
+current project write access and the expected version.
+
+Terminal pre-paid credential, access, scope and allowance failures persist a
+private `not_run` reason with zero usage and reservation. Busy-owner candidates
+remain queued. The owner-only accounting API exposes local started-request,
+observed, conservative, unknown and in-flight amounts, current connection limits
+and at most 50 own candidate summaries; it never returns source content or
+another owner's rows. These estimates are not provider invoices. Docker
+build/typecheck/lint and 35 targeted core/API/provider-fixture/persistence tests
+passed for this backend checkpoint, including access loss, source deletion,
+insufficient responses and terminal no-retry failures.
+
+The corresponding project/owner UI, source-change scheduling/coalescing,
+production provider scheduling and rule activation remain implementation work.
+No real-provider billing, cancellation or physical-device acceptance is claimed.
 
 ## Key file, restore and rotation
 

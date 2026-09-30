@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
-import type { ProactiveComparisonProposal } from '@flux/contracts';
+import type { InspectedComparisonSource, ProactiveComparisonProposal } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { comparisonSources } from './proactive-sources.js';
@@ -10,9 +10,10 @@ const rules = schema.proactiveComparisonRules;
 const results = schema.projectResults;
 const connections = schema.backgroundComputeConnections;
 const proposals = schema.proactiveComparisonProposals;
+const insufficient = schema.proactiveComparisonInsufficientOutcomes;
 type ProposalRow = typeof proposals.$inferSelect;
 
-function proposalView(row: ProposalRow): ProactiveComparisonProposal {
+export function comparisonProposalView(row: ProposalRow): ProactiveComparisonProposal {
   return { id: row.id, projectId: row.projectId, resultId: row.resultId, ownerUserId: row.ownerUserId,
     agentId: row.agentId, audience: { kind: 'project', projectId: row.projectId },
     computeSource: 'owner_background_claude_platform', model: 'claude-sonnet-5',
@@ -23,6 +24,12 @@ function proposalView(row: ProposalRow): ProactiveComparisonProposal {
 }
 
 export function proactiveOutboxRows(db: DbExecutor) {
+  const notRun = async (id: string, reason: string) => {
+    await db.update(q).set({ status: 'not_run', failureCode: reason, connectionId: null,
+      reservedAt: null, dispatchStartedAt: null, reservedCents: 0, usageInputTokens: 0, usageOutputTokens: 0,
+      usageEstimatedCents: 0, finishedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(q.id, id), inArray(q.status, ['queued', 'reserved'])));
+  };
   return {
     async enabledRules(projectId: string) {
       return db.select({ id: rules.id, ownerUserId: rules.ownerUserId, agentId: rules.agentId }).from(rules)
@@ -31,11 +38,23 @@ export function proactiveOutboxRows(db: DbExecutor) {
     async listProposals(projectId: string): Promise<ProactiveComparisonProposal[]> {
       const rows = await db.select().from(proposals).where(eq(proposals.projectId, projectId))
         .orderBy(desc(proposals.createdAt), desc(proposals.id)).limit(50);
-      return rows.map(proposalView);
+      return rows.map(comparisonProposalView);
     },
     async proposalForCandidate(candidateId: string): Promise<ProactiveComparisonProposal | null> {
       const [row] = await db.select().from(proposals).where(eq(proposals.outboxId, candidateId));
-      return row ? proposalView(row) : null;
+      return row ? comparisonProposalView(row) : null;
+    },
+    async insufficientForCandidate(candidateId: string) {
+      const [row] = await db.select({ id: insufficient.id }).from(insufficient).where(eq(insufficient.outboxId, candidateId));
+      return row ?? null;
+    },
+    async saveInspected(candidateId: string, sources: InspectedComparisonSource[]) {
+      await db.update(q).set({ inspectedSources: sources, updatedAt: new Date() })
+        .where(and(eq(q.id, candidateId), eq(q.status, 'reserved')));
+    },
+    async markDispatchStarted(candidateId: string) {
+      await db.update(q).set({ dispatchStartedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(q.id, candidateId), eq(q.status, 'reserved')));
     },
     async lockProposal(id: string) {
       const [row] = await db.select().from(proposals).where(eq(proposals.id, id)).for('update');
@@ -45,7 +64,7 @@ export function proactiveOutboxRows(db: DbExecutor) {
       status?: 'dismissed' | 'used'; editedByUserId: string; usedWorkId?: string }) {
       const [row] = await db.update(proposals).set({ ...patch, version: sql`${proposals.version} + 1`, updatedAt: new Date() })
         .where(eq(proposals.id, id)).returning();
-      return row ? proposalView(row) : null;
+      return row ? comparisonProposalView(row) : null;
     },
     async complete(input: { candidateId: string; id: string; ownerUserId: string; agentId: string;
       projectId: string; resultId: string; sourceFingerprint: string;
@@ -63,7 +82,21 @@ export function proactiveOutboxRows(db: DbExecutor) {
       await db.update(q).set({ status: 'completed', proposalId: row!.id, usageInputTokens: input.inputTokens,
         usageOutputTokens: input.outputTokens, usageEstimatedCents: input.estimatedCents,
         finishedAt: new Date(), updatedAt: new Date() }).where(eq(q.id, input.candidateId));
-      return proposalView(row!);
+      return comparisonProposalView(row!);
+    },
+    async completeInsufficient(input: { candidateId: string; id: string; ownerUserId: string; agentId: string;
+      projectId: string; resultId: string; reason: string; failureCode: string;
+      inputTokens: number; outputTokens: number; estimatedCents: number }) {
+      const [candidate] = await db.select({ id: q.id, sources: q.inspectedSources }).from(q)
+        .where(and(eq(q.id, input.candidateId), eq(q.status, 'reserved'), eq(q.ownerUserId, input.ownerUserId))).for('update');
+      if (!candidate?.sources) return null;
+      const [created] = await db.insert(insufficient).values({ id: input.id, outboxId: input.candidateId,
+        ownerUserId: input.ownerUserId, agentId: input.agentId, projectId: input.projectId,
+        resultId: input.resultId, reason: input.reason }).returning({ id: insufficient.id });
+      await db.update(q).set({ status: 'completed', insufficientOutcomeId: created!.id, failureCode: input.failureCode,
+        usageInputTokens: input.inputTokens, usageOutputTokens: input.outputTokens, usageEstimatedCents: input.estimatedCents,
+        finishedAt: new Date(), updatedAt: new Date() }).where(eq(q.id, input.candidateId));
+      return created ?? null;
     },
     async markUnknown(candidateId: string, failureCode: string,
       usage?: { inputTokens: number; outputTokens: number; estimatedCents: number }) {
@@ -73,12 +106,7 @@ export function proactiveOutboxRows(db: DbExecutor) {
       }).where(and(eq(q.id, candidateId), eq(q.status, 'reserved')));
     },
     /** Only the dispatch path that has not entered createMessage may release this reservation. */
-    async markNotRun(candidateId: string, failureCode: string) {
-      await db.update(q).set({ status: 'cancelled', failureCode, connectionId: null,
-        reservedAt: null, reservedCents: 0, usageInputTokens: 0, usageOutputTokens: 0,
-        usageEstimatedCents: 0, finishedAt: new Date(), updatedAt: new Date() })
-        .where(and(eq(q.id, candidateId), eq(q.status, 'reserved')));
-    },
+    markNotRun: notRun,
     sourceSnapshot: (resultId: string, ruleId: string) => comparisonSources(db).snapshot(resultId, ruleId),
     async messageConversation(projectId: string, messageId: string) {
       const [row] = await db.select({ conversationId: schema.projectMessages.conversationId }).from(schema.projectMessages)
@@ -186,9 +214,6 @@ export function proactiveOutboxRows(db: DbExecutor) {
         reservedAt: at, updatedAt: at }).where(and(eq(q.id, id), eq(q.status, 'queued'))).returning();
       return row ?? null;
     },
-    async cancel(id: string) {
-      await db.update(q).set({ status: 'cancelled', updatedAt: new Date() })
-        .where(and(eq(q.id, id), eq(q.status, 'queued')));
-    },
+    cancel: notRun,
   };
 }

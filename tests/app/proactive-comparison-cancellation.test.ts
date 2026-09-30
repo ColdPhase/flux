@@ -112,7 +112,7 @@ for (const scenario of changes) {
         entered.resolve(input.signal);
         // Deliberately ignores AbortSignal: even a misbehaving adapter cannot publish late.
         await release.promise;
-        return { stopReason: 'end_turn', usage: { inputTokens: 100, outputTokens: 100 }, answer: {
+        return { stopReason: 'end_turn', usage: { inputTokens: 100, outputTokens: 100 }, answer: { kind: 'comparison' as const,
           fact: 'The camera missed gestures.', interpretation: 'The sensor may need a longer exposure.',
           suggestedAction: 'Compare another sensor under the same conditions.',
           citations: input.sources.map(({ type, id, version }) => ({ type, id, version })),
@@ -133,7 +133,7 @@ for (const scenario of changes) {
         [f.candidateId])).rows[0].n, 0);
       assert.deepEqual((await pool.query('SELECT status, reserved_cents, usage_estimated_cents FROM proactive_comparison_outbox WHERE id=$1',
         [f.candidateId])).rows[0], scenario.phase === 'count'
-        ? { status: 'cancelled', reserved_cents: 0, usage_estimated_cents: 0 }
+        ? { status: 'not_run', reserved_cents: 0, usage_estimated_cents: 0 }
         : { status: 'unknown', reserved_cents: 5, usage_estimated_cents: null });
       assert.deepEqual(await dispatchProactiveComparison({ db, candidateId: f.candidateId, masterKey, provider }),
         { status: 'blocked', reason: 'NOT_QUEUED' }, 'a stopped candidate cannot silently retry');
@@ -151,7 +151,7 @@ test('the final locked check rejects a response after a rapid pause and resume',
         { body: { expectedVersion: f.rule.version, status: 'paused' } }), 200);
       // Resume only the fixture: production enabling remains blocked by runtime acceptance.
       await pool.query("UPDATE proactive_comparison_rules SET status='enabled', version=version+1 WHERE id=$1", [f.rule.id]);
-      return { stopReason: 'end_turn', usage: { inputTokens: 100, outputTokens: 100 }, answer: {
+      return { stopReason: 'end_turn', usage: { inputTokens: 100, outputTokens: 100 }, answer: { kind: 'comparison' as const,
         fact: 'The camera missed gestures.', interpretation: 'Check exposure.', suggestedAction: 'Compare another sensor.',
         citations: input.sources.map(({ type, id, version }) => ({ type, id, version })),
       } };
@@ -176,7 +176,7 @@ test('an input-token refusal records not-run with zero usage and releases only i
   const row = (await pool.query(`SELECT status, reserved_cents, reserved_at, connection_id,
     usage_input_tokens, usage_output_tokens, usage_estimated_cents, failure_code, finished_at
     FROM proactive_comparison_outbox WHERE id=$1`, [f.candidateId])).rows[0];
-  assert.deepEqual({ ...row, finished_at: !!row.finished_at }, { status: 'cancelled', reserved_cents: 0,
+  assert.deepEqual({ ...row, finished_at: !!row.finished_at }, { status: 'not_run', reserved_cents: 0,
     reserved_at: null, connection_id: null, usage_input_tokens: 0, usage_output_tokens: 0,
     usage_estimated_cents: 0, failure_code: 'INPUT_TOKEN_LIMIT', finished_at: true });
   assert.deepEqual(await dispatchProactiveComparison({ db, candidateId: f.candidateId, masterKey, provider }),
