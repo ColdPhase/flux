@@ -102,7 +102,7 @@ export type ProposalChanges = Partial<Pick<ProposalRecord, 'status' | 'decidedBy
 /** Rows a run may read. The use cases authorize the run's agent (and owner) before calling these. */
 export interface MessageSource { id: string; sequence: number; body: string; authorName: string }
 export interface WorkSource { id: string; version: number; title: string; outcome: string; status: string }
-export interface ThoughtSource { id: string; sketchId: string; version: number; text: string; sketchScope: 'project' | 'private'; sketchProjectId: string | null }
+export interface ThoughtSource { id: string; sketchId: string; version: number; text: string; sketchScope: 'project' | 'private' | 'dm'; sketchProjectId: string | null }
 
 /** Rows only; the repository makes no access decisions (the use cases ask {@link PersonalRunAccess}). */
 export interface PersonalRunRepository {

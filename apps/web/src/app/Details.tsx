@@ -5,6 +5,7 @@ import { Avatar, Button, Icon } from '../ui';
 import { WorkDetails } from '../work/WorkDetails';
 import { AddToDoc } from '../docs/AddToDoc';
 import { ProjectOverview } from '../project/ProjectOverview';
+import { PromoteSketch } from '../sketch/PromoteSketch';
 import { WhatMatters } from '../returns/WhatMatters';
 import { useProjectShell } from '../project/data';
 import type { WorkspaceSummary } from './data';
@@ -28,6 +29,7 @@ export function Details({ view, workspace, placeTitle, dm = null, onBack, onClos
   if (typeof view === 'object' && view.kind === 'recap') return <WhatMatters key={view.projectId} projectId={view.projectId} projectName={placeTitle} onDone={onClose} />;
   if (view === 'connect-ai') return <ConnectAi onBack={onBack} />;
   if (typeof view === 'object' && view.kind === 'add-to-doc') return <AddToDoc key={`${view.from.type}:${view.from.id}`} view={view} />;
+  if (typeof view === 'object' && view.kind === 'promote-sketch') return <PromoteSketch key={view.sketchId} view={view} dmTitle={dm?.title ?? null} onBack={onBack} />;
   if (typeof view === 'object' && view.kind === 'overview') return <ProjectOverview key={view.messageId ?? 'all'} messageId={view.messageId} onBack={onBack} />;
   if (typeof view === 'object') return <WorkDetails view={view} />;
   // A project's Details start with its overview (#117).

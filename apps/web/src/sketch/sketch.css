@@ -129,7 +129,50 @@
 .sk-index__s { font-size: var(--fs-sm); color: var(--text-3); }
 .sk-index-more { display: flex; align-items: center; gap: 12px; padding: 12px 0 4px; border-top: 1px solid var(--line); }
 
+/* #96: DM sketches. "Make it a project…" sits beside Map/List; copies and origins are one quiet line each. */
+.sk-promote { margin-left: auto; }
+.sk-copies { list-style: none; margin: 0; padding: 0; }
+.sk-origin__short, .sk-bl--short { display: none; }
+@media (max-width: 640px) { .sk-origin__short { display: inline; } }
+.sk-copies li, .sk-origin { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; font-size: var(--fs-sm); color: var(--text-3); animation: sk-note-in var(--dur-2) var(--ease-out) backwards; }
+.sk-copies svg { color: var(--ok); }
+.sk-copies a { color: var(--text-2); font-weight: 500; }
+@keyframes sk-note-in { from { opacity: 0; transform: translateY(-4px); } }
+
+/* The promotion preview in Details: exact audience, what goes in, what stays private. */
+.promote__eyebrow { display: flex; align-items: center; gap: 5px; }
+.promote .ui-field { margin-top: 18px; }
+.promote__body { transition: opacity var(--dur-2) var(--ease-out); }
+.promote__body.is-loading { opacity: .55; }
+.promote__loading { display: flex; justify-content: center; padding: 28px 0; }
+.promote__seg { margin: 18px 0 14px; }
+.promote__seg .seg__b { flex: 1; }
+.promote__field { display: grid; gap: 6px; margin-top: 14px; font-size: var(--fs-sm); font-weight: 500; color: var(--text-2); }
+.promote__field select { min-height: var(--ctl); padding: 0 8px; border: 1px solid var(--line-strong); border-radius: var(--r); background: var(--bg); color: var(--text); font: inherit; font-size: var(--fs-md); font-weight: 400; }
+.promote__field select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.promote__hint { margin-top: 10px; font-size: var(--fs-sm); color: var(--text-3); line-height: 1.5; }
+.promote__aud { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--r-lg); box-shadow: inset 0 0 0 1px var(--line-strong); animation: sk-note-in var(--dur-2) var(--ease-out) backwards; }
+.promote__aud > span:last-child { min-width: 0; }
+.promote__aud b { display: block; font-size: var(--fs-md); font-weight: 600; color: var(--text); line-height: 1.4; overflow-wrap: anywhere; }
+.promote__faces { display: flex; flex: none; }
+.promote__faces .ui-avatar { box-shadow: 0 0 0 2px var(--bg); }
+.promote__faces .ui-avatar + .ui-avatar { margin-left: -6px; }
+.promote__why { display: block; margin-top: 2px; font-size: var(--fs-sm); color: var(--text-3); line-height: 1.45; }
+.promote__left { display: flex; gap: 5px; align-items: flex-start; color: var(--warning); }
+.promote__left svg { flex: none; margin-top: 2px; }
+.promote__all { margin-top: 8px; font-size: var(--fs-sm); color: var(--text-3); }
+.promote__inc { list-style: none; margin: 0; padding: 0; }
+.promote__inc li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; padding: 8px 0; font-size: var(--fs-md); color: var(--text-2); line-height: 1.5; }
+.promote__inc li + li { border-top: 1px solid var(--line); }
+.promote__inc svg { margin-top: 3px; color: var(--text-3); }
+.promote__inc b { font-weight: 600; color: var(--text); }
+.promote__notice, .promote__problem { display: flex; align-items: flex-start; gap: 6px; margin-top: 16px; padding: 8px 10px; border-radius: var(--r); background: var(--bg-side); font-size: var(--fs-sm); color: var(--text-2); line-height: 1.45; }
+.promote__notice svg, .promote__problem svg { flex: none; margin-top: 2px; color: var(--text-3); }
+.promote__problem button { margin-left: auto; font-weight: 500; text-decoration: underline; color: var(--text); }
+.promote__acts { margin-top: 24px; }
+
 @media (pointer: coarse) {
+  .promote__field select { min-height: 44px; }
   .sk-bar .ui-btn { min-height: 44px; }
   .sk-plus { width: 44px; height: 44px; }
   .sk-plus--labelled { width: auto; }
@@ -140,14 +183,31 @@
 }
 @media (max-width: 640px) {
   .sk { padding: 14px 16px 28px; }
-  /* Six labelled tools in two even rows; the status gets its own line only when it has text. */
+  /* The map gets the room (#129 review): the view tabs already lead back to the sketches, so the
+     back link goes; the header and context are one compact block each. The six labelled tools stay
+     in two even rows (#69); the status gets its own line only when it has text. */
+  .sk { gap: 8px; padding-top: 10px; }
+  .sk-head { gap: 6px 8px; }
+  /* Without "Make it a project…" (a project copy) the Map/List switch shares the title row; a DM
+     sketch keeps the switch and that action together on one row. */
+  .sk-lead { flex: 1 1 100%; gap: 2px 6px; }
+  .sk-head:not(:has(.sk-promote)) { flex-wrap: nowrap; align-items: flex-start; }
+  .sk-head:not(:has(.sk-promote)) .sk-lead { flex: 1 1 0; min-width: 0; }
+  .sk-lead .sk-aud { flex-basis: 100%; }
+  .sk-back, .sk-sep { display: none; }
+  .sk-promote { order: 3; flex: 1 1 auto; justify-content: center; }
+  .sk-origin__long { display: none; }
   .sk-bar { flex-direction: column; align-items: stretch; padding: 2px; gap: 0; }
   .sk-tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 2px; }
+  /* A project map adds Create work: four columns keep two rows, with its short label. */
+  .sk-tools--seven { grid-template-columns: repeat(4, auto); justify-content: space-between; }
+  .sk-tools--seven .sk-bl--long { display: none; }
+  .sk-tools--seven .sk-bl--short { display: inline; }
   .sk-div { display: none; }
   .sk-bar .ui-btn { padding: 0 6px; justify-content: flex-start; }
   .sk-status { flex: none; padding: 0 8px 6px; white-space: normal; }
   .sk-status:empty { display: none; }
-  .sk-canvas { height: clamp(320px, calc(100dvh - 340px), 560px); }
+  .sk-canvas { height: clamp(360px, calc(100dvh - 250px), 620px); }
   .sk-el:not(.is-on) { display: none; }
   .sk-edges path:not(.is-on) { stroke-opacity: .6; }
 }
