@@ -52,6 +52,11 @@ state. Labels always come from the current authorized sketch. A renamed target
 updates in place; a removed or unavailable target contributes no cached title,
 count or preview. Search/live arrivals use the same reveal path before focus.
 
+On a related-link landing, reveal the selected row's title and ordinary context
+below the sticky return cue, rather than revealing only a title at the bottom
+edge. Back still restores the original scroll position. This phone correction
+was identified by the independent #148/#134 integration image review on 2026-09-30.
+
 Keep native list/button semantics. Up/Down and Home/End move between visible row
 titles; Left collapses a branch or moves to its parent, Right expands or enters its
 first child. Preserve Enter to edit, Space to select, `+` to add, Delete to remove

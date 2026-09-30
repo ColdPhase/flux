@@ -30,22 +30,31 @@ interface ReturnPoint { sourceId: string; collapsed: string[]; selection: string
 /** One personal reading outline over the current authorized many-to-many graph (#134). */
 export function SketchList({ sketch, meId, selection, connectFrom, editing, canWrite, personalOutline: view, ...on }: SketchListProps) {
   const root = useRef<HTMLOListElement>(null);
-  const pending = useRef<{ id: string; scrollTop?: number } | null>(null);
+  const pending = useRef<{ id: string; scrollTop?: number; context?: boolean } | null>(null);
   const lastFocus = useRef<{ id: string; index: number } | null>(null);
   const [returnPoint, setReturnPoint] = useState<ReturnPoint | null>(null);
   const [groupingId, setGroupingId] = useState<string | null>(null);
   const [pathId, setPathId] = useState<string | null>(null);
   const rows = visibleRows(view.outline, view.state.collapsed);
   const source = returnPoint ? view.outline.byId.get(returnPoint.sourceId) : null;
-  const focus = (id: string, scrollTop?: number, afterRender = false) => {
-    if (afterRender) { pending.current = { id, scrollTop }; return; }
-    const target = root.current?.querySelector<HTMLButtonElement>(`.sk-li-t[data-id="${id}"]`);
-    if (!target) { pending.current = { id, scrollTop }; return; }
-    pending.current = null;
+  const placeFocus = (target: HTMLButtonElement, scrollTop?: number, context = false) => {
     target.focus({ preventScroll: true });
     const page = root.current?.closest('.sk-page');
     if (page && scrollTop !== undefined) page.scrollTop = scrollTop;
-    else target.scrollIntoView({ block: 'nearest' });
+    else if (context) {
+      const row = target.closest<HTMLElement>('li[data-id]');
+      if (!row) return;
+      const returnHeight = root.current?.parentElement?.querySelector('.sk-outline-return')?.getBoundingClientRect().height ?? 0;
+      row.style.scrollMarginTop = `${returnHeight + 8}px`;
+      row.scrollIntoView({ block: 'start', inline: 'nearest' });
+    } else target.scrollIntoView({ block: 'nearest' });
+  };
+  const focus = (id: string, scrollTop?: number, afterRender = false, context = false) => {
+    if (afterRender) { pending.current = { id, scrollTop, context }; return; }
+    const target = root.current?.querySelector<HTMLButtonElement>(`.sk-li-t[data-id="${id}"]`);
+    if (!target) { pending.current = { id, scrollTop, context }; return; }
+    pending.current = null;
+    placeFocus(target, scrollTop, context);
   };
   useLayoutEffect(() => {
     const next = pending.current;
@@ -53,10 +62,7 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
       const target = root.current?.querySelector<HTMLButtonElement>(`.sk-li-t[data-id="${next.id}"]`);
       if (target) {
         pending.current = null;
-        target.focus({ preventScroll: true });
-        const page = root.current?.closest('.sk-page');
-        if (page && next.scrollTop !== undefined) page.scrollTop = next.scrollTop;
-        else target.scrollIntoView({ block: 'nearest' });
+        placeFocus(target, next.scrollTop, next.context);
       }
     } else if (lastFocus.current && !view.outline.byId.has(lastFocus.current.id) && document.activeElement === document.body) {
       const nextRow = rows[Math.min(lastFocus.current.index, rows.length - 1)];
@@ -70,7 +76,7 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
     view.reveal(targetId);
     on.onNavigate(targetId);
     setGroupingId(null);
-    focus(targetId, undefined, true);
+    focus(targetId, undefined, true, true);
   };
   const goBack = () => {
     if (!returnPoint || !source) return;
