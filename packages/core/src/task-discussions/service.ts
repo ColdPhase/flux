@@ -7,8 +7,10 @@ import { id } from '../work/validation.js';
 import type { DiscussionMessage, TaskDiscussionPorts, TaskDiscussionUnitOfWork } from './ports.js';
 
 const missing = () => new NotFoundError('Work item', 'WORK_NOT_FOUND');
-const wire = (row: DiscussionMessage): ConversationMessage => ({ id: row.id, conversationId: row.conversationId,
-  authorId: row.authorId, body: row.body, source: row.source, sequence: row.sequence, createdAt: row.createdAt.toISOString() });
+const wire = (row: DiscussionMessage, names: Map<string, string>): ConversationMessage => ({ id: row.id, conversationId: row.conversationId,
+  ...(row.author.kind === 'human' ? { authorId: row.author.id } : { authorId: null,
+    author: { kind: 'agent' as const, id: row.author.id, name: names.get(`agent:${row.author.id}`) ?? 'Agent' } }),
+  body: row.body, source: row.source, sequence: row.sequence, createdAt: row.createdAt.toISOString() });
 
 async function authorize(ports: TaskDiscussionPorts, principal: Principal, workId: string, action: 'read' | 'write') {
   const located = await ports.work.locate('work', workId);
@@ -34,8 +36,9 @@ export function createTaskDiscussionUseCases(unit: TaskDiscussionUnitOfWork) {
           throw new Error('Task discussion root invariant failed');
         const rows = await ports.discussion.messages(binding.conversationId, window);
         const hasMoreBefore = rows.length > window.limit;
-        const messages = rows.slice(0, window.limit).reverse().map(wire);
-        return { ...project, ...binding, root: wire(root), messages,
+        const names = await ports.work.names([root.author, ...rows.map((row) => row.author)]);
+        const messages = rows.slice(0, window.limit).reverse().map((row) => wire(row, names));
+        return { ...project, ...binding, root: wire(root, names), messages,
           messagePage: { hasMoreBefore, nextBeforeSequence: hasMoreBefore ? messages[0]!.sequence : null, limit: window.limit } };
       });
     },
@@ -47,29 +50,30 @@ export function createTaskDiscussionUseCases(unit: TaskDiscussionUnitOfWork) {
       input.fingerprint = createHash('sha256').update(JSON.stringify({ operation: 'task.contribute', workId, message: input.fingerprint })).digest('hex');
       return unit.run(async (ports) => {
         const project = await authorize(ports, principal, workId, 'write');
-        // Agent identities/files are additive follow-up slices, never fabricated human authors.
-        if (principal.kind !== 'human') throw new InvalidInputError('A signed-in person is required for this text contribution');
-        await ports.discussion.lockCommand(project.projectId, principal.id, input.clientMessageId);
+        if (principal.kind !== 'human' && principal.kind !== 'agent') throw new InvalidInputError('A signed-in person or agent is required');
+        const author = { kind: principal.kind, id: principal.kind === 'agent' ? id(principal.id, 'agentId') : principal.id };
+        await ports.discussion.lockCommand(project.projectId, author, input.clientMessageId);
         if (!await ports.work.findWork(workId, { lock: true })) throw missing();
         const binding = await ports.discussion.findBinding(workId);
-        const existing = await ports.discussion.existingMessage(project.projectId, principal.id, input.clientMessageId);
+        const existing = await ports.discussion.existingMessage(project.projectId, author, input.clientMessageId);
         if (existing) {
           if (existing.requestFingerprint !== input.fingerprint || existing.conversationId !== binding?.conversationId)
             throw new ConflictError('This clientMessageId was used for another contribution', 'IDEMPOTENCY_CONFLICT');
-          return wire(existing);
+          return wire(existing, await ports.work.names([existing.author]));
         }
         if (input.source && !await ports.discussion.sourceExists(project.projectId, input.source))
           throw new NotFoundError('Material version', 'MATERIAL_VERSION_NOT_FOUND');
         const conversation = binding ? await ports.discussion.findConversation(binding.conversationId)
-          : await ports.discussion.createConversation({ id: randomUUID(), ...project, createdBy: principal.id });
+          : await ports.discussion.createConversation({ id: randomUUID(), ...project, createdBy: author });
         if (!conversation || conversation.projectId !== project.projectId || conversation.workspaceId !== project.workspaceId)
           throw new Error('Task discussion conversation invariant failed');
-        const sent = await ports.discussion.append(conversation, principal.id, input);
+        const sent = await ports.discussion.append(conversation, author, input);
         if (!binding) await ports.discussion.bind({ workId, ...project, conversationId: conversation.id, rootMessageId: sent.id });
-        await ports.events.record(principal, project.workspaceId,
+        const response = wire(sent, await ports.work.names([sent.author]));
+        await ports.events.record(author, project.workspaceId,
           binding ? 'project.message_sent.v1' : 'project.conversation_created.v1', project.projectId,
           { conversationId: conversation.id, messageId: sent.id, workId, rootMessageId: binding?.rootMessageId ?? sent.id });
-        return wire(sent);
+        return response;
       });
     },
   };

@@ -272,7 +272,7 @@ export function createReturnUseCases(ports: ReturnPorts) {
     for (const group of groups.values()) for (const event of group.events) actorKeys.add(event.actorId);
     for (const item of work.values()) if (item.ownerKey) actorKeys.add(item.ownerKey);
     for (const item of decisions.values()) actorKeys.add(item.proposedByKey);
-    for (const message of messages.values()) actorKeys.add(`human:${message.authorId}`);
+    for (const message of messages.values()) actorKeys.add(`${message.author.kind}:${message.author.id}`);
     const names = await returns.names([...actorKeys]);
     // People by first name, as in conversation ("Nia's result"); agents by their full name.
     const nameOf = (actorKey: string | null) => {
@@ -438,9 +438,9 @@ export function createReturnUseCases(ports: ReturnPorts) {
       const lastPost = lastPosts.get(conversation.id);
       const answered = !!lastPost && lastPost > message.createdAt;
       const addressed = mentions(message.body, myName);
-      const involved = conversation.createdBy === userId || !!lastPost;
+      const involved = (conversation.createdBy.kind === 'human' && conversation.createdBy.id === userId) || !!lastPost;
       if (!answered && (addressed || (involved && isQuestion(message.body)))) {
-        const author = nameOf(`human:${message.authorId}`)!;
+        const author = nameOf(`${message.author.kind}:${message.author.id}`)!;
         items.push({ ...base, kind: 'question', actor: author,
           text: addressed ? `${author} asked you: ${quote(excerpt(message.body))}` : `${author} asked: ${quote(excerpt(message.body))}`,
           detail: `In ${quote(excerpt(conversation.opening, 60))}`, needsYou: true,
@@ -461,16 +461,16 @@ export function createReturnUseCases(ports: ReturnPorts) {
       grouped.sort((a, b) => a.sequence - b.sequence);
       const first = grouped[0]!;
       const latest = grouped.at(-1)!;
-      const who = list(grouped.map((message) => nameOf(`human:${message.authorId}`)!));
+      const who = list(grouped.map((message) => nameOf(`${message.author.kind}:${message.author.id}`)!));
       const started = grouped.some((message) => message.sequence === 1);
       items.push({
-        id: `conversation:${conversationId}`, kind: 'message', at: latest.createdAt.toISOString(), actor: nameOf(`human:${latest.authorId}`),
+        id: `conversation:${conversationId}`, kind: 'message', at: latest.createdAt.toISOString(), actor: nameOf(`${latest.author.kind}:${latest.author.id}`),
         project: place(conversation.projectId),
         text: started ? `${who} started ${quote(excerpt(conversation.opening, 70))}` : `${who} replied in ${quote(excerpt(conversation.opening, 70))}`,
         detail: excerpt(latest.body, 110), needsYou: false,
         // Opens on the first new message, a whole message and never mid-way.
         source: { type: 'message', projectId: conversation.projectId, conversationId, messageId: first.id },
-        relevant: conversation.createdBy === userId || lastPosts.has(conversationId),
+        relevant: (conversation.createdBy.kind === 'human' && conversation.createdBy.id === userId) || lastPosts.has(conversationId),
       });
     }
     items.sort((a, b) => b.at.localeCompare(a.at));
@@ -479,13 +479,13 @@ export function createReturnUseCases(ports: ReturnPorts) {
     // scope as the list ("relevant to me" = conversations you started or wrote in, or that ask you).
     const asksMe = (conversationId: string) => items.some((item) => item.kind === 'question' && item.source.type === 'message' && item.source.conversationId === conversationId);
     const talks = [...said.entries()]
-      .filter(([conversationId]) => scope === 'all' || conversations.get(conversationId)!.createdBy === userId || lastPosts.has(conversationId) || asksMe(conversationId))
+      .filter(([conversationId]) => scope === 'all' || (conversations.get(conversationId)!.createdBy.kind === 'human' && conversations.get(conversationId)!.createdBy.id === userId) || lastPosts.has(conversationId) || asksMe(conversationId))
       .map(([conversationId, list]) => ({ conversation: conversations.get(conversationId)!, list: [...list].sort((a, b) => a.sequence - b.sequence) }))
       .sort((a, b) => b.list.at(-1)!.createdAt.getTime() - a.list.at(-1)!.createdAt.getTime());
     const digest: ReturnDigest = {
       conversations: talks.slice(0, DIGEST_CONVERSATIONS).map(({ conversation, list }) => ({
         conversationId: conversation.id, projectId: conversation.projectId, opening: excerpt(conversation.opening, 90),
-        quotes: list.slice(-DIGEST_QUOTES).map((message) => ({ messageId: message.id, author: nameOf(`human:${message.authorId}`)!,
+        quotes: list.slice(-DIGEST_QUOTES).map((message) => ({ messageId: message.id, author: nameOf(`${message.author.kind}:${message.author.id}`)!,
           excerpt: excerpt(message.body, 160), at: message.createdAt.toISOString() })),
         more: Math.max(0, list.length - DIGEST_QUOTES),
       })),

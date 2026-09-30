@@ -460,12 +460,15 @@ export const projectConversations = pgTable('project_conversations', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),
   projectId: uuid('project_id').notNull(),
-  createdBy: text('created_by').notNull(),
+  createdBy: text('created_by'),
+  createdByAgentId: uuid('created_by_agent_id'),
   nextSequence: integer('next_sequence').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique().on(table.workspaceId, table.projectId, table.id),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.createdByAgentId], foreignColumns: [agents.workspaceId, agents.id] }),
+  check('project_conversation_exact_actor', sql`num_nonnulls(${table.createdBy}, ${table.createdByAgentId}) = 1`),
 ]);
 
 export const projectMaterials = pgTable('project_materials', {
@@ -514,7 +517,8 @@ export const projectMessages = pgTable('project_messages', {
   workspaceId: uuid('workspace_id').notNull(),
   projectId: uuid('project_id').notNull(),
   conversationId: uuid('conversation_id').notNull(),
-  authorId: text('author_id').notNull(),
+  authorId: text('author_id'),
+  authorAgentId: uuid('author_agent_id'),
   clientMessageId: uuid('client_message_id').notNull(),
   requestFingerprint: text('request_fingerprint').notNull(),
   sequence: integer('sequence').notNull(),
@@ -526,6 +530,9 @@ export const projectMessages = pgTable('project_messages', {
   unique().on(table.conversationId, table.sequence),
   unique('project_messages_root_identity').on(table.conversationId, table.id, table.sequence),
   unique().on(table.projectId, table.authorId, table.clientMessageId),
+  unique().on(table.projectId, table.authorAgentId, table.clientMessageId),
+  foreignKey({ columns: [table.workspaceId, table.authorAgentId], foreignColumns: [agents.workspaceId, agents.id] }),
+  check('project_message_exact_actor', sql`num_nonnulls(${table.authorId}, ${table.authorAgentId}) = 1`),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.conversationId], foreignColumns: [projectConversations.workspaceId, projectConversations.projectId, projectConversations.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.sourceMaterialId, table.sourceMaterialVersion], foreignColumns: [projectMaterialVersions.workspaceId, projectMaterialVersions.projectId, projectMaterialVersions.materialId, projectMaterialVersions.version] }),
 ]);

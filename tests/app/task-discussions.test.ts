@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
-import { createDatabase } from '@flux/db';
-import { ConflictError, createTaskDiscussionUseCases } from '@flux/core';
-import type { Conversation, ConversationMessage, Material, TaskDiscussion, WorkItem } from '@flux/contracts';
+import { createDatabase, notificationFactRows, personalRunRows, projectExportRows } from '@flux/db';
+import { candidatesFor, ConflictError, createTaskDiscussionUseCases, NotFoundError } from '@flux/core';
+import type { GeneratorEvent } from '@flux/core';
+import { projectExportPath, type Conversation, type ConversationMessage, type Material, type Page,
+  type ConversationSummary, type ProjectExport, type ReturnSummary, type SearchResponse, type TaskDiscussion, type WorkItem } from '@flux/contracts';
 import { taskDiscussionUnitOfWork, taskDiscussionUseCases } from '../../apps/server/src/work/task-discussions.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
 
@@ -147,4 +149,124 @@ test('failure after first root binding rolls back conversation, message, binding
   const sent = await taskDiscussionUseCases(db).contribute(actor, f.task.id, command);
   assert.deepEqual(await taskDiscussionUseCases(db).contribute(actor, f.task.id, command), sent);
   assert.deepEqual(await f.counts(), { bindings: 1, messages: 1, conversations: 1, events: before.events + 1 });
+});
+
+async function agentIn(f: Awaited<ReturnType<typeof scene>>) {
+  const agent = expectStatus(await f.owner.browser.request('POST', `/api/v1/workspaces/${f.ws.id}/agents`, {
+    body: { name: 'Trial analyst', owner: 'self' },
+  }), 201) as { id: string; name: string };
+  const grant = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.place.id}/grants`, {
+    body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' },
+  }), 201) as { id: string };
+  return { agent, grant, principal: { kind: 'agent' as const, id: agent.id } };
+}
+
+test('a genuine agent creates the canonical root; human and agent command identities remain distinct', async () => {
+  const f = await scene();
+  const { agent, principal } = await agentIn(f);
+  const command = { body: 'Measured the actual trial.', clientMessageId: randomUUID() };
+  const root = await taskDiscussionUseCases(db).contribute(principal, f.task.id, command);
+  assert.equal(root.authorId, null);
+  assert.deepEqual(root.author, { kind: 'agent', id: agent.id, name: 'Trial analyst' });
+  const sharedId = randomUUID();
+  const [human, second] = await Promise.all([
+    f.writer.browser.request('POST', f.path, { body: { body: 'A human counterexample.', clientMessageId: sharedId } }),
+    taskDiscussionUseCases(db).contribute(principal, f.task.id, { body: 'An agent counterexample.', clientMessageId: sharedId }),
+  ]);
+  const written = expectStatus(human, 201) as ConversationMessage;
+  assert.notEqual(written.id, second.id);
+  assert.equal(written.authorId, f.writer.id);
+  assert.equal(Object.hasOwn(written, 'author'), false, 'existing human JSON remains exact');
+  assert.deepEqual([written.sequence, second.sequence].sort(), [2, 3]);
+  assert.deepEqual(await taskDiscussionUseCases(db).contribute({ ...principal, id: principal.id.toUpperCase() }, f.task.id,
+    { ...command, clientMessageId: command.clientMessageId.toUpperCase() }), root);
+  await assert.rejects(taskDiscussionUseCases(db).contribute(principal, f.task.id,
+    { ...command, body: 'Changed intent' }), ConflictError);
+  const discussion = await f.read('?limit=1');
+  assert.deepEqual(discussion.root, root, 'the agent root remains outside the newest bounded window');
+  const canonical = expectStatus(await f.reader.browser.request('GET', `/api/v1/conversations/${root.conversationId}`), 200) as Conversation;
+  assert.equal(canonical.createdBy, null);
+  assert.deepEqual(canonical.createdByActor, root.author);
+  assert.deepEqual(canonical.messages.map((row) => row.id), [root.id, ...[written, second].sort((a, b) => a.sequence - b.sequence).map((row) => row.id)]);
+  const listed = expectStatus(await f.reader.browser.request('GET', `/api/v1/projects/${f.place.id}/conversations`), 200) as Page<ConversationSummary>;
+  assert.deepEqual(listed.items[0]!.createdByActor, root.author);
+  assert.equal((await f.writer.browser.request('POST', f.path, { body: { ...command,
+    author: { kind: 'agent', id: agent.id }, authorId: null } })).status, 400, 'human HTTP cannot nominate an agent');
+  const stored = (await pool.query('SELECT author_id,author_agent_id,created_at FROM project_messages WHERE id=$1', [root.id])).rows[0]!;
+  assert.equal(stored.author_id, null);
+  assert.equal(stored.author_agent_id, agent.id);
+  assert.equal(stored.created_at.toISOString(), root.createdAt);
+  assert.equal((await f.counts()).bindings, 1);
+});
+
+test('real agent history reaches bounded helper context, search, export, notifications and return summaries', async () => {
+  const f = await scene();
+  const { agent, principal } = await agentIn(f);
+  const root = expectStatus(await f.writer.browser.request('POST', f.path, {
+    body: { body: 'Human trial question.', clientMessageId: randomUUID() },
+  }), 201) as ConversationMessage;
+  const previous = expectStatus(await f.writer.browser.request('GET', `/api/v1/return?place=project&id=${f.place.id}`), 200) as ReturnSummary;
+  expectStatus(await f.writer.browser.request('PUT', '/api/v1/return-points', {
+    body: { place: { type: 'project', id: f.place.id }, mark: previous.mark },
+  }), 200);
+  const reply = await taskDiscussionUseCases(db).contribute(principal, f.task.id,
+    { body: 'Can you verify the spectrometer trial?', clientMessageId: randomUUID() });
+  const context = await personalRunRows(db).messages(root.conversationId, 2);
+  assert.deepEqual(context.map((row) => [row.id, row.author.kind, row.author.id]),
+    [[root.id, 'human', f.writer.id], [reply.id, 'agent', agent.id]]);
+  assert.equal(context[1]!.authorName, 'Trial analyst');
+  assert.deepEqual((await personalRunRows(db).messages(root.conversationId, 1)).map((row) => row.id), [reply.id],
+    'bounded context does not silently drop agent rows and replace them with older humans');
+  const query = new URLSearchParams({ q: 'spectrometer', type: 'message', place: `project:${f.place.id}`, author: `agent:${agent.id}` });
+  const found = expectStatus(await f.reader.browser.request('GET', `/api/v1/search?${query}`), 200) as SearchResponse;
+  assert.equal(found.items.length, 1);
+  assert.equal(found.items[0]!.author, 'Trial analyst');
+  assert.deepEqual(found.items[0]!.target, { type: 'message', projectId: f.place.id, conversationId: root.conversationId, messageId: reply.id });
+  const exported = await projectExportRows(db).conversations(f.place.id);
+  assert.deepEqual(exported[0]!.messages.map((row) => row.author), [{ kind: 'human', id: f.writer.id }, principal]);
+  const document = expectStatus(await f.owner.browser.request('GET', projectExportPath(f.place.id)), 200) as ProjectExport;
+  assert.deepEqual(document.conversations[0]!.messages[1]!.author, principal);
+  const facts = notificationFactRows(db);
+  const message = (await facts.projectMessage(reply.id))!;
+  assert.deepEqual(message.author, principal);
+  assert.deepEqual(message.earlierAuthors, [f.writer.id]);
+  const event = (await pool.query(`SELECT id,seq,kind,workspace_id AS "workspaceId",object_id AS "objectId",actor_id AS "actorId",data
+    FROM events WHERE data->>'messageId'=$1`, [reply.id])).rows[0] as GeneratorEvent;
+  assert.equal(event.actorId, `agent:${agent.id}`);
+  const candidates = await candidatesFor(event, facts);
+  assert.deepEqual(candidates.map((row) => row.userId), [f.writer.id]);
+  assert.match(candidates[0]!.title, /Trial analyst \(agent\)/);
+  const back = expectStatus(await f.writer.browser.request('GET', `/api/v1/return?place=project&id=${f.place.id}`), 200) as ReturnSummary;
+  assert.ok(back.items.some((item) => item.kind === 'question' && item.text.includes('Trial analyst') && item.source.type === 'message' && item.source.messageId === reply.id));
+  assert.equal(JSON.stringify(back).includes(f.owner.id), false, 'agent owner is not fabricated as the author');
+});
+
+test('agent first-send rollback is atomic; current grant revocation blocks retries while genuine history stays readable', async () => {
+  const f = await scene();
+  const { agent, principal, grant: access } = await agentIn(f);
+  const before = await f.counts();
+  const command = { body: 'Actual agent contribution.', clientMessageId: randomUUID() };
+  const unit = taskDiscussionUnitOfWork(db);
+  const injected = createTaskDiscussionUseCases({ run: (action) => unit.run((ports) => action({ ...ports, discussion: {
+    ...ports.discussion, async bind(input) { await ports.discussion.bind(input); throw new Error('agent binding rollback'); },
+  } })) });
+  await assert.rejects(injected.contribute(principal, f.task.id, command), /agent binding rollback/);
+  assert.deepEqual(await f.counts(), before);
+  const root = await taskDiscussionUseCases(db).contribute(principal, f.task.id, command);
+  const old = (await pool.query('SELECT * FROM project_messages WHERE id=$1', [root.id])).rows[0];
+  const other = await workspace(f.owner, 'Another actor workspace');
+  const foreign = expectStatus(await f.owner.browser.request('POST', `/api/v1/workspaces/${other.id}/agents`, {
+    body: { name: 'Foreign analyst', owner: 'self' },
+  }), 201) as { id: string };
+  await assert.rejects(pool.query('UPDATE project_messages SET author_agent_id=$2 WHERE id=$1', [root.id, foreign.id]), /foreign key constraint/);
+  await assert.rejects(pool.query('UPDATE project_messages SET author_id=$2 WHERE id=$1', [root.id, f.owner.id]), /check constraint/);
+  expectStatus(await f.owner.browser.request('DELETE', `/api/v1/projects/${f.place.id}/grants/${access.id}`), 204);
+  await assert.rejects(taskDiscussionUseCases(db).contribute(principal, f.task.id, command), NotFoundError);
+  await assert.rejects(taskDiscussionUseCases(db).contribute(principal, f.task.id,
+    { ...command, clientMessageId: randomUUID() }), NotFoundError);
+  assert.deepEqual((await f.read()).root, root);
+  assert.deepEqual((await pool.query('SELECT * FROM project_messages WHERE id=$1', [root.id])).rows[0], old);
+  await assert.rejects(pool.query('DELETE FROM agents WHERE id=$1', [agent.id]), /foreign key constraint/,
+    'recorded authors cannot be deleted out of genuine history');
+  assert.deepEqual(await f.counts(), { bindings: 1, messages: 1, conversations: 1, events: before.events + 2 });
 });

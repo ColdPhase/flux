@@ -1,6 +1,6 @@
-import type { ConversationMessage, MaterialSource } from '@flux/contracts';
+import type { MaterialSource } from '@flux/contracts';
 import type { Principal } from '../principal.js';
-import type { WorkAccess, WorkRepository } from '../work/ports.js';
+import type { ActorRef, WorkAccess, WorkRepository } from '../work/ports.js';
 
 export interface DiscussionBinding {
   workId: string;
@@ -11,10 +11,16 @@ export interface DiscussionConversation {
   id: string;
   workspaceId: string;
   projectId: string;
-  createdBy: string;
+  createdBy: ActorRef;
   createdAt: Date;
 }
-export interface DiscussionMessage extends Omit<ConversationMessage, 'createdAt'> {
+export interface DiscussionMessage {
+  id: string;
+  conversationId: string;
+  author: ActorRef;
+  body: string;
+  source: MaterialSource | null;
+  sequence: number;
   projectId: string;
   clientMessageId: string;
   requestFingerprint: string;
@@ -28,20 +34,20 @@ export interface NewDiscussionMessage {
 }
 /** Rows only. Current access and the task identity are checked by the use case. */
 export interface TaskDiscussionRepository {
-  lockCommand(projectId: string, authorId: string, commandId: string): Promise<void>;
-  existingMessage(projectId: string, authorId: string, commandId: string): Promise<DiscussionMessage | null>;
+  lockCommand(projectId: string, author: ActorRef, commandId: string): Promise<void>;
+  existingMessage(projectId: string, author: ActorRef, commandId: string): Promise<DiscussionMessage | null>;
   findBinding(workId: string): Promise<DiscussionBinding | null>;
   findConversation(id: string): Promise<DiscussionConversation | null>;
   findMessage(id: string): Promise<DiscussionMessage | null>;
   messages(conversationId: string, window: { limit: number; beforeSequence: number | null }): Promise<DiscussionMessage[]>;
   sourceExists(projectId: string, source: MaterialSource): Promise<boolean>;
-  createConversation(input: { id: string; workspaceId: string; projectId: string; createdBy: string }): Promise<DiscussionConversation>;
-  append(conversation: DiscussionConversation, authorId: string, input: NewDiscussionMessage): Promise<DiscussionMessage>;
+  createConversation(input: { id: string; workspaceId: string; projectId: string; createdBy: ActorRef }): Promise<DiscussionConversation>;
+  append(conversation: Pick<DiscussionConversation, 'id' | 'workspaceId' | 'projectId'>, author: ActorRef, input: NewDiscussionMessage): Promise<DiscussionMessage>;
   bind(input: DiscussionBinding & { workspaceId: string; projectId: string }): Promise<void>;
 }
 export interface TaskDiscussionPorts {
   access: WorkAccess;
-  work: Pick<WorkRepository, 'locate' | 'findWork'>;
+  work: Pick<WorkRepository, 'locate' | 'findWork' | 'names'>;
   discussion: TaskDiscussionRepository;
   events: {
     record(principal: Principal, workspaceId: string, kind: 'project.conversation_created.v1' | 'project.message_sent.v1',

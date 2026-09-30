@@ -1,6 +1,6 @@
 import {
   IDEMPOTENCY_KEY_HEADER, dmLeavePath, dmMessagesPath, dmPath, workspaceDmsPath,
-  type ConversationMessage, type Dm, type DmSummary, type Page, type SendDmMessageCommand, type Workspace, WORKSPACES_PATH,
+  type HumanConversationMessage, type Dm, type DmSummary, type Page, type SendDmMessageCommand, type Workspace, WORKSPACES_PATH,
 } from '@flux/contracts';
 import { request } from './client';
 
@@ -24,5 +24,5 @@ export const openDm = (workspaceId: string, participantIds: string[], idempotenc
 export const getDm = (id: string, signal?: AbortSignal) => request<Dm>(dmPath(id), { signal });
 export const olderDmMessages = (id: string, beforeSequence: number, signal?: AbortSignal, limit?: number) =>
   request<Dm>(`${dmPath(id)}?beforeSequence=${beforeSequence}${limit ? `&limit=${limit}` : ''}`, { signal });
-export const sendDmMessage = (id: string, command: SendDmMessageCommand) => request<ConversationMessage>(dmMessagesPath(id), { method: 'POST', body: command });
+export const sendDmMessage = (id: string, command: SendDmMessageCommand) => request<HumanConversationMessage>(dmMessagesPath(id), { method: 'POST', body: command });
 export const leaveDm = (id: string) => request<null>(dmLeavePath(id), { method: 'POST' });

@@ -6,8 +6,14 @@ import type { DbExecutor } from './push.js';
 type ConversationRow = typeof schema.projectConversations.$inferSelect;
 type MessageRow = typeof schema.projectMessages.$inferSelect;
 type Source = { materialId: string; version: number };
+type Actor = { kind: 'human' | 'agent'; id: string };
+function actor(human: string | null, agent: string | null): Actor {
+  if ((human === null) === (agent === null)) throw new Error('Stored discussion actor invariant failed');
+  return human !== null ? { kind: 'human', id: human } : { kind: 'agent', id: agent! };
+}
+function conversation(row: ConversationRow) { return { ...row, createdBy: actor(row.createdBy, row.createdByAgentId) }; }
 function message(row: MessageRow) {
-  return { ...row, source: row.sourceMaterialId && row.sourceMaterialVersion
+  return { ...row, author: actor(row.authorId, row.authorAgentId), source: row.sourceMaterialId && row.sourceMaterialVersion
     ? { materialId: row.sourceMaterialId, version: row.sourceMaterialVersion } : null };
 }
 
@@ -17,12 +23,12 @@ export function taskDiscussionRows(db: DbExecutor) {
   const c = schema.projectConversations;
   const b = schema.projectTaskDiscussions;
   return {
-    async lockCommand(projectId: string, authorId: string, commandId: string) {
+    async lockCommand(projectId: string, author: Actor, commandId: string) {
       // Shared namespace with ordinary conversation sends. Collisions merely serialize.
-      await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`${projectId.toLowerCase()}:${authorId}:${commandId.toLowerCase()}`}))`);
+      await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`${projectId.toLowerCase()}:${author.kind}:${author.id}:${commandId.toLowerCase()}`}))`);
     },
-    async existingMessage(projectId: string, authorId: string, commandId: string) {
-      const [row] = await db.select().from(m).where(and(eq(m.projectId, projectId), eq(m.authorId, authorId), eq(m.clientMessageId, commandId)));
+    async existingMessage(projectId: string, author: Actor, commandId: string) {
+      const [row] = await db.select().from(m).where(and(eq(m.projectId, projectId), author.kind === 'human' ? eq(m.authorId, author.id) : eq(m.authorAgentId, author.id), eq(m.clientMessageId, commandId)));
       return row ? message(row) : null;
     },
     async findBinding(workId: string) {
@@ -31,7 +37,7 @@ export function taskDiscussionRows(db: DbExecutor) {
     },
     async findConversation(conversationId: string) {
       const [row] = await db.select().from(c).where(eq(c.id, conversationId));
-      return row ?? null;
+      return row ? conversation(row) : null;
     },
     async findMessage(messageId: string) {
       const [row] = await db.select().from(m).where(eq(m.id, messageId));
@@ -49,18 +55,20 @@ export function taskDiscussionRows(db: DbExecutor) {
         eq(v.materialId, source.materialId), eq(v.version, source.version)));
       return !!row;
     },
-    async createConversation(input: { id: string; workspaceId: string; projectId: string; createdBy: string }) {
-      const [row] = await db.insert(c).values(input).returning();
-      return row!;
+    async createConversation(input: { id: string; workspaceId: string; projectId: string; createdBy: Actor }) {
+      const [row] = await db.insert(c).values({ ...input, createdBy: input.createdBy.kind === 'human' ? input.createdBy.id : null,
+        createdByAgentId: input.createdBy.kind === 'agent' ? input.createdBy.id : null }).returning();
+      return conversation(row!);
     },
     /** Called in a transaction after current access and the shared command lock. */
-    async append(conversation: Pick<ConversationRow, 'id' | 'workspaceId' | 'projectId'>, authorId: string,
+    async append(conversation: Pick<ConversationRow, 'id' | 'workspaceId' | 'projectId'>, author: Actor,
       input: { body: string; clientMessageId: string; fingerprint: string; source: Source | null }) {
       const [updated] = await db.update(c).set({ nextSequence: sql`${c.nextSequence} + 1` })
         .where(eq(c.id, conversation.id)).returning({ nextSequence: c.nextSequence });
       if (!updated) throw new Error('Conversation disappeared under contribution lock');
       const [row] = await db.insert(m).values({ id: randomUUID(), workspaceId: conversation.workspaceId,
-        projectId: conversation.projectId, conversationId: conversation.id, authorId, clientMessageId: input.clientMessageId,
+        projectId: conversation.projectId, conversationId: conversation.id, authorId: author.kind === 'human' ? author.id : null,
+        authorAgentId: author.kind === 'agent' ? author.id : null, clientMessageId: input.clientMessageId,
         requestFingerprint: input.fingerprint, sequence: updated.nextSequence - 1, body: input.body,
         sourceMaterialId: input.source?.materialId ?? null, sourceMaterialVersion: input.source?.version ?? null }).returning();
       return message(row!);

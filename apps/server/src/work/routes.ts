@@ -23,7 +23,7 @@ import {
   type ConversationWindowQuery,
   type SendMessageCommand,
 } from '@flux/contracts';
-import { assertAuthorized, type Database, type ResourceRef } from '@flux/core';
+import { assertAuthorized, InvalidInputError, type Database, type ResourceRef } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, expectedVersion, useDomainErrors, versionEtag, type ReplayCheck } from '../http/commands.js';
 import { workUseCases } from './adapters.js';
@@ -84,7 +84,11 @@ export async function workRoutes(app: FastifyInstance, { db, sessions }: Options
       properties: { limit: { type: 'integer' }, beforeSequence: { type: 'integer' } } } } },
     async (request) => discussion.getDiscussion(await principal(request), request.params.workId, request.query));
   app.post<{ Params: { workId: string }; Body: SendMessageCommand }>(taskDiscussionPath(':workId'),
-    { schema: { body: { type: 'object', required: ['body', 'clientMessageId'], additionalProperties: false,
+    { preValidation: async (request) => {
+      // Reject attempted authorship before AJV can strip additional fields.
+      if (request.body && (Object.hasOwn(request.body, 'author') || Object.hasOwn(request.body, 'authorId')))
+        throw new InvalidInputError('The authenticated actor supplies message authorship');
+    }, schema: { body: { type: 'object', required: ['body', 'clientMessageId'], additionalProperties: false,
       properties: { body: { type: 'string', minLength: 1, maxLength: 100_000 }, clientMessageId: { type: 'string' },
         source: { type: 'object', required: ['materialId', 'version'], additionalProperties: false,
           properties: { materialId: { type: 'string' }, version: { type: 'integer' } } } } } } },

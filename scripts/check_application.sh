@@ -54,6 +54,9 @@ $compose run --rm e2e
 # Login, sharing, denied access and stream revocation in Chromium sessions (issue #29, AC-4).
 $compose run --rm e2e node_modules/.bin/tsx --test tests/app/e2e/access-stream.e2e.ts
 
+# Genuine human/agent task history in Chromium; trusted core writes use this isolated DB.
+$compose run --rm -e DATABASE_URL="postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/$POSTGRES_DB" e2e node_modules/.bin/tsx --test tests/app/e2e/task-discussion-actors.e2e.ts
+
 # A session created before an API container restart must still be valid afterwards.
 $compose run --rm test pnpm exec tsx tests/app/session-restart.ts prepare
 $compose restart api
