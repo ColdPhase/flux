@@ -357,8 +357,8 @@ class ReturnViewJourney(unittest.TestCase):
         qpanel.get_by_role("button", name="Summarize").click()
         expect(qpanel.locator("section[aria-labelledby=wm-digest]")).to_contain_text("Shelf holds 4 kg")
 
-    def context_at(self, who: str, viewport: dict, phone: bool) -> Page:
-        options: dict = {"base_url": ORIGIN, "color_scheme": "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw",
+    def context_at(self, who: str, viewport: dict, phone: bool, scheme: str = "light") -> Page:
+        options: dict = {"base_url": ORIGIN, "color_scheme": scheme, "locale": "en-GB", "timezone_id": "Europe/Warsaw",
                          "viewport": viewport, "device_scale_factor": 3 if phone else 1, "storage_state": self.states[who]}
         if phone:
             options.update(is_mobile=True, has_touch=True)
@@ -384,6 +384,7 @@ class ReturnViewJourney(unittest.TestCase):
         conversation = {"type": "conversation", "id": self.conversation_id}
         for label, viewport, phone in (("desktop-1440", {"width": 1440, "height": 900}, False),
                                        ("desktop-1280", {"width": 1280, "height": 800}, False),
+                                       ("tablet-768", {"width": 768, "height": 1024}, True),
                                        ("phone-390", {"width": 390, "height": 844}, True)):
             page = self.context_at("nia", viewport, phone)
             page.goto("/")
@@ -578,6 +579,25 @@ class ReturnViewJourney(unittest.TestCase):
         panel.get_by_role("button", name="I have the context").tap()
         expect(sheet).to_have_count(0)
         expect(entry).to_be_focused()
+
+    def test_09b_dark_renders_of_the_panel(self) -> None:
+        """What matters in the dark theme at 1440x900 and 390x844, with the digest open."""
+        ari = self.page("ari")
+        self.say(ari, "Nia, can you share the dark-room numbers before Friday?")
+        for label, viewport, phone in (("desktop-1440", {"width": 1440, "height": 900}, False),
+                                       ("phone-390", {"width": 390, "height": 844}, True)):
+            page = self.context_at("nia", viewport, phone, scheme="dark")
+            page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
+            panel = self.open_recap(page, tap=phone)
+            expect(panel.locator(".since__next")).to_contain_text("Answer Ari's question")
+            summarize = panel.get_by_role("button", name="Summarize")
+            if phone:
+                summarize.tap()
+            else:
+                summarize.click()
+            expect(panel.locator("section[aria-labelledby=wm-digest]")).to_contain_text("dark-room numbers")
+            self.no_horizontal_scroll(page)
+            shot(page, f"recap-project-{label}-dark")
 
 
 if __name__ == "__main__":
