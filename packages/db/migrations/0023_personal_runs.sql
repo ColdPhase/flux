@@ -115,4 +115,4 @@ CREATE TABLE assistant_proposals (
 );
 CREATE INDEX assistant_proposals_project_idx ON assistant_proposals(project_id, created_at DESC, id DESC);
 
-INSERT INTO flux_schema_version(version) VALUES (22) ON CONFLICT DO NOTHING;
+INSERT INTO flux_schema_version(version) VALUES (23) ON CONFLICT DO NOTHING;

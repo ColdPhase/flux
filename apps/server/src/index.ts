@@ -35,6 +35,7 @@ import { docRoutes } from './docs/routes.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { searchRoutes } from './search/routes.js';
 import { personalRunRoutes } from './personal-runs/routes.js';
+import { exportRoutes } from './export/routes.js';
 
 const connectionString = process.env.DATABASE_URL;
 const fixtureToken = process.env.FLUX_FIXTURE_TOKEN;
@@ -131,6 +132,7 @@ await app.register(notificationRoutes, { db, sessions: identity, smtp: identityC
 // Personal assistant runs (#68): the server queues; the worker dispatches.
 await app.register(personalRunRoutes, { db, sessions: identity, boss });
 await app.register(searchRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret, exposeWork: testFailureInjection });
+await app.register(exportRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin });
 
 app.get('/api/v1/health', async (_request, reply) => {
   try {
