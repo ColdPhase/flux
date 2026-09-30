@@ -124,6 +124,15 @@ test('all pages render quiet comparisons and insufficient evidence with current 
             if (Number.isFinite(size)) document.documentElement.style.setProperty(token, `${size * 1.25}px`);
           }
         });
+        await page.waitForFunction(() => document.querySelector('.side__jump')!.getAnimations()
+          .every((animation) => animation.playState !== 'running'));
+        const lightColors = await page.locator('.side__jump').evaluate((node) => {
+          const style = getComputedStyle(node);
+          return { foreground: style.color, background: style.backgroundColor };
+        });
+        const [lightA, lightB] = [luminance(lightColors.foreground), luminance(lightColors.background)].sort((x, y) => y - x);
+        const lightContrast = (lightA! + 0.05) / (lightB! + 0.05);
+        assert.ok(lightContrast >= 4.5, `settled enlarged-text light search contrast is ${lightContrast.toFixed(2)}:1`);
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
         await page.screenshot({ path: '/state/comparison-outcomes-1440-text125.png', fullPage: true });
       }
