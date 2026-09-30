@@ -294,6 +294,7 @@ class ThemeAccentsJourney(unittest.TestCase):
                     page.get_by_role("radio", name="Map", exact=True).click()
                     expect(page.locator(".sk-node")).to_have_count(4)
                     self.measure(page, theme, family, ".sk-edges path", 3, property="stroke")
+                    shot(page, f"accent-{theme.lower()}-{family.lower()}-map-unselected-1440")
                     page.locator(".sk-node").first.click()
                     self.measure(page, theme, family, ".sk-el")
                     shot(page, f"accent-{theme.lower()}-{family.lower()}-map-1440")
