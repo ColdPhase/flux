@@ -130,7 +130,7 @@ describe('return view: since you left', () => {
     assert.equal(back.needsYou, 3);
     assert.ok(back.items.slice(0, 3).every((item) => item.needsYou));
     assert.deepEqual(back.nextStep && [back.nextStep.text, back.nextStep.reason, back.nextStep.item],
-      ['Answer Ari\'s question', 'Ari asked you in “Camera or sensor for the lamp?”: “Nia, can you check the camera at 5 lux before Friday?”', `message:${reply.id}`]);
+      ['Answer Ari\'s question', '“Nia, can you check the camera at 5 lux before Friday?” Ari asked you in “Camera or sensor for the lamp?”.', `message:${reply.id}`]);
 
     // Ari's own changes are never "since you left" for Ari.
     const own = await summary(ari, { type: 'home' });

@@ -29,7 +29,11 @@ export async function returnRoutes(app: FastifyInstance, { db, sessions }: Optio
   const returns = returnUseCases(db);
   app.get<{ Querystring: ReturnSummaryQuery }>(RETURN_SUMMARY_PATH, { schema: { querystring: {
     type: 'object', required: ['place'], additionalProperties: false,
-    properties: { place: { type: 'string', enum: ['home', 'project', 'conversation'] }, id: { type: 'string', maxLength: 64 } },
+    properties: {
+      place: { type: 'string', enum: ['home', 'project', 'conversation'] }, id: { type: 'string', maxLength: 64 },
+      scope: { type: 'string', enum: ['all', 'mine'] }, from: { type: 'string', enum: ['last-visit', '24h', '7d'] },
+      until: { type: 'string', maxLength: 64 }, digest: { type: 'string', enum: ['0', '1'] },
+    },
   } } }, async (request, reply) => {
     const summary = await returns.summary(await principal(request), request.query);
     return reply.header('cache-control', 'no-store').send(summary);

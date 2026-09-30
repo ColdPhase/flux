@@ -165,7 +165,7 @@ export function liveSessionStore(db: Database): LiveRepository {
       });
     },
 
-    async withAdmission(principal, sessionId, issue) {
+    async withAdmission(principal, sessionId, issue, admission) {
       return db.transaction(async (tx) => {
         const [located] = await tx.select({ projectId: sessions.projectId }).from(sessions)
           .where(eq(sessions.id, sessionId));
@@ -178,6 +178,8 @@ export function liveSessionStore(db: Database): LiveRepository {
         if (row.state === 'rotating') throw new RuleViolationError('Live media access is being refreshed', 'LIVE_SESSION_ROTATING');
         if (row.state !== 'available') throw new RuleViolationError('This session has ended', 'LIVE_SESSION_ENDED');
         await requireLiveContext(principal, record(row).context, row.projectId, tx, true);
+        if (admission) await tx.insert(schema.liveAdmissions).values({ id: admission.id, liveSessionId: row.id,
+          userId: principal.id, authSessionId: admission.authSessionId });
         const result = await issue(record(row));
         // A freshly issued grant gets a full reconnect window. The next
         // authoritative empty observation starts its empty interval anew.
@@ -185,6 +187,15 @@ export function liveSessionStore(db: Database): LiveRepository {
           .where(eq(sessions.id, sessionId));
         return result;
       });
+    },
+
+    async endAdmissions(sessionId, principal, authSessionId) {
+      const admissions = schema.liveAdmissions;
+      const rows = await db.update(admissions).set({ revokedAt: sql`coalesce(${admissions.revokedAt}, now())` })
+        .where(and(eq(admissions.liveSessionId, sessionId), eq(admissions.userId, principal.id),
+          eq(admissions.authSessionId, authSessionId)))
+        .returning({ id: admissions.id });
+      return rows.map((row) => row.id);
     },
 
     async present(sessionId, principal, ref, clientEventId) {

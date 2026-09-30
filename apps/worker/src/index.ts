@@ -1,13 +1,15 @@
 import { PgBoss } from 'pg-boss';
 import { eq } from 'drizzle-orm';
-import { createDatabase, schema } from '@flux/db';
+import { assertExactMigrationLedger, createDatabase, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest, schema } from '@flux/db';
 import { deleteExpiredIdempotencyKeys, DRAFT_SUMMARY_JOB, IDEMPOTENCY_CLEANUP_JOB, processDraftSummary, SAMPLE_JOB } from '@flux/core';
 import { registerPushWorker } from './push/index.js';
 import { registerNotificationEmailWorker, startNotificationGenerator } from './notifications/index.js';
+import { personalRunWorkerComposition, registerPersonalRunWorker } from './personal-runs/index.js';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
 const { pool, db } = createDatabase(connectionString);
+assertExactMigrationLedger(await readMigrationManifest('packages/db/migrations', FLUX_SCHEMA_VERSION), await readAppliedMigrationVersions(pool));
 pool.on('error', (error) => console.error('Database connection interrupted', error));
 const boss = new PgBoss({ connectionString, migrate: false });
 boss.on('error', (error) => console.error(error));
@@ -31,6 +33,10 @@ await boss.work<{ resultId: string }>(DRAFT_SUMMARY_JOB, async (jobs) => {
     console.log(JSON.stringify({ job: DRAFT_SUMMARY_JOB, id: job.id, resultId: job.data.resultId, outcome }));
   }
 });
+// Personal assistant runs (#68): the payload is a run id; every step rechecks the owner.
+const personalRuns = personalRunWorkerComposition(process.env);
+if (personalRuns.mode !== 'production') console.warn(JSON.stringify({ warning: 'TEST ONLY: personal runs use fixture connections and a mock provider', mode: personalRuns.mode }));
+await registerPersonalRunWorker(boss, db, personalRuns);
 await boss.work(IDEMPOTENCY_CLEANUP_JOB, async () => {
   const deleted = await deleteExpiredIdempotencyKeys(db);
   console.log(JSON.stringify({ job: IDEMPOTENCY_CLEANUP_JOB, deleted }));

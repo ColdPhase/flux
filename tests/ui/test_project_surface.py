@@ -171,11 +171,15 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(tabs.get_by_role("link", name=re.compile("^Tasks"))).to_contain_text("2")
         expect(tabs.get_by_role("link", name=re.compile("^Map"))).to_contain_text("1")
         expect(header.get_by_role("button", name="Details")).to_be_visible()
-        # The conversations sit in the sidebar; the centre is one reading column.
+        # The conversations sit in the sidebar; the centre uses the pane (#136) with readable bubbles.
         expect(page.get_by_role("complementary", name="Sidebar").get_by_role("link", name=re.compile("^Should the lamp react"))).to_have_attribute("aria-current", "page")
         column = page.locator(".project-convo__in").bounding_box()
         assert column
-        self.assertLessEqual(column["width"], 760, "reading column")
+        self.assertLessEqual(column["width"], 1000, "conversation pane")
+        for bubble in page.locator(".project-convo__message > p").all():
+            box = bubble.bounding_box()
+            assert box
+            self.assertLessEqual(box["width"], 700, "readable measure per message")
         # Calm chips under a message open their object.
         chip = page.locator(f"#message-{self.ids['m0']}").get_by_role("button", name="Work: Test the camera in low light")
         expect(chip).to_contain_text("In progress")

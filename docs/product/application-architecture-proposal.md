@@ -68,7 +68,11 @@ does. Start with its [embedded TURN/STUN](https://docs.livekit.io/transport/self
 and one documented media host. A separate coturn process would add another
 configuration, certificate and operational boundary; adopt it only if the #63
 restrictive-network or capacity tests show a concrete need. Plan for HTTPS/WSS
-signaling on 7880/TCP behind the TLS ingress, ICE/TCP 7881, ICE/UDP 50000–60000
+signaling through the Flux API at `/media` behind the TLS ingress, with the SFU's
+7880/TCP private to the API (amended by
+[#128](https://github.com/ColdPhase/flux/issues/128), see
+[live sessions](../development/live-sessions.md#media-admission-and-session-end-128)),
+ICE/TCP 7881, ICE/UDP 50000–60000
 or a tested 7882 mux, embedded TURN/STUN 3478/UDP and TURN/TLS 5349/TCP. A
 restrictive network may need TURN/TLS on 443; on a one-IP host that competes
 with the application ingress, so #63 must test a second IP or explicit L4/SNI

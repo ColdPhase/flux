@@ -1,0 +1,403 @@
+{
+  "app": "Flux Studio 11",
+  "environment": "Chromium / Playwright / set_content",
+  "html": "flux-studio-v11.html",
+  "storage": "Explicit in-memory test double, except unavailable-storage case. Native file persistence NOT verified.",
+  "navigation": "file:// and HTTPS navigation blocked by environment policy. No policy changes made.",
+  "generatedAt": "2026-09-28T12:35:54Z",
+  "passed": 65,
+  "failed": 0,
+  "browserErrors": [],
+  "tests": [
+    {
+      "name": "Rozmowa projektu nie wymaga wyboru tematu",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.045
+    },
+    {
+      "name": "Wyślij wiadomość klawiszem Enter, bez formularza",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.071
+    },
+    {
+      "name": "Shift Enter dodaje linię zamiast wysyłać",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.082
+    },
+    {
+      "name": "Odpowiedź jest jednym obiektem i nie tworzy nowego tematu",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.074
+    },
+    {
+      "name": "@ podpowiada materiał; Enter najpierw wybiera, potem wysyła",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.176
+    },
+    {
+      "name": "Podpowiedzi obejmują pojedyncze wiadomości",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.094
+    },
+    {
+      "name": "Podgląd wiki nie gubi szkicu rozmowy",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.125
+    },
+    {
+      "name": "Przy zadaniu jest tylko jeden aktywny composer; szkic główny wraca",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.124
+    },
+    {
+      "name": "Komentarz zadania jest tą samą odpowiedzią w rozmowie",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.186
+    },
+    {
+      "name": "Samo otwarcie myśli nie publikuje; pierwszy komentarz tworzy kartę i odpowiedź",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.101
+    },
+    {
+      "name": "Mapa → rozmowa wymaga wysłania, ponowne pokazanie otwiera istniejącą kartę",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.141
+    },
+    {
+      "name": "Myśl z konkretnej odpowiedzi zachowuje dokładne źródło",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.222
+    },
+    {
+      "name": "Późniejsza mapa podłącza tylko zadanie z tej samej wypowiedzi",
+      "category": "domain",
+      "status": "passed",
+      "seconds": 0.021
+    },
+    {
+      "name": "Kilka myśli → jedno zadanie, nie kopie 1:1",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.204
+    },
+    {
+      "name": "Szkic z zadania nie tworzy podzadań",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.038
+    },
+    {
+      "name": "Samo słowo „czekam” nie jest automatycznym blockerem",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.087
+    },
+    {
+      "name": "Przeszkoda: jeden komentarz, blocker, pomocnik; wykonawca bez zmian",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.148
+    },
+    {
+      "name": "Nie można zakończyć zadania z otwartą przeszkodą",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.058
+    },
+    {
+      "name": "Rozwiązanie usuwa jedną przeszkodę, nie wszystkie i nie kończy zadania",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.115
+    },
+    {
+      "name": "Odpowiedź może rozwiązać pytanie bez zadania",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.144
+    },
+    {
+      "name": "Wynik ma jedną wiadomość; mapa nie tworzy kopii notatki",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.031
+    },
+    {
+      "name": "Edycja wiadomości aktualizuje podgląd wyniku na mapie",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.207
+    },
+    {
+      "name": "Zakończenie testu nie oznacza zaakceptowania pomysłu",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.179
+    },
+    {
+      "name": "Agent blokuje propozycję po zmianie źródłowego wyniku",
+      "category": "domain",
+      "status": "passed",
+      "seconds": 0.041
+    },
+    {
+      "name": "Propozycja wiki działa raz, tworzy wersję i zachowuje źródło",
+      "category": "domain",
+      "status": "passed",
+      "seconds": 0.04
+    },
+    {
+      "name": "Termin, mój plan i nakład są oddzielnymi operacjami",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.341
+    },
+    {
+      "name": "Punkt powrotu jest osobisty i działa na U mnie",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.189
+    },
+    {
+      "name": "Przeniesienie między tablicami zachowuje zadanie i rozmowę",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.169
+    },
+    {
+      "name": "Kanban i tabela pokazują te same identyfikatory",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.092
+    },
+    {
+      "name": "Nowa mapa nie zakłada tablicy, tablica nie zakłada mapy",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.277
+    },
+    {
+      "name": "Przeciąganie myśli i cofanie/ponawianie działa na płótnie",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.43
+    },
+    {
+      "name": "Grupa wybrana Shift porusza obie myśli o ten sam wektor",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.41
+    },
+    {
+      "name": "Dwuklik edytuje w miejscu z pojedynczą ramką",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.502
+    },
+    {
+      "name": "Plus dopisuje myśl i zwykłą linię, bez wiadomości i zadania",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.157
+    },
+    {
+      "name": "Połączenie istniejących myśli ma tę samą linię, bez skutków ubocznych",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.179
+    },
+    {
+      "name": "Komentarz do linii jest jednym wątkiem, nie scala końców",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.099
+    },
+    {
+      "name": "Lista z wcięciami tworzy myśli i połączenia, nie backlog",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.217
+    },
+    {
+      "name": "Wiki edytuje i przywraca wersje bez usuwania historii",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.374
+    },
+    {
+      "name": "Import Markdown działa, surowy HTML nie jest wykonywany",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.126
+    },
+    {
+      "name": "Zmiana tytułu wiki nie zrywa odnośnika",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.042
+    },
+    {
+      "name": "Fragment zachowuje historyczny cytat i rozpoznaje zmianę źródła",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.035
+    },
+    {
+      "name": "Fragment w zadaniu i na mapie wskazuje jedno źródło, bez kopiowania wiki",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.327
+    },
+    {
+      "name": "Zwykła wzmianka ma odnośnik zwrotny, nie zmienia zadania",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.035
+    },
+    {
+      "name": "/ai odpowiada jako odrębny agent, we właściwej odpowiedzi",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.648
+    },
+    {
+      "name": "Propozycja układu nie nadpisze zmienionej mapy",
+      "category": "domain",
+      "status": "passed",
+      "seconds": 0.594
+    },
+    {
+      "name": "Dwie bazy i dziewięć predefiniowanych akcentów, bez własnych kolorów",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.371
+    },
+    {
+      "name": "Widok i wyszukiwanie Oli nie pokazują prywatnego Arduino",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.196
+    },
+    {
+      "name": "Niedostępny odnośnik blokuje wysłanie i zachowuje szkic",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.041
+    },
+    {
+      "name": "Nowy projekt ma własne grono, nie dziedziczy ekipy",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.238
+    },
+    {
+      "name": "Projekt z DM otrzymuje tylko wybraną wypowiedź, nie całą rozmowę",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.254
+    },
+    {
+      "name": "Osobiste przypomnienie pojawia się przy działającej aplikacji",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.134
+    },
+    {
+      "name": "Eksport pobiera pełny JSON schematu 11",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.171
+    },
+    {
+      "name": "Nieprawidłowy lub stary import nie nadpisuje danych",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.115
+    },
+    {
+      "name": "Załącznik zostaje przy jednej wysłanej wiadomości",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.15
+    },
+    {
+      "name": "Sesja lokalna nie włącza automatycznie mikrofonu, kamery ani ekranu",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.145
+    },
+    {
+      "name": "Telefon: rozmowa, lista mapy i pełny panel bez poziomego rozpychania",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.138
+    },
+    {
+      "name": "Escape i wyszukiwanie z klawiatury działają",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.088
+    },
+    {
+      "name": "Opis zadania korzysta z tego samego @ i nie wysyła komentarza",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.242
+    },
+    {
+      "name": "Wiki Markdown ma podpowiedzi @ bez wymagania znajomości składni",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.199
+    },
+    {
+      "name": "Cofnięcie omyłkowej blokady zostawia wiadomość i nie kończy zadania",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.259
+    },
+    {
+      "name": "Cofnięcie oznaczenia wyniku nie usuwa wypowiedzi",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.232
+    },
+    {
+      "name": "Niezapisany szkic wiki wraca po nawigacji i nie zmienia źródła",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.241
+    },
+    {
+      "name": "Zamknięcie panelu nie zrywa sesji; wyjście zatrzymuje przechwytywanie (atrapa)",
+      "category": "media-double",
+      "status": "passed",
+      "seconds": 0.259
+    },
+    {
+      "name": "Serializacja i odtworzenie w nowym dokumencie (magazyn testowy)",
+      "category": "storage-double",
+      "status": "passed",
+      "seconds": 0.244
+    },
+    {
+      "name": "Brak dostępu do localStorage nie uniemożliwia pracy w pamięci",
+      "category": "storage-unavailable",
+      "status": "passed",
+      "seconds": 0.239
+    }
+  ]
+}

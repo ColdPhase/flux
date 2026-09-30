@@ -1,11 +1,13 @@
+import { EventEmitter } from 'node:events';
 import { open, unlink } from 'node:fs/promises';
+import type { Server } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
 import { PgBoss } from 'pg-boss';
-import { FLUX_SCHEMA_VERSION, PG_BOSS_SCHEMA_VERSION } from '@flux/db';
+import { assertExactMigrationLedger, FLUX_SCHEMA_VERSION, PG_BOSS_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
 import { SAMPLE_COMMAND_PATH, type SampleCommand } from '@flux/contracts';
 import { createSample, SAMPLE_JOB } from '@flux/core';
 import { registerDatabase } from './plugins/database.js';
@@ -21,18 +23,23 @@ import { workRoutes } from './work/routes.js';
 import { liveRoutes } from './live/routes.js';
 import { liveAccess } from './live/access.js';
 import { liveSessionStore } from './live/store.js';
-import { createLiveMediaFromEnv, liveMediaConfig } from './live/media.js';
+import { createLiveMediaFromEnv } from './live/media.js';
+import { registerLiveSignaling } from './live/signaling.js';
 import { liveRevocationCoordinator } from './live/revocation.js';
 import { liveDiscoveryRoutes } from './live/discovery.js';
 import { liveLifecycle } from './live/lifecycle.js';
 import { liveWebhookRoutes } from './live/webhook.js';
 import { liveInvitationRoutes } from './live/invitation-routes.js';
+import { joinRateLimiter } from './live/rate-limit.js';
 import { agentProposalRoutes } from './agent-connection/routes.js';
 import { registerMcpRoute } from './agent-connection/mcp-route.js';
 import { returnRoutes } from './returns/routes.js';
 import { docRoutes } from './docs/routes.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { searchRoutes } from './search/routes.js';
+import { personalRunRoutes } from './personal-runs/routes.js';
+import { personalRunServerComposition } from './personal-runs/composition.js';
+import { exportRoutes } from './export/routes.js';
 
 const connectionString = process.env.DATABASE_URL;
 const fixtureToken = process.env.FLUX_FIXTURE_TOKEN;
@@ -43,12 +50,14 @@ const identityConfig = loadIdentityConfig();
 const pushConfig = loadPushServerConfig();
 const app = Fastify({ logger: true, trustProxy: identityConfig.trustedProxies.length ? identityConfig.trustedProxies : false });
 const { pool, db } = registerDatabase(app, connectionString);
+const migrationManifest = await readMigrationManifest('packages/db/migrations', FLUX_SCHEMA_VERSION);
+assertExactMigrationLedger(migrationManifest, await readAppliedMigrationVersions(pool));
 const boss = new PgBoss({ connectionString, migrate: false });
 boss.on('error', (error) => app.log.error(error));
 await boss.start();
 app.addHook('onClose', async () => boss.stop());
 const identity = registerIdentity(app, { db, config: identityConfig });
-const liveMedia = createLiveMediaFromEnv();
+const liveMedia = createLiveMediaFromEnv(process.env, identityConfig.publicOrigin);
 const lifecycle = liveMedia ? liveLifecycle(db, pool, liveMedia.media) : null;
 const liveRevocation = liveMedia ? liveRevocationCoordinator(db, pool, liveMedia.media, lifecycle!) : null;
 await app.register(accessRoutes, { db, sessions: identity, boss, liveRevocation });
@@ -56,7 +65,10 @@ await app.register(sketchRoutes, { db, sessions: identity });
 await app.register(dmRoutes, { db, sessions: identity });
 await app.register(pushRoutes, { db, sessions: identity, config: pushConfig });
 if (pushConfig.status === 'unavailable') app.log.warn(pushConfig.reason);
-await app.register(websocket, { options: { maxPayload: 1024 } });
+// Upgrades reach @fastify/websocket through this emitter, except `/media/*`, which the live
+// signaling gate takes before any Fastify WebSocket handling (see the dispatch below).
+const streamUpgrades = new EventEmitter();
+await app.register(websocket, { options: { maxPayload: 1024, server: streamUpgrades as unknown as Server } });
 const heartbeatMs = Number(process.env.FLUX_STREAM_HEARTBEAT_MS ?? 25_000);
 if (!Number.isInteger(heartbeatMs) || heartbeatMs < 100) throw new Error('FLUX_STREAM_HEARTBEAT_MS must be an integer of at least 100');
 await app.register(streamRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, connectionString, heartbeatMs, cursorSecret: identityConfig.secret, exposeWork: testFailureInjection });
@@ -64,18 +76,29 @@ await app.register(conversationRoutes, { db, sessions: identity });
 await app.register(workRoutes, { db, sessions: identity });
 // Configuration alone does not prove the SFU, DNS/TLS or receiver path is healthy.
 app.get('/api/v1/live-sessions/capabilities', async () => ({ status: liveMedia ? 'configured' : 'unavailable' }));
+const livePorts = liveMedia ? { access: liveAccess(db), sessions: liveSessionStore(db), media: liveMedia.media, mediaUrl: liveMedia.mediaUrl } : null;
 if (liveMedia) await app.register(liveRoutes, {
   sessions: identity,
-  ports: { access: liveAccess(db), sessions: liveSessionStore(db), ...liveMedia },
+  ports: livePorts!,
   lifecycle: lifecycle!,
   revocation: liveRevocation!,
+  // Per API instance: N replicas allow N times the limit (docs/development/live-sessions.md).
+  joinLimiter: joinRateLimiter(),
+});
+// Browsers signal only through this gate; ending an auth session revokes its media admission (#128).
+const liveSignaling = liveMedia ? registerLiveSignaling(app, { db, connectionString, publicOrigin: identityConfig.publicOrigin,
+  sessions: identity, ports: livePorts!, media: liveMedia.media, config: liveMedia.config }) : null;
+app.server.on('upgrade', (request, socket, head) => {
+  if (liveSignaling?.gate.handleUpgrade(request, socket, head)) return;
+  streamUpgrades.emit('upgrade', request, socket, head);
 });
 if (liveMedia) await app.register(liveDiscoveryRoutes, { db, sessions: identity, media: liveMedia.media });
 if (liveMedia) await app.register(liveInvitationRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret });
 if (lifecycle) {
-  const config = liveMediaConfig(process.env);
+  const config = liveMedia!.config;
   await app.register(liveWebhookRoutes, { pool, apiKey: config.apiKey, apiSecret: config.apiSecret,
-    requestReconcile: (sessionId, generation) => lifecycle.reconcile(sessionId, generation).then(() => undefined) });
+    requestReconcile: (sessionId, generation) => lifecycle.reconcile(sessionId, generation).then(() => undefined),
+    reconcileAdmissions: (roomId) => liveSignaling!.revocation.reconcileRoom(roomId) });
   const pruneWebhooks = async () => {
     try {
       await pool.query(`DELETE FROM live_webhook_events WHERE event_id IN (
@@ -121,12 +144,16 @@ registerMcpRoute(app, db, identity.auth, identityConfig.publicOrigin);
 await app.register(returnRoutes, { db, sessions: identity });
 await app.register(docRoutes, { db, sessions: identity });
 await app.register(notificationRoutes, { db, sessions: identity, smtp: identityConfig.smtp, publicOrigin: identityConfig.publicOrigin });
+// Personal assistant runs (#68): the server queues; the worker dispatches.
+const personalRuns = personalRunServerComposition(process.env);
+if (personalRuns.mode !== 'production') app.log.warn({ mode: personalRuns.mode }, 'TEST ONLY: personal runs use fixture connections and a mock provider');
+await app.register(personalRunRoutes, { db, sessions: identity, boss, connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled });
 await app.register(searchRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret, exposeWork: testFailureInjection });
+await app.register(exportRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin });
 
 app.get('/api/v1/health', async (_request, reply) => {
   try {
-    const version = await pool.query('SELECT max(version) AS version FROM flux_schema_version');
-    if (Number(version.rows[0]?.version) !== FLUX_SCHEMA_VERSION) throw new Error('Schema mismatch');
+    assertExactMigrationLedger(migrationManifest, await readAppliedMigrationVersions(pool));
     if ((await boss.schemaVersion()) !== PG_BOSS_SCHEMA_VERSION) throw new Error('Queue schema mismatch');
     const probe = join(filesDir, `.flux-health-${randomUUID()}`);
     const file = await open(probe, 'wx');

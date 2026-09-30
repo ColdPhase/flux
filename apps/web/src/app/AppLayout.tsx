@@ -13,18 +13,35 @@ import { Sidebar } from './Sidebar';
 import { VIEWS, viewIndex } from './views';
 import { ProjectStateLine, ProjectStateRow } from '../work/inline';
 import { audienceLine, useProjectShell } from '../project/data';
+import { useDmSketchCount } from '../dm/DmSketches';
 import type { ProjectPerson } from '@flux/contracts';
+import { LiveProvider } from '../live/LiveProvider';
+import { LiveEntry } from '../live/LiveEntry';
+import { LiveBar } from '../live/LiveBar';
+import { LiveStage } from '../live/LiveStage';
+import '../live/live.css';
 import { JumpTo } from '../search/JumpTo';
+import { useNeedsYou } from '../returns/useNeedsYou';
 
 function lastConversationPath(projectId: string) {
   try { return sessionStorage.getItem(`flux.project-conversation.${projectId}`) ?? `/projects/${projectId}`; }
   catch { return `/projects/${projectId}`; }
 }
 
+/** The Tasks view last chosen in this project (#136), e.g. `?status=blocked&show=mine`. */
+function lastTasksSearch(projectId: string) {
+  try { return sessionStorage.getItem(`flux.project-tasks.${projectId}`) ?? ''; }
+  catch { return ''; }
+}
+
 /** Tab order for the slide direction: Home's views, or a project's Conversation · Tasks · Map · Docs. */
 function viewOrder(pathname: string) {
   const inProject = pathname.match(/^\/projects\/[^/]+(?:\/(tasks|map|docs))?/);
-  return inProject ? ['conversation', 'tasks', 'map', 'docs'].indexOf(inProject[1] ?? 'conversation') : viewIndex(pathname);
+  if (inProject) return ['conversation', 'tasks', 'map', 'docs'].indexOf(inProject[1] ?? 'conversation');
+  // A direct message's Messages · Sketches (#96).
+  const inDm = pathname.match(/^\/dm\/(?!new$)[^/]+(\/sketches)?/);
+  if (inDm) return inDm[1] ? 1 : 0;
+  return viewIndex(pathname);
 }
 
 function isTyping(target: EventTarget | null) {
@@ -81,13 +98,15 @@ export function AppLayout() {
 
   const inboxUnread = useInboxDot(me.user.id, location.pathname);
 
+  const [actionSlot, setActionSlot] = useState<HTMLElement | null>(null);
   const shell = useMemo(() => ({
     openDetails(view: DetailsView = 'place') {
       setDetailsView(view);
       toggleDetails(true);
     },
     openSearch() { setNavOpen(false); setJumpOpen(true); },
-  }), [toggleDetails]);
+    actionSlot,
+  }), [toggleDetails, actionSlot]);
 
   // A link inside an overlaid panel or sheet (#117 overview) leads to its destination.
   const [shownPath, setShownPath] = useState(location.pathname);
@@ -159,17 +178,38 @@ export function AppLayout() {
   // Conversation · Tasks · Map · Docs (direction C), each a route of the project (#117).
   const projectViews = projectId ? [
     { id: 'conversation', label: 'Conversation', to: onOtherView ? lastConversationPath(projectId) : `${location.pathname}${location.search}` },
-    { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks`, ...(openWork ? { count: openWork, countLabel: `, ${openWork} open` } : {}) },
+    { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks${lastTasksSearch(projectId)}`, ...(openWork ? { count: openWork, countLabel: `, ${openWork} open` } : {}) },
     { id: 'map', label: 'Map', to: `/projects/${projectId}/map`, end: false, ...(project?.sketches?.total ? { count: project.sketches.total, countLabel: `, ${project.sketches.total} ${project.sketches.total === 1 ? 'sketch' : 'sketches'}` } : {}) },
     { id: 'docs', label: 'Docs', to: `/projects/${projectId}/docs`, end: false, ...(project?.docs?.length ? { count: project.docs.length, countLabel: `, ${project.docs.length} ${project.docs.length === 1 ? 'doc' : 'docs'}` } : {}) },
   ] : null;
   const projectIndex = projects.findIndex((item) => item.id === projectId);
   const audience = project ? audienceLine(project.people, me.user.id) : 'People with project access';
   const openOverview = () => { setDetailsView('place'); toggleDetails(true); };
+  const recapOpen = detailsOpen && typeof detailsView === 'object' && detailsView.kind === 'recap';
+  // "What matters" (#133): a quiet count of what needs you; refreshed when the panel closes.
+  const needsYou = useNeedsYou(activeProject ? projectId ?? null : null, recapOpen);
+  // One stable entry at the end of the project's view tabs, as in Studio v11, so the header keeps
+  // its room for the title, audience and state line.
+  const recapEntry = activeProject && projectId ? (
+    <Button variant="quiet" icon="leaf" className="views__recap" aria-expanded={recapOpen}
+      aria-controls={recapOpen ? 'details' : undefined}
+      onClick={() => { if (recapOpen) toggleDetails(false); else { setDetailsView({ kind: 'recap', projectId }); toggleDetails(true); } }}>
+      What matters
+      {needsYou ? <span className="views__recap-n">{needsYou}<span className="ui-vh"> {needsYou === 1 ? 'needs' : 'need'} you</span></span> : null}
+    </Button>
+  ) : null;
   const dmId = location.pathname.match(/^\/dm\/([^/]+)/)?.[1];
   const activeDm = directMessages.find((dm) => dm.id === dmId);
+  // Messages · Sketches: a DM's sketches stay inside it, for exactly its people (#96).
+  const dmSketches = useDmSketchCount(activeDm?.workspaceId, activeDm?.id, me.user.id);
+  const dmViews = activeDm ? [
+    { id: 'messages', label: 'Messages', to: `/dm/${activeDm.id}` },
+    { id: 'sketches', label: 'Sketches', to: `/dm/${activeDm.id}/sketches`, end: false, ...(dmSketches ? { count: dmSketches, countLabel: `, ${dmSketches} ${dmSketches === 1 ? 'sketch' : 'sketches'}` } : {}) },
+  ] : null;
   const place = location.pathname === '/search'
     ? { crumb: null, title: 'Search', topic: 'Only what you can open is searched', views: false }
+    : location.pathname === '/settings/assistant'
+    ? { crumb: null, title: 'Your assistant', topic: 'Only you can use it · optional', views: false, noDetails: true }
     : activeProject
     ? { crumb: activeProject.workspaceName ?? null, title: activeProject.name, topic: audience, views: false }
     : where === 'inbox'
@@ -187,6 +227,8 @@ export function AppLayout() {
 
   return (
     <ShellContext.Provider value={shell}>
+    {/* One live session per tab, above the routes, so navigation keeps it (#62). */}
+    <LiveProvider meId={me.user.id}>
     <div className="app">
       <a className="ui-skip" href="#content">Skip to content</a>
       {navDrawer ? (
@@ -224,31 +266,40 @@ export function AppLayout() {
           </div>
           )}
           <div className="top__right" data-shift>
+            {/* A view can put one quiet action here (a DM's Select, #96). */}
+            <span className="top__actions" ref={setActionSlot} />
+            {activeProject ? <LiveEntry /> : null}
             {project?.people && !phone ? <Faces people={project.people} meId={me.user.id} /> : null}
             {/* The inbox and its settings have nothing to show in Details. */}
-            {'noDetails' in place ? null : <Button ref={detailsButtonRef} variant="quiet" icon="panel" className="top__details" aria-expanded={detailsOpen}
+            {'noDetails' in place ? null : <Button ref={detailsButtonRef} variant="quiet" icon="panel" className="top__details" aria-expanded={detailsOpen && !recapOpen}
               aria-controls={detailsOpen ? 'details' : undefined} aria-keyshortcuts="]" data-tip={'Toggle details   ]'}
-              onClick={() => { setDetailsView('place'); toggleDetails(); }}>
+              onClick={() => { setDetailsView('place'); if (!recapOpen) toggleDetails(); }}>
               Details
             </Button>}
           </div>
         </header>
-        {project && phone ? <ProjectStateRow lists={project.work} canDecide={project.project.access !== 'viewer'} /> : null}
+        {/* On a phone the tab row has no room: the entry joins the one-line project state row. */}
+        {project && phone ? <div className="state-row"><ProjectStateRow lists={project.work} canDecide={project.project.access !== 'viewer'} />{recapEntry}</div> : null}
         {place.views
           ? <Tabs className="views" label="Views" items={VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path }))} />
           : activeProject && projectViews
-            ? <Tabs className="views" label="Project views" items={projectViews} />
-            : <div className="views views--none" aria-hidden="true" />}
+            ? <div className="views views--project"><Tabs className="views__tabs" label="Project views" items={projectViews} />{phone ? null : recapEntry}</div>
+            : dmViews
+              ? <Tabs className="views" label="Direct message views" items={dmViews} />
+              : <div className="views views--none" aria-hidden="true" />}
+        <LiveBar />
         <div className="app__pane" id="content" ref={paneRef} tabIndex={-1}>
           <Outlet />
+          <LiveStage />
         </div>
       </div>
 
       <JumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
-      <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title="Details" id="details">
-        <Details view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} />
+      <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title={recapOpen ? 'What matters' : 'Details'} id="details">
+        <Details view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />
       </SidePanel>
     </div>
+    </LiveProvider>
     </ShellContext.Provider>
   );
 }

@@ -5,6 +5,8 @@ import { Avatar, Button, Icon } from '../ui';
 import { WorkDetails } from '../work/WorkDetails';
 import { AddToDoc } from '../docs/AddToDoc';
 import { ProjectOverview } from '../project/ProjectOverview';
+import { PromoteSketch } from '../sketch/PromoteSketch';
+import { WhatMatters } from '../returns/WhatMatters';
 import { useProjectShell } from '../project/data';
 import type { WorkspaceSummary } from './data';
 import type { DetailsView } from './shellContext';
@@ -14,17 +16,20 @@ import type { DetailsView } from './shellContext';
  * selected message, task, decision or result joins it with conversations (#36). Account and
  * session details live in the account menu.
  */
-export function Details({ view, workspace, placeTitle, dm = null, onBack }: {
+export function Details({ view, workspace, placeTitle, dm = null, onBack, onClose }: {
   view: DetailsView;
   workspace: WorkspaceSummary | null;
   placeTitle: string;
   /** The open direct message (#107): its other people and audience line. */
   dm?: { id: string; kind: 'pair' | 'group'; title: string; me: string; people: string[]; audience: string } | null;
   onBack: () => void;
+  onClose: () => void;
 }) {
   const inProject = !!useProjectShell();
+  if (typeof view === 'object' && view.kind === 'recap') return <WhatMatters key={view.projectId} projectId={view.projectId} projectName={placeTitle} onDone={onClose} />;
   if (view === 'connect-ai') return <ConnectAi onBack={onBack} />;
   if (typeof view === 'object' && view.kind === 'add-to-doc') return <AddToDoc key={`${view.from.type}:${view.from.id}`} view={view} />;
+  if (typeof view === 'object' && view.kind === 'promote-sketch') return <PromoteSketch key={view.sketchId} view={view} dmTitle={dm?.title ?? null} onBack={onBack} />;
   if (typeof view === 'object' && view.kind === 'overview') return <ProjectOverview key={view.messageId ?? 'all'} messageId={view.messageId} onBack={onBack} />;
   if (typeof view === 'object') return <WorkDetails view={view} />;
   // A project's Details start with its overview (#117).
@@ -71,7 +76,7 @@ export function Details({ view, workspace, placeTitle, dm = null, onBack }: {
   );
 }
 
-/** Personal connection setup. The in-app assistant still needs its separate runtime (#58). */
+/** Personal connection setup (#57, #68): the Claude Code path and your own in-app assistant. */
 function ConnectAi({ onBack }: { onBack: () => void }) {
   return (
     <div className="details">
@@ -83,13 +88,14 @@ function ConnectAi({ onBack }: { onBack: () => void }) {
         <h4 id="details-ai-ways">Ways to connect</h4>
         <ul className="details__rows">
           <li><b>Claude Code on your computer</b><span>Uses your account for compute and your personal Flux grant. Flux never receives your provider credentials.</span></li>
-          <li><b>A personal API key</b><span>Asks for your spending cap before the first run · not available yet</span></li>
+          <li><b>Your assistant in Flux</b><span>Answers here when you ask, with your own Anthropic API key, your consent and your daily cap. Only you can use it.</span></li>
         </ul>
         <p><Link className="ui-link" to="/connect-agent">Set up or revoke a Claude Code connection</Link></p>
+        <p><Link className="ui-link" to="/settings/assistant">Set up your assistant in Flux</Link></p>
       </section>
       <section className="details__sec" aria-labelledby="details-ai-now">
-        <h4 id="details-ai-now">In-app assistant</h4>
-        <p>The ✦ button does not start Claude Code or spend your plan. It remains unavailable until a separate in-app assistant runtime is connected.</p>
+        <h4 id="details-ai-now">Nobody else’s assistant</h4>
+        <p>The ✦ button always means your own assistant. It never starts Claude Code, and it never uses another person’s assistant or payer. Without yours, human work goes on exactly as before.</p>
       </section>
     </div>
   );

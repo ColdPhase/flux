@@ -1,0 +1,84 @@
+/* The personal assistant in a conversation (#57 design, #68). No new colours: the shared tokens,
+   the ordinary message hierarchy, one framed proposal. */
+.assistant-avatar { position: absolute; left: 0; top: 10px; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1px var(--line); }
+.project-convo__message-meta span.assistant-tag, .project-convo__message-meta span.assistant-answer__asked { visibility: visible; }
+.assistant-tag { display: inline-flex; align-items: center; min-height: 18px; padding: 0 6px; border-radius: var(--r-pill); background: var(--bg-side); color: var(--text-2); font-size: 11px; font-weight: 600; letter-spacing: .01em; box-shadow: inset 0 0 0 1px var(--line); }
+.assistant-answer__asked { color: var(--text-3); }
+/* The request is a quiet caption above the answer bubble, not a message of its own (#136 bubbles). */
+.project-convo__message > .assistant-answer__request { margin: 2px 0 0; padding: 0; border-radius: 0; background: none; color: var(--text-2); font-size: var(--fs-sm); font-style: italic; overflow-wrap: anywhere; }
+.assistant-answer__body { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; margin: 4px 0 0; }
+.assistant-cite { display: inline-grid; place-items: center; min-width: 20px; height: 20px; margin: 0 1px; padding: 0 5px; border-radius: var(--r-sm); background: var(--bg-side); color: var(--accent); font-size: 11px; font-weight: 600; line-height: 1; text-decoration: none; vertical-align: 2px; box-shadow: inset 0 0 0 1px var(--line); font-style: normal; font-variant-numeric: tabular-nums; }
+.assistant-cite:hover { background: var(--accent-soft); }
+.assistant-answer__truncated { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: var(--fs-sm); color: var(--warning); }
+.assistant-answer__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin-top: 6px; font-size: var(--fs-xs); color: var(--text-3); }
+.assistant-answer__foot > span { margin-right: 4px; }
+.assistant-answer__foot .ui-btn--link { min-height: 28px; font-size: var(--fs-xs); }
+.assistant-answer__error, .assistant-working__error { margin-top: 4px; font-size: var(--fs-sm); color: var(--danger); }
+
+.assistant-working { position: relative; display: flex; align-items: flex-start; gap: 10px; margin-top: 6px; padding: 8px 0 8px 46px; list-style: none; }
+.assistant-working .assistant-avatar { top: 8px; }
+.assistant-working.is-working .assistant-avatar { animation: assistant-breathe 1.8s var(--ease-out) infinite; }
+.assistant-working__body { flex: 1; min-width: 0; }
+.assistant-working__text { display: flex; align-items: center; gap: 8px; font-size: var(--fs-md); color: var(--text-2); }
+.assistant-working__pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: assistant-breathe 1.2s var(--ease-out) infinite; }
+.assistant-working__who { display: flex; align-items: center; gap: 5px; margin-top: 2px; font-size: var(--fs-xs); color: var(--text-3); overflow-wrap: anywhere; }
+.assistant-working__actions { display: flex; align-items: center; gap: 4px; flex: none; }
+@keyframes assistant-breathe { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { .assistant-working.is-working .assistant-avatar, .assistant-working__pulse { animation: none; } }
+
+.assistant-proposal { margin-top: 10px; padding: 12px 14px; border-radius: var(--r-lg); background: var(--bg); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.assistant-proposal.is-accepted, .assistant-proposal.is-dismissed { box-shadow: inset 0 0 0 1px var(--line); }
+.assistant-proposal__label { display: flex; align-items: center; gap: 7px; font-size: var(--fs-xs); font-weight: 600; color: var(--text-3); }
+.assistant-proposal__ring { width: 9px; height: 9px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--accent); }
+.assistant-proposal.is-accepted .assistant-proposal__ring { background: var(--ok); box-shadow: none; }
+.assistant-proposal.is-dismissed .assistant-proposal__ring { box-shadow: inset 0 0 0 1.5px var(--text-3); }
+.assistant-proposal__title { margin-top: 4px; font-size: var(--fs-base); font-weight: 600; overflow-wrap: anywhere; }
+.assistant-proposal__claims { display: grid; gap: 4px; margin: 6px 0 0; font-size: var(--fs-sm); }
+.assistant-proposal__claims > div { display: grid; grid-template-columns: 104px 1fr; gap: 8px; }
+.assistant-proposal__claims dt { color: var(--text-3); font-weight: 500; }
+.assistant-proposal__claims dd { margin: 0; color: var(--text); overflow-wrap: anywhere; }
+.assistant-proposal__effect { margin-top: 8px; font-size: var(--fs-sm); color: var(--text-2); }
+.assistant-proposal__actions { display: flex; gap: 8px; margin-top: 10px; }
+.assistant-proposal__wait, .assistant-proposal__done { margin-top: 8px; font-size: var(--fs-sm); line-height: 1.5; color: var(--text-3); }
+.assistant-proposal__done svg { margin-right: 5px; vertical-align: -2px; color: var(--ok); }
+.assistant-proposal__done .ui-link { margin-left: 8px; }
+.assistant-proposal__done .ui-link { font-size: var(--fs-sm); min-height: 24px; }
+
+.assistant-ask__blocked { color: var(--text-2); }
+.assistant-ask__error { flex-basis: 100%; color: var(--danger); }
+
+@media (max-width: 640px) {
+  .assistant-answer .project-convo__message-meta { flex-wrap: wrap; row-gap: 0; }
+  .assistant-proposal__claims > div { grid-template-columns: 1fr; gap: 0; }
+  .assistant-proposal__actions .ui-btn { flex: 1; }
+  .assistant-working { padding-left: 44px; flex-wrap: wrap; }
+}
+@media (pointer: coarse) {
+  .assistant-cite { min-width: 24px; height: 24px; }
+  .assistant-answer__foot .ui-btn--link { min-height: 44px; }
+}
+
+/* Your assistant settings (reuses the notification settings layout). */
+.aset__facts { display: grid; gap: 8px; margin: 0 0 14px; padding: 0; list-style: none; font-size: var(--fs-sm); }
+.aset__facts li { display: grid; grid-template-columns: 128px 1fr; gap: 10px; }
+.aset__facts b { font-weight: 500; color: var(--text-2); }
+.aset__facts span { color: var(--text); line-height: 1.45; }
+.aset__fields { display: grid; gap: 12px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.aset__fields:disabled { opacity: .6; }
+.aset__field { display: flex; align-items: center; justify-content: space-between; gap: 12px; max-width: 360px; font-size: var(--fs-md); }
+.aset__field select, .aset__agent select { min-height: 36px; min-width: 132px; border: 1px solid var(--line-input); border-radius: var(--r-sm); padding: 0 8px; background: var(--bg); color: var(--text); font: inherit; }
+.aset__agents { display: grid; gap: 8px; }
+.aset__agent { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; max-width: 480px; font-size: var(--fs-md); }
+.aset__consent { display: flex; align-items: flex-start; gap: 10px; font-size: var(--fs-sm); line-height: 1.45; color: var(--text); cursor: pointer; }
+.aset__consent input { width: 16px; height: 16px; margin: 2px 0 0; flex: none; accent-color: var(--accent); }
+.aset__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 14px; }
+.aset__state { display: flex; align-items: center; gap: 8px; }
+.aset__dot { width: 9px; height: 9px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--text-3); }
+.aset__dot.is-ready { background: var(--ok); box-shadow: none; }
+.aset__dot.is-unavailable { box-shadow: inset 0 0 0 1.5px var(--warning); }
+.aset__meter { height: 6px; max-width: 360px; border-radius: 3px; background: var(--bg-active); overflow: hidden; }
+.aset__meter span { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.aset__caps { display: grid; gap: 10px; margin-top: 14px; }
+.aset__caps .ui-btn { justify-self: start; }
+@media (max-width: 640px) { .aset__facts li { grid-template-columns: 1fr; gap: 0; } }
+@media (pointer: coarse) { .aset__field select, .aset__agent select { min-height: 44px; } .aset__consent input { width: 20px; height: 20px; } }

@@ -140,9 +140,12 @@ a private draft, not even to owners.
 readable at project level ≥ viewer and changeable at ≥ contributor, so explicit deny
 and every project rule above apply unchanged. A `private` sketch is readable and
 changeable only by the person who created it, while they are active in the workspace.
-Owners, admins and agents (including the author's own agent) never see it. DM-bound
-sketches follow #36 in a separate issue. Sketch events (`sketch.*.v1`) are
-authorized as `sketch.read` on the sketch.
+Owners, admins and agents (including the author's own agent) never see it. A `dm`
+sketch ([#96](https://github.com/ColdPhase/flux/issues/96)) references its DM by a foreign key.
+Exactly the DM's current participants read it, and they change it while the DM is open. A 1:1
+whose other person left is read-only (`403`) until that person reopens it. Owners, admins,
+agents and people who left get `404`. Sketch events (`sketch.*.v1`) are authorized as
+`sketch.read` on the sketch.
 
 **Direct messages** (#107, details in [direct-messages.md](direct-messages.md)). A DM's
 audience is exactly its current participants (`dm_participants`). `dm.read` and `dm.write` need
@@ -150,6 +153,12 @@ an active person who is a participant; workspace owners and admins outside the D
 agents see no DMs in this slice. `dm.create` is for owners, admins and members. Leaving deletes
 the participant row, and removing a membership cascades to it, so access ends on the next
 request. DM events (`dm.*.v1`) are authorized as `dm.read` on the DM.
+
+**Personal assistant runs** (#68, details in [personal-runs.md](personal-runs.md)). A run is
+an `assistant_run` object with one reader: `assistant_run.read` is allowed only to the person who
+owns the run, while they are active in its workspace. Workspace owners, admins, project members
+and agents never see it, so its progress events (`assistant_run.changed.v1`) reach the owner
+alone. The committed answer is a separate project event for the conversation's audience.
 
 **Membership.** Owners and admins manage members and create projects. Only an owner
 can grant, change or remove the owner role (`403 OWNER_REQUIRED`). The last owner
@@ -202,9 +211,10 @@ and is then refused with `404` or `403` without writing.
 | workspace | `workspace.read`, `workspace.read_members`, `workspace.manage_members`, `workspace.manage_agents`, `project.create`, `draft.create`, `agent.create`, `sketch.create`, `dm.create` |
 | project | `project.read`, `project.write`, `project.manage` |
 | draft | `draft.read`, `draft.write`, `draft.share`, `draft.move` |
-| agent | `agent.read`, `agent.revoke` |
+| agent | `agent.read`, `agent.revoke`, `agent.invoke` (only the owning person, while the agent is not revoked; [personal runs](personal-runs.md)) |
 | sketch | `sketch.read`, `sketch.write` |
 | dm | `dm.read`, `dm.write` |
+| assistant_run | `assistant_run.read` (only the run's owner; [personal runs](personal-runs.md)) |
 
 ## HTTP API
 
@@ -268,8 +278,8 @@ workspace's members and agents; readers never pay for events outside their audie
 Events recorded before migration 0004 have no audience rows and are not replayed.
 
 The event's object type comes from the first segment of its kind: `workspace`,
-`project`, `draft`, `agent`, `sketch` or `dm`. The read action for that type decides delivery:
-`workspace.read`, `project.read`, `draft.read`, `agent.read`, `sketch.read` or `dm.read`. Events without a
+`project`, `draft`, `agent`, `sketch`, `dm` or `assistant_run`. The read action for that type decides delivery:
+`workspace.read`, `project.read`, `draft.read`, `agent.read`, `sketch.read`, `dm.read` or `assistant_run.read`. Events without a
 workspace (the sample fixture) and unknown kinds are never delivered.
 
 ## WebSocket stream
@@ -356,6 +366,12 @@ on its own `LISTEN` for wake-ups.
 **Return view** (#106). "Since you left" (`GET /api/v1/return`) reads the same per-recipient
 rows after the person's saved return point, calls `authorizeEvent` again for every event and,
 on Home, also applies `visibleFilter` to each project. See [return-view.md](return-view.md).
+
+**Project export** (#123). `GET /api/v1/projects/:id/export` needs `project.manage`
+(`evaluateProject`, so an invisible project is `404` and a visible one without manage rights is
+`403`). The audience in the export comes from `listProjectPeople`; the rows are read in one
+read-only snapshot and never include other projects, DMs, drafts or private sketches. See
+[export](../operations/export.md).
 
 **Project docs** (#112). Doc reads and writes use the project policy (`evaluateProject`, write
 under the access-row lock); an invisible doc is `404 DOC_NOT_FOUND`. The workspace doc list

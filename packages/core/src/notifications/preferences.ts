@@ -26,6 +26,8 @@ export const DEFAULT_CHANNELS: Record<NotificationReason, ChannelChoice> = {
   reply: { inApp: true, push: true, email: false },
   assigned: { inApp: true, push: true, email: false },
   review: { inApp: true, push: true, email: false },
+  // A live invitation is quiet: inbox and push, never email by default and never a ringing call.
+  invitation: { inApp: true, push: true, email: false },
 };
 
 /** Stored preferences as the rules use them; `channels` holds only the person's overrides. */

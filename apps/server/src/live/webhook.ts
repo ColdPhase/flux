@@ -21,6 +21,11 @@ export interface LiveWebhookOptions {
   apiSecret: string;
   /** A webhook is only a hint. The reconciler must recheck the current generation and SFU. */
   requestReconcile(sessionId: string, generation: number): Promise<void>;
+  /**
+   * Reconciliation hint for media admissions (#128): a participant joined this room. The
+   * signaling gate is the admission boundary; this only catches what a restart missed.
+   */
+  reconcileAdmissions?(roomId: string): Promise<void>;
 }
 
 /** Raw-body signature verification precedes every use of an untrusted event field. */
@@ -57,6 +62,9 @@ export const liveWebhookRoutes: FastifyPluginAsync<LiveWebhookOptions> = async (
       RETURNING session_id, generation`, [event.id, roomId]);
     const mapped = inserted.rows[0];
     if (!mapped) return reply.code(204).send();
+    if (event.event === 'participant_joined' && options.reconcileAdmissions)
+      void options.reconcileAdmissions(roomId).catch((error: unknown) =>
+        app.log.warn({ error, sessionId: mapped.session_id }, 'Live admission reconciliation pending'));
 
     try { await options.requestReconcile(mapped.session_id, mapped.generation); }
     catch (error) {

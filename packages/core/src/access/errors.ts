@@ -68,3 +68,14 @@ export class PreconditionRequiredError extends DomainError {
     super(428, 'PRECONDITION_REQUIRED', 'This change needs the expected version in If-Match or expectedVersion');
   }
 }
+
+/**
+ * Too many requests of one kind from one principal. `retryAfterSeconds` is safe to send
+ * (entry points map it to HTTP 429 with `Retry-After`).
+ */
+export class RateLimitedError extends DomainError {
+  constructor(readonly retryAfterSeconds: number, message: string, code: string) {
+    super(429, code, message);
+    this.details = { retryAfterSeconds };
+  }
+}

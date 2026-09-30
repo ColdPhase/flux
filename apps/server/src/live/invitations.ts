@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import { schema } from '@flux/db';
 import {
-  enforce, evaluateProject, NotFoundError, RuleViolationError,
+  enforce, evaluateProject, NotFoundError, recordEvent, RuleViolationError,
   type Database, type Principal, type LiveInvitation, type LiveInvitationPorts, type LiveInvitationTarget,
   type LiveInvitationCursor, type LiveInvitationPageRow,
 } from '@flux/core';
@@ -42,6 +42,9 @@ function sameContext(left: LiveContextRef, right: LiveContextRef): boolean {
 }
 
 const columns = sql`id, session_id, project_id, inviter_id, recipient_id, response, created_at, responded_at`;
+
+/** Committed with a new invitation; the worker turns it into the recipient's one inbox signal. */
+export const LIVE_INVITED_EVENT = 'project.live_invited.v1';
 
 /** Transaction-bound invitation persistence and current access checks. */
 export function liveInvitationStore(db: Database): LiveInvitationPorts {
@@ -89,9 +92,18 @@ export function liveInvitationStore(db: Database): LiveInvitationPorts {
               SELECT ${randomUUID()}, s.workspace_id, s.project_id, s.id, ${inviterId}, ${recipientId}
                 FROM live_sessions s WHERE s.id = ${sessionId} AND s.project_id = ${projectId}
               ON CONFLICT (session_id, recipient_id) DO NOTHING
-              RETURNING ${columns}
+              RETURNING ${columns}, workspace_id
             `);
-            const row = (inserted.rows[0] ?? (await tx.execute(sql`
+            const created = inserted.rows[0] as unknown as (InvitationRow & { workspace_id: string }) | undefined;
+            if (created) {
+              // Only a new row notifies: a repeated or concurrent invite converges on the
+              // existing row above and records nothing. Identifiers only, never titles. This
+              // is the command's last write (see recordEvent: the seq lock is held to commit).
+              await recordEvent(tx, { kind: 'human', id: inviterId }, created.workspace_id, LIVE_INVITED_EVENT, created.project_id,
+                { sessionId: created.session_id, invitationId: created.id, recipientId: created.recipient_id });
+              return record(created);
+            }
+            const row = ((await tx.execute(sql`
               SELECT ${columns} FROM live_invitations
               WHERE session_id = ${sessionId} AND recipient_id = ${recipientId}
             `)).rows[0]) as unknown as InvitationRow | undefined;

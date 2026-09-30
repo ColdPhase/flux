@@ -7,10 +7,11 @@ import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { createWork } from '../work/api';
 import { useSketchDoc, type Op } from './doc';
-import { audience, quote } from './format';
+import { audience, quote, sketchHref, when } from './format';
 import { freeSpot, rectOf } from './geometry';
 import { SketchList } from './SketchList';
 import { SketchMap } from './SketchMap';
+import { useRegisterLiveHere } from '../live/LiveProvider';
 import './sketch.css';
 
 export interface Editing {
@@ -42,9 +43,10 @@ function useProjectName(projectId: string | null | undefined) {
 
 /** `/map/:sketchId`: a fresh view (and document) per sketch. */
 export function SketchRoute() {
-  const { sketchId = '', projectId } = useParams();
-  // Opened from a project's Map tab (#117), the way back stays in that project.
-  return <SketchView key={sketchId} sketchId={sketchId} projectId={projectId} back={projectId ? `/projects/${projectId}/map` : '/map'} />;
+  const { sketchId = '', projectId, dmId } = useParams();
+  // Opened from a project's Map tab (#117) or a DM's Sketches (#96), the way back stays there.
+  const back = projectId ? `/projects/${projectId}/map` : dmId ? `/dm/${dmId}/sketches` : '/map';
+  return <SketchView key={sketchId} sketchId={sketchId} projectId={projectId} dmId={dmId} back={back} />;
 }
 
 /**
@@ -52,19 +54,33 @@ export function SketchRoute() {
  * a List. Everything is edited in place; there is no management panel. Changes save as they
  * happen and arrive live from the other people who can see the sketch.
  */
-export function SketchView({ sketchId, projectId, back = '/map' }: { sketchId: string; projectId?: string; back?: string }) {
-  const { me } = useShellData();
+export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketchId: string; projectId?: string; dmId?: string; back?: string }) {
+  const { me, directMessages } = useShellData();
+  const started = (useLocation().state as { started?: number } | null)?.started;
   const doc = useSketchDoc(sketchId, { id: me.user.id, name: me.user.name });
   const { sketch } = doc;
   const coarse = useMediaQuery('(pointer: coarse)');
   const phone = useMediaQuery(MEDIA.phone);
   const [mode, setModeState] = useState<Mode>(storedMode);
-  const [selectionState, setSelection] = useState<string[]>([]);
+  const location = useLocation();
+  // A fragment shown in a live session (#62) opens with the presenter's thoughts selected.
+  const liveSelect = (location.state as { liveSelect?: string[] | null } | null)?.liveSelect ?? null;
+  const [selectionState, setSelection] = useState<string[]>(() => liveSelect ?? []);
+  const [selectedFor, setSelectedFor] = useState(location.key);
+  if (selectedFor !== location.key) {
+    setSelectedFor(location.key);
+    if (liveSelect) setSelection(liveSelect);
+  }
   const [connectState, setConnectFrom] = useState<string | null>(null);
   const [editingState, setEditing] = useState<Editing | null>(null);
-  const [status, setStatus] = useState<{ text: string; change: boolean }>({ text: '', change: false });
-  const { state: routeState, hash } = useLocation();
-  const [renaming, setRenaming] = useState<boolean>(!!(routeState as { fresh?: boolean } | null)?.fresh);
+  const dmAudience = directMessages.find((item) => item.id === (doc.sketch?.dmId ?? dmId))?.audience ?? null;
+  // "Start sketch from these messages" lands here: say what happened and who sees it.
+  const [status, setStatus] = useState<{ text: string; change: boolean }>(() => ({
+    text: started ? `Started from ${started} ${started === 1 ? 'message' : 'messages'} · ${dmAudience ? `${dmAudience.replace(/^Only /, 'only ')} can see it` : 'it stays in this conversation'}` : '',
+    change: false,
+  }));
+  const { hash } = location;
+  const [renaming, setRenaming] = useState<boolean>(!!(location.state as { fresh?: boolean } | null)?.fresh);
   const [heights] = useState(() => new Map<string, number>());
   const rootRef = useRef<HTMLDivElement>(null);
   const helpId = useId();
@@ -90,6 +106,13 @@ export function SketchView({ sketchId, projectId, back = '/map' }: { sketchId: s
   const present = new Set(sketch?.thoughts.map((t) => t.id));
   const selection = selectionState.filter((id) => present.has(id));
   const connectFrom = connectState && present.has(connectState) ? connectState : null;
+  // A project sketch anchors a session; "Show this" points at the selected thoughts, if any.
+  const projectSketch = sketch?.scope === 'project' && sketch.projectId ? sketch : null;
+  const firstSelected = selection.length === 1 ? sketch?.thoughts.find((t) => t.id === selection[0])?.text : null;
+  useRegisterLiveHere(projectSketch ? { projectId: projectSketch.projectId!, context: { type: 'sketch', id: projectSketch.id }, label: projectSketch.title } : null,
+    projectSketch ? { ref: { type: 'sketch', id: projectSketch.id, version: projectSketch.version, ...(selection.length ? { selectedThoughtIds: selection.slice(0, 100) } : {}) },
+      label: firstSelected ? (firstSelected.length > 60 ? `${firstSelected.slice(0, 59)}…` : firstSelected) : projectSketch.title,
+      what: selection.length === 0 ? 'map' : selection.length === 1 ? 'thought on the map' : `${selection.length} thoughts on the map` } : null);
   const editing = editingState && present.has(editingState.id) ? editingState : null;
 
   const setMode = (next: Mode) => {
@@ -267,7 +290,11 @@ export function SketchView({ sketchId, projectId, back = '/map' }: { sketchId: s
   // Under a project (#117) only that project's sketches are shown, so the header's audience is
   // never wrong: another project's sketch moves to its own project, a private one to Home's Map.
   if (sketch && projectId && (sketch.scope !== 'project' || sketch.projectId !== projectId)) {
-    return <Navigate replace to={sketch.scope === 'project' && sketch.projectId ? `/projects/${sketch.projectId}/map/${sketch.id}` : `/map/${sketch.id}`} />;
+    return <Navigate replace to={`${sketch.scope === 'project' && sketch.projectId ? `/projects/${sketch.projectId}/map/${sketch.id}` : sketchHref(sketch)}${hash}`} />;
+  }
+  // A DM's sketch always opens inside its DM (#96), and only a DM sketch opens there.
+  if (sketch && !projectId && (sketch.scope === 'dm' ? dmId !== sketch.dmId : !!dmId)) {
+    return <Navigate replace to={`${sketch.scope === 'project' && sketch.projectId ? `/projects/${sketch.projectId}/map/${sketch.id}` : sketchHref(sketch)}${hash}`} />;
   }
   if (doc.load === 'loading' && !sketch) return <div className="sk-page sk-page--center"><Spinner label="Opening the sketch" /></div>;
   if (doc.load === 'not-found' || (!sketch && doc.load === 'failed')) {
@@ -302,8 +329,12 @@ export function SketchView({ sketchId, projectId, back = '/map' }: { sketchId: s
             ) : (
               <button type="button" className="sk-title" disabled={!canWrite} aria-label={canWrite ? `Rename sketch ${sketch.title}` : undefined} onClick={() => setRenaming(true)}>{sketch.title}</button>
             )}
-            <span className="sk-aud"><Icon name={sketch.scope === 'project' ? 'people' : 'lock'} size={12} />{audience(sketch, me.user.id, projectName)}</span>
+            <span className="sk-aud"><Icon name={sketch.scope === 'project' ? 'people' : 'lock'} size={12} />{audience(sketch, me.user.id, projectName, dmAudience)}</span>
           </p>
+          {/* #96: a DM sketch can be copied into a project, after an exact preview in Details. */}
+          {sketch.scope === 'dm' && canWrite ? (
+            <Button variant="secondary" className="sk-promote" onClick={() => openDetails({ kind: 'promote-sketch', sketchId: sketch.id, title: sketch.title })}>Make it a project…</Button>
+          ) : null}
           <div className="seg sk-mode" role="radiogroup" aria-label="Show as">
             {(['map', 'list'] as const).map((m) => (
               <button key={m} type="button" role="radio" className="seg__b" aria-checked={mode === m} onClick={() => setMode(m)}>{m === 'map' ? 'Map' : 'List'}</button>
@@ -311,19 +342,30 @@ export function SketchView({ sketchId, projectId, back = '/map' }: { sketchId: s
           </div>
         </div>
 
+        {sketch.copies.length ? (
+          <ul className="sk-copies" aria-label="Project copies">
+            {sketch.copies.map((copy) => (
+              <li key={copy.sketchId}><Icon name="check" size={12} />Copied to <Link to={`/projects/${copy.projectId}/map/${copy.sketchId}`}>{copy.projectName}</Link> · {when(copy.copiedAt)}<span className="sk-origin__long"> · later changes here stay in this conversation</span><span className="sk-origin__short"> · not synced</span></li>
+            ))}
+          </ul>
+        ) : null}
+        {sketch.origin ? (
+          <p className="sk-origin"><Icon name="lock" size={12} />Copied from a direct message by {sketch.origin.copiedBy.id === me.user.id ? 'you' : sketch.origin.copiedBy.name} · {when(sketch.origin.copiedAt)}<span className="sk-origin__long">. Only the thoughts were copied; the conversation stays private.</span><span className="sk-origin__short"> · the conversation stays private</span></p>
+        ) : null}
+
         {canWrite ? (
           <div className="sk-bar">
-            <div className="sk-tools" role="toolbar" aria-label="Sketch tools">
+            <div className={`sk-tools${sketch.scope === 'project' ? ' sk-tools--seven' : ''}`} role="toolbar" aria-label="Sketch tools">
             <button type="button" className="ui-btn ui-btn--quiet sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={14} />Thought</button>
-            <button type="button" className="ui-btn ui-btn--quiet" aria-pressed={!!connectFrom} onClick={connect}><Icon name="link" size={14} />Connect</button>
+            <button type="button" className="ui-btn ui-btn--quiet" aria-pressed={!!connectFrom} onClick={connect} aria-label="Connect"><Icon name="link" size={14} /><span className="sk-bl">Connect</span></button>
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={selection.length !== 1} onClick={() => {
               if (selection.length !== 1) { say('Select one thought, then Edit'); return; }
               setConnectFrom(null);
               setEditing({ id: selection[0]!, isNew: false, parentId: null });
-            }}><Icon name="edit" size={14} />Edit</button>
+            }} aria-label="Edit"><Icon name="edit" size={14} /><span className="sk-bl">Edit</span></button>
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={cycleShape} aria-label="Change shape"><Icon name="shape" size={14} /><span className="sk-bl">Shape</span></button>
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={() => remove(selection)} aria-label="Remove from sketch"><Icon name="trash" size={14} /><span className="sk-bl">Remove</span></button>
-            {sketch.scope === 'project' ? <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={() => void makeWork()} aria-label="Create work from selected thoughts"><Icon name="tasks" size={14} /><span className="sk-bl">Create work</span></button> : null}
+            {sketch.scope === 'project' ? <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={() => void makeWork()} aria-label="Create work from selected thoughts"><Icon name="tasks" size={14} /><span className="sk-bl sk-bl--long">Create work</span><span className="sk-bl sk-bl--short">Task</span></button> : null}
             <span className="sk-div" aria-hidden="true" />
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!doc.canUndo} onClick={undo} aria-label="Undo"><Icon name="undo" size={14} /><span className="sk-bl">Undo</span></button>
             </div>
@@ -333,7 +375,9 @@ export function SketchView({ sketchId, projectId, back = '/map' }: { sketchId: s
             </p>
           </div>
         ) : (
-          <p className="sk-readonly"><Icon name="lock" size={12} />You can look at this sketch; people who can change it keep it up to date.</p>
+          <p className="sk-readonly"><Icon name="lock" size={12} />{sketch.scope === 'dm'
+            ? 'Nobody else is in this conversation now, so the sketch is read-only until the other person reopens it.'
+            : 'You can look at this sketch; people who can change it keep it up to date.'}</p>
         )}
 
         {mode === 'map' ? (

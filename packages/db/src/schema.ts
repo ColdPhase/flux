@@ -409,7 +409,7 @@ export const notifications = pgTable('notifications', {
   readAt: timestamp('read_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   // Migration 0015 (#116): why it exists, the event it came from, and whether the inbox lists it.
-  reason: text('reason').$type<'mention' | 'question' | 'reply' | 'dm' | 'assigned' | 'review'>(),
+  reason: text('reason').$type<'mention' | 'question' | 'reply' | 'dm' | 'assigned' | 'review' | 'invitation'>(),
   eventId: uuid('event_id'),
   inInbox: boolean('in_inbox').notNull().default(true),
 }, (table) => [
@@ -567,8 +567,13 @@ export const agentOauthSelections = pgTable('agent_oauth_selections', {
 export const sketches = pgTable('sketches', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
-  scope: text('scope', { enum: ['project', 'private'] }).notNull(),
+  scope: text('scope', { enum: ['project', 'private', 'dm'] }).notNull(),
   projectId: uuid('project_id'),
+  // A DM sketch's direct message (migration 0025, #96): composite FK to dms(workspace_id, id).
+  dmId: uuid('dm_id'),
+  copiedFromSketchId: uuid('copied_from_sketch_id'),
+  copiedByUserId: text('copied_by_user_id').references(() => authUsers.id),
+  copiedAt: timestamp('copied_at', { withTimezone: true }),
   title: text('title').notNull(),
   createdByUserId: text('created_by_user_id').references(() => authUsers.id),
   createdByAgentId: uuid('created_by_agent_id'),
@@ -594,6 +599,12 @@ export const sketchThoughts = pgTable('sketch_thoughts', {
   shape: text('shape', { enum: ['card', 'pill', 'circle'] }).notNull().default('card'),
   placementType: text('placement_type', { enum: ['draft'] }),
   placementId: uuid('placement_id'),
+  // The message a thought was started from (migration 0025, #96).
+  sourceAuthorId: text('source_author_id').references(() => authUsers.id),
+  sourceAuthorName: text('source_author_name'),
+  sourceSentAt: timestamp('source_sent_at', { withTimezone: true }),
+  sourceDmId: uuid('source_dm_id'),
+  sourceMessageId: uuid('source_message_id'),
   createdByUserId: text('created_by_user_id').references(() => authUsers.id),
   createdByAgentId: uuid('created_by_agent_id'),
   version: integer('version').notNull().default(1),
@@ -806,6 +817,20 @@ export const liveInvitations = pgTable('live_invitations', {
     foreignColumns: [liveSessions.workspaceId, liveSessions.projectId, liveSessions.id] }).onDelete('cascade'),
   index('live_invitations_recipient_idx').on(table.recipientId, table.createdAt.desc(), table.id.desc()),
 ]);
+/**
+ * A media admission bound to the auth session that requested it (#128). The id is the
+ * LiveKit participant metadata; a trigger revokes rows when their session row is deleted.
+ */
+export const liveAdmissions = pgTable('live_admissions', {
+  id: text('id').primaryKey(),
+  liveSessionId: uuid('live_session_id').notNull().references(() => liveSessions.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  authSessionId: text('auth_session_id').notNull(),
+  issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, (table) => [
+  index('live_admissions_session_idx').on(table.liveSessionId, table.userId, table.issuedAt.desc()),
+]);
 // Direct messages: private conversations between people of one workspace (migration 0010, issue #107).
 export const dms = pgTable('dms', {
   id: uuid('id').primaryKey(),
@@ -934,3 +959,99 @@ export const notificationEmails = pgTable('notification_emails', {
   lastError: text('last_error'),
   lastErrorAt: timestamp('last_error_at', { withTimezone: true }),
 }, (table) => [unique().on(table.notificationId, table.addressKind)]);
+
+// Owner-invoked personal assistant runs (migration 0024, #68, O-008). No key material is stored.
+export const personalRunEnablements = pgTable('personal_run_enablements', {
+  ownerUserId: text('owner_user_id').primaryKey().references(() => authUsers.id, { onDelete: 'cascade' }),
+  // References #124's key connection once that table lands; a compared snapshot until then.
+  connectionId: uuid('connection_id'),
+  consentVersion: text('consent_version').$type<'o-008-2026-09-28'>().notNull(),
+  consentedAt: timestamp('consented_at', { withTimezone: true }).notNull().defaultNow(),
+  consentProvider: text('consent_provider').$type<'anthropic'>().notNull(),
+  consentModel: text('consent_model').notNull(),
+  consentPayerOrganization: text('consent_payer_organization').notNull(),
+  consentPayerWorkspace: text('consent_payer_workspace').notNull(),
+  perRunCents: integer('per_run_cents').notNull().default(6),
+  dailyCapCents: integer('daily_cap_cents').notNull().default(100),
+  timeZone: text('time_zone').notNull().default('UTC'),
+  status: text('status', { enum: ['active', 'paused'] }).notNull().default('active'),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const personalRunAgents = pgTable('personal_run_agents', {
+  ownerUserId: text('owner_user_id').notNull().references(() => personalRunEnablements.ownerUserId, { onDelete: 'cascade' }),
+  workspaceId: uuid('workspace_id').notNull(),
+  agentId: uuid('agent_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.ownerUserId, table.workspaceId] }),
+  foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }).onDelete('cascade'),
+]);
+
+export const personalRuns = pgTable('personal_runs', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  conversationId: uuid('conversation_id').notNull(),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  agentId: uuid('agent_id').notNull(),
+  connectionId: uuid('connection_id'),
+  clientRunId: uuid('client_run_id').notNull(),
+  requestFingerprint: text('request_fingerprint').notNull(),
+  kind: text('kind', { enum: ['ask', 'summarize', 'map_thought'] }).notNull(),
+  prompt: text('prompt').notNull(),
+  targetSketchId: uuid('target_sketch_id'),
+  targetThoughtId: uuid('target_thought_id'),
+  continuesRunId: uuid('continues_run_id').references((): AnyPgColumn => personalRuns.id, { onDelete: 'set null' }),
+  retryOfRunId: uuid('retry_of_run_id').references((): AnyPgColumn => personalRuns.id, { onDelete: 'set null' }),
+  status: text('status', { enum: ['queued', 'reading', 'dispatching', 'completed', 'truncated', 'stopped', 'denied', 'paused',
+    'revoked', 'cap_reached', 'unavailable', 'input_too_large', 'provider_failed'] }).notNull().default('queued'),
+  stoppedAtStage: text('stopped_at_stage', { enum: ['before_read', 'before_dispatch', 'before_commit'] }),
+  stopRequestedAt: timestamp('stop_requested_at', { withTimezone: true }),
+  costState: text('cost_state', { enum: ['reserved', 'released', 'observed', 'unknown'] }).notNull().default('reserved'),
+  reservedMicros: integer('reserved_micros').notNull(),
+  chargedMicros: integer('charged_micros').notNull().default(0),
+  inputTokens: integer('input_tokens'),
+  outputTokens: integer('output_tokens'),
+  model: text('model').notNull(),
+  answerBody: text('answer_body'),
+  answerTruncated: boolean('answer_truncated').notNull().default(false),
+  answerSources: jsonb('answer_sources').$type<unknown[]>().notNull().default([]),
+  committedAt: timestamp('committed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  dispatchedAt: timestamp('dispatched_at', { withTimezone: true }),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique().on(table.ownerUserId, table.clientRunId),
+  unique().on(table.workspaceId, table.projectId, table.id),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.conversationId], foreignColumns: [projectConversations.workspaceId, projectConversations.projectId, projectConversations.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }).onDelete('cascade'),
+]);
+
+export const assistantProposals = pgTable('assistant_proposals', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  runId: uuid('run_id').notNull().unique(),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  fact: text('fact').notNull(),
+  interpretation: text('interpretation').notNull(),
+  changeType: text('change_type', { enum: ['result'] }).notNull(),
+  resultTitle: text('result_title').notNull(),
+  resultFinding: text('result_finding', { enum: ['positive', 'negative'] }).notNull(),
+  resultEvidence: text('result_evidence').notNull().default(''),
+  finishesWorkId: uuid('finishes_work_id'),
+  status: text('status', { enum: ['proposed', 'accepted', 'dismissed'] }).notNull().default('proposed'),
+  decidedBy: text('decided_by').references(() => authUsers.id),
+  decidedAt: timestamp('decided_at', { withTimezone: true }),
+  resultId: uuid('result_id'),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index('assistant_proposals_project_idx').on(table.projectId, table.createdAt, table.id),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.runId], foreignColumns: [personalRuns.workspaceId, personalRuns.projectId, personalRuns.id] }).onDelete('cascade'),
+]);

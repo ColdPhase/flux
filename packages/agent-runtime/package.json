@@ -1,1 +1,1 @@
-{"name":"@flux/agent-runtime","version":"0.1.0","private":true,"type":"module","license":"AGPL-3.0-only","exports":"./src/index.ts"}
+{"name":"@flux/agent-runtime","version":"0.1.0","private":true,"type":"module","license":"AGPL-3.0-only","dependencies":{"@anthropic-ai/sdk":"0.129.0","@flux/contracts":"workspace:*","@flux/core":"workspace:*"},"types":"./dist/index.d.ts","exports":"./dist/index.js","scripts":{"build":"tsc -p tsconfig.build.json"}}

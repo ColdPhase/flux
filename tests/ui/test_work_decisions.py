@@ -299,6 +299,167 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(page.get_by_label("Current state")).to_contain_text("Current rule: Oldest rule: battery powered")
         expect(page.get_by_role("region", name=re.compile("^Needs you")).locator(".ws-group__h")).to_contain_text("101")
 
+    # ---------------------------------------------------------------- phone task views (#136 AC-2)
+
+    def test_08_phone_finds_own_blocked_work_and_returns_to_the_same_view(self) -> None:
+        owner = self.page("owner")
+        base = f"/api/v1/projects/{self.project_id}/work"
+        mine = "Solder the ToF sensor board for the second prototype enclosure"
+        theirs = "Order spare ToF sensors"
+        me = {"kind": "human", "id": PARTNER["id"]}
+        self.api(owner, "POST", base, {"title": mine, "status": "blocked", "blocker": "the sensor delivery", "owner": me}, status=201)
+        self.api(owner, "POST", base, {"title": theirs, "status": "blocked", "blocker": "a supplier reply", "owner": {"kind": "human", "id": OWNER["id"]}}, status=201)
+        self.api(owner, "POST", base, {"title": "Measure the lamp current", "status": "in_progress", "owner": me}, status=201)
+
+        page = self.page("partner", phone=True)
+        page.goto(f"/projects/{self.project_id}/tasks")
+        views = page.get_by_role("navigation", name="Task views")
+        expect(views.get_by_role("button", name="All", exact=True)).to_have_attribute("aria-pressed", "true")
+        # Whole labels with their counts, no clipped column; every view is a 44 px touch target.
+        blocked = views.get_by_role("button", name=re.compile("^Blocked"))
+        expect(blocked).to_contain_text("2")
+        self.assertGreaterEqual(blocked.bounding_box()["height"], 44, "touch target")
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), PHONE["width"], "no sideways page scroll")
+        shot(page, "tasks-phone-390-views")
+
+        blocked.tap()
+        expect(blocked).to_have_attribute("aria-pressed", "true")
+        self.assertIn("status=blocked", page.url)
+        expect(page.get_by_role("region", name=re.compile("^Open"))).to_have_count(0)
+        region = page.get_by_role("region", name=re.compile("^Blocked"))
+        expect(region).to_contain_text(mine)
+        expect(region).to_contain_text(theirs)
+
+        views.get_by_label("Only mine").check()
+        self.assertIn("show=mine", page.url)
+        expect(region).to_contain_text(mine)
+        expect(region).not_to_contain_text(theirs)
+        expect(region).to_contain_text("waiting for the sensor delivery")
+        shot(page, "tasks-phone-390-mine-blocked")
+
+        # Opening the work and coming back from another view keeps the chosen view.
+        region.get_by_role("button", name=re.compile(re.escape(mine))).tap()
+        sheet = page.get_by_role("dialog", name="Details")
+        expect(sheet.get_by_role("heading", name=mine)).to_be_visible()
+        sheet.get_by_role("button", name="Close details").tap()
+        expect(blocked).to_have_attribute("aria-pressed", "true")
+        page.get_by_role("navigation", name="Project views").get_by_role("link", name="Conversation").tap()
+        expect(page.locator(f"#message-{self.messages['idea']}")).to_be_visible()
+        page.go_back()
+        expect(page.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^Blocked"))).to_have_attribute("aria-pressed", "true")
+        expect(page.get_by_role("navigation", name="Task views").get_by_label("Only mine")).to_be_checked()
+        # The Tasks tab itself also returns to the chosen view.
+        page.get_by_role("navigation", name="Project views").get_by_role("link", name="Conversation").tap()
+        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks")).tap()
+        expect(page.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^Blocked"))).to_have_attribute("aria-pressed", "true")
+        self.assertIn("show=mine", page.url)
+
+        # An empty view says so and offers the way back instead of a blank screen.
+        page.goto(f"/projects/{self.project_id}/tasks?status=parked&show=mine")
+        expect(page.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^Parked"))).to_have_attribute("aria-pressed", "true")
+        expect(page.locator(".ws-none")).to_contain_text("Nothing of yours in parked right now.")
+        page.get_by_role("button", name="Show everyone’s").tap()
+        expect(page.get_by_role("navigation", name="Task views").get_by_label("Only mine")).not_to_be_checked()
+
+        # Keyboard on desktop: views are buttons in reading order with a visible pressed state.
+        desk = self.page("partner")
+        desk.goto(f"/projects/{self.project_id}/tasks?status=in_progress")
+        expect(desk.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^In progress"))).to_have_attribute("aria-pressed", "true")
+        expect(desk.get_by_role("region", name=re.compile("^In progress"))).to_contain_text("Measure the lamp current")
+        shot(desk, "tasks-desktop-1440-in-progress")
+
+    # ---------------------------------------------------------------- own messages right, others left (#136 AC-1)
+
+    def assert_sides(self, page: Page, label: str) -> None:
+        # Opening Details slides the pane; measure once it has settled.
+        page.wait_for_function("""() => new Promise((resolve) => {
+          const el = document.querySelector('.project-convo__in');
+          const first = el.getBoundingClientRect().x;
+          setTimeout(() => resolve(el.getBoundingClientRect().x === first), 250);
+        })""")
+        feed = page.locator(".project-convo__in").bounding_box()
+        mine = page.locator(f"#message-{self.messages['finding']} > p").bounding_box()
+        theirs = page.locator(f"#message-{self.messages['idea']} > p").bounding_box()
+        assert feed and mine and theirs
+        middle = feed["x"] + feed["width"] / 2
+        self.assertGreater(mine["x"] + mine["width"], middle, f"{label}: own message ends on the right")
+        self.assertLess(theirs["x"], middle, f"{label}: another person's message starts on the left")
+        if label != "phone":  # a long message fills a phone's width; the edges and avatar sides still differ
+            self.assertGreater(mine["x"], theirs["x"], f"{label}: own bubble starts further right")
+        self.assertLess(feed["x"] + feed["width"] - (mine["x"] + mine["width"]), 80, f"{label}: own bubble ends at the right edge (beside its avatar)")
+        self.assertLess(theirs["x"] - feed["x"], 80, f"{label}: another person's bubble starts at the left edge (beside its avatar)")
+        self.assertLessEqual(mine["x"] + mine["width"], feed["x"] + feed["width"] + 1, f"{label}: inside the pane")
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.viewport_size["width"], f"{label}: no sideways scroll")
+        # Linked work, decisions and results stay inside the pane and the viewport on both sides.
+        chips = page.locator(".project-convo__message .ws-chip")
+        self.assertGreater(chips.count(), 0, f"{label}: the thread has linked objects")
+        for index in range(chips.count()):
+            box = chips.nth(index).bounding_box()
+            assert box
+            self.assertGreaterEqual(box["x"], feed["x"] - 1, f"{label}: linked object {index} starts inside the pane")
+            self.assertLessEqual(box["x"] + box["width"], feed["x"] + feed["width"] + 1, f"{label}: linked object {index} ends inside the pane")
+            self.assertLessEqual(box["x"] + box["width"], page.viewport_size["width"], f"{label}: linked object {index} is not cut off")
+
+    def test_09_own_messages_sit_right_and_others_left(self) -> None:
+        page = self.open_conversation("partner")
+        expect(page.locator(f"#message-{self.messages['finding']}")).to_have_class(re.compile("is-mine"))
+        expect(page.locator(f"#message-{self.messages['idea']}")).not_to_have_class(re.compile("is-mine"))
+        # Authors stay visible on both sides.
+        expect(page.locator(f"#message-{self.messages['finding']}")).to_contain_text("Kai Berg · you")
+        expect(page.locator(f"#message-{self.messages['idea']}")).to_contain_text("Ada Lind")
+        self.assert_sides(page, "desktop")
+        # Hover actions never cover the author or time on either side.
+        for key in ("finding", "idea"):
+            message = page.locator(f"#message-{self.messages[key]}")
+            message.hover()
+            acts = message.locator(".ws-acts").bounding_box()
+            for part in (message.locator(".project-convo__message-meta strong"), message.locator(".project-convo__message-meta time")):
+                box = part.bounding_box()
+                assert acts and box
+                apart = acts["x"] + acts["width"] <= box["x"] or box["x"] + box["width"] <= acts["x"] or acts["y"] + acts["height"] <= box["y"] or box["y"] + box["height"] <= acts["y"]
+                self.assertTrue(apart, f"{key}: actions clear of the meta line")
+        shot(page, "conversation-sides-1440")
+        # Narrowed beside an open panel.
+        page.locator(f"#message-{self.messages['finding']}").get_by_role("button", name=re.compile("^Work: ")).first.click()
+        expect(page.locator("#details")).to_be_visible()
+        self.assert_sides(page, "beside details")
+        shot(page, "conversation-sides-1440-details")
+        phone = self.open_conversation("partner", phone=True)
+        self.assert_sides(phone, "phone")
+        shot(phone, "conversation-sides-390")
+
+    # ---------------------------------------------------------------- reading position (#136 AC-2)
+
+    def test_10_each_task_view_keeps_its_reading_position(self) -> None:
+        owner = self.page("owner")
+        me = {"kind": "human", "id": PARTNER["id"]}
+        for index in range(1, 46):
+            self.api(owner, "POST", f"/api/v1/projects/{self.project_id}/work",
+                     {"title": f"Blocked step {index:02d}: check the ToF bracket", "status": "blocked", "blocker": "parts", "owner": me}, status=201)
+        page = self.page("partner", phone=True)
+        page.goto(f"/projects/{self.project_id}/tasks")
+        views = page.get_by_role("navigation", name="Task views")
+        views.get_by_role("button", name=re.compile("^Blocked")).tap()
+        pane = page.locator(".pane-scroll").first
+        expect(page.get_by_role("region", name=re.compile("^Blocked"))).to_contain_text("Blocked step 45")
+        pane.evaluate("(el) => { el.scrollTop = 850; }")
+        page.wait_for_timeout(300)
+        saved = pane.evaluate("(el) => el.scrollTop")
+        self.assertGreater(saved, 600, "the list is long enough to scroll")
+        # Through the Conversation tab and back through the Tasks tab.
+        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Conversation")).tap()
+        expect(page.locator(f"#message-{self.messages['idea']}")).to_be_visible()
+        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks")).tap()
+        expect(page.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^Blocked"))).to_have_attribute("aria-pressed", "true")
+        page.wait_for_timeout(300)
+        self.assertLess(abs(page.locator(".pane-scroll").first.evaluate("(el) => el.scrollTop") - saved), 8, "the Tasks tab returns to the same reading position")
+        # Switching view and back, pressing the buttons directly (no automatic scrolling into view).
+        page.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^Open")).evaluate("(button) => button.click()")
+        page.wait_for_timeout(300)
+        page.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^Blocked")).evaluate("(button) => button.click()")
+        page.wait_for_timeout(300)
+        self.assertLess(abs(page.locator(".pane-scroll").first.evaluate("(el) => el.scrollTop") - saved), 8, "switching views keeps each view's position")
+
 
 if __name__ == "__main__":
     unittest.main()

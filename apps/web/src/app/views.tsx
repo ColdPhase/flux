@@ -167,7 +167,7 @@ export function ConversationView() {
               <span className="ask__who"><Icon name="spark" size={13} />Your assistant
                 <IconButton icon="x" size={12} label="Stop asking your assistant" className="ask__off" onClick={stopAsking} />
               </span>
-              <span className="ask__note">You haven’t connected an assistant, so nothing will be sent.</span>
+              <span className="ask__note">Your assistant answers in project conversations. Notes here stay private and are never sent.</span>
               <button type="button" className="ui-link ask__connect" onClick={() => openDetails('connect-ai')}>Connect your AI</button>
             </div>
           ) : (

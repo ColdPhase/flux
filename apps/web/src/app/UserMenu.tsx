@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
-import { useFetcher } from 'react-router';
+import { Link, useFetcher } from 'react-router';
 import { Avatar, Icon, Spinner, duration, play, trapTab, useToast } from '../ui';
 import type { FormResult } from '../auth/logic';
 import { NotificationsButton } from '../pwa';
@@ -91,6 +91,9 @@ export function UserMenu({ name, email, sessionExpiresAt }: { name: string; emai
                 </button>
               ))}
             </div>
+          </div>
+          <div className="me__sec">
+            <Link to="/settings/assistant" className="me__item" onClick={() => close(false)}><Icon name="spark" />Your assistant</Link>
           </div>
           <fetcher.Form method="post" action="/sign-out" className="me__sec me__sec--end">
             <button type="submit" className="me__item" aria-disabled={signingOut || undefined}>
