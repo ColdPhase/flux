@@ -32,6 +32,17 @@ for the current clean-start, validation and backup/restore commands. This is an
 application skeleton; #29's identity/session and project policy slices are now
 merged, while collaboration and release verification remain separate tasks.
 
+`docker/compose.yaml` and `docker/.env.example` are the **operator** files for a published
+release (#76 phase 1): pull-only, with `api`, `worker` and `migrate` on the one marker image
+`ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST` that the release workflow (#77) replaces with
+the accepted digest, and the same pinned PostgreSQL, runtime variables, volumes, health checks
+and migration ordering as the production-mode services here. They are not used by `./flux` or
+the checks below; see [install from a release](../operations/install-release.md).
+`./scripts/check_operator_compose.sh` runs them against the locally built source image
+(port `FLUX_OPERATOR_TEST_PORT`, default `18951`) and `tests/test_operator_compose.py`
+checks them statically. The rest of the #75 layout (`app/`, the source Compose files under
+`docker/`) is later #76 work.
+
 The `files` mounts on `files-init`, API and worker all use `:z` so SELinux gives
 the shared volume a label accessible to both running services. `files-init`
 still sets ownership for their non-root UID; all three mounts must keep the

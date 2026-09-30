@@ -1,5 +1,12 @@
 # Project capture and conversation backend (#36)
 
+**Later required amendment, 2026-09-30:** [UI116-3](../design/studio-v11.6.md#one-announcement-then-the-real-discussion--ui116-3)
+separates one task-created system notice from the first true contribution/root,
+retains the same one-level thread across all views, and preserves history and
+private helper prompts. [#154](https://github.com/ColdPhase/flux/issues/154) owns implementation; current code below is not
+claimed to satisfy the new semantics. [UI116-5](../design/studio-v11.6.md#subtle-motion-and-truthful-typing--ui116-5)
+adds scoped ephemeral typing without durable messages or notification/model effects.
+
 The current slice stores project conversations, direct text replies and versioned
 project materials. A signed-in person with contributor access can send from the
 current project without
