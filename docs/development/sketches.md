@@ -97,8 +97,14 @@ author receives the events of a private sketch. The stream's `objectType` is `sk
   - Keyboard: arrows move (Shift for bigger steps, Alt to resize), Enter edits, Space
     selects, `+` adds a connected thought, Delete removes, and Ctrl/⌘ Z undoes.
   - Selecting or dragging never opens a panel.
-  - **List** shows the same thoughts in reading order with their links. It is the
-    accessible alternative and has the same keys. The choice is remembered.
+  - **List** shows each thought once in a personal, stable outline with named
+    clickable relations. Fresh browsers start with top-level thoughts; **Group in
+    list…** explicitly chooses an existing linked thought or Top level, with a
+    separate local grouping undo. Adding a linked thought supplies local child
+    intent; ordinary Connect never changes a level. The
+    [presentation contract](../design/map-list-outline.md) defines bounded ID-only
+    state, conservative bootstrap, deletion/undo, exact reveal/back and keyboard
+    navigation. These preferences never mutate the graph or canvas positions.
   - Phone and tablet: tap to select, then drag. Touch targets are 44 px, and there is
     no horizontal page scroll.
 - `apps/web/src/sketch/doc.ts` applies changes locally at once and sends them in order.

@@ -1,0 +1,312 @@
+ Image flux-ui-tests:flux134-current Building 
+ Image flux-foundation:flux134-current Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.18kB done
+#1 DONE 0.0s
+
+#2 [ui-test internal] load build definition from ui-tests.Dockerfile
+#2 transferring dockerfile: 1.00kB done
+#2 DONE 0.1s
+
+#3 [ui-test internal] load metadata for mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#3 DONE 0.0s
+
+#4 [migrate internal] load build definition from Dockerfile
+#4 transferring dockerfile: 2.81kB done
+#4 DONE 0.1s
+
+#5 [migrate internal] load metadata for docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#5 DONE 0.0s
+
+#6 [ui-test internal] load .dockerignore
+#6 transferring context: 180B done
+#6 DONE 0.1s
+
+#7 [ui-test 1/5] FROM mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#7 DONE 0.0s
+
+#8 [migrate internal] load build context
+#8 DONE 0.0s
+
+#9 [migrate build 1/6] FROM docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#9 DONE 0.0s
+
+#10 [ui-test internal] load build context
+#10 transferring context: 26.49kB done
+#10 DONE 0.1s
+
+#11 [ui-test 3/5] RUN pip install --no-cache-dir --break-system-packages --only-binary=:all: --require-hashes -r /tmp/ui-requirements.txt
+#11 CACHED
+
+#12 [ui-test 2/5] COPY tests/ui/requirements.txt /tmp/ui-requirements.txt
+#12 CACHED
+
+#13 [ui-test 4/5] WORKDIR /work
+#13 CACHED
+
+#8 [migrate internal] load build context
+#8 transferring context: 56.46MB 0.2s done
+#8 DONE 0.3s
+
+#14 [migrate build 2/6] WORKDIR /app
+#14 CACHED
+
+#15 [migrate build 3/6] RUN corepack enable && corepack install -g pnpm@12.6.0
+#15 CACHED
+
+#16 [ui-test 5/5] COPY tests/ui tests/ui
+#16 DONE 0.3s
+
+#17 [migrate build 4/6] COPY . .
+#17 ...
+
+#18 [ui-test] exporting to image
+#18 exporting layers 0.2s done
+#18 writing image sha256:d9c6ca990c55c7694755230dcdb18c14aa8d7bdd0a0f2ae849b1982e7d3d82f1 done
+#18 naming to docker.io/library/flux-ui-tests:flux134-current 0.0s done
+#18 DONE 0.2s
+
+#17 [migrate build 4/6] COPY . .
+#17 DONE 0.6s
+
+#19 [migrate build 5/6] RUN pnpm install --frozen-lockfile
+#19 ...
+
+#20 [ui-test] resolving provenance for metadata file
+#20 DONE 0.0s
+
+#19 [migrate build 5/6] RUN pnpm install --frozen-lockfile
+#19 0.645 Downloading the pnpm 12.6.0 binary for linux-x64...
+#19 4.082 Scope: all 10 workspace projects
+#19 4.103 ? Verifying lockfile against supply-chain policies (482 entries)...
+#19 4.210 Downloading @rolldown/binding-linux-x64-musl@1.2.11: 0.00 B/7.92 MB
+#19 4.711 Packages are hard linked from the content-addressable store to the virtual store.
+#19 4.711   Content-addressable store is at: /root/.local/share/pnpm/store/v11
+#19 4.711   Virtual store is at:             node_modules/.pnpm
+#19 5.714 Progress: resolved 411, reused 0, downloaded 124, added 96
+#19 5.761 Update available! 12.6.0 → 12.8.1.
+#19 5.761 Changelog: https://pnpm.io/v/12.8.1
+#19 5.761 To update, run: curl -fsSL https://get.pnpm.io/install.sh | sh -
+#19 6.464 [WARN] Tarball download average speed 8 KiB/s (size 14 KiB) is below 50 KiB/s: https://registry.npmjs.org/@better-auth/drizzle-adapter/-/drizzle-adapter-1.7.6.tgz (GET)
+#19 6.987 [WARN] Tarball download average speed 16 KiB/s (size 26 KiB) is below 50 KiB/s: https://registry.npmjs.org/undici-types/-/undici-types-7.13.0.tgz (GET)
+#19 6.999 [WARN] Tarball download average speed 14 KiB/s (size 30 KiB) is below 50 KiB/s: https://registry.npmjs.org/esbuild/-/esbuild-0.25.12.tgz (GET)
+#19 7.149 [WARN] Tarball download average speed 5 KiB/s (size 8 KiB) is below 50 KiB/s: https://registry.npmjs.org/@fastify/proxy-addr/-/proxy-addr-5.1.1.tgz (GET)
+#19 7.806 [WARN] Tarball download average speed 47 KiB/s (size 64 KiB) is below 50 KiB/s: https://registry.npmjs.org/fast-uri/-/fast-uri-4.2.1.tgz (GET)
+#19 8.525 [WARN] Tarball download average speed 29 KiB/s (size 34 KiB) is below 50 KiB/s: https://registry.npmjs.org/ws/-/ws-8.22.0.tgz (GET)
+#19 8.710 [WARN] Tarball download average speed 21 KiB/s (size 71 KiB) is below 50 KiB/s: https://registry.npmjs.org/@eslint-community/regexpp/-/regexpp-4.12.2.tgz (GET)
+#19 9.169 [WARN] Tarball download average speed 18 KiB/s (size 26 KiB) is below 50 KiB/s: https://registry.npmjs.org/json-schema-to-ts/-/json-schema-to-ts-3.1.1.tgz (GET)
+#19 9.936 [WARN] Tarball download average speed 20 KiB/s (size 71 KiB) is below 50 KiB/s: https://registry.npmjs.org/jose/-/jose-5.10.0.tgz (GET)
+#19 10.33 [WARN] Tarball download average speed 1 KiB/s (size 3 KiB) is below 50 KiB/s: https://registry.npmjs.org/fast-deep-equal/-/fast-deep-equal-3.1.3.tgz (GET)
+#19 11.02 [WARN] Tarball download average speed 21 KiB/s (size 38 KiB) is below 50 KiB/s: https://registry.npmjs.org/argparse/-/argparse-3.0.2.tgz (GET)
+#19 11.05 [WARN] Tarball download average speed 0 KiB/s (size 2 KiB) is below 50 KiB/s: https://registry.npmjs.org/path-exists/-/path-exists-4.0.0.tgz (GET)
+#19 11.31 [WARN] Tarball download average speed 22 KiB/s (size 26 KiB) is below 50 KiB/s: https://registry.npmjs.org/source-map-support/-/source-map-support-0.5.21.tgz (GET)
+#19 11.59 [WARN] Tarball download average speed 34 KiB/s (size 54 KiB) is below 50 KiB/s: https://registry.npmjs.org/@typescript-eslint/utils/-/utils-8.44.1.tgz (GET)
+#19 11.74 [WARN] Tarball download average speed 8 KiB/s (size 13 KiB) is below 50 KiB/s: https://registry.npmjs.org/@babel/helper-validator-identifier/-/helper-validator-identifier-7.29.7.tgz (GET)
+#19 11.86 [WARN] Tarball download average speed 21 KiB/s (size 74 KiB) is below 50 KiB/s: https://registry.npmjs.org/@drizzle-team/brocli/-/brocli-0.10.2.tgz (GET)
+#19 12.34 [WARN] Tarball download average speed 39 KiB/s (size 164 KiB) is below 50 KiB/s: https://registry.npmjs.org/@babel/traverse/-/traverse-7.29.8.tgz (GET)
+#19 13.09 [WARN] Tarball download average speed 5 KiB/s (size 38 KiB) is below 50 KiB/s: https://registry.npmjs.org/zod-validation-error/-/zod-validation-error-4.0.2.tgz (GET)
+#19 17.94 [WARN] Request took 13837ms: https://registry.npmjs.org/@babel%2Fhelper-compilation-targets
+#19 19.10 [WARN] Request took 13841ms: https://registry.npmjs.org/@rolldown%2Fbinding-darwin-arm64
+#19 19.10 ✓ Lockfile passes supply-chain policies (482 entries in 15s)
+#19 19.10 Lockfile is up to date, resolution step is skipped
+#19 31.23 [WARN] Tarball download average speed 0 KiB/s (size 11 KiB) is below 50 KiB/s: https://registry.npmjs.org/@eslint/config-helpers/-/config-helpers-0.4.2.tgz (GET)
+#19 31.25 Packages: +411
+#19 31.25 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#19 31.29 Progress: resolved 411, reused 0, downloaded 411, added 411, done
+#19 31.29 .../esbuild@0.18.20/node_modules/esbuild postinstall$ node install.js
+#19 31.29 .../esbuild@0.25.12/node_modules/esbuild postinstall$ node install.js
+#19 31.34 .../esbuild@0.18.20/node_modules/esbuild postinstall: Done
+#19 31.35 .../esbuild@0.25.12/node_modules/esbuild postinstall: Done
+#19 31.48 
+#19 31.48 dependencies:
+#19 31.48 + @flux/contracts link:packages/contracts
+#19 31.48 + @flux/core link:packages/core
+#19 31.48 + @flux/db link:packages/db
+#19 31.48 + pg-boss 12.35.0
+#19 31.48 
+#19 31.48 devDependencies:
+#19 31.48 + @eslint/js 9.37.0
+#19 31.48 + @types/node 24.6.2
+#19 31.48 + @types/nodemailer 8.0.2
+#19 31.48 + @types/pg 8.15.5
+#19 31.48 + @types/sanitize-html 2.16.1
+#19 31.48 + @types/ws 8.18.1
+#19 31.48 + drizzle-orm 0.45.3
+#19 31.48 + eslint 9.37.0
+#19 31.48 + eslint-plugin-react-hooks 7.1.1
+#19 31.48 + fastify 5.6.1
+#19 31.48 + playwright 1.63.0
+#19 31.48 + tsx 4.20.5
+#19 31.48 + typescript 5.9.2
+#19 31.48 + typescript-eslint 8.44.1
+#19 31.48 + ws 8.22.0
+#19 31.48 
+#19 31.50 Done in 27.4s using pnpm v12.6.0
+#19 DONE 32.3s
+
+#21 [migrate build 6/6] RUN pnpm build && pnpm typecheck && pnpm lint
+#21 0.407 $ pnpm -r --if-present build && tsc -p infra/tsconfig.build.json
+#21 0.495 packages/contracts build$ tsc -p tsconfig.build.json
+#21 1.914 packages/contracts build: Done
+#21 1.914 packages/sdk build$ tsc -p tsconfig.build.json
+#21 1.914 apps/web build$ vite build
+#21 1.914 packages/db build$ tsc -p tsconfig.build.json
+#21 2.074 apps/web build: vite v8.3.1 building client environment for production...
+#21 2.080 apps/web build: transforming...
+#21 2.301 apps/web build: ✓ 251 modules transformed.
+#21 2.442 apps/web build: rendering chunks...
+#21 2.597 apps/web build: computing gzip size...
+#21 2.614 apps/web build: dist/index.html                                              1.21 kB │ gzip:   0.53 kB
+#21 2.614 apps/web build: dist/sw.js                                                   6.70 kB
+#21 2.614 apps/web build: dist/assets/inter-vietnamese-wght-normal-CBcvBZtf.woff2     10.25 kB
+#21 2.614 apps/web build: dist/assets/inter-greek-ext-wght-normal-DlzME5K_.woff2      11.23 kB
+#21 2.614 apps/web build: dist/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2       18.74 kB
+#21 2.614 apps/web build: dist/assets/inter-greek-wght-normal-CkhJZR-_.woff2          18.99 kB
+#21 2.614 apps/web build: dist/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2   25.96 kB
+#21 2.614 apps/web build: dist/assets/inter-latin-wght-normal-Dx4kXJAl.woff2          48.25 kB
+#21 2.614 apps/web build: dist/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2      85.06 kB
+#21 2.614 apps/web build: dist/assets/index-CjcwaxTm.css                             157.16 kB │ gzip:  27.76 kB
+#21 2.614 apps/web build: dist/assets/media-Cz2pV_T3.js                              419.65 kB │ gzip: 108.68 kB
+#21 2.614 apps/web build: dist/assets/index-BdsjRIs2.js                              745.11 kB │ gzip: 220.69 kB
+#21 2.614 apps/web build: 
+#21 2.614 apps/web build: [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "use client" in "../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js" may not be preserved when bundling.
+#21 2.614 apps/web build:     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m ../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js:11:1 [38;5;246m][0m
+#21 2.614 apps/web build:     [38;5;246m│[0m
+#21 2.614 apps/web build:  [38;5;246m11 │[0m "use client";
+#21 2.614 apps/web build:  [38;5;240m   │[0m ──────┬──────  
+#21 2.614 apps/web build:  [38;5;240m   │[0m       ╰──────── module level directive may not be preserved
+#21 2.614 apps/web build:  [38;5;240m   │[0m 
+#21 2.614 apps/web build:  [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+#21 2.614 apps/web build: [38;5;246m────╯[0m
+#21 2.614 apps/web build: 
+#21 2.614 apps/web build: [plugin builtin:vite-reporter] 
+#21 2.614 apps/web build: (!) Some chunks are larger than 500 kB after minification. Consider:
+#21 2.614 apps/web build: - Using dynamic import() to code-split the application
+#21 2.614 apps/web build: - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+#21 2.614 apps/web build: - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+#21 2.615 apps/web build: ✓ built in 539ms
+#21 2.644 apps/web build: Done
+#21 3.487 packages/sdk build: Done
+#21 4.434 packages/db build: Done
+#21 4.435 packages/core build$ tsc -p tsconfig.build.json
+#21 6.225 packages/core build: Done
+#21 6.226 packages/agent-runtime build$ tsc -p tsconfig.build.json
+#21 6.226 apps/server build$ tsc -p tsconfig.build.json
+#21 7.167 packages/agent-runtime build: Done
+#21 7.167 apps/worker build$ tsc -p tsconfig.build.json
+#21 8.151 apps/worker build: Done
+#21 8.973 apps/server build: Done
+#21 9.846 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#21 17.63 $ eslint .
+#21 DONE 25.8s
+
+#22 [migrate production-dependencies 1/1] RUN pnpm install --prod --offline --frozen-lockfile
+#22 0.467 Scope: all 10 workspace projects
+#22 0.499 ✓ Lockfile passes supply-chain policies (verified 39s ago)
+#22 0.499 Lockfile is up to date, resolution step is skipped
+#22 0.667 Packages: -199
+#22 0.667 --------------------------------------------------------------------------------
+#22 0.729 
+#22 0.729 devDependencies:
+#22 0.729 - @eslint/js 9.37.0
+#22 0.729 - @types/node 24.6.2
+#22 0.729 - @types/nodemailer 8.0.2
+#22 0.729 - @types/pg 8.15.5
+#22 0.729 - @types/sanitize-html 2.16.1
+#22 0.729 - @types/ws 8.18.1
+#22 0.729 - drizzle-orm 0.45.3
+#22 0.729 - eslint 9.37.0
+#22 0.729 - eslint-plugin-react-hooks 7.1.1
+#22 0.729 - fastify 5.6.1
+#22 0.729 - playwright 1.63.0
+#22 0.729 - tsx 4.20.5
+#22 0.729 - typescript 5.9.2
+#22 0.729 - typescript-eslint 8.44.1
+#22 0.729 - ws 8.22.0
+#22 0.729 
+#22 0.729 Done in 266ms using pnpm v12.6.0
+#22 DONE 0.9s
+
+#14 [migrate build 2/6] WORKDIR /app
+#14 CACHED
+
+#23 [migrate runtime  3/25] COPY --from=production-dependencies /app/node_modules ./node_modules
+#23 DONE 3.1s
+
+#24 [migrate runtime  4/25] COPY --from=production-dependencies /app/apps/server/node_modules ./apps/server/node_modules
+#24 DONE 0.3s
+
+#25 [migrate runtime  5/25] COPY --from=production-dependencies /app/apps/worker/node_modules ./apps/worker/node_modules
+#25 DONE 0.3s
+
+#26 [migrate runtime  6/25] COPY --from=production-dependencies /app/packages/core/node_modules ./packages/core/node_modules
+#26 DONE 0.3s
+
+#27 [migrate runtime  7/25] COPY --from=production-dependencies /app/packages/db/node_modules ./packages/db/node_modules
+#27 DONE 0.3s
+
+#28 [migrate runtime  8/25] COPY --from=production-dependencies /app/packages/agent-runtime/node_modules ./packages/agent-runtime/node_modules
+#28 DONE 0.3s
+
+#29 [migrate runtime  9/25] COPY --from=build /app/package.json ./package.json
+#29 DONE 0.3s
+
+#30 [migrate runtime 10/25] COPY --from=build /app/apps/server/package.json ./apps/server/package.json
+#30 DONE 0.3s
+
+#31 [migrate runtime 11/25] COPY --from=build /app/apps/worker/package.json ./apps/worker/package.json
+#31 DONE 0.2s
+
+#32 [migrate runtime 12/25] COPY --from=build /app/packages/contracts/package.json ./packages/contracts/package.json
+#32 DONE 0.2s
+
+#33 [migrate runtime 13/25] COPY --from=build /app/packages/core/package.json ./packages/core/package.json
+#33 DONE 0.2s
+
+#34 [migrate runtime 14/25] COPY --from=build /app/packages/db/package.json ./packages/db/package.json
+#34 DONE 0.2s
+
+#35 [migrate runtime 15/25] COPY --from=build /app/packages/agent-runtime/package.json ./packages/agent-runtime/package.json
+#35 DONE 0.3s
+
+#36 [migrate runtime 16/25] COPY --from=build /app/apps/server/dist ./apps/server/dist
+#36 DONE 0.3s
+
+#37 [migrate runtime 17/25] COPY --from=build /app/apps/worker/dist ./apps/worker/dist
+#37 DONE 0.3s
+
+#38 [migrate runtime 18/25] COPY --from=build /app/apps/web/dist ./apps/web/dist
+#38 DONE 0.3s
+
+#39 [migrate runtime 19/25] COPY --from=build /app/packages/contracts/dist ./packages/contracts/dist
+#39 DONE 0.3s
+
+#40 [migrate runtime 20/25] COPY --from=build /app/packages/core/dist ./packages/core/dist
+#40 DONE 0.3s
+
+#41 [migrate runtime 21/25] COPY --from=build /app/packages/db/dist ./packages/db/dist
+#41 DONE 0.3s
+
+#42 [migrate runtime 22/25] COPY --from=build /app/packages/agent-runtime/dist ./packages/agent-runtime/dist
+#42 DONE 0.3s
+
+#43 [migrate runtime 23/25] COPY --from=build /app/packages/db/migrations ./packages/db/migrations
+#43 DONE 0.3s
+
+#44 [migrate runtime 24/25] COPY --from=build /app/infra/dist ./infra/dist
+#44 DONE 0.3s
+
+#45 [migrate runtime 25/25] RUN mkdir -p /data/files && chown -R node:node /data
+#45 DONE 0.5s
+
+#46 [migrate] exporting to image
+#46 exporting layers
+#46 exporting layers 3.9s done
+#46 writing image sha256:cf2c82b3e6ecb6dbe6f70e00cacc514a54aab3894a26f6c5c19e85cae8bb7cb0 done
+#46 naming to docker.io/library/flux-foundation:flux134-current 0.0s done
+#46 DONE 4.0s
+
+#47 [migrate] resolving provenance for metadata file
+#47 DONE 0.0s
+ Image flux-foundation:flux134-current Built 
+ Image flux-ui-tests:flux134-current Built 

@@ -1,0 +1,65 @@
+{
+  "source_commit": "8cff7ed999e7b8510c767e0e4e0ce88e66b87b2f",
+  "runtime_image_id": "sha256:cf2c82b3e6ecb6dbe6f70e00cacc514a54aab3894a26f6c5c19e85cae8bb7cb0",
+  "full_ui": {
+    "count": 124,
+    "passed": 120,
+    "skipped": 4,
+    "failed": 0,
+    "duration_seconds": 369.662,
+    "skip_reason": "opt-in FLUX_UI_LIVE media-profile journeys"
+  },
+  "focused_ui": {
+    "count": 7,
+    "passed": 7,
+    "failed": 0,
+    "duration_seconds": 18.738
+  },
+  "units": {
+    "count": 14,
+    "passed": 14,
+    "failed": 0,
+    "duration_ms": 197.934538
+  },
+  "foundation": {
+    "count": 8,
+    "passed": 8,
+    "failed": 0
+  },
+  "build": {
+    "build": "passed",
+    "typecheck": "passed",
+    "lint": "passed"
+  },
+  "actual_composite_contrast": {
+    "count": 30,
+    "passed": 30,
+    "required_ratio": 4.5,
+    "minimum_ratio": 5.7248424411418855
+  },
+  "independent_visual": {
+    "source_commit": "8cff7ed999e7b8510c767e0e4e0ce88e66b87b2f",
+    "images_inspected": 17,
+    "verdict": "acceptable in the inspected visual scope; no material visual problem identified",
+    "original_sha256": "31030481d9cf941e28f253fd28a0b193d6aa8047b9710d9bfb5be40ece2b7427"
+  },
+  "independent_behavior": "pending",
+  "eligible_github_approval": "pending",
+  "protected_merge": "pending",
+  "integrated_dependency_commit": "3f02e8668a5f636a02188b1ced9438cfea0bd8d6",
+  "post_capture_delta": "Dependency documentation/images plus one additional theme unselected-map screenshot call; no application changes.",
+  "application_source_paths": [
+    "apps",
+    "packages",
+    "scripts",
+    "infra"
+  ],
+  "application_source_manifest_sha256": "aba554e53c511c08ca164998b55dfafa8adf49bccd64efbeda4b924c389047f0",
+  "map_test_blob_id": "6218f30e8955ec828b1ed5496ab8d6f9135420df",
+  "post_integration_foundation": {
+    "count": 8,
+    "passed": 8,
+    "failed": 0,
+    "setup_links": "passed"
+  }
+}
