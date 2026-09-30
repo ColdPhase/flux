@@ -21,7 +21,7 @@ import { addMember, expectStatus, grant, password, person, project, workspace, t
 
 // Media admission bound to the auth session, the signaling gate and revocation on session end
 // (#128). The Flux side is real: Better Auth sessions and sign-out in process, PostgreSQL with
-// the 0028 trigger and LISTEN, the live use cases and the gate. The SFU is a local WebSocket
+// the 0022 trigger and LISTEN, the live use cases and the gate. The SFU is a local WebSocket
 // server that records every signaling connection, plus an in-memory room service.
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
