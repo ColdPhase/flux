@@ -1,12 +1,47 @@
 # Application layout verification (#76)
 
-Builder evidence, 2026-09-30. Tested application/source head:
-`43b98c1a4b972fce22b4cc9d6cbb3d187fe4ffb6`, based on accepted protected main
+Builder evidence, 2026-09-30. Corrected launcher/test-command source head:
+`e7b1ab7b9bea8f3533425a4a97bce1d8c26cab2c`, based on accepted protected main
 `43b627278d0ab43ad44be2e9fff223ad9dd198b1`. Independent eligible review is still
 required. This is the remaining app/source-layout phase after operator PR #159,
 not whole-product or release acceptance.
 
-## Actual verification
+## Corrected-head verification
+
+Independent review found a legacy relative `.env` link relocation bug and Linux
+full-suite overload from CPU-derived test-file parallelism. The correction refuses
+legacy links and conflicting/dangling paths before Docker or secret generation,
+and protects the printed reverse transition. Existing regular private config and
+readable live links retain their bytes, permissions and project. The configured
+test command bounds file parallelism to four; explicit suite race cases and
+application/database deadlines remain unchanged.
+
+Actual fresh checks at `e7b1ab7` on macOS arm64/Docker 29.1.2:
+
+| Check | Observed corrected-head result |
+| --- | --- |
+| Complete configured application command, ports 19011/19012 |330/330 pass, 50.911s; PWA 3/access 1, persisted session restart, unavailable push/email checks pass. Build/type/lint/architecture stay enabled. |
+| Full CLI, ports 19101–19106 |Complete pass including regular legacy migration, demo/ACL, hot reload, ownership refusal, reset/clean and second-copy survival. |
+| Full backup/restore/export, base port 19121 |Complete pass including schema24→25 upgrade from `fd45aca`, failure/writer-stop recovery, actual historical-source rollback and another upgrade with the original custom project/config/demo preserved. |
+| Configuration/filesystem regressions |14 pass; the previous launcher 826690c fails 11 assertions in the same negative control. Includes relative/absolute/dangling legacy links, dangling destination/conflicts, regular mode600 migration, readable live link and actual printed rollback guards. No production resources. |
+| Shared setup, standard-library tests, syntax/diff/contrast |34 Python pass; local links, shell syntax, whitespace and 258 contrast pairs pass. |
+| Required GitHub checks |Agent setup and Application validation pass on the corrected source head; eligible independent review remains required. |
+
+Corrected logs are `/tmp/flux76-fixed-{application,cli,backup}.log`; negative control
+is `/tmp/flux76-env-negative-control.log`. They remain local because runtime logs
+can include temporary generated test credentials. The prior review's stalled and
+325-pass/5-fail Linux runs are not relabeled as successes. Independent corrected
+Linux verification remains pending until the reviewer records it.
+
+## Baseline verification of unchanged runtime surfaces
+
+The following checks ran at `43b98c1a4b972fce22b4cc9d6cbb3d187fe4ffb6`.
+Compared with that head, the two changed previously inventoried inputs are `flux`
+and `app/package.json` (test command only); the new Python regression is added.
+Application/SQL/UI/service/Docker/dependency inputs are byte-identical. The
+current launcher, configured application and rollback paths were rerun above;
+unchanged UI/operator/SFU baseline evidence keeps this original source head.
+
 
 All application/dependency/services/browser commands ran through Docker on the
 macOS arm64 host (Docker engine 29.1.2), with separate projects/ports/volumes.
@@ -34,8 +69,8 @@ remotely accessible evidence.
 ## Source and provenance
 
 [Source inventory](source-sha256.txt) hashes the tracked application workspace,
-Docker inputs, launcher/check scripts, workflows and operator Python check at the
-tested head. Check from the repository root with
+Docker inputs, launcher/check scripts, workflows and both operator/configuration
+Python checks at corrected source head `e7b1ab7` (495 inputs). Check from the repository root with
 `shasum -a256 -c docs/agents/evidence/76-application-layout/source-sha256.txt`.
 A later evidence-only commit does not change those inputs; any changed hash
 needs relevant new verification. Dependency pins,package/public/license
@@ -56,10 +91,12 @@ pre-layout rollback instruction; both were corrected and tests expanded. Later
 Docker engine/BuildKit nil-pointer panic interrupted old runs. Docker Desktop
 was recovered through its CLI; only marker-confirmed terminated-test projects
 were cleaned. Those interrupted runs are not labeled complete. The successful
-results above use the current tested head after recovery.
+baseline results use 43b98c1 after recovery; corrected-path reruns use e7b1ab7.
 
-macOS Docker execution is verified here. SELinux runtime,real Android/iPhone/iPad
+macOS Docker execution is verified here. The independent review on PR #165 records
+Linux/SELinux enforcing CLI/operator success for the baseline; corrected full
+Linux acceptance remains pending. Real Android/iPhone/iPad
 installation/push, complete Studio 11.6 integration, supported real agent clients
 and published-release acceptance remain separately unverified. #76 stays open
-until its final upgrade result and independent review pass; #46 and #77 retain
+until its independent review passes; #46 and #77 retain
 their own remaining outcomes.
