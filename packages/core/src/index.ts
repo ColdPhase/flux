@@ -85,6 +85,7 @@ export * from './proactive-comparison/reservation.js';
 export * from './proactive-comparison/dispatch.js';
 export * from './proactive-comparison/outcomes.js';
 export * from './proactive-comparison/scheduling.js';
+export * from './proactive-comparison/recovery.js';
 export * from './search/index.js';
 export * from './personal-runs/index.js';
 export { policyPersonalRunAccess } from './access/personal-run-access.js';

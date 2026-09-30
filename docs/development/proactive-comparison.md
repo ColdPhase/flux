@@ -214,8 +214,38 @@ cursor; they do not prove scheduling.
 
 The scheduler selects candidate ids without a provider/key port. It and the
 provider adapter remain unregistered in production; rule activation still fails
-closed. Crash reconciliation and the real-provider acceptance gates remain
-implementation/verification work.
+closed. The real-provider acceptance gates remain verification work.
+
+## Controlled interrupted-reservation recovery
+
+The accepted `comparisonRecoveryTick` has only metadata ports. In each transaction
+it locks at most 100 reserved rows with no update for 20 minutes, skipping active
+row locks and rechecking state/time. Before a persisted dispatch intent it records
+private `not_run` with zero usage; after intent it records private `unknown` and
+retains the reservation, observed usage and connection history. No source, key,
+provider, output or notification port is available. Late dispatch cannot overwrite
+the terminal row, publish an outcome or release uncertain spending. Unchanged
+fingerprints remain suppressed. The tick is not registered in production.
+
+Docker build/typecheck/lint and 56 targeted tests passed on 2026-09-30 for the
+recovery, scheduler, context, dispatch and outcome sources. Recovery covers a
+reopened database pool, pre/post-intent states, fresh-row exclusion, held row locks,
+two concurrent sweepers, 123 distinct owner reservations, repeated ticks, retained
+usage after connection replacement and delayed fixture responses. This is persisted
+controlled recovery evidence, not an actual killed worker or provider billing test.
+The dispatch timestamp/count is an intent/attempt, not proof of sending or charging.
+Owner history explains uncertain attempts and legacy earlier reservations.
+
+Actual protected main `3cd91d798a8767ba8a87ceecde98b49f76aed15a` is integrated.
+Its SQL 1–25 remains unchanged; only unmerged comparison migrations use 26–32.
+Before recovery and usage wording changes, clean application head
+`c991068ca20d7925dff909e4bcaa1fb7796094fd` passed the full Docker application check:
+369 application tests, three PWA checks, access-stream, six comparison/setup/outcome
+browser journeys, restart persistence and unavailable push/email checks. The
+subsequent usage wording passed Docker build/typecheck/lint and three outcome/owner
+browser journeys in independent desktop/phone/tablet contexts. Those touch flags
+do not establish physical-device operation. Current same-volume upgrade and
+independent full-head functional acceptance remain separate checks.
 
 ## Key file, restore and rotation
 
@@ -341,7 +371,7 @@ continues to hold at least the original reservation in the local budget.
 
 Remaining #58 work: an authorized real-provider test call and actual billing
 observation including live-provider cancellation, independent full-context quality
-evaluation, crash reconciliation, registered production scheduling and activation,
+evaluation, real crash/provider reconciliation, registered production scheduling and activation,
 plus independent/current integrated migration and release acceptance. Controlled
 changed-evidence reopening, insufficient-evidence outcomes and private usage
 accounting now have the separate fixture evidence above. This file describes a

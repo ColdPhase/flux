@@ -298,6 +298,28 @@ worker composition. Production enabling and provider registration remain off
 until their separate real-provider verification gates pass. This section records
 the accepted contract, not completed scheduling or production evidence.
 
+### Interrupted reservation recovery (accepted 2026-09-30)
+
+The evaluator [accepted the crash-reconciliation interface](https://github.com/ColdPhase/flux/issues/58#issuecomment-5904715405)
+before implementation. A controlled worker sweep locks reserved candidates after
+20 minutes without an update, skipping rows locked by active preparation and
+rechecking state/time under the lock. No stored dispatch intent ends as owner-only
+`not_run` with `WORKER_INTERRUPTED_BEFORE_DISPATCH` and zero usage/reservation.
+A stored intent ends as `unknown` with
+`WORKER_INTERRUPTED_AFTER_DISPATCH_INTENT`, retaining reservation and any observed
+usage. An intent is not proof of an actual invoice or adapter entry. A late
+process cannot publish or release that terminal uncertainty. Page past 100,
+serialize concurrent sweepers, never retry the provider or unchanged fingerprint,
+and create no project output or notification. Use existing candidate fields;
+production activation and real-provider acceptance remain separate gates.
+
+Owner accounting labels the persisted intent as a counted attempt, not proof that
+the provider received or charged a request. Explain that interrupted attempts
+can remain uncertain. In completed legacy history without observed usage, call
+the amount an earlier reservation and state that usage was not recorded; it is
+not an active reservation or an invoice. Interrupted recovery reasons remain
+owner-private and use fixed, safe explanations.
+
 ## Private owner setup (partial implementation)
 
 Open the account menu → **Your background suggestions**. Saving the connection

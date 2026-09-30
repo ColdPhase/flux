@@ -49,7 +49,7 @@ export interface BackgroundComputeCandidateUsage {
   reason: string | null;
   createdAt: string;
   reservedAt: string | null;
-  /** Entry into the paid adapter; null when no paid request started or old metadata is unknown. */
+  /** Persisted dispatch intent; not proof of adapter entry, sending or charging. Null also covers legacy unknown metadata. */
   startedAt: string | null;
   finishedAt: string | null;
   reservedCents: number;
@@ -60,6 +60,7 @@ export interface BackgroundComputeUsage {
   asOf: string;
   utcDayStartsAt: string;
   rollingPeriodStartsAt: string;
+  /** Conservative count of persisted dispatch intents in the UTC day. */
   startedRequestsToday: number;
   conservativeCountedCents: number;
   observedEstimatedCents: number;

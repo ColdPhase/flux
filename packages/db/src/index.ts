@@ -79,6 +79,7 @@ export * from './repositories/background-connections.js';
 export * from './repositories/proactive-outbox.js';
 export * from './repositories/proactive-outcomes.js';
 export * from './repositories/proactive-scheduling.js';
+export * from './repositories/proactive-recovery.js';
 export { COMPARISON_CONTEXT_LIMITS } from './repositories/proactive-sources.js';
 export * from './background-key-crypto.js';
 export * from './repositories/notifications.js';

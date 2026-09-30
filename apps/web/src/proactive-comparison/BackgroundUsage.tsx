@@ -20,6 +20,8 @@ const reasons: Record<string, string> = {
   OBSERVED_COST_OVER_CEILING: 'Observed usage exceeded the reserved estimate.',
   PROVIDER_OR_STORAGE_FAILURE: 'The response or its storage could not be confirmed.',
   RESERVATION_CHANGED: 'The request’s reservation changed before delivery.',
+  WORKER_INTERRUPTED_BEFORE_DISPATCH: 'Background processing stopped before a paid request was prepared.',
+  WORKER_INTERRUPTED_AFTER_DISPATCH_INTENT: 'Background processing stopped. Sending or charging could not be confirmed.',
   LEGACY_NOT_RUN: 'This earlier request did not run.',
 };
 
@@ -33,13 +35,14 @@ export function BackgroundUsage({ usage, busy, error, refresh }: {
       <Button busy={busy} onClick={refresh}>Refresh usage</Button>
     </div>
     <dl className="background-settings__metadata">
-      <div><dt>Started today · UTC</dt><dd>{usage.startedRequestsToday}{usage.currentLimits ? ` / ${usage.currentLimits.maxRunsPerDay} requests` : ' requests'}</dd></div>
+      <div><dt>Attempts today · UTC</dt><dd>{usage.startedRequestsToday}{usage.currentLimits ? ` / ${usage.currentLimits.maxRunsPerDay} requests` : ' requests'}</dd></div>
       <div><dt>Counted · 30 days</dt><dd>{money(usage.conservativeCountedCents)}{usage.currentLimits ? ` / ${money(usage.currentLimits.periodBudgetCents)} allowance` : ''}</dd></div>
       <div><dt>Observed estimate</dt><dd>{money(usage.observedEstimatedCents)}</dd></div>
       <div><dt>Unknown possible</dt><dd>{money(usage.unknownPossibleCents)}</dd></div>
       <div><dt>In progress</dt><dd>{money(usage.inFlightCents)} reserved</dd></div>
     </dl>
     <p className="background-settings__help">Counted amounts conservatively include observed usage, uncertain charges and active reservations. The amounts overlap; do not add them together. These are Flux estimates, not the provider invoice.</p>
+    <p className="background-settings__help">Counted attempts may include requests whose sending or charge could not be confirmed after an interruption.</p>
     <p className="background-settings__help">Updated {date(usage.asOf)} UTC. Earlier charges remain counted after replacing or disconnecting a connection.</p>
     {error ? <p className="background-settings__error" role="alert">{error}</p> : null}
     <details className="background-usage__history">
@@ -47,10 +50,14 @@ export function BackgroundUsage({ usage, busy, error, refresh }: {
       {usage.candidates.length ? <ul>{usage.candidates.map((candidate) => <li key={candidate.id}>
         <div className="background-usage__request"><strong>{statuses[candidate.status]}</strong><time dateTime={candidate.createdAt}>{date(candidate.createdAt)} UTC</time></div>
         {candidate.reason ? <p>{reasons[candidate.reason] ?? 'The request’s outcome could not be confirmed.'}</p> : null}
-        <p>{candidate.status === 'not_run' ? 'No paid request · $0.00 usage' : candidate.observedUsage
+        <p>{candidate.status === 'not_run' ? 'No paid request · $0.00 usage'
+          : candidate.status === 'unknown' ? `Up to ${money(Math.max(candidate.reservedCents, candidate.observedUsage?.estimatedCents ?? 0))} possible charge`
+          : candidate.observedUsage
           ? `${money(candidate.observedUsage.estimatedCents)} observed estimate · ${candidate.observedUsage.inputTokens.toLocaleString('en-US')} input / ${candidate.observedUsage.outputTokens.toLocaleString('en-US')} output tokens`
-          : candidate.status === 'unknown' ? `Up to ${money(candidate.reservedCents)} possible charge` : `${money(candidate.reservedCents)} reserved`}</p>
-        {candidate.startedAt ? <p>Started {date(candidate.startedAt)} UTC</p> : candidate.status === 'unknown' || candidate.status === 'completed' ? <p>Start time was not recorded.</p> : null}
+          : candidate.status === 'completed' ? `${money(candidate.reservedCents)} earlier reservation · usage not recorded`
+          : `${money(candidate.reservedCents)} reserved`}</p>
+        {candidate.status === 'unknown' && candidate.observedUsage ? <p>{money(candidate.observedUsage.estimatedCents)} observed estimate · {candidate.observedUsage.inputTokens.toLocaleString('en-US')} input / {candidate.observedUsage.outputTokens.toLocaleString('en-US')} output tokens</p> : null}
+        {candidate.startedAt ? <p>Attempt recorded {date(candidate.startedAt)} UTC</p> : candidate.status === 'unknown' || candidate.status === 'completed' ? <p>Attempt time was not recorded.</p> : null}
       </li>)}</ul> : <p className="background-settings__help">No background requests have been recorded for you.</p>}
     </details>
   </section>;
