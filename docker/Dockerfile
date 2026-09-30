@@ -1,8 +1,12 @@
 FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS build
 WORKDIR /app
 RUN corepack enable && corepack install -g pnpm@12.6.0
+# Cache the locked dependency download independently of source edits. No production-only
+# filter: the build/type/lint/test stages need the full locked workspace toolchain.
+COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm fetch
 COPY . .
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --offline --frozen-lockfile
 RUN pnpm build && pnpm typecheck && pnpm lint
 
 FROM build AS test
@@ -42,7 +46,7 @@ COPY --from=build /app/packages/core/dist ./packages/core/dist
 COPY --from=build /app/packages/db/dist ./packages/db/dist
 COPY --from=build /app/packages/agent-runtime/dist ./packages/agent-runtime/dist
 COPY --from=build /app/packages/db/migrations ./packages/db/migrations
-COPY --from=build /app/infra/dist ./infra/dist
+COPY --from=build /app/tooling/dist ./tooling/dist
 RUN mkdir -p /data/files && chown -R node:node /data
 USER node
 EXPOSE 8080

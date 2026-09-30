@@ -31,8 +31,8 @@ services:
   live-sfu-test:
     profiles: ["live-test"]
     build:
-      context: ..
-      dockerfile: infra/live-sfu-tests.Dockerfile
+      context: ../app
+      dockerfile: ../docker/live-sfu-tests.Dockerfile
       args:
         E2E_IMAGE: flux-e2e:${FLUX_IMAGE_TAG:?Set an isolated image tag}
     image: flux-live-sfu-test:${FLUX_IMAGE_TAG:?Set an isolated image tag}

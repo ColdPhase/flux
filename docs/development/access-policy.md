@@ -8,7 +8,7 @@ contract" in the [architecture proposal](../product/application-architecture-pro
 
 ## One choke point
 
-`packages/core/src/access/policy.ts` is the only place that decides access. It
+`app/packages/core/src/access/policy.ts` is the only place that decides access. It
 exports:
 
 | Function | Use |
@@ -25,7 +25,7 @@ principal's membership or agent rows `FOR SHARE`, a draft `FOR UPDATE`, and the
 project row and the principal's grants on it `FOR SHARE`. A revocation that committed
 earlier is then seen, and a concurrent one waits until this transaction ends.
 
-The domain methods in `packages/core/src/access/domain.ts` call these functions
+The domain methods in `app/packages/core/src/access/domain.ts` call these functions
 before they touch data. Mutations decide and write in one transaction, holding the
 locks described under [Concurrency](#concurrency).
 
@@ -195,7 +195,7 @@ isolation. What is guaranteed:
   of one request can make them differ by that change. Nothing is cached, so the next
   request, event delivery or job step always evaluates fresh.
 
-`tests/app/access-policy.test.ts` checks both orders on two real PostgreSQL
+`app/tests/app/access-policy.test.ts` checks both orders on two real PostgreSQL
 connections, detecting the wait with `pg_blocking_pids` rather than timing. The
 cases are: revoking an agent's contributor grant; inserting a `denied` grant for a
 member who has no grant row, and replacing an agent grant with `denied`; narrowing a
@@ -218,8 +218,8 @@ and is then refused with `404` or `403` without writing.
 
 ## HTTP API
 
-The routes live in `apps/server/src/access/routes.ts`. Paths and wire types are in
-`packages/contracts/src/access.ts`. Every route needs a live session
+The routes live in `app/apps/server/src/access/routes.ts`. Paths and wire types are in
+`app/packages/contracts/src/access.ts`. Every route needs a live session
 (`401 UNAUTHENTICATED` otherwise), and state changes pass the origin check from
 [identity](containers.md#identity-services-and-variables). An object the caller
 cannot see answers `404` with a `*_NOT_FOUND` code. A visible object with a
@@ -267,7 +267,7 @@ An `AFTER INSERT` trigger sends `NOTIFY flux_events` with the `seq` for events t
 have a workspace. The notification is only a wake-up. The `events` table remains the
 source of truth, and `outbox` remains reserved for worker-side external delivery.
 
-**Audience index.** `recordEvent` (`packages/core/src/events.ts`) also writes the
+**Audience index.** `recordEvent` (`app/packages/core/src/events.ts`) also writes the
 event's stream audience in the same transaction: for every member and unrevoked agent
 of the workspace it calls `authorizeEvent`, and stores one `event_audience(recipient,
 seq, event_id)` row per principal that may read the object at that moment. The
@@ -285,8 +285,8 @@ workspace (the sample fixture) and unknown kinds are never delivered.
 ## WebSocket stream
 
 `GET /api/v1/stream?cursor=<cursor|eventId>` is implemented in
-`apps/server/src/stream/index.ts` with `@fastify/websocket` 11.3.1. Wire types are
-`StreamMessage`, `StreamEvent` and `StreamReady` in `packages/contracts/src/access.ts`.
+`app/apps/server/src/stream/index.ts` with `@fastify/websocket` 11.3.1. Wire types are
+`StreamMessage`, `StreamEvent` and `StreamReady` in `app/packages/contracts/src/access.ts`.
 
 **Upgrade.** The server checks these before it upgrades, in this order:
 
@@ -314,7 +314,7 @@ maximum payload is 1 KiB.
 
 **Cursors.** The global `seq` is never sent. A cursor is `c1.` followed by the
 base64url AES-256-GCM encryption of a position, authenticated with the recipient
-(`human:<id>`) as associated data (`apps/server/src/stream/cursor.ts`). Keys are
+(`human:<id>`) as associated data (`app/apps/server/src/stream/cursor.ts`). Keys are
 derived with HKDF from `FLUX_AUTH_SECRET`. The IV is derived from the recipient and
 position, so the same person and position always give the same cursor. The server
 issues cursors only for positions of events that person could see when they were
@@ -353,7 +353,7 @@ that has not answered the previous ping is terminated.
 
 **Hidden activity and timing.** Opening a stream, computing `ready.cursor` and
 replaying after a cursor read only the recipient's own audience rows, so their work
-does not depend on events the recipient cannot see. `tests/app/stream.test.ts`
+does not depend on events the recipient cannot see. `app/tests/app/stream.test.ts`
 checks this with 500 hidden events: identical server-side work counters (queries,
 rows, `authorizeEvent` calls, from the test-only `GET /api/v1/stream/work` served when
 `FLUX_TEST_FAILURE_INJECTION=true`), identical rows examined in `EXPLAIN ANALYZE` of
@@ -383,7 +383,7 @@ request and puts them in the WHERE clause of the page and count statements. See 
 
 ## Worker jobs
 
-`draft.summarize.v1` (`packages/core/src/jobs/draft-summary.ts`) is a placeholder
+`draft.summarize.v1` (`app/packages/core/src/jobs/draft-summary.ts`) is a placeholder
 derived-result job. It computes a deterministic word count into `draft_results`. It
 exists so the worker authorization contract is real and tested:
 
@@ -432,7 +432,7 @@ version. The domain methods enforce this too, not only the HTTP routes.
 
 Every POST and PATCH under `/api/v1` access routes, and summary requests, accepts
 `Idempotency-Key`: 1–255 visible ASCII characters. The implementation is
-`runIdempotent` in `packages/core/src/idempotency.ts`. DELETE routes and the Better
+`runIdempotent` in `app/packages/core/src/idempotency.ts`. DELETE routes and the Better
 Auth and session endpoints do not take keys.
 
 - **Scope.** A key is scoped by principal, workspace and operation. The operation is
@@ -481,18 +481,18 @@ Auth and session endpoints do not take keys.
 
 `./scripts/check_application.sh` runs these checks in Docker:
 
-- `tests/app/access.test.ts` covers two workspaces and six accounts over HTTP.
-- `tests/app/access-policy.test.ts` covers agent principals, the
+- `app/tests/app/access.test.ts` covers two workspaces and six accounts over HTTP.
+- `app/tests/app/access-policy.test.ts` covers agent principals, the
   `authorize`/`visibleFilter` contract and the database constraints directly
   against PostgreSQL.
-- `tests/app/stream.test.ts` covers replay after a cursor and live delivery for two
+- `app/tests/app/stream.test.ts` covers replay after a cursor and live delivery for two
   workspaces and three accounts. It checks per-recipient filtering (private drafts,
   restricted projects, other tenants), removal of a membership, session revocation
   (close `4401`, then reconnect `401`), the origin and cursor rejections (raw numbers,
   forged cursors, another person's cursor), and the heartbeat. It also checks that a
   member outside a restricted project gets identical cursors and frames, fresh and on
   resume, whether or not restricted and private activity happened.
-- `tests/app/e2e/access-stream.e2e.ts` runs in Chromium (the `e2e` Playwright
+- `app/tests/app/e2e/access-stream.e2e.ts` runs in Chromium (the `e2e` Playwright
   image) against the running API: three people sign up in their own browser
   contexts, the owner creates a workspace, a restricted project, a viewer grant and a
   private draft, and shares it. The granted member's page `WebSocket` receives the
@@ -501,12 +501,12 @@ Auth and session endpoints do not take keys.
   the draft, and the read is `404`. The web app is still the placeholder shell, so
   the pages use same-origin `fetch` and `WebSocket` rather than UI screens. Evidence
   from one run is in `docs/development/evidence/29-browser/`.
-- `tests/app/worker.test.ts` covers the Compose worker committing a result. Using the
+- `app/tests/app/worker.test.ts` covers the Compose worker committing a result. Using the
   `afterRead` hook, it also covers denial before read and the race of a revocation
   between read and commit. It covers grant revocation on two connections in both orders:
   a revoke that starts during the commit waits and the result commits, and a revoke
   that is uncommitted when the commit starts makes the worker wait and then deny.
-- `tests/app/safe-writes.test.ts` covers `If-Match` (428, 409 with an unchanged row,
+- `app/tests/app/safe-writes.test.ts` covers `If-Match` (428, 409 with an unchanged row,
   `ETag`) and idempotency keys (replay, one row, 422 on reuse, scope, concurrent
   duplicates, expiry and cleanup). It also covers replays after lost access: a demoted
   admin replaying a restricted project creation, and draft create and share replays

@@ -27,11 +27,11 @@ Prerequisites: Git and Docker Engine (or Docker Desktop) with Compose. No host N
 ```sh
 git clone https://github.com/ColdPhase/flux.git
 cd flux
-./flux up      # creates .env with random secrets once, builds, migrates, starts, prints the URL
+./flux up      # creates docker/.env with random secrets once, builds, migrates, starts, prints the URL
 ./flux demo    # optional: sample workspace, project, conversation and note; prints two logins
 ```
 
-Then open <http://127.0.0.1:8081/>. `./flux up` never overwrites an existing `.env`.
+Then open <http://127.0.0.1:8081/>. `./flux up` never overwrites an existing `docker/.env`. An older root `.env` is moved once with its secrets and project name intact; if both files exist, choose the intended one before continuing. `app/.env.example` documents variables and is never loaded.
 Other commands: `./flux dev` (hot reload in Docker), `./flux down`, `./flux logs`,
 `./flux reset` (deletes data after confirmation), `./flux clean` (also removes the
 images this checkout built) and `./flux help`. Backups, restore, project export and
@@ -54,17 +54,20 @@ python3 scripts/check_agent_setup.py
 
 | Path | Contents |
 | --- | --- |
-| `apps/server` | API: HTTP routes, identity, push, serving the web build |
-| `apps/worker` | Background jobs and Web Push delivery |
-| `apps/web` | Browser application and PWA |
-| `packages/core` | Domain rules, authorization, use cases and ports |
-| `packages/db` | Database schema, SQL migrations and persistence adapters |
-| `packages/contracts` | Public API wire types (Apache-2.0) |
-| `packages/sdk` | TypeScript client for the public API (Apache-2.0) |
-| `packages/agent-runtime` | Optional model/provider adapter |
-| `examples/external-agent` | An external agent using the SDK (Apache-2.0) |
-| `infra` | Dockerfile, Compose files, migration entry point |
-| `tests` | Application tests (`tests/app`) and repository tooling tests |
+| `app/apps/server` | API: HTTP routes, identity, push, serving the web build |
+| `app/apps/worker` | Background jobs and Web Push delivery |
+| `app/apps/web` | Browser application and PWA |
+| `app/packages/core` | Domain rules, authorization, use cases and ports |
+| `app/packages/db` | Database schema, SQL migrations and persistence adapters |
+| `app/packages/contracts` | Public API wire types (Apache-2.0) |
+| `app/packages/sdk` | TypeScript client for the public API (Apache-2.0) |
+| `app/packages/agent-runtime` | Optional model/provider adapter |
+| `app/examples/external-agent` | An external agent using the SDK (Apache-2.0) |
+| `app/` | Sole pnpm workspace, lockfile, TypeScript/ESLint config and application variable reference |
+| `app/tooling` | Migration and operations entry points |
+| `docker` | Dockerfiles, source/dev/test/live Compose, pull-only operator example and executable env template |
+| `app/tests` | Application checks and Python/Playwright browser checks |
+| `tests` | Repository and agent tooling checks |
 | `flux` | One-command launcher: `up`, `demo`, `dev`, `down`, `reset`, `clean`, `backup`, `restore`, `export`, `upgrade` |
 | `scripts` | Check scripts, the demo seed and repository tooling |
 | `docs` | Product, design, development and agent documentation |
@@ -91,6 +94,6 @@ lists everything else.
 ## License
 
 The application is licensed under the [GNU Affero General Public License v3](LICENSE).
-`packages/contracts`, `packages/sdk` and `examples/external-agent` are licensed under
+`app/packages/contracts`, `app/packages/sdk` and `app/examples/external-agent` are licensed under
 Apache-2.0 so that external agents and clients can use them; see
 [licensing](docs/product/licensing.md).

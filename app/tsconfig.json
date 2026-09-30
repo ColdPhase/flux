@@ -8,8 +8,19 @@
     "esModuleInterop": true,
     "jsx": "react-jsx",
     "noEmit": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["apps/**/*.ts", "apps/**/*.tsx", "packages/**/*.ts", "examples/**/*.ts", "tests/app/**/*.ts"],
-  "exclude": ["apps/web/**"]
+  "include": [
+    "apps/**/*.ts",
+    "apps/**/*.tsx",
+    "packages/**/*.ts",
+    "examples/**/*.ts",
+    "tests/app/**/*.ts",
+    "tooling/**/*.ts"
+  ],
+  "exclude": [
+    "apps/web/**"
+  ]
 }

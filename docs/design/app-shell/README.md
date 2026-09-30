@@ -8,12 +8,12 @@ creative-collaboration founder direction in #44. Date: 2026-09-27.
 
 | What | Path |
 | --- | --- |
-| Tokens: colour (light, dark), type, spacing, radii, sizes, motion, layers | `apps/web/src/ui/tokens.css` |
-| Base styles and core components | `apps/web/src/ui/` (`Button`/`IconButton`, `Input`, `Tabs`, `SidePanel`, `Overlay` → `Drawer`/`Sheet`, `Toast`, `EmptyState`, `ErrorState`, `Avatar`, `Icon`, `motion.ts`) |
-| Screens | `apps/web/src/auth/` (sign-up, sign-in, sign-out, reset request and form), `apps/web/src/app/` (shell, sidebar, views, Details) |
-| Routes (React Router 8 Data Mode) | `apps/web/src/router.tsx` |
+| Tokens: colour (light, dark), type, spacing, radii, sizes, motion, layers | `app/apps/web/src/ui/tokens.css` |
+| Base styles and core components | `app/apps/web/src/ui/` (`Button`/`IconButton`, `Input`, `Tabs`, `SidePanel`, `Overlay` → `Drawer`/`Sheet`, `Toast`, `EmptyState`, `ErrorState`, `Avatar`, `Icon`, `motion.ts`) |
+| Screens | `app/apps/web/src/auth/` (sign-up, sign-in, sign-out, reset request and form), `app/apps/web/src/app/` (shell, sidebar, views, Details) |
+| Routes (React Router 8 Data Mode) | `app/apps/web/src/router.tsx` |
 | Contrast check for every token pair, both themes | `python3 scripts/check_contrast.py` |
-| Browser tests and screenshots | `tests/ui/test_app_shell.py`, `scripts/check_ui.sh` |
+| Browser tests and screenshots | `app/tests/ui/test_app_shell.py`, `scripts/check_ui.sh` |
 
 Screens compose components and do not restyle them. A new colour, duration or radius is
 added as a token first.
@@ -81,7 +81,7 @@ refreshes the push subscription after sign-in, and sign-out calls `signOutDevice
 ## Honest data
 
 The shell components take `workspace`, `projects` and `directMessages` props
-(`apps/web/src/app/data.ts`). The loader returns empty lists until the workspace and
+(`app/apps/web/src/app/data.ts`). The loader returns empty lists until the workspace and
 conversation APIs exist (#29 slice 2, #36); production code contains no sample data.
 
 ## Accessibility notes
@@ -98,7 +98,7 @@ conversation APIs exist (#29 slice 2, #36); production code contains no sample d
 
 ## Screenshots
 
-Captured by `tests/ui` against the running Compose app (Chromium 151, 1× desktop, 3× phone):
+Captured by `app/tests/ui` against the running Compose app (Chromium 151, 1× desktop, 3× phone):
 `desktop-1440-light`, `desktop-1440-empty-light`, `desktop-1440-map-light`,
 `desktop-1440-details-light`, `desktop-1440-dm-light`, `desktop-1440-draft-light`,
 `desktop-1440-ask-light`, `desktop-1440-account-light`, `desktop-1440-dark`, `desktop-1440-details-dark`,

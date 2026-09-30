@@ -52,13 +52,13 @@ contrib extension) and one table, `search_documents`. Each row is one searchable
 
 ## Access before ranking
 
-`packages/core/src/search/` owns the use case and its ports; the server passes the adapters.
+`app/packages/core/src/search/` owns the use case and its ports; the server passes the adapters.
 
-1. **Audiences, fresh on every request.** `policySearchAccess` (`apps/server/src/search/adapters.ts`)
+1. **Audiences, fresh on every request.** `policySearchAccess` (`app/apps/server/src/search/adapters.ts`)
    lists the workspaces the principal is active in and, for each, asks the policy for the list
    condition of every audience type: `visibleFilter(…, 'project' | 'dm' | 'sketch' | 'draft')`
    and, for people, `authorize(…, 'workspace.read_members')`. Nothing is cached.
-2. **Composed into SQL.** `searchRows` (`packages/db/src/repositories/search.ts`) turns the
+2. **Composed into SQL.** `searchRows` (`app/packages/db/src/repositories/search.ts`) turns the
    conditions into one array of visible audience keys (`ARRAY(SELECT 'project:' || id FROM
    projects WHERE <visibleFilter> UNION ALL …)`) in a materialized CTE, and every statement starts
    with `audience_key = ANY(keys)`. Ranking (`ts_rank` plus title similarity), the window that keeps
@@ -98,7 +98,7 @@ whole database (logarithmically, one level per ~150× more keys). That is load, 
 
 ## API
 
-`GET /api/v1/search?q=&type=&place=&author=&cursor=&limit=` (`packages/contracts/src/search.ts`)
+`GET /api/v1/search?q=&type=&place=&author=&cursor=&limit=` (`app/packages/contracts/src/search.ts`)
 needs a live session and answers `Cache-Control: no-store`.
 
 - `q`: 1–200 characters (`400 QUERY_REQUIRED` / `QUERY_TOO_LONG`). A query without any letter or
@@ -126,7 +126,7 @@ needs a live session and answers `Cache-Control: no-store`.
 A source is registered in three small places plus its trigger:
 
 1. a trigger in a migration that calls `search_put(...)` with its `kind` and `audience_key`;
-2. `SEARCH_SOURCES` in `packages/core/src/search/sources.ts`: its filter, human label and target;
+2. `SEARCH_SOURCES` in `app/packages/core/src/search/sources.ts`: its filter, human label and target;
 3. if it brings a new audience type, one entry in `AUDIENCE_KEYS` (`@flux/db` search rows) and one
    in `POLICY_AUDIENCES` (server adapter) that returns the policy's `visibleFilter` condition.
 
@@ -135,13 +135,13 @@ Direct messages were added this way (`dm_message`, audience `dm`), and docs (`do
 
 ## Web
 
-- **Jump to… (⌘K / Ctrl+K)**, `apps/web/src/search/JumpTo.tsx`. The sidebar shows "Jump to… ⌘K" at
+- **Jump to… (⌘K / Ctrl+K)**, `app/apps/web/src/search/JumpTo.tsx`. The sidebar shows "Jump to… ⌘K" at
   the top, as in direction C; the shortcut works everywhere in the app, also while typing. It is a
   floating dialog near the top on desktop and a full-screen sheet on the phone (opened from the
   navigation drawer). It searches as you type (140 ms debounce), shows up to eight results as a
   combobox listbox (↑/↓ move, Enter opens, Esc closes and returns focus) and ends with "See all
   results". Only the answer to the latest request is shown.
-- **Search page** `/search?q=&type=&place=`, `apps/web/src/search/SearchPage.tsx`: the field, kind
+- **Search page** `/search?q=&type=&place=`, `app/apps/web/src/search/SearchPage.tsx`: the field, kind
   chips with their visible counts, a place menu (your projects, your DMs, "Only you"), results as
   links (↓ from the field moves into them, ↑ from the first returns), and "Show more results" with
   the cursor.
@@ -149,16 +149,16 @@ Direct messages were added this way (`dm_message`, audience `dm`), and docs (`do
   message (`#message-<id>`, highlighted and focused), a material or doc at the matched version, a thought
   selected in its sketch (`#thought-<id>`), a private draft on Home (`#draft-<id>`), a person to a
   direct message with them, and work, decisions and results in Details on their project. A message
-  older than the conversation's first window is reached by paging back (`apps/web/src/app/seekMessage.ts`,
+  older than the conversation's first window is reached by paging back (`app/apps/web/src/app/seekMessage.ts`,
   pages of 100 through the same authorized DM and conversation reads, at most 10,000 messages) and
   then shown and focused. Drafts shared with a project have no view of their own yet and open Home.
-- **Recent searches** (`apps/web/src/search/recent.ts`) are kept in this browser only, per account
+- **Recent searches** (`app/apps/web/src/search/recent.ts`) are kept in this browser only, per account
   (`flux.search.recent.<userId>`, the person's own words, never results), and every account's list
   is removed on sign-out.
 
 ## Tests
 
-- `tests/app/search.test.ts` (in `./scripts/check_application.sh`) uses an owner, a contributor in
+- `app/tests/app/search.test.ts` (in `./scripts/check_application.sh`) uses an owner, a contributor in
   a restricted project, a member outside it and a guest. It covers every kind and its label, place
   and target; the restricted project and a DM leaking nothing to an outsider, including when he
   filters by their ids; private drafts and sketches reaching only their author, and a group DM
@@ -177,7 +177,7 @@ Direct messages were added this way (`dm_message`, audience `dm`), and docs (`do
   per scan. A control checks that the insider's rows and index row addresses do grow. Only a very coarse
   wall-clock sanity bound remains, because other test files share the database; the insider sees
   the hidden rows with `more`.
-- `tests/ui/test_search.py` (in `./scripts/check_ui.sh`) covers Ctrl+K search as you type and
+- `app/tests/ui/test_search.py` (in `./scripts/check_ui.sh`) covers Ctrl+K search as you type and
   opening the exact message, the sidebar entry, arrow keys, an old material version, a rule in
   Details, a thought selected in its sketch, Esc, a DM message, no results, the search page with
   chips, counts, the place menu and keyboard movement, an outsider seeing only the open project,
