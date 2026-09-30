@@ -65,6 +65,7 @@ test('all pages render quiet comparisons and insufficient evidence with current 
           return !!bounds && bounds.y > 0 && bounds.bottom < innerHeight;
         }, target);
       }
+      await page.locator('.ws-tasks').evaluate((node) => { node.parentElement!.scrollTop = 0; });
       if (touch && viewport.width === 390) assert.ok(await insufficient.locator('.ws-proposal__source').evaluate((node) => node.getBoundingClientRect().height < 50), 'a long insufficient reason stays compact until inspected');
       await page.screenshot({ path: `/state/comparison-outcomes-${viewport.width}-collapsed.png`, fullPage: true });
       const toggle = comparison.locator('.ws-proposal__toggle');
