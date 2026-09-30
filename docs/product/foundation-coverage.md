@@ -48,6 +48,23 @@ At this revision protected `main` includes [#28 / PR #34](https://github.com/Col
 | **F7 Extensible ownership** | Operator can self-host, export usable linked work and use a versioned extension without forking core. | 8.13, 8.16, #28 skeleton. | Install, export, restore, run external example and upgrade its contract. | **gap** — initial #28 start does not provide export or extension. |
 | **F8 Design quality** | Realistic daily surfaces stay calm and readable, with one clear focus and details available on demand; they remain usable with touch, keyboard, enlarged text and reduced motion. | [#15](https://github.com/ColdPhase/flux/issues/15) accepted C direction; [#40](https://github.com/ColdPhase/flux/issues/40) production shell and [#20](https://github.com/ColdPhase/flux/issues/20) mobile work. | Independent visual comparison plus running browser/device interaction and contrast tests on real content. | **planned** — C prototype and production shell are merged; integrated real-content and device evaluation remains. |
 
+## Studio 11.1 refinement tracking — 2026-09-30
+
+This is an additive design/planning update, not a new integrated application
+acceptance report. [F-014 / #147](../design/studio-v11.1-refinement.md) preserves
+the latest reference and its evidence limits. #133/PR #140 is merged; keep its
+explicit snapshot acknowledgement. #134/PR #146 (stable personal outline) and
+#135/PR #145 (initial three accents) remain under independent review.
+
+| Required refinement | Route | Evidence state |
+| --- | --- | --- |
+| Mint/Sky/Copper and independent light/dark preferences | [#148](https://github.com/ColdPhase/flux/issues/148), after #135; foundation §10/F8 | Independently reviewed planning target; production migration/tokens/states unimplemented in this intake |
+| Draft-before-save thought creation and protected editing | [#149](https://github.com/ColdPhase/flux/issues/149), after #134; 8.2/8.4/F2/F8 | Confirmed placeholder gap at PR #146; production follow-up required |
+| Continuity, conversation alignment and readable phone task navigation | [#136](https://github.com/ColdPhase/flux/issues/136); 8.3–8.8/F5/F8 | Open integrated work, including #148/#149; independent reference review still finds clipped phone status navigation |
+
+Reference renders and the supplied 58/84 counts do not complete production
+behavior, access, native device/PWA or release acceptance.
+
 ## F-012 scenario and next-slice mapping
 
 | Unmet outcome | Existing issue/interface | Next bounded slice and evidence state |

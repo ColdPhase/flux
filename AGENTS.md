@@ -3,9 +3,11 @@
 Flux is a global open source, self-hostable workspace for people and agents.
 Read `docs/product/FLUX-FOUNDATION.md` in full when first joining; then use
 `docs/product/README.md`, current decisions, and relevant sections per task.
-The later [Studio v11 direction](docs/design/studio-v11-refinement.md) is the
-primary appearance/UX reference (F-013, 2026-09-29); preserve useful repo
-improvements and refine its remaining friction. The older `flux-ux-v8.html` is
+The latest [Studio 11.1 refinement](docs/design/studio-v11.1-refinement.md)
+(F-014, 2026-09-30) and its unchanged reference/audit extend the
+[Studio v11 direction](docs/design/studio-v11-refinement.md) (F-013, 2026-09-29).
+Use them as the primary appearance/UX reference; preserve useful repo
+improvements and refine remaining friction. The older `flux-ux-v8.html` is
 historical inspiration. Demo internals do not establish production architecture,
 permissions or functionality; recorded current decisions govern these.
 The founder's later [delegation](docs/product/autonomy.md) assigns these decisions

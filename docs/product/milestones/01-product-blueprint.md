@@ -8,6 +8,13 @@ qualifies the initial product and design questions. Evaluate direction C against
 the `flux-ux-v8.html` baseline and the three integrated creative scenarios; keep
 the original foundation and accepted decisions as history.
 
+Latest design input: [F-014 / Studio 11.1](../../design/studio-v11.1-refinement.md),
+2026-09-30, extends the F-013/v11 direction; the earlier v8/C comparison above is
+historical. #147 preserves and reviews the input; #148/#149 extend current
+appearance/draft work in milestone 2 and #136 retains integrated phone UX. Do not
+restart direction discovery or replace accepted data/access contracts with demo
+behavior.
+
 Preserve and resume #8 (segment/persona) and #9 (own-AI feasibility), their accepted
 research criteria, branches and evidence. Replace their old request for a founder
 decision with an agent decision and independent peer evaluation. Do not recreate

@@ -48,6 +48,14 @@ repository improvements; refine the private recap, deep map-list links, three
 theme-aware accents and phone/integrated UX in #133–#136. The [reference package](../design/references/studio-v11/README.md)
 is shared in the repository. Demo internals do not replace production contracts.
 
+The latest **[F-014 / Studio 11.1 refinement](../design/studio-v11.1-refinement.md)**
+([#147](https://github.com/ColdPhase/flux/issues/147), 2026-09-30) preserves the
+new HTML/audit and maps useful improvements to current work. The reviewed next
+target is Mint/Sky/Copper with separate per-theme choices (#148), plus draft-before-save
+thought capture (#149); #136 retains integrated continuity and phone navigation.
+Keep merged #133’s explicit acknowledgement baseline and #134’s personal outline
+semantics. The new reference invites further focused improvements, not a reset.
+
 The later [#57 personal AI direction](https://github.com/ColdPhase/flux/issues/57)
 binds invocation and cost to the connection owner while preserving human work
 without AI. [#59 live collaboration](https://github.com/ColdPhase/flux/issues/59)

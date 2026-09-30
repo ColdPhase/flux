@@ -1,0 +1,16 @@
+{
+  "received": "2026-09-30",
+  "source": "Hubert supplied /home/hubert/Documents/UI-FLUX-FIX; exactly two files",
+  "files": [
+    {
+      "path": "supplied/AUDIT.md",
+      "bytes": 4408,
+      "sha256": "6c73408782ea150b9c119b76947f5886a1f4d045e447784e1e6df8ce61ba0401"
+    },
+    {
+      "path": "supplied/flux-studio-v11.1.html",
+      "bytes": 380031,
+      "sha256": "c6b5263f36c51c569495980db6961bbf7862eccc9972ecc454b62da11ed50477"
+    }
+  ]
+}

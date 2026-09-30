@@ -1,5 +1,11 @@
 # Flux Studio v11 direction and focused UX refinements
 
+**Latest refinement:** [Studio 11.1 / F-014](studio-v11.1-refinement.md), received
+2026-09-30, adds the next appearance/draft targets and reconciles active work.
+This earlier record preserves the original F-013 decision and evidence; the
+latest reconciliation takes precedence for the final target. #133 has since
+merged via #140; #134/#135 remain active and #136 owns integration.
+
 **Date:** 2026-09-29. **Founder direction:** F-013, [#132](https://github.com/ColdPhase/flux/issues/132). **Implementation status:** the reference/audit and [runnable refined preview](references/studio-v11/preview/README.md) are a shared design deliverable; [#133–#136](#implementation-contracts) are proposed application work. The real application still has its merged C-based components and behavior. This document does not declare those follow-ups implemented or release-accepted.
 
 Hubert identified the supplied Flux Studio v11 as approximately the intended finished appearance and functional experience, while acknowledging useful improvements in the current repository. Preserve its calm, connected creative character; improve the specific remaining friction. This supersedes the v8-only visual baseline and the fixed rail/indigo treatment of O-003. The accepted human/AI, audience, graph, live, architecture and mobile contracts continue to apply. Earlier C choices remain valuable history, not a reason to ignore this later instruction.

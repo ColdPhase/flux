@@ -8,6 +8,14 @@ and [preserved reference package](references/studio-v11/README.md). Compare real
 screens at the same viewport/zoom, preserve useful repository improvements and
 refine remaining friction; do not restart design exploration.
 
+**Latest intake, 2026-09-30:** [Studio 11.1 reconciliation](studio-v11.1-refinement.md)
+and [unchanged reference/audit](references/studio-v11.1/README.md) extend F-013
+under F-014 / #147. Preserve the accepted #133 baseline and active #134/#135
+contracts; #148 carries the reviewed Mint/Sky/Copper and separate-theme-choice
+amendment, #149 draft-before-save thoughts, and #136 integrated continuity/phone
+work. Further focused improvements are welcome; attached test claims are not
+production evidence.
+
 The earlier C direction remains the implementation starting point and
 [historical evidence](direction-c-2026-09-27.md). Its mandatory rail/indigo choices
 and the v8-only baseline yield to v11. A/B remain rejected. The [#44 journeys](https://github.com/ColdPhase/flux/issues/44),

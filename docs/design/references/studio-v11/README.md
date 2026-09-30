@@ -1,5 +1,9 @@
 # Flux Studio v11 — supplied design reference
 
+**Latest reference:** [Studio 11.1](../studio-v11.1/README.md), received 2026-09-30.
+Read its [production reconciliation](../../studio-v11.1-refinement.md) before using
+this historical package or its separate refined preview.
+
 **Received:** 2026-09-29 from Hubert. **Authority:** [#132](https://github.com/ColdPhase/flux/issues/132), recorded as F-013. This is the primary reference for Flux’s intended appearance and connected workflows, with targeted UX refinements and the useful improvements already in the real application. The current contract is [studio-v11-refinement.md](../../studio-v11-refinement.md); it takes precedence over the historical nine-palette instructions inside the supplied package.
 
 **Requested corrections:** [runnable refined preview and matched before/after](preview/README.md)

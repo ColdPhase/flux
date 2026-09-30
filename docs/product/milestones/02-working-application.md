@@ -26,8 +26,8 @@ Required application follow-ups: [#133 compact private recap](https://github.com
 [#134 stable deep map-list relations](https://github.com/ColdPhase/flux/issues/134),
 [#135 three separately tuned light/dark accents](https://github.com/ColdPhase/flux/issues/135),
 and [#136 integrated calm UI / phone work navigation](https://github.com/ColdPhase/flux/issues/136).
-Their issue contracts carry owners, dependencies and verification. They remain
-proposed implementation work; this reference does not count as feature delivery.
+Their issue contracts carry owners, dependencies and verification. See the latest
+status below; importing a reference does not count as feature delivery.
 The later conversation clarification belongs to #136: own messages clearly on
 the right, other people's on the left, with readable text width and useful space
 beside open panels. #132 includes a runnable refined preview and matched
@@ -35,6 +35,28 @@ before/after screenshots so this direction is inspectable by both agents.
 Review realistic complete views separately from actual interaction/data tests,
 including #44’s three journeys with no AI. Do not copy demo storage, permissions,
 AI/media simulation or unchecked historical test claims into production.
+
+### Latest refinement — F-014 / Studio 11.1 (2026-09-30)
+
+[#147](https://github.com/ColdPhase/flux/issues/147) preserves the
+[latest HTML/audit and fresh evidence](../../design/references/studio-v11.1/README.md).
+Use the [reconciliation](../../design/studio-v11.1-refinement.md) as the current
+refinement entry point. #133 is merged via #140; its explicit acknowledgement
+baseline stays. #134/#135 and their pending reviews retain their scope/owners.
+
+- [#148](https://github.com/ColdPhase/flux/issues/148), after #135: Mint/Sky/Copper,
+  separately remembered light/dark choices, real preference migration and final
+  token/state checks. This supersedes the earlier palette only at the next slice.
+- [#149](https://github.com/ColdPhase/flux/issues/149), after #134: new thought
+  drafts create no placeholder/shared relation until save; protect cancel,
+  failure/conflict recovery, multiline editing and keyboard/touch paths.
+- #136: integrated source/draft/scroll/camera continuity, conversation alignment
+  and readable phone task status navigation; final acceptance includes #148/#149.
+
+Supplied test counts are claims with missing test artifacts. Prototype visit,
+parent, storage and simulated AI/media behavior do not change production
+contracts. Further useful UX refinements remain agent-owned and independently
+reviewed. Actual mobile/PWA evidence remains required under #20.
 
 ## Start coding
 
