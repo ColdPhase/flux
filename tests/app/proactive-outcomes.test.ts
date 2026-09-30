@@ -1,3 +1,4 @@
+import { comparisonDispatchFixtureDue } from './support/comparison-dispatch-fixture.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
@@ -42,6 +43,7 @@ async function fixture() {
     const result = expectStatus(await peer.browser.request('POST', `/api/v1/projects/${projectId}/results`,
       { body: { title: 'Camera missed gestures', finding: 'negative', evidence: '38% detected at 5 lux.' } }), 201) as { id: string };
     const candidateId = (await pool.query('SELECT id FROM proactive_comparison_outbox WHERE result_id=$1', [result.id])).rows[0].id as string;
+    await comparisonDispatchFixtureDue(pool, candidateId);
     return { result, candidateId };
   };
   const list = async (who = peer, query = '') => expectStatus(await who.browser.request('GET',

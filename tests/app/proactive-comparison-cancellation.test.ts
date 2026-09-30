@@ -1,3 +1,4 @@
+import { comparisonDispatchFixtureDue } from './support/comparison-dispatch-fixture.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -64,6 +65,7 @@ async function fixture() {
     { body: { title: 'Low-light trial failed', finding: 'negative', evidence: 'The camera missed gestures.',
       sources: [{ type: 'material', id: material.materialId, version: 1 }] } }), 201) as { id: string };
   const candidateId = (await pool.query('SELECT id FROM proactive_comparison_outbox WHERE result_id=$1', [result.id])).rows[0].id as string;
+    await comparisonDispatchFixtureDue(pool, candidateId);
   return { admin, owner, projectId, rule, connection, agentGrantId, material, work, sketch, thought, candidateId };
 }
 

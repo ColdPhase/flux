@@ -1,3 +1,4 @@
+import { comparisonDispatchFixtureDue } from './support/comparison-dispatch-fixture.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -36,6 +37,7 @@ async function fixture() {
     const result = expectStatus(await peer.browser.request('POST', `/api/v1/projects/${projectId}/results`,
       { body: { title: 'Camera misses gestures at 5 lux', finding: 'negative', evidence: 'Only 38% detection in the human trial.', sources } }), 201) as WorkResult;
     const candidate = (await pool.query('SELECT id FROM proactive_comparison_outbox WHERE result_id=$1', [result.id])).rows[0];
+    if (candidate) await comparisonDispatchFixtureDue(pool, candidate.id);
     return { result, candidateId: candidate?.id as string | undefined };
   };
   return { owner, peer, ws, projectId, agentId, rule, negative };
@@ -137,6 +139,7 @@ test('an explicit thought uses its actual version and sketch identity; a text ed
   const result = expectStatus(await f.peer.browser.request('POST', `/api/v1/projects/${f.projectId}/results`,
     { body: { title: 'Human negative camera trial', finding: 'negative', sources: [{ type: 'thought', id: thought.id }] } }), 201) as WorkResult;
   const candidateId = (await pool.query('SELECT id FROM proactive_comparison_outbox WHERE result_id=$1', [result.id])).rows[0].id as string;
+  await comparisonDispatchFixtureDue(pool, candidateId);
   const before = await proactiveOutboxRows(db).sourceSnapshot(result.id, f.rule.id);
   assert.deepEqual(before.sources.find((source) => source.type === 'thought'),
     { type: 'thought', id: thought.id, version: 1, sketchId: sketch.id });

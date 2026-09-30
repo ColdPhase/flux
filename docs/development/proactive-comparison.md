@@ -39,7 +39,7 @@ deduplicated outbox candidate for each opted-in owner of that named project in t
 result transaction **only for an enabled rule**; production activation is
 still disabled, so current production rules do not create candidates. The worker
 adapter rechecks current owner/agent access, result authorship, the selected source
-snapshot and budget before reserving; there is no scheduled dispatch yet. An explicitly
+snapshot and budget before reserving; production scheduling is not registered. An explicitly
 invoked dispatch path in the worker decrypts only the owner's active
 key, token-counts up to 8,000 inputs, makes at most one 1,200-output-token call,
 validates cited output and persists a separate quiet proposal. It checks current
@@ -108,8 +108,12 @@ the shared policy before selecting metadata. Reservation, content collection,
 the cancellation watcher and final publication repeat that policy/source check.
 Reservation and cancellation read source metadata, not content or decrypted keys.
 
-Keep the triggering human negative result and all explicit admitted references;
-an unsupported or no-longer-current mandatory reference fails closed. Add up to
+Keep the triggering human negative result and all explicit admitted references.
+An immutable published human material/doc version explicitly cited by that result
+stays pinned beside a separately selected current version. Validate both exact
+versions without relabeling; later unpublication/deletion refuses before paid
+dispatch. Work/thought references still require current versions. An unsupported
+or inadmissible mandatory reference fails closed. Add up to
 six current human material/published-doc versions, twelve recent human project
 messages, eight human work items, four positive human benchmark results and eight
 human project-scope thoughts. Additional negative results enter only when
@@ -169,9 +173,46 @@ counts remain visible without revealing hidden titles. The owner's connection
 settings show private local usage and recent request states, including zero-cost
 not-run outcomes and uncertain charges; disconnection keeps that history.
 
-Source-change scheduling/coalescing, production provider scheduling and rule
-activation remain implementation work. No real-provider billing, cancellation
-or physical-device acceptance is claimed.
+The [outcome and owner-usage evidence](../design/proactive-comparison/outcomes-2026-09-30/)
+records six passing Docker browser journeys, measured settled-theme search
+contrast, independent touch phone/tablet contexts and a separate neutral visual
+review. Screenshots and fixture-provider checks do not establish live-provider
+billing, cancellation, physical devices or whole-task acceptance.
+
+## Controlled source-change scheduling
+
+The internal `comparisonSchedulingTick` consumes committed metadata events with
+its own durable cursor. Cursor advance and project reconsideration rows commit
+together. Human admitted project evidence changes extend a two-minute quiet
+window, capped at fifteen minutes after its first change. Draft doc saves,
+private/DM sketches, layout-only changes, agent and proposal-origin evidence do
+not qualify. The cursor's recovery path reconsiders every enabled project after
+retention or a rebuilt log, paging through projects and reporting the recovery.
+
+Due projects recheck the owner's and personal agent's current project rights
+before selecting snapshots, page through all qualifying human negative results,
+and insert only new rule/result/fingerprint candidates. Existing dismissals and
+paid/unknown charges remain history; unchanged fingerprints never retry. Obsolete
+queued candidates end at zero cost. Dispatch checks candidate due time, the
+project's pending quiet window and whether all committed events were collected;
+a previously selected candidate id cannot bypass those checks.
+
+Docker build/typecheck/lint and 49 targeted core/API/persistence/provider-fixture
+tests passed for this controlled scheduler and outcome checkpoint. Coverage
+includes committed-versus-uncommitted events, edit bursts and the maximum wait,
+restart and two consumers, more than 100 results/projects, cursor recovery,
+draft/provenance exclusions, access loss and retained dismissal/unknown charges.
+The historical-source regression supplies explicit published v1 beside current
+v2, then stops before any paid fixture call after a mid-count v3 edit or later
+unpublication/deletion. Tests use an isolated database and run serially because
+cursor-recovery fixtures deliberately own its global cursor. Existing dispatch
+fixtures make only their own candidate due and explicitly advance that fixture
+cursor; they do not prove scheduling.
+
+The scheduler selects candidate ids without a provider/key port. It and the
+provider adapter remain unregistered in production; rule activation still fails
+closed. Crash reconciliation and the real-provider acceptance gates remain
+implementation/verification work.
 
 ## Key file, restore and rotation
 
@@ -208,9 +249,10 @@ restarting API and worker. If that final file switch fails, **do not restart**:
 finish the switch or restore the paired database and old secret backup. Rotate
 the provider keys separately if compromise is suspected.
 
-Migrations `0022`–`0026` include the standing rule, encrypted connection,
+Migrations `0022`–`0028` include the standing rule, encrypted connection,
 candidate/reservation ledger, separate project proposal and fresh paused-rule
-renewal after permanent revocation. The outbox retains
+renewal after permanent revocation, inspected/outcome accounting and source-change
+scheduling. The outbox retains
 reserved possible charges when a rule or result would otherwise be deleted, so
 removal cannot reset the owner's
 allowance. The migrator applies individual files in numeric order and the #118
@@ -296,8 +338,8 @@ continues to hold at least the original reservation in the local budget.
 
 Remaining #58 work: an authorized real-provider test call and actual billing
 observation including live-provider cancellation, independent full-context quality
-evaluation, reopening dismissed suggestions only after relevant
-evidence changes, insufficient-evidence outcomes and private usage accounting,
-registered production scheduling and activation, plus independent/current release migration
-acceptance. This file
-describes a controlled integration slice, not completion of #58.
+evaluation, crash reconciliation, registered production scheduling and activation,
+plus independent/current integrated migration and release acceptance. Controlled
+changed-evidence reopening, insufficient-evidence outcomes and private usage
+accounting now have the separate fixture evidence above. This file describes a
+controlled integration slice, not completion of #58.

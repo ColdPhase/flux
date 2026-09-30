@@ -1,3 +1,4 @@
+import { comparisonDispatchFixtureDue } from './support/comparison-dispatch-fixture.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
@@ -29,6 +30,7 @@ describe('negative-result candidate and budget reservation (#58)', () => {
       { body: { title, finding, evidence: 'Low-light trial at 5 lux' } }), 201) as WorkResult;
   const candidate = async (resultId: string) => {
     const found = await pool.query('SELECT id, owner_user_id, rule_id, status, source_fingerprint, reserved_cents FROM proactive_comparison_outbox WHERE result_id=$1', [resultId]);
+    if (found.rows[0]) await comparisonDispatchFixtureDue(pool, found.rows[0].id);
     return found.rows[0] as { id: string; owner_user_id: string; rule_id: string; status: string; source_fingerprint: string; reserved_cents: number } | undefined;
   };
 

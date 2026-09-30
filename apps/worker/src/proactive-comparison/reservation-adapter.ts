@@ -1,4 +1,4 @@
-import { proactiveOutboxRows } from '@flux/db';
+import { comparisonSchedulingRows, proactiveOutboxRows } from '@flux/db';
 import { evaluateProject, reservationUseCases, type Database, type ReservationPorts } from '@flux/core';
 
 /** Internal composition for a future worker; no HTTP endpoint or scheduled provider call. */
@@ -6,7 +6,7 @@ export function proactiveReservation(db: Database) {
   return reservationUseCases({ run: (action) => db.transaction(async (tx) => {
     const rows = proactiveOutboxRows(tx);
     const ports: ReservationPorts = {
-      rows,
+      rows: { ...rows, ready: comparisonSchedulingRows(tx).ready },
       access: {
         async currentOwnerAndAgent(ownerId, agentId, projectId) {
           const owner = await evaluateProject({ kind: 'human', id: ownerId }, 'project.write', projectId, tx, { lock: true });

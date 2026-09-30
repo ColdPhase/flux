@@ -30,9 +30,15 @@ const humanWork = and(eq(w.createdByKind, 'human'),
 export function comparisonSources(db: DbExecutor) {
   async function current(projectId: string, source: ComparisonSourceRef, lock = false): Promise<boolean> {
     if (source.type === 'material') {
-      const query = db.select({ id: m.id }).from(m).innerJoin(v, and(eq(v.materialId, m.id), eq(v.version, m.currentVersion)))
+      // Explicit citations may pin an immutable older published human version.
+      // The material must still be published; a later draft/delete is a refusal.
+      // Snapshot fingerprints separately track current revisions and stop mid-run edits.
+      const query = db.select({ id: m.id }).from(m).innerJoin(v, and(eq(v.materialId, m.id), eq(v.version, source.version ?? -1)))
         .innerJoin(users, eq(users.id, v.authorId)).where(and(eq(m.projectId, projectId), eq(m.id, source.id),
-          eq(m.currentVersion, source.version ?? -1), or(isNull(v.state), eq(v.state, 'published'))));
+          or(isNull(v.state), eq(v.state, 'published')),
+          sql`EXISTS (SELECT 1 FROM ${v} current_version WHERE current_version.material_id = ${m.id}
+            AND current_version.version = ${m.currentVersion}
+            AND (current_version.state IS NULL OR current_version.state = 'published'))`));
       return (await (lock ? query.for('share') : query)).length === 1;
     }
     if (source.type === 'message') {

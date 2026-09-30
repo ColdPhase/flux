@@ -147,7 +147,7 @@ export function proactiveOutboxRows(db: DbExecutor) {
       return row ? `${row.title}\n${row.body}` : null;
     },
     /** Called inside the result transaction, after links and before the commit event. */
-    async enqueueHumanNegative(resultId: string, projectId: string, authorId: string, eligibleRuleIds: string[] = []): Promise<number> {
+    async enqueueHumanNegative(resultId: string, projectId: string, authorId: string, eligibleRuleIds: string[] = [], availableAfter = new Date()): Promise<number> {
       const [result] = await db.select({ id: results.id }).from(results).where(and(eq(results.id, resultId),
         eq(results.projectId, projectId), eq(results.finding, 'negative'),
         eq(results.createdByKind, 'human'), eq(results.createdById, authorId)));
@@ -158,7 +158,7 @@ export function proactiveOutboxRows(db: DbExecutor) {
       for (const rule of eligible) {
         const { fingerprint } = await comparisonSources(db).snapshot(resultId, rule.id);
         const [inserted] = await db.insert(q).values({ id: randomUUID(), ruleId: rule.id, ownerUserId: rule.ownerId,
-          projectId, resultId, sourceFingerprint: fingerprint }).onConflictDoNothing().returning({ id: q.id });
+          projectId, resultId, sourceFingerprint: fingerprint, availableAfter }).onConflictDoNothing().returning({ id: q.id });
         if (inserted) count++;
       }
       return count;

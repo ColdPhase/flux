@@ -2,7 +2,7 @@
 export type ReservationResult =
   | { status: 'reserved'; id: string; ownerUserId: string; ruleId: string; resultId: string; connectionId: string; reservedCents: number }
   | { status: 'blocked'; reason: 'NOT_QUEUED' | 'RULE_STOPPED' | 'OWNER_OR_AGENT_ACCESS' | 'SOURCE_CHANGED' |
-      'SOURCE_SCOPE_UNVERIFIED' | 'CONNECTION_REQUIRED' | 'BUDGET_EXHAUSTED' | 'OWNER_IN_FLIGHT' };
+      'SOURCE_SCOPE_UNVERIFIED' | 'CONNECTION_REQUIRED' | 'BUDGET_EXHAUSTED' | 'OWNER_IN_FLIGHT' | 'QUIET_WINDOW' };
 
 type Candidate = { id: string; status: string; ruleId: string; ownerUserId: string; projectId: string; resultId: string; sourceFingerprint: string };
 type Rule = { id: string; version: number; status: string; ownerUserId: string; projectId: string; agentId: string;
@@ -20,6 +20,7 @@ export interface ReservationPorts {
     result(id: string): Promise<Result | null>;
     sourceSnapshot(resultId: string, ruleId: string): Promise<{ fingerprint: string; sources: Source[]; ruleVersion: number | null }>;
     sourceCurrent(projectId: string, source: Source): Promise<boolean>;
+    ready(id: string, now: Date): Promise<boolean>;
     connection(ownerId: string): Promise<Connection | null>;
     usage(ownerId: string, startOfDay: Date, startOfPeriod: Date): Promise<{ dayRuns: number; periodCents: number; inFlight: number }>;
     reserve(id: string, connectionId: string, cents: number, at: Date): Promise<unknown | null>;
@@ -80,6 +81,8 @@ export function reservationUseCases(unit: ReservationUnitOfWork) {
             return refuse('SOURCE_CHANGED');
           }
         }
+        // A queued id is not permission to bypass uncollected events or a quiet window.
+        if (!await rows.ready(candidate.id, now)) return blocked('QUIET_WINDOW');
         const connection = await rows.connection(candidate.ownerUserId);
         if (!connection || !connection.encryptedKey) return refuse('CONNECTION_REQUIRED');
         if (connection.periodDays !== 30 || connection.consentVersion !== 'o-007-2026-09-28'

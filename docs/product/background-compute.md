@@ -146,6 +146,16 @@ This records the required final behavior; it does not assert that all of it is i
   after checking current owner access through the existing policy, and recheck
   owner/agent access before dispatch and commit. Record selection limits and
   excerpt markers; more than 8,000 counted input tokens stops without a paid request.
+- The evaluator [accepted historical explicit material/doc revisions](https://github.com/ColdPhase/flux/issues/58#issuecomment-5904230435)
+  on 2026-09-30: an immutable published human-authored version explicitly cited
+  by the triggering result stays pinned beside separately selected current
+  versions. Validate its existence, project boundary, published state and human
+  author at every recheck; never relabel it as the current revision. Both enter
+  the fingerprint and actual inspected/cited metadata. A newer current edit
+  during read/count/dispatch still invalidates the candidate. If the material
+  is later unpublished or deleted, refuse at zero cost before paid dispatch;
+  never silently drop the cited version. This exception is for immutable
+  material/doc versions; work and thought sources still require current versions.
 - Fingerprint the sorted selected type/id/version vector, explicit-reference set,
   rule id/version and owner id. Recheck the selected sources before dispatch and
   commit; preserve historical proposals, dismissals and possible charges. A
@@ -258,6 +268,33 @@ current personal-agent/project checks and scope/allowance confirmation. Historic
 dismissals and all owner-level observed/possible charges remain counted across
 rule identities. Verify revoke → fresh create with unchanged old row, and
 concurrent fresh creation with one success and one conflict.
+
+### Source-change scheduling interface (accepted 2026-09-30)
+
+The [concrete scheduling proposal](https://github.com/ColdPhase/flux/issues/58#issuecomment-5903579901)
+was [accepted with quiet-window, cursor-recovery and draft exclusions](https://github.com/ColdPhase/flux/issues/58#issuecomment-5903584942)
+before implementation. Consume committed events through an independent durable
+cursor. Advance that cursor in the same transaction as project reconsideration
+rows. Only human changes to admitted project evidence qualify; private/DM,
+agent/proposal, placement/layout and unpublished doc draft changes do not.
+
+Coalesce changes for **2 minutes after the last qualifying change**, with a
+**maximum wait of 15 minutes after the first change**. Keep both durations as
+named constants in one place. A candidate's `available_after` and the project's
+quiet window govern dispatch readiness. Reconsider each currently enabled rule
+and qualifying human negative result using current owner/agent rights and the
+accepted deterministic fingerprint, paging through records. Only a new unique
+rule/result/fingerprint creates a candidate. Obsolete queued candidates end at
+zero cost; paid and unknown candidates, prior dismissals and charges remain
+history and are never retried automatically.
+
+If a cursor falls behind the retained event range, or ahead of a rebuilt log,
+reconsider every project with an enabled rule once and report the recovery.
+Cursor, due-project rows and candidate due time use one new migration numbered
+by actual merge order. Portable internal scheduling ports have focused DB and
+worker composition. Production enabling and provider registration remain off
+until their separate real-provider verification gates pass. This section records
+the accepted contract, not completed scheduling or production evidence.
 
 ## Private owner setup (partial implementation)
 

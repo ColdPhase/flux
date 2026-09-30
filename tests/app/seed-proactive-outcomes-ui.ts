@@ -1,3 +1,4 @@
+import { comparisonDispatchFixtureDue } from './support/comparison-dispatch-fixture.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createDatabase } from '@flux/db';
@@ -50,7 +51,9 @@ try {
     const result = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${prj.id}/results`,
       { body: { title, finding: 'negative', evidence: '38% detected at 5 lux; target is 90%.',
         sources: [{ type: 'material', id: material.materialId, version: 1 }, { type: 'message', id: conversation.messages[0]!.id }] } }), 201) as { id: string };
-    return (await pool.query('SELECT id FROM proactive_comparison_outbox WHERE result_id=$1', [result.id])).rows[0].id as string;
+    const id = (await pool.query('SELECT id FROM proactive_comparison_outbox WHERE result_id=$1', [result.id])).rows[0].id as string;
+    await comparisonDispatchFixtureDue(pool, id);
+    return id;
   };
   const comparison = await dispatchProactiveComparison({ db, candidateId: await candidate('Camera trial missed the target'), masterKey, provider });
   if (comparison.status !== 'proposal') throw new Error(`Comparison fixture failed: ${comparison.status}`);

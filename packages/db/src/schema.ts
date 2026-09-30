@@ -922,6 +922,17 @@ export const notificationCursor = pgTable('notification_cursor', {
 });
 
 // An event candidate and any reserved possible charge remain separate from rule consent (#58).
+export const proactiveComparisonCursor = pgTable('proactive_comparison_cursor', {
+  id: integer('id').primaryKey(),
+  seq: bigint('seq', { mode: 'number' }).notNull(),
+});
+export const proactiveComparisonProjectChanges = pgTable('proactive_comparison_project_changes', {
+  projectId: uuid('project_id').primaryKey().references(() => projects.id, { onDelete: 'cascade' }),
+  firstChangedAt: timestamp('first_changed_at', { withTimezone: true }).notNull(),
+  lastChangedAt: timestamp('last_changed_at', { withTimezone: true }).notNull(),
+  dueAt: timestamp('due_at', { withTimezone: true }).notNull(),
+}, (table) => [index('proactive_comparison_project_changes_due_idx').on(table.dueAt, table.projectId)]);
+
 export const proactiveComparisonOutbox = pgTable('proactive_comparison_outbox', {
   id: uuid('id').primaryKey(),
   ruleId: uuid('rule_id').notNull().references(() => proactiveComparisonRules.id),
@@ -929,6 +940,7 @@ export const proactiveComparisonOutbox = pgTable('proactive_comparison_outbox', 
   projectId: uuid('project_id').notNull(),
   resultId: uuid('result_id').notNull().references(() => projectResults.id),
   sourceFingerprint: text('source_fingerprint').notNull(),
+  availableAfter: timestamp('available_after', { withTimezone: true }).notNull().defaultNow(),
   status: text('status', { enum: ['queued', 'reserved', 'not_run', 'unknown', 'completed'] }).notNull().default('queued'),
   connectionId: uuid('connection_id').references(() => backgroundComputeConnections.id),
   reservedCents: integer('reserved_cents').notNull().default(0),
@@ -949,6 +961,7 @@ export const proactiveComparisonOutbox = pgTable('proactive_comparison_outbox', 
   index('proactive_comparison_outbox_owner_time_idx').on(table.ownerUserId, table.reservedAt),
   uniqueIndex('proactive_comparison_outbox_owner_inflight_idx').on(table.ownerUserId).where(eq(table.status, 'reserved')),
   index('proactive_comparison_outbox_queued_idx').on(table.createdAt, table.id).where(eq(table.status, 'queued')),
+  index('proactive_comparison_outbox_ready_idx').on(table.availableAfter, table.id).where(eq(table.status, 'queued')),
 ]);
 
 export const proactiveComparisonProposals = pgTable('proactive_comparison_proposals', {

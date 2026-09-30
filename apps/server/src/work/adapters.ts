@@ -7,6 +7,7 @@ import {
   recordEvent,
   visibleFilter,
   createWorkUseCases,
+  COMPARISON_QUIET_WINDOW_MS,
   type Database,
   type WorkAccess,
   type WorkPorts,
@@ -56,7 +57,7 @@ function workPorts(tx: DbExecutor): WorkPorts {
         const agent = await evaluateProject({ kind: 'agent', id: rule.agentId }, 'project.write', projectId, tx, { lock: true });
         if (owner.allowed && agent.allowed && agent.actor?.agent?.ownerUserId === rule.ownerUserId) eligible.push(rule.id);
       }
-      return rows.enqueueHumanNegative(resultId, projectId, authorId, eligible);
+      return rows.enqueueHumanNegative(resultId, projectId, authorId, eligible, new Date(Date.now() + COMPARISON_QUIET_WINDOW_MS));
     } },
   };
 }

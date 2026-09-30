@@ -1,3 +1,4 @@
+import { comparisonDispatchFixtureDue } from './support/comparison-dispatch-fixture.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -30,8 +31,11 @@ describe('controlled background comparison dispatch (#58)', () => {
   const privateToken = `PRIVATE-DO-NOT-SEND-${randomUUID()}`;
   const fakeKey = `sk-ant-api03-${'dispatch-owner-key-'.repeat(4)}END8`;
   const masterKey = readFileSync('/run/secrets/flux_background_key');
-  const candidates = async (resultId: string) => (await pool.query(
-    'SELECT id FROM proactive_comparison_outbox WHERE result_id=$1', [resultId])).rows[0].id as string;
+  const candidates = async (resultId: string) => {
+    const id = (await pool.query('SELECT id FROM proactive_comparison_outbox WHERE result_id=$1', [resultId])).rows[0].id as string;
+    await comparisonDispatchFixtureDue(pool, id);
+    return id;
+  };
   const negative = async (title: string) => expectStatus(await peer.browser.request('POST',
     `/api/v1/projects/${projectId}/results`, { body: { title, finding: 'negative', evidence: 'Camera misses at 5 lux',
       sources: [{ type: 'material', id: material.materialId, version: 1 },

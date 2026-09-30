@@ -33,7 +33,7 @@ export async function dispatchProactiveComparison(input: { db: Database; candida
     return { status: 'not_run', reason: 'KEY_UNAVAILABLE' } as const;
   });
   const reservation = await proactiveReservation(input.db).reserve(input.candidateId);
-  if (reservation.status === 'blocked') return reservation.reason === 'NOT_QUEUED' || reservation.reason === 'OWNER_IN_FLIGHT'
+  if (reservation.status === 'blocked') return reservation.reason === 'NOT_QUEUED' || reservation.reason === 'OWNER_IN_FLIGHT' || reservation.reason === 'QUIET_WINDOW'
     ? reservation : { status: 'not_run', reason: reservation.reason };
   let watch: ReturnType<typeof watchComparisonAuthorization> | undefined;
   let usage: ObservedUsage | undefined;
