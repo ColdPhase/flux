@@ -12,7 +12,14 @@ confirmation; existing human-only decision acceptance is unchanged. One task
 and thread remain authoritative, with independent execution/review state.
 Historic statements below yield only on these explicit amendments.
 
-The [foundation](FLUX-FOUNDATION.md), later [delegation](autonomy.md), and [mobile requirement](mobile-pwa.md) define the authorized goal. The [accepted #14 journey](journeys-and-vocabulary.md) supplies a provisional shared scenario. [#8 research](first-segment-and-usp-proposal.md) recommends a returning project steward in a small software product team; [O-001](decisions.md) remains open. [#9's merged feasibility assessment](own-ai-feasibility.md) is research, while O-005 remains open. [O-002](application-architecture-proposal.md) is accepted and merged in [PR #25](https://github.com/ColdPhase/flux/pull/25), including its independently reviewed AC-5 handoff. O-003 is being compared under [#15](https://github.com/ColdPhase/flux/issues/15). The current supervising user direction, [recorded in #15](https://github.com/ColdPhase/flux/issues/15), asks the visual review to compare the selected direction with `flux-ux-v8.html` and improve on that reference. This specification makes no final provider, visual, pricing, or enterprise compliance promise.
+The [foundation](FLUX-FOUNDATION.md), [delegation](autonomy.md) and
+[mobile requirement](mobile-pwa.md) define the goal. The [accepted #14 journey](journeys-and-vocabulary.md)
+and #44 creative scenarios remain useful. Consult the [decision register](decisions.md)
+for current status: O-002 architecture and O-005 external-client path are accepted,
+#52 provides its first implemented MCP foundation, and F-016 extends it through
+#152/#153. F-017 Studio 11.6 is the current appearance target; earlier C/v8/v11
+comparisons and the original proposal's open-decision statuses are historical.
+Provider, pricing and enterprise claims require their own current evidence.
 
 Use the working terms *workspace, project, material, conversation, decision, work item, result, handoff,* and *agent run* from #14. A decision's proposed, accepted, and superseded states have different authority. A relation has an explicit meaning; map adjacency alone creates no work dependency. The browser, API, stream, worker, search, notification, file, agent and extension paths must apply the same current authorization, including after revocation. The exact schema and routes belong to bounded implementation contracts.
 

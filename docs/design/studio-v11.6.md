@@ -46,6 +46,14 @@ missing when blocked. A configured/offline connection is not a working process.
 No fictional progress percent, model thoughts or “tests passed” from demo seeds.
 Keep personal-helper controls distinct from co-work setup and connection identity.
 
+Provide a visible executor/reviewer swap action in assignment, preserving the
+instruction and validating the new roles/grants without changing signed-in
+identity, human assignee or existing artifact authorship.
+
+Expose “Handoff point” from the same task/Agents conversation with current waiting
+state, an action opening the original source message, and download of a bounded
+versioned reference packet. It contains authorized references, not credentials
+or active grants, and does not create a second conversation or knowledge store.
 Read handoff context from current task, last checkpoint and versioned sources;
 do not create a summary model call or another wiki copy. Review of a PR and a
 non-code result uses the current SHA/message version. CO-1–CO-5 govern actual
@@ -133,7 +141,8 @@ shell writer. Carry all five work tabs, three-agent identity, live/helper panels
 and typing affordances into ADAPT-1–ADAPT-5. Large screens can show selected work
 beside permitted sources/PR review/context; phone keeps the same actions and
 vocabulary in focused views. No mandatory dashboard sprawl or long unreadable
-message rows. Preserve 320px Android through 4K/ultrawide, zoom, rotation and
+message rows. On very tall screens, keep a short work stream and its composer
+visually connected rather than separating them by a large empty region. Preserve 320px Android through 4K/ultrawide, zoom, rotation and
 virtual-keyboard requirements and actual #20 device acceptance.
 
 Use the issue map in [F-016](../product/mcp-cowork.md#delivery-and-evidence--co-5).

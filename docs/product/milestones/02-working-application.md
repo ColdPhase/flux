@@ -32,50 +32,26 @@ Agents own architecture, stack, UX, feature sequencing and acceptance. They crea
 and review each other's issues/PRs and further milestones. No founder acceptance
 is required. Use the coverage matrix for areas 8.1–8.16 to keep the full goal visible.
 
-## Current visual and UX direction (F-013, 2026-09-29)
+## Current appearance and integrated UX — Studio 11.6 / F-017
 
-[Flux Studio v11](../../design/references/studio-v11/README.md) is now the primary
-reference for intended appearance and connected workflows, under [#132](https://github.com/ColdPhase/flux/issues/132).
-Keep its calm, compact character and useful improvements already in the repository.
-The [focused contract](../../design/studio-v11-refinement.md) supersedes the
-v8-only visual baseline and O-003’s prescribed rail/indigo treatment while retaining
-#44/#57/#59, the accepted architecture and real mobile requirements.
+[UI116-1–UI116-5](../../design/studio-v11.6.md) and the
+[unchanged 11.6 reference/screenshots](../../design/references/studio-v11.6/README.md)
+are the only current visual target. #136 covers the whole application, all five
+work tabs, own-right/others-left conversation, same-task Agents, map count chooser,
+board drop feedback, wiki selection and continuity. #154 supplies creation notice
+and first-message semantics; #155 real typing and restrained motion.
 
-Required application follow-ups: [#133 compact private recap](https://github.com/ColdPhase/flux/issues/133),
-[#134 stable deep map-list relations](https://github.com/ColdPhase/flux/issues/134),
-[#135 three separately tuned light/dark accents](https://github.com/ColdPhase/flux/issues/135),
-and [#136 integrated calm UI / phone work navigation](https://github.com/ColdPhase/flux/issues/136).
-Their issue contracts carry owners, dependencies and verification. See the latest
-status below; importing a reference does not count as feature delivery.
-The later conversation clarification belongs to #136: own messages clearly on
-the right, other people's on the left, with readable text width and useful space
-beside open panels. #132 includes a runnable refined preview and matched
-before/after screenshots so this direction is inspectable by both agents.
-Review realistic complete views separately from actual interaction/data tests,
-including #44’s three journeys with no AI. Do not copy demo storage, permissions,
-AI/media simulation or unchecked historical test claims into production.
+Preserve merged #133 explicit acknowledgment and active #134 personal outline /
+#135 theme foundations. #148 completes Mint/Sky/Copper, independent light/dark
+choices and migration; #149 adds draft-before-save and safe recovery. Existing
+owners and current-head reviews remain; final integration waits for their outcomes.
 
-### Latest refinement — F-014 / Studio 11.1 (2026-09-30)
-
-[#147](https://github.com/ColdPhase/flux/issues/147) preserves the
-[latest HTML/audit and fresh evidence](../../design/references/studio-v11.1/README.md).
-Use the [reconciliation](../../design/studio-v11.1-refinement.md) as the current
-refinement entry point. #133 is merged via #140; its explicit acknowledgement
-baseline stays. #134/#135 and their pending reviews retain their scope/owners.
-
-- [#148](https://github.com/ColdPhase/flux/issues/148), after #135: Mint/Sky/Copper,
-  separately remembered light/dark choices, real preference migration and final
-  token/state checks. This supersedes the earlier palette only at the next slice.
-- [#149](https://github.com/ColdPhase/flux/issues/149), after #134: new thought
-  drafts create no placeholder/shared relation until save; protect cancel,
-  failure/conflict recovery, multiline editing and keyboard/touch paths.
-- #136: integrated source/draft/scroll/camera continuity, conversation alignment
-  and readable phone task status navigation; final acceptance includes #148/#149.
-
-Supplied test counts are claims with missing test artifacts. Prototype visit,
-parent, storage and simulated AI/media behavior do not change production
-contracts. Further useful UX refinements remain agent-owned and independently
-reviewed. Actual mobile/PWA evidence remains required under #20.
+The 11.6 reference still needs improved phone Agents reading height, clear phone
+board status navigation and useful wide-screen context. Independent layout work
+can proceed while backend contracts settle. Required no-AI #44 journeys, #57/#68
+helper, #59 live collaboration, current permissions and #20 device evidence remain.
+Demo storage, roles, PR/CI and author assertion counts establish no production
+capability. Earlier appearance inputs are [history](../../design/reference-history.md).
 
 ### Adaptive working capacity — F-015 (2026-09-30)
 
@@ -88,8 +64,7 @@ during transitions. The same #136 shell owner coordinates this child; final
 
 Use the full viewport/height/scaling/input matrix, intermediate widths, real
 text enlargement, independent visual and running behavior review, measurable
-performance budgets and real 4K/ultrawide plus mobile evidence. Existing 17
-prototype screenshots do not verify this new requirement. Missing device evidence
+performance budgets and real 4K/ultrawide plus mobile evidence. Prototype screenshots do not verify the production or hardware requirement. Missing device evidence
 remains open; available implementation and layout checks continue independently.
 
 ## Start coding

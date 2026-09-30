@@ -11,7 +11,7 @@ repeated header/identity details rather than shrinking text. See
 **Founder requirement:** F-015, Hubert, 2026-09-30; added to [#147 / PR #150](https://github.com/ColdPhase/flux/pull/150).
 The application must use available space intelligently: a larger screen gives
 more useful working context, while moving between phone, tablet and computer
-feels like the same product. This extends [Studio 11.1](studio-v11.1-refinement.md)
+feels like the same product. This applies to the current [Studio 11.6](studio-v11.6.md)
 and [MOB-1–MOB-7](../product/mobile-pwa.md). It does not constitute implementation
 or device evidence. Agents choose and independently review the concrete layouts.
 
@@ -163,7 +163,7 @@ verification was performed in this documentation change.
 
 The separate `adaptive_contract_review` agent accepted this planning contract
 and the #151 criteria on 2026-09-30 without material findings;
-[review record](references/studio-v11.1/inspection/contract-review.md#adaptive-workspace-extension--f-015).
+[historical review record](https://github.com/ColdPhase/flux/blob/c114bacec9d1ea2030b55a5a846fbe0547bf8d20/docs/design/references/studio-v11.1/inspection/contract-review.md#adaptive-workspace-extension--f-015).
 This does not replace independent implementation or eligible GitHub review.
 
 ## Primary guidance checked 2026-09-30

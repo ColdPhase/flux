@@ -1,41 +1,30 @@
 # Design work in Flux
 
-**Latest direction, 2026-09-30:** [F-016 MCP co-work](../product/mcp-cowork.md)
-and [F-017 Studio 11.6](studio-v11.6.md) supersede earlier appearance targets.
-Use the [seven unchanged inputs and fresh evidence](references/studio-v11.6/README.md).
-Preserve F-015 responsiveness, #133 explicit acknowledgment and useful production
-behavior. #136 integrates the redesign; active branch owners/reviews remain.
+**Current reference: Studio 11.6 (F-017, 2026-09-30).** Start with
+[the current contract](studio-v11.6.md) and
+[the unchanged seven-file package and 11.6 screenshots](references/studio-v11.6/README.md).
+This is the full appearance direction. Apply it with
+[F-016 local MCP co-work](../product/mcp-cowork.md) and
+[F-015 adaptive workspaces](adaptive-workspaces.md). #136 owns integration,
+#151 adaptation, #148 final themes, #149 map drafts and #155 motion/presence.
 
+Read foundation sections 10, 17 D1–D4 and 21 in
+[FLUX-FOUNDATION.md](../product/FLUX-FOUNDATION.md). Preserve #44 creative
+journeys, #57/#68 embedded helper, #59 live work, current access and accepted
+architecture. #133's explicit acknowledgment and #134's personal map outline
+remain stronger production behavior. A reference import does not deliver UI.
 
-Read foundation sections 10, 17 D1–D4, and 21 in
-[FLUX-FOUNDATION.md](../product/FLUX-FOUNDATION.md). The later **F-013 / Studio v11**
-founder direction, 2026-09-29, is now the primary visual and UX baseline:
-[current direction](direction.md), [refinement contract](studio-v11-refinement.md),
-and [preserved reference package](references/studio-v11/README.md). Compare real
-screens at the same viewport/zoom, preserve useful repository improvements and
-refine remaining friction; do not restart design exploration.
-
-**Latest intake, 2026-09-30:** [Studio 11.1 reconciliation](studio-v11.1-refinement.md)
-and [unchanged reference/audit](references/studio-v11.1/README.md) extend F-013
-under F-014 / #147. Preserve the accepted #133 baseline and active #134/#135
-contracts; #148 carries the reviewed Mint/Sky/Copper and separate-theme-choice
-amendment, #149 draft-before-save thoughts, and #136 integrated continuity/phone
-work. Further focused improvements are welcome; attached test claims are not
-production evidence.
-
-The earlier C direction remains the implementation starting point and
-[historical evidence](direction-c-2026-09-27.md). Its mandatory rail/indigo choices
-and the v8-only baseline yield to v11. A/B remain rejected. The [#44 journeys](https://github.com/ColdPhase/flux/issues/44),
-#57 personal AI, #59 live work, accepted architecture and mobile requirements
-continue to govern actual behavior. A compact messenger shell or static task
-screen alone cannot fulfill those connected creative journeys.
+[Design history](reference-history.md) records earlier C/v8/v11/11.1 inputs.
+They are not alternative current targets. Do not restart direction discovery or
+use older PNGs as the final appearance baseline. Compare realistic complete
+11.6-aligned views at matched viewport/zoom and refine specific visible friction.
 
 ## Live collaboration reference
 
 The founder's [live collaboration requirements](../product/live-collaboration.md)
 add contextual human audio/video/screen sessions to existing work. The supplied
 [interactive reference and inspection](references/live/README.md) illustrate
-join, show/follow, quiet/return and durable outcomes. Preserve the current v11
+join, show/follow, quiet/return and durable outcomes. Preserve the current Studio 11.6
 direction, personal-agent ownership and compact working surfaces while designing
 this capability. The reference is simulated; it is not evidence of working media.
 

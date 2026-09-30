@@ -23,16 +23,10 @@ Status: **agents decide and proceed**. Read the complete
 [foundation](../FLUX-FOUNDATION.md) and the later [founder delegation](../autonomy.md).
 There is no founder acceptance step for product, stack, UX or implementation scope.
 The later [creative collaboration direction](https://github.com/ColdPhase/flux/issues/44)
-qualifies the initial product and design questions. Evaluate direction C against
-the `flux-ux-v8.html` baseline and the three integrated creative scenarios; keep
-the original foundation and accepted decisions as history.
-
-Latest design input: [F-014 / Studio 11.1](../../design/studio-v11.1-refinement.md),
-2026-09-30, extends the F-013/v11 direction; the earlier v8/C comparison above is
-historical. #147 preserves and reviews the input; #148/#149 extend current
-appearance/draft work in milestone 2 and #136 retains integrated phone UX. Do not
-restart direction discovery or replace accepted data/access contracts with demo
-behavior.
+governs the three integrated creative scenarios. The current appearance target is
+[Studio 11.6](../../design/studio-v11.6.md); use its source/screenshots for work.
+F-013/v11 and F-014/11.1 remain [historical](../../design/reference-history.md).
+Do not restart visual exploration or copy prototype access/storage internals.
 
 The later [F-015 adaptive-workspace requirement](../../design/adaptive-workspaces.md)
 adds smart small-phone through 4K/ultrawide layouts and familiar cross-device
@@ -48,7 +42,7 @@ the tasks or renegotiate unchanged criteria after a restart.
 
 - Select the first segment/persona and defensible USP hypotheses using evidence.
 - Establish product vocabulary and integrated human/agent journeys.
-- Compare realistic UI directions and select one through independent visual review.
+- Apply Studio 11.6 and independently review focused improvements on realistic UI.
 - Select architecture, stack, access/data boundaries and extension contracts.
   Start with a concise decision sufficient for the next real coding tasks.
 - Determine feasible own-AI paths, preserving uncertainty and provider constraints.

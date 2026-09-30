@@ -1,17 +1,11 @@
-# Flux Studio v11 direction and focused UX refinements
+# Historical Studio v11 refinement record — superseded visual target
 
-**Latest direction, 2026-09-30:** [F-016 MCP co-work](../product/mcp-cowork.md)
-and [F-017 Studio 11.6](studio-v11.6.md) supersede earlier appearance targets.
-Use the [seven unchanged inputs and fresh evidence](references/studio-v11.6/README.md).
-Preserve F-015 responsiveness, #133 explicit acknowledgment and useful production
-behavior. #136 integrates the redesign; active branch owners/reviews remain.
-
-
-**Latest refinement:** [Studio 11.1 / F-014](studio-v11.1-refinement.md), received
-2026-09-30, adds the next appearance/draft targets and reconciles active work.
-This earlier record preserves the original F-013 decision and evidence; the
-latest reconciliation takes precedence for the final target. #133 has since
-merged via #140; #134/#135 remain active and #136 owns integration.
+**History only.** The current appearance and UX contract is
+[Studio 11.6 / F-017](studio-v11.6.md), with its
+[current source/screenshots](references/studio-v11.6/README.md). The dated record
+below explains earlier choices and preserves their evidence; its selected
+Mint/Iris/Sky palette and old screenshots are not the final implementation target.
+Useful production behavior survives under the current contract and #148/#149.
 
 **Date:** 2026-09-29. **Founder direction:** F-013, [#132](https://github.com/ColdPhase/flux/issues/132). **Implementation status:** the reference/audit and [runnable refined preview](references/studio-v11/preview/README.md) are a shared design deliverable; [#133–#136](#implementation-contracts) are proposed application work. The real application still has its merged C-based components and behavior. This document does not declare those follow-ups implemented or release-accepted.
 

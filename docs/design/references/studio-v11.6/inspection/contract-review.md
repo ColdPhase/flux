@@ -32,3 +32,21 @@ This is not implementation verification or eligible GitHub PR approval. Final
 protected merge still requires an eligible independent review of PR #150's
 pushed head and its required checks. No claims of working Codex co-work, live
 GitHub binding, typing, redesigned production UI or device acceptance are made.
+
+## User-requested correction audit
+
+The same independent read-only reviewer compared the full user requirement
+against checked-in contracts and live issue bodies after the user reported old
+PNGs. Core functional scope had issue coverage. Accepted corrections: remove
+PR-added 11.1 imagery/package from the final tree while retaining immutable
+history; rewrite conflicting current references; make role-swap/handoff/source
+download explicit; correct #68 to accepted O-008; preserve standing grants and
+historical authorship; and address tall-screen stream/composer separation.
+
+The reviewer requested three final pointer/status corrections: O-003 current
+target → F-017/11.6; product README completed #52 versus planned #152/#153 and
+historical v8; #151 current ADAPT link → the final correction SHA, retaining the
+old planning-review link as history. These are incorporated in the corrected
+records. No further requirement or authority gap was found. See the
+[request-by-request audit](request-audit.md). This remains content/planning review,
+not a production pass or eligible GitHub approval.

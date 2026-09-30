@@ -70,6 +70,11 @@ DMs, another project's content or the owner's private memory implicitly. Apply
 current ACLs to identifiers, snippets, counts, caches, artifacts and stream replay.
 External content cannot change a grant or trusted policy.
 
+The handoff UI can open the original source message and download a versioned
+reference packet after current authorization, without credentials/active grants
+or hidden source metadata. Swapping executor/reviewer is an assignment choice,
+never a profile switch or rewriting previous artifact authorship.
+
 An atomic claim gives one active author for a work unit and a fencing generation.
 Review is a separate work unit. Checkpoints contain observable progress, sources,
 tests and next action, not hidden reasoning or a copied model transcript. Targeted
