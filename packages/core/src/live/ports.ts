@@ -34,6 +34,11 @@ export interface LiveRepository {
    */
   withAdmission<T>(principal: Principal, sessionId: string, issue: (session: LiveSessionRecord) => Promise<T>,
     admission?: LiveAdmissionRequest): Promise<T>;
+  /**
+   * Leave: revokes this auth session's admissions to the live session and returns their ids,
+   * including ones already revoked, so a repeated leave can confirm they are gone.
+   */
+  endAdmissions(sessionId: string, principal: Principal, authSessionId: string): Promise<string[]>;
   /** Idempotent on (session, creator, clientEventId); a changed ref must conflict. */
   present(sessionId: string, principal: Principal, ref: LivePresentationRef, clientEventId: string): Promise<void>;
   /** One transaction rechecks project, anchor, session generation and every returned source. */
@@ -54,8 +59,11 @@ export interface LiveMedia {
   participants(roomId: string): Promise<{ userId: string; joinedAt: string }[]>;
   /** Raw SFU occupancy, including identities/statuses hidden from user-visible presence. */
   occupancy(roomId: string): Promise<number>;
-  /** Disconnects a participant; generation rollover still handles old tokens. */
-  removeParticipant(roomId: string, userId: string): Promise<void>;
+  /**
+   * Disconnects exactly the participants of these admissions (one SFU identity each, #128);
+   * the person's other sessions stay. Absent participants count as done.
+   */
+  removeAdmissions(roomId: string, userId: string, admissionIds: readonly string[]): Promise<void>;
   /** Deletes a generation room so stale self-hosted tokens cannot rejoin it. */
   deleteRoom(roomId: string): Promise<void>;
 }

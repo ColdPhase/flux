@@ -48,7 +48,7 @@ test('wiki doc is a project-bound live anchor; non-doc, foreign and hidden ancho
     async grant(roomId) { return { token: `jwt:${roomId}`, expiresAt: new Date(Date.now() + 90_000) }; },
     async participants() { return []; },
     async occupancy() { return 0; },
-    async removeParticipant() {},
+    async removeAdmissions() {},
     async deleteRoom(roomId) { rooms.delete(roomId); },
   };
   const store = liveSessionStore(db);

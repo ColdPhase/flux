@@ -189,6 +189,15 @@ export function liveSessionStore(db: Database): LiveRepository {
       });
     },
 
+    async endAdmissions(sessionId, principal, authSessionId) {
+      const admissions = schema.liveAdmissions;
+      const rows = await db.update(admissions).set({ revokedAt: sql`coalesce(${admissions.revokedAt}, now())` })
+        .where(and(eq(admissions.liveSessionId, sessionId), eq(admissions.userId, principal.id),
+          eq(admissions.authSessionId, authSessionId)))
+        .returning({ id: admissions.id });
+      return rows.map((row) => row.id);
+    },
+
     async present(sessionId, principal, ref, clientEventId) {
       await db.transaction(async (tx) => {
         const [located] = await tx.select({ projectId: sessions.projectId }).from(sessions).where(eq(sessions.id, sessionId));

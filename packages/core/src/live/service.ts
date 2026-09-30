@@ -76,13 +76,21 @@ export function liveUseCases(ports: LivePorts) {
       });
     },
 
-    async leave(principal: Principal, sessionId: string): Promise<void> {
+    /**
+     * Leave ends only the caller's current authentication session in this room (#128): its
+     * admissions are revoked and their participants disconnected. The same person's other
+     * tab or device stays connected; there is no all-device leave.
+     */
+    async leave(principal: Principal, sessionId: string, authSessionId: string): Promise<void> {
       human(principal);
+      if (typeof authSessionId !== 'string' || !authSessionId)
+        throw new RuleViolationError('Live media needs a signed-in session', 'HUMAN_SESSION_REQUIRED');
       const session = await ports.sessions.find(uuid(sessionId, 'sessionId'));
       if (!session) return;
       if (session.state === 'ending' || session.state === 'ended') return;
       // A person may disconnect their own media even after project access was revoked.
-      await ports.media.removeParticipant(session.roomId, principal.id);
+      const admissions = await ports.sessions.endAdmissions(session.id, principal, authSessionId);
+      if (admissions.length) await ports.media.removeAdmissions(session.roomId, principal.id, admissions);
     },
 
     async present(principal: Principal, sessionId: string, ref: LivePresentationRef, clientEventId: string): Promise<void> {

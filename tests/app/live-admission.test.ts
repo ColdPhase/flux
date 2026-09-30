@@ -99,14 +99,14 @@ function roomMedia(state: Sfu, real: LiveMediaAdapter): LiveMediaAdapter {
     async ensureRoom(roomId) { if (!state.rooms.has(roomId)) state.rooms.set(roomId, []); },
     async requireRoom() {},
     grant: real.grant,
-    async participants() { return []; },
+    participants: real.participants,
     async participantAdmissions(roomId) { return [...(state.rooms.get(roomId) ?? [])]; },
     async revokeParticipant(roomId, identity) {
       state.calls.push(`drop:${roomId}:${identity}`, `remove:${roomId}:${identity}`);
       state.rooms.set(roomId, (state.rooms.get(roomId) ?? []).filter((participant) => participant.identity !== identity));
     },
     async occupancy(roomId) { return state.rooms.get(roomId)?.length ?? 0; },
-    async removeParticipant() {},
+    removeAdmissions: real.removeAdmissions,
     async deleteRoom(roomId) { state.rooms.delete(roomId); },
   };
 }
@@ -481,11 +481,13 @@ describe('live media admission (#128)', () => {
     assert.deepEqual(sfu.service.get(roomId)!.map((participant) => participant.identity).sort(),
       [participantIdentity(ada, b!), participantIdentity(ben, c!), 'someone-else'].sort(), 'an absent identity counts as done');
 
-    // A person's own leave removes every identity of theirs, and nobody else.
+    // Leave removes exactly the named admissions: the person's other session stays.
     sfu.service.get(roomId)!.push({ identity: participantIdentity(ada, a!), metadata: a!, state: 1, joinedAt: 120 });
-    await realMedia.removeParticipant(roomId, ada);
-    assert.deepEqual(sfu.service.get(roomId)!.map((participant) => participant.identity).sort(), [participantIdentity(ben, c!), 'someone-else'].sort());
-    await realMedia.removeParticipant(roomId, ada);
+    await realMedia.removeAdmissions(roomId, ada, [a!]);
+    assert.deepEqual(sfu.service.get(roomId)!.map((participant) => participant.identity).sort(),
+      [participantIdentity(ada, b!), participantIdentity(ben, c!), 'someone-else'].sort());
+    await realMedia.removeAdmissions(roomId, ada, [a!]);
+    assert.equal((await realMedia.participants(roomId)).filter((person) => person.userId === ada).length, 1);
   });
 
   test('a held revocation never removes a newer session of the same person that joined the same room meanwhile', async () => {
@@ -525,5 +527,39 @@ describe('live media admission (#128)', () => {
       // The next path starts again from a revoked laptop participant beside the phone.
       sfu.service.set(s.session.roomId, [{ identity: laptopAt.sub, metadata: laptopAt.metadata!, state: 2, joinedAt: 1 }]);
     }
+  });
+
+  test('two sessions of one person in one room: Leave on one ends only that one, presence shows one person', async () => {
+    const s = await scene('gate-leave-one');
+    const laptop = await signedIn(s.member);
+    const phone = await signedIn(s.member);
+    const laptopGrant = await s.join(laptop.browser);
+    const phoneGrant = await s.join(phone.browser);
+    const laptopSocket = await opened(signal(laptopGrant.token, laptop.browser));
+    const phoneSocket = await opened(signal(phoneGrant.token, phone.browser));
+    const [laptopAt, phoneAt] = [claims(laptopGrant.token), claims(phoneGrant.token)];
+    sfu.service.set(s.session.roomId, [
+      { identity: laptopAt.sub, metadata: laptopAt.metadata!, state: 2, joinedAt: 1 },
+      { identity: phoneAt.sub, metadata: phoneAt.metadata!, state: 2, joinedAt: 2 }]);
+    const present = async () => ((expectStatus(await phone.browser.request('GET', `/api/v1/live-sessions/${s.session.id}`), 200)) as
+      { participants: { userId: string }[] }).participants;
+    assert.deepEqual((await present()).map((person) => person.userId), [s.member.id], 'two sessions, one person');
+
+    sfu.serviceCalls.length = 0;
+    assert.equal((await laptop.browser.request('POST', `/api/v1/live-sessions/${s.session.id}/leave`)).status, 204);
+    assert.deepEqual(sfu.serviceCalls, [`RemoveParticipant:${laptopAt.sub}`], 'only this session\'s participant');
+    assert.deepEqual(sfu.service.get(s.session.roomId)!.map((participant) => participant.identity), [phoneAt.sub]);
+    assert.ok((await admissionRow(laptopAt.metadata!))?.revoked_at, 'the left admission cannot reconnect');
+    assert.equal((await admissionRow(phoneAt.metadata!))?.revoked_at, null);
+    assert.equal((await laptop.browser.request('POST', `/api/v1/live-sessions/${s.session.id}/leave`)).status, 204, 'repeated leave');
+    assert.deepEqual((await present()).map((person) => person.userId), [s.member.id]);
+    await refused(signal(laptopGrant.token, laptop.browser));
+    assert.equal(phoneSocket.readyState, WebSocket.OPEN, 'the other device stays connected');
+    (await opened(signal(phoneGrant.token, phone.browser))).close();
+    // Leaving again from the laptop means a new join: a fresh admission of the same session.
+    const again = await s.join(laptop.browser);
+    (await opened(signal(again.token, laptop.browser))).close();
+    laptopSocket.close();
+    phoneSocket.close();
   });
 });

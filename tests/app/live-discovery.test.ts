@@ -53,7 +53,7 @@ test('live discovery pages only currently authorized project anchors and reports
       throw new Error('SFU is unavailable');
     },
     async occupancy() { return 0; },
-    async removeParticipant() {},
+    async removeAdmissions() {},
     async deleteRoom() {},
   };
   const reader = { kind: 'human' as const, id: viewer.id };

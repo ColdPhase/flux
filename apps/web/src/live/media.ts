@@ -51,7 +51,14 @@ export interface MediaPerson {
 export interface MediaSnapshot {
   connection: ConnectionState;
   endReason: EndReason | null;
+  /** One entry per person, however many sessions (tabs, devices) they have in the room. */
   people: MediaPerson[];
+  /**
+   * Every published screen and camera, one per track: two devices of one person sharing
+   * two screens are two choices. Remote screens only; cameras include your own.
+   */
+  screens: VideoRef[];
+  cameras: VideoRef[];
   devices: Record<DeviceKind, DeviceStatus>;
   /** The browser allows audio to play; false until a gesture unlocks it. */
   canPlayAudio: boolean;
@@ -323,7 +330,7 @@ export class LiveMediaConnection {
       const seconds = (now - before.at) / 1000;
       return { kbps: ((bytes - before.bytes) * 8) / 1000 / seconds, fps: (frames - before.frames) / seconds };
     };
-    rows.push({ who: 'Connection', what: this.connection === 'connected' ? 'Connected' : this.connection, values: [`${this.room.remoteParticipants.size + 1} in the room`], warning: this.connection === 'reconnecting' ? 'Reconnecting to the media server' : null });
+    rows.push({ who: 'Connection', what: this.connection === 'connected' ? 'Connected' : this.connection, values: [`${this.snapshot.people.length || 1} ${this.snapshot.people.length === 1 ? 'person' : 'people'} in the room`], warning: this.connection === 'reconnecting' ? 'Reconnecting to the media server' : null });
     const local = this.room.localParticipant;
     for (const publication of local.trackPublications.values()) {
       const track = publication.track;
@@ -344,7 +351,8 @@ export class LiveMediaConnection {
     }
     for (const participant of this.room.remoteParticipants.values()) {
       const userId = userIdOf(participant.identity);
-      const who = userId ? names(userId) : 'Unknown participant';
+      // Your own other tab or device is you, not an unknown participant.
+      const who = !userId ? 'Unknown participant' : userId === userIdOf(local.identity) ? 'You (another device)' : names(userId);
       for (const publication of participant.trackPublications.values()) {
         const track = publication.track;
         if (track instanceof RemoteVideoTrack) {
@@ -488,7 +496,18 @@ export class LiveMediaConnection {
 
   private build(): MediaSnapshot {
     const people: MediaPerson[] = [];
+    const screens: VideoRef[] = [];
+    const cameras: VideoRef[] = [];
     if (this.connection === 'connected' || this.connection === 'reconnecting') {
+      const local = this.room.localParticipant;
+      for (const participant of [local, ...this.room.remoteParticipants.values()]) {
+        if (!userIdOf(participant.identity)) continue;
+        const mine = participant === local;
+        const camera = this.video(participant, participant.getTrackPublication(Track.Source.Camera), 'camera', mine);
+        if (camera) cameras.push(camera);
+        const screen = mine ? null : this.video(participant, participant.getTrackPublication(Track.Source.ScreenShare), 'screen', false);
+        if (screen) screens.push(screen);
+      }
       const me = this.person(this.room.localParticipant, true);
       if (me) people.push(me);
       // Stable order: by join time, so tiles and faces never reshuffle while someone speaks.
@@ -510,6 +529,8 @@ export class LiveMediaConnection {
       connection: this.connection,
       endReason: this.endReason,
       people,
+      screens,
+      cameras,
       devices: this.devices,
       canPlayAudio: this.room.canPlaybackAudio,
       hearing: this.hearing,

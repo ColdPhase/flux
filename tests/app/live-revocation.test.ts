@@ -40,7 +40,7 @@ function mediaFixture() {
     },
     async participants() { return []; },
     async occupancy() { return 0; },
-    async removeParticipant() {},
+    async removeAdmissions() {},
     async deleteRoom(roomId) {
       deleteCalls += 1;
       if (deleteCalls === failOnCall) throw new Error('SFU unavailable');

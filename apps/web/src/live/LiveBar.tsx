@@ -71,8 +71,9 @@ export function LiveBar() {
   const connecting = live.phase === 'starting' || live.phase === 'joining';
   const reconnecting = live.phase === 'rejoining' || media?.connection === 'reconnecting';
   const others = people.filter((person) => !person.local);
-  const screens = people.filter((person) => person.screen && !person.local);
-  const cameras = people.filter((person) => person.camera);
+  // Individual tracks: a person sharing from two devices shows two screens (#128).
+  const screens = media?.screens ?? [];
+  const cameras = media?.cameras ?? [];
   const me = people.find((person) => person.local);
   const soundBlocked = !!media && media.connection === 'connected' && !media.canPlayAudio && !live.quiet && others.some((person) => person.mic);
   const shown = live.shown;
@@ -119,7 +120,7 @@ export function LiveBar() {
                   data-tip={`Show “${presentable.label}” to everyone here`}>Show this</Button>
               ) : null}
               {!phone && screens.length ? (
-                <Button variant="quiet" icon="screen" aria-pressed={live.stage.open} onClick={() => (live.stage.open ? live.closeStage() : live.openStage(screens[0]!.userId))}>
+                <Button variant="quiet" icon="screen" aria-pressed={live.stage.open} onClick={() => (live.stage.open ? live.closeStage() : live.openStage(screens[0]!.key))}>
                   {screens.length === 1 ? `${live.nameOf(screens[0]!.userId).split(' ')[0]}’s screen` : `${screens.length} screens`}
                 </Button>
               ) : !phone && cameras.length && !screens.length ? (
@@ -145,8 +146,8 @@ export function LiveBar() {
       {phone && (screens.length || cameras.length) ? (
         <div className="lv-line">
           <Icon name={screens.length ? 'screen' : 'video'} size={14} />
-          <span className="lv-line__text">{screens.length ? `${namesLine(screens.map((p) => p.userId), live.nameOf, live.meId)} ${screens.length === 1 ? 'is' : 'are'} sharing a screen` : 'Cameras are on'}</span>
-          <Button variant="quiet" onClick={() => live.openStage(screens[0]?.userId ?? null)}>View</Button>
+          <span className="lv-line__text">{screens.length ? `${namesLine([...new Set(screens.map((p) => p.userId))], live.nameOf, live.meId)} ${screens.length === 1 ? 'is' : 'are'} sharing a screen` : 'Cameras are on'}</span>
+          <Button variant="quiet" onClick={() => live.openStage(screens[0]?.key ?? null)}>View</Button>
         </div>
       ) : null}
       {shown && (shown.fresh || live.following) ? (

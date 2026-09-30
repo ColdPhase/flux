@@ -23,9 +23,11 @@ restrictive-network acceptance remain in [#63](https://github.com/ColdPhase/flux
   A wiki doc anchor uses the existing project material ID only when its kind is
   `doc`; every admission and recipient read checks current project access and
   the anchor again. A regular project material cannot impersonate a doc.
-- `POST /api/v1/live-sessions/:id/leave` disconnects that human from media: every
-  participant of theirs in the room, one per session (#128). A repeated leave returns
-  `204` after the SFU confirms the person is absent.
+- `POST /api/v1/live-sessions/:id/leave` disconnects this device: it revokes the admissions
+  of the caller's **current** authentication session (the request's cookie session) to that
+  live session and removes exactly their participants (#128). The same person's other tab
+  or device stays connected; there is no all-device leave. A repeated leave returns `204`
+  after the SFU confirms those participants are absent; joining again issues a new admission.
   Device capture and playback remain client actions; receiving a grant never
   enables a microphone, camera or screen by itself.
 - Starts are capped at eight non-ended sessions per project and three per
@@ -108,9 +110,13 @@ its own session's end. (Until the #139 review, the identity was one per person, 
 removal addressed by person could disconnect a newer session that had taken over that
 identity while the removal was pending; the mapping was changed on 2026-09-30, recorded in
 [#128](https://github.com/ColdPhase/flux/issues/128).) Presence (`participants` in session
-responses and discovery, and the browser's faces) maps identity to person and shows each
-person once; raw occupancy for room retirement still counts participants. A person's own
-leave removes every identity of theirs in the room.
+responses and discovery, and the browser's faces, roster, speaking and people count) maps
+identity to person and shows each person once, and the person's other device is labelled
+as theirs in diagnostics rather than unknown. Tracks stay individual: two screens shared
+from two devices of one person are two choices on the stage, and every camera is its own
+tile. Raw occupancy for room retirement still counts participants. Leave (above) ends only
+the current session's participants; project-access revocation still retires the whole
+room (reviewer amendment accepted on #128, 2026-09-30).
 
 **Signaling gate.** The API serves `/media/rtc`, `/media/rtc/v1` (WebSocket) and
 `/media/rtc/validate`, `/media/rtc/v1/validate` (HTTP), the only signaling paths of the
@@ -171,7 +177,9 @@ changes the ingress plan for [#63](https://github.com/ColdPhase/flux/issues/63).
 LISTEN), the live use cases and the gate in process against a recording WebSocket SFU:
 binding, second-session/other-person/no-cookie/forged/expired/wrong-room refusals with no
 SFU connection, header stripping, validate, resume with a refreshed token, lost project
-access, a grant whose `sub` is another admission's identity, sign-out, session revocation
+access, a grant whose `sub` is another admission's identity, two sessions of one person
+in one room where Leave on one removes only its participant and presence shows one person,
+sign-out, session revocation
 from another device, password reset, and reconciliation. It also drives the production
 LiveKit adapter against a fake room service (presence per person, raw occupancy, exact-
 identity revocation, leave removing every identity of the person) and holds the production
@@ -185,7 +193,9 @@ original or refreshed token and the signed-out cookie, another session's cookie 
 `401` and zero frames; the client's own reconnects after sign-out receive no frame; a direct
 connection to `livekit:7880` from the browser network is refused (`ECONNREFUSED`); the other
 person, the same person's session in another room and a third session of theirs publishing
-in the same room stay connected; the other session can
+in the same room stay connected; Leave from that third session then ends only it while the
+phone session in the same room keeps publishing, and the room still lists the person once;
+the other session can
 then join; session revocation from another device ends that device's media; ordinary resume
 and full reconnect pass; a burst of 21 joins gets 20 × `200` and `429` with `Retry-After`;
 saved work remains readable. Not covered: real devices, TURN/TLS, public ingress and

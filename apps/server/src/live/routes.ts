@@ -54,7 +54,9 @@ export async function liveRoutes(app: FastifyInstance, { ports, sessions, lifecy
   });
 
   app.post<{ Params: { sessionId: string } }>(liveLeavePath(':sessionId'), async (request, reply) => {
-    await live.leave(await principal(request), request.params.sessionId);
+    // Only this device's session leaves; the person's other sessions stay connected (#128).
+    const { principal: caller, sessionId: authSessionId } = await sessions.requirePrincipal(request);
+    await live.leave(caller, request.params.sessionId, authSessionId);
     await lifecycle?.reconcile(request.params.sessionId);
     return reply.code(204).send();
   });

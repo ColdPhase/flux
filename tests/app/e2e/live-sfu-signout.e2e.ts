@@ -206,6 +206,21 @@ test('sign-out ends the signed-out session media, refuses its grants at the gate
     await publishAudio(phonePageHere);
     await eventAfter(ownerPage, `track:${identity(phoneHere)}`, ownerBeforePhone, 15_000);
 
+    // Two sessions of one person publish in one room; presence shows the person once.
+    const members = async () => ((expectStatus(await owner.browser.request('GET', `/api/v1/live-sessions/${room.id}`), 200) as LiveSession)
+      .participants ?? []).filter((participant) => participant.userId === member.id).length;
+    assert.equal(await members(), 1, 'the tablet and phone sessions are one person');
+    // Leave on the tablet ends only the tablet: the phone session in the same room stays.
+    const ownerBeforeLeave = (await events(ownerPage)).length;
+    expectStatus(await tablet.browser.request('POST', `/api/v1/live-sessions/${room.id}/leave`), 204);
+    await tabletPage.waitForFunction(() => (window as MediaPage).fluxRoom?.state === 'disconnected', undefined, { timeout: 30_000 });
+    await eventAfter(ownerPage, `left:${identity(tabletGrant)}`, ownerBeforeLeave);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    assert.equal(await state(phonePageHere), 'connected', 'Leave on one device keeps the other');
+    assert.equal((await events(ownerPage)).slice(ownerBeforeLeave).includes(`left:${identity(phoneHere)}`), false);
+    assert.equal(await members(), 1);
+    expectStatus(await tablet.browser.request('POST', `/api/v1/live-sessions/${room.id}/leave`), 204);
+
     // Session revocation from another device ends that device's media the same way.
     const phoneSockets = recordSockets(phonePage);
     expectStatus(await phone.browser.request('GET', '/api/v1/me'), 200);
@@ -236,5 +251,5 @@ test('sign-out ends the signed-out session media, refuses its grants at the gate
     assert.equal((expectStatus(await owner.browser.request('GET', `/api/v1/work/${work.id}`), 200) as { title: string }).title, work.title);
     console.log(JSON.stringify({ room: roomName(ownerGrant.token), directSfu: direct, receiverSawLeaveMs, senderDisconnectedMs,
       signedOutReconnectSockets: afterSignOut.length, replayedPaths: replays, originalRefused, refreshedRefused,
-      otherSessionAndPersonConnected: true, sameRoomSessionConnected: true, burst: statuses.join(','), retryAfter, workSurvived: work.id }));
+      otherSessionAndPersonConnected: true, sameRoomSessionConnected: true, leaveEndedOnlyThisDevice: true, burst: statuses.join(','), retryAfter, workSurvived: work.id }));
   });

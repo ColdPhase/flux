@@ -50,8 +50,6 @@ export interface LiveMediaAdapter extends LiveMedia {
   participants(roomId: string): Promise<{ userId: string; joinedAt: string }[]>;
   /** Every Flux participant the SFU still holds in the room, whatever its connection state. */
   participantAdmissions(roomId: string): Promise<ParticipantAdmission[]>;
-  /** The person's own leave: disconnects every participant (session) of theirs in the room. */
-  removeParticipant(roomId: string, userId: string): Promise<void>;
   /**
    * Drops every publish/subscribe/data permission of exactly `identity`, then disconnects it.
    * The permission drop comes first so a token the SFU refreshes meanwhile carries none (#128).
@@ -215,12 +213,13 @@ export function createLiveMedia(config: LiveMediaConfig): LiveMediaAdapter {
         throw error;
       }
     },
-    async removeParticipant(roomId, userId) {
+    async removeAdmissions(roomId, userId, admissionIds) {
       const name = room(roomId);
-      const mine = (participants: { identity: string }[]) =>
-        participants.filter((participant) => parseIdentity(participant.identity)?.userId === userId).map((participant) => participant.identity);
-      let identities: string[];
-      try { identities = mine(await rooms.listParticipants(name)); }
+      const identities = new Set(admissionIds.map((id) => participantIdentity(userId, id)));
+      const present = (participants: { identity: string }[]) =>
+        participants.map((participant) => participant.identity).filter((identity) => identities.has(identity));
+      let targets: string[];
+      try { targets = present(await rooms.listParticipants(name)); }
       catch (error) {
         // A repeated leave is complete when the room is confirmed absent. An
         // unavailable SFU is still an error, not proof of absence.
@@ -229,11 +228,11 @@ export function createLiveMedia(config: LiveMediaConfig): LiveMediaAdapter {
         throw error;
       }
       let failure: unknown;
-      for (const identity of identities) {
+      for (const identity of targets) {
         try { await rooms.removeParticipant(name, identity); } catch (error) { failure = error; }
       }
       if (failure === undefined) return;
-      try { if (!mine(await rooms.listParticipants(name)).some((identity) => identities.includes(identity))) return; }
+      try { if (!present(await rooms.listParticipants(name)).length) return; }
       catch {
         const existing = await rooms.listRooms([name]);
         if (!existing.some((candidate) => candidate.name === name)) return;
