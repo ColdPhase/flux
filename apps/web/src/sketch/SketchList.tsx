@@ -19,6 +19,7 @@ export interface SketchListProps {
   onPick(id: string, additive: boolean): void;
   onToggle(id: string): void;
   onEdit(id: string): void;
+  onEditText(text: string): void;
   onFinishEdit(text: string | null): void;
   onAdd(parentId: string | null): void;
   onRemove(ids: string[]): void;
@@ -127,7 +128,7 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
             <li key={thought.id} data-id={thought.id} data-depth={row.depth} data-selected={selected ? 'true' : undefined} style={{ '--outline-depth': Math.min(row.depth, 8) } as CSSProperties}>
               <div className="sk-outline-row">
                 {row.children.length ? <button type="button" className="sk-outline-toggle" aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${quote(thought.text)}`} aria-expanded={!collapsed} onClick={() => { view.toggle(thought.id); focus(thought.id); }}><Icon name={collapsed ? 'chevron-right' : 'chevron-down'} size={14} /></button> : <span className="sk-outline-leaf" aria-hidden="true" />}
-                {editing?.id === thought.id ? <ThoughtEditor className="sk-li-edit" initial={editing.initial ?? thought.text} onDone={on.onFinishEdit} /> : <button type="button" className="sk-li-t" data-id={thought.id} aria-pressed={selected}
+                {editing?.id === thought.id && canWrite ? <ThoughtEditor key={`${editing.id}:${editing.attempt}`} className="sk-li-edit" initial={editing.initial} disabled={editing.saving} onChange={on.onEditText} onDone={on.onFinishEdit} /> : <button type="button" className="sk-li-t" data-id={thought.id} aria-pressed={selected}
                   onClick={(event) => on.onPick(thought.id, event.shiftKey || event.metaKey || event.ctrlKey)} onFocus={() => { lastFocus.current = { id: thought.id, index }; }} onKeyDown={(event) => keyDown(event, row, index)}>{thought.text}{selected ? <span className="sk-outline-selected" aria-hidden="true"><Icon name="check" size={12} /></span> : null}</button>}
               </div>
               <div className="sk-outline-body">

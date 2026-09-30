@@ -217,3 +217,4 @@
 .sk-draft textarea { width: 100%; min-height: 64px; resize: vertical; }
 .sk-draft__actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); }
 .sk-draft__actions span { color: var(--text-3); font-size: var(--fs-xs); }
+.sk-edit-controls { display: flex; gap: var(--s-2); margin: 0 var(--s-4) var(--s-3); }

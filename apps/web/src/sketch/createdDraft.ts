@@ -36,8 +36,13 @@ export function forgetThoughtDrafts() {
 }
 
 /** One private capture for this account and actual authorized map audience. */
-export function useThoughtDraft(personId: string, sketch: SketchDetail | null) {
-  const key = sketch ? `${PREFIX}${personId}:${sketch.workspaceId}:${sketch.scope}:${sketch.projectId ?? sketch.dmId ?? personId}:${sketch.id}` : null;
+export function useThoughtDraft(personId: string, sketchId: string, sketch: SketchDetail | null) {
+  // A reload after revocation cannot fetch the old audience. Only this person's own private
+  // text may still be recovered; no shared title or content is stored in the draft.
+  const privateKeys = new Set(memory.keys());
+  try { for (const item of Object.keys(sessionStorage)) privateKeys.add(item); } catch { /* memory fallback */ }
+  const recoveredKey = [...privateKeys].find((item) => item.startsWith(`${PREFIX}${personId}:`) && item.endsWith(`:${sketchId}`)) ?? null;
+  const key = sketch ? `${PREFIX}${personId}:${sketch.workspaceId}:${sketch.scope}:${sketch.projectId ?? sketch.dmId ?? personId}:${sketch.id}` : recoveredKey;
   const [loaded, setLoaded] = useState(() => ({ key, draft: read(key) }));
   let current = loaded;
   if (loaded.key !== key) {

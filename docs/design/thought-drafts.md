@@ -24,7 +24,10 @@ A parent removed or access revoked is an error; it never silently becomes a root
 
 Existing thought editing remains inline. F2 and visible Edit open the same text
 editor; Enter saves, Shift+Enter is multiline, IME composition does not commit,
-and Escape retains the original. Failed/conflicting text must remain recoverable
+and Escape or visible Cancel edit retains the original. The visible Save edit
+control also works with touch. A text edit submits the version captured when the
+editor opened, even if a newer version arrives over the stream. Failed/conflicting
+text remains in the editor and must remain recoverable
 and must not force an overwrite of a newer version. Form/modal shortcuts retain
 normal scope. API/persistence tests and real two-user browser paths verify these
 states; pictures cannot certify them.
