@@ -39,7 +39,9 @@ review stay, but they serve shipping and must not replace it.
 ## Easy start and structure
 
 6. **Include what is needed and cut setup; Vue Storefront started with two
-   commands** (pp. 196–197). Flux: clone, `docker compose up`, one seed command.
+   commands** (pp. 196–197). Flux: clone, `./flux up` (source-built `docker/compose.source.yaml`), `./flux demo`.
+   The launcher creates `docker/.env` once from `docker/.env.example`; the operator
+   release path uses pull-only `docker/compose.yaml` with its matching release template.
    Measure the time to the first message and the first agent reply. Seed demo data
    so the first success is designed (p. 332).
 7. **Write short personas before coding** (pp. 195–196). Flux: reuse

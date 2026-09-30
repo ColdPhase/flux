@@ -12,9 +12,9 @@ host and never touches another Compose project or a volume that is not this chec
 | Restore a backup, here or on a new machine | `./flux restore <archive> [--migrate] [--revoke-agent-connections] [-y]` | [Backup and restore](backup-restore.md#restore) |
 | Export one project as open JSON plus files | `./flux export <project> [--as EMAIL]`, `GET /api/v1/projects/:id/export` | [Project export](export.md) |
 | Move to a newer version | `./flux upgrade [--pull] [-y]` | [Upgrade](upgrade.md) |
-| Run a published release without the source (operators) | `docker compose --env-file .env -f compose.yaml up -d --wait` | [Install from a release](install-release.md) |
+| Run a published release without the source (operators) | `docker compose --env-file docker/.env -f compose.yaml up -d --wait` | [Install from a release](install-release.md) |
 
-Every command acts on this checkout's Compose project (`FLUX_PROJECT` in `.env`) and uses the
+Every command acts on this checkout's Compose project (`FLUX_PROJECT` in `docker/.env`) and uses the
 ownership check of `./flux up`: it refuses a project that another checkout created, or one
 with data but no owner record, unless `--force-project` is given. Commands that replace data
 (`restore`, `upgrade`, like `reset` and `clean`) ask for confirmation; `-y` answers yes for
@@ -39,7 +39,7 @@ production upgrade path between releases.
   each `backups/*.tar` together with its `.sha256` to other storage (another host, encrypted
   object storage) and check it there with `sha256sum -c`.
 - **Treat archives as secrets.** An archive holds every message, note and document, password
-  hashes, session and push subscription rows, and a copy of `.env` with the database password,
+  hashes, session and push subscription rows, and a copy of `docker/.env` with the database password,
   the signing secret and the VAPID private key. It is written with mode `600`; keep it
   encrypted at rest when it leaves the machine.
 - **After restoring an older backup**, access revoked since the backup is active again,
