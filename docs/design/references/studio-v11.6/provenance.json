@@ -1,0 +1,47 @@
+{
+  "received": "2026-09-30",
+  "files": [
+    {
+      "supplied_path": "/home/hubert/Documents/UI-FLUX-FIX/AGENTS_COOP.md",
+      "file": "supplied/AGENTS_COOP.md",
+      "bytes": 4785,
+      "sha256": "cce692c0b66758e46e81fe9d8778e615085ebf8c31382b3676a3e861d7b02b09"
+    },
+    {
+      "supplied_path": "/home/hubert/Documents/UI-FLUX-FIX/FLUX_COOP_RFC.md",
+      "file": "supplied/FLUX_COOP_RFC.md",
+      "bytes": 30475,
+      "sha256": "cf1c205f42bbf1a907cceb92dfd4bb9b47cea2d518223a410c5634f09c2ff38d"
+    },
+    {
+      "supplied_path": "/home/hubert/Documents/UI-FLUX-FIX/FLUX_MCP_FIRST_RFC_v0.2.md",
+      "file": "supplied/FLUX_MCP_FIRST_RFC_v0.2.md",
+      "bytes": 32955,
+      "sha256": "7431c127bd9c530bb8aa8b8eaa980c670f45a62b9483fe3f31be1cb9204a2dc1"
+    },
+    {
+      "supplied_path": "/home/hubert/Documents/UI-FLUX-FIX/final/AUDIT.md",
+      "file": "supplied/AUDIT.md",
+      "bytes": 6524,
+      "sha256": "f9f15250eb70f90b4f7c9189f288dc97907f8de73a2bf998d3aa20fc59bee9fd"
+    },
+    {
+      "supplied_path": "/home/hubert/Documents/UI-FLUX-FIX/final/DLA_AGENTA_11.6.md",
+      "file": "supplied/DLA_AGENTA_11.6.md",
+      "bytes": 18800,
+      "sha256": "166ac2195bb18a3f43ce595655259bf815f5240edf22b892da85811112a3e469"
+    },
+    {
+      "supplied_path": "/home/hubert/Documents/UI-FLUX-FIX/final/flux-studio-v11.6.html",
+      "file": "supplied/flux-studio-v11.6.html",
+      "bytes": 634451,
+      "sha256": "5c0f26dd05709d18d0a8c28bfa412bc29948f4b49f2738ac5c537ddbe4f943e7"
+    },
+    {
+      "supplied_path": "/home/hubert/Documents/UI-FLUX-FIX/final/OPIS_FUNKCJONALNOSCI.html",
+      "file": "supplied/OPIS_FUNKCJONALNOSCI.html",
+      "bytes": 23607,
+      "sha256": "5292f552fa641624a0a59bd5c2e96cae693aa3aad171be6d924ef6a43ff3cd13"
+    }
+  ]
+}
