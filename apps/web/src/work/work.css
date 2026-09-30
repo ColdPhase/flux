@@ -10,15 +10,15 @@
 .ws-seg span:last-child { min-width: 0; overflow-wrap: anywhere; }
 .ws-seg svg { flex: none; color: var(--text-3); }
 .ws-seg:hover { background: var(--bg-hover); color: var(--text); }
-.ws-seg--need { color: var(--accent); font-weight: 500; }
+.ws-seg--need { color: var(--attention); font-weight: 500; }
 .ws-seg--warn svg { color: var(--warning); }
-.ws-need { color: var(--accent); font-weight: 500; }
+.ws-need { color: var(--attention); font-weight: 500; }
 .ws-dot, .wd-dot { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--text-3); }
 .ws-dot--progress, .ws-dot--in_progress, .wd-dot--in_progress { box-shadow: none; background: conic-gradient(var(--text-2) 0 50%, transparent 50%); outline: 1.5px solid var(--text-2); outline-offset: -1.5px; }
 .ws-dot--parked { box-shadow: none; outline: 1.5px dashed var(--text-3); outline-offset: -1.5px; }
-.ws-dot--need { box-shadow: none; background: var(--accent); }
+.ws-dot--need { box-shadow: none; background: var(--attention); }
 .ws-dot--blocked, .wd-dot--blocked { box-shadow: inset 0 0 0 1.5px var(--warning); background: color-mix(in srgb, var(--warning) 25%, transparent); }
-.ws-dot--done, .wd-dot--done { box-shadow: none; background: var(--ok); }
+.ws-dot--done, .wd-dot--done { box-shadow: none; background: var(--resolution); }
 .ws-dot--not_pursued, .wd-dot--not_pursued { box-shadow: inset 0 0 0 1.5px var(--text-3); background: linear-gradient(135deg, transparent 45%, var(--text-3) 45% 55%, transparent 55%); }
 
 /* ---------- Actions and objects under a message ---------- */
@@ -41,7 +41,7 @@
 .ws-chip svg { flex: none; color: var(--text-3); }
 .ws-chip__t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--text); }
 .ws-chip__k { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); color: var(--text-3); }
-.ws-chip--need .ws-chip__k { color: var(--accent); font-weight: 500; }
+.ws-chip--need .ws-chip__k { color: var(--attention); font-weight: 500; }
 @media (pointer: coarse) { .ws-chip { min-height: 44px; box-shadow: none; background: var(--bg-side); } }
 .project-convo__message:target { background: var(--accent-soft); border-radius: var(--r); box-shadow: -8px 0 0 var(--accent-soft), 8px 0 0 var(--accent-soft); }
 
@@ -60,7 +60,7 @@
 .ws-item { display: flex; align-items: center; gap: 12px; width: calc(100% + 16px); margin: 0 -8px; padding: 10px 8px; border-radius: var(--r); text-align: left; transition: var(--tr); }
 .ws-item:hover { background: var(--bg-hover); }
 .ws-item__st { display: grid; place-items: center; width: 16px; flex: none; color: var(--text-3); }
-.ws-item__st.ws-need { color: var(--accent); }
+.ws-item__st.ws-need { color: var(--attention); }
 .ws-item__st.ws-neg { color: var(--warning); }
 .ws-item__st.ws-pos { color: var(--ok); }
 .ws-item__b { flex: 1; min-width: 0; }
@@ -73,7 +73,7 @@
 /* ---------- Details panel ---------- */
 .wd .details__title { overflow-wrap: anywhere; }
 .wd-eyebrow { display: flex; align-items: center; gap: 6px; }
-.wd-eyebrow.wd-need { color: var(--accent); }
+.wd-eyebrow.wd-need { color: var(--attention); }
 .wd-finding--negative svg { color: var(--warning); }
 .wd-finding--positive svg { color: var(--ok); }
 .wd-was { color: var(--text-3); text-decoration: line-through; text-decoration-color: var(--line-strong); }
@@ -146,7 +146,7 @@
 .ws-view { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border-radius: 999px; font-size: var(--fs-sm); font-weight: 500; color: var(--text-2); box-shadow: inset 0 0 0 1px var(--line-strong); white-space: nowrap; transition: var(--tr); }
 .ws-view:hover { background: var(--bg-hover); color: var(--text); }
 .ws-view[aria-pressed="true"] { background: var(--text); color: var(--bg); box-shadow: none; }
-.ws-view--need:not([aria-pressed="true"]) { color: var(--accent); }
+.ws-view--need:not([aria-pressed="true"]) { color: var(--attention); }
 .ws-view__n { font-variant-numeric: tabular-nums; font-weight: 400; opacity: .75; }
 .ws-view:focus-visible, .ws-none__b:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .ws-mine { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; font-size: var(--fs-sm); color: var(--text-2); cursor: pointer; }
