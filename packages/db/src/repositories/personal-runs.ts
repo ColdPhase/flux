@@ -146,6 +146,17 @@ export function personalRunRows(db: DbExecutor) {
       return [...undispatched, ...lost].map(toRun);
     },
 
+    async endStaleAny(olderThanSeconds: number, limit: number) {
+      // One statement per state: pick stale rows without waiting for rows another sweep holds.
+      const pick = (states: string[]) => sql`${r.id} IN (SELECT id FROM personal_runs WHERE status = ANY(${states}::text[])
+        AND updated_at < now() - (${olderThanSeconds}::int * interval '1 second') ORDER BY updated_at LIMIT ${limit} FOR UPDATE SKIP LOCKED)`;
+      const undispatched = await db.update(r).set({ status: 'unavailable', costState: 'released', chargedMicros: 0, completedAt: new Date(), updatedAt: new Date() })
+        .where(pick(['queued', 'reading'])).returning();
+      const lost = await db.update(r).set({ status: 'provider_failed', costState: 'unknown', completedAt: new Date(), updatedAt: new Date() })
+        .where(pick(['dispatching'])).returning();
+      return [...undispatched, ...lost].map(toRun);
+    },
+
     listOwnRuns: (ownerUserId: string, window: Window) => pagedRuns(eq(r.ownerUserId, ownerUserId), 'newest', window),
 
     listAnswers: (conversationId: string, window: Window) =>
