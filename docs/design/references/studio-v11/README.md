@@ -1,6 +1,11 @@
-# Flux Studio v11 — supplied design reference
+# Historical Studio v11 reference
 
-**Received:** 2026-09-29 from Hubert. **Authority:** [#132](https://github.com/ColdPhase/flux/issues/132), recorded as F-013. This is the primary reference for Flux’s intended appearance and connected workflows, with targeted UX refinements and the useful improvements already in the real application. The current contract is [studio-v11-refinement.md](../../studio-v11-refinement.md); it takes precedence over the historical nine-palette instructions inside the supplied package.
+**Superseded appearance reference.** Use [Studio 11.6](../studio-v11.6/README.md)
+and [UI116-1–UI116-5](../../studio-v11.6.md) for current work. This package was
+already in the repository before PR #150 and is retained solely for provenance.
+It must not be used as the current visual target.
+
+**Received:** 2026-09-29 from Hubert. **Authority:** [#132](https://github.com/ColdPhase/flux/issues/132), recorded as F-013. This was the 2026-09-29 reference for Flux’s intended appearance and connected workflows, with targeted UX refinements and the useful improvements already in the real application. The dated [v11 contract](../../studio-v11-refinement.md) is retained as history, including its earlier palette decisions.
 
 **Requested corrections:** [runnable refined preview and matched before/after](preview/README.md)
 now show the compact recap, deep-map links, three light/dark accents and own-right /

@@ -1,12 +1,37 @@
 # Milestone 1 — Decisions that enable implementation
 
+## Latest required additions — F-016 / F-017 (2026-09-30)
+
+[Local MCP co-work](../mcp-cowork.md) and [Studio 11.6](../../design/studio-v11.6.md)
+now govern the new feature and full UI direction. #147 / PR #150 preserves the
+seven inputs and independent reference/contract review; import is not delivery.
+Flux owns the single task/thread, GitHub supplies PR/CI facts through project
+bindings (#74), several external agents may belong to one person, and standing
+owner grants allow cooperation without routine approval prompts. Keep the
+embedded helper, existing Node stack, tenant/project access and review gates.
+
+The [delivery table](../mcp-cowork.md#delivery-and-evidence--co-5) maps connection,
+co-work, task-thread and motion/presence slices. #136 owns UI integration, #151
+phone-to-ultrawide, #148 themes and #149 map drafts. Required evidence includes
+real two-owner/three-connection work, task/PR/result review, no duplicate backlog,
+revocation/reconnect, deterministic board rules/manual override, two-user typing,
+all no-AI journeys and F-015/#20 device gates. Active owners and reviews stay;
+independent ready work continues while dependencies finish. Earlier direction
+below is historical where superseded. No production completion is claimed here.
+
 Status: **agents decide and proceed**. Read the complete
 [foundation](../FLUX-FOUNDATION.md) and the later [founder delegation](../autonomy.md).
 There is no founder acceptance step for product, stack, UX or implementation scope.
 The later [creative collaboration direction](https://github.com/ColdPhase/flux/issues/44)
-qualifies the initial product and design questions. Evaluate direction C against
-the `flux-ux-v8.html` baseline and the three integrated creative scenarios; keep
-the original foundation and accepted decisions as history.
+governs the three integrated creative scenarios. The current appearance target is
+[Studio 11.6](../../design/studio-v11.6.md); use its source/screenshots for work.
+F-013/v11 and F-014/11.1 remain [historical](../../design/reference-history.md).
+Do not restart visual exploration or copy prototype access/storage internals.
+
+The later [F-015 adaptive-workspace requirement](../../design/adaptive-workspaces.md)
+adds smart small-phone through 4K/ultrawide layouts and familiar cross-device
+workflows. #151 in milestone 2 implements it under #136; concrete compositions
+and performance budgets are independently reviewed without reopening the stack.
 
 Preserve and resume #8 (segment/persona) and #9 (own-AI feasibility), their accepted
 research criteria, branches and evidence. Replace their old request for a founder
@@ -17,7 +42,7 @@ the tasks or renegotiate unchanged criteria after a restart.
 
 - Select the first segment/persona and defensible USP hypotheses using evidence.
 - Establish product vocabulary and integrated human/agent journeys.
-- Compare realistic UI directions and select one through independent visual review.
+- Apply Studio 11.6 and independently review focused improvements on realistic UI.
 - Select architecture, stack, access/data boundaries and extension contracts.
   Start with a concise decision sufficient for the next real coding tasks.
 - Determine feasible own-AI paths, preserving uncertainty and provider constraints.

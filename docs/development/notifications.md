@@ -25,8 +25,8 @@ The actor is never notified. Nothing else notifies: no digests, counts or "you h
 
 ## Generation from committed events
 
-The worker (`apps/worker/src/notifications`) runs the core use case
-`generateNotifications` (`packages/core/src/notifications/generate.ts`). In one transaction it
+The worker (`app/apps/worker/src/notifications`) runs the core use case
+`generateNotifications` (`app/packages/core/src/notifications/generate.ts`). In one transaction it
 locks `notification_cursor`, reads up to 100 events after it (events commit in `seq` order,
 migration 0004), creates their notifications and advances the cursor. A LISTEN on
 `flux_events` wakes it right after a commit; a 2-second poll is the backstop. Worker replicas
@@ -109,7 +109,7 @@ starting mail to the sign-in address by itself. The sign-in address cannot be ad
   `check_application.sh`; a plain-text send to a server that requires TLS fails and is reported.
 - **Unavailable.** Without `FLUX_SMTP_URL` no email rows are queued, settings show "Email
   delivery unavailable", adding an address answers `503 EMAIL_UNAVAILABLE`, and the inbox and push
-  keep working (`tests/app/email-unavailable.check.ts`).
+  keep working (`app/tests/app/email-unavailable.check.ts`).
 - **Outbox and no duplicates.** `notification_emails` holds one row per (notification, address
   kind), each sent by a `notification.email.v1` job carrying only the row id. The worker locks the
   row, rechecks source access, the reason's email channel, mute, destination and the address
@@ -143,16 +143,16 @@ destination and extra address, quiet hours and muted places. `/inbox/:id` (email
 
 ## Tests
 
-- `tests/app/notifications.test.ts`: generation per reason, once per (person, event) after a
+- `app/tests/app/notifications.test.ts`: generation per reason, once per (person, event) after a
   cursor rewind, mute, inbox-off and all-off, generic email content through Mailpit with
   one-click unsubscribe, access recheck before email and push, push preferences, duplicate and
   concurrent sends, extra address verification and expiry, extra address never signing in or
   receiving a reset, the two-SSO-user destination matrix (#113), STARTTLS and smtps paths.
-- `tests/app/live-invitation-notifications.test.ts`: one invitation item with the exact link,
+- `app/tests/app/live-invitation-notifications.test.ts`: one invitation item with the exact link,
   repeated invites, the inviter, and invitations that lost access, were answered or whose
   session ended before generation (the cursor is held while they change); `invitation.inApp`.
-- `tests/app/email-unavailable.check.ts` after restarting API and worker without SMTP.
-- `tests/ui/test_notifications.py`: inbox from the rail, opening sources, mark read, preferences,
+- `app/tests/app/email-unavailable.check.ts` after restarting API and worker without SMTP.
+- `app/tests/ui/test_notifications.py`: inbox from the rail, opening sources, mark read, preferences,
   muting, verifying an address through Mailpit, phone layout, dark mode and the unsubscribe page.
 
 Not verified here: real Android/iPhone/iPad push display (MOB-4/MOB-7 in #20) and delivery

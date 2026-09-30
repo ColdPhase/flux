@@ -12,7 +12,7 @@ export FLUX_PUBLIC_ORIGIN="http://127.0.0.1:${FLUX_PORT}"
 export FLUX_AUTH_SECRET="auth-runtime-$$-$(date +%s)-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
 export FLUX_TEST_FAILURE_INJECTION=false
 . scripts/test_images.sh
-compose="docker compose -p $project -f infra/compose.yaml"
+compose="docker compose -p $project -f docker/compose.source.yaml"
 response="$(mktemp)"
 
 cleanup() {

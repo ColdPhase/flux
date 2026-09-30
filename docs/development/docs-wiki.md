@@ -37,7 +37,7 @@ There is no second version table.
 | `GET /api/v1/workspaces/:workspaceId/docs` | Docs in every project of the workspace that the policy's `visibleFilter` lets the caller read, applied before the page and the total. |
 
 Every POST/PATCH accepts `Idempotency-Key` through the shared runner in
-`apps/server/src/http/commands.ts`; a replay rechecks current project read access. Responses with
+`app/apps/server/src/http/commands.ts`; a replay rechecks current project read access. Responses with
 a version carry `ETag`. A doc in a project the caller cannot see is `404 DOC_NOT_FOUND`, the same
 as a missing one. When no reason is given, the server writes one from the change: "Started the
 doc", "Published", "Moved back to draft", "Renamed to “…”", "Edited the text" (joined with " · ").
@@ -46,7 +46,7 @@ doc", "Published", "Moved back to draft", "Renamed to “…”", "Edited the te
 
 The text is a small Markdown subset: paragraphs, headings, emphasis, strikethrough, lists,
 quotes, code, tables, rules and links. The server renders it; the client only inserts the
-server's HTML. Two independent layers (`apps/server/src/docs/markdown.ts`):
+server's HTML. Two independent layers (`app/apps/server/src/docs/markdown.ts`):
 
 1. **markdown-it 15.0.2** with raw HTML off (it is shown as text), images off, linkify only for
    explicit `https://` addresses, and a link check after entity decoding that allows only
@@ -55,10 +55,10 @@ server's HTML. Two independent layers (`apps/server/src/docs/markdown.ts`):
    (`doc-ref`, `language-*`), `text-align` styles on table cells and the schemes `http`, `https`,
    `mailto`. External links get `target="_blank" rel="noopener noreferrer nofollow"`.
 
-`tests/app/docs.test.ts` checks `<script>`, `<img onerror>`, raw `<a href="javascript:">`,
+`app/tests/app/docs.test.ts` checks `<script>`, `<img onerror>`, raw `<a href="javascript:">`,
 `javascript:` in any case and entity-encoded, `data:` and `vbscript:` links, `data:` images,
 autolinks, reference definitions, protocol-relative links, `<iframe>`, `<svg onload>` and
-`<style>` in the saved doc, a version and the preview. `tests/ui/test_docs.py` loads hostile text
+`<style>` in the saved doc, a version and the preview. `app/tests/ui/test_docs.py` loads hostile text
 in the browser and asserts that no dialog opens and no image, script or hostile link exists.
 
 ## Links and backlinks
@@ -101,7 +101,7 @@ refused changes record none.
 
 ## Web
 
-`apps/web/src/docs/`: the **Docs** tab of a project (`/projects/:id/docs`: published docs and
+`app/apps/web/src/docs/`: the **Docs** tab of a project (`/projects/:id/docs`: published docs and
 drafts with the last change, its author and reason), the reader (`…/docs/:docId`, earlier
 versions at `…/versions/:n` with a calm "earlier version" line), the editor (`…/new`, `…/edit`:
 Write · Preview · Both on wide screens, the server-rendered preview, the link picker, ⌘/Ctrl S
@@ -115,11 +115,11 @@ reader, editor and history are one column with 44 px targets.
 
 ## Tests and evidence
 
-`tests/app/docs.test.ts` (API, two people, a viewer, an outsider and an agent principal:
+`app/tests/app/docs.test.ts` (API, two people, a viewer, an outsider and an agent principal:
 access, version immutability and citations, If-Match 428/409 and a concurrent race, idempotent
 retries, links and backlinks across all target types without cross-project leaks, sanitization,
-Add to docs with section rewrite, events and the workspace list filter), `tests/app/returns.test.ts`
-(doc items in the return view) and `tests/ui/test_docs.py` (Playwright: write with preview and a
+Add to docs with section rewrite, events and the workspace list filter), `app/tests/app/returns.test.ts`
+(doc items in the return view) and `app/tests/ui/test_docs.py` (Playwright: write with preview and a
 link, publish, concurrent edit and conflict, history and diff at 1440 and 1280, add from a
 result, phone read/edit/compare, hostile text). Screenshots: `docs/design/docs-wiki/`.
 

@@ -1,0 +1,70 @@
+# Hot-reload development overlay for `./flux dev` (issue #72), layered over compose.source.yaml.
+# Never use it for a deployment: it runs TypeScript from bind-mounted source as root.
+#
+# The image is the Dockerfile's `build` stage (locked dependencies, tsx, Vite). Source is
+# bind-mounted read-only over it, so an edit reaches Vite (browser hot reload) or tsx watch
+# (API/worker restart) in about a second without rebuilding. Dependency, Dockerfile or
+# lockfile changes need `./flux dev --build`. "z" relabels the mounts for SELinux hosts and
+# is ignored elsewhere. The launcher runs this under its own Compose project (<name>-dev),
+# so the database and files volumes are separate from `./flux up`.
+x-dev-image: &dev-image flux-dev:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
+x-source: &source
+  - ../app/apps/server/src:/app/apps/server/src:ro,z
+  - ../app/apps/worker/src:/app/apps/worker/src:ro,z
+  - ../app/apps/web/src:/app/apps/web/src:ro,z
+  - ../app/apps/web/public:/app/apps/web/public:ro,z
+  - ../app/apps/web/build:/app/apps/web/build:ro,z
+  - ../app/apps/web/index.html:/app/apps/web/index.html:ro,z
+  - ../app/apps/web/vite.config.ts:/app/apps/web/vite.config.ts:ro,z
+  - ../app/packages/contracts/src:/app/packages/contracts/src:ro,z
+  - ../app/packages/core/src:/app/packages/core/src:ro,z
+  - ../app/packages/db/src:/app/packages/db/src:ro,z
+  - ../app/packages/db/migrations:/app/packages/db/migrations:ro,z
+  - ../app/packages/sdk/src:/app/packages/sdk/src:ro,z
+  - ../app/packages/agent-runtime/src:/app/packages/agent-runtime/src:ro,z
+  - ../app/tooling/migrate.ts:/app/tooling/migrate.ts:ro,z
+  - ../app/tooling/tsconfig.dev.json:/app/tooling/tsconfig.dev.json:ro,z
+services:
+  migrate:
+    build:
+      target: build
+    image: *dev-image
+    command: ["node_modules/.bin/tsx", "--tsconfig", "tooling/tsconfig.dev.json", "tooling/migrate.ts"]
+    volumes: *source
+  files-init:
+    image: *dev-image
+  api:
+    image: *dev-image
+    command: ["node_modules/.bin/tsx", "watch", "--clear-screen=false", "--tsconfig", "tooling/tsconfig.dev.json", "apps/server/src/index.ts"]
+    environment:
+      NODE_ENV: development
+    volumes: *source
+    # Only the Vite dev server is published; it proxies /api (HTTP and WebSocket) here.
+    ports: !reset []
+    healthcheck:
+      retries: 60
+  worker:
+    image: *dev-image
+    command: ["node_modules/.bin/tsx", "watch", "--clear-screen=false", "--tsconfig", "tooling/tsconfig.dev.json", "apps/worker/src/index.ts"]
+    environment:
+      NODE_ENV: development
+    volumes: *source
+  web:
+    image: *dev-image
+    working_dir: /app/apps/web
+    # The same port inside and outside keeps Vite's hot-reload socket on the page's origin.
+    command: ["node_modules/.bin/vite", "--host", "0.0.0.0", "--port", "${FLUX_DEV_PORT:-5173}", "--strictPort"]
+    environment:
+      FLUX_DEV_API_URL: http://api:8080
+      FLUX_DEV_POLL: ${FLUX_DEV_POLL:-false}
+    volumes: *source
+    ports:
+      - 127.0.0.1:${FLUX_DEV_PORT:-5173}:${FLUX_DEV_PORT:-5173}
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:${FLUX_DEV_PORT:-5173}/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
