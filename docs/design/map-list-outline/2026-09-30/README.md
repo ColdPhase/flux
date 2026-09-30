@@ -13,17 +13,21 @@ approval and protected merge remain required.
 - Runtime image: `sha256:cf2c82b3e6ecb6dbe6f70e00cacc514a54aab3894a26f6c5c19e85cae8bb7cb0`.
 - The branch integrates #135 through `86b308dafc668fb50eace117c18f5e0a0086f2ed`,
   including the project-header attention-role and prose-link underline fixes.
-  The later dependency evidence head is recorded after integration below.
+  Final dependency evidence head `3f02e8668a5f636a02188b1ced9438cfea0bd8d6` is
+  integrated without application changes. Its sole test delta since the tested
+  dependency is an additional unselected-map screenshot call; the original
+  application/test source pin above is preserved.
 - Docker Compose project: `flux134-current-1790759211`, isolated UI/Mailpit ports
   18921/18922, using the checked-in `infra/compose.yaml` and `ui` profile.
 - [Manifest](manifest.json) pins all 17 screenshots and the contrast measurements
   by SHA256. Artifact-only commits after the source pin do not change the captured
-  application or tests.
+  application or map-outline tests. [Archive hashes](sha256.txt) cover the reports
+  and original independent record too.
 
 ## Actual checks
 
 - Docker `migrate`/`ui-test` build ran `pnpm build`, `pnpm typecheck` and `pnpm lint`:
-  passed.
+  passed. [Build log](build-check.txt).
 - Docker unit command `pnpm exec tsx --test tests/app/sketch-outline.test.ts
   tests/app/architecture.test.ts`: 14 passed, 0 failed (197.934538 ms).
 - Targeted real-browser module `python3 -m unittest discover -s tests/ui -p
@@ -38,9 +42,9 @@ approval and protected merge remain required.
   30 passed at 4.5:1, minimum 5.7248424411:1.
   [Measured colors and selectors](map-outline-contrast.json).
 
-[Machine-readable results](verification.json), [complete browser log](browser-full.log),
-[focused browser log](browser-focused.log), [unit log](unit.log) and
-[foundation log](foundation.log) preserve the actual results. Independent visual
+[Machine-readable results](verification.json), [complete browser log](browser-full-check.txt),
+[focused browser log](browser-focused-check.txt), [unit log](unit-check.txt) and
+[foundation log](foundation-check.txt) preserve the actual results. Independent visual
 review inspected each original-resolution image and verified its manifest hash;
 the [unchanged original report](visual-review.original.md) is archived alongside
 the path-normalized copy. Neither that review nor this author's verification is

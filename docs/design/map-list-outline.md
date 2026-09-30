@@ -69,3 +69,7 @@ rename/delete/grouping undo, search/Map/List, read-only and restricted sources.
 Compare light/dark 1440×900, 1280×800, 390×844 and tablet views at 100% zoom plus
 enlarged text, then obtain separate visual and behavior review. Screenshots do not
 prove persistence, access or physical PWA acceptance.
+
+The [2026-09-30 source-pinned evidence](map-list-outline/2026-09-30/README.md)
+records the Docker browser/API checks, matched renders and independent visual
+assessment; final independent behavior review and eligible approval remain required.

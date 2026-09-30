@@ -45,5 +45,21 @@
   },
   "independent_behavior": "pending",
   "eligible_github_approval": "pending",
-  "protected_merge": "pending"
+  "protected_merge": "pending",
+  "integrated_dependency_commit": "3f02e8668a5f636a02188b1ced9438cfea0bd8d6",
+  "post_capture_delta": "Dependency documentation/images plus one additional theme unselected-map screenshot call; no application changes.",
+  "application_source_paths": [
+    "apps",
+    "packages",
+    "scripts",
+    "infra"
+  ],
+  "application_source_manifest_sha256": "aba554e53c511c08ca164998b55dfafa8adf49bccd64efbeda4b924c389047f0",
+  "map_test_blob_id": "6218f30e8955ec828b1ed5496ab8d6f9135420df",
+  "post_integration_foundation": {
+    "count": 8,
+    "passed": 8,
+    "failed": 0,
+    "setup_links": "passed"
+  }
 }
