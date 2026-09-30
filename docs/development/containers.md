@@ -267,6 +267,14 @@ outside tests.
 
 ## Web app and browser tests
 
+The configured `pnpm test` command runs at most four application test files at
+once (`--test-concurrency=4`). This keeps the shared API/database load independent
+of the host CPU count; the [Node test runner](https://nodejs.org/download/release/v24.8.0/docs/api/cli.html#--test-concurrency)
+otherwise derives file parallelism from available processors. Explicit concurrent
+requests and race assertions inside each suite remain unchanged. Keep the same
+command in local Docker validation and CI; do not extend API/database deadlines
+or remove assertions to make an overloaded run pass.
+
 The web app (`app/apps/web`, React 19 + React Router 8 Data Mode, built by Vite into the API
 image) is served by the API on the same origin. Its design tokens and components are
 described in [the app shell record](../design/app-shell/README.md).

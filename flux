@@ -73,13 +73,22 @@ default_project() {
   base=$(basename -- "$FLUX_ROOT" | tr 'A-Z' 'a-z' | tr -c 'a-z0-9\n' '-' | tr -d '\n' | cut -c1-24 | sed 's/^-*//; s/-*$//')
   if [ -z "$base" ] || [ "$base" = flux ]; then printf 'flux-%s' "$(path_hash)"; else printf 'flux-%s-%s' "$base" "$(path_hash)"; fi
 }
-# Upgrade the pre-#76 location once. Never overwrite either existing file.
+# A dangling symlink is an existing configuration path too.
+env_path_exists() { [ -e "$1" ] || [ -L "$1" ]; }
+
+# Upgrade regular pre-#76 configuration once; moving relative links changes their target.
 migrate_legacy_env() {
   legacy="$FLUX_ROOT/.env"
-  [ -f "$legacy" ] || return 0
-  [ ! -e "$ENV_FILE" ] || die "Both .env and docker/.env exist. Keep the intended configuration in docker/.env and remove the legacy .env before continuing."
-  mv "$legacy" "$ENV_FILE"
-  say "Moved existing .env to docker/.env; secrets and project name are unchanged."
+  [ ! -L "$legacy" ] || die "Legacy .env is a symlink and was left unchanged. Put the intended private configuration in docker/.env and remove the legacy link before continuing."
+  if env_path_exists "$legacy"; then
+    [ -f "$legacy" ] && [ -r "$legacy" ] || die "Legacy .env is not a readable regular file; it was left unchanged. Resolve its configuration before continuing."
+    ! env_path_exists "$ENV_FILE" || die "Both .env and docker/.env exist. Keep the intended configuration in docker/.env and remove the legacy .env before continuing."
+    mv "$legacy" "$ENV_FILE"
+    say "Moved existing .env to docker/.env; secrets and project name are unchanged."
+  elif env_path_exists "$ENV_FILE"; then
+    [ -f "$ENV_FILE" ] && [ -r "$ENV_FILE" ] || die "docker/.env exists but is not a readable regular file or a symlink to one; it was left unchanged. Resolve its configuration before continuing."
+  fi
+  return 0
 }
 
 resolve_project() {
@@ -835,8 +844,9 @@ upgrade_failed() {
     warn "  check out the Flux version you ran before (its commit was not recorded)"
   fi
   warn "  # Pre-layout versions read root .env; move the same private configuration back first."
-  warn "  if [ ! -f app/package.json ] && [ -f docker/.env ]; then"
-  warn "    [ ! -e .env ] && mv docker/.env .env || { echo 'Both env files exist; choose the intended configuration before restore.' >&2; exit 1; }"
+  warn "  if [ ! -f app/package.json ] && { [ -e docker/.env ] || [ -L docker/.env ]; }; then"
+  warn "    [ ! -L docker/.env ] && [ -f docker/.env ] || { echo 'docker/.env is not a regular configuration file; preserve its target as a private root .env before restore.' >&2; exit 1; }"
+  warn "    [ ! -e .env ] && [ ! -L .env ] && mv docker/.env .env || { echo 'Both env paths exist; choose the intended configuration before restore.' >&2; exit 1; }"
   warn "  fi"
   warn "  ./flux restore '$UPGRADE_ARCHIVE'"
   warn "Or fix the cause in this checkout and run ./flux restore '$UPGRADE_ARCHIVE' --migrate to retry the upgrade."

@@ -72,15 +72,21 @@ After checking out the prior version and before its restore command, move the
 same configuration back when the old tree has no `app/package.json`:
 
 ```sh
-if [ ! -f app/package.json ] && [ -f docker/.env ]; then
-  [ ! -e .env ] && mv docker/.env .env || exit 1
+if [ ! -f app/package.json ] && { [ -e docker/.env ] || [ -L docker/.env ]; }; then
+  [ ! -L docker/.env ] && [ -f docker/.env ] || { echo 'Preserve the intended configuration as a private root .env before restore.' >&2; exit 1; }
+  [ ! -e .env ] && [ ! -L .env ] && mv docker/.env .env || exit 1
 fi
 ./flux restore /absolute/path/to/the/pre-upgrade-backup.tar
 ```
 
 Keep its stored project name, secrets and file permissions. If both files exist,
 choose the intended configuration before continuing; do not regenerate it. When
-returning to the current source, the launcher moves root `.env` forward once.
+returning to the current source, the launcher moves a regular root `.env` forward
+once. It refuses legacy symlinks before changing anything: moving a relative link
+would change its target. Preserve the intended target's contents and private
+permissions in `docker/.env`, verify its project and secrets, then remove the old
+root link. Existing dangling links at either path also require explicit resolution;
+the launcher never treats them as permission to generate replacement secrets.
 The layout upgrade/rollback check exercises the historical launcher and restored
 original project, followed by another upgrade; a same-version restore alone does
 not establish this transition.

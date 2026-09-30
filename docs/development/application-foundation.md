@@ -14,6 +14,12 @@ Its layout constants (Compose files, env file, template, demo seed) are defined 
 the top of the script. The #76 layout uses the self-contained `app/` workspace and
 Docker inputs plus executable configuration under `docker/`.
 
+On upgrade, a regular legacy root `.env` moves to `docker/.env` without changing
+its bytes or permissions. Legacy symlinks, conflicting paths and dangling live
+configuration links are refused before Docker or secret generation. Resolve them
+using the [configuration transition instructions](../operations/upgrade.md#returning-to-a-version-before-the-appdocker-layout).
+A readable symlink already at `docker/.env` keeps its target in place.
+
 | Command | What it does |
 | --- | --- |
 | `./flux up` | If `docker/.env` is missing, writes it from `docker/.env.example` (mode `600`) with random `POSTGRES_PASSWORD`, `FLUX_FIXTURE_TOKEN` and `FLUX_AUTH_SECRET` (64 hex characters each, from `/dev/urandom`), VAPID keys from the pinned `web-push` inside the freshly built image, `FLUX_PUBLIC_ORIGIN=http://127.0.0.1:${FLUX_PORT:-8081}` and two demo passwords. An existing `docker/.env` is never modified. Then builds the source-checkout image, runs `files-init`, migrates, starts API and worker, waits for health and prints the URL. |
