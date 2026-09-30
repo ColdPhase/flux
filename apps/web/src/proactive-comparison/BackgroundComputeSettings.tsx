@@ -16,7 +16,7 @@ function failure(error: unknown) {
     if (error.code === 'BACKGROUND_KEY_CUSTODY_UNAVAILABLE') return 'This server cannot store background credentials yet. Contact its operator.';
     if (error.status === 401) return 'Your session ended. Sign in again before changing the connection.';
     if (error.status === 404) return 'This connection is no longer available. Reload to see your current connection.';
-    if (error.status === 400) return 'Check the key, organization, workspace, allowance and confirmations, then try again.';
+    if (error.status === 400) return 'Flux could not accept these values. The key was cleared; enter it again, then check the organization, workspace, allowance and confirmations.';
   }
   return 'The connection could not be changed. Check your connection to Flux and try again.';
 }
@@ -118,11 +118,13 @@ export function BackgroundComputeSettings() {
         <h3 id="background-connect">{connection ? 'Replace your connection' : 'Connect your background source'}</h3>
         {connection ? <Button disabled={busy} onClick={cancelReplacement}>Cancel replacement</Button> : null}
       </div>
-      {error ? <p ref={errorRef} className="background-settings__error" role="alert" tabIndex={-1}>{error}</p> : null}
+      {error ? <p id="background-connect-error" ref={errorRef} className="background-settings__error" role="alert" tabIndex={-1}>{error}</p> : null}
       <p className="background-settings__help">Claude Platform · claude-sonnet-5. A named-project rule may send its published human evidence for one camera/sensor comparison. It can prepare a quiet suggestion; people choose whether to use it.</p>
       <form ref={formRef} onSubmit={(event) => void connect(event)}>
         <fieldset disabled={busy} className="background-settings__fields">
-          <label>Background API key<input name="apiKey" type="password" autoComplete="off" spellCheck={false} required minLength={24} maxLength={263} /></label>
+          <label>Background API key<input name="apiKey" type="password" autoComplete="off" spellCheck={false} required minLength={24} maxLength={263}
+            aria-describedby={`background-key-help${error ? ' background-connect-error' : ''}`} /></label>
+          <p id="background-key-help" className="background-settings__help">Use a Claude Platform API key beginning with sk-ant-. This field is cleared after every save attempt; enter a new key to try again.</p>
           <label>Provider organization<input name="payerOrganization" autoComplete="off" required minLength={2} maxLength={120} defaultValue={connection?.payerOrganization} /></label>
           <label>Provider workspace<input name="providerWorkspace" autoComplete="off" required minLength={2} maxLength={120} defaultValue={connection?.providerWorkspace} /></label>
           <div className="background-settings__limits">

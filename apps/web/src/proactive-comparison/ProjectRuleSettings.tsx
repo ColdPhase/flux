@@ -104,6 +104,7 @@ export function ProjectRuleSettings({ connection }: { connection: BackgroundComp
           <div><dt>Your agent</dt><dd>{ready.agents.find((agent) => agent.id === current.agentId)?.name ?? 'Personal agent no longer available'}</dd></div>
           <div><dt>Rule allowance</dt><dd>{money(current.periodBudgetCents)} over rolling 30 days · up to {current.maxRunsPerDay} requests a UTC day · {money(current.perRunCents)} per request</dd></div>
         </dl>
+        {current.status === 'paused' ? <p className="background-settings__help">Background execution is unavailable on this instance. Your rule is saved and paused.</p> : null}
         <div className="background-settings__actions">
           {current.status === 'enabled' ? <Button disabled={!writable || busy} onClick={() => void mutate(async () => {
             const changed = await changeBackgroundRule(current, 'paused');
