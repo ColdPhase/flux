@@ -83,7 +83,10 @@ class ThemeAccentsJourney(unittest.TestCase):
         if not page.locator(".me__btn").is_visible():
             page.get_by_role("button", name="Open navigation").click()
         page.locator(".me__btn").click()
-        return page.get_by_role("dialog", name="Account", exact=True)
+        pop = page.get_by_role("dialog", name="Account", exact=True)
+        expect(pop).to_be_visible()
+        page.wait_for_function("document.querySelector('.me__pop')?.getAnimations().every(a => a.playState === 'finished' || a.playState === 'idle')")
+        return pop
 
     def appearance(self, page, theme, family):
         pop = self.account(page)
@@ -249,6 +252,7 @@ class ThemeAccentsJourney(unittest.TestCase):
                             page.mouse.up()
                     shot(page, f"accent-{theme.lower()}-{family.lower()}-recap-1440")
                     page.goto(self.map_url)
+                    page.get_by_role("radio", name="Map", exact=True).click()
                     expect(page.locator(".sk-node")).to_have_count(4)
                     self.measure(page, theme, family, ".sk-edges path", 3, property="stroke")
                     page.locator(".sk-node").first.click()
@@ -288,6 +292,7 @@ class ThemeAccentsJourney(unittest.TestCase):
                     # map/work/return on the two narrow viewports for hierarchy and density.
                     if family == "Mint" and name != "desktop-1280":
                         page.goto(self.map_url)
+                        page.get_by_role("radio", name="Map", exact=True).click()
                         expect(page.locator(".sk-node")).to_have_count(4)
                         page.get_by_role("radio", name="List", exact=True).click()
                         expect(page.locator(".sk-li-t")).to_have_count(4)
