@@ -350,19 +350,19 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
           </ul>
         ) : null}
         {sketch.origin ? (
-          <p className="sk-origin"><Icon name="lock" size={12} />Copied from a direct message by {sketch.origin.copiedBy.id === me.user.id ? 'you' : sketch.origin.copiedBy.name} · {when(sketch.origin.copiedAt)}. Only the thoughts were copied; the conversation stays private.</p>
+          <p className="sk-origin"><Icon name="lock" size={12} />Copied from a direct message by {sketch.origin.copiedBy.id === me.user.id ? 'you' : sketch.origin.copiedBy.name} · {when(sketch.origin.copiedAt)}<span className="sk-origin__long">. Only the thoughts were copied; the conversation stays private.</span><span className="sk-origin__short"> · the conversation stays private</span></p>
         ) : null}
 
         {canWrite ? (
           <div className="sk-bar">
             <div className="sk-tools" role="toolbar" aria-label="Sketch tools">
             <button type="button" className="ui-btn ui-btn--quiet sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={14} />Thought</button>
-            <button type="button" className="ui-btn ui-btn--quiet" aria-pressed={!!connectFrom} onClick={connect}><Icon name="link" size={14} />Connect</button>
+            <button type="button" className="ui-btn ui-btn--quiet" aria-pressed={!!connectFrom} onClick={connect} aria-label="Connect"><Icon name="link" size={14} /><span className="sk-bl">Connect</span></button>
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={selection.length !== 1} onClick={() => {
               if (selection.length !== 1) { say('Select one thought, then Edit'); return; }
               setConnectFrom(null);
               setEditing({ id: selection[0]!, isNew: false, parentId: null });
-            }}><Icon name="edit" size={14} />Edit</button>
+            }} aria-label="Edit"><Icon name="edit" size={14} /><span className="sk-bl">Edit</span></button>
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={cycleShape} aria-label="Change shape"><Icon name="shape" size={14} /><span className="sk-bl">Shape</span></button>
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={() => remove(selection)} aria-label="Remove from sketch"><Icon name="trash" size={14} /><span className="sk-bl">Remove</span></button>
             {sketch.scope === 'project' ? <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={() => void makeWork()} aria-label="Create work from selected thoughts"><Icon name="tasks" size={14} /><span className="sk-bl">Create work</span></button> : null}

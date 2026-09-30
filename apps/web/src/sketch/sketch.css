@@ -132,6 +132,8 @@
 /* #96: DM sketches. "Make it a project…" sits beside Map/List; copies and origins are one quiet line each. */
 .sk-promote { margin-left: auto; }
 .sk-copies { list-style: none; margin: 0; padding: 0; }
+.sk-origin__short { display: none; }
+@media (max-width: 640px) { .sk-origin__short { display: inline; } }
 .sk-copies li, .sk-origin { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; font-size: var(--fs-sm); color: var(--text-3); animation: sk-note-in var(--dur-2) var(--ease-out) backwards; }
 .sk-copies svg { color: var(--ok); }
 .sk-copies a { color: var(--text-2); font-weight: 500; }
@@ -181,15 +183,22 @@
 }
 @media (max-width: 640px) {
   .sk { padding: 14px 16px 28px; }
-  .sk-promote { order: 3; flex: 1 1 100%; justify-content: center; }
-  /* Six labelled tools in two even rows; the status gets its own line only when it has text. */
+  /* The map gets the room (#129 review): one compact header, one line of context and one row of
+     tools. "Thought" keeps its label; the other tools are named icons (aria-label and tooltip). */
+  .sk { gap: 8px; padding-top: 10px; }
+  .sk-head { gap: 6px 8px; }
+  .sk-lead { flex: 1 1 100%; gap: 2px 6px; }
+  .sk-promote { order: 3; flex: 1 1 auto; justify-content: center; }
+  .sk-origin__long { display: none; }
   .sk-bar { flex-direction: column; align-items: stretch; padding: 2px; gap: 0; }
-  .sk-tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 2px; }
+  .sk-tools { display: flex; flex-wrap: nowrap; justify-content: space-between; gap: 0; overflow-x: auto; scrollbar-width: none; }
+  .sk-tools::-webkit-scrollbar { display: none; }
+  .sk-bl { display: none; }
   .sk-div { display: none; }
-  .sk-bar .ui-btn { padding: 0 6px; justify-content: flex-start; }
+  .sk-bar .ui-btn { flex: none; min-width: 44px; padding: 0 10px; justify-content: center; }
   .sk-status { flex: none; padding: 0 8px 6px; white-space: normal; }
   .sk-status:empty { display: none; }
-  .sk-canvas { height: clamp(320px, calc(100dvh - 340px), 560px); }
+  .sk-canvas { height: clamp(360px, calc(100dvh - 250px), 620px); }
   .sk-el:not(.is-on) { display: none; }
   .sk-edges path:not(.is-on) { stroke-opacity: .6; }
 }

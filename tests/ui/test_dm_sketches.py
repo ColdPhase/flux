@@ -248,6 +248,32 @@ class DmSketchJourney(unittest.TestCase):
         self.assertNotIn(self.dm_id, json.dumps(copy))
         self.assertTrue(all(t["source"] is None or t["source"]["dmMessageId"] is None for t in copy["thoughts"]))
 
+    def test_04c_phone_maps_keep_the_room_for_the_map(self) -> None:
+        """The DM map and the project copy at 390x844: one compact header, one line of context, one row of tools."""
+        page = self.page("jo", phone=True)
+        for label, path in (("dm", f"/dm/{self.dm_id}/sketches/{self.sketch_id}"), ("copied", self.copy_path)):
+            page.goto(path)
+            canvas = page.locator(".sk-canvas")
+            expect(canvas).to_be_visible()
+            top = canvas.bounding_box()["y"]
+            self.assertLessEqual(top, 360, f"{label}: the map starts in the upper part of the screen (at {top:.0f}px)")
+            tools = page.get_by_role("toolbar", name="Sketch tools")
+            buttons = tools.get_by_role("button")
+            first = buttons.first.bounding_box()
+            for index in range(buttons.count()):
+                b = buttons.nth(index).bounding_box()
+                assert b and first
+                self.assertGreaterEqual(min(b["width"], b["height"]), 43.5, f"{label}: tool {index} is a touch target")
+                self.assertLess(abs(b["y"] - first["y"]), 2, f"{label}: tools stay in one row")
+            for name in ("Connect", "Edit", "Change shape", "Remove from sketch", "Undo"):
+                expect(tools.get_by_role("button", name=name, exact=True)).to_have_count(1)
+            expect(tools.get_by_role("button", name=re.compile("^Thought"))).to_contain_text("Thought")
+            self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), PHONE["width"], f"{label}: no horizontal scrolling")
+            shot(page, f"dm-sketch-phone-{label}")
+        # The copy still says where it came from and that the conversation stays private.
+        expect(page.locator(".sk-origin")).to_contain_text("Copied from a direct message by you")
+        expect(page.locator(".sk-origin")).to_contain_text("the conversation stays private")
+
     def test_04b_search_finds_the_dm_sketch_and_opens_it_in_the_dm(self) -> None:
         page = self.page("jo")
         # "60 GHz radar sees through the shade" is Kai's thought in the DM sketch; its copy lives in Gesture lamp.
