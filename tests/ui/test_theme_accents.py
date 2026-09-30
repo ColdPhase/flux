@@ -113,6 +113,23 @@ class ThemeAccentsJourney(unittest.TestCase):
         type(self).measurements.append(value)
         self.assertGreaterEqual(value["ratio"], minimum, value)
 
+    def return_home(self, page, screenshot_name):
+        page.goto("/")
+        expect(page.locator(".since-home")).to_be_visible()
+        expect(page.locator(".since-home .since__next")).to_be_visible()
+        content = page.locator(".since-home .since__text").all_text_contents()
+        self.assertGreater(len(content), 0, "return comparison contains actual persisted changes")
+        if hasattr(self, "return_content"):
+            self.assertEqual(content, self.return_content, "matched return comparison retains identical items")
+        self.return_content = content
+        shot(page, screenshot_name)
+        # Real product action restores the persisted baseline after this visit. It prevents
+        # one palette screenshot consuming the scenario for the next family/viewport.
+        with page.expect_response(re.compile(r"/api/v1/return-points/restore$")) as restoring:
+            page.get_by_role("button", name="Keep these for next time", exact=True).click()
+        self.assertEqual(restoring.value.status, 200)
+        expect(page.get_by_text("These will show again next time.", exact=True)).to_be_visible()
+
     def test_01_create_persisted_content(self):
         page = self.page()
         page.goto("/sign-up")
@@ -122,6 +139,12 @@ class ThemeAccentsJourney(unittest.TestCase):
         page.get_by_role("button", name="Create account").click()
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         type(self).state = page.context.storage_state()
+        for _ in range(40):
+            if self.api(page, "GET", "/api/v1/return?place=home", status=200)["point"]["savedAt"]:
+                break
+            page.wait_for_timeout(100)
+        else:
+            self.fail("Home's initial persisted visit baseline did not save")
         me = self.api(page, "GET", "/api/v1/me", status=200)["user"]["id"]
         ws = self.api(page, "POST", "/api/v1/workspaces", {"name": "Riverside Makers"})
         project = self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Gesture lamp — bedside interaction study", "visibility": "restricted"})
@@ -211,6 +234,8 @@ class ThemeAccentsJourney(unittest.TestCase):
                     page.goto(self.conversation_url)
                     self.appearance(page, theme, family)
                     statuses = page.locator("html").evaluate("e => Object.fromEntries(['--ok','--danger','--warning','--attention','--resolution'].map(k => [k,getComputedStyle(e).getPropertyValue(k).trim()]))")
+                    statuses["header-attention"] = page.locator(".top--project .ws-seg--need").evaluate("e => getComputedStyle(e).color")
+                    self.measure(page, theme, family, ".top--project .ws-seg--need")
                     if theme in stable:
                         self.assertEqual(statuses, stable[theme], "semantic statuses stay fixed across families")
                     stable[theme] = statuses
@@ -246,6 +271,12 @@ class ThemeAccentsJourney(unittest.TestCase):
                     page.keyboard.press("Escape")
                     page.get_by_role("button", name=re.compile("^What matters")).click()
                     expect(page.locator("#details").get_by_role("heading", name="What matters")).to_be_visible()
+                    expect(page.locator("#details .since__next")).to_be_visible()
+                    recap_content = page.locator("#details .since__text").all_text_contents()
+                    self.assertGreater(len(recap_content), 0, "recap comparison contains actual persisted changes")
+                    if hasattr(self, "recap_content"):
+                        self.assertEqual(recap_content, self.recap_content, "matched recap comparison retains identical items")
+                    self.recap_content = recap_content
                     self.measure(page, theme, family, ".wm-period")
                     self.measure(page, theme, family, ".wm-link")
                     expect(page.locator(".wm__foot .ui-btn--primary")).to_be_enabled()
@@ -277,8 +308,7 @@ class ThemeAccentsJourney(unittest.TestCase):
                     self.measure(page, theme, family, ".ws-need")
                     self.measure(page, theme, family, ".ws-dot--done", 3, property="backgroundColor", backgroundSelector="#ws-finished .ws-item")
                     shot(page, f"accent-{theme.lower()}-{family.lower()}-work-1440")
-                    page.goto("/")
-                    shot(page, f"accent-{theme.lower()}-{family.lower()}-return-1440")
+                    self.return_home(page, f"accent-{theme.lower()}-{family.lower()}-return-1440")
 
     def test_04_narrow_and_enlarged_text(self):
         page = self.page(has_touch=True)
@@ -295,6 +325,7 @@ class ThemeAccentsJourney(unittest.TestCase):
                     shot(page, f"accent-{theme.lower()}-{family.lower()}-{name}-conversation")
                     page.get_by_role("button", name=re.compile("^What matters")).click()
                     expect(page.locator("#details").get_by_role("heading", name="What matters")).to_be_visible()
+                    expect(page.locator("#details .since__next")).to_be_visible()
                     shot(page, f"accent-{theme.lower()}-{family.lower()}-{name}-recap")
                     # All six families have full desktop comparisons; Mint also has matched
                     # map/work/return on the two narrow viewports for hierarchy and density.
@@ -308,8 +339,7 @@ class ThemeAccentsJourney(unittest.TestCase):
                         page.goto(self.work_url)
                         expect(page.get_by_text("Order two VL53L5CX sensor boards", exact=True)).to_be_visible()
                         shot(page, f"accent-{theme.lower()}-{family.lower()}-{name}-work")
-                        page.goto("/")
-                        shot(page, f"accent-{theme.lower()}-{family.lower()}-{name}-return")
+                        self.return_home(page, f"accent-{theme.lower()}-{family.lower()}-{name}-return")
                 page.set_viewport_size(PHONE)
                 page.goto(self.conversation_url)
                 page.add_style_tag(content=":root { --fs-xs:15px; --fs-sm:16.25px; --fs-md:17.5px; --fs-base:18.75px; --fs-lg:21.25px; --fs-xl:25px; --fs-2xl:30px; }")
