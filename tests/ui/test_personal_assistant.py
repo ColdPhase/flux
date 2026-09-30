@@ -316,6 +316,7 @@ class PersonalAssistantJourney(unittest.TestCase):
     def test_07_stop_posts_nothing_and_a_failed_provider_says_so(self) -> None:
         mock("/__script", {"reset": True, "delay": 8})
         jo = self.conversation("jo")
+        expect(jo.locator(".assistant-answer").first).to_be_visible()  # answers load after the messages
         before = jo.locator(".assistant-answer").count()
         self.ask(jo, "Compare every sensor in detail")
         working = jo.locator(".assistant-working")
