@@ -1,15 +1,15 @@
 # Self-hosted live media: restrictive-network relay slice (#63)
 
 The live backend in #61 uses LiveKit `v1.13.7` (image digest in
-[`compose.live.yaml`](../../infra/compose.live.yaml)); the isolated browser proof
+[`compose.live.yaml`](../../docker/compose.live.yaml)); the isolated browser proof
 uses `livekit-client` `2.17.2` from a lockfile. Both versions must be reviewed
 together before an upgrade. This page describes the TURN/TLS addition. It does
 not certify call quality, k3s installation or real device support.
 
 ## Compose deployment
 
-Layer `infra/compose.yaml`, `infra/compose.live.yaml`, then
-`infra/compose.live.turn.yaml`. Set all base live variables plus:
+Layer `docker/compose.yaml`, `docker/compose.live.yaml`, then
+`docker/compose.live.turn.yaml`. Set all base live variables plus:
 
 | Variable | Operator value |
 | --- | --- |
@@ -131,7 +131,7 @@ media and text evidence. The remaining conditions are tracked in
 
 ## Receiver quality measurement slice
 
-[`receiver-quality.ts`](../../apps/web/src/live/receiver-quality.ts) reads
+[`receiver-quality.ts`](../../app/apps/web/src/live/receiver-quality.ts) reads
 receiver `getStats()` samples: selected ICE round-trip time; inbound audio/video
 packets, interval bitrate and loss; audio jitter; and decoded video fps and
 dimensions. A counter reset, absent report or short interval without fresh
