@@ -72,11 +72,15 @@ const IDLE_DEVICES: Record<DeviceKind, DeviceStatus> = {
   screen: { state: 'off', note: null },
 };
 
-/** Flux signs `u_<base64url(userId)>`; any other identity is not a Flux person. */
+/**
+ * Flux signs one identity per media admission, `u_<base64url(userId)>.<admissionId>` (#128);
+ * any other identity is not a Flux person. One person may be several participants.
+ */
 export function userIdOf(identity: string): string | null {
-  if (!/^u_[A-Za-z0-9_-]{1,126}$/.test(identity)) return null;
+  const match = /^u_([A-Za-z0-9_-]{1,126})\.[A-Za-z0-9_-]{22}$/.exec(identity);
+  if (!match) return null;
   try {
-    const base64 = identity.slice(2).replace(/-/g, '+').replace(/_/g, '/');
+    const base64 = match[1]!.replace(/-/g, '+').replace(/_/g, '/');
     const bytes = Uint8Array.from(atob(base64 + '='.repeat((4 - (base64.length % 4)) % 4)), (c) => c.charCodeAt(0));
     return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   } catch { return null; }
@@ -490,7 +494,17 @@ export class LiveMediaConnection {
       // Stable order: by join time, so tiles and faces never reshuffle while someone speaks.
       const remote = [...this.room.remoteParticipants.values()].map((participant) => this.person(participant, false))
         .filter((person): person is MediaPerson => !!person).sort((a, b) => a.joinedAt - b.joinedAt || a.userId.localeCompare(b.userId));
-      people.push(...remote);
+      // One person with two tabs or devices is several participants but one face (#128).
+      for (const person of remote) {
+        // Your own other device is still you: your entry shows only this device's state.
+        const same = people.find((known) => known.userId === person.userId);
+        if (!same) { people.push(person); continue; }
+        if (same.local) continue;
+        same.speaking ||= person.speaking;
+        same.mic ||= person.mic;
+        same.camera ??= person.camera;
+        same.screen ??= person.screen;
+      }
     }
     return {
       connection: this.connection,

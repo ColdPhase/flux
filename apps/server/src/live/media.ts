@@ -5,45 +5,59 @@ const ROOM_ID = /^[A-Za-z0-9_-]{16,128}$/;
 const GRANT_TTL_SECONDS = 90;
 const MAX_USER_ID_BYTES = 90;
 
-function participantIdentity(userId: string): string {
+export const ADMISSION_ID = /^[A-Za-z0-9_-]{22}$/;
+
+/**
+ * One SFU identity per media admission (#128): `u_<base64url(userId)>.<admissionId>`. Two
+ * sessions of one person are two participants, so ending one session addresses exactly its
+ * own participant and never a newer admission of the same person.
+ */
+export function participantIdentity(userId: string, admissionId: string): string {
   if (!userId || Buffer.byteLength(userId, 'utf8') > MAX_USER_ID_BYTES ||
     Array.from(userId).some((char) => {
       const code = char.codePointAt(0)!;
       return code < 32 || code === 127;
     }))
     throw new Error('Invalid Flux user ID');
-  return `u_${Buffer.from(userId, 'utf8').toString('base64url')}`;
+  if (!ADMISSION_ID.test(admissionId)) throw new Error('Invalid live admission ID');
+  return `u_${Buffer.from(userId, 'utf8').toString('base64url')}.${admissionId}`;
 }
 
-function userIdFromIdentity(identity: string): string | null {
-  if (!/^u_[A-Za-z0-9_-]{1,126}$/.test(identity)) return null;
+/** The person and admission of a Flux identity; null for any other LiveKit identity. */
+export function parseIdentity(identity: string): { userId: string; admissionId: string } | null {
+  const match = /^u_([A-Za-z0-9_-]{1,126})\.([A-Za-z0-9_-]{22})$/.exec(identity);
+  if (!match) return null;
   try {
-    const userId = Buffer.from(identity.slice(2), 'base64url').toString('utf8');
-    return participantIdentity(userId) === identity ? userId : null;
+    const userId = Buffer.from(match[1]!, 'base64url').toString('utf8');
+    return participantIdentity(userId, match[2]!) === identity ? { userId, admissionId: match[2]! } : null;
   } catch {
     // Other LiveKit clients must not make the whole presence query fail.
     return null;
   }
 }
 
-/** A connected SFU participant and the admission id its grant carries as metadata. */
+/** A Flux participant the SFU holds, and the admission its identity and metadata name. */
 export interface ParticipantAdmission {
   userId: string;
-  /** Null for a participant without a well-formed Flux admission id. */
+  /** Exact SFU identity; revocation addresses only this. */
+  identity: string;
+  /** Null unless identity and metadata name the same well-formed admission. */
   admissionId: string | null;
 }
 
 export interface LiveMediaAdapter extends LiveMedia {
+  /** Connected people, one entry per person however many sessions they have in the room. */
   participants(roomId: string): Promise<{ userId: string; joinedAt: string }[]>;
   /** Every Flux participant the SFU still holds in the room, whatever its connection state. */
   participantAdmissions(roomId: string): Promise<ParticipantAdmission[]>;
+  /** The person's own leave: disconnects every participant (session) of theirs in the room. */
   removeParticipant(roomId: string, userId: string): Promise<void>;
   /**
-   * Drops every publish/subscribe/data permission, then disconnects the participant. The
-   * permission drop comes first so a token the SFU refreshes meanwhile carries none (#128).
-   * Absence of the person or room counts as done.
+   * Drops every publish/subscribe/data permission of exactly `identity`, then disconnects it.
+   * The permission drop comes first so a token the SFU refreshes meanwhile carries none (#128).
+   * Absence of that identity or the room counts as done.
    */
-  revokeParticipant(roomId: string, userId: string): Promise<void>;
+  revokeParticipant(roomId: string, identity: string): Promise<void>;
   deleteRoom(roomId: string): Promise<void>;
 }
 
@@ -59,8 +73,6 @@ export interface LiveMediaConfig {
 }
 
 export const MEDIA_GATE_PATH = '/media';
-export const ADMISSION_ID = /^[A-Za-z0-9_-]{22}$/;
-
 /**
  * No LiveKit defaults: the operator must name an owned SFU and supply its signing key.
  * Browsers never receive the SFU address. They signal through the Flux gate (#128).
@@ -123,10 +135,9 @@ export function createLiveMedia(config: LiveMediaConfig): LiveMediaAdapter {
         throw new ServiceUnavailableError('This live room has ended; start a new session', 'LIVE_ROOM_GONE');
     },
     async grant(roomId, userId, admissionId) {
-      if (!ADMISSION_ID.test(admissionId)) throw new Error('Invalid live admission ID');
       const issuedAt = Date.now();
       const token = new AccessToken(config.apiKey, config.apiSecret, {
-        identity: participantIdentity(userId),
+        identity: participantIdentity(userId, admissionId),
         // Opaque; SFU-refreshed tokens keep it, so the gate recognises them too.
         metadata: admissionId,
         ttl: GRANT_TTL_SECONDS,
@@ -148,25 +159,30 @@ export function createLiveMedia(config: LiveMediaConfig): LiveMediaAdapter {
     },
     async participants(roomId) {
       const connected = await rooms.listParticipants(room(roomId));
-      return connected.flatMap((participant) => {
+      // One person with two tabs or devices is two participants but one person here.
+      const people = new Map<string, number>();
+      for (const participant of connected) {
         // JOINED (1) and ACTIVE (2) have completed admission; JOINING and
         // DISCONNECTED must not appear as people already in the room.
-        if (participant.state !== 1 && participant.state !== 2) return [];
-        const userId = userIdFromIdentity(participant.identity);
-        if (!userId) return [];
-        return [{ userId, joinedAt: new Date(Number(participant.joinedAt) * 1000).toISOString() }];
-      });
+        if (participant.state !== 1 && participant.state !== 2) continue;
+        const parsed = parseIdentity(participant.identity);
+        if (!parsed) continue;
+        const joinedAt = Number(participant.joinedAt) * 1000;
+        people.set(parsed.userId, Math.min(people.get(parsed.userId) ?? joinedAt, joinedAt));
+      }
+      return [...people].map(([userId, joinedAt]) => ({ userId, joinedAt: new Date(joinedAt).toISOString() }));
     },
     async participantAdmissions(roomId) {
       return (await rooms.listParticipants(room(roomId))).flatMap((participant) => {
-        const userId = userIdFromIdentity(participant.identity);
-        if (!userId) return [];
-        return [{ userId, admissionId: ADMISSION_ID.test(participant.metadata) ? participant.metadata : null }];
+        const parsed = parseIdentity(participant.identity);
+        if (!parsed) return [];
+        return [{ userId: parsed.userId, identity: participant.identity,
+          admissionId: participant.metadata === parsed.admissionId ? parsed.admissionId : null }];
       });
     },
-    async revokeParticipant(roomId, userId) {
+    async revokeParticipant(roomId, identity) {
       const name = room(roomId);
-      const identity = participantIdentity(userId);
+      if (!parseIdentity(identity)) throw new Error('Invalid Flux participant identity');
       const absent = async () => {
         try { return !(await rooms.listParticipants(name)).some((participant) => participant.identity === identity); }
         catch {
@@ -201,20 +217,28 @@ export function createLiveMedia(config: LiveMediaConfig): LiveMediaAdapter {
     },
     async removeParticipant(roomId, userId) {
       const name = room(roomId);
-      const identity = participantIdentity(userId);
-      try { await rooms.removeParticipant(name, identity); }
+      const mine = (participants: { identity: string }[]) =>
+        participants.filter((participant) => parseIdentity(participant.identity)?.userId === userId).map((participant) => participant.identity);
+      let identities: string[];
+      try { identities = mine(await rooms.listParticipants(name)); }
       catch (error) {
-        // A repeated leave is complete when the person or room is confirmed
-        // absent. An unavailable SFU is still an error, not proof of absence.
-        try {
-          const connected = await rooms.listParticipants(name);
-          if (!connected.some((participant) => participant.identity === identity)) return;
-        } catch {
-          const existing = await rooms.listRooms([name]);
-          if (!existing.some((candidate) => candidate.name === name)) return;
-        }
+        // A repeated leave is complete when the room is confirmed absent. An
+        // unavailable SFU is still an error, not proof of absence.
+        const existing = await rooms.listRooms([name]);
+        if (!existing.some((candidate) => candidate.name === name)) return;
         throw error;
       }
+      let failure: unknown;
+      for (const identity of identities) {
+        try { await rooms.removeParticipant(name, identity); } catch (error) { failure = error; }
+      }
+      if (failure === undefined) return;
+      try { if (!mine(await rooms.listParticipants(name)).some((identity) => identities.includes(identity))) return; }
+      catch {
+        const existing = await rooms.listRooms([name]);
+        if (!existing.some((candidate) => candidate.name === name)) return;
+      }
+      throw failure;
     },
     async deleteRoom(roomId) {
       const name = room(roomId);

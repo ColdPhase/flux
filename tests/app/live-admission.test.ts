@@ -12,7 +12,7 @@ import { loadIdentityConfig, registerIdentity } from '../../apps/server/src/iden
 import { liveAccess } from '../../apps/server/src/live/access.js';
 import { liveRoutes } from '../../apps/server/src/live/routes.js';
 import { liveSessionStore } from '../../apps/server/src/live/store.js';
-import { createLiveMedia, liveMediaConfig, type LiveMediaAdapter, type ParticipantAdmission } from '../../apps/server/src/live/media.js';
+import { createLiveMedia, liveMediaConfig, participantIdentity, type LiveMediaAdapter, type ParticipantAdmission } from '../../apps/server/src/live/media.js';
 import { registerLiveSignaling } from '../../apps/server/src/live/signaling.js';
 import { admissionRevocation } from '../../apps/server/src/live/admission-revocation.js';
 import { liveAdmissionStore } from '../../apps/server/src/live/admissions.js';
@@ -41,18 +41,44 @@ interface Sfu {
   sockets: Set<WebSocket>;
   rooms: Map<string, ParticipantAdmission[]>;
   calls: string[];
+  /** What the fake LiveKit room service (Twirp) holds, for the real media adapter. */
+  service: Map<string, { identity: string; metadata: string; state: number; joinedAt: number }[]>;
+  serviceCalls: string[];
 }
 
 let sfu: Sfu;
 let app: FastifyInstance;
 let gateUrl: string;
+/** The production LiveKit adapter, pointed at the fake room service. */
+let realMedia: LiveMediaAdapter;
 const resetMails: { to: string; text: string }[] = [];
 
 async function startSfu(): Promise<Sfu> {
-  const state: Omit<Sfu, 'server' | 'port'> = { signals: [], validations: [], sockets: new Set(), rooms: new Map(), calls: [] };
+  const state: Omit<Sfu, 'server' | 'port'> = { signals: [], validations: [], sockets: new Set(), rooms: new Map(), calls: [],
+    service: new Map(), serviceCalls: [] };
   const server = createServer((request, response) => {
-    state.validations.push(request.url ?? '');
-    response.writeHead(200, { 'content-type': 'text/plain' }).end('success');
+    const method = /^\/twirp\/livekit\.RoomService\/(\w+)$/.exec(request.url ?? '')?.[1];
+    if (!method) {
+      state.validations.push(request.url ?? '');
+      response.writeHead(200, { 'content-type': 'text/plain' }).end('success');
+      return;
+    }
+    let raw = '';
+    request.on('data', (chunk) => { raw += String(chunk); });
+    request.on('end', () => {
+      const body = JSON.parse(raw || '{}') as { room?: string; names?: string[]; identity?: string };
+      const held = state.service.get(body.room ?? '') ?? [];
+      const reply = (value: unknown) => response.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(value));
+      if (method === 'ListParticipants') return reply({ participants: held.map((participant) => ({ ...participant,
+        state: participant.state === 2 ? 'ACTIVE' : 'JOINED', joinedAt: String(participant.joinedAt) })) });
+      if (method === 'ListRooms') return reply({ rooms: (body.names ?? []).filter((name) => state.service.has(name)).map((name) => ({ name })) });
+      state.serviceCalls.push(`${method}:${body.identity}`);
+      if (!held.some((participant) => participant.identity === body.identity)) {
+        return response.writeHead(404, { 'content-type': 'application/json' }).end(JSON.stringify({ code: 'not_found', msg: 'participant not found' }));
+      }
+      if (method === 'RemoveParticipant') state.service.set(body.room!, held.filter((participant) => participant.identity !== body.identity));
+      return reply(method === 'UpdateParticipant' ? { identity: body.identity } : {});
+    });
   });
   const wss = new WebSocketServer({ server });
   wss.on('connection', (socket, request) => {
@@ -75,9 +101,9 @@ function roomMedia(state: Sfu, real: LiveMediaAdapter): LiveMediaAdapter {
     grant: real.grant,
     async participants() { return []; },
     async participantAdmissions(roomId) { return [...(state.rooms.get(roomId) ?? [])]; },
-    async revokeParticipant(roomId, userId) {
-      state.calls.push(`drop:${roomId}:${userId}`, `remove:${roomId}:${userId}`);
-      state.rooms.set(roomId, (state.rooms.get(roomId) ?? []).filter((participant) => participant.userId !== userId));
+    async revokeParticipant(roomId, identity) {
+      state.calls.push(`drop:${roomId}:${identity}`, `remove:${roomId}:${identity}`);
+      state.rooms.set(roomId, (state.rooms.get(roomId) ?? []).filter((participant) => participant.identity !== identity));
     },
     async occupancy(roomId) { return state.rooms.get(roomId)?.length ?? 0; },
     async removeParticipant() {},
@@ -89,7 +115,8 @@ before(async () => {
   sfu = await startSfu();
   const config = liveMediaConfig({ FLUX_LIVEKIT_API_URL: `http://127.0.0.1:${sfu.port}`, FLUX_LIVEKIT_API_KEY: apiKey,
     FLUX_LIVEKIT_API_SECRET: apiSecret, FLUX_LIVEKIT_ALLOW_INSECURE_LOCAL: 'true' }, publicOrigin);
-  const media = roomMedia(sfu, createLiveMedia(config));
+  realMedia = createLiveMedia(config);
+  const media = roomMedia(sfu, realMedia);
   app = Fastify();
   const identity = registerIdentity(app, {
     db, config: loadIdentityConfig({ FLUX_PUBLIC_ORIGIN: publicOrigin, FLUX_AUTH_SECRET: authSecret, FLUX_AUTH_RATE_LIMIT: 'false' }),
@@ -190,10 +217,11 @@ async function scene(label: string) {
     { type: 'conversation', id: thread.id }, randomUUID(), async (roomId) => { sfu.rooms.set(roomId, []); });
   const join = async (browser: Browser) =>
     expectStatus(await browser.request('POST', `/api/v1/live-sessions/${session.id}/join`), 200) as LiveJoinGrant;
-  /** Records the participant the SFU would hold after this grant connects. */
+  /** Records the participant the SFU would hold after this grant connects: one per admission. */
   const connect = (userId: string, grantToken: string) => {
-    const others = (sfu.rooms.get(session.roomId) ?? []).filter((participant) => participant.userId !== userId);
-    sfu.rooms.set(session.roomId, [...others, { userId, admissionId: claims(grantToken).metadata ?? null }]);
+    const { sub, metadata } = claims(grantToken);
+    const others = (sfu.rooms.get(session.roomId) ?? []).filter((participant) => participant.identity !== sub);
+    sfu.rooms.set(session.roomId, [...others, { userId, identity: sub, admissionId: metadata ?? null }]);
   };
   return { owner, member, place, session, join, connect };
 }
@@ -254,6 +282,9 @@ describe('live media admission (#128)', () => {
     await refused(signal(signed({ ...base, metadata: randomBytes(16).toString('base64url') }), laptop.browser));
     await refused(signal(signed({ ...base, video: { ...payload.video, room: `live_${randomBytes(24).toString('base64url')}` } }), laptop.browser));
     await refused(signal(signed({ ...base, sub: claims((await s.join(ownerSession.browser)).token).sub }), laptop.browser));
+    // Another admission of the same person and session: its identity is not this admission's.
+    await refused(signal(signed({ ...base, sub: claims((await s.join(laptop.browser)).token).sub }), laptop.browser));
+    await refused(signal(signed({ ...base, sub: `u_${Buffer.from(s.member.id).toString('base64url')}` }), laptop.browser));
     await refused(signal(issued.token, laptop.browser, { path: '/rtc/v2' }), 404);
     // The validate endpoints apply the same checks before any SFU request.
     const validations = sfu.validations.length;
@@ -322,14 +353,13 @@ describe('live media admission (#128)', () => {
     expectStatus(await laptop.browser.request('POST', '/api/auth/sign-out', { body: {} }), 200);
     await memberClosed;
     assert.ok((await admissionRow(payload.metadata!))?.revoked_at, 'revoked with the session deletion');
-    await until(() => sfu.calls.includes(`remove:${s.session.roomId}:${s.member.id}`), 'the SFU participant removal');
-    const calls = sfu.calls.filter((call) => call.endsWith(`${s.session.roomId}:${s.member.id}`));
-    assert.deepEqual(calls, [`drop:${s.session.roomId}:${s.member.id}`, `remove:${s.session.roomId}:${s.member.id}`],
-      'permissions are dropped before removal');
+    await until(() => sfu.calls.includes(`remove:${s.session.roomId}:${payload.sub}`), 'the SFU participant removal');
+    const calls = sfu.calls.filter((call) => call.startsWith(`drop:${s.session.roomId}:`) || call.startsWith(`remove:${s.session.roomId}:`));
+    assert.deepEqual(calls, [`drop:${s.session.roomId}:${payload.sub}`, `remove:${s.session.roomId}:${payload.sub}`],
+      'permissions are dropped before removal, for exactly the revoked admission');
     await until(() => upstream.readyState === WebSocket.CLOSED, 'the proxied SFU socket to close');
     assert.equal(ownerSocket.readyState, WebSocket.OPEN, 'another person stays connected');
     assert.deepEqual(sfu.rooms.get(s.session.roomId)?.map((participant) => participant.userId), [s.owner.id]);
-    assert.equal(sfu.calls.some((call) => call.endsWith(`:${s.owner.id}`)), false);
 
     // Original and refreshed tokens are refused, with the old cookie and with another session's.
     const before = sfu.signals.length;
@@ -349,18 +379,21 @@ describe('live media admission (#128)', () => {
     const phone = await signedIn(s.member);
     const laptopGrant = await s.join(laptop.browser);
     const laptopSocket = await opened(signal(laptopGrant.token, laptop.browser));
-    // The phone takes over the one SFU identity per person (LiveKit DUPLICATE_IDENTITY).
+    s.connect(s.member.id, laptopGrant.token);
+    // The phone joins the same room: one SFU identity per admission, so both are participants.
     const phoneGrant = await s.join(phone.browser);
+    assert.notEqual(claims(phoneGrant.token).sub, claims(laptopGrant.token).sub);
     const phoneSocket = await opened(signal(phoneGrant.token, phone.browser));
     s.connect(s.member.id, phoneGrant.token);
     const laptopClosed = new Promise<void>((resolve) => laptopSocket.once('close', () => resolve()));
 
     expectStatus(await laptop.browser.request('POST', '/api/auth/sign-out', { body: {} }), 200);
     await laptopClosed;
+    await until(() => sfu.calls.includes(`remove:${s.session.roomId}:${claims(laptopGrant.token).sub}`), 'the laptop removal');
     await new Promise((resolve) => setTimeout(resolve, 300));
     assert.equal(phoneSocket.readyState, WebSocket.OPEN);
-    assert.equal(sfu.calls.some((call) => call.endsWith(`${s.session.roomId}:${s.member.id}`)), false,
-      'the participant now carries the phone admission, so it stays');
+    assert.equal(sfu.calls.some((call) => call.endsWith(claims(phoneGrant.token).sub)), false, 'the phone participant is never addressed');
+    assert.deepEqual(sfu.rooms.get(s.session.roomId)?.map((participant) => participant.identity), [claims(phoneGrant.token).sub]);
     phoneSocket.close();
   });
 
@@ -374,7 +407,7 @@ describe('live media admission (#128)', () => {
     const phoneClosed = new Promise<void>((resolve) => phoneSocket.once('close', () => resolve()));
     assert.equal((await laptop.browser.request('DELETE', `/api/v1/sessions/${phone.sessionId}`)).status, 204);
     await phoneClosed;
-    await until(() => sfu.calls.includes(`remove:${s.session.roomId}:${s.member.id}`), 'removal after session revocation');
+    await until(() => sfu.calls.includes(`remove:${s.session.roomId}:${claims(phoneGrant.token).sub}`), 'removal after session revocation');
     await refused(signal(phoneGrant.token, phone.browser));
 
     const laptopGrant = await s.join(laptop.browser);
@@ -389,7 +422,7 @@ describe('live media admission (#128)', () => {
     expectStatus(await new Browser(gateUrl, publicOrigin).request('POST', '/api/auth/reset-password',
       { body: { token, newPassword: 'a different long passphrase' } }), 200);
     await laptopClosed;
-    await until(() => sfu.calls.includes(`remove:${s.session.roomId}:${s.member.id}`), 'removal after password reset');
+    await until(() => sfu.calls.includes(`remove:${s.session.roomId}:${claims(laptopGrant.token).sub}`), 'removal after password reset');
     assert.ok((await admissionRow(claims(laptopGrant.token).metadata!))?.revoked_at);
     await refused(signal(laptopGrant.token, laptop.browser));
   });
@@ -401,19 +434,96 @@ describe('live media admission (#128)', () => {
     const ownerGrant = await s.join(ownerSession.browser);
     s.connect(s.owner.id, ownerGrant.token);
     const stranger = await person('gate-reconcile-stranger');
-    sfu.rooms.set(s.session.roomId, [...sfu.rooms.get(s.session.roomId)!,
-      { userId: s.member.id, admissionId: null }, { userId: stranger.id, admissionId: randomBytes(16).toString('base64url') }]);
+    const strangerAdmission = randomBytes(16).toString('base64url');
+    const unknown = { userId: stranger.id, identity: participantIdentity(stranger.id, strangerAdmission), admissionId: strangerAdmission };
+    const mismatched = { userId: s.member.id, identity: participantIdentity(s.member.id, randomBytes(16).toString('base64url')), admissionId: null };
+    sfu.rooms.set(s.session.roomId, [...sfu.rooms.get(s.session.roomId)!, mismatched, unknown]);
     // A session that has expired no longer authorizes connected media either.
     const memberGrant = await s.join(laptop.browser);
     await pool.query(`UPDATE auth_sessions SET expires_at = now() - interval '1 minute' WHERE id = $1`, [laptop.sessionId]);
+    const expired = { userId: s.member.id, identity: claims(memberGrant.token).sub, admissionId: claims(memberGrant.token).metadata! };
     const removed: string[] = [];
     const revocation = admissionRevocation({ store: liveAdmissionStore(db), sockets: { closeAdmission: () => 0, openAdmissions: () => [] },
-      media: { participantAdmissions: async () => [...sfu.rooms.get(s.session.roomId)!,
-        { userId: s.member.id, admissionId: claims(memberGrant.token).metadata! }],
-      revokeParticipant: async (_roomId, userId) => { removed.push(userId); } },
+      media: { participantAdmissions: async () => [...sfu.rooms.get(s.session.roomId)!, expired],
+        revokeParticipant: async (_roomId, identity) => { removed.push(identity); } },
       log: () => undefined });
     await revocation.reconcileRoom(s.session.roomId);
-    assert.deepEqual(new Set(removed), new Set([s.member.id, stranger.id]));
-    assert.equal(removed.includes(s.owner.id), false);
+    assert.deepEqual(new Set(removed), new Set([mismatched.identity, unknown.identity, expired.identity]));
+    assert.equal(removed.includes(claims(ownerGrant.token).sub), false);
+  });
+
+  test('the production adapter: one identity per admission, presence per person, leave removes all of them', async () => {
+    const roomId = `live_${randomBytes(24).toString('base64url')}`;
+    const [a, b, c] = [0, 1, 2].map(() => randomBytes(16).toString('base64url'));
+    const ada = randomUUID();
+    const ben = randomUUID();
+    sfu.service.set(roomId, [
+      { identity: participantIdentity(ada, a!), metadata: a!, state: 2, joinedAt: 100 },
+      { identity: participantIdentity(ada, b!), metadata: b!, state: 2, joinedAt: 50 },
+      { identity: participantIdentity(ben, c!), metadata: c!, state: 2, joinedAt: 70 },
+      { identity: 'someone-else', metadata: '', state: 2, joinedAt: 10 },
+    ]);
+    const { token } = await realMedia.grant(roomId, ada, a!);
+    assert.equal(claims(token).sub, participantIdentity(ada, a!));
+    assert.match(claims(token).sub, /^u_[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{22}$/);
+    // Two tabs or devices of one person appear once, with the earliest join.
+    assert.deepEqual((await realMedia.participants(roomId)).sort((x, y) => x.userId.localeCompare(y.userId)),
+      [{ userId: ada, joinedAt: new Date(50_000).toISOString() }, { userId: ben, joinedAt: new Date(70_000).toISOString() }]
+        .sort((x, y) => x.userId.localeCompare(y.userId)));
+    assert.equal(await realMedia.occupancy(roomId), 4, 'occupancy stays the raw participant count');
+    assert.deepEqual((await realMedia.participantAdmissions(roomId)).map((participant) => participant.admissionId).sort(), [a, b, c].sort());
+
+    // Revocation addresses exactly one identity: permissions first, then removal.
+    sfu.serviceCalls.length = 0;
+    await realMedia.revokeParticipant(roomId, participantIdentity(ada, a!));
+    assert.deepEqual(sfu.serviceCalls, [`UpdateParticipant:${participantIdentity(ada, a!)}`, `RemoveParticipant:${participantIdentity(ada, a!)}`]);
+    await realMedia.revokeParticipant(roomId, participantIdentity(ada, a!));
+    assert.deepEqual(sfu.service.get(roomId)!.map((participant) => participant.identity).sort(),
+      [participantIdentity(ada, b!), participantIdentity(ben, c!), 'someone-else'].sort(), 'an absent identity counts as done');
+
+    // A person's own leave removes every identity of theirs, and nobody else.
+    sfu.service.get(roomId)!.push({ identity: participantIdentity(ada, a!), metadata: a!, state: 1, joinedAt: 120 });
+    await realMedia.removeParticipant(roomId, ada);
+    assert.deepEqual(sfu.service.get(roomId)!.map((participant) => participant.identity).sort(), [participantIdentity(ben, c!), 'someone-else'].sort());
+    await realMedia.removeParticipant(roomId, ada);
+  });
+
+  test('a held revocation never removes a newer session of the same person that joined the same room meanwhile', async () => {
+    const s = await scene('gate-held-race');
+    const laptop = await signedIn(s.member);
+    const phone = await signedIn(s.member);
+    const laptopGrant = await s.join(laptop.browser);
+    const laptopAt = claims(laptopGrant.token);
+    sfu.service.set(s.session.roomId, [{ identity: laptopAt.sub, metadata: laptopAt.metadata!, state: 2, joinedAt: 1 }]);
+    const store = liveAdmissionStore(db);
+    for (const path of ['session end', 'reconciliation'] as const) {
+      let reached!: () => void;
+      let release!: () => void;
+      const holding = new Promise<void>((resolve) => { reached = resolve; });
+      const released = new Promise<void>((resolve) => { release = resolve; });
+      // The production revocation and adapter, held after the participants were read (or,
+      // on session end, where nothing is read) and before the SFU calls.
+      const revocation = admissionRevocation({ store, sockets: { closeAdmission: () => 0, openAdmissions: () => [] }, log: () => undefined,
+        media: {
+          participantAdmissions: async (roomId) => { const snapshot = await realMedia.participantAdmissions(roomId); reached(); await released; return snapshot; },
+          revokeParticipant: async (roomId, identity) => { reached(); await released; return realMedia.revokeParticipant(roomId, identity); },
+        } });
+      if (path === 'session end') expectStatus(await laptop.browser.request('POST', '/api/auth/sign-out', { body: {} }), 200);
+      const pending = path === 'session end' ? revocation.sessionEnded(laptop.sessionId) : revocation.reconcileRoom(s.session.roomId);
+      await holding;
+      // The person's other session joins the same room while the removal is held.
+      const phoneGrant = await s.join(phone.browser);
+      const phoneAt = claims(phoneGrant.token);
+      assert.notEqual(phoneAt.sub, laptopAt.sub);
+      assert.notEqual(phoneAt.metadata, laptopAt.metadata);
+      sfu.service.get(s.session.roomId)!.push({ identity: phoneAt.sub, metadata: phoneAt.metadata!, state: 2, joinedAt: 2 });
+      sfu.serviceCalls.length = 0;
+      release();
+      await pending;
+      assert.deepEqual(sfu.service.get(s.session.roomId)!.map((participant) => participant.identity), [phoneAt.sub], `${path}: the newer session stays`);
+      assert.equal(sfu.serviceCalls.some((call) => call.endsWith(phoneAt.sub)), false, `${path}: the newer session is never addressed`);
+      // The next path starts again from a revoked laptop participant beside the phone.
+      sfu.service.set(s.session.roomId, [{ identity: laptopAt.sub, metadata: laptopAt.metadata!, state: 2, joinedAt: 1 }]);
+    }
   });
 });

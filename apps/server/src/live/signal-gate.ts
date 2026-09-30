@@ -7,7 +7,7 @@ import type { Principal } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import type { MediaSocketRegistry } from './admission-revocation.js';
 import type { LiveAdmission, LiveAdmissionStore, RevokedAdmission } from './admissions.js';
-import { ADMISSION_ID, MEDIA_GATE_PATH, type LiveMediaConfig } from './media.js';
+import { ADMISSION_ID, MEDIA_GATE_PATH, participantIdentity, type LiveMediaConfig } from './media.js';
 
 /** The only signaling paths of the pinned SFU (livekit-server v1.13.7 rtcservice.go). */
 const SIGNAL_PATHS = new Set(['/rtc', '/rtc/v1']);
@@ -80,7 +80,8 @@ export function liveSignalGate(options: SignalGateOptions): SignalGate {
     const admission = await options.admissions.find(metadata);
     if (!admission) return { admitted: false, reason: 'unknown_admission' };
     if (admission.revokedAt) return { admitted: false, reason: 'revoked_admission' };
-    if (claims.sub !== `u_${Buffer.from(admission.userId, 'utf8').toString('base64url')}`)
+    // The identity is per admission: a grant of another admission, even the same person's, does not match.
+    if (claims.sub !== participantIdentity(admission.userId, admission.id))
       return { admitted: false, reason: 'identity_mismatch' };
     // Only the cookie that obtained the grant; another valid session of the same person does not qualify.
     const context = await options.sessions.resolveSession(headers);

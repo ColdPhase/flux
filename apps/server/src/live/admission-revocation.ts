@@ -1,5 +1,5 @@
 import type { LiveAdmissionStore, RevokedAdmission } from './admissions.js';
-import type { LiveMediaAdapter } from './media.js';
+import { participantIdentity, type LiveMediaAdapter } from './media.js';
 
 /** PostgreSQL channel the `auth_sessions` deletion trigger notifies (payload: auth session id). */
 export const LIVE_ADMISSIONS_CHANNEL = 'flux_live_admissions';
@@ -48,31 +48,21 @@ async function eachBounded<T>(items: readonly T[], run: (item: T) => Promise<voi
 }
 
 /**
- * Removes only a participant whose metadata is the revoked admission. The SFU keeps one
- * participant per person per room, so if the person's other session has taken over that
- * identity, its (different) admission id leaves it connected. Other people are never touched.
+ * Every SFU participant has its own admission's identity (`u_<user>.<admission>`), so removal
+ * addresses exactly the revoked admission: no participant snapshot is read, and a newer
+ * admission of the same person, even one that joined the same room meanwhile, has a
+ * different identity and stays connected. Other people are never touched.
  */
 export function admissionRevocation({ store, media, sockets, log }: AdmissionRevocationOptions): AdmissionRevocation {
   const failed = (message: string, details: Record<string, unknown>, error: unknown) =>
     log(message, { ...details, error: (error as Error)?.message ?? String(error) });
 
   const removeFromRooms = async (revoked: readonly RevokedAdmission[]) => {
-    const byRoom = new Map<string, Map<string, string>>();
-    for (const admission of revoked) {
-      const room = byRoom.get(admission.roomId) ?? new Map<string, string>();
-      room.set(admission.id, admission.userId);
-      byRoom.set(admission.roomId, room);
-    }
-    await eachBounded([...byRoom], async ([roomId, ids]) => {
-      try {
-        const connected = await media.participantAdmissions(roomId);
-        for (const participant of connected) {
-          if (!participant.admissionId || ids.get(participant.admissionId) !== participant.userId) continue;
-          await media.revokeParticipant(roomId, participant.userId);
-        }
-      } catch (error) {
+    await eachBounded(revoked, async (admission) => {
+      try { await media.revokeParticipant(admission.roomId, participantIdentity(admission.userId, admission.id)); }
+      catch (error) {
         // The gate already refuses every reconnect; the reconciliation pass retries removal.
-        failed('Revoked live admission is still pending removal from the SFU', { roomId }, error);
+        failed('Revoked live admission is still pending removal from the SFU', { roomId: admission.roomId }, error);
       }
     });
   };
@@ -85,7 +75,7 @@ export function admissionRevocation({ store, media, sockets, log }: AdmissionRev
     const standing = await store.standing(connected.flatMap((participant) => participant.admissionId ?? []));
     for (const participant of connected) {
       if (participant.admissionId && standing.has(participant.admissionId)) continue;
-      try { await media.revokeParticipant(roomId, participant.userId); }
+      try { await media.revokeParticipant(roomId, participant.identity); }
       catch (error) { failed('Live admission reconciliation could not remove a participant', { roomId }, error); }
     }
   };

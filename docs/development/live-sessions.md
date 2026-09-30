@@ -23,8 +23,9 @@ restrictive-network acceptance remain in [#63](https://github.com/ColdPhase/flux
   A wiki doc anchor uses the existing project material ID only when its kind is
   `doc`; every admission and recipient read checks current project access and
   the anchor again. A regular project material cannot impersonate a doc.
-- `POST /api/v1/live-sessions/:id/leave` disconnects that human from media.
-  A repeated leave returns `204` after the SFU confirms the person is absent.
+- `POST /api/v1/live-sessions/:id/leave` disconnects that human from media: every
+  participant of theirs in the room, one per session (#128). A repeated leave returns
+  `204` after the SFU confirms the person is absent.
   Device capture and playback remain client actions; receiving a grant never
   enables a microphone, camera or screen by itself.
 - Starts are capped at eight non-ended sessions per project and three per
@@ -96,14 +97,20 @@ Decided in [#128](https://github.com/ColdPhase/flux/issues/128) (design comment 
 LiveKit JWT stays valid after `RemoveParticipant`, and the SFU refreshes it every five
 minutes, so ending media cannot rely on the SFU alone.
 
-**Mapping.** The SFU identity stays one per person per room (`u_<base64url(userId)>`).
-Each `POST …/join` creates an admission `live_admissions(id, live_session_id, user_id,
-auth_session_id, issued_at, revoked_at)` bound to the caller's Better Auth session. The
-grant's participant metadata is the admission id (128 random bits); nothing else of the
+**Mapping.** Each `POST …/join` creates an admission `live_admissions(id, live_session_id,
+user_id, auth_session_id, issued_at, revoked_at)` bound to the caller's Better Auth
+session. The SFU identity is per admission: `u_<base64url(userId)>.<admissionId>`, and the
+participant metadata is the same admission id (128 random bits). Nothing else of the
 session is in the grant, and `canUpdateOwnMetadata` is false. SFU-refreshed tokens keep
-identity and metadata, so they carry the same admission. If the same person joins a room
-from a second session, LiveKit replaces the first participant (`DUPLICATE_IDENTITY`) and
-the participant then carries the second session's admission.
+identity and metadata, so they carry the same admission. One person may therefore be
+several participants in a room, for example a laptop and a phone; each is ended only by
+its own session's end. (Until the #139 review, the identity was one per person, and a
+removal addressed by person could disconnect a newer session that had taken over that
+identity while the removal was pending; the mapping was changed on 2026-09-30, recorded in
+[#128](https://github.com/ColdPhase/flux/issues/128).) Presence (`participants` in session
+responses and discovery, and the browser's faces) maps identity to person and shows each
+person once; raw occupancy for room retirement still counts participants. A person's own
+leave removes every identity of theirs in the room.
 
 **Signaling gate.** The API serves `/media/rtc`, `/media/rtc/v1` (WebSocket) and
 `/media/rtc/validate`, `/media/rtc/v1/validate` (HTTP), the only signaling paths of the
@@ -111,7 +118,9 @@ pinned SFU. The LiveKit client uses them for first connect, resume and full reco
 with the token in the query string. Before any upgrade or SFU request the gate requires:
 
 - a JWT signed with the Flux LiveKit key (HS256, issuer = API key) and unexpired;
-- an admission id as its metadata that exists, is unrevoked and names the JWT identity;
+- an admission id as its metadata that exists and is unrevoked, and a JWT identity (`sub`)
+  equal to exactly that admission's identity, so another admission's grant, even the same
+  person's, does not match;
 - the request's own **cookie** session equal to the admission's session and active. Another
   valid session of the same person does not qualify;
 - current project and anchor access to the live session (the live use case, as for GET),
@@ -128,18 +137,20 @@ cookie). Messages are bounded at 1 MiB; the Flux stream keeps its own 1 KiB boun
 session's admissions revoked in the deleting transaction, which covers Better Auth sign-out
 and password reset, `DELETE /api/v1/sessions/:id`, `revoke-others`, expiry cleanup and
 user deletion. It notifies `flux_live_admissions`; each API instance then terminates its
-proxied sockets of those admissions, and removes every participant whose metadata is one
-of them: permissions are dropped first (`UpdateParticipant` with no publish, subscribe or
-data), then `RemoveParticipant`. Removal is needed because media outlives a closed
-signaling socket for about 15–20 s. Only a participant carrying the revoked admission is
-touched, so other people, and the same person connected through another session, stay
-connected. The gate refuses any later connect, resume or reconnect with the original or a
+proxied sockets of those admissions, and addresses each revoked admission's own identity:
+permissions are dropped first (`UpdateParticipant` with no publish, subscribe or data),
+then `RemoveParticipant`; an absent identity counts as done. No participant list is read
+first, so there is no snapshot to go stale. Removal is needed because media outlives a
+closed signaling socket for about 15–20 s. Other people, and the same person connected
+through another session (a different identity, even in the same room and even if it joined
+while the removal was pending), stay connected. The gate refuses any later connect,
+resume or reconnect with the original or a
 refreshed token.
 
 **Reconciliation only.** Every 30 s and after the notification listener reconnects, each
-instance closes sockets whose admission no longer stands and removes participants of
-available rooms without a standing admission (unknown or missing metadata, revoked, or an
-auth session that is gone or expired). A `participant_joined` webhook runs the same check
+instance closes sockets whose admission no longer stands and removes, by their exact
+identity, participants of available rooms without a standing admission (unknown, or
+metadata not matching the identity, revoked, or an auth session that is gone or expired). A `participant_joined` webhook runs the same check
 for its room. Revoked and ended-session admissions older than a day are pruned. These
 passes catch a missed notification or an API restart; they are not the admission boundary.
 
@@ -160,15 +171,21 @@ changes the ingress plan for [#63](https://github.com/ColdPhase/flux/issues/63).
 LISTEN), the live use cases and the gate in process against a recording WebSocket SFU:
 binding, second-session/other-person/no-cookie/forged/expired/wrong-room refusals with no
 SFU connection, header stripping, validate, resume with a refreshed token, lost project
-access, sign-out, session revocation from another device, password reset, and
-reconciliation. `tests/app/e2e/live-sfu-signout.e2e.ts` (in `check_live_sfu.sh`) uses the
+access, a grant whose `sub` is another admission's identity, sign-out, session revocation
+from another device, password reset, and reconciliation. It also drives the production
+LiveKit adapter against a fake room service (presence per person, raw occupancy, exact-
+identity revocation, leave removing every identity of the person) and holds the production
+revocation after reading the participants (reconciliation) or before the SFU calls (session
+end) while the person's other session joins the same room: after release the newer session
+remains and is never addressed. `tests/app/e2e/live-sfu-signout.e2e.ts` (in `check_live_sfu.sh`) uses the
 pinned SFU and Chromium with fake audio: sign-out while publishing disconnects the sender
 and the receiver observes the leave (189–2624 ms after the sign-out response in local runs
 on 2026-09-30); captured first-connect, resume and full-reconnect requests replayed with the
 original or refreshed token and the signed-out cookie, another session's cookie or none get
 `401` and zero frames; the client's own reconnects after sign-out receive no frame; a direct
 connection to `livekit:7880` from the browser network is refused (`ECONNREFUSED`); the other
-person and the same person's session in another room stay connected; the other session can
+person, the same person's session in another room and a third session of theirs publishing
+in the same room stay connected; the other session can
 then join; session revocation from another device ends that device's media; ordinary resume
 and full reconnect pass; a burst of 21 joins gets 20 × `200` and `429` with `Retry-After`;
 saved work remains readable. Not covered: real devices, TURN/TLS, public ingress and
@@ -247,8 +264,9 @@ describes what people see, the placement decisions and the screenshots.
   presentation polling every 2.5 s through the identifier-only feed, View and Follow, quiet,
   invitations and rejoin. A drop other than your own leave rejoins through `POST …/join` at
   most three times: current access is checked again and a rotated room is joined fresh.
-  Every device is off afterwards. `DUPLICATE_IDENTITY` (the same person joining elsewhere)
-  and removal end the local session with a notice instead of fighting over the identity.
+  Every device is off afterwards. Removal (and `DUPLICATE_IDENTITY`, now only the same
+  admission connecting twice) ends the local session with a notice. Another tab or device
+  of the same person is a separate participant; the faces show each person once.
 - Views register what they are about with `useRegisterLiveHere(anchor, presentable)`: the
   conversation, a task or result in Details, a project sketch with its selected thoughts, or
   a doc at the shown version. Nothing is published from navigation. Only **Show this** calls

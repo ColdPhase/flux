@@ -6,7 +6,7 @@ import { chromium, type Browser as ChromiumBrowser, type Page, type WebSocket as
 import type { Conversation, LiveJoinGrant, LiveSession } from '@flux/contracts';
 import { Browser, publicOrigin } from '../support/http.js';
 import { mediaPage, openRoom, refreshedToken, refusedAtGate, roomName, tokenClaims, type MediaPage } from '../support/live-sfu.js';
-import { addMember, expectStatus, person, project, secondSession, workspace, type Person } from '../support/people.js';
+import { addMember, expectStatus, person, project, secondSession, workspace } from '../support/people.js';
 
 /**
  * Sign-out and session revocation against the pinned self-hosted SFU (#128): real Chromium
@@ -43,7 +43,8 @@ async function eventAfter(page: Page, event: string, seen: number, timeout = 30_
   await page.waitForFunction(({ event, seen }) => ((window as MediaPage).fluxEvents ?? []).slice(seen).includes(event),
     { event, seen }, { timeout });
 }
-const identity = (someone: Person) => `u_${Buffer.from(someone.id, 'utf8').toString('base64url')}`;
+/** The SFU identity of a grant: one per admission (`u_<user>.<admission>`, #128). */
+const identity = (grant: LiveJoinGrant) => tokenClaims(grant.token).sub;
 
 async function publishAudio(page: Page) {
   await page.evaluate(async () => {
@@ -102,6 +103,10 @@ test('sign-out ends the signed-out session media, refuses its grants at the gate
     const ownerGrant = await join(owner.browser);
     const laptopGrant = await join(member.browser);
     const phoneGrant = await join(phone.browser, otherRoom.id);
+    // A third session of the same person in the same room: its own admission and identity.
+    const tablet = await secondSession(member);
+    const tabletGrant = await join(tablet.browser);
+    assert.notEqual(identity(tabletGrant), identity(laptopGrant));
     assert.equal(laptopGrant.mediaUrl, `${publicOrigin.replace(/^http/, 'ws')}/media`);
 
     // (c) The SFU's signaling port is private: nothing on the browser network reaches it.
@@ -111,6 +116,7 @@ test('sign-out ends the signed-out session media, refuses its grants at the gate
     const ownerPage = await mediaPage(chromiumBrowser, owner.browser);
     const laptopPage = await mediaPage(chromiumBrowser, member.browser);
     const phonePage = await mediaPage(chromiumBrowser, phone.browser);
+    const tabletPage = await mediaPage(chromiumBrowser, tablet.browser);
     const laptopSockets = recordSockets(laptopPage);
     const directFromPage = await laptopPage.evaluate((url) => new Promise<string>((resolve) => {
       const socket = new WebSocket(`${url}/rtc/v1`);
@@ -124,7 +130,13 @@ test('sign-out ends the signed-out session media, refuses its grants at the gate
       openRoom(phonePage, phoneGrant.mediaUrl, phoneGrant.token)]);
     await publishAudio(laptopPage);
     await ownerPage.waitForFunction((who) => (window as MediaPage).fluxEvents?.includes(`track:${who}`),
-      identity(member), { timeout: 15_000 });
+      identity(laptopGrant), { timeout: 15_000 });
+    // The tablet joins the same room and publishes too: both sessions of one person coexist.
+    await openRoom(tabletPage, tabletGrant.mediaUrl, tabletGrant.token);
+    await publishAudio(tabletPage);
+    await ownerPage.waitForFunction((who) => (window as MediaPage).fluxEvents?.includes(`track:${who}`),
+      identity(tabletGrant), { timeout: 15_000 });
+    assert.equal(await state(laptopPage), 'connected', 'the second session did not replace the first');
     const refreshed = await refreshedToken(laptopPage, laptopGrant.token);
     assert.equal(tokenClaims(refreshed).metadata, tokenClaims(laptopGrant.token).metadata, 'SFU refresh keeps the admission id');
 
@@ -139,7 +151,7 @@ test('sign-out ends the signed-out session media, refuses its grants at the gate
     }
     // After the full reconnect the receiver hears the republished audio again.
     await ownerPage.waitForFunction((who) => (window as MediaPage).fluxEvents!.filter((event) => event === `track:${who}`).length >= 1,
-      identity(member), { timeout: 15_000 });
+      identity(laptopGrant), { timeout: 15_000 });
     // Apart from the refused direct probe above, the client signaled only through the gate.
     const gate = `${publicOrigin.replace(/^http/, 'ws')}/media/rtc`;
     assert.deepEqual(laptopSockets.filter((entry) => !entry.url.startsWith(gate)).map((entry) => new URL(entry.url).host), ['livekit:7880']);
@@ -152,7 +164,7 @@ test('sign-out ends the signed-out session media, refuses its grants at the gate
     const signedOutAt = Date.now();
     const socketsAtSignOut = laptopSockets.length;
     expectStatus(await member.browser.request('POST', '/api/auth/sign-out', { body: {} }), 200);
-    await eventAfter(ownerPage, `left:${identity(member)}`, ownerSeen);
+    await eventAfter(ownerPage, `left:${identity(laptopGrant)}`, ownerSeen);
     const receiverSawLeaveMs = Date.now() - signedOutAt;
     await laptopPage.waitForFunction(() => (window as MediaPage).fluxRoom?.state === 'disconnected', undefined, { timeout: 60_000 });
     const senderDisconnectedMs = Date.now() - signedOutAt;
@@ -182,6 +194,9 @@ test('sign-out ends the signed-out session media, refuses its grants at the gate
     // (d) The other person and the same person's other session were never touched.
     assert.equal(await state(ownerPage), 'connected');
     assert.equal(await state(phonePage), 'connected');
+    assert.equal(await state(tabletPage), 'connected', 'the same-room session of the same person stays');
+    assert.equal((await events(ownerPage)).includes(`left:${identity(tabletGrant)}`), false);
+    assert.equal((await events(tabletPage)).some((event) => event === 'state:disconnected'), false);
     assert.equal((await events(phonePage)).some((event) => event === 'state:disconnected'), false);
     // The other session joins the signed-out session's room with its own admission.
     const phoneHere = await join(phone.browser);
@@ -189,7 +204,7 @@ test('sign-out ends the signed-out session media, refuses its grants at the gate
     const ownerBeforePhone = (await events(ownerPage)).length;
     await openRoom(phonePageHere, phoneHere.mediaUrl, phoneHere.token);
     await publishAudio(phonePageHere);
-    await eventAfter(ownerPage, `track:${identity(member)}`, ownerBeforePhone, 15_000);
+    await eventAfter(ownerPage, `track:${identity(phoneHere)}`, ownerBeforePhone, 15_000);
 
     // Session revocation from another device ends that device's media the same way.
     const phoneSockets = recordSockets(phonePage);
@@ -221,5 +236,5 @@ test('sign-out ends the signed-out session media, refuses its grants at the gate
     assert.equal((expectStatus(await owner.browser.request('GET', `/api/v1/work/${work.id}`), 200) as { title: string }).title, work.title);
     console.log(JSON.stringify({ room: roomName(ownerGrant.token), directSfu: direct, receiverSawLeaveMs, senderDisconnectedMs,
       signedOutReconnectSockets: afterSignOut.length, replayedPaths: replays, originalRefused, refreshedRefused,
-      otherSessionAndPersonConnected: true, burst: statuses.join(','), retryAfter, workSurvived: work.id }));
+      otherSessionAndPersonConnected: true, sameRoomSessionConnected: true, burst: statuses.join(','), retryAfter, workSurvived: work.id }));
   });
