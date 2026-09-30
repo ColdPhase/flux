@@ -16,16 +16,16 @@ function GithubProjectSettings({ shell }: { shell: ProjectShell }) {
   const [capabilities, setCapabilities] = useState<GithubCapabilities | null>(null);
   const [bindings, setBindings] = useState<GithubBinding[]>([]); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
   const loadRequest = useRef<AbortController | null>(null);
-  const load = useCallback(async () => {
+  const load = useCallback(() => {
     loadRequest.current?.abort(); const controller = new AbortController(); loadRequest.current = controller;
-    let current: GithubCapabilities | null = null;
-    try {
-      current = await request<GithubCapabilities>(`${prefix}/capabilities`, { signal: controller.signal });
-      const rows = current.status === 'configured' && current.authorization === 'connected'
-        ? await request<GithubBinding[]>(`${prefix}/bindings`, { signal: controller.signal }) : [];
-      if (controller.signal.aborted) return;
-      setBindings(rows); setCapabilities(current);
-    } catch (cause) { if (!controller.signal.aborted) { setCapabilities(current); setBindings([]); setError(failure(cause)); } }
+    return request<GithubCapabilities>(`${prefix}/capabilities`, { signal: controller.signal }).then(async (current) => {
+      try {
+        const rows = current.status === 'configured' && current.authorization === 'connected'
+          ? await request<GithubBinding[]>(`${prefix}/bindings`, { signal: controller.signal }) : [];
+        if (controller.signal.aborted) return;
+        setBindings(rows); setCapabilities(current);
+      } catch (cause) { if (!controller.signal.aborted) { setCapabilities(current); setBindings([]); setError(failure(cause)); } }
+    }).catch((cause) => { if (!controller.signal.aborted) { setCapabilities(null); setBindings([]); setError(failure(cause)); } });
   }, [prefix]);
   useEffect(() => { void load(); return () => loadRequest.current?.abort(); }, [load]);
   function refresh() { setCapabilities(null); setBindings([]); setError(''); return load(); }
