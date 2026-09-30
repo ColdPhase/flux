@@ -18,4 +18,4 @@ ALTER TABLE proactive_comparison_outbox
   ADD COLUMN available_after timestamptz NOT NULL DEFAULT now();
 CREATE INDEX proactive_comparison_outbox_ready_idx
   ON proactive_comparison_outbox(available_after, id) WHERE status = 'queued';
-INSERT INTO flux_schema_version(version) VALUES (28) ON CONFLICT DO NOTHING;
+INSERT INTO flux_schema_version(version) VALUES (32) ON CONFLICT DO NOTHING;

@@ -1,6 +1,9 @@
+# The pinned PostgreSQL image, shared by the database and the backup helper (issue #123).
+x-postgres-image: &postgres-image postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+
 services:
   db:
-    image: postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    image: *postgres-image
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-flux}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
@@ -16,6 +19,9 @@ services:
     build:
       context: ..
       dockerfile: infra/Dockerfile
+      labels:
+        # Recorded in backup manifests (issue #123); ./flux sets it from `git rev-parse HEAD`.
+        com.flux.commit: ${FLUX_GIT_COMMIT:-unknown}
     image: flux-foundation:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
     command: ["node", "infra/dist/migrate.js"]
     environment:
@@ -29,6 +35,17 @@ services:
     image: flux-foundation:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
     user: "0:0"
     command: ["chown", "-R", "1000:1000", "/data/files"]
+    volumes:
+      - files:/data/files:z
+    restart: "no"
+  files-archive:
+    # One-shot helper of ./flux backup and restore (issue #123): streams the files volume as a
+    # tar archive over stdin/stdout. The pinned PostgreSQL image is used because it is always
+    # present with the database and provides tar, gzip and sha256sum. No network, no ports.
+    profiles: ["ops"]
+    image: *postgres-image
+    user: "0:0"
+    network_mode: none
     volumes:
       - files:/data/files:z
     restart: "no"
@@ -116,6 +133,9 @@ services:
       FLUX_SMTP_URL: ${FLUX_SMTP_URL:-}
       FLUX_MAIL_FROM: ${FLUX_MAIL_FROM:-}
       FLUX_FIXTURE_TOKEN: ${FLUX_FIXTURE_TOKEN:?Set FLUX_FIXTURE_TOKEN}
+      # In-process API instances (live admission tests, #128) act as a second replica of the
+      # API container and must decrypt the same Better Auth JWKS.
+      FLUX_AUTH_SECRET: ${FLUX_AUTH_SECRET:?Set FLUX_AUTH_SECRET}
       FLUX_TEST_STATE_DIR: /state
       FLUX_STREAM_HEARTBEAT_MS: ${FLUX_STREAM_HEARTBEAT_MS:-25000}
     volumes:

@@ -6,10 +6,11 @@ import { applyComparisonProposal, comparisonSourceHref, editComparisonProposal }
 import { ComparisonEvidence } from './ComparisonEvidence';
 import { InsufficientComparison } from './InsufficientComparison';
 
-export function ProjectProposals({ outcomes, people, projectName, resultTitles, workJumpId, workCount, resultCount, writable, refresh, openResult, openWork }: {
+export function ProjectProposals({ outcomes, people, projectName, resultTitles, workJumpId, workCount, resultCount, jumpToSection, writable, refresh, openResult, openWork }: {
   outcomes: ProactiveComparisonOutcome[]; people: ProjectPerson[] | null; projectName: string; writable: boolean;
   resultTitles: Map<string, string>;
   workJumpId: string; workCount: number; resultCount: number;
+  jumpToSection: (id: string) => void;
   refresh: () => void; openResult: (id: string) => void; openWork: (item: WorkItem) => void;
 }) {
   const [editing, setEditing] = useState<string | null>(null);
@@ -50,8 +51,8 @@ export function ProjectProposals({ outcomes, people, projectName, resultTitles, 
     <section className="ws-group ws-proposals" aria-labelledby="g-comparison-proposals">
       <h2 className="ws-group__h" id="g-comparison-proposals">Suggestions and checks <span>{open.length + insufficient.length}</span></h2>
       <nav className="ws-proposals__jumps" aria-label="Project work sections">
-        {workCount ? <button type="button" onClick={() => document.getElementById(workJumpId)?.scrollIntoView({ block: 'start' })}>Work {workCount}</button> : null}
-        {resultCount ? <button type="button" onClick={() => document.getElementById('g-results')?.scrollIntoView({ block: 'start' })}>Results {resultCount}</button> : null}
+        {workCount ? <button type="button" onClick={() => jumpToSection(workJumpId)}>Work {workCount}</button> : null}
+        {resultCount ? <button type="button" onClick={() => jumpToSection('g-results')}>Results {resultCount}</button> : null}
       </nav>
       <p className="ws-proposals__intro">Quiet project suggestions. The agent has not changed any work or decision.</p>
       {open.map(({ proposal, inspectedSources, unavailableSourcesCount }) => {

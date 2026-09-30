@@ -49,6 +49,8 @@ export interface SearchRow {
   parentId: string | null;
   projectId: string | null;
   projectName: string | null;
+  /** The DM of a DM message, or of a sketch or thought that belongs to a DM (#96). */
+  dmId: string | null;
   dmName: string | null;
   sketchTitle: string | null;
   version: number | null;

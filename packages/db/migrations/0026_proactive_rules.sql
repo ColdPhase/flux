@@ -23,4 +23,4 @@ CREATE TABLE proactive_comparison_rules (
   FOREIGN KEY (workspace_id, agent_id) REFERENCES agents(workspace_id, id)
 );
 CREATE INDEX proactive_comparison_rules_owner_idx ON proactive_comparison_rules(owner_user_id, project_id);
-INSERT INTO flux_schema_version(version) VALUES (22) ON CONFLICT DO NOTHING;
+INSERT INTO flux_schema_version(version) VALUES (26) ON CONFLICT DO NOTHING;

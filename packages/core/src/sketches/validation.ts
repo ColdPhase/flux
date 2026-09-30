@@ -15,6 +15,14 @@ export function id(value: unknown, field: string): string {
   return value.toLowerCase();
 }
 
+/** A list of distinct UUIDs (1–max), lower-cased. */
+export function ids(value: unknown, field: string, max: number): string[] {
+  if (!Array.isArray(value) || !value.length || value.length > max) throw new InvalidInputError(`${field} must list 1–${max} ids`);
+  const list = value.map((item, index) => id(item, `${field}[${index}]`));
+  if (new Set(list).size !== list.length) throw new InvalidInputError(`Each id may appear once in ${field}`);
+  return list;
+}
+
 export function optionalId(value: unknown, field: string): string | null {
   return value === undefined || value === null ? null : id(value, field);
 }

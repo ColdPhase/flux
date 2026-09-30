@@ -249,7 +249,7 @@ restarting API and worker. If that final file switch fails, **do not restart**:
 finish the switch or restore the paired database and old secret backup. Rotate
 the provider keys separately if compromise is suspected.
 
-Migrations `0022`–`0028` include the standing rule, encrypted connection,
+Migrations `0026`–`0032` include the standing rule, encrypted connection,
 candidate/reservation ledger, separate project proposal and fresh paused-rule
 renewal after permanent revocation, inspected/outcome accounting and source-change
 scheduling. The outbox retains
@@ -257,8 +257,8 @@ reserved possible charges when a rule or result would otherwise be deleted, so
 removal cannot reset the owner's
 allowance. The migrator applies individual files in numeric order and the #118
 strict guard rejects any gap or unknown version in the application ledger.
-These unmerged files were renumbered after protected main PR #131 added
-`0021_live_invitation_notifications.sql`; main's SQL is unchanged. The earlier
+These unmerged files were renumbered after protected main reached schema 25
+at `973f35cf00e624efecf5763e111e7511481bac44`; all applied main SQL stays unchanged. The earlier
 same-volume evidence below applies to the numbering at its stated commit.
 Later integrations and the final release candidate still need their own
 upgrade acceptance.

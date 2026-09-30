@@ -1,9 +1,11 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { useLoaderData, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { Decision, Project, ProactiveComparisonOutcome, WorkItem, WorkResult } from '@flux/contracts';
 import { Button, EmptyState, Icon } from '../ui';
 import { getProject } from '../app/conversation-api';
 import { useShellActions } from '../app/shellContext';
+import { useShellData } from '../app/data';
+import { useReadingPosition } from '../app/drafts';
 import { createWork, type ProjectWork } from './api';
 import { useProjectShell } from '../project/data';
 import { ProjectProposals } from '../project/ProjectProposals';
@@ -24,10 +26,56 @@ export async function projectTasksLoader({ params, request }: LoaderFunctionArgs
 function Group({ id, title, count, children }: { id: string; title: string; count: number; children: ReactNode }) {
   if (!count) return null;
   return (
-    <section className="ws-group" aria-labelledby={`g-${id}`}>
+    <section className="ws-group" id={`ws-${id}`} aria-labelledby={`g-${id}`}>
       <h2 className="ws-group__h" id={`g-${id}`}>{title} <span>{count}</span></h2>
       <ul className="ws-list">{children}</ul>
     </section>
+  );
+}
+
+/** The groups of the Tasks tab, in reading order. `status` in the URL shows one of them. */
+const GROUPS = ['needs', 'in_progress', 'blocked', 'open', 'parked', 'finished', 'rules', 'results'] as const;
+type GroupId = typeof GROUPS[number];
+const GROUP_LABEL: Record<GroupId, string> = {
+  needs: 'Needs you', in_progress: 'In progress', blocked: 'Blocked', open: 'Open',
+  parked: 'Parked', finished: 'Finished', rules: 'Decisions', results: 'Results',
+};
+const isGroup = (value: string | null): value is GroupId => GROUPS.includes(value as GroupId);
+
+/**
+ * One readable row of views instead of a board of clipped columns (#136 AC-2): All, then only
+ * the groups that have something. The chosen view and "Only mine" live in the URL, so returning
+ * from a source or Details comes back to the same view and reading position.
+ */
+function TaskViews({ counts, status, mine, writable, onStatus, onMine }: {
+  counts: Record<GroupId, number>; status: GroupId | null; mine: boolean; writable: boolean;
+  onStatus: (status: GroupId | null) => void; onMine: (mine: boolean) => void;
+}) {
+  const row = useRef<HTMLDivElement>(null);
+  // Keep the chosen view in sight by scrolling only the row sideways; scrollIntoView would also
+  // scroll the Tasks pane and undo its restored reading position.
+  useEffect(() => {
+    const bar = row.current;
+    const chosen = bar?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!bar || !chosen || bar.scrollWidth <= bar.clientWidth) return;
+    const start = chosen.offsetLeft - bar.offsetLeft;
+    const end = start + chosen.offsetWidth;
+    if (start < bar.scrollLeft) bar.scrollLeft = Math.max(0, start - 16);
+    else if (end > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = end - bar.clientWidth + 16;
+  }, [status]);
+  const shown = GROUPS.filter((id) => counts[id] || id === status);
+  return (
+    <nav className="ws-views" aria-label="Task views">
+      <div className="ws-views__row" ref={row}>
+        <button type="button" className="ws-view" aria-pressed={!status} onClick={() => onStatus(null)}>All</button>
+        {shown.map((id) => (
+          <button key={id} type="button" className={`ws-view${id === 'needs' && counts.needs ? ' ws-view--need' : ''}`} aria-pressed={status === id} onClick={() => onStatus(id)}>
+            {id === 'needs' && !writable ? 'Waiting for a decision' : GROUP_LABEL[id]} <span className="ws-view__n">{counts[id]}</span>
+          </button>
+        ))}
+      </div>
+      <label className="ws-mine"><input type="checkbox" checked={mine} onChange={(event) => onMine(event.target.checked)} /> Only mine</label>
+    </nav>
   );
 }
 
@@ -73,6 +121,38 @@ export function ProjectTasks() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [search, setSearch] = useSearchParams();
+  const { me } = useShellData();
+  const scroller = useRef<HTMLDivElement>(null);
+  const { pathname, search: routerSearch } = useLocation();
+  // The chosen view is local state mirrored into the URL with `replaceState`: switching views is
+  // instant and does not reload the project, and back/forward or a shared link restore it.
+  const fromUrl = () => ({ project: project.id, status: isGroup(search.get('status')) ? search.get('status') as GroupId : null, mine: search.get('show') === 'mine' });
+  const [stored, setViewState] = useState(fromUrl);
+  const [jumpId, setJumpId] = useState<string | null>(null);
+  // The route stays mounted when another project's Tasks opens: that project starts from its URL.
+  const view = stored.project === project.id ? stored : fromUrl();
+  const { status, mine } = view;
+  // Each view keeps its own reading position, so switching and coming back lands where you were.
+  useReadingPosition(scroller, me.user.id, `${pathname}?${status ?? 'all'}${mine ? ':mine' : ''}`);
+  const viewSearch = `${status ? `status=${status}` : ''}${status && mine ? '&' : ''}${mine ? 'show=mine' : ''}`;
+  useEffect(() => {
+    try { sessionStorage.setItem(`flux.project-tasks.${project.id}`, viewSearch ? `?${viewSearch}` : ''); } catch { /* the tab opens All */ }
+    const url = new URL(window.location.href);
+    url.searchParams.delete('status'); url.searchParams.delete('show');
+    if (status) url.searchParams.set('status', status);
+    if (mine) url.searchParams.set('show', 'mine');
+    if (url.href !== window.location.href) window.history.replaceState(window.history.state, '', url);
+    // `routerSearch`: a router navigation on this page (e.g. dropping `?open=`) would drop the view.
+  }, [project.id, viewSearch, status, mine, routerSearch]);
+  const setView = (next: { status?: GroupId | null; mine?: boolean }) => setViewState({ ...view, ...next });
+  // Outcome links refer to the whole project's work/results. Restore All before
+  // scrolling, since a saved status/mine filter can hide their destination.
+  const jumpToSection = (id: string) => { setView({ status: null, mine: false }); setJumpId(id); };
+  useEffect(() => {
+    if (!jumpId) return;
+    document.getElementById(jumpId)?.scrollIntoView({ block: 'start' });
+    setJumpId(null);
+  }, [jumpId, status, mine]);
 
   // `?open=work:<id>` (a doc reference opened in a new tab, #112) opens that object's details.
   const open = search.get('open');
@@ -103,13 +183,20 @@ export function ProjectTasks() {
     finally { setBusy(false); }
   }
 
-  const live = lists.work.filter((item) => !item.parked || isFinished(item));
-  const by = (status: WorkItem['status']) => live.filter((item) => item.status === status);
-  const parked = lists.work.filter((item) => item.parked && !isFinished(item));
+  const own = (item: WorkItem) => !mine || item.owner?.id === me.user.id;
+  const live = lists.work.filter((item) => own(item) && (!item.parked || isFinished(item)));
+  const by = (state: WorkItem['status']) => live.filter((item) => item.status === state);
+  const parked = lists.work.filter((item) => own(item) && item.parked && !isFinished(item));
   const finished = live.filter(isFinished);
   const proposed = lists.decisions.filter((item) => item.status === 'proposed');
-  const current = lists.decisions.filter((item) => item.status === 'accepted');
-  const earlier = lists.decisions.filter((item) => item.status === 'superseded');
+  const current = mine ? [] : lists.decisions.filter((item) => item.status === 'accepted');
+  const earlier = mine ? [] : lists.decisions.filter((item) => item.status === 'superseded');
+  const results = lists.results.filter((item) => !mine || item.createdBy.id === me.user.id);
+  const counts: Record<GroupId, number> = {
+    needs: proposed.length, in_progress: by('in_progress').length, blocked: by('blocked').length, open: by('open').length,
+    parked: parked.length, finished: finished.length, rules: current.length + earlier.length, results: results.length,
+  };
+  const visible = (id: GroupId) => !status || status === id;
   const openWork = (item: WorkItem) => () => openDetails({ kind: 'work', id: item.id });
   const openDecision = (item: Decision) => () => openDetails({ kind: 'decision', id: item.id });
   const openResult = (item: WorkResult) => () => openDetails({ kind: 'result', id: item.id });
@@ -118,7 +205,7 @@ export function ProjectTasks() {
     && !outcomes.some((outcome) => outcome.kind === 'comparison' ? outcome.proposal.status === 'proposed' : outcome.status === 'open');
 
   return (
-    <div className="pane-scroll">
+    <div className="pane-scroll" ref={scroller}>
       <div className="pane-in ws-tasks" data-shift>
         {writable ? (
           <form className="ws-add" onSubmit={(event) => void add(event)}>
@@ -138,24 +225,33 @@ export function ProjectTasks() {
         <ProjectProposals outcomes={outcomes} people={shell?.people ?? null} projectName={project.name}
           resultTitles={new Map(lists.results.map((result) => [result.id, result.title]))}
           workCount={lists.work.length} resultCount={lists.results.length}
-          workJumpId={by('in_progress').length ? 'g-progress' : by('blocked').length ? 'g-blocked' : by('open').length ? 'g-open' : parked.length ? 'g-parked' : 'g-finished'}
+          workJumpId={lists.work.some((item) => !item.parked && item.status === 'in_progress') ? 'g-progress' : lists.work.some((item) => !item.parked && item.status === 'blocked') ? 'g-blocked' : lists.work.some((item) => !item.parked && item.status === 'open') ? 'g-open' : lists.work.some((item) => item.parked && !isFinished(item)) ? 'g-parked' : 'g-finished'}
+          jumpToSection={jumpToSection}
           writable={writable} refresh={() => revalidator.revalidate()}
           openResult={(id) => openDetails({ kind: 'result', id })}
           openWork={(item) => openDetails({ kind: 'work', id: item.id })} />
-        <Group id="proposed" title={writable ? 'Needs you' : 'Waiting for a decision'} count={proposed.length}>
+        {!nothing ? <TaskViews counts={counts} status={status} mine={mine} writable={writable} onStatus={(next) => setView({ status: next })} onMine={(next) => setView({ mine: next })} /> : null}
+        {!nothing && (status ? !counts[status] : !Object.values(counts).some(Boolean)) ? (
+          <p className="ws-none" role="status">
+            {mine ? `Nothing of yours${status ? ` in ${GROUP_LABEL[status].toLowerCase()}` : ''} right now.` : `Nothing in ${GROUP_LABEL[status!].toLowerCase()} right now.`}{' '}
+            <button type="button" className="ws-none__b" onClick={() => setView(mine ? { mine: false } : { status: null })}>{mine ? 'Show everyone’s' : 'Show all'}</button>
+          </p>
+        ) : null}
+
+        <Group id="proposed" title={writable ? 'Needs you' : 'Waiting for a decision'} count={visible('needs') ? proposed.length : 0}>
           {proposed.map((item) => <Row key={item.id} icon={<Icon name="rule" size={16} />} iconClass="ws-need" title={item.title} sub={<>Proposed by {item.proposedBy.name}{item.proposedBy.kind === 'agent' ? ' (agent)' : ''}{item.supersedes ? ' · would replace the current rule' : ''}{writable ? <> · <span className="ws-need">you can accept it</span></> : null}</>} right={shortDate(item.createdAt)} onOpen={openDecision(item)} />)}
         </Group>
-        <Group id="progress" title="In progress" count={by('in_progress').length}>{by('in_progress').map((item) => workRow(item))}</Group>
-        <Group id="blocked" title="Blocked" count={by('blocked').length}>{by('blocked').map((item) => workRow(item))}</Group>
-        <Group id="open" title="Open" count={by('open').length}>{by('open').map((item) => workRow(item))}</Group>
-        <Group id="parked" title="Parked by a pivot" count={parked.length}>{parked.map((item) => workRow(item, true))}</Group>
-        <Group id="finished" title="Finished" count={finished.length}>{finished.map((item) => workRow(item, true))}</Group>
-        <Group id="rules" title="Decisions" count={current.length + earlier.length}>
+        <Group id="progress" title="In progress" count={visible('in_progress') ? counts.in_progress : 0}>{by('in_progress').map((item) => workRow(item))}</Group>
+        <Group id="blocked" title="Blocked" count={visible('blocked') ? counts.blocked : 0}>{by('blocked').map((item) => workRow(item))}</Group>
+        <Group id="open" title="Open" count={visible('open') ? counts.open : 0}>{by('open').map((item) => workRow(item))}</Group>
+        <Group id="parked" title="Parked by a pivot" count={visible('parked') ? counts.parked : 0}>{parked.map((item) => workRow(item, true))}</Group>
+        <Group id="finished" title="Finished" count={visible('finished') ? counts.finished : 0}>{finished.map((item) => workRow(item, true))}</Group>
+        <Group id="rules" title="Decisions" count={visible('rules') ? counts.rules : 0}>
           {current.map((item) => <Row key={item.id} icon={<Icon name="rule" size={16} />} title={item.title} sub={`Current rule · ${item.decidedBy?.name ?? ''} · ${shortDate(item.decidedAt!)}`} onOpen={openDecision(item)} />)}
           {earlier.map((item) => <Row key={item.id} icon={<Icon name="rule" size={16} />} title={item.title} sub={`Earlier rule · replaced ${shortDate(item.supersededAt!)}`} onOpen={openDecision(item)} muted />)}
         </Group>
-        <Group id="results" title="Results" count={lists.results.length}>
-          {lists.results.map((item) => <Row key={item.id} icon={<Icon name="result" size={16} />} iconClass={item.finding === 'negative' ? 'ws-neg' : 'ws-pos'} title={item.title} sub={`${item.finding === 'negative' ? 'Negative' : 'Positive'} · ${item.createdBy.name}`} right={shortDate(item.createdAt)} onOpen={openResult(item)} />)}
+        <Group id="results" title="Results" count={visible('results') ? counts.results : 0}>
+          {results.map((item) => <Row key={item.id} icon={<Icon name="result" size={16} />} iconClass={item.finding === 'negative' ? 'ws-neg' : 'ws-pos'} title={item.title} sub={`${item.finding === 'negative' ? 'Negative' : 'Positive'} · ${item.createdBy.name}`} right={shortDate(item.createdAt)} onOpen={openResult(item)} />)}
         </Group>
       </div>
     </div>

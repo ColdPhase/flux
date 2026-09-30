@@ -3,16 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import { after, test } from 'node:test';
 import { chromium, type Browser, type Page } from 'playwright';
+import { mediaPage, refusedAtGate, roomName, type MediaPage } from '../support/live-sfu.js';
 import type { Conversation, LiveJoinGrant, LiveSession } from '@flux/contracts';
 import { addMember, expectStatus, grant, person, project, workspace } from '../support/people.js';
-
-interface MediaPage extends Window {
-  LivekitClient?: { Room: new () => { connect(url: string, token: string): Promise<void>; state: string;
-    engine: { token?: string }; disconnect(): Promise<void> } };
-  LiveKitClient?: MediaPage['LivekitClient'];
-  fluxRoom?: InstanceType<NonNullable<MediaPage['LivekitClient']>['Room']>;
-  probeRoom?: InstanceType<NonNullable<MediaPage['LivekitClient']>['Room']>;
-}
 
 let browser: Browser | undefined;
 after(async () => browser?.close());
@@ -31,26 +24,9 @@ async function waitForRestart(): Promise<void> {
   throw new Error('Host did not restart the pinned SFU after the ready marker');
 }
 
-function roomName(token: string): string {
-  const payload = JSON.parse(Buffer.from(token.split('.')[1]!, 'base64url').toString('utf8')) as
-    { exp: number; video: { room: string } };
-  assert.ok(payload.exp > Math.floor(Date.now() / 1000), 'token is still valid');
-  return payload.video.room;
-}
-
+/** An old-generation grant is refused by the Flux gate: it no longer names the current room. */
 async function oldTokenRejected(page: Page, url: string, token: string): Promise<void> {
-  const refused = page.waitForResponse((response) => response.url().includes('/rtc/validate') &&
-    response.status() === 404, { timeout: 10_000 });
-  await page.evaluate(({ url, token }) => {
-    const w = window as MediaPage;
-    const sdk = w.LivekitClient ?? w.LiveKitClient;
-    if (!sdk) throw new Error('LiveKit browser SDK missing');
-    w.probeRoom = new sdk.Room();
-    void w.probeRoom.connect(url, token).catch(() => undefined);
-  }, { url, token });
-  await refused;
-  assert.notEqual(await page.evaluate(() => (window as MediaPage).probeRoom?.state), 'connected');
-  await page.evaluate(() => (window as MediaPage).probeRoom?.disconnect());
+  await refusedAtGate(page, url, token);
 }
 
 test('real SFU restart rotates a lost room; old original and refreshed tokens remain unusable',
@@ -72,12 +48,8 @@ test('real SFU restart rotates a lost room; old original and refreshed tokens re
     const oldRoom = roomName(first.token);
     assert.equal(roomName(memberFirst.token), oldRoom);
     browser = await chromium.launch({ args: ['--no-sandbox'] });
-    const page = await browser.newPage();
-    const memberPage = await browser.newPage();
-    await page.goto(first.mediaUrl.replace(/^ws/, 'http'));
-    await memberPage.goto(first.mediaUrl.replace(/^ws/, 'http'));
-    await page.addScriptTag({ path: '/opt/live-sfu/node_modules/livekit-client/dist/livekit-client.umd.js' });
-    await memberPage.addScriptTag({ path: '/opt/live-sfu/node_modules/livekit-client/dist/livekit-client.umd.js' });
+    const page = await mediaPage(browser, owner.browser);
+    const memberPage = await mediaPage(browser, member.browser);
     const connect = async (clientPage: Page, url: string, token: string) => clientPage.evaluate(async ({ url, token }) => {
       const w = window as MediaPage;
       const sdk = w.LivekitClient ?? w.LiveKitClient;

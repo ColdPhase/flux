@@ -4,7 +4,8 @@
 # image tags: origin guard cases; up (fresh .env, never overwritten), demo (logins work,
 # idempotent, refuses production), dev (web and API hot reload through the Vite proxy),
 # down/reset/clean scoped to this checkout, a second checkout with default names surviving
-# the first one's clean, and a copied .env refused by ownership checks.
+# the first one's clean, and a copied .env refused by ownership checks (also for the #123
+# backup, export and upgrade commands; scripts/check_backup.sh tests those in depth).
 # It never touches the checkout's own .env or any other Compose project.
 set -eu
 
@@ -184,10 +185,10 @@ run2=$(sed -n 's/^FLUX_PROJECT=//p' "$copy2/.env")
 flux2 demo >/dev/null
 owner2_pw=$(sed -n 's/^FLUX_DEMO_OWNER_PASSWORD=//p' "$copy2/.env")
 
-step "A copied .env (another checkout's project) is refused by up, down, reset and clean"
+step "A copied .env (another checkout's project) is refused by up, down, reset, clean, backup, export and upgrade"
 mkdir -p "$copy3"
 (cd "$copy" && tar -cf - .) | (cd "$copy3" && tar -xf -)
-for command in up down "reset -y" "clean -y"; do
+for command in up down "reset -y" "clean -y" backup "export x" "upgrade -y"; do
   # shellcheck disable=SC2086
   if "$copy3/flux" $command > "$work/copy3.out" 2>&1; then fail "copied checkout ran '$command' on $run"; fi
   grep -q "belongs to another checkout ($copy)" "$work/copy3.out" || fail "no ownership refusal for '$command'"

@@ -1,12 +1,19 @@
 import {
   RETURN_POINTS_PATH, RETURN_POINTS_RESTORE_PATH, RETURN_SUMMARY_PATH,
-  type ReturnPlace, type ReturnPoint, type ReturnSource, type ReturnSummary,
+  type ReturnPeriod, type ReturnPlace, type ReturnPoint, type ReturnScope, type ReturnSource, type ReturnSummary,
 } from '@flux/contracts';
 import { request } from '../api/client';
 
 /** "Since you left" (#106): the summary of a place and its server-side return point. */
 export function getReturnSummary(place: ReturnPlace, signal?: AbortSignal) {
   const query = place.type === 'home' ? 'place=home' : `place=${place.type}&id=${encodeURIComponent(place.id)}`;
+  return request<ReturnSummary>(`${RETURN_SUMMARY_PATH}?${query}`, { signal });
+}
+/** "What matters" (#133): a project's private recap in a scope and period, at a snapshot `until` when given. */
+export function getRecap({ projectId, scope, period, until, digest }: { projectId: string; scope: ReturnScope; period: ReturnPeriod; until: string | null; digest: boolean }, signal?: AbortSignal) {
+  const query = new URLSearchParams({ place: 'project', id: projectId, scope, from: period });
+  if (until) query.set('until', until);
+  if (digest) query.set('digest', '1');
   return request<ReturnSummary>(`${RETURN_SUMMARY_PATH}?${query}`, { signal });
 }
 export const saveReturnPoint = (place: ReturnPlace, mark: string | null) =>

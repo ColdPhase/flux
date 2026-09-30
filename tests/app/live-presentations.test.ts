@@ -50,7 +50,7 @@ test('recipient pages only current, readable presentation refs after hidden sour
         async ensureRoom() {}, async requireRoom() {},
         async grant() { return { token: 'unused', expiresAt: new Date() }; },
         async participants() { return []; }, async occupancy() { return 0; },
-        async removeParticipant() {}, async deleteRoom() {},
+        async removeAdmissions() {}, async deleteRoom() {},
       },
     } });
     const get = async (personId: string, id: string, suffix = '') => app.inject({

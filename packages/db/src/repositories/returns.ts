@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, lt, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, lt, lte, sql, type SQL } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
@@ -73,6 +73,14 @@ export function returnRows(db: DbExecutor) {
       const [row] = await db.select({ seq: schema.eventAudience.seq }).from(schema.eventAudience)
         .where(and(eq(schema.eventAudience.recipient, recipient), eq(schema.eventAudience.eventId, eventId)));
       return row?.seq ?? null;
+    },
+
+    /** The recipient's last audience position at or before `at` (0 when there is none): the start of a chosen period. */
+    async audienceSeqAt(recipient: string, at: Date) {
+      const [row] = await db.select({ seq: sql<number | null>`max(${schema.eventAudience.seq})` }).from(schema.eventAudience)
+        .innerJoin(schema.events, eq(schema.events.id, schema.eventAudience.eventId))
+        .where(and(eq(schema.eventAudience.recipient, recipient), lte(schema.events.createdAt, at)));
+      return Number(row?.seq ?? 0);
     },
 
     async lastEvent(recipient: string) {

@@ -50,4 +50,4 @@ ALTER TABLE proactive_comparison_outbox
   ADD CONSTRAINT proactive_comparison_outbox_insufficient_sources_check
     CHECK (insufficient_outcome_id IS NULL OR inspected_sources IS NOT NULL);
 
-INSERT INTO flux_schema_version(version) VALUES (27) ON CONFLICT DO NOTHING;
+INSERT INTO flux_schema_version(version) VALUES (31) ON CONFLICT DO NOTHING;

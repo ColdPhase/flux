@@ -278,6 +278,9 @@ importers:
       sanitize-html:
         specifier: 2.17.7
         version: 2.17.7
+      ws:
+        specifier: 8.22.0
+        version: 8.22.0
       zod:
         specifier: 4.6.5
         version: 4.6.5
