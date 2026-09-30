@@ -44,14 +44,17 @@ evidence for independent evaluation. Those commands and all product criteria rem
 in force; neither this check nor `Agent setup` replaces them. Publication remains
 in the explicitly triggered final release workflow.
 
-Read-only inspection on 2026-09-30 found `main-protection` ruleset `24053383` requires
-only `Agent setup`, with current-base validation off. #143 must prove the corrected
-workflow locally and in Actions, obtain independent protected merge, then prove a
-successful base run before adding `Application validation` from the observed Actions
-integration and strict current-base validation. Preserve every other review/check
-and history/deletion rule, read effective rules back and demonstrate failure/pass
-behavior. Until that rollout is recorded, application-check enforcement is unverified;
-a green application job alone does not establish that GitHub requires it.
+On 2026-09-30, #143's independently approved workflow was protected-merged,
+then passed its explicit main dispatch. Ruleset `24053383` now requires both
+`Agent setup` and `Application validation` from observed GitHub Actions integration
+`15368`, with strict current-base validation. Every prior review/Code Owner,
+thread-resolution, history, deletion/push and no-bypass rule is preserved.
+[Source-pinned rollout evidence](evidence/143-required-application-validation/README.md)
+includes read-back/effective rules and a real failing portable test whose normal
+merge was explicitly rejected. The temporary fixture is removed in the corrected
+head; that head's passing run and eligible independent documentation review are
+required before its PR merges. These fast gates do not replace application or
+release acceptance.
 
 ## 1. Design checks from the actual stack
 
