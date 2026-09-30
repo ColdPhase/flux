@@ -178,13 +178,15 @@ restarting API and worker. If that final file switch fails, **do not restart**:
 finish the switch or restore the paired database and old secret backup. Rotate
 the provider keys separately if compromise is suspected.
 
-Migrations `0021`–`0024` include the standing rule, encrypted connection,
-candidate/reservation ledger and separate project proposal. The outbox retains
+Migrations `0021`–`0025` include the standing rule, encrypted connection,
+candidate/reservation ledger, separate project proposal and fresh paused-rule
+renewal after permanent revocation. The outbox retains
 reserved possible charges when a rule or result would otherwise be deleted, so
 removal cannot reset the owner's
 allowance. The migrator applies individual files in numeric order and the #118
 strict guard rejects any gap or unknown version in the application ledger.
-Same-volume upgrade proof through `0021`–`0024` remains required before release.
+The same-volume evidence below covers these files; the final integrated release
+candidate still needs its own upgrade acceptance.
 
 ### Same-volume rehearsal
 
@@ -210,6 +212,37 @@ candidate evidence; independent #58 evaluation and the final integrated
 release candidate still require their own acceptance pass, including any later
 migrations from other branches.
 
+Observed 2026-09-30: protected baseline
+`4d9179b57b82172e7bc1c08a0a459128cc7b76f7` to
+`06d07f6cbdea4d0a569b719929ec82594332406a` passed the same rehearsal
+with ledger `1`–`20` → `1`–`25`. All five comparison files were applied to
+the original volume, the 16 full-row snapshots matched, original sessions and
+historical sources remained usable, the new paused rule/key worked without a
+provider invocation, and the repeat migration/start kept the ledger exact.
+This is a local branch rehearsal, not independent or integrated #118 acceptance.
+
+### Owner setup and rule controls
+
+The owner opens **Background suggestions** from the account menu. Its private
+settings route saves explicit payer, provider workspace, disclosure and local
+allowance consent; the password field is cleared after every API attempt.
+Saved metadata exposes only the key suffix, never the key/ciphertext. Replace
+has cancellation beside its heading and at the bottom of the form; failed
+replacement keeps the saved connection. Disconnect removes the key from Flux;
+provider revocation remains a separate action explained beside the button.
+
+A person can create their own named agent, grant it access to the selected
+project and save a **paused** comparison rule. An earlier revoked rule remains
+unchanged: renewal creates a new paused identity/version with fresh scope and
+allowance confirmation. Concurrent renewal allows one creation; unknown possible
+charges remain counted across connections and renewed rules. Enable truthfully
+stays unavailable until the accepted runtime is registered and verified.
+
+The [owner-setup evidence](../design/proactive-comparison/owner-setup-2026-09-30/)
+separately records rendered states, independent visual findings and their
+remediation, running Docker/API/browser checks and the remaining gaps. It does
+not establish real provider spending or whole-task completion.
+
 The [Claude Sonnet 5 model page](https://platform.claude.com/docs/en/models/sonnet-5/whats-new-sonnet-5),
 checked 2026-09-28, lists API model ID `claude-sonnet-5`, standard $2/M input
 tokens and $10/M output tokens, and notes that its tokenizer differs from Sonnet
@@ -220,7 +253,7 @@ continues to hold at least the original reservation in the local budget.
 Remaining #58 work: an authorized real-provider test call and actual billing
 observation including live-provider cancellation, independent full-context quality
 evaluation, reopening dismissed suggestions only after relevant
-evidence changes, insufficient-evidence state, rendered UI/interaction
-and independent visual evidence, plus independent/current release migration
+evidence changes, insufficient-evidence outcomes and private usage accounting,
+registered production scheduling and activation, plus independent/current release migration
 acceptance. This file
 describes a controlled integration slice, not completion of #58.

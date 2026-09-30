@@ -1,5 +1,12 @@
 # Project comparison suggestions (#58)
 
+## Personal source and paused-rule setup
+
+The [owner setup checkpoint](owner-setup-2026-09-30/) records desktop, touch
+tablet/phone and difficult states, independent appearance reviews, separate
+running verification and remaining acceptance. Creating a rule stays paused;
+background runtime and real-provider/billing acceptance remain open.
+
 ## Current bounded-context surface
 
 The [2026-09-30 evidence](context-2026-09-30/) renders code commit
