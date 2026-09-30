@@ -195,6 +195,55 @@ before the new schema/API implementation:
 This is an accepted implementation contract, not evidence of implemented outcomes
 or production activation.
 
+### Outcome wire and owner-accounting amendment (accepted 2026-09-30)
+
+The [concrete interface proposal](https://github.com/ColdPhase/flux/issues/58#issuecomment-5901303362)
+was [accepted with paging and per-reader authorization amendments](https://github.com/ColdPhase/flux/issues/58#issuecomment-5901313083)
+before its schema/API implementation:
+
+- `GET /api/v1/projects/:projectId/proactive-comparison-outcomes` requires current
+  project read access and returns newest-first `items`, `total`, `limit` (at most
+  100) and `offset`. Clients load all pages. Each item is either
+  `kind: comparison` with the existing proposal DTO and separately stored
+  `inspectedSources`, or `kind: insufficient_evidence` with id, project/result,
+  owner/agent attribution, safe reason, inspected references, open/dismissed
+  status, version and timestamps. Insufficient items have no fact, action, work,
+  payer, provider, cost or authorization-failure fields. Existing proposal routes
+  remain compatible; dismissing an insufficient item requires project write
+  access and the expected version.
+- Store the actual inspected metadata vector on the candidate before provider
+  dispatch, after locked access/source checks. A separate insufficient-outcome
+  table has unique candidate provenance. References carry type/id/version,
+  trusted title, conversation/sketch navigation and excerpt markers, without
+  source bodies. On every outcome read, apply current source access for that
+  reader: omit references they cannot open and expose only their count. Legacy
+  rows retain `null`; their cited subset cannot stand in for inspected evidence.
+- Provider structured output is one root object containing a closed nested
+  `anyOf` of comparison and insufficient-evidence branches. Runtime validation
+  enforces lengths, exact source identities/revisions and usage ceilings.
+  [Vendor documentation](https://platform.claude.com/docs/en/build-with-claude/structured-outputs),
+  checked 2026-09-30, documents nested `anyOf` and closed objects; string-length
+  and numeric bounds remain runtime checks. This is documented compatibility,
+  not an observed provider result. A real-provider check remains a release gate.
+- A model-declared insufficient response or truncated/refused/invalid comparison
+  with valid observed usage may commit only after final current owner, rule,
+  agent and source checks. Validation failures use fixed safe reason text,
+  without raw provider output. Stopped, revoked or inaccessible candidates do
+  not publish. Paid usage still counts; delivery stays quiet with no work,
+  notifications or automatic paid retry.
+- `GET /api/v1/background-compute-usage` is owner-only. It separates UTC-day
+  started requests, rolling-30-day conservative counted amount, token-derived
+  observed estimate, unknown possible amount and in-flight amount. It includes
+  current connection limits or null and at most 50 own candidate summaries
+  (project/result/rule ids, status, stable reason, timestamps and reserved/observed
+  usage). Return no key, ciphertext, another owner's rows or current titles and
+  evidence after access loss. These are local accounting amounts, not invoices.
+- Terminal pre-paid failures persist private `not_run` with a stable reason and
+  zero usage/reservation. Busy-owner queuing remains non-terminal. Terminal
+  credential/access/scope/budget refusals do not retry; unknown post-start charges
+  remain counted across connection and rule renewal. New migration numbering
+  follows actual merge order.
+
 ### Rule renewal amendment (accepted 2026-09-30)
 
 The evaluator [accepted fresh authorization after revocation](https://github.com/ColdPhase/flux/issues/58#issuecomment-5900813869).
