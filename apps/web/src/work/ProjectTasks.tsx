@@ -128,7 +128,7 @@ export function ProjectTasks() {
   // instant and does not reload the project, and back/forward or a shared link restore it.
   const fromUrl = () => ({ project: project.id, status: isGroup(search.get('status')) ? search.get('status') as GroupId : null, mine: search.get('show') === 'mine' });
   const [stored, setViewState] = useState(fromUrl);
-  const [jumpId, setJumpId] = useState<string | null>(null);
+  const jumpId = useRef<string | null>(null);
   // The route stays mounted when another project's Tasks opens: that project starts from its URL.
   const view = stored.project === project.id ? stored : fromUrl();
   const { status, mine } = view;
@@ -147,12 +147,12 @@ export function ProjectTasks() {
   const setView = (next: { status?: GroupId | null; mine?: boolean }) => setViewState({ ...view, ...next });
   // Outcome links refer to the whole project's work/results. Restore All before
   // scrolling, since a saved status/mine filter can hide their destination.
-  const jumpToSection = (id: string) => { setView({ status: null, mine: false }); setJumpId(id); };
+  const jumpToSection = (id: string) => { jumpId.current = id; setView({ status: null, mine: false }); };
   useEffect(() => {
-    if (!jumpId) return;
-    document.getElementById(jumpId)?.scrollIntoView({ block: 'start' });
-    setJumpId(null);
-  }, [jumpId, status, mine]);
+    if (!jumpId.current) return;
+    document.getElementById(jumpId.current)?.scrollIntoView({ block: 'start' });
+    jumpId.current = null;
+  }, [view]);
 
   // `?open=work:<id>` (a doc reference opened in a new tab, #112) opens that object's details.
   const open = search.get('open');
