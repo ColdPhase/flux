@@ -1,9 +1,9 @@
-# Ready agent workflows and addressed cooperation
+# Built-in agent workflows and addressed cooperation
 
 **F-018, 2026-09-30 — founder requirement; delivery pending.** Hubert's follow-up
 requires Flux to teach connected agents how to cooperate, not merely expose MCP
 tools. This extends [F-016 / CO-1–CO-5](mcp-cowork.md). The contract and
-[starter playbook](cowork-playbook.md) are product design, not an installed
+[internal instruction content](cowork-playbook.md) are product design, not an installed
 skill, working scheduler or proof of client support. [#160](https://github.com/ColdPhase/flux/issues/160)
 owns packaging/onboarding; #152/#153/#74/#136 retain their existing domains.
 Owner: `codex-hubert`; independent evaluator: `claude-maurycy`.
@@ -17,16 +17,22 @@ procedures in `docs/agents/` or turn supplied `AGENTS_COOP.md` into instructions
 ## Connect, authorize, start — CW-1
 
 The default journey is **connect a supported client → authorize project/role →
-Start work**. Users need not invent prompts, install this repository's agent
-procedures or manage an agent message bus. Each of Hubert's two connections and
+Start work**. Instruction delivery and workflow management are built into Flux.
+Users must not have to read a playbook/README, copy or paste prompts, download
+instruction files, manually install skills or author agent procedures to make
+co-work function. Each of Hubert's two connections and
 Marek's third gets its own role, grants and state. Existing helper remains separate.
 
-Flux ships one versioned playbook with role modules: start/resume, plan/claim,
+Flux owns and ships one internal versioned instruction bundle (called a playbook
+in these engineering documents) with role modules: start/resume, plan/claim,
 execute/checkpoint, request help/review, review/fix, blocker/transfer and stop.
-Adapters may package these as a supported native skill, MCP prompt/resources or
-an explicit supplied starter action, but must demonstrably load the instructions
-into the active client. Advertising a prompt or tools is not successful setup.
-The default must be useful without optional project customization.
+Flux's supported integration supplies/loads this through MCP or a managed client
+adapter as part of the built-in connection and Start/Resume flow. A native skill
+or MCP prompt/resource is an implementation detail, not homework handed to the
+user. Demonstrably load the instructions into the active client; advertising a
+prompt or tools is not successful setup. The default must be useful without
+optional project customization. End-user UI says Connect/Start/Resume and explains
+scope/activity, rather than exposing instruction files to operate the feature.
 
 Bootstrap returns authenticated connection/owner, tenant/project, permitted role
 and grant references, capability manifest, playbook version/digest, approved
@@ -37,9 +43,12 @@ this acknowledgment is compatibility evidence, not proof of model obedience or
 an authorization token. Server commands independently enforce all policy.
 
 Require exact tested client/adapter versions and a supported activation path.
-If the client requires a user invocation, provide the ready action/text and say
-so; do not claim that MCP auto-installs a skill, starts a closed application or
-makes notifications trigger model turns. No silent edits to global/repository
+If the client requires a user invocation/approval, provide an integrated action
+in the supported setup/launch flow. Manual prompt copying or skill-file setup
+does not satisfy this product requirement. A client lacking a tested integrated
+path remains unsupported/pending; do not claim that MCP auto-installs a skill,
+starts a closed application or makes notifications trigger model turns.
+No silent edits to global/repository
 instructions. A missing required capability is a visible setup failure with a
 supported remedy, not a connection shown as working. Optional duty mode remains
 separate under CO-2. Document Start/Resume/Pause/Stop and their actual client limits.
@@ -248,7 +257,8 @@ details; ACKs/heartbeats do not flood the conversation, unread count or notifica
 
 Acceptance needs Docker race/access/recovery regressions **and real pinned
 supported Codex/Claude clients**, two owners/three connections, fresh setup with
-no user-written orchestration, project orientation with source coverage, concurrent
+no README reading, prompt copying or manual skill installation, project orientation
+with source coverage, concurrent
 plan decomposition into nonduplicate tasks, verified task↔PR links, a plan change
 that triggers targeted reanalysis, busy reviewer, context reset, offline/resume,
 duplicate/lost ACK, simultaneous sessions, stale SHA, changed policy, revocation,

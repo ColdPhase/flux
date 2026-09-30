@@ -72,7 +72,9 @@ remains open; available implementation and layout checks continue independently.
 [#160](https://github.com/ColdPhase/flux/issues/160) delivers the shipped
 [playbook and onboarding](../cowork-workflow.md), using #152 bootstrap and #153
 durable inbox/claims. Users connect, authorize and invoke the supplied Start/Resume
-action; they do not author orchestration prompts. Requests wait durably while a
+action. Workflow/instruction delivery is built into Flux: no required README,
+prompt copying or manual skill installation. A client without a tested integrated
+activation path does not pass acceptance. Requests wait durably while a
 peer finishes its current step, survive context loss and are handled at safe
 checkpoints. No periodic global issue/PR/comment scans or idle model calls.
 First-entry analysis covers the Flux plan/wiki/relevant conversations/decisions

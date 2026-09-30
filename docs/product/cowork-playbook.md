@@ -1,14 +1,19 @@
-# Flux co-work starter content
+# Internal instructions for Flux's built-in co-work
 
 **Product content draft for [#160](https://github.com/ColdPhase/flux/issues/160),
 F-018 / [CW-1–CW-5](cowork-workflow.md), 2026-09-30.** This is concrete seed text
-for the shipped bundle, not a skill installed in this repository. Tool names and
+for the bundle delivered by Flux to agents, not a user-facing README, a prompt
+to copy or a skill the user must manually install. This file documents intended
+product content for implementers; adding it does not implement delivery. Tool names and
 adapter packaging must be bound to implemented, versioned capabilities in #152/
 #153/#160. Do not expose placeholders or unsupported actions as working tools.
 Keep one canonical content source; generate native wrappers without diverging
 workflow copies. Record version/digest, compatible tool contract and change notes.
 
-## Supplied Start / Resume invocation
+## Internal payload for the built-in Start / Resume action
+
+The supported Flux integration supplies this payload to the agent. It is not
+shown as setup text the user must read, paste, customize or install.
 
 > Start or resume my authorized Flux work in the selected project. Load Flux's
 > current co-work playbook and approved project policy through the authenticated
@@ -21,8 +26,10 @@ workflow copies. Record version/digest, compatible tool contract and change note
 
 The adapter binds the selected immutable tenant/project/connection IDs from the
 authorized initiation, not from message text or later browser selection. The user
-invokes the ready action where the supported host requires it; this text is not a
-promise that merely adding an MCP URL activates the loop.
+invokes the integrated action where the supported host requires it. An integration
+requiring the user to copy this text or install instruction files does not meet
+acceptance. Actual host invocation/approval remains subject to tested capabilities;
+merely adding an MCP URL is not evidence of a running loop.
 
 ## Core instructions delivered to the agent
 

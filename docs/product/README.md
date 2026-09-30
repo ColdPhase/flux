@@ -35,7 +35,8 @@ imports references and reconciles contracts only.
 
 **Later F-018 clarification:** [ready agent workflows](cowork-workflow.md) and
 [starter playbook content](cowork-playbook.md) are required: connect, authorize,
-start with supplied instructions; durable addressed requests handled at safe
+start with instructions supplied internally by Flux; no user-facing README,
+prompt copying or manual skill setup. Durable addressed requests are handled at safe
 checkpoints, without repeated global GitHub scans or duplicate coordination
 comments. #160 owns packaging/onboarding, #152 bootstrap, #153 inbox/scheduling,
 #74 the provider bridge and #136 UI. Publishing these docs is not delivery.
