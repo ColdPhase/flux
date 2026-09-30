@@ -8,9 +8,9 @@ The person chooses one family in Account → Accent for the currently resolved l
 | --- | --- | --- | --- |
 | Mint | `#247358` / `#1C6049` / `#174F3D` | `#8ED8B8` / `#A6E3CA` / `#78C5A5` | `#E7F4ED` / `#1C3028` |
 | Copper | `#985035` / `#853F2A` / `#703521` | `#DBA88C` / `#E6BAA2` / `#C69478` | `#F6EDE7` / `#3B2E25` |
+| Sky | `#2C609B` / `#245184` / `#1D426D` | `#94BCF3` / `#ACCCF8` / `#80AAE3` | `#E9F0F8` / `#202C3D` |
 
 The final supplied Copper soft surface `#42342D` gives only 4.35:1 for production metadata, so the earlier supplied `#3B2E25` candidate is retained for readable selected rows. Final composited checks still gate the implemented states.
-| Sky | `#2C609B` / `#245184` / `#1D426D` | `#94BCF3` / `#ACCCF8` / `#80AAE3` | `#E9F0F8` / `#202C3D` |
 
 Shared tokens separate the roles: `--accent` primary action, `--accent-hover` and `--accent-pressed` pointer feedback, `--accent-soft` quiet surfaces, `--on-accent` labels (white in light, near-black in dark), `--accent-selected-bg/text/border` selected controls, `--link` navigation and `--focus` keyboard focus. Prose links keep an underline in every family, including their normal state, so their identity does not rely on the color difference from nearby text. Matching roles may use the same measured color; components consume semantic roles rather than copied HEX. `--map-guide` is a readable neutral relationship stroke, independent of the chosen family. It replaces the previous translucent canvas edge; selected relationships retain accent emphasis.
 
@@ -18,4 +18,4 @@ Status roles remain stable across families: `--danger`, `--warning`, `--ok`, `--
 
 Verification must measure all six palettes and actual rendered states: ordinary/hover/pressed buttons, links, focus, selection, conversation composer, recap, map relationships and task/error states. Screenshots use identical persisted content at 100% zoom, with desktop, phone, tablet and enlarged text. Viewport evidence does not certify physical PWA installation or device behavior.
 
-The [2026-09-30 production evidence](theme-accents/evidence/README.md) pins the source, full browser checks, six-family composited measurements and matched screenshots. Independent protected review remains the merge gate.
+The [original #135 evidence](theme-accents/evidence/README.md) remains pinned to its original source and Mint/Iris/Sky combinations. The [#148 successor evidence](theme-accents/copper-2026-09-30/README.md) records current Mint/Sky/Copper behavior and measurements separately. Independent protected review remains the merge gate.
