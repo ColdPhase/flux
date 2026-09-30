@@ -111,3 +111,28 @@ implemented; no agent is represented by a human user. Attachments, blocker/resul
 handoff adapters, unused-AI undo, integrated shared drafts, real MCP clients and
 compatible migration reversal remain required. This is incremental implementation,
 not a reduction of AC-1–AC-5 or whole-task acceptance.
+
+## Accepted actor compatibility delta
+
+The independent [actor design assessment](task-discussions/2026-09-30-actor-design-review.md)
+accepts two correlated wire variants: unchanged human `authorId`/`createdBy` strings,
+or null human field with required explicit `{kind:'agent',id}` actor. Apply creator
+identity to both conversation and list summary. Internally every author is a
+mandatory actor reference; no fabricated user or opaque agent string enters a
+human field. Friendly agent names are display metadata and always retain an agent
+marker. Human-only DMs/material authors remain human. Mixed-conversation support
+requires the current actor-aware browser; arbitrary old clients are not certified.
+
+Actor storage uses exactly-one human/agent checks, restrictive workspace-scoped
+agent FKs and separate per-agent durable retry uniqueness with kind-scoped locks.
+Revocation preserves historical authorship. Existing owner-account deletion can
+be refused by restrictive authored-agent history; no message deletion substitutes
+for an account-erasure policy. Reads of past messages do not require the old author
+to retain present access. Search/export/helper/notifications/return digests and
+browser author actions must preserve the actor before agent writes are enabled.
+
+Migration0033 is frozen at the implemented human-root source. Reserve **0037 for
+this #154 actor extension**, after0034/#152,0035/#153 and0036/#74 agreed on the
+coordination issue. No old migration or historical author/time/source is rewritten.
+Guarded pre-use reversal and refusal after unrepresentable agent/file use remain
+required migration acceptance, not an implied completed rollback.
