@@ -3,9 +3,11 @@
 Flux is a global open source, self-hostable workspace for people and agents.
 Read `docs/product/FLUX-FOUNDATION.md` in full when first joining; then use
 `docs/product/README.md`, current decisions, and relevant sections per task.
-The existing `flux-ux-v8.html` is a loose inspiration. Its layout, terminology,
-colors, and technology are not an accepted production design. Product scope,
-architecture, stack, and palette remain open where the foundation says so.
+The later [Studio v11 direction](docs/design/studio-v11-refinement.md) is the
+primary appearance/UX reference (F-013, 2026-09-29); preserve useful repo
+improvements and refine its remaining friction. The older `flux-ux-v8.html` is
+historical inspiration. Demo internals do not establish production architecture,
+permissions or functionality; recorded current decisions govern these.
 The founder's later [delegation](docs/product/autonomy.md) assigns these decisions
 to the agents. Choose, peer-review, record and implement them; do not wait for
 human acceptance. The goal is the complete working application.

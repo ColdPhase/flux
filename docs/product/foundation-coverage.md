@@ -72,6 +72,24 @@ notes. Their design/reference PRs are separate and do not prove running agent or
 media behavior. Keep #29/#20 and the linked implementation tasks in scope, and
 update the corresponding area/pillar rows at each merge.
 
+## F-013 visual/UX refinement mapping (2026-09-29)
+
+[#132](https://github.com/ColdPhase/flux/issues/132) imports the shared [Studio v11 reference](../design/references/studio-v11/README.md)
+and records the later primary appearance/UX direction. It qualifies the older C/v8
+appearance assertions above; historical behavior evidence and all existing area
+states remain unchanged. The reference/documentation PR is not application delivery.
+
+| Required refinement | Foundation coverage | Planned application evidence |
+| --- | --- | --- |
+| Compact private recap; actual visit baseline, source return and useful phone first screen | 8.8, 8.9 / F5, F6, F8 | [#133](https://github.com/ColdPhase/flux/issues/133); two-user/no-AI/scope-race and real UI/API evidence, including investigation of the supplied test failure |
+| Stable deep-list hierarchy and named graph cross-links | 8.4 / F2, F8 | [#134](https://github.com/ColdPhase/flux/issues/134); depth-3/4 to new root, cycles, collapse/reveal, exact IDs, access and persistence |
+| Three families with six theme-aware token sets | F8 | [#135](https://github.com/ColdPhase/flux/issues/135); production composited state contrast, preferences and independent visual review |
+| Calm integrated UI, own-right / others-left conversation, readable phone work navigation and preserved creative journeys | 8.3–8.8 / F2, F5, F8 | [#136](https://github.com/ColdPhase/flux/issues/136); matched desktop/phone/tablet/open-panel views plus persisted #44 journeys, #57/#59 preservation and existing #20 real-device gate |
+
+These are assigned proposed contracts, not implemented/verified outcomes. Feature
+owners attach evidence at their actual reviewed implementation heads before changing
+any row’s state. Required gaps remain in milestone 2.
+
 ## Mobile cross-check and release gate
 
 The accepted [MOB-1–MOB-7 requirements](mobile-pwa.md#required-outcomes) are tracked by [#20](https://github.com/ColdPhase/flux/issues/20). Its issue is a work record, not device evidence. Before raising any affected row to `verified`, link dated Android phone/tablet, iPhone and iPad installation, standalone deep-link and session tests (MOB-1); narrow/tablet/touch/software-keyboard journeys (MOB-2/3); consent, background OS delivery, denial/mute and revoked-access tests (MOB-4); draft/retry/update recovery (MOB-5); self-hosted HTTPS and push diagnostics (MOB-6); and independent device/visual/interaction reports (MOB-7). An emulated viewport certifies layout only. Unknown device outcomes remain release gaps.

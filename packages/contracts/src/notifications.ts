@@ -4,9 +4,10 @@
 
 /**
  * Why a notification exists. `review` covers a proposed decision or a recorded result that is
- * about work you own, or that your agent produced.
+ * about work you own, or that your agent produced. `invitation` is someone asking you to join
+ * them live at a task, map, doc or conversation (#62): one quiet signal per invitation.
  */
-export const NOTIFICATION_REASONS = ['mention', 'question', 'reply', 'dm', 'assigned', 'review'] as const;
+export const NOTIFICATION_REASONS = ['mention', 'question', 'reply', 'dm', 'assigned', 'review', 'invitation'] as const;
 export type NotificationReason = typeof NOTIFICATION_REASONS[number];
 
 export const NOTIFICATION_CHANNELS = ['inApp', 'push', 'email'] as const;

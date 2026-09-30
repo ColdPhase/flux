@@ -1,0 +1,281 @@
+{
+  "app": "Flux Studio 11",
+  "suite": "return-agent-live",
+  "passed": 45,
+  "failed": 0,
+  "browserErrors": [],
+  "storage": "Explicit in-memory double. Native persistence NOT verified.",
+  "media": "Stream lifecycle doubles only. No physical device or remote transmission test.",
+  "tests": [
+    {
+      "name": "Skrót jest dostępny z rozmowy bez nowej zakładki",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.183
+    },
+    {
+      "name": "Otwarcie skrótu nie czyta czatu ani nie publikuje wiadomości",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.192
+    },
+    {
+      "name": "Skrót grupuje jedną pracę, a nie kopie jej zdarzeń",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.045
+    },
+    {
+      "name": "Rozwiązany blocker nie udaje aktualnej przeszkody po powrocie",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.039
+    },
+    {
+      "name": "Dwa wyniki → jeden aktualny wynik ze źródłem",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.051
+    },
+    {
+      "name": "Mam kontekst nie połyka zmian, które przyszły podczas czytania",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.095
+    },
+    {
+      "name": "Potrzebna pomoc pozostaje po zapoznaniu się ze skrótem",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.043
+    },
+    {
+      "name": "Nowe wydarzenie nie przestawia czytanego skrótu; jest odświeżenie",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.165
+    },
+    {
+      "name": "Osobisty powrót filtruje projekty bieżącego profilu",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.033
+    },
+    {
+      "name": "Źródło prowadzi do wypowiedzi; można wrócić do tego samego skrótu",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.146
+    },
+    {
+      "name": "80 zwykłych wiadomości nie produkuje 80 faktów ani domniemanych decyzji",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.176
+    },
+    {
+      "name": "Powrót i konsekwencje oznaczeń działają bez AI",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.026
+    },
+    {
+      "name": "Polecenie użytkownika i odpowiedź AI to osobne tożsamości w tym samym wątku",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.586
+    },
+    {
+      "name": "Odpowiedź agenta nie gubi aktualnego szkicu",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.598
+    },
+    {
+      "name": "Anulowanie agenta przed końcem nie tworzy propozycji ani zadania",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.705
+    },
+    {
+      "name": "Agent kończy w pierwotnym projekcie, nie w aktualnie oglądanym",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.581
+    },
+    {
+      "name": "Wyłączony agent zachowuje polecenie jako szkic zamiast udawać wykonanie",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.029
+    },
+    {
+      "name": "Cofnięcie dostępu w trakcie wykonania zatrzymuje zmianę",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.741
+    },
+    {
+      "name": "Wynik uruchamia propozycję wiki bez /ai, nie zmienia dokumentu sam",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.04
+    },
+    {
+      "name": "Odrzucona propozycja nie wraca dla tego samego wyniku",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.073
+    },
+    {
+      "name": "Nowa wersja wyniku pozwala przygotować aktualną propozycję",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.044
+    },
+    {
+      "name": "Agent nie zgaduje wiki przy kilku możliwych dokumentach",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.027
+    },
+    {
+      "name": "Agent układa wyłącznie wskazane myśli, nie zmienia treści",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.622
+    },
+    {
+      "name": "Nieaktualna propozycja nie nadpisuje nowszej wiki",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.039
+    },
+    {
+      "name": "Jedno zastosowanie i cofnięcie bez duplikatu",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.092
+    },
+    {
+      "name": "Cofnięcie nie kasuje późniejszej edycji człowieka",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.044
+    },
+    {
+      "name": "Zróbmy to razem: wejście jednym kliknięciem bez dzwonka, urządzeń i nowego czatu",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.075
+    },
+    {
+      "name": "Zmiana zakładki nie kończy sesji ani nie podmienia pokazywanego materiału",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.162
+    },
+    {
+      "name": "Pokazanie myśli nie jest przechwytywaniem ekranu",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.194
+    },
+    {
+      "name": "Nawigacja do innego projektu nie publikuje jego treści w sesji",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.189
+    },
+    {
+      "name": "Zaproszenie jest pojedynczym sygnałem tylko dla członka projektu",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.074
+    },
+    {
+      "name": "Pokazanie przez kolegę jest propozycją; własna nawigacja kończy podążanie",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.298
+    },
+    {
+      "name": "Cisza zatrzymuje wszystkie urządzenia; powrót niczego nie włącza",
+      "category": "media-double",
+      "status": "passed",
+      "seconds": 0.185
+    },
+    {
+      "name": "Spóźniona zgoda na mikrofon po wyjściu natychmiast zatrzymuje strumień",
+      "category": "media-double",
+      "status": "passed",
+      "seconds": 0.211
+    },
+    {
+      "name": "Odmowa uprawnień nie udaje aktywnego screensharingu",
+      "category": "media-double",
+      "status": "passed",
+      "seconds": 0.159
+    },
+    {
+      "name": "Pusta sesja nie tworzy pustego podsumowania ani fałszywej transkrypcji",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.128
+    },
+    {
+      "name": "Efekty sesji wracają do istniejącej rozmowy zadania, bez nowego czatu",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.17
+    },
+    {
+      "name": "Wyjście nie wyrzuca kolegi demo; ponowne wejście nadal bez urządzeń",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.244
+    },
+    {
+      "name": "Odtworzenie danych nie uruchamia sesji ani urządzeń",
+      "category": "storage-double",
+      "status": "passed",
+      "seconds": 0.252
+    },
+    {
+      "name": "Jawny import schematu 09 zachowuje materiały i inicjuje nowe sekcje",
+      "category": "domain",
+      "status": "passed",
+      "seconds": 0.012
+    },
+    {
+      "name": "Telefon: skrót jest czytelny i ma widoczne wyjście bez poziomego przewijania",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.071
+    },
+    {
+      "name": "Telefon: sesja trwa przy pracy bez rozpychania dokumentu",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.174
+    },
+    {
+      "name": "Otwarty skrót nie podaje wycofanego rozwiązania jako aktualnego",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.086
+    },
+    {
+      "name": "Edycja polecenia unieważnia starą propozycję nowego zadania",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.585
+    },
+    {
+      "name": "Z dokładnej wiadomości źródła można wrócić do zachowanego skrótu",
+      "category": "interaction",
+      "status": "passed",
+      "seconds": 0.108
+    }
+  ]
+}

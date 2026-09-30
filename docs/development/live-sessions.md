@@ -42,6 +42,21 @@ restrictive-network acceptance remain in [#63](https://github.com/ColdPhase/flux
   only identities, response choice and dates. The recipient's bounded,
   encrypted-cursor inbox rechecks project and anchor access on every page;
   replying `later` or `text` never sends a message on the person's behalf.
+  A new invitation row (never a repeated invite) commits `project.live_invited.v1`
+  with identifiers only; the notification worker turns it into one quiet `invitation`
+  inbox item for the recipient (inbox and push by default, no email, no ringing) that
+  opens `/projects/:p/live/:session?invitation=:id`. If the recipient lost project
+  access, answered, or the session stopped being available before generation, nothing
+  is created ([notifications](notifications.md)).
+- Signing out does not yet end an active media connection or revoke its grant. That is
+  [#128](https://github.com/ColdPhase/flux/issues/128), which binds media admission to
+  the authentication session; until then a grant stays valid for its 90-second lifetime
+  plus any SFU refresh.
+- `POST /api/v1/live-sessions/:id/join` allows at most 20 attempts per person per
+  rolling 60 seconds **per API instance** (in-memory, created in the composition
+  root; bounded to 10,000 tracked people). Beyond that it answers
+  `429 LIVE_JOIN_RATE_LIMITED` with `Retry-After`. With several API replicas the
+  effective limit multiplies; it guards against runaway clients, not abuse at scale.
 - `GET /api/v1/projects/:projectId/live-sessions` lists currently readable,
   available sessions in bounded pages. The server rechecks each session's
   project and anchor before returning it. The response contains opaque session
@@ -126,6 +141,35 @@ regressions. #62 owns the integrated
 interface and [#63](https://github.com/ColdPhase/flux/issues/63) owns receiver,
 network and real-device evidence.
 
+## Interface (#62)
+
+The browser client is `apps/web/src/live/`. [Live sessions at the work](../design/live-ux/README.md)
+describes what people see, the placement decisions and the screenshots.
+
+- `media.ts` is the only module that imports `livekit-client` (`2.17.2`, the same version
+  as the SFU proof). It turns the room into a plain snapshot: people, speaking, link
+  quality, published tracks, device states and audio playback. It exposes a few verbs:
+  connect, `setDevice`, hearing on or off, `startAudio`, disconnect and diagnostics.
+  Devices start off. A device is `on` only after its track is published, and turning it off
+  unpublishes and stops the capture.
+- `LiveProvider.tsx` holds one session per tab above the routes. It handles start or join
+  (start joins an existing session at the same anchor instead of opening a second),
+  presentation polling every 2.5 s through the identifier-only feed, View and Follow, quiet,
+  invitations and rejoin. A drop other than your own leave rejoins through `POST …/join` at
+  most three times: current access is checked again and a rotated room is joined fresh.
+  Every device is off afterwards. `DUPLICATE_IDENTITY` (the same person joining elsewhere)
+  and removal end the local session with a notice instead of fighting over the identity.
+- Views register what they are about with `useRegisterLiveHere(anchor, presentable)`: the
+  conversation, a task or result in Details, a project sketch with its selected thoughts, or
+  a doc at the shown version. Nothing is published from navigation. Only **Show this** calls
+  `POST …/present`.
+- `/projects/:p/live/:session?invitation=:id` (the inbox link) resolves the session and
+  replaces the URL with the anchor. It passes the invitation in navigation state for one
+  quiet card; **Later** and **Reply in text** use `POST /api/v1/live-invitations/:id/reply`.
+- `scripts/check_live_ui.sh` runs `tests/ui/test_live_sessions.py` against the application
+  and the pinned SFU, using Chromium's fake devices. The ordinary `check_ui.sh` runs the
+  same file without a media server and checks the unavailable state.
+
 ## Reproducing this checkpoint
 
 Use an isolated Compose project and free ports:
@@ -133,6 +177,7 @@ Use an isolated Compose project and free ports:
 ```sh
 FLUX_TEST_PORT=18661 FLUX_TEST_MAILPIT_PORT=18662 ./scripts/check_application.sh
 FLUX_LIVE_TEST_PORT=18771 ./scripts/check_live_sfu.sh
+FLUX_LIVE_UI_PORT=18781 ./scripts/check_live_ui.sh
 ```
 
 That script builds and runs the application, PostgreSQL migration, API tests,
