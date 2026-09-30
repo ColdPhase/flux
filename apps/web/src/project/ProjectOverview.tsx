@@ -149,6 +149,7 @@ export function ProjectOverview({ messageId, onBack }: { messageId?: string; onB
       <Rows label="Docs" rows={[...docRows.values()]} empty={message ? undefined : <>No docs yet. <Link to={`${base}/docs`}>Open Docs</Link> to keep what you learn.</>} />
       {moreDocs ? <p className="ov-more"><Link to={`${base}/docs`}>All {docs.length} docs</Link></p> : null}
 
+      {!message && project.access === 'manager' ? <p className="ov-more"><Link to={`${base}/github`}>GitHub repositories</Link></p> : null}
       <section className="details__sec" aria-labelledby="ov-people">
         <h4 id="ov-people">Who can see this</h4>
         {people ? (

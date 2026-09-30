@@ -1,5 +1,8 @@
 # Container development
 
+Optional project GitHub App configuration and current integration limits are
+documented in [GitHub integration](github-integration/README.md).
+
 Founder decision, 2026-09-27: **the application and its dependencies run in
 Docker/Compose**. Do not install PostgreSQL, Redis, queues, or application
 toolchains as services on a contributor's host.

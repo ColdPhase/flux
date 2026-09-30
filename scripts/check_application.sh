@@ -54,6 +54,10 @@ $compose run --rm e2e
 # Login, sharing, denied access and stream revocation in Chromium sessions (issue #29, AC-4).
 $compose run --rm e2e node_modules/.bin/tsx --test tests/app/e2e/access-stream.e2e.ts
 
+# Project GitHub settings use real Flux sessions/SQL and an injected external transport fixture.
+# This is browser integration coverage, not the required real GitHub App installation evidence.
+$compose run --rm e2e node_modules/.bin/tsx --test tests/app/e2e/github.e2e.ts
+
 # A session created before an API container restart must still be valid afterwards.
 $compose run --rm test pnpm exec tsx tests/app/session-restart.ts prepare
 $compose restart api

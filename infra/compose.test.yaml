@@ -87,6 +87,8 @@ services:
     profiles: ["test"]
     image: flux-e2e:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
     environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-flux}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-flux}
+      FLUX_AUTH_SECRET: ${FLUX_AUTH_SECRET:?Set FLUX_AUTH_SECRET}
       FLUX_API_URL: http://api:8080
       FLUX_PUBLIC_ORIGIN: ${FLUX_PUBLIC_ORIGIN:?Set FLUX_PUBLIC_ORIGIN}
       FLUX_E2E_EVIDENCE_DIR: ${FLUX_E2E_EVIDENCE_DIR:-}

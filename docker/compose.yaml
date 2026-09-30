@@ -62,6 +62,13 @@ services:
       # Web Push: the API only needs the public key; empty reports push unavailable.
       FLUX_VAPID_PUBLIC_KEY: ${FLUX_VAPID_PUBLIC_KEY:-}
       FLUX_STREAM_HEARTBEAT_MS: ${FLUX_STREAM_HEARTBEAT_MS:-25000}
+      # GitHub App integration (#74). All empty reports unavailable.
+      FLUX_GITHUB_CLIENT_ID: ${FLUX_GITHUB_CLIENT_ID:-}
+      FLUX_GITHUB_CLIENT_SECRET: ${FLUX_GITHUB_CLIENT_SECRET:-}
+      FLUX_GITHUB_APP_ID: ${FLUX_GITHUB_APP_ID:-}
+      FLUX_GITHUB_APP_SLUG: ${FLUX_GITHUB_APP_SLUG:-}
+      FLUX_GITHUB_WEBHOOK_SECRET: ${FLUX_GITHUB_WEBHOOK_SECRET:-}
+      FLUX_GITHUB_ENCRYPTION_KEY: ${FLUX_GITHUB_ENCRYPTION_KEY:-}
       PORT: 8080
     volumes:
       # The image owns /data/files as its non-root user, so a new volume starts writable.

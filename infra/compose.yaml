@@ -69,6 +69,13 @@ services:
       # Web Push (issue #41). The API only needs the public key; empty reports push unavailable.
       FLUX_VAPID_PUBLIC_KEY: ${FLUX_VAPID_PUBLIC_KEY:-}
       FLUX_STREAM_HEARTBEAT_MS: ${FLUX_STREAM_HEARTBEAT_MS:-25000}
+      # GitHub App read-only integration (#74). Empty reports unavailable; configure all together.
+      FLUX_GITHUB_CLIENT_ID: ${FLUX_GITHUB_CLIENT_ID:-}
+      FLUX_GITHUB_CLIENT_SECRET: ${FLUX_GITHUB_CLIENT_SECRET:-}
+      FLUX_GITHUB_APP_ID: ${FLUX_GITHUB_APP_ID:-}
+      FLUX_GITHUB_APP_SLUG: ${FLUX_GITHUB_APP_SLUG:-}
+      FLUX_GITHUB_WEBHOOK_SECRET: ${FLUX_GITHUB_WEBHOOK_SECRET:-}
+      FLUX_GITHUB_ENCRYPTION_KEY: ${FLUX_GITHUB_ENCRYPTION_KEY:-}
       PORT: 8080
     volumes:
       - files:/data/files:z
