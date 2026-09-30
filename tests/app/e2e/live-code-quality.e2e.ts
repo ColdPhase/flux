@@ -73,8 +73,13 @@ async function source(page: Page, share: number, display: boolean) {
       source: 'screen_share', videoCodec: 'vp8', simulcast: false,
       screenShareEncoding: { maxBitrate: 3_500_000, maxFramerate: 15 },
       degradationPreference: 'maintain-resolution' });
+    const g = document.querySelector<HTMLCanvasElement>('#code-source')!.getContext('2d')!;
+    const glyphProbe = '0O1lI {} [] => !==';
+    g.font = '14px "Liberation Mono", monospace'; const glyphAdvance14 = g.measureText(glyphProbe).width;
+    g.font = '16px "Liberation Mono", monospace'; const glyphAdvance16 = g.measureText(glyphProbe).width;
     return { sourceKind: display ? 'getDisplayMedia/Xvfb' : 'canvas.captureStream',
-      share, settings: track.getSettings(), contentHint: track.contentHint, readyState: track.readyState };
+      share, settings: track.getSettings(), contentHint: track.contentHint, readyState: track.readyState,
+      fontFamily: 'Liberation Mono', glyphProbe, glyphAdvance14, glyphAdvance16 };
   }, { share, display });
 }
 
@@ -137,6 +142,9 @@ async function decodedImage(page: Page, name: string, label: string) {
     for (let i = 0; i < 24; i++) if (bit(i + 4)) frame += 2 ** i;
     const original = document.createElement('canvas'); original.width = 2560; original.height = 1440;
     w.drawCodeSource(original, frame, Number(name.split('-')[1]));
+    const og = original.getContext('2d')!, glyphProbe = '0O1lI {} [] => !==';
+    og.font = '14px "Liberation Mono", monospace'; const glyphAdvance14 = og.measureText(glyphProbe).width;
+    og.font = '16px "Liberation Mono", monospace'; const glyphAdvance16 = og.measureText(glyphProbe).width;
     const crops = [{ x: 64, y: 110, width: 1000, height: 220, textPx: 14 },
       { x: 1344, y: 110, width: 1000, height: 220, textPx: 16 }].map((rect) => {
       const crop = document.createElement('canvas'); crop.width = rect.width; crop.height = rect.height;
@@ -150,7 +158,7 @@ async function decodedImage(page: Page, name: string, label: string) {
       const mse = squared / (rect.width * rect.height * 3);
       return { ...rect, psnrDb: mse > 0 ? 10 * Math.log10(255 ** 2 / mse) : null, png: crop.toDataURL() };
     });
-    return { width: decoded.width, height: decoded.height, frame,
+    return { width: decoded.width, height: decoded.height, frame, glyphAdvance14, glyphAdvance16,
       decoded: decoded.toDataURL(), original: original.toDataURL(), crops };
   }, name);
   const png = (suffix: string, data: string) => writeFileSync(`/artifacts/${label}-${name}-${suffix}.png`,
@@ -245,6 +253,9 @@ test('code-1440p: two then four authorized peers receive scrolling 14/16px text 
             peers === 2 ? 1 : 2, 'each screen needs fresh actual decoded frames');
           for (const name of peers === 2 ? ['code-1'] : ['code-1', 'code-2']) {
             const image = await decodedImage(page, name, `${phase}-viewer-${index + 1}`);
+            const originalSource = sources[Number(name.split('-')[1]) - 1]!;
+            assert.equal(image.glyphAdvance14, originalSource.glyphAdvance14, 'reference14px glyph advance differs from source');
+            assert.equal(image.glyphAdvance16, originalSource.glyphAdvance16, 'reference16px glyph advance differs from source');
             images.push({ viewer: index + 1, name, ...image });
           }
           // Explicit harness render modes. These do not certify #62's product UI.

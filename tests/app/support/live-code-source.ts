@@ -12,7 +12,7 @@ export function drawCodeSource(canvas: HTMLCanvasElement, frame: number, share: 
     g.fillRect(8 + bit * 16, 8, 16, 24);
   }
   g.fillStyle = '#edf3fa';
-  g.font = '16px monospace';
+  g.font = '16px "Liberation Mono", monospace';
   g.fillText(`Flux #63 · share ${share} · source frame ${frame} · 2560×1440`, 512, 28);
   g.fillText('review.ts — 14px code / 16px terminal — scroll 30px per source second', 64, 66);
   g.fillStyle = '#33455c';
@@ -25,17 +25,17 @@ export function drawCodeSource(canvas: HTMLCanvasElement, frame: number, share: 
   for (let row = 0; row < 84; row++) {
     const y = 118 + row * 22 - scroll;
     const n = String(row + 1).padStart(3, '0');
-    g.font = '14px monospace';
+    g.font = '14px "Liberation Mono", monospace';
     g.fillStyle = '#acc7e0';
     g.fillText(`${n}  const revision${row} = await readRevision("share-${share}", ${row});`, 64, y);
-    g.font = '16px monospace';
+    g.font = '16px "Liberation Mono", monospace';
     g.fillStyle = '#92e1bd';
     g.fillText(`${n}  $ flux check --revision=${row} --scope=source-${share}`, 1344, y);
   }
   g.restore();
   g.fillStyle = '#edf3fa';
-  g.font = '14px monospace';
+  g.font = '14px "Liberation Mono", monospace';
   g.fillText('const expected = "0O 1lI {} [] () => != ==="; // natural pixel text reference', 64, 1380);
-  g.font = '16px monospace';
+  g.font = '16px "Liberation Mono", monospace';
   g.fillText('$ git diff --check && pnpm typecheck  # text readability reference', 1344, 1380);
 }
