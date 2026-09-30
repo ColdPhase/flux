@@ -138,3 +138,28 @@
 .project-convo__message .ws-acts--more { position: absolute; top: 0; right: -10px; margin: 0; }
 .ws-more { justify-content: center; width: 44px; height: 44px; padding: 0; color: var(--text-3); }
 .project-convo__message:has(.ws-acts--more) .project-convo__message-meta { padding-right: 36px; }
+
+/* Task views (#136 AC-2): one row of whole labels with an unmistakable current view. On a phone
+   the row scrolls sideways as a unit and the chosen view is scrolled into sight; no clipped column. */
+.ws-views { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 16px 0 4px; }
+.ws-views__row { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.ws-view { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border-radius: 999px; font-size: var(--fs-sm); font-weight: 500; color: var(--text-2); box-shadow: inset 0 0 0 1px var(--line-strong); white-space: nowrap; transition: var(--tr); }
+.ws-view:hover { background: var(--bg-hover); color: var(--text); }
+.ws-view[aria-pressed="true"] { background: var(--text); color: var(--bg); box-shadow: none; }
+.ws-view--need:not([aria-pressed="true"]) { color: var(--accent); }
+.ws-view__n { font-variant-numeric: tabular-nums; font-weight: 400; opacity: .75; }
+.ws-view:focus-visible, .ws-none__b:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ws-mine { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; font-size: var(--fs-sm); color: var(--text-2); cursor: pointer; }
+.ws-mine input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.ws-none { margin: 20px 0 0; font-size: var(--fs-md); color: var(--text-2); }
+.ws-none__b { padding: 0; font: inherit; font-weight: 500; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.ws-group { scroll-margin-top: 12px; }
+@media (max-width: 640px) {
+  .ws-views { gap: 8px; }
+  .ws-views__row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 2px 16px; scroll-padding-inline: 16px; }
+  .ws-views__row::-webkit-scrollbar { display: none; }
+}
+@media (pointer: coarse) {
+  .ws-view, .ws-mine { min-height: 44px; }
+  .ws-mine input { width: 20px; height: 20px; }
+}
