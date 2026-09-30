@@ -37,6 +37,8 @@
 .since__text { overflow-wrap: anywhere; }
 .since__item.is-need .since__text { color: var(--text); font-weight: 500; }
 .since__detail { color: var(--text-3); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.since__go { flex: none; align-self: center; color: var(--text-3); opacity: .7; transition: opacity var(--dur-1) var(--ease-out); }
+.since__item:hover .since__go, .since__item:focus-visible .since__go { opacity: 1; color: var(--text-2); }
 .since__when { margin-left: auto; padding-left: 12px; color: var(--text-3); font-size: var(--fs-sm); white-space: nowrap; }
 
 .since__next { display: grid; gap: 2px; margin: 4px 0 8px; padding: 10px 12px; border-radius: var(--r); background: var(--accent-soft); }

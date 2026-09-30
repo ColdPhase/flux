@@ -19,7 +19,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "coming back is calm"
 STAMP = int(time.time() * 1000)
@@ -27,6 +27,11 @@ ARI = {"name": "Ari Nowak", "email": f"ari.nowak+{STAMP}@example.test"}
 NIA = {"name": "Nia Berg", "email": f"nia.berg+{STAMP}@example.test"}
 OPENING = "Camera or sensor for the bedside lamp?"
 QUESTION = "Nia, can you check the camera at 5 lux before Friday?"
+
+
+def element_shot(name: str) -> dict:
+    """Arguments for an element screenshot into the evidence folder, when one is configured."""
+    return {"path": str(SHOTS / f"{name}.png")} if SHOTS else {}
 
 
 class ReturnViewJourney(unittest.TestCase):
@@ -186,7 +191,7 @@ class ReturnViewJourney(unittest.TestCase):
         expect(region).to_contain_text("3 need you")
         expect(region.get_by_role("heading", level=4, name="Gesture lamp")).to_be_visible()
         expect(region.locator(".since__next")).to_contain_text("Answer Ari's question")
-        expect(region.locator(".since__next")).to_contain_text(f"Ari asked you in “Camera or sensor for the bedside lamp?”: “{QUESTION}”")
+        expect(region.locator(".since__next")).to_contain_text(f"“{QUESTION}” Ari asked you in “Camera or sensor for the bedside lamp?”.")
         # The next step is not repeated in the list below it.
         expect(region.locator(".since__item", has_text="Ari asked you")).to_have_count(0)
         expect(region.get_by_role("link", name=re.compile("Current rule changed: Exclude gestures in the dark"))).to_contain_text("Previously: Use the camera for gestures · No reason was recorded.")
@@ -234,6 +239,13 @@ class ReturnViewJourney(unittest.TestCase):
         self.assertLess(s_box["width"], done_box["width"] / 2)
         self.assertGreaterEqual(done_box["height"], 36)
         shot(page, "recap-project-desktop-1440-open")
+        # AC-1: two local treatments of Summarize in the same panel. The soft one (shipped) and a
+        # compact accent button, rendered side by side as evidence; the class change is test-only.
+        panel.locator("section[aria-labelledby=wm-changes] .wm-sec__head").screenshot(**element_shot("recap-summarize-soft-1440"))
+        summarize.evaluate("(button) => button.classList.replace('ui-btn--secondary', 'ui-btn--primary')")
+        panel.locator("section[aria-labelledby=wm-changes] .wm-sec__head").screenshot(**element_shot("recap-summarize-accent-1440"))
+        shot(page, "recap-project-desktop-1440-summarize-accent")
+        summarize.evaluate("(button) => button.classList.replace('ui-btn--primary', 'ui-btn--secondary')")
         summarize.click()
         digest = panel.locator("section[aria-labelledby=wm-digest]")
         expect(digest).to_contain_text("No AI")
@@ -241,6 +253,11 @@ class ReturnViewJourney(unittest.TestCase):
         expect(quote).to_have_attribute("href", re.compile(f"#message-{self.ids['question']}$"))
         expect(digest).to_contain_text("I ordered a PIR sensor too")
         expect(digest.get_by_role("link", name=re.compile("Camera misses 62% of gestures"))).to_be_visible()
+        # The quotes themselves, scrolled into view and clear of the footer.
+        quote.scroll_into_view_if_needed()
+        q_box, f_box = quote.bounding_box(), panel.get_by_role("button", name="I have the context").bounding_box()
+        assert q_box and f_box
+        self.assertLessEqual(q_box["y"] + q_box["height"], f_box["y"], "a quote scrolls clear of the footer")
         shot(page, "recap-project-desktop-1440-digest")
 
         # Relevant to me: the material and the sketch are not Nia's, the question and her task are.
@@ -248,6 +265,8 @@ class ReturnViewJourney(unittest.TestCase):
         expect(panel.get_by_role("link", name=re.compile("New material: Low-light test plan"))).to_have_count(0)
         expect(panel.locator(".since__next")).to_contain_text("Answer Ari's question")
         expect(panel.get_by_role("link", name=re.compile("added a task for you: Mount the PIR sensor"))).to_be_visible()
+        panel.locator(".wm__scroll").evaluate("(el) => { el.scrollTop = 0; }")
+        shot(page, "recap-project-desktop-1440-relevant-to-me")
         panel.get_by_role("radio", name="Whole project").click()
         expect(panel.get_by_role("link", name=re.compile("New material: Low-light test plan"))).to_be_visible()
 
@@ -292,6 +311,7 @@ class ReturnViewJourney(unittest.TestCase):
         page.reload()
         panel = self.open_recap(page)
         expect(panel).to_contain_text("Nothing new since your last visit.")
+        shot(page, "recap-project-desktop-1440-empty")
         panel.get_by_role("button", name="Look at the last 7 days").click()
         expect(panel).to_contain_text("Last 7 days")
         expect(panel.locator(".since__item").first).to_be_visible()
@@ -318,6 +338,8 @@ class ReturnViewJourney(unittest.TestCase):
                 break
             page.wait_for_timeout(50)
         self.assertTrue(held, "the whole-project request is in flight")
+        expect(panel.get_by_role("status").filter(has_text="Loading")).to_be_visible()
+        shot(page, "recap-project-desktop-1440-loading")
         panel.get_by_role("radio", name="Relevant to me").click()
         expect(panel.locator(".since__next")).to_contain_text("is the clip printed")
         held[0].continue_()
@@ -338,6 +360,7 @@ class ReturnViewJourney(unittest.TestCase):
         broken.locator("header.top").get_by_role("button", name=re.compile("^What matters")).click()
         bpanel = broken.locator("#details")
         expect(bpanel.get_by_role("alert")).to_contain_text("Could not load what matters.")
+        shot(broken, "recap-project-desktop-1440-failure")
         broken.unroute(failing)
         bpanel.get_by_role("button", name="Try again").click()
         expect(bpanel.locator(".since__next")).to_contain_text("is the clip printed")
@@ -356,6 +379,32 @@ class ReturnViewJourney(unittest.TestCase):
         expect(qpanel.get_by_role("link", name=re.compile("Ari recorded a result: Shelf holds 4 kg"))).to_be_visible()
         qpanel.get_by_role("button", name="Summarize").click()
         expect(qpanel.locator("section[aria-labelledby=wm-digest]")).to_contain_text("Shelf holds 4 kg")
+
+    def test_06c_a_late_newer_check_for_the_old_scope_announces_nothing(self) -> None:
+        """The background check for newer changes belongs to its scope: a late answer after a switch is dropped."""
+        ari = self.page("ari")
+        page = self.page("nia")
+        page.goto(f"/projects/{self.project_id}")
+        panel = self.open_recap(page)
+        expect(panel.get_by_role("radio", name="Whole project")).to_have_attribute("aria-checked", "true")
+        # A whole-project change Nia is not part of, then hold the next background check (no `until`).
+        other = self.api(ari, "POST", f"/api/v1/projects/{self.project_id}/conversations", {"body": "Which screws for the base plate?", "clientMessageId": str(uuid.uuid4())}, status=201)
+        self.api(ari, "POST", f"/api/v1/conversations/{other['id']}/messages", {"body": "M3, 8 mm.", "clientMessageId": str(uuid.uuid4())}, status=201)
+        held: list = []
+        poll = re.compile(r"/api/v1/return\?(?!.*until=).*scope=all")
+        page.route(poll, lambda route: held.append(route) if not held else route.continue_())
+        for _ in range(90):
+            if held:
+                break
+            page.wait_for_timeout(500)
+        self.assertTrue(held, "the background check ran and is held")
+        panel.get_by_role("radio", name="Relevant to me").click()
+        expect(panel.get_by_role("radio", name="Relevant to me")).to_have_attribute("aria-checked", "true")
+        expect(panel.locator(".wm__body.is-loading")).to_have_count(0)
+        held[0].continue_()
+        page.wait_for_timeout(1500)
+        expect(panel.get_by_role("status").filter(has_text="Newer changes arrived")).to_have_count(0)
+        page.unroute(poll)
 
     def context_at(self, who: str, viewport: dict, phone: bool, scheme: str = "light") -> Page:
         options: dict = {"base_url": ORIGIN, "color_scheme": scheme, "locale": "en-GB", "timezone_id": "Europe/Warsaw",

@@ -85,6 +85,8 @@ export function Item({ item, showProject }: { item: ReturnItem; showProject?: bo
           ) : null}
         </span>
         <time className="since__when" dateTime={item.at}>{shortWhen(item.at)}</time>
+        {/* Every row opens its source; the cue is quiet so the list stays calm. */}
+        <Icon name="chevron-right" size={14} className="since__go" />
       </SourceLink>
     </li>
   );

@@ -238,11 +238,11 @@ export function AppLayout() {
             {activeProject ? <LiveEntry /> : null}
             {project?.people && !phone ? <Faces people={project.people} meId={me.user.id} /> : null}
             {activeProject && projectId ? (
-              <Button variant="quiet" icon="leaf" className={`top__recap${phone ? ' top__recap--icon' : ''}`} aria-expanded={recapOpen}
-                aria-controls={recapOpen ? 'details' : undefined} aria-label={phone ? `What matters${needsYou ? `, ${needsYou} ${needsYou === 1 ? 'needs' : 'need'} you` : ''}` : undefined}
+              <Button variant="quiet" icon="leaf" className="top__recap" aria-expanded={recapOpen}
+                aria-controls={recapOpen ? 'details' : undefined}
                 onClick={() => { if (recapOpen) toggleDetails(false); else { setDetailsView({ kind: 'recap', projectId }); toggleDetails(true); } }}>
-                {phone ? null : 'What matters'}
-                {needsYou ? <span className="top__recap-n" aria-hidden={phone || undefined}>{needsYou}<span className="ui-vh"> {needsYou === 1 ? 'needs' : 'need'} you</span></span> : null}
+                What matters
+                {needsYou ? <span className="top__recap-n">{needsYou}<span className="ui-vh"> {needsYou === 1 ? 'needs' : 'need'} you</span></span> : null}
               </Button>
             ) : null}
             {/* The inbox and its settings have nothing to show in Details. */}

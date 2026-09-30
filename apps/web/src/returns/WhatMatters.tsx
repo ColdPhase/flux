@@ -82,7 +82,6 @@ export function WhatMatters({ projectId, projectName, onDone }: { projectId: str
   const [period, setPeriod] = useState<ReturnPeriod>(initial?.period ?? 'last-visit');
   const [digestOn, setDigestOn] = useState(initial?.digest ?? false);
   const [load, setLoad] = useState<Load>(null);
-  const [newer, setNewer] = useState(false);
   const [choosing, setChoosing] = useState(false);
   const [done, setDone] = useState<'idle' | 'busy' | 'failed'>('idle');
   const [attempt, setAttempt] = useState(0);
@@ -124,19 +123,30 @@ export function WhatMatters({ projectId, projectName, onDone }: { projectId: str
   }, [shown]);
 
   // Newer changes of this project, in this scope and period, are announced, never merged into
-  // the list being read.
+  // the list being read. A poll belongs to one context: a change of account, project, scope,
+  // period or snapshot aborts it, drops its late answer and clears an announcement it made.
   const signature = shown ? shown.items.map((item) => `${item.id}@${item.at}`).join('|') : null;
+  const pollKey = `${requestKey}|${signature ?? ''}`;
+  const [newerFor, setNewerFor] = useState<string | null>(null);
   useEffect(() => {
     if (signature === null) return;
+    let controller: AbortController | null = null;
     const timer = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return;
-      getRecap({ projectId, scope, period, until: null, digest: false })
-        .then((latest) => setNewer(latest.items.map((item) => `${item.id}@${item.at}`).join('|') !== signature)).catch(() => undefined);
+      controller?.abort();
+      controller = new AbortController();
+      const signal = controller.signal;
+      getRecap({ projectId, scope, period, until: null, digest: false }, signal)
+        .then((latest) => {
+          if (signal.aborted) return;
+          if (latest.items.map((item) => `${item.id}@${item.at}`).join('|') !== signature) setNewerFor(pollKey);
+        }).catch(() => undefined);
     }, NEWER_EVERY_MS);
-    return () => window.clearInterval(timer);
-  }, [projectId, scope, period, signature]);
+    return () => { window.clearInterval(timer); controller?.abort(); };
+  }, [projectId, scope, period, signature, pollKey]);
+  const newer = newerFor === pollKey;
 
-  const refresh = useCallback(() => { setNewer(false); snapshot.current = null; setAttempt((value) => value + 1); }, []);
+  const refresh = useCallback(() => { setNewerFor(null); snapshot.current = null; setAttempt((value) => value + 1); }, []);
   const haveContext = async () => {
     if (!shown) return;
     setDone('busy');
