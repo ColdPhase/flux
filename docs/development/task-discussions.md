@@ -1,0 +1,95 @@
+# Task notices and genuine discussions (#154)
+
+Recorded 2026-09-30 before implementation. This implements the accepted
+[UI116-3 contract](../design/studio-v11.6.md), under the delegated independent
+[design assessment](task-discussions/2026-09-30-design-review.md). The issue's
+AC-1–AC-5 remain required; this design record does not establish delivery.
+
+## Identity and audience
+
+Task creation writes one work item and one durable `task.created` notice in the
+same transaction. The notice carries the exact task, trusted creator, time and
+source references. It is a separate project activity projection, never a fake
+human opening message. Merely opening a task shows an empty discussion.
+
+The first actual contribution lazily creates one canonical project conversation
+and its sequence-1 message under a lock on the task. An explicit unique binding
+retains those identities. Subsequent contributions use the same flat sequence.
+Source conversations stay in place; source links never imply a binding. Reads
+expose the exact root ID even when its body is outside the newest message window.
+
+All discussion content has the task's current project audience. Existing helper
+in-flight views retain their owner scope; existing committed project answers
+retain their actual project audience. Neither becomes a task contribution merely
+by being viewed. Accepted result publication keeps its accepting human identity,
+canonical result ID and permitted agent provenance distinct.
+
+## Shared commands and atomicity
+
+Browser, API, helper and MCP adapters call the same core use cases through ports.
+New creation/contribution commands carry a stable UUID and normalized fingerprint.
+Their durable receipt is scoped to current principal, project and operation and
+does not expire with the 24-hour HTTP response cache. Changed payloads conflict.
+Replays recheck current project access and, for MCP, current connection/operation
+grants. Older no-key creation remains compatible and atomic, but cannot promise
+deduplication of indistinguishable retries. Browser clients always supply a key.
+
+The common lock order is current access rows, durable command identity, sorted
+task IDs, then conversation sequence. Writes, explicit binding, associated task
+or result changes and stream events commit together. Simultaneous first sends
+serialize on the task: one root, then sequence 2, with each actual actor/content.
+No client-supplied author or creation time is accepted.
+
+Explicit nonempty blocker saves are authored contributions; clearing a blocker
+and ordinary status/owner changes are not comments. A result publication writes
+one result and per-task messages referring to that exact result, locking several
+task IDs in sorted order. A public handoff instruction is a contribution;
+heartbeats, acknowledgments, private helper exchanges and execution logs are not.
+#153 consumes this shared primitive with its own authority/generation fencing.
+
+Agent actors remain agents. Additive nullable agent author/creator columns have
+exactly-one-actor checks and workspace-scoped FKs. Existing human fields/times
+are preserved. Search, export, helper context, notifications and UI must handle
+the actor discriminant before agent discussion writes are considered complete.
+
+## Files, drafts and undo
+
+Attachment-only contributions require real stored bytes. A bounded privately
+staged object has an immutable server-selected ID, digest, size and ready state.
+Publication validates current uploader/project rights and byte readiness inside
+the message transaction; downloads reauthorize. Empty body is allowed only with
+valid committed files. Failed saves retain staged private files and draft text;
+no public file/root/result/notification may partially commit.
+
+Conversation/Tasks/Map/Agents consume one account/project/task-scoped draft with
+body, staged file IDs, references and command UUID. Pane changes and failures
+retain it; successful confirmed publication clears it. #136 supplies the shared
+shell, #152 the current MCP grants/tools and real-client evidence. Per-view form
+state or an alternative shell cannot satisfy those integration criteria.
+
+Safe unused AI-task undo retains the task ID as a read-only tombstone and adds
+`task.creation_reverted` history. It never deletes the creation notice or revives
+the task on a receipt replay. Current authority, trusted AI origin, expected
+version and absence of persisted use are required under the same task lock.
+Discussion/result/ownership/status/decision/dependency/handoff use prevents undo.
+Delayed notifications must not deliver a fresh assignment for reverted work.
+
+## Migration and acceptance
+
+Reserve migration 0033; #58 owns pending 0026–0032. The #118 exact manifest permits
+an isolated sparse 0025→0033 path, but both composition orders need real tests.
+Never edit old migrations or infer/backfill notices, authors, roots, timestamps
+or source bindings. Preserve old nonempty threads and placeholders with replies.
+
+Schema reversal must refuse unrepresentable new actor/file content rather than
+silently destroy it. Before new-feature use, verify a guarded lossless reversal.
+After use, preserve the upgraded DB/files and test operational recovery from a
+paired pre-upgrade backup and matching image; that recovery does not claim to
+retain post-backup writes. Lossless downgrade after such writes remains an
+explicit acceptance question, not a completed or weakened AC-4. An old binary
+cannot run on the upgraded exact ledger, and manual ledger edits are forbidden.
+
+Acceptance needs Docker API/UI/persistence/race/failure evidence, historical
+fixtures and rollback/restore evidence, real authorized agent entry paths, shared
+draft/root identity in the integrated #136 views and a separate neutral visual
+review. Missing file/MCP/import/shell or migration checks remain unverified.

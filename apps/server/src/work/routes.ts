@@ -6,6 +6,7 @@ import {
   projectLinksPath,
   projectResultsPath,
   projectWorkPath,
+  projectTaskNoticesPath,
   resultPath,
   WORK_LIMITS,
   WORK_STATUSES,
@@ -39,7 +40,7 @@ const version = { type: 'integer', minimum: 1 } as const;
 
 const createWork = { type: 'object', required: ['title'], additionalProperties: false, properties: {
   title, outcome: { type: 'string', maxLength: WORK_LIMITS.outcome }, owner: principalRef, status,
-  blocker: { type: 'string', maxLength: WORK_LIMITS.blocker }, sources: refs, related: refs,
+  blocker: { type: 'string', maxLength: WORK_LIMITS.blocker }, sources: refs, related: refs, clientCommandId: { type: 'string', format: 'uuid' },
 } } as const;
 const updateWork = { type: 'object', additionalProperties: false, minProperties: 1, properties: {
   title, outcome: { type: 'string', maxLength: WORK_LIMITS.outcome }, owner: principalRef, status,
@@ -72,6 +73,9 @@ export async function workRoutes(app: FastifyInstance, { db, sessions }: Options
   const { principal, command } = commandRunner(db, sessions);
   const work = workUseCases(db);
   const projectScope = (id: string): ResourceRef => ({ type: 'project', id });
+
+  app.get<{ Params: { projectId: string }; Querystring: PageQuery }>(projectTaskNoticesPath(':projectId'), { schema: { querystring: page } },
+    async (request) => work.listTaskNotices(await principal(request), request.params.projectId, request.query));
 
   app.get<{ Params: { projectId: string }; Querystring: PageQuery }>(projectWorkPath(':projectId'), { schema: { querystring: page } },
     async (request) => work.listWork(await principal(request), request.params.projectId, request.query));

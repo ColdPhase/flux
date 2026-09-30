@@ -669,12 +669,32 @@ export const projectWorkItems = pgTable('project_work_items', {
   parkedAt: timestamp('parked_at', { withTimezone: true }),
   createdByKind: text('created_by_kind', { enum: ['human', 'agent'] }).notNull(),
   createdById: text('created_by_id').notNull(),
+  clientCommandId: uuid('client_command_id'),
+  requestFingerprint: text('request_fingerprint'),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique().on(table.workspaceId, table.projectId, table.id),
+  uniqueIndex('project_work_creation_command_idx').on(table.projectId, table.createdByKind, table.createdById, table.clientCommandId),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+]);
+
+// Durable compact creation notices, never synthetic conversation roots (#154, migration 0033).
+export const projectTaskNotices = pgTable('project_task_notices', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  workId: uuid('work_id').notNull(),
+  kind: text('kind', { enum: ['task.created'] }).notNull(),
+  createdByKind: text('created_by_kind', { enum: ['human', 'agent'] }).notNull(),
+  createdById: text('created_by_id').notNull(),
+  sources: jsonb('sources').$type<import('@flux/contracts').ObjectRef[]>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+}, (table) => [
+  unique().on(table.workId, table.kind),
+  index('project_task_notices_project_idx').on(table.projectId, table.createdAt, table.id),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.workId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
 ]);
 
 export const projectResults = pgTable('project_results', {
