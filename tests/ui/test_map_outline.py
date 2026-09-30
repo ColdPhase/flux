@@ -102,6 +102,15 @@ class MapOutlineJourney(unittest.TestCase):
     def work(self, page):
         return self.api(page, "GET", f"/api/v1/projects/{self.project_id}/work?limit=100")
 
+    def wait_graph(self, page, predicate):
+        """Observe committed API state explicitly, rather than optimistic UI or a Promise handle."""
+        for _ in range(60):
+            data = self.stored(page)
+            if predicate(data):
+                return data
+            time.sleep(0.25)
+        self.fail("the expected committed graph state did not arrive")
+
     def row(self, page, index):
         return page.locator(f'.sk-outline-list > li[data-id="{self.thoughts[index]}"]')
 
@@ -250,13 +259,13 @@ class MapOutlineJourney(unittest.TestCase):
         expect(page.locator(".sk-status")).to_contain_text("Saved")
         expect(self.title(page, 3)).to_have_count(0)
         self.assertEqual(self.row(page, 4).get_attribute("data-depth"), "0")
-        page.wait_for_function("async ({id, removed}) => { const response = await fetch(`/api/v1/sketches/${id}`); return response.ok && !(await response.json()).thoughts.some(thought => thought.id === removed); }", arg={"id": self.sketch_id, "removed": self.thoughts[3]})
+        self.wait_graph(page, lambda data: all(thought["id"] != self.thoughts[3] for thought in data["thoughts"]))
         page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Undo", exact=True).click()
         expect(page.locator(".sk-status")).to_contain_text("Undid: removed a thought")
-        page.wait_for_function("async ({id, restored, links}) => { const response = await fetch(`/api/v1/sketches/${id}`); if (!response.ok) return false; const data = await response.json(); return data.thoughts.some(thought => thought.id === restored) && links.every(id => data.links.some(link => link.id === id)); }", arg={"id": self.sketch_id, "restored": self.thoughts[3], "links": [link["id"] for link in original["links"]]})
+        expected_links = {link["id"] for link in original["links"]}
+        restored = self.wait_graph(page, lambda data: any(thought["id"] == self.thoughts[3] for thought in data["thoughts"]) and {link["id"] for link in data["links"]} == expected_links)
         expect(self.title(page, 3)).to_be_visible()
         self.assertEqual(self.row(page, 4).get_attribute("data-depth"), "4")
-        restored = self.stored(page)
         self.assertEqual({item["id"] for item in restored["thoughts"]}, {item["id"] for item in original["thoughts"]})
         self.assertEqual({item["id"] for item in restored["links"]}, {item["id"] for item in original["links"]})
         self.title(page, 4).focus()
@@ -264,6 +273,7 @@ class MapOutlineJourney(unittest.TestCase):
         page.get_by_label("Thought text").fill(LABELS[4])
         page.get_by_label("Thought text").press("Enter")
         expect(page.locator(".sk-status")).to_contain_text("Saved")
+        self.wait_graph(page, lambda data: next(thought["text"] for thought in data["thoughts"] if thought["id"] == self.thoughts[4]) == LABELS[4])
         self.row(page, 0).get_by_role("button", name=re.compile("^Collapse ")).click()
         page.goto(f"/projects/{self.project_id}/map/{self.sketch_id}#thought-{self.thoughts[4]}")
         expect(self.title(page, 4)).to_be_focused()
