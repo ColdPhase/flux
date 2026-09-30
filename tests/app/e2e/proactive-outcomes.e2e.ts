@@ -66,6 +66,11 @@ test('all pages render quiet comparisons and insufficient evidence with current 
         }, target);
       }
       await page.locator('.ws-tasks').evaluate((node) => { node.parentElement!.scrollTop = 0; });
+      await page.waitForFunction(() => {
+        const buttons = [...document.querySelectorAll('nav[aria-label="Task views"] button')];
+        return buttons.length > 0 && buttons.every((node) => node.getAnimations()
+          .every((animation) => animation.playState !== 'running'));
+      });
       if (touch && viewport.width === 390) assert.ok(await insufficient.locator('.ws-proposal__source').evaluate((node) => node.getBoundingClientRect().height < 50), 'a long insufficient reason stays compact until inspected');
       await page.screenshot({ path: `/state/comparison-outcomes-${viewport.width}-collapsed.png`, fullPage: true });
       const toggle = comparison.locator('.ws-proposal__toggle');
@@ -158,6 +163,8 @@ test('owner usage distinguishes known, uncertain and no-cost requests and surviv
       await usagePage.goto(`${origin.origin}/settings/background-compute`);
       const usage = usagePage.locator('.background-usage'); await usage.waitFor();
       assert.match(await usage.innerText(), /3 \/ 3 requests[\s\S]*\$0.15 \/ \$0.50[\s\S]*\$0.02[\s\S]*\$0.05[\s\S]*\$0.00 reserved/);
+      await usage.getByRole('button', { name: 'Refresh usage', exact: true }).scrollIntoViewIfNeeded();
+      await usagePage.screenshot({ path: `/state/comparison-usage-${width}-summary.png`, fullPage: true });
       if (width < 1440) {
         await usage.locator('summary').tap();
         for (const control of [usage.locator('summary'), usage.getByRole('button', { name: 'Refresh usage', exact: true })]) {
@@ -165,8 +172,11 @@ test('owner usage distinguishes known, uncertain and no-cost requests and surviv
         }
       } else { await usage.locator('summary').focus(); await usagePage.keyboard.press('Enter'); }
       assert.match(await usage.innerText(), /Did not run[\s\S]*No paid request · \$0.00 usage[\s\S]*Charge uncertain[\s\S]*Up to \$0.05 possible charge/);
+      assert.match(await usage.innerText(), /Completed[\s\S]*earlier reservation · usage not recorded/);
       assert.ok(!(await usage.innerText()).includes('sk-ant-'));
       await usage.scrollIntoViewIfNeeded(); await usagePage.screenshot({ path: `/state/comparison-usage-${width}-owner.png`, fullPage: true });
+      await usage.locator('li').nth(4).scrollIntoViewIfNeeded();
+      await usagePage.screenshot({ path: `/state/comparison-usage-${width}-history.png`, fullPage: true });
       assert.ok(await usagePage.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       } finally { await usageContext.close(); }
     }
