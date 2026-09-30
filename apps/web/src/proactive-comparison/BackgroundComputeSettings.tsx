@@ -111,6 +111,7 @@ export function BackgroundComputeSettings() {
         }}>Replace connection</Button>
         <Button disabled={busy} onClick={() => void disconnect()}>Disconnect</Button>
       </div>
+      <p className="background-settings__help">Disconnecting removes this key from Flux. Revoke it at Claude Platform too if it should stop working outside Flux.</p>
     </section> : null}
 
     {!connection || editing ? <section className="background-settings__section" aria-labelledby="background-connect">
@@ -145,7 +146,7 @@ export function BackgroundComputeSettings() {
       </form>
     </section> : null}
     <ProjectRuleSettings connection={connection} />
-    <p className="background-settings__help">Disconnecting removes this key from Flux. Revoke it at Claude Platform too if it should stop working outside Flux.</p>
+    {!connection ? <p className="background-settings__help">Disconnecting removes this key from Flux. Revoke it at Claude Platform too if it should stop working outside Flux.</p> : null}
     <Link className="background-settings__back" to="/">Continue in Flux</Link>
   </div></div>;
 }
