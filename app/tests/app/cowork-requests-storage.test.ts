@@ -249,6 +249,23 @@ test('more than a page of high-priority busy requests cannot hide a claim-ready 
   assert.equal(candidates.records.length, 1); assert.equal(candidates.records[0]!.id, ready.request.id);
 });
 
+test('ranked pages reject changes to aging or recipient context instead of silently skipping eligible work', async () => {
+  const f = await fixture();
+  const older = created(await f.enqueue(f.input({ kind: 'help', intentKey: 'aged', priority: 1, peerUnblocking: false })));
+  const recent = created(await f.enqueue(f.input({ kind: 'help', intentKey: 'recent', priority: 0, peerUnblocking: false })));
+  await db.update(schema.coworkRequests).set({ createdAt: sql`clock_timestamp() - interval '20 minutes'` })
+    .where(eq(schema.coworkRequests.id, older.request.id));
+  const rows = coworkRequestRows(db);
+  const first = await rows.readyCandidates(f.recipient, 1, 600);
+  assert.equal(first.records[0]!.id, older.request.id); assert.ok(first.continuation);
+  await assert.rejects(rows.readyCandidates(f.recipient, 1, 60, first.continuation), /does not match the scan/);
+  for (const address of [f.third, { ...f.recipient, workspaceId: randomUUID() },
+    { ...f.recipient, projectId: randomUUID() }])
+    await assert.rejects(rows.readyCandidates(address, 1, 600, first.continuation), /does not match the scan/);
+  const next = await rows.readyCandidates(f.recipient, 1, 600, first.continuation);
+  assert.equal(next.records[0]!.id, recent.request.id);
+});
+
 test('strict reference normalization rejects prompt/credential fields, fake result versions and array kinds', async () => {
   const f = await fixture();
   const valid = f.input();

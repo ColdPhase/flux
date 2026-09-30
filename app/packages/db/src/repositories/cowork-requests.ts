@@ -11,7 +11,7 @@ const pending = ['queued', 'deferred', 'claimed'] as const;
 type Address = { workspaceId: string; projectId: string; connectionId: string };
 type Row = typeof requests.$inferSelect;
 /** Internal only; public continuation must be encrypted or server-held and context-bound. */
-interface CandidateCursor { at: Date; score: number; createdAt: string; id: string }
+interface CandidateCursor extends Address { at: Date; agingSeconds: number; score: number; createdAt: string; id: string }
 function record(row: Row): CoWorkRequestRecord {
   const { fingerprint: _fingerprint, updatedAt: _updated, ...result } = row;
   void _fingerprint; void _updated;
@@ -138,6 +138,9 @@ export function coworkRequestRows(tx: DbExecutor) {
     /** Candidates are not authorized claims. The core checks current sources/grants and safe checkpoint readiness. */
     async readyCandidates(recipient: Address, limit: number, agingSeconds = 600, cursor?: CandidateCursor) {
       if (!Number.isSafeInteger(agingSeconds) || agingSeconds < 1 || agingSeconds > 3600) throw new Error('Invalid aging interval');
+      if (cursor && (cursor.agingSeconds !== agingSeconds || cursor.workspaceId !== recipient.workspaceId
+        || cursor.projectId !== recipient.projectId || cursor.connectionId !== recipient.connectionId))
+        throw new Error('Internal inbox continuation does not match the scan');
       const time = await tx.execute<{ at: Date }>(sql`SELECT clock_timestamp() AS at`);
       const at = cursor?.at ?? new Date(time.rows[0]!.at);
       if (!Number.isFinite(at.getTime())) throw new Error('Invalid internal inbox continuation');
@@ -152,7 +155,7 @@ export function coworkRequestRows(tx: DbExecutor) {
         .orderBy(desc(score), asc(requests.createdAt), asc(requests.id)).limit(pageLimit(limit));
       const last = rows.at(-1);
       return { records: rows.map(inbox), continuation: last
-        ? { at, score: last.score, createdAt: last.cursorTime, id: last.request.id } : null };
+        ? { ...recipient, at, agingSeconds, score: last.score, createdAt: last.cursorTime, id: last.request.id } : null };
     },
   };
 }
