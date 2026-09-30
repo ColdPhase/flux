@@ -92,6 +92,9 @@ test('agent root renders without a human DM link, real human reply persists, and
     assert.match(await row.innerText(), /Trial analyst · agent/);
     assert.equal(await row.locator('a[href*="/dm/new"]').count(), 0);
     assert.equal(await row.locator('.project-convo__message-meta time').getAttribute('datetime'), root.createdAt);
+    const audience = page.locator('.project-convo__composer .composer__audience').filter({ hasText: '1 agent' });
+    await audience.waitFor();
+    assert.doesNotMatch(await audience.innerText(), /Only you|only you two/);
     await page.getByRole('textbox', { name: 'Reply', exact: true }).fill('I checked the trial: the counterexample is real.');
     const savedReply = page.waitForResponse((response) => response.request().method() === 'POST'
       && new URL(response.url()).pathname === `/api/v1/conversations/${root.conversationId}/messages`);
@@ -122,6 +125,18 @@ test('agent root renders without a human DM link, real human reply persists, and
       const humanRow = view.locator(`#message-${human.id}`);
       await humanRow.waitFor();
       assert.equal(await humanRow.locator(`a[href$="with=${owner.id}"]`).count(), 1);
+      await view.getByText('You have read access to this project.', { exact: true }).waitFor();
+      assert.equal(await view.getByRole('textbox', { name: 'Reply', exact: true }).count(), 0);
+      assert.equal(await view.getByRole('button', { name: 'Send reply', exact: true }).count(), 0);
+      const sources = view.getByRole('button', { name: 'Sources', exact: true });
+      await sources.focus();
+      await sources.press('Enter');
+      await view.getByRole('heading', { name: `Sources · saved for ${place.name}`, exact: true }).waitFor();
+      assert.equal(await view.getByRole('button', { name: 'Add material', exact: true }).count(), 0);
+      await view.getByRole('button', { name: 'Close sources', exact: true }).click();
+      expectStatus(await reader.browser.request('POST', `/api/v1/conversations/${root.conversationId}/messages`, {
+        body: { body: 'This viewer cannot publish.', clientMessageId: randomUUID() },
+      }), 403);
       if (evidence) await view.screenshot({ path: join(evidence, `mixed-authors-reader-${width}.png`), fullPage: true });
     }
     assert.deepEqual((await pool.query('SELECT * FROM project_messages WHERE id=$1', [root.id])).rows[0], stored);
