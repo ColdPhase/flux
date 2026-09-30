@@ -201,9 +201,11 @@ before the new schema/API implementation:
   new migration to the next free version after current main, with relevant
   checks/review repeated; a missing contiguous baseline must not be bypassed.
   Existing comparison SQL is unchanged by this amendment. After protected main
-  PR #131 takes `0021`, the five unmerged #58 files are renumbered `0022`–`0026`
-  on integration (2026-09-30); only their file numbers and ledger insertions change.
-  Main's already-applied `0021_live_invitation_notifications.sql` stays intact.
+  PR #131 took `0021`; the first integration renumbered the five then-unmerged
+  #58 files as `0022`–`0026` (2026-09-30). Main later reached `0025` at
+  `973f35cf00e624efecf5763e111e7511481bac44`; the seven current unmerged #58
+  files now follow it as `0026`–`0032`. Only their file numbers and ledger
+  insertions change; main's applied SQL 1–25 stays byte-identical.
 
 This is an accepted implementation contract, not evidence of implemented outcomes
 or production activation.
@@ -262,8 +264,8 @@ before its schema/API implementation:
 The evaluator [accepted fresh authorization after revocation](https://github.com/ColdPhase/flux/issues/58#issuecomment-5900813869).
 Keep a revoked row as terminal history; it is never re-enabled. Permit at most one
 non-revoked rule per owner/project/purpose using a partial unique index in a new
-migration, without rewriting the initial rule SQL (`0022` after main integration;
-previously unmerged `0021`). A fresh rule starts paused and repeats
+migration, without rewriting the initial rule SQL (`0026` after current main
+integration; earlier unmerged numbers were `0021` and `0022`). A fresh rule starts paused and repeats
 current personal-agent/project checks and scope/allowance confirmation. Historical
 dismissals and all owner-level observed/possible charges remain counted across
 rule identities. Verify revoke → fresh create with unchanged old row, and

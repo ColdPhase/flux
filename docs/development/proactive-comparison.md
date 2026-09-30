@@ -91,6 +91,9 @@ emulation is not real-device installation or notification evidence. It verifies 
 stored versions and resulting work through the API after reload. A person also
 creates work manually after both proposals are gone, so the continuing project
 workflow does not depend on an available model connection.
+When a saved Tasks status or Only mine view hides ordinary work/results, the
+outcome section's Work/Results links restore All before scrolling to the real
+destination. Quiet outcomes remain a separate project section above Task views.
 
 The adapter shape was checked on 2026-09-28 against the provider's
 [token-count endpoint](https://platform.claude.com/docs/en/api/http/messages/count_tokens),
