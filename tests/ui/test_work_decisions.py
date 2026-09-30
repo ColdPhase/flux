@@ -371,6 +371,12 @@ class WorkDecisionsJourney(unittest.TestCase):
     # ---------------------------------------------------------------- own messages right, others left (#136 AC-1)
 
     def assert_sides(self, page: Page, label: str) -> None:
+        # Opening Details slides the pane; measure once it has settled.
+        page.wait_for_function("""() => new Promise((resolve) => {
+          const el = document.querySelector('.project-convo__in');
+          const first = el.getBoundingClientRect().x;
+          setTimeout(() => resolve(el.getBoundingClientRect().x === first), 250);
+        })""")
         feed = page.locator(".project-convo__in").bounding_box()
         mine = page.locator(f"#message-{self.messages['finding']} > p").bounding_box()
         theirs = page.locator(f"#message-{self.messages['idea']} > p").bounding_box()
