@@ -4,7 +4,7 @@ import { assertExactMigrationLedger, createDatabase, FLUX_SCHEMA_VERSION, readAp
 import { deleteExpiredIdempotencyKeys, DRAFT_SUMMARY_JOB, IDEMPOTENCY_CLEANUP_JOB, processDraftSummary, SAMPLE_JOB } from '@flux/core';
 import { registerPushWorker } from './push/index.js';
 import { registerNotificationEmailWorker, startNotificationGenerator } from './notifications/index.js';
-import { registerPersonalRunWorker } from './personal-runs/index.js';
+import { personalRunWorkerComposition, registerPersonalRunWorker } from './personal-runs/index.js';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
@@ -34,7 +34,9 @@ await boss.work<{ resultId: string }>(DRAFT_SUMMARY_JOB, async (jobs) => {
   }
 });
 // Personal assistant runs (#68): the payload is a run id; every step rechecks the owner.
-await registerPersonalRunWorker(boss, db);
+const personalRuns = personalRunWorkerComposition(process.env);
+if (personalRuns.mode !== 'production') console.warn(JSON.stringify({ warning: 'TEST ONLY: personal runs use fixture connections and a mock provider', mode: personalRuns.mode }));
+await registerPersonalRunWorker(boss, db, personalRuns);
 await boss.work(IDEMPOTENCY_CLEANUP_JOB, async () => {
   const deleted = await deleteExpiredIdempotencyKeys(db);
   console.log(JSON.stringify({ job: IDEMPOTENCY_CLEANUP_JOB, deleted }));

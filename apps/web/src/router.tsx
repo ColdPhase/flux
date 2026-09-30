@@ -22,6 +22,7 @@ import { projectShellLoader } from './project/data';
 import { ProjectMap } from './project/ProjectViews';
 import { LiveOpen } from './live/LiveOpen';
 import { SearchPage } from './search/SearchPage';
+import { AssistantSettings } from './assistant/AssistantSettings';
 import {
   forgotPasswordAction,
   forgotPasswordLoader,
@@ -106,6 +107,7 @@ export const router = createBrowserRouter([
           { path: 'inbox/:id', Component: InboxOpen },
           { path: 'settings/notifications', Component: NotificationSettings },
           { path: 'settings/notifications/verify', Component: VerifyAddress },
+          { path: 'settings/assistant', Component: AssistantSettings },
           { path: '*', Component: NotFoundView },
         ],
       },

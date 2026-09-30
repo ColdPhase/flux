@@ -27,12 +27,23 @@ export const assistantProposalPath = (proposalId: string) => `/api/v1/assistant-
 export const assistantProposalAcceptPath = (proposalId: string) => `${assistantProposalPath(proposalId)}/accept`;
 export const assistantProposalDismissPath = (proposalId: string) => `${assistantProposalPath(proposalId)}/dismiss`;
 
+/**
+ * Stream event of a run's progress (O-008 §4 "Progress"): `objectType` `assistant_run`, the run
+ * id as `objectId`. Its audience is the run's owner alone; the client refetches
+ * `GET /api/v1/assistant-runs/:id`. Nobody else learns that a run exists until its answer is
+ * committed (`project.assistant_answer_committed.v1`, the project's audience).
+ */
+export const ASSISTANT_RUN_CHANGED_EVENT = 'assistant_run.changed.v1';
+/** Statuses of a run that is still working; the owner's working line shows Stop for these. */
+export const ASSISTANT_RUN_IN_FLIGHT = ['queued', 'reading', 'dispatching'] as const;
+
 /** The disclosure version a personal-run consent must name (O-008 §1). */
 export const PERSONAL_RUN_CONSENT_VERSION = 'o-008-2026-09-28';
 
 /**
- * Per-run request limits and caps of O-008 §3. Prices are the O-007 rate checked on 2026-09-28
- * and must be checked again before a real provider adapter enables dispatch.
+ * Per-run request limits and caps of O-008 §3. Prices are the O-007 rate, rechecked against the
+ * Anthropic pricing page on 2026-09-30 (Claude Sonnet 5 $2/M input, $10/M output, now the standard
+ * price). Check them again before production dispatch is switched on.
  */
 export const PERSONAL_RUN_LIMITS = {
   provider: 'anthropic',
@@ -44,7 +55,7 @@ export const PERSONAL_RUN_LIMITS = {
   perRunCents: { default: 6, min: 6, max: 50 },
   dailyCapCents: { default: 100, min: 10, max: 1_000 },
   /** Micro-dollars per token: $2/M input, $10/M output. */
-  price: { inputMicrosPerToken: 2, outputMicrosPerToken: 10, checkedOn: '2026-09-28' },
+  price: { inputMicrosPerToken: 2, outputMicrosPerToken: 10, checkedOn: '2026-09-30' },
 } as const;
 
 export type PersonalRunEnablementStatus = 'active' | 'paused';
@@ -81,6 +92,12 @@ export interface PersonalAssistantStatus {
   state: PersonalAssistantState;
   unavailableReason: PersonalAssistantUnavailableReason | null;
   enablement: PersonalRunEnablement | null;
+  /**
+   * What this instance can do for the caller now, so the UI can say why an assistant cannot run
+   * instead of pretending: the operator's provider switch (O-008 §6) and whether the caller has
+   * a usable key connection of their own (O-007/#124). Never another person's.
+   */
+  setup: { provider: 'on' | 'off'; connection: 'active' | 'none' };
   /** Today's use in the owner's time zone; null without an enablement. */
   today: { chargedMicros: number; reservedMicros: number; capCents: number; resetsAt: string } | null;
   /** What the consent screen shows before enabling. */

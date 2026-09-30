@@ -132,6 +132,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     const status = expectStatus(await hubert.browser.request('GET', '/api/v1/personal-assistant'), 200) as PersonalAssistantStatus;
     assert.equal(status.state, 'unavailable');
     assert.equal(status.unavailableReason, 'provider_off');
+    assert.deepEqual(status.setup, { provider: 'off', connection: 'none' }, 'the UI can say why, truthfully');
     assert.equal(status.enablement?.connectionId, hubertConnection);
     assert.equal(status.enablement?.consent.version, PERSONAL_RUN_CONSENT_VERSION);
     const refused = await hubert.browser.request('POST', `/api/v1/conversations/${thread.id}/assistant-runs`, { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'Summarize' } });
@@ -354,6 +355,20 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     const stoppedLate = await row(long.run.id);
     assert.deepEqual([stoppedLate.cost_state, stoppedLate.charged_micros, stoppedLate.answer_body], ['observed', 900 * 2 + 40 * 10, null]);
 
+    // A provider rejection after the request was sent (a scripted 429) is not assumed free: the run
+    // ends provider_failed, the reservation stays counted as unknown, nothing is posted, and Retry
+    // is a new capped run.
+    compute.respond = async () => ({ kind: 'failed', reason: 'rate_limited', billed: 'unknown' });
+    const limited = await ask(hubert);
+    assert.equal(await processor.process(limited.run.id), 'provider_failed');
+    const limitedRow = await row(limited.run.id);
+    assert.deepEqual([limitedRow.status, limitedRow.cost_state, limitedRow.charged_micros, limitedRow.answer_body], ['provider_failed', 'unknown', 0, null]);
+    assert.ok(limitedRow.reserved_micros > 0, 'the reservation is kept, not released');
+    compute.respond = echo;
+    const retryAfterLimit = await runs.retry(human(hubert), limited.run.id, { clientRunId: randomUUID() });
+    assert.notEqual(retryAfterLimit.run.id, limited.run.id, 'Retry is a new run');
+    assert.equal(await processor.process(retryAfterLimit.run.id), 'completed');
+
     // A run a crashed worker left dispatching does not block the owner forever; its reservation stays counted.
     const stuck = await ask(hubert);
     await pool.query(`UPDATE personal_runs SET status = 'dispatching', updated_at = now() - interval '20 minutes' WHERE id = $1`, [stuck.run.id]);
@@ -488,5 +503,43 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     const continued = await runs.invoke(human(hubert), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Continue', continuesRunId: truncated.run.id });
     assert.equal(await processor.process(continued.run.id), 'completed');
     assert.match(compute.dispatched.at(-1)!.input, /Your earlier answer, to continue/);
+  });
+
+  test('progress: every state change of a run reaches only its owner; others learn of it only from the committed answer', async () => {
+    const [own, peer, admin] = await Promise.all([hubert, kai, ada].map((someone) => StreamClient.connect(someone.browser)));
+    const run = await ask(hubert, 'Where are we on the sensor?');
+    const progressOf = (client: StreamClient) => client.events.filter((event) => event.objectType === 'assistant_run');
+    await own.until(() => progressOf(own).find((event) => event.objectId === run.run.id), 8000, 'the owner hears the queued run');
+    assert.equal(await processor.process(run.run.id), 'completed');
+    await own.until(() => progressOf(own).filter((event) => event.objectId === run.run.id).length >= 4, 8000, 'queued, reading, dispatching and completed');
+    for (const other of [peer, admin]) await other.until(() => other.events.find((event) => event.kind === 'project.assistant_answer_committed.v1' && event.createdAt >= run.run.createdAt), 8000, 'the committed answer');
+    assert.deepEqual(progressOf(peer), [], 'a project member hears nothing about the run');
+    assert.deepEqual(progressOf(admin), [], 'a workspace owner hears nothing about the run');
+    for (const client of [own, peer, admin]) await client.close();
+
+    const events = await pool.query(`SELECT e.data->>'status' AS status, array_agg(a.recipient ORDER BY a.recipient) AS recipients
+      FROM events e LEFT JOIN event_audience a ON a.event_id = e.id WHERE e.kind = 'assistant_run.changed.v1' AND e.object_id = $1 GROUP BY e.seq, e.data ORDER BY e.seq`, [run.run.id]);
+    assert.deepEqual(events.rows.map((item: { status: string }) => item.status), ['queued', 'reading', 'dispatching', 'completed']);
+    for (const item of events.rows as { recipients: string[] }[]) assert.deepEqual(item.recipients, [`human:${hubert.id}`], 'the owner is the only recipient');
+    assert.equal(JSON.stringify(events.rows).includes('Where are we'), false, 'events carry no content');
+
+    // A stop before dispatch is announced too, and a paused run's end as well; still to the owner only.
+    const stopped = await ask(hubert, 'Never mind');
+    await runs.stop(human(hubert), stopped.run.id);
+    const stops = await pool.query(`SELECT e.data->>'status' AS status, array_agg(a.recipient) AS recipients FROM events e JOIN event_audience a ON a.event_id = e.id
+      WHERE e.kind = 'assistant_run.changed.v1' AND e.object_id = $1 GROUP BY e.seq, e.data ORDER BY e.seq`, [stopped.run.id]);
+    assert.deepEqual(stops.rows.map((item: { status: string; recipients: string[] }) => [item.status, item.recipients]), [['queued', [`human:${hubert.id}`]], ['stopped', [`human:${hubert.id}`]]]);
+  });
+
+  test('a failed preflight count ends the run at zero cost with nothing dispatched', async () => {
+    const dispatched = compute.dispatched.length;
+    const count = compute.count;
+    compute.count = () => { throw new Error('count endpoint down'); };
+    try {
+      const run = await ask(hubert, 'Count fails');
+      assert.equal(await processor.process(run.run.id), 'provider_failed');
+      assert.deepEqual(await row(run.run.id), { status: 'provider_failed', cost_state: 'released', charged_micros: 0, reserved_micros: 60_000, answer_body: null, stopped_at_stage: 'before_dispatch' });
+      assert.equal(compute.dispatched.length, dispatched);
+    } finally { compute.count = count; }
   });
 });

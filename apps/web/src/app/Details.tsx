@@ -76,7 +76,7 @@ export function Details({ view, workspace, placeTitle, dm = null, onBack, onClos
   );
 }
 
-/** Personal connection setup. The in-app assistant still needs its separate runtime (#58). */
+/** Personal connection setup (#57, #68): the Claude Code path and your own in-app assistant. */
 function ConnectAi({ onBack }: { onBack: () => void }) {
   return (
     <div className="details">
@@ -88,13 +88,14 @@ function ConnectAi({ onBack }: { onBack: () => void }) {
         <h4 id="details-ai-ways">Ways to connect</h4>
         <ul className="details__rows">
           <li><b>Claude Code on your computer</b><span>Uses your account for compute and your personal Flux grant. Flux never receives your provider credentials.</span></li>
-          <li><b>A personal API key</b><span>Asks for your spending cap before the first run · not available yet</span></li>
+          <li><b>Your assistant in Flux</b><span>Answers here when you ask, with your own Anthropic API key, your consent and your daily cap. Only you can use it.</span></li>
         </ul>
         <p><Link className="ui-link" to="/connect-agent">Set up or revoke a Claude Code connection</Link></p>
+        <p><Link className="ui-link" to="/settings/assistant">Set up your assistant in Flux</Link></p>
       </section>
       <section className="details__sec" aria-labelledby="details-ai-now">
-        <h4 id="details-ai-now">In-app assistant</h4>
-        <p>The ✦ button does not start Claude Code or spend your plan. It remains unavailable until a separate in-app assistant runtime is connected.</p>
+        <h4 id="details-ai-now">Nobody else’s assistant</h4>
+        <p>The ✦ button always means your own assistant. It never starts Claude Code, and it never uses another person’s assistant or payer. Without yours, human work goes on exactly as before.</p>
       </section>
     </div>
   );

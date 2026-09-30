@@ -23,6 +23,7 @@ import { expectedVersion, id, isId, page } from '../work/validation.js';
 import type {
   EnablementRecord, PersonalConnectionLookup, PersonalRunPorts, PersonalRunUnitOfWork, RunRecord,
 } from './ports.js';
+import { announce, updateAndAnnounce } from './progress.js';
 import { centsToMicros, normalizeEnable, normalizeInvoke, normalizeUpdate, retryRequest, type NormalizedInvoke } from './validation.js';
 
 // Personal assistant runs (issue #68, decision O-008): the owner's enablement, invoke, stop,
@@ -139,16 +140,21 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
       maxInputTokens: PERSONAL_RUN_LIMITS.maxInputTokens, maxOutputTokens: PERSONAL_RUN_LIMITS.maxOutputTokens,
       priceCheckedOn: PERSONAL_RUN_LIMITS.price.checkedOn, dataSent: 'project_place_excerpts',
     } as const;
+    const connection = providerEnabled ? await connections.resolve(owner) : null;
+    const setup = {
+      provider: providerEnabled ? 'on' as const : 'off' as const,
+      connection: connection && connection.status === 'active' && connection.ownerUserId === owner ? 'active' as const : 'none' as const,
+    };
     const enablement = await ports.runs.enablement(owner);
-    if (!enablement) return { state: 'not_enabled', unavailableReason: null, enablement: null, today: null, disclosure };
+    if (!enablement) return { state: 'not_enabled', unavailableReason: null, enablement: null, setup, today: null, disclosure };
     const spend = await ports.runs.spendToday(owner, enablement.timeZone);
     const today = { chargedMicros: spend.chargedMicros, reservedMicros: spend.reservedMicros, capCents: enablement.dailyCapCents, resetsAt: iso(spend.resetsAt) };
     const view = enablementView(enablement);
-    if (enablement.status === 'paused') return { state: 'paused', unavailableReason: null, enablement: view, today, disclosure };
+    if (enablement.status === 'paused') return { state: 'paused', unavailableReason: null, enablement: view, setup, today, disclosure };
     const problem = await connectionProblem(connections, providerEnabled, enablement);
-    if (problem) return { state: 'unavailable', unavailableReason: problem, enablement: view, today, disclosure };
+    if (problem) return { state: 'unavailable', unavailableReason: problem, enablement: view, setup, today, disclosure };
     const capped = spend.chargedMicros + spend.reservedMicros + centsToMicros(enablement.perRunCents) > centsToMicros(enablement.dailyCapCents);
-    return { state: capped ? 'capped' : 'ready', unavailableReason: null, enablement: view, today, disclosure };
+    return { state: capped ? 'capped' : 'ready', unavailableReason: null, enablement: view, setup, today, disclosure };
   }
 
   async function lockedEnablement(ports: PersonalRunPorts, owner: string) {
@@ -200,7 +206,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
     if (!(await ports.access.canUseProject(agent, 'read', place.projectId, { lock: true })))
       throw new ConflictError('Your assistant has no access to this project', 'PERSONAL_RUN_NO_PROJECT_ACCESS');
     // A run a crashed worker left behind must not block the owner forever (the job expires after 5 minutes).
-    await ports.runs.endStale(owner, STALE_AFTER_SECONDS);
+    for (const ended of await ports.runs.endStale(owner, STALE_AFTER_SECONDS)) await announce(ports, ended);
     if (await ports.runs.hasRunInFlight(owner)) throw new ConflictError('Your assistant is already working on a request', 'PERSONAL_RUN_IN_FLIGHT');
     const spend = await ports.runs.spendToday(owner, enablement.timeZone);
     const reservedMicros = centsToMicros(enablement.perRunCents);
@@ -213,6 +219,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
       continuesRunId: request.continuesRunId, retryOfRunId, reservedMicros, model: PERSONAL_RUN_LIMITS.model,
     });
     await ports.queue.enqueue(run.id);
+    // Only the owner learns that the run exists (O-008 §4 "Progress").
+    await announce(ports, run);
     return { run, created: true };
   }
 
@@ -281,7 +289,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
       return uow.run(async (ports) => {
         const current = await lockedEnablement(ports, owner);
         if (current.status !== 'paused') await ports.runs.updateEnablement(owner, { status: 'paused' });
-        await ports.runs.endUndispatched(owner, 'paused');
+        for (const ended of await ports.runs.endUndispatched(owner, 'paused')) await announce(ports, ended);
         return status(ports, owner);
       });
     },
@@ -300,7 +308,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
       const owner = ownerOf(principal);
       await uow.run(async (ports) => {
         await lockedEnablement(ports, owner);
-        await ports.runs.endUndispatched(owner, 'revoked');
+        for (const ended of await ports.runs.endUndispatched(owner, 'revoked')) await announce(ports, ended);
         await ports.runs.deleteEnablement(owner);
       });
     },
@@ -333,11 +341,11 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
       return uow.run(async (ports) => {
         const run = await ownRun(ports, principal, runId, true);
         if (run.status === 'queued' || run.status === 'reading') {
-          return runView(ports, await ports.runs.updateRun(run.id, {
+          return runView(ports, await updateAndAnnounce(ports, run.id, {
             status: 'stopped', stopRequestedAt: new Date(), costState: 'released', chargedMicros: 0, completedAt: new Date(),
           }));
         }
-        if (run.status === 'dispatching' && !run.stopRequestedAt) return runView(ports, await ports.runs.updateRun(run.id, { stopRequestedAt: new Date() }));
+        if (run.status === 'dispatching' && !run.stopRequestedAt) return runView(ports, await updateAndAnnounce(ports, run.id, { stopRequestedAt: new Date() }));
         return runView(ports, run);
       });
     },
