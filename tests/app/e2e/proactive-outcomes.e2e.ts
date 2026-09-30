@@ -218,7 +218,7 @@ test('owner usage distinguishes known, uncertain and no-cost requests and surviv
     assert.equal(((await api(page, 'GET', '/api/v1/background-compute-usage')).data as BackgroundComputeUsage).startedRequestsToday, 3, 'inspect and dismiss start no paid request');
     // A local accounting reference is not a grant to reopen its project source.
     assert.equal((await api(page, 'POST', `/api/v1/projects/${fixture.projectId}/grants`,
-      { principal: { kind: 'user', id: fixture.ownerId }, role: 'denied' })).status, 201);
+      { principal: { kind: 'human', id: fixture.ownerId }, role: 'denied' })).status, 201);
     await page.goto(`${origin.origin}/settings/background-compute`);
     const privateUsage = page.locator('.background-usage'); await privateUsage.waitFor();
     assert.ok(!(await privateUsage.innerText()).includes('Bedside gesture lamp'));
