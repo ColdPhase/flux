@@ -1,6 +1,6 @@
 {
   "tested_source_commit": "8cd069c58d88fac0d01e4d300cecc7948b99d5df",
-  "integrated_source_commit": "df2a9342c31ad0288f799af851fe1b4259e72203",
+  "integrated_source_commit": "fc20263f9e7ebdabc55942606164adb26e5de35c",
   "no_application_test_dependency_infra_delta_after_test": true,
   "source_sha256": {
     "apps/web/build/service-worker-plugin.ts": "66446f897c0451558d54499509de44adab9fc7649d64b786121e3c620413fcce",

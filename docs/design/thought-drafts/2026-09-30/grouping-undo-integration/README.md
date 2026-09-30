@@ -1,6 +1,6 @@
 # Confirmed draft and hierarchy-undo integration
 
-Tested source `8cd069c58d88fac0d01e4d300cecc7948b99d5df`; subsequent accepted-main/#148 integration `df2a9342c31ad0288f799af851fe1b4259e72203` changes only ancestry and documentation. Application, tests, dependencies and infrastructure are byte-identical across that checkpoint.
+Tested source `8cd069c58d88fac0d01e4d300cecc7948b99d5df`; subsequent accepted-main/#148 integration `fc20263f9e7ebdabc55942606164adb26e5de35c` changes only ancestry and documentation. Application, tests, dependencies and infrastructure are byte-identical across that checkpoint.
 
 Isolated Docker build/type/lint and **17/17 actual browser journeys passed in 42.297s**: nine create/edit/recovery draft cases and eight stable outline/grouping cases, including the later-child/exact absent-null undo regression. Draft creation keeps shared graph empty until confirmation; failed/uncertain saves retain private text and stable retry identity; current two-author version conflict stays recoverable. [Log](docker-seventeen-journeys.txt), [manifest](manifest.json) and current screenshots retain the actual source. Resources were removed.
 
