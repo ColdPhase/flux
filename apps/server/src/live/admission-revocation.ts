@@ -67,6 +67,13 @@ export function admissionRevocation({ store, media, sockets, log }: AdmissionRev
     });
   };
 
+  /**
+   * Every participant of a Flux room without a standing admission is unadmitted: a revoked or
+   * expired one, one whose metadata does not match its identity, and one connected before
+   * #128 with the per-person identity and no admission (still possible right after an API
+   * cutover while the SFU keeps running). Each is retired by its exact identity, permissions
+   * first. A participant with a standing admission is never touched.
+   */
   const reconcileRoom = async (roomId: string) => {
     let connected;
     try { connected = await media.participantAdmissions(roomId); }

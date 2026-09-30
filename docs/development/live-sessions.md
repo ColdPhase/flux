@@ -160,6 +160,19 @@ metadata not matching the identity, revoked, or an auth session that is gone or 
 for its room. Revoked and ended-session admissions older than a day are pruned. These
 passes catch a missed notification or an API restart; they are not the admission boundary.
 
+**Cutover from pre-#128.** Before #128 the API issued one identity per person
+(`u_<base64url(userId)>`) with no admission metadata, straight to the SFU. Upgrading only the
+API leaves such participants connected. Reconciliation therefore lists **every** participant
+of a Flux room, whatever its identity form, and treats any participant without a standing
+admission as unadmitted: the pre-#128 form, missing or malformed metadata, metadata that does
+not match the identity, and foreign identities. Each is retired by its exact identity,
+permissions first; a participant with a standing admission is never touched. The new API
+runs this at start (the notification listener's first connection) and every 30 s, so an
+upgrade retires old participants without a room drain. `check_live_sfu.sh` proves it: with
+the API stopped, a client joins the pinned SFU with an old-form grant and publishes audio;
+after the API starts it is removed (`PARTICIPANT_REMOVED`) while an admitted session in the
+same room stays connected.
+
 **Topology.** `infra/compose.live.yaml` attaches LiveKit to two networks: the internal
 `livekit-signal` network, shared only with the API, and `livekit-media`, which carries the
 published ICE/TCP, ICE/UDP and TURN/UDP ports. LiveKit binds its signaling/room-service

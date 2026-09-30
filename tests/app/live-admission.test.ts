@@ -471,7 +471,8 @@ describe('live media admission (#128)', () => {
       [{ userId: ada, joinedAt: new Date(50_000).toISOString() }, { userId: ben, joinedAt: new Date(70_000).toISOString() }]
         .sort((x, y) => x.userId.localeCompare(y.userId)));
     assert.equal(await realMedia.occupancy(roomId), 4, 'occupancy stays the raw participant count');
-    assert.deepEqual((await realMedia.participantAdmissions(roomId)).map((participant) => participant.admissionId).sort(), [a, b, c].sort());
+    // Every participant is listed; a foreign identity has no admission.
+    assert.deepEqual((await realMedia.participantAdmissions(roomId)).map((participant) => participant.admissionId ?? 'none').sort(), [a, b, c, 'none'].sort());
 
     // Revocation addresses exactly one identity: permissions first, then removal.
     sfu.serviceCalls.length = 0;
@@ -561,5 +562,32 @@ describe('live media admission (#128)', () => {
     (await opened(signal(again.token, laptop.browser))).close();
     laptopSocket.close();
     phoneSocket.close();
+  });
+
+  test('reconciliation retires a pre-#128 per-person participant and keeps a standing admission', async () => {
+    const s = await scene('gate-legacy');
+    const laptop = await signedIn(s.member);
+    const phone = await signedIn(s.member);
+    const current = claims((await s.join(phone.browser)).token);
+    // What main issued before #128: identity u_<base64url(userId)> and no metadata.
+    const legacy = `u_${Buffer.from(s.member.id, 'utf8').toString('base64url')}`;
+    const malformed = participantIdentity(s.owner.id, randomBytes(16).toString('base64url'));
+    sfu.service.set(s.session.roomId, [
+      { identity: legacy, metadata: '', state: 2, joinedAt: 1 },
+      { identity: current.sub, metadata: current.metadata!, state: 2, joinedAt: 2 },
+      { identity: malformed, metadata: 'not-an-admission', state: 2, joinedAt: 3 }]);
+    // The signed-out session no longer matters: the legacy participant carries no admission at all.
+    expectStatus(await laptop.browser.request('POST', '/api/auth/sign-out', { body: {} }), 200);
+    const listed = await realMedia.participantAdmissions(s.session.roomId);
+    assert.deepEqual(listed.find((participant) => participant.identity === legacy), { userId: null, identity: legacy, admissionId: null });
+    sfu.serviceCalls.length = 0;
+    const revocation = admissionRevocation({ store: liveAdmissionStore(db), sockets: { closeAdmission: () => 0, openAdmissions: () => [] },
+      media: realMedia, log: () => undefined });
+    await revocation.reconcileRoom(s.session.roomId);
+    assert.deepEqual(sfu.serviceCalls, [`UpdateParticipant:${legacy}`, `RemoveParticipant:${legacy}`,
+      `UpdateParticipant:${malformed}`, `RemoveParticipant:${malformed}`], 'permissions dropped before removal, exact identities only');
+    assert.deepEqual(sfu.service.get(s.session.roomId)!.map((participant) => participant.identity), [current.sub],
+      'the standing admission is never touched');
+    assert.equal(await realMedia.occupancy(s.session.roomId), 1);
   });
 });

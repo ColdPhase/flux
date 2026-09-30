@@ -30,7 +30,7 @@ cleanup() {
   status=$?
   if [ -n "$restart_pid" ]; then kill "$restart_pid" 2>/dev/null || true; fi
   if [ "$status" -ne 0 ]; then
-    $compose logs --no-color --tail=80 db migrate api livekit live-sfu-test || true
+    $compose logs --no-color --tail=80 db migrate api livekit live-sfu-test live-sfu-legacy-test || true
   fi
   $compose down -v || true
   rm -rf "$marker_dir"
@@ -45,6 +45,35 @@ docker build -f infra/Dockerfile --target e2e -t "flux-e2e:$project" .
 $compose build migrate live-sfu-test
 $compose up -d --wait api livekit
 $compose run --rm live-sfu-test
+# API cutover (#128): with the API stopped, a client joins the SFU with a pre-#128 grant and
+# publishes audio; after the new API starts, reconciliation must retire it.
+cutover_dir="$marker_dir/cutover"
+mkdir -p "$cutover_dir" && chmod 1777 "$cutover_dir"
+await_marker() {
+  for _ in $(seq 1 90); do
+    if [ -f "$cutover_dir/$1" ]; then return 0; fi
+    if ! kill -0 "$restart_pid" 2>/dev/null; then break; fi
+    sleep 1
+  done
+  cat "$cutover_dir/test.log" >&2
+  echo "Real SFU cutover test did not reach $1" >&2
+  exit 1
+}
+$compose run --rm -v "$cutover_dir:/cutover:Z" -e FLUX_CUTOVER_MARKER_DIR=/cutover live-sfu-legacy-test \
+  > "$cutover_dir/test.log" 2>&1 &
+restart_pid=$!
+await_marker ready
+$compose stop api
+printf 'ok\n' > "$cutover_dir/api-stopped"
+await_marker legacy-connected
+$compose up -d --wait api
+printf 'ok\n' > "$cutover_dir/api-started"
+if ! wait "$restart_pid"; then
+  cat "$cutover_dir/test.log" >&2
+  exit 1
+fi
+restart_pid=""
+cat "$cutover_dir/test.log"
 
 # The browser test signals only after a real client has joined and received an
 # SFU-refreshed token. Restart the pinned SFU, then release its assertions.

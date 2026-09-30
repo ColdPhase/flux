@@ -50,5 +50,25 @@ services:
       livekit:
         condition: service_healthy
     networks: [default, livekit-media]
+  # Cutover check only (#128): stands in for a participant that joined the SFU directly with a
+  # pre-#128 grant before the API was upgraded. It therefore reaches the private signal network
+  # and holds the SFU keys; the browser-network checks above run without either.
+  live-sfu-legacy-test:
+    profiles: ["live-test"]
+    image: flux-live-sfu-test:${FLUX_IMAGE_TAG:?Set an isolated image tag}
+    command: ["node_modules/.bin/tsx", "--test", "tests/app/e2e/live-sfu-legacy.e2e.ts"]
+    environment:
+      FLUX_API_URL: http://api:8080
+      FLUX_PUBLIC_ORIGIN: ${FLUX_PUBLIC_ORIGIN:?Set a loopback test origin}
+      # The alias exists only on livekit-signal; `livekit` resolves to the media network first.
+      FLUX_LIVEKIT_PRIVATE_URL: ws://livekit-signal-bind:7880
+      FLUX_LIVEKIT_API_KEY: ${FLUX_LIVEKIT_API_KEY:?Set a disposable test key}
+      FLUX_LIVEKIT_API_SECRET: ${FLUX_LIVEKIT_API_SECRET:?Set a disposable test secret}
+    depends_on:
+      api:
+        condition: service_healthy
+      livekit:
+        condition: service_healthy
+    networks: [default, livekit-media, livekit-signal]
   ui-test:
     networks: [default, livekit-media]

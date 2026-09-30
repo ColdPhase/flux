@@ -38,7 +38,8 @@ export function parseIdentity(identity: string): { userId: string; admissionId: 
 
 /** A Flux participant the SFU holds, and the admission its identity and metadata name. */
 export interface ParticipantAdmission {
-  userId: string;
+  /** Null for an identity that is not the current per-admission Flux form. */
+  userId: string | null;
   /** Exact SFU identity; revocation addresses only this. */
   identity: string;
   /** Null unless identity and metadata name the same well-formed admission. */
@@ -48,7 +49,11 @@ export interface ParticipantAdmission {
 export interface LiveMediaAdapter extends LiveMedia {
   /** Connected people, one entry per person however many sessions they have in the room. */
   participants(roomId: string): Promise<{ userId: string; joinedAt: string }[]>;
-  /** Every Flux participant the SFU still holds in the room, whatever its connection state. */
+  /**
+   * Every participant the SFU holds in the room, whatever its identity form or connection
+   * state: a pre-#128 per-person identity (`u_<user>`, no admission metadata) or any other
+   * identity is listed with a null admission, so reconciliation retires it.
+   */
   participantAdmissions(roomId: string): Promise<ParticipantAdmission[]>;
   /**
    * Drops every publish/subscribe/data permission of exactly `identity`, then disconnects it.
@@ -171,16 +176,16 @@ export function createLiveMedia(config: LiveMediaConfig): LiveMediaAdapter {
       return [...people].map(([userId, joinedAt]) => ({ userId, joinedAt: new Date(joinedAt).toISOString() }));
     },
     async participantAdmissions(roomId) {
-      return (await rooms.listParticipants(room(roomId))).flatMap((participant) => {
+      return (await rooms.listParticipants(room(roomId))).map((participant) => {
         const parsed = parseIdentity(participant.identity);
-        if (!parsed) return [];
-        return [{ userId: parsed.userId, identity: participant.identity,
-          admissionId: participant.metadata === parsed.admissionId ? parsed.admissionId : null }];
+        return { userId: parsed?.userId ?? null, identity: participant.identity,
+          admissionId: parsed && participant.metadata === parsed.admissionId ? parsed.admissionId : null };
       });
     },
     async revokeParticipant(roomId, identity) {
       const name = room(roomId);
-      if (!parseIdentity(identity)) throw new Error('Invalid Flux participant identity');
+      // Any identity the SFU listed in a Flux room, including pre-#128 and foreign forms.
+      if (typeof identity !== 'string' || !identity || identity.length > 256) throw new Error('Invalid participant identity');
       const absent = async () => {
         try { return !(await rooms.listParticipants(name)).some((participant) => participant.identity === identity); }
         catch {
