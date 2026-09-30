@@ -303,6 +303,10 @@ test('code-1440p: two then four authorized peers receive scrolling 14/16px text 
       for (let i = 0; i < 3; i++) await stage.getByRole('button', { name: 'Zoom in', exact: true }).click();
       assert.equal(await stage.locator('.lv-stage__pct').textContent(), '200%');
       await app.screenshot({ path: '/artifacts/code-product-zoom-two.png' });
+      // The existing stage stacks above the LivePanel popover. Return through
+      // its real control before opening details; preserve the observed overlap
+      // as a separate UI limitation, rather than using a forced pointer click.
+      await stage.getByRole('button', { name: 'Back to work', exact: true }).click();
       await bar.getByRole('button', { name: 'Session details and more', exact: true }).click();
       const panel = app.getByRole('dialog', { name: 'Live session', exact: true });
       await panel.getByRole('button', { name: 'Connection details', exact: true }).click();
@@ -317,7 +321,8 @@ test('code-1440p: two then four authorized peers receive scrolling 14/16px text 
       const rows = await table.getByRole('row').allTextContents();
       assert.ok(rows.some((row) => row.includes('2560×1440') && /\d+\.\d+ fps/.test(row)));
       assert.ok(rows.every((row) => !/-\d+(?:\.\d+)? (fps|kbit\/s)/.test(row)));
-      report.productDiagnosticPath = { actualSize, rows, rawStats: await rawStats(app),
+      report.productDiagnosticPath = { actualSize, detailsOpenedAfterBackToWork: true,
+        screenMayBeIntentionallyPausedWhenHidden: true, rows, rawStats: await rawStats(app),
         candidates: await selectedCandidates(app) };
       await app.screenshot({ path: '/artifacts/code-product-diagnostics.png' });
       await app.keyboard.press('Escape');
