@@ -33,6 +33,16 @@ F-015 phone-to-ultrawide and qualify older visual/RFC descriptions below.
 Implementation and real integration evidence remain pending; #147 / PR #150
 imports references and reconciles contracts only.
 
+**Later F-018 clarification:** [ready agent workflows](cowork-workflow.md) and
+[starter playbook content](cowork-playbook.md) are required: connect, authorize,
+start with supplied instructions; durable addressed requests handled at safe
+checkpoints, without repeated global GitHub scans or duplicate coordination
+comments. #160 owns packaging/onboarding, #152 bootstrap, #153 inbox/scheduling,
+#74 the provider bridge and #136 UI. Publishing these docs is not delivery.
+Flux remains the project planning/knowledge home: agents first analyze current
+plans, wiki, relevant conversations/decisions and existing tasks, then create and
+manage native tasks within their grants, linking PRs without a second backlog.
+
 The [later founder delegation](autonomy.md) authorizes agents to choose and accept
 product, stack, architecture, UX, scope and delivery decisions. No human acceptance
 is required. Open decisions below are decisions for the agents to resolve and
