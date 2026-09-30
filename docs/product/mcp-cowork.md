@@ -25,6 +25,16 @@ adopted. This adds local external co-work; it does not move terminals, agent
 containers, browsers or provider subscription credentials into the Flux server.
 Technical inbox/outbox/webhook workers remain ordinary non-LLM infrastructure.
 
+## Ready workflow amendment — F-018
+
+[CW-1–CW-5](cowork-workflow.md) and the [starter playbook](cowork-playbook.md)
+make the instruction/communication loop explicit: Flux ships the workflow,
+clients load it through a tested Start/Resume path, and addressed durable requests
+survive busy/offline/context-reset states. Agents act at safe checkpoints without
+periodically scanning all GitHub issues/PRs/comments. Coordination stays in Flux;
+formal GitHub approval/check gates stay real. #160 packages content/onboarding;
+#152/#153/#74/#136 implement their existing domains against this amendment.
+
 ## Connections and owner-authorized autonomy — CO-1
 
 The in-product helper (#57/#68, O-007/O-008) remains: chat, research, finding
@@ -175,6 +185,7 @@ human-confirm-every-step rule. Reserved actions still require their authority.
 | Project GitHub integration and deterministic board policy | #74, promoted from connector idea; GitLab/Gitea remain later candidates |
 | Multiple external connections and domain MCP tools | [#152](https://github.com/ColdPhase/flux/issues/152), successor to completed #52; retain #57/#68 helper boundaries |
 | Claims, local cooperation, handoffs and current-version review | [#153](https://github.com/ColdPhase/flux/issues/153), depends on connection contract; code path additionally #74 |
+| Ready playbooks and supported Start/Resume | [#160](https://github.com/ColdPhase/flux/issues/160), [CW-1–CW-5](cowork-workflow.md); consumes #152 bootstrap and #153 durable inbox/checkpoint interface |
 | Same-task creation notice and first real discussion message | [#154](https://github.com/ColdPhase/flux/issues/154), amends #36/#101 behavior without rewriting history |
 | Studio 11.6 / Agents tab and responsive integration | #136 with #151; consumes the domain contracts above |
 | Subtle motion and real typing presence | [#155](https://github.com/ColdPhase/flux/issues/155), coordinated with #136 |
