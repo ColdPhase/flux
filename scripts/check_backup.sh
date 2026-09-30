@@ -340,14 +340,25 @@ if (PATH="$work/shim-noinspect:$PATH"; export PATH; flux_u upgrade -y) > "$work/
 grep -q 'Could not check whether API and worker stopped' "$work/upgrade-noinspect.out" || { cat "$work/upgrade-noinspect.out"; fail "an unknown writer state was not reported"; }
 if grep -q 'nothing was written after\|are stopped now' "$work/upgrade-noinspect.out"; then fail "an unknown writer state was reported as stopped"; fi
 [ "$(running_u)" = "api worker" ] || fail "the shim should have left both writers running: $(running_u)"
-# A backup whose stop cannot be checked writes nothing.
-mkdir -p "$work/shim-ps"
-printf '#!/bin/sh\ncase "$*" in *" ps --status running"*) exit 1 ;; esac\nexec %s "$@"\n' "$real_docker" > "$work/shim-ps/docker"
-chmod +x "$work/shim-ps/docker"
-before_ps=$(ls "$work/backups" | wc -l)
-if (PATH="$work/shim-ps:$PATH"; export PATH; flux_u backup --output "$work/backups") > "$work/backup-noinspect.out" 2>&1; then fail "a backup ran although the writer state was unknown"; fi
-grep -q 'Could not check whether API and worker stopped' "$work/backup-noinspect.out" || { cat "$work/backup-noinspect.out"; fail "no unknown-state refusal"; }
-[ "$(ls "$work/backups" | wc -l)" = "$before_ps" ] || fail "a backup archive was written although the writer state was unknown"
+# A backup whose writer state cannot be read stops nothing and writes nothing, and a backup
+# whose state after the stop cannot be read brings back what was running. Actual API and
+# worker state is checked, not only the archive count.
+[ "$(running_u)" = "api worker" ] || fail "both writers should run before the inspection cases: $(running_u)"
+mkdir -p "$work/shim-ps-before" "$work/shim-ps-after"
+printf '#!/bin/sh\ncase "$*" in *" ps --status running"*) exit 1 ;; esac\nexec %s "$@"\n' "$real_docker" > "$work/shim-ps-before/docker"
+printf '#!/bin/sh\ncase "$*" in *" stop "*) : > "%s/stopped-once" ;; *" ps --status running"*) [ -e "%s/stopped-once" ] && exit 1 ;; esac\nexec %s "$@"\n' "$work" "$work" "$real_docker" > "$work/shim-ps-after/docker"
+chmod +x "$work/shim-ps-before/docker" "$work/shim-ps-after/docker"
+archives() { ls "$work/backups" 2>/dev/null | grep -c '\.tar$' || true; }
+before_ps=$(archives)
+if (PATH="$work/shim-ps-before:$PATH"; export PATH; flux_u backup --output "$work/backups") > "$work/backup-ps-before.out" 2>&1; then fail "a backup ran although the writer state was unknown before the stop"; fi
+grep -q 'Could not check which Flux services are running' "$work/backup-ps-before.out" || { cat "$work/backup-ps-before.out"; fail "no refusal before the stop"; }
+[ "$(archives)" = "$before_ps" ] || fail "an archive was written although the writer state was unknown"
+[ "$(running_u)" = "api worker" ] || fail "writers stopped although the backup refused before the stop: $(running_u)"
+rm -f "$work/stopped-once"
+if (PATH="$work/shim-ps-after:$PATH"; export PATH; flux_u backup --output "$work/backups") > "$work/backup-ps-after.out" 2>&1; then fail "a backup ran although the state after the stop was unknown"; fi
+grep -q 'Could not check whether API and worker stopped' "$work/backup-ps-after.out" || { cat "$work/backup-ps-after.out"; fail "no refusal after the stop"; }
+[ "$(archives)" = "$before_ps" ] || fail "an archive was written although the state after the stop was unknown"
+[ "$(running_u)" = "api worker" ] || fail "the writers that were running were not brought back: $(running_u)"
 flux_u clean -y >/dev/null
 
 step "PASS: backup, restore into a fresh project, agent access, export, upgrade from $(git -C "$here" rev-parse --short "$from") (+$(printf '%s\n' "$new_migrations" | wc -l | tr -d ' ') migrations) and failed-upgrade recovery"

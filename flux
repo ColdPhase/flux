@@ -514,20 +514,26 @@ backup_to() {
   [ ! -e "$out/$name.tar" ] || die "$out/$name.tar already exists; nothing was written."
   BACKUP_STAGING="$out/.$name.partial"
   old_umask=$(umask); umask 077; mkdir "$BACKUP_STAGING" || die "Could not create $BACKUP_STAGING."; umask "$old_umask"
+  # One answered question about what runs, before anything is stopped: an unanswered one is
+  # never read as "nothing runs", or the writers would stay down after the backup.
+  listed=$(compose_main ps --status running --services 2>/dev/null) \
+    || die "Could not check which Flux services are running (docker compose ps failed). Nothing was stopped or written."
   writers=''
-  for service in api worker; do if is_running "$service"; then writers="$writers $service"; fi; done
-  db_was_running=0; if is_running db; then db_was_running=1; fi
+  for service in api worker; do if printf '%s\n' "$listed" | grep -qx "$service"; then writers="$writers $service"; fi; done
+  db_was_running=0; if printf '%s\n' "$listed" | grep -qx db; then db_was_running=1; fi
   if [ -n "$writers" ]; then say "Stopping$writers so the database and files are captured at one point in time..."; fi
   stop_ok=1
   stop_error=$(compose_main stop api worker 2>&1 >/dev/null) || stop_ok=0
   still='' inspected=1
   still=$(running_writers) || inspected=0
-  # Restart exactly what was running before and is stopped now; never start anything else.
+  # Restart exactly what was running before and is stopped now; never start anything else. When
+  # the state after the stop is unknown, bring back what was running before (starting a running
+  # service is a no-op).
   if [ "$inspected" = 1 ]; then
     for service in $writers; do case " $still " in *" $service "*) ;; *) BACKUP_RESTART="$BACKUP_RESTART $service" ;; esac; done
-  fi
-  if [ "$inspected" != 1 ]; then
-    die "Could not check whether API and worker stopped (docker compose ps failed). No backup was written."
+  else
+    BACKUP_RESTART=$writers
+    die "Could not check whether API and worker stopped (docker compose ps failed). No backup was written; restarting what was running before."
   fi
   if [ "$stop_ok" != 1 ] || [ -n "$still" ]; then
     die "Could not confirm that API and worker are stopped (still running: ${still:-none}; stop $( [ "$stop_ok" = 1 ] && echo succeeded || echo failed)). No backup was written.${stop_error:+ ($(printf '%s' "$stop_error" | tail -n 1))}"
