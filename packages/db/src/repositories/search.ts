@@ -185,7 +185,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows): S
     hits AS (SELECT * FROM matched WHERE newest = 1)
     SELECT h.id::text AS id, h.score::text AS score, h.at::text AS at_key, h.at, h.kind, h.workspace_id, w.name AS workspace_name,
       h.object_id, h.parent_id, h.project_id, coalesce(h.dm_id, d.id) AS dm_id, p.name AS project_name, h.version, pm.current_version, h.status, sk.title AS sketch_title,
-      coalesce(au.name, ag.name) AS author_name, length(h.body) > 0 AS has_body,
+      h.author_kind, h.author_id, coalesce(au.name, ag.name) AS author_name, length(h.body) > 0 AS has_body,
       ts_headline('simple', ${clean(sql`h.title`)}, ${q}, ${TITLE_OPTIONS}) AS title_headline,
       CASE WHEN length(h.body) = 0 THEN NULL
         WHEN length(h.body) <= ${WHOLE} THEN ts_headline('simple', ${clean(sql`h.body`)}, ${q}, ${TITLE_OPTIONS})
@@ -216,6 +216,7 @@ interface PageRow {
   id: string; score: string; at_key: string; at: Date | string; kind: SearchKind; workspace_id: string; workspace_name: string | null;
   object_id: string; parent_id: string | null; project_id: string | null; dm_id: string | null; project_name: string | null; version: number | null;
   current_version: number | null; status: string | null; sketch_title: string | null; author_name: string | null; has_body: boolean;
+  author_kind: 'human' | 'agent' | null; author_id: string | null;
   title_headline: string | null; body_headline: string | null; dm_name: string | null;
 }
 
@@ -317,6 +318,7 @@ export function searchRows(db: SearchExecutor) {
         snippet: row.body_headline ? highlightParts(row.body_headline) : null,
         hasBody: row.has_body,
         authorName: row.author_name,
+        author: row.author_kind && row.author_id ? { kind: row.author_kind, id: row.author_id } : null,
         at: row.at instanceof Date ? row.at : new Date(row.at),
       }));
     },

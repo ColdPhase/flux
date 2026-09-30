@@ -279,7 +279,7 @@ export function createReturnUseCases(ports: ReturnPorts) {
       if (!actorKey) return null;
       const name = names.get(actorKey)?.trim();
       if (!name) return actorKey.startsWith('agent:') ? 'An agent' : 'A former member';
-      return actorKey.startsWith('human:') ? name.split(/\s+/)[0]! : name;
+      return actorKey.startsWith('human:') ? name.split(/\s+/)[0]! : `${name} (agent)`;
     };
     const myName = names.get(me) ?? '';
     const canWrite = new Map<string, boolean>();

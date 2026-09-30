@@ -152,6 +152,12 @@ against the running API and mail catcher, including a session check across
 `docker compose restart api`. Set `FLUX_TEST_PORT` / `FLUX_TEST_MAILPIT_PORT`
 to avoid port clashes with another concurrent run.
 
+The application test runner limits independent files to six; races within each
+test retain their explicit concurrency. Set `FLUX_E2E_EVIDENCE_DIR` to an absolute
+host directory to retain the configured Chromium screenshots/transcripts. The
+script mounts it at `/evidence` with the SELinux label; other test data stays in
+the isolated Compose project and is removed after the run.
+
 ## PWA and Web Push
 
 Issue #41 adds the installable shell and the Web Push foundation. The API serves

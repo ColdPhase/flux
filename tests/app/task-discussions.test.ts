@@ -256,7 +256,7 @@ test('real agent history reaches bounded helper context, search, export, notific
   const query = new URLSearchParams({ q: 'spectrometer', type: 'message', place: `project:${f.place.id}`, author: `agent:${agent.id}` });
   const found = expectStatus(await f.reader.browser.request('GET', `/api/v1/search?${query}`), 200) as SearchResponse;
   assert.equal(found.items.length, 1);
-  assert.equal(found.items[0]!.author, 'Trial analyst');
+  assert.equal(found.items[0]!.author, 'Trial analyst (agent)');
   assert.deepEqual(found.items[0]!.target, { type: 'message', projectId: f.place.id, conversationId: root.conversationId, messageId: reply.id });
   const exported = await projectExportRows(db).conversations(f.place.id);
   assert.deepEqual(exported[0]!.messages.map((row) => row.author), [{ kind: 'human', id: f.writer.id }, principal]);
@@ -274,6 +274,8 @@ test('real agent history reaches bounded helper context, search, export, notific
   assert.match(candidates[0]!.title, /Trial analyst \(agent\)/);
   const back = expectStatus(await f.writer.browser.request('GET', `/api/v1/return?place=project&id=${f.place.id}`), 200) as ReturnSummary;
   assert.ok(back.items.some((item) => item.kind === 'question' && item.text.includes('Trial analyst') && item.source.type === 'message' && item.source.messageId === reply.id));
+  const digest = expectStatus(await f.writer.browser.request('GET', `/api/v1/return?place=project&id=${f.place.id}&digest=1`), 200) as ReturnSummary;
+  assert.ok(digest.digest!.conversations.some((item) => item.quotes.some((quote) => quote.messageId === reply.id && quote.author === 'Trial analyst (agent)')));
   assert.equal(JSON.stringify(back).includes(f.owner.id), false, 'agent owner is not fabricated as the author');
 });
 
@@ -311,13 +313,19 @@ test('co-work composition rolls back actual agent contribution and event if the 
   const f = await scene();
   const { principal } = await agentIn(f);
   const before = await f.counts();
+  const related = async () => (await pool.query(`SELECT
+    (SELECT count(*)::int FROM search_documents WHERE project_id=$1 AND kind='message') AS search,
+    (SELECT count(*)::int FROM outbox o JOIN events e ON e.id=o.event_id WHERE e.object_id=$1) AS outbox`, [f.place.id])).rows[0];
+  const relatedBefore = await related();
   const command = { body: 'Actual checkpoint contribution.', clientMessageId: randomUUID() };
   await assert.rejects(db.transaction(async (tx) => {
     const contribution = await taskDiscussionInTransaction(tx).contribute(principal, f.task.id, command);
     assert.equal(contribution.authorId, null);
+    // Simulates the later153 resolution failure; actual request/lease integration is separate.
     throw new Error('outer control resolution failed after domain event');
   }), /outer control resolution failed/);
   assert.deepEqual(await f.counts(), before);
+  assert.deepEqual(await related(), relatedBefore);
   assert.equal((await f.read()).root, null);
   const sent = await db.transaction((tx) => taskDiscussionInTransaction(tx).contribute(principal, f.task.id, command));
   assert.deepEqual(await taskDiscussionUseCases(db).contribute(principal, f.task.id, command), sent);
