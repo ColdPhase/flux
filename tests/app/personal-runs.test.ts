@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { createDatabase } from '@flux/db';
-import { createPersonalRunProcessor, type PersonalRunHooks, type Principal } from '@flux/core';
+import { createPersonalRunProcessor, recoverPersonalRuns, type PersonalRunHooks, type Principal } from '@flux/core';
 import {
   PERSONAL_RUN_CONSENT_VERSION,
   type AssistantAnswer, type AssistantProposal, type AssistantRun, type Conversation, type Page, type PersonalAssistantStatus,
@@ -542,4 +542,20 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
       assert.equal(compute.dispatched.length, dispatched);
     } finally { compute.count = count; }
   });
+  test('crash recovery prevents a late provider answer or a repeated queue delivery from publishing', async () => {
+    const previous = hooks.afterDispatch;
+    hooks.afterDispatch = async (run) => {
+      await pool.query("UPDATE personal_runs SET updated_at=now()-interval '1 hour' WHERE id=$1", [run.id]);
+      await recoverPersonalRuns(personalRunWorkerUnitOfWork(db));
+    };
+    try {
+      const pending = await ask(hubert);
+      assert.equal(await processor.process(pending.run.id), 'skipped', 'late completed provider result cannot commit');
+      assert.deepEqual(await row(pending.run.id), { status: 'provider_failed', cost_state: 'unknown', charged_micros: 0, reserved_micros: 60_000, answer_body: null, stopped_at_stage: null });
+      const dispatched = compute.dispatched.length;
+      assert.equal(await processor.process(pending.run.id), 'skipped');
+      assert.equal(compute.dispatched.length, dispatched, 'queue redelivery cannot call the provider again');
+    } finally { hooks.afterDispatch = previous; }
+  });
+
 });

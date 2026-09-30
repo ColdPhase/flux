@@ -41,7 +41,8 @@ export class PersonalRunCappedError extends DomainError {
 }
 
 const IN_FLIGHT = new Set(['queued', 'reading', 'dispatching']);
-const STALE_AFTER_SECONDS = 15 * 60;
+/** A run untouched this long was left by a crashed worker (the job itself expires after 5 minutes). */
+export const STALE_AFTER_SECONDS = 15 * 60;
 const iso = (date: Date) => date.toISOString();
 
 export function ownerOf(principal: Principal): string {
