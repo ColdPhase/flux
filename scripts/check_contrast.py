@@ -35,6 +35,7 @@ PAIRS = [
     ("--focus", "--bg-raised", 3.0, "focus ring on popovers"),
     ("--focus", "--accent-soft", 3.0, "focus ring on selection"),
     ("--map-guide", "--bg-side", 3.0, "map relationship guide"),
+    ("--map-guide", "--line-strong", 3.0, "map relationship guide crossing canvas grid dots"),
     ("--resolution", "--bg", 4.5, "semantic resolution label"),
     ("--attention", "--bg", 4.5, "needs-you label"),
     ("--attention", "--bg-hover", 4.5, "needs-you label on hover"),

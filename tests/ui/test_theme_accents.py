@@ -100,6 +100,14 @@ class ThemeAccentsJourney(unittest.TestCase):
         page.wait_for_timeout(200)
 
     def measure(self, page, theme, family, selector, minimum=4.5, **spec):
+        # Measure resting production states after enter/loading motion. A persistent opacity
+        # still fails this bounded wait and the independent guard in MEASURE.
+        page.wait_for_function("""spec => {
+          const el=document.querySelector(spec.selector); if(!el) return false;
+          for(let n=el;n;n=n.parentElement) if(Number(getComputedStyle(n).opacity)!==1) return false;
+          const s=getComputedStyle(el,spec.pseudo||null);
+          return Number(s.opacity)===1 && (spec.property!=='stroke' || Number(s.strokeOpacity)===1);
+        }""", arg={"selector": selector, **spec}, timeout=5000)
         value = page.evaluate(MEASURE, {"selector": selector, **spec})
         value.update(theme=theme, family=family, minimum=minimum)
         type(self).measurements.append(value)
