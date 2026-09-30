@@ -62,7 +62,7 @@ import { ForbiddenError, NotFoundError } from './errors.js';
 export const WORKSPACE_ACTIONS = ['workspace.read', 'workspace.read_members', 'workspace.manage_members', 'workspace.manage_agents', 'project.create', 'draft.create', 'agent.create', 'sketch.create', 'dm.create'] as const;
 export const PROJECT_ACTIONS = ['project.read', 'project.write', 'project.manage'] as const;
 export const DRAFT_ACTIONS = ['draft.read', 'draft.write', 'draft.share', 'draft.move'] as const;
-export const AGENT_ACTIONS = ['agent.read', 'agent.revoke'] as const;
+export const AGENT_ACTIONS = ['agent.read', 'agent.revoke', 'agent.invoke'] as const;
 export const SKETCH_ACTIONS = ['sketch.read', 'sketch.write'] as const;
 export const DM_ACTIONS = ['dm.read', 'dm.write'] as const;
 
@@ -454,7 +454,10 @@ export async function evaluateAgent(principal: Principal, action: ActionsByResou
   const ownedByCaller = principal.kind === 'human' && agent.ownerUserId === principal.id;
   const visible = actor.active && (self || (principal.kind === 'human' && actor.role !== 'guest'));
   if (!visible) return { ...none, actor };
-  const allowed = action === 'agent.read' || ownedByCaller || isManager(actor.role);
+  // `agent.invoke` (#68, O-008): only the owning person, while the agent is not revoked. A
+  // workspace role never lets anyone else use a person's assistant or its payer.
+  const allowed = action === 'agent.invoke' ? ownedByCaller && !agent.revokedAt
+    : action === 'agent.read' || ownedByCaller || isManager(actor.role);
   return { allowed, visible, actor, agent };
 }
 

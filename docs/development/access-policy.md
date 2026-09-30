@@ -205,7 +205,7 @@ and is then refused with `404` or `403` without writing.
 | workspace | `workspace.read`, `workspace.read_members`, `workspace.manage_members`, `workspace.manage_agents`, `project.create`, `draft.create`, `agent.create`, `sketch.create`, `dm.create` |
 | project | `project.read`, `project.write`, `project.manage` |
 | draft | `draft.read`, `draft.write`, `draft.share`, `draft.move` |
-| agent | `agent.read`, `agent.revoke` |
+| agent | `agent.read`, `agent.revoke`, `agent.invoke` (only the owning person, while the agent is not revoked; [personal runs](personal-runs.md)) |
 | sketch | `sketch.read`, `sketch.write` |
 | dm | `dm.read`, `dm.write` |
 

@@ -37,6 +37,7 @@ import { returnRoutes } from './returns/routes.js';
 import { docRoutes } from './docs/routes.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { searchRoutes } from './search/routes.js';
+import { personalRunRoutes } from './personal-runs/routes.js';
 import { exportRoutes } from './export/routes.js';
 
 const connectionString = process.env.DATABASE_URL;
@@ -142,6 +143,8 @@ registerMcpRoute(app, db, identity.auth, identityConfig.publicOrigin);
 await app.register(returnRoutes, { db, sessions: identity });
 await app.register(docRoutes, { db, sessions: identity });
 await app.register(notificationRoutes, { db, sessions: identity, smtp: identityConfig.smtp, publicOrigin: identityConfig.publicOrigin });
+// Personal assistant runs (#68): the server queues; the worker dispatches.
+await app.register(personalRunRoutes, { db, sessions: identity, boss });
 await app.register(searchRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret, exposeWork: testFailureInjection });
 await app.register(exportRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin });
 
