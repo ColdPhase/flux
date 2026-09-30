@@ -60,7 +60,8 @@ async function actorName(facts: NotificationFacts, actorId: string) {
 /**
  * Who an event concerns and why: people addressed in a message (mention, question), people in a
  * conversation that gets a reply, the other people of a direct message, the new owner of work,
- * and the people whose work (or agent) a proposed decision or recorded result is about. Only
+ * the people whose work (or agent) a proposed decision or recorded result is about, and the
+ * recipient of a live invitation. Only
  * people in the event's recorded audience are considered; the actor is never notified.
  */
 export async function candidatesFor(event: GeneratorEvent, facts: NotificationFacts): Promise<Candidate[]> {
@@ -136,6 +137,24 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
         body: `${why} · ${by} ${decision ? 'proposed it' : 'recorded it'} in ${item.projectName}`,
         url: `/projects/${item.projectId}/tasks?open=${kind}:${item.id}`,
       }));
+    }
+    case 'project.live_invited.v1': {
+      // One quiet signal per invitation: only its recipient, and only while it still asks
+      // something of them (pending, session available). The inviter never hears of it.
+      const invitationId = id(event.data.invitationId);
+      const sessionId = id(event.data.sessionId);
+      const recipientId = typeof event.data.recipientId === 'string' ? event.data.recipientId : null;
+      if (!invitationId || !sessionId || !reachable(recipientId)) return [];
+      const invitation = await facts.liveInvitation(invitationId);
+      if (!invitation || invitation.projectId !== event.objectId || invitation.sessionId !== sessionId
+        || invitation.recipientId !== recipientId || invitation.inviterId === recipientId) return [];
+      const inviter = (await facts.names([invitation.inviterId])).get(invitation.inviterId) ?? 'Someone';
+      return [{
+        userId: recipientId, reason: 'invitation', source: { type: 'project', id: invitation.projectId },
+        title: `${inviter} invited you to work together`,
+        body: `On ${quote(excerpt(invitation.anchor.label, 80))} in ${invitation.projectName}`,
+        url: `/projects/${invitation.projectId}/live/${invitation.sessionId}?invitation=${invitation.id}`,
+      }];
     }
     default:
       return [];

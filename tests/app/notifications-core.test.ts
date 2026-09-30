@@ -37,6 +37,7 @@ function harness(events: GeneratorEvent[], failures: Map<string, number>) {
     work: async () => null,
     decision: async () => null,
     result: async () => null,
+    liveInvitation: async () => null,
     names: async (ids) => new Map(ids.map((id) => [id, id])),
   };
   const ports: GeneratorPorts = {

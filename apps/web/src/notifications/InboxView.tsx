@@ -13,6 +13,7 @@ export const REASONS: Record<NotificationReason, { label: string; icon: IconName
   dm: { label: 'Direct message', icon: 'mail' },
   assigned: { label: 'Assigned to you', icon: 'tasks' },
   review: { label: 'For your review', icon: 'rule' },
+  invitation: { label: 'Invited you', icon: 'people' },
 };
 
 const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });

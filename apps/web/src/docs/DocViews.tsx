@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
+import { useRegisterLiveHere } from '../live/LiveProvider';
 import { Link, redirect, useLoaderData, useNavigate, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { Doc, DocSummary, DocVersion, DocVersionSummary, ObjectLink, Project } from '@flux/contracts';
 import { EmptyState, Icon } from '../ui';
@@ -185,6 +186,9 @@ export function DocReader() {
   const { sources, mentions, backlinks } = docLinks(doc);
   const missing = shown.mentions.filter((item) => !item.path).length;
   const base = docUrl(project.id, doc.id);
+  // The doc anchors a session; "Show this" points at exactly the version on screen.
+  useRegisterLiveHere({ projectId: project.id, context: { type: 'doc', id: doc.id }, label: doc.title },
+    { ref: { type: 'material', id: doc.id, version: shown.version }, label: shown.title, what: current ? `doc · version ${shown.version}` : `doc · earlier version ${shown.version}` });
   return (
     <div className="pane-scroll">
       <article className="pane-in doc" data-shift aria-labelledby="doc-title">

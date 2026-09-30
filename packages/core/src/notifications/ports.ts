@@ -61,6 +61,21 @@ export interface ReviewFacts {
   agentOwner: string | null;
 }
 
+/**
+ * A live invitation that still asks something of its recipient: it exists, is `pending`, and
+ * its session is `available` (#62). The anchor label is project-level text the recipient could
+ * read when invited (a conversation's opening message, a work item, project sketch or doc title).
+ */
+export interface LiveInvitationFacts {
+  id: string;
+  sessionId: string;
+  projectId: string;
+  projectName: string;
+  inviterId: string;
+  recipientId: string;
+  anchor: { type: 'conversation' | 'work' | 'sketch' | 'doc'; label: string };
+}
+
 /** Current domain rows the generator needs to explain an event. No access decisions. */
 export interface NotificationFacts {
   /** Human user ids in the event's recorded audience (`event_audience`, decided at write time). */
@@ -70,6 +85,8 @@ export interface NotificationFacts {
   work(workId: string): Promise<WorkFacts | null>;
   decision(decisionId: string): Promise<ReviewFacts | null>;
   result(resultId: string): Promise<ReviewFacts | null>;
+  /** Null unless the invitation is still pending and its session still available. */
+  liveInvitation(invitationId: string): Promise<LiveInvitationFacts | null>;
   names(userIds: string[]): Promise<Map<string, string>>;
 }
 

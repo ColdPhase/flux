@@ -35,7 +35,12 @@ export interface LiveInvitationAccess {
 }
 
 export interface LiveInvitationRepository {
-  /** Atomically unique on (sessionId, recipientId); return the existing row on retry/race. */
+  /**
+   * Atomically unique on (sessionId, recipientId); return the existing row on retry/race.
+   * Only when it inserts a new row, the adapter records `project.live_invited.v1` (project
+   * object; `{ sessionId, invitationId, recipientId }`, as the inviter) in the same
+   * transaction as its last write, so the recipient gets one inbox signal per invitation.
+   */
   insertOrGet(sessionId: string, projectId: string, inviterId: string, recipientId: string): Promise<LiveInvitation>;
   find(invitationId: string): Promise<LiveInvitation | null>;
   /** Compare-and-set pending to choice; return the final row after a concurrent retry. */
