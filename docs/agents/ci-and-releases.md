@@ -28,9 +28,30 @@ imported by `CLAUDE.md`), the `.claude/skills` link, skill frontmatter and local
 documentation links, using the Python standard library. It does not validate
 application functionality.
 
-Application lint, tests, compilation, packaging, and publication require the later
-stack/release decisions. The current structural check cannot replace those
-future gates.
+The `Application validation` contract ([#143](https://github.com/ColdPhase/flux/issues/143))
+uses the pinned application's Docker `test` target: its build performs compilation,
+type checks and lint, then a disposable container runs `tests/app/architecture.test.ts`
+and every `tests/app/*-core.test.ts`. These portable tests run without networking,
+database, worker or browser services. Every main-targeted PR receives the same
+check, obsolete runs are cancelled, and an explicit dispatch can check the base.
+The workflow does not automatically duplicate a successful merge on a main push.
+
+This fast check does not establish API/persistence, browser interaction, restart,
+installation, mobile or release acceptance. Run the relevant complete Docker
+commands locally (`scripts/check_application.sh`, `check_ui.sh`, `check_runtime.sh`
+and applicable installation/media/operations checks) and attach commit-specific
+evidence for independent evaluation. Those commands and all product criteria remain
+in force; neither this check nor `Agent setup` replaces them. Publication remains
+in the explicitly triggered final release workflow.
+
+Read-only inspection on 2026-09-30 found `main-protection` ruleset `24053383` requires
+only `Agent setup`, with current-base validation off. #143 must prove the corrected
+workflow locally and in Actions, obtain independent protected merge, then prove a
+successful base run before adding `Application validation` from the observed Actions
+integration and strict current-base validation. Preserve every other review/check
+and history/deletion rule, read effective rules back and demonstrate failure/pass
+behavior. Until that rollout is recorded, application-check enforcement is unverified;
+a green application job alone does not establish that GitHub requires it.
 
 ## 1. Design checks from the actual stack
 
