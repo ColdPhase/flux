@@ -54,6 +54,9 @@ $compose run --rm e2e
 # Login, sharing, denied access and stream revocation in Chromium sessions (issue #29, AC-4).
 $compose run --rm e2e node_modules/.bin/tsx --test tests/app/e2e/access-stream.e2e.ts
 
+# Named, request-bound agent connection consent, including signed-out setup (#152).
+$compose run --rm e2e node_modules/.bin/tsx --test tests/app/e2e/agent-connections.e2e.ts
+
 # A session created before an API container restart must still be valid afterwards.
 $compose run --rm test pnpm exec tsx tests/app/session-restart.ts prepare
 $compose restart api

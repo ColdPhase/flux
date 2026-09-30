@@ -4,6 +4,8 @@ RUN corepack enable && corepack install -g pnpm@12.6.0
 # Cache the locked dependency download independently of source edits. No production-only
 # filter: the build/type/lint/test stages need the full locked workspace toolchain.
 COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+# The pinned OAuth provider patch is part of the locked dependency graph (#152).
+COPY patches ./patches
 RUN pnpm fetch
 COPY . .
 RUN pnpm install --offline --frozen-lockfile

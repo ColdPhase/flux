@@ -41,6 +41,8 @@ export * from './events.js';
 export * from './conversation/commands.js';
 export * from './conversation/service.js';
 export * from './agent-connection/connections.js';
+export * from './agent-connection/oauth.js';
+export * from './agent-connection/reads.js';
 export * from './sketches/index.js';
 export { policySketchAccess } from './access/sketch-access.js';
 export * from './work/index.js';
@@ -84,3 +86,5 @@ export * from './personal-runs/index.js';
 export { policyPersonalRunAccess } from './access/personal-run-access.js';
 
 export * from './co-work/index.js';
+export * from './agent-connection/execution.js';
+export * from './agent-connection/grants.js';
