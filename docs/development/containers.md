@@ -257,3 +257,10 @@ build. Set `FLUX_UI_SCREENSHOT_DIR` to an absolute path (for example
 `"$PWD/docs/design/app-shell"`) to save screenshots, and `FLUX_UI_PORT` /
 `FLUX_UI_MAILPIT_PORT` to avoid clashes with a concurrent run. It is kept separate from
 `check_application.sh` so the PR check stays fast.
+
+`check_ui.sh` also sets the TEST-ONLY personal-run switch (#68): `FLUX_TEST_PERSONAL_RUNS=anthropic-mock`
+with `FLUX_TEST_FAILURE_INJECTION=true` gives every person a fixture key connection, and the
+worker sends runs through the real Anthropic adapter to the `anthropic-mock` Compose service
+(`tests/ui/anthropic_mock.py`, `FLUX_TEST_ANTHROPIC_URL`). The API and worker refuse to start
+with the switch unless the test flag is set. Never set it in a deployment; see
+[personal runs](personal-runs.md#test-only-switch).

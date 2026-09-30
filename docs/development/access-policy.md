@@ -154,6 +154,12 @@ agents see no DMs in this slice. `dm.create` is for owners, admins and members. 
 the participant row, and removing a membership cascades to it, so access ends on the next
 request. DM events (`dm.*.v1`) are authorized as `dm.read` on the DM.
 
+**Personal assistant runs** (#68, details in [personal-runs.md](personal-runs.md)). A run is
+an `assistant_run` object with one reader: `assistant_run.read` is allowed only to the person who
+owns the run, while they are active in its workspace. Workspace owners, admins, project members
+and agents never see it, so its progress events (`assistant_run.changed.v1`) reach the owner
+alone. The committed answer is a separate project event for the conversation's audience.
+
 **Membership.** Owners and admins manage members and create projects. Only an owner
 can grant, change or remove the owner role (`403 OWNER_REQUIRED`). The last owner
 cannot leave or step down (`409 LAST_OWNER`). Any member may leave. Members can
@@ -208,6 +214,7 @@ and is then refused with `404` or `403` without writing.
 | agent | `agent.read`, `agent.revoke`, `agent.invoke` (only the owning person, while the agent is not revoked; [personal runs](personal-runs.md)) |
 | sketch | `sketch.read`, `sketch.write` |
 | dm | `dm.read`, `dm.write` |
+| assistant_run | `assistant_run.read` (only the run's owner; [personal runs](personal-runs.md)) |
 
 ## HTTP API
 
@@ -271,8 +278,8 @@ workspace's members and agents; readers never pay for events outside their audie
 Events recorded before migration 0004 have no audience rows and are not replayed.
 
 The event's object type comes from the first segment of its kind: `workspace`,
-`project`, `draft`, `agent`, `sketch` or `dm`. The read action for that type decides delivery:
-`workspace.read`, `project.read`, `draft.read`, `agent.read`, `sketch.read` or `dm.read`. Events without a
+`project`, `draft`, `agent`, `sketch`, `dm` or `assistant_run`. The read action for that type decides delivery:
+`workspace.read`, `project.read`, `draft.read`, `agent.read`, `sketch.read`, `dm.read` or `assistant_run.read`. Events without a
 workspace (the sample fixture) and unknown kinds are never delivered.
 
 ## WebSocket stream

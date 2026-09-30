@@ -65,6 +65,7 @@ export const DRAFT_ACTIONS = ['draft.read', 'draft.write', 'draft.share', 'draft
 export const AGENT_ACTIONS = ['agent.read', 'agent.revoke', 'agent.invoke'] as const;
 export const SKETCH_ACTIONS = ['sketch.read', 'sketch.write'] as const;
 export const DM_ACTIONS = ['dm.read', 'dm.write'] as const;
+export const ASSISTANT_RUN_ACTIONS = ['assistant_run.read'] as const;
 
 /** Actions grouped by the kind of object they are checked against. */
 export interface ActionsByResource {
@@ -74,6 +75,7 @@ export interface ActionsByResource {
   agent: (typeof AGENT_ACTIONS)[number];
   sketch: (typeof SKETCH_ACTIONS)[number];
   dm: (typeof DM_ACTIONS)[number];
+  assistant_run: (typeof ASSISTANT_RUN_ACTIONS)[number];
 }
 export type ResourceType = keyof ActionsByResource;
 export type Action = ActionsByResource[ResourceType];
@@ -342,6 +344,7 @@ export interface DraftEvaluation extends Decision { actor: Actor | null; draft: 
 export interface AgentEvaluation extends Decision { actor: Actor | null; agent: AgentRow | null }
 export interface SketchEvaluation extends Decision { actor: Actor | null; sketch: SketchRow | null }
 export interface DmEvaluation extends Decision { actor: Actor | null; dm: DmRow | null }
+export interface AssistantRunEvaluation extends Decision { actor: Actor | null; run: { id: string; workspaceId: string; ownerUserId: string } | null }
 
 const DENIED: Decision = { allowed: false, visible: false };
 
@@ -525,6 +528,23 @@ export async function evaluateDm(principal: Principal, _action: ActionsByResourc
 }
 
 /**
+ * A personal assistant run (#68, O-008 §4): only its owner, while active in the run's
+ * workspace, may know it exists. Workspace roles, project access and agents never see it; the
+ * run's progress events therefore reach the owner alone. A committed answer is a separate
+ * project object (`project.assistant_answer_committed.v1`) for the conversation's audience.
+ */
+export async function evaluateAssistantRun(principal: Principal, _action: ActionsByResource['assistant_run'], runId: string, db: Executor, options: LoadOptions = {}): Promise<AssistantRunEvaluation> {
+  const none = { ...DENIED, actor: null, run: null };
+  if (!isUuid(runId) || principal.kind !== 'human') return none;
+  const r = schema.personalRuns;
+  const [run] = await db.select({ id: r.id, workspaceId: r.workspaceId, ownerUserId: r.ownerUserId }).from(r).where(eq(r.id, runId));
+  if (!run || run.ownerUserId !== principal.id) return none;
+  const actor = await loadActor(principal, run.workspaceId, db, options);
+  if (!actor.active) return { ...none, actor };
+  return { allowed: true, visible: true, actor, run };
+}
+
+/**
  * Decides whether `principal` may perform `action` on `resource`, reading current
  * membership, grants and object visibility. Use {@link assertAuthorized} to throw the
  * matching 404/403 error instead.
@@ -552,10 +572,11 @@ async function evaluate(principal: Principal, action: Action, resource: Resource
     case 'agent': return evaluateAgent(principal, action as ActionsByResource['agent'], resource.id, db, options);
     case 'sketch': return evaluateSketch(principal, action as ActionsByResource['sketch'], resource.id, db, options);
     case 'dm': return evaluateDm(principal, action as ActionsByResource['dm'], resource.id, db, options);
+    case 'assistant_run': return evaluateAssistantRun(principal, action as ActionsByResource['assistant_run'], resource.id, db, options);
   }
 }
 
-const READ_ACTION = { workspace: 'workspace.read', project: 'project.read', draft: 'draft.read', agent: 'agent.read', sketch: 'sketch.read', dm: 'dm.read' } as const satisfies { [T in ResourceType]: ActionsByResource[T] };
+const READ_ACTION = { workspace: 'workspace.read', project: 'project.read', draft: 'draft.read', agent: 'agent.read', sketch: 'sketch.read', dm: 'dm.read', assistant_run: 'assistant_run.read' } as const satisfies { [T in ResourceType]: ActionsByResource[T] };
 
 /**
  * The workspace of an object the principal can currently see, or null. Entry points use
@@ -569,6 +590,7 @@ export async function visibleWorkspaceOf(principal: Principal, resource: Resourc
   if ('agent' in evaluation) return evaluation.agent?.workspaceId ?? null;
   if ('sketch' in evaluation) return evaluation.sketch?.workspaceId ?? null;
   if ('dm' in evaluation) return evaluation.dm?.workspaceId ?? null;
+  if ('run' in evaluation) return evaluation.run?.workspaceId ?? null;
   return evaluation.actor.workspaceId;
 }
 
@@ -587,7 +609,7 @@ export function eventResource(event: EventRef): ResourceRef | null {
   if (!event.workspaceId) return null;
   const type = event.kind.split('.', 1)[0];
   if (type === 'workspace') return event.objectId === event.workspaceId ? { type, id: event.objectId } : null;
-  if (type === 'project' || type === 'draft' || type === 'agent' || type === 'sketch' || type === 'dm') return { type, id: event.objectId };
+  if (type === 'project' || type === 'draft' || type === 'agent' || type === 'sketch' || type === 'dm' || type === 'assistant_run') return { type, id: event.objectId };
   return null;
 }
 
@@ -606,7 +628,7 @@ export async function authorizeEvent(principal: Principal, event: EventRef, db: 
   return true;
 }
 
-const LABELS: Record<ResourceType, string> = { workspace: 'Workspace', project: 'Project', draft: 'Draft', agent: 'Agent', sketch: 'Sketch', dm: 'Direct message' };
+const LABELS: Record<ResourceType, string> = { workspace: 'Workspace', project: 'Project', draft: 'Draft', agent: 'Agent', sketch: 'Sketch', dm: 'Direct message', assistant_run: 'Assistant run' };
 
 /** Converts a decision into the non-leaking error contract. */
 export function enforce<D extends Decision>(decision: D, type: ResourceType): D {

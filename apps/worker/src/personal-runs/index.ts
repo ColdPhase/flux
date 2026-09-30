@@ -11,6 +11,7 @@ import {
 import { personalRunWorkerUnitOfWork } from './adapters.js';
 
 export { personalRunWorkerUnitOfWork } from './adapters.js';
+export { personalRunWorkerComposition } from './composition.js';
 
 /**
  * Consumes `personal-run.dispatch.v1` (#68). The payload is a run id only; the processor rechecks

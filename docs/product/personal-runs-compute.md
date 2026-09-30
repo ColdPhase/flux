@@ -167,9 +167,22 @@ decision is implemented. It keeps the scope above. It resolves three details:
   has no accept. Consequential output is therefore an assistant proposal with
   the same fact / interpretation / proposal shape. It adds an accept path that
   records the result through the #101 work use case as the accepting person.
-- **Still to do.** The WebSocket commands, the real adapter and #124's custody
-  come in later slices. Until they land, production fails closed as
-  `unavailable`.
+- **Slice 2 (2026-09-30).** The UI, owner-only progress events
+  (`assistant_run.changed.v1`, whose only reader is the run's owner) and the Anthropic
+  adapter in `@flux/agent-runtime` (official SDK 0.129.0, retries off, abort, token
+  counting) are implemented. The adapter is tested only against a local mock server. The
+  WebSocket commands are not: the stream has no client command channel yet, so the UI
+  uses the HTTP API, which this decision allows ("a thin adapter over the same use case").
+- **Still to do.** #124's custody, the real connection lookup and key resolver, and a
+  provider pass. Until they land, production fails closed as `unavailable`.
+
+**Price/model recheck, 2026-09-30.** Observed on the Anthropic
+[pricing page](https://platform.claude.com/docs/en/about-claude/pricing): Claude Sonnet 5
+at $2/M input and $10/M output, not marked retired; a footnote says the introductory
+price is now standard and the planned rise to $3/$15 will not occur (vendor claim). The
+nominal maximum stays $0.047. Inference: a workspace that sets US-only inference
+(`inference_geo: "us"`, 1.1× on the same page) would raise it to about $0.052, still under
+the $0.06 default reservation; Flux does not set it.
 
 ## Evidence (2026-09-28)
 

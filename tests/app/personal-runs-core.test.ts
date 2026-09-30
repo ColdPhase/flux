@@ -16,13 +16,17 @@ describe('personal run output rules', () => {
     const parsed = parseOutput('Fact: A [S1]. Fact: B [S9]. Fact: C [S1].', sources, true);
     assert.deepEqual(parsed.sources, [sources[0]!.ref]);
     assert.equal(parsed.proposal, null);
+    assert.equal(parsed.body, 'Fact: A [1]. Fact: B. Fact: C [1].', 'renumbered for the reader; an unsupplied label is removed');
+    const both = parseOutput('Work [S2] then talk [S1] and work again [S2].', sources, true);
+    assert.deepEqual(both.sources, [sources[1]!.ref, sources[0]!.ref]);
+    assert.equal(both.body, 'Work [1] then talk [2] and work again [1].');
   });
 
   test('a proposal may finish only a supplied work item and is dropped when malformed', () => {
     const block = (value: unknown) => `Answer [S2]\n<proposal>${JSON.stringify(value)}</proposal>`;
     const valid = { fact: 'f', interpretation: 'i', title: 'Result', finding: 'negative', evidence: 'e', finishes: 'S2' };
     const parsed = parseOutput(block(valid), sources, true);
-    assert.equal(parsed.body, 'Answer [S2]');
+    assert.equal(parsed.body, 'Answer [1]');
     assert.deepEqual(parsed.proposal, { fact: 'f', interpretation: 'i', title: 'Result', finding: 'negative', evidence: 'e', finishesWorkId: workId });
     assert.equal(parseOutput(block({ ...valid, finishes: 'S1' }), sources, true).proposal, null, 'a message is not a work item');
     assert.equal(parseOutput(block({ ...valid, finishes: 'S7' }), sources, true).proposal, null, 'an unsupplied label');

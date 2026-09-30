@@ -56,6 +56,8 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-flux}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-flux}
       FLUX_FIXTURE_TOKEN: ${FLUX_FIXTURE_TOKEN:?Set FLUX_FIXTURE_TOKEN}
       FLUX_TEST_FAILURE_INJECTION: ${FLUX_TEST_FAILURE_INJECTION:-false}
+      # TEST ONLY (#68): fixture key connections for personal runs; empty in production.
+      FLUX_TEST_PERSONAL_RUNS: ${FLUX_TEST_PERSONAL_RUNS:-}
       FLUX_FILES_DIR: /data/files
       FLUX_PUBLIC_ORIGIN: ${FLUX_PUBLIC_ORIGIN:?Set FLUX_PUBLIC_ORIGIN}
       FLUX_AUTH_SECRET: ${FLUX_AUTH_SECRET:?Set FLUX_AUTH_SECRET}
@@ -96,6 +98,11 @@ services:
       FLUX_VAPID_PUBLIC_KEY: ${FLUX_VAPID_PUBLIC_KEY:-}
       FLUX_VAPID_PRIVATE_KEY: ${FLUX_VAPID_PRIVATE_KEY:-}
       FLUX_VAPID_SUBJECT: ${FLUX_VAPID_SUBJECT:-}
+      # TEST ONLY (#68): with FLUX_TEST_PERSONAL_RUNS=anthropic-mock the worker sends personal runs
+      # through the real Anthropic adapter to this mock provider. Empty in production.
+      FLUX_TEST_FAILURE_INJECTION: ${FLUX_TEST_FAILURE_INJECTION:-false}
+      FLUX_TEST_PERSONAL_RUNS: ${FLUX_TEST_PERSONAL_RUNS:-}
+      FLUX_TEST_ANTHROPIC_URL: ${FLUX_TEST_ANTHROPIC_URL:-}
     volumes:
       - files:/data/files:z
       - ${FLUX_BACKGROUND_KEY_HOST_FILE:-./background-key-unavailable}:/run/secrets/flux_background_key:ro,z
@@ -164,6 +171,8 @@ services:
       FLUX_UI_UPSTREAM: api:8080
       FLUX_MAILPIT_URL: http://mailpit:8025
       FLUX_UI_SCREENSHOTS: /screenshots
+      # TEST ONLY (#68): the browser tests script the mock provider's next answers.
+      FLUX_ANTHROPIC_MOCK_URL: http://anthropic-mock:8090
     volumes:
       # Tests are baked into the image (see infra/ui-tests.Dockerfile). Only the screenshot
       # output is mounted; "z" relabels it for SELinux hosts and is ignored elsewhere.
@@ -176,6 +185,19 @@ services:
         condition: service_started
       mailpit:
         condition: service_healthy
+      anthropic-mock:
+        condition: service_healthy
+  anthropic-mock:
+    # TEST ONLY (#68): a local stand-in for the Anthropic Messages and token-counting endpoints,
+    # scripted by the browser tests. No real provider is ever called; nothing here is a provider pass.
+    profiles: ["ui"]
+    image: flux-ui-tests:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
+    command: ["python3", "tests/ui/anthropic_mock.py"]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/__health', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
 volumes:
   pgdata:
   files:

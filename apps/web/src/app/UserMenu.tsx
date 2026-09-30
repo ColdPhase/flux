@@ -93,6 +93,7 @@ export function UserMenu({ name, email, sessionExpiresAt }: { name: string; emai
             </div>
           </div>
           <div className="me__sec">
+            <Link to="/settings/assistant" className="me__item" onClick={() => close(false)}><Icon name="spark" />Your assistant</Link>
             <Link className="me__item" style={{ textDecoration: 'none' }} to="/settings/background-compute" onClick={() => close(false)}>
               <Icon name="spark" />Your background suggestions
             </Link>
