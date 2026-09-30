@@ -322,6 +322,10 @@ bounded ranked pagination at one server-selected aging time. A caller can keep
 scanning after inaccessible sources without repeatedly returning the same first
 page. Security/expiry and claim fences still use fresh wall time on each page
 and each effect; an old ranking snapshot never extends authority.
+The internal ranked cursor binds its aging interval and exact workspace/project/
+recipient as well as the ranking time and PostgreSQL timestamp tuple. Changing
+those scan parameters rejects continuation rather than silently skipping work.
+The public adapter must still supply an opaque, current-authorized continuation.
 
 #74 currently exposes undelivered provider references only. Its recipient needs
 its own verified repository access at delivery; stored native publications need
