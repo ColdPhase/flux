@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useLoaderData, type LoaderFunctionArgs } from 'react-router';
 import type { BackgroundComputeConnection, BackgroundComputeUsage, ConnectBackgroundComputeCommand } from '@flux/contracts';
 import { ApiError } from '../api/client';
@@ -39,10 +39,16 @@ export function BackgroundComputeSettings() {
   const formRef = useRef<HTMLFormElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const historyRef = useRef<HTMLDetailsElement>(null);
+  const connectSectionRef = useRef<HTMLElement>(null);
   const statusRef = useRef<HTMLParagraphElement>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
   const replaceRef = useRef<HTMLButtonElement>(null);
   useEffect(() => { headingRef.current?.focus(); }, []);
+  useLayoutEffect(() => {
+    if (!editing) return;
+    formRef.current?.querySelector<HTMLInputElement>('input[name="apiKey"]')?.focus({ preventScroll: true });
+    connectSectionRef.current?.scrollIntoView({ block: 'start' });
+  }, [editing]);
   async function refreshUsage() {
     setUsageBusy(true); setUsageError('');
     try { setUsage(await currentBackgroundUsage()); }
@@ -130,15 +136,13 @@ export function BackgroundComputeSettings() {
       <p className="background-settings__help">The key-owning organization pays Anthropic. Flux limits new requests; this allowance does not guarantee the provider invoice. Interrupted requests can still be charged.</p>
       {error && !editing ? <p ref={errorRef} className="background-settings__error" role="alert" tabIndex={-1}>{error}</p> : null}
       <div className="background-settings__actions">
-        <Button ref={replaceRef} disabled={busy} onClick={() => { setEditing(true); setError(''); setSaved('');
-          requestAnimationFrame(() => formRef.current?.querySelector<HTMLInputElement>('input[name="apiKey"]')?.focus());
-        }}>Replace connection</Button>
+        <Button ref={replaceRef} disabled={busy} onClick={() => { setEditing(true); setError(''); setSaved(''); }}>Replace connection</Button>
         <Button disabled={busy} onClick={() => void disconnect()}>Disconnect</Button>
       </div>
       <p className="background-settings__help">Disconnecting removes this key from Flux. Revoke it at Claude Platform too if it should stop working outside Flux.</p>
     </section> : null}
 
-    {!connection || editing ? <section className="background-settings__section" aria-labelledby="background-connect">
+    {!connection || editing ? <section ref={connectSectionRef} className="background-settings__section" aria-labelledby="background-connect">
       <div className="background-settings__section-head">
         <h3 id="background-connect">{connection ? 'Replace your connection' : 'Connect your background source'}</h3>
         {connection ? <Button disabled={busy} onClick={cancelReplacement}>Cancel replacement</Button> : null}
