@@ -80,15 +80,16 @@ test('all pages render quiet comparisons and insufficient evidence with current 
       if (!touch) {
         await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
         await page.waitForFunction(() => document.querySelector('.side__jump')!.getAnimations().every((animation) => animation.playState !== 'running'));
-        const contrast = await page.locator('.side__jump').evaluate((node) => {
-          const luminance = (color: string) => {
-            const channels = color.match(/[\d.]+/g)!.slice(0, 3).map((value) => { const n = Number(value) / 255; return n <= 0.04045 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4; });
-            return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
-          };
+        const colors = await page.locator('.side__jump').evaluate((node) => {
           const style = getComputedStyle(node);
-          const [a, b] = [luminance(style.color), luminance(style.backgroundColor)].sort((x, y) => y - x);
-          return (a! + 0.05) / (b! + 0.05);
+          return { foreground: style.color, background: style.backgroundColor };
         });
+        const luminance = (color: string) => {
+          const channels = color.match(/[\d.]+/g)!.slice(0, 3).map((value) => { const n = Number(value) / 255; return n <= 0.04045 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4; });
+          return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
+        };
+        const [a, b] = [luminance(colors.foreground), luminance(colors.background)].sort((x, y) => y - x);
+        const contrast = (a! + 0.05) / (b! + 0.05);
         assert.ok(contrast >= 4.5, `settled dark search text contrast is ${contrast.toFixed(2)}:1`);
         await comparison.scrollIntoViewIfNeeded();
         await page.screenshot({ path: '/state/comparison-outcomes-1440-dark.png', fullPage: true });
