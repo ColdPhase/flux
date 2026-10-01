@@ -125,7 +125,7 @@ describe('bounded native PostgreSQL work key selection', () => {
       } });
       return nativeWorkReadKeys(held).view(projectId, actor(), selection, 1, cursor);
     }, { isolationLevel: 'repeatable read', accessMode: 'read only' });
-    await started;
+    await Promise.race([started, pending]);
     cursor.direction = 'previous'; cursor.boundary = { ...original.items[0]!, createdAt: newer };
     release();
     const empty = await pending;
