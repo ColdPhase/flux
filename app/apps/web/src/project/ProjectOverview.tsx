@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link, useMatches } from 'react-router';
 import type { Conversation, DecisionRowProjection, Material, NativeWorkRow, WorkRowProjection, ResultRowProjection } from '@flux/contracts';
 import { Avatar, Icon, type IconName } from '../ui';
@@ -48,6 +48,7 @@ function Rows({ label, rows, empty, controls }: { label: string; rows: Row[]; em
   const { openDetails } = useShellActions();
   const [node, setNode] = useState<HTMLUListElement | null>(null);
   const [overflow, setOverflow] = useState(false);
+  const attachList = useCallback((list: HTMLUListElement | null) => { setNode(list); setOverflow(false); }, []);
   useEffect(() => {
     if (!node || !controls) return;
     const measure = () => setOverflow(node.scrollHeight > node.clientHeight + 1);
@@ -64,7 +65,7 @@ function Rows({ label, rows, empty, controls }: { label: string; rows: Row[]; em
       <h4 id={id}>{label}</h4>
       {controls}
       {rows.length ? (
-        <ul className="ov-rows" ref={setNode}>
+        <ul className="ov-rows" ref={attachList}>
           {rows.map((row) => {
             const body = <>
               <Icon name={row.icon} size={16} className="ov-row__ic" />
@@ -81,7 +82,7 @@ function Rows({ label, rows, empty, controls }: { label: string; rows: Row[]; em
           })}
         </ul>
       ) : <p className="ov-empty">{empty}</p>}
-      {controls && overflow ? <p className="ov-scroll-hint"><Icon name="chevron-down" size={12} />Scroll in this list to explore all {rows.length} objects on this page.</p> : null}
+      {controls && node && rows.length > 0 && overflow ? <p className="ov-scroll-hint"><Icon name="chevron-down" size={12} />Scroll in this list to explore all {rows.length} objects on this page.</p> : null}
     </section>
   );
 }

@@ -223,6 +223,7 @@ class OverviewWorkJourney(unittest.TestCase):
         ov.get_by_role("navigation",name="Overview object pages").get_by_role("button",name="Refresh",exact=True).click()
         expect(ov.get_by_role("alert")).to_contain_text("Linked objects could not be loaded")
         self.assertEqual(self.identities(page),[])
+        expect(ov.locator(".ov-scroll-hint")).to_have_count(0)
         expect(ov).not_to_contain_text("Nothing linked yet")
         expect(field).to_have_value("Keep my reply and its unfinished sentence")
         page.unroute("**/work-associations?**conversationId=**")
