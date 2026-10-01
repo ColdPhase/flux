@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { fromNodeHeaders } from 'better-auth/node';
 import { AUTH_BASE_PATH, type ApiError, type IdentityCapabilities } from '@flux/contracts';
 import { CLIENT_IP_HEADER, type FluxAuth } from './auth.js';
+import { oauthRequestContext, type OauthRequests } from './oauth-flow.js';
 
 // Forwarding headers are dropped before Better Auth sees a request. Client addresses come
 // from Fastify's request.ip, which honours only the configured trusted proxies.
@@ -27,10 +28,11 @@ export interface AuthBridgeOptions {
   auth: FluxAuth;
   publicOrigin: string;
   passwordReset: IdentityCapabilities['passwordReset'];
+  oauthRequests: OauthRequests;
 }
 
 /** Forwards auth endpoints and the exact OAuth discovery paths to Better Auth. */
-export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, passwordReset }: AuthBridgeOptions) {
+export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, passwordReset, oauthRequests }: AuthBridgeOptions) {
   // OAuth token and revocation endpoints use HTML form encoding. Preserve the
   // bounded raw payload so Better Auth validates it, rather than Fastify's 415.
   app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_request, body, done) => done(null, body));
@@ -45,7 +47,11 @@ export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, p
       for (const name of UNTRUSTED_FORWARDING_HEADERS) headers.delete(name);
       headers.set(CLIENT_IP_HEADER, request.ip);
       const body = request.body === undefined || request.body === null ? undefined : typeof request.body === 'string' ? request.body : JSON.stringify(request.body);
-      const response = await auth.handler(new Request(url, { method: request.method, headers, body }));
+      let context;
+      try { context = await oauthRequestContext(url, request.body, (await auth.$context).secret, `${publicOrigin}/mcp`); }
+      catch { return reply.code(400).send({ error: 'Invalid OAuth request', code: 'INVALID_OAUTH_QUERY' }); }
+      const incoming = new Request(url, { method: request.method, headers, body });
+      const response = context ? await oauthRequests.run(Object.freeze(context), () => auth.handler(incoming)) : await auth.handler(incoming);
       reply.status(response.status);
       response.headers.forEach((value, key) => {
         if (key !== 'set-cookie' && key !== 'content-length' && key !== 'transfer-encoding') reply.header(key, value);

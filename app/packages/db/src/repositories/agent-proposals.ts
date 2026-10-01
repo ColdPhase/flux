@@ -14,7 +14,7 @@ type Connection = {
   agentId: string;
   selectedProjectIds: readonly string[];
   scopes: readonly ('flux.context.read' | 'flux.proposal.write')[];
-  computeSource: 'user_operated_claude_code';
+  computeSource: import('@flux/contracts').ExternalComputeSource;
 };
 type ValidatedCommand = CreateAgentProposalCommand & { fingerprint: string };
 type Failure = 'CONNECTION_NOT_FOUND' | 'AGENT_NOT_FOUND' | 'MATERIAL_NOT_FOUND' | 'SOURCE_VERSION_CONFLICT' | 'IDEMPOTENCY_CONFLICT';
