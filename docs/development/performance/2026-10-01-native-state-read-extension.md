@@ -18,10 +18,11 @@ Extend `ProjectWorkSummary.state` with:
 - `history: { completed: number; notPursued: number; parked: number;
   firstWork: WorkReadRef | null; decisionCount: number;
   firstDecision: WorkReadRef | null }`. Completed and notPursued count native
-  done/not_pursued work without park metadata. Parked counts every work record
-  with park metadata, including finished work: these match the accepted retained
-  history caption and are distinct from the Tasks group's unfinished parked
-  count. FirstWork is the newest native work of any status, firstDecision the
+  done/not_pursued work without park metadata. Parked counts native work with
+  park metadata, matching the accepted retained-history predicate. Native storage
+  forbids parked work being done/not_pursued at the same time; finishing clears
+  parking. Preserve that constraint and those command semantics. FirstWork is
+  the newest native work of any status, firstDecision the
   newest native decision of any status, each ordered createdAt DESC, id DESC.
   decisionCount includes proposed/accepted/superseded native decisions,
   so a superseded-only project does not become an empty project.
@@ -47,8 +48,11 @@ Keep pending/unavailable reads distinct from empty content. Preserve the narrow
 blocked-count correction once independently accepted, including enlarged text.
 
 Required implementation evidence: actual native SQL counts/ref ordering and
-authorization for open, done, not_pursued, parked-finished and superseded-only
-fixtures; foreign/denied projects; same-name owners unchanged. Run existing
+authorization for open, done, not_pursued, parked and superseded-only fixtures;
+real parked-to-done/not_pursued transitions clear parking, and direct illegal
+parked-finished storage is rejected. A synthetic predicate test is not a native
+fixture and cannot require weakening that constraint. Include foreign/denied
+projects and same-name owners unchanged. Run existing
 `test_project_state` without weakening its native open/history/reader assertions,
 plus bounded-read core/native regressions and the composed application checks.
 Separately assess affected rendered phone/desktop views. This does not certify
