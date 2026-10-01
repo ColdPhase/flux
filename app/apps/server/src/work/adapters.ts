@@ -1,37 +1,21 @@
 import { proactiveOutboxRows, workRows, type DbExecutor } from '@flux/db';
 import {
-  assertAuthorized,
-  authorize,
-  enforce,
-  evaluateProject,
-  recordEvent,
   visibleFilter,
   createWorkUseCases,
   COMPARISON_QUIET_WINDOW_MS,
   type Database,
-  type WorkAccess,
   type WorkPorts,
   type WorkRepository,
   type WorkUnitOfWork,
+  type Transaction,
 } from '@flux/core';
+import { taskDiscussionInEventSession } from './task-discussions.js';
+import { transactionEventSession, type TransactionEventSession } from './transaction-events.js';
+import { policyWorkAccess } from './access.js';
+export { policyWorkAccess } from './access.js';
 
 // Adapters that connect the core work use cases (#101) to the access policy, the Drizzle rows
 // and the event log. Core defines the ports (#46); the server assembles them per transaction.
-
-/** Project access through the single policy choke point: `evaluateProject`/`authorize`. */
-export function policyWorkAccess(tx: DbExecutor): WorkAccess {
-  const db = tx;
-  return {
-    async requireProject(principal, action, projectId, options) {
-      const checked = enforce(await evaluateProject(principal, action === 'write' ? 'project.write' : 'project.read', projectId, db, options), 'project');
-      return { workspaceId: checked.project!.workspaceId };
-    },
-    requireWorkspace: (principal, workspaceId) => assertAuthorized(principal, 'workspace.read', { type: 'workspace', id: workspaceId }, db),
-    async canRead(candidate, projectId) {
-      return (await authorize(candidate, 'project.read', { type: 'project', id: projectId }, db)).allowed;
-    },
-  };
-}
 
 export function workRepository(tx: DbExecutor): WorkRepository {
   const rows = workRows(tx);
@@ -44,11 +28,11 @@ export function workRepository(tx: DbExecutor): WorkRepository {
   };
 }
 
-function workPorts(tx: DbExecutor): WorkPorts {
+function workPorts(tx: DbExecutor, events: WorkPorts['events']): WorkPorts {
   return {
     access: policyWorkAccess(tx),
     work: workRepository(tx),
-    events: { record: async (principal, workspaceId, kind, projectId, data) => { await recordEvent(tx, principal, workspaceId, kind, projectId, data); } },
+    events,
     backgroundComparison: { async enqueueHumanNegative(resultId, projectId, authorId) {
       const rows = proactiveOutboxRows(tx);
       const eligible: string[] = [];
@@ -64,7 +48,26 @@ function workPorts(tx: DbExecutor): WorkPorts {
 
 /** One transaction per use case; on an open transaction (an idempotency scope) it nests as a savepoint. */
 export function workUnitOfWork(db: Database): WorkUnitOfWork {
-  return { run: (work) => db.transaction((tx) => work(workPorts(tx))) };
+  return { run: (work) => db.transaction(async (tx) => {
+    const session = transactionEventSession(tx);
+    const result = await session.run(() => work(workPorts(tx, session)));
+    await session.flushEvents();
+    return result;
+  }) };
+}
+
+/** Existing native commands share the composing caller's event lifetime. */
+export function nativeWorkInEventSession(tx: Transaction, session: TransactionEventSession) {
+  const ports = workPorts(tx, session);
+  return { ...createWorkUseCases({ run: (action) => session.run(() => action(ports)) }),
+    ...taskDiscussionInEventSession(tx, session) };
+}
+
+/** One caller-owned transaction, all native preparation, one final audience batch. */
+export function nativeWorkInTransaction(tx: Transaction) {
+  const session = transactionEventSession(tx);
+  return { ...nativeWorkInEventSession(tx, session),
+    get eventIntents() { return session.eventIntents; }, flushEvents: session.flushEvents };
 }
 
 /** The work use cases bound to a connection or transaction. */

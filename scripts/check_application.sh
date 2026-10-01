@@ -42,6 +42,16 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+run_browser() {
+  if [ -n "${FLUX_E2E_EVIDENCE_DIR:-}" ]; then
+    case "$FLUX_E2E_EVIDENCE_DIR" in /*) ;; *) echo "FLUX_E2E_EVIDENCE_DIR must be absolute" >&2; exit 1 ;; esac
+    mkdir -p "$FLUX_E2E_EVIDENCE_DIR"
+    $compose run --rm -v "$FLUX_E2E_EVIDENCE_DIR:/evidence:Z" -e FLUX_E2E_EVIDENCE_DIR=/evidence "$@"
+  else
+    $compose run --rm "$@"
+  fi
+}
+
 $compose build
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
@@ -64,10 +74,13 @@ if $compose logs --no-color api | grep -F 'owner-budget-key-' >/dev/null; then
 fi
 
 # Service worker registration, offline fallback and the update prompt in Chromium over HTTPS.
-$compose run --rm e2e
+run_browser e2e
 
 # Login, sharing, denied access and stream revocation in Chromium sessions (issue #29, AC-4).
-$compose run --rm e2e node_modules/.bin/tsx --test tests/app/e2e/access-stream.e2e.ts
+run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/access-stream.e2e.ts
+
+# Genuine human/agent task history in Chromium; trusted core writes use this isolated DB.
+run_browser -e DATABASE_URL="postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/$POSTGRES_DB" e2e node_modules/.bin/tsx --test tests/app/e2e/task-discussion-actors.e2e.ts
 
 # A seeded project proposal must remain editable, dismissible and usable through the actual UI.
 # The fixture bypasses rule activation, which stays unavailable until #58 runtime gates pass.

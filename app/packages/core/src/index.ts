@@ -88,4 +88,6 @@ export * from './proactive-comparison/scheduling.js';
 export * from './proactive-comparison/recovery.js';
 export * from './search/index.js';
 export * from './personal-runs/index.js';
+export * from './task-discussions/ports.js';
+export * from './task-discussions/service.js';
 export { policyPersonalRunAccess } from './access/personal-run-access.js';

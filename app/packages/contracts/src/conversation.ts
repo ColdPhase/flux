@@ -11,10 +11,9 @@ export interface MaterialSource {
   version: number;
 }
 
-export interface ConversationMessage {
+export interface ConversationMessageFields {
   id: string;
   conversationId: string;
-  authorId: string;
   body: string;
   source: MaterialSource | null;
   /** Monotonic per conversation, including concurrent sends. */
@@ -22,12 +21,21 @@ export interface ConversationMessage {
   createdAt: string;
 }
 
-export interface Conversation {
+export type MessageIdentity =
+  | { authorId: string; author?: never }
+  | { authorId: null; author: { kind: 'agent'; id: string; name?: string } };
+/** Existing human JSON is unchanged; agents never occupy a human account field. */
+export type ConversationMessage = ConversationMessageFields & MessageIdentity;
+export type HumanConversationMessage = ConversationMessageFields & { authorId: string; author?: never };
+export type ConversationIdentity =
+  | { createdBy: string; createdByActor?: never }
+  | { createdBy: null; createdByActor: { kind: 'agent'; id: string; name?: string } };
+
+export interface ConversationFields {
   id: string;
   projectId: string;
   workspaceId: string;
   audience: { kind: 'project'; projectId: string };
-  createdBy: string;
   createdAt: string;
   /** Stable discussion label from the opening message. */
   firstMessageBody: string;
@@ -39,6 +47,7 @@ export interface Conversation {
     limit: number;
   };
 }
+export type Conversation = ConversationFields & ConversationIdentity;
 
 /** Stable, newest-first window returned in ascending display order. */
 export interface ConversationWindowQuery {
@@ -48,16 +57,16 @@ export interface ConversationWindowQuery {
   beforeSequence?: number;
 }
 
-export interface ConversationSummary {
+export interface ConversationSummaryFields {
   id: string;
   projectId: string;
-  createdBy: string;
   createdAt: string;
   /** Stable discussion label: the first message, even as newer replies arrive. */
   firstMessageBody: string;
   lastMessageAt: string;
   lastMessageBody: string;
 }
+export type ConversationSummary = ConversationSummaryFields & ConversationIdentity;
 
 export interface SendMessageCommand {
   body: string;

@@ -102,7 +102,7 @@ async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<{ s
     sources.push({ label: next(), ref: { type: 'thought', id: thought.id, sketchId: thought.sketchId, revision: thought.version }, text: `Selected map thought: ${thought.text}` });
   }
   for (const message of await ports.runs.messages(run.conversationId, MESSAGE_WINDOW))
-    sources.push({ label: next(), ref: { type: 'message', id: message.id, revision: 1 }, text: `Message ${message.sequence} by ${message.authorName}: ${message.body}` });
+    sources.push({ label: next(), ref: { type: 'message', id: message.id, revision: 1 }, text: `Message ${message.sequence} by ${message.authorName}${message.author.kind === 'agent' ? ' (agent)' : ''}: ${message.body}` });
   for (const work of await ports.runs.openWork(run.projectId, WORK_WINDOW))
     sources.push({ label: next(), ref: { type: 'work', id: work.id, revision: work.version }, text: `Open work item "${work.title}" (${work.status})${work.outcome ? `: ${work.outcome}` : ''}` });
   let earlier: string | null = null;

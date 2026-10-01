@@ -2,7 +2,7 @@
 // independent of projects. The audience is exactly the current participants. Workspace
 // owners and admins who are not participants cannot see a DM, its existence or its count.
 // Messages reuse the #36 message shape, ordering and `clientMessageId` retry rule.
-import type { ConversationMessage } from './conversation.js';
+import type { HumanConversationMessage } from './conversation.js';
 
 export const DMS_PATH = '/api/v1/dms';
 export const workspaceDmsPath = (workspaceId: string) => `/api/v1/workspaces/${workspaceId}/dms`;
@@ -50,7 +50,7 @@ export interface DmSummary {
 
 /** A DM with its newest message window, in ascending display order (as #36 conversations). */
 export interface Dm extends DmSummary {
-  messages: ConversationMessage[];
+  messages: HumanConversationMessage[];
   /** Names for participants and for former participants who wrote messages in this window. */
   people: DmPerson[];
   messagePage: { hasMoreBefore: boolean; nextBeforeSequence: number | null; limit: number };
