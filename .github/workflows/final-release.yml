@@ -56,8 +56,16 @@ jobs:
           test "$(git rev-parse origin/main)" = "$CANDIDATE_SHA"
           test -f docker/compose.yaml
           test -f docker/.env.example
-          if git ls-remote --exit-code --tags --refs origin "refs/tags/$RELEASE_VERSION"; then
+          # ls-remote --exit-code reports 2 only for an absent ref; another failure is not "free".
+          tag_status=0
+          git ls-remote --exit-code --tags --refs origin "refs/tags/$RELEASE_VERSION" >/dev/null ||
+            tag_status=$?
+          if [ "$tag_status" -eq 0 ]; then
             echo 'Version tag already exists; inspect the existing release before retrying.' >&2
+            exit 1
+          fi
+          if [ "$tag_status" -ne 2 ]; then
+            echo 'Could not read the remote tags; not assuming the version is unused.' >&2
             exit 1
           fi
           gh api --paginate --slurp \
@@ -85,18 +93,13 @@ jobs:
         with:
           ref: ${{ needs.candidate.outputs.source_sha }}
           persist-credentials: false
-      - name: Select reviewed Docker context
-        id: paths
-        run: |
-          set -euo pipefail
-          if test -f docker/Dockerfile; then
-            echo 'context=./app' >> "$GITHUB_OUTPUT"
-            echo 'file=./docker/Dockerfile' >> "$GITHUB_OUTPUT"
-          else
-            echo 'context=.' >> "$GITHUB_OUTPUT"
-            echo 'file=./infra/Dockerfile' >> "$GITHUB_OUTPUT"
-          fi
       - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+        with:
+          # The action's default is the moving tonistiigi/binfmt:latest; pin the emulator that
+          # builds the arm64 image (qemu-v10.2.3, the digest of the index) and install only arm64.
+          image: docker.io/tonistiigi/binfmt:qemu-v10.2.3@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+          platforms: arm64
+          cache-image: false
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
         with:
           version: v0.37.1
@@ -110,12 +113,16 @@ jobs:
         id: build
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
-          context: ${{ steps.paths.outputs.context }}
-          file: ${{ steps.paths.outputs.file }}
+          # The same inputs as the source Compose and the PR check: docker/Dockerfile with app/ as
+          # the context; its final (runtime) stage is the image that api, worker and migrate run.
+          context: ./app
+          file: ./docker/Dockerfile
+          target: runtime
           platforms: linux/amd64,linux/arm64
           outputs: type=image,name=ghcr.io/coldphase/flux,push=true,push-by-digest=true,name-canonical=true
           provenance: mode=max
-          sbom: true
+          # BuildKit's default scanner is the moving docker/buildkit-syft-scanner:stable-1; pin 1.12.0.
+          sbom: generator=docker/buildkit-syft-scanner@sha256:ae4f3b554449e7e25548e7d8ccc029d17357348e30c6e3df01b92bc93654d6a9
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ needs.candidate.outputs.source_sha }}
@@ -191,12 +198,12 @@ jobs:
           password: ${{ github.token }}
       - name: Install, back up and restore the packaged image
         run: bash scripts/release/smoke_artifacts.sh release-assets "$RUNNER_TEMP/flux-smoke" "fluxrelease${{ github.run_id }}" "fluxrestore${{ github.run_id }}"
+      # No asset name starts with a period (prepare_assets.py enforces it): upload-artifact skips
+      # hidden files and GitHub renames them as Release assets.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-assets
-          path: |
-            release-assets/*
-            release-assets/.env.example
+          path: release-assets/*
           if-no-files-found: error
 
   draft:
@@ -226,6 +233,14 @@ jobs:
           set -euo pipefail
           cd release-assets
           sha256sum -c SHA256SUMS
+          python3 "$GITHUB_WORKSPACE/scripts/release/check_asset_set.py" .
+          # Drafts have no tag yet, so a retry could add a second draft for the same version.
+          existing=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | select(.tag_name == env.RELEASE_VERSION) | .id')
+          if [ -n "$existing" ]; then
+            echo "A release or draft for $RELEASE_VERSION already exists; delete the unpublished draft or use a new version." >&2
+            exit 1
+          fi
           cat > "$RUNNER_TEMP/release-notes.md" <<EOF
           Flux $RELEASE_VERSION candidate
 
@@ -235,14 +250,14 @@ jobs:
           Build: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
           Integrated acceptance: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/issues/$ACCEPTANCE_ISSUE
 
-          Install with the attached version-matched compose.yaml, .env.example and INSTALL.md.
+          Install with the attached version-matched compose.yaml, env.example and INSTALL.md; check every file with SHA256SUMS first.
           This draft requires independent packaged install, upgrade and restore review before the version tag and release are published.
           EOF
           release_flags=(--draft)
           if [[ "$RELEASE_VERSION" == *-rc.* ]]; then
             release_flags+=(--prerelease)
           fi
-          gh release create "$RELEASE_VERSION" ./* .env.example \
+          gh release create "$RELEASE_VERSION" ./* \
             --repo "$GITHUB_REPOSITORY" --target "$CANDIDATE_SHA" \
             --title "Flux $RELEASE_VERSION" --notes-file "$RUNNER_TEMP/release-notes.md" \
             "${release_flags[@]}"

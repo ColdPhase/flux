@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Create throwaway credentials for the downloaded Compose smoke test."""
+"""Create throwaway credentials for the downloaded Compose smoke test.
+
+Only the values INSTALL.md tells an operator to set are filled in: the integration fixture
+endpoint (FLUX_FIXTURE_TOKEN) stays empty, as it must on a real deployment.
+"""
 
 from __future__ import annotations
 
@@ -16,7 +20,6 @@ def write(source: Path, destination: Path, port: int) -> None:
     replacements = {
         "POSTGRES_PASSWORD": secrets.token_hex(32),
         "FLUX_AUTH_SECRET": secrets.token_hex(32),
-        "FLUX_FIXTURE_TOKEN": secrets.token_hex(32),
         "FLUX_PORT": str(port),
         "FLUX_PUBLIC_ORIGIN": f"http://127.0.0.1:{port}",
     }

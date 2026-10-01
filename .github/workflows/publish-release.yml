@@ -33,7 +33,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: read
+      # GitHub shows a draft Release only to identities with push access: a read-only token gets
+      # "release not found" for the draft this job must inspect. Every step here only reads.
+      contents: write
       issues: read
     outputs:
       checksums_sha: ${{ steps.check.outputs.checksums_sha }}
@@ -72,6 +74,7 @@ jobs:
             --dir "$RUNNER_TEMP/reviewed-assets"
           cd "$RUNNER_TEMP/reviewed-assets"
           sha256sum -c SHA256SUMS
+          python3 "$GITHUB_WORKSPACE/scripts/release/check_asset_set.py" .
           jq -e --arg v "$RELEASE_VERSION" --arg s "$SOURCE_SHA" \
             --arg i "ghcr.io/coldphase/flux@$IMAGE_DIGEST" \
             '.version == $v and .source_sha == $s and .image == $i' release.json
@@ -123,6 +126,7 @@ jobs:
             --dir "$RUNNER_TEMP/publish-assets"
           cd "$RUNNER_TEMP/publish-assets"
           sha256sum -c SHA256SUMS
+          python3 "$GITHUB_WORKSPACE/scripts/release/check_asset_set.py" .
           test "$(sha256sum SHA256SUMS | cut -d ' ' -f1)" = "$CHECKSUMS_SHA"
           jq -e --arg v "$RELEASE_VERSION" --arg s "$SOURCE_SHA" \
             --arg i "ghcr.io/coldphase/flux@$IMAGE_DIGEST" \

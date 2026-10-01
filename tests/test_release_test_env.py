@@ -19,11 +19,13 @@ class TestEnvironmentTest(unittest.TestCase):
             destination = Path(directory) / ".env"
             source.write_text(
                 "POSTGRES_PASSWORD=replace\nFLUX_AUTH_SECRET=replace\n"
-                "FLUX_PUBLIC_ORIGIN=http://127.0.0.1:8081\n"
+                "FLUX_PUBLIC_ORIGIN=http://127.0.0.1:8081\nFLUX_FIXTURE_TOKEN=\n"
             )
             write(source, destination, 18081)
             value = destination.read_text()
             self.assertNotIn("replace", value)
+            # A real deployment leaves the test-only fixture endpoint disabled.
+            self.assertIn("\nFLUX_FIXTURE_TOKEN=\n", value)
             self.assertIn("FLUX_PUBLIC_ORIGIN=http://127.0.0.1:18081", value)
             self.assertIn("FLUX_PORT=18081", value)
             with self.assertRaisesRegex(ValueError, "overwrite"):
