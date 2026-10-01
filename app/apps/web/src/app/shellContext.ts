@@ -2,7 +2,7 @@ import { createContext, useContext } from 'react';
 import type { ConversationMessage } from '@flux/contracts';
 
 /** A project object shown in the Details panel (#101). */
-export interface ObjectView { kind: 'work' | 'decision' | 'result'; id: string }
+export interface ObjectView { kind: 'work' | 'decision' | 'result'; id: string; projectId?: string }
 /** A form in the Details panel that starts from a message or a work item, keeping the source in place. */
 export interface WorkFormView {
   kind: 'propose-decision' | 'attach-result';
@@ -17,6 +17,8 @@ export interface AddToDocView {
   projectId: string;
   from: { type: 'result' | 'decision'; id: string; title: string };
   inDocs: string[];
+  /** False when IDs describe one bounded relation page, rather than every linked doc. */
+  inDocsComplete?: boolean;
 }
 
 /**

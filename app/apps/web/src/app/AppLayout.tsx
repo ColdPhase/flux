@@ -72,6 +72,8 @@ function AppLayoutContent() {
   const [navOpen, setNavOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsView, setDetailsView] = useState<DetailsView>('place');
+  const [detailsAccount, setDetailsAccount] = useState(me.user.id);
+  if (detailsAccount !== me.user.id) { setDetailsAccount(me.user.id); setDetailsView('place'); setDetailsOpen(false); }
   const [jumpOpen, setJumpOpen] = useState(false);
   const detailsButtonRef = useRef<HTMLButtonElement>(null);
   const paneRef = useRef<HTMLDivElement>(null);
@@ -106,15 +108,19 @@ function AppLayoutContent() {
 
   const inboxUnread = useInboxDot(me.user.id, location.pathname);
 
+  const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
+  const detailsScope = useRef({ accountId: me.user.id, projectId });
+  useLayoutEffect(() => { detailsScope.current = { accountId: me.user.id, projectId }; }, [me.user.id, projectId]);
   const [actionSlot, setActionSlot] = useState<HTMLElement | null>(null);
   const shell = useMemo(() => ({
     openDetails(view: DetailsView = 'place') {
-      setDetailsView(view);
+      if (detailsScope.current.accountId !== me.user.id || detailsScope.current.projectId !== projectId) return;
+      setDetailsView(typeof view === 'object' && 'id' in view ? { ...view, projectId: view.projectId ?? projectId } : view);
       toggleDetails(true);
     },
     openSearch() { setNavOpen(false); setJumpOpen(true); },
     actionSlot,
-  }), [toggleDetails, actionSlot]);
+  }), [toggleDetails, actionSlot, projectId, me.user.id]);
 
   // A link inside an overlaid panel or sheet (#117 overview) leads to its destination.
   const [shownPath, setShownPath] = useState(location.pathname);
@@ -172,7 +178,6 @@ function AppLayoutContent() {
 
   const sidebarProps = { workspace, projects, directMessages, user: me.user, session: me.session, inboxUnread };
   const where = placeOf(location.pathname);
-  const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const activeProject = projects.find((project) => project.id === projectId);
   // The Conversation tab returns to the conversation that was open before Tasks, Map or Docs.
   const onOtherView = /^\/projects\/[^/]+\/(tasks|map|docs)(\/|$)/.test(location.pathname);

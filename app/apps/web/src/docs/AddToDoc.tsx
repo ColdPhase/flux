@@ -33,6 +33,7 @@ export function AddToDoc({ view }: { view: AddToDocView }) {
 
   const chosen = docs?.find((doc) => doc.id === target) ?? null;
   const updates = chosen ? view.inDocs.includes(chosen.id) : false;
+  const partial = view.inDocsComplete === false;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -64,15 +65,15 @@ export function AddToDoc({ view }: { view: AddToDocView }) {
         <label htmlFor={selectId}>Doc</label>
         <select id={selectId} value={target ?? ''} onChange={(event) => { setTarget(event.target.value); setAttempt(crypto.randomUUID()); setError(''); }}>
           {target === null ? <option value="">Loading docs…</option> : null}
-          {(docs ?? []).map((doc) => <option key={doc.id} value={doc.id}>{doc.title}{view.inDocs.includes(doc.id) ? ' (already has it)' : ''}{doc.state === 'draft' ? ' · draft' : ''}</option>)}
+          {(docs ?? []).map((doc) => <option key={doc.id} value={doc.id}>{doc.title}{view.inDocs.includes(doc.id) ? ' (linked source)' : ''}{doc.state === 'draft' ? ' · draft' : ''}</option>)}
           <option value="new">A new doc…</option>
         </select>
         {target === 'new' ? <Input label="Title of the new doc" value={title} onChange={(event) => { setTitle(event.target.value); setAttempt(crypto.randomUUID()); }} maxLength={200} required /> : null}
       </fieldset>
-      {target === null ? null : chosen ? <p className="wd-muted">{updates ? `Its section in “${chosen.title}” is rewritten as version ${chosen.version + 1}.` : `Added at the end of “${chosen.title}” as version ${chosen.version + 1}.`}</p> : <p className="wd-muted">The new doc starts as a draft.</p>}
+      {target === null ? null : chosen ? <p className="wd-muted">{partial ? `An existing section in “${chosen.title}” is updated, or a new section is added, as version ${chosen.version + 1}.` : updates ? `Its section in “${chosen.title}” is rewritten as version ${chosen.version + 1}.` : `Added at the end of “${chosen.title}” as version ${chosen.version + 1}.`}</p> : <p className="wd-muted">The new doc starts as a draft.</p>}
       {error ? <p className="wd-error" role="alert">{error}</p> : null}
       <div className="wd-actions">
-        <Button type="submit" variant="primary" busy={busy} disabled={target === null}>{chosen ? (updates ? 'Update section' : 'Add section') : 'Start the doc'}</Button>
+        <Button type="submit" variant="primary" busy={busy} disabled={target === null}>{chosen ? (partial ? 'Add or update section' : updates ? 'Update section' : 'Add section') : 'Start the doc'}</Button>
         {chosen ? <Link className="ui-btn ui-btn--quiet" to={docUrl(view.projectId, chosen.id)}>Open the doc</Link> : null}
       </div>
     </form>

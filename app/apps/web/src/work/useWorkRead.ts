@@ -6,7 +6,7 @@ import { readStateForScope, ScopedReadStore, type ReadScope, type ReadState } fr
  * hides the old observation during render, before effects can cancel its request.
  * Private editor state lives in the caller and is never reset by a read refresh.
  */
-export function useWorkRead<T>(scope: ReadScope | null, load: (signal: AbortSignal) => Promise<T>, refresh: number = 0, enabled = true): ReadState<T> {
+export function useWorkRead<T>(scope: ReadScope | null, load: (signal: AbortSignal) => Promise<T>, refresh: number | string = 0, enabled = true): ReadState<T> {
   const store = useMemo(() => new ScopedReadStore<T>(), []);
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const { accountId, projectId, selector } = scope ?? {};
