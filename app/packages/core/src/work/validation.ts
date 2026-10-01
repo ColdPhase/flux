@@ -1,4 +1,4 @@
-import { WORK_LIMITS, WORK_STATUSES, type ObjectRef, type PageQuery, type PrincipalRef, type ResultFinding, type WorkObjectType, type WorkStatus } from '@flux/contracts';
+import { WORK_LIMITS, WORK_STATUSES, type ObjectRef, type PageQuery, type PrincipalRef, type ResultFinding, type TaskPlanIntent, type WorkObjectType, type WorkStatus } from '@flux/contracts';
 import { InvalidInputError, PreconditionRequiredError } from '../access/errors.js';
 import type { PageWindow } from './ports.js';
 
@@ -81,6 +81,44 @@ export function ids(value: unknown, label: string): string[] {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > WORK_LIMITS.links) throw new InvalidInputError(`${label} must be a list of at most ${WORK_LIMITS.links} ids`);
   return [...new Set(value.map((item, index) => id(item, `${label}[${index}]`)))];
+}
+
+/**
+ * Task criteria (#152): a list of at most 20 statements, each trimmed to 1-1,000 characters, in the
+ * order given with exact duplicates dropped. More than 20 entries is refused, never truncated.
+ */
+export function criteria(value: unknown): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > WORK_LIMITS.criteria) throw new InvalidInputError(`criteria must be a list of at most ${WORK_LIMITS.criteria} statements`);
+  const unique = new Set<string>();
+  value.forEach((item, index) => {
+    const statement = typeof item === 'string' ? item.trim() : '';
+    if (!statement || statement.length > WORK_LIMITS.criterion) throw new InvalidInputError(`criteria[${index}] must be 1–${WORK_LIMITS.criterion} characters`);
+    unique.add(statement);
+  });
+  return [...unique];
+}
+
+/** Prerequisite task ids (#152): at most 50 distinct UUIDs, lowercase and ascending. */
+export function dependencyIds(value: unknown): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > WORK_LIMITS.dependencies) throw new InvalidInputError(`dependencyIds must be a list of at most ${WORK_LIMITS.dependencies} task ids`);
+  return [...new Set(value.map((item, index) => id(item, `dependencyIds[${index}]`)))].sort();
+}
+
+/** The plan revision a task is created for (#152): a material, its exact version and a trimmed key. */
+export function planIntent(value: unknown): TaskPlanIntent | null {
+  if (value === undefined || value === null) return null;
+  const raw = value as { materialId?: unknown; version?: unknown; intentKey?: unknown };
+  const keys = typeof value === 'object' ? Object.keys(value) : [];
+  if (typeof value !== 'object' || Array.isArray(value) || keys.some((key) => !['materialId', 'version', 'intentKey'].includes(key)))
+    throw new InvalidInputError('planIntent must be null or { materialId, version, intentKey }');
+  const materialId = id(raw.materialId, 'planIntent.materialId');
+  if (typeof raw.version !== 'number' || !Number.isSafeInteger(raw.version) || raw.version < 1)
+    throw new InvalidInputError('planIntent.version must be a positive integer');
+  const intentKey = typeof raw.intentKey === 'string' ? raw.intentKey.trim() : '';
+  if (!intentKey || intentKey.length > WORK_LIMITS.intentKey) throw new InvalidInputError(`planIntent.intentKey must be 1–${WORK_LIMITS.intentKey} characters`);
+  return { materialId, version: raw.version, intentKey };
 }
 
 /** The version the caller last saw, from If-Match or `expectedVersion`; required for changes. */

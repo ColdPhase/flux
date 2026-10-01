@@ -71,6 +71,9 @@ run_browser -e DATABASE_URL="postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5
 # This is browser integration coverage, not the required real GitHub App installation evidence.
 $compose run --rm e2e node_modules/.bin/tsx --test tests/app/e2e/github.e2e.ts
 
+# Criteria, prerequisites and plan revision in the real task details, with the unmet-prerequisite refusal (#152).
+run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/task-plan.e2e.ts
+
 # Named, request-bound agent connection consent, including signed-out setup (#152).
 $compose run --rm e2e node_modules/.bin/tsx --test tests/app/e2e/agent-connections.e2e.ts
 
