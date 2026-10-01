@@ -62,6 +62,9 @@ class ProjectStateJourney(unittest.TestCase):
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught browser errors"))
         return page
 
+    def assert_text_is_unclipped(self, locator):
+        self.assertTrue(locator.evaluate("el => el.scrollWidth <= el.clientWidth + 1 && el.scrollHeight <= el.clientHeight + 1"), "the visible label is not clipped")
+
     def scene(self):
         owner = self.page()
         ws = self.call(owner, "POST", "/api/v1/workspaces", {"name": "Riverside Makers"}, 201)
@@ -85,6 +88,7 @@ class ProjectStateJourney(unittest.TestCase):
         page.reload()
         shot(page, "136-state-single-open-desktop")
         expect(state).to_contain_text("1 open task")
+        self.assert_text_is_unclipped(state.locator('[data-seg="open"] > span'))
         expect(state).not_to_contain_text("No decisions or work yet")
         state.locator('[data-seg="open"]').click()
         expect(page.locator("#details").get_by_role("heading", name=task["title"], exact=True)).to_be_visible()
@@ -93,7 +97,7 @@ class ProjectStateJourney(unittest.TestCase):
         expect(page.locator(".ws-item").filter(has_text=task["title"])).to_be_visible()
         self.assertEqual(self.call(page, "GET", f"/api/v1/projects/{project['id']}/work")["total"], 1)
 
-    def test_02_closed_native_work_is_history_and_a_live_status_update_replaces_the_open_summary(self):
+    def test_02_closed_native_work_is_history_and_a_persisted_status_update_replaces_the_open_summary(self):
         page, project = self.scene()
         task = self.work(page, project, "Measure low-light gesture reliability")
         page.goto(f"/projects/{project['id']}")
@@ -115,6 +119,7 @@ class ProjectStateJourney(unittest.TestCase):
         page.get_by_role("button", name="Close details", exact=True).click()
         page.reload()
         expect(state).to_contain_text("1 completed task · 1 not pursued")
+        self.assert_text_is_unclipped(state.locator('[data-seg="history"] > span'))
         shot(page, "136-state-retained-history-desktop")
 
     def test_03_phone_and_tablet_readers_share_current_counts_and_reachable_details_without_write_access(self):
@@ -125,6 +130,12 @@ class ProjectStateJourney(unittest.TestCase):
             with self.subTest(width=width, dark=dark):
                 page = self.page("Jonas Reader", width, height, dark)
                 page.goto(f"/projects/{project['id']}")
+                expect(page.get_by_role("heading", name="No conversations yet", exact=True)).to_be_visible()
+                expect(page.locator(".project-convo__read-only")).to_be_visible()
+                expect(page.locator("#project-composer")).to_have_count(0)
+                expect(page.get_by_role("button", name="Start conversation", exact=True)).to_have_count(0)
+                self.assert_text_is_unclipped(page.locator("header.top .top__audience > span").first)
+                self.assert_text_is_unclipped(page.locator(".composer__audience > span").first)
                 if width <= 640:
                     row = page.get_by_role("button", name=re.compile("open project details"))
                     expect(row).to_contain_text("2 open tasks")
@@ -132,11 +143,13 @@ class ProjectStateJourney(unittest.TestCase):
                     row.tap()
                     panel = page.get_by_role("dialog", name="Details")
                     expect(panel.get_by_role("region", name="Now in this project")).to_contain_text("Open")
+                    shot(page, f"136-state-overview-{width}")
                     panel.get_by_role("button", name=re.compile("Open.*Keep a manual switch available")).click()
                     expect(panel.get_by_role("heading", name="Keep a manual switch available", exact=True)).to_be_visible()
                     panel.get_by_role("button", name="Close details", exact=True).click()
                 else:
                     expect(page.locator("header.top").get_by_label("Current state")).to_contain_text("2 open tasks")
+                    self.assert_text_is_unclipped(page.locator('header.top [data-seg="open"] > span'))
                 self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), width)
                 shot(page, f"136-state-reader-{width}-{'dark' if dark else 'light'}")
                 page.locator('[data-tab="tasks"]').click()

@@ -39,3 +39,16 @@ representative light/dark captures at100% zoom. Existing project/work/decision
 journeys must still pass. Obtain a separate neutral rendered review and pin the
 tested source, commands and outcomes. Label emulation as such; it does not prove
 physical phone/tablet/4K/ultrawide or the full F-015 matrix.
+
+## First rendered review and bounded correction
+
+The independent review of the first six full-view captures found clipped short
+status summaries on desktop/tablet, a clipped two-person audience at320px, and
+write-oriented empty/composer instructions shown to a reader. Keep native counts
+and existing navigation, but allow header parts and audience text to wrap within
+available space. Reader empty-state guidance describes reading saved objects;
+the composer retains Sources with an explicit read-only notice, without a reply
+input/send or a material discussion action. Saved writer drafts remain untouched.
+Verify rendered text bounds and reader controls in the real browser separately
+from the second neutral screenshot review. Status transitions use API mutation
+and reload, not proof of stream-driven live refresh.
