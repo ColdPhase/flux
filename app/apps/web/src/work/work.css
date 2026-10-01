@@ -80,7 +80,7 @@
 /* ---------- Details panel ---------- */
 .wd .details__title { overflow-wrap: anywhere; }
 .wd-decision-identity { position: sticky; top: -20px; z-index: 2; padding: 8px 0 4px; background: var(--bg); border-bottom: 1px solid var(--line); }
-.wd-accept-finish { position: sticky; bottom: -20px; z-index: 2; padding: 10px 0 14px; background: var(--bg); border-top: 1px solid var(--line); }
+.wd-accept-finish { padding: 10px 0 14px; background: var(--bg); border-top: 1px solid var(--line); }
 .wd-accept-finish .wd-muted { margin: 0 0 8px; }
 .wd-eyebrow { display: flex; align-items: center; gap: 6px; }
 .wd-eyebrow.wd-need { color: var(--attention); }
@@ -122,7 +122,7 @@
 .wd-seg__b:has(input:checked) { background: var(--bg-raised); color: var(--text); box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--line); }
 .wd-seg__b:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 1px; }
 .wd-check { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: var(--fs-md); color: var(--text-2); }
-.wd-pivot { margin: 12px 0 0; padding: 0; border: 0; min-width: 0; }
+.wd-pivot { margin: 12px 0 0; padding: 0 8px 0 0; border: 0; min-width: 0; max-height: clamp(200px, 42dvh, 360px); overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; scroll-padding-block: 8px; }
 .wd-pivot legend { margin-bottom: 4px; font-size: var(--fs-sm); font-weight: 500; color: var(--text-2); }
 .wd-pivot__row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 0; border-top: 1px solid var(--line); }
 .wd-pivot__t { flex: 1 1 100%; min-width: 0; font-size: var(--fs-md); color: var(--text); }

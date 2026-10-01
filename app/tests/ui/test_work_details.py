@@ -66,6 +66,13 @@ class NativeDetailsJourney(unittest.TestCase):
         expect(nav.get_by_role("status")).to_contain_text(re.compile(r"(?:\d+–\d+ of|No rows on this page)"))
         expect(nav).to_have_attribute("aria-busy","false")
 
+    def in_panel_viewport(self,page,element):
+        box=element.bounding_box();body=page.locator(".ui-panel__body").bounding_box()
+        self.assertGreaterEqual(box["y"],body["y"]-1)
+        self.assertLessEqual(box["y"]+box["height"],body["y"]+body["height"]+1)
+        self.assertGreaterEqual(box["x"],body["x"]-1)
+        self.assertLessEqual(box["x"]+box["width"],body["x"]+body["width"]+1)
+
     def test_01_complete_native_relations_own_fields_and_other_destinations_on_desktop_and_phone(self):
         before=self.records();expected={link["id"] for link in self.native("work",self.target["id"])["links"]}
         for phone in (False,True):
@@ -159,16 +166,17 @@ class NativeDetailsJourney(unittest.TestCase):
         nav.get_by_role("button",name="Previous",exact=True).click();self.choices_ready(panel,"Pivot work pages")
         expect(panel.get_by_role("radiogroup",name=keep_name,exact=True).get_by_role("radio",name="Still applies",exact=True)).to_be_checked()
         expect(panel).to_contain_text("1 still apply · 1 parked")
-        action=panel.get_by_role("button",name="Accept and pivot",exact=True)
-        identity=panel.locator(".wd-decision-identity")
-        self.assertLessEqual(action.bounding_box()["y"]+action.bounding_box()["height"],900)
-        self.assertGreaterEqual(identity.bounding_box()["y"],0)
+        panel.locator(".wd-accept-finish").scroll_into_view_if_needed()
+        self.in_panel_viewport(page,panel.get_by_role("button",name="Accept and pivot",exact=True))
+        self.in_panel_viewport(page,panel.locator(".wd-decision-identity"))
+        self.assertLessEqual(panel.locator(".wd-pivot").bounding_box()["y"]+panel.locator(".wd-pivot").bounding_box()["height"],panel.locator(".wd-accept-finish").bounding_box()["y"],"choice scrollport ends before the acceptance footer")
         shot(page,"bounded-details-pivot-desktop")
         phone=self.page(True);mobile=self.open(phone,"decision",self.pivot["id"]);self.choices_ready(mobile,"Pivot work pages")
         mobile.get_by_role("radiogroup").first.get_by_role("radio",name="Still applies",exact=True).check()
-        mobile_action=mobile.get_by_role("button",name="Accept and pivot",exact=True)
-        self.assertLessEqual(mobile_action.bounding_box()["y"]+mobile_action.bounding_box()["height"],915)
-        self.assertGreaterEqual(mobile.locator(".wd-decision-identity").bounding_box()["y"],0)
+        mobile.locator(".wd-accept-finish").scroll_into_view_if_needed()
+        self.in_panel_viewport(phone,mobile.get_by_role("button",name="Accept and pivot",exact=True))
+        self.in_panel_viewport(phone,mobile.locator(".wd-decision-identity"))
+        self.assertLessEqual(mobile.locator(".wd-pivot").bounding_box()["y"]+mobile.locator(".wd-pivot").bounding_box()["height"],mobile.locator(".wd-accept-finish").bounding_box()["y"],"phone controls cannot peek below the acceptance footer")
         shot(phone,"bounded-details-pivot-phone")
         panel.get_by_role("button",name="Accept and pivot",exact=True).click()
         expect(panel).to_contain_text("Current rule")
