@@ -142,7 +142,7 @@ if (liveRevocation) {
   app.addHook('onClose', async () => clearInterval(recoveryTimer));
   void recover();
 }
-await app.register(agentProposalRoutes, { db, sessions: identity });
+await app.register(agentProposalRoutes, { db, sessions: identity, oauthSecret: identityConfig.secret, publicOrigin: identityConfig.publicOrigin });
 registerMcpRoute(app, db, identity.auth, identityConfig.publicOrigin);
 await app.register(returnRoutes, { db, sessions: identity });
 await app.register(docRoutes, { db, sessions: identity });

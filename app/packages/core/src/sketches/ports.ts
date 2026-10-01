@@ -169,7 +169,8 @@ export interface SketchRepository {
   renameSketch(id: string, title: string): Promise<SketchRecord>;
   /** Bumps `updated_at` so lists sort by the latest change. */
   touchSketch(id: string): Promise<void>;
-  thoughts(sketchId: string): Promise<ThoughtRecord[]>;
+  thoughts(sketchId: string, page?: Required<PageQuery>): Promise<ThoughtRecord[]>;
+  mapCounts(sketchId: string): Promise<{ thoughts: number; links: number }>;
   /** These messages of the DM that exist, in conversation order. */
   dmMessages(dmId: string, ids: string[]): Promise<DmMessageView[]>;
   /** How many messages the DM has. */
@@ -186,7 +187,7 @@ export interface SketchRepository {
   updateThought(sketchId: string, id: string, changes: ThoughtChanges): Promise<ThoughtRecord>;
   /** Deletes the thought and its links; never the placed object. */
   deleteThought(sketchId: string, id: string): Promise<void>;
-  links(sketchId: string): Promise<LinkRecord[]>;
+  links(sketchId: string, page?: Required<PageQuery>): Promise<LinkRecord[]>;
   linkExists(id: string): Promise<boolean>;
   /** The link between two thoughts of the sketch, in either direction. */
   linkBetween(sketchId: string, a: string, b: string): Promise<LinkRecord | null>;
