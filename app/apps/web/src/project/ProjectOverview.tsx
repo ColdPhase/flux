@@ -100,12 +100,12 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
   const relationItems = read.links?.items ?? [];
 
   // Sources: versions cited by messages here, and materials the linked objects are based on.
-  const titles = new Map((open?.materials ?? []).map((material) => [material.materialId, material.title]));
+  const titles = new Map((open?.materials ?? []).map((material) => [`${material.materialId}:${material.version}`, material.title]));
   const sources = new Map<string, Row>();
   for (const item of messageMode ? message ? [message] : [] : conversation?.messages ?? []) {
     if (!item.source) continue;
     const key = `${item.source.materialId}:${item.source.version}`;
-    sources.set(key, { key, icon: 'doc', kind: `Source · v${item.source.version}`, title: titles.get(item.source.materialId) ?? 'Saved material', sub: 'Cited in this conversation', to: `/materials/${item.source.materialId}/versions/${item.source.version}` });
+    sources.set(key, { key, icon: 'doc', kind: `Source · v${item.source.version}`, title: titles.get(key) ?? 'Saved material', sub: 'Cited in this conversation', to: `/materials/${item.source.materialId}/versions/${item.source.version}` });
   }
   const thoughts = new Map<string, Row>();
   for (const link of relationItems) {
@@ -113,7 +113,7 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
     if (!object) continue;
     if (link.to.type === 'material') {
       const key = `${link.to.id}:${link.to.version}`;
-      if (!sources.has(key)) sources.set(key, { key, icon: 'doc', kind: `Source · v${link.to.version}`, title: link.toTitle, sub: `Used by “${object.title}”`, to: `/materials/${link.to.id}/versions/${link.to.version}` });
+      sources.set(key, { key, icon: 'doc', kind: `Source · v${link.to.version}`, title: link.toTitle, sub: sources.get(key)?.sub ?? `Used by “${object.title}”`, to: `/materials/${link.to.id}/versions/${link.to.version}` });
     }
     if (link.to.type === 'thought' && link.sketchId && !thoughts.has(link.to.id)) {
       thoughts.set(link.to.id, { key: link.to.id, icon: 'map', kind: 'Thought on a sketch', title: link.toTitle, sub: `Linked to “${object.title}”`, to: `${base}/map/${link.sketchId}` });

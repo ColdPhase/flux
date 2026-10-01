@@ -114,13 +114,18 @@ class OverviewWorkJourney(unittest.TestCase):
                         expect(objects).to_contain_text("51–69 of 69 objects")
                         expect(links).to_contain_text("1–50 of")
                         # Both pinned native versions remain distinct destinations.
-                        for version in (1, 2): expect(ov.locator(f'a[href="/materials/{self.material}/versions/{version}"]')).to_have_count(1)
+                        for version, title in ((1, "Shield measurement notes"), (2, "Shield measurement notes, revised")):
+                            source = ov.locator(f'a[href="/materials/{self.material}/versions/{version}"]')
+                            expect(source).to_have_count(1)
+                            expect(source.locator(".ov-row__t")).to_have_text(title)
                 self.assertEqual(seen, self.expected); self.assertEqual(union, self.edges)
                 self.assertLessEqual(len(self.identities(page)), 50)
                 # Deep document/thought relations are reached on their native edge page.
                 expect(ov.locator(f'a[href="/projects/{self.project}/map/{self.sketch}"]').filter(has_text="Try the same shield")).to_have_count(1)
                 expect(ov.locator(f'a[href="/projects/{self.project}/docs/{self.doc}"]')).to_have_count(1)
                 shot(page, f"bounded-overview-mixed-{'phone' if phone else 'desktop'}")
+                ov.get_by_role("region", name="Docs").get_by_role("link", name=re.compile("What we learned about shielding")).scroll_into_view_if_needed()
+                shot(page, f"bounded-overview-sources-{'phone' if phone else 'desktop'}")
                 links.get_by_role("button", name="Previous", exact=True).click(); self.ready(page)
                 expect(links).to_contain_text("1–50 of")
                 objects.get_by_role("button", name="Previous", exact=True).click(); self.ready(page)
@@ -166,8 +171,9 @@ class OverviewWorkJourney(unittest.TestCase):
 
     def test_04_details_of_an_older_loaded_message_keeps_exact_source_scope_and_pinned_citation(self):
         page = self.page(); page.goto(f"/projects/{self.project}/conversations/{self.conversation}")
-        earlier = page.get_by_role("button", name="Load earlier messages", exact=True)
-        for _ in range(2): earlier.click(); expect(earlier).to_be_enabled()
+        earlier = page.get_by_role("button", name="Load earlier replies", exact=True)
+        for count in (100, 141):
+            earlier.click(); expect(page.locator(".project-convo__feed [data-message-id]")).to_have_count(count)
         message = page.locator(f"#message-{self.m0}"); expect(message).to_have_count(1)
         message.scroll_into_view_if_needed(); message.hover()
         message.get_by_role("button", name="Details of this message", exact=True).click()
@@ -175,7 +181,79 @@ class OverviewWorkJourney(unittest.TestCase):
         expect(ov.get_by_role("heading", name="Message from you", exact=True)).to_be_visible()
         expect(ov.locator(".ov-quote")).to_have_text("Compare the earliest measurements before ordering another sensor.")
         expect(ov.get_by_role("region", name="Made from this message")).to_contain_text("Related notes; no source relationship")
-        expect(ov.locator(f'a[href="/materials/{self.material}/versions/1"]')).to_have_count(1)
+        source = ov.locator(f'a[href="/materials/{self.material}/versions/1"]')
+        expect(source).to_have_count(1)
+        expect(source.locator(".ov-row__t")).to_have_text("Shield measurement notes")
+        expect(source).to_contain_text("Cited in this conversation")
         expect(ov.get_by_role("navigation", name="Overview object pages")).to_contain_text("1–50 of 69 objects")
         ov.get_by_role("button", name="This conversation", exact=True).click(); self.ready(page)
         expect(ov.get_by_role("region", name="Linked in this conversation")).to_be_visible()
+
+    def test_05_refresh_preserves_native_row_reading_focus_and_private_selection_then_failure_clears_rows(self):
+        page = self.page(); ov = self.open(page); held = []
+        field = page.get_by_label("Reply", exact=True); field.fill("Keep my reply and its unfinished sentence")
+        rows = ov.get_by_role("region", name="Linked in this conversation").locator(".ov-rows")
+        rows.hover(); page.mouse.wheel(0,450)
+        anchor = rows.evaluate("el=>{const top=el.getBoundingClientRect().top;const row=[...el.querySelectorAll('[data-work-id]')].find(row=>row.getBoundingClientRect().bottom>top);return {id:row.dataset.workId,offset:row.getBoundingClientRect().top-top};}")
+        def hold(route):
+            response=route.fetch(); self.assertEqual(response.status,200); held.append((route,response)); page.evaluate("window.__overviewRefreshHeld=true")
+        page.route("**/work-associations?**conversationId=**",hold)
+        ov.get_by_role("navigation",name="Overview object pages").get_by_role("button",name="Refresh",exact=True).click()
+        page.wait_for_function("window.__overviewRefreshHeld===true")
+        expect(ov).to_have_attribute("data-overview-phase","refreshing")
+        self.assertEqual(len(self.identities(page)),50)
+        field.evaluate("el=>{el.focus();el.setSelectionRange(5,17);}")
+        route,response=held.pop();route.fulfill(response=response);self.ready(page)
+        self.assertEqual(field.evaluate("el=>[document.activeElement===el,el.selectionStart,el.selectionEnd]"),[True,5,17])
+        offset=ov.locator(f"[data-work-id='{anchor['id']}']").evaluate("el=>el.getBoundingClientRect().top-el.closest('.ov-rows').getBoundingClientRect().top")
+        self.assertLess(abs(offset-anchor["offset"]),3)
+        page.unroute("**/work-associations?**conversationId=**",hold)
+        page.route("**/work-associations?**conversationId=**",lambda route:route.fulfill(status=503,json={"code":"WORK_READ_UNAVAILABLE","error":"Fixture unavailable read"}))
+        ov.get_by_role("navigation",name="Overview object pages").get_by_role("button",name="Refresh",exact=True).click()
+        expect(ov.get_by_role("alert")).to_contain_text("Linked objects could not be loaded")
+        self.assertEqual(self.identities(page),[])
+        expect(ov).not_to_contain_text("Nothing linked yet")
+        expect(field).to_have_value("Keep my reply and its unfinished sentence")
+        page.unroute("**/work-associations?**conversationId=**")
+        ov.get_by_role("button",name="Refresh linked objects",exact=True).click();self.ready(page)
+
+    def test_06_keyboard_exposes_each_focused_native_row_inside_the_overview_list(self):
+        for phone in (False,True):
+            with self.subTest(phone=phone):
+                page=self.page(phone);ov=self.open(page)
+                rows=ov.get_by_role("region",name="Linked in this conversation").locator(".ov-rows")
+                first=rows.locator("[data-work-id]").first;first.focus()
+                for index in range(20):
+                    if index:page.keyboard.press("Tab")
+                    visible=page.evaluate("()=>{const row=document.activeElement;const pane=row.closest('.ov-rows');if(!pane)return false;const r=row.getBoundingClientRect(),p=pane.getBoundingClientRect();return r.top>=p.top-1&&r.bottom<=p.bottom+1;}")
+                    self.assertTrue(visible,"native keyboard focus exposes each full row in its own bounded Overview list")
+
+    def test_07_passive_refresh_resets_relations_for_a_changed_actual_native_row_window(self):
+        page=self.page();ov=self.open(page)
+        objects=ov.get_by_role("navigation",name="Overview object pages")
+        relations=ov.get_by_role("navigation",name="Overview relation pages")
+        relations.get_by_role("button",name="Next",exact=True).click();self.ready(page)
+        expect(relations).to_contain_text("51–100 of")
+        old_refs=set(tuple(ref) for ref in self.identities(page));old_observation=ov.get_attribute("data-overview-observed-at")
+        # A genuine native command changes the selected50-row window. Purity is measured
+        # after that declared fixture mutation, never treating the command as a read.
+        added=api(self.context,"POST",self.root+"/work",{"title":"Recheck the newly arrived shield measurement","sources":[{"type":"message","id":self.m0}]},201)
+        type(self).native=self.records();type(self).before=json.dumps(self.native,sort_keys=True)
+        requests=[];held=[]
+        page.on("request",lambda request:requests.append(parse_qs(urlsplit(request.url).query)) if "/work-relations?" in request.url else None)
+        def hold(route):
+            response=route.fetch();self.assertEqual(response.status,200);held.append((route,response));page.evaluate("window.__overviewPassiveHeld=true")
+        page.route("**/work-associations?**conversationId=**",hold)
+        page.evaluate("window.dispatchEvent(new Event('focus'))")
+        page.wait_for_function("window.__overviewPassiveHeld===true")
+        expect(ov).to_have_attribute("data-overview-phase","refreshing")
+        self.assertEqual(set(tuple(ref) for ref in self.identities(page)),old_refs)
+        route,response=held.pop();route.fulfill(response=response);self.ready(page)
+        self.assertNotEqual(ov.get_attribute("data-overview-observed-at"),old_observation)
+        new_refs=set(tuple(ref) for ref in self.identities(page))
+        self.assertIn(("work",added["id"]),new_refs);self.assertNotEqual(new_refs,old_refs)
+        expect(objects).to_contain_text("1–50 of 70 objects")
+        expect(relations).to_contain_text("1–50 of")
+        self.assertFalse(requests[-1].get("cursor"),"new native reference set cannot dispatch the previous set-bound cursor")
+        self.assertEqual(set(requests[-1]["objects"][0].split(',')),{f"{kind}:{identity}" for kind,identity in new_refs})
+        page.unroute("**/work-associations?**conversationId=**",hold)
