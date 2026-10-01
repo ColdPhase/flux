@@ -22,7 +22,7 @@ const decisionRank = sql`CASE ${d.status} WHEN 'proposed' THEN 0 WHEN 'accepted'
 function literalTitle(column: SQL, q: string) {
   return q ? sql`${column} ILIKE ${'%'+q.replace(/[\\%_]/g, '\\$&')+'%'} ESCAPE ${'\\'}` : sql`true`;
 }
-function source(projectId: string, actor: PrincipalRef, selection: NativeWorkViewSelector): SQL {
+export function nativeWorkViewKeySource(projectId: string, actor: PrincipalRef, selection: NativeWorkViewSelector): SQL {
   const parts: SQL[] = [];
   if (selection.purpose === 'tasks') {
     const group = selection.group;
@@ -74,7 +74,7 @@ export function nativeWorkReadKeys(db: DbExecutor) {
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('Invalid bounded native key limit');
       // Every query/count in this observation owns the same continuation across awaits.
       const ownedCursor = cursor ? { direction: cursor.direction, boundary: { ...cursor.boundary } } : undefined;
-      const selected = source(projectId, actor, selection);
+      const selected = nativeWorkViewKeySource(projectId, actor, selection);
       const forward = ownedCursor?.direction !== 'previous';
       const continuation = ownedCursor ? forward ? following(ownedCursor.boundary) : preceding(ownedCursor.boundary) : sql`true`;
       const order = forward ? sql`rank ASC, created_at DESC, id DESC` : sql`rank DESC, created_at ASC, id ASC`;

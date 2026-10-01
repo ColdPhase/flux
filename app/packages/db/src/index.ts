@@ -24,6 +24,9 @@ export * from './repositories/stream.js';
 export * from './repositories/sketches.js';
 export * from './repositories/work.js';
 export * from './repositories/work-read-keys.js';
+export * from './repositories/work-read-visibility.js';
+export * from './repositories/work-read-objects.js';
+export * from './repositories/work-read-summary.js';
 export * from './repositories/direct-messages.js';
 export * from './repositories/docs.js';
 
