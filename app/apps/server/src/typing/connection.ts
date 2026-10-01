@@ -17,7 +17,7 @@ export class TypingConnection {
   private epoch = 0;
   private stopped = false;
   private running = false;
-  private readonly commands: { command: TypingCommand; generation: number }[] = [];
+  private readonly commands: { command: TypingCommand; generation: number; queuedAt: number }[] = [];
   private pending: TypingDelivery | null = null;
   private tokens = 8;
   private tokenAt = performance.now();
@@ -53,7 +53,7 @@ export class TypingConnection {
         void this.withdraw().catch(() => this.close(1011, 'Typing unavailable'));
       }
       if (this.commands.length >= 4) { this.close(1008, 'Typing work exceeded'); return; }
-      this.commands.push({ command, generation: this.epoch });
+      this.commands.push({ command, generation: this.epoch, queuedAt: performance.now() });
       void this.drain();
     });
     socket.on('close', () => {
@@ -85,10 +85,11 @@ export class TypingConnection {
     }
     if (active && (generation === undefined || !this.current(generation))) return;
     const operation = (async () => {
-      const pulse = await this.hub.notifications.publish({ ...this.actor, connectionId: this.connectionId,
-        context: { ...context }, sequence: ++this.sequence, active }, this.minimumExpiry);
+      const pulse = await this.hub.measure('publish', () => this.hub.notifications.publish({ ...this.actor, connectionId: this.connectionId,
+        context: { ...context }, sequence: ++this.sequence, active }, this.minimumExpiry));
       this.minimumExpiry = Math.max(this.minimumExpiry, pulse.expiresAt);
       this.lastPublished = active ? { ...context } : null;
+      this.hub.diagnostics?.publication(this.actor.actorId, active);
     })();
     this.publication = operation;
     let failure: unknown;
@@ -139,7 +140,7 @@ export class TypingConnection {
     const epoch = this.epoch;
     const valid = () => this.current(epoch) && delivery.generation === this.hub.generation && this.context && typingContextKey(this.context) === typingContextKey(delivery.context);
     if (!valid() || !this.requested) return;
-    const recipient = await authorizeTypingContext(this.hub.access, this.actor, this.requested, 'read');
+    const recipient = await this.hub.measure('recipient', () => authorizeTypingContext(this.hub.access, this.actor, this.requested!, 'read'));
     if (!valid()) return;
     if (!recipient || typingContextKey(recipient) !== typingContextKey(delivery.context)) {
       this.emit({ type: 'snapshot', context: { ...delivery.context }, availability: 'unavailable', people: [] }, epoch, delivery.generation);
@@ -153,7 +154,7 @@ export class TypingConnection {
     let proofExpires = Infinity;
     for (const pulse of delivery.pulses) {
       if (pulse.actorId === this.actor.actorId) continue;
-      const human = await authorizeTypingSender(this.hub.access, pulse);
+      const human = await this.hub.measure('sender', () => authorizeTypingSender(this.hub.access, pulse));
       proofExpires = Math.min(proofExpires, performance.now() + 1000);
       if (!valid()) return;
       if (!human || !this.hub.current(pulse) || pulse.expiresAt <= delivery.databaseNow + performance.now() - delivery.observedAt) continue;
@@ -163,7 +164,7 @@ export class TypingConnection {
     }
     // Recipient is current again after sender checks. Terminal/context/availability
     // fences and the short proof deadline also apply to a queued network send.
-    const finalRecipient = await authorizeTypingContext(this.hub.access, this.actor, this.requested, 'read');
+    const finalRecipient = await this.hub.measure('recipient', () => authorizeTypingContext(this.hub.access, this.actor, this.requested!, 'read'));
     if (!valid() || !finalRecipient || typingContextKey(finalRecipient) !== typingContextKey(delivery.context)) return;
     const currentIds = new Set(approved.filter((pulse) => this.hub.current(pulse) && pulse.expiresAt > delivery.databaseNow + performance.now() - delivery.observedAt).map((pulse) => pulse.actorId));
     for (const id of people.keys()) if (!currentIds.has(id)) people.delete(id);
@@ -180,14 +181,17 @@ export class TypingConnection {
         const deadline = setTimeout(() => this.close(1011, 'Typing unavailable'), 2000); deadline.unref();
         try {
           const next = this.commands.shift();
-          if (next) { await this.command(next.command, next.generation); continue; }
+          if (next) {
+            this.hub.diagnostics?.recordQueue(next.queuedAt);
+            await this.hub.measure('command', () => this.command(next.command, next.generation)); continue;
+          }
           if (this.sessionCheck) {
             this.sessionCheck = false;
-            if (!(await this.hub.access.currentHuman(this.actor))) { this.close(4401, 'Session ended'); return; }
+            if (!(await this.hub.measure('session', () => this.hub.access.currentHuman(this.actor)))) { this.close(4401, 'Session ended'); return; }
             continue;
           }
           const delivery = this.pending!; this.pending = null;
-          await this.deliver(delivery);
+          await this.hub.measure('delivery', () => this.deliver(delivery));
         } finally { clearTimeout(deadline); }
       }
     } catch {

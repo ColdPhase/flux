@@ -1,5 +1,6 @@
 import { TypingPresence, decodeTypingPulse, typingContextKey, type TypingAccessPorts, type TypingNotificationPort, type TypingPulse } from '@flux/core';
 import type { TypingContext } from '@flux/contracts';
+import type { TypingDiagnostics, TypingPhase } from './diagnostics.js';
 
 export interface TypingDelivery {
   context: TypingContext;
@@ -31,11 +32,14 @@ export class TypingHub {
   private quarantineUntil = 0;
   private databaseFloor = 0;
   private timer: ReturnType<typeof setInterval>;
-  constructor(readonly access: TypingAccessPorts, readonly notifications: TypingNotificationPort) {
+  constructor(readonly access: TypingAccessPorts, readonly notifications: TypingNotificationPort, readonly diagnostics?: TypingDiagnostics) {
     this.timer = setInterval(() => { for (const subscriber of this.subscribers) subscriber.heartbeat(); this.wake(); }, 1000);
     this.timer.unref();
   }
   get generation() { return this.epoch; }
+  measure<T>(phase: Exclude<TypingPhase, 'queue'>, operation: () => Promise<T>) {
+    return this.diagnostics ? this.diagnostics.measure(phase, operation) : operation();
+  }
   current(pulse: TypingPulse) {
     const pending = this.pending.get(pulse.connectionId);
     const compatible = !pending || pending.sequence <= pulse.sequence || pending.active && pending.actorId === pulse.actorId &&

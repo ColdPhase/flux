@@ -6,16 +6,23 @@ import type { SessionResolver } from '../identity/index.js';
 import { typingAccess } from './access.js';
 import { TypingConnection } from './connection.js';
 import { TypingHub } from './hub.js';
+import type { TypingDiagnostics } from './diagnostics.js';
 
-interface TypingOptions { db: Database; sessions: SessionResolver; publicOrigin: string; connectionString: string; tasks?: TypingTaskDiscussion }
+interface TypingOptions {
+  db: Database; sessions: SessionResolver; publicOrigin: string; connectionString: string; tasks?: TypingTaskDiscussion;
+  /** Trusted in-process test observers; production composition supplies neither. */
+  diagnostics?: TypingDiagnostics;
+  inspectWork?: (read: () => TypingHub['work'] & { admissions: number; humans: number }) => void;
+}
 /** Same-origin human cookie WS, separate from the durable event cursor. */
 export async function typingRoutes(app: FastifyInstance, options: TypingOptions) {
-  const hub = new TypingHub(typingAccess(options.db, options.tasks), typingNotifications(options.db));
+  const hub = new TypingHub(typingAccess(options.db, options.tasks), typingNotifications(options.db), options.diagnostics);
   const listener = listen(options.connectionString, TYPING_CHANNEL, (payload) => hub.notification(payload),
     () => hub.availability(true), () => hub.availability(false));
   const accepted = new WeakMap<FastifyRequest, { actor: TypingActor; release: () => void; transfer: () => void }>();
   const humans = new Map<string, number>();
   const reservations = new Set<() => void>();
+  options.inspectWork?.(() => ({ ...hub.work, admissions: reservations.size, humans: humans.size }));
   app.addHook('onClose', async () => {
     await hub.close(); await listener.close();
     for (const release of reservations) release();
