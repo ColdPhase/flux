@@ -270,4 +270,4 @@ class OverviewWorkJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile(rf"/projects/{self.project}/map/{self.sketch}#thought-{self.thought}$"))
         node=page.locator(f'.sk-node[data-id="{self.thought}"]')
         expect(node).to_be_visible()
-        expect(node).to_have_class(re.compile("selected"))
+        expect(node).to_have_attribute("aria-pressed", "true")
