@@ -1,0 +1,350 @@
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.78kB done
+#1 DONE 0.0s
+
+#2 [migrate internal] load build definition from Dockerfile
+#2 transferring dockerfile: 2.99kB done
+#2 DONE 0.0s
+
+#3 [ui-test internal] load build definition from ui-tests.Dockerfile
+#3 transferring dockerfile: 941B done
+#3 DONE 0.0s
+
+#4 [migrate internal] load metadata for docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#4 DONE 0.0s
+
+#5 [test internal] load .dockerignore
+#5 transferring context: 191B done
+#5 DONE 0.0s
+
+#6 [test build 1/8] FROM docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#6 resolve docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 done
+#6 DONE 0.0s
+
+#7 [migrate internal] load build context
+#7 transferring context: 80.07kB 0.0s done
+#7 DONE 0.0s
+
+#8 [migrate build 3/8] RUN corepack enable && corepack install -g pnpm@12.6.0
+#8 CACHED
+
+#9 [migrate build 4/8] COPY pnpm-lock.yaml pnpm-workspace.yaml ./
+#9 CACHED
+
+#10 [migrate build 2/8] WORKDIR /app
+#10 CACHED
+
+#11 [migrate build 5/8] RUN pnpm fetch
+#11 CACHED
+
+#12 [test build 6/8] COPY . .
+#12 DONE 0.1s
+
+#5 [ui-test internal] load .dockerignore
+#5 transferring context: 191B done
+#5 DONE 0.0s
+
+#13 [ui-test internal] load metadata for mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#13 DONE 0.2s
+
+#14 [ui-test internal] load build context
+#14 transferring context: 45.26kB done
+#14 DONE 0.0s
+
+#15 [ui-test 1/5] FROM mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#15 resolve mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d 0.0s done
+#15 DONE 0.0s
+
+#16 [ui-test 3/5] RUN pip install --no-cache-dir --break-system-packages --only-binary=:all: --require-hashes -r /tmp/ui-requirements.txt
+#16 CACHED
+
+#17 [ui-test 2/5] COPY tests/ui/requirements.txt /tmp/ui-requirements.txt
+#17 CACHED
+
+#18 [ui-test 4/5] WORKDIR /work
+#18 CACHED
+
+#19 [ui-test 5/5] COPY tests/ui tests/ui
+#19 DONE 0.0s
+
+#20 [ui-test] exporting to image
+#20 exporting layers 0.0s done
+#20 exporting manifest sha256:0d0fbfc1e6d5911adf48e34559717083469f1e8cfcb6fafc76df797908b263f5 done
+#20 exporting config sha256:ec99d0891a377d2e3d42b1686e9a159a5cb54a0f2805b72f4864b5707646d0ec done
+#20 exporting attestation manifest sha256:8e7886f9b53cd305c0004dea29e8227e48fa0616a07f6252b422ef00168bc14a done
+#20 exporting manifest list sha256:ecac8d016e2bd99e65a724f453adbcd0d197e2c997da01b0c0446360fb9e7353
+#20 exporting manifest list sha256:ecac8d016e2bd99e65a724f453adbcd0d197e2c997da01b0c0446360fb9e7353 done
+#20 naming to docker.io/library/flux-ui-tests:flux155browser done
+#20 unpacking to docker.io/library/flux-ui-tests:flux155browser 0.0s done
+#20 DONE 0.1s
+
+#21 [ui-test] resolving provenance for metadata file
+#21 DONE 0.0s
+
+#22 [test build 7/8] RUN pnpm install --offline --frozen-lockfile
+#22 0.276 Scope: all 10 workspace projects
+#22 0.331 ✓ Lockfile passes supply-chain policies (verified 9h ago)
+#22 0.331 Lockfile is up to date, resolution step is skipped
+#22 0.558 Already up to date
+#22 0.939 
+#22 0.939 dependencies:
+#22 0.939 + @flux/contracts link:packages/contracts
+#22 0.939 + @flux/core link:packages/core
+#22 0.939 + @flux/db link:packages/db
+#22 0.939 + pg-boss 12.35.0
+#22 0.939 
+#22 0.939 devDependencies:
+#22 0.939 + @eslint/js 9.37.0
+#22 0.939 + @types/node 24.6.2
+#22 0.939 + @types/nodemailer 8.0.2
+#22 0.939 + @types/pg 8.15.5
+#22 0.939 + @types/sanitize-html 2.16.1
+#22 0.939 + @types/ws 8.18.1
+#22 0.939 + drizzle-orm 0.45.3
+#22 0.939 + eslint 9.37.0
+#22 0.939 + eslint-plugin-react-hooks 7.1.1
+#22 0.939 + fastify 5.6.1
+#22 0.939 + playwright 1.63.0
+#22 0.939 + tsx 4.20.5
+#22 0.939 + typescript 5.9.2
+#22 0.939 + typescript-eslint 8.44.1
+#22 0.939 + ws 8.22.0
+#22 0.939 
+#22 0.939 Done in 695ms using pnpm v12.6.0
+#22 DONE 1.0s
+
+#23 [test build 8/8] RUN pnpm build && pnpm typecheck && pnpm lint
+#23 0.162 $ pnpm -r --if-present build && tsc -p tooling/tsconfig.build.json
+#23 0.238 packages/contracts build$ tsc -p tsconfig.build.json
+#23 1.970 packages/contracts build: Done
+#23 1.971 packages/sdk build$ tsc -p tsconfig.build.json
+#23 1.971 packages/db build$ tsc -p tsconfig.build.json
+#23 1.971 apps/web build$ vite build
+#23 2.173 apps/web build: vite v8.3.1 building client environment for production...
+#23 2.183 apps/web build: transforming...
+#23 2.284 apps/web build: ✓ 258 modules transformed.
+#23 2.351 apps/web build: rendering chunks...
+#23 2.453 apps/web build: computing gzip size...
+#23 2.460 apps/web build: dist/index.html                                              1.21 kB │ gzip:   0.53 kB
+#23 2.460 apps/web build: dist/sw.js                                                   6.70 kB
+#23 2.460 apps/web build: dist/assets/inter-vietnamese-wght-normal-CBcvBZtf.woff2     10.25 kB
+#23 2.460 apps/web build: dist/assets/inter-greek-ext-wght-normal-DlzME5K_.woff2      11.23 kB
+#23 2.460 apps/web build: dist/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2       18.74 kB
+#23 2.460 apps/web build: dist/assets/inter-greek-wght-normal-CkhJZR-_.woff2          18.99 kB
+#23 2.460 apps/web build: dist/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2   25.96 kB
+#23 2.460 apps/web build: dist/assets/inter-latin-wght-normal-Dx4kXJAl.woff2          48.25 kB
+#23 2.460 apps/web build: dist/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2      85.06 kB
+#23 2.460 apps/web build: dist/assets/index-BBWqxtmm.css                             157.42 kB │ gzip:  27.82 kB
+#23 2.460 apps/web build: dist/assets/media-DGoeMNke.js                              419.65 kB │ gzip: 108.68 kB
+#23 2.460 apps/web build: dist/assets/index-D8VYSIlv.js                              753.63 kB │ gzip: 223.45 kB
+#23 2.460 apps/web build: 
+#23 2.461 apps/web build: [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "use client" in "../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js" may not be preserved when bundling.
+#23 2.461 apps/web build:     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m ../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js:11:1 [38;5;246m][0m
+#23 2.461 apps/web build:     [38;5;246m│[0m
+#23 2.461 apps/web build:  [38;5;246m11 │[0m "use client";
+#23 2.461 apps/web build:  [38;5;240m   │[0m ──────┬──────  
+#23 2.461 apps/web build:  [38;5;240m   │[0m       ╰──────── module level directive may not be preserved
+#23 2.461 apps/web build:  [38;5;240m   │[0m 
+#23 2.461 apps/web build:  [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+#23 2.461 apps/web build: [38;5;246m────╯[0m
+#23 2.461 apps/web build: 
+#23 2.461 apps/web build: [plugin builtin:vite-reporter] 
+#23 2.461 apps/web build: (!) Some chunks are larger than 500 kB after minification. Consider:
+#23 2.461 apps/web build: - Using dynamic import() to code-split the application
+#23 2.461 apps/web build: - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+#23 2.461 apps/web build: - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+#23 2.461 apps/web build: ✓ built in 287ms
+#23 2.477 apps/web build: Done
+#23 3.683 packages/sdk build: Done
+#23 4.701 packages/db build: Done
+#23 4.701 packages/core build$ tsc -p tsconfig.build.json
+#23 6.228 packages/core build: Done
+#23 6.228 packages/agent-runtime build$ tsc -p tsconfig.build.json
+#23 6.229 apps/server build$ tsc -p tsconfig.build.json
+#23 7.042 packages/agent-runtime build: Done
+#23 7.042 apps/worker build$ tsc -p tsconfig.build.json
+#23 7.984 apps/worker build: Done
+#23 9.004 apps/server build: Done
+#23 9.658 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#23 17.11 $ eslint .
+#23 DONE 24.7s
+
+#24 [test] exporting to image
+#24 exporting layers
+#24 exporting layers 0.5s done
+#24 exporting manifest sha256:fed65b5c7c20fe84d19febae72ab1de4a0ad20be2718bf5024876232ac1db171 done
+#24 exporting config sha256:01eec1860fccb1c29d800985eb0d2f5c64179c6ea5f923906bf43c217acda809 done
+#24 exporting attestation manifest sha256:e1baeee5465ecc01aa4b482fdc6537a8ecc74e144e7d070b0661104569ed8aa9
+#24 ...
+
+#25 [migrate production-dependencies 1/1] RUN pnpm install --prod --offline --frozen-lockfile
+#25 0.205 Scope: all 10 workspace projects
+#25 0.241 ✓ Lockfile passes supply-chain policies (verified 9h ago)
+#25 0.241 Lockfile is up to date, resolution step is skipped
+#25 0.453 Packages: -199
+#25 0.453 --------------------------------------------------------------------------------
+#25 0.644 
+#25 0.644 devDependencies:
+#25 0.644 - @eslint/js 9.37.0
+#25 0.644 - @types/node 24.6.2
+#25 0.644 - @types/nodemailer 8.0.2
+#25 0.644 - @types/pg 8.15.5
+#25 0.644 - @types/sanitize-html 2.16.1
+#25 0.644 - @types/ws 8.18.1
+#25 0.644 - drizzle-orm 0.45.3
+#25 0.644 - eslint 9.37.0
+#25 0.644 - eslint-plugin-react-hooks 7.1.1
+#25 0.644 - fastify 5.6.1
+#25 0.644 - playwright 1.63.0
+#25 0.644 - tsx 4.20.5
+#25 0.644 - typescript 5.9.2
+#25 0.644 - typescript-eslint 8.44.1
+#25 0.644 - ws 8.22.0
+#25 0.644 
+#25 0.645 Done in 443ms using pnpm v12.6.0
+#25 DONE 0.7s
+
+#24 [test] exporting to image
+#24 exporting attestation manifest sha256:e1baeee5465ecc01aa4b482fdc6537a8ecc74e144e7d070b0661104569ed8aa9 0.0s done
+#24 exporting manifest list sha256:d8cb44d170ea6cb4a4afc737f8eaee0b92a2dc5d5aae952f13236b64ce52cbe9 done
+#24 naming to docker.io/library/flux-test-tools:flux155browser done
+#24 unpacking to docker.io/library/flux-test-tools:flux155browser
+#24 unpacking to docker.io/library/flux-test-tools:flux155browser 0.3s done
+#24 DONE 0.9s
+
+#26 [test] resolving provenance for metadata file
+#26 DONE 0.0s
+
+#10 [migrate build 2/8] WORKDIR /app
+#10 CACHED
+
+#27 [migrate runtime  3/25] COPY --from=production-dependencies /app/node_modules ./node_modules
+#27 DONE 1.9s
+
+#28 [migrate runtime  4/25] COPY --from=production-dependencies /app/apps/server/node_modules ./apps/server/node_modules
+#28 DONE 0.1s
+
+#29 [migrate runtime  5/25] COPY --from=production-dependencies /app/apps/worker/node_modules ./apps/worker/node_modules
+#29 DONE 0.0s
+
+#30 [migrate runtime  6/25] COPY --from=production-dependencies /app/packages/core/node_modules ./packages/core/node_modules
+#30 DONE 0.0s
+
+#31 [migrate runtime  7/25] COPY --from=production-dependencies /app/packages/db/node_modules ./packages/db/node_modules
+#31 DONE 0.0s
+
+#32 [migrate runtime  8/25] COPY --from=production-dependencies /app/packages/agent-runtime/node_modules ./packages/agent-runtime/node_modules
+#32 DONE 0.0s
+
+#33 [migrate runtime  9/25] COPY --from=build /app/package.json ./package.json
+#33 DONE 0.0s
+
+#34 [migrate runtime 10/25] COPY --from=build /app/apps/server/package.json ./apps/server/package.json
+#34 DONE 0.0s
+
+#35 [migrate runtime 11/25] COPY --from=build /app/apps/worker/package.json ./apps/worker/package.json
+#35 DONE 0.0s
+
+#36 [migrate runtime 12/25] COPY --from=build /app/packages/contracts/package.json ./packages/contracts/package.json
+#36 DONE 0.0s
+
+#37 [migrate runtime 13/25] COPY --from=build /app/packages/core/package.json ./packages/core/package.json
+#37 DONE 0.0s
+
+#38 [migrate runtime 14/25] COPY --from=build /app/packages/db/package.json ./packages/db/package.json
+#38 DONE 0.0s
+
+#39 [migrate runtime 15/25] COPY --from=build /app/packages/agent-runtime/package.json ./packages/agent-runtime/package.json
+#39 DONE 0.0s
+
+#40 [migrate runtime 16/25] COPY --from=build /app/apps/server/dist ./apps/server/dist
+#40 DONE 0.0s
+
+#41 [migrate runtime 17/25] COPY --from=build /app/apps/worker/dist ./apps/worker/dist
+#41 DONE 0.0s
+
+#42 [migrate runtime 18/25] COPY --from=build /app/apps/web/dist ./apps/web/dist
+#42 DONE 0.0s
+
+#43 [migrate runtime 19/25] COPY --from=build /app/packages/contracts/dist ./packages/contracts/dist
+#43 DONE 0.0s
+
+#44 [migrate runtime 20/25] COPY --from=build /app/packages/core/dist ./packages/core/dist
+#44 DONE 0.0s
+
+#45 [migrate runtime 21/25] COPY --from=build /app/packages/db/dist ./packages/db/dist
+#45 DONE 0.0s
+
+#46 [migrate runtime 22/25] COPY --from=build /app/packages/agent-runtime/dist ./packages/agent-runtime/dist
+#46 DONE 0.0s
+
+#47 [migrate runtime 23/25] COPY --from=build /app/packages/db/migrations ./packages/db/migrations
+#47 DONE 0.0s
+
+#48 [migrate runtime 24/25] COPY --from=build /app/tooling/dist ./tooling/dist
+#48 DONE 0.0s
+
+#49 [migrate runtime 25/25] RUN mkdir -p /data/files && chown -R node:node /data
+#49 DONE 0.1s
+
+#50 [migrate] exporting to image
+#50 exporting layers
+#50 exporting layers 5.6s done
+#50 exporting manifest sha256:0cc7639ffec0976f3c94096b6cff78fc4b75f906aedc14d59d26d180f29a0641
+#50 exporting manifest sha256:0cc7639ffec0976f3c94096b6cff78fc4b75f906aedc14d59d26d180f29a0641 done
+#50 exporting config sha256:6c5c09549e54c36704ed84713b2315945d182f0289675ff00c4649dc3de8bdde done
+#50 exporting attestation manifest sha256:fa68a7b2088e5e88088715b655579d76cfa56863f981554ee93b3cbdb1a535ed done
+#50 exporting manifest list sha256:c1c9059ff0eaa997286855e6c43ec7188c41ada9a5793aa5faa34f09b5adf68c done
+#50 naming to docker.io/library/flux-foundation:flux155browser done
+#50 unpacking to docker.io/library/flux-foundation:flux155browser
+#50 unpacking to docker.io/library/flux-foundation:flux155browser 1.9s done
+#50 DONE 7.5s
+
+#51 [migrate] resolving provenance for metadata file
+#51 DONE 0.0s
+ flux-foundation:flux155browser  Built
+ flux-ui-tests:flux155browser  Built
+ flux-test-tools:flux155browser  Built
+ Container flux155browser-db-1  Running
+ Container flux155browser-mailpit-1  Running
+ Container flux155browser-migrate-1  Recreate
+ Container flux155browser-migrate-1  Recreated
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+time="2026-10-01T08:40:17+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux155browser-db-1  Running
+ Container flux155browser-anthropic-mock-1  Recreate
+ Container flux155browser-migrate-1  Running
+ Container flux155browser-worker-1  Recreate
+ Container flux155browser-api-1  Recreate
+time="2026-10-01T08:40:18+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+time="2026-10-01T08:40:18+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux155browser-worker-1  Recreated
+ Container flux155browser-anthropic-mock-1  Recreated
+ Container flux155browser-api-1  Recreated
+ Container flux155browser-anthropic-mock-1  Starting
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-anthropic-mock-1  Started
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-worker-1  Starting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-api-1  Starting
+ Container flux155browser-api-1  Started
+ Container flux155browser-worker-1  Started
+ Container flux155browser-anthropic-mock-1  Waiting
+ Container flux155browser-api-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-worker-1  Waiting
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-worker-1  Healthy
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-anthropic-mock-1  Healthy
+ Container flux155browser-api-1  Healthy

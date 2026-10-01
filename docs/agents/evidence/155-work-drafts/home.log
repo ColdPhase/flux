@@ -1,0 +1,21 @@
+ Container flux155browser-mailpit-1  Running
+ Container flux155browser-anthropic-mock-1  Running
+ Container flux155browser-db-1  Running
+ Container flux155browser-migrate-1  Running
+ Container flux155browser-worker-1  Running
+ Container flux155browser-api-1  Running
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-migrate-1  Exited
+test_02_register (test_app_shell.AppShellJourney.test_02_register) ... ok
+test_03_sign_in_and_reload_keep_the_session (test_app_shell.AppShellJourney.test_03_sign_in_and_reload_keep_the_session) ... ok
+test_04a_draft_survives_view_switch_and_reload (test_app_shell.AppShellJourney.test_04a_draft_survives_view_switch_and_reload) ... ok
+test_04b_reading_position_is_kept_per_view (test_app_shell.AppShellJourney.test_04b_reading_position_is_kept_per_view) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 5.768s
+
+OK
