@@ -492,6 +492,10 @@
     "scripts/test_images.sh": "38128f02e905718a1c66bb35e7c042da55e3b9a00ecd5938197b01013e37d391"
   },
   "logs": {
-    "application.log": "0a6d2786a48c11cf4f97c64efdf0187e0a3bedbc9d7584e003754ac90c8a5734"
+    "application.log": "8672b47d3d4c50275ea2664c3dab9cd9fca3a660a7224086aceec2daa6f6f5e2",
+    "application.log.gz": "8eac8c1a02afd5ab6d59433c64ac60d49ea750db2a37de349f0c58837d5ab6e5"
+  },
+  "raw_log_sha256": {
+    "application.log.gz": "0a6d2786a48c11cf4f97c64efdf0187e0a3bedbc9d7584e003754ac90c8a5734"
   }
 }

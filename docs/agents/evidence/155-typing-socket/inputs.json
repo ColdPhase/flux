@@ -500,6 +500,12 @@
   },
   "logs": {
     "application.log": "be5205ace93b5777f4ca4a99558fe191253ccac3d352e6bd56231d419a0c7cdc",
-    "targeted.log": "249b732f062fb9bf4ff6f7706856c237e693a62b11cda4912574f0dd98cadc04"
+    "targeted.log": "6951cb64624446cde68ba0974f976d1a35a323625d0fcd1b523a3682500e24d0",
+    "targeted.log.gz": "b6adb66e8bd3097176dbb8cc7243557ae042e291e4c60e73166b96f92e7cb2b6",
+    "application.log.gz": "36764d8b5cc3fb5a42797b54eb96ef91d33b31e26b79591b79b474e6ac8bc511"
+  },
+  "raw_log_sha256": {
+    "targeted.log.gz": "249b732f062fb9bf4ff6f7706856c237e693a62b11cda4912574f0dd98cadc04",
+    "application.log.gz": "be5205ace93b5777f4ca4a99558fe191253ccac3d352e6bd56231d419a0c7cdc"
   }
 }

@@ -20,14 +20,17 @@ tests**, no skips,61.868739778s; PWA3, access/stream1, session prepare/restart/
 verify, unavailable Push1 and unavailable SMTP1 also passed. Terminal handle58858
 exited0. The script removed only its own Compose project
 flux-test-1790823856-44900, volumes and three tagged images.
-[The exact full log](application.log) and496 [input/log hashes](inputs.json) pin this
+[The readable full log](application.log), [exact raw log](application.log.gz)
+and496 [input/log hashes](inputs.json) pin this
 run. The log was checked for credential patterns: the only broad cookie-pattern
 match was a test name about the SFU cookie gate, not a cookie or credential value.
 
 The same source also passed a targeted Docker build/type/lint and **49/49** typing
 and architecture tests, no skips,14.831962799s, on a separate isolated Compose
 project named flux155socket with ports18561/18525. Terminal handle95326 exited0.
-[Exact targeted log](targeted.log) includes the build and actual service startup.
+[Readable targeted log](targeted.log) and [exact raw targeted log](targeted.log.gz)
+include the build and actual service startup. Readable copies remove trailing
+spaces only; compressed and decompressed hashes preserve all original bytes.
 Earlier intermediate builds had a test-fixture lint failure and one assertion
 that assumed a fixed WebSocketServer close-listener count. The final run fixes
 the fixture and compares the actual initial listener count to its final count;

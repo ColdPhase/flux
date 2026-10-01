@@ -477,7 +477,13 @@
     "docker/Dockerfile": "d03e91c2b5c31a9ea5a7e215626d7d6562ade9af6b562c9e12a57fa6b9b2939e"
   },
   "logs": {
-    "build.log": "2b79014568e15c6289ac4de956b59a9546470cd4f480cce8900ec296ea6fdf73",
-    "tests.log": "14dbf734140b7fcc8b96991bfabf790767b3be88b3f72506d800afe5ac3273cc"
+    "build.log": "71eb405ddba827e3dfdf70b513350313d5452361d587a8f1700a8cfeedcb2e47",
+    "tests.log": "14dbf734140b7fcc8b96991bfabf790767b3be88b3f72506d800afe5ac3273cc",
+    "tests.log.gz": "012b9a66d236956abe40b18d3dd81973ac2aef83db6f4e2db99bdf257953317a",
+    "build.log.gz": "e2626c5d72b998f8a6257da30be7002975d601d9d4c1dac92f142e65ceeece8c"
+  },
+  "raw_log_sha256": {
+    "tests.log.gz": "14dbf734140b7fcc8b96991bfabf790767b3be88b3f72506d800afe5ac3273cc",
+    "build.log.gz": "2b79014568e15c6289ac4de956b59a9546470cd4f480cce8900ec296ea6fdf73"
   }
 }

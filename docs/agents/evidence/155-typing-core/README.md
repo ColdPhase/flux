@@ -19,6 +19,9 @@ git diff --check
 Docker build, type check and lint passed. **21/21 core + architecture checks
 passed**, no skips,895.044417ms. [Build log](build.log), [test log](tests.log)
 and [input/image/log hashes](inputs.json) retain the actual tested pin. These
+readable logs remove trailing spaces only. Original terminal bytes are preserved
+in the [raw build log](build.log.gz) and [raw test log](tests.log.gz), with compressed
+and decompressed hashes in the manifest; source and results are unchanged. These
 are pure injected metadata/clock fixtures, not PostgreSQL or two-user API/browser
 proof. No database/services were started; the test container was automatically
 removed. The dedicated image tag belongs to this checkpoint only.
