@@ -25,6 +25,7 @@ export function nativeVisibleWorkEdges(projectId: string): SQL {
     AND (${nativeWorkEndpointVisible(projectId, sql`e.to_type`, sql`e.to_id`, sql`e.to_version`)})`;
 }
 export type NativeWorkReadObject = { kind: WorkObjectType; id: string };
+export type NativeWorkSourceScope = { messageIds: string[] } | { conversationId: string };
 export type NativeWorkRelationFacts = NativeWorkReadObject & { edges: number; sourceMessages: number; sourceMaterials: number; decisions: number; results: number; rule: WorkReadRef | null };
 
 export function nativeWorkVisibilityRows(db: DbExecutor) {
@@ -32,12 +33,21 @@ export function nativeWorkVisibilityRows(db: DbExecutor) {
     /** Fixed-size SQL aggregate covers all counted/uncounted native link endpoints,
      * including sources outside the returned object/edge window. No graph leaves DB.
      */
-    async fingerprint(projectId: string) {
-      const result = await db.execute<{ fingerprint: string }>(sql`SELECT encode(sha256(convert_to(coalesce(string_agg(
-        e.id::text || ':' || e.from_type || ':' || e.from_id::text || ':' || e.to_type || ':' || e.to_id::text || ':' || coalesce(e.to_version::text, '') || ':' || e.role || ':' ||
+    async fingerprint(projectId: string, sources?: NativeWorkSourceScope) {
+      if (sources && 'messageIds' in sources && (sources.messageIds.length < 1 || sources.messageIds.length > 100)) throw new Error('Invalid bounded source fingerprint selector');
+      const sourceFacts = !sources ? sql`SELECT NULL::text AS fact WHERE false` : 'conversationId' in sources ? sql`
+        SELECT 'conversation:' || c.id::text AS fact FROM project_conversations c WHERE c.project_id = ${projectId}::uuid AND c.id = ${sources.conversationId}::uuid
+        UNION ALL SELECT 'message:' || m.id::text || ':' || m.conversation_id::text AS fact FROM project_messages m
+          WHERE m.project_id = ${projectId}::uuid AND m.conversation_id = ${sources.conversationId}::uuid`
+        : sql`SELECT 'message:' || m.id::text || ':' || m.conversation_id::text AS fact FROM project_messages m
+          WHERE m.project_id = ${projectId}::uuid AND m.id IN (${sql.join(sources.messageIds.map((id) => sql`${id}::uuid`), sql`, `)})`;
+      const result = await db.execute<{ fingerprint: string }>(sql`WITH link_facts AS (SELECT
+        'link:' || e.id::text || ':' || e.from_type || ':' || e.from_id::text || ':' || e.to_type || ':' || e.to_id::text || ':' || coalesce(e.to_version::text, '') || ':' || e.role || ':' ||
         (${nativeWorkEndpointVisible(projectId, sql`e.from_type`, sql`e.from_id`)})::text || ':' ||
-        (${nativeWorkEndpointVisible(projectId, sql`e.to_type`, sql`e.to_id`, sql`e.to_version`)})::text,
-        ',' ORDER BY e.id), ''), 'UTF8')), 'hex') AS fingerprint FROM project_object_links e WHERE e.project_id = ${projectId}::uuid`);
+        (${nativeWorkEndpointVisible(projectId, sql`e.to_type`, sql`e.to_id`, sql`e.to_version`)})::text AS fact
+        FROM project_object_links e WHERE e.project_id = ${projectId}::uuid), source_facts AS (${sourceFacts}), facts AS (
+          SELECT fact FROM link_facts UNION ALL SELECT fact FROM source_facts)
+        SELECT encode(sha256(convert_to(coalesce(string_agg(fact, ',' ORDER BY fact COLLATE "C"), ''), 'UTF8')), 'hex') AS fingerprint FROM facts`);
       const fingerprint = result.rows[0]?.fingerprint;
       if (!fingerprint || !/^[0-9a-f]{64}$/.test(fingerprint)) throw new Error('Native source visibility could not be observed');
       return fingerprint;
@@ -47,6 +57,7 @@ export function nativeWorkVisibilityRows(db: DbExecutor) {
     async relations(projectId: string, objects: readonly NativeWorkReadObject[]): Promise<NativeWorkRelationFacts[]> {
       if (objects.length > 100) throw new Error('Native relation count batch exceeds the bound');
       if (!objects.length) return [];
+      const expectedCount = objects.length;
       const refs = objects.map((object) => sql`(${object.kind}::text, ${object.id}::uuid)`);
       const result = await db.execute<NativeWorkRelationFacts>(sql`WITH refs(kind, id) AS (VALUES ${sql.join(refs, sql`, `)}), visible AS (${nativeVisibleWorkEdges(projectId)})
         SELECT g.kind, g.id, count(DISTINCT e.id)::int AS edges,
@@ -62,7 +73,7 @@ export function nativeWorkVisibilityRows(db: DbExecutor) {
             ORDER BY v.created_at, v.id LIMIT 1) AS rule
         FROM refs g LEFT JOIN visible e ON (e.from_type = g.kind AND e.from_id = g.id) OR (e.to_type = g.kind AND e.to_id = g.id)
         GROUP BY g.kind, g.id`);
-      if (result.rows.length !== objects.length) throw new Error('Incomplete native relation count observation');
+      if (result.rows.length !== expectedCount) throw new Error('Incomplete native relation count observation');
       return result.rows;
     },
   };

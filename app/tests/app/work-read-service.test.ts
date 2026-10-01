@@ -100,7 +100,7 @@ test('revocation at the final fence suppresses the whole assembled response', as
 test('every required message is validated even when it has no edges, before association counts and hydration', async () => {
   const { reads, calls } = harness({ requireSources: async () => { calls.push('source-policy'); throw new NotFoundError('Source'); } });
   await assert.rejects(reads.associations(actor, projectId, new URLSearchParams(`messageIds=${messageId}`)), { status: 404 });
-  assert.deepEqual(calls, ['tx-start', 'project-policy', 'observation', 'visibility', 'source-policy', 'tx-end']);
+  assert.deepEqual(calls, ['tx-start', 'project-policy', 'source-policy', 'tx-end']);
 });
 
 test('required final-fence failures become unavailable; native session and scope rejection stay exact', async () => {

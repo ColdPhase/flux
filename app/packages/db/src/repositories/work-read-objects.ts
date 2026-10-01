@@ -80,6 +80,17 @@ export function nativeWorkObjectRows(db: DbExecutor) {
 
   return {
     rows,
+    async decision(projectId: string, id: string) {
+      const [decision] = await db.select({ id: d.id, status: d.status }).from(d).where(and(eq(d.projectId, projectId), eq(d.id, id)));
+      return decision ?? null;
+    },
+    async decisionRefs(projectId: string, ids: readonly string[]) {
+      if (ids.length > 3) throw new Error('Native detail context exceeds its bound');
+      if (!ids.length) return [];
+      const ordered = [...new Set(ids)];
+      const refs = await db.select({ id: d.id, title: d.title }).from(d).where(and(eq(d.projectId, projectId), inArray(d.id, ordered)));
+      return ordered.flatMap((id) => { const ref = refs.find((ref) => ref.id === id); return ref ? [{ kind: 'decision' as const, ...ref }] : []; });
+    },
     /** Full own fields for exactly one native object. No links are implicitly loaded. */
     async detail(projectId: string, object: NativeWorkReadObject): Promise<WorkDetailObject | null> {
       const requested = { ...object };

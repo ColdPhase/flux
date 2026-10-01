@@ -65,38 +65,46 @@ function safeCount(value: string) {
   return result;
 }
 
-/** Caller supplies its read-only REPEATABLE READ executor AFTER central access/selector validation.
- * Overfetch at most one lightweight key; only the returned <=limit keys may be hydrated.
- */
+/** Private key markers include edge/message; public work rows retain native kinds only. */
+export interface NativeReadKeyPage<Kind extends string> {
+  items: { kind: Kind; id: string; rank: number; createdAt: string }[];
+  total: number; before: number; hasBefore: boolean; hasAfter: boolean;
+}
+/** One observation: overfetch only one lightweight key, then hydrate <=limit returned keys. */
+export async function nativeReadKeyWindow<Kind extends string>(db: DbExecutor, selected: SQL, limit: number, cursor?: WorkReadCursor, ascending = false): Promise<NativeReadKeyPage<Kind>> {
+  const precedingKey = ascending ? (key: WorkReadCursor['boundary']) => sql`(created_at, id) < (${key.createdAt}::timestamptz, ${key.id}::uuid)` : preceding;
+  const followingKey = ascending ? (key: WorkReadCursor['boundary']) => sql`(created_at, id) > (${key.createdAt}::timestamptz, ${key.id}::uuid)` : following;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('Invalid bounded native key limit');
+  // Every query/count in this observation owns the same continuation across awaits.
+  const ownedCursor = cursor ? { direction: cursor.direction, boundary: { ...cursor.boundary } } : undefined;
+  const forward = ownedCursor?.direction !== 'previous';
+  const continuation = ownedCursor ? forward ? followingKey(ownedCursor.boundary) : precedingKey(ownedCursor.boundary) : sql`true`;
+  const order = ascending ? forward ? sql`created_at ASC, id ASC` : sql`created_at DESC, id DESC` : forward ? sql`rank ASC, created_at DESC, id DESC` : sql`rank DESC, created_at ASC, id ASC`;
+  const found = await db.execute<{ kind: Kind; id: string; rank: number; createdAt: string }>(sql`WITH selected AS (${selected}) SELECT kind, id, rank,
+    to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "createdAt"
+    FROM selected WHERE (${continuation}) ORDER BY ${order} LIMIT ${limit + 1}`);
+  const items = found.rows.slice(0, limit);
+  if (!forward) items.reverse();
+  const boundary = items[0] ?? ownedCursor?.boundary;
+  const prior = boundary ? precedingKey(boundary) : sql`false`;
+  const later = boundary ? followingKey(boundary) : sql`false`;
+  const counted = await db.execute<{ total: string; prior: string; later: string }>(sql`WITH selected AS (${selected}) SELECT count(*)::text AS total,
+    count(*) FILTER (WHERE ${prior})::text AS prior, count(*) FILTER (WHERE ${later})::text AS later FROM selected`);
+  const facts = counted.rows[0];
+  if (!facts) throw new Error('Missing native work count observation');
+  const total = safeCount(facts.total), priorCount = safeCount(facts.prior), laterCount = safeCount(facts.later);
+  if (!ownedCursor && !items.length && total !== 0) throw new Error('Native work key/count observations differ');
+  const before = items.length ? priorCount : ownedCursor?.direction === 'next' ? total : 0;
+  if (before + items.length > total) throw new Error('Native work key/count observations differ');
+  return { items, total, before,
+    hasBefore: items.length ? before > 0 : ownedCursor?.direction === 'next' && priorCount > 0,
+    hasAfter: items.length ? before + items.length < total : ownedCursor?.direction === 'previous' && laterCount > 0 };
+}
+
+/** Caller supplies its read-only REPEATABLE READ executor AFTER central access/selector validation. */
 export function nativeWorkReadKeys(db: DbExecutor) {
   return {
-    async view(projectId: string, actor: PrincipalRef, selection: NativeWorkViewSelector, limit: number, cursor?: WorkReadCursor): Promise<NativeWorkKeyPage> {
-      if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('Invalid bounded native key limit');
-      // Every query/count in this observation owns the same continuation across awaits.
-      const ownedCursor = cursor ? { direction: cursor.direction, boundary: { ...cursor.boundary } } : undefined;
-      const selected = nativeWorkViewKeySource(projectId, actor, selection);
-      const forward = ownedCursor?.direction !== 'previous';
-      const continuation = ownedCursor ? forward ? following(ownedCursor.boundary) : preceding(ownedCursor.boundary) : sql`true`;
-      const order = forward ? sql`rank ASC, created_at DESC, id DESC` : sql`rank DESC, created_at ASC, id ASC`;
-      const found = await db.execute<NativeWorkReadKey>(sql`WITH selected AS (${selected}) SELECT kind, id, rank,
-        to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "createdAt"
-        FROM selected WHERE (${continuation}) ORDER BY ${order} LIMIT ${limit + 1}`);
-      const items = found.rows.slice(0, limit);
-      if (!forward) items.reverse();
-      const boundary = items[0] ?? ownedCursor?.boundary;
-      const prior = boundary ? preceding(boundary) : sql`false`;
-      const later = boundary ? following(boundary) : sql`false`;
-      const counted = await db.execute<{ total: string; prior: string; later: string }>(sql`WITH selected AS (${selected}) SELECT count(*)::text AS total,
-        count(*) FILTER (WHERE ${prior})::text AS prior, count(*) FILTER (WHERE ${later})::text AS later FROM selected`);
-      const facts = counted.rows[0];
-      if (!facts) throw new Error('Missing native work count observation');
-      const total = safeCount(facts.total), priorCount = safeCount(facts.prior), laterCount = safeCount(facts.later);
-      if (!ownedCursor && !items.length && total !== 0) throw new Error('Native work key/count observations differ');
-      const before = items.length ? priorCount : ownedCursor?.direction === 'next' ? total : 0;
-      if (before + items.length > total) throw new Error('Native work key/count observations differ');
-      return { items, total, before,
-        hasBefore: items.length ? before > 0 : ownedCursor?.direction === 'next' && priorCount > 0,
-        hasAfter: items.length ? before + items.length < total : ownedCursor?.direction === 'previous' && laterCount > 0 };
-    },
+    view: (projectId: string, actor: PrincipalRef, selection: NativeWorkViewSelector, limit: number, cursor?: WorkReadCursor): Promise<NativeWorkKeyPage> =>
+      nativeReadKeyWindow<WorkObjectType>(db, nativeWorkViewKeySource(projectId, actor, selection), limit, cursor),
   };
 }

@@ -9,6 +9,7 @@ import type { WorkReadFinalFence, WorkReadPorts, WorkReadUnitOfWork, WorkSummary
 import {
   assertEmptyWorkReadQuery, parseWorkAssociationRead, parseWorkRelationRead, parseWorkViewRead,
   workReadId, workReadInvalid, workReadKind,
+  type WorkAssociationSelection,
 } from './query.js';
 
 function caller(principal: Principal): PrincipalRef {
@@ -39,13 +40,14 @@ function rowFacts(rows: readonly NativeWorkRow[], projectId: string, workspaceId
 /** Read orchestration owns validation, global windows, coherent observations and the final fence. */
 export function createBoundedWorkReads(unit: WorkReadUnitOfWork, finalFence: WorkReadFinalFence) {
   async function observe<T>(principal: PrincipalRef, projectId: string,
-    read: (ports: WorkReadPorts, observedAt: string, workspaceId: string) => Promise<T>) {
+    read: (ports: WorkReadPorts, observedAt: string, workspaceId: string) => Promise<T>, sources?: WorkAssociationSelection) {
     let observation: { value: T; sourceVisibility: string };
     try {
       observation = await unit.run(async (ports) => {
         const access = await ports.access.requireProject(principal, projectId);
+        if (sources) await ports.rows.requireSources(projectId, sources);
         const observedAt = await ports.rows.observedAt();
-        const sourceVisibility = await ports.rows.sourceVisibilityFingerprint(projectId);
+        const sourceVisibility = await ports.rows.sourceVisibilityFingerprint(projectId, sources);
         requireFact(/^[0-9a-f]{64}$/.test(sourceVisibility));
         return { value: await read(ports, observedAt, access.workspaceId), sourceVisibility };
       });
@@ -55,7 +57,7 @@ export function createBoundedWorkReads(unit: WorkReadUnitOfWork, finalFence: Wor
     }
     // Deliberately outside the read transaction; the adapter re-resolves the exact session.
     try {
-      const access = await finalFence.check(principal, projectId, observation.sourceVisibility);
+      const access = await finalFence.check(principal, projectId, observation.sourceVisibility, sources);
       return { value: observation.value, access };
     } catch (error) {
       if (error instanceof DomainError) throw error;
@@ -105,7 +107,6 @@ export function createBoundedWorkReads(unit: WorkReadUnitOfWork, finalFence: Wor
       const sourceScope = workReadScope('work-association-sources', projectId, actor, input.selection, WORK_READ_LIMITS.sourceIds);
       const sourceCursor = decodeWorkReadCursor(input.sourceCursor, sourceScope);
       const response = await observe(actor, projectId, async ({ rows }, observedAt, workspaceId) => {
-        await rows.requireSources(projectId, input.selection);
         const page = presentWorkReadPage(await rows.associationObjects(projectId, input.selection, input.limit, cursor), input.limit, scope, cursor);
         rowFacts(page.items, projectId, workspaceId);
         const objects = page.items.map(({ kind, id }) => ({ kind, id }));
@@ -121,7 +122,7 @@ export function createBoundedWorkReads(unit: WorkReadUnitOfWork, finalFence: Wor
         for (const edge of edges.items) requireFact(edge.projectId === projectId && edge.to.type === 'message' && objects.some((object) => object.kind === edge.from.type && object.id === edge.from.id) && (input.selection.relation === 'any' || edge.role === 'source'));
         return { ...page, observedAt, sources: sources.items, sourceTotal: sources.total,
           sourceNextCursor: sources.nextCursor, sourcePreviousCursor: sources.previousCursor, edges, edgeTotal };
-      });
+      }, input.selection);
       return response.value;
     },
 

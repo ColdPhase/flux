@@ -20,6 +20,7 @@ import { setStaticHeaders } from './pwa/static-headers.js';
 import { streamRoutes } from './stream/index.js';
 import { conversationRoutes } from './conversation/routes.js';
 import { workRoutes } from './work/routes.js';
+import { workReadRoutes } from './work-read/routes.js';
 import { liveRoutes } from './live/routes.js';
 import { liveAccess } from './live/access.js';
 import { liveSessionStore } from './live/store.js';
@@ -76,6 +77,7 @@ await app.register(streamRoutes, { db, sessions: identity, publicOrigin: identit
 await app.register(typingRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, connectionString });
 await app.register(conversationRoutes, { db, sessions: identity });
 await app.register(workRoutes, { db, sessions: identity });
+await app.register(workReadRoutes, { db, sessions: identity });
 // Configuration alone does not prove the SFU, DNS/TLS or receiver path is healthy.
 app.get('/api/v1/live-sessions/capabilities', async () => ({ status: liveMedia ? 'configured' : 'unavailable' }));
 const livePorts = liveMedia ? { access: liveAccess(db), sessions: liveSessionStore(db), media: liveMedia.media, mediaUrl: liveMedia.mediaUrl } : null;

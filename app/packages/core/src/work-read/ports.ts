@@ -19,7 +19,7 @@ export interface WorkAssociationObservation {
 }
 export interface WorkReadRepository {
   /** Fixed-size digest covering ALL relevant native endpoint visibility, including counted unseen sources. */
-  sourceVisibilityFingerprint(projectId: string): Promise<string>;
+  sourceVisibilityFingerprint(projectId: string, sources?: WorkAssociationSelection): Promise<string>;
   summary(projectId: string, caller: PrincipalRef): Promise<WorkSummaryObservation>;
   /** Native selector validation precedes totals, keys and bounded row hydration. No legacy unlimited links. */
   view(projectId: string, caller: PrincipalRef, selection: WorkViewSelection, limit: number, cursor?: WorkReadCursor): Promise<WorkReadSlice<NativeWorkRow>>;
@@ -43,5 +43,5 @@ export interface WorkReadObservation<T> { value: T; sourceVisibility: string }
  * Represent native session rejection as DomainError(401), preserving the transport-neutral outcome.
  */
 export interface WorkReadFinalFence {
-  check(principal: Principal, projectId: string, sourceVisibility: string): Promise<ProjectAccess>;
+  check(principal: Principal, projectId: string, sourceVisibility: string, sources?: WorkAssociationSelection): Promise<ProjectAccess>;
 }
