@@ -335,8 +335,10 @@ function DecisionPanel({ decision, context, detail, relations, reload, choices, 
 
   return (
     <div className="details wd" data-detail-kind="decision" data-detail-id={decision.id}>
-      <p className={`details__eyebrow wd-eyebrow${decision.status === 'proposed' ? ' wd-need' : ''}`}><Icon name="rule" size={13} />{decisionLine(decision)}</p>
-      <h3 className={`details__title${decision.status === 'superseded' ? ' wd-was' : ''}`}>{decision.title}</h3>
+      <div className="wd-decision-identity">
+        <p className={`details__eyebrow wd-eyebrow${decision.status === 'proposed' ? ' wd-need' : ''}`}><Icon name="rule" size={13} />{decisionLine(decision)}</p>
+        <h3 className={`details__title${decision.status === 'superseded' ? ' wd-was' : ''}`}>{decision.title}</h3>
+      </div>
       {decision.rationale ? <p className="details__lead">{decision.rationale}</p> : null}
       <dl className="details__dl wd-dl">
         <dt>Proposed</dt><dd>{decision.proposedBy.name}{decision.proposedBy.kind === 'agent' ? ' (agent)' : ''} · {shortDate(decision.createdAt)}</dd>
@@ -385,7 +387,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, choices, 
         <form className="details__sec wd-accept" onSubmit={(event) => void accept(event)}>
           <h4>{pivot ? 'Accept as a pivot' : 'Accept'}</h4>
           <p>Accepting makes this the current rule{earlier ? ` in place of “${earlier.title}”, which stays in the history` : ''}. You are recorded as the person who decided.</p>
-          {pivot ? <><ChoicePages choices={pivotChoices} label="Pivot work pages" /><p className="wd-muted">{selectedCount('keep')} still apply · {selectedCount('park')} parked · selections are kept across pages (up to 50 each).</p></> : null}
+          {pivot ? <ChoicePages choices={pivotChoices} label="Pivot work pages" /> : null}
           {pivot && candidates.length ? (
             <fieldset className="wd-pivot" disabled={busy}>
               <legend>What happens to current work?</legend>
@@ -400,8 +402,11 @@ function DecisionPanel({ decision, context, detail, relations, reload, choices, 
               ))}
             </fieldset>
           ) : null}
-          {error ? <p className="wd-error" role="alert">{error}</p> : null}
-          <div className="wd-actions"><Button type="submit" variant="primary" busy={busy} disabled={pivot && !pivotChoices.page}>{pivot ? 'Accept and pivot' : 'Accept decision'}</Button></div>
+          <div className="wd-accept-finish">
+            {pivot ? <p className="wd-muted">{selectedCount('keep')} still apply · {selectedCount('park')} parked · selections stay across pages (up to 50 each).</p> : null}
+            {error ? <p className="wd-error" role="alert">{error}</p> : null}
+            <div className="wd-actions"><Button type="submit" variant="primary" busy={busy} disabled={pivot && !pivotChoices.page}>{pivot ? 'Accept and pivot' : 'Accept decision'}</Button></div>
+          </div>
           <p className="wd-muted">Agents can propose decisions; only people accept them.</p>
         </form>
       ) : null}
@@ -527,6 +532,7 @@ function AttachResult({ view, context, contextStatus, reload, revision, isCurren
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const evidenceId = useId();
+  const findingId = useId();
   const workSelectId = useId();
   const edit = <T,>(set: (value: T) => void) => (value: T) => { set(value); setAttempt(crypto.randomUUID()); setError(''); };
   const selected = useNativeOwn(me.user.id, view.projectId, 'work', workId || undefined, !!context, revision);
@@ -562,7 +568,8 @@ function AttachResult({ view, context, contextStatus, reload, revision, isCurren
       {contextStatus}
       {context ? <SourcePreview view={view} /> : null}
       <fieldset className="wd-form" disabled={busy}>
-        <Input label="Finding" value={title} onChange={(event) => edit(setTitle)(event.target.value)} required maxLength={200} />
+        <label htmlFor={findingId}>Finding</label>
+        <textarea id={findingId} value={title} onChange={(event) => edit(setTitle)(event.target.value)} required maxLength={200} rows={3} />
         <div className="wd-seg" role="radiogroup" aria-label="Positive or negative">
           {(['positive', 'negative'] as const).map((value) => (
             <label key={value} className="wd-seg__b"><input type="radio" name="finding" value={value} checked={finding === value} onChange={() => edit(setFinding)(value)} />{value === 'positive' ? 'Positive' : 'Negative'}</label>
