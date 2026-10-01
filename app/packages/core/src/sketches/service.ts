@@ -231,6 +231,25 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
       });
     },
 
+    /** Canonical bounded map view. The caller holds the map row's read lock for a stable checkpoint. */
+    async getWindow(principal: Principal, sketchId: string, query: { limit?: number; offset?: number; linkOffset?: number; expectedUpdatedAt?: string }) {
+      const page = valid.page(query);
+      const linkPage = valid.page({ limit: page.limit, offset: query.linkOffset });
+      if (page.limit > 50) throw new InvalidInputError('A map window is at most 50 thoughts and links');
+      return uow.run(async (ports) => {
+        const { sketch, access } = await authorized(ports, principal, 'sketch.read', sketchId);
+        if ((page.offset > 0 || linkPage.offset > 0) && query.expectedUpdatedAt === undefined)
+          throw new InvalidInputError('A continuation needs the map updatedAt checkpoint', 'VERSION_REQUIRED');
+        if (query.expectedUpdatedAt !== undefined && query.expectedUpdatedAt !== iso(sketch.updatedAt))
+          throw new ConflictError('The map changed; read it again from the first page', 'SOURCE_VERSION_CONFLICT');
+        const [thoughts, links, counts] = await Promise.all([ports.sketches.thoughts(sketch.id, page),
+          ports.sketches.links(sketch.id, linkPage), ports.sketches.mapCounts(sketch.id)]);
+        return { ...toSketch(sketch, access), thoughts: await thoughtViews(ports, principal, sketch.workspaceId, thoughts), links: links.map(toLink),
+          thoughtPage: { ...page, total: counts.thoughts, nextOffset: page.offset + page.limit < counts.thoughts ? page.offset + page.limit : null },
+          linkPage: { ...linkPage, total: counts.links, nextOffset: linkPage.offset + linkPage.limit < counts.links ? linkPage.offset + linkPage.limit : null } };
+      });
+    },
+
     async rename(principal: Principal, sketchId: string, command: UpdateSketchCommand): Promise<Sketch> {
       const title = valid.text(command?.title, 'title', SKETCH_LIMITS.title);
       return uow.run(async (ports) => {
