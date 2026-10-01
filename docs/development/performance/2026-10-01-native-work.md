@@ -1,8 +1,9 @@
 # Native work surface performance kickoff — #155 / #151 / #136
 
 2026-10-01. Owner Zamojski5, existing155worktree/PR170; base application
-`e676a3ff83d225769308a2e730bd04d2ca61ad4b`. This is a proposed measurement/optimization
-contract before changing runtime behavior. All whole-task, adaptive, motion,
+`e676a3ff83d225769308a2e730bd04d2ca61ad4b`. The measurement kickoff received bounded independent source agreement at
+7c2d267afadc3314938ed435a79f9a86795b1a70. No harness had run at that agreement;
+no public API or runtime optimization was accepted. All whole-task, adaptive, motion,
 current-authority, source/identity/draft/reading and physical-device criteria stay
 required. The previous128-typing transport measurement is separate evidence.
 

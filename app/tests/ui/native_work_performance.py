@@ -29,6 +29,9 @@ COUNTS = {"Needs you": 1, "In progress": 300, "Blocked": 150, "Open": 470,
           "Parked": 30, "Finished": 50, "Decisions": 2, "Results": 10}
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I)
 COLLECTION = re.compile(r"/api/v1/projects/[^/]+/(work|decisions|results|summary)$")
+CONTINUITY = ("resizePreservesDraft", "resizePreservesFocusSelection", "onlyMinePreservesDraft",
+              "onlyMineCountsVerified", "viewPreservesDraft", "detailsPreservesDraft",
+              "deepNativeTitleVerified", "sourceRoundTripPreservesDraft", "sourceRoundTripNativeRouteVerified")
 PROBE = r"""(() => {
   const counts = {"Needs you":1,"In progress":300,"Blocked":150,"Open":470,
     "Parked":30,"Finished":50,"Decisions":2,"Results":10};
@@ -102,6 +105,13 @@ def api(context, method, path, body=None, status=200):
     data = response.json()
     response.dispose()
     return data
+
+
+def work_digest(items):
+    # Digest current native state, retaining no identity/title/authentication in reports.
+    state = [{"id":i["id"],"version":i["version"],"status":i["status"],
+              "owner":i["owner"],"parked":i["parked"],"links":i["links"]} for i in items]
+    return hashlib.sha256(json.dumps(sorted(state,key=lambda i:i["id"]),sort_keys=True).encode()).hexdigest()
 
 
 def fixture(browser):
@@ -191,10 +201,11 @@ def fixture(browser):
         assert decisions["total"] == 3 and Counter(d["status"] for d in decisions["items"]) == {"accepted":1,"proposed":1,"superseded":1}
         assert results["total"] == 10 and Counter(r["finding"] for r in results["items"]) == {"positive":5,"negative":5}
         per_account.append({"uniqueWork":1000,"status":{"open":500,"in_progress":300,"blocked":150,"done":50},"parked":30,"ownedWork":500,"ownedParked":15,"decisions":3,"results":10})
+        digest = work_digest(observed)
     states = [c.storage_state() for c in contexts]
     for context in contexts: context.close()
     return {"project":project,"conversation":conversation["id"],"deep":work[900],"sourced":work[98],
-        "states":states,"summary":{"actualHumans":2,"accountsVerified":per_account,
+        "states":states,"workDigest":digest,"summary":{"actualHumans":2,"accountsVerified":per_account,
             "workSourceLinks":{"message":50,"materialVersion1":50},"messagesCreated":100,
             "fixtureSeconds":time.monotonic()-started,"writes":"public native commands; setup excluded from measurement"}}
 
@@ -262,6 +273,7 @@ class Traffic:
 def snapshot(page,cdp):
     dom = page.evaluate("""() => ({elements:document.querySelectorAll('*').length,
       renderedRows:document.querySelectorAll('.ws-list > li').length,
+      renderedWorkRows:document.querySelectorAll('#ws-progress .ws-list > li,#ws-blocked .ws-list > li,#ws-open .ws-list > li,#ws-parked .ws-list > li,#ws-finished .ws-list > li').length,
       viewport:{width:innerWidth,height:innerHeight,dpr:devicePixelRatio},
       overflow:document.documentElement.scrollWidth > innerWidth})""")
     try:
@@ -313,7 +325,7 @@ def run_profile(browser,data,label,viewport,cpu,report):
         item["initialTraffic"] = traffic.collect("initial")
         item["initialDOM"] = snapshot(page,cdp)
         item["initialFetchBoundPassed"] = item["initialTraffic"]["uniqueWorkFetched"]<=100 and item["initialTraffic"]["collectionCalls"]<=4 and item["initialTraffic"]["unavailableCollectionBodies"]==0
-        item["initialRenderBoundPassed"] = item["initialDOM"]["renderedRows"]<=200
+        item["initialRenderBoundPassed"] = item["initialDOM"]["renderedWorkRows"]<=200
         page.screenshot(path=str(OUT/f"native-work-{label}.png"))
         targets = {"navigation":2000*cpu if cpu==1 else 4000,"input":100 if cpu==1 else 200,
                    "view":150 if cpu==1 else 300,"scroll":100 if cpu==1 else 200}
@@ -388,6 +400,10 @@ def run_profile(browser,data,label,viewport,cpu,report):
         page.get_by_label("Only mine").check()
         item["continuity"]["onlyMinePreservesDraft"] = field.input_value()==draft
         item["continuity"]["onlyMineRows"] = page.locator(".ws-list > li").count()
+        mine_counts = page.evaluate("""() => Object.fromEntries([...document.querySelectorAll('.ws-view')].slice(1).map(b => [b.childNodes[0].textContent.trim(),Number(b.querySelector('.ws-view__n')?.textContent)]))""")
+        item["continuity"]["onlyMineCounts"] = mine_counts
+        item["continuity"]["onlyMineCountsVerified"] = item["continuity"]["onlyMineRows"]==506 and mine_counts=={
+            "Needs you":1,"In progress":150,"Blocked":75,"Open":235,"Parked":15,"Finished":25,"Results":5}
         page.get_by_label("Only mine").uncheck()
         page.get_by_role("navigation",name="Task views").get_by_role("button",name=re.compile("^Blocked")).click()
         item["continuity"]["viewPreservesDraft"] = field.input_value()==draft
@@ -443,6 +459,14 @@ def main():
             data = fixture(browser); report["fixture"] = data["summary"]; write_report(report)
             for label,viewport,cpu in (("desktop",{"width":1280,"height":800},1),("phone-cpu4",{"width":390,"height":844},4)):
                 run_profile(browser,data,label,viewport,cpu,report)
+            verifier = browser.new_context(base_url=ORIGIN,storage_state=data["states"][0])
+            current = []
+            for offset in range(0,1000,100):
+                current.extend(api(verifier,"GET",f"/api/v1/projects/{data['project']}/work?limit=100&offset={offset}")["items"])
+            report["nativeWorkUnchanged"] = len(current)==1000 and work_digest(current)==data["workDigest"]
+            report["nativeWorkDigestBefore"] = data["workDigest"]
+            report["nativeWorkDigestAfter"] = work_digest(current)
+            verifier.close()
             # Same native content at 3840px; one observation, never a latency distribution/device claim.
             context = browser.new_context(base_url=ORIGIN,storage_state=data["states"][0],viewport={"width":3840,"height":2160},device_scale_factor=1)
             context.add_init_script(PROBE); page = context.new_page()
@@ -451,8 +475,23 @@ def main():
             report["wideObservation"] = snapshot(page,cdp)
             page.screenshot(path=str(OUT/"native-work-wide.png")); context.close(); browser.close()
         report["complete"] = True
-        failures = any(not p["initialFetchBoundPassed"] or not p["initialRenderBoundPassed"] or
-            not p["continuity"]["sourceRoundTripPreservesDraft"] or any(not d["passed"] for d in p["distributions"].values()) for p in report["profiles"])
+        failure_names = []
+        if not report["nativeWorkUnchanged"]: failure_names.append("nativeWorkChanged")
+        for p in report["profiles"]:
+            for key in ("initialFetchBoundPassed","initialRenderBoundPassed"):
+                if not p[key]: failure_names.append(f"{p['label']}:{key}")
+            for key in CONTINUITY:
+                if not p["continuity"].get(key,False): failure_names.append(f"{p['label']}:{key}")
+            for key,d in p["distributions"].items():
+                if not d["passed"]: failure_names.append(f"{p['label']}:{key}:distribution")
+                if d.get("trafficIncluding15sRevalidation",{}).get("requestBufferOverflow",0):
+                    failure_names.append(f"{p['label']}:{key}:requestBufferOverflow")
+            unexpected_mutations = {route:count for route,count in p["mutatingRequests"].items()}
+            # Tasks/source routes do not issue ordinary read acknowledgments in this source.
+            p["unexpectedMutatingRequests"] = unexpected_mutations
+            if unexpected_mutations: failure_names.append(f"{p['label']}:unexpectedMutation")
+        report["observedFailures"] = failure_names
+        failures = bool(failure_names)
         report["outcome"] = "completed-baseline-with-observed-failures" if failures else "completed-measurement-within-proposed-budgets"
         write_report(report)
         print(report["outcome"],flush=True)
