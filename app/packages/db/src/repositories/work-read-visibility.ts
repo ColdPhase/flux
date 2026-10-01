@@ -1,5 +1,5 @@
 import { sql, type SQL } from 'drizzle-orm';
-import type { WorkObjectType, WorkReadRef, WorkRelationCounts } from '@flux/contracts';
+import type { WorkObjectType, WorkReadRef } from '@flux/contracts';
 import type { DbExecutor } from './push.js';
 
 /** Native structural scope, matching workRows.targetExists. Central project.read is
@@ -25,7 +25,7 @@ export function nativeVisibleWorkEdges(projectId: string): SQL {
     AND (${nativeWorkEndpointVisible(projectId, sql`e.to_type`, sql`e.to_id`, sql`e.to_version`)})`;
 }
 export type NativeWorkReadObject = { kind: WorkObjectType; id: string };
-export type NativeWorkRelationFacts = NativeWorkReadObject & WorkRelationCounts & { rule: WorkReadRef | null };
+export type NativeWorkRelationFacts = NativeWorkReadObject & { edges: number; sourceMessages: number; sourceMaterials: number; decisions: number; results: number; rule: WorkReadRef | null };
 
 export function nativeWorkVisibilityRows(db: DbExecutor) {
   return {
