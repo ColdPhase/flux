@@ -8,7 +8,7 @@ not certify call quality, k3s installation or real device support.
 
 ## Compose deployment
 
-Layer `docker/compose.yaml`, `docker/compose.live.yaml`, then
+Layer `docker/compose.source.yaml`, `docker/compose.live.yaml`, then
 `docker/compose.live.turn.yaml`. Set all base live variables plus:
 
 | Variable | Operator value |
