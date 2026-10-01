@@ -172,3 +172,14 @@ execution/receipt port, with explicit third-scope consent. [Exact execution
 evidence](execution-checkpoint.md) records 32 focused and 347 full Docker checks,
 fresh third-scope browser evidence and the still-disabled native action tools.
 Historical consent/read checkpoints above retain their original evidence limits.
+
+### Native task plan slice (2026-10-01)
+
+Task criteria, same-project prerequisites and the immutable plan intent, the pinned
+project task-graph lock/reader and the browser task-detail display are implemented on
+the stacked branch `codex-hubert/152-native-plan` (migration 0039; PR after #167 merges).
+The [contract's implementation status](../2026-10-01-native-plan-contract.md#implemented-at-the-native-plan-slice)
+lists the final names and deviations and the
+[checkpoint](../2026-10-01-native-plan-checkpoint.md) the executed checks. MCP action
+tools stay disabled and #153's claim adapter, independent review and real-client
+activation remain required.

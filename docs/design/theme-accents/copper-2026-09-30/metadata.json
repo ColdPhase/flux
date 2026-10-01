@@ -1,0 +1,67 @@
+{
+  "date": "2026-09-30",
+  "issue": 148,
+  "production_source": "f9db781dc9e7410651355e3f475cfd33d0574bae",
+  "base": "3f02e8668a5f636a02188b1ced9438cfea0bd8d6",
+  "initial_full_source": "3935722",
+  "initial_full_ui": {
+    "loaded": 118,
+    "passed": 114,
+    "skipped": 4,
+    "seconds": 366.274
+  },
+  "current_focused_ui": {
+    "passed": 7,
+    "seconds": 93.529
+  },
+  "browser_measurements": 145,
+  "minimum_text_ratio": 4.776043702429852,
+  "minimum_nontext_ratio": 5.02239613219938,
+  "screenshots": 116,
+  "environment": {
+    "browser_tests": "Playwright Python 1.62.0; digest-pinned Docker image in infra/ui-tests.Dockerfile",
+    "zoom_percent": 100,
+    "viewports": {
+      "desktop": [
+        1440,
+        900
+      ],
+      "desktop_small": [
+        1280,
+        800
+      ],
+      "phone": [
+        390,
+        844
+      ],
+      "tablet": [
+        820,
+        1180
+      ],
+      "short_phone": [
+        390,
+        500
+      ]
+    },
+    "enlarged_text": "125% shared type tokens; no physical device or full 200% conformance claim",
+    "runtime_image_id": "not separately collected before per-run image cleanup"
+  },
+  "unverified": [
+    "Integration with not-yet-implemented #136 Agents/Studio shell",
+    "Physical Android/iPhone/iPad/PWA and OS notifications",
+    "Opt-in live-media checks",
+    "Screen reader and full accessibility acceptance",
+    "Eligible independent GitHub approval"
+  ],
+  "source_sha256": {
+    "apps/web/src/app/theme.ts": "08a62ccb318399c32c8972fec39c51395fe0e0222a13e180b548725bb1c64fa0",
+    "apps/web/src/app/UserMenu.tsx": "8aaa48c2b53d54ed0f4593d26a6de1199f6a99c1a40f9a0b6ee30ca3640efae0",
+    "apps/web/src/app/app.css": "7d60e6700f0e5692f822b8b6f41509f9af039df5e69e2c809bed92f682f1c818",
+    "apps/web/src/ui/tokens.css": "09f244891241b5396beaabfb53227add720b97c4a10f54d37309f0876c3bfe7e",
+    "scripts/check_contrast.py": "ca1926a395400cf7eb26ca042f857ed9fbbd3c0405e0b0ee3c8b1b37e81c7d58",
+    "tests/ui/test_theme_accents.py": "6a38eab96181baabc4ee5339c1ce891150fc34a6fcac446e9424e5ea08b3d098",
+    "infra/Dockerfile": "1e792115bc674b70dde33aa52a58904eb3f95c4b60724b19b73cc0c5a2f72bbe",
+    "infra/ui-tests.Dockerfile": "533565b9be6bf6fe5f2547254385dc795d3035d190262c74cb9a49a8d66f8590",
+    "tests/ui/requirements.txt": "aee21ac33730bd351069593db2822a88fd8833a74f7a3c8ba8f250bb72872245"
+  }
+}
