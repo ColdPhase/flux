@@ -1,6 +1,7 @@
 import { TypingPresence, decodeTypingPulse, typingContextKey, type TypingAccessPorts, type TypingNotificationPort, type TypingPulse } from '@flux/core';
 import type { TypingContext } from '@flux/contracts';
 import type { TypingDiagnostics, TypingPhase } from './diagnostics.js';
+import { TypingSenderProofs, type SenderProof } from './sender-proofs.js';
 
 export interface TypingDelivery {
   context: TypingContext;
@@ -9,6 +10,7 @@ export interface TypingDelivery {
   generation: number;
   databaseNow: number;
   observedAt: number;
+  senders: () => Promise<SenderProof | null>;
 }
 export interface TypingSubscriber {
   readonly context: TypingContext | null;
@@ -31,8 +33,10 @@ export class TypingHub {
   private quarantineExpiry = 0;
   private quarantineUntil = 0;
   private databaseFloor = 0;
+  private readonly proofs: TypingSenderProofs;
   private timer: ReturnType<typeof setInterval>;
   constructor(readonly access: TypingAccessPorts, readonly notifications: TypingNotificationPort, readonly diagnostics?: TypingDiagnostics) {
+    this.proofs = new TypingSenderProofs(access, (operation) => this.measure('sender', operation));
     this.timer = setInterval(() => { for (const subscriber of this.subscribers) subscriber.heartbeat(); this.wake(); }, 1000);
     this.timer.unref();
   }
@@ -47,9 +51,10 @@ export class TypingHub {
     return compatible && this.presence.current(pulse, performance.now());
   }
   availableFor(context: TypingContext) { return this.presence.availableFor(context, performance.now()); }
-  get work() { return { ...this.presence.work, sockets: this.subscribers.size, pendingBroker: this.pending.size, pumping: this.pumping }; }
+  get work() { return { ...this.presence.work, sockets: this.subscribers.size, pendingBroker: this.pending.size, pumping: this.pumping, proofs: this.proofs.work }; }
   availability(ready: boolean) {
     if (this.stopped) return;
+    this.proofs.invalidate();
     this.listenerReady = ready;
     this.epoch++;
     this.pending.clear();
@@ -60,6 +65,8 @@ export class TypingHub {
     if (this.stopped || !this.listenerReady) return;
     let pulse: TypingPulse;
     try { pulse = decodeTypingPulse(payload); } catch { return; }
+    this.proofs.invalidate((_context, pulses) => pulses.some((captured) => captured.connectionId === pulse.connectionId &&
+      pulse.sequence > captured.sequence && (!pulse.active || pulse.actorId !== captured.actorId || pulse.sessionId !== captured.sessionId || typingContextKey(pulse.context) !== typingContextKey(captured.context))));
     // Pending sequence reconciliation withdraws superseded senders immediately;
     // unrelated rooms must not starve an authorization already in progress.
     if (this.quarantineExpiry > 0) {
@@ -67,13 +74,13 @@ export class TypingHub {
       this.quarantineUntil = Math.max(this.quarantineUntil, performance.now() + 5000);
       this.pending.clear();
       this.epoch++;
-      this.presence.setAvailable(false);
+      this.presence.setAvailable(false); this.proofs.invalidate();
     } else if (!this.pending.has(pulse.connectionId) && this.pending.size >= 4096) {
       this.quarantineExpiry = Math.max(pulse.expiresAt, ...[...this.pending.values()].map((item) => item.expiresAt));
       this.quarantineUntil = performance.now() + 5000;
       this.pending.clear();
       this.epoch++;
-      this.presence.setAvailable(false);
+      this.presence.setAvailable(false); this.proofs.invalidate();
     } else {
       const previous = this.pending.get(pulse.connectionId);
       if (!previous || pulse.sequence > previous.sequence) this.pending.set(pulse.connectionId, pulse);
@@ -84,7 +91,11 @@ export class TypingHub {
     if ([...this.subscribers].filter((subscriber) => subscriber.context && typingContextKey(subscriber.context) === typingContextKey(context)).length >= 128) return false;
     return this.presence.watch(context);
   }
-  leave(context: TypingContext) { this.presence.leave(context); this.wake(); }
+  leave(context: TypingContext) {
+    this.presence.leave(context);
+    if (!this.presence.availableFor(context, performance.now())) this.proofs.invalidate((target) => typingContextKey(target) === typingContextKey(context));
+    this.wake();
+  }
   wake() {
     if (this.stopped) return;
     this.dirty = true;
@@ -98,6 +109,7 @@ export class TypingHub {
         let databaseNow = 0;
         try {
           databaseNow = await this.notifications.now();
+          if (databaseNow < this.databaseFloor) this.proofs.invalidate();
           this.databaseFloor = Math.max(this.databaseFloor, databaseNow);
           if (!this.clockReady) { this.clockReady = true; this.epoch++; this.presence.setAvailable(this.listenerReady && !this.quarantineExpiry); }
         }
@@ -108,7 +120,7 @@ export class TypingHub {
           this.quarantineExpiry = Math.max(this.quarantineExpiry, this.databaseFloor + 5000,
             ...[...this.pending.values()].map((pulse) => pulse.expiresAt));
           this.quarantineUntil = Math.max(this.quarantineUntil, performance.now() + 5000);
-          this.presence.setAvailable(false); this.pending.clear();
+          this.presence.setAvailable(false); this.proofs.invalidate(); this.pending.clear();
         }
         if (this.stopped) break;
         const observedAt = performance.now();
@@ -124,20 +136,28 @@ export class TypingHub {
           this.pending.clear();
         }
         const generation = this.epoch;
-        // Capture candidates synchronously for all recipients before any authorization.
+        // One captured context cycle and lazy proof promise, shared only by its recipients.
+        const deliveries = new Map<string, TypingDelivery>();
         for (const subscriber of this.subscribers) {
           if (!subscriber.context) continue;
-          const context = { ...subscriber.context };
-          const candidates = databaseNow && this.listenerReady && !quarantined
-            ? this.presence.candidates(context, databaseNow, observedAt)
-            : { availability: 'unavailable' as const, pulses: [] };
-          subscriber.refresh({ context, availability: candidates.availability, pulses: candidates.pulses, generation, databaseNow, observedAt });
+          const context = { ...subscriber.context }; const key = typingContextKey(context);
+          let delivery = deliveries.get(key);
+          if (!delivery) {
+            const candidates = databaseNow && this.listenerReady && !quarantined
+              ? this.presence.candidates(context, databaseNow, observedAt)
+              : { availability: 'unavailable' as const, pulses: [] };
+            let proof: Promise<SenderProof | null> | null = null;
+            delivery = { context, availability: candidates.availability, pulses: candidates.pulses, generation, databaseNow, observedAt,
+              senders: () => proof ??= this.proofs.request(context, candidates.pulses, () => !this.stopped && generation === this.epoch && this.availableFor(context)) };
+            deliveries.set(key, delivery);
+          }
+          subscriber.refresh(delivery);
         }
       }
     } finally { this.pumping = false; }
   }
   async close() {
-    this.stopped = true;
+    this.stopped = true; this.proofs.close();
     clearInterval(this.timer);
     this.epoch++;
     this.pending.clear();

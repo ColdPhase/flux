@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type WebSocket from 'ws';
-import { authorizeTypingContext, authorizeTypingSender, normalizeTypingCommand, typingContextKey, type TypingActor, type TypingPulse } from '@flux/core';
+import { authorizeTypingContext, normalizeTypingCommand, typingContextKey, type TypingActor, type TypingPulse } from '@flux/core';
 import type { TypingCommand, TypingContext, TypingSnapshot, TypingServerMessage } from '@flux/contracts';
 import { TypingHub, type TypingDelivery } from './hub.js';
 
@@ -151,16 +151,14 @@ export class TypingConnection {
     }
     const people = new Map<string, { id: string; name: string }>();
     const approved: TypingPulse[] = [];
-    let proofExpires = Infinity;
-    for (const pulse of delivery.pulses) {
+    const proof = delivery.availability === 'ready' ? await delivery.senders() : { people: [], expiresAt: Infinity };
+    if (!proof || !valid()) return;
+    const proofExpires = proof.expiresAt;
+    for (const { pulse, human } of proof.people) {
       if (pulse.actorId === this.actor.actorId) continue;
-      const human = await this.hub.measure('sender', () => authorizeTypingSender(this.hub.access, pulse));
-      proofExpires = Math.min(proofExpires, performance.now() + 1000);
-      if (!valid()) return;
-      if (!human || !this.hub.current(pulse) || pulse.expiresAt <= delivery.databaseNow + performance.now() - delivery.observedAt) continue;
+      if (!this.hub.current(pulse) || pulse.expiresAt <= delivery.databaseNow + performance.now() - delivery.observedAt) continue;
       const name = [...human.name.replace(/[\p{Cc}\p{Cf}]/gu, '')].slice(0, 128).join('');
-      people.set(human.id, { id: human.id, name });
-      approved.push(pulse);
+      people.set(human.id, { id: human.id, name }); approved.push(pulse);
     }
     // Recipient is current again after sender checks. Terminal/context/availability
     // fences and the short proof deadline also apply to a queued network send.

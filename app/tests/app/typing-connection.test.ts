@@ -175,3 +175,27 @@ test('database clock failure drains discarded stop fences before admitting delay
     assert.equal(bob.messages.at(-1)?.availability, 'unavailable');
   } finally { await f.close(); }
 });
+
+for (const transition of ['stop', 'unwatched-scope', 'listener-loss'] as const) {
+  test(`shared held sender proof cannot revive activity after ${transition}`, async () => {
+    const f = await fixture(); let held: ReturnType<typeof gate> | null = null;
+    try {
+      const bob = await f.connect('bob'); const carol = await f.connect('carol');
+      await Promise.all([bob.watch(context), carol.watch(context)]);
+      const active: TypingPulse = { connectionId: randomUUID(), actorId: 'alice', sessionId: 'alice-fixture-session', context, sequence: 1, active: true, expiresAt: Date.now() + 5000 };
+      held = f.holdHuman('alice'); f.hub.notification(JSON.stringify(active)); await held.ready;
+      assert.equal(f.hub.work.proofs.running, 1, 'recipients share one actual authorization cycle');
+      assert.equal(f.hub.work.proofs.captured, 1);
+      if (transition === 'listener-loss') f.hub.availability(false);
+      else f.hub.notification(JSON.stringify({ ...active, sequence: 2, active: transition === 'unwatched-scope', context: transition === 'unwatched-scope' ? { ...context, id: randomUUID() } : context }));
+      assert.equal(f.hub.work.proofs.running, 1, 'invalidated SQL remains counted until settled');
+      const starts = [bob.messages.length, carol.messages.length];
+      held.release(); held = null;
+      for (const [index, client] of [bob, carol].entries()) {
+        await client.until(() => client.messages.length > starts[index]!, 'new checked transition', 1000);
+        assert.ok(client.messages.slice(starts[index]!).every((frame) => frame.people.every((human) => human.id !== 'alice')));
+        if (transition === 'listener-loss') assert.equal(client.messages.at(-1)?.availability, 'unavailable');
+      }
+    } finally { held?.release(); await f.close(); }
+  });
+}
