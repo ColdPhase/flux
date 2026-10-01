@@ -67,6 +67,9 @@ run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/access-stream.e2e.ts
 # Genuine human/agent task history in Chromium; trusted core writes use this isolated DB.
 run_browser -e DATABASE_URL="postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/$POSTGRES_DB" e2e node_modules/.bin/tsx --test tests/app/e2e/task-discussion-actors.e2e.ts
 
+# Criteria, prerequisites and plan revision in the real task details, with the unmet-prerequisite refusal (#152).
+run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/task-plan.e2e.ts
+
 # Named, request-bound agent connection consent, including signed-out setup (#152).
 $compose run --rm e2e node_modules/.bin/tsx --test tests/app/e2e/agent-connections.e2e.ts
 

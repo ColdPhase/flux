@@ -72,11 +72,12 @@ inside the same caller-owned transaction and roll back as one unit.
 
 ## Task-graph lock and reader (interface pin)
 
-Pinned 2026-10-01 for #153, interface text only. **Nothing here is implemented:** no
-lock key, reader, graph table or caller exists at this head. The native-plan
-implementation slice of #152 (not PR #167's current head) will export these from one
-core/database-owned module, and #153 consumes them instead of creating a second lock
-namespace. This subsection post-dates the
+Pinned 2026-10-01 for #153. The text below is the pin as agreed; it was interface-only
+at PR #167's head and is implemented by the native-plan slice of #152
+(`codex-hubert/152-native-plan`, see [Implemented](#implemented-at-the-native-plan-slice)
+for the final names, the file that exports the three primitives and the one placement
+deviation). #153 consumes them instead of creating a second lock namespace. This
+subsection post-dates the
 [independent design review](2026-10-01-native-plan-independent-review.md), restates
 the lock order #153 and #152 agreed on #153, and has not itself been reviewed apart
 from that exchange.
@@ -137,10 +138,11 @@ execution claim then calls `requireTaskPrerequisitesMet` after its task/unit loc
 review and plan eligibility keep their own explicit rules. That adapter and its
 checks are #153's to write and are likewise not implemented here.
 
-The migration number for the criteria, dependency and intent tables is to be chosen
-in the native-plan slice from the numbers free at that time. It is not reserved
-here (0038 is already used by the separate `cowork.request` operation list; see the
-[execution boundary](2026-09-30/execution-boundary.md#reserved-sender-operation-coworkrequest)).
+The migration number for the criteria, dependency and intent tables was chosen in the
+native-plan slice from the numbers free at that time (0038 is already used by the
+separate `cowork.request` operation list; see the
+[execution boundary](2026-09-30/execution-boundary.md#reserved-sender-operation-coworkrequest)):
+it is **0039**, recorded below.
 
 ## Required verification
 

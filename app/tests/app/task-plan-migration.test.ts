@@ -45,7 +45,7 @@ test('0039 upgrades the previous ledger in place: tasks are preserved exactly, p
       [material, workspace, project, owner, randomUUID(), 'c'.repeat(64)]);
     await client.query("INSERT INTO project_material_versions (workspace_id,project_id,material_id,version,title,body,author_id) VALUES ($1,$2,$3,1,'Old plan','Body',$4)",
       [workspace, project, material, owner]);
-    const tasks = [randomUUID(), randomUUID(), randomUUID()];
+    const tasks: string[] = [randomUUID(), randomUUID(), randomUUID()];
     await client.query(`INSERT INTO project_work_items (id,workspace_id,project_id,title,outcome,status,created_by_kind,created_by_id,version,created_at,updated_at)
       VALUES ($1,$4,$5,'Open task','What to learn','open','human',$6,1,'2026-01-02T03:04:05Z','2026-01-02T03:04:05Z'),
              ($2,$4,$5,'Finished task','','done','human',$6,4,'2026-02-02T03:04:05Z','2026-03-02T03:04:05Z'),
