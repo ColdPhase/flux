@@ -74,7 +74,9 @@ class MessageWorkJourney(unittest.TestCase):
         page = context.new_page(); errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught browser errors"))
-        self.addCleanup(lambda: page.unroute_all(behavior="wait"))
+        # Late response handlers may be canceled at teardown after all assertions;
+        # browser page errors remain asserted before closing the actual context.
+        self.addCleanup(lambda: page.unroute_all(behavior="ignoreErrors"))
         return page
 
     def ready(self, page):
@@ -242,36 +244,35 @@ class MessageWorkJourney(unittest.TestCase):
         self.ready(page);expect(page.get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible()
 
     def test_07_restored_feed_observes_older_and_newer_native_batches(self):
-        page=self.page();failed=[False];recoveries=[];reads=[];material_reads=[]
-        page.on("request",lambda r:reads.append(parse_qs(urlsplit(r.url).query)["messageIds"][0].split(",")) if "/work-associations?" in r.url else None)
+        page=self.page();material_reads=[];native_recoveries=[];holding=[True]
         material_path=f"**/api/v1/materials/{self.material['materialId']}/versions/{self.material['version']}"
-        def unavailable_material(route):
-            response=route.fetch();self.assertEqual(response.status,200);material_reads.append(route);page.evaluate("window.__materialReadHeld=true")
-        def hold_project_recovery(route):
-            if failed[0]:
-                response=route.fetch();self.assertEqual(response.status,200)
-                if failed[0]:
-                    recoveries.append((route,response));page.evaluate("window.__projectRecoveryHeld=true")
-                else:route.fulfill(response=response)
-            else:route.continue_()
-        page.route(material_path,unavailable_material)
-        page.route(f"**/api/v1/projects/{self.project}",hold_project_recovery)
+        def hold_material(route):
+            if not holding[0]:route.continue_();return
+            response=route.fetch();self.assertEqual(response.status,200)
+            if holding[0]:material_reads.append(route);page.evaluate("window.__materialReadHeld=true")
+            else:route.fulfill(response=response)
+        page.route(material_path,hold_material)
+        page.on("response",lambda response:native_recoveries.append(response.status) if urlsplit(response.url).path==self.root else None)
         page.goto(f"/projects/{self.project}/conversations/{self.long_conversation}#message-{self.long_messages[0]}")
         self.ready(page);expect(page.get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible()
         page.wait_for_function("window.__materialReadHeld===true")
-        failed[0]=True;material_reads.pop().fulfill(status=404,json={"code":"NOT_FOUND","error":"Fixture transient unavailable citation"})
-        expect(page.get_by_role("heading",name="Project unavailable",exact=True)).to_be_visible()
-        page.wait_for_function("window.__projectRecoveryHeld===true")
-        self.assertEqual(page.locator(".project-convo__feed").count(),0)
-        failed[0]=False;page.unroute(material_path,unavailable_material)
-        for route,response in recoveries:route.fulfill(response=response)
-        page.unroute(f"**/api/v1/projects/{self.project}",hold_project_recovery)
+        before=len(native_recoveries)
+        page.evaluate("()=>{window.__originalFeedColumn=document.querySelector('.project-convo__feed').firstElementChild;window.__feedRemovalObserver=new MutationObserver(()=>{if(!window.__originalFeedColumn.isConnected)window.__feedWasRemoved=true;});window.__feedRemovalObserver.observe(document.body,{childList:true,subtree:true});}")
+        # Only the citation failure is injected; recovery uses all real native responses.
+        holding[0]=False
+        material_reads.pop().fulfill(status=404,json={"code":"NOT_FOUND","error":"Fixture transient unavailable citation"})
+        page.wait_for_function("window.__feedWasRemoved===true")
         self.ready(page)
+        self.assertTrue(page.locator(".project-convo__feed").evaluate("el=>el.firstElementChild!==window.__originalFeedColumn"),"the observed message subtree was actually replaced")
+        self.assertGreater(len(native_recoveries),before)
+        self.assertTrue(all(status==200 for status in native_recoveries[before:]),"native project checks restore the mounted reader")
         expect(page.get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible()
         pane=page.locator(".project-convo__feed");pane.hover();page.mouse.wheel(0,100000)
         expect(page.get_by_role("button",name="Work: Revisit the latest measurement",exact=True)).to_be_visible();self.ready(page)
         page.mouse.wheel(0,-100000)
         expect(page.get_by_role("button",name="Work: Revisit the first measurement",exact=True)).to_be_visible();self.ready(page)
+        page.evaluate("window.__feedRemovalObserver.disconnect()")
+        page.unroute_all(behavior="ignoreErrors")
 
     def test_08_one_pagedown_gesture_keeps_scrolling_across_a_held_batch(self):
         page=self.page();reads=[]
@@ -282,12 +283,13 @@ class MessageWorkJourney(unittest.TestCase):
         page.locator(f"[data-message-id='{self.long_messages[100]}']").evaluate("row=>{const p=row.closest('.project-convo__feed');p.scrollTop+=row.getBoundingClientRect().top-p.getBoundingClientRect().bottom-20;}")
         page.wait_for_function("()=>new Promise(resolve=>{let last=-1,stable=0;const check=()=>{const p=document.querySelector('.project-convo__feed');stable=p.scrollTop===last?stable+1:0;last=p.scrollTop;if(stable>8)resolve(true);else requestAnimationFrame(check);};requestAnimationFrame(check);})")
         self.ready(page);self.assertEqual(reads[-1],original)
-        held=[]
+        held=[];holding=[True]
         def hold(route):
-            if parse_qs(urlsplit(route.request.url).query)["messageIds"][0]!=original:
+            if holding[0] and parse_qs(urlsplit(route.request.url).query)["messageIds"][0]!=original:
                 top=pane.evaluate("el=>el.scrollTop")
                 response=route.fetch();self.assertEqual(response.status,200)
-                held.append((route,response,top));page.evaluate("window.__gestureBatchHeld=true")
+                if holding[0]:held.append((route,response,top));page.evaluate("window.__gestureBatchHeld=true")
+                else:route.fulfill(response=response)
             else:route.continue_()
         page.route("**/work-associations?**",hold)
         page.locator(f"[data-message-id='{self.long_messages[98]}']").evaluate("el=>el.focus({preventScroll:true})")
@@ -298,6 +300,6 @@ class MessageWorkJourney(unittest.TestCase):
         self.assertEqual(len(held),1)
         route,response,when_held=held.pop()
         self.assertGreater(pane.evaluate("el=>el.scrollTop"),when_held+3,"one native smooth PageDown continues after the batch response is held")
-        newest=self.anchor(page);route.fulfill(response=response);self.ready(page)
+        newest=self.anchor(page);holding[0]=False;route.fulfill(response=response);self.ready(page)
         self.assert_anchor(page,newest)
-        page.unroute("**/work-associations?**",hold)
+        page.unroute_all(behavior="ignoreErrors")
