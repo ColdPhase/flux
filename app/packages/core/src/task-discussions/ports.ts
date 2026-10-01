@@ -7,6 +7,11 @@ export interface DiscussionBinding {
   conversationId: string;
   rootMessageId: string;
 }
+/**
+ * The canonical task-to-conversation identity: exactly these keys. A stored row may carry
+ * more (e.g. `rootSequence`), so callers build this explicitly instead of spreading it.
+ */
+export type TaskDiscussionRoot = DiscussionBinding & { workspaceId: string; projectId: string };
 export interface DiscussionConversation {
   id: string;
   workspaceId: string;
@@ -43,7 +48,7 @@ export interface TaskDiscussionRepository {
   sourceExists(projectId: string, source: MaterialSource): Promise<boolean>;
   createConversation(input: { id: string; workspaceId: string; projectId: string; createdBy: ActorRef }): Promise<DiscussionConversation>;
   append(conversation: Pick<DiscussionConversation, 'id' | 'workspaceId' | 'projectId'>, author: ActorRef, input: NewDiscussionMessage): Promise<DiscussionMessage>;
-  bind(input: DiscussionBinding & { workspaceId: string; projectId: string }): Promise<void>;
+  bind(input: TaskDiscussionRoot): Promise<void>;
 }
 export interface TaskDiscussionEventIntent {
   readonly principal: Readonly<Principal>;

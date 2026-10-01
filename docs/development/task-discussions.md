@@ -175,3 +175,28 @@ work and helper proposal acceptance prepare their response/domain writes before
 one awaited final batch. The collector snapshots nested canonical data and tracks
 every admitted action. These primitives supply no connection/runtime/grant, quota,
 receipt or coordination authority; #152/#153 retain their own current FIRST fence.
+
+### Read-only root seam for alias consumers
+
+`getDiscussion` returns the root plus a bounded message window under the access-row
+lock and always returns exactly the declared `TaskDiscussion` keys (never the stored
+binding row). A consumer that needs only the task's canonical identity, such as the
+#153/#155 task-to-conversation alias, uses the pure read beside it, on
+`taskDiscussionUseCases(db)`, `taskDiscussionInTransaction(tx)` and
+`nativeWorkInTransaction(tx)`:
+
+```ts
+getDiscussionRoot(principal: Principal, workId: string): Promise<TaskDiscussionRoot | null>
+type TaskDiscussionRoot = { workId; workspaceId; projectId; conversationId; rootMessageId }
+```
+
+It validates the UUID like the other operations and needs current `project.read`
+without the access-row lock. A task in a project the caller cannot see, and an
+unknown task, are the same `WORK_NOT_FOUND` 404 (`getDiscussion` and `contribute`
+share this mapping, so the error never reveals that a task exists). `null` means
+only that a visible task has no genuine contribution yet. Otherwise the exact
+sequence-1 root is checked as in `getDiscussion` and its identity returned; later
+messages never move it. It creates no conversation, message, binding, name, event,
+outbox or other row. Inside a caller transaction it queues no event intent and is
+rejected after that session's `flushEvents()`. It supplies no connection, runtime
+or grant authority; there is no HTTP route for it.
