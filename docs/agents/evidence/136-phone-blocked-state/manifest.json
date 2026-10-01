@@ -1,0 +1,54 @@
+{
+  "runtime_source": "f1f00403d7c25183105ad350bc2ef1c2c19b7b85",
+  "accepted_main": "3abbd0f4b526c5fa548c9a27b7fb2a4664eabe7c",
+  "current_runner": "/tmp/flux136-phone-blocked-final.sh",
+  "logs": [
+    {
+      "path": "/tmp/flux136-phone-blocked-baseline.log",
+      "sha256": "d055613208a64e761645ad3f297203c22a8cb93aa933185f96222c8163808ddc"
+    },
+    {
+      "path": "/tmp/flux136-phone-blocked-final.log",
+      "sha256": "74f3323223866323701a3224d1fa11335725ee7ed98a74d23ed32493ef24b687"
+    },
+    {
+      "path": "/tmp/flux136-phone-blocked-occlusion-baseline.log",
+      "sha256": "d298cfcbef0a423241dbc9e8ffdbe3fb9fee2c1207575d95bd46a26cfe0d189b"
+    },
+    {
+      "path": "/tmp/flux136-phone-blocked-round2.log",
+      "sha256": "20c31e4bb9b7276192ff7eacd889319d018cd226db3b3aed69812340c90e5af9"
+    },
+    {
+      "path": "/tmp/flux136-phone-blocked-current.log",
+      "sha256": "656f23ca1287c50ae276645316021a9c40a39adb6fa9ccb605a9f4ec7737e2a0"
+    }
+  ],
+  "screenshots": [
+    {
+      "path": "136-state-blocked-320-text-100-reader.png",
+      "sha256": "8883f02443cde62268c66ff5c49aa9bec54c52275f1fdb8b41da84ae6128b1bf"
+    },
+    {
+      "path": "136-state-blocked-320-text-100-writer.png",
+      "sha256": "bed58b8aeb3f1b6309bb72f820793065f508c55222ba1b728183f8681cf24c5b"
+    },
+    {
+      "path": "136-state-blocked-320-text-200-reader.png",
+      "sha256": "4421661009c55b52bc723305fd24f43773cf2b60c8d2d038634f33913c28a993"
+    },
+    {
+      "path": "136-state-blocked-320-text-200-writer.png",
+      "sha256": "4d66d02e8dcfc62bf0167da6a5ec01d2ec038f5ed0d1b914ad411bacf55fa909"
+    },
+    {
+      "path": "136-state-blocked-390-text-125-reader.png",
+      "sha256": "1e5e5c1758f5c456cdcf5b146c849d2d88ccb00296b904c8f35f277baafff35c"
+    },
+    {
+      "path": "136-state-blocked-390-text-125-writer.png",
+      "sha256": "e29d832ada0467575a21942a24fec885dae28801273452838242ea6b646c8b58"
+    }
+  ],
+  "limits": "Logs retained locally, not published. Six reviewed phone renders; independent eligible code review/full app/device acceptance still required."
+}
