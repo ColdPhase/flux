@@ -33,6 +33,17 @@ snapshot is also needed to discover older requests whose source access/version
 becomes valid after an earlier scan. Unavailable or changed references stay
 durably unresolved; exclusion does not resolve, supersede or delete them.
 
+An exhausted continuation is not proof that all pending work was seen. Request
+timestamps are assigned at insertion, not commit; a writer that commits late
+can become visible behind a scan's retained position. Before #160 consumes this
+recovery path, the admission composition must hold the recipient's connection
+slot from timestamp assignment through commit, as part of its complete sorted
+sender/recipient slot pass, and exercise that ordering with concurrent distinct
+lineages. The storage adapter does not acquire those upstream locks itself.
+Until that composition is verified, late-commit recovery remains an open
+integration requirement; a fresh bounded snapshot is needed at a safe resume
+boundary, and an empty page must never imply successful completion.
+
 This does not prove checkpoint creation, native graph/reviewer eligibility,
 authorized request admission/resolution, execution/publication fences, public
 MCP/client wiring or model-driven Start/Resume. Those are unchanged requirements.
