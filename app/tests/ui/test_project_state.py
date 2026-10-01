@@ -223,7 +223,7 @@ class ProjectStateJourney(unittest.TestCase):
                     expect(header.get_by_role("heading", level=1)).to_have_attribute("title", name)
                     self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), width)
                     header.locator(".top__audience").click()
-                    expect(page.get_by_role("dialog", name="Details").get_by_role("heading", name=name, exact=True)).to_be_visible()
+                    expect(page.locator("#details").get_by_role("heading", name=name, exact=True)).to_be_visible()
                     page.get_by_role("button", name="Close details", exact=True).click()
                     if width in (744, 820, 1280):
                         shot(page, f"136-state-long-title-{len(name)}-{width}")
