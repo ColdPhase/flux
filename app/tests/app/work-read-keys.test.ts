@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { createDatabase, nativeWorkReadKeys, schema, sql, type NativeWorkReadKey, type NativeWorkViewSelector } from '@flux/db';
 import type { WorkReadCursor } from '@flux/contracts';
-import { person, project, workspace, type Person } from './support/people.js';
+import { addMember, grant, person, project, workspace, type Person } from './support/people.js';
 
 // Actual PostgreSQL key queries over isolated native-schema fixtures. This does not certify
 // the not-yet-connected bounded HTTP endpoints, row hydration or client/performance migration.
@@ -27,7 +27,9 @@ describe('bounded native PostgreSQL work key selection', () => {
   before(async () => {
     [owner, other] = await Promise.all(['key-owner', 'key-other'].map(person));
     const ws = await workspace(owner, 'Native key test'); workspaceId = ws.id;
+    await addMember(owner, workspaceId, other, 'member');
     projectId = (await project(owner, ws.id, 'Bounded native keys', 'restricted')).id;
+    await grant(owner, projectId, other, 'contributor');
     await db.insert(schema.projectDecisions).values(decisions.map((id, i) => ({ id, workspaceId, projectId, title: `Decision ${i}`, status: (['proposed', 'accepted', 'superseded'] as const)[i]!, proposedByKind: 'human' as const, proposedById: other.id, createdAt: new Date(at) })));
     await db.insert(schema.projectWorkItems).values(ids.map((id, i) => ({
       id, workspaceId, projectId, title: i === 0 ? '100%_literal' : i === 1 ? '100xxliteral' : `Work ${i}`, outcome: 'Own complete fields must not enter keys',
@@ -102,5 +104,32 @@ describe('bounded native PostgreSQL work key selection', () => {
     assert.deepEqual(older.items.map((key) => key.id), [ids[0]]);
     const end = await read({ purpose: 'choices', choice: 'doc_refs', kind: 'work', q: '100' }, 1, keyCursor('next', older.items[0]!));
     assert.equal(end.before, 2); assert.equal(end.hasBefore, true); assert.equal(end.hasAfter, false);
+  });
+
+  test('held actual SQL keeps its original cursor for empty-page counts despite caller mutation', async () => {
+    const selection: NativeWorkViewSelector = { purpose: 'choices', choice: 'doc_refs', kind: 'work', q: '100' };
+    const original = await read(selection, 2);
+    const cursor = keyCursor('next', original.items.at(-1)!);
+    let entered!: () => void, release!: () => void;
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const pending = db.transaction(async (tx) => {
+      let first = true;
+      const held = new Proxy(tx, { get(target, name, receiver) {
+        if (name !== 'execute') return Reflect.get(target, name, receiver);
+        return async (...args: unknown[]) => {
+          const result = await Reflect.apply(target.execute, target, args);
+          if (first) { first = false; entered(); await gate; }
+          return result;
+        };
+      } });
+      return nativeWorkReadKeys(held).view(projectId, actor(), selection, 1, cursor);
+    }, { isolationLevel: 'repeatable read', accessMode: 'read only' });
+    await started;
+    cursor.direction = 'previous'; cursor.boundary = { ...original.items[0]!, createdAt: newer };
+    release();
+    const empty = await pending;
+    assert.deepEqual(empty.items, []); assert.equal(empty.total, 2); assert.equal(empty.before, 2);
+    assert.equal(empty.hasBefore, true); assert.equal(empty.hasAfter, false);
   });
 });

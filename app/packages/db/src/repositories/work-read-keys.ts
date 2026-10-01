@@ -72,16 +72,18 @@ export function nativeWorkReadKeys(db: DbExecutor) {
   return {
     async view(projectId: string, actor: PrincipalRef, selection: NativeWorkViewSelector, limit: number, cursor?: WorkReadCursor): Promise<NativeWorkKeyPage> {
       if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('Invalid bounded native key limit');
+      // Every query/count in this observation owns the same continuation across awaits.
+      const ownedCursor = cursor ? { direction: cursor.direction, boundary: { ...cursor.boundary } } : undefined;
       const selected = source(projectId, actor, selection);
-      const forward = cursor?.direction !== 'previous';
-      const continuation = cursor ? forward ? following(cursor.boundary) : preceding(cursor.boundary) : sql`true`;
+      const forward = ownedCursor?.direction !== 'previous';
+      const continuation = ownedCursor ? forward ? following(ownedCursor.boundary) : preceding(ownedCursor.boundary) : sql`true`;
       const order = forward ? sql`rank ASC, created_at DESC, id DESC` : sql`rank DESC, created_at ASC, id ASC`;
       const found = await db.execute<NativeWorkReadKey>(sql`WITH selected AS (${selected}) SELECT kind, id, rank,
         to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "createdAt"
         FROM selected WHERE (${continuation}) ORDER BY ${order} LIMIT ${limit + 1}`);
       const items = found.rows.slice(0, limit);
       if (!forward) items.reverse();
-      const boundary = items[0] ?? cursor?.boundary;
+      const boundary = items[0] ?? ownedCursor?.boundary;
       const prior = boundary ? preceding(boundary) : sql`false`;
       const later = boundary ? following(boundary) : sql`false`;
       const counted = await db.execute<{ total: string; prior: string; later: string }>(sql`WITH selected AS (${selected}) SELECT count(*)::text AS total,
@@ -89,12 +91,12 @@ export function nativeWorkReadKeys(db: DbExecutor) {
       const facts = counted.rows[0];
       if (!facts) throw new Error('Missing native work count observation');
       const total = safeCount(facts.total), priorCount = safeCount(facts.prior), laterCount = safeCount(facts.later);
-      if (!cursor && !items.length && total !== 0) throw new Error('Native work key/count observations differ');
-      const before = items.length ? priorCount : cursor?.direction === 'next' ? total : 0;
+      if (!ownedCursor && !items.length && total !== 0) throw new Error('Native work key/count observations differ');
+      const before = items.length ? priorCount : ownedCursor?.direction === 'next' ? total : 0;
       if (before + items.length > total) throw new Error('Native work key/count observations differ');
       return { items, total, before,
-        hasBefore: items.length ? before > 0 : cursor?.direction === 'next' && priorCount > 0,
-        hasAfter: items.length ? before + items.length < total : cursor?.direction === 'previous' && laterCount > 0 };
+        hasBefore: items.length ? before > 0 : ownedCursor?.direction === 'next' && priorCount > 0,
+        hasAfter: items.length ? before + items.length < total : ownedCursor?.direction === 'previous' && laterCount > 0 };
     },
   };
 }

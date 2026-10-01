@@ -54,6 +54,12 @@ describe('architecture boundaries', () => {
     assert.deepEqual(reachableImports(root, entries, ['@flux/db', 'drizzle-orm', 'pg', 'pg-boss', 'fastify', 'web-push']), []);
   });
 
+  test('the bounded work read use cases stay free of persistence and transport adapters (#155)', () => {
+    const entries = files(join(root, 'packages/core/src/work-read'));
+    assert.ok(entries.length >= 5, 'the bounded read use cases, cursor and ports exist');
+    assert.deepEqual(reachableImports(root, entries, ['@flux/db', 'drizzle-orm', 'pg', 'pg-boss', 'fastify']), []);
+  });
+
   test('the rules reject each kind of boundary violation (self-test)', () => {
     const source = (path: string, text: string) => ({ path, text });
     const found = checkSources([
