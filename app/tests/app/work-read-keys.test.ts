@@ -40,7 +40,7 @@ describe('bounded native PostgreSQL work key selection', () => {
       ownerUserId: i % 2 === 0 ? owner.id : other.id, createdByKind: 'human' as const, createdById: owner.id,
       parkedAt: i === 4 || i === 7 ? new Date(at) : null, parkedByDecisionId: i === 4 || i === 7 ? decisions[1] : null, createdAt: new Date(at),
     })));
-    await db.insert(schema.projectWorkItems).values(Array.from({ length: 110 }, (_, i) => ({ id: randomUUID(), workspaceId, projectId, title: `Additional native ${i}`,
+    await db.insert(schema.projectWorkItems).values(Array.from({ length: 110 }, (_, i) => ({ id: randomUUID(), workspaceId, projectId, title: `Additional native ${i.toString(36)}`,
       ownerUserId: other.id, createdByKind: 'human' as const, createdById: owner.id, createdAt: new Date(at) })));
     await db.insert(schema.projectResults).values(results.map((id, i) => ({ id, workspaceId, projectId, title: `Result ${i}`, finding: 'negative' as const, createdByKind: 'human' as const, createdById: i ? other.id : owner.id, createdAt: new Date(at) })));
     // Explicit raw native precision fixture: JS Date cannot represent these adjacent keys.
