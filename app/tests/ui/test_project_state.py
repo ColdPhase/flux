@@ -12,6 +12,7 @@ import uuid
 from playwright.sync_api import expect, sync_playwright
 
 from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from test_project_surface import LONG_NAME
 
 
 class ProjectStateJourney(unittest.TestCase):
@@ -65,13 +66,13 @@ class ProjectStateJourney(unittest.TestCase):
     def assert_text_is_unclipped(self, locator):
         self.assertTrue(locator.evaluate("el => el.scrollWidth <= el.clientWidth + 1 && el.scrollHeight <= el.clientHeight + 1"), "the visible label is not clipped")
 
-    def scene(self):
+    def scene(self, name="Gesture lamp"):
         owner = self.page()
         ws = self.call(owner, "POST", "/api/v1/workspaces", {"name": "Riverside Makers"}, 201)
         self.call(owner, "POST", f"/api/v1/workspaces/{ws['id']}/members",
             {"email": self.accounts["Jonas Reader"]["email"], "role": "member"}, 201)
         project = self.call(owner, "POST", f"/api/v1/workspaces/{ws['id']}/projects",
-            {"name": "Gesture lamp", "visibility": "restricted"}, 201)
+            {"name": name, "visibility": "restricted"}, 201)
         self.call(owner, "POST", f"/api/v1/projects/{project['id']}/grants",
             {"principal": {"kind": "human", "id": self.accounts["Jonas Reader"]["id"]}, "role": "viewer"}, 201)
         return owner, project
@@ -206,3 +207,54 @@ class ProjectStateJourney(unittest.TestCase):
         self.call(owner, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": principal, "role": "contributor"}, 201)
         reader.goto(f"/projects/{project['id']}?new=1")
         expect(reader.get_by_label("Start a conversation", exact=True)).to_have_value("Unsent sensor notes remain mine")
+
+    def test_05_long_project_title_yields_to_readable_audience_and_compact_header(self):
+        for name in (LONG_NAME, LONG_NAME + " — sensor calibration and accessible night lighting"):
+            owner, project = self.scene(name)
+            self.work(owner, project, "Check low-light reliability")
+            for width in (641, 700, 744, 820, 1024, 1280, 1440):
+                with self.subTest(name=name, width=width):
+                    page = self.page(width=width, height=1180)
+                    page.goto(f"/projects/{project['id']}")
+                    header = page.locator("header.top")
+                    expect(header.get_by_label("Current state")).to_contain_text("1 open task")
+                    self.assertLessEqual(header.bounding_box()["height"], 90, "long title must not turn audience into a vertical column")
+                    self.assert_text_is_unclipped(header.locator(".top__audience > span").first)
+                    expect(header.get_by_role("heading", level=1)).to_have_attribute("title", name)
+                    self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), width)
+                    header.locator(".top__audience").click()
+                    expect(page.get_by_role("dialog", name="Details").get_by_role("heading", name=name, exact=True)).to_be_visible()
+                    page.get_by_role("button", name="Close details", exact=True).click()
+                    if width in (744, 820, 1280):
+                        shot(page, f"136-state-long-title-{len(name)}-{width}")
+
+    def test_06_material_draft_hides_on_downgrade_and_returns_on_upgrade(self):
+        owner, project = self.scene()
+        principal = {"kind": "human", "id": self.accounts["Jonas Reader"]["id"]}
+        self.call(owner, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": principal, "role": "contributor"}, 201)
+        reader = self.page("Jonas Reader", 390, 844)
+        reader.goto(f"/projects/{project['id']}")
+        reader.get_by_role("button", name=re.compile("^Sources")).click()
+        reader.get_by_role("button", name="Add material", exact=True).click()
+        reader.get_by_label("Title", exact=True).fill("Unpublished calibration source")
+        reader.get_by_label("Text", exact=True).fill("Keep this source draft until I can contribute again.")
+        self.call(owner, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": principal, "role": "viewer"}, 201)
+        reader.evaluate("window.dispatchEvent(new Event('focus'))")
+        expect(reader.locator(".project-convo__read-only")).to_be_visible(timeout=20000)
+        expect(reader.locator(".project-convo__material-form")).to_have_count(0)
+        reader.reload()
+        expect(reader.locator(".project-convo__read-only")).to_be_visible()
+        reader.get_by_role("button", name=re.compile("^Sources")).click()
+        expect(reader.locator(".project-convo__material-form")).to_have_count(0)
+        expect(reader.get_by_role("button", name="Save for this project", exact=True)).to_have_count(0)
+        self.assertEqual(self.call(owner, "GET", f"/api/v1/projects/{project['id']}/materials")["total"], 0)
+        shot(reader, "136-state-material-reader-downgrade-390")
+        self.call(owner, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": principal, "role": "contributor"}, 201)
+        reader.reload()
+        expect(reader.get_by_label("Title", exact=True)).to_have_value("Unpublished calibration source")
+        expect(reader.get_by_label("Text", exact=True)).to_have_value("Keep this source draft until I can contribute again.")
+        with reader.expect_response(lambda r: r.request.method == "POST" and r.url.endswith(f"/projects/{project['id']}/materials")) as saved:
+            reader.get_by_role("button", name="Save for this project", exact=True).click()
+        self.assertEqual(saved.value.status, 201)
+        material = self.call(owner, "GET", f"/api/v1/projects/{project['id']}/materials")["items"][0]
+        self.assertEqual(material["title"], "Unpublished calibration source")

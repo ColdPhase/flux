@@ -5,10 +5,11 @@
 .top--project { height: auto; min-height: 58px; padding-top: 6px; padding-bottom: 4px; }
 .top__head { display: flex; flex: 1; flex-direction: column; justify-content: center; min-width: 0; }
 .top__title--project { align-items: center; gap: 8px; flex: none; }
+.top__title--project h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .top__pm { display: inline-grid; place-items: center; flex: none; width: 22px; height: 22px; border-radius: 6px; font-size: 12px; font-weight: 600; line-height: 1; background: var(--pm-1); color: var(--pm-1-t); }
 .top__pm.rail__pm--3 { border-radius: 10px 3px 10px 3px; }
-.top__audience { display: inline-flex; align-items: center; gap: 5px; min-width: 0; min-height: 24px; margin-left: -2px; padding: 0 6px; border-radius: var(--r-sm); font-size: var(--fs-md); color: var(--text-3); white-space: normal; transition: var(--tr); }
-.top__audience > span:not(.ui-vh) { min-width: 0; overflow-wrap: anywhere; }
+.top__audience { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; max-width: 55%; min-width: 0; min-height: 24px; margin-left: -2px; padding: 0 6px; border-radius: var(--r-sm); font-size: var(--fs-md); color: var(--text-3); white-space: normal; transition: var(--tr); }
+.top__audience > span:not(.ui-vh) { min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .top__audience svg { flex: none; }
 .top__audience:hover { background: var(--bg-hover); color: var(--text); }
 .top--project .ws-state { flex-wrap: wrap; margin: 0 0 0 -6px; font-size: var(--fs-sm); line-height: 1.4; }

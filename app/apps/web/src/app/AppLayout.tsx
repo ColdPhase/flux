@@ -250,8 +250,8 @@ export function AppLayout() {
               <div className="top__title top__title--project">
                 <span className={`top__pm rail__pm--${(Math.max(projectIndex, 0) % 4) + 1}`} aria-hidden="true">{activeProject.name.trim().charAt(0).toUpperCase() || '#'}</span>
                 {place.crumb ? <><span className="top__crumb">{place.crumb}</span><span className="top__slash" aria-hidden="true">/</span></> : null}
-                <h1>{place.title}</h1>
-                {/* The audience never truncates away with the title; it opens the people in Details. */}
+                <h1 title={place.title}>{place.title}</h1>
+                {/* The title yields to the audience; Details retains the full names. */}
                 <button type="button" className="top__audience" onClick={openOverview} aria-haspopup="dialog" title={audience}>
                   <Icon name="lock" size={12} /><span>{audience}</span><span className="ui-vh">, who can see this project</span>
                 </button>
