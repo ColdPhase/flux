@@ -3,7 +3,7 @@ import { backgroundComputeUsagePath, proactiveComparisonOutcomePath, proactiveCo
   proactiveComparisonProposalsPath, type ConnectBackgroundComputeCommand, type CreateProactiveComparisonRule } from '@flux/contracts';
 import { backgroundConnectionRepository, proactiveOutboxRows, proactiveRuleRows, sealBackgroundKey } from '@flux/db';
 import { backgroundConnectionUseCases, ConflictError, DomainError, enforce, evaluateProject, InvalidInputError,
-  isUuid, NotFoundError, proactiveRuleUseCases, VersionConflictError, type Database } from '@flux/core';
+  isUuid, NotFoundError, proactiveRuleUseCases, VersionConflictError, visibleProposal, type Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { workUseCases } from '../work/adapters.js';
 import { comparisonOutcomeAccess, comparisonOutcomes } from './outcome-adapter.js';
@@ -65,12 +65,7 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
       enforce(await evaluateProject(principal, 'project.read', request.params.projectId, tx, { lock: true }), 'project');
       const access = comparisonOutcomeAccess(tx);
       const proposals = await proactiveOutboxRows(tx).listProposals(request.params.projectId);
-      return Promise.all(proposals.map(async (proposal) => {
-        const sources: typeof proposal.sources = [];
-        for (const source of proposal.sources)
-          if (await access.canOpenSource(principal, proposal.projectId, source)) sources.push(source);
-        return { ...proposal, sources };
-      }));
+      return Promise.all(proposals.map((proposal) => visibleProposal(access, principal, proposal)));
     }));
   app.get<{ Params: { projectId: string }; Querystring: { limit?: number; offset?: number } }>(
     proactiveComparisonOutcomesPath(':projectId'), { schema: { querystring: { type: 'object', additionalProperties: false,
@@ -105,8 +100,11 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
       enforce(await evaluateProject(principal, 'project.write', current.projectId, tx, { lock: true }), 'project');
       if (current.version !== body.expectedVersion) throw new VersionConflictError(current.version, { version: current.version });
       if (current.status !== 'proposed') throw new ConflictError('The proposal has already been reviewed', 'PROPOSAL_REVIEWED');
-      return rows.reviseProposal(current.id, { fact: body.fact?.trim(), interpretation: body.interpretation?.trim(),
+      const revised = await rows.reviseProposal(current.id, { fact: body.fact?.trim(), interpretation: body.interpretation?.trim(),
         suggestedAction: body.suggestedAction?.trim(), status: body.status, editedByUserId: principal.id });
+      if (!revised) throw new NotFoundError('Proposal');
+      // The stored citations keep their history; the response shows what this reader can open now, like the reads.
+      return visibleProposal(comparisonOutcomeAccess(tx), principal, revised);
     }));
   app.post<{ Params: { proposalId: string }; Body: { expectedVersion: number; title: string } }>(
     '/api/v1/proactive-comparison-proposals/:proposalId/use', async (request) => db.transaction(async (tx) => {
@@ -135,8 +133,9 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
         related: current.sources.flatMap((source) => source.type === 'result' || source.type === 'work' || source.type === 'thought'
           ? [{ type: source.type, id: source.id }] : []),
       });
-      const proposal = await rows.reviseProposal(current.id, { status: 'used', usedWorkId: created.id, editedByUserId: principal.id });
-      return { proposal, work: created };
+      const used = await rows.reviseProposal(current.id, { status: 'used', usedWorkId: created.id, editedByUserId: principal.id });
+      if (!used) throw new NotFoundError('Proposal');
+      return { proposal: await visibleProposal(comparisonOutcomeAccess(tx), principal, used), work: created };
     }));
   app.patch<{ Params: { ruleId: string }; Body: { expectedVersion: number; status: 'enabled' | 'paused' | 'revoked' } }>(
     '/api/v1/proactive-comparison-rules/:ruleId', async (request) => rules.setStatus(

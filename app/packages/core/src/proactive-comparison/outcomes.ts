@@ -1,5 +1,5 @@
 import type { BackgroundComputeUsage, InspectedComparisonSource, InsufficientComparisonOutcome,
-  Page, ProactiveComparisonOutcome } from '@flux/contracts';
+  Page, ProactiveComparisonOutcome, ProactiveComparisonProposal } from '@flux/contracts';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, VersionConflictError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 
@@ -24,6 +24,21 @@ export interface ComparisonOutcomeUnitOfWork {
 
 const uuid = (value: string) => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
+/**
+ * A proposal as its current reader may see it. Stored citations keep their history, but one this
+ * reader cannot open now (deleted, moved or without access) loses its id and title. Every response
+ * that carries a proposal, reads and changes alike, passes through here: a stored title must not
+ * bypass the check that the read paths apply.
+ */
+export async function visibleProposal(access: ComparisonOutcomePorts['access'], principal: Principal,
+  proposal: ProactiveComparisonProposal): Promise<ProactiveComparisonProposal> {
+  const sources: ProactiveComparisonProposal['sources'] = [];
+  for (const source of proposal.sources) {
+    if (await access.canOpenSource(principal, proposal.projectId, source)) sources.push(source);
+  }
+  return { ...proposal, sources };
+}
+
 async function visibleOutcome(ports: ComparisonOutcomePorts, principal: Principal, projectId: string,
   outcome: ProactiveComparisonOutcome): Promise<ProactiveComparisonOutcome> {
   const visible: InspectedComparisonSource[] = [];
@@ -33,12 +48,7 @@ async function visibleOutcome(ports: ComparisonOutcomePorts, principal: Principa
     else unavailableSourcesCount++;
   }
   if (outcome.kind === 'insufficient_evidence') return { ...outcome, inspectedSources: visible, unavailableSourcesCount };
-  // Cited references need the same current check; their old titles must not bypass it.
-  const sources: typeof outcome.proposal.sources = [];
-  for (const source of outcome.proposal.sources) {
-    if (await ports.access.canOpenSource(principal, projectId, source)) sources.push(source);
-  }
-  return { ...outcome, proposal: { ...outcome.proposal, sources },
+  return { ...outcome, proposal: await visibleProposal(ports.access, principal, outcome.proposal),
     inspectedSources: outcome.inspectedSources === null ? null : visible, unavailableSourcesCount };
 }
 

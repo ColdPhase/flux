@@ -42,7 +42,7 @@ export interface ProactiveComparisonProposal {
   audience: { kind: 'project'; projectId: string };
   computeSource: 'owner_background_claude_platform';
   model: 'claude-sonnet-5';
-  /** Cited project source revisions, including the triggering result. */
+  /** Cited project source revisions, including the triggering result. Reads and changes omit those the current reader cannot open. */
   sources: Array<{ type: 'result' | 'message' | 'material' | 'work' | 'thought'; id: string; version: number; conversationId?: string; sketchId?: string; title?: string }>;
   fact: string;
   interpretation: string;

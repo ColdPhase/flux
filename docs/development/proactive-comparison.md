@@ -167,7 +167,10 @@ work back into comparison evidence.
 The controlled dispatch path saves the complete inspected metadata vector
 before sending source content to compute; cited references remain a distinct
 subset. Outcome reads apply current source access per reader, returning only
-the count of unavailable references. Legacy candidates keep a null inspected
+the count of unavailable references. The compatible proposal list and every
+proposal response of an edit, dismissal or use pass through the same projection
+(`visibleProposal`), so a stored citation title cannot reappear after a change;
+the stored citation history itself is unchanged. Legacy candidates keep a null inspected
 vector rather than reconstructing it from citations. The paged outcome API
 keeps insufficient items separate from actionable proposals; dismiss requires
 current project write access and the expected version.

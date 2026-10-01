@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import type { BackgroundComputeUsage, InspectedComparisonSource, InsufficientComparisonOutcome,
   ProactiveComparisonOutcome, ProactiveComparisonProposal } from '@flux/contracts';
-import { comparisonOutcomeUseCases, ConflictError, InvalidInputError, NotFoundError, VersionConflictError,
+import { comparisonOutcomeUseCases, ConflictError, InvalidInputError, NotFoundError, VersionConflictError, visibleProposal,
   type ComparisonOutcomePorts, type Principal } from '@flux/core';
 
 const owner: Principal = { kind: 'human', id: 'outcome-owner' };
@@ -73,6 +73,24 @@ test('outcomes page is project-authorized and omits inaccessible inspected/cited
   assert.deepEqual(comparison.proposal.sources, [sources[0]]);
   assert.equal(JSON.stringify([first, second]).includes(sources[1]!.title), false);
   assert.equal(sources.length, 2, 'the stored metadata was not mutated by a reader-specific projection');
+});
+
+test('every proposal response shares one current-reference projection without touching stored citations', async () => {
+  const s = scene();
+  const checked: string[] = [];
+  const access: ComparisonOutcomePorts['access'] = { requireProject: s.ports.access.requireProject,
+    async canOpenSource(principal, place, source) { checked.push(`${principal.id}:${place}:${source.id}`); return s.ports.access.canOpenSource(principal, place, source); } };
+  const shown = await visibleProposal(access, owner, proposal);
+  assert.deepEqual(shown.sources, [sources[0]]);
+  assert.deepEqual({ ...shown, sources: proposal.sources }, proposal, 'only the references differ from the stored view');
+  assert.deepEqual(checked, sources.map((source) => `${owner.id}:${projectId}:${source.id}`), 'each stored citation is checked for this reader and project, in order');
+  assert.equal(JSON.stringify(shown).includes(sources[1]!.title), false);
+  assert.equal(proposal.sources.length, 2, 'the stored metadata was not mutated by a reader-specific projection');
+  const none = await visibleProposal({ ...access, canOpenSource: async () => false }, owner, proposal);
+  assert.deepEqual(none.sources, [], 'a reader who can open nothing sees no citation');
+  const page = await comparisonOutcomeUseCases({ run: (action) => action({ ...s.ports, outcomes: { ...s.ports.outcomes,
+    async listProject() { return { items: [{ kind: 'comparison', proposal, inspectedSources: sources, unavailableSourcesCount: 0 }], total: 1 }; } } }) }).list(owner, projectId);
+  assert.deepEqual((page.items[0] as Extract<ProactiveComparisonOutcome, { kind: 'comparison' }>).proposal, shown, 'the outcome page applies the same projection');
 });
 
 test('legacy inspected metadata remains unknown even when a cited subset exists', async () => {

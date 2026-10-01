@@ -5,13 +5,21 @@ import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
 import { comparisonOutcomeRows, createDatabase } from '@flux/db';
 import type { ComparisonProvider, ComparisonSource } from '@flux/core';
-import type { BackgroundComputeUsage, Page, ProactiveComparisonOutcome } from '@flux/contracts';
+import type { BackgroundComputeUsage, Page, ProactiveComparisonOutcome, ProactiveComparisonProposal } from '@flux/contracts';
 import { dispatchProactiveComparison } from '../../apps/worker/src/proactive-comparison/dispatch.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
 
 const { db, pool } = createDatabase(process.env.DATABASE_URL!);
 after(() => pool.end());
 const masterKey = readFileSync('/run/secrets/flux_background_key');
+const thoughtText = 'Compare the sensor under the same 5 lux trial.';
+/** A fixture answer that cites the triggering result and every thought it was given. */
+const citingProvider: ComparisonProvider = { async countInputTokens() { return 100; }, async createMessage(input) {
+  return { stopReason: 'end_turn', usage: { inputTokens: 100, outputTokens: 100 }, answer: { kind: 'comparison',
+    fact: 'The camera misses gestures.', interpretation: 'A comparison needs a repeated protocol.', suggestedAction: 'Repeat the trial.',
+    citations: input.sources.filter((source) => source.type === 'result' || source.type === 'thought')
+      .map(({ type, id, version }) => ({ type, id, version })) } };
+} };
 
 async function fixture() {
   const [owner, peer, viewer, outsider] = await Promise.all(['outcome-owner', 'outcome-peer', 'outcome-viewer', 'outcome-outsider'].map(person));
@@ -37,7 +45,7 @@ async function fixture() {
   const sketch = expectStatus(await peer.browser.request('POST', `/api/v1/workspaces/${ws.id}/sketches`,
     { body: { title: 'Project test ideas', scope: 'project', projectId } }), 201) as { id: string };
   const { thought } = expectStatus(await peer.browser.request('POST', `/api/v1/sketches/${sketch.id}/thoughts`,
-    { body: { text: 'Compare the sensor under the same 5 lux trial.', x: 0, y: 0 } }), 201) as { thought: { id: string; version: number } };
+    { body: { text: thoughtText, x: 0, y: 0 } }), 201) as { thought: { id: string; version: number } };
   const work = expectStatus(await peer.browser.request('POST', `/api/v1/projects/${projectId}/work`,
     { body: { title: 'Human measurement protocol', outcome: 'Use the same controlled measurement. '.repeat(100) } }), 201) as { id: string };
   const negative = async () => {
@@ -120,24 +128,107 @@ test('truncated and malformed paid answers retain usage and publish only fixed s
 test('unopenable inspected and cited references lose their titles; legacy complete vectors remain unknown', async () => {
   const f = await fixture();
   const { candidateId } = await f.negative();
-  const provider: ComparisonProvider = { async countInputTokens() { return 100; }, async createMessage(input) {
-    return { stopReason: 'end_turn', usage: { inputTokens: 100, outputTokens: 100 }, answer: { kind: 'comparison',
-      fact: 'The camera misses gestures.', interpretation: 'A comparison needs a repeated protocol.', suggestedAction: 'Repeat the trial.',
-      citations: input.sources.filter((source) => source.type === 'result' || source.type === 'thought')
-        .map(({ type, id, version }) => ({ type, id, version })) } };
-  } };
-  assert.equal((await dispatchProactiveComparison({ db, candidateId, masterKey, provider })).status, 'proposal');
+  assert.equal((await dispatchProactiveComparison({ db, candidateId, masterKey, provider: citingProvider })).status, 'proposal');
   const before = (await f.list()).items[0]!;
   assert.ok(before.inspectedSources!.length > (before.kind === 'comparison' ? before.proposal.sources.length : 0), 'the inspected vector is not the cited subset');
   expectStatus(await f.peer.browser.request('DELETE', `/api/v1/sketches/${f.sketch.id}/thoughts/${f.thought.id}`,
     { headers: { 'If-Match': `"${f.thought.version}"` } }), 204);
   const afterDelete = (await f.list()).items[0]!;
   assert.equal(afterDelete.unavailableSourcesCount, 1);
-  assert.ok(!JSON.stringify(afterDelete).includes('Compare the sensor under the same 5 lux trial.'));
+  assert.ok(!JSON.stringify(afterDelete).includes(thoughtText));
   const compatible = expectStatus(await f.peer.browser.request('GET', `/api/v1/projects/${f.projectId}/proactive-comparison-proposals`), 200);
   assert.ok(!JSON.stringify(compatible).includes(f.thought.id), 'the compatible proposal route applies current reference checks too');
   await pool.query('UPDATE proactive_comparison_outbox SET inspected_sources=NULL WHERE id=$1', [candidateId]);
   assert.equal((await f.list()).items[0]!.inspectedSources, null, 'legacy data never invents a complete inspected vector');
+});
+
+type Scene = Awaited<ReturnType<typeof fixture>>;
+const proposalsRead = async (f: Scene) => expectStatus(await f.peer.browser.request('GET',
+  `/api/v1/projects/${f.projectId}/proactive-comparison-proposals`), 200) as ProactiveComparisonProposal[];
+/** The proposal inside the paged outcome read, as the same reader sees it now. */
+async function outcomeRead(f: Scene, id: string): Promise<ProactiveComparisonProposal> {
+  const found = (await f.list()).items.find((item) => item.kind === 'comparison' && item.proposal.id === id);
+  if (found?.kind !== 'comparison') throw new Error('The proposal is missing from the outcome page');
+  return found.proposal;
+}
+/** One proposal that cites the triggering result and the project thought. */
+async function citedProposal(f: Scene): Promise<ProactiveComparisonProposal> {
+  const { candidateId } = await f.negative();
+  assert.equal((await dispatchProactiveComparison({ db, candidateId, masterKey, provider: citingProvider })).status, 'proposal');
+  const [cited] = await proposalsRead(f);
+  assert.ok(cited!.sources.some((source) => source.type === 'thought' && source.id === f.thought.id && source.title === thoughtText),
+    'the thought is cited, with its stored title, before anything changes');
+  return cited!;
+}
+function assertNoThought(f: Scene, label: string, value: ProactiveComparisonProposal) {
+  assert.ok(!JSON.stringify(value).includes(f.thought.id), `${label} names a thought the reader cannot open`);
+  assert.ok(!JSON.stringify(value).includes(thoughtText), `${label} shows the title of a thought the reader cannot open`);
+  assert.ok(value.sources.some((source) => source.type === 'result'), `${label} keeps the references the reader can open`);
+}
+const storedSources = async (id: string) => JSON.stringify((await pool.query('SELECT sources FROM proactive_comparison_proposals WHERE id=$1', [id])).rows[0].sources);
+
+/** A cited proposal whose thought was deleted: the reads already omit it, and so must every response. */
+async function proposalWithDeletedThought(f: Scene): Promise<ProactiveComparisonProposal> {
+  const proposal = await citedProposal(f);
+  expectStatus(await f.peer.browser.request('DELETE', `/api/v1/sketches/${f.sketch.id}/thoughts/${f.thought.id}`,
+    { headers: { 'If-Match': `"${f.thought.version}"` } }), 204);
+  for (const read of [(await proposalsRead(f))[0]!, await outcomeRead(f, proposal.id)]) assertNoThought(f, 'the read', read);
+  return proposal;
+}
+async function assertAnswersLikeReads(f: Scene, label: string, answered: ProactiveComparisonProposal) {
+  assertNoThought(f, label, answered);
+  assert.deepEqual(answered, (await proposalsRead(f))[0], `${label} is exactly what the proposal read shows afterwards`);
+  assert.deepEqual(answered, await outcomeRead(f, answered.id), `${label} is exactly what the outcome read shows afterwards`);
+  assert.ok((await storedSources(answered.id)).includes(f.thought.id), 'the projection is per response; the stored citation history stays');
+}
+
+test('a proposal edit answers with the same current references as the reads', async () => {
+  const f = await fixture();
+  const proposal = await proposalWithDeletedThought(f);
+  const edited = expectStatus(await f.peer.browser.request('PATCH', `/api/v1/proactive-comparison-proposals/${proposal.id}`,
+    { body: { expectedVersion: 1, fact: 'The camera misses gestures at 5 lux.' } }), 200) as ProactiveComparisonProposal;
+  assert.deepEqual([edited.status, edited.version, edited.fact, edited.editedByUserId],
+    ['proposed', 2, 'The camera misses gestures at 5 lux.', f.peer.id]);
+  await assertAnswersLikeReads(f, 'the edit response', edited);
+});
+
+test('a proposal dismissal answers with the same current references as the reads', async () => {
+  const f = await fixture();
+  const proposal = await proposalWithDeletedThought(f);
+  const dismissed = expectStatus(await f.peer.browser.request('PATCH', `/api/v1/proactive-comparison-proposals/${proposal.id}`,
+    { body: { expectedVersion: 1, status: 'dismissed' } }), 200) as ProactiveComparisonProposal;
+  assert.deepEqual([dismissed.status, dismissed.version, dismissed.editedByUserId], ['dismissed', 2, f.peer.id]);
+  await assertAnswersLikeReads(f, 'the dismissal response', dismissed);
+});
+
+test('using a proposal whose cited thought was deleted is refused without a change or the thought', async () => {
+  const f = await fixture();
+  const proposal = await proposalWithDeletedThought(f);
+  const refused = await f.peer.browser.request('POST', `/api/v1/proactive-comparison-proposals/${proposal.id}/use`,
+    { body: { expectedVersion: 1, title: 'Repeat the 5 lux trial' } });
+  assert.equal(refused.status, 422, refused.text);
+  assert.equal((refused.json as { code: string }).code, 'LINK_TARGET_NOT_FOUND');
+  assert.ok(!refused.text.includes(f.thought.id) && !refused.text.includes(thoughtText), 'the refusal does not name the thought');
+  const [stored] = (await pool.query('SELECT status, version, used_work_id FROM proactive_comparison_proposals WHERE id=$1', [proposal.id])).rows;
+  assert.deepEqual(stored, { status: 'proposed', version: 1, used_work_id: null });
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_work_items WHERE project_id=$1 AND title=$2',
+    [f.projectId, 'Repeat the 5 lux trial'])).rows[0].n, 0, 'no work was created');
+});
+
+test('using a proposal answers with the same current references as the reads', async () => {
+  const f = await fixture();
+  const proposal = await citedProposal(f);
+  // A deleted thought makes the work link, and so this action, fail (previous test). Its response is therefore checked with
+  // a citation that still links but no longer opens as cited, because the thought's map is not recorded with it.
+  await pool.query(`UPDATE proactive_comparison_proposals SET sources = (
+      SELECT jsonb_agg(CASE WHEN s.value->>'type' = 'thought' THEN s.value - 'sketchId' ELSE s.value END ORDER BY s.ord)
+      FROM jsonb_array_elements(sources) WITH ORDINALITY AS s(value, ord)) WHERE id = $1`, [proposal.id]);
+  assertNoThought(f, 'the read', (await proposalsRead(f))[0]!);
+  const used = expectStatus(await f.peer.browser.request('POST', `/api/v1/proactive-comparison-proposals/${proposal.id}/use`,
+    { body: { expectedVersion: 1, title: 'Repeat the 5 lux trial' } }), 200) as { proposal: ProactiveComparisonProposal; work: { id: string; title: string } };
+  assert.equal(used.work.title, 'Repeat the 5 lux trial');
+  assert.deepEqual([used.proposal.status, used.proposal.version, used.proposal.usedWorkId], ['used', 2, used.work.id]);
+  await assertAnswersLikeReads(f, 'the use response', used.proposal);
 });
 
 test('terminal pre-paid refusals persist zero usage without retry, while owner accounting survives access loss and disconnection', async () => {
