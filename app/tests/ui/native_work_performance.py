@@ -222,9 +222,12 @@ class Traffic:
 
     def request(self,event):
         request = event["request"]; url = urlsplit(request["url"])
-        if url.scheme not in ("http","https") or not url.path.startswith("/api/"): return
+        if url.scheme not in ("http","https"): return
         method = request["method"]; path = UUID.sub(":id",url.path)
-        if method not in ("GET","HEAD","OPTIONS"): self.mutations[f"{method} {path}"] += 1
+        if method not in ("GET","HEAD","OPTIONS"):
+            same_origin = (url.scheme,url.netloc)==(urlsplit(ORIGIN).scheme,urlsplit(ORIGIN).netloc)
+            self.mutations[f"{method} {path if same_origin and path.startswith('/api/') else '(other HTTP command)'}"] += 1
+        if not url.path.startswith("/api/"): return
         if len(self.records) >= 256:
             self.overflow += 1; return
         self.records[event["requestId"]] = {"path":path,"collection":bool(COLLECTION.search(url.path)),
@@ -267,6 +270,7 @@ class Traffic:
             "collectionDecodedBodyBytes":body_bytes,
             "collectionEncodedTransferBytes":sum(r["encoded"] or 0 for r in collections),
             "unavailableCollectionBodies":unavailable,"requestBufferOverflow":self.overflow,
+            "failedCollectionResponses":sum(r["status"] != 200 for r in collections),
             "routes":dict(Counter(f"{r['method']} {r['path']}" for _,r in records))}
 
 
@@ -292,6 +296,14 @@ def distribution(values,target,seconds):
         "p95Ms":p95,"maxMs":max(values) if values else None,"targetP95Ms":target,
         "passed":len(values)>=200 and seconds>=60 and p95 is not None and p95<=target,
         "durationsMs":values}
+
+
+def verified_traffic(traffic):
+    return not any(traffic[key] for key in ("unavailableCollectionBodies","requestBufferOverflow","failedCollectionResponses"))
+
+
+def fetch_bound(traffic):
+    return verified_traffic(traffic) and traffic["uniqueWorkFetched"]<=100 and traffic["collectionCalls"]<=4
 
 
 def following_frame(page):
@@ -324,7 +336,7 @@ def run_profile(browser,data,label,viewport,cpu,report):
         traffic.begin("initial"); page.goto(url,wait_until="domcontentloaded"); usable(page)
         item["initialTraffic"] = traffic.collect("initial")
         item["initialDOM"] = snapshot(page,cdp)
-        item["initialFetchBoundPassed"] = item["initialTraffic"]["uniqueWorkFetched"]<=100 and item["initialTraffic"]["collectionCalls"]<=4 and item["initialTraffic"]["unavailableCollectionBodies"]==0
+        item["initialFetchBoundPassed"] = fetch_bound(item["initialTraffic"])
         item["initialRenderBoundPassed"] = item["initialDOM"]["renderedWorkRows"]<=200
         page.screenshot(path=str(OUT/f"native-work-{label}.png"))
         targets = {"navigation":2000*cpu if cpu==1 else 4000,"input":100 if cpu==1 else 200,
@@ -434,6 +446,11 @@ def run_profile(browser,data,label,viewport,cpu,report):
         item["memorySemantics"] = "80 samples across measured distributions; target JS heap and target DOM (including detached nodes), not driver/container RSS"
         heaps = [s["targetJSHeapUsedBytes"] for s in item["memorySamples"] if s["targetJSHeapUsedBytes"] is not None]
         item["sampledTargetHeapPeakBytes"] = max(heaps) if heaps else None
+        item["sampledRenderedWorkRowPeak"] = max(s["renderedWorkRows"] for s in item["memorySamples"])
+        item["laterRenderBoundPassed"] = item["sampledRenderedWorkRowPeak"]<=200
+        item["measuredInitialTraffic"] = {"samples":len(item["initialNavigationSamples"]),
+            "verified":sum(verified_traffic(t) for t in item["initialNavigationSamples"]),
+            "withinBounds":sum(fetch_bound(t) for t in item["initialNavigationSamples"])}
         item["currentPhase"] = "complete"
     finally:
         item["mutatingRequests"] = dict(traffic.mutations)
@@ -478,19 +495,24 @@ def main():
         failure_names = []
         if not report["nativeWorkUnchanged"]: failure_names.append("nativeWorkChanged")
         for p in report["profiles"]:
-            for key in ("initialFetchBoundPassed","initialRenderBoundPassed"):
+            for key in ("initialFetchBoundPassed","initialRenderBoundPassed","laterRenderBoundPassed"):
                 if not p[key]: failure_names.append(f"{p['label']}:{key}")
+            if p["measuredInitialTraffic"]["withinBounds"] != 200:
+                failure_names.append(f"{p['label']}:measuredInitialFetchBound")
             for key in CONTINUITY:
                 if not p["continuity"].get(key,False): failure_names.append(f"{p['label']}:{key}")
             for key,d in p["distributions"].items():
                 if not d["passed"]: failure_names.append(f"{p['label']}:{key}:distribution")
-                if d.get("trafficIncluding15sRevalidation",{}).get("requestBufferOverflow",0):
-                    failure_names.append(f"{p['label']}:{key}:requestBufferOverflow")
+                if "trafficIncluding15sRevalidation" in d and not verified_traffic(d["trafficIncluding15sRevalidation"]):
+                    failure_names.append(f"{p['label']}:{key}:collectionTrafficUnverified")
+            if not verified_traffic(p["deepDetailsTraffic"]):
+                failure_names.append(f"{p['label']}:deepDetailsTrafficUnverified")
             unexpected_mutations = {route:count for route,count in p["mutatingRequests"].items()}
             # Tasks/source routes do not issue ordinary read acknowledgments in this source.
             p["unexpectedMutatingRequests"] = unexpected_mutations
             if unexpected_mutations: failure_names.append(f"{p['label']}:unexpectedMutation")
         report["observedFailures"] = failure_names
+        if report["wideObservation"]["renderedWorkRows"]>200: failure_names.append("wide:renderBound")
         failures = bool(failure_names)
         report["outcome"] = "completed-baseline-with-observed-failures" if failures else "completed-measurement-within-proposed-budgets"
         write_report(report)
