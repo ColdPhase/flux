@@ -55,7 +55,7 @@ conversation points are deleted with their place.
 | result | "Ari recorded a result: …", "It did not work out, about “…”". | It is about work you own or created. |
 | work | "Ari added a task for you: …", "Blocked: …", "Parked: …" (with the rule that set it aside), "Done: …", "In progress: …". | Unfinished, unparked work you own. |
 | question | "Ari asked you: “…”" when a message addresses you (`@Name`, or starts with "Name," / "Name:"), or asks a question in a conversation you started or posted in. | Until you post in that conversation after it. |
-| message | "Ari and Kai replied in “…”", grouped per conversation, opening on the first new message. | Never. |
+| message | "Ari and Kai replied in “…”", grouped per conversation, opening on the first new message. A task thread opened by a saved blocker, a published result or a public handoff (#154) is an ordinary conversation here: its opening is announced beside the result or blocked-work item it came from. | Never. |
 | material | "New material: …", "Updated material: …, now version N". | Never. |
 | sketch | "Ari started a sketch: …", "Sketch changed: …" (project sketches; private ones reach only their author). | Never. |
 | doc | "Ari started a doc: …" (with its reason), "Doc updated: …" with "Version N by Ari · latest: <reason>" or "2 new versions by …" ([#112](docs-wiki.md)). The source opens the doc, or its history comparing the last version before these changes with the current one. | Never. |

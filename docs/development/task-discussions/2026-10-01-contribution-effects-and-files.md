@@ -199,3 +199,61 @@ that distinct publication boundary stays disabled until its consumer agreement.
 Schema0040/0041 allocation is recorded on153 before any new SQL write. Current
 helper/native source, actor and deadline semantics remain unchanged until the
 corresponding implemented/tested new head is recorded.
+
+## Implemented at `a846a31` — explicit native effects (first part)
+
+2026-10-01. Branch `codex-hubert/154-contribution-effects`, from `origin/main` `919c1db`
+with later main merged. This records only the section "Explicit native effects on the
+canonical thread" and the effects, atomicity, hook and lock-order corrections of the
+[independent assessment](2026-10-01-contribution-effects-and-files-review.md). The
+file-durability corrections, stored bytes, attachment-only messages, quotas, shared
+drafts, migration 0041, unused-AI undo and the real #152/#153 tools are **not**
+implemented and remain required. Operational detail is in
+[the task-discussion record](../task-discussions.md#explicit-native-effects-on-the-canonical-thread);
+verification is in the [evidence note](../../agents/evidence/154-task-notices/contribution-effects/README.md).
+
+Final names. Contracts: `MessageContribution`, optional `ConversationMessage.contribution`,
+`TaskContributionCommand` (`kind?: 'text' | 'handoff'`), optional `clientCommandId` on
+`UpdateWorkCommand` and `CreateResultCommand`, optional `ProjectExportMessage.contribution`.
+Core: mandatory `WorkPorts.contributions: WorkContributions` (`prepare` → `lockTasks` →
+`append`, plus `confirm`), `ContributionAnchor`, `ContributionDraft`, `PreparedContributions`,
+`NativeCommandReceipt`, `createWorkContributions`, `contributionIdentity`, `derivedUuid`,
+`messageContribution`, and `WorkRepository.nativeCommand`/`recordNativeCommand`. Database:
+**migration 0040** `0040_native_contribution_effects.sql` (`project_messages.contribution_kind`,
+`result_id`, `native_command_receipts`; guarded pre-use reversal
+`migrations/reverse/0040_native_contribution_effects.down.sql`; `FLUX_SCHEMA_VERSION` 40,
+0039 belongs to #171 and 0041 is unallocated). Server: `workPorts` composes the hook in
+every adapter; `taskDiscussionRows.lockBoundTask`.
+
+Interpretations and refinements (none lowers a requirement):
+
+- Native receipt operation names are `work.update` and `result.create`; the #152 ledger keeps
+  its own `result.record`. A work-update replay checks the produced task version
+  (`COMMAND_POSTSTATE_STALE`); a result replay checks the immutable result, its stored
+  contribution messages, current authorization and the canonical sources, like #152's
+  versionless `result` postcondition.
+- Message identities are `UUIDv5`-layout hashes of operation, stable command (or canonical
+  result) and exact task. Without a client UUID a fresh command UUID is generated, so only
+  the version fence stops a stale identical blocker retry, as specified.
+- The helper-accepted result path has no client command: its locked proposal is the stable
+  command identity and is acquired before the task lock that proposal authority already takes.
+  Its fresh result id cannot contend with any other identity lock.
+- A public handoff is requestable by a human through the task-discussion route
+  (`kind: "handoff"`); blocker/result kinds are rejected there and the generic conversation
+  routes reject any `kind` instead of silently stripping it. One exact versioned material
+  `source` is the existing canonical citation; several sources per message and files need a
+  relation the files part adds, so plural handoff sources are a **remaining ambiguity**
+  to settle with #153 and that part.
+- Portable export carries the marker as an additive optional `contribution` (format version 1
+  unchanged); a consumer validating strictly must use the schema in the bundle. #118 must
+  record this. Search, notification, Return/digest and helper-context consumers needed no
+  code change: they read the real authored body and actor, which is what the contribution is.
+- Existing tests whose counts legitimately changed (a linked result now also opens or extends
+  task threads) were updated: native session intents, export conversations and the Return
+  summary, the Playwright work and return-view journeys (the Conversation tab opens the newest
+  conversation, which can now be a task thread; the Since-you-left summary counts a thread's
+  opening), and the agent-execution fixture, which now uses the production native composition.
+  Whether the integrated #136 shell should keep that default is left to it. The new Chromium
+  journey is part of `scripts/check_application.sh`.
+- The tested application source is `a846a31c90513059b0ca79757ab9a38cb0c959ff`; later commits on the
+  branch change only the Python browser journeys, documentation and evidence.

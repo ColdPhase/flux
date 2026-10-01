@@ -238,6 +238,11 @@ effects, atomicity, hooks and lock order apply; the file corrections remain for 
   exact task. The helper acceptance path uses its locked proposal as the command identity.
 - **Retries.** `clientCommandId` on `PATCH /api/v1/work/:id` and `POST /api/v1/projects/:id/results`; semantics in
   [work and decisions](work-decisions.md#contributions-to-the-task-conversation-154).
-- **Not in this part.** Stored files and attachment-only messages, shared drafts, unused-AI undo, #152/#153 tools,
-  portable-export fields for the contribution kind, and import. No search, notification, Return or helper-context
-  consumer needed a change: each reads the real authored body and real actor, which is what the contribution is.
+- **Consumers.** Search, notifications, Return and helper context needed no code change: each reads the real
+  authored body and actor, which is what the contribution is. Their output legitimately changes: the Return view and
+  "Since you left" count the opening of a task thread that a result created like any new conversation, and the
+  Conversation tab's default (the project's newest conversation) can now be a task thread. Both are interim
+  behavior for the integrated #136 shell to settle, not a decision made here. Portable export carries the marker
+  additively.
+- **Not in this part.** Stored files and attachment-only messages, shared drafts, unused-AI undo, #152/#153 tools
+  and import.

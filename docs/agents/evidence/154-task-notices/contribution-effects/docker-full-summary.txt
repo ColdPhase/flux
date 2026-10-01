@@ -1,0 +1,658 @@
+Tested source: a846a31c90513059b0ca79757ab9a38cb0c959ff
+Raw private log SHA256: 27ca09b4c05aebf2c5102358a741dcadb950f60c83334e89b030fbd1fbc57400
+Only test names/counts, tool stages and cleanup lines are published.
+
+#16 0.640 $ pnpm -r --if-present build && tsc -p tooling/tsconfig.build.json
+#16 0.730 packages/contracts build$ tsc -p tsconfig.build.json
+#16 2.057 packages/contracts build: Done
+#16 2.058 packages/sdk build$ tsc -p tsconfig.build.json
+#16 2.058 apps/web build$ vite build
+#16 2.058 packages/db build$ tsc -p tsconfig.build.json
+#16 2.643 apps/web build: Done
+#16 3.548 packages/sdk build: Done
+#16 5.087 packages/db build: Done
+#16 5.087 packages/core build$ tsc -p tsconfig.build.json
+#16 6.850 packages/core build: Done
+#16 6.850 apps/server build$ tsc -p tsconfig.build.json
+#16 6.850 packages/agent-runtime build$ tsc -p tsconfig.build.json
+#16 7.712 packages/agent-runtime build: Done
+#16 7.712 apps/worker build$ tsc -p tsconfig.build.json
+#16 8.671 apps/worker build: Done
+#16 9.652 apps/server build: Done
+#16 10.51 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#16 18.93 $ eslint .
+▶ agent principals
+  ✔ an agent with a scoped grant reads only its project (392.339636ms)
+  ✔ a person-owned agent is capped by its owner and stops when the owner leaves (201.282155ms)
+✔ agent principals (595.039454ms)
+▶ agents stay inside current project grants
+  ✔ an agent without a writable grant cannot create drafts (186.801372ms)
+  ✔ revoking or narrowing a grant removes the agent access to its own drafts (374.328375ms)
+  ✔ an explicit deny hides the agent own drafts (171.256667ms)
+✔ agents stay inside current project grants (732.711584ms)
+▶ access changes are serialized with draft writes (two connections)
+  ✔ (a) revoking an agent contributor grant — write first (276.496824ms)
+  ✔ (b) inserting a denied grant for a member without a grant row — write first (281.568486ms)
+  ✔ (b) replacing an agent grant with denied — write first (259.209946ms)
+  ✔ (c) narrowing a member's default access with a viewer grant — write first (276.817815ms)
+  ✔ (c) changing a member to guest removes default project access — write first (441.499457ms)
+  ✔ (c) removing the member — write first (373.461304ms)
+  ✔ (a) revoking an agent contributor grant — change first (233.191867ms)
+  ✔ (b) inserting a denied grant for a member without a grant row — change first (279.731372ms)
+  ✔ (b) replacing an agent grant with denied — change first (212.258442ms)
+  ✔ (c) narrowing a member's default access with a viewer grant — change first (312.606276ms)
+  ✔ (c) changing a member to guest removes default project access — change first (153.398608ms)
+  ✔ (c) removing the member — change first (124.856992ms)
+✔ access changes are serialized with draft writes (two connections) (3225.926323ms)
+▶ policy contract
+  ✔ authorize distinguishes invisible from forbidden and visibleFilter matches list results (160.897554ms)
+✔ policy contract (161.066724ms)
+▶ database integrity
+  ✔ composite foreign keys reject cross-workspace links (161.700274ms)
+✔ database integrity (161.839285ms)
+▶ workspace access policy over HTTP
+  ✔ the creator owns a new workspace and non-members cannot see it (27.713273ms)
+  ✔ a new draft is private: other members, admins and guests cannot see it (125.323353ms)
+  ✔ sharing to a restricted project reveals the draft only to project grantees (173.868433ms)
+  ✔ a restricted project is invisible to a member without a grant in get, list and count (138.795853ms)
+  ✔ a viewer can read but not write; a contributor can write (260.012597ms)
+  ✔ a guest sees only explicitly granted projects and no workspace-wide drafts (247.392958ms)
+  ✔ owners and admins differ in authority over members (349.84713ms)
+  ✔ cross-workspace share, move and link are rejected (249.714924ms)
+  ✔ removing a membership or a grant applies on the very next request (417.353552ms)
+  ✔ list counts and pages exclude rows the caller cannot see (648.607854ms)
+  ✔ an explicit deny wins over membership and admin roles (411.721801ms)
+  ✔ a project names exactly the people who can read it, for everyone who can read it (#117) (434.490064ms)
+✔ workspace access policy over HTTP (3999.467757ms)
+✔ 0034 upgrades the prior schema without changing historic connection, proposal or singleton-selection records (379.187606ms)
+✔ durable command normalization is deterministic and rejects ambiguous, wildcard, mismatched or unbounded inputs (2.915926ms)
+✔ canonical postcondition registry rejects missing, duplicate, malformed or cross-operation evidence (0.525711ms)
+✔ claim conditions retain actual role/state/session and allow historical expired lease observation only as post-state (0.19952ms)
+✔ cowork.request is reserved for the sender unit role only: never a recipient class, request kind or ACK/selection operation (0.825372ms)
+✔ a cowork.request grant cannot authorize cowork.claim and a claim grant cannot authorize a request (0.580512ms)
+✔ request conditions are content-free, exact and singular (0.470851ms)
+✔ every operation has a registered postcondition entry; an incomplete sample table does not typecheck (0.294021ms)
+✔ concurrent duplicate canonical commands share one effect, receipt and last-use debit; matching retry preserves the produced version (652.841354ms)
+✔ changed payload/session/class context conflicts, revoked grants deny replay and scope handles cannot be forged or reused (475.234583ms)
+✔ effect failure rolls back native rows, receipt, event and grant use (447.24583ms)
+✔ owner grant API is idempotent, bounded and management-gated; history and narrowing remain owner-only after role loss (783.559879ms)
+✔ runtime expiry/revocation and lost current domain authority deny successful receipt observation (546.099876ms)
+✔ changed plan/source revisions and actual client or coarse scope substitution fail before effect or replay (431.829319ms)
+✔ grant expiry after a real lock wait uses DB wall time and publishes no effect (828.23844ms)
+✔ cowork.request grants exist per sender class; the closed operation CHECK accepts them and still rejects unknown or non-operation names (299.448628ms)
+✔ a cowork.request grant authorizes only its exact operation and sender class; completing without the canonical #153 callback debits nothing (526.889911ms)
+✔ orientation rejects unselected projects and malformed/duplicate checkpoints before querying metadata (1.192712ms)
+✔ map checkpoint changes despite an unchanged map row version and index adapters cannot cross scope (0.658151ms)
+✔ the selected-project ceiling is checked before object lookup, including malformed and unselected IDs (1.129952ms)
+✔ foreign workspace/project and missing metadata return the same content-free error (0.23792ms)
+▶ sourced personal agent proposals
+  ✔ source, audience, idempotency and current grant protect a proposal (364.377233ms)
+  ✔ invalid command shapes and source revision range are domain errors (0.291721ms)
+✔ sourced personal agent proposals (896.810906ms)
+✔ 0038 widens only the closed grant operation CHECK: the prior ledger upgrades in place, rows survive and it is idempotent (383.88015ms)
+▶ architecture boundaries
+  ✔ the repository has no dependency violation outside the recorded allowlist (26.58285ms)
+  ✔ every allowlist entry names its tracking issue and a reason (0.264221ms)
+  ✔ the push use cases in core stay free of adapters, including through helpers (0.704881ms)
+  ✔ the sketch use cases in core stay free of adapters, including through helpers (#69) (0.538091ms)
+  ✔ the direct-message use cases in core stay free of adapters, including through helpers (#107) (0.417871ms)
+  ✔ the rules reject each kind of boundary violation (self-test) (0.443051ms)
+  ✔ the allowlist comparison reports new and fixed violations (0.15078ms)
+✔ architecture boundaries (30.210938ms)
+▶ an explicitly saved nonempty blocker contributes its exact text
+  ✔ the saved text, trimmed as saved, becomes one authored blocker contribution with the task change (2.416346ms)
+  ✔ an agent saving a blocker is the genuine author, never a person (0.324821ms)
+  ✔ the order is access, command identity, message identity, task lock, task change, event, append, receipt (0.662962ms)
+  ✔ clearing a blocker, changing status/owner/text, or saving nothing contributes nothing (1.690924ms)
+  ✔ a blocker without a blocked status is rejected before anything is written (0.479721ms)
+  ✔ a stale version conflicts and contributes nothing, with or without a command UUID (0.494901ms)
+  ✔ a viewer cannot save a blocker and nothing is contributed (0.193321ms)
+✔ an explicitly saved nonempty blocker contributes its exact text (7.108716ms)
+▶ an exact retry of a native command returns its original outcome
+  ✔ the same client command and intent appends no second message, event, receipt or version (0.522221ms)
+  ✔ a changed intent under the same command conflicts; changed produced task state is stale, never overwritten (0.697402ms)
+  ✔ a replay is checked against current authorization first and writes nothing when refused (0.541841ms)
+  ✔ the receipt is scoped to the real actor: another actor with the same UUID executes its own command (0.350081ms)
+  ✔ without a command UUID nothing deduplicates, but the version fence stops a stale identical retry (0.248411ms)
+✔ an exact retry of a native command returns its original outcome (2.567656ms)
+▶ a published result contributes to every linked task
+  ✔ one canonical result, one deterministic contribution per task naming that result, in sorted task order (1.048892ms)
+  ✔ message identities derive from the result and the exact task, so a different result or task never collides (0.339911ms)
+  ✔ finishing a linked task is locked in the same sorted set and still version-fenced (0.447331ms)
+  ✔ a result with no linked task creates no task thread, identity lock or task lock (0.229781ms)
+  ✔ an agent publishing a result is the genuine author of every contribution (0.21944ms)
+  ✔ an exact retry returns the original result without another result or message; a changed intent conflicts (0.557022ms)
+  ✔ without a command UUID two identical publications are two results; nothing deduplicates them (0.33248ms)
+✔ a published result contributes to every linked task (3.355697ms)
+▶ the contribution hook is mandatory
+  ✔ a work adapter cannot be composed without it, and a missing hook never silently skips an effect (0.3382ms)
+  ✔ the handle enforces prepare, then lockTasks, then append, once each, and rejects a foreign handle (0.346671ms)
+  ✔ a replayed message identity appends nothing; a reused identity for another intent conflicts (0.257341ms)
+✔ the contribution hook is mandatory (1.038123ms)
+▶ an explicit public handoff uses the common contribution primitive
+  ✔ a handoff becomes the first canonical root with its real author and kind; retries are exact (0.506981ms)
+  ✔ plain text keeps its exact wire shape and original fingerprint; only handoff may be requested directly (0.200641ms)
+  ✔ a genuine agent handoff keeps the tagged agent author (0.1388ms)
+✔ an explicit public handoff uses the common contribution primitive (0.936742ms)
+▶ every contribution kind reads back with its marker
+  ✔ a result contribution carries its canonical result id; blocker and handoff carry only their kind (0.712672ms)
+✔ every contribution kind reads back with its marker (0.761032ms)
+✔ 0040 keeps every historical row byte-identical as plain text, adds only empty receipts, and reverses only before use (18044.910459ms)
+✔ an explicitly saved nonempty blocker contributes its exact text; clearing and status/owner/title changes contribute nothing (871.382537ms)
+✔ blocker saves obey current access: viewers are forbidden, outsiders see nothing, and nothing is contributed (669.31168ms)
+✔ a published result contributes one canonical result message to every linked task, bound or not, in sorted order (1540.183976ms)
+✔ a result with no linked task, or only a decision, creates no task thread; a viewer cannot publish (1043.659607ms)
+✔ a genuine agent publishing a result or saving a blocker through the native session keeps its tagged author (1335.104695ms)
+✔ an explicit public handoff is a contribution through the same primitive; ACK-like or invalid kinds are not accepted (558.847582ms)
+✔ every associated write of a blocker save or a result rolls the whole unit back; the same command then succeeds exactly once (984.106952ms)
+✔ failure in a caller-owned native transaction before or after the final flush leaves no blocker, result, message, event or receipt (536.301441ms)
+✔ overlapping results lock the complete sorted task set: a held later task does not stop the earlier from being locked first (493.468694ms)
+✔ simultaneous first contributions, results, blocker saves and generic replies keep one root and one gapless sequence without deadlock (1481.275025ms)
+✔ a generic reply to a task-bound conversation takes the task row before the conversation sequence (905.742926ms)
+✔ an agent saving a blocker or publishing a result composes the native effect with the ONE connection-command ledger atomically (1497.181181ms)
+✔ the receipt and message constraints refuse a result reference out of scope and a receipt without its produced object (827.81464ms)
+✔ blocker and result contributions finish every domain, receipt and response write before one final event batch (725.291698ms)
+✔ reads of the effects create nothing, and the transport Idempotency-Key cache composes with the native receipt (852.156184ms)
+✔ creating a task with a blocker keeps only its creation notice; creation fields are not a saved blocker contribution (734.542369ms)
+✔ concurrent exact duplicates of a keyed save or a keyed publication share one contribution and one outcome (785.954555ms)
+✔ conversation and material commits reach only current project readers through stream and replay (900.296453ms)
+▶ project capture and inline conversation
+  ✔ private draft remains private; selected redacted text becomes a versioned project material (432.164383ms)
+  ✔ two people send inline, retry safely, and keep a historical material citation (873.463852ms)
+  ✔ material publication retry and access revocation never expose cached project content (199.580671ms)
+✔ project capture and inline conversation (1949.94269ms)
+▶ direct messages
+  ✔ one 1:1 DM per pair: repeated and concurrent opens from either side return it (363.875072ms)
+  ✔ only participants see a DM: owners, admins, members and other tenants get 404 and no list entry (149.931539ms)
+  ✔ messages keep #36 ordering, clientMessageId retries, Idempotency-Key replays and paging (643.673184ms)
+  ✔ group DMs: named, renamed with If-Match, readable by exactly their participants (529.570396ms)
+  ✔ leaving removes access on the next request and in the stream; old messages stay hidden (2263.430691ms)
+  ✔ a 1:1 whose other person left is not reopened for them: 409, nothing sent, until they reopen it (369.443254ms)
+  ✔ removal from the workspace ends DM access at once and is not undone by rejoining (2265.660607ms)
+✔ direct messages (7415.421785ms)
+▶ DM sketches
+  ✔ starting a sketch from selected messages binds it to the DM with provenance; outsiders get 404 (1279.292079ms)
+  ✔ leaving or removal ends access on the next request and in the stream (2179.709053ms)
+  ✔ a 1:1 whose other person left is read-only: nothing is started or copied until they reopen it (591.350375ms)
+  ✔ promotion previews the exact audience, copies only the sketch, and never syncs the DM (568.389313ms)
+  ✔ search finds DM sketches and thoughts under the DM, opens them in the DM, and only for participants (381.703192ms)
+  ✔ promotion locks its audience: a leave waits for the copy, and a leave before it makes the preview stale (1285.303073ms)
+  ✔ promotion into an existing project locks its grants: a grant change waits, or makes the preview stale (1457.500652ms)
+  ✔ a member copies into a project they can change; the preview names who is left out (629.474521ms)
+✔ DM sketches (9965.498805ms)
+▶ project docs with immutable versions, links and backlinks
+  ✔ a doc keeps immutable versions with author, time and reason; old citations stay (272.302395ms)
+  ✔ access follows the project: viewers read, outsiders see nothing, agents read but do not write (173.084941ms)
+  ✔ concurrent edits: one wins, the other gets 409 with the latest version; retries are idempotent (200.246072ms)
+  ✔ links reach work, decisions, results, messages, sketches and docs; backlinks are visible; other projects never leak (766.261431ms)
+  ✔ Markdown is sanitized on the server: scripts, handlers, javascript: and data: URLs never render (52.807159ms)
+  ✔ Add to docs from a result or decision keeps the source, and a newer version says what changed (521.596108ms)
+  ✔ upsertSection replaces only the cited section and keeps other text byte for byte (0.875503ms)
+  ✔ events carry ids only and reach project readers; the workspace list uses the visibility filter (634.428842ms)
+✔ project docs with immutable versions, links and backlinks (3328.669847ms)
+▶ project export
+  ✔ only a project manager can export; others get 403, an outsider 404 (21.621089ms)
+  ✔ the document holds the project with versions, sketches, work and links, and nothing else (87.995859ms)
+  ✔ the bundle is a tar.gz with project.json, docs as Markdown, the schema and a checked manifest (19.220583ms)
+✔ project export (2102.683388ms)
+▶ identity configuration
+  ✔ consent display rejects modified or expired signed OAuth queries (5.501493ms)
+  ✔ requires an explicit public origin, a long secret and valid proxy ranges (5.796673ms)
+  ✔ origin policy accepts only the configured origin for state changes (0.18265ms)
+✔ identity configuration (12.361938ms)
+▶ identity server behaviour
+  ✔ unauthenticated MCP calls advertise the protected resource (118.888888ms)
+  ✔ OAuth token endpoint accepts form encoding and rejects an invalid grant itself (26.110439ms)
+  ✔ publishes OAuth and MCP discovery only at the expected paths (16.889158ms)
+  ✔ password reset reports unavailable when SMTP is not configured (13.739891ms)
+  ✔ an https public origin issues Secure, HttpOnly, SameSite cookies (156.657584ms)
+  ✔ X-Forwarded-For is believed only from a configured trusted proxy (305.044009ms)
+✔ identity server behaviour (637.86683ms)
+▶ human identity
+  ✔ register, sign in, authenticated request and sign out (249.455454ms)
+  ✔ wrong password and unknown account are rejected without a session (221.64905ms)
+  ✔ sessions are listed without tokens and revocation applies on the next request (433.94315ms)
+  ✔ password reset through SMTP uses a single-use expiring token (629.150921ms)
+  ✔ reset request for an unknown email gives the same answer and sends nothing (505.714752ms)
+  ✔ state-changing requests from a foreign origin are rejected (95.627516ms)
+  ✔ spoofed forwarding headers do not set the recorded client address (179.286054ms)
+✔ human identity (2316.01432ms)
+▶ live media admission (#128)
+  ✔ media configuration keeps the SFU private and points browsers at the gate (1.216003ms)
+  ✔ a grant carries only an opaque admission bound to the requesting auth session (446.173317ms)
+  ✔ the gate admits only the same cookie session and forwards nothing else to the SFU (690.745909ms)
+  ✔ ordinary reconnect and an SFU-refreshed token work; lost project access is refused at the gate (593.913561ms)
+  ✔ sign-out revokes that session, closes its sockets and removes only its participant (642.680091ms)
+  ✔ ending one session never removes the same person connected through another session (850.647441ms)
+  ✔ revoking a session from another device and resetting the password end media too (658.595597ms)
+  ✔ reconciliation removes participants without a standing admission and keeps the rest (1079.312797ms)
+  ✔ the production adapter: one identity per admission, presence per person, leave removes all of them (9.839122ms)
+  ✔ a held revocation never removes a newer session of the same person that joined the same room meanwhile (1039.134347ms)
+  ✔ two sessions of one person in one room: Leave on one ends only that one, presence shows one person (1295.354995ms)
+  ✔ reconciliation retires a pre-#128 per-person participant and keeps a standing admission (879.860187ms)
+✔ live media admission (#128) (8294.435211ms)
+✔ a live sketch anchor stays project-scoped and its read lock covers presence delivery (383.645006ms)
+✔ live discovery pages only currently authorized project anchors and reports SFU uncertainty (627.948708ms)
+✔ live discovery does not return presence for a session ended during the SFU read (217.595002ms)
+✔ wiki doc is a project-bound live anchor; non-doc, foreign and hidden anchors are refused (939.293772ms)
+✔ a live invitation reaches only its recipient, once, with who, where and the exact link (434.709422ms)
+✔ an invitation that no longer applies when the worker reaches it notifies nobody; inbox-off is respected (1334.817515ms)
+✔ invitation is unique per live session and recipient, authorized at the current anchor (2.156995ms)
+✔ private or revoked anchor denies invites before write and hides the recipient (0.777541ms)
+✔ later reply is idempotent, and a different reply cannot overwrite it (0.752062ms)
+✔ text reply points to the ordinary project conversation without a message, media grant or copied title (0.210681ms)
+✔ recipient inbox fills a page past hidden pending invitations (6.285804ms)
+✔ a full hidden inbox scan returns a generic failure without exposing its cursor (4.709421ms)
+✔ reply rechecks current access and session state, including retries (0.385531ms)
+✔ only a person can invite or reply, and malformed IDs stop before storage (0.2237ms)
+✔ database invitation is idempotent, constrained to IDs and choice, and rejects a private recipient (630.670375ms)
+✔ invitation transaction blocks revocation until its authorized write commits (524.495755ms)
+✔ recipient inbox cursor keeps PostgreSQL microseconds and walks equal-time rows (541.512183ms)
+✔ concurrent different replies perform one compare-and-set and preserve the winner (879.738207ms)
+✔ the limiter allows 20 per rolling minute per person, says when to retry and stays bounded (0.834072ms)
+✔ the 21st join within the window is 429 LIVE_JOIN_RATE_LIMITED with Retry-After; others are unaffected (726.38775ms)
+✔ project and creator session caps serialize concurrent starts while allowing idempotent replay (1385.428719ms)
+✔ authoritative occupancy, reconnect grace, durable ending and crash recovery (712.215989ms)
+✔ never-joined session expires after its longer grace and releases a creator slot (665.283642ms)
+✔ sweep reaches sessions beyond 32 rooms whose SFU presence stays unknown (3655.733746ms)
+✔ recipient pages only current, readable presentation refs after hidden sources and loses replay on revoke (2252.264516ms)
+✔ a confirmed lost room rotates only its session and concurrent joins use one new generation (1048.507418ms)
+✔ an uncertain SFU result never rotates or grants a room (603.656514ms)
+✔ a failed lost-room retirement stays fenced and crash recovery completes it (671.355956ms)
+✔ lost-room join rechecks policy after repair before issuing a replacement token (1090.104872ms)
+✔ grant revocation retires the old room before commit and leaves only a new-generation owner room (1385.385268ms)
+✔ an in-flight join finishes before the revocation fence and old-room deletion (429.72232ms)
+✔ workspace membership removal retires all old media while a remaining member rejoins a new generation (449.175375ms)
+✔ failed ending-room deletion blocks a policy change before its mutation commits (320.518383ms)
+✔ API without an SFU rejects revocation while a live room may still exist (301.269631ms)
+✔ an SFU failure after policy commit returns an error and retains the fence for reconciliation (350.318611ms)
+✔ no-media access mutation holds the project guard until commit against concurrent admission (479.465513ms)
+✔ no-media guard rolls back a failed access mutation under the same lock (355.493303ms)
+✔ SFU delete failure leaves a durable admission fence; recovery rotates without applying the change (436.707996ms)
+✔ a standard UUID can start a live session; malformed context and retry ids are rejected (1.283843ms)
+✔ live presentation accepts only current, project-readable source versions inside the write transaction (1295.328565ms)
+✔ durable live sessions bind to one project and store only idempotent references (1555.498922ms)
+✔ signed webhook is bounded, current-generation-only, and replay-safe; reconciliation remains a hint (430.514052ms)
+▶ exact Flux migration ledger (#118)
+  ✔ the shipped SQL manifest, embedded versions and running database agree (27.550492ms)
+  ✔ duplicate numbers, invalid SQL names and a stale highest-version constant fail before execution (0.485131ms)
+  ✔ a newly landed lower-numbered migration may fill a reserved gap after a higher one (0.228921ms)
+  ✔ phantom rows, missing files and a silently skipped file fail even if max is correct (0.27991ms)
+  ✔ legacy self-recording is allowed; wrong embedded inserts or deletions fail within a transaction (11.470165ms)
+✔ exact Flux migration ledger (#118) (41.116263ms)
+▶ notification generation cursor
+  ✔ a transient failure stops before the event and a retry delivers it once (2.103935ms)
+  ✔ an event that keeps failing is dead-lettered after bounded attempts and the rest continue (0.813882ms)
+✔ notification generation cursor (3.683409ms)
+▶ quiet hours across daylight-saving transitions
+  ✔ Warsaw spring-forward, end after the gap (2.055655ms)
+  ✔ Warsaw spring-forward, end inside the gap → first valid instant after it (0.723491ms)
+  ✔ Warsaw fall-back, end after the repeat (0.462272ms)
+  ✔ Warsaw fall-back, repeated end → first occurrence after now (0.439871ms)
+  ✔ New York spring-forward (0.497191ms)
+  ✔ New York fall-back (0.464381ms)
+  ✔ New York fall-back, repeated end → first occurrence (0.422311ms)
+  ✔ Tokyo, no DST, across midnight (0.471671ms)
+  ✔ Tokyo, after midnight (0.336781ms)
+  ✔ UTC same-day window, last minute (0.338701ms)
+  ✔ UTC, at the end: already outside (0.340991ms)
+  ✔ outside quiet hours: now (0.31407ms)
+  ✔ a one-minute outside gap is not stepped over (2.394066ms)
+✔ quiet hours across daylight-saving transitions (9.844462ms)
+▶ preference rules
+  ✔ quiet hours hold push and email until they end, in the person's own time zone (3.158877ms)
+  ✔ changes are validated and one unsubscribe keeps the other address of "both" (1.314774ms)
+  ✔ the email is generic: a fixed subject, an in-app link and one-click unsubscribe (0.23349ms)
+✔ preference rules (5.483892ms)
+▶ notifications from committed events
+  ✔ mentions, questions and replies reach the right people once, with why and a link to the message (602.962712ms)
+  ✔ a direct message, assigned work and work to review each notify with their own reason (695.27768ms)
+  ✔ each (person, event) is stored once, even when the generator processes events again (795.986138ms)
+  ✔ a muted place notifies nothing, on any channel; unmuting brings it back (823.63011ms)
+  ✔ a reason turned off for the inbox stays out of it; turned off everywhere, nothing is stored (695.37781ms)
+✔ notifications from committed events (4013.465504ms)
+▶ email and push delivery
+  ✔ a mention emails the sign-in address a generic notice with no private text and a working unsubscribe (2179.553302ms)
+  ✔ access is rechecked before email and push: someone removed meanwhile receives nothing (487.779041ms)
+  ✔ push follows the same preferences: turned off for a reason, the device gets nothing (6036.671953ms)
+  ✔ retries never send an email twice (1663.359446ms)
+  ✔ an extra address is verified by a single-use link, receives email as chosen and can never sign in (4936.695549ms)
+  ✔ read-all quiets the inbox without deleting anything (38.928308ms)
+✔ email and push delivery (15637.139193ms)
+▶ recipient matrix and operator TLS (#113)
+  ✔ two SSO-style people get exactly the mailboxes they chose: sign-in only, extra only, both, in-app only (7041.830863ms)
+  ✔ the operator TLS path works: STARTTLS (required), with the certificate verified (53.821181ms)
+  ✔ the operator TLS path works: implicit TLS (smtps), with the certificate verified (50.678755ms)
+  ✔ a server that requires TLS refuses a plain-text send, and the failure is reported, not dropped (1.822974ms)
+  ✔ a failed send stays queued for retry and settings say email delivery failed (1439.577751ms)
+✔ recipient matrix and operator TLS (#113) (8588.044344ms)
+▶ review fixes: exact unsubscribe, bounded verification, quiet hours at delivery
+  ✔ two concurrent partial preference changes both persist (row-locked merge) (2339.361483ms)
+  ✔ an old unsubscribe link cannot stop a newer address, or a changed sign-in address (6710.963946ms)
+  ✔ verification sends are bounded across add, replace and resend, also when requests race (4384.00546ms)
+  ✔ quiet hours switched on after a job was queued hold its email and push until they end (1010.359682ms)
+✔ review fixes: exact unsubscribe, bounded verification, quiet hours at delivery (14467.263482ms)
+✔ flow fingerprints bind every semantic parameter and omit only the pinned provider transport markers (11.931877ms)
+✔ expired, duplicated and unsupported signed authorization requests fail closed (1.482334ms)
+✔ OAuth callback context is isolated across concurrent requests and auth instances (1.176322ms)
+✔ issued OAuth bearer reads and proposes through MCP, then connection revocation rejects it immediately (2238.393354ms)
+✔ three named connections share one actual client; same-session choices, refresh families and revocation remain independent (1664.6015ms)
+▶ Anthropic personal compute adapter (#68, local mock server: no provider pass is claimed)
+  ✔ one bounded Messages request: pinned model, max_tokens 1500, low effort, no tools, the owner's key (17.90155ms)
+  ✔ cache tokens are counted conservatively as input and a context-window stop counts as truncated (7.247506ms)
+  ✔ the preflight uses the token-counting endpoint with the same input and key (6.004884ms)
+  ✔ SDK retries are off: every failure is exactly one request; once sent, the charge is unknown (7.628227ms)
+  ✔ Stop aborts the HTTP request; a timeout and a lost connection keep the charge unknown (2024.386972ms)
+  ✔ nothing is sent without a usable key or outside the O-008 limits (0.392021ms)
+  ✔ ANTHROPIC_BASE_URL and ANTHROPIC_API_KEY in the environment never redirect or replace the owner's key (1.448073ms)
+✔ Anthropic personal compute adapter (#68, local mock server: no provider pass is claimed) (2070.545886ms)
+▶ personal-run composition: production fails closed, the mock switch is test only
+  ✔ without the switch both apps compose no connections and the provider off (0.15887ms)
+  ✔ the switch needs the test flag and a plain mock origin, and anything else refuses to start (0.256711ms)
+✔ personal-run composition: production fails closed, the mock switch is test only (0.550601ms)
+▶ personal run output rules
+  ✔ citations count only for supplied sources (0.992942ms)
+  ✔ a proposal may finish only a supplied work item and is dropped when malformed (0.29944ms)
+  ✔ cost uses the O-008 rate and the nominal maximum stays under the default reservation (0.120901ms)
+✔ personal run output rules (2.071615ms)
+✔ recovery starts immediately, never overlaps, and stop drains the active pass (46.548325ms)
+✔ a failed pass is observed and retried without overlapping or spinning (5.800674ms)
+▶ personal-run crash recovery (real SQL, no provider)
+  ✔ one global batch, replicas, accounting, recent/terminal preservation and owner-only progress (156.603913ms)
+  ✔ a locked old row does not hold up recovery of another owner (88.255599ms)
+  ✔ failed progress recording rolls the state/accounting back (42.951417ms)
+  ✔ the running worker recovers a crash without another owner invocation (4034.21919ms)
+✔ personal-run crash recovery (real SQL, no provider) (4730.546603ms)
+▶ personal assistant runs (#68, fake compute: no provider pass is claimed)
+  ✔ AC-4: the production composition fails closed with an explicit state and human work continues (58.619043ms)
+  ✔ AC-1: another person reaches the owner's assistant by no route, and no model call or usage happens for the owner (539.354278ms)
+  ✔ AC-5: DMs, private captures and other projects never reach the input or the output; sources are openable by the audience (230.37555ms)
+  ✔ AC-2: denied, stopped-before-read, paused, capped and revoked runs cost zero; a retry key never charges twice (1053.146839ms)
+  ✔ AC-3: once Maurycy connects, his run uses only his connection and cap; Hubert's usage does not change (107.567683ms)
+  ✔ AC-6: revoking the grant or removing the member between read and commit commits nothing (411.85476ms)
+  ✔ AC-6: nothing leaves for preflight counting once the grant, a Stop or a pause arrives after the read (355.455803ms)
+  ✔ AC-7: only a person with authority accepts an assistant proposal; the result records who drafted it (343.493076ms)
+  ✔ progress: every state change of a run reaches only its owner; others learn of it only from the committed answer (143.548424ms)
+  ✔ a failed preflight count ends the run at zero cost with nothing dispatched (62.455232ms)
+  ✔ crash recovery prevents a late provider answer or a repeated queue delivery from publishing (112.233703ms)
+✔ personal assistant runs (#68, fake compute: no provider pass is claimed) (4431.808409ms)
+▶ push payload privacy (core)
+  ✔ full text only while the recipient can read the source in its workspace (1.097622ms)
+  ✔ a recipient who lost read access gets the generic payload; one who cannot see the source gets nothing (3.672219ms)
+  ✔ an ended session removes the subscription without sending (0.17118ms)
+  ✔ the inbox answers 404 for an unreadable source and for someone else's id (0.544011ms)
+✔ push payload privacy (core) (6.246365ms)
+▶ push configuration
+  ✔ the sender needs all three VAPID values, a matching pair and an operator contact (1.404493ms)
+  ✔ the VAPID JWT is reused per push service for hours, not signed per request (2.537536ms)
+  ✔ endpoints must be public https push service URLs and links must stay in Flux (0.19347ms)
+✔ push configuration (26.108789ms)
+▶ push subscriptions API
+  ✔ requires a signed-in user (21.822019ms)
+  ✔ publishes the configured VAPID public key (113.108886ms)
+  ✔ subscribe is idempotent per endpoint, stores user, session and device, and never echoes keys (149.718158ms)
+  ✔ rejects unsafe endpoints, invalid keys and cross-origin requests (126.260225ms)
+  ✔ another user cannot delete my subscription; I can (254.515545ms)
+  ✔ a browser that signs in to another account moves its subscription to that account (287.91306ms)
+✔ push subscriptions API (953.900284ms)
+▶ push delivery through the worker
+  ✔ sends a VAPID-signed, encrypted notification to the push service and records success (2906.336193ms)
+  ✔ deletes a subscription whose push service answers 410 Gone (3401.1439ms)
+  ✔ push jobs have bounded retries (1.461873ms)
+✔ push delivery through the worker (6309.208208ms)
+▶ push delivery rechecks (in process)
+  ✔ does not send when the subscription now belongs to someone else (568.982455ms)
+  ✔ account deletion deletes the subscriptions; a queued send is not delivered (803.121404ms)
+  ✔ an expired session stops delivery and removes the subscription (493.818835ms)
+  ✔ 404 removes the subscription, 503 is retried, 400 is recorded without retry (1498.608514ms)
+  ✔ refuses endpoints that resolve to private addresses unless explicitly allowed (185.514269ms)
+  ✔ skips quietly when push is unavailable; the inbox row remains (405.805066ms)
+✔ push delivery rechecks (in process) (3956.285654ms)
+▶ in-app inbox
+  ✔ lists my notifications newest first and marks them read; others cannot (619.550409ms)
+✔ in-app inbox (619.739039ms)
+▶ notification audience follows the source (access policy)
+  ✔ a notification needs a source the recipient can read now (1007.344785ms)
+  ✔ grant revoked after the push was queued: no push is sent and the inbox hides it (404 by id) (777.918137ms)
+  ✔ a draft source follows draft visibility; a denied grant hides project notifications (625.568073ms)
+  ✔ removal from the workspace hides every notification from that workspace (495.406009ms)
+✔ notification audience follows the source (access policy) (2906.571954ms)
+▶ subscriptions are bound to the signed-in session
+  ✔ sign-out deletes this session's subscription and a queued send is not delivered (429.58925ms)
+  ✔ revoking one session deletes only that session's subscription (532.659142ms)
+  ✔ revoke-others deletes the other sessions' subscriptions (535.249188ms)
+  ✔ a password reset deletes every session's subscriptions (915.441248ms)
+  ✔ re-subscribing after signing in again binds the device to the new session (515.429254ms)
+✔ subscriptions are bound to the signed-in session (2928.729624ms)
+▶ web app manifest and icons
+  ✔ the manifest is valid JSON with installability fields, served as a manifest (36.225442ms)
+  ✔ every manifest icon and the Apple touch icon is a PNG of the declared size (7.912668ms)
+  ✔ the app page links the manifest, icons and iOS standalone metadata (1.289953ms)
+✔ web app manifest and icons (46.472175ms)
+▶ service worker delivery
+  ✔ sw.js is served from the root scope, uncached, with a precache list and version (21.105937ms)
+  ✔ hashed assets are immutable while HTML and the offline page revalidate (5.134662ms)
+✔ service worker delivery (26.46585ms)
+▶ private recap: scope, period, snapshot and digest (#133)
+  ✔ a first visit starts at the beginning of the project and says so (27.817503ms)
+  ✔ whole project or only what concerns me (121.337464ms)
+  ✔ a stable snapshot: `until` keeps what the reader is looking at (61.272138ms)
+  ✔ "Summarize" quotes whole messages per conversation and the recorded results (152.258294ms)
+  ✔ a chosen period ignores the return point; the start is reported (57.59904ms)
+  ✔ it stays private: per person, current access only, nothing shared (40.983043ms)
+  ✔ unknown scope or period is refused (1.803324ms)
+✔ private recap: scope, period, snapshot and digest (#133) (809.766148ms)
+▶ return view: since you left
+  ✔ a place never viewed has no return point; viewing saves one on the server (84.714221ms)
+  ✔ changes are grouped in human language, each links to its source, and one next step has a reason (383.529096ms)
+  ✔ doc changes (#112) are one item in human language that opens what changed (113.844817ms)
+  ✔ saving moves the point forward only; the person may move it back once (82.993608ms)
+  ✔ revoked access removes items; a restricted project leaks nothing to an outsider (173.021951ms)
+✔ return view: since you left (1138.375541ms)
+▶ return view: hidden rows never hint at anything
+  ✔ hundreds of now-hidden audience rows give the same summary as never having had them (9245.071808ms)
+✔ return view: hidden rows never hint at anything (9245.239789ms)
+▶ If-Match preconditions
+  ✔ draft responses carry the version as ETag (27.371661ms)
+  ✔ a missing precondition is 428 and a stale one is 409 with the latest version; neither writes (388.992638ms)
+  ✔ share and move need the expected version too (87.010786ms)
+  ✔ authorization is decided before the precondition, so nothing leaks (41.909855ms)
+✔ If-Match preconditions (881.668331ms)
+▶ idempotency keys
+  ✔ a matching retry returns the stored response and creates one row (35.014289ms)
+  ✔ the same key with a different body is rejected with 422 (28.256314ms)
+  ✔ keys are scoped by principal, workspace and operation (121.791895ms)
+  ✔ a retried PATCH is not executed again (358.84833ms)
+  ✔ concurrent duplicates execute once (22.637591ms)
+  ✔ a replay after losing access is denied like any invisible object and reveals nothing (855.927683ms)
+  ✔ draft create and share replays are denied after the grant is replaced by a deny (1015.733344ms)
+  ✔ failures are not stored, invalid keys are rejected, and expired keys are cleaned up (186.578811ms)
+✔ idempotency keys (3093.173795ms)
+✔ sample command commits a domain row, event, outbox and queued job atomically (100.548937ms)
+✔ forced failure after insert leaves no domain row or related job (49.853342ms)
+✔ test deployment failure header rolls back; the public command body rejects failure flags (54.443354ms)
+▶ search: one query across Flux, only what you may read
+  ✔ a contributor finds every kind she may read, with places, labels and exact targets (15.537716ms)
+  ✔ a member outside the restricted project and the DM finds only the open project, and nothing hints at the rest (27.804583ms)
+  ✔ private drafts and sketches reach only their author; owners do not see other people’s private drafts or DMs they are not in (83.347368ms)
+  ✔ people are found by name by those who may read the members, and a person filters by author (347.104744ms)
+  ✔ type filters narrow results while counts cover every type (28.098453ms)
+  ✔ an edit is searchable at once, and an old material version is still found at the version it was (58.481942ms)
+  ✔ docs are found at the version that matched, as drafts or published, only by project readers (380.156439ms)
+  ✔ revoking access removes results on the very next search, and leaving a DM removes its messages (525.991888ms)
+  ✔ ranking: a title match comes before a mention in a body; typing a prefix already finds it (70.158938ms)
+  ✔ queries are data: operators, quotes and SQL never break or widen the search (129.369633ms)
+  ✔ every word of the query can find a match: long or-lists, a quoted "or", one-letter words (124.479331ms)
+  ✔ pages follow a sealed cursor: no repeats, no gaps, and a cursor works only for its reader and query (562.21771ms)
+✔ search: one query across Flux, only what you may read (4260.16475ms)
+▶ search: hidden matches never change the answer or the work
+  ✔ hundreds of hidden matches give the same results, counts, `more` and rows examined (16191.625365ms)
+✔ search: hidden matches never change the answer or the work (16191.888346ms)
+✔ fresh graphs, including cycles and identical birth timestamps, conservatively start as deterministic roots (6.286594ms)
+✔ depth 3/4 and roots/shallower nodes retain their levels when ordinary relations add multiple parents and cycles (0.391071ms)
+✔ a missing parent or graph edge detaches without erasing the ID-only intent, and graph undo restores it (0.20597ms)
+✔ malformed saved cycles resolve deterministically; grouping only offers authorized linked non-descendants (0.278491ms)
+✔ renaming/moving/reordered server arrays preserve local outline order and never mutate graph input (0.1848ms)
+✔ preference storage is ID-only, account-scoped and globally bounded with oldest sketch eviction (25.700758ms)
+✔ graphs exceeding the preference cap still render once and converge without a reconciliation loop (4.277529ms)
+▶ sketch access
+  ✔ a project sketch follows project access: members change it, viewers read it, outsiders get 404 (144.370906ms)
+  ✔ a private sketch is visible only to its author: never through the project, to admins or to agents (955.729658ms)
+  ✔ cross-workspace references are rejected (509.789381ms)
+  ✔ placements show only what the reader may open, and removing one never deletes the object (541.006202ms)
+  ✔ links are many-to-many, undirected and unique per pair (880.671989ms)
+  ✔ versioned changes: If-Match, concurrent moves conflict or merge (616.704702ms)
+  ✔ an idempotent retry replays the stored answer without a second change (498.891016ms)
+  ✔ input is validated (71.052651ms)
+✔ sketch access (4609.278229ms)
+▶ event stream
+  ✔ replay after a cursor delivers only events the recipient may see (705.844284ms)
+  ✔ restricted activity changes nothing an outsider observes on the stream (1411.016106ms)
+  ✔ opening and replaying do the same work however much hidden activity exists (16363.337783ms)
+  ✔ live delivery follows replay and still filters per recipient (90.091324ms)
+  ✔ after membership removal the next events are not delivered (569.857347ms)
+  ✔ a revoked session closes the stream and cannot reconnect (201.435175ms)
+  ✔ upgrades need the public origin, a live session and a valid cursor (7.891928ms)
+  ✔ the server pings on the heartbeat interval (2001.916141ms)
+  ✔ stored events carry a monotonic seq assigned in commit order (17.75336ms)
+✔ event stream (21886.946947ms)
+✔ actual pre-notice human rows and search provenance survive notice and agent migrations without backfill (1834.711203ms)
+▶ task discussion existence
+  ✔ getDiscussion: a task in a project the caller cannot see is reported exactly like an unknown task (1.390494ms)
+  ✔ getDiscussionRoot: a task in a project the caller cannot see is reported exactly like an unknown task (0.193181ms)
+  ✔ contribute: a task in a project the caller cannot see is reported exactly like an unknown task (0.519831ms)
+  ✔ a visible task the caller may not change stays forbidden rather than hidden (0.300061ms)
+  ✔ every read and command rejects a non-UUID task id with the same 400 (0.22259ms)
+✔ task discussion existence (3.360677ms)
+▶ task discussion response contract
+  ✔ getDiscussion returns exactly the declared keys, unbound and bound (0.678811ms)
+✔ task discussion response contract (0.777351ms)
+▶ getDiscussionRoot
+  ✔ is null while the visible task has no genuine contribution (0.436791ms)
+  ✔ returns exactly the canonical identity keys and nothing from the stored row (0.30906ms)
+  ✔ asks for current project.read without the access-row lock; the window read keeps it (0.163401ms)
+  ✔ refuses a stored root that is not the exact sequence-1 message of its conversation and project (0.606061ms)
+✔ getDiscussionRoot (1.756874ms)
+✔ opening a task remains empty; simultaneous genuine authors create one exact canonical root (6723.974815ms)
+✔ bounded newest/older windows retain the exact first root and never rewrite its identity (5426.077704ms)
+✔ durable task retries recheck access and conflict on changed payload, task or generic thread operation (2061.582036ms)
+✔ current material citations are exact; restricted or invalid first sends leave no synthetic thread (495.691269ms)
+✔ failure after first root binding rolls back conversation, message, binding and event; exact retry creates once (671.069326ms)
+✔ a genuine agent creates the canonical root; human and agent command identities remain distinct (601.113427ms)
+✔ simultaneous first human/two-agent sends keep one root and kind-scoped receipts even for a colliding textual ID (565.383176ms)
+✔ real agent history reaches bounded helper context, search, export, notifications and return summaries (515.768265ms)
+✔ agent first-send rollback is atomic; current grant revocation blocks retries while genuine history stays readable (397.838059ms)
+✔ co-work composition rolls back actual agent contribution before and after its final event flush (377.110102ms)
+✔ two genuine contributions defer every audience until final state and take the stream lock only during one final flush (306.188191ms)
+✔ native work, canonical result and a genuine agent root share the caller transaction and one final audience batch (366.761749ms)
+✔ native preparation and final events roll back together before or after flush, including actual final domain changes (325.416514ms)
+✔ the shared event collector snapshots nested canonical data and rejects early or late preparation (346.060202ms)
+✔ a task in a hidden project is indistinguishable from an unknown task, including its error code (642.22847ms)
+✔ the discussion response has exactly the declared keys, unbound and bound (408.534543ms)
+✔ getDiscussionRoot is a pure read: null while unbound, then exactly the identity contribute returned (406.981419ms)
+✔ getDiscussionRoot follows current policy: viewers and guests with access read it, denied people get the unknown-task 404 (396.781336ms)
+✔ getDiscussionRoot takes no access-row lock, while the window read waits for it (296.067729ms)
+✔ getDiscussionRoot in a caller transaction queues no event, flushes nothing and is rejected after the final flush (292.15904ms)
+✔ task creation keeps source messages intact and stores exactly one distinct trusted notice (4675.051608ms)
+✔ same domain command serializes simultaneous API/helper retries without relying on transport cache (1382.593703ms)
+✔ no-source and legacy no-key creation are atomic; a genuine agent remains the notice creator (566.229518ms)
+✔ failure after notice insertion rolls back task, source links, notice and events together (736.389722ms)
+▶ work, decisions and results in a project
+  ✔ work is created from a message in one action and the message stays in place (148.999677ms)
+  ✔ one experiment can come from several thoughts of a project sketch; private thoughts are not linkable (199.865491ms)
+  ✔ changes need If-Match; stale and concurrent changes get 409 and retries are idempotent (175.547067ms)
+  ✔ only people accept decisions; superseding keeps history and a pivot parks obsolete work (374.971006ms)
+  ✔ a negative result finishes an experiment and links its evidence (133.05135ms)
+  ✔ a result finishes work only at the version its author saw and never reverses a disposition (281.800797ms)
+  ✔ events reach only project readers; assigned work uses the visibility filter and access loss hides everything (498.549266ms)
+✔ work, decisions and results in a project (2558.081197ms)
+▶ draft.summarize.v1 worker
+  ✔ the Compose worker commits a result for an authorized requester (2468.538645ms)
+  ✔ a requester who lost access before the job ran gets no read and no result (178.600473ms)
+  ✔ revocation between read and commit prevents the commit (race) (212.896911ms)
+  ✔ a draft made private between read and commit also prevents the commit (196.484454ms)
+  ✔ an authorized run commits once and a redelivered job is skipped (171.446857ms)
+  ✔ a grant revoke that starts during the commit waits and the result commits under the checked grant (217.581272ms)
+  ✔ a grant revoke committed between read and commit prevents the commit (two connections) (207.151458ms)
+  ✔ requesting needs read access to the draft (195.321591ms)
+✔ draft.summarize.v1 worker (3865.83837ms)
+ℹ tests 435
+ℹ suites 60
+ℹ pass 435
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 89545.767259
+▶ Flux PWA in Chromium over HTTPS
+  ✔ the service worker registers for scope "/" and controls the page (317.629281ms)
+  ✔ offline navigation shows the fallback page and API calls fail instead of using a cache (101.741725ms)
+  ✔ a changed service worker waits, the app offers a reload, and confirming activates it (1949.207817ms)
+✔ Flux PWA in Chromium over HTTPS (2562.268268ms)
+ℹ tests 3
+ℹ suites 1
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2934.895786
+▶ access and stream in Chromium against the running services
+  ✔ share to a granted member, deny a non-member, revoke and stop live events (779.430925ms)
+✔ access and stream in Chromium against the running services (887.542223ms)
+ℹ tests 1
+ℹ suites 1
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1251.384951
+✔ agent root renders without a human DM link, real human reply persists, and readers retain genuine history (1522.505825ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2331.408157
+✔ a saved blocker, a published result and a handoff appear as marked messages in the task conversation (2149.774439ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2534.913936
+✔ named connections and two tabs in one login complete distinct consent flows; signed-out OAuth resumes through sign-in (1973.961484ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2667.22517
+session-restart: session and project content stored before API restart
+session-restart: session, material and linked conversation still valid after API restart
+✔ without VAPID keys push is reported unavailable and the inbox still works (148.189871ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 309.268563
+✔ without SMTP, settings say email delivery is unavailable and the inbox still fills (1582.248952ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2145.710939
+Removed 3 per-run image(s) tagged :flux-test-1790887486-1366464

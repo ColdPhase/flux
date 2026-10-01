@@ -1,0 +1,42 @@
+{
+  "tested_source": "a846a31c90513059b0ca79757ab9a38cb0c959ff",
+  "accepted_main": "3abbd0f",
+  "full_application_command": "FLUX_TEST_PORT=19541 FLUX_TEST_MAILPIT_PORT=19542 scripts/check_application.sh",
+  "exit_code": 0,
+  "application_checks": 435,
+  "chromium": {
+    "pwa_https": 3,
+    "access_stream": 1,
+    "genuine_actors": 1,
+    "task_contribution_effects": 1,
+    "agent_connections": 1
+  },
+  "new_checks": {
+    "core": 26,
+    "database_http": 17,
+    "historical_migration": 1,
+    "chromium": 1
+  },
+  "mutation_runs": {
+    "set1_failed_of_43": 10,
+    "set2_failed_of_43": 30
+  },
+  "migration": "0040_native_contribution_effects.sql",
+  "file_sha256": {
+    "README.md": "86dc35f552f5a1a592a5ed3719e3db6ccbf6f76893c9169aa7cc98e9a94b111a",
+    "docker-full-summary.txt": "d333da9be7aa182cfe8a2c7023bfd1d8054977ead9da81bdb0c5af167c8f664d",
+    "mutation-evidence.txt": "4c0763affd858a7910a4faa7d5b4993bf3ba9fc5df712fda1332969f922ce504",
+    "task-effects-reader-1280.png": "1e8c8518999fa6bf082d45e25a9dcaac5e493a3dbd925f040dd7e2ac0f378fa4",
+    "task-effects-reader-390.png": "0d1f3dac38ae0ad681760237ec595b3158435ed2c188b99a7c3b918ad5b0d6d8",
+    "task-effects-result-details-1280.png": "a760e1b4862a18da2d1fa14ae5c55a66aec1432a27a949a81de036062f73b8f6",
+    "task-effects-result-details-390.png": "f5f0bd9189c11549457ca4946503dcc92b966283a35a835e806dbec165dac188"
+  },
+  "ui_suite": {
+    "command": "FLUX_UI_PORT=19543 FLUX_UI_MAILPIT_PORT=19544 scripts/check_ui.sh",
+    "source": "ed81481fadfe96e86d9ac314002ebb6bfffde5ab",
+    "tests": 133,
+    "result": "OK",
+    "skipped": 4
+  },
+  "portable_ci_command_tests": 84
+}
