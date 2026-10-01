@@ -9,25 +9,29 @@ tools, supported clients and device acceptance are **not** covered.
 
 ## Source and verification
 
-- Tested source `a846a31c90513059b0ca79757ab9a38cb0c959ff` (branch `codex-hubert/154-contribution-effects`, accepted
-  main `3abbd0f` merged). The configured complete command
+- Tested source `ef551bbdde08ebb4f8b7450d0360dca0920b5f0d` (branch `codex-hubert/154-contribution-effects`):
+  accepted main `aedeac5` merged, including #171 (native task criteria, prerequisites and plan intent,
+  migration 0039). The configured complete command
   `FLUX_TEST_PORT=19541 FLUX_TEST_MAILPIT_PORT=19542 scripts/check_application.sh`
-  exited **0**: **435/435** application checks, 3 HTTPS PWA, 1 access-stream, the
-  genuine-actor Chromium journey, the new task-effects Chromium journey, the agent-connection
+  exited **0**: **463/463** application checks, 3 HTTPS PWA, 1 access-stream, the genuine-actor
+  Chromium journey, the task-effects and the #171 task-plan Chromium journeys, the agent-connection
   browser flow, the existing session/material/conversation after an actual API restart, 1
-  unavailable-push and 1 unavailable-email check. Build, type check, lint and the architecture
-  rules are included in that command (the first run at `1a7ad61` passed 434/435: one migration
-  fixture cleanup timed out and was fixed in `1d9abd8`). See the [sanitized stage and test summary](docker-full-summary.txt).
-- The Playwright browser suite `FLUX_UI_PORT=19543 FLUX_UI_MAILPIT_PORT=19544 scripts/check_ui.sh`
-  at `ed81481fadfe96e86d9ac314002ebb6bfffde5ab` (code identical to the tested source; only Python
-  journeys and documentation differ): **133 tests, OK, 4 skipped as before**. Its first run found
-  five journeys that assumed the Conversation tab opens the original conversation or that the
-  Since-you-left count is unchanged; a linked result now opens a task thread, which is the
-  newest conversation and a counted update. They were adapted (explicit conversation URL,
-  `+1` update, `.first` quote) and re-run; this is an interim consequence for #136, recorded
-  in the task-discussion record. The portable CI command (build, architecture and `*-core`
-  checks, `--network none`): 84/84.
-- New checks: 26 portable core checks (`contribution-effects-core`), 17 database/HTTP
+  unavailable-push and 1 unavailable-email check. Build, type check, lint and the architecture rules
+  are included. See the [sanitized stage and test summary](docker-full-summary.txt). Earlier runs of
+  this slice: `a846a31` (before the #171 merge) passed 435/435, and the first run at `1a7ad61` passed
+  434/435 until a migration fixture's database cleanup timeout was fixed in `1d9abd8`.
+- The Playwright browser suite `FLUX_UI_PORT=19543 FLUX_UI_MAILPIT_PORT=19544 scripts/check_ui.sh` at the
+  same source: **134 tests, OK, 4 skipped as before** (it includes #171's project-state journeys). Its first
+  run on this slice's code found five journeys that assumed the Conversation tab opens the original
+  conversation or that the Since-you-left count is unchanged; a linked result now opens a task thread,
+  which is the newest conversation and a counted update. They were adapted (explicit conversation URL,
+  `+1` update, `.first` quote); this is an interim consequence for #136, recorded in the task-discussion
+  record. The portable CI command (build, architecture and `*-core` checks, `--network none`): 93/93.
+- The two features coexist under one lock order (access, plan material on creation, command identity,
+  project graph lock, the complete sorted task set, writes and appends, receipt, one final batch); the
+  merged-head checks include a finishing result with prerequisites, the one-ascending-pass lock proof and a
+  keyed update that replaces prerequisites and saves a blocker together.
+- New checks: 27 portable core checks (`contribution-effects-core`), 20 database/HTTP
   checks (`contribution-effects`), 1 historical migration check
   (`contribution-effects-migration`) and 1 Chromium journey
   (`task-contribution-effects.e2e.ts`: the Tasks panel saves a blocker and attaches a

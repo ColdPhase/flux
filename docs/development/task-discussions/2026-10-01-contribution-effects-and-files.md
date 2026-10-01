@@ -200,10 +200,10 @@ Schema0040/0041 allocation is recorded on153 before any new SQL write. Current
 helper/native source, actor and deadline semantics remain unchanged until the
 corresponding implemented/tested new head is recorded.
 
-## Implemented at `a846a31` — explicit native effects (first part)
+## Implemented at `ef551bb` — explicit native effects (first part)
 
-2026-10-01. Branch `codex-hubert/154-contribution-effects`, from `origin/main` `919c1db`
-with later main merged. This records only the section "Explicit native effects on the
+2026-10-01 (merged with main 2026-10-02). Branch `codex-hubert/154-contribution-effects`, from
+`origin/main` `919c1db` with later main, including #171, merged. This records only the section "Explicit native effects on the
 canonical thread" and the effects, atomicity, hook and lock-order corrections of the
 [independent assessment](2026-10-01-contribution-effects-and-files-review.md). The
 file-durability corrections, stored bytes, attachment-only messages, quotas, shared
@@ -265,5 +265,6 @@ Interpretations and refinements (none lowers a requirement):
   opening), and the agent-execution fixture, which now uses the production native composition.
   Whether the integrated #136 shell should keep that default is left to it. The new Chromium
   journey is part of `scripts/check_application.sh`.
-- The tested application source is `a846a31c90513059b0ca79757ab9a38cb0c959ff`; later commits on the
-  branch change only the Python browser journeys, documentation and evidence.
+- The tested application source is `ef551bbdde08ebb4f8b7450d0360dca0920b5f0d` (main `aedeac5` with
+  #171 merged); earlier, before that merge, `a846a31c90513059b0ca79757ab9a38cb0c959ff` passed
+  its complete run. Later commits change only documentation and evidence.
