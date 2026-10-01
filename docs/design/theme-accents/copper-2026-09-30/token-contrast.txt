@@ -1,0 +1,258 @@
+ok   light/mint 17.04:1 (min 4.5) --text on --bg: body text
+ok   light/mint 10.56:1 (min 4.5) --text-2 on --bg: secondary text
+ok   light/mint  5.77:1 (min 4.5) --text-3 on --bg: muted text
+ok   light/mint  5.39:1 (min 4.5) --text-3 on --bg-side: muted sidebar text
+ok   light/mint  5.11:1 (min 4.5) --text-3 on --bg-hover: muted text on hover
+ok   light/mint  8.87:1 (min 4.5) --text-2 on --bg-active: selected item text
+ok   light/mint  4.85:1 (min 4.5) --text-3 on --bg-active: muted text on selection
+ok   light/mint  5.77:1 (min 4.5) --text-3 on --bg-raised: muted text on popovers
+ok   light/mint  5.72:1 (min 4.5) --accent on --bg: links and accent text
+ok   light/mint  5.35:1 (min 4.5) --accent on --bg-side: accent text in the sidebar
+ok   light/mint  5.72:1 (min 4.5) --on-accent on --accent: primary button label
+ok   light/mint  7.45:1 (min 4.5) --on-accent on --accent-hover: primary button label on hover
+ok   light/mint  9.45:1 (min 4.5) --on-accent on --accent-pressed: primary button label while pressed
+ok   light/mint  5.06:1 (min 4.5) --accent-selected-text on --accent-selected-bg: selected control label
+ok   light/mint  5.10:1 (min 4.5) --text-3 on --accent-soft: metadata on selected rows
+ok   light/mint  5.06:1 (min 3.0) --accent-selected-border on --accent-selected-bg: selected control boundary
+ok   light/mint  5.72:1 (min 4.5) --link on --bg: text link
+ok   light/mint  5.06:1 (min 4.5) --link on --accent-soft: link on selected surface
+ok   light/mint  5.72:1 (min 3.0) --focus on --bg-raised: focus ring on popovers
+ok   light/mint  5.06:1 (min 3.0) --focus on --accent-soft: focus ring on selection
+ok   light/mint  5.39:1 (min 3.0) --map-guide on --bg-side: map relationship guide
+ok   light/mint  3.97:1 (min 3.0) --map-guide on --line-strong: map relationship guide crossing canvas grid dots
+ok   light/mint  5.02:1 (min 4.5) --resolution on --bg: semantic resolution label
+ok   light/mint  5.81:1 (min 4.5) --attention on --bg: needs-you label
+ok   light/mint  5.15:1 (min 4.5) --attention on --bg-hover: needs-you label on hover
+ok   light/mint  6.57:1 (min 4.5) --danger on --bg: error text
+ok   light/mint  6.08:1 (min 4.5) --danger on --tint-danger: error text on its tint
+ok   light/mint  6.33:1 (min 4.5) --warning on --bg: warning text
+ok   light/mint  5.02:1 (min 4.5) --ok on --bg: success text
+ok   light/mint 17.04:1 (min 4.5) --bg on --text: toast text
+ok   light/mint  3.24:1 (min 3.0) --line-input on --bg: input boundary
+ok   light/mint  5.72:1 (min 3.0) --focus on --bg: focus ring
+ok   light/mint  5.35:1 (min 3.0) --focus on --bg-side: focus ring in the sidebar
+ok   light/mint 17.04:1 (min 3.0) --text on --bg: view switcher indicator
+ok   light/mint  8.29:1 (min 4.5) --rail-fg on --rail-bg: rail icons
+ok   light/mint 13.31:1 (min 4.5) --rail-on on --rail-hover: rail icon on hover
+ok   light/mint 12.11:1 (min 4.5) --rail-on on --rail-active: rail icon of the current place
+ok   light/mint 14.15:1 (min 3.0) --lime on --rail-bg: Flux mark, current-place marker and rail focus ring
+ok   light/mint 10.92:1 (min 3.0) --lime on --rail-active: rail focus ring on the current place
+ok   light/mint  9.99:1 (min 4.5) --pm-1-t on --pm-1: project monogram 1
+ok   light/mint  8.51:1 (min 4.5) --pm-2-t on --pm-2: project monogram 2
+ok   light/mint  8.85:1 (min 4.5) --pm-3-t on --pm-3: project monogram 3
+ok   light/mint  8.96:1 (min 4.5) --pm-4-t on --pm-4: project monogram 4
+ok   dark/mint  15.63:1 (min 4.5) --text on --bg: body text
+ok   dark/mint  11.16:1 (min 4.5) --text-2 on --bg: secondary text
+ok   dark/mint   6.66:1 (min 4.5) --text-3 on --bg: muted text
+ok   dark/mint   6.89:1 (min 4.5) --text-3 on --bg-side: muted sidebar text
+ok   dark/mint   6.08:1 (min 4.5) --text-3 on --bg-hover: muted text on hover
+ok   dark/mint   9.23:1 (min 4.5) --text-2 on --bg-active: selected item text
+ok   dark/mint   5.51:1 (min 4.5) --text-3 on --bg-active: muted text on selection
+ok   dark/mint   6.28:1 (min 4.5) --text-3 on --bg-raised: muted text on popovers
+ok   dark/mint  11.02:1 (min 4.5) --accent on --bg: links and accent text
+ok   dark/mint  11.39:1 (min 4.5) --accent on --bg-side: accent text in the sidebar
+ok   dark/mint  11.39:1 (min 4.5) --on-accent on --accent: primary button label
+ok   dark/mint  13.01:1 (min 4.5) --on-accent on --accent-hover: primary button label on hover
+ok   dark/mint   9.29:1 (min 4.5) --on-accent on --accent-pressed: primary button label while pressed
+ok   dark/mint   8.43:1 (min 4.5) --accent-selected-text on --accent-selected-bg: selected control label
+ok   dark/mint   5.10:1 (min 4.5) --text-3 on --accent-soft: metadata on selected rows
+ok   dark/mint   8.43:1 (min 3.0) --accent-selected-border on --accent-selected-bg: selected control boundary
+ok   dark/mint  11.02:1 (min 4.5) --link on --bg: text link
+ok   dark/mint   8.43:1 (min 4.5) --link on --accent-soft: link on selected surface
+ok   dark/mint  10.39:1 (min 3.0) --focus on --bg-raised: focus ring on popovers
+ok   dark/mint   8.43:1 (min 3.0) --focus on --accent-soft: focus ring on selection
+ok   dark/mint   6.89:1 (min 3.0) --map-guide on --bg-side: map relationship guide
+ok   dark/mint   4.46:1 (min 3.0) --map-guide on --line-strong: map relationship guide crossing canvas grid dots
+ok   dark/mint   8.17:1 (min 4.5) --resolution on --bg: semantic resolution label
+ok   dark/mint   6.39:1 (min 4.5) --attention on --bg: needs-you label
+ok   dark/mint   5.83:1 (min 4.5) --attention on --bg-hover: needs-you label on hover
+ok   dark/mint   7.53:1 (min 4.5) --danger on --bg: error text
+ok   dark/mint   7.18:1 (min 4.5) --danger on --tint-danger: error text on its tint
+ok   dark/mint   8.47:1 (min 4.5) --warning on --bg: warning text
+ok   dark/mint   8.17:1 (min 4.5) --ok on --bg: success text
+ok   dark/mint  15.63:1 (min 4.5) --bg on --text: toast text
+ok   dark/mint   3.58:1 (min 3.0) --line-input on --bg: input boundary
+ok   dark/mint  11.02:1 (min 3.0) --focus on --bg: focus ring
+ok   dark/mint  11.39:1 (min 3.0) --focus on --bg-side: focus ring in the sidebar
+ok   dark/mint  15.63:1 (min 3.0) --text on --bg: view switcher indicator
+ok   dark/mint   8.71:1 (min 4.5) --rail-fg on --rail-bg: rail icons
+ok   dark/mint  13.31:1 (min 4.5) --rail-on on --rail-hover: rail icon on hover
+ok   dark/mint  12.11:1 (min 4.5) --rail-on on --rail-active: rail icon of the current place
+ok   dark/mint  14.85:1 (min 3.0) --lime on --rail-bg: Flux mark, current-place marker and rail focus ring
+ok   dark/mint  10.92:1 (min 3.0) --lime on --rail-active: rail focus ring on the current place
+ok   dark/mint   9.99:1 (min 4.5) --pm-1-t on --pm-1: project monogram 1
+ok   dark/mint   8.51:1 (min 4.5) --pm-2-t on --pm-2: project monogram 2
+ok   dark/mint   8.85:1 (min 4.5) --pm-3-t on --pm-3: project monogram 3
+ok   dark/mint   8.96:1 (min 4.5) --pm-4-t on --pm-4: project monogram 4
+ok   light/sky  17.04:1 (min 4.5) --text on --bg: body text
+ok   light/sky  10.56:1 (min 4.5) --text-2 on --bg: secondary text
+ok   light/sky   5.77:1 (min 4.5) --text-3 on --bg: muted text
+ok   light/sky   5.39:1 (min 4.5) --text-3 on --bg-side: muted sidebar text
+ok   light/sky   5.11:1 (min 4.5) --text-3 on --bg-hover: muted text on hover
+ok   light/sky   8.87:1 (min 4.5) --text-2 on --bg-active: selected item text
+ok   light/sky   4.85:1 (min 4.5) --text-3 on --bg-active: muted text on selection
+ok   light/sky   5.77:1 (min 4.5) --text-3 on --bg-raised: muted text on popovers
+ok   light/sky   6.45:1 (min 4.5) --accent on --bg: links and accent text
+ok   light/sky   6.03:1 (min 4.5) --accent on --bg-side: accent text in the sidebar
+ok   light/sky   6.45:1 (min 4.5) --on-accent on --accent: primary button label
+ok   light/sky   8.12:1 (min 4.5) --on-accent on --accent-hover: primary button label on hover
+ok   light/sky  10.23:1 (min 4.5) --on-accent on --accent-pressed: primary button label while pressed
+ok   light/sky   5.62:1 (min 4.5) --accent-selected-text on --accent-selected-bg: selected control label
+ok   light/sky   5.02:1 (min 4.5) --text-3 on --accent-soft: metadata on selected rows
+ok   light/sky   5.62:1 (min 3.0) --accent-selected-border on --accent-selected-bg: selected control boundary
+ok   light/sky   6.45:1 (min 4.5) --link on --bg: text link
+ok   light/sky   5.62:1 (min 4.5) --link on --accent-soft: link on selected surface
+ok   light/sky   6.45:1 (min 3.0) --focus on --bg-raised: focus ring on popovers
+ok   light/sky   5.62:1 (min 3.0) --focus on --accent-soft: focus ring on selection
+ok   light/sky   5.39:1 (min 3.0) --map-guide on --bg-side: map relationship guide
+ok   light/sky   3.97:1 (min 3.0) --map-guide on --line-strong: map relationship guide crossing canvas grid dots
+ok   light/sky   5.02:1 (min 4.5) --resolution on --bg: semantic resolution label
+ok   light/sky   5.81:1 (min 4.5) --attention on --bg: needs-you label
+ok   light/sky   5.15:1 (min 4.5) --attention on --bg-hover: needs-you label on hover
+ok   light/sky   6.57:1 (min 4.5) --danger on --bg: error text
+ok   light/sky   6.08:1 (min 4.5) --danger on --tint-danger: error text on its tint
+ok   light/sky   6.33:1 (min 4.5) --warning on --bg: warning text
+ok   light/sky   5.02:1 (min 4.5) --ok on --bg: success text
+ok   light/sky  17.04:1 (min 4.5) --bg on --text: toast text
+ok   light/sky   3.24:1 (min 3.0) --line-input on --bg: input boundary
+ok   light/sky   6.45:1 (min 3.0) --focus on --bg: focus ring
+ok   light/sky   6.03:1 (min 3.0) --focus on --bg-side: focus ring in the sidebar
+ok   light/sky  17.04:1 (min 3.0) --text on --bg: view switcher indicator
+ok   light/sky   8.29:1 (min 4.5) --rail-fg on --rail-bg: rail icons
+ok   light/sky  13.31:1 (min 4.5) --rail-on on --rail-hover: rail icon on hover
+ok   light/sky  12.11:1 (min 4.5) --rail-on on --rail-active: rail icon of the current place
+ok   light/sky  14.15:1 (min 3.0) --lime on --rail-bg: Flux mark, current-place marker and rail focus ring
+ok   light/sky  10.92:1 (min 3.0) --lime on --rail-active: rail focus ring on the current place
+ok   light/sky   9.99:1 (min 4.5) --pm-1-t on --pm-1: project monogram 1
+ok   light/sky   8.51:1 (min 4.5) --pm-2-t on --pm-2: project monogram 2
+ok   light/sky   8.85:1 (min 4.5) --pm-3-t on --pm-3: project monogram 3
+ok   light/sky   8.96:1 (min 4.5) --pm-4-t on --pm-4: project monogram 4
+ok   dark/sky   15.63:1 (min 4.5) --text on --bg: body text
+ok   dark/sky   11.16:1 (min 4.5) --text-2 on --bg: secondary text
+ok   dark/sky    6.66:1 (min 4.5) --text-3 on --bg: muted text
+ok   dark/sky    6.89:1 (min 4.5) --text-3 on --bg-side: muted sidebar text
+ok   dark/sky    6.08:1 (min 4.5) --text-3 on --bg-hover: muted text on hover
+ok   dark/sky    9.23:1 (min 4.5) --text-2 on --bg-active: selected item text
+ok   dark/sky    5.51:1 (min 4.5) --text-3 on --bg-active: muted text on selection
+ok   dark/sky    6.28:1 (min 4.5) --text-3 on --bg-raised: muted text on popovers
+ok   dark/sky    9.35:1 (min 4.5) --accent on --bg: links and accent text
+ok   dark/sky    9.67:1 (min 4.5) --accent on --bg-side: accent text in the sidebar
+ok   dark/sky    9.67:1 (min 4.5) --on-accent on --accent: primary button label
+ok   dark/sky   11.47:1 (min 4.5) --on-accent on --accent-hover: primary button label on hover
+ok   dark/sky    7.90:1 (min 4.5) --on-accent on --accent-pressed: primary button label while pressed
+ok   dark/sky    7.22:1 (min 4.5) --accent-selected-text on --accent-selected-bg: selected control label
+ok   dark/sky    5.14:1 (min 4.5) --text-3 on --accent-soft: metadata on selected rows
+ok   dark/sky    7.22:1 (min 3.0) --accent-selected-border on --accent-selected-bg: selected control boundary
+ok   dark/sky    9.35:1 (min 4.5) --link on --bg: text link
+ok   dark/sky    7.22:1 (min 4.5) --link on --accent-soft: link on selected surface
+ok   dark/sky    8.81:1 (min 3.0) --focus on --bg-raised: focus ring on popovers
+ok   dark/sky    7.22:1 (min 3.0) --focus on --accent-soft: focus ring on selection
+ok   dark/sky    6.89:1 (min 3.0) --map-guide on --bg-side: map relationship guide
+ok   dark/sky    4.46:1 (min 3.0) --map-guide on --line-strong: map relationship guide crossing canvas grid dots
+ok   dark/sky    8.17:1 (min 4.5) --resolution on --bg: semantic resolution label
+ok   dark/sky    6.39:1 (min 4.5) --attention on --bg: needs-you label
+ok   dark/sky    5.83:1 (min 4.5) --attention on --bg-hover: needs-you label on hover
+ok   dark/sky    7.53:1 (min 4.5) --danger on --bg: error text
+ok   dark/sky    7.18:1 (min 4.5) --danger on --tint-danger: error text on its tint
+ok   dark/sky    8.47:1 (min 4.5) --warning on --bg: warning text
+ok   dark/sky    8.17:1 (min 4.5) --ok on --bg: success text
+ok   dark/sky   15.63:1 (min 4.5) --bg on --text: toast text
+ok   dark/sky    3.58:1 (min 3.0) --line-input on --bg: input boundary
+ok   dark/sky    9.35:1 (min 3.0) --focus on --bg: focus ring
+ok   dark/sky    9.67:1 (min 3.0) --focus on --bg-side: focus ring in the sidebar
+ok   dark/sky   15.63:1 (min 3.0) --text on --bg: view switcher indicator
+ok   dark/sky    8.71:1 (min 4.5) --rail-fg on --rail-bg: rail icons
+ok   dark/sky   13.31:1 (min 4.5) --rail-on on --rail-hover: rail icon on hover
+ok   dark/sky   12.11:1 (min 4.5) --rail-on on --rail-active: rail icon of the current place
+ok   dark/sky   14.85:1 (min 3.0) --lime on --rail-bg: Flux mark, current-place marker and rail focus ring
+ok   dark/sky   10.92:1 (min 3.0) --lime on --rail-active: rail focus ring on the current place
+ok   dark/sky    9.99:1 (min 4.5) --pm-1-t on --pm-1: project monogram 1
+ok   dark/sky    8.51:1 (min 4.5) --pm-2-t on --pm-2: project monogram 2
+ok   dark/sky    8.85:1 (min 4.5) --pm-3-t on --pm-3: project monogram 3
+ok   dark/sky    8.96:1 (min 4.5) --pm-4-t on --pm-4: project monogram 4
+ok   light/copper 17.04:1 (min 4.5) --text on --bg: body text
+ok   light/copper 10.56:1 (min 4.5) --text-2 on --bg: secondary text
+ok   light/copper  5.77:1 (min 4.5) --text-3 on --bg: muted text
+ok   light/copper  5.39:1 (min 4.5) --text-3 on --bg-side: muted sidebar text
+ok   light/copper  5.11:1 (min 4.5) --text-3 on --bg-hover: muted text on hover
+ok   light/copper  8.87:1 (min 4.5) --text-2 on --bg-active: selected item text
+ok   light/copper  4.85:1 (min 4.5) --text-3 on --bg-active: muted text on selection
+ok   light/copper  5.77:1 (min 4.5) --text-3 on --bg-raised: muted text on popovers
+ok   light/copper  5.94:1 (min 4.5) --accent on --bg: links and accent text
+ok   light/copper  5.55:1 (min 4.5) --accent on --bg-side: accent text in the sidebar
+ok   light/copper  5.94:1 (min 4.5) --on-accent on --accent: primary button label
+ok   light/copper  7.66:1 (min 4.5) --on-accent on --accent-hover: primary button label on hover
+ok   light/copper  9.46:1 (min 4.5) --on-accent on --accent-pressed: primary button label while pressed
+ok   light/copper  5.15:1 (min 4.5) --accent-selected-text on --accent-selected-bg: selected control label
+ok   light/copper  5.00:1 (min 4.5) --text-3 on --accent-soft: metadata on selected rows
+ok   light/copper  5.15:1 (min 3.0) --accent-selected-border on --accent-selected-bg: selected control boundary
+ok   light/copper  5.94:1 (min 4.5) --link on --bg: text link
+ok   light/copper  5.15:1 (min 4.5) --link on --accent-soft: link on selected surface
+ok   light/copper  5.94:1 (min 3.0) --focus on --bg-raised: focus ring on popovers
+ok   light/copper  5.15:1 (min 3.0) --focus on --accent-soft: focus ring on selection
+ok   light/copper  5.39:1 (min 3.0) --map-guide on --bg-side: map relationship guide
+ok   light/copper  3.97:1 (min 3.0) --map-guide on --line-strong: map relationship guide crossing canvas grid dots
+ok   light/copper  5.02:1 (min 4.5) --resolution on --bg: semantic resolution label
+ok   light/copper  5.81:1 (min 4.5) --attention on --bg: needs-you label
+ok   light/copper  5.15:1 (min 4.5) --attention on --bg-hover: needs-you label on hover
+ok   light/copper  6.57:1 (min 4.5) --danger on --bg: error text
+ok   light/copper  6.08:1 (min 4.5) --danger on --tint-danger: error text on its tint
+ok   light/copper  6.33:1 (min 4.5) --warning on --bg: warning text
+ok   light/copper  5.02:1 (min 4.5) --ok on --bg: success text
+ok   light/copper 17.04:1 (min 4.5) --bg on --text: toast text
+ok   light/copper  3.24:1 (min 3.0) --line-input on --bg: input boundary
+ok   light/copper  5.94:1 (min 3.0) --focus on --bg: focus ring
+ok   light/copper  5.55:1 (min 3.0) --focus on --bg-side: focus ring in the sidebar
+ok   light/copper 17.04:1 (min 3.0) --text on --bg: view switcher indicator
+ok   light/copper  8.29:1 (min 4.5) --rail-fg on --rail-bg: rail icons
+ok   light/copper 13.31:1 (min 4.5) --rail-on on --rail-hover: rail icon on hover
+ok   light/copper 12.11:1 (min 4.5) --rail-on on --rail-active: rail icon of the current place
+ok   light/copper 14.15:1 (min 3.0) --lime on --rail-bg: Flux mark, current-place marker and rail focus ring
+ok   light/copper 10.92:1 (min 3.0) --lime on --rail-active: rail focus ring on the current place
+ok   light/copper  9.99:1 (min 4.5) --pm-1-t on --pm-1: project monogram 1
+ok   light/copper  8.51:1 (min 4.5) --pm-2-t on --pm-2: project monogram 2
+ok   light/copper  8.85:1 (min 4.5) --pm-3-t on --pm-3: project monogram 3
+ok   light/copper  8.96:1 (min 4.5) --pm-4-t on --pm-4: project monogram 4
+ok   dark/copper 15.63:1 (min 4.5) --text on --bg: body text
+ok   dark/copper 11.16:1 (min 4.5) --text-2 on --bg: secondary text
+ok   dark/copper  6.66:1 (min 4.5) --text-3 on --bg: muted text
+ok   dark/copper  6.89:1 (min 4.5) --text-3 on --bg-side: muted sidebar text
+ok   dark/copper  6.08:1 (min 4.5) --text-3 on --bg-hover: muted text on hover
+ok   dark/copper  9.23:1 (min 4.5) --text-2 on --bg-active: selected item text
+ok   dark/copper  5.51:1 (min 4.5) --text-3 on --bg-active: muted text on selection
+ok   dark/copper  6.28:1 (min 4.5) --text-3 on --bg-raised: muted text on popovers
+ok   dark/copper  8.69:1 (min 4.5) --accent on --bg: links and accent text
+ok   dark/copper  8.99:1 (min 4.5) --accent on --bg-side: accent text in the sidebar
+ok   dark/copper  8.99:1 (min 4.5) --on-accent on --accent: primary button label
+ok   dark/copper 10.71:1 (min 4.5) --on-accent on --accent-hover: primary button label on hover
+ok   dark/copper  7.11:1 (min 4.5) --on-accent on --accent-pressed: primary button label while pressed
+ok   dark/copper  6.23:1 (min 4.5) --accent-selected-text on --accent-selected-bg: selected control label
+ok   dark/copper  4.78:1 (min 4.5) --text-3 on --accent-soft: metadata on selected rows
+ok   dark/copper  6.23:1 (min 3.0) --accent-selected-border on --accent-selected-bg: selected control boundary
+ok   dark/copper  8.69:1 (min 4.5) --link on --bg: text link
+ok   dark/copper  6.23:1 (min 4.5) --link on --accent-soft: link on selected surface
+ok   dark/copper  8.19:1 (min 3.0) --focus on --bg-raised: focus ring on popovers
+ok   dark/copper  6.23:1 (min 3.0) --focus on --accent-soft: focus ring on selection
+ok   dark/copper  6.89:1 (min 3.0) --map-guide on --bg-side: map relationship guide
+ok   dark/copper  4.46:1 (min 3.0) --map-guide on --line-strong: map relationship guide crossing canvas grid dots
+ok   dark/copper  8.17:1 (min 4.5) --resolution on --bg: semantic resolution label
+ok   dark/copper  6.39:1 (min 4.5) --attention on --bg: needs-you label
+ok   dark/copper  5.83:1 (min 4.5) --attention on --bg-hover: needs-you label on hover
+ok   dark/copper  7.53:1 (min 4.5) --danger on --bg: error text
+ok   dark/copper  7.18:1 (min 4.5) --danger on --tint-danger: error text on its tint
+ok   dark/copper  8.47:1 (min 4.5) --warning on --bg: warning text
+ok   dark/copper  8.17:1 (min 4.5) --ok on --bg: success text
+ok   dark/copper 15.63:1 (min 4.5) --bg on --text: toast text
+ok   dark/copper  3.58:1 (min 3.0) --line-input on --bg: input boundary
+ok   dark/copper  8.69:1 (min 3.0) --focus on --bg: focus ring
+ok   dark/copper  8.99:1 (min 3.0) --focus on --bg-side: focus ring in the sidebar
+ok   dark/copper 15.63:1 (min 3.0) --text on --bg: view switcher indicator
+ok   dark/copper  8.71:1 (min 4.5) --rail-fg on --rail-bg: rail icons
+ok   dark/copper 13.31:1 (min 4.5) --rail-on on --rail-hover: rail icon on hover
+ok   dark/copper 12.11:1 (min 4.5) --rail-on on --rail-active: rail icon of the current place
+ok   dark/copper 14.85:1 (min 3.0) --lime on --rail-bg: Flux mark, current-place marker and rail focus ring
+ok   dark/copper 10.92:1 (min 3.0) --lime on --rail-active: rail focus ring on the current place
+ok   dark/copper  9.99:1 (min 4.5) --pm-1-t on --pm-1: project monogram 1
+ok   dark/copper  8.51:1 (min 4.5) --pm-2-t on --pm-2: project monogram 2
+ok   dark/copper  8.85:1 (min 4.5) --pm-3-t on --pm-3: project monogram 3
+ok   dark/copper  8.96:1 (min 4.5) --pm-4-t on --pm-4: project monogram 4
