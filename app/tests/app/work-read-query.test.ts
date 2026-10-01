@@ -54,6 +54,7 @@ test('cursor survives direct reload/previous direction with all PostgreSQL micro
   assert.equal(decodeWorkReadCursor(undefined, scope), undefined);
   invalid(() => encodeWorkReadCursor('next', scope, { ...key, createdAt: '2026-02-30T00:00:00.123456Z' }));
   invalid(() => encodeWorkReadCursor('next', scope, { ...key, createdAt: '2026-10-01T06:00:00.123Z' }));
+  invalid(() => encodeWorkReadCursor('next', scope, { ...key, createdAt: '0000-01-01T00:00:00.123456Z' }));
 });
 
 test('cursor cannot transfer between account/project/endpoint/selector/limit/object window', () => {
@@ -96,4 +97,11 @@ test('page metadata emits both native directions and keeps an empty changed-page
   assert.ok(empty.previousCursor);
   assert.equal(empty.nextCursor, null);
   assert.throws(() => presentWorkReadPage({ items: [{ value: 1, key }], total: 0, before: 0, hasBefore: false, hasAfter: false }, 1, scope));
+  assert.throws(() => presentWorkReadPage({ items: [], total: 5, before: 3, hasBefore: true, hasAfter: true }, 1, scope));
+  assert.throws(() => presentWorkReadPage({ items: [], total: 4, before: 3, hasBefore: true, hasAfter: true }, 1, scope, supplied));
+  const previous = decodeWorkReadCursor(page.previousCursor!, scope)!;
+  assert.throws(() => presentWorkReadPage({ items: [], total: 4, before: 1, hasBefore: false, hasAfter: true }, 1, scope, previous));
+  assert.throws(() => presentWorkReadPage({ items: [], total: 4, before: 0, hasBefore: true, hasAfter: true }, 1, scope, previous));
+  assert.deepEqual(presentWorkReadPage({ items: [], total: 0, before: 0, hasBefore: false, hasAfter: false }, 50, scope),
+    { items: [], total: 0, before: 0, limit: 50, previousCursor: null, nextCursor: null });
 });

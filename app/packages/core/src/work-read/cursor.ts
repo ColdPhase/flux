@@ -25,7 +25,7 @@ function boundary(value: unknown): WorkReadBoundary {
   const raw = value as Record<string, unknown>;
   if (Object.keys(raw).sort().join(',') !== 'createdAt,id,rank' || !Number.isInteger(raw.rank) || (raw.rank as number) < 0 || (raw.rank as number) > 8) return workReadInvalid('Invalid read boundary');
   // Validate the calendar, but retain the full input string; never use Date as the SQL key.
-  if (typeof raw.createdAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(raw.createdAt)) return workReadInvalid('A full-precision native timestamp is required');
+  if (typeof raw.createdAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(raw.createdAt) || raw.createdAt.startsWith('0000-')) return workReadInvalid('A full-precision native timestamp is required');
   const date = new Date(raw.createdAt);
   if (!Number.isFinite(date.getTime()) || date.toISOString() !== `${raw.createdAt.slice(0, 23)}Z`) return workReadInvalid('Invalid native timestamp');
   return { rank: raw.rank as number, createdAt: raw.createdAt, id: workReadId(typeof raw.id === 'string' ? raw.id : undefined) };
@@ -59,6 +59,8 @@ export function presentWorkReadPage<T>(slice: WorkReadSlice<T>, limit: number, s
   if (slice.items.length > limit || !Number.isSafeInteger(slice.total) || slice.total < 0 || !Number.isSafeInteger(slice.before) || slice.before < 0 || slice.before + slice.items.length > slice.total ||
     typeof slice.hasBefore !== 'boolean' || typeof slice.hasAfter !== 'boolean' ||
     (slice.items.length > 0 && (slice.hasBefore !== (slice.before > 0) || slice.hasAfter !== (slice.before + slice.items.length < slice.total)))) throw new Error('Invalid native bounded read slice');
+  if (!slice.items.length && ((!supplied && (slice.total !== 0 || slice.before !== 0 || slice.hasBefore || slice.hasAfter)) ||
+    (supplied?.direction === 'next' && slice.hasAfter) || (supplied?.direction === 'previous' && (slice.hasBefore || slice.before !== 0)))) throw new Error('Inconsistent empty native read page');
   const first = slice.items[0]?.key ?? supplied?.boundary;
   const last = slice.items.at(-1)?.key ?? supplied?.boundary;
   return { items: slice.items.map((item) => item.value), total: slice.total, before: slice.before, limit,
