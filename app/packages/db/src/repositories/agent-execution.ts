@@ -97,7 +97,7 @@ export function agentExecutionRows(tx: DbExecutor) {
     },
     /** Native post-state readers are operation-specific, same-project and content-free. */
     async nativePostcondition(workspaceId: string, projectId: string, condition: AgentPostcondition, mapId?: string): Promise<boolean> {
-      if (condition.kind === 'cowork.claim_state') return false; // #153 supplies its canonical unit/fence adapter.
+      if (condition.kind === 'cowork.claim_state' || condition.kind === 'cowork.request_state') return false; // #153 supplies its canonical unit/request adapter.
       if (condition.kind === 'map_checkpoint') {
         const table = schema.sketches;
         const [row] = await tx.select({ at: table.updatedAt }).from(table).where(and(eq(table.id, condition.id),
