@@ -1,5 +1,6 @@
 import { proactiveOutboxRows, workRows, type DbExecutor } from '@flux/db';
 import {
+  evaluateProject,
   visibleFilter,
   createWorkUseCases,
   COMPARISON_QUIET_WINDOW_MS,
