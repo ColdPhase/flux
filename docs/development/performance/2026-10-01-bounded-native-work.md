@@ -1,7 +1,9 @@
 # Proposed bounded native work reads — #155 / #151 / #136
 
-2026-10-01. Pending independent design review; no new public read contract or
-runtime optimization is accepted by this document yet. Owner Zamojski5, existing
+2026-10-01. Bounded architectural agreement at
+76b8124c617c6493a5142f44ec455ea81ff98b6b. Exact public paths/query/DTO schemas
+still need a pinned contract delta before implementation; no runtime correction
+or whole-task acceptance is claimed. Owner Zamojski5, existing
 PR170/worktree. Preserve the full task criteria and native identity, permission,
 history, source/version, mutation, draft and reading contracts.
 
@@ -15,8 +17,11 @@ calls: 836,816 decoded body bytes, 1000 rendered work rows, 1013 rows overall an
 warm-up and 200 measured real actions: p95 navigation 329.1ms, input 36.6ms, view
 65.1ms and scroll 38.5ms. These meet the proposed latency budgets; fetch/render
 bounds fail. Opening native Details preserves the draft, but following its native
-message source and returning loses it (length 0). The phone CPU-emulation run is
-still in progress here; these observations are not its result or whole acceptance.
+message source and returning loses it (length 0). The completed phone CPU-emulation p95 values are navigation 587.8ms, input
+47.7ms, view 176.3ms and scroll 38.4ms; it has the same fetch/render/draft failures.
+Both runs retain all 30/200/60s requirements and native work remains unchanged.
+See the [complete actual evidence](../../agents/evidence/155-native-work-baseline/README.md);
+none of these observations are whole-task acceptance.
 
 The parent project loader and state line assume complete ProjectWork arrays.
 MessageObjects, ProjectOverview, WorkDetails and Docs LinkPicker also scan those
@@ -109,12 +114,16 @@ relationship previews are globally bounded independently of the number of input
 objects. Current native field length contracts apply; a projection carries no
 unrequested full body or repeated full relationship graph. Every request uses the current
 central project.read policy before counting/selecting/hydrating. Validate scope
-against the actual native source/decision records. All list/aggregate operations
+against the actual native source/decision records. Source visibility predicates
+apply BEFORE relation counts and page selection as well as final projection
+checks; no hidden source contributes a complete-looking visible count. All list/aggregate operations
 are read-only; no acknowledgment, model, media, event or background job effects.
 
 Use complete BIDIRECTIONAL keyset continuation rather than offset<=10000.
 The closed cursor (maximum 512 encoded bytes) contains version, direction,
 project/principal/selector binding and a native group/creation-time/id boundary,
+using a fixed-size digest for a normalized multi-source selector (never embedding
+up to 100 source IDs into the cursor),
 with raw DB timestamp precision preserved. Next uses the last displayed key and
 normal order. Previous uses the first displayed key, reverses the SQL order and
 comparison, then reverses the bounded result into normal display order. No client
