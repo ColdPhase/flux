@@ -86,13 +86,13 @@
 #22 0.331 ✓ Lockfile passes supply-chain policies (verified 9h ago)
 #22 0.331 Lockfile is up to date, resolution step is skipped
 #22 0.558 Already up to date
-#22 0.939 
+#22 0.939
 #22 0.939 dependencies:
 #22 0.939 + @flux/contracts link:packages/contracts
 #22 0.939 + @flux/core link:packages/core
 #22 0.939 + @flux/db link:packages/db
 #22 0.939 + pg-boss 12.35.0
-#22 0.939 
+#22 0.939
 #22 0.939 devDependencies:
 #22 0.939 + @eslint/js 9.37.0
 #22 0.939 + @types/node 24.6.2
@@ -109,7 +109,7 @@
 #22 0.939 + typescript 5.9.2
 #22 0.939 + typescript-eslint 8.44.1
 #22 0.939 + ws 8.22.0
-#22 0.939 
+#22 0.939
 #22 0.939 Done in 695ms using pnpm v12.6.0
 #22 DONE 1.0s
 
@@ -137,18 +137,18 @@
 #23 2.460 apps/web build: dist/assets/index-BBWqxtmm.css                             157.42 kB │ gzip:  27.82 kB
 #23 2.460 apps/web build: dist/assets/media-DGoeMNke.js                              419.65 kB │ gzip: 108.68 kB
 #23 2.460 apps/web build: dist/assets/index-D8VYSIlv.js                              753.63 kB │ gzip: 223.45 kB
-#23 2.460 apps/web build: 
+#23 2.460 apps/web build:
 #23 2.461 apps/web build: [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "use client" in "../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js" may not be preserved when bundling.
 #23 2.461 apps/web build:     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m ../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js:11:1 [38;5;246m][0m
 #23 2.461 apps/web build:     [38;5;246m│[0m
 #23 2.461 apps/web build:  [38;5;246m11 │[0m "use client";
-#23 2.461 apps/web build:  [38;5;240m   │[0m ──────┬──────  
+#23 2.461 apps/web build:  [38;5;240m   │[0m ──────┬──────
 #23 2.461 apps/web build:  [38;5;240m   │[0m       ╰──────── module level directive may not be preserved
-#23 2.461 apps/web build:  [38;5;240m   │[0m 
+#23 2.461 apps/web build:  [38;5;240m   │[0m
 #23 2.461 apps/web build:  [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
 #23 2.461 apps/web build: [38;5;246m────╯[0m
-#23 2.461 apps/web build: 
-#23 2.461 apps/web build: [plugin builtin:vite-reporter] 
+#23 2.461 apps/web build:
+#23 2.461 apps/web build: [plugin builtin:vite-reporter]
 #23 2.461 apps/web build: (!) Some chunks are larger than 500 kB after minification. Consider:
 #23 2.461 apps/web build: - Using dynamic import() to code-split the application
 #23 2.461 apps/web build: - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
@@ -183,7 +183,7 @@
 #25 0.241 Lockfile is up to date, resolution step is skipped
 #25 0.453 Packages: -199
 #25 0.453 --------------------------------------------------------------------------------
-#25 0.644 
+#25 0.644
 #25 0.644 devDependencies:
 #25 0.644 - @eslint/js 9.37.0
 #25 0.644 - @types/node 24.6.2
@@ -200,7 +200,7 @@
 #25 0.644 - typescript 5.9.2
 #25 0.644 - typescript-eslint 8.44.1
 #25 0.644 - ws 8.22.0
-#25 0.644 
+#25 0.644
 #25 0.645 Done in 443ms using pnpm v12.6.0
 #25 DONE 0.7s
 

@@ -66,8 +66,9 @@ horizontal content, physical installation or Push. It is bounded to these captur
 
 [environment.json](environment.json) records the actual isolated Compose project,
 ports and image IDs. [inputs.json](inputs.json) hashes the immutable source inputs
-and saved evidence. Plain logs and deterministic gzip copies preserve their exact
-original bytes; the manifest includes decompressed raw-log hashes. No production
+and saved evidence. Plain logs remove only trailing ASCII whitespace for readable Git diffs; deterministic
+gzip copies retain the exact original bytes. The manifest records both the saved
+readable-file hashes and the decompressed raw-log hashes. No production
 credentials/session dumps or provider keys are saved here. Fixture names/emails
 and command identities belong to the synthetic test accounts.
 

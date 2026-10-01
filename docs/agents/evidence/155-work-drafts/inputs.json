@@ -532,12 +532,12 @@
     "scripts/test_images.sh": "38128f02e905718a1c66bb35e7c042da55e3b9a00ecd5938197b01013e37d391"
   },
   "outputs": {
-    "README.md": "4b4aae3281d7a93b216b59ccd11e33738ca5729bce0a0c51ab80432a113b3fd4",
+    "README.md": "bc2839a6468cd7143406ab6ab3f2851e06116eb5e1d641b1211854385077eaca",
     "api.log": "9b4b1fac1aa92206e123608b62365e4e3518bdd000b596c4ce23b25503f27bc5",
     "api.log.gz": "ff4e2b464ddf3f60b0919093c5abc1d1c68a131f12b50452f7af308662655455",
     "browser.log": "61dd92d356e246f8203e0bcafa4c9ed2b05fc03b28877e83f55dff830c3be5db",
     "browser.log.gz": "1f9575b2d62be88b3ad9a08636febce847be3d5b0f9cf25376d0004b53f5444c",
-    "build.log": "12f70f5d3931cd90d2bf038ccc0cd64b6dc6b9c913fac4ded3a7217e35717a59",
+    "build.log": "6555d999de062ec4c414afa272b69876e34f3e020d8dfd9e6e921bd5cdd74ed7",
     "build.log.gz": "0443847aade2d2ff385feade4f21245920e6d6052b7c151e6c9a44959dface32",
     "cleanup.log": "1122ba8461b5ea4fd513a4a8cd894ce838ecb8f837c46d3e8b8f0802eae91824",
     "cleanup.log.gz": "b441a75cbd2fa3d00a7a7c9158d094b63aea3818b82e99b2740abea3737fe087",
@@ -554,5 +554,6 @@
     "build.log": "12f70f5d3931cd90d2bf038ccc0cd64b6dc6b9c913fac4ded3a7217e35717a59",
     "cleanup.log": "1122ba8461b5ea4fd513a4a8cd894ce838ecb8f837c46d3e8b8f0802eae91824",
     "home.log": "a4944cac2ed8adb1a076c6bc0adb8ebb4e3be74feea091a8a2612f654a9f8780"
-  }
+  },
+  "readable_log_normalization": "Plain logs strip trailing ASCII space/tab; gzip retains exact original raw bytes."
 }
