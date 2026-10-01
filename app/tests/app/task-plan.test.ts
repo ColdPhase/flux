@@ -505,11 +505,12 @@ test('the reader is direct, distinct, ascending, lock-free and bounded; the star
     assert.deepEqual(await taskPrerequisiteIds(tx, f.ws.id, []), []);
     assert.deepEqual(await taskPrerequisiteIds(tx, randomUUID(), [e.id]), [], 'another workspace sees none');
     await assert.rejects(taskPrerequisiteIds(tx, f.ws.id, ['nope']), code('INVALID_INPUT'));
-    const locks = (await tx.execute(sql`SELECT count(*)::int AS n FROM pg_locks WHERE pid = pg_backend_pid() AND (locktype IN ('advisory','transactionid','tuple','page') OR mode IN ('RowShareLock','RowExclusiveLock'))`)).rows[0] as { n: number };
-    assert.equal(locks.n, 0, 'reading locks nothing');
     await assert.rejects(requireTaskPrerequisitesMet(tx, f.ws.id, randomUUID()), code('WORK_NOT_FOUND'));
     await requireTaskPrerequisitesMet(tx, f.ws.id, a.id);
     await assert.rejects(requireTaskPrerequisitesMet(tx, f.ws.id, g.id), code('TASK_PREREQUISITES_UNMET'));
+    // Neither reader acquired an advisory, row, tuple or transaction lock.
+    const locks = (await tx.execute(sql`SELECT count(*)::int AS n FROM pg_locks WHERE pid = pg_backend_pid() AND (locktype IN ('advisory','transactionid','tuple','page') OR mode IN ('RowShareLock','RowExclusiveLock'))`)).rows[0] as { n: number };
+    assert.equal(locks.n, 0, 'reading locks nothing');
   });
 
   // Missing and foreign prerequisite rows (impossible through the foreign keys) count as unmet, not as done.
