@@ -1,0 +1,70 @@
+/* The project surface (#117, direction C): header with monogram, audience and the one-line
+   current state; the phone's 44px state row; conversations in the sidebar; Details overview. */
+
+/* ---------- Header ---------- */
+.top--project { height: auto; min-height: 58px; padding-top: 6px; padding-bottom: 4px; }
+.top__head { display: flex; flex: 1; flex-direction: column; justify-content: center; min-width: 0; }
+.top__title--project { align-items: center; gap: 8px; flex: none; }
+.top__pm { display: inline-grid; place-items: center; flex: none; width: 22px; height: 22px; border-radius: 6px; font-size: 12px; font-weight: 600; line-height: 1; background: var(--pm-1); color: var(--pm-1-t); }
+.top__pm.rail__pm--3 { border-radius: 10px 3px 10px 3px; }
+.top__audience { display: inline-flex; align-items: center; gap: 5px; min-width: 0; min-height: 24px; margin-left: -2px; padding: 0 6px; border-radius: var(--r-sm); font-size: var(--fs-md); color: var(--text-3); white-space: nowrap; transition: var(--tr); }
+.top__audience > span:not(.ui-vh) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.top__audience svg { flex: none; }
+.top__audience:hover { background: var(--bg-hover); color: var(--text); }
+.top--project .ws-state { flex-wrap: nowrap; margin: 0 0 0 -6px; overflow: hidden; white-space: nowrap; font-size: var(--fs-sm); line-height: 1.4; }
+.top--project .ws-part { flex: 0 1 auto; min-width: 0; }
+.top--project .ws-part:has(.ws-seg--need) { flex: none; }
+.top--project .ws-seg { min-height: 24px; max-width: 100%; color: var(--text-3); }
+.top--project .ws-seg:hover { color: var(--text); }
+.top--project .ws-seg--need { color: var(--attention); }
+.top--project .ws-seg span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
+.top--project .ws-state--empty { padding: 0 0 0 6px; overflow: hidden; text-overflow: ellipsis; }
+.top__faces { display: flex; align-items: center; margin: 0 6px 0 4px; }
+.top__faces .ui-avatar { box-shadow: 0 0 0 2px var(--bg); }
+.top__faces .ui-avatar { font-size: 11px; }
+.top__faces .ui-avatar + .ui-avatar { margin-left: -3px; }
+.top__more { font-size: 11px; }
+
+/* ---------- Phone: the state line is one 44px row that opens Details ---------- */
+.ws-state-row { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 0 10px 0 16px; border-top: 1px solid var(--line); font-size: var(--fs-sm); color: var(--text-3); text-align: left; white-space: nowrap; transition: var(--tr); }
+.ws-state-row__t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ws-state-row svg { flex: none; }
+.ws-state-row:active { background: var(--bg-hover); }
+@media (max-width: 640px) {
+  .top--project { min-height: calc(56px + env(safe-area-inset-top)); padding-bottom: 0; }
+  .top--project .top__title--project { flex-direction: column; align-items: flex-start; gap: 0; text-align: left; line-height: 1.25; }
+  .top--project .top__title--project h1 { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .top--project .top__pm, .top--project .top__crumb { display: none; }
+  .top--project .top__audience { max-width: 100%; min-height: 22px; margin-left: -6px; font-size: var(--fs-xs); }
+  .top--project .top__head { padding-left: 2px; }
+}
+
+/* ---------- Sidebar: the project's conversations ---------- */
+.side__count { margin-left: 6px; font-variant-numeric: tabular-nums; }
+.side__thread { align-items: center; }
+.side__when { margin-left: auto; padding-left: 6px; flex: none; font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.side__thread.is-current, .project-convo__thread.is-current { background: var(--bg-active); color: var(--text); font-weight: 500; }
+
+/* ---------- Details overview ---------- */
+.ov-audience { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--text-2); }
+.ov-quote { white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 8px; padding-left: 10px; box-shadow: inset 2px 0 0 var(--line-strong); }
+.ov-sec { margin-top: 22px; }
+.ov-rows { list-style: none; margin: 0; padding: 0; }
+.ov-rows li + li { border-top: 1px solid var(--line); }
+.ov-row { display: flex; align-items: flex-start; gap: 10px; margin: 0 -8px; padding: 9px 8px; border-radius: var(--r); color: var(--text); text-align: left; text-decoration: none; transition: var(--tr); width: calc(100% + 16px); }
+.ov-row:hover { background: var(--bg-hover); }
+.ov-row__ic { flex: none; margin-top: 2px; color: var(--text-3); }
+.ov-row__go { flex: none; align-self: center; color: var(--text-3); }
+.ov-row__b { display: flex; flex: 1; flex-direction: column; min-width: 0; gap: 1px; }
+.ov-row__k { font-size: var(--fs-xs); color: var(--text-3); }
+.ov-row__t { font-size: var(--fs-md); font-weight: 500; line-height: 1.4; overflow-wrap: anywhere; }
+.ov-row__s { font-size: var(--fs-sm); color: var(--text-3); }
+.ov-empty, .ov-note, .ov-more { font-size: var(--fs-sm); color: var(--text-3); line-height: 1.5; }
+.ov-note { margin-top: 8px; }
+.ov-more { margin-top: 6px; }
+.ov-person { display: flex; flex-direction: column; gap: 0; }
+@media (pointer: coarse) { .ov-row { min-height: 44px; } .top__audience { min-height: 32px; } }
+
+/* ---------- Map and Docs tabs ---------- */
+.pv-lead { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: var(--fs-sm); color: var(--text-3); }
+.pv-note { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); max-width: 560px; font-size: var(--fs-sm); line-height: 1.55; color: var(--text-3); }

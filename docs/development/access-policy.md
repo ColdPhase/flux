@@ -8,7 +8,7 @@ contract" in the [architecture proposal](../product/application-architecture-pro
 
 ## One choke point
 
-`packages/core/src/access/policy.ts` is the only place that decides access. It
+`app/packages/core/src/access/policy.ts` is the only place that decides access. It
 exports:
 
 | Function | Use |
@@ -25,7 +25,7 @@ principal's membership or agent rows `FOR SHARE`, a draft `FOR UPDATE`, and the
 project row and the principal's grants on it `FOR SHARE`. A revocation that committed
 earlier is then seen, and a concurrent one waits until this transaction ends.
 
-The domain methods in `packages/core/src/access/domain.ts` call these functions
+The domain methods in `app/packages/core/src/access/domain.ts` call these functions
 before they touch data. Mutations decide and write in one transaction, holding the
 locks described under [Concurrency](#concurrency).
 
@@ -38,9 +38,11 @@ actions and filter. It does not get a second policy module. Notifications and
 Web Push (#41) follow this rule: a notification inherits the audience of its source
 (`<type>.read`), checked at creation, in the inbox list (`visibleFilter`), on direct
 reads (`authorize`) and by the worker before each send. The event stream and the
-draft summary worker job (#29) also use the policy, and tests cover them. Surfaces
-that do not exist yet (files, search, MCP, extensions) are future integration work.
-Their enforcement is **not** implemented or verified here.
+draft summary worker job (#29) also use the policy, and tests cover them. Search (#114)
+composes `visibleFilter` for projects, DMs, sketches and drafts, and `authorize` for
+`workspace.read_members`, into its SQL before ranking, limits, counts and snippets; see
+[search.md](search.md). Surfaces that do not exist yet (files, MCP, extensions) are future
+integration work. Their enforcement is **not** implemented or verified here.
 
 ## Model
 
@@ -138,9 +140,12 @@ a private draft, not even to owners.
 readable at project level ≥ viewer and changeable at ≥ contributor, so explicit deny
 and every project rule above apply unchanged. A `private` sketch is readable and
 changeable only by the person who created it, while they are active in the workspace.
-Owners, admins and agents (including the author's own agent) never see it. DM-bound
-sketches follow #36 in a separate issue. Sketch events (`sketch.*.v1`) are
-authorized as `sketch.read` on the sketch.
+Owners, admins and agents (including the author's own agent) never see it. A `dm`
+sketch ([#96](https://github.com/ColdPhase/flux/issues/96)) references its DM by a foreign key.
+Exactly the DM's current participants read it, and they change it while the DM is open. A 1:1
+whose other person left is read-only (`403`) until that person reopens it. Owners, admins,
+agents and people who left get `404`. Sketch events (`sketch.*.v1`) are authorized as
+`sketch.read` on the sketch.
 
 **Direct messages** (#107, details in [direct-messages.md](direct-messages.md)). A DM's
 audience is exactly its current participants (`dm_participants`). `dm.read` and `dm.write` need
@@ -148,6 +153,12 @@ an active person who is a participant; workspace owners and admins outside the D
 agents see no DMs in this slice. `dm.create` is for owners, admins and members. Leaving deletes
 the participant row, and removing a membership cascades to it, so access ends on the next
 request. DM events (`dm.*.v1`) are authorized as `dm.read` on the DM.
+
+**Personal assistant runs** (#68, details in [personal-runs.md](personal-runs.md)). A run is
+an `assistant_run` object with one reader: `assistant_run.read` is allowed only to the person who
+owns the run, while they are active in its workspace. Workspace owners, admins, project members
+and agents never see it, so its progress events (`assistant_run.changed.v1`) reach the owner
+alone. The committed answer is a separate project event for the conversation's audience.
 
 **Membership.** Owners and admins manage members and create projects. Only an owner
 can grant, change or remove the owner role (`403 OWNER_REQUIRED`). The last owner
@@ -184,7 +195,7 @@ isolation. What is guaranteed:
   of one request can make them differ by that change. Nothing is cached, so the next
   request, event delivery or job step always evaluates fresh.
 
-`tests/app/access-policy.test.ts` checks both orders on two real PostgreSQL
+`app/tests/app/access-policy.test.ts` checks both orders on two real PostgreSQL
 connections, detecting the wait with `pg_blocking_pids` rather than timing. The
 cases are: revoking an agent's contributor grant; inserting a `denied` grant for a
 member who has no grant row, and replacing an agent grant with `denied`; narrowing a
@@ -200,14 +211,15 @@ and is then refused with `404` or `403` without writing.
 | workspace | `workspace.read`, `workspace.read_members`, `workspace.manage_members`, `workspace.manage_agents`, `project.create`, `draft.create`, `agent.create`, `sketch.create`, `dm.create` |
 | project | `project.read`, `project.write`, `project.manage` |
 | draft | `draft.read`, `draft.write`, `draft.share`, `draft.move` |
-| agent | `agent.read`, `agent.revoke` |
+| agent | `agent.read`, `agent.revoke`, `agent.invoke` (only the owning person, while the agent is not revoked; [personal runs](personal-runs.md)) |
 | sketch | `sketch.read`, `sketch.write` |
 | dm | `dm.read`, `dm.write` |
+| assistant_run | `assistant_run.read` (only the run's owner; [personal runs](personal-runs.md)) |
 
 ## HTTP API
 
-The routes live in `apps/server/src/access/routes.ts`. Paths and wire types are in
-`packages/contracts/src/access.ts`. Every route needs a live session
+The routes live in `app/apps/server/src/access/routes.ts`. Paths and wire types are in
+`app/packages/contracts/src/access.ts`. Every route needs a live session
 (`401 UNAUTHENTICATED` otherwise), and state changes pass the origin check from
 [identity](containers.md#identity-services-and-variables). An object the caller
 cannot see answers `404` with a `*_NOT_FOUND` code. A visible object with a
@@ -255,7 +267,7 @@ An `AFTER INSERT` trigger sends `NOTIFY flux_events` with the `seq` for events t
 have a workspace. The notification is only a wake-up. The `events` table remains the
 source of truth, and `outbox` remains reserved for worker-side external delivery.
 
-**Audience index.** `recordEvent` (`packages/core/src/events.ts`) also writes the
+**Audience index.** `recordEvent` (`app/packages/core/src/events.ts`) also writes the
 event's stream audience in the same transaction: for every member and unrevoked agent
 of the workspace it calls `authorizeEvent`, and stores one `event_audience(recipient,
 seq, event_id)` row per principal that may read the object at that moment. The
@@ -266,15 +278,15 @@ workspace's members and agents; readers never pay for events outside their audie
 Events recorded before migration 0004 have no audience rows and are not replayed.
 
 The event's object type comes from the first segment of its kind: `workspace`,
-`project`, `draft`, `agent`, `sketch` or `dm`. The read action for that type decides delivery:
-`workspace.read`, `project.read`, `draft.read`, `agent.read`, `sketch.read` or `dm.read`. Events without a
+`project`, `draft`, `agent`, `sketch`, `dm` or `assistant_run`. The read action for that type decides delivery:
+`workspace.read`, `project.read`, `draft.read`, `agent.read`, `sketch.read`, `dm.read` or `assistant_run.read`. Events without a
 workspace (the sample fixture) and unknown kinds are never delivered.
 
 ## WebSocket stream
 
 `GET /api/v1/stream?cursor=<cursor|eventId>` is implemented in
-`apps/server/src/stream/index.ts` with `@fastify/websocket` 11.3.1. Wire types are
-`StreamMessage`, `StreamEvent` and `StreamReady` in `packages/contracts/src/access.ts`.
+`app/apps/server/src/stream/index.ts` with `@fastify/websocket` 11.3.1. Wire types are
+`StreamMessage`, `StreamEvent` and `StreamReady` in `app/packages/contracts/src/access.ts`.
 
 **Upgrade.** The server checks these before it upgrades, in this order:
 
@@ -302,7 +314,7 @@ maximum payload is 1 KiB.
 
 **Cursors.** The global `seq` is never sent. A cursor is `c1.` followed by the
 base64url AES-256-GCM encryption of a position, authenticated with the recipient
-(`human:<id>`) as associated data (`apps/server/src/stream/cursor.ts`). Keys are
+(`human:<id>`) as associated data (`app/apps/server/src/stream/cursor.ts`). Keys are
 derived with HKDF from `FLUX_AUTH_SECRET`. The IV is derived from the recipient and
 position, so the same person and position always give the same cursor. The server
 issues cursors only for positions of events that person could see when they were
@@ -341,7 +353,7 @@ that has not answered the previous ping is terminated.
 
 **Hidden activity and timing.** Opening a stream, computing `ready.cursor` and
 replaying after a cursor read only the recipient's own audience rows, so their work
-does not depend on events the recipient cannot see. `tests/app/stream.test.ts`
+does not depend on events the recipient cannot see. `app/tests/app/stream.test.ts`
 checks this with 500 hidden events: identical server-side work counters (queries,
 rows, `authorizeEvent` calls, from the test-only `GET /api/v1/stream/work` served when
 `FLUX_TEST_FAILURE_INJECTION=true`), identical rows examined in `EXPLAIN ANALYZE` of
@@ -355,14 +367,23 @@ on its own `LISTEN` for wake-ups.
 rows after the person's saved return point, calls `authorizeEvent` again for every event and,
 on Home, also applies `visibleFilter` to each project. See [return-view.md](return-view.md).
 
+**Project export** (#123). `GET /api/v1/projects/:id/export` needs `project.manage`
+(`evaluateProject`, so an invisible project is `404` and a visible one without manage rights is
+`403`). The audience in the export comes from `listProjectPeople`; the rows are read in one
+read-only snapshot and never include other projects, DMs, drafts or private sketches. See
+[export](../operations/export.md).
+
 **Project docs** (#112). Doc reads and writes use the project policy (`evaluateProject`, write
 under the access-row lock); an invisible doc is `404 DOC_NOT_FOUND`. The workspace doc list
 applies `visibleFilter` before the page and total. `flux:` references resolve only inside the
 doc's project, so a doc never shows titles of other audiences. See [docs-wiki.md](docs-wiki.md).
 
+**Search** (#114). `GET /api/v1/search` builds the reader's audiences from `visibleFilter` on every
+request and puts them in the WHERE clause of the page and count statements. See [search.md](search.md).
+
 ## Worker jobs
 
-`draft.summarize.v1` (`packages/core/src/jobs/draft-summary.ts`) is a placeholder
+`draft.summarize.v1` (`app/packages/core/src/jobs/draft-summary.ts`) is a placeholder
 derived-result job. It computes a deterministic word count into `draft_results`. It
 exists so the worker authorization contract is real and tested:
 
@@ -411,7 +432,7 @@ version. The domain methods enforce this too, not only the HTTP routes.
 
 Every POST and PATCH under `/api/v1` access routes, and summary requests, accepts
 `Idempotency-Key`: 1–255 visible ASCII characters. The implementation is
-`runIdempotent` in `packages/core/src/idempotency.ts`. DELETE routes and the Better
+`runIdempotent` in `app/packages/core/src/idempotency.ts`. DELETE routes and the Better
 Auth and session endpoints do not take keys.
 
 - **Scope.** A key is scoped by principal, workspace and operation. The operation is
@@ -460,18 +481,18 @@ Auth and session endpoints do not take keys.
 
 `./scripts/check_application.sh` runs these checks in Docker:
 
-- `tests/app/access.test.ts` covers two workspaces and six accounts over HTTP.
-- `tests/app/access-policy.test.ts` covers agent principals, the
+- `app/tests/app/access.test.ts` covers two workspaces and six accounts over HTTP.
+- `app/tests/app/access-policy.test.ts` covers agent principals, the
   `authorize`/`visibleFilter` contract and the database constraints directly
   against PostgreSQL.
-- `tests/app/stream.test.ts` covers replay after a cursor and live delivery for two
+- `app/tests/app/stream.test.ts` covers replay after a cursor and live delivery for two
   workspaces and three accounts. It checks per-recipient filtering (private drafts,
   restricted projects, other tenants), removal of a membership, session revocation
   (close `4401`, then reconnect `401`), the origin and cursor rejections (raw numbers,
   forged cursors, another person's cursor), and the heartbeat. It also checks that a
   member outside a restricted project gets identical cursors and frames, fresh and on
   resume, whether or not restricted and private activity happened.
-- `tests/app/e2e/access-stream.e2e.ts` runs in Chromium (the `e2e` Playwright
+- `app/tests/app/e2e/access-stream.e2e.ts` runs in Chromium (the `e2e` Playwright
   image) against the running API: three people sign up in their own browser
   contexts, the owner creates a workspace, a restricted project, a viewer grant and a
   private draft, and shares it. The granted member's page `WebSocket` receives the
@@ -480,12 +501,12 @@ Auth and session endpoints do not take keys.
   the draft, and the read is `404`. The web app is still the placeholder shell, so
   the pages use same-origin `fetch` and `WebSocket` rather than UI screens. Evidence
   from one run is in `docs/development/evidence/29-browser/`.
-- `tests/app/worker.test.ts` covers the Compose worker committing a result. Using the
+- `app/tests/app/worker.test.ts` covers the Compose worker committing a result. Using the
   `afterRead` hook, it also covers denial before read and the race of a revocation
   between read and commit. It covers grant revocation on two connections in both orders:
   a revoke that starts during the commit waits and the result commits, and a revoke
   that is uncommitted when the commit starts makes the worker wait and then deny.
-- `tests/app/safe-writes.test.ts` covers `If-Match` (428, 409 with an unchanged row,
+- `app/tests/app/safe-writes.test.ts` covers `If-Match` (428, 409 with an unchanged row,
   `ETag`) and idempotency keys (replay, one row, 422 on reuse, scope, concurrent
   duplicates, expiry and cleanup). It also covers replays after lost access: a demoted
   admin replaying a restricted project creation, and draft create and share replays

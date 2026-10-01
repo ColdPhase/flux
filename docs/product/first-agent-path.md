@@ -1,5 +1,11 @@
 # O-005 — first supported agent path
 
+**Later requirement, 2026-09-30:** [F-016 local MCP co-work](mcp-cowork.md)
+extends completed #52 / PR #103 with multiple external connections per owner,
+tested Codex support, scoped domain tools and local task handoffs/review. Preserve
+O-005 evidence and the separate embedded-helper contracts #57/#68. The required
+future capability does not change which clients/operations have been verified.
+
 **Proposal:** 2026-09-27, `codex-hubert` for [#37](https://github.com/ColdPhase/flux/issues/37).
 **Status:** accepted after [independent peer review](https://github.com/ColdPhase/flux/pull/53#pullrequestreview-5331573326).
 This is the product/architecture decision for the [#52 implementation](https://github.com/ColdPhase/flux/issues/52).

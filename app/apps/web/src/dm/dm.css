@@ -1,0 +1,130 @@
+/* Direct messages (#107): a Messages-like reading column with its audience always in view. */
+.dm { display: flex; flex: 1; min-height: 0; flex-direction: column; }
+.dm__feed { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+.dm__in { max-width: calc(var(--col) + 48px); margin: 0 auto; padding: 20px 24px 12px; }
+.dm__head { display: flex; align-items: center; gap: 12px; padding: 20px 0 18px; }
+.dm__faces { display: flex; flex: none; }
+.dm__faces .ui-avatar { box-shadow: 0 0 0 2px var(--bg); }
+.dm__faces .ui-avatar + .ui-avatar { margin-left: -6px; }
+.dm__who { flex: 1; min-width: 0; }
+.dm__who h2 { font-size: var(--fs-lg); font-weight: 600; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.dm__who p { margin-top: 2px; font-size: var(--fs-sm); line-height: 1.45; color: var(--text-3); }
+.dm__who p svg { display: inline; vertical-align: -1px; }
+.dm__older { display: flex; justify-content: center; padding: 12px 0 0; }
+.dm__first { padding: 28px 0; font-size: var(--fs-md); color: var(--text-3); }
+.dm__list { list-style: none; margin: 0; padding: 6px 0 0; }
+.dm__day { display: flex; align-items: center; gap: 10px; margin: 14px 0 6px; font-size: var(--fs-xs); font-weight: 500; color: var(--text-3); }
+.dm__day::before, .dm__day::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.dm-msg__row { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; padding: 7px 0 3px; }
+.dm-msg--cont .dm-msg__row { padding-top: 1px; }
+.dm-msg__meta { display: flex; align-items: baseline; gap: 8px; font-size: var(--fs-xs); color: var(--text-3); line-height: 1.4; }
+.dm-msg__meta b { font-size: var(--fs-sm); font-weight: 600; color: var(--text); }
+.dm-msg__body { margin-top: 1px; font-size: var(--fs-base); line-height: 1.55; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+.dm__composer { border-top: 1px solid var(--line); background: var(--bg); padding-top: 10px; }
+.dm__notice { display: flex; align-items: center; gap: 6px; margin: 0 2px 8px; padding: 8px 10px; border-radius: var(--r); background: var(--bg-side); font-size: var(--fs-sm); color: var(--text-2); }
+.dm__notice svg { flex: none; color: var(--text-3); }
+.dm__error { display: flex; align-items: center; gap: 6px; margin: 6px 2px 0; font-size: var(--fs-sm); color: var(--danger); }
+.dm__error button { margin-left: 4px; min-height: 32px; padding: 0 8px; border-radius: var(--r-sm); font-weight: 500; color: var(--text); text-decoration: underline; }
+.dm-gone { display: flex; gap: 10px; align-items: flex-start; padding-top: 48px; color: var(--text-2); }
+.dm-gone svg { margin-top: 5px; color: var(--text-3); }
+.dm-gone h2 { font-size: var(--fs-lg); color: var(--text); }
+.dm-gone p { margin: 4px 0 14px; font-size: var(--fs-md); }
+
+/* Selecting messages to start a sketch in this DM (#96). The check replaces the face; picked rows
+   take the one soft tint. Only transform, opacity and colours animate. */
+.dm--selecting .dm__composer { display: none; }
+.dm--selecting .dm-msg__row { grid-template-columns: 32px minmax(0, 1fr); margin: 0 -10px; padding-left: 10px; padding-right: 10px; border-radius: var(--r-lg); cursor: pointer; transition: background-color var(--dur-1) var(--ease-out); }
+.dm--selecting .dm-msg__row:hover { background: var(--bg-hover); }
+.dm--selecting .dm-msg.is-picked .dm-msg__row { background: var(--accent-soft); }
+.dm--selecting .dm-msg__face { display: none; }
+.dm-msel { display: grid; place-items: center; width: 32px; height: 32px; margin: -4px 0 0 -4px; border-radius: var(--r); color: var(--text-3); animation: dm-in var(--dur-2) var(--ease-out) backwards; }
+.dm-msel i { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; box-shadow: inset 0 0 0 1.5px var(--text-3); transition: var(--tr); }
+.dm-msel svg { opacity: 0; transform: scale(.6); color: var(--on-accent); transition: opacity var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
+.dm-msel[aria-pressed="true"] i { background: var(--accent); box-shadow: none; }
+.dm-msel[aria-pressed="true"] svg { opacity: 1; transform: none; }
+.dm-msel:active i { transform: scale(.9); }
+.dm-selbar { flex: none; border-top: 1px solid var(--line); background: var(--bg); padding: 10px 24px 16px; padding-bottom: max(16px, env(safe-area-inset-bottom)); animation: dm-rise var(--dur-2) var(--ease-out) backwards; }
+.dm-selbar__in { max-width: var(--col); margin: 0 auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; }
+.dm-selbar__count { margin-right: auto; font-size: var(--fs-md); font-weight: 500; color: var(--text); }
+.dm-selbar__note { flex-basis: 100%; display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--text-3); }
+.dm-selbar__note svg { flex: none; }
+.dm-selbar .ui-btn--primary[aria-disabled="true"] { background: var(--bg-active); color: var(--text-3); }
+.dm-select-btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.dm-sk-lead { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: var(--fs-sm); color: var(--text-3); }
+@keyframes dm-in { from { opacity: 0; transform: scale(.8); } }
+@keyframes dm-rise { from { opacity: 0; transform: translateY(8px); } }
+
+/* List of conversations */
+.dm-index__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 16px 0 14px; border-bottom: 1px solid var(--line); }
+.dm-index__head h2 { font-size: var(--fs-xl); letter-spacing: -0.015em; }
+.dm-index__head p { margin-top: 2px; font-size: var(--fs-sm); color: var(--text-3); }
+.dm-index { list-style: none; margin: 0; padding: 6px 0; }
+.dm-index__item { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 10px; margin: 0 -10px; border-radius: var(--r); color: var(--text); text-decoration: none; transition: var(--tr); }
+.dm-index__item:hover { background: var(--bg-hover); }
+.dm-index__text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.dm-index__text b { font-size: var(--fs-md); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dm-index__text span { font-size: var(--fs-sm); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dm-index__item time { flex: none; font-size: var(--fs-xs); color: var(--text-3); }
+
+/* New message */
+.dm-new { max-width: 560px; }
+.dm-new h2 { padding-top: 16px; font-size: var(--fs-xl); letter-spacing: -0.015em; }
+.dm-new__lead { margin: 4px 0 18px; font-size: var(--fs-md); color: var(--text-3); }
+.dm-new__space { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: var(--fs-sm); color: var(--text-2); }
+.dm-new__space select, .dm-new__search, .dm-new__title input { min-height: 36px; border: 1px solid var(--line-strong); border-radius: var(--r); padding: 0 10px; background: var(--bg); color: var(--text); font: inherit; font-size: var(--fs-md); }
+.dm-new__search { width: 100%; }
+.dm-new__search:focus-visible, .dm-new__title input:focus-visible, .dm-new__space select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.dm-new__note, .dm-new__opening { margin: 12px 2px; font-size: var(--fs-sm); color: var(--text-3); }
+.dm-new__people { list-style: none; margin: 8px 0 0; padding: 0; max-height: min(52vh, 440px); overflow-y: auto; }
+.dm-new__person { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 10px; margin: 0 -10px; border-radius: var(--r); cursor: pointer; transition: var(--tr); }
+.dm-new__person:hover { background: var(--bg-hover); }
+.dm-new__person.is-on { background: var(--accent-soft); }
+.dm-new__person input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.dm-new__person:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
+.dm-new__name { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.dm-new__name b { font-size: var(--fs-md); font-weight: 500; }
+.dm-new__name span { font-size: var(--fs-xs); color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dm-new__tick { color: var(--accent); }
+.dm-new__title { display: grid; gap: 6px; margin-top: 14px; font-size: var(--fs-sm); color: var(--text-2); }
+.dm-new__bar { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 14px; padding: 12px 0; border-top: 1px solid var(--line); background: var(--bg); }
+.dm-new__audience { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); font-weight: 500; color: var(--text-2); }
+.dm-new__audience svg { color: var(--text-3); }
+
+@media (pointer: coarse) {
+  .dm__error button { min-height: 44px; }
+  .dm--selecting .dm-msg__row { grid-template-columns: 44px minmax(0, 1fr); }
+  .dm-msel { width: 44px; height: 44px; margin: -10px 0 0 -10px; }
+  .dm-new__person { min-height: 56px; }
+  .dm-new__space select, .dm-new__search, .dm-new__title input { min-height: 44px; }
+}
+@media (max-width: 640px) {
+  .dm__in { padding: 8px 16px 8px; }
+  .dm-selbar { padding: 8px 16px 12px; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .dm-selbar__in .ui-btn--primary { flex: 1 1 100%; justify-content: center; order: 3; }
+  .dm-selbar__note { order: 4; }
+  .dm__head { padding: 8px 0 12px; }
+  .dm__faces .ui-avatar--lg { width: 30px; height: 30px; }
+  .dm__composer { padding-top: 6px; }
+  .dm__composer .composer__hint:not(.dm__error) { display: none; }
+  .dm-index__head { align-items: center; }
+  .dm-index__head p { display: none; }
+}
+.dm-msg.is-arrived { box-shadow: inset 3px 0 0 var(--accent); border-radius: 2px; }
+.dm-msg:focus { outline: none; }
+.dm-msg:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* Own messages on the right, the other people's on the left (#132/#136), in the pane's width. */
+.dm__in { max-width: 1000px; }
+.dm__composer .composer__in { max-width: calc(1000px - 48px); }
+.dm-msg__main { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+.dm-msg__body { max-width: min(640px, 82%); padding: 7px 12px; border-radius: 4px 14px 14px 14px; background: var(--bg-side); }
+.dm-msg--cont .dm-msg__body { border-radius: 14px; }
+.dm-msg.is-mine .dm-msg__row { grid-template-columns: minmax(0, 1fr) 26px; }
+.dm-msg.is-mine .dm-msg__face { order: 2; }
+.dm-msg.is-mine .dm-msg__main { align-items: flex-end; }
+.dm-msg.is-mine .dm-msg__meta { flex-direction: row-reverse; }
+.dm-msg.is-mine .dm-msg__body { border-radius: 14px 4px 14px 14px; background: var(--accent-soft); }
+.dm-msg.is-mine.dm-msg--cont .dm-msg__body { border-radius: 14px; }
+@media (max-width: 640px) { .dm-msg__body { max-width: 92%; } }
+/* While selecting messages (#96) every row starts with its check, own messages included. */
+.dm--selecting .dm-msg.is-mine .dm-msg__row { grid-template-columns: 32px minmax(0, 1fr); }

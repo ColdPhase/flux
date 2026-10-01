@@ -3,9 +3,14 @@
 Flux is a global open source, self-hostable workspace for people and agents.
 Read `docs/product/FLUX-FOUNDATION.md` in full when first joining; then use
 `docs/product/README.md`, current decisions, and relevant sections per task.
-The existing `flux-ux-v8.html` is a loose inspiration. Its layout, terminology,
-colors, and technology are not an accepted production design. Product scope,
-architecture, stack, and palette remain open where the foundation says so.
+The latest [Studio 11.6 direction](docs/design/studio-v11.6.md)
+(F-017, 2026-09-30) is the primary appearance/UX reference, with required
+[local MCP co-work](docs/product/mcp-cowork.md) (F-016) and
+[adaptive workspaces](docs/design/adaptive-workspaces.md) (F-015).
+Preserve useful repo improvements and refine remaining friction.
+The older `flux-ux-v8.html` is
+historical inspiration. Demo internals do not establish production architecture,
+permissions or functionality; recorded current decisions govern these.
 The founder's later [delegation](docs/product/autonomy.md) assigns these decisions
 to the agents. Choose, peer-review, record and implement them; do not wait for
 human acceptance. The goal is the complete working application.
@@ -24,9 +29,11 @@ Keep procedures in one place and use the guides below when relevant.
 | Starting, pausing or resuming the agents (`/goal` sessions) | `docs/agents/startup.md` |
 | Development environment, services, tests, or packaging | `docs/development/containers.md` |
 | Module boundaries, dependency direction, or where code/tests go | `docs/development/architecture.md` |
+| Responsive/adaptive UI, small phones, 4K or ultrawide | `docs/design/adaptive-workspaces.md` |
 | Mobile/tablet UX, PWA installation or push notifications | `docs/product/mobile-pwa.md` |
 | Ordinary contribution or prototype change | `docs/CONTRIBUTING.md` |
 | Agent collaboration and task lifecycle | `docs/agents/workflow.md` |
+| Product co-work playbooks, agent inbox and onboarding | `docs/product/cowork-workflow.md`, `docs/product/cowork-playbook.md` (F-018; product contract, not this repo’s operating workflow) |
 | Issue/PR messages, ownership, and handoffs | `docs/agents/github-protocol.md` |
 | Review, application verification, or release acceptance | `docs/agents/evaluation.md` |
 | GitHub Actions, required PR checks, packaging, or publication | `docs/agents/ci-and-releases.md` |

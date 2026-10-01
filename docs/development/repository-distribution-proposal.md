@@ -5,6 +5,18 @@
 and merge of PR #79. #76 implements the paths and #77 implements distribution;
 this decision is not itself a release or permission to move active branches.
 
+**#76 progress, 2026-09-30:** phase 1 adds the pull-only operator
+[`docker/compose.yaml`](../../docker/compose.yaml) and its
+[`docker/.env.example`](../../docker/.env.example) with the release marker
+`ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST` on `api`, `worker` and `migrate`, checked by
+`tests/test_operator_compose.py` and `scripts/check_operator_compose.sh`
+([install guide](../operations/install-release.md)). The `app/` move, the source/dev/test
+Compose files under `docker/`, the launcher switch to `docker/.env` and the single env
+template are implemented together in the remaining #76 slice. The historical prototype stays at
+the repository root; application/configuration paths now follow the accepted map below.
+Exact-head Docker build/runtime/browser/upgrade checks and independent PR review are
+required before this slice is accepted. The observations at `603b35c` below remain historical.
+
 **Situation and decision:** A contributor should find the application in one
 place, while an operator should install a versioned Flux without cloning its
 source. The founder prefers `app/` for the application workspace and `docker/`

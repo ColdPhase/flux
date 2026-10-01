@@ -1,26 +1,30 @@
 # Design work in Flux
 
-Read foundation sections 10, 17 D1–D4, and 21 in
-[FLUX-FOUNDATION.md](../product/FLUX-FOUNDATION.md). The current direction, tokens and components are in
-[direction.md](direction.md) (accepted O-003, variant C). Existing screens and
-third-party skills are references; their defaults do not establish Flux's style.
+**Current reference: Studio 11.6 (F-017, 2026-09-30).** Start with
+[the current contract](studio-v11.6.md) and
+[the unchanged seven-file package and 11.6 screenshots](references/studio-v11.6/README.md).
+This is the full appearance direction. Apply it with
+[F-016 local MCP co-work](../product/mcp-cowork.md) and
+[F-015 adaptive workspaces](adaptive-workspaces.md). #136 owns integration,
+#151 adaptation, #148 final themes, #149 map drafts and #155 motion/presence.
 
-The later [F-012 direction](../product/decisions.md) and [#44 scenarios](https://github.com/ColdPhase/flux/issues/44)
-make `flux-ux-v8.html` a concrete baseline for visual and interaction quality.
-Compare it at the same desktop and phone viewport/zoom as the candidate. Preserve
-useful discoverability, density and creative character while improving its weak
-points. O-003 is accepted: direction C with rail identity
-([direction.md](direction.md)); A/B are rejected. Implementation and visual
-evaluation continue within C. A compact messenger
-shell, static map or task dashboard alone cannot demonstrate the DM → sketch →
-project, map ↔ experiment/result or return-after-pivot scenarios.
+Read foundation sections 10, 17 D1–D4 and 21 in
+[FLUX-FOUNDATION.md](../product/FLUX-FOUNDATION.md). Preserve #44 creative
+journeys, #57/#68 embedded helper, #59 live work, current access and accepted
+architecture. #133's explicit acknowledgment and #134's personal map outline
+remain stronger production behavior. A reference import does not deliver UI.
+
+[Design history](reference-history.md) records earlier C/v8/v11/11.1 inputs.
+They are not alternative current targets. Do not restart direction discovery or
+use older PNGs as the final appearance baseline. Compare realistic complete
+11.6-aligned views at matched viewport/zoom and refine specific visible friction.
 
 ## Live collaboration reference
 
 The founder's [live collaboration requirements](../product/live-collaboration.md)
 add contextual human audio/video/screen sessions to existing work. The supplied
 [interactive reference and inspection](references/live/README.md) illustrate
-join, show/follow, quiet/return and durable outcomes. Preserve the accepted C/v8
+join, show/follow, quiet/return and durable outcomes. Preserve the current Studio 11.6
 direction, personal-agent ownership and compact working surfaces while designing
 this capability. The reference is simulated; it is not evidence of working media.
 
@@ -50,6 +54,16 @@ do not fake it through global scaling, browser zoom, or shrinking all text.
 Keep visible, usable controls. Check final color pairs and applicable WCAG
 requirements, including focus, keyboard access, zoom, and target size. A compact
 appearance is not evidence of accessibility.
+
+## Adaptive workspaces from phone to ultrawide
+
+The later [F-015 adaptive-workspace requirement](adaptive-workspaces.md),
+2026-09-30, makes responsive design a product capability. Use additional space
+for useful work and related context while preserving familiar navigation,
+object/source identity and active work during transitions. #151 implements the
+bounded adaptive slice under #136; #20 keeps real mobile/device acceptance.
+Use the full CSS-viewport/scaling/input matrix and measurable wide-screen gains,
+not only a desktop and phone screenshot.
 
 ## Separate visual and behavior evaluation
 

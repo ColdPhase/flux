@@ -13,24 +13,25 @@ person and place: `home`, `project:<id>` or `conversation:<id>`. A point is a po
 person's **own** `event_audience` rows (an event `seq`). It is never sent to clients. Project and
 conversation points are deleted with their place.
 
-- **Set when the person views the place.** The client reads the summary and then saves the
+- **Home: set when the person views it.** The client reads the summary and then saves the
   summary's opaque `mark` (the id of the reader's last audience row when the summary was built).
   The server accepts only a mark that is one of the caller's own audience rows. Saving is
   forward-only: an older mark never moves the point back.
 - **Moving back is optional.** "Keep these for next time" (`POST /api/v1/return-points/restore`)
   moves the point back to the one it replaced. A point first created in the undone visit is
-  removed, so the place counts as unviewed again. The project line restores both the project
-  point and the conversation point it saved.
+  removed, so the place counts as unviewed again. Projects no longer auto-save, so "Keep these"
+  exists only on Home (see "What matters" below).
 - **Nested places.** A change that has already been seen in a narrower place does not come back
   in a wider one. Home uses the maximum of the Home, project and conversation points. A project
   uses the maximum of the project and conversation points. A place that was never viewed starts
-  from the enclosing place's point (a project from Home). With no point at all, the summary is
-  empty and viewing creates the point.
+  from the enclosing place's point (a project from Home). On Home with no point, the summary is
+  empty and viewing creates the point. A project or conversation with neither its own nor the
+  enclosing point starts from its beginning (`since: null`, #133).
 
 ## Summary
 
 `GET /api/v1/return?place=home|project|conversation&id=` returns `ReturnSummary`
-(`packages/contracts/src/returns.ts`). It is built in `packages/core/src/returns/service.ts`:
+(`app/packages/contracts/src/returns.ts`). It is built in `app/packages/core/src/returns/service.ts`:
 
 1. Read the reader's own audience rows after the point, newest first, in pages of 400 by primary
    key. Scanning stops at the end, once 400 visible changes are kept, or after 8,000 rows.
@@ -69,15 +70,47 @@ a person, blocked work of yours, and other work of yours. Examples: "Answer Ari'
 (reason: "Ari asked you in “…”."), "Review the result Ari attached" (reason: "It reports on
 “…”, which is yours."). When nothing needs you, there is no step.
 
+## What matters: the private project recap (#133)
+
+Accepted by the evaluator on [#133](https://github.com/ColdPhase/flux/issues/133#issuecomment-5901555136)
+(2026-09-30). It replaces the project's slim line with one compact **What matters** entry beside
+Details (a quiet count of `needsYou`), which opens a private view of the Details panel.
+
+- **Only "I have the context" moves a project's return point**, to the mark of the snapshot shown.
+  Opening, reading, closing, choosing a scope or period and opening sources never move it. Chat
+  read markers and Home's behaviour are independent of it.
+- **Interface (additive; a call without the new parameters behaves as before):**
+  `GET /api/v1/return?place=…&id=…` with optional
+  - `scope=all|mine` (default `all`): `mine` keeps what needs you, your work (owned or created),
+    decisions you proposed or must decide, results about your work, and conversations you started
+    or wrote in;
+  - `from=last-visit|24h|7d` (default `last-visit`): a period starts at the reader's last audience
+    row at or before `now − period`, ignores the return point and never moves it;
+  - `until=<mark>`: keeps one snapshot; only rows up to that mark are read and `mark` is echoed;
+  - `digest=1`: adds `ReturnDigest`, the latest three whole messages of up to eight recently
+    active conversations (with how many more) and the recorded results, in the same scope.
+
+  The response adds `scope`, `period` and `since`. Unknown values are 400; a mark that is not the
+  reader's own is `INVALID_MARK`.
+- **One fixed mark per panel visit** across scope, period and digest requests. Newer changes are
+  announced ("Newer changes arrived … Show them") and never merged into the list being read.
+- **Every source is authorized for the current reader** by the same final check as the summary;
+  nothing is posted, notified or recorded as a shared event. There is no model: the digest quotes
+  messages.
+- **Client races:** requests are keyed by account, project, scope, period and digest, and a late
+  answer for another key is dropped. A source opened from an overlaid panel or phone sheet closes
+  it; reopening restores the same snapshot, choices, digest and scroll from memory only and asks
+  the server again, so access changes apply.
+
 ## Structure
 
-- `packages/contracts/src/returns.ts`: wire types and paths.
-- `packages/core/src/returns/`: the ports `ReturnAccess` and `ReturnRepository` and the use cases.
+- `app/packages/contracts/src/returns.ts`: wire types and paths.
+- `app/packages/core/src/returns/`: the ports `ReturnAccess` and `ReturnRepository` and the use cases.
   They import no Drizzle or `@flux/db`.
-- `packages/db/src/repositories/returns.ts`: rows only, no access decisions.
-- `apps/server/src/returns/`: the policy adapter (`authorizeEvent`, `evaluateProject`,
+- `app/packages/db/src/repositories/returns.ts`: rows only, no access decisions.
+- `app/apps/server/src/returns/`: the policy adapter (`authorizeEvent`, `evaluateProject`,
   `authorize`, `visibleFilter`) and the routes. No architecture allowlist entries were added.
-- `apps/web/src/returns/`: `SinceYouLeftHome` (on Home, grouped by place) and `SinceYouLeftLine`
+- `app/apps/web/src/returns/`: `SinceYouLeftHome` (on Home, grouped by place) and `SinceYouLeftLine`
   (above the project conversation; it collapses to one 44 px row on the phone and expands with
   the grid-rows transition from the tokens). A source link to a message opens on that whole
   message (`#message-<id>`). Only the current request's authorized answer is ever shown: the
@@ -87,15 +120,18 @@ a person, blocked work of yours, and other work of yours. Examples: "Answer Ari'
 
 ## Tests
 
-`tests/app/returns.test.ts` covers the API with two people and an outsider: the return point,
+`app/tests/app/returns.test.ts` covers the API with two people and an outsider: the return point,
 the grouping and sources, the next step and how it changes when the question is answered,
 forward-only saving and restore, revoked access, and a restricted project leaking nothing (no
-items, ids, names or counts). `tests/ui/test_return_view.py` (Playwright) covers returning after
-changes on Home and on the project, keyboard expansion, opening a decision and a message source,
-"Keep these for next time", and the phone layout (44 px targets, no horizontal scroll). It also
-covers navigation from Home's next step to the message, the composer's audience line, and a
-phone reply sent from the composer. Playwright does not show a real software keyboard, so real
-iOS and Android keyboards remain unverified. The next step is not repeated in the list, and the
-list shows whole rows, six at first, then "Show N more". Screenshots:
+items, ids, names or counts). `app/tests/app/return-recap.test.ts` covers #133's scope, period, `until` snapshot, digest, privacy
+(per person, no shared event, outsider and revoked 404) and refused parameters.
+`app/tests/ui/test_return_view.py` (Playwright) covers Home's return view, and in projects the What
+matters panel: the compact entry and count, scope and digest, sources (a decision in Details and
+back to the same snapshot, a message at the whole message), "I have the context" as the only
+point change, newer changes announced, empty and 7-day states, a late answer for the old scope
+dropped, a failed load with Try again, a project without messages, matched viewports with the
+footer reachable, tablet and dark renders, and the phone sheet (44 px targets, source then
+restore, 125 % text, focus return). Playwright does not show a real software keyboard, so real
+iOS and Android keyboards remain unverified. Screenshots:
 [`docs/design/return-view/`](../design/return-view/). `matched-*` are the same state at
 1440×900, 1280×800 and 390×844 at 100% zoom; `return-*` are the journey states.

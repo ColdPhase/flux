@@ -1,8 +1,8 @@
 name: Application checks
 on:
   pull_request:
-  push:
     branches: [main]
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -12,17 +12,25 @@ jobs:
   application:
     name: Application validation
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
-      - name: Build and run fast application checks in Docker
-        run: ./scripts/check_application.sh
-      # One-command start smoke (#72): reuses the build cache from the step above.
-      - name: Smoke-test ./flux up and ./flux demo headless
+        with:
+          persist-credentials: false
+      - name: Build, type check, lint and run portable tests in Docker
         run: |
-          ./flux up
-          curl -fsS http://127.0.0.1:8081/api/v1/health
-          ./flux demo
-      - name: Remove the smoke-test stack
-        if: always()
-        run: '[ ! -f .env ] || ./flux clean -y'
+          set -eu
+          run_id="${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-0}-$$"
+          image="flux-pr-check:$run_id"
+          container="flux-pr-check-$run_id"
+          cleanup() {
+            docker container rm -f "$container" >/dev/null 2>&1 || true
+            docker image rm "$image" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          trap 'exit 129' HUP
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          docker build --file docker/Dockerfile --target test --tag "$image" app
+          docker run --rm --name "$container" --network none "$image" \
+            pnpm exec tsx --test tests/app/architecture.test.ts tests/app/*-core.test.ts

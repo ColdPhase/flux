@@ -1,0 +1,512 @@
+[
+  {
+    "theme": "Light",
+    "family": "Mint",
+    "selector": ".sk-li-t",
+    "property": "color",
+    "foreground": [
+      27,
+      28,
+      31
+    ],
+    "background": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 17.038682185329325
+  },
+  {
+    "theme": "Light",
+    "family": "Mint",
+    "selector": ".sk-li-s",
+    "property": "color",
+    "foreground": [
+      98,
+      102,
+      109
+    ],
+    "background": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 5.768109007502485
+  },
+  {
+    "theme": "Light",
+    "family": "Mint",
+    "selector": ".sk-outline-related button",
+    "property": "color",
+    "foreground": [
+      36,
+      115,
+      88
+    ],
+    "background": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 5.7248424411418855
+  },
+  {
+    "theme": "Light",
+    "family": "Mint",
+    "selector": ".sk-outline-selected",
+    "property": "color",
+    "foreground": [
+      36,
+      115,
+      88
+    ],
+    "background": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 5.7248424411418855
+  },
+  {
+    "theme": "Light",
+    "family": "Mint",
+    "selector": ".sk-outline-path summary",
+    "property": "color",
+    "foreground": [
+      98,
+      102,
+      109
+    ],
+    "background": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 5.768109007502485
+  },
+  {
+    "theme": "Light",
+    "family": "Iris",
+    "selector": ".sk-li-t",
+    "property": "color",
+    "foreground": [
+      27,
+      28,
+      31
+    ],
+    "background": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 17.038682185329325
+  },
+  {
+    "theme": "Light",
+    "family": "Iris",
+    "selector": ".sk-li-s",
+    "property": "color",
+    "foreground": [
+      98,
+      102,
+      109
+    ],
+    "background": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 5.768109007502485
+  },
+  {
+    "theme": "Light",
+    "family": "Iris",
+    "selector": ".sk-outline-related button",
+    "property": "color",
+    "foreground": [
+      103,
+      66,
+      166
+    ],
+    "background": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 7.224852951417288
+  },
+  {
+    "theme": "Light",
+    "family": "Iris",
+    "selector": ".sk-outline-selected",
+    "property": "color",
+    "foreground": [
+      103,
+      66,
+      166
+    ],
+    "background": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 7.224852951417288
+  },
+  {
+    "theme": "Light",
+    "family": "Iris",
+    "selector": ".sk-outline-path summary",
+    "property": "color",
+    "foreground": [
+      98,
+      102,
+      109
+    ],
+    "background": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 5.768109007502485
+  },
+  {
+    "theme": "Light",
+    "family": "Sky",
+    "selector": ".sk-li-t",
+    "property": "color",
+    "foreground": [
+      27,
+      28,
+      31
+    ],
+    "background": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 17.038682185329325
+  },
+  {
+    "theme": "Light",
+    "family": "Sky",
+    "selector": ".sk-li-s",
+    "property": "color",
+    "foreground": [
+      98,
+      102,
+      109
+    ],
+    "background": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 5.768109007502485
+  },
+  {
+    "theme": "Light",
+    "family": "Sky",
+    "selector": ".sk-outline-related button",
+    "property": "color",
+    "foreground": [
+      44,
+      96,
+      155
+    ],
+    "background": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 6.4544791830649935
+  },
+  {
+    "theme": "Light",
+    "family": "Sky",
+    "selector": ".sk-outline-selected",
+    "property": "color",
+    "foreground": [
+      44,
+      96,
+      155
+    ],
+    "background": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 6.4544791830649935
+  },
+  {
+    "theme": "Light",
+    "family": "Sky",
+    "selector": ".sk-outline-path summary",
+    "property": "color",
+    "foreground": [
+      98,
+      102,
+      109
+    ],
+    "background": [
+      255,
+      255,
+      255
+    ],
+    "ratio": 5.768109007502485
+  },
+  {
+    "theme": "Dark",
+    "family": "Mint",
+    "selector": ".sk-li-t",
+    "property": "color",
+    "foreground": [
+      226,
+      227,
+      229
+    ],
+    "background": [
+      20,
+      21,
+      23
+    ],
+    "ratio": 14.227470396207453
+  },
+  {
+    "theme": "Dark",
+    "family": "Mint",
+    "selector": ".sk-li-s",
+    "property": "color",
+    "foreground": [
+      154,
+      156,
+      163
+    ],
+    "background": [
+      20,
+      21,
+      23
+    ],
+    "ratio": 6.662931651241875
+  },
+  {
+    "theme": "Dark",
+    "family": "Mint",
+    "selector": ".sk-outline-related button",
+    "property": "color",
+    "foreground": [
+      142,
+      216,
+      184
+    ],
+    "background": [
+      20,
+      21,
+      23
+    ],
+    "ratio": 11.01864350719759
+  },
+  {
+    "theme": "Dark",
+    "family": "Mint",
+    "selector": ".sk-outline-selected",
+    "property": "color",
+    "foreground": [
+      142,
+      216,
+      184
+    ],
+    "background": [
+      20,
+      21,
+      23
+    ],
+    "ratio": 11.01864350719759
+  },
+  {
+    "theme": "Dark",
+    "family": "Mint",
+    "selector": ".sk-outline-path summary",
+    "property": "color",
+    "foreground": [
+      154,
+      156,
+      163
+    ],
+    "background": [
+      20,
+      21,
+      23
+    ],
+    "ratio": 6.662931651241875
+  },
+  {
+    "theme": "Dark",
+    "family": "Iris",
+    "selector": ".sk-li-t",
+    "property": "color",
+    "foreground": [
+      215,
+      215,
+      217
+    ],
+    "background": [
+      20,
+      21,
+      23
+    ],
+    "ratio": 12.712508136199927
+  },
+  {
+    "theme": "Dark",
+    "family": "Iris",
+    "selector": ".sk-li-s",
+    "property": "color",
+    "foreground": [
+      154,
+      156,
+      163
+    ],
+    "background": [
+      20,
+      21,
+      23
+    ],
+    "ratio": 6.662931651241875
+  },
+  {
+    "theme": "Dark",
+    "family": "Iris",
+    "selector": ".sk-outline-related button",
+    "property": "color",
+    "foreground": [
+      183,
+      168,
+      239
+    ],
+    "background": [
+      20,
+      21,
+      23
+    ],
+    "ratio": 8.579305207988106
+  },
+  {
+    "theme": "Dark",
+    "family": "Iris",
+    "selector": ".sk-outline-selected",
+    "property": "color",
+    "foreground": [
+      183,
+      168,
+      239
+    ],
+    "background": [
+      20,
+      21,
+      23
+    ],
+    "ratio": 8.579305207988106
+  },
+  {
+    "theme": "Dark",
+    "family": "Iris",
+    "selector": ".sk-outline-path summary",
+    "property": "color",
+    "foreground": [
+      154,
+      156,
+      163
+    ],
+    "background": [
+      20,
+      21,
+      23
+    ],
+    "ratio": 6.662931651241875
+  },
+  {
+    "theme": "Dark",
+    "family": "Sky",
+    "selector": ".sk-li-t",
+    "property": "color",
+    "foreground": [
+      215,
+      215,
+      217
+    ],
+    "background": [
+      20,
+      21,
+      23
+    ],
+    "ratio": 12.712508136199927
+  },
+  {
+    "theme": "Dark",
+    "family": "Sky",
+    "selector": ".sk-li-s",
+    "property": "color",
+    "foreground": [
+      154,
+      156,
+      163
+    ],
+    "background": [
+      20,
+      21,
+      23
+    ],
+    "ratio": 6.662931651241875
+  },
+  {
+    "theme": "Dark",
+    "family": "Sky",
+    "selector": ".sk-outline-related button",
+    "property": "color",
+    "foreground": [
+      148,
+      188,
+      243
+    ],
+    "background": [
+      20,
+      21,
+      23
+    ],
+    "ratio": 9.349956157834725
+  },
+  {
+    "theme": "Dark",
+    "family": "Sky",
+    "selector": ".sk-outline-selected",
+    "property": "color",
+    "foreground": [
+      148,
+      188,
+      243
+    ],
+    "background": [
+      20,
+      21,
+      23
+    ],
+    "ratio": 9.349956157834725
+  },
+  {
+    "theme": "Dark",
+    "family": "Sky",
+    "selector": ".sk-outline-path summary",
+    "property": "color",
+    "foreground": [
+      154,
+      156,
+      163
+    ],
+    "background": [
+      20,
+      21,
+      23
+    ],
+    "ratio": 6.662931651241875
+  }
+]

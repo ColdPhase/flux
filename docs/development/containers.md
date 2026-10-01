@@ -25,17 +25,33 @@ The architecture and first application setup task must supply:
   or other agreed deliverables, and installation/update/restore verification.
 
 The [accepted O-002 architecture](../product/application-architecture-proposal.md)
-selects PostgreSQL. The first application foundation in `infra/compose.yaml`
+selects PostgreSQL. The first application foundation in `docker/compose.source.yaml`
 starts PostgreSQL, a one-shot migration, the API and a separate worker with named
 `pgdata` and `files` volumes. See [application foundation](application-foundation.md)
 for the current clean-start, validation and backup/restore commands. This is an
 application skeleton; #29's identity/session and project policy slices are now
 merged, while collaboration and release verification remain separate tasks.
 
+`docker/compose.yaml` and `docker/.env.example` are the **operator** files for a published
+release (#76 phase 1): pull-only, with `api`, `worker` and `migrate` on the one marker image
+`ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST` that the release workflow (#77) replaces with
+the accepted digest, and the same pinned PostgreSQL, runtime variables, volumes, health checks
+and migration ordering as the production-mode services here. They are not used by `./flux` or
+the checks below; see [install from a release](../operations/install-release.md).
+`./scripts/check_operator_compose.sh` runs them against the locally built source image
+(port `FLUX_OPERATOR_TEST_PORT`, default `18951`) and `tests/test_operator_compose.py`
+checks them statically. The #75 layout is implemented with the application workspace
+under `app/` and source/dev/test/live Docker inputs under `docker/` (#76).
+`./flux` and the source checks use `docker/compose.source.yaml`; the operator file
+remains pull-only.
+
 The `files` mounts on `files-init`, API and worker all use `:z` so SELinux gives
 the shared volume a label accessible to both running services. `files-init`
 still sets ownership for their non-root UID; all three mounts must keep the
 shared label option or one container can deny another's writes on SELinux hosts.
+The one-shot `files-archive` service (profile `ops`, the pinned PostgreSQL image, no
+network, `:z` mount of `files`) exists only for `./flux backup` and `./flux restore`, which
+stream the files volume through it; see [operations](../operations/backup-restore.md).
 
 ## Local task worktrees
 
@@ -60,16 +76,28 @@ runtime requirement.
 ### Launcher and development mode
 
 `./flux` at the repository root wraps these Compose commands for people: `up`
-(generated `.env`, build, migrate, start), `demo` (development seed through the public
-API), `dev` (hot reload with source bind mounts via `infra/compose.dev.yaml`, `:z`
+(generated `docker/.env`, build, migrate, start), `demo` (development seed through the public
+API), `dev` (hot reload with source bind mounts via `docker/compose.dev.yaml`, `:z`
 labels, separate `<project>-dev` volumes), `down`, `logs`, `reset` and `clean`. See
 [application foundation](application-foundation.md#one-command-start-flux-issue-72).
 `./scripts/check_flux_cli.sh` tests it with its own project names, ports and image tags
 and removes them afterwards; set `FLUX_CLI_TEST_PORT`, `FLUX_CLI_TEST_DEV_PORT` and
 `FLUX_CLI_TEST_MAILPIT_PORT` for concurrent runs. Each checkout gets its own default
-project name (stored in `.env`), and destructive commands refuse a project owned by another
+project name (stored in `docker/.env`), and destructive commands refuse a project owned by another
 checkout. `./flux clean` removes only the `flux-*` images tagged with its own project names;
 it never prunes the shared build cache and prints the advice below instead.
+
+### Locked dependency build layer
+
+The source Dockerfile first copies `app/pnpm-lock.yaml` and
+`app/pnpm-workspace.yaml`, then runs `pnpm fetch` before copying application
+source. The full workspace installation stays `--offline --frozen-lockfile`;
+Node/pnpm pins, allowed dependency build scripts and build/type/lint/test
+commands are unchanged. This follows the [pnpm Docker fetch pattern](https://pnpm.io/cli/fetch).
+Changing either lock/config file invalidates the download layer; source edits
+reuse it while still rebuilding and checking the application. There are no
+local `file:` dependencies or package patches in the current lockfile; if
+introduced, their fetch inputs must be supplied before the fetch step.
 
 ### Disk hygiene
 
@@ -105,25 +133,25 @@ It is historical exploration material and is not the application environment.
 Human login (issue #29) uses Better Auth inside the API container, on the same
 PostgreSQL database (migration `0002_identity.sql`). Sessions are rows in
 `auth_sessions`, so they survive an API restart; a revoked session fails on the
-next request. The API reads these variables (see `.env.example`):
+next request. The API reads these variables (see `docker/.env.example`):
 
 | Variable | Meaning |
 | --- | --- |
 | `FLUX_PUBLIC_ORIGIN` | Required. The exact origin people open, e.g. `https://flux.example.org`. It is the only origin accepted for state-changing browser requests and the base of mailed links. `Host` and `X-Forwarded-*` are never used to derive it. An `https` origin makes cookies `Secure` with the `__Secure-` prefix. Plain `http` is accepted only for loopback development (`localhost`, `127.0.0.0/8`, `[::1]`); any other `http` origin stops the API at startup. |
 | `FLUX_AUTH_SECRET` | Required, at least 32 random characters. Signs session cookies; changing it signs everyone out. |
 | `FLUX_TRUSTED_PROXIES` | Comma-separated proxy IPs/CIDRs. Only a request whose socket peer is listed may supply `X-Forwarded-For` as the client address. Empty (default) trusts no proxy. |
-| `FLUX_SMTP_URL`, `FLUX_MAIL_FROM` | SMTP transport URL (e.g. `smtp://user:pass@mail.example.org:587`) and sender for password reset mail. If unset, password reset answers `503 PASSWORD_RESET_UNAVAILABLE` and `/api/v1/auth/capabilities` reports `unavailable`. |
+| `FLUX_SMTP_URL`, `FLUX_MAIL_FROM` | SMTP transport URL (e.g. `smtp://user:pass@mail.example.org:587`) and sender for password reset mail and notification email (#116). Set them on the API and the worker. TLS: `smtps://…:465` or `smtp://…:587?requireTLS=true`; certificates are verified (`NODE_EXTRA_CA_CERTS` for a private CA). If unset, password reset answers `503 PASSWORD_RESET_UNAVAILABLE`, `/api/v1/auth/capabilities` reports `unavailable`, and notification settings show email delivery unavailable while the inbox and push keep working ([notifications](notifications.md#email)). |
 | `FLUX_PASSWORD_RESET_TTL_SECONDS` | Reset token lifetime, 60–86400, default 3600. Tokens are single use and stored hashed. |
 | `FLUX_AUTH_RATE_LIMIT` | `true` (default) enables Better Auth's in-memory login rate limit. Only the test script turns it off. |
 | `FLUX_STREAM_HEARTBEAT_MS` | WebSocket stream ping, session revalidation and polling interval in milliseconds (default `25000`, minimum `100`). The test script uses `1000`. See [access policy](access-policy.md#websocket-stream). |
 
 For development, the `dev` Compose profile adds a local mail catcher
 (Mailpit, pinned by digest). Set `FLUX_SMTP_URL=smtp://mailpit:1025` and a
-`FLUX_MAIL_FROM` in `.env`, then open the caught mail at
+`FLUX_MAIL_FROM` in `docker/.env`, then open the caught mail at
 `http://127.0.0.1:${FLUX_MAILPIT_PORT:-8025}`:
 
 ```sh
-docker compose --env-file .env -p flux28 -f infra/compose.yaml --profile dev up -d --build
+docker compose --env-file docker/.env -p flux28 -f docker/compose.source.yaml --profile dev up -d --build
 ```
 
 Endpoints: Better Auth under `/api/auth/*` (`sign-up/email`, `sign-in/email`,
@@ -131,11 +159,11 @@ Endpoints: Better Auth under `/api/auth/*` (`sign-up/email`, `sign-in/email`,
 `GET /api/v1/me`, `GET /api/v1/sessions` (never returns tokens),
 `DELETE /api/v1/sessions/:id` and `POST /api/v1/sessions/revoke-others`.
 Server code resolves the caller with `requirePrincipal(request)` from
-`apps/server/src/identity`, which maps the session user to a `human` `Principal`.
+`app/apps/server/src/identity`, which maps the session user to a `human` `Principal`.
 
 `./scripts/check_application.sh` runs the identity suite in the `test` profile
 against the running API and mail catcher, including a session check across
-`docker compose restart api`. Set `FLUX_TEST_PORT` / `FLUX_TEST_MAILPIT_PORT`
+`docker compose --env-file docker/.env restart api`. Set `FLUX_TEST_PORT` / `FLUX_TEST_MAILPIT_PORT`
 to avoid port clashes with another concurrent run.
 
 ## PWA and Web Push
@@ -147,14 +175,14 @@ worker `/sw.js` (scope `/`, `Cache-Control: no-cache`) from the same origin as
 Browsers only run service workers and push in a secure context: `https://`, or
 `http://localhost`/`127.0.0.1` for development.
 
-The service worker is hand-written (`apps/web/src/pwa/sw.js`) and emitted by a
-small Vite plugin (`apps/web/build/service-worker-plugin.ts`) that injects the
+The service worker is hand-written (`app/apps/web/src/pwa/sw.js`) and emitted by a
+small Vite plugin (`app/apps/web/build/service-worker-plugin.ts`) that injects the
 precache list and a content-hash version; there is no Workbox dependency. It
 precaches the built shell, answers navigations network-first with the offline
 page as fallback, and never handles `/api/*`. A new version installs and waits;
 the page shows "A new version of Flux is available — Reload", and only that
 choice activates it. Placeholder icons are regenerated with
-`apps/web/scripts/generate-icons.ts` (usage in the file header).
+`app/apps/web/scripts/generate-icons.ts` (usage in the file header).
 
 | Variable | Service | Meaning |
 | --- | --- | --- |
@@ -166,10 +194,10 @@ choice activates it. Placeholder icons are regenerated with
 The worker requires all three VAPID values together, checks that the public key
 matches the private key and stops at startup otherwise. Generate a key pair once
 per deployment with the pinned `web-push` CLI in the built image and copy both
-values into `.env`:
+values into `docker/.env`:
 
 ```sh
-docker compose --env-file .env -p flux28 -f infra/compose.yaml run --rm --no-deps -T migrate \
+docker compose --env-file docker/.env -p flux28 -f docker/compose.source.yaml run --rm --no-deps -T migrate \
   apps/worker/node_modules/.bin/web-push generate-vapid-keys --json
 ```
 
@@ -196,7 +224,7 @@ signs in to another account moves its subscription to that account),
 
 **Audience.** Every notification names its source (`workspace`, `project` or
 `draft`, with its `workspace_id`). Server code creates one with `createNotifier(db,
-boss)` from `apps/server/src/push` (the core use case `createNotification`): the
+boss)` from `app/apps/server/src/push` (the core use case `createNotification`): the
 recipient must be allowed `<type>.read` on the source at that moment, otherwise
 nothing is stored (`404 SOURCE_NOT_FOUND`). The inbox list and unread count apply
 the access policy's `visibleFilter` per workspace, and `GET`/`POST .../:id` call
@@ -221,16 +249,16 @@ still see the source through the access policy (otherwise the job completes with
 sending). The lock-screen rule in [mobile-pwa.md](../product/mobile-pwa.md#lock-screen-privacy)
 decides what the payload may contain.
 
-**Layers (#46).** `packages/core/src/push` holds the use cases and their ports
+**Layers (#46).** `app/packages/core/src/push` holds the use cases and their ports
 (`NotificationRepository`, `PushSubscriptionRepository`, `JobQueue`,
 `NotificationUnitOfWork`, `PushDeliveryRepository`, `PushSender`,
 `SourceReadAuthorizer`) and imports no Drizzle, `@flux/db`, pg-boss or web-push;
-`tests/app/architecture.test.ts` enforces that transitively. Drizzle row adapters
-are in `packages/db/src/repositories/push.ts`, the policy adapter is
-`policySourceReader` in `packages/core/src/access`, and the server (routes,
+`app/tests/app/architecture.test.ts` enforces that transitively. Drizzle row adapters
+are in `app/packages/db/src/repositories/push.ts`, the policy adapter is
+`policySourceReader` in `app/packages/core/src/access`, and the server (routes,
 inbox filter, pg-boss queue, transaction) and worker (web-push sender) assemble them.
 
-`./scripts/check_application.sh` layers `infra/compose.test.yaml` over the base
+`./scripts/check_application.sh` layers `docker/compose.test.yaml` over the base
 file: a local HTTPS push-service mock that verifies the VAPID signature and records
 the encrypted body (the test decrypts it), fresh VAPID keys per run, a Chromium
 check through an HTTPS proxy (registration and control, offline fallback,
@@ -239,14 +267,22 @@ outside tests.
 
 ## Web app and browser tests
 
-The web app (`apps/web`, React 19 + React Router 8 Data Mode, built by Vite into the API
+The configured `pnpm test` command runs at most four application test files at
+once (`--test-concurrency=4`). This keeps the shared API/database load independent
+of the host CPU count; the [Node test runner](https://nodejs.org/download/release/v24.8.0/docs/api/cli.html#--test-concurrency)
+otherwise derives file parallelism from available processors. Explicit concurrent
+requests and race assertions inside each suite remain unchanged. Keep the same
+command in local Docker validation and CI; do not extend API/database deadlines
+or remove assertions to make an overloaded run pass.
+
+The web app (`app/apps/web`, React 19 + React Router 8 Data Mode, built by Vite into the API
 image) is served by the API on the same origin. Its design tokens and components are
 described in [the app shell record](../design/app-shell/README.md).
 `python3 scripts/check_contrast.py` checks token contrast without Docker.
 
 `./scripts/check_ui.sh` builds the image (which runs build, typecheck and lint), starts the
 stack in its own Compose project on `127.0.0.1:${FLUX_UI_PORT:-18591}` with Mailpit, and runs
-`tests/ui` (copied into the image, `unittest discover`) in a Playwright 1.62 container (`infra/ui-tests.Dockerfile`, image pinned by
+`app/tests/ui` (copied into the image, `unittest discover`) in a Playwright 1.62 container (`docker/ui-tests.Dockerfile`, image pinned by
 digest, Python client pinned by hash). Inside that container the browser opens the
 loopback `FLUX_PUBLIC_ORIGIN`, which a small forwarder carries to the API service, so origin
 checks and cookies behave as on the host. It takes about two minutes after the first image
@@ -254,3 +290,10 @@ build. Set `FLUX_UI_SCREENSHOT_DIR` to an absolute path (for example
 `"$PWD/docs/design/app-shell"`) to save screenshots, and `FLUX_UI_PORT` /
 `FLUX_UI_MAILPIT_PORT` to avoid clashes with a concurrent run. It is kept separate from
 `check_application.sh` so the PR check stays fast.
+
+`check_ui.sh` also sets the TEST-ONLY personal-run switch (#68): `FLUX_TEST_PERSONAL_RUNS=anthropic-mock`
+with `FLUX_TEST_FAILURE_INJECTION=true` gives every person a fixture key connection, and the
+worker sends runs through the real Anthropic adapter to the `anthropic-mock` Compose service
+(`app/tests/ui/anthropic_mock.py`, `FLUX_TEST_ANTHROPIC_URL`). The API and worker refuse to start
+with the switch unless the test flag is set. Never set it in a deployment; see
+[personal runs](personal-runs.md#test-only-switch).

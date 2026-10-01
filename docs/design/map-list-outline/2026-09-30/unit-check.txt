@@ -1,0 +1,24 @@
+▶ architecture boundaries
+  ✔ the repository has no dependency violation outside the recorded allowlist (21.016805ms)
+  ✔ every allowlist entry names its tracking issue and a reason (0.233691ms)
+  ✔ the push use cases in core stay free of adapters, including through helpers (0.715982ms)
+  ✔ the sketch use cases in core stay free of adapters, including through helpers (#69) (0.490021ms)
+  ✔ the direct-message use cases in core stay free of adapters, including through helpers (#107) (1.481104ms)
+  ✔ the rules reject each kind of boundary violation (self-test) (0.286451ms)
+  ✔ the allowlist comparison reports new and fixed violations (0.11213ms)
+✔ architecture boundaries (25.143636ms)
+✔ fresh graphs, including cycles and identical birth timestamps, conservatively start as deterministic roots (6.319966ms)
+✔ depth 3/4 and roots/shallower nodes retain their levels when ordinary relations add multiple parents and cycles (0.408241ms)
+✔ a missing parent or graph edge detaches without erasing the ID-only intent, and graph undo restores it (0.183911ms)
+✔ malformed saved cycles resolve deterministically; grouping only offers authorized linked non-descendants (0.28248ms)
+✔ renaming/moving/reordered server arrays preserve local outline order and never mutate graph input (0.212511ms)
+✔ preference storage is ID-only, account-scoped and globally bounded with oldest sketch eviction (23.338331ms)
+✔ graphs exceeding the preference cap still render once and converge without a reconciliation loop (5.362274ms)
+ℹ tests 14
+ℹ suites 1
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 197.934538

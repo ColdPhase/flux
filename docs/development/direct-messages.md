@@ -31,14 +31,16 @@ Migration `0010_direct_messages.sql` adds three tables.
   `normalizeConversationWindow` (newest window, `beforeSequence` paging) and consecutive
   sequences under concurrency. DM rows live in their own table because the project message
   tables enforce the project audience with composite foreign keys. Merging them would weaken
-  those keys. `apps/server/src/conversation` is unchanged.
+  those keys. `app/apps/server/src/conversation` is unchanged.
 - **Citations.** A DM message cannot cite project material yet (`422 DM_SOURCE_UNSUPPORTED`).
-  Every participant would first need to be able to read the cited version. DM sketches
-  ([#96](https://github.com/ColdPhase/flux/issues/96)) and the DM → project flow can add that later.
+  Every participant would first need to be able to read the cited version.
+- **Sketches.** A DM can hold sketches, and selected messages can start one
+  ([#96](https://github.com/ColdPhase/flux/issues/96), see [sketches](sketches.md#sketches-in-a-direct-message)).
+  They follow the same participant audience and the same rule for a 1:1 whose other person left.
 
 ## Access policy
 
-`dm` is a resource type in `packages/core/src/access/policy.ts`. It has no second policy module
+`dm` is a resource type in `app/packages/core/src/access/policy.ts`. It has no second policy module
 (see [access policy](access-policy.md#one-choke-point)).
 
 | Action | Rule |
@@ -71,9 +73,9 @@ that moment. Delivery and replay check the current participant row again, so:
 
 ## HTTP API
 
-Routes are in `apps/server/src/direct-messages/routes.ts` and wire types in
-`packages/contracts/src/direct-message.ts`. Every route needs a live session. POST and PATCH
-accept `Idempotency-Key` through `apps/server/src/http/commands.ts`. A replay first checks
+Routes are in `app/apps/server/src/direct-messages/routes.ts` and wire types in
+`app/packages/contracts/src/direct-message.ts`. Every route needs a live session. POST and PATCH
+accept `Idempotency-Key` through `app/apps/server/src/http/commands.ts`. A replay first checks
 `dm.read` on the stored DM again.
 
 | Method and path | Use |
@@ -131,14 +133,14 @@ resolution and wording, and is a follow-up.
 
 ## Tests
 
-- `tests/app/direct-messages.test.ts` (in `./scripts/check_application.sh`) covers idempotent and
+- `app/tests/app/direct-messages.test.ts` (in `./scripts/check_application.sh`) covers idempotent and
   concurrent 1:1 creation; `404` for the owner, the admin, a non-participant member, a guest and
   another tenant, with lists and counts excluding the DM; agent exclusion through `authorize`;
   message retries, `Idempotency-Key` replay, concurrent sequences and paging; group DMs with
   `If-Match` renames; leaving; workspace removal; and stream and replay audiences. It also covers
   opening or posting to a 1:1 after the other person left or was removed (409, nothing stored, no
   event), removal followed by readdition, and the other person reopening it with delivery to both.
-- `tests/ui/test_direct_messages.py` (in `./scripts/check_ui.sh`) signs up three people. It covers
+- `app/tests/ui/test_direct_messages.py` (in `./scripts/check_ui.sh`) signs up three people. It covers
   starting a DM from the sidebar, a reply from a second browser that arrives live, a lost response
   retried without a duplicate, an outsider being refused, the phone layout, and a group DM with
   Details and leaving, and clicking a person's name after they left (a notice, then a disabled

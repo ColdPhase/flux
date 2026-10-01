@@ -28,9 +28,33 @@ imported by `CLAUDE.md`), the `.claude/skills` link, skill frontmatter and local
 documentation links, using the Python standard library. It does not validate
 application functionality.
 
-Application lint, tests, compilation, packaging, and publication require the later
-stack/release decisions. The current structural check cannot replace those
-future gates.
+The `Application validation` contract ([#143](https://github.com/ColdPhase/flux/issues/143))
+uses the pinned application's Docker `test` target: its build performs compilation,
+type checks and lint, then a disposable container runs `tests/app/architecture.test.ts`
+and every `tests/app/*-core.test.ts`. These portable tests run without networking,
+database, worker or browser services. Every main-targeted PR receives the same
+check, obsolete runs are cancelled, and an explicit dispatch can check the base.
+The workflow does not automatically duplicate a successful merge on a main push.
+
+This fast check does not establish API/persistence, browser interaction, restart,
+installation, mobile or release acceptance. Run the relevant complete Docker
+commands locally (`scripts/check_application.sh`, `check_ui.sh`, `check_runtime.sh`
+and applicable installation/media/operations checks) and attach commit-specific
+evidence for independent evaluation. Those commands and all product criteria remain
+in force; neither this check nor `Agent setup` replaces them. Publication remains
+in the explicitly triggered final release workflow.
+
+On 2026-09-30, #143's independently approved workflow was protected-merged,
+then passed its explicit main dispatch. Ruleset `24053383` now requires both
+`Agent setup` and `Application validation` from observed GitHub Actions integration
+`15368`, with strict current-base validation. Every prior review/Code Owner,
+thread-resolution, history, deletion/push and no-bypass rule is preserved.
+[Source-pinned rollout evidence](evidence/143-required-application-validation/README.md)
+includes read-back/effective rules and a real failing portable test whose normal
+merge was explicitly rejected. The temporary fixture is removed in the corrected
+head; that head's passing run and eligible independent documentation review are
+required before its PR merges. These fast gates do not replace application or
+release acceptance.
 
 ## 1. Design checks from the actual stack
 

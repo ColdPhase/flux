@@ -1,0 +1,25 @@
+{
+  "source": "763cf10",
+  "date": "2026-09-30",
+  "issue": 134,
+  "tests": 7,
+  "seconds": 19.706,
+  "fix": "Reveal the selected destination row below the sticky Back cue. Back restores the original scroll position.",
+  "new_assertions": [
+    "actual destination focus",
+    "whole title visible",
+    "ordinary metadata visible",
+    "path cue visible",
+    "Back visible"
+  ],
+  "source_sha256": {
+    "apps/web/src/sketch/SketchList.tsx": "149568e35ec56e28096968c442edf106d58c6ca2b0c89ae0e6c365d65474bae9",
+    "tests/ui/test_map_outline.py": "0de1d42dbe221b673f2e32d08e952e2b7721097c0ffd917217cddb6a012aed06"
+  },
+  "enlarged_text": "200% shared type tokens; not125%",
+  "unverified": [
+    "Eligible current-head GitHub review",
+    "Real devices/PWA and full accessibility acceptance",
+    "Other current Studio shell changes pending#136"
+  ]
+}

@@ -1,5 +1,12 @@
 # Project capture and conversation backend (#36)
 
+**Later required amendment, 2026-09-30:** [UI116-3](../design/studio-v11.6.md#one-announcement-then-the-real-discussion--ui116-3)
+separates one task-created system notice from the first true contribution/root,
+retains the same one-level thread across all views, and preserves history and
+private helper prompts. [#154](https://github.com/ColdPhase/flux/issues/154) owns implementation; current code below is not
+claimed to satisfy the new semantics. [UI116-5](../design/studio-v11.6.md#subtle-motion-and-truthful-typing--ui116-5)
+adds scoped ephemeral typing without durable messages or notification/model effects.
+
 The current slice stores project conversations, direct text replies and versioned
 project materials. A signed-in person with contributor access can send from the
 current project without
@@ -42,11 +49,11 @@ described below. Direct messages reuse this message model outside projects; see
 Clean start and verification use Docker only:
 
 ```sh
-cp .env.example .env
-# Set the required local secrets in .env, then:
-docker compose -p flux-conversation -f infra/compose.yaml up -d --build db migrate
-docker compose -p flux-conversation -f infra/compose.yaml --profile setup run --rm files-init
-docker compose -p flux-conversation -f infra/compose.yaml up -d --wait api
+cp docker/.env.example docker/.env
+# Set the required local secrets in docker/.env, then:
+docker compose --env-file docker/.env -p flux-conversation -f docker/compose.source.yaml up -d --build db migrate
+docker compose --env-file docker/.env -p flux-conversation -f docker/compose.source.yaml --profile setup run --rm files-init
+docker compose --env-file docker/.env -p flux-conversation -f docker/compose.source.yaml up -d --wait api
 FLUX_TEST_PORT=18136 FLUX_TEST_MAILPIT_PORT=18137 scripts/check_application.sh
 ```
 
@@ -79,7 +86,7 @@ management remain through the #29 API; a full in-app invitation surface is still
 needed before the two-person journey is discoverable without API setup.
 
 Browser verification runs in the isolated Compose UI profile. `scripts/check_ui.sh`
-builds the app and Playwright image, then runs all `tests/ui/test_*.py` through
+builds the app and Playwright image, then runs all `app/tests/ui/test_*.py` through
 unittest discovery. Set `FLUX_UI_PORT`, `FLUX_UI_MAILPIT_PORT` and optionally
 `FLUX_UI_SCREENSHOT_DIR` to avoid other active projects. The #36 browser journey
 covers real two-user sending, private draft reload, selected redacted publication,

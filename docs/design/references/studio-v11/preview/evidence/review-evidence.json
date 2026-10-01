@@ -1,0 +1,140 @@
+{
+  "reviewer_task": "/root/studio_v11_refined_visual",
+  "mode": "Independent fresh-context visual review; focused reassessment reopened all 14 final images. No source, author rationale or revision history provided.",
+  "scope": "Visible hierarchy, density, clarity and v11 character in a local prototype. Not GitHub approval or production/behavior/accessibility acceptance.",
+  "review_date": "2026-09-29",
+  "source_html": {
+    "path": "../flux-studio-v11-refined.html",
+    "sha256": "ee9a8d2b4231be5bb7068507ec756ac39025a2bd12f3b84129cd1f2aa7ca37a8"
+  },
+  "visual_review_sha256": "2b455abfd492a85ae93f15a3e4d9cc72dd162c49147be3132e8671aceedb52ec",
+  "test_report_sha256": "ecf96dc77075e78039f021588ab75a24635c79f52c494b44fd59920594c234f3",
+  "images": [
+    {
+      "path": "deep-map-390-after.png",
+      "sha256": "6e18a1829991faaa05f14798cffac644ae0ebedb111c8ae21c359bd08f41bda6",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "zoom": "100%"
+    },
+    {
+      "path": "deep-map-390-light-after.png",
+      "sha256": "a359cb965980e9dd05e9f166e428f88e6d2a20c8b62c7880f05d9a384a3f23a4",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "zoom": "100%"
+    },
+    {
+      "path": "chat-1440-before.png",
+      "sha256": "7eb9d5470fe23773b242aa978daf3d5ff9cba9a50a461572d27b6d3568a55142",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "zoom": "100%"
+    },
+    {
+      "path": "chat-1440-after.png",
+      "sha256": "c80ecfd137779c306c5dd4be0db5caca8bb9718149319881687ca2769f8faee6",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "zoom": "100%"
+    },
+    {
+      "path": "chat-390-after.png",
+      "sha256": "8bb576711e132ddf9e21cbfaeaede2919a3053a1c7d1c0e69550c7acd3c58057",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "zoom": "100%"
+    },
+    {
+      "path": "chat-1280-panel-after.png",
+      "sha256": "23a2edd5da79c75388fc4c4aadab02a55bc4e2b5ab706e58afd4df40dfd4812f",
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "zoom": "100%"
+    },
+    {
+      "path": "recap-empty-1440-before.png",
+      "sha256": "297352dd913958005c5e2e491398f667e3be6c53e748d994176c91cc01887281",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "zoom": "100%"
+    },
+    {
+      "path": "recap-empty-1440-after.png",
+      "sha256": "fb2808ec965fb23510bb35091af6e66f837819f91d6c375d931aea96324431fd",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "zoom": "100%"
+    },
+    {
+      "path": "recap-empty-390-after.png",
+      "sha256": "c486758ad5bf063079edb82d0cf3f710de8c47e3efbb2d6e803cd4a30a9287d5",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "zoom": "100%"
+    },
+    {
+      "path": "deep-map-1440-before.png",
+      "sha256": "b0498bd96abe55b407adbe8783acb825174b9a35d9e9ce3b543380a9762eefd7",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "zoom": "100%"
+    },
+    {
+      "path": "deep-map-1440-after.png",
+      "sha256": "d4f84a0d66a891e9420f4f5dbc3034f8f588728ed24dcf28e817bf1701bf2ce7",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "zoom": "100%"
+    },
+    {
+      "path": "appearance-dark-before.png",
+      "sha256": "afa0a378e3aff4b5f30c348c4b2c5c85ae175af22d67c2ca76d5b71634e4c692",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "zoom": "100%"
+    },
+    {
+      "path": "appearance-dark-mint-after.png",
+      "sha256": "6e008e858aee49e5c74c7d91ab392f81d96bcf1778894e3e4edbb321d401cee1",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "zoom": "100%"
+    },
+    {
+      "path": "appearance-light-mint-after.png",
+      "sha256": "17e5b3c9c674e8fdbe7722d9a310e97f1fbea3c972bef530bb1b7b4e44df9570",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "zoom": "100%"
+    }
+  ]
+}

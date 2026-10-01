@@ -19,7 +19,7 @@ export FLUX_AUTH_RATE_LIMIT=false
 # Short stream heartbeat so the suite observes pings and periodic session revalidation.
 export FLUX_STREAM_HEARTBEAT_MS=1000
 . scripts/test_images.sh
-compose="docker compose -p $project -f infra/compose.yaml -f infra/compose.test.yaml --profile test"
+compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.test.yaml --profile test"
 
 cleanup() {
   status=$?
@@ -63,3 +63,7 @@ $compose run --rm test pnpm exec tsx tests/app/session-restart.ts verify
 # Without VAPID keys the API must report push unavailable rather than fail silently.
 FLUX_VAPID_PUBLIC_KEY= $compose up -d --wait api
 $compose run --rm --no-deps test pnpm exec tsx --test tests/app/push-unavailable.check.ts
+
+# Without SMTP, notification email is reported unavailable and the inbox keeps working (#116, #113).
+FLUX_SMTP_URL= FLUX_MAIL_FROM= $compose up -d --wait api worker
+$compose run --rm --no-deps test pnpm exec tsx --test tests/app/email-unavailable.check.ts

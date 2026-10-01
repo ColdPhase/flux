@@ -1,0 +1,110 @@
+/* The project page: the return line (#106) above the conversation. */
+.project-page { display: flex; flex: 1; min-height: 0; flex-direction: column; }
+.project-convo__message:focus { outline: none; }
+.project-convo__message.is-arrived { box-shadow: inset 3px 0 0 var(--accent); }
+.project-convo { display: flex; flex: 1; min-height: 0; flex-direction: column; }
+.project-convo__feed { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+/* One reading column (direction C): conversations live in the sidebar, sources in the composer. */
+.project-convo__in { max-width: calc(var(--col) + 48px); margin: 0 auto; padding: 14px 24px 24px; }
+.project-convo__head { padding: 2px 0 6px; }
+.project-convo__head h2, .project-setup h2, .material-view h2 { font-size: var(--fs-xl); letter-spacing: -.015em; }
+.project-convo__head h2 { font-size: var(--fs-lg); line-height: 1.35; overflow-wrap: anywhere; }
+.project-convo__head h2 + p, .project-setup > p { color: var(--text-3); font-size: var(--fs-sm); margin-top: 2px; }
+.project-convo__messages { min-width: 0; }
+.project-convo__message-list { list-style: none; padding: 0; margin: 0; }
+.project-convo__day { display: flex; align-items: center; gap: 10px; margin: 14px 0 4px; font-size: var(--fs-xs); font-weight: 500; color: var(--text-3); }
+.project-convo__day::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.project-convo__message { position: relative; padding: 8px 0 8px 46px; border-radius: var(--r); }
+.project-convo__message + .project-convo__message { margin-top: 6px; }
+.project-convo__message > .ui-avatar { position: absolute; left: 0; top: 10px; width: 32px; height: 32px; font-size: 12px; }
+.project-convo__message-meta { display: flex; gap: 8px; align-items: baseline; color: var(--text-3); font-size: var(--fs-xs); }
+.project-convo__message-meta strong { color: var(--text); font-size: var(--fs-md); font-weight: 600; }
+.project-convo__message-meta span { visibility: hidden; font-variant-numeric: tabular-nums; }
+.project-convo__message:hover .project-convo__message-meta span, .project-convo__message:focus-within .project-convo__message-meta span { visibility: visible; }
+.project-convo__message > p, .material-view__body { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; margin: 2px 0 0; }
+.project-convo__source { display: inline-flex; align-items: center; min-height: 24px; margin-top: 4px; padding: 0 8px; border-radius: var(--r-sm); background: var(--bg-side); font-size: var(--fs-xs); color: var(--text-2); text-decoration: none; }
+.project-convo__source:hover { background: var(--bg-hover); color: var(--text); }
+.project-convo__muted { color: var(--text-3); font-size: var(--fs-sm); padding: 6px 0; }
+.project-convo__material-form, .project-setup form { display: grid; gap: 14px; margin-top: 16px; }
+.project-convo__material-fields { display: grid; gap: 12px; min-width: 0; padding: 0; margin: 0; border: 0; }
+.project-convo__material-form label { font-size: var(--fs-sm); }
+.project-convo__material-form textarea { border: 1px solid var(--line-strong); border-radius: var(--r); padding: 9px; min-height: 90px; resize: vertical; background: var(--bg); color: var(--text); }
+.project-convo__form-actions { display: flex; gap: 8px; }
+.project-convo__composer { border-top: 1px solid var(--line); background: var(--bg); padding-top: 8px; }
+.project-convo__composer .composer__audience { display: flex; align-items: center; gap: 5px; min-width: 0; white-space: nowrap; }
+.project-convo__composer .composer__audience > span { overflow: hidden; text-overflow: ellipsis; }
+.project-convo__current-thread { display: none; }
+/* Sources: saved text and links, opened from the composer and cited in one step. */
+.project-convo__materials { margin-bottom: 8px; border-radius: var(--r-lg); background: var(--bg); box-shadow: inset 0 0 0 1px var(--line), 0 6px 18px rgb(0 0 0 / .06); }
+.project-convo__section-head { display: flex; align-items: center; gap: 8px; padding: 8px 8px 4px 12px; color: var(--text-3); font-size: var(--fs-xs); }
+.project-convo__section-head h3 { flex: 1; font: inherit; font-weight: 600; }
+.project-convo__tray-close { display: grid; place-items: center; width: 28px; height: 28px; border-radius: var(--r-sm); color: var(--text-3); }
+.project-convo__tray-close:hover { background: var(--bg-hover); color: var(--text); }
+.project-convo__tray { display: grid; gap: 6px; max-height: min(44vh, 360px); overflow: auto; overscroll-behavior: contain; padding: 0 12px 12px; }
+.project-convo__tray > .ui-btn { justify-self: start; }
+.project-convo__material { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: var(--fs-md); overflow-wrap: anywhere; }
+.project-convo__material > div { min-width: 0; }
+.project-convo__material strong { display: block; font-weight: 500; }
+.project-convo__material small { display: block; color: var(--text-3); font-size: var(--fs-xs); }
+.project-convo__material .ui-btn--link { flex: none; padding-inline: 0; }
+.project-convo__sources-btn { position: relative; width: auto; gap: 5px; padding: 0 8px; margin-left: -8px; font-size: var(--fs-xs); font-weight: 500; }
+.project-convo__sources-btn.composer__ask { display: inline-flex; align-items: center; }
+.project-convo__sources-btn[aria-expanded="true"] { background: var(--bg-active); color: var(--text); }
+.project-convo__sources-n { min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--bg-active); font-size: 11px; font-weight: 600; line-height: 16px; text-align: center; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.project-convo__sources-btn svg { flex: none; }
+.project-convo__citation { display: flex; justify-content: space-between; align-items: center; font-size: var(--fs-xs); color: var(--text-2); padding: 4px 4px 4px 8px; border: 1px solid var(--line); border-radius: var(--r-sm); margin-bottom: 6px; }
+.project-convo__citation button { min-width: 28px; min-height: 28px; }
+.project-convo__error { color: var(--danger); font-size: var(--fs-sm); margin-top: 6px; }
+.project-convo__error button { text-decoration: underline; min-height: 32px; }
+.project-setup { max-width: 560px; }
+.material-view { max-width: 760px; }
+.material-view__body { margin: 24px 0; }
+@media (pointer: coarse) { .project-convo__material .ui-btn--link { min-height: 44px; } .project-convo__tray-close { width: 44px; height: 44px; } .project-convo__message-meta span { visibility: visible; } }
+@media (max-width: 640px) {
+  .project-convo__in { padding: 8px 16px 16px; }
+  .project-convo__message { padding-left: 44px; }
+  .project-convo__composer { padding-top: 6px; padding-bottom: max(8px, env(safe-area-inset-bottom)); }
+  .project-convo__composer .composer__where, .project-convo__sources-t { display: none; }
+  .project-convo__to { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+  .project-convo__current-thread { display: block; flex: 1; min-width: 0; color: var(--text-2); font-size: var(--fs-xs); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; }
+  .project-convo__to .composer__audience { flex: none; max-width: 55%; margin: 0; }
+}
+.composer__space { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: var(--fs-xs); color: var(--text-2); }
+.composer__space select { border: 1px solid var(--line); border-radius: var(--r-sm); min-height: 32px; background: var(--bg); color: var(--text); }
+.project-convo__material-form select { display: block; width: 100%; margin-top: 4px; border: 1px solid var(--line-strong); border-radius: var(--r); padding: 8px; min-height: 38px; background: var(--bg); color: var(--text); }
+.project-convo__publication { padding: 9px; border-radius: var(--r-sm); background: var(--bg-active); font-size: var(--fs-sm); color: var(--text-2); }
+.project-convo__person { color: inherit; text-decoration: none; border-radius: 4px; }
+.project-convo__person:hover { text-decoration: underline; text-underline-offset: 2px; }
+/* Ask my assistant (#68) sits after Sources; only Sources pulls into the box's padding. */
+.project-convo__sources-btn + .composer__ask { margin-left: 0; }
+
+/* Who said what at a glance (#132/#136): the signed-in person's messages sit on the right, other
+   people's on the left, in the width of the conversation pane rather than a narrow centred lane.
+   Each message is only as wide as its content (up to a readable measure), so its hover actions
+   stay beside it; authors, time, sources and actions stay with the bubble. */
+.project-convo__in { max-width: 1000px; }
+.project-convo__composer .composer__in { max-width: calc(1000px - 48px); }
+.project-convo__message { display: flex; flex-direction: column; align-items: flex-start; width: fit-content; min-width: min(260px, 100%); max-width: min(700px, 86%); }
+/* With a mouse the actions appear over the top edge; a wider box keeps them clear of the name. */
+@media (hover: hover) and (min-width: 641px) { .project-convo__message { min-width: min(640px, 100%); } }
+.project-convo__message > p { max-width: 100%; padding: 8px 12px; border-radius: 4px 14px 14px 14px; background: var(--bg-side); }
+/* Everything under a message (sources, linked work, decisions, results, actions) stays inside its
+   column; a long linked title shortens with an ellipsis instead of running off the side. */
+.project-convo__message > :not(.ui-avatar) { max-width: 100%; min-width: 0; }
+.project-convo__message .ws-attach { max-width: 100%; }
+.project-convo__message.is-mine .ws-attach { justify-content: flex-end; }
+.project-convo__message.is-mine { margin-left: auto; align-items: flex-end; padding-left: 0; padding-right: 46px; }
+.project-convo__message.is-mine > .ui-avatar { left: auto; right: 0; }
+.project-convo__message.is-mine > p { border-radius: 14px 4px 14px 14px; background: var(--accent-soft); }
+.project-convo__message.is-mine .project-convo__message-meta { flex-direction: row-reverse; }
+.project-convo__message.is-mine .ws-acts { justify-content: flex-end; margin-left: 0; margin-right: -6px; }
+.project-convo__message.is-arrived { padding-left: 58px; }
+.project-convo__message.is-mine.is-arrived { box-shadow: inset -3px 0 0 var(--accent); padding-left: 0; padding-right: 58px; }
+@media (hover: hover) { .project-convo__message.is-mine .ws-acts { right: auto; left: 0; margin: 0; } }
+.project-convo__message.is-mine .ws-acts--more { right: auto; left: -10px; }
+.project-convo__message.is-mine:has(.ws-acts--more) .project-convo__message-meta { padding-right: 0; padding-left: 36px; }
+@media (max-width: 640px) {
+  .project-convo__message { max-width: 100%; }
+  .project-convo__message > p { max-width: calc(100% - 8px); }
+  .project-convo__message.is-mine { padding-left: 0; padding-right: 44px; }
+}
