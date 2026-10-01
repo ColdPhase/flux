@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { projectWorkSummaryPath, projectWorkViewPath, projectWorkAssociationsPath, projectWorkRelationsPath, projectWorkDetailPath } from '@flux/contracts';
+import { projectWorkSummaryPath, projectWorkViewPath, projectWorkAssociationsPath, projectWorkRelationsPath } from '@flux/contracts';
 import type { Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
@@ -26,7 +26,7 @@ export async function workReadRoutes(app: FastifyInstance, { db, sessions }: { d
   app.get<{ Params: { projectId: string } }>(projectWorkRelationsPath(':projectId'), async (request) => {
     const { reads, principal } = await prepare(request); return reads.relations(principal, request.params.projectId, query(request));
   });
-  app.get<{ Params: { projectId: string; kind: string; id: string } }>(projectWorkDetailPath(':projectId', ':kind', ':id'), async (request) => {
+  app.get<{ Params: { projectId: string; kind: string; id: string } }>('/api/v1/projects/:projectId/work-objects/:kind/:id', async (request) => {
     const { reads, principal } = await prepare(request); return reads.detail(principal, request.params.projectId, request.params.kind, request.params.id, query(request));
   });
 }

@@ -13,6 +13,7 @@ export {
   authorizeEvent,
   eventResource,
   enforce,
+  accessName,
   evaluateProject,
   evaluateDraft,
   dmClosedFor,
