@@ -50,6 +50,10 @@
 .ov-quote { white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 8px; padding-left: 10px; box-shadow: inset 2px 0 0 var(--line-strong); }
 .ov-sec { margin-top: 22px; }
 .ov-rows { list-style: none; margin: 0; padding: 0; }
+.ov-sec:has([aria-label="Overview object pages"]) > .ov-rows { max-height: min(42vh, 360px); overflow-y: auto; padding: 0 8px; margin: 0 -8px; }
+.ov .ws-pages { flex-wrap: wrap; gap: 8px; padding: 8px 0; }
+.ov .ws-pages__range { flex-basis: 100%; white-space: normal; }
+.ov-relations { margin-top: 18px; }
 .ov-rows li + li { border-top: 1px solid var(--line); }
 .ov-row { display: flex; align-items: flex-start; gap: 10px; margin: 0 -8px; padding: 9px 8px; border-radius: var(--r); color: var(--text); text-align: left; text-decoration: none; transition: var(--tr); width: calc(100% + 16px); }
 .ov-row:hover { background: var(--bg-hover); }

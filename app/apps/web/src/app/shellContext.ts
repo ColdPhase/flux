@@ -1,4 +1,5 @@
 import { createContext, useContext } from 'react';
+import type { ConversationMessage } from '@flux/contracts';
 
 /** A project object shown in the Details panel (#101). */
 export interface ObjectView { kind: 'work' | 'decision' | 'result'; id: string }
@@ -22,7 +23,11 @@ export interface AddToDocView {
  * The project's overview in Details (#117): linked work, decisions, results, sources and
  * sketches of the open conversation, or of one message when `messageId` is set.
  */
-export interface OverviewView { kind: 'overview'; messageId?: string }
+export interface OverviewView {
+  kind: 'overview'; messageId?: string;
+  /** One already loaded native message; never a project collection or an authority proof. */
+  selection?: { accountId: string; projectId: string; message: ConversationMessage };
+}
 
 /** "Make it a project…" for a DM sketch (#96): the exact audience and content before anything is shared. */
 export interface PromoteSketchView { kind: 'promote-sketch'; sketchId: string; title: string }

@@ -4,6 +4,7 @@ import type { ConversationMessage, Project, ProjectWorkSummary } from '@flux/con
 import { ApiError } from '../api/client';
 import { Icon, useMediaQuery } from '../ui';
 import { useShellActions } from '../app/shellContext';
+import { useShellData } from '../app/data';
 import { createWork, type ProjectWork } from './api';
 import { decisionLine, firstLine, resultLine, workLine } from './format';
 import type { MessageWorkPreview } from './message-associations';
@@ -86,8 +87,9 @@ function ObjectChip({ icon, kind, title, need, onOpen, label, objectKind, object
 const rest = (line: string) => line.replace(/^Work · /, '');
 
 /** Objects made from this message. The message itself is unchanged; these link back to it. */
-export function MessageObjects({ messageId, preview }: { messageId: string; preview: MessageWorkPreview | null }) {
+export function MessageObjects({ message, projectId, preview }: { message: ConversationMessage; projectId: string; preview: MessageWorkPreview | null }) {
   const { openDetails } = useShellActions();
+  const { me } = useShellData();
   if (!preview) return null;
   const { counts, items } = preview;
   const total = counts.work + counts.decisions + counts.results;
@@ -95,7 +97,7 @@ export function MessageObjects({ messageId, preview }: { messageId: string; prev
   return (
     <div className="ws-attach">
       {items.map((item) => <ObjectChip key={`${item.kind}:${item.id}`} objectKind={item.kind} objectId={item.id} icon={item.kind === 'work' ? 'tasks' : item.kind === 'decision' ? 'rule' : 'result'} kind={item.kind === 'work' ? rest(workLine(item)) : item.kind === 'decision' ? decisionLine(item) : resultLine(item)} title={item.title} need={item.kind === 'decision' && item.status === 'proposed'} label={item.kind === 'work' ? 'Work' : item.kind === 'decision' ? 'Decision' : 'Result'} onOpen={() => openDetails({ kind: item.kind, id: item.id })} />)}
-      {items.length < total ? <button type="button" className="ws-attach__more" onClick={() => openDetails({ kind: 'overview', messageId })}>{[counts.work ? `${counts.work} work` : null, counts.decisions ? `${counts.decisions} ${counts.decisions === 1 ? 'decision' : 'decisions'}` : null, counts.results ? `${counts.results} ${counts.results === 1 ? 'result' : 'results'}` : null].filter(Boolean).join(' · ')} · view linked objects</button> : null}
+      {items.length < total ? <button type="button" className="ws-attach__more" onClick={() => openDetails({ kind: 'overview', messageId: message.id, selection: { accountId: me.user.id, projectId, message } })}>{[counts.work ? `${counts.work} work` : null, counts.decisions ? `${counts.decisions} ${counts.decisions === 1 ? 'decision' : 'decisions'}` : null, counts.results ? `${counts.results} ${counts.results === 1 ? 'result' : 'results'}` : null].filter(Boolean).join(' · ')} · view linked objects</button> : null}
     </div>
   );
 }
@@ -137,7 +139,8 @@ export function MessageActions({ projectId, message, onCreateWork, busy, writabl
   const touch = useMediaQuery('(hover: none)');
   const [open, setOpen] = useState(false);
   const source = { messageId: message.id, text: message.body };
-  const details = <button type="button" className="ws-act" onClick={() => openDetails({ kind: 'overview', messageId: message.id })} aria-label="Details of this message"><Icon name="panel" size={14} />Details</button>;
+  const { me } = useShellData();
+  const details = <button type="button" className="ws-act" onClick={() => openDetails({ kind: 'overview', messageId: message.id, selection: { accountId: me.user.id, projectId, message } })} aria-label="Details of this message"><Icon name="panel" size={14} />Details</button>;
   if (!writable) return <div className="ws-acts">{details}</div>;
   if (touch && !open) {
     // One quiet 44 px overflow button in the message's corner instead of a row under every message.
