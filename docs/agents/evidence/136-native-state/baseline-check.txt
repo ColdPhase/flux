@@ -1,0 +1,5 @@
+Test-only8a3eeed against canonical /projects/:id on accepted main7af78f.
+Expected header: 1 open task
+Actual header: No decisions or work yet. Anything said here can become one.
+Ran1 test in11.038s; FAILED(failures=1).
+Earlier9783749 fixture used nonexistent /projects/:id/conversations; excluded as product evidence.

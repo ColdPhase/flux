@@ -1,0 +1,34 @@
+#23 [migrate build 8/8] RUN pnpm build && pnpm typecheck && pnpm lint
+#23 0.307 packages/contracts build$ tsc -p tsconfig.build.json
+#23 2.333 packages/db build$ tsc -p tsconfig.build.json
+#23 2.334 packages/sdk build$ tsc -p tsconfig.build.json
+#23 5.678 packages/core build$ tsc -p tsconfig.build.json
+#23 7.665 packages/agent-runtime build$ tsc -p tsconfig.build.json
+#23 7.665 apps/server build$ tsc -p tsconfig.build.json
+#23 8.607 apps/worker build$ tsc -p tsconfig.build.json
+#23 12.09 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#23 21.35 $ eslint .
+test_01_open_task_is_visible_in_header_and_tasks_and_opens_the_actual_object (test_project_state.ProjectStateJourney.test_01_open_task_is_visible_in_header_and_tasks_and_opens_the_actual_object) ... ok
+test_02_closed_native_work_is_history_and_a_persisted_status_update_replaces_the_open_summary (test_project_state.ProjectStateJourney.test_02_closed_native_work_is_history_and_a_persisted_status_update_replaces_the_open_summary) ... ok
+test_03_phone_and_tablet_readers_share_current_counts_and_reachable_details_without_write_access (test_project_state.ProjectStateJourney.test_03_phone_and_tablet_readers_share_current_counts_and_reachable_details_without_write_access) ... ok
+test_04_reader_opens_uncited_source_and_existing_conversation_then_writer_draft_returns (test_project_state.ProjectStateJourney.test_04_reader_opens_uncited_source_and_existing_conversation_then_writer_draft_returns) ... ok
+test_01_three_people_share_a_project (test_project_surface.ProjectSurfaceJourney.test_01_three_people_share_a_project) ... ok
+test_02_header_names_the_project_and_its_exact_audience (test_project_surface.ProjectSurfaceJourney.test_02_header_names_the_project_and_its_exact_audience) ... ok
+test_03_each_state_segment_opens_its_object (test_project_surface.ProjectSurfaceJourney.test_03_each_state_segment_opens_its_object) ... ok
+test_04_view_tabs_switch_between_the_project_surfaces (test_project_surface.ProjectSurfaceJourney.test_04_view_tabs_switch_between_the_project_surfaces) ... ok
+test_05_details_overview_links_everything_one_step_away (test_project_surface.ProjectSurfaceJourney.test_05_details_overview_links_everything_one_step_away) ... ok
+test_06_map_tab_creates_a_project_sketch (test_project_surface.ProjectSurfaceJourney.test_06_map_tab_creates_a_project_sketch) ... ok
+test_07_phone_collapses_the_state_line_and_keeps_the_audience (test_project_surface.ProjectSurfaceJourney.test_07_phone_collapses_the_state_line_and_keeps_the_audience) ... ok
+test_08_a_sketch_never_shows_under_another_projects_frame (test_project_surface.ProjectSurfaceJourney.test_08_a_sketch_never_shows_under_another_projects_frame) ... ok
+test_01_two_people_share_a_project (test_work_decisions.WorkDecisionsJourney.test_01_two_people_share_a_project) ... ok
+test_02_create_work_from_a_message_in_one_action (test_work_decisions.WorkDecisionsJourney.test_02_create_work_from_a_message_in_one_action) ... ok
+test_03_propose_and_accept_a_decision_with_the_keyboard (test_work_decisions.WorkDecisionsJourney.test_03_propose_and_accept_a_decision_with_the_keyboard) ... ok
+test_04_attach_a_negative_result_that_finishes_the_experiment (test_work_decisions.WorkDecisionsJourney.test_04_attach_a_negative_result_that_finishes_the_experiment) ... ok
+test_05_pivot_keeps_history_and_parks_obsolete_work (test_work_decisions.WorkDecisionsJourney.test_05_pivot_keeps_history_and_parks_obsolete_work) ... ok
+test_06_phone_creates_work_and_reads_the_tasks_tab (test_work_decisions.WorkDecisionsJourney.test_06_phone_creates_work_and_reads_the_tasks_tab) ... ok
+test_07_more_than_a_hundred_records_are_all_shown (test_work_decisions.WorkDecisionsJourney.test_07_more_than_a_hundred_records_are_all_shown) ... ok
+test_08_phone_finds_own_blocked_work_and_returns_to_the_same_view (test_work_decisions.WorkDecisionsJourney.test_08_phone_finds_own_blocked_work_and_returns_to_the_same_view) ... ok
+test_09_own_messages_sit_right_and_others_left (test_work_decisions.WorkDecisionsJourney.test_09_own_messages_sit_right_and_others_left) ... ok
+test_10_each_task_view_keeps_its_reading_position (test_work_decisions.WorkDecisionsJourney.test_10_each_task_view_keeps_its_reading_position) ... ok
+Ran 22 tests in 44.645s
+OK

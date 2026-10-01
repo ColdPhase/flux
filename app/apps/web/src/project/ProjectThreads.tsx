@@ -16,7 +16,7 @@ function when(iso: string) {
  * sit beside the rail, so the centre keeps one reading column. Newest first; the rest load on
  * request. The list refreshes when the person returns to the page or opens another thread.
  */
-export function ProjectThreads({ projectId, onNavigate }: { projectId: string; onNavigate?: () => void }) {
+export function ProjectThreads({ projectId, canStart, onNavigate }: { projectId: string; canStart: boolean; onNavigate?: () => void }) {
   const location = useLocation();
   const [items, setItems] = useState<ConversationSummary[]>([]);
   const [total, setTotal] = useState(0);
@@ -66,9 +66,9 @@ export function ProjectThreads({ projectId, onNavigate }: { projectId: string; o
   return (
     <section className="side__sec" aria-labelledby="side-threads">
       <h2 className="side__h" id="side-threads">Conversations<span className="side__count">{total || null}</span></h2>
-      <Link to={`${base}?new=1`} className={`side__item side__capture project-convo__thread${starting ? ' is-current' : ''}`} aria-current={starting ? 'page' : undefined} onClick={onNavigate}>
+      {canStart ? <Link to={`${base}?new=1`} className={`side__item side__capture project-convo__thread${starting ? ' is-current' : ''}`} aria-current={starting ? 'page' : undefined} onClick={onNavigate}>
         <Icon name="plus" className="side__ic" />New conversation
-      </Link>
+      </Link> : null}
       <ul className="side__list">
         {items.map((thread) => {
           const current = thread.id === selected;
