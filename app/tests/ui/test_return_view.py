@@ -254,7 +254,8 @@ class ReturnViewJourney(unittest.TestCase):
         quote = digest.get_by_role("link", name=re.compile(re.escape(QUESTION)))
         expect(quote).to_have_attribute("href", re.compile(f"#message-{self.ids['question']}$"))
         expect(digest).to_contain_text("I ordered a PIR sensor too")
-        expect(digest.get_by_role("link", name=re.compile("Camera misses 62% of gestures"))).to_be_visible()
+        # The result, and the opening of the task thread it created (#154), both quote the finding.
+        expect(digest.get_by_role("link", name=re.compile("Camera misses 62% of gestures")).first).to_be_visible()
         # The quotes themselves, scrolled into view and clear of the footer.
         quote.scroll_into_view_if_needed()
         q_box, f_box = quote.bounding_box(), panel.get_by_role("button", name="I have the context").bounding_box()
