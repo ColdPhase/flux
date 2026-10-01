@@ -1,5 +1,42 @@
 # Durable local-agent coordination (#153)
 
+## Current authorized recovery composition (2026-10-01)
+
+`coWorkRecovery(db, serverSecret)` is the internal current-bearer composition
+for #152/#160; it is not a separate public tool registry or an execution grant.
+Every call holds the actual connection/binding and central selected-project
+policy before decoding a continuation or reading pending records. It creates
+no runtime, claim, debit, receipt, ACK, ordinary message, notification or model
+call. Cold reconnect uses the existing connection/binding rather than a client
+assertion of ownership or authority.
+
+Packets contain canonical request/task/unit/sender references, exact original
+target/source/criteria pointers and recovery state; no content, owner/payer
+roster, fingerprint, grant or raw cursor position is projected. All native
+target/source/criteria/dependency/response references must remain in the exact
+workspace/project and, for mutable objects, at their recorded current version.
+Thoughts additionally belong to a current project map. Filtering precedes SQL
+pagination, so an arbitrarily large inaccessible prefix cannot suppress ready
+authorized packets or affect visible page counts/continuations. No total or
+scanned count is returned. GitHub references remain excluded until the receiving
+owner's own verified repository/provenance adapter is supplied; no binding-author
+credential substitutes for it. This is explicitly native-reference coverage.
+
+AES-GCM continuations use a separate server-secret key namespace and bind the
+workspace/project/connection/owner/client/OAuth binding. They preserve the exact
+PostgreSQL microsecond keyset, are valid for15 minutes from the first page and
+cannot extend their original deadline. Every continuation rechecks current
+policy and references. Tampering, expiry, a foreign binding or a missing retained
+position returns a content-free `resync_required`; the client must request a
+fresh bounded snapshot rather than interpreting it as completion. A fresh
+snapshot is also needed to discover older requests whose source access/version
+becomes valid after an earlier scan. Unavailable or changed references stay
+durably unresolved; exclusion does not resolve, supersede or delete them.
+
+This does not prove checkpoint creation, native graph/reviewer eligibility,
+authorized request admission/resolution, execution/publication fences, public
+MCP/client wiring or model-driven Start/Resume. Those are unchanged requirements.
+
 Status: implementation contract checkpoint, 2026-09-30. The shared boundaries
 were accepted by the independent owner of #152/#154/#160 in
 [issue #153](https://github.com/ColdPhase/flux/issues/153#issuecomment-5919388071).
