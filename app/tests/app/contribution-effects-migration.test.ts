@@ -17,7 +17,7 @@ test('0040 keeps every historical row byte-identical as plain text, adds only em
   url.pathname = `/${name}`;
   let history: ReturnType<typeof createDatabase>['pool'] | undefined;
   try {
-    const createFixture = { text: `CREATE DATABASE "${name}"`, query_timeout: 10_000 };
+    const createFixture = { text: `CREATE DATABASE "${name}"`, query_timeout: 60_000 };
     await admin.query(createFixture);
     history = createDatabase(url.toString()).pool;
     for (const file of manifest.filter((file) => file.version < 40)) await history.query(await readFile(join(dir, file.name), 'utf8'));
@@ -74,8 +74,10 @@ test('0040 keeps every historical row byte-identical as plain text, adds only em
     assert.equal((await history.query('SELECT count(*)::int AS n FROM native_command_receipts')).rows[0].n, 1);
   } finally {
     await history?.end();
-    // Database administration can outlast the API's short read deadline; the assertions above keep ordinary deadlines.
-    const cleanup = { text: `DROP DATABASE IF EXISTS "${name}"`, query_timeout: 10_000 };
+    // Database administration can outlast the API's short read deadline under the parallel suite (another
+    // migration fixture creates and drops databases at the same time); the assertions above keep ordinary deadlines.
+    // FORCE ends a lingering session instead of waiting for it.
+    const cleanup = { text: `DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`, query_timeout: 60_000 };
     await admin.query(cleanup).finally(() => admin.end());
   }
 });
