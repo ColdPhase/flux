@@ -89,15 +89,21 @@ export class TypingConnection {
       this.lastPublished = active ? { ...context } : null;
     })();
     this.publication = operation;
-    try { await operation; } finally { if (this.publication === operation) this.publication = null; this.maybeRelease(); }
-    if (this.terminal) { this.terminal = false; await this.withdraw(); }
+    let failure: unknown;
+    try { await operation; } catch (error) { failure = error; }
+    finally { if (this.publication === operation) this.publication = null; }
+    if (this.terminal) {
+      this.terminal = false;
+      try { await this.withdraw(); } catch (error) { failure ??= error; }
+    }
     this.maybeRelease();
+    if (failure) throw failure;
   }
   private async withdraw() {
     if (this.publication) { this.terminal = true; return; }
     const context = this.lastPublished;
     if (context) await this.publish(context, false);
-    else this.maybeRelease();
+    else { this.terminal = false; this.maybeRelease(); }
   }
   private async command(command: TypingCommand, generation: number) {
     if (command.type === 'leave' || command.type === 'watch') {

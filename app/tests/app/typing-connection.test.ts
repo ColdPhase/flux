@@ -21,13 +21,16 @@ const context: TypingContext = { kind: 'conversation', id: 'aaaaaaaa-aaaa-aaaa-a
 async function fixture() {
   let humanDelay: { actorId: string; gate: ReturnType<typeof gate> } | null = null;
   let stopDelay: ReturnType<typeof gate> | null = null;
+  let activeFailure: ReturnType<typeof gate> | null = null;
   let publications = 0; let maximum = 0; let released = 0;
+  let clockFailure = false;
   const published: TypingPulse[] = [];
   const notifications: TypingNotificationPort = {
-    now: async () => Date.now(),
+    now: async () => { if (clockFailure) { clockFailure = false; throw new Error('Fixture clock unavailable'); } return Date.now(); },
     async publish(input, minimumExpiry) {
       publications++; maximum = Math.max(maximum, publications);
       try {
+        if (input.active && activeFailure) { const delay = activeFailure; activeFailure = null; delay.entered(); await delay.wait; throw new Error('Fixture publication rejected'); }
         if (!input.active && stopDelay) { const delay = stopDelay; stopDelay = null; delay.entered(); await delay.wait; }
         const pulse = { ...input, context: { ...input.context }, expiresAt: Math.max(Date.now() + 5000, minimumExpiry) };
         published.push(pulse); hub.notification(JSON.stringify(pulse)); return pulse;
@@ -63,8 +66,10 @@ async function fixture() {
     hub, published, connections, serverSockets, connect,
     holdHuman(actorId: string) { const delay = gate(); humanDelay = { actorId, gate: delay }; return delay; },
     holdStop() { const delay = gate(); stopDelay = delay; return delay; },
+    holdActiveFailure() { const delay = gate(); activeFailure = delay; return delay; },
+    failClock() { clockFailure = true; hub.wake(); },
     get maximum() { return maximum; }, get released() { return released; },
-    async close() { humanDelay?.gate.release(); stopDelay?.release(); await Promise.all(clients.map((client) => client.close())); await hub.close(); await new Promise<void>((resolve) => server.close(() => resolve())); },
+    async close() { humanDelay?.gate.release(); stopDelay?.release(); activeFailure?.release(); await Promise.all(clients.map((client) => client.close())); await hub.close(); await new Promise<void>((resolve) => server.close(() => resolve())); },
   };
 }
 const visible = (client: TypingClient, id: string) => client.messages.at(-1)?.people.some((person) => person.id === id) === true;
@@ -132,9 +137,41 @@ test('closed transport retains unfinished authorization permit and closing flood
     delayed.release(); delayed = null;
     await alice.until(() => f.released === 1, 'permit released after settlement');
     const flood = await f.connect('flood');
+    const closeListeners = f.serverSockets[1]!.listenerCount('close');
     for (let i = 0; i < 100; i++) flood.send({ type: 'active', active: false });
     assert.equal(await flood.closed, 1008);
     await flood.until(() => f.released === 2, 'flood closure releases exactly once');
-    assert.equal(f.serverSockets[1]!.listenerCount('close'), 1, 'no per-buffered-frame termination listeners');
+    assert.equal(f.serverSockets[1]!.listenerCount('close'), closeListeners, 'no per-buffered-frame termination listeners');
   } finally { delayed?.release(); await f.close(); }
+});
+
+test('rejected in-flight first active retires its terminal marker and releases the closed admission', async () => {
+  const f = await fixture(); let held: ReturnType<typeof gate> | null = null;
+  try {
+    const alice = await f.connect('alice'); await alice.watch(context);
+    held = f.holdActiveFailure(); alice.send({ type: 'active', active: true }); await held.ready;
+    alice.send({ type: 'active', active: false }); alice.socket.close(1000); await alice.closed;
+    assert.equal(f.released, 0);
+    held.release(); held = null;
+    await alice.until(() => f.released === 1, 'rejected publication settles its retained admission');
+    assert.equal(f.published.length, 0);
+    assert.equal(f.maximum, 1);
+  } finally { held?.release(); await f.close(); }
+});
+
+test('database clock failure drains discarded stop fences before admitting delayed older activity', async () => {
+  const f = await fixture();
+  try {
+    const bob = await f.connect('bob'); await bob.watch(context);
+    const first: TypingPulse = { connectionId: randomUUID(), actorId: 'alice', sessionId: 'alice-fixture-session', context,
+      sequence: 1, active: true, expiresAt: Date.now() + 5000 };
+    f.hub.notification(JSON.stringify(first)); await bob.until(() => visible(bob, 'alice'), 'first activity');
+    f.hub.notification(JSON.stringify({ ...first, active: false, sequence: 2, expiresAt: Date.now() + 5000 }));
+    await bob.until(() => !visible(bob, 'alice'), 'stop fence');
+    f.failClock(); await bob.until(() => bob.messages.at(-1)?.availability === 'unavailable', 'clock uncertainty');
+    f.hub.notification(JSON.stringify(first));
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    assert.equal(visible(bob, 'alice'), false, 'late older positive cannot resurrect after discarded stop fence');
+    assert.equal(bob.messages.at(-1)?.availability, 'unavailable');
+  } finally { await f.close(); }
 });

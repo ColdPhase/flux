@@ -29,6 +29,7 @@ export class TypingHub {
   private epoch = 0;
   private quarantineExpiry = 0;
   private quarantineUntil = 0;
+  private databaseFloor = 0;
   private timer: ReturnType<typeof setInterval>;
   constructor(readonly access: TypingAccessPorts, readonly notifications: TypingNotificationPort) {
     this.timer = setInterval(() => { for (const subscriber of this.subscribers) subscriber.heartbeat(); this.wake(); }, 1000);
@@ -48,7 +49,7 @@ export class TypingHub {
     this.listenerReady = ready;
     this.epoch++;
     this.pending.clear();
-    this.presence.setAvailable(ready);
+    this.presence.setAvailable(ready && !this.quarantineExpiry);
     this.wake();
   }
   notification(payload: string) {
@@ -93,9 +94,18 @@ export class TypingHub {
         let databaseNow = 0;
         try {
           databaseNow = await this.notifications.now();
-          if (!this.clockReady) { this.clockReady = true; this.epoch++; this.presence.setAvailable(this.listenerReady); }
+          this.databaseFloor = Math.max(this.databaseFloor, databaseNow);
+          if (!this.clockReady) { this.clockReady = true; this.epoch++; this.presence.setAvailable(this.listenerReady && !this.quarantineExpiry); }
         }
-        catch { this.clockReady = false; this.epoch++; this.presence.setAvailable(false); this.pending.clear(); }
+        catch {
+          this.clockReady = false; this.epoch++;
+          // Losing the clock must not discard a stop fence then admit an older
+          // still-valid notification on recovery. Drain both validity clocks.
+          this.quarantineExpiry = Math.max(this.quarantineExpiry, this.databaseFloor + 5000,
+            ...[...this.pending.values()].map((pulse) => pulse.expiresAt));
+          this.quarantineUntil = Math.max(this.quarantineUntil, performance.now() + 5000);
+          this.presence.setAvailable(false); this.pending.clear();
+        }
         if (this.stopped) break;
         const observedAt = performance.now();
         const quarantined = this.quarantineUntil > observedAt || this.quarantineExpiry > databaseNow;
