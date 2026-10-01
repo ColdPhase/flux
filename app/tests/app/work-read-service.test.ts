@@ -5,7 +5,7 @@ import {
   type Principal, type WorkReadFinalFence, type WorkReadPorts, type WorkReadRepository,
   type WorkReadSlice, type WorkReadUnitOfWork, type WorkSummaryObservation,
 } from '@flux/core';
-import type { NativeWorkRow, ObjectLink, SourceAssociationCounts } from '@flux/contracts';
+import type { ObjectLink, SourceAssociationCounts, WorkRowProjection } from '@flux/contracts';
 
 // These are port-protocol tests. Native DB ordering, policies and HTTP sessions need integration tests.
 const projectId = '00000000-0000-0000-0000-000000000001';
@@ -17,7 +17,7 @@ const at = '2026-10-01T06:00:00.123456Z';
 const actor = { kind: 'human' as const, id: 'native-user' };
 const fingerprint = 'a'.repeat(64);
 const relations = { edges: 0, sourceMessages: 0, sourceMaterials: 0, decisions: 0, results: 0 };
-const row = (rowId = id): NativeWorkRow => ({ kind: 'work', id: rowId, projectId, workspaceId, audience: { kind: 'project', projectId }, title: 'Native work', createdAt: at,
+const row = (rowId = id): WorkRowProjection => ({ kind: 'work', id: rowId, projectId, workspaceId, audience: { kind: 'project', projectId }, title: 'Native work', createdAt: at,
   relations, status: 'open', owner: null, blocker: null, parked: null, parkedBy: null, rule: null, version: 1, updatedAt: at });
 const slice = <T>(items: T[], total = items.length, before = 0): WorkReadSlice<T> => ({ items: items.map((value, i) => ({ value, key: { rank: 0, createdAt: at, id: i ? otherId : id } })), total, before, hasBefore: before > 0, hasAfter: before + items.length < total });
 const summary = (): WorkSummaryObservation => ({ projectId, observedAt: at,
