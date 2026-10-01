@@ -13,7 +13,7 @@ interface Job {
   readonly reject: (error: unknown) => void;
   cancelled: boolean;
 }
-interface Slot { running: Job | null; pending: Job | null }
+interface Slot { readonly context: TypingContext; running: Job | null; pending: Job | null; latestCycle: number; retiring: boolean }
 
 /** One immutable proof per delivery cycle; no authority cache between cycles. */
 export class TypingSenderProofs {
@@ -22,6 +22,7 @@ export class TypingSenderProofs {
   private pending = 0;
   private captured = 0;
   private stopped = false;
+  private nextCycle = 0;
   private peaks = { contexts: 0, running: 0, pending: 0, captured: 0 };
   constructor(private readonly access: TypingAccessPorts,
     private readonly measure: <T>(operation: () => Promise<T>) => Promise<T>) {}
@@ -32,17 +33,19 @@ export class TypingSenderProofs {
     this.peaks.pending = Math.max(this.peaks.pending, this.pending);
     this.peaks.captured = Math.max(this.peaks.captured, this.captured);
   }
-  request(context: TypingContext, pulses: readonly TypingPulse[], valid: () => boolean): Promise<SenderProof | null> {
+  request(context: TypingContext, pulses: readonly TypingPulse[], valid: () => boolean, cycle = ++this.nextCycle): Promise<SenderProof | null> {
     if (this.stopped || !valid()) return Promise.resolve(null);
     const key = typingContextKey(context);
     let slot = this.slots.get(key);
+    if (slot && cycle <= slot.latestCycle) return Promise.resolve(null);
     // Retire an obsolete pending cycle before testing the replacement's capacity.
     if (slot?.pending) this.retirePending(slot);
     if ((!slot && this.slots.size >= 128) || this.captured + pulses.length > 4096) {
-      if (slot && !slot.running && !slot.pending) this.slots.delete(key);
+      if (slot) slot.latestCycle = Math.max(slot.latestCycle, cycle);
       return Promise.reject(new Error('Typing proof capacity unavailable'));
     }
-    if (!slot) { slot = { running: null, pending: null }; this.slots.set(key, slot); }
+    if (!slot) { slot = { context: Object.freeze({ ...context }), running: null, pending: null, latestCycle: cycle, retiring: false }; this.slots.set(key, slot); }
+    slot.latestCycle = cycle; slot.retiring = false;
     const result = new Promise<SenderProof | null>((settle, reject) => {
       slot!.pending = { context: Object.freeze({ ...context }), pulses: Object.freeze(pulses.map((pulse) => Object.freeze({ ...pulse, context: Object.freeze({ ...pulse.context }) }))), valid, settle, reject, cancelled: false };
     });
@@ -53,12 +56,14 @@ export class TypingSenderProofs {
     const job = slot.pending!; slot.pending = null;
     this.pending--; this.captured -= job.pulses.length; job.cancelled = true; job.settle(null);
   }
-  invalidate(matches: (context: TypingContext, pulses: readonly TypingPulse[]) => boolean = () => true) {
+  invalidate(matches: (context: TypingContext, pulses: readonly TypingPulse[]) => boolean = () => true, forget = false) {
     for (const [key, slot] of this.slots) {
+      const matching = slot.running ? matches(slot.running.context, slot.running.pulses) : slot.pending ? matches(slot.pending.context, slot.pending.pulses) : matches(slot.context, []);
+      if (forget && matching) slot.retiring = true;
       if (slot.running && matches(slot.running.context, slot.running.pulses)) slot.running.cancelled = true;
       if (slot.pending && matches(slot.pending.context, slot.pending.pulses)) this.retirePending(slot);
       // Running SQL keeps its reservation even after every socket has departed.
-      if (!slot.running && !slot.pending) this.slots.delete(key);
+      if (slot.retiring && !slot.running && !slot.pending) this.slots.delete(key);
     }
   }
   private drain() {
@@ -72,7 +77,7 @@ export class TypingSenderProofs {
       this.slots.delete(key); this.slots.set(key, slot); this.observe();
       void this.run(job).then(job.settle, job.reject).finally(() => {
         this.running--; this.captured -= job.pulses.length; slot.running = null;
-        if (!slot.pending) this.slots.delete(key);
+        if (slot.retiring && !slot.pending) this.slots.delete(key);
         this.drain();
       });
     }
@@ -92,5 +97,5 @@ export class TypingSenderProofs {
     if (job.cancelled || !job.valid()) return null;
     return Object.freeze({ people: Object.freeze(people), expiresAt });
   }
-  close() { this.stopped = true; this.invalidate(); }
+  close() { this.stopped = true; this.invalidate(() => true, true); }
 }

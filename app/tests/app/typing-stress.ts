@@ -38,7 +38,7 @@ const diagnostics = new TypingDiagnostics((pulse, at) => {
   if (pulse.active) activeAt.set(pulse.actorId, at);
 });
 const memory: { atMs: number; rss: number; heapUsed: number; work: ReturnType<typeof work> }[] = [];
-const freshness = { observations: 0, staleSocketObservations: 0, unavailableSocketObservations: 0, oldestReadyAgeMs: 0 };
+const freshness = { observations: 0, staleSocketObservations: 0, unavailableSocketObservations: 0, oldestReadyAgeMs: 0, readyInterarrivalMaxMs: 0, unavailableFrames: 0 };
 let sampledPeakRss = 0; let sampledPeakHeap = 0;
 const samples: { inputToReceiptMs: number; acceptedToReceiptMs: number; stopToReceiptMs: number }[] = [];
 let warmups = 0; let measuredStarted = 0; let measuredElapsed = 0;
@@ -71,7 +71,11 @@ class Client {
         assert.equal(frame.type, 'snapshot'); assert.equal(frame.context.id, contextId);
         assert.equal(frame.people.some((human: { id: string }) => human.id === this.actor.id), false);
         this.current = frame; this.receivedAt = clock();
-        if (frame.availability === 'ready') { this.lastReadyAt = this.receivedAt; this.readyFrames++; }
+        if (frame.availability === 'ready') {
+          if (phase === 'measured') freshness.readyInterarrivalMaxMs = Math.max(freshness.readyInterarrivalMaxMs, this.receivedAt - this.lastReadyAt);
+          if (phase === 'measured' && this.receivedAt - this.lastReadyAt > 3000) { freshness.staleSocketObservations++; failure ??= 'ready frame gap exceeds3000ms'; }
+          this.lastReadyAt = this.receivedAt; this.readyFrames++;
+        } else if (phase === 'measured') { freshness.unavailableFrames++; failure ??= 'unavailable frame during measurement'; }
         if (this.probe && this.probe.firstAt === null && this.receivedAt >= this.probe.since && this.has(this.probe.actorId)) this.probe.firstAt = this.receivedAt;
       }
       } catch { failure ??= 'invalid native server frame'; }

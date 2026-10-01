@@ -30,6 +30,7 @@ export class TypingHub {
   private pumping = false;
   private dirty = false;
   private epoch = 0;
+  private cycle = 0;
   private quarantineExpiry = 0;
   private quarantineUntil = 0;
   private databaseFloor = 0;
@@ -93,7 +94,7 @@ export class TypingHub {
   }
   leave(context: TypingContext) {
     this.presence.leave(context);
-    if (!this.presence.availableFor(context, performance.now())) this.proofs.invalidate((target) => typingContextKey(target) === typingContextKey(context));
+    if (!this.presence.availableFor(context, performance.now())) this.proofs.invalidate((target) => typingContextKey(target) === typingContextKey(context), true);
     this.wake();
   }
   wake() {
@@ -135,7 +136,7 @@ export class TypingHub {
           for (const pulse of this.pending.values()) this.quarantineExpiry = Math.max(this.quarantineExpiry, pulse.expiresAt);
           this.pending.clear();
         }
-        const generation = this.epoch;
+        const generation = this.epoch; const cycle = ++this.cycle;
         // One captured context cycle and lazy proof promise, shared only by its recipients.
         const deliveries = new Map<string, TypingDelivery>();
         for (const subscriber of this.subscribers) {
@@ -148,7 +149,7 @@ export class TypingHub {
               : { availability: 'unavailable' as const, pulses: [] };
             let proof: Promise<SenderProof | null> | null = null;
             delivery = { context, availability: candidates.availability, pulses: candidates.pulses, generation, databaseNow, observedAt,
-              senders: () => proof ??= this.proofs.request(context, candidates.pulses, () => !this.stopped && generation === this.epoch && this.availableFor(context)) };
+              senders: () => proof ??= this.proofs.request(context, candidates.pulses, () => !this.stopped && generation === this.epoch && this.availableFor(context) && candidates.pulses.every((pulse) => this.current(pulse)), cycle) };
             deliveries.set(key, delivery);
           }
           subscriber.refresh(delivery);

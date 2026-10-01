@@ -74,3 +74,14 @@ test('the earliest sender deadline survives a later slow check and queued reuse'
     assert.equal(proof.people.length, 2); assert.ok(proof.expiresAt < performance.now(), 'the last check cannot renew the first sender proof');
   } finally { held.release(); proofs.close(); }
 });
+test('an older lazy request cannot replace a newer queued or settled cycle', async () => {
+  const held = gate(); const proofs = new TypingSenderProofs(access(held), direct); const blockers: Promise<unknown>[] = [];
+  try {
+    for (let index = 0; index < 4; index++) { const target = { ...context, id: randomUUID() }; blockers.push(proofs.request(target, [{ ...pulse(), context: target }], () => true, 1)); }
+    const latest = proofs.request(context, [pulse()], () => true, 2);
+    assert.equal(await proofs.request(context, [pulse()], () => true, 1), null);
+    assert.equal(proofs.work.pending, 1, 'the newer cycle remains queued');
+    held.release(); await Promise.all(blockers); assert.ok(await latest);
+    assert.equal(await proofs.request(context, [pulse()], () => true, 1), null, 'settlement does not lose its cycle retirement fence');
+  } finally { held.release(); proofs.close(); }
+});

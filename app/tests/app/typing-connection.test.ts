@@ -22,6 +22,7 @@ async function fixture() {
   let humanDelay: { actorId: string; gate: ReturnType<typeof gate> } | null = null;
   let stopDelay: ReturnType<typeof gate> | null = null;
   let activeFailure: ReturnType<typeof gate> | null = null;
+  const humanChecks = new Map<string, number>();
   let publications = 0; let maximum = 0; let released = 0;
   let clockFailure = false;
   const published: TypingPulse[] = [];
@@ -39,6 +40,7 @@ async function fixture() {
   };
   const hub = new TypingHub({
     async currentHuman(actor) {
+      humanChecks.set(actor.actorId, (humanChecks.get(actor.actorId) ?? 0) + 1);
       if (humanDelay?.actorId === actor.actorId) { const delay = humanDelay.gate; humanDelay = null; delay.entered(); await delay.wait; }
       return { id: actor.actorId, name: actor.actorId };
     },
@@ -63,7 +65,7 @@ async function fixture() {
     const client = await TypingClient.connect(browser, 'http://fixture', `http://127.0.0.1:${port}`); clients.push(client); return client;
   }
   return {
-    hub, published, connections, serverSockets, connect,
+    hub, published, connections, serverSockets, connect, humanChecks,
     holdHuman(actorId: string) { const delay = gate(); humanDelay = { actorId, gate: delay }; return delay; },
     holdStop() { const delay = gate(); stopDelay = delay; return delay; },
     holdActiveFailure() { const delay = gate(); activeFailure = delay; return delay; },
@@ -199,3 +201,19 @@ for (const transition of ['stop', 'unwatched-scope', 'listener-loss'] as const) 
     } finally { held?.release(); await f.close(); }
   });
 }
+
+test('terminal transition before a lazy proof request launches no withdrawn sender checks', async () => {
+  const f = await fixture(); let held: ReturnType<typeof gate> | null = null;
+  try {
+    const bob = await f.connect('bob'); await bob.watch(context);
+    const active: TypingPulse = { connectionId: randomUUID(), actorId: 'alice', sessionId: 'alice-fixture-session', context, sequence: 1, active: true, expiresAt: Date.now() + 5000 };
+    held = f.holdHuman('bob'); f.hub.notification(JSON.stringify(active)); await held.ready;
+    assert.equal(f.hub.work.proofs.running, 0, 'recipient initial read has not requested sender proof yet');
+    f.hub.notification(JSON.stringify({ ...active, sequence: 2, active: false }));
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    const start = bob.messages.length; held.release(); held = null;
+    await bob.until(() => bob.messages.length > start, 'latest stopped cycle', 1000);
+    assert.equal(f.humanChecks.get('alice') ?? 0, 0);
+    assert.ok(bob.messages.slice(start).every((frame) => frame.people.length === 0));
+  } finally { held?.release(); await f.close(); }
+});
