@@ -345,6 +345,28 @@ class TypingJourney(unittest.TestCase):
         self.assertGreater(state["late"], 0, "late frames are actual server output")
         expect(alice.locator(".typing-notice")).to_have_text("Typing activity unavailable")
 
+    def test_09_private_assistant_composer_never_publishes_human_typing(self):
+        alice = self.open("alice")
+        bob = self.open("bob")
+        self.composer(alice).fill("PRIVATE-DRAFT ordinary reply before asking")
+        expect(bob.locator(".typing-notice")).to_contain_text("Alice Rivera", timeout=2000)
+        alice.get_by_role("button", name="Ask my assistant").click()
+        expect(bob.locator(".typing-notice")).not_to_contain_text("Alice Rivera", timeout=750)
+        pulses = sum(frame.get("active") is True for frame in alice.typing_sent)
+        alice.get_by_label("Ask your assistant", exact=True).fill("PRIVATE-DRAFT private assistant instructions")
+        alice.wait_for_timeout(1800)
+        self.assertEqual(sum(frame.get("active") is True for frame in alice.typing_sent), pulses)
+        expect(bob.locator(".typing-notice")).not_to_contain_text("Alice Rivera")
+        self.composer(alice).press("Escape")
+        expect(alice.get_by_label("Reply", exact=True)).to_have_value("PRIVATE-DRAFT private assistant instructions")
+        alice.wait_for_timeout(1800)
+        self.assertEqual(sum(frame.get("active") is True for frame in alice.typing_sent), pulses, "leaving ask mode does not advertise its restored text")
+        self.composer(alice).fill("/ai PRIVATE-DRAFT command-mode prompt")
+        expect(alice.get_by_label("Ask your assistant", exact=True)).to_have_value("PRIVATE-DRAFT command-mode prompt")
+        alice.wait_for_timeout(1800)
+        self.assertEqual(sum(frame.get("active") is True for frame in alice.typing_sent), pulses)
+        self.assert_wire(alice, "alice")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
