@@ -3,7 +3,7 @@ import { Link, useFetcher } from 'react-router';
 import { Avatar, Icon, Spinner, duration, play, trapTab, useToast } from '../ui';
 import type { FormResult } from '../auth/logic';
 import { NotificationsButton } from '../pwa';
-import { setAccent, setTheme, useAccent, useTheme, type AccentChoice, type ThemeChoice } from './theme';
+import { setAccent, setTheme, useAccent, useResolvedTheme, useTheme, type AccentChoice, type ThemeChoice } from './theme';
 
 const THEMES: { id: ThemeChoice; label: string; icon: 'monitor' | 'sun' | 'moon' }[] = [
   { id: 'system', label: 'System', icon: 'monitor' },
@@ -13,8 +13,8 @@ const THEMES: { id: ThemeChoice; label: string; icon: 'monitor' | 'sun' | 'moon'
 
 const ACCENTS: { id: AccentChoice; label: string }[] = [
   { id: 'mint', label: 'Mint' },
-  { id: 'iris', label: 'Iris' },
   { id: 'sky', label: 'Sky' },
+  { id: 'copper', label: 'Copper' },
 ];
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -35,6 +35,7 @@ export function UserMenu({ name, email, sessionExpiresAt }: { name: string; emai
   const popId = useId();
   const theme = useTheme();
   const accent = useAccent();
+  const resolvedTheme = useResolvedTheme();
   const fetcher = useFetcher<FormResult>();
   const toast = useToast();
   const signingOut = fetcher.state !== 'idle';
@@ -111,6 +112,7 @@ export function UserMenu({ name, email, sessionExpiresAt }: { name: string; emai
           </div>
           <div className="me__sec">
             <span className="me__label" id={`${popId}-accent`}>Accent</span>
+            <span className="me__hint">For {resolvedTheme} appearance · remembered separately on this device</span>
             <div className="me-accent" role="radiogroup" aria-labelledby={`${popId}-accent`} onKeyDown={onAccentKey}>
               {ACCENTS.map((item) => (
                 <button key={item.id} type="button" role="radio" className="me-accent__option" data-accent-option={item.id}
