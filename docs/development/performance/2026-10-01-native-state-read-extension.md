@@ -1,7 +1,9 @@
 # Preserve native state in bounded reads — #155 / #136
 
-2026-10-01. Proposed additive contract extension, awaiting independent review.
-No runtime implementation or completed acceptance is claimed here.
+2026-10-01. Additive contract independently reviewed at58efc2f3.
+[Bounded source-only review](2026-10-01-native-state-read-independent-review.md)
+accepts the corrected native parking evidence requirement. No runtime
+implementation or completed application acceptance is claimed here.
 
 The [bounded read contract](2026-10-01-native-work-read-contract.md) provides
 active work and blocked refs but omits the open-task and retained-history refs
