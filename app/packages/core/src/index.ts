@@ -15,6 +15,7 @@ export {
   enforce,
   evaluateProject,
   evaluateDraft,
+  dmClosedFor,
   visibleFilter,
   visibleWorkspaceOf,
   loadActor,
