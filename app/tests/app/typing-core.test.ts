@@ -10,6 +10,21 @@ function store(limits = { contexts: 128, perContext: 512, entries: 4096 }) {
   const state = new TypingPresence(limits); state.watch(a); state.setAvailable(true); return state;
 }
 
+test('final reconciliation keeps compatible active refresh but withdraws stop, scope, expiry and uncertainty', () => {
+  const state = store(); const first = pulse(); state.accept(first, 0, 0);
+  assert.equal(state.current(first, 0), true);
+  state.accept(pulse({ sequence: 2, expiresAt: 5100 }), 100, 100);
+  assert.equal(state.current(first, 200), true, 'same current actor/session/context refresh is continuous');
+  state.accept(pulse({ sequence: 3, active: false, expiresAt: 5200 }), 200, 200);
+  assert.equal(state.current(first, 200), false);
+  state.accept(pulse({ sequence: 4, expiresAt: 5300 }), 300, 300);
+  assert.equal(state.current(first, 5300), false, 'monotonic positive lifetime');
+  state.accept(pulse({ sequence: 5, context: b, expiresAt: 5400 }), 400, 400);
+  assert.equal(state.current(first, 400), false, 'unwatched scope still withdraws');
+  state.setAvailable(false);
+  assert.equal(state.availableFor(a, 400), false);
+});
+
 test('typing closed input rejects forged identity/text recursively, without echoing private values', () => {
   assert.deepEqual(normalizeTypingCommand({ type: 'watch', context: { ...a, id: a.id.toUpperCase() } }), { type: 'watch', context: a });
   for (const field of ['author', 'session', 'text', 'expiresAt', 'name']) {

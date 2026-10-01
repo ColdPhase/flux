@@ -40,6 +40,7 @@ import { searchRoutes } from './search/routes.js';
 import { personalRunRoutes } from './personal-runs/routes.js';
 import { personalRunServerComposition } from './personal-runs/composition.js';
 import { exportRoutes } from './export/routes.js';
+import { typingRoutes } from './typing/routes.js';
 
 const connectionString = process.env.DATABASE_URL;
 const fixtureToken = process.env.FLUX_FIXTURE_TOKEN;
@@ -72,6 +73,7 @@ await app.register(websocket, { options: { maxPayload: 1024, server: streamUpgra
 const heartbeatMs = Number(process.env.FLUX_STREAM_HEARTBEAT_MS ?? 25_000);
 if (!Number.isInteger(heartbeatMs) || heartbeatMs < 100) throw new Error('FLUX_STREAM_HEARTBEAT_MS must be an integer of at least 100');
 await app.register(streamRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, connectionString, heartbeatMs, cursorSecret: identityConfig.secret, exposeWork: testFailureInjection });
+await app.register(typingRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, connectionString });
 await app.register(conversationRoutes, { db, sessions: identity });
 await app.register(workRoutes, { db, sessions: identity });
 // Configuration alone does not prove the SFU, DNS/TLS or receiver path is healthy.

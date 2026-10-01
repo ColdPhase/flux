@@ -163,4 +163,17 @@ export class TypingPresence {
   }
   /** Safe counters for bounded-stress evidence; no identifiers or names. */
   get work() { return { contexts: this.watched.size, entries: this.entries.size, watermarks: this.watermarks.size }; }
+  /** Synchronous final reconciliation, without another out-of-order DB observation. */
+  current(pulse: TypingPulse, monotonicNow: number): boolean {
+    const entry = this.entries.get(pulse.connectionId);
+    return this.availableFor(pulse.context, monotonicNow) &&
+      !!entry?.active && entry.deadline > monotonicNow && entry.pulse.expiresAt > this.databaseFloor &&
+      entry.pulse.sequence >= pulse.sequence && entry.pulse.actorId === pulse.actorId && entry.pulse.sessionId === pulse.sessionId &&
+      typingContextKey(entry.pulse.context) === typingContextKey(pulse.context);
+  }
+  availableFor(context: TypingContext, monotonicNow: number): boolean {
+    const room = this.watched.get(typingContextKey(context));
+    return this.available && !this.clockBehind && !!room &&
+      !this.quarantined(this.saturated, this.databaseFloor, monotonicNow) && !this.quarantined(room, this.databaseFloor, monotonicNow);
+  }
 }
