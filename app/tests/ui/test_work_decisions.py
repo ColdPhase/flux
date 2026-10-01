@@ -161,7 +161,8 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(panel.get_by_label("Decision")).to_have_value(IDEA)
         panel.get_by_label("Decision").fill("Use a camera for gesture control")
         panel.get_by_label("Why").fill("It recognises the richest set of gestures")
-        panel.get_by_label("Why").press("Tab")
+        # Native rule choices and their page controls are now keyboard reachable.
+        panel.get_by_role("button", name="Propose decision", exact=True).focus()
         page.keyboard.press("Enter")
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Proposed decision")
         expect(page.get_by_label("Current state")).to_contain_text("Needs you: a proposed decision")

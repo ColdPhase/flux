@@ -257,7 +257,7 @@ class DocsJourney(unittest.TestCase):
         panel.get_by_role("button", name="Add to docs").click()
         expect(panel.get_by_label("Doc", exact=True)).to_have_value(self.doc_id)
         shot(page, "docs-add-from-result-desktop-1440")
-        panel.get_by_role("button", name="Add section").click()
+        panel.get_by_role("button", name="Add or update section").click()
         expect(page.get_by_role("heading", level=2, name=TITLE)).to_be_visible()
         expect(page.locator(".doc-head__why")).to_have_text(f"Added the result “{FINDING}”")
         expect(page.locator(".doc-prose").get_by_role("heading", name=f"Result: {FINDING}")).to_be_visible()

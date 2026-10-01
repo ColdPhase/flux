@@ -68,13 +68,16 @@ export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
   const projectId = view.projectId ?? shell?.project.id ?? '';
   const accountId = me.user.id;
   const key = JSON.stringify([accountId, projectId, view.kind, 'id' in view ? view.id : [view.source?.messageId, view.workId]]);
-  const activeKey = useRef<string | null>(key);
-  useLayoutEffect(() => { activeKey.current = key; return () => { activeKey.current = null; }; }, [key]);
-  const initial = useMemo(() => ({ key, state: { busy: false, error: '', attempt: crypto.randomUUID() } as PanelDraft }), [key]);
+  // Returning to the same object starts a new ownership lifetime. An earlier A command
+  // must stay retired after A → B → A, even though its serialized scope matches again.
+  const owner = useMemo(() => ({ key }), [key]);
+  const activeOwner = useRef<typeof owner | null>(owner);
+  useLayoutEffect(() => { activeOwner.current = owner; return () => { activeOwner.current = null; }; }, [owner]);
+  const initial = useMemo(() => ({ owner, state: { busy: false, error: '', attempt: crypto.randomUUID() } as PanelDraft }), [owner]);
   const [panelDraft, setPanelDraft] = useState(initial);
-  const draft = panelDraft.key === key ? panelDraft.state : initial.state;
-  const patchDraft = (patch: Partial<PanelDraft>) => { if (activeKey.current === key) setPanelDraft((current) => ({ key, state: { ...(current.key === key ? current.state : initial.state), ...patch } })); };
-  const commands: PanelCommands = { state: draft, setBusy: (busy) => patchDraft({ busy }), setError: (error) => patchDraft({ error }), setAttempt: (attempt) => patchDraft({ attempt }), setBlocker: (blocker) => patchDraft({ blocker }), isCurrent: () => activeKey.current === key };
+  const draft = panelDraft.owner === owner ? panelDraft.state : initial.state;
+  const patchDraft = (patch: Partial<PanelDraft>) => { if (activeOwner.current === owner) setPanelDraft((current) => ({ owner, state: { ...(current.owner === owner ? current.state : initial.state), ...patch } })); };
+  const commands: PanelCommands = { state: draft, setBusy: (busy) => patchDraft({ busy }), setError: (error) => patchDraft({ error }), setAttempt: (attempt) => patchDraft({ attempt }), setBlocker: (blocker) => patchDraft({ blocker }), isCurrent: () => activeOwner.current === owner };
   const [tick, setTick] = useState(0);
   const revalidator = useRevalidator();
   const reload = useCallback(() => { setTick((value) => value + 1); revalidator.revalidate(); }, [revalidator]);
@@ -84,9 +87,9 @@ export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
   const own = useNativeOwn(accountId, projectId, 'id' in view ? view.kind : 'work', 'id' in view ? view.id : undefined, !!context, tick);
   const detail = context ? own.value : null;
   const relations = useDetailRelations(accountId, projectId, detail);
-  const [picks, setPicks] = useState<{ key: string; values: Record<string, Choice> }>({ key, values: {} });
-  const choices = picks.key === key ? picks.values : {};
-  const setChoices = (update: (current: Record<string, Choice>) => Record<string, Choice>) => setPicks((current) => ({ key, values: update(current.key === key ? current.values : {}) }));
+  const [picks, setPicks] = useState<{ owner: typeof owner; values: Record<string, Choice> }>({ owner, values: {} });
+  const choices = picks.owner === owner ? picks.values : {};
+  const setChoices = (update: (current: Record<string, Choice>) => Record<string, Choice>) => { if (activeOwner.current === owner) setPicks((current) => ({ owner, values: update(current.owner === owner ? current.values : {}) })); };
   const unavailable = contextRead.phase === 'unavailable' || own.read.phase === 'unavailable';
   const contextStatus = contextRead.phase === 'unavailable'
     ? <p className="wd-error" role="alert">Project context could not be loaded. Your draft is kept. <button type="button" className="wd-inline" onClick={reload}>Refresh context</button></p>
@@ -264,7 +267,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
       {item.parked ? (
         <section className="details__sec" aria-labelledby="wd-parked">
           <h4 id="wd-parked">Parked by a pivot</h4>
-          <p>Set aside on {shortDate(item.parked.at)} when {parkedBy ? <button type="button" className="wd-inline" onClick={() => openDetails({ kind: 'decision', id: parkedBy.id })}>“{parkedBy.title}”</button> : 'a new decision'} was accepted. It keeps its status and can come back.</p>
+          <p>Set aside on {shortDate(item.parked.at)} when {parkedBy ? <button type="button" className="wd-inline" onClick={() => openDetails({ kind: 'decision', id: parkedBy.id, projectId: context.project.id })}>“{parkedBy.title}”</button> : 'a new decision'} was accepted. It keeps its status and can come back.</p>
           {writable ? <div className="wd-actions"><Button variant="secondary" busy={busy} onClick={() => void change({ parked: false })}>Bring back into the plan</Button></div> : null}
         </section>
       ) : null}
@@ -278,12 +281,12 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
 
       <section className="details__sec" aria-labelledby="wd-decisions">
         <h4 id="wd-decisions">Decisions</h4>
-        <Linked empty={emptyLinks(relations, 'No decision refers to this work yet.')} items={decisions.map((entry) => ({ key: entry.link.id, label: entry.title, hint: entry.link.role === 'still_applies' ? 'still applies' : undefined, open: () => openDetails({ kind: 'decision', id: entry.id }) }))} />
+        <Linked empty={emptyLinks(relations, 'No decision refers to this work yet.')} items={decisions.map((entry) => ({ key: entry.link.id, label: entry.title, hint: entry.link.role === 'still_applies' ? 'still applies' : undefined, open: () => openDetails({ kind: 'decision', id: entry.id, projectId: context.project.id }) }))} />
       </section>
 
       <section className="details__sec" aria-labelledby="wd-results">
         <h4 id="wd-results">Results</h4>
-        <Linked empty={emptyLinks(relations, isFinished(item) ? 'Finished without a written result.' : 'No result yet. Small tasks do not need one.')} items={results.map((entry) => ({ key: entry.link.id, label: entry.title, open: () => openDetails({ kind: 'result', id: entry.id }) }))} />
+        <Linked empty={emptyLinks(relations, isFinished(item) ? 'Finished without a written result.' : 'No result yet. Small tasks do not need one.')} items={results.map((entry) => ({ key: entry.link.id, label: entry.title, open: () => openDetails({ kind: 'result', id: entry.id, projectId: context.project.id }) }))} />
         {writable ? <div className="wd-actions"><Button variant="secondary" icon="plus" onClick={() => openDetails({ kind: 'attach-result', projectId: item.projectId, workId: item.id })}>Attach a result</Button></div> : null}
       </section>
 
@@ -343,7 +346,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, choices, 
       {earlier ? (
         <section className="details__sec" aria-labelledby="wd-replaces">
           <h4 id="wd-replaces">{decision.status === 'proposed' ? 'Would replace' : 'Replaced'}</h4>
-          <button type="button" className="wd-link" onClick={() => openDetails({ kind: 'decision', id: earlier.id })}><span className={earlierObject?.kind === 'decision' && earlierObject.status === 'superseded' ? 'wd-was' : ''}>{earlier.title}</span><Icon name="chevron-right" size={14} /></button>
+          <button type="button" className="wd-link" onClick={() => openDetails({ kind: 'decision', id: earlier.id, projectId: context.project.id })}><span className={earlierObject?.kind === 'decision' && earlierObject.status === 'superseded' ? 'wd-was' : ''}>{earlier.title}</span><Icon name="chevron-right" size={14} /></button>
           {earlierObject?.kind === 'decision' && earlierObject.rationale ? <p className="wd-quote">Earlier reason: {earlierObject.rationale}</p> : null}
           {earlierRead.read.phase === 'unavailable' ? <p className="wd-error" role="alert">Earlier reason could not be loaded. <button type="button" className="wd-inline" onClick={reload}>Refresh details</button></p> : null}
         </section>
@@ -351,7 +354,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, choices, 
       {later ? (
         <section className="details__sec" aria-labelledby="wd-replaced-by">
           <h4 id="wd-replaced-by">Replaced by</h4>
-          <button type="button" className="wd-link" onClick={() => openDetails({ kind: 'decision', id: later.id })}><span>{later.title}</span><Icon name="chevron-right" size={14} /></button>
+          <button type="button" className="wd-link" onClick={() => openDetails({ kind: 'decision', id: later.id, projectId: context.project.id })}><span>{later.title}</span><Icon name="chevron-right" size={14} /></button>
         </section>
       ) : null}
 
@@ -364,7 +367,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, choices, 
       {affected.length ? (
         <section className="details__sec" aria-labelledby="wd-affects">
           <h4 id="wd-affects">Affects</h4>
-          <Linked items={affected.map((entry) => ({ key: entry.link.id, label: entry.title, open: () => openDetails({ kind: 'work', id: entry.id }) }))} />
+          <Linked items={affected.map((entry) => ({ key: entry.link.id, label: entry.title, open: () => openDetails({ kind: 'work', id: entry.id, projectId: context.project.id }) }))} />
         </section>
       ) : null}
       {decision.status !== 'proposed' || stillApplies.length ? (
@@ -372,8 +375,8 @@ function DecisionPanel({ decision, context, detail, relations, reload, choices, 
           <h4 id="wd-pivot">At this pivot</h4>
           {decision.status !== 'proposed' ? <ChoicePages choices={parkedChoices} label="Parked work pages" /> : null}
           <Linked items={[
-            ...stillApplies.map((entry) => ({ key: entry.link.id, label: entry.title, hint: 'still applies', open: () => openDetails({ kind: 'work', id: entry.id }) })),
-            ...parked.map((item) => ({ key: item.id, label: item.title, hint: 'parked', open: () => openDetails({ kind: 'work', id: item.id }) })),
+            ...stillApplies.map((entry) => ({ key: entry.link.id, label: entry.title, hint: 'still applies', open: () => openDetails({ kind: 'work', id: entry.id, projectId: context.project.id }) })),
+            ...parked.map((item) => ({ key: item.id, label: item.title, hint: 'parked', open: () => openDetails({ kind: 'work', id: item.id, projectId: context.project.id }) })),
           ]} />
         </section>
       ) : null}
@@ -429,7 +432,7 @@ function ResultPanel({ result, context, relations }: { result: OwnResult; contex
       </section>
       <section className="details__sec" aria-labelledby="wd-about">
         <h4 id="wd-about">Reports on</h4>
-        <Linked empty={emptyLinks(relations, 'Not linked to work or a decision.')} items={about.map((entry) => ({ key: entry.link.id, label: entry.title, hint: entry.link.to.type === 'decision' ? 'decision' : 'work', open: () => openDetails({ kind: entry.link.to.type as 'work' | 'decision', id: entry.id }) }))} />
+        <Linked empty={emptyLinks(relations, 'Not linked to work or a decision.')} items={about.map((entry) => ({ key: entry.link.id, label: entry.title, hint: entry.link.to.type === 'decision' ? 'decision' : 'work', open: () => openDetails({ kind: entry.link.to.type as 'work' | 'decision', id: entry.id, projectId: context.project.id }) }))} />
         {related.length ? <p className="wd-muted">{related.length} more {related.length === 1 ? 'link' : 'links'}</p> : null}
       </section>
       <OtherRelationships object={result} relations={relations} project={context.project} />

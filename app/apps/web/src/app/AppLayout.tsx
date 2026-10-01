@@ -109,18 +109,19 @@ function AppLayoutContent() {
   const inboxUnread = useInboxDot(me.user.id, location.pathname);
 
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
-  const detailsScope = useRef({ accountId: me.user.id, projectId });
-  useLayoutEffect(() => { detailsScope.current = { accountId: me.user.id, projectId }; }, [me.user.id, projectId]);
+  const detailsOwner = useMemo(() => ({ accountId: me.user.id, projectId }), [me.user.id, projectId]);
+  const detailsScope = useRef<typeof detailsOwner | null>(detailsOwner);
+  useLayoutEffect(() => { detailsScope.current = detailsOwner; return () => { detailsScope.current = null; }; }, [detailsOwner]);
   const [actionSlot, setActionSlot] = useState<HTMLElement | null>(null);
   const shell = useMemo(() => ({
     openDetails(view: DetailsView = 'place') {
-      if (detailsScope.current.accountId !== me.user.id || detailsScope.current.projectId !== projectId) return;
+      if (detailsScope.current !== detailsOwner) return;
       setDetailsView(typeof view === 'object' && 'id' in view ? { ...view, projectId: view.projectId ?? projectId } : view);
       toggleDetails(true);
     },
     openSearch() { setNavOpen(false); setJumpOpen(true); },
     actionSlot,
-  }), [toggleDetails, actionSlot, projectId, me.user.id]);
+  }), [toggleDetails, actionSlot, projectId, detailsOwner]);
 
   // A link inside an overlaid panel or sheet (#117 overview) leads to its destination.
   const [shownPath, setShownPath] = useState(location.pathname);
