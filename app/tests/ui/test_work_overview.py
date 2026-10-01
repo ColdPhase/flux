@@ -103,7 +103,8 @@ class OverviewWorkJourney(unittest.TestCase):
                 for object_page in range(2):
                     while True:
                         self.ready(page)
-                        latest = [body for url, body in observed if "/work-relations?" in url][-1]
+                        observation = ov.get_attribute("data-overview-relations-observed-at")
+                        latest = [body for url, body in observed if "/work-relations?" in url and body["observedAt"] == observation][-1]
                         self.assertLessEqual(len(latest["items"]), 50)
                         union.update(link["id"] for link in latest["items"])
                         seen.update(tuple(ref) for ref in self.identities(page))
@@ -121,7 +122,7 @@ class OverviewWorkJourney(unittest.TestCase):
                 self.assertEqual(seen, self.expected); self.assertEqual(union, self.edges)
                 self.assertLessEqual(len(self.identities(page)), 50)
                 # Deep document/thought relations are reached on their native edge page.
-                expect(ov.locator(f'a[href="/projects/{self.project}/map/{self.sketch}"]').filter(has_text="Try the same shield")).to_have_count(1)
+                expect(ov.locator(f'a[href="/projects/{self.project}/map/{self.sketch}#thought-{self.thought}"]').filter(has_text="Try the same shield")).to_have_count(1)
                 expect(ov.locator(f'a[href="/projects/{self.project}/docs/{self.doc}"]')).to_have_count(1)
                 shot(page, f"bounded-overview-mixed-{'phone' if phone else 'desktop'}")
                 ov.get_by_role("region", name="Docs").get_by_role("link", name=re.compile("What we learned about shielding")).scroll_into_view_if_needed()
@@ -257,3 +258,16 @@ class OverviewWorkJourney(unittest.TestCase):
         self.assertFalse(requests[-1].get("cursor"),"new native reference set cannot dispatch the previous set-bound cursor")
         self.assertEqual(set(requests[-1]["objects"][0].split(',')),{f"{kind}:{identity}" for kind,identity in new_refs})
         page.unroute("**/work-associations?**conversationId=**",hold)
+
+    def test_08_thought_source_opens_the_exact_native_thought_selected_on_its_sketch(self):
+        page=self.page();ov=self.open(page)
+        ov.get_by_role("navigation",name="Overview object pages").get_by_role("button",name="Next",exact=True).click();self.ready(page)
+        thought=ov.locator(f'a[href="/projects/{self.project}/map/{self.sketch}#thought-{self.thought}"]')
+        for _ in range(3):
+            if thought.count():break
+            ov.get_by_role("navigation",name="Overview relation pages").get_by_role("button",name="Next",exact=True).click();self.ready(page)
+        expect(thought).to_have_count(1);thought.click()
+        expect(page).to_have_url(re.compile(rf"/projects/{self.project}/map/{self.sketch}#thought-{self.thought}$"))
+        node=page.locator(f'.sk-node[data-id="{self.thought}"]')
+        expect(node).to_be_visible()
+        expect(node).to_have_class(re.compile("selected"))

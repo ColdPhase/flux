@@ -116,7 +116,7 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
       sources.set(key, { key, icon: 'doc', kind: `Source · v${link.to.version}`, title: link.toTitle, sub: sources.get(key)?.sub ?? `Used by “${object.title}”`, to: `/materials/${link.to.id}/versions/${link.to.version}` });
     }
     if (link.to.type === 'thought' && link.sketchId && !thoughts.has(link.to.id)) {
-      thoughts.set(link.to.id, { key: link.to.id, icon: 'map', kind: 'Thought on a sketch', title: link.toTitle, sub: `Linked to “${object.title}”`, to: `${base}/map/${link.sketchId}` });
+      thoughts.set(link.to.id, { key: link.to.id, icon: 'map', kind: 'Thought on a sketch', title: link.toTitle, sub: `Linked to “${object.title}”`, to: `${base}/map/${link.sketchId}#thought-${link.to.id}` });
     }
   }
   const sketchRows: Row[] = [...thoughts.values(), ...(messageMode ? [] : (sketches?.items ?? []).slice(0, 3).map((sketch) => ({ key: sketch.id, icon: 'map' as const, kind: 'Sketch', title: sketch.title, sub: `Started by ${sketch.createdBy.id === me.user.id ? 'you' : sketch.createdBy.name}`, to: `${base}/map/${sketch.id}` })))];
