@@ -408,12 +408,18 @@ class ThoughtDraftJourney(unittest.TestCase):
         self.assertTrue(page.evaluate("window.sameVisit === true"), "the map reopened inside one page visit, not after a reload")
         expect(page.get_by_label("Thought text")).to_have_value(LATEST)
         self.assertEqual(self.stored_drafts(page), [EARLIER])
-        # Session storage belongs to its tab: another tab of the same person starts without this draft.
+        # Session storage belongs to its tab: another tab of the same person starts without this draft,
+        # and a draft saved there for the same map never reaches this tab's copy or storage.
         second = page.context.new_page()
         second.goto(f"/projects/{self.project}/map/{self.sketch}")
         expect(second.locator(".sk-head")).to_be_visible()
         expect(second.get_by_role("form", name="New thought draft")).to_have_count(0)
         self.assertEqual(self.stored_drafts(second), [])
+        self.capture(second).fill("Second tab's own draft")
+        self.assertEqual(self.stored_drafts(second), ["Second tab's own draft"])
+        self.assertEqual(self.stored_drafts(page), [EARLIER])
+        self.leave_by_sketches_link_and_reopen(page)
+        expect(page.get_by_label("Thought text")).to_have_value(LATEST)
         second.close()
         # Cancel removes the visit's copy and the older persisted one; neither returns on reopening.
         page.get_by_role("button", name="Cancel", exact=True).click()
