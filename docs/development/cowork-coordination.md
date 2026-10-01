@@ -342,6 +342,11 @@ It opens no new transaction, model call or final event flush. Only prepared
 server runtime identity constructs the co-work context. Claim payload fields
 are exact bounded version/fence/checkpoint inputs; copied prompts, policy or
 capacity overrides are rejected. Actual unit role must match the grant class.
+Owner grant creation composes a content-free canonical unit target reader: the
+exact workspace/project/assigned connection and role must match before a grant
+with `objectId` can be created. Missing or mismatched targets stay unavailable;
+the owner API never substitutes a broader grant. This adds no claim or tool
+activation and retains the existing central owner/project-management checks.
 
 Its server-owned policy is mandatory: before the first native task lock it must
 lock the complete sorted relevant project graphs and return every dependency

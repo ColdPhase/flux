@@ -29,6 +29,13 @@ const clock = sql<Date>`clock_timestamp()`.mapWith((value: Date | string) => new
 
 export function coworkUnitRows(tx: DbExecutor) {
   return {
+    /** Current content-free exact grant target. No runtime, claim or quota is created. */
+    async grantTarget(scope: StorageScope, role: Unit['role']) {
+      const [row] = await tx.select({ id: units.id }).from(units).where(and(eq(units.id, scope.unitId),
+        eq(units.workspaceId, scope.workspaceId), eq(units.projectId, scope.projectId),
+        eq(units.assignmentConnectionId, scope.connectionId), eq(units.role, role))).for('share');
+      return !!row;
+    },
     /** The caller holds current authorization/command locks in this same outer transaction. */
     async lock(scope: StorageScope, prepareTasks?: (units: readonly CoWorkTaskLockInput[]) => Promise<readonly string[]>) {
       await tx.insert(schema.coworkConnectionSlots).values({ workspaceId: scope.workspaceId, connectionId: scope.connectionId })

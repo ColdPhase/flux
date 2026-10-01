@@ -39,9 +39,9 @@ async function fixture(maximumUses = 1, seconds = 30) {
   const unitId = randomUUID();
   await db.insert(schema.coworkUnits).values({ id: unitId, workspaceId: ws.id, projectId: p.id, taskId: work.id,
     lineageTaskId: work.id, runId: randomUUID(), unitKey: unitId, role: 'execute', assignmentConnectionId: connection.id });
-  const grant = async (operation: 'claim' | 'renew' | 'release' = 'claim', objectId = unitId, role: 'execute' | 'review' | 'plan' = 'execute') =>
+  const grant = async (operation: 'claim' | 'renew' | 'release' = 'claim', objectId: string | null = unitId, role: 'execute' | 'review' | 'plan' = 'execute') =>
     expectStatus(await owner.browser.request('POST', `/api/v1/agent-connections/${connection.id}/action-grants`,
-      { body: { clientCommandId: randomUUID(), projectId: p.id, operation: `cowork.${operation}`, objectId,
+      { body: { clientCommandId: randomUUID(), projectId: p.id, operation: `cowork.${operation}`, ...(objectId ? { objectId } : {}),
         peerRequestClass: role, maximumUses, expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201) as AgentStandingGrant;
   const ceiling = await grant();
   const command: AgentExecutionCommand = { runtimeSessionId: runtime.id, grantId: ceiling.id, clientCommandId: randomUUID(),
@@ -180,7 +180,12 @@ test('runtime expiry during an actual connection-slot lock wait rolls back the l
 });
 
 test('exact actual role and strict payload fields fail closed before any claim receipt', async () => {
-  const f = await fixture(); const review = await f.grant('claim', f.unitId, 'review');
+  const f = await fixture();
+  expectStatus(await f.owner.browser.request('POST', `/api/v1/agent-connections/${f.connection.id}/action-grants`,
+    { body: { clientCommandId: randomUUID(), projectId: f.p.id, operation: 'cowork.claim', objectId: f.unitId,
+      peerRequestClass: 'review', maximumUses: 1, expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 404,
+  'an exact target cannot receive the wrong role grant');
+  const review = await f.grant('claim', null, 'review');
   await rejects(f.run({ ...f.command, grantId: review.id, peerRequestClass: 'review' }), 'COWORK_UNIT_NOT_FOUND');
   await rejects(f.run({ ...f.command, payload: { expectedVersion: 1, prompt: 'invented authority' } }), 'INVALID_INPUT');
   await assert.rejects(f.run(f.command, { policy: { ...f.policy, prepareTaskLocks: undefined } as unknown as CoWorkClaimPolicy }), /providers are required/);
