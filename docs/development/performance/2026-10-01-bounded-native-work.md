@@ -39,12 +39,21 @@ SQL, new audience, cached permission proof or materialized second source of trut
    State-line references identify the newest accepted rule and proposal, newest
    result, representative in-progress/blocked objects and exact counts. These are
    bounded lightweight native id/title/status references, not full WorkItems.
-   Show at most three distinct current owner labels with an exact remainder count;
+   Owner distinctness is native principal kind/id, never first-name text (two Ada
+   accounts remain two people). Show at most three distinct current owner labels with an exact remainder count;
    never present a partial owner list as everyone. Failed required counts or name
    batches produce an unavailable/error state, not zero or a complete-looking list.
 
-2. ProjectWorkPage returns a typed heterogeneous page of existing native WorkItem,
-   Decision and WorkResult DTOs, exact selected total and explicit continuation.
+2. ProjectWorkPage returns a typed heterogeneous page of DISTINCT bounded native
+   row projections, exact selected total, the complete summary facet from the SAME
+   read observation and explicit next/previous continuation. A row retains native
+   kind/id/project/audience/title/version, work status/owner/blocker/park metadata,
+   decision status/actor metadata or result finding/actor metadata. It is not a full
+   WorkItem/Decision/WorkResult: in particular it has no unlimited links array.
+   SQL aggregates return exact source/result/decision relation counts; at most one
+   actual rule/parked-by reference and a message-source presence flag serve the
+   existing row text. Selected relationships have their own bounded native pages.
+   Native owner identity and display label remain separate fields.
    Tasks' All view preserves the present group order: proposals, in progress,
    blocked, open, parked, finished, accepted/superseded decisions, results. Each
    group's records keep createdAt DESC, id DESC ordering. A selected view applies
@@ -62,11 +71,28 @@ SQL, new audience, cached permission proof or materialized second source of trut
    batches a window; never one HTTP request per message. MessageObjects needs
    role=source; ProjectOverview includes any link to a scoped message and must
    retain that distinct meaning. Additional links remain accessible through a
-   labelled continuation in their native context. Keep material version, native
+   labelled continuation in their native context. Limit the ENTIRE batch to 50
+   typed objects (maximum 100) and 100 association edges, not 100 objects per input.
+   Deduplicate objects by native kind/id; count distinct object identities for
+   each message/type separately from association edges. Return exact per-input
+   message/type totals and global distinct-object/edge totals. A closed selector
+   bound to the normalized set of source IDs, relation meaning and authenticated
+   scope owns each continuation. If edge and object limits reach different
+   boundaries, return their explicit independent continuations; neither partial
+   preview means complete. DTO rows use the bounded projection above and edges
+   contain only native endpoints/role/version and bounded native title metadata.
+   Full material/body/outcome/evidence payloads are not multiplied into batch
+   previews; source content still opens at its native route.
+   Keep material version, native
    thought/project-sketch, doc and message back routes; no private-sketch leakage.
 
-4. Details keeps its native object GET and resolves only its actual related refs
-   through batched/paged reads. Earlier/later/parked-by decision refs retain real
+4. Existing full native object GETs remain compatible, but optimized Details uses
+   a DISTINCT detail projection containing the native object's own complete
+   fields/versions and exact relationship counts, with no implicit full links
+   array. Each relationship page has at most 100 edges globally. Resolve only
+   that page's actual related refs through bounded batched reads. A 50-link command
+   limit does not bound all incoming links accumulated over time; do not call
+   legacy linkReader(repo.links(ids)) to hydrate unlimited incoming edges. Earlier/later/parked-by decision refs retain real
    IDs; parked work and choice/history lists have explicit continuation. Propose
    decision choices include every accepted rule. Pivot candidates are unfinished
    and unparked. Attach-result choices include unfinished parked work and the
@@ -78,22 +104,53 @@ SQL, new audience, cached permission proof or materialized second source of trut
 
 Closed query schemas specify group/type, caller-only filtering, native
 message/conversation scope, parked-by decision, bounded title search, limit and
-continuation; invalid combinations are rejected. Every request uses the current
+continuation; invalid combinations are rejected. Association output pages and
+relationship previews are globally bounded independently of the number of input
+objects. Current native field length contracts apply; a projection carries no
+unrequested full body or repeated full relationship graph. Every request uses the current
 central project.read policy before counting/selecting/hydrating. Validate scope
 against the actual native source/decision records. All list/aggregate operations
 are read-only; no acknowledgment, model, media, event or background job effects.
 
-Use complete keyset continuation rather than the existing offset<=10000 limit.
-The bounded closed cursor contains version, selector binding and the last native
-group/creation-time/id key, with the DB timestamp precision preserved. It confers
-no authority and is revalidated under the current project/principal on every
-request. No cookie/session/name/title is embedded. Page rows and selected/global
-counts describe one coherent DB observation; propose a concrete single-query or
-equivalent transaction implementation during review. Between pages the project
-remains live: changes can move objects between groups. Explicit refresh rechecks
-counts and the selected native anchor; no claim of an immutable multi-page snapshot.
+Use complete BIDIRECTIONAL keyset continuation rather than offset<=10000.
+The closed cursor (maximum 512 encoded bytes) contains version, direction,
+project/principal/selector binding and a native group/creation-time/id boundary,
+with raw DB timestamp precision preserved. Next uses the last displayed key and
+normal order. Previous uses the first displayed key, reverses the SQL order and
+comparison, then reverses the bounded result into normal display order. No client
+history stack is required: a direct URL/reload includes its cursor, selected view
+and Only mine, and obtains valid next/previous cursors from that actual page.
+Empty/changed pages retain explicit navigation/refresh; never invent an earlier
+page from a cached length. A cursor confers no authority and is revalidated under
+the current project/principal on each request; it contains no cookie/session/name/
+title. Association/relationship cursors additionally bind their native scoped
+selector and relation meaning. Do not use lossy JavaScript Date milliseconds for
+DB cursor boundaries or deduplicate people by display text.
 
-Initial Tasks uses summary plus one selected page, within at most four collection
+A new READ ONLY REPEATABLE READ per-request unit of work, following the existing
+export adapter pattern, evaluates native policy first, then computes all counts,
+page rows, summary refs, names, bounded links and relation counts within that SAME
+snapshot/transaction. No locks through browser/network waits, durable snapshot
+cache, event or background effect. Every next/previous query opens a new native
+read observation. Before exposing the assembled response, resolve the exact
+native session again outside the snapshot and check current central project read
+access: a revoked/expired/replaced session or removed audience invalidates the
+response. Recheck object-specific source visibility (including private sketches)
+under the current source policy; a changed scope invalidates the response for
+refresh instead of returning its old labels. Effective writable/read-only UI
+metadata comes from that final current-policy check. The snapshot describes data
+as observed, not an authority capability or historical attestation.
+
+A combined page response carries its own exact summary and replaces the shared
+project summary facet atomically in the active account/project/view generation.
+A standalone summary response is an independent observation; it cannot overwrite
+that page's counts/refs or be claimed as the same snapshot. Refresh of an active
+page fetches the combined read again. Non-list views may use standalone summary
+plus separately scoped association/detail reads, explicitly separate observations.
+Between pages objects can move groups; refresh rechecks the selected native anchor.
+No claim of an immutable multi-page snapshot is made.
+
+Initial Tasks uses one combined summary/selected-page response, within at most four collection
 calls and 100 unique full WorkItems total. Lightweight summary references stay
 explicitly distinct. Retain at most 200 rendered work rows in all measured views.
 Current unbounded decision/result arrays cannot be a hidden replacement cost.
