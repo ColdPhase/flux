@@ -546,7 +546,7 @@
     "scripts/check_application.sh": "9c65cc03ee4bd2444ab668119829bbf7a9443f0323657d389301877be68004af"
   },
   "outputs": {
-    "README.md": "217e75488b02825074f8599a52116dc4b5ecaebad136df3142e7d69994aabeff",
+    "README.md": "1bcf0c187122207d890f808004138b08cde8f5ed14ee43f8e72e0f3d007112e0",
     "bounded-message-objects-desktop.png": "c0f590d45b0c2fb790c9e24cb3af6831a139c4d7cee09cbceec017b542287f66",
     "bounded-message-objects-mixed-desktop.png": "2f1b51cf58003a994b9fa0a1f3ee0b58bf70b48da4dd0ff0e1e9cf2778286b24",
     "bounded-message-objects-mixed-phone.png": "2f676432c209df225ca2264cdcd8eadbc404d98fe4332b91467bbc91c67151d9",
@@ -587,6 +587,6 @@
     "owner-wrapper.sh": "7ae65ef37465f667f869cf4a3685c72fc9d99918a0bc590f56c1947d8a431809",
     "raw-records.json": "20457a91f0d3e0fb4245da4ee216caa7e582904ee22bfebf563a38f7d9a274cd",
     "reproduce.sh": "0f2f20a1ec05a4c2fe2221b1972da2e497eb5232bb59d385e1d72a16bdbc43de",
-    "review.md": "2ab464283baa9abcf521a7ed4ee3345f516671c77c4509464f3bea9f63abb4ed"
+    "review.md": "f52bbf494665d1a235cc9ecda8ad5b7e91852fac94aac947da57b131f4eefdb6"
   }
 }

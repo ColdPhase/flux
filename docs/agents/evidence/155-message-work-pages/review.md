@@ -31,3 +31,12 @@ Images cannot certify behavior, persistence, keyboard/focus, WCAG, responsive
 transitions or physical devices. Owner-run45 browser checks are separate evidence.
 Parent/assistant/remaining full-list consumers, original1000 performance and
 all wider #155/device/release criteria remain open.
+
+
+Provenance audit at evidence commit510050f3fbfb5e25376769d3a35abd538e0f79fe:
+all542 immutable input hashes,42 tracked outputs and16 gzip/raw/readable pairs
+matched. Final45/25 logs, the separately disclosed canceled callback, all four
+PNG hashes/dimensions, three current image IDs and wrapper syntax were consistent.
+The requested wording correction now describes up to100 loaded IDs in a batch
+covering the viewport, rather than claiming all neighboring IDs were viewed.
+No reviewer application rerun, image-content extraction or whole-task approval.

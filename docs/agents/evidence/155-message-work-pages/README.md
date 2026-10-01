@@ -14,8 +14,8 @@ MessageWork, 17 ProjectSurface, 10 WorkDecisions and 10 PersonalAssistant.
 Desktop/phone variants are subtests, not additional named journeys. Existing
 assistant tests use the configured mock provider, not real agent clients.
 
-MessageObjects now reads one global native SOURCE association window for at most
-100 actually viewed message IDs. It renders at most 50 matched edges/chips and
+MessageObjects now reads one global native SOURCE association window for up to
+100 loaded message IDs in a batch covering the actual viewport. It renders at most 50 matched edges/chips and
 uses independent bounded object and edge continuations. Exact per-message native
 kind counts are retained even when a preview is incomplete. Typed native work,
 decision and result rows retain their identities and native status/owner text.
