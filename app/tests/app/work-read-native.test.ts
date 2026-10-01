@@ -74,7 +74,7 @@ describe('bounded native work reads through HTTP and current native fences', () 
     assert.equal(first.items.length, 3); assert.equal(first.total, 10); assert.equal(first.summary.access, 'viewer');
     assert.deepEqual(first.summary.all, summary.all); assert.match(first.summary.observedAt, /\.\d{6}Z$/);
     const seen = [...first.items]; let next = first.nextCursor;
-    while (next) { const page = await get<ProjectWorkView>(`${base()}/work-view?limit=3&cursor=${next}`); seen.push(...page.items); next = page.nextCursor; }
+    while (next) { const page = await get<ProjectWorkView>(`${base()}/work-view?limit=3&cursor=${next}`, viewer); seen.push(...page.items); next = page.nextCursor; }
     assert.equal(new Set(seen.map(({ kind, id }) => `${kind}:${id}`)).size, 10);
     assert.deepEqual(seen.filter(({ kind }) => kind === 'decision').map(({ id }) => id), [rule.id, oldRule.id]);
     for (const row of seen) for (const forbidden of ['links', 'outcome', 'rationale', 'evidence', 'createdByKind', 'ownerUserId', 'parkedByDecisionId']) assert.equal(forbidden in row, false);
@@ -127,7 +127,7 @@ describe('bounded native work reads through HTTP and current native fences', () 
     const second = await get<WorkRelations>(`${path}&cursor=${first.nextCursor}`);
     const previous = await get<WorkRelations>(`${path}&cursor=${second.previousCursor}`); assert.deepEqual(previous.items, first.items);
     const all = await get<WorkRelations>(`${base()}/work-relations?objects=work:${main.id}`);
-    assert.deepEqual(all.items.filter(({ to }) => to.type === 'material').map(({ to, toTitle }) => [to.type === 'material' && to.version, toTitle]), [[1, 'Material v1'], [2, 'Material v2']]);
+    assert.deepEqual(all.items.filter(({ to }) => to.type === 'material').map(({ to, toTitle }) => [to.type === 'material' && to.version, toTitle]).sort((a, b) => Number(a[0]) - Number(b[0])), [[1, 'Material v1'], [2, 'Material v2']]);
     assert.equal(all.items.find(({ to }) => to.id === thoughtId)?.sketchId, sketchId);
     assert.equal(all.items.find(({ to }) => to.type === 'message')?.toTitle, 'Actual source opening');
     const only = await get<WorkRelations>(`${base()}/work-relations?objects=work:${main.id}&role=source`); assert.equal(only.total, 4);

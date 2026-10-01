@@ -86,8 +86,9 @@ export function nativeWorkAssociationRows(db: DbExecutor) {
       if (ids.length > 100) throw new Error('Native edge hydration exceeds the global bound');
       if (!ids.length) return [];
       const ordered = [...ids];
-      type Row = { id: string; role: LinkRole; fromType: ObjectLink['from']['type']; fromId: string; toType: ObjectRef['type']; toId: string; toVersion: number | null; fromTitle: string | null; toTitle: string | null; conversationId: string | null; sketchId: string | null; createdAt: Date };
-      const found = await db.execute<Row>(sql`WITH visible AS (${nativeVisibleWorkEdges(projectId)}) SELECT e.id, e.role, e.from_type AS "fromType", e.from_id AS "fromId", e.to_type AS "toType", e.to_id AS "toId", e.to_version AS "toVersion", e.created_at AS "createdAt",
+      type Row = { id: string; role: LinkRole; fromType: ObjectLink['from']['type']; fromId: string; toType: ObjectRef['type']; toId: string; toVersion: number | null; fromTitle: string | null; toTitle: string | null; conversationId: string | null; sketchId: string | null; createdAt: string };
+      const found = await db.execute<Row>(sql`WITH visible AS (${nativeVisibleWorkEdges(projectId)}) SELECT e.id, e.role, e.from_type AS "fromType", e.from_id AS "fromId", e.to_type AS "toType", e.to_id AS "toId", e.to_version AS "toVersion",
+        to_char(e.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "createdAt",
         ${title(projectId, sql`e.from_type`, sql`e.from_id`)} AS "fromTitle", ${title(projectId, sql`e.to_type`, sql`e.to_id`, sql`e.to_version`)} AS "toTitle",
         CASE WHEN e.to_type = 'message' THEN (SELECT m.conversation_id FROM project_messages m WHERE m.project_id = ${projectId}::uuid AND m.id = e.to_id) ELSE NULL END AS "conversationId",
         CASE WHEN e.to_type = 'sketch' THEN e.to_id WHEN e.to_type = 'thought' THEN (SELECT t.sketch_id FROM sketch_thoughts t JOIN sketches s ON s.id = t.sketch_id WHERE s.project_id = ${projectId}::uuid AND s.scope = 'project' AND t.id = e.to_id) ELSE NULL END AS "sketchId"
@@ -97,7 +98,7 @@ export function nativeWorkAssociationRows(db: DbExecutor) {
         const row = rows.get(id); if (!row || row.fromTitle === null || row.toTitle === null) throw new Error('Missing required native edge endpoint metadata');
         const to: ObjectRef = row.toType === 'material' ? { type: 'material', id: row.toId, version: row.toVersion! } : { type: row.toType, id: row.toId };
         return { id, projectId, role: row.role, from: { type: row.fromType, id: row.fromId }, to, fromTitle: row.fromTitle, toTitle: row.toTitle,
-          conversationId: row.conversationId, sketchId: row.sketchId, createdAt: row.createdAt.toISOString() };
+          conversationId: row.conversationId, sketchId: row.sketchId, createdAt: row.createdAt };
       });
     },
   };
