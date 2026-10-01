@@ -50,6 +50,8 @@ export const router = createBrowserRouter([
       {
         Component: AuthLayout,
         children: [
+          // Better Auth sends a signed OAuth continuation here, including forced reauthentication.
+          { path: 'login', action: signInAction, Component: SignInPage },
           { path: 'sign-in', loader: redirectIfSignedIn, action: signInAction, Component: SignInPage },
           { path: 'sign-up', loader: redirectIfSignedIn, action: signUpAction, Component: SignUpPage },
           { path: 'forgot-password', loader: forgotPasswordLoader, action: forgotPasswordAction, Component: ForgotPasswordPage },

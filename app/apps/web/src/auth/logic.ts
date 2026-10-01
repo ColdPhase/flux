@@ -101,7 +101,15 @@ export async function signInAction({ request }: ActionFunctionArgs): Promise<For
   };
   if (hasErrors(fieldErrors)) return { fieldErrors, values: { email } };
   try {
-    await signIn({ email, password });
+    const url = new URL(request.url);
+    const oauthQuery = url.pathname === '/login' ? url.search.slice(1) : undefined;
+    const result = await signIn({ email, password, ...(oauthQuery ? { oauth_query: oauthQuery } : {}) });
+    if (oauthQuery) {
+      const response = result as { url?: string; redirect_uri?: string };
+      const destination = response.url ?? response.redirect_uri;
+      if (!destination) return { formError: 'This authorization request no longer works. Start again in your agent client.', values: { email } };
+      return redirect(destination);
+    }
   } catch (error) {
     return { formError: describeAuthError(error, 'sign-in'), values: { email } };
   }

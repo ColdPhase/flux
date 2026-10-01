@@ -21,7 +21,7 @@ export function signUp(input: { name: string; email: string; password: string })
   return request<unknown>(`${AUTH_BASE_PATH}/sign-up/email`, { method: 'POST', body: input });
 }
 
-export function signIn(input: { email: string; password: string }) {
+export function signIn(input: { email: string; password: string; oauth_query?: string }) {
   return request<unknown>(`${AUTH_BASE_PATH}/sign-in/email`, { method: 'POST', body: { ...input, rememberMe: true } });
 }
 
