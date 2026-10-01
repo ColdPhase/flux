@@ -36,6 +36,28 @@
     {
       "path": "docs/agents/evidence/136-native-state/peer-fixes/visual-inputs/136-state-long-title-122-744.png",
       "sha256": "deb0e05e587b9b7ffc062c68d0fae6090731887e37ab6e1bf426d7e0b44fe75b"
+    },
+    {
+      "path": "/tmp/flux136-merged-expanded.log",
+      "sha256": "904a464305328d7306a7e6f59961f99815c3c527f509f0354e7b38524d806952"
+    },
+    {
+      "path": "/tmp/flux136-merged-actor.log",
+      "sha256": "577faa94020e30657f59d87a18d7f9d2df21f0f0646de7df110fc956880e5a34"
+    },
+    {
+      "path": "/tmp/flux136-current-auth-ui.log",
+      "sha256": "5e525f26abd66f93dbc26d4b509b5cb2a029e64133c4c09a7b1438bacf17aa52"
+    },
+    {
+      "path": "/tmp/flux136-current-actors-consent.log",
+      "sha256": "d2a10a6c082b4e23dfc36586de250510610a17d1a5cb916751f4ce65eed0360f"
+    },
+    {
+      "path": "/tmp/flux136-current-actors-consent-launch-error.log",
+      "sha256": "5ae4c83d945666268aa52bc827b5e9c8f4062cfec1608744e546745c9362a079"
     }
-  ]
+  ],
+  "integrated_runtime_test_head": "ebdd3aaf261ed16c56248f4682f01be916dd0745",
+  "accepted_main": "919c1dbf319b078d213c3faa2371e25788223380"
 }

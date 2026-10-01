@@ -57,3 +57,36 @@ other optional findings remain follow-ups. Full #136 AC1–AC5, #151, #155, Agen
 real-client/device/performance/motion and integrated release acceptance stay open.
 
 Next: independent current-head delta review of F1/F2. No self-approval or merge.
+
+## Integration with accepted main
+
+After the first push, GitHub identified two conflicts with accepted #164.
+Integration source `8f0c09de42e8d4cbecc9c227078d5ec0e9c62e5a` preserves this
+slice's reader Sources/drafts, readable audience and permission rendering while
+retaining the genuine-agent reply hint and authors from main. Viewer state does
+not display assistant/citation/resend write controls; the existing actor test's
+explicit read-access explanation remains visible.
+
+At8f0c09de the expanded configured Docker browser modules (state, project surface,
+work, app shell, personal assistant, return) **64/64 PASS236.814s**, plus the actual
+genuine-agent/human reply/history browser phase **1/1 PASS**. Those results retain
+that source pin, not the later one.
+
+Accepted #167 then landed in main919c1dbf. Final integrated runtime/test source
+`ebdd3aaf261ed16c56248f4682f01be916dd0745` merges it without further conflict.
+Owned header/conversation/project/test-state bytes remain identical to8f0c09de.
+Relevant changed authentication integration was verified again at this final
+source: Docker build/typecheck/lint; state/app-shell/personal-assistant browser
+modules **33/33 PASS110.574s**; actual genuine-agent/human-history **1/1 PASS**;
+actual named two-tab and signed-out OAuth consent **1/1 PASS**. Both isolated
+Docker runners exit0 and remove only their own resources. This is not a new
+64-case or complete391-case run; accepted upstream checks keep their own pins.
+
+A preliminary consent runner launch returned127 before Docker/test startup
+because its wrapper creation and invocation were dispatched together. The
+corrected invocation above is the actual successful browser run. Its small
+launch-error log hash is retained; no failed assertion is hidden.
+
+[Manifest](manifest.json) records exact private logs. The current PR head needs
+independent delta re-review and required CI before any protected merge. Remaining
+F3/design/full-task outcomes described above remain open.
