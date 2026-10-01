@@ -247,6 +247,16 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
     const denied = await mcp(bearer, 45, 'tools/call', { name, arguments: arguments_ });
     assert.ok(denied.message?.error || (denied.message?.result as { isError?: boolean })?.isError, name);
   }
+  // Native task plans (#152): the agent reads the same canonical task, with criteria, prerequisite state and plan revision.
+  const charged = expect(await browser.request('POST', `/api/v1/projects/${projectId}/work`, { body: { title: 'Charge the pack', status: 'done' } }), 201);
+  const planned = expect(await browser.request('POST', `/api/v1/projects/${projectId}/work`, { body: { title: 'Run the battery comparison',
+    criteria: ['Four hours observed'], dependencyIds: [charged.id], planIntent: { materialId, version: 1, intentKey: 'battery-plan' } } }), 201);
+  const plannedRead = toolValue((await mcp(bearer, 60, 'tools/call', { name: 'flux_get_work', arguments: { projectId, id: planned.id } })).message);
+  assert.deepEqual([plannedRead.criteria, plannedRead.dependencyIds, plannedRead.planIntent], [['Four hours observed'], [charged.id], { materialId, version: 1, intentKey: 'battery-plan' }]);
+  assert.deepEqual((plannedRead.prerequisites as { id: string; met: boolean }[]).map((item) => [item.id, item.met]), [[charged.id, true]]);
+  const plannedList = toolValue((await mcp(bearer, 61, 'tools/call', { name: 'flux_list_work', arguments: { projectId, limit: 50 } })).message);
+  assert.deepEqual((plannedList.items as { id: string; criteria: string[] }[]).find((item) => item.id === planned.id)?.criteria, ['Four hours observed']);
+  assert.deepEqual((plannedList.items as { id: string; planIntent: unknown }[]).find((item) => item.id === work.id)?.planIntent, null, 'earlier tasks present no guessed plan');
   const clientSessionId = randomUUID();
   const bootstrap = toolValue((await mcp(bearer, 46, 'tools/call', { name: 'flux_bootstrap', arguments: { projectId, clientSessionId } })).message);
   const repeatedBootstrap = toolValue((await mcp(bearer, 47, 'tools/call', { name: 'flux_bootstrap', arguments: { projectId, clientSessionId } })).message);
