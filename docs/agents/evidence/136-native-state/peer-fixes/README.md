@@ -90,3 +90,5 @@ launch-error log hash is retained; no failed assertion is hidden.
 [Manifest](manifest.json) records exact private logs. The current PR head needs
 independent delta re-review and required CI before any protected merge. Remaining
 F3/design/full-task outcomes described above remain open.
+
+The neutral reviewer also inspected four [integration captures](integration-inputs/136-state-long-title-122-1280.png) at8f0c09de, including actual mixed-agent/human reader history. No new header/history readability finding; the same tall empty-conversation spacing remains a material open #136 finding. Their exact hashes and unchanged final owned header/conversation bytes are recorded.

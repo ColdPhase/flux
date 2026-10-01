@@ -56,6 +56,26 @@
     {
       "path": "/tmp/flux136-current-actors-consent-launch-error.log",
       "sha256": "5ae4c83d945666268aa52bc827b5e9c8f4062cfec1608744e546745c9362a079"
+    },
+    {
+      "path": "docs/agents/evidence/136-native-state/peer-fixes/integration-inputs/136-state-reader-1280-light.png",
+      "sha256": "f369faeac5e4e3a2da11774af034edf3d7ea6d279afd7296f7ac92b90c2b66c7",
+      "capture_runtime": "8f0c09de42e8d4cbecc9c227078d5ec0e9c62e5a"
+    },
+    {
+      "path": "docs/agents/evidence/136-native-state/peer-fixes/integration-inputs/136-state-reader-saved-conversation-390.png",
+      "sha256": "74b1b20bbbfd6df93df84f0a2226eea1507bda6f2f695754f3679a8910b9ab42",
+      "capture_runtime": "8f0c09de42e8d4cbecc9c227078d5ec0e9c62e5a"
+    },
+    {
+      "path": "docs/agents/evidence/136-native-state/peer-fixes/integration-inputs/136-state-long-title-122-1280.png",
+      "sha256": "58f92d194ce4434af718cbfab5381c5a65054d1b606724fd4967258d582b3292",
+      "capture_runtime": "8f0c09de42e8d4cbecc9c227078d5ec0e9c62e5a"
+    },
+    {
+      "path": "docs/agents/evidence/136-native-state/peer-fixes/integration-inputs/mixed-authors-reader-390.png",
+      "sha256": "df7947952765434b67c4845c584d1957dc94a506be7716786460c3c261d56ffc",
+      "capture_runtime": "8f0c09de42e8d4cbecc9c227078d5ec0e9c62e5a"
     }
   ],
   "integrated_runtime_test_head": "ebdd3aaf261ed16c56248f4682f01be916dd0745",
