@@ -169,3 +169,18 @@ test('mutating supplied limits cannot bypass validated context or global capacit
   assert.equal(state.work.watermarks, 1); assert.equal(state.work.entries, 1);
   assert.equal(state.candidates(a, 0, 0).availability, 'unavailable');
 });
+
+
+test('already DB-expired activity cannot resurrect after a later clock reversal or reconnect', () => {
+  const state = store(); state.accept(pulse(), 0, 0);
+  state.accept(pulse({ active: false, sequence: 3, expiresAt: 5500 }), 500, 500);
+  state.candidates(a, 6000, 6000); assert.equal(state.work.watermarks, 0);
+  assert.equal(state.accept(pulse({ sequence: 2, expiresAt: 5200 }), 1000, 6100), false);
+  assert.equal(state.candidates(a, 1000, 6100).availability, 'unavailable');
+  assert.deepEqual(state.candidates(a, 1000, 6100).pulses, []);
+  state.setAvailable(false); state.setAvailable(true);
+  assert.equal(state.accept(pulse({ sequence: 2, expiresAt: 5200 }), 1000, 6200), false);
+  assert.equal(state.candidates(a, 1000, 6200).availability, 'unavailable');
+  assert.equal(state.candidates(a, 6001, 7000).availability, 'ready');
+  assert.equal(state.accept(pulse({ sequence: 4, expiresAt: 11001 }), 6001, 7000), true);
+});

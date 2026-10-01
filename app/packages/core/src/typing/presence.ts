@@ -33,6 +33,8 @@ export class TypingPresence {
   private readonly limits: Readonly<TypingPresenceLimits>;
   private available = false;
   private generation = 0;
+  private databaseFloor = -Infinity;
+  private clockBehind = false;
   private readonly saturated: Quarantine = { until: 0, expiry: 0 };
   constructor(limits: TypingPresenceLimits = DEFAULT_LIMITS) {
     for (const key of Object.keys(DEFAULT_LIMITS) as (keyof TypingPresenceLimits)[]) {
@@ -68,7 +70,17 @@ export class TypingPresence {
     for (const entry of this.entries.values()) if (typingContextKey(entry.pulse.context) === key) entry.active = false;
     this.generation++;
   }
-  private prune(databaseNow: number, monotonicNow: number) {
+  private prune(databaseNow: number, monotonicNow: number): number {
+    const behind = databaseNow < this.databaseFloor;
+    if (behind !== this.clockBehind) this.generation++;
+    this.clockBehind = behind;
+    this.databaseFloor = Math.max(this.databaseFloor, databaseNow);
+    databaseNow = this.databaseFloor;
+    if (behind) {
+      for (const entry of this.entries.values()) {
+        if (entry.active) { entry.active = false; this.generation++; }
+      }
+    }
     for (const [id, watermark] of this.watermarks) {
       if (watermark.expiresAt <= databaseNow) {
         this.watermarks.delete(id);
@@ -79,6 +91,7 @@ export class TypingPresence {
     for (const entry of this.entries.values()) {
       if (entry.active && entry.deadline <= monotonicNow) { entry.active = false; this.generation++; }
     }
+    return databaseNow;
   }
   private quarantined(state: Quarantine, databaseNow: number, monotonicNow: number) {
     return state.until > monotonicNow || state.expiry > databaseNow;
@@ -94,7 +107,7 @@ export class TypingPresence {
   }
   /** Latest sequence replaces the WHOLE connection before filtering its new scope. */
   accept(pulse: TypingPulse, databaseNow: number, monotonicNow: number): boolean {
-    this.prune(databaseNow, monotonicNow);
+    databaseNow = this.prune(databaseNow, monotonicNow);
     if (!this.available || !Number.isSafeInteger(pulse.sequence) || pulse.sequence < 1 ||
       !Number.isFinite(pulse.expiresAt) || pulse.expiresAt <= databaseNow) return false;
     const watermark = this.watermarks.get(pulse.connectionId);
@@ -125,6 +138,7 @@ export class TypingPresence {
     }
     // Only the anonymous sequence fence of foreign activity is retained, not its metadata.
     if (!room) return false;
+    if (this.clockBehind) return !pulse.active;
     if (this.quarantined(room, databaseNow, monotonicNow)) {
       this.quarantine(room, pulse, monotonicNow);
       return false;
@@ -140,10 +154,10 @@ export class TypingPresence {
   }
   /** Internal candidates, not a public snapshot and not proof of access. */
   candidates(context: TypingContext, databaseNow: number, monotonicNow: number): { availability: 'ready' | 'unavailable'; pulses: TypingPulse[]; revision: number } {
-    this.prune(databaseNow, monotonicNow);
+    databaseNow = this.prune(databaseNow, monotonicNow);
     const key = typingContextKey(context);
     const room = this.watched.get(key);
-    if (!this.available || !room || this.quarantined(this.saturated, databaseNow, monotonicNow) || this.quarantined(room, databaseNow, monotonicNow))
+    if (!this.available || this.clockBehind || !room || this.quarantined(this.saturated, databaseNow, monotonicNow) || this.quarantined(room, databaseNow, monotonicNow))
       return { availability: 'unavailable', pulses: [], revision: this.generation };
     return { availability: 'ready', pulses: [...this.entries.values()].filter((entry) => entry.active && typingContextKey(entry.pulse.context) === key).map((entry) => ({ ...entry.pulse, context: { ...entry.pulse.context } })), revision: this.generation };
   }
