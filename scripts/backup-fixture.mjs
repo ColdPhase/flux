@@ -80,16 +80,21 @@ const redirectUri = 'http://127.0.0.1:19737/callback';
 /** The #52 authorization-code flow with PKCE for one connection, in a fresh browser session. */
 async function bearerFor(connectionId) {
   const browser = await signIn(owner);
-  await browser.expect('POST', `/api/v1/agent-connections/${connectionId}/select-for-oauth`, undefined, [204]);
   const verifier = randomBytes(32).toString('base64url');
   const query = new URLSearchParams({
     client_id: oauthClient, redirect_uri: redirectUri, response_type: 'code',
     code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256',
     state: ids(), scope: 'flux.context.read', resource: `${origin}/mcp`,
   });
+  // The connection choice is bound to this exact signed OAuth request (#152): authorize first, choose, continue.
   const start = await browser.request('GET', `/api/auth/oauth2/authorize?${query}`, undefined, { accept: 'text/html' });
-  const location = new URL((start.status === 302 ? start.location : start.json?.url) ?? '', origin);
-  assert.equal(location.pathname, '/consent', `OAuth authorize answered ${start.status}: ${start.text}`);
+  const choice = new URL((start.status === 302 ? start.location : start.json?.url) ?? '', origin);
+  assert.equal(choice.pathname, '/connect-agent', `OAuth authorize answered ${start.status}: ${start.text}`);
+  const selectedQuery = choice.search.slice(1);
+  await browser.expect('POST', `/api/v1/agent-connections/${connectionId}/select-for-oauth`, { oauth_query: selectedQuery }, [204]);
+  const continued = await browser.expect('POST', '/api/auth/oauth2/continue', { postLogin: true, oauth_query: selectedQuery }, [200]);
+  const location = new URL(String(continued.url ?? continued.redirect_uri), origin);
+  assert.equal(location.pathname, '/consent', `OAuth continue answered ${JSON.stringify(continued)}`);
   const oauthQuery = location.search.slice(1);
   const consent = await browser.expect('POST', '/api/auth/oauth2/consent', { accept: true, oauth_query: oauthQuery }, [200]);
   const code = new URL(consent.url).searchParams.get('code');

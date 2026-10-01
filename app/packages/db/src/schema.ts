@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { pgTable, text, timestamp, uuid, integer, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, check, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES, type AgentJsonValue, type AgentPostcondition } from '@flux/contracts';
 
 export const samples = pgTable('samples', {
   id: uuid('id').primaryKey(),
@@ -543,7 +544,10 @@ export const agentConnections = pgTable('agent_connections', {
   workspaceId: uuid('workspace_id').notNull(),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
   agentId: uuid('agent_id').notNull(),
-  scopes: text('scopes', { enum: ['flux.context.read', 'flux.proposal.write'] }).array().notNull(),
+  name: text('name').notNull().default('External connection'),
+  clientDesignation: text('client_designation', { enum: ['claude_code', 'codex', 'other'] }).notNull().default('other'),
+  computeSource: text('compute_source', { enum: ['user_operated_claude_code', 'user_operated_external_client'] }).notNull().default('user_operated_external_client'),
+  scopes: text('scopes', { enum: ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'] }).array().notNull(),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -559,6 +563,7 @@ export const agentConnectionProjects = pgTable('agent_connection_projects', {
   projectId: uuid('project_id').notNull(),
 }, (table) => [
   primaryKey({ columns: [table.connectionId, table.projectId] }),
+  unique().on(table.workspaceId, table.connectionId, table.projectId),
   foreignKey({ columns: [table.workspaceId, table.connectionId], foreignColumns: [agentConnections.workspaceId, agentConnections.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
 ]);
@@ -571,6 +576,91 @@ export const agentOauthSelections = pgTable('agent_oauth_selections', {
   connectionId: uuid('connection_id').notNull().references(() => agentConnections.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Provider references persist independently of short-lived browser flow choices. */
+export const agentOauthBindings = pgTable('agent_oauth_bindings', {
+  id: uuid('id').primaryKey(),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
+  connectionId: uuid('connection_id').notNull().references(() => agentConnections.id),
+  clientId: text('client_id').notNull(),
+  generation: integer('generation').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [unique().on(table.ownerUserId, table.connectionId, table.clientId)]);
+
+export const agentOauthFlows = pgTable('agent_oauth_flows', {
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
+  sessionId: text('session_id').notNull().references(() => authSessions.id, { onDelete: 'cascade' }),
+  fingerprint: text('fingerprint').notNull(),
+  bindingId: uuid('binding_id').notNull().references(() => agentOauthBindings.id),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [primaryKey({ columns: [table.ownerUserId, table.sessionId, table.fingerprint] })]);
+
+/** Server-issued runtime identity, bound to one actual OAuth binding/generation. */
+export const agentRuntimeSessions = pgTable('agent_runtime_sessions', {
+  id: uuid('id').primaryKey(),
+  bindingId: uuid('binding_id').notNull().references(() => agentOauthBindings.id),
+  bindingGeneration: integer('binding_generation').notNull(),
+  clientSessionId: uuid('client_session_id').notNull(),
+  workspaceId: uuid('workspace_id').notNull(),
+  connectionId: uuid('connection_id').notNull(),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
+  agentId: uuid('agent_id').notNull(),
+  scopes: text('scopes').array().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, (table) => [
+  unique().on(table.bindingId, table.clientSessionId),
+  unique().on(table.connectionId, table.id),
+  foreignKey({ columns: [table.workspaceId, table.connectionId], foreignColumns: [agentConnections.workspaceId, agentConnections.id] }),
+  foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }),
+]);
+
+/** Explicit owner action ceilings; project contributor rights do not create these grants. */
+export const agentStandingGrants = pgTable('agent_standing_grants', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  connectionId: uuid('connection_id').notNull(),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
+  clientCommandId: uuid('client_command_id').notNull(),
+  requestFingerprint: text('request_fingerprint').notNull(),
+  operation: text('operation', { enum: AGENT_OPERATIONS }).notNull(),
+  peerRequestClass: text('peer_request_class', { enum: AGENT_PEER_REQUEST_CLASSES }).notNull(),
+  objectId: uuid('object_id'),
+  maximumUses: integer('maximum_uses').notNull(),
+  used: integer('used').notNull().default(0),
+  generation: integer('generation').notNull().default(1),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique().on(table.connectionId, table.id),
+  unique().on(table.connectionId, table.clientCommandId),
+  foreignKey({ columns: [table.workspaceId, table.connectionId, table.projectId], foreignColumns: [agentConnectionProjects.workspaceId, agentConnectionProjects.connectionId, agentConnectionProjects.projectId] }),
+]);
+
+/** One canonical durable command ledger, shared with coordination. No TTL replay cache. */
+export const agentCommandReceipts = pgTable('agent_command_receipts', {
+  connectionId: uuid('connection_id').notNull(),
+  clientCommandId: uuid('client_command_id').notNull(),
+  runtimeSessionId: uuid('runtime_session_id').notNull(),
+  grantId: uuid('grant_id').notNull(),
+  grantGeneration: integer('grant_generation').notNull(),
+  bindingId: uuid('binding_id').notNull().references(() => agentOauthBindings.id),
+  bindingGeneration: integer('binding_generation').notNull(),
+  fingerprint: text('fingerprint').notNull(),
+  operation: text('operation', { enum: AGENT_OPERATIONS }).notNull(),
+  projectId: uuid('project_id').notNull(),
+  value: jsonb('value').$type<AgentJsonValue>().notNull(),
+  postconditions: jsonb('postconditions').$type<AgentPostcondition[]>().notNull(),
+  completedAt: timestamp('completed_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.connectionId, table.clientCommandId] }),
+  foreignKey({ columns: [table.connectionId, table.runtimeSessionId], foreignColumns: [agentRuntimeSessions.connectionId, agentRuntimeSessions.id] }),
+  foreignKey({ columns: [table.connectionId, table.grantId], foreignColumns: [agentStandingGrants.connectionId, agentStandingGrants.id] }),
+]);
 
 // Sketches: thoughts on a map and the links between them (migration 0007, issue #69).
 export const sketches = pgTable('sketches', {
@@ -762,7 +852,7 @@ export const agentProposals = pgTable('agent_proposals', {
   projectId: uuid('project_id').notNull(),
   agentId: uuid('agent_id').notNull(),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
-  computeSource: text('compute_source', { enum: ['user_operated_claude_code'] }).notNull(),
+  computeSource: text('compute_source', { enum: ['user_operated_claude_code', 'user_operated_external_client'] }).notNull(),
   agentGrantId: uuid('agent_grant_id').notNull(),
   agentGrantRole: text('agent_grant_role', { enum: ['contributor'] }).notNull(),
   sourceMaterialId: uuid('source_material_id').notNull(),
