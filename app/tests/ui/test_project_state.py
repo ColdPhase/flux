@@ -141,7 +141,11 @@ class ProjectStateJourney(unittest.TestCase):
                     row = page.get_by_role("button", name=re.compile("open project details"))
                     expect(row).to_contain_text("2 open tasks")
                     self.assertGreaterEqual(row.bounding_box()["height"], 44)
-                    row.tap()
+                    if who == "Ada State":
+                        row.focus()
+                        row.press("Enter")
+                    else:
+                        row.tap()
                     panel = page.get_by_role("dialog", name="Details")
                     expect(panel.get_by_role("region", name="Now in this project")).to_contain_text("Open")
                     expect(panel.get_by_role("region", name="Sketches")).to_contain_text("to browse saved sketches")
@@ -295,7 +299,10 @@ class ProjectStateJourney(unittest.TestCase):
                                     && (box.left < bounds.left - 1 || box.right > bounds.right + 1)) clipped = true;
                                 if (parent === el) break;
                             }
-                            if (!clipped) return true;
+                            if (!clipped && [0.1, 0.5, 0.9].every(fraction => {
+                                const hit = document.elementFromPoint(box.left + box.width * fraction, box.top + box.height / 2);
+                                return hit && el.contains(hit);
+                            })) return true;
                         }
                         return false;
                     }""", "1 blocked")
