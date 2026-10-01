@@ -1,8 +1,9 @@
 # Proposed bounded native work reads — #155 / #151 / #136
 
 2026-10-01. Bounded architectural agreement at
-76b8124c617c6493a5142f44ec455ea81ff98b6b. Exact public paths/query/DTO schemas
-still need a pinned contract delta before implementation; no runtime correction
+76b8124c617c6493a5142f44ec455ea81ff98b6b. The [exact public paths/query/DTO contract](2026-10-01-native-work-read-contract.md)
+received independent bounded design agreement at
+93fb60842277203a6721eccfbcd734a9e82dbf95; no runtime read correction
 or whole-task acceptance is claimed. Owner Zamojski5, existing
 PR170/worktree. Preserve the full task criteria and native identity, permission,
 history, source/version, mutation, draft and reading contracts.

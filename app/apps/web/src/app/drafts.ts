@@ -8,31 +8,43 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObje
  */
 export type DraftStorage = 'device' | 'visit';
 
-const memory = new Map<string, string>();
+interface DraftState { text: string; storage: DraftStorage; revision: number }
+interface DraftEntry { state: DraftState; listeners: Set<() => void> }
+// One visit-local store for the existing per-account/context browser state. Every edit,
+// even A→B→A, advances revision; a failed empty clear is retained as a tombstone.
+const memory = new Map<string, DraftEntry>();
+
+function retain(key: string, text: string, storage: DraftStorage, edit = false): DraftEntry {
+  const previous = memory.get(key);
+  if (previous && !edit && previous.state.text === text && previous.state.storage === storage) return previous;
+  const entry = { state: { text, storage, revision: (previous?.state.revision ?? 0) + 1 }, listeners: previous?.listeners ?? new Set<() => void>() };
+  memory.set(key, entry);
+  return entry;
+}
 
 export const draftKey = (userId: string, context: string) => `flux:draft:${userId}:${context}`;
 export const scrollKey = (userId: string, context: string) => `flux:scroll:${userId}:${context}`;
 
-function read(key: string): { text: string; storage: DraftStorage } {
+function read(key: string): DraftState {
   // A failed write (including an empty clear) is newer than the value still on disk.
   // Keep that override until a successful write; ordinary device writes remain cross-tab readable.
-  if (memory.has(key)) return { text: memory.get(key)!, storage: 'visit' };
+  const previous = memory.get(key);
+  if (previous?.state.storage === 'visit') return previous.state;
   try {
     const stored = localStorage.getItem(key);
-    return { text: stored ?? '', storage: 'device' };
-  } catch { return { text: '', storage: 'visit' }; }
+    return retain(key, stored ?? '', 'device').state;
+  } catch { return retain(key, previous?.state.text ?? '', 'visit').state; }
 }
 
 /** Writes or removes a value; returns where it now lives. */
-function write(key: string, value: string): DraftStorage {
+function write(key: string, value: string): DraftState {
+  let storage: DraftStorage = 'device';
   try {
     if (value) localStorage.setItem(key, value); else localStorage.removeItem(key);
-    memory.delete(key);
-    return 'device';
-  } catch {
-    memory.set(key, value);
-    return 'visit';
-  }
+  } catch { storage = 'visit'; }
+  const entry = retain(key, value, storage, true);
+  for (const listener of entry.listeners) listener();
+  return entry.state;
 }
 
 /**
@@ -42,15 +54,29 @@ function write(key: string, value: string): DraftStorage {
 export function useDraft(userId: string, context: string) {
   const key = draftKey(userId, context);
   const [state, setState] = useState(() => read(key));
-  const setText = useCallback((text: string) => setState({ text, storage: write(key, text) }), [key]);
+  useLayoutEffect(() => {
+    const entry = memory.get(key)!;
+    const update = () => setState(read(key));
+    entry.listeners.add(update);
+    update();
+    const external = (event: StorageEvent) => { if (event.storageArea === localStorage && (event.key === key || event.key === null)) update(); };
+    window.addEventListener('storage', external);
+    return () => { entry.listeners.delete(update); window.removeEventListener('storage', external); };
+  }, [key]);
+  const setText = useCallback((text: string) => {
+    const next = write(key, text);
+    setState(next);
+    return next.revision;
+  }, [key]);
   const clear = useCallback(() => setText(''), [setText]);
   // A command can finish after navigation. Never clear a newer draft from a later mount.
-  const clearIfMatches = useCallback((expected: string) => {
-    if (read(key).text !== expected) return false;
+  const clearIfMatches = useCallback((expected: string, revision: number): DraftStorage | null => {
+    const current = read(key);
+    if (current.text !== expected || current.revision !== revision) return null;
     setText('');
-    return true;
+    return read(key).storage;
   }, [key, setText]);
-  return { text: state.text, storage: state.storage, setText, clear, clearIfMatches };
+  return { text: state.text, storage: state.storage, revision: state.revision, setText, clear, clearIfMatches };
 }
 
 /** Restores, then records, the scroll position of a scroll container for one account and context. */

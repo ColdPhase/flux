@@ -1,6 +1,10 @@
 # Native bounded work read contract — #155 / #151 / #136
 
-2026-10-01. Proposed exact public contract, pending independent review. Implements
+2026-10-01. Exact public contract independently agreed at
+93fb60842277203a6721eccfbcd734a9e82dbf95 by the non-author contract evaluator.
+The review covered this document, work-read.ts/export and the existing native
+semantics; it did not execute tests or accept runtime correctness/whole #155.
+Implements
 the [accepted bounded architecture](2026-10-01-bounded-native-work.md), without
 changing native commands or replacing legacy GETs. Types and paths live in
 `app/packages/contracts/src/work-read.ts`. No new runtime endpoint exists yet.

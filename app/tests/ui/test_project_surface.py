@@ -379,7 +379,10 @@ class ProjectSurfaceJourney(unittest.TestCase):
     # ---------------------------------------------------------------- private native work drafts (#155)
 
     def tasks(self, page: Page, project: str | None = None) -> None:
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks")).click()
+        link = page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks"))
+        if project:
+            expect(link).to_have_attribute("href", re.compile(rf"^/projects/{project}/tasks"))
+        link.click()
         expect(page.get_by_label("New work", exact=True)).to_be_visible()
         if project:
             expect(page).to_have_url(re.compile(rf"/projects/{project}/tasks"))
@@ -399,9 +402,10 @@ class ProjectSurfaceJourney(unittest.TestCase):
                 self.assertEqual(field.evaluate("el => [document.activeElement === el, el.selectionStart, el.selectionEnd]"), [True, 6, 18])
                 views = page.get_by_role("navigation", name="Task views")
                 views.get_by_label("Only mine").check()
-                views.get_by_role("button", name="In progress", exact=False).click()
+                views.get_by_role("button", name="Needs you", exact=False).click()
                 expect(field).to_have_value(draft)
                 views.get_by_label("Only mine").uncheck()
+                views.get_by_role("button", name="In progress", exact=False).click()
                 views.get_by_role("button", name="All", exact=True).click()
                 page.locator(".ws-list").get_by_role("button", name=re.compile("Test the camera in low light")).click()
                 expect(self.details(page).get_by_role("heading", name="Test the camera in low light")).to_be_visible()
@@ -495,8 +499,9 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(field).to_be_disabled()
         page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
         self.tasks(page)
-        newest = "A different private draft after returning"
-        field.fill(newest)
+        field.fill("A different private draft after returning")
+        newest = "Submitted before following a source"
+        field.fill(newest)  # A→B→A is a NEW edit even though its final text equals the submitted text.
         self.assertEqual(len(held), 1)
         route, response = held[0]
         with page.expect_request_finished(lambda request: request.method == "POST" and request.url.endswith("/work")):
@@ -530,6 +535,67 @@ class ProjectSurfaceJourney(unittest.TestCase):
         page.context.add_cookies(self.states["ada"]["cookies"])
         page.reload()
         expect(field).to_have_value("Ada's gesture lamp draft")
+
+    def test_14_denied_clear_keeps_disclosure_and_native_replay_key_across_reload(self) -> None:
+        page = self.open_project("ada")
+        self.tasks(page)
+        field = page.get_by_label("New work", exact=True)
+        title = "Saved once even when browser removal is refused"
+        field.fill(title)
+        key = f"flux:draft:{ADA['id']}:project-work:{self.ids['project']}"
+        page.add_init_script("""(() => {
+          const remove = Storage.prototype.removeItem;
+          Storage.prototype.removeItem = function(k) {
+            if (k.endsWith(':project-work:""" + self.ids["project"] + """')) throw new DOMException('Refused','SecurityError');
+            return remove.call(this,k);
+          };
+        })();""")
+        page.evaluate("""key => {
+          const remove = Storage.prototype.removeItem;
+          Storage.prototype.removeItem = function(k) { if(k === key) throw new DOMException('Refused','SecurityError'); return remove.call(this,k); };
+        }""", key)
+        keys = []
+        page.on("request", lambda request: keys.append(request.headers["idempotency-key"]) if request.method == "POST" and request.url.endswith("/work") else None)
+        before = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100", status=200)["total"]
+        page.get_by_role("button", name="Add work", exact=True).click()
+        expect(self.details(page).get_by_role("heading", name=title)).to_be_visible()
+        expect(field).to_have_value("")
+        expect(page.locator("#ws-draft-state")).to_contain_text("Reloading may restore older text")
+        pending = page.evaluate("key => JSON.parse(localStorage.getItem(key + ':pending'))", key)
+        self.assertEqual((pending["title"], pending["key"]), (title, keys[0]))
+        page.reload()
+        expect(field).to_have_value(title)
+        page.get_by_role("button", name="Add work", exact=True).click()
+        expect(field).to_have_value("")
+        self.assertEqual(len(keys), 2)
+        self.assertEqual(keys[0], keys[1], "stale stored submitted text retains its native replay identity")
+        self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100", status=200)["total"], before + 1)
+
+    def test_15_untouched_remount_observes_a_confirmed_native_clear(self) -> None:
+        page = self.open_project("ada")
+        self.tasks(page)
+        field = page.get_by_label("New work", exact=True)
+        title = "A confirmed command clears its untouched remounted draft"
+        field.fill(title)
+        held = []
+        def hold(route):
+            if route.request.method != "POST":
+                return route.continue_()
+            response = route.fetch()
+            self.assertEqual(response.status, 201, response.text())
+            held.append((route, response))
+        page.route(f"**/api/v1/projects/{self.ids['project']}/work", hold)
+        page.get_by_role("button", name="Add work", exact=True).click()
+        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
+        self.tasks(page)
+        expect(field).to_have_value(title)
+        self.assertEqual(len(held), 1)
+        route, response = held[0]
+        route.fulfill(response=response)
+        expect(field).to_have_value("", timeout=8000)
+        expect(self.details(page).get_by_role("heading", name=title)).to_have_count(0)
+        page.reload()
+        expect(field).to_have_value("")
 
 
 if __name__ == "__main__":

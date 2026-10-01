@@ -20,21 +20,23 @@ export function NewWorkComposer({ userId, projectId }: { userId: string; project
   async function add(event: FormEvent) {
     event.preventDefault();
     const original = draft.text;
+    const revision = draft.revision;
     const title = original.trim();
     if (!title || busy) return;
     let attempt = crypto.randomUUID() as string;
     try {
       const previous: unknown = JSON.parse(pending.text);
       if (previous && typeof previous === 'object' && 'title' in previous && previous.title === title &&
-        'key' in previous && typeof previous.key === 'string' && /^[0-9a-f-]{36}$/i.test(previous.key)) attempt = previous.key;
+        'key' in previous && typeof previous.key === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(previous.key)) attempt = previous.key;
     } catch { /* No valid pending command for this title. */ }
     const command = JSON.stringify({ title, key: attempt });
-    pending.setText(command);
+    const pendingRevision = pending.setText(command);
     setBusy(true); setError('');
     try {
       const item = await createWork(projectId, { title }, attempt);
-      draft.clearIfMatches(original);
-      pending.clearIfMatches(command);
+      // Keep the matching replay key while denied removal leaves submitted text on disk.
+      // All mounted subscribers see a successful clear; an intervening edit never clears.
+      if (draft.clearIfMatches(original, revision) === 'device') pending.clearIfMatches(command, pendingRevision);
       if (mounted.current) {
         revalidator.revalidate();
         openDetails({ kind: 'work', id: item.id });
@@ -48,14 +50,16 @@ export function NewWorkComposer({ userId, projectId }: { userId: string; project
     <form className="ws-add" onSubmit={(event) => void add(event)}>
       <label className="ui-vh" htmlFor="ws-add">New work</label>
       <input id="ws-add" className="ui-input" value={draft.text} maxLength={200} disabled={busy}
-        aria-describedby={draft.text ? 'ws-draft-state' : undefined}
+        aria-describedby={draft.text || draft.storage === 'visit' ? 'ws-draft-state' : undefined}
         placeholder="Add work, e.g. Order a ToF sensor"
-        onChange={(event) => { draft.setText(event.target.value); setError(''); }} />
+        onChange={(event) => { draft.setText(event.target.value); pending.clear(); setError(''); }} />
       <Button type="submit" variant="secondary" icon="plus" busy={busy} disabled={!draft.text.trim()}>Add work</Button>
     </form>
-    {draft.text ? <p id="ws-draft-state" className="ws-draft-state" role="status">
+    {draft.text || draft.storage === 'visit' ? <p id="ws-draft-state" className="ws-draft-state" role="status">
       {draft.storage === 'visit' || (pending.text && pending.storage === 'visit')
-        ? 'Draft kept for this visit. Reloading may lose it.' : 'Draft kept on this device'}
+        ? draft.text ? 'Draft kept for this visit. Reloading may lose it.'
+          : 'Draft changes are kept for this visit. Reloading may restore older text.'
+        : 'Draft kept on this device'}
     </p> : null}
     {error ? <p className="wd-error" role="alert">{error}</p> : null}
   </>;
