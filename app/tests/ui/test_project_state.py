@@ -78,7 +78,7 @@ class ProjectStateJourney(unittest.TestCase):
 
     def test_01_open_task_is_visible_in_header_and_tasks_and_opens_the_actual_object(self):
         page, project = self.scene()
-        page.goto(f"/projects/{project['id']}/conversations")
+        page.goto(f"/projects/{project['id']}")
         state = page.locator("header.top").get_by_label("Current state")
         expect(state).to_contain_text("No decisions or work yet")
         task = self.work(page, project, "Prepare the ToF sensor experiment for the library")
@@ -96,7 +96,7 @@ class ProjectStateJourney(unittest.TestCase):
     def test_02_closed_native_work_is_history_and_a_live_status_update_replaces_the_open_summary(self):
         page, project = self.scene()
         task = self.work(page, project, "Measure low-light gesture reliability")
-        page.goto(f"/projects/{project['id']}/conversations")
+        page.goto(f"/projects/{project['id']}")
         state = page.locator("header.top").get_by_label("Current state")
         expect(state).to_contain_text("1 open task")
         task = self.call(page, "PATCH", f"/api/v1/work/{task['id']}", {"status": "blocked", "blocker": "Waiting for the sensor delivery"},
@@ -124,7 +124,7 @@ class ProjectStateJourney(unittest.TestCase):
         for width, height, dark in ((320, 740, False), (390, 844, True), (820, 1180, False), (1280, 800, False)):
             with self.subTest(width=width, dark=dark):
                 page = self.page("Jonas Reader", width, height, dark)
-                page.goto(f"/projects/{project['id']}/conversations")
+                page.goto(f"/projects/{project['id']}")
                 if width <= 640:
                     row = page.get_by_role("button", name=re.compile("open project details"))
                     expect(row).to_contain_text("2 open tasks")
@@ -146,6 +146,6 @@ class ProjectStateJourney(unittest.TestCase):
             {"principal": {"kind": "human", "id": self.accounts["Jonas Reader"]["id"]}, "role": "denied"}, 201)
         denied = self.page("Jonas Reader")
         self.call(denied, "GET", f"/api/v1/projects/{project['id']}/work", status=404)
-        denied.goto(f"/projects/{project['id']}/conversations")
+        denied.goto(f"/projects/{project['id']}")
         expect(denied.locator('[data-seg="open"]')).to_have_count(0)
         expect(denied.get_by_text(task["title"], exact=True)).to_have_count(0)
