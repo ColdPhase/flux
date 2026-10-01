@@ -11,9 +11,18 @@ required. The previous128-typing transport measurement is separate evidence.
 Create1000 actual native WorkItems through the existing public project work
 commands in an isolated Docker project: two registered human contributors,
 500 open/300 in-progress/150 blocked/50 finished, alternating real owners,
-meaningful branch/sensor/privacy/testing outcomes,100 native message/material
-source links, one current and one proposed decision, and linked results.
-A pivot parks30 open objects without rewriting their original status. Count
+meaningful branch/sensor/privacy/testing outcomes, and 100 WorkItems with one
+source each: 50 actual conversation messages and 50 references to material
+version 1. The conversation contains 100 actual messages. All 50 finished work
+items are done (none not_pursued). Keep exactly 3 decisions: an initial accepted
+rule retained as superseded history, its accepted successor, and a separate
+proposed rule. Add 10 linked results, 5 positive and 5 negative, without changing
+work status. A successor pivot parks the first 30 open objects (15 per owner)
+without rewriting their original status. Thus the native status-open count is
+500 while the visible Open group has 470 and Parked has 30; In progress has 300,
+Blocked 150, Finished 50, Needs you 1, Decisions 2 and Results 10. Only mine must
+be checked against the actual implementation's semantics: proposals stay
+project-wide rather than being silently divided by owner. Count
 exact actual objects through the native paginated API for both accounts, and
 exercise a deep object's same native details/source route. These are human work
 states, not fabricated agent execution. No direct SQL seeding, fake identity,
@@ -40,15 +49,27 @@ actions over at least60 seconds, per profile. Navigation uses fresh documents
 with the same real dataset/session; it is not a fresh browser process/network
 cache per sample and must be labelled accordingly. DOM event→paint measurements
 use the browser's one monotonic clock, not Python/server wall-clock subtraction.
+A fresh navigation uses the NEW document's PerformanceNavigationTiming.startTime
+through the verified usable DOM and double-requestAnimationFrame following-frame
+paint proxy, all within that document's monotonic clock. Never subtract
+performance.now across documents. Usable means the correct selected native view
+and exact group counts, the expected complete rows for that current baseline,
+and an enabled controlled New work input; a shell, loading state or partial list
+is not usable. Double-rAF is a paint proxy, not a raster-completion claim.
 Report test-driver navigation time separately. Native trusted Playwright input
 is observed by capture listeners and following animation frames; elapsed times
-include the actual React/DOM work. Wheel actions must actually move the intended
+include the actual React/DOM work. Verify each input value changes; alternate
+character insertion and Backspace to avoid the 200-character maximum. View clicks
+must actually alternate selected views and produce the correct groups/counts. Wheel actions must actually move the intended
 list; boundary no-ops are not valid scroll samples. Record deadlines and missing
 samples instead of interpreting timeout as a passing result.
 
 Initial collection fetching must be bounded independently of total project size:
-at most100 WorkItems per initial page and at most4 initial work/decision/result/
-summary collection calls. Render at most200 work rows at first paint (and keep
+at most 100 unique WorkItems fetched across the ENTIRE initial navigation, and
+at most 4 initial work/decision/result/summary collection calls combined. A
+100-record page alone does not meet that bound if subsequent pages fetch more.
+Keep subsequent 15-second/focus revalidation traffic distinct from the initial
+navigation; record it separately. Render at most200 work rows at first paint (and keep
 later rendering bounded), including wide layouts. Those are optimization targets,
 not permission to drop older objects or show incomplete counts as complete.
 Record actual initial API request count, body/transfer bytes, fetched records,
@@ -75,6 +96,11 @@ actual outbound mutating requests during measured UI phases without their body,
 cookie/header/email/identity data. Read-only navigations do not justify silently
 changing explicit acknowledgment behavior. Any established ordinary native read
 receipt is reported distinctly from accidental work/AI mutation.
+
+The current New work title lives in component state, so a source navigation may
+lose it when Tasks unmounts. Record the failure without silently refilling before
+asserting continuity. Opening WorkDetails reloads the complete work context;
+measure its collection/record cost separately from initial Tasks navigation.
 
 Capture representative same-content desktop/phone/wide PNGs and observable
 interaction evidence. A performance capture is not motion, accessibility,
