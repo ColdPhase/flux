@@ -259,30 +259,42 @@ class TypingJourney(unittest.TestCase):
     def test_07_reconnect_acknowledges_cookie_account_before_any_new_pulse(self):
         for dm in (False, True):
             with self.subTest(dm=dm):
-                state = {"connections": 0, "servers": [], "identities": []}
+                state = {"connections": 0, "servers": [], "pages": [], "identities": [], "owners": {}, "commands": []}
 
                 def transport(socket):
                     server = socket.connect_to_server()
                     state["connections"] += 1
+                    connection = state["connections"]
                     state["servers"].append(server)
+                    state["pages"].append(socket)
 
                     def received(payload):
                         frame = json.loads(payload)
                         if frame["type"] == "identity":
                             state["identities"].append(frame["id"])
+                            state["owners"][connection] = frame["id"]
                         socket.send(payload)
 
+                    def sent(payload):
+                        state["commands"].append((connection, json.loads(payload)))
+                        server.send(payload)
+
+                    socket.on_message(sent)
                     server.on_message(received)
 
                 alice = self.open("alice", dm=dm, transport=transport)
                 self.composer(alice, dm=dm).fill("PRIVATE-DRAFT belonging only to Alice")
                 # Actual shared-cookie switch and real reconnect, without fabricated ACKs.
                 alice.context.add_cookies(self.states["bob"]["cookies"])
+                # Close the browser half of the relay explicitly; closing only
+                # the intercepted upstream does not certify browser disconnection.
+                state["pages"][0].close(code=1001, reason="transport interruption")
                 state["servers"][0].close(code=1001, reason="transport interruption")
                 expect(self.composer(alice, dm=dm)).to_have_value("", timeout=20000)
                 expect(alice.locator(".typing-notice")).to_have_attribute("data-availability", "ready", timeout=15000)
                 self.assertIn(self.ids["bob"], state["identities"])
                 self.assertGreaterEqual(state["connections"], 2)
+                self.assertFalse(any(state["owners"].get(connection) == self.ids["bob"] and frame.get("type") == "active" for connection, frame in state["commands"]), "account reconciliation never publishes the previous account's draft")
                 self.composer(alice, dm=dm).fill("PRIVATE-DRAFT belonging only to Bob")
                 alice.context.add_cookies(self.states["alice"]["cookies"])
                 alice.reload()
