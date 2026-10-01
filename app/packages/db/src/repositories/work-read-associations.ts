@@ -56,10 +56,11 @@ export function nativeWorkAssociationRows(db: DbExecutor) {
       return nativeReadKeyWindow<WorkObjectType>(db, selected, limit, cursor);
     },
     async sourceCounts(projectId: string, selection: NativeWorkAssociationSelector, cursor?: WorkReadCursor) {
+      const matched = matching(projectId, selection);
       const keys = await nativeReadKeyWindow<'message'>(db, sql`SELECT 'message'::text AS kind, id, created_at, 0 AS rank FROM (${nativeWorkSourceMessages(projectId, selection)}) m`, 100, cursor, true);
       if (!keys.items.length) return { ...keys, items: [] };
       const ids = sql.join(keys.items.map((key) => sql`${key.id}::uuid`), sql`, `);
-      const result = await db.execute<{ messageId: string; work: number; decisions: number; results: number; edges: number }>(sql`WITH matched AS (${matching(projectId, selection)})
+      const result = await db.execute<{ messageId: string; work: number; decisions: number; results: number; edges: number }>(sql`WITH matched AS (${matched})
         SELECT m.id AS "messageId", count(DISTINCT e.from_id) FILTER(WHERE e.from_type = 'work')::int AS work,
           count(DISTINCT e.from_id) FILTER(WHERE e.from_type = 'decision')::int AS decisions,
           count(DISTINCT e.from_id) FILTER(WHERE e.from_type = 'result')::int AS results, count(e.id)::int AS edges
