@@ -168,6 +168,37 @@ test('outer failure removes request, delivery and budget together', async () => 
   created(await f.enqueue());
 });
 
+test('only a parent request party may extend its lineage, including another connection of the same owner', async () => {
+  const f = await fixture();
+  const parent = created(await f.enqueue());
+  const snapshot = async () => ({
+    requests: await db.select().from(schema.coworkRequests).where(eq(schema.coworkRequests.workspaceId, f.workspaceId)).orderBy(asc(schema.coworkRequests.id)),
+    lineage: await db.select().from(schema.coworkRequestLineages).where(eq(schema.coworkRequestLineages.id, parent.request.lineageId)),
+    deliveries: await db.select().from(schema.coworkDeliveryIntents)
+      .innerJoin(schema.coworkRequests, eq(schema.coworkRequests.id, schema.coworkDeliveryIntents.requestId))
+      .where(eq(schema.coworkRequests.workspaceId, f.workspaceId)).orderBy(asc(schema.coworkDeliveryIntents.id)),
+  });
+  const before = await snapshot();
+  const unrelated = f.input({ intentKey: 'third-party-child', kind: 'help', parentRequestId: parent.request.id });
+  const rejected = await db.transaction(async (tx) => {
+    await f.locks(tx);
+    return coworkRequestRows(tx).enqueue(f.third, unrelated, coWorkRequestFingerprint(unrelated, f.third.connectionId), f.limits);
+  });
+  assert.equal(rejected.status, 'unavailable', 'the same owner and root/run do not make a third connection a party');
+  assert.deepEqual(await snapshot(), before, 'refusal creates no request or delivery and consumes no lineage budget');
+
+  const followup = created(await f.enqueue(f.input({ intentKey: 'sender-followup', kind: 'help', parentRequestId: parent.request.id })));
+  assert.equal(followup.request.lineageId, parent.request.lineageId, 'the original sender can follow up');
+  const responseUnit = await f.makeUnit({ connectionId: f.sender.connectionId, role: 'execute' });
+  const response = f.input({ unitId: responseUnit, recipientConnectionId: f.sender.connectionId,
+    intentKey: 'recipient-response', kind: 'help', parentRequestId: parent.request.id });
+  const replied = created(await db.transaction(async (tx) => {
+    await f.locks(tx);
+    return coworkRequestRows(tx).enqueue(f.recipient, response, coWorkRequestFingerprint(response, f.recipient.connectionId), f.limits);
+  }));
+  assert.equal(replied.request.lineageId, parent.request.lineageId, 'the addressed recipient can respond in the same lineage');
+});
+
 test('ACK is connection/project scoped, idempotent and leaves pending work recoverable', async () => {
   const f = await fixture();
   const result = created(await f.enqueue());

@@ -61,7 +61,8 @@ export function coworkRequestRows(tx: DbExecutor) {
         || (input.kind === 'fix' && unit.role !== 'execute')) return { status: 'unavailable' as const };
       const [parent] = input.parentRequestId ? await tx.select().from(requests).where(and(
         eq(requests.id, input.parentRequestId), eq(requests.workspaceId, sender.workspaceId), eq(requests.projectId, sender.projectId))) : [];
-      if (input.parentRequestId && !parent) return { status: 'unavailable' as const };
+      if (input.parentRequestId && (!parent || parent.senderConnectionId !== sender.connectionId
+        && parent.recipientConnectionId !== sender.connectionId)) return { status: 'unavailable' as const };
       const root = and(eq(lineages.taskId, unit.lineageTaskId), eq(lineages.runId, unit.runId),
         parent ? eq(lineages.id, parent.lineageId) : sql`true`);
       const rootScope = and(root, eq(lineages.workspaceId, sender.workspaceId), eq(lineages.projectId, sender.projectId));

@@ -37,6 +37,17 @@ This does not prove checkpoint creation, native graph/reviewer eligibility,
 authorized request admission/resolution, execution/publication fences, public
 MCP/client wiring or model-driven Start/Resume. Those are unchanged requirements.
 
+### Parent request participation
+
+A child request can name a parent only when its exact sending connection is
+the parent's recorded sender or addressed recipient. The original sender may
+follow up and the recipient may respond. Sharing an owner, project, root task
+or run does not make another connection a party. Refusal returns the same
+content-free unavailable outcome as an absent parent, with no new request,
+delivery intent or lineage budget debit. This storage guard supplements the
+unchanged current-source authorization and live sender-claim requirements of
+the admission composition; it does not grant either party new authority.
+
 Status: implementation contract checkpoint, 2026-09-30. The shared boundaries
 were accepted by the independent owner of #152/#154/#160 in
 [issue #153](https://github.com/ColdPhase/flux/issues/153#issuecomment-5919388071).
