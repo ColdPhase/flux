@@ -112,15 +112,22 @@ export function sketchRows(db: DbExecutor) {
       return (await findSketch(sketch.id))!;
     },
     async renameSketch(id: string, title: string) {
-      await db.update(s).set({ title, version: sql`${s.version} + 1`, updatedAt: new Date() }).where(eq(s.id, id));
+      await db.update(s).set({ title, version: sql`${s.version} + 1`,
+        updatedAt: sql`GREATEST(clock_timestamp(), ${s.updatedAt} + interval '1 millisecond')` }).where(eq(s.id, id));
       return (await findSketch(id))!;
     },
     async touchSketch(id: string) {
-      await db.update(s).set({ updatedAt: new Date() }).where(eq(s.id, id));
+      await db.update(s).set({ updatedAt: sql`GREATEST(clock_timestamp(), ${s.updatedAt} + interval '1 millisecond')` }).where(eq(s.id, id));
     },
-    async thoughts(sketchId: string) {
+    async thoughts(sketchId: string, page?: { limit: number; offset: number }) {
       // Thoughts started from messages in one change share created_at: they follow the conversation.
-      return (await selectThoughts().where(eq(t.sketchId, sketchId)).orderBy(asc(t.createdAt), sql`${t.sourceSentAt} ASC NULLS LAST`, asc(t.id))).map(toThoughtRecord);
+      const query = selectThoughts().where(eq(t.sketchId, sketchId)).orderBy(asc(t.createdAt), sql`${t.sourceSentAt} ASC NULLS LAST`, asc(t.id)).$dynamic();
+      return (await (page ? query.limit(page.limit).offset(page.offset) : query)).map(toThoughtRecord);
+    },
+    async mapCounts(sketchId: string) {
+      const [thoughts] = await db.select({ count: sql<number>`count(*)::int` }).from(t).where(eq(t.sketchId, sketchId));
+      const [links] = await db.select({ count: sql<number>`count(*)::int` }).from(l).where(eq(l.sketchId, sketchId));
+      return { thoughts: thoughts!.count, links: links!.count };
     },
     async lockThoughts(sketchId: string, ids: string[]) {
       if (!ids.length) return [];
@@ -171,8 +178,9 @@ export function sketchRows(db: DbExecutor) {
     async deleteThought(sketchId: string, id: string) {
       await db.delete(t).where(and(eq(t.sketchId, sketchId), eq(t.id, id)));
     },
-    async links(sketchId: string) {
-      return (await db.select().from(l).where(eq(l.sketchId, sketchId)).orderBy(asc(l.createdAt), asc(l.id))).map(toLinkRecord);
+    async links(sketchId: string, page?: { limit: number; offset: number }) {
+      const query = db.select().from(l).where(eq(l.sketchId, sketchId)).orderBy(asc(l.createdAt), asc(l.id)).$dynamic();
+      return (await (page ? query.limit(page.limit).offset(page.offset) : query)).map(toLinkRecord);
     },
     async linkExists(id: string) {
       return (await db.select({ id: l.id }).from(l).where(eq(l.id, id))).length > 0;

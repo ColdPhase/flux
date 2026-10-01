@@ -1,0 +1,158 @@
+Pinned package: /app/node_modules/.pnpm/@better-auth+oauth-provider@1.7.6_@better-auth+core@1.7.6_@better-auth+utils@0.4.2_@bet_93418e414b66b15121930fb70750ef0b/node_modules/@better-auth/oauth-provider/dist/index.mjs
+authorize-CLuqtSXQ.mjs consentReferenceId?.( & !hasSatisfiedLoginPrompt) {
+		ctx?.headers?.set("accept", "application/json");
+		ctx.query = searchParamsToQuery(query);
+		return await authorize(ctx);
+	}
+	const referenceId = await opts.postLogin?.consentReferenceId?.({
+		user: session?.user,
+		session: session?.session,
+		scopes: requestedScopes ?? originalRequestedScopes
+	});
+	const foundConsent = await ctx.context.adapter.findOne({
+		model: "oauthConsent",
+		where: [
+			{
+				field: "clientId",
+				value: clientId
+			},
+			{
+				field: "userId",
+				value: session?.user.id
+			},
+			...referenceId ? [{
+				field: "referenceId",
+				value: referenceId
+			}] : []
+		]
+	});
+	const iat = Math.floor(Date.now() / 1e3);
+	const resource = query.getAll("resource");
+	const consent = {
+		clientId,
+		userId: session?.user.id,
+		scopes: requestedScopes ?? originalRequestedScopes,
+		requestedUserIn
+authorize-CLuqtSXQ.mjs consentReferenceId?.( ode(ctx, opts, "post_login");
+		}
+	}
+	if (promptSet?.has("consent")) return redirectWithPromptCode(ctx, opts, "consent", { sessionId: session.session.id });
+	const referenceId = await opts.postLogin?.consentReferenceId?.({
+		user: session.user,
+		session: session.session,
+		scopes: requestedScopes
+	});
+	if (client.skipConsent) return redirectWithAuthorizationCode(ctx, opts, {
+		query,
+		clientId: client.clientId,
+		userId: session.user.id,
+		sessionId: session.session.id,
+		authTime: new Date(session.session.createdAt).getTime(),
+		referenceId,
+		resource: requestedResources
+	});
+	const consent = await ctx.context.adapter.findOne({
+		model: "oauthConsent",
+		where: [
+			{
+				field: "clientId",
+				value: client.clientId
+			},
+			{
+				field: "userId",
+				value: session.user.id
+			},
+			...referenceId ? [{
+				field: "referenceId",
+				v
+authorize-CLuqtSXQ.mjs referenceId = ueryIssuedAt);
+	if (hasLoginPrompt && !hasSatisfiedLoginPrompt) {
+		ctx?.headers?.set("accept", "application/json");
+		ctx.query = searchParamsToQuery(query);
+		return await authorize(ctx);
+	}
+	const referenceId = await opts.postLogin?.consentReferenceId?.({
+		user: session?.user,
+		session: session?.session,
+		scopes: requestedScopes ?? originalRequestedScopes
+	});
+	const foundConsent = await ctx.context.adapter.findOne({
+		model: "oauthConsent",
+		where: [
+			{
+				field: "clientId",
+				value: clientId
+			},
+			{
+				field: "userId",
+				value: session?.user.id
+			},
+			...referenceId ? [{
+				field: "referenceId",
+				value: referenceId
+			}] : []
+		]
+	});
+	const iat = Math.floor(Date.now() / 1e3);
+	const resource = query.getAll("resource");
+	const consent = {
+		clientId,
+		userId: session?.user.id,
+		scopes: requestedScopes ?? origin
+authorize-CLuqtSXQ.mjs referenceId = Array(body.resources) ? body.resources.filter((resource) => typeof resource === "string" && resource.length > 0) : [];
+	if (session) await assertClientPrivileges(ctx, session, opts, "create");
+	const referenceId = tokenAuthorization?.referenceId ?? (session && opts.clientReference ? await opts.clientReference({
+		user: session.user,
+		session: session.session
+	}) : void 0);
+	const response = await createOAuthClientRegistration(ctx, opts, {
+		metadata: body,
+		registrationSource: "dynamic",
+		userId: referenceId ? void 0 : session?.session.userId,
+		referenceId,
+		requestedResources
+	});
+	ctx.setStatus(201);
+	return ctx.json(response);
+}
+async function checkOAuthClient(client, opts, settings) {
+	const isClientMetadataDocument = settings?.registrationSource === "clientMetadataDocument";
+	const clientWithDefaults = applyOAuthClientRegistrati
+authorize-CLuqtSXQ.mjs referenceId = ntEndpoint(ctx, opts, settings) {
+	const session = await getSessionFromCtx(ctx);
+	await assertClientPrivileges(ctx, session, opts, "create");
+	if (!session) throw new APIError("UNAUTHORIZED");
+	const referenceId = opts.clientReference ? await opts.clientReference({
+		user: session.user,
+		session: session.session
+	}) : void 0;
+	const { client_credentials_scopes: rawClientCredentialsScopes, ...metadata } = ctx.body;
+	const clientCredentialsScopes = settings?.admin ? normalizeClientCredentialsScopes(rawClientCredentialsScopes ?? []) : [];
+	validateClientCredentialsScopes(clientCredentialsScopes, resolveRegistrationGrantTypes(metadata), metadata.token_endpoint_auth_method, opts);
+	if (clientCredentialsScopes.length > 0) await assertClientPrivileges(ctx, session, opts, "configure-client-credentials-scopes");
+	const registrationInput = {
+		met
+oauth-1Ud-hvZY.d.mts consentReferenceId: 
+    /**
+     * A value to tie to the consent reference_id.
+     *
+     * Note that YOU must fail in this function if the requested
+     * scope doesn't have a reference id and it should.
+     */
+    consentReferenceId: (context: {
+      user: User & Record<string, unknown>;
+      session: Session & Record<string, unknown>;
+      scopes: Scopes;
+    }) => Awaitable<string | undefined>;
+    /**
+     * After login and before consent, request the user to
+     * select an additional choice for `/oauth2/authorize`.
+     * For example, allow selection of an organization or team.
+     *
+     * Upon selection of a specific account, use `/oauth2/continue`
+     * with `postLogin: true` to continue the login flow.
+     *
+     * @returns
+     * - `true`: account is not selected and needs selection
+     * - `false`: intended user or account selected
+ 

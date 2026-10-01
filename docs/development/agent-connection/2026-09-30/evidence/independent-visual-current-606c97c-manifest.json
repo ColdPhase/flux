@@ -1,0 +1,23 @@
+{
+  "source": "606c97c66d6077625d8472b2c1f8e16edc9390de",
+  "evidence_head": "0afd785a839b768ba6fc399334894a5dcf60447c",
+  "verdict": "LIMITED; no material visible blocker in supplied two light consent states",
+  "artifacts": [
+    {
+      "path": "/home/hubert/Develop/flux/.worktrees/152-multi-connections/docs/development/agent-connection/2026-09-30/evidence/agent-consent-desktop.png",
+      "sha256": "9b425ba42959f884f51bc3b3f4e544872063aaf95ee8de12dc00364de31179d3",
+      "dimensions": [
+        1280,
+        1014
+      ]
+    },
+    {
+      "path": "/home/hubert/Develop/flux/.worktrees/152-multi-connections/docs/development/agent-connection/2026-09-30/evidence/agent-consent-phone.png",
+      "sha256": "5b9ecafbadc5fa45367e1083cea92040c5a0ef5ce86140807ff4c12fa991b9b3",
+      "dimensions": [
+        390,
+        1081
+      ]
+    }
+  ]
+}

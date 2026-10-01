@@ -82,7 +82,8 @@ export function SignInPage() {
   const navigate = useNavigate();
   const toast = useToast();
   const notice = params.get('notice');
-  const next = params.get('next');
+  const location = useLocation();
+  const next = location.pathname === '/login' ? `${location.pathname}${location.search}` : params.get('next');
   const shownRef = useRef<string | null>(null);
 
   // One-time notices arrive as a query flag; show them once and drop the flag from the address.
