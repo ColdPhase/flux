@@ -7,6 +7,8 @@ import { getConversation, getMaterialVersion, getProject, listConversations, lis
 import { pageBackTo } from './seekMessage';
 import { useShellData } from './data';
 import { MessageActions, MessageObjects, useCreateWorkFromMessage } from '../work/inline';
+import { useMessageWork } from '../work/useMessageWork';
+import { MessageWorkPages } from '../work/MessageWorkPages';
 import { audienceLine, replyTo, useProjectShell } from '../project/data';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { excerpt } from '../live/anchors';
@@ -132,6 +134,10 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
   const [sourceDraft, setSourceDraft] = useState<Draft | null>(savedMaterial.sourceDraft);
   const [citation, setCitation] = useState<{ title: string; materialId: string; version: number } | null>(restoredPending?.citation ?? null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [feedNode, setFeedNode] = useState<HTMLDivElement | null>(null);
+  const attachFeed = useCallback((node: HTMLDivElement | null) => { scrollRef.current = node; setFeedNode(node); }, []);
+  const sourceIds = useMemo(() => messages.map((message) => message.id), [messages]);
+  const messageWork = useMessageWork(me.user.id, project.id, accessLost ? null : conversation?.id ?? null, sourceIds, scrollRef, feedNode);
   const writable = project.access !== 'viewer';
   const makeWork = useCreateWorkFromMessage(project);
   const conversationId = conversation?.id;
@@ -246,7 +252,7 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
     const timer = window.setTimeout(stop, 2000);
     for (const type of ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const) feed.addEventListener(type, stop, { once: true, passive: true });
     return () => { stop(); window.clearTimeout(timer); for (const type of ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const) feed.removeEventListener(type, stop); };
-  }, [conversation?.id, arrived, arrivedLoaded]);
+  }, [conversation?.id, arrived, arrivedLoaded, feedNode]);
 
   function changeDraft(input: string) {
     typing.input(Boolean(input.trim()) && !asking && !/^\/ai(\s|$)/.test(input));
@@ -358,8 +364,8 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
   const trayOpen = sourcesOpen || showMaterialForm;
   const title = conversation ? conversation.firstMessageBody.split('\n')[0] || 'Conversation' : 'New conversation';
   let lastDay = '';
-  return <div className="project-convo" data-project-id={project.id}>
-    <div className="project-convo__feed" ref={scrollRef}>
+  return <div className="project-convo" data-project-id={project.id} data-associations-observed-at={messageWork.page?.observedAt} data-associations-phase={messageWork.state.phase}>
+    <div className="project-convo__feed" ref={attachFeed}>
       <div className="project-convo__in" data-shift>
         <div className="project-convo__head">
           <h2 title={title}>{title}</h2>
@@ -388,12 +394,12 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
               }
               const message = entry.message;
               const mine = message.authorId === me.user.id;
-              return [divider, <li key={message.id} id={`message-${message.id}`} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived === message.id ? ' is-arrived' : ''}`}>
+              return [divider, <li key={message.id} id={`message-${message.id}`} data-message-id={message.id} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived === message.id ? ' is-arrived' : ''}`}>
                 <Avatar name={author(message.authorId)} size="md" tone={mine ? 'me' : 'neutral'} />
                 <div className="project-convo__message-meta"><strong>{mine ? `${author(message.authorId)} · you` : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${author(message.authorId)} directly`}>{author(message.authorId)}</Link>}</strong><time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time><span>#{message.sequence}</span></div>
                 <p>{message.body}</p>
                 {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={hideIfDenied} /> : null}
-                <MessageObjects messageId={message.id} lists={work} />
+                <MessageObjects messageId={message.id} preview={messageWork.previews?.get(message.id) ?? null} />
                 <MessageActions projectId={project.id} message={message} writable={writable} busy={makeWork.busy === message.id} onCreateWork={() => void makeWork.create(message)} />
                 {makeWork.failed?.messageId === message.id ? <p className="ws-act-error" role="alert">{makeWork.failed.text} <button type="button" onClick={() => void makeWork.create(message)}>Retry</button></p> : null}
               </li>];
@@ -404,6 +410,7 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
         </section>
       </div>
     </div>
+    <MessageWorkPages read={messageWork} />
     <div className="composer project-convo__composer"><div className="composer__in" data-shift>
       {trayOpen ? <section id="project-sources" aria-label="Project materials" className="project-convo__materials">
         <div className="project-convo__section-head"><h3>Sources · saved for {project.name}</h3><span>{materialTotal}</span><button type="button" className="project-convo__tray-close" aria-label="Close sources" onClick={() => { setSourcesOpen(false); setShowMaterialForm(false); }}><Icon name="x" size={14} /></button></div>

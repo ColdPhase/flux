@@ -35,6 +35,11 @@
 .ws-act-error { margin-top: 4px; font-size: var(--fs-xs); color: var(--danger); }
 .ws-act-error button { text-decoration: underline; min-height: 28px; }
 .ws-attach { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.ws-attach__more { min-height: 28px; text-align: left; font-size: var(--fs-xs); color: var(--text-3); text-decoration: underline; text-underline-offset: 3px; }
+.ws-message-pages { padding: 4px 24px; border-top: 1px solid var(--line); font-size: var(--fs-sm); color: var(--text-3); }
+.ws-message-pages .ws-pages { max-width: calc(1000px - 48px); margin: 0 auto; padding: 4px 0; border: 0; }
+@media (max-width: 640px) { .ws-message-pages { padding: 4px 16px; } }
+@media (pointer: coarse) { .ws-attach__more { min-height: 44px; } }
 /* Calm chips under a message (#117): icon, title and a quiet state; the object opens in Details. */
 .ws-chip { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; min-height: 30px; padding: 0 10px; border-radius: var(--r); box-shadow: inset 0 0 0 1px var(--line-strong); font-size: var(--fs-sm); color: var(--text-2); text-align: left; transition: var(--tr); }
 .ws-chip:hover { background: var(--bg-hover); color: var(--text); }
@@ -171,4 +176,12 @@
 @media (pointer: coarse) {
   .ws-view, .ws-mine, .ws-pages button { min-height: 44px; }
   .ws-mine input { width: 20px; height: 20px; }
+}
+
+/* Keep distinguishing task titles visible on narrow conversation surfaces. */
+@media (max-width: 760px) {
+  .project-convo__feed .ws-chip { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 3px 6px; width: 100%; padding: 8px 10px; }
+  .project-convo__feed .ws-chip svg { grid-column: 1; grid-row: 1 / span 2; align-self: start; margin-top: 2px; }
+  .project-convo__feed .ws-chip__t { grid-column: 2; white-space: normal; overflow-wrap: anywhere; }
+  .project-convo__feed .ws-chip__k { grid-column: 2; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 }

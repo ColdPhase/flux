@@ -12,17 +12,17 @@ export function isFinished(item: Pick<WorkItem, 'status'>) {
 }
 
 /** The quiet kind line of a work item: status, owner and parking, never colour alone. */
-export function workLine(item: WorkItem) {
+export function workLine(item: Pick<WorkItem, 'status' | 'owner' | 'parked'>) {
   return ['Work', STATUS_LABEL[item.status], item.owner?.name, item.parked ? 'parked' : null].filter(Boolean).join(' · ');
 }
 
-export function decisionLine(decision: Decision) {
+export function decisionLine(decision: Pick<Decision, 'status' | 'supersedes' | 'decidedAt' | 'supersededAt'>) {
   if (decision.status === 'proposed') return decision.supersedes ? 'Proposed decision · would replace the current rule' : 'Proposed decision';
   if (decision.status === 'accepted') return `Current rule · accepted ${shortDate(decision.decidedAt!)}`;
   return `Earlier rule · replaced ${shortDate(decision.supersededAt!)}`;
 }
 
-export function resultLine(result: WorkResult) {
+export function resultLine(result: Pick<WorkResult, 'finding' | 'createdBy'>) {
   return `${result.finding === 'negative' ? 'Negative' : 'Positive'} result · ${result.createdBy.name}`;
 }
 

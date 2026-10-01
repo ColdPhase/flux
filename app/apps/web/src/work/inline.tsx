@@ -1,11 +1,12 @@
 import { useCallback, useRef, useState } from 'react';
 import { useRevalidator } from 'react-router';
-import type { ConversationMessage, Decision, Project, ProjectWorkSummary, WorkItem, WorkResult } from '@flux/contracts';
+import type { ConversationMessage, Project, ProjectWorkSummary } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Icon, useMediaQuery } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { createWork, type ProjectWork } from './api';
-import { decisionLine, firstLine, fromMessage, resultLine, workLine } from './format';
+import { decisionLine, firstLine, resultLine, workLine } from './format';
+import type { MessageWorkPreview } from './message-associations';
 import { summaryEmptyCaption, summaryStateParts, type StatePart } from './state-summary';
 import './work.css';
 
@@ -71,9 +72,9 @@ export function ProjectStateRow({ summary, phase }: { summary: ProjectWorkSummar
 }
 
 /** A calm chip under a message for an object made from it: icon, title and a quiet state. */
-function ObjectChip({ icon, kind, title, need, onOpen, label }: { icon: 'tasks' | 'rule' | 'result'; kind: string; title: string; need?: boolean; onOpen: () => void; label: string }) {
+function ObjectChip({ icon, kind, title, need, onOpen, label, objectKind, objectId }: { icon: 'tasks' | 'rule' | 'result'; kind: string; title: string; need?: boolean; onOpen: () => void; label: string; objectKind: string; objectId: string }) {
   return (
-    <button type="button" className={`ws-chip${need ? ' ws-chip--need' : ''}`} onClick={onOpen} aria-label={`${label}: ${title}`}>
+    <button type="button" data-work-kind={objectKind} data-work-id={objectId} className={`ws-chip${need ? ' ws-chip--need' : ''}`} onClick={onOpen} aria-label={`${label}: ${title}`}>
       <Icon name={icon} size={14} />
       <span className="ws-chip__t">{title}</span>
       <span className="ws-chip__k">{kind}</span>
@@ -85,17 +86,16 @@ function ObjectChip({ icon, kind, title, need, onOpen, label }: { icon: 'tasks' 
 const rest = (line: string) => line.replace(/^Work · /, '');
 
 /** Objects made from this message. The message itself is unchanged; these link back to it. */
-export function MessageObjects({ messageId, lists }: { messageId: string; lists: ProjectWork }) {
+export function MessageObjects({ messageId, preview }: { messageId: string; preview: MessageWorkPreview | null }) {
   const { openDetails } = useShellActions();
-  const work: WorkItem[] = fromMessage(lists.work, messageId);
-  const decisions: Decision[] = fromMessage(lists.decisions, messageId);
-  const results: WorkResult[] = fromMessage(lists.results, messageId);
-  if (!work.length && !decisions.length && !results.length) return null;
+  if (!preview) return null;
+  const { counts, items } = preview;
+  const total = counts.work + counts.decisions + counts.results;
+  if (!total) return null;
   return (
     <div className="ws-attach">
-      {work.map((item) => <ObjectChip key={item.id} icon="tasks" kind={rest(workLine(item))} title={item.title} label="Work" onOpen={() => openDetails({ kind: 'work', id: item.id })} />)}
-      {decisions.map((item) => <ObjectChip key={item.id} icon="rule" kind={decisionLine(item)} title={item.title} need={item.status === 'proposed'} label="Decision" onOpen={() => openDetails({ kind: 'decision', id: item.id })} />)}
-      {results.map((item) => <ObjectChip key={item.id} icon="result" kind={resultLine(item)} title={item.title} label="Result" onOpen={() => openDetails({ kind: 'result', id: item.id })} />)}
+      {items.map((item) => <ObjectChip key={`${item.kind}:${item.id}`} objectKind={item.kind} objectId={item.id} icon={item.kind === 'work' ? 'tasks' : item.kind === 'decision' ? 'rule' : 'result'} kind={item.kind === 'work' ? rest(workLine(item)) : item.kind === 'decision' ? decisionLine(item) : resultLine(item)} title={item.title} need={item.kind === 'decision' && item.status === 'proposed'} label={item.kind === 'work' ? 'Work' : item.kind === 'decision' ? 'Decision' : 'Result'} onOpen={() => openDetails({ kind: item.kind, id: item.id })} />)}
+      {items.length < total ? <button type="button" className="ws-attach__more" onClick={() => openDetails({ kind: 'overview', messageId })}>{[counts.work ? `${counts.work} work` : null, counts.decisions ? `${counts.decisions} ${counts.decisions === 1 ? 'decision' : 'decisions'}` : null, counts.results ? `${counts.results} ${counts.results === 1 ? 'result' : 'results'}` : null].filter(Boolean).join(' · ')} · view linked objects</button> : null}
     </div>
   );
 }
