@@ -98,7 +98,7 @@ export function Sidebar({ workspace, projects, directMessages, user, session, on
                 </button>
               </div>
               {/* Inside a project the sidebar shows its conversations (#117); the rail lists the projects. */}
-              {activeProject ? <ProjectThreads key={activeProject.id} projectId={activeProject.id} onNavigate={navigate} /> : (
+              {activeProject ? <ProjectThreads key={activeProject.id} projectId={activeProject.id} canStart={shell?.project.id === activeProject.id && shell?.project.access !== 'viewer'} onNavigate={navigate} /> : (
               <section className="side__sec" aria-labelledby="side-projects">
                 <h2 className="side__h" id="side-projects">Projects</h2>
                 {projects.length ? (
