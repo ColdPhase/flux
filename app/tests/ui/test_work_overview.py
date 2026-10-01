@@ -97,6 +97,7 @@ class OverviewWorkJourney(unittest.TestCase):
                 objects = ov.get_by_role("navigation", name="Overview object pages")
                 links = ov.get_by_role("navigation", name="Overview relation pages")
                 expect(objects).to_contain_text("1–50 of 69 objects")
+                expect(ov.locator(".ov-scroll-hint")).to_contain_text("all 50 objects on this page")
                 expect(ov).to_contain_text("Related notes; no source relationship")
                 first = self.identities(page); self.assertEqual(len(first), 50)
                 union = set(); seen = set()
@@ -126,6 +127,15 @@ class OverviewWorkJourney(unittest.TestCase):
                 expect(ov.locator(f'a[href="/projects/{self.project}/docs/{self.doc}"]')).to_have_count(1)
                 shot(page, f"bounded-overview-mixed-{'phone' if phone else 'desktop'}")
                 ov.get_by_role("region", name="Docs").get_by_role("link", name=re.compile("What we learned about shielding")).scroll_into_view_if_needed()
+                if phone:
+                    context=page.locator(".ov-panel-context")
+                    expect(context).to_be_visible()
+                    expect(context).to_contain_text("Library lighting measurements")
+                    expect(context).to_contain_text("Compare the earliest measurements before ordering another sensor.")
+                    expect(context).to_contain_text("Only you")
+                    context_box=context.bounding_box();body_box=page.locator("#details .ui-panel__body").bounding_box()
+                    assert context_box and body_box
+                    self.assertLessEqual(context_box["y"]+context_box["height"],body_box["y"]+1,"owning context remains above the scrolled source body")
                 shot(page, f"bounded-overview-sources-{'phone' if phone else 'desktop'}")
                 links.get_by_role("button", name="Previous", exact=True).click(); self.ready(page)
                 expect(links).to_contain_text("1–50 of")

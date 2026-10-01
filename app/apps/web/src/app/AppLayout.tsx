@@ -23,6 +23,7 @@ import '../live/live.css';
 import { JumpTo } from '../search/JumpTo';
 import { useNeedsYou } from '../returns/useNeedsYou';
 import { WorkReadProvider, useProjectWorkSummary } from '../work/WorkReadContext';
+import { OverviewContext } from '../project/ProjectOverview';
 
 function lastConversationPath(projectId: string) {
   try { return sessionStorage.getItem(`flux.project-conversation.${projectId}`) ?? `/projects/${projectId}`; }
@@ -303,7 +304,8 @@ function AppLayoutContent() {
       </div>
 
       <JumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
-      <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title={recapOpen ? 'What matters' : 'Details'} id="details">
+      <SidePanel open={detailsOpen} onClose={() => toggleDetails(false)} title={recapOpen ? 'What matters' : 'Details'} id="details"
+        context={phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext /> : undefined}>
         <Details view={detailsView} workspace={workspace} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />
       </SidePanel>
     </div>

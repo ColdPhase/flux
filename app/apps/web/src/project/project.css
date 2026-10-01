@@ -54,6 +54,12 @@
 .ov .ws-pages { flex-wrap: wrap; gap: 8px; padding: 8px 0; }
 .ov .ws-pages__range { flex-basis: 100%; white-space: normal; }
 .ov-relations { margin-top: 18px; }
+.ov-scroll-hint { display: flex; align-items: flex-start; gap: 5px; margin: 6px 0 0; padding-top: 6px; border-top: 1px solid var(--line); color: var(--text-3); font-size: var(--fs-xs); line-height: 1.5; }
+.ov-scroll-hint svg { flex: none; margin-top: 3px; }
+.ov-panel-context { flex: none; display: flex; flex-direction: column; gap: 3px; padding: 8px 16px; border-bottom: 1px solid var(--line); color: var(--text-2); font-size: var(--fs-sm); line-height: 1.4; }
+.ov-panel-context strong { font-size: var(--fs-xs); overflow-wrap: anywhere; }
+.ov-panel-context > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ov-panel-context small { display: flex; align-items: center; gap: 5px; color: var(--text-3); font-size: var(--fs-xs); }
 .ov-rows li + li { border-top: 1px solid var(--line); }
 .ov-row { display: flex; align-items: flex-start; gap: 10px; margin: 0 -8px; padding: 9px 8px; border-radius: var(--r); color: var(--text); text-align: left; text-decoration: none; transition: var(--tr); width: calc(100% + 16px); }
 .ov-row:hover { background: var(--bg-hover); }

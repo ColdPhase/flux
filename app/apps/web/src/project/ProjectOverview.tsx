@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useMatches } from 'react-router';
 import type { Conversation, DecisionRowProjection, Material, NativeWorkRow, WorkRowProjection, ResultRowProjection } from '@flux/contracts';
 import { Avatar, Icon, type IconName } from '../ui';
@@ -18,6 +18,20 @@ function useOpenConversation(): { conversation: Conversation | null; materials: 
   return (match?.loaderData as { conversation: Conversation | null; materials: Material[] } | undefined) ?? null;
 }
 
+/** The owning context stays visible when a phone reader scrolls down to sources. */
+export function OverviewContext() {
+  const shell = useProjectShell();
+  const open = useOpenConversation();
+  const { me } = useShellData();
+  if (!shell) return null;
+  const title = open?.conversation?.firstMessageBody.split('\n')[0];
+  return <div className="ov-panel-context" aria-label="Overview context">
+    <strong>{shell.project.name}</strong>
+    {title ? <span title={title}>{title}</span> : null}
+    <small><Icon name="lock" size={11} />{audienceLine(shell.people, me.user.id)}</small>
+  </div>;
+}
+
 interface Row {
   key: string;
   icon: IconName;
@@ -32,6 +46,17 @@ interface Row {
 
 function Rows({ label, rows, empty, controls }: { label: string; rows: Row[]; empty?: ReactNode; controls?: ReactNode }) {
   const { openDetails } = useShellActions();
+  const [node, setNode] = useState<HTMLUListElement | null>(null);
+  const [overflow, setOverflow] = useState(false);
+  useEffect(() => {
+    if (!node || !controls) return;
+    const measure = () => setOverflow(node.scrollHeight > node.clientHeight + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    for (const child of node.children) observer.observe(child);
+    return () => observer.disconnect();
+  }, [node, controls, rows]);
   const id = `ov-${label.toLowerCase().replace(/\W+/g, '-')}`;
   if (!rows.length && !empty && !controls) return null;
   return (
@@ -39,7 +64,7 @@ function Rows({ label, rows, empty, controls }: { label: string; rows: Row[]; em
       <h4 id={id}>{label}</h4>
       {controls}
       {rows.length ? (
-        <ul className="ov-rows">
+        <ul className="ov-rows" ref={setNode}>
           {rows.map((row) => {
             const body = <>
               <Icon name={row.icon} size={16} className="ov-row__ic" />
@@ -56,6 +81,7 @@ function Rows({ label, rows, empty, controls }: { label: string; rows: Row[]; em
           })}
         </ul>
       ) : <p className="ov-empty">{empty}</p>}
+      {controls && overflow ? <p className="ov-scroll-hint"><Icon name="chevron-down" size={12} />Scroll in this list to explore all {rows.length} objects on this page.</p> : null}
     </section>
   );
 }
