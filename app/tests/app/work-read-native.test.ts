@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
-import { createDatabase, nativeWorkAssociationRows, nativeWorkVisibilityRows, type NativeWorkAssociationSelector } from '@flux/db';
-import { createBoundedWorkReads, DomainError, type WorkReadUnitOfWork } from '@flux/core';
+import { createDatabase, nativeWorkAssociationRows, nativeWorkVisibilityRows, sql, type NativeWorkAssociationSelector } from '@flux/db';
+import { createBoundedWorkReads, DomainError, type Transaction, type WorkReadUnitOfWork } from '@flux/core';
 import type { Agent, Conversation, Decision, Material, ProjectWorkSummary, ProjectWorkView, WorkAssociations, WorkDetailProjection, WorkItem, WorkRelations, WorkResult, WorkRowProjection } from '@flux/contracts';
 import { nativeWorkReadFinalFence, nativeWorkReadUnitOfWork } from '../../apps/server/src/work-read/adapters.js';
 import { createAuth } from '../../apps/server/src/identity/auth.js';
@@ -174,6 +174,74 @@ describe('bounded native work reads through HTTP and current native fences', () 
     const held = await readsAfter(other.browser, () => grant(owner, projectId, other, 'denied'));
     try { await assert.rejects(held.reads.summary(held.actor, projectId), { status: 404 }); }
     finally { await grant(owner, projectId, other, 'contributor'); }
+  });
+
+  test('exact SID is checked after the final awaited native project policy, including revocation/expiry during it', async () => {
+    for (const expired of [false, true]) {
+      const session = await secondSession(other), headers = { cookie: session.browser.cookieHeader() };
+      const initial = await sessions.requirePrincipal({ headers });
+      let policyReads = 0;
+      // Wrap native Drizzle builders only to hold the final completed policy SQL;
+      // every row/level still comes from the actual current central policy.
+      const wrap = (builder: object): object => new Proxy(builder, { get(target, name, receiver) {
+        const member = Reflect.get(target, name, receiver);
+        if (name === 'then') return (fulfilled: (value: unknown) => unknown, rejected: (error: unknown) => unknown) => Reflect.apply(member, target, [async (value: unknown) => {
+          policyReads++;
+          if (policyReads === 2) await (expired
+            ? pool.query("UPDATE auth_sessions SET expires_at = clock_timestamp() - interval '1 second' WHERE id = $1", [session.sessionId])
+            : pool.query('DELETE FROM auth_sessions WHERE id = $1', [session.sessionId]));
+          return fulfilled(value);
+        }, rejected]);
+        if (typeof member !== 'function') return member;
+        return (...args: unknown[]) => { const next = Reflect.apply(member, target, args); return typeof next === 'object' && next !== null ? wrap(next) : next; };
+      } });
+      const held = new Proxy(db, { get(target, name, receiver) {
+        if (name !== 'select') return Reflect.get(target, name, receiver);
+        return (...args: unknown[]) => {
+          const native = Reflect.apply(target.select, target, args), fields = args[0];
+          return typeof fields === 'object' && fields !== null && Object.hasOwn(fields, 'project') && Object.hasOwn(fields, 'level') ? wrap(native) : native;
+        };
+      } });
+      const reads = createBoundedWorkReads(nativeWorkReadUnitOfWork(db), nativeWorkReadFinalFence(held, sessions, initial, headers));
+      await assert.rejects(reads.summary(initial.principal, projectId), code(401, 'UNAUTHENTICATED'));
+      assert.equal(policyReads, 2);
+      assert.ok(await sessions.resolveSession({ cookie: other.browser.cookieHeader() }), 'an unrelated live SID cannot substitute');
+    }
+  });
+
+  test('a readable native grant downgrade updates final access while preserving the coherent observation', async () => {
+    const held = await readsAfter(other.browser, () => grant(owner, projectId, other, 'viewer'));
+    try {
+      const view = await held.reads.view(held.actor, projectId, new URLSearchParams('limit=1'));
+      assert.equal(view.summary.access, 'viewer'); assert.equal(view.summary.workTotal, 7); assert.equal(view.total, 10);
+      assert.equal(view.items.length, 1);
+    } finally { await grant(owner, projectId, other, 'contributor'); }
+  });
+
+  test('native observations are read-only REPEATABLE READ and all five reads leave project content/events unchanged', async () => {
+    let settings: { isolation: string; readOnly: string } | undefined;
+    const observed = new Proxy(db, { get(target, name, receiver) {
+      if (name !== 'transaction') return Reflect.get(target, name, receiver);
+      return (read: (tx: Transaction) => Promise<unknown>, options: unknown) => Reflect.apply(target.transaction, target, [async (tx: Transaction) => {
+        settings = (await tx.execute<{ isolation: string; readOnly: string }>(sql`SELECT current_setting('transaction_isolation') AS isolation, current_setting('transaction_read_only') AS "readOnly"`)).rows[0];
+        return read(tx);
+      }, options]);
+    } });
+    const headers = { cookie: owner.browser.cookieHeader() }, initial = await sessions.requirePrincipal({ headers });
+    const reads = createBoundedWorkReads(nativeWorkReadUnitOfWork(observed), nativeWorkReadFinalFence(db, sessions, initial, headers));
+    const digest = async () => (await pool.query(`WITH facts AS (
+      SELECT 'work:' || id::text AS key, row_to_json(w)::text AS fact FROM project_work_items w WHERE project_id = $1
+      UNION ALL SELECT 'decision:' || id::text, row_to_json(d)::text FROM project_decisions d WHERE project_id = $1
+      UNION ALL SELECT 'result:' || id::text, row_to_json(r)::text FROM project_results r WHERE project_id = $1
+      UNION ALL SELECT 'link:' || id::text, row_to_json(l)::text FROM project_object_links l WHERE project_id = $1
+      UNION ALL SELECT 'message:' || id::text, row_to_json(m)::text FROM project_messages m WHERE project_id = $1
+      UNION ALL SELECT 'event:' || id::text, row_to_json(e)::text FROM events e WHERE object_id = $1)
+      SELECT md5(string_agg(fact, ',' ORDER BY key)) AS digest FROM facts`, [projectId])).rows;
+    const original = await digest();
+    await reads.summary(initial.principal, projectId);
+    assert.deepEqual(settings, { isolation: 'repeatable read', readOnly: 'on' });
+    for (const suffix of ['work-summary', 'work-view?limit=1', `work-objects/work/${main.id}`, `work-relations?objects=work:${main.id}&limit=1`, `work-associations?conversationId=${conversation.id}&limit=1`]) await get(`${base()}/${suffix}`);
+    assert.deepEqual(await digest(), original);
   });
 
   test('every required zero-link selector is checked after its observation, ahead of source drift', async () => {

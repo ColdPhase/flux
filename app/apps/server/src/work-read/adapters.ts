@@ -91,9 +91,11 @@ export function nativeWorkReadFinalFence(db: Database, sessions: SessionResolver
     }
     const current = await nativeWorkVisibilityRows(db).fingerprint(projectId, sources);
     if (current !== fingerprint) throw new DomainError(409, 'work_read_changed', 'Work sources changed; refresh this view');
-    // Re-resolve after the potentially substantial current visibility query.
+    // Bracket the final current policy query with exact native session checks.
     await requireSession(principal);
-    return (await nativeWorkReadAccess(db).requireProject(principal, projectId)).access;
+    const access = await nativeWorkReadAccess(db).requireProject(principal, projectId);
+    await requireSession(principal);
+    return access.access;
   } };
 }
 
