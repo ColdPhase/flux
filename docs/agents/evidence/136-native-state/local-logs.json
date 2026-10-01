@@ -1,0 +1,27 @@
+{
+  "initial": {
+    "path": "/tmp/flux136-state-focused.log",
+    "sha256": "188bdd55b423b9b7898afe165babce59ed8845bcedac8cc0e87e92eea32cd35e",
+    "result": "Ran 21 tests in 42.113s\n\nOK"
+  },
+  "readable": {
+    "path": "/tmp/flux136-state-round2.log",
+    "sha256": "e4e1b16d2fc9c6439e4409de5f6bd3a78b70f587df41a8fba60f90dd0dd62c89",
+    "result": "Ran 21 tests in 44.117s\n\nOK"
+  },
+  "expanded-source": {
+    "path": "/tmp/flux136-state-expanded.log",
+    "sha256": "6c90eb2e41da4d5e7ec1afdd8cf010acb199b5aa1c3c125ee900083567c40863",
+    "result": "Ran 62 tests in 198.480s\n\nOK"
+  },
+  "expanded-navigation": {
+    "path": "/tmp/flux136-state-accepted.log",
+    "sha256": "74310c3991a44fadd0a3b0c731a18e063b6a93de074c8d813a142f4e7452f3b0",
+    "result": "Ran 62 tests in 197.914s\n\nOK"
+  },
+  "current": {
+    "path": "/tmp/flux136-state-overview-final.log",
+    "sha256": "166d09520702a4178424f322a3a32587e4188c0460cbeed541f3e44de6ad2870",
+    "result": "22/22 PASS44.645s; full configured Docker build/type/lint and affectedstate/project/work; terminal25358exit0"
+  }
+}

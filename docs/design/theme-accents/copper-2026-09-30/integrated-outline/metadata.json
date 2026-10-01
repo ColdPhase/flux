@@ -1,0 +1,18 @@
+{
+  "source": "03f0f8d6b417cc3fc7bcaa3d0f48accf7332cb48",
+  "outline_dependency": "2366243120bdc25f2fea25244ab47670f0156254",
+  "tests": 14,
+  "seconds": 115.887,
+  "browser_measurements": 30,
+  "screenshots": 17,
+  "source_sha256": {
+    "apps/web/src/sketch/SketchList.tsx": "3278740d36409c54366d3ef362bbf16df57c55b58a3366354e6180d91a27cd92",
+    "apps/web/src/sketch/sketch-list.css": "235677e5e761e579cf8a16a88049547f102985b5c85aa825609bad53424e93e6",
+    "apps/web/src/sketch/outline.ts": "fd60274b0b2a518a72b1384018b842ac0c168ebcef92205fc2c02c38bacd7362",
+    "apps/web/src/sketch/useOutline.ts": "741815fc5f13e7d6afbe06dfa08e659639ccea675a4529235db84bc4206b5f03",
+    "tests/ui/test_map_outline.py": "8d6c063a0ce634f06b11145098e9617d0638c0735c66fce834ee8806456bb144",
+    "apps/web/src/app/theme.ts": "08a62ccb318399c32c8972fec39c51395fe0e0222a13e180b548725bb1c64fa0",
+    "apps/web/src/ui/tokens.css": "09f244891241b5396beaabfb53227add720b97c4a10f54d37309f0876c3bfe7e"
+  },
+  "prior_integration_attempt": "The first full integration run loaded126 tests:121 passed,4 opt-in media skipped,1 old fixture error selecting removed Iris. The fixture was corrected to consume current FAMILIES. This current14-test pass covers both affected appearance and outline journeys; it does not relabel the prior full run as passing."
+}
