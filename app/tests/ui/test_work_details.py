@@ -61,7 +61,10 @@ class NativeDetailsJourney(unittest.TestCase):
         self.ready(panel);return panel
 
     def ready(self,panel):expect(panel.locator("[data-detail-relations-phase]")).to_have_attribute("data-detail-relations-phase","ready")
-    def choices_ready(self,panel,name):expect(panel.get_by_role("navigation",name=name)).to_have_attribute("aria-busy","false")
+    def choices_ready(self,panel,name):
+        nav=panel.get_by_role("navigation",name=name)
+        expect(nav.get_by_role("status")).to_contain_text(re.compile(r"(?:\d+–\d+ of|No rows on this page)"))
+        expect(nav).to_have_attribute("aria-busy","false")
 
     def test_01_complete_native_relations_own_fields_and_other_destinations_on_desktop_and_phone(self):
         before=self.records();expected={link["id"] for link in self.native("work",self.target["id"])["links"]}
@@ -201,6 +204,7 @@ class NativeDetailsJourney(unittest.TestCase):
         evidence.evaluate("el=>{el.focus();el.setSelectionRange(6,13)}")
         route,response=held.pop();saved=response.json();route.fulfill(response=response)
         page.wait_for_function("performance.getEntriesByType('resource').some(e=>e.name.endsWith('/results'))")
+        page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
         expect(finding).to_have_value("My fresh draft after reopening the same work")
         expect(evidence).to_have_value("Fresh unsaved measurements stay owned by the new form")
         self.assertEqual(evidence.evaluate("el=>[document.activeElement===el,el.selectionStart,el.selectionEnd]"),[True,6,13])
@@ -214,7 +218,7 @@ class NativeDetailsJourney(unittest.TestCase):
         page.get_by_role("navigation",name="Places").get_by_role("link",name="Neighbouring workshop",exact=True).click()
         expect(page).to_have_url(re.compile(f"/projects/{second}$"));expect(panel).to_have_attribute("data-detail-id",self.result["id"])
         panel.get_by_role("region",name="Reports on").get_by_role("button",name=re.compile("Compare both shielded")).click()
-        expect(panel).to_have_attribute("data-detail-id",self.target["id"]);self.ready(panel)
+        panel=page.locator("#details .wd");expect(panel).to_have_attribute("data-detail-id",self.target["id"]);self.ready(panel)
         expect(panel).to_contain_text("Everyone with access to Library lighting measurements")
         expect(panel.get_by_role("heading",name="Not available",exact=True)).to_have_count(0)
 
@@ -225,6 +229,7 @@ class NativeDetailsJourney(unittest.TestCase):
         self.assertTrue(any(link["role"]=="source" and link["to"]["id"]==result["id"] for link in doc["links"]))
         for unchanged in (False,True):
             page=self.page();panel=self.open(page,"result",result["id"]);panel.get_by_role("button",name="Add to docs",exact=True).click()
+            panel=page.locator("#details .wd")
             panel.get_by_label("Doc",exact=True).select_option(doc["id"])
             expect(panel).to_contain_text("unchanged content keeps its current version")
             expect(panel).not_to_contain_text("rewritten as version")
