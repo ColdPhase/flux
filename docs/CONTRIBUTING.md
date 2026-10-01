@@ -83,7 +83,7 @@ issue.
    named `python`, use it instead. You can also open the HTML file directly.
 
 4. Make a focused change. Put code in the layer that owns it
-   ([architecture](development/architecture.md)) and tests under `tests/app`.
+   ([architecture](development/architecture.md)) and tests under `app/tests/app`.
    Prototype changes live in `flux-ux-v8.html`; avoid reformatting unrelated
    parts of that large file.
 5. Run the checks below, commit your changes, and push your branch to your fork.

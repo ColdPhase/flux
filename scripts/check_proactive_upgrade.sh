@@ -16,13 +16,21 @@ unset FLUX_PROJECT FLUX_PUBLIC_ORIGIN
 head -c 32 /dev/urandom > "$work/background_key"
 chmod 0444 "$work/background_key"
 export FLUX_BACKGROUND_KEY_HOST_FILE="$work/background_key"
+# The baseline may predate the app/ + docker/ layout (#76); the candidate always follows it.
+env_path() { if [ -f "$checkout/docker/.env" ]; then printf '%s/docker/.env' "$checkout"; else printf '%s/.env' "$checkout"; fi; }
+migration_dir() { if [ -d "$checkout/app/packages/db/migrations" ]; then printf '%s/app/packages/db/migrations' "$checkout"; else printf '%s/packages/db/migrations' "$checkout"; fi; }
 compose() {
-  docker compose --project-directory "$checkout/infra" --env-file "$checkout/.env" -p "$project" -f "$checkout/infra/compose.yaml" "$@"
+  if [ -f "$checkout/docker/compose.source.yaml" ]; then
+    compose_dir="$checkout/docker" compose_file="$checkout/docker/compose.source.yaml"
+  else
+    compose_dir="$checkout/infra" compose_file="$checkout/infra/compose.yaml"
+  fi
+  docker compose --project-directory "$compose_dir" --env-file "$(env_path)" -p "$project" -f "$compose_file" "$@"
 }
 cleanup() {
   status=$?
-  if [ -f "$checkout/.env" ]; then
-    project=$(sed -n 's/^FLUX_PROJECT=//p' "$checkout/.env")
+  if [ -f "$(env_path)" ]; then
+    project=$(sed -n 's/^FLUX_PROJECT=//p' "$(env_path)")
     if [ "$status" -ne 0 ]; then compose logs --no-color --tail 50 db migrate api worker || true; fi
     "$checkout/flux" clean -y >/dev/null 2>&1 || true
   fi
@@ -35,7 +43,7 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 ledger() { compose exec -T db psql -X -tA -v ON_ERROR_STOP=1 -U flux -d flux -c "SELECT string_agg(version::text, ',' ORDER BY version) FROM flux_schema_version"; }
-expected_ledger() { ls "$checkout/packages/db/migrations" | sed -n 's/^\([0-9][0-9][0-9][0-9]\)_.*\.sql$/\1/p' | sort -n | sed 's/^0*//' | paste -sd, -; }
+expected_ledger() { ls "$(migration_dir)" | sed -n 's/^\([0-9][0-9][0-9][0-9]\)_.*\.sql$/\1/p' | sort -n | sed 's/^0*//' | paste -sd, -; }
 snapshot() {
   for table in workspaces workspace_members projects project_grants drafts project_materials project_material_versions project_conversations project_messages sketches sketch_thoughts sketch_links project_work_items project_decisions project_results project_object_links; do
     compose exec -T db psql -X -tA -v ON_ERROR_STOP=1 -U flux -d flux -c \
@@ -45,9 +53,9 @@ snapshot() {
 echo "Baseline $from -> candidate $candidate; isolated same-volume rehearsal"
 "$checkout/flux" up > "$work/baseline-up.log" 2>&1 || { cat "$work/baseline-up.log"; exit 1; }
 "$checkout/flux" demo > "$work/demo.log" 2>&1 || { cat "$work/demo.log"; exit 1; }
-project=$(sed -n 's/^FLUX_PROJECT=//p' "$checkout/.env")
-origin=$(sed -n 's/^FLUX_PUBLIC_ORIGIN=//p' "$checkout/.env")
-owner_password=$(sed -n 's/^FLUX_DEMO_OWNER_PASSWORD=//p' "$checkout/.env")
+project=$(sed -n 's/^FLUX_PROJECT=//p' "$(env_path)")
+origin=$(sed -n 's/^FLUX_PUBLIC_ORIGIN=//p' "$(env_path)")
+owner_password=$(sed -n 's/^FLUX_DEMO_OWNER_PASSWORD=//p' "$(env_path)")
 prepared=$(compose exec -T -e FLUX_UPGRADE_PHASE=prepare -e FLUX_PUBLIC_ORIGIN="$origin" -e FLUX_DEMO_OWNER_PASSWORD="$owner_password" \
   api node --input-type=module - < "$here/scripts/proactive-upgrade-fixture.mjs")
 state=$(printf '%s\n' "$prepared" | sed -n 's/^FLUX_UPGRADE_STATE //p')
@@ -58,9 +66,17 @@ old_ledger=$(ledger)
 snapshot > "$work/before.snapshot"
 volume="${project}_pgdata"
 volume_created=$(docker volume inspect -f '{{.CreatedAt}}' "$volume")
-# Preserve this checkout's .env and volumes; replace only its source like an ordinary update.
-find "$checkout" -mindepth 1 -maxdepth 1 ! -name .env -exec rm -rf {} +
+# Preserve this checkout's private env and volumes; replace only its source like an ordinary update.
+# The env file returns to its own relative location (docker/.env, or a legacy root .env that the
+# candidate launcher moves once), so the baseline and candidate share one project and secrets.
+baseline_env=$(env_path)
+env_relative=${baseline_env#"$checkout"/}
+cp "$baseline_env" "$work/baseline.env"
+find "$checkout" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 git -C "$here" archive "$candidate" | tar -xf - -C "$checkout"
+mkdir -p "$(dirname "$checkout/$env_relative")"
+cp "$work/baseline.env" "$checkout/$env_relative"
+chmod 600 "$checkout/$env_relative"
 new_files=$(expected_ledger)
 "$checkout/flux" up > "$work/candidate-up.log" 2>&1 || { cat "$work/candidate-up.log"; exit 1; }
 compose logs --no-color migrate | sed -n '/Applied migration /p'

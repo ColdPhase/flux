@@ -94,7 +94,7 @@ the still-disabled background rule.
 Another project member may author a qualifying result under the owner's standing
 rule, but cannot read or revoke that owner's connection or directly command it.
 The API has no route to change the rule's owner, audience, scope or purpose.
-The Docker browser journey in `tests/app/e2e/proactive-comparison.e2e.ts` seeds
+The Docker browser journey in `app/tests/app/e2e/proactive-comparison.e2e.ts` seeds
 one human work item and two proposals for a restricted project, renders their
 compact review rows alongside ordinary work and results at 1440×900, opens one
 by keyboard, follows an exact project-message citation, then edits, uses and
@@ -296,10 +296,10 @@ same Compose project with the new file mounted as
 Compose project name and `NEW_BACKGROUND_KEY_FILE` to the absolute new file path:
 
 ```sh
-docker compose -p "$FLUX_PROJECT" -f infra/compose.yaml stop api worker
-docker compose -p "$FLUX_PROJECT" -f infra/compose.yaml run --rm --no-deps \
+docker compose --env-file docker/.env -p "$FLUX_PROJECT" -f docker/compose.source.yaml stop api worker
+docker compose --env-file docker/.env -p "$FLUX_PROJECT" -f docker/compose.source.yaml run --rm --no-deps \
   -v "$NEW_BACKGROUND_KEY_FILE:/run/secrets/flux_background_key_next:ro,z" \
-  worker node infra/dist/rotate-background-key.js
+  worker node tooling/dist/rotate-background-key.js
 ```
 
 The command re-encrypts all active connections in one database transaction and

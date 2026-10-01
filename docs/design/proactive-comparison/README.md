@@ -57,7 +57,7 @@ triggering result and observed fact sit underneath as context. Opening a
 suggestion reveals its fact, interpretation, next step, citations and human
 actions; the collapsed state keeps ordinary work visible before review.
 
-The browser journey in `tests/app/e2e/proactive-comparison.e2e.ts` separately
+The browser journey in `app/tests/app/e2e/proactive-comparison.e2e.ts` separately
 checks an exact source-message route, edit/reload, use as work, dismissal and
 manual work after the suggestions are gone. The screenshot does not establish
 those interactions, phone layout, accessibility or real provider behavior.

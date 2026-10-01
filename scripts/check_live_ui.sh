@@ -29,7 +29,7 @@ export FLUX_LIVEKIT_ICE_UDP_PORT="${FLUX_LIVE_UI_ICE_UDP_PORT:-18785}"
 export FLUX_LIVEKIT_TURN_UDP_PORT="${FLUX_LIVE_UI_TURN_UDP_PORT:-18786}"
 if [ -n "${FLUX_UI_SCREENSHOT_DIR:-}" ]; then mkdir -p "$FLUX_UI_SCREENSHOT_DIR"; fi
 
-compose="docker compose -p $project -f infra/compose.yaml -f infra/compose.live.yaml -f infra/compose.live.test.yaml --profile ui"
+compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.live.yaml -f docker/compose.live.test.yaml --profile ui"
 cleanup() {
   status=$?
   if [ "$status" -ne 0 ]; then

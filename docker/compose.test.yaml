@@ -1,0 +1,99 @@
+# Test-only Web Push and browser wiring (issue #41), layered over compose.source.yaml by
+# scripts/check_application.sh with the `test` profile. Never use it for a real deployment:
+# it lets the worker reach a private-network push mock and trust its throwaway certificate.
+services:
+  pushmock:
+    profiles: ["test"]
+    build:
+      context: ../app
+      dockerfile: ../docker/Dockerfile
+      target: e2e
+    image: flux-e2e:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
+    # A fresh self-signed certificate per run: web-push only speaks https.
+    command:
+      - sh
+      - -c
+      - >-
+        openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 2
+        -subj /CN=pushmock -addext subjectAltName=DNS:pushmock,DNS:mailpit-starttls,DNS:mailpit-smtps
+        -keyout /tls/key.pem -out /tls/cert.pem 2>/dev/null && chmod 644 /tls/key.pem &&
+        exec node_modules/.bin/tsx tests/app/support/push-mock.ts
+    volumes:
+      - pushtls:/tls
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8081/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  # Operator TLS paths for notification email (#116, #113): SMTP catchers that refuse plain
+  # text, one requiring STARTTLS (port 587 style) and one implicit TLS (smtps, port 465 style).
+  # They use the per-run throwaway certificate, which the test container trusts.
+  mailpit-starttls: &tls-mailpit
+    profiles: ["test"]
+    image: axllent/mailpit:v1.31.2@sha256:74d609a42ec279aa63c6b4622a6fa9b5408d1ad5b1d76a1c4be40a265ce0863d
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_TLS_CERT: /tls/cert.pem
+      MP_SMTP_TLS_KEY: /tls/key.pem
+      MP_SMTP_REQUIRE_STARTTLS: "true"
+    volumes:
+      - pushtls:/tls:ro
+    depends_on:
+      pushmock:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+  mailpit-smtps:
+    <<: *tls-mailpit
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_TLS_CERT: /tls/cert.pem
+      MP_SMTP_TLS_KEY: /tls/key.pem
+      MP_SMTP_REQUIRE_TLS: "true"
+  worker:
+    environment:
+      FLUX_PUSH_ALLOW_PRIVATE_NETWORK: "true"
+      NODE_EXTRA_CA_CERTS: /tls/cert.pem
+    volumes:
+      - pushtls:/tls:ro
+    depends_on:
+      pushmock:
+        condition: service_healthy
+  test:
+    environment:
+      FLUX_VAPID_PUBLIC_KEY: ${FLUX_VAPID_PUBLIC_KEY:-}
+      FLUX_VAPID_PRIVATE_KEY: ${FLUX_VAPID_PRIVATE_KEY:-}
+      FLUX_VAPID_SUBJECT: ${FLUX_VAPID_SUBJECT:-}
+      FLUX_PUSH_ALLOW_PRIVATE_NETWORK: "true"
+      FLUX_PUSHMOCK_URL: http://pushmock:8081
+      FLUX_MAILPIT_STARTTLS_URL: http://mailpit-starttls:8025
+      FLUX_MAILPIT_SMTPS_URL: http://mailpit-smtps:8025
+      NODE_EXTRA_CA_CERTS: /tls/cert.pem
+    volumes:
+      - pushtls:/tls:ro
+    depends_on:
+      worker:
+        condition: service_started
+      pushmock:
+        condition: service_healthy
+      mailpit-starttls:
+        condition: service_healthy
+      mailpit-smtps:
+        condition: service_healthy
+  e2e:
+    profiles: ["test"]
+    image: flux-e2e:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
+    environment:
+      FLUX_API_URL: http://api:8080
+      FLUX_PUBLIC_ORIGIN: ${FLUX_PUBLIC_ORIGIN:?Set FLUX_PUBLIC_ORIGIN}
+      FLUX_E2E_EVIDENCE_DIR: ${FLUX_E2E_EVIDENCE_DIR:-}
+    volumes:
+      - teststate:/state
+    depends_on:
+      api:
+        condition: service_healthy
+volumes:
+  pushtls:
