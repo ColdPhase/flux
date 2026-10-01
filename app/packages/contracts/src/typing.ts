@@ -11,3 +11,6 @@ export interface TypingSnapshot {
   availability: 'ready' | 'unavailable';
   people: { id: string; name: string }[];
 }
+/** Authenticated socket owner, never a caller assertion or a session credential. */
+export interface TypingIdentity { type: 'identity'; id: string }
+export type TypingServerMessage = TypingIdentity | TypingSnapshot;

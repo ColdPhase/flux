@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type WebSocket from 'ws';
 import { authorizeTypingContext, authorizeTypingSender, normalizeTypingCommand, typingContextKey, type TypingActor, type TypingPulse } from '@flux/core';
-import type { TypingCommand, TypingContext, TypingSnapshot } from '@flux/contracts';
+import type { TypingCommand, TypingContext, TypingSnapshot, TypingServerMessage } from '@flux/contracts';
 import { TypingHub, type TypingDelivery } from './hub.js';
 
 /** Socket-owned identity, serial authorization/publication, and bounded commands/output. */
@@ -22,8 +22,7 @@ export class TypingConnection {
   private tokens = 8;
   private tokenAt = performance.now();
   private sending = false;
-  private output: { snapshot: TypingSnapshot; epoch: number; generation: number; expiresAt: number; pulses: TypingPulse[] } | null = null;
-  private lastSent = '';
+  private output: { snapshot: TypingServerMessage; epoch: number; generation: number; expiresAt: number; pulses: TypingPulse[] } | null = null;
   private sendTimer: ReturnType<typeof setTimeout> | null = null;
   private publication: Promise<void> | null = null;
   private terminal = false;
@@ -64,6 +63,9 @@ export class TypingConnection {
     });
     socket.on('error', () => this.close(1011, 'Typing unavailable'));
     socket.on('pong', () => { this.pongAt = performance.now(); });
+    this.output = { snapshot: { type: 'identity', id: this.actor.actorId }, epoch: this.epoch,
+      generation: hub.generation, expiresAt: performance.now() + 1000, pulses: [] };
+    this.flush();
   }
   heartbeat() {
     if (this.stopped) return;
@@ -110,7 +112,6 @@ export class TypingConnection {
       await this.withdraw();
       if (this.context) this.hub.leave(this.context);
       this.context = this.requested = null;
-      this.lastSent = '';
       if (command.type === 'leave' || !this.current(generation)) return;
       const canonical = await authorizeTypingContext(this.hub.access, this.actor, command.context, 'read');
       if (!this.current(generation)) return;
@@ -206,11 +207,14 @@ export class TypingConnection {
     if (this.sending || !this.output || this.stopped) return;
     const output = this.output; this.output = null;
     if (!this.current(output.epoch) || output.generation !== this.hub.generation || performance.now() >= output.expiresAt) return;
-    const currentIds = new Set(output.pulses.filter((pulse) => this.hub.current(pulse)).map((pulse) => pulse.actorId));
-    output.snapshot.people = output.snapshot.people.filter((human) => currentIds.has(human.id));
-    if (!this.hub.availableFor(output.snapshot.context)) { output.snapshot.availability = 'unavailable'; output.snapshot.people = []; }
+    if (output.snapshot.type === 'snapshot') {
+      const currentIds = new Set(output.pulses.filter((pulse) => this.hub.current(pulse)).map((pulse) => pulse.actorId));
+      output.snapshot.people = output.snapshot.people.filter((human) => currentIds.has(human.id));
+      if (!this.hub.availableFor(output.snapshot.context)) { output.snapshot.availability = 'unavailable'; output.snapshot.people = []; }
+    }
     const payload = JSON.stringify(output.snapshot);
-    if (payload === this.lastSent) return;
+    // Browser WebSockets do not expose protocol ping/pong. Identical checked
+    // snapshots renew the client freshness lease without repeating DOM text.
     if (Buffer.byteLength(payload) > 65536 || this.socket.bufferedAmount > 65536) { this.close(1013, 'Typing unavailable'); return; }
     this.sending = true;
     this.sendTimer = setTimeout(() => this.close(1013, 'Typing unavailable'), 1000);
@@ -218,7 +222,6 @@ export class TypingConnection {
       if (this.sendTimer) clearTimeout(this.sendTimer); this.sendTimer = null;
       this.sending = false;
       if (error) { this.close(1011, 'Typing unavailable'); return; }
-      this.lastSent = payload;
       this.flush();
     });
   }

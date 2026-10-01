@@ -36,6 +36,9 @@ describe('actual same-origin ephemeral human typing WebSocket', () => {
 
   test('two actual accounts receive names only; immediate stop is nondurable and self is excluded', async () => {
     const { context } = await conversation(); const { sender, receiver } = await pair(context);
+    assert.deepEqual(sender.frames[0], { type: 'identity', id: alice.id });
+    assert.deepEqual(receiver.frames[0], { type: 'identity', id: bob.id });
+    assert.equal(sender.frames.filter((frame) => frame.type === 'identity').length, 1);
     const counts = () => pool.query(`SELECT
       (SELECT count(*) FROM events WHERE workspace_id = $1) AS events,
       (SELECT count(*) FROM project_messages WHERE workspace_id = $1) AS messages,
@@ -68,6 +71,18 @@ describe('actual same-origin ephemeral human typing WebSocket', () => {
     await new Promise((resolve) => setTimeout(resolve, 250));
     assert.ok(absent(receiver, alice.id));
     console.log(JSON.stringify({ typingSocket: 'scope-switch', stopMs }));
+    await Promise.all([sender.close(), receiver.close()]);
+  });
+
+  test('unchanged checked snapshots renew application freshness without a new durable event', async () => {
+    const { context } = await conversation(); const { sender, receiver } = await pair(context);
+    sender.send({ type: 'active', active: true });
+    await receiver.until(() => visible(receiver, alice.id), 'current active snapshot');
+    const start = receiver.messages.length;
+    const active = receiver.messages.at(-1);
+    await receiver.until(() => receiver.messages.length >= start + 2, 'two checked heartbeat renewals', 3000);
+    assert.deepEqual(receiver.messages.at(-1), active);
+    assert.equal(receiver.frames.filter((frame) => frame.type === 'identity').length, 1);
     await Promise.all([sender.close(), receiver.close()]);
   });
 

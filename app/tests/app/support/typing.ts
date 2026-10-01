@@ -1,12 +1,17 @@
 import WebSocket from 'ws';
-import type { TypingCommand, TypingContext, TypingSnapshot } from '@flux/contracts';
+import type { TypingCommand, TypingContext, TypingSnapshot, TypingServerMessage } from '@flux/contracts';
 import { apiUrl, publicOrigin, type Browser } from './http.js';
 
 export class TypingClient {
   readonly messages: TypingSnapshot[] = [];
+  readonly frames: TypingServerMessage[] = [];
   readonly closed: Promise<number>;
   private constructor(readonly socket: WebSocket) {
-    socket.on('message', (data) => this.messages.push(JSON.parse(String(data)) as TypingSnapshot));
+    socket.on('message', (data) => {
+      const message = JSON.parse(String(data));
+      this.frames.push(message as TypingServerMessage);
+      if (message.type === 'snapshot') this.messages.push(message as TypingSnapshot);
+    });
     this.closed = new Promise((resolve) => socket.once('close', (code) => resolve(code)));
   }
   static async connect(browser: Browser, origin: string | null = publicOrigin, endpoint = apiUrl) {
@@ -21,6 +26,7 @@ export class TypingClient {
       });
       socket.on('error', (error) => { if (socket.readyState !== WebSocket.CLOSED) reject(error); });
     });
+    await client.until(() => client.frames[0]?.type === 'identity', 'authenticated own-account acknowledgement');
     return client;
   }
   send(command: TypingCommand) { this.socket.send(JSON.stringify(command)); }
