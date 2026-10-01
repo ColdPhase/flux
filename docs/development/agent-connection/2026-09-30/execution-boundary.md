@@ -71,9 +71,10 @@ receipt completion, retaining original lease ID/session/generation/outcome.
    project contributor rights alone do not authorize standing execution.
 2. Lock the canonical connection/command identity, locate any durable receipt,
    and check its complete normalized fingerprint and original runtime identity.
-3. Only then lock connection slots, the project task-graph locks (an interface pin in
-   the [native-plan contract](../2026-10-01-native-plan-contract.md#task-graph-lock-and-reader-interface-pin),
-   not yet implemented), the complete sorted task set, coordination
+3. Only then lock connection slots, the project task-graph locks (pinned in
+   the [native-plan contract](../2026-10-01-native-plan-contract.md#task-graph-lock-and-reader-interface-pin)
+   and implemented by its [native-plan slice](../2026-10-01-native-plan-contract.md#implemented-at-the-native-plan-slice)),
+   the complete sorted task set, coordination
    unit/request rows, actor commands, conversations and mutable domain objects.
 4. Read `clock_timestamp()` **after the relevant lock waits**, never PostgreSQL's
    transaction-start `now()`. Validate runtime/grant expiry, revocation and
@@ -194,8 +195,9 @@ Migration 0038 is the lowest number at or above 0038 present on neither `origin/
 nor any pushed `origin/*` head on 2026-10-01: main ends at 0025 and no pushed head
 holds a number above 0037 (0026-0032 are #58, 0033 and 0037 are #154, 0034 is #152,
 0035 is #153, 0036 is #74). It is idempotent, preserves rows and leaves 0033, 0034
-and 0037 untouched; `FLUX_SCHEMA_VERSION` becomes 38. Numbers above it remain
-unreserved, including #154's unallocated 0040/0041 proposals.
+and 0037 untouched; `FLUX_SCHEMA_VERSION` becomes 38. Numbers above it remained
+unreserved, including #154's unallocated 0040/0041 proposals; the native-plan slice
+later took 0039.
 
 ## Explicit OAuth action ceiling
 

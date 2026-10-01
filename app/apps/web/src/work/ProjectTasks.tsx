@@ -91,9 +91,11 @@ function workSub(item: WorkItem, lists: ProjectWork) {
   const fromMessage = item.links.some((link) => link.from.id === item.id && link.role === 'source' && link.to.type === 'message');
   const rule = linked(item.links, item.id, 'decision')[0];
   const parkedBy = item.parked ? lists.decisions.find((decision) => decision.id === item.parked!.decisionId) : null;
+  const waiting = isFinished(item) ? 0 : item.prerequisites.filter((prerequisite) => !prerequisite.met).length;
   return [
     item.owner ? item.owner.name : 'No owner',
     item.status === 'blocked' && item.blocker ? `waiting for ${item.blocker}` : null,
+    waiting ? `waits for ${waiting} ${waiting === 1 ? 'task' : 'tasks'}` : null,
     parkedBy ? `Parked · was ${STATUS_LABEL[item.status].toLowerCase()}` : null,
     rule && !parkedBy ? `follows “${rule.title}”` : null,
     fromMessage ? 'from a message' : null,

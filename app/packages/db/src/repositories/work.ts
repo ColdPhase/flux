@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { ObjectRef } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
+import { taskGraphRows } from './task-graph.js';
 
 /**
  * Drizzle rows for work items, decisions, results and their links (issues #101, #46). They
@@ -30,6 +31,7 @@ export function toWorkRecord(row: WorkRow) {
     status: row.status, blocker: row.blocker,
     owner: row.ownerUserId ? { kind: 'human' as const, id: row.ownerUserId } : row.ownerAgentId ? { kind: 'agent' as const, id: row.ownerAgentId } : null,
     parked: row.parkedByDecisionId && row.parkedAt ? { decisionId: row.parkedByDecisionId, at: row.parkedAt } : null,
+    criteria: row.criteria,
     createdBy: { kind: row.createdByKind, id: row.createdById }, version: row.version, createdAt: row.createdAt, updatedAt: row.updatedAt,
   };
 }
@@ -78,6 +80,7 @@ async function paged<Row, T>(db: DbExecutor, table: typeof w | typeof d | typeof
 
 export function workRows(db: DbExecutor) {
   return {
+    ...taskGraphRows(db),
     async locate(type: 'work' | 'decision' | 'result', id: string) {
       const table = type === 'work' ? w : type === 'decision' ? d : r;
       const [row] = await db.select({ projectId: table.projectId }).from(table).where(eq(table.id, id));
@@ -104,11 +107,11 @@ export function workRows(db: DbExecutor) {
       const [row] = options.lock ? await query.for('update') : await query;
       return row ? toWorkRecord(row) : null;
     },
-    async insertWork(work: { id: string; workspaceId: string; projectId: string; title: string; outcome: string; status: WorkRow['status']; blocker: string | null; owner: Actor | null; createdBy: Actor; clientCommandId?: string; requestFingerprint?: string }) {
+    async insertWork(work: { id: string; workspaceId: string; projectId: string; title: string; outcome: string; status: WorkRow['status']; blocker: string | null; owner: Actor | null; createdBy: Actor; criteria?: string[]; clientCommandId?: string; requestFingerprint?: string }) {
       const [row] = await db.insert(w).values({
         id: work.id, workspaceId: work.workspaceId, projectId: work.projectId, title: work.title, outcome: work.outcome,
         status: work.status, blocker: work.blocker, ...ownerColumns(work.owner), createdByKind: work.createdBy.kind, createdById: work.createdBy.id,
-        clientCommandId: work.clientCommandId ?? null, requestFingerprint: work.requestFingerprint ?? null,
+        criteria: work.criteria ?? [], clientCommandId: work.clientCommandId ?? null, requestFingerprint: work.requestFingerprint ?? null,
       }).returning();
       return toWorkRecord(row!);
     },
@@ -133,10 +136,11 @@ export function workRows(db: DbExecutor) {
         workspaceId: notice.workspaceId, projectId: notice.projectId, workId: notice.workId, workTitle,
         createdBy: { kind: notice.createdByKind, id: notice.createdById }, sources: notice.sources, createdAt: notice.createdAt })) };
     },
-    async updateWork(id: string, changes: { title?: string; outcome?: string; status?: WorkRow['status']; blocker?: string | null; owner?: Actor | null; parked?: { decisionId: string; at: Date } | null }) {
+    async updateWork(id: string, changes: { title?: string; outcome?: string; status?: WorkRow['status']; blocker?: string | null; owner?: Actor | null; parked?: { decisionId: string; at: Date } | null; criteria?: string[] }) {
       const [row] = await db.update(w).set({
         ...(changes.title !== undefined ? { title: changes.title } : {}),
         ...(changes.outcome !== undefined ? { outcome: changes.outcome } : {}),
+        ...(changes.criteria !== undefined ? { criteria: changes.criteria } : {}),
         ...(changes.status !== undefined ? { status: changes.status } : {}),
         ...(changes.blocker !== undefined ? { blocker: changes.blocker } : {}),
         ...ownerColumns(changes.owner),
