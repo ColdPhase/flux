@@ -1,0 +1,59 @@
+diff --git a/dist/introspect-CbYi2MJT.mjs b/dist/introspect-CbYi2MJT.mjs
+--- a/dist/introspect-CbYi2MJT.mjs
++++ b/dist/introspect-CbYi2MJT.mjs
+@@ -1495,7 +1495,13 @@
+ *
+ * @internal
+ */
+-async function invalidateRefreshFamily(ctx, clientId, userId) {
++async function invalidateRefreshFamily(ctx, clientId, userId, refreshToken) {
++	// Flux #152: a client/user pair can contain several independent connections.
++	// Modern rows carry a stable authorization-code lineage through every rotation.
++	// An untracked legacy row may revoke only itself, never unrelated authorizations.
++	const family = refreshToken.authorizationCodeId ? {
++		field: "authorizationCodeId", value: refreshToken.authorizationCodeId
++	} : { field: "id", value: refreshToken.id };
+ 	const refreshTokens = await ctx.context.adapter.findMany({
+ 		model: "oauthRefreshToken",
+ 		where: [{
+@@ -1504,7 +1510,7 @@
+ 		}, {
+ 			field: "userId",
+ 			value: userId
+-		}]
++		}, family]
+ 	});
+ 	if (refreshTokens.length) await ctx.context.adapter.deleteMany({
+ 		model: "oauthAccessToken",
+@@ -1522,7 +1528,7 @@
+ 		}, {
+ 			field: "userId",
+ 			value: userId
+-		}]
++		}, family]
+ 	});
+ }
+ async function revokeTokensIssuedForAuthorizationCode(ctx, authorizationCodeId) {
+@@ -2145,6 +2151,13 @@
+ 	const client = await validateClientCredentials(ctx, opts, client_id, client_secret, requestedScopes ?? scopes, preVerified, "refresh_token", authMethod);
+ 	if (refreshToken.revoked) {
+ 		if (isWithinRefreshTokenReuseInterval(refreshToken)) {
++			// Cached rotation responses must recheck Flux's current connection authority.
++			const user = await ctx.context.internalAdapter.findUserById(refreshToken.userId);
++			if (!user) throw new APIError("BAD_REQUEST", { error: "invalid_grant" });
++			if (opts.customAccessTokenClaims) await opts.customAccessTokenClaims({
++				user, referenceId: refreshToken.referenceId, scopes: requestedScopes ?? scopes,
++				resources: resources ?? refreshToken.resources, metadata: parseClientMetadata(client.metadata)
++			});
+ 			const replay = await getRefreshTokenRotationReplay(ctx, refreshToken, await resolveRefreshTokenRotationReplayRequest(ctx, opts, {
+ 				client,
+ 				refreshToken,
+@@ -2157,7 +2170,7 @@
+ 				error: "invalid_grant"
+ 			});
+ 		}
+-		await invalidateRefreshFamily(ctx, client_id, refreshToken.userId);
++		await invalidateRefreshFamily(ctx, client_id, refreshToken.userId, refreshToken);
+ 		throw new APIError("BAD_REQUEST", {
+ 			error_description: "invalid refresh token",
+ 			error: "invalid_grant"
