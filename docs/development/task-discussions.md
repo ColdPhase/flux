@@ -113,8 +113,9 @@ and browser consumers using the correlated variants below. No agent is represent
 by a human user. Actual authenticated MCP operation/grant/runtime composition and
 supported local clients remain integration requirements under #152/#153.
 
-Attachments, blocker/result/handoff adapters, unused-AI undo, integrated shared
-drafts and compatible migration reversal remain required. The current
+Attachments, unused-AI undo, integrated shared drafts and the complete compatible
+migration reversal remain required; the blocker, result and public-handoff effects
+are implemented in [the next section](#explicit-native-effects-on-the-canonical-thread). The current
 [source-pinned actor and layout evidence](../agents/evidence/154-task-notices/actors-and-layout/README.md)
 is incremental verification, not a reduction of AC-1–AC-5 or whole-task acceptance.
 
@@ -200,3 +201,43 @@ messages never move it. It creates no conversation, message, binding, name, even
 outbox or other row. Inside a caller transaction it queues no event intent and is
 rejected after that session's `flushEvents()`. It supplies no connection, runtime
 or grant authority; there is no HTTP route for it.
+
+## Explicit native effects on the canonical thread
+
+First part of the [2026-10-01 contract](task-discussions/2026-10-01-contribution-effects-and-files.md)
+(files and attachment-only contributions are not part of it). Its
+[independent assessment](task-discussions/2026-10-01-contribution-effects-and-files-review.md) corrections on
+effects, atomicity, hooks and lock order apply; the file corrections remain for that part.
+
+- **Meaning.** A nonempty explicitly saved blocker contributes its exact saved text; clearing it or changing only
+  status/owner/title/outcome contributes nothing; creation with a blocker keeps only its creation notice. A result
+  creates one canonical result and one authored contribution per linked task (body: the result title, marker:
+  that result's id). A result with no linked task creates no thread. An explicit public handoff is
+  `POST /api/v1/work/:workId/discussion` with `kind: "handoff"` through the same primitive as text; blocker and
+  result kinds cannot be requested directly, the generic conversation entry takes no kind, and heartbeats,
+  acknowledgments and private logs never contribute.
+- **Wire.** A message of an explicit effect carries `contribution`: `{ kind: 'blocker' | 'handoff' }` or
+  `{ kind: 'result', resultId }`. Ordinary text omits it, so human JSON is unchanged; genuine agent authors keep the
+  tagged `author` variant. Conversation, task-discussion root/window, the browser and `getDiscussionRoot` agree.
+- **Storage (migration 0040).** `project_messages.contribution_kind` (default `text`, so historical rows are
+  truthfully plain text and nothing is inferred) and `result_id` with a scoped composite FK to the result and a check
+  that the kind `result` and a result id go together; `native_command_receipts`, one row per real actor, project,
+  operation and client UUID with fingerprint, produced task version or result and the contribution message ids. The
+  guarded pre-use reversal is `app/packages/db/migrations/reverse/0040_native_contribution_effects.down.sql`: it is not
+  a numbered migration and refuses once a receipt or a non-text contribution exists.
+- **Mandatory hook.** `WorkPorts.contributions` (`WorkContributions`) is required by type. Every work adapter composes
+  it (`createWorkContributions`) over the same transaction and event session as the discussion use cases: ordinary
+  HTTP, `nativeWorkInTransaction` (same-transaction agent execution), the helper proposal acceptance and the tests'
+  failure injections. It opens no unit of work, commits nothing and never flushes.
+- **Order.** Current project write access, then the command's durable identity (the native receipt, then every
+  derived message identity, sorted), then the complete sorted task set, then the domain writes and canonical
+  appends, then the receipt, then ONE final all-audience event batch owned by the caller's unit of work. The
+  handle enforces `prepare` → `lockTasks` → `append` once each. A generic reply to a task-bound conversation
+  discovers the binding without locking and takes the task row before the conversation sequence, like every
+  contribution. Message identities are deterministic from the stable command (or the canonical result) plus the
+  exact task. The helper acceptance path uses its locked proposal as the command identity.
+- **Retries.** `clientCommandId` on `PATCH /api/v1/work/:id` and `POST /api/v1/projects/:id/results`; semantics in
+  [work and decisions](work-decisions.md#contributions-to-the-task-conversation-154).
+- **Not in this part.** Stored files and attachment-only messages, shared drafts, unused-AI undo, #152/#153 tools,
+  portable-export fields for the contribution kind, and import. No search, notification, Return or helper-context
+  consumer needed a change: each reads the real authored body and real actor, which is what the contribution is.
