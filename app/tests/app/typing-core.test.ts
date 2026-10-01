@@ -107,3 +107,20 @@ test('expiry, caller mutation and invalid sequence cannot extend a pulse or alte
   assert.deepEqual(state.candidates(a, 5000, 1000).pulses, []);
   assert.equal(state.work.entries, 0);
 });
+
+
+test('a valid stop and scope withdrawal survive database-clock reversal without weakening the fence', () => {
+  const state = store();
+  state.accept(pulse({ expiresAt: 6000 }), 1000, 0);
+  // Server preserves max(previous expiry, current database time + TTL) on its stop.
+  assert.equal(state.accept(pulse({ active: false, sequence: 3, expiresAt: 6000 }), 0, 100), true);
+  assert.deepEqual(state.candidates(a, 0, 100).pulses, []);
+  assert.equal(state.accept(pulse({ sequence: 2, expiresAt: 6000 }), 0, 200), false);
+  assert.equal(state.accept(pulse({ sequence: 4, expiresAt: 6500 }), 0, 200), false);
+  assert.deepEqual(state.candidates(a, 0, 200).pulses, []);
+  const moving = store(); moving.accept(pulse({ expiresAt: 6000 }), 1000, 0);
+  moving.accept(pulse({ context: b, sequence: 3, expiresAt: 6000 }), 0, 100);
+  assert.deepEqual(moving.candidates(a, 0, 100).pulses, []);
+  moving.accept(pulse({ sequence: 2, expiresAt: 6000 }), 0, 200);
+  assert.deepEqual(moving.candidates(a, 0, 200).pulses, []);
+});

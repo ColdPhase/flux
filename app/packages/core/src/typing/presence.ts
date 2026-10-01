@@ -71,8 +71,12 @@ export class TypingPresence {
   accept(pulse: TypingPulse, databaseNow: number, monotonicNow: number): boolean {
     this.prune(databaseNow, monotonicNow);
     if (!this.available || !Number.isSafeInteger(pulse.sequence) || pulse.sequence < 1 ||
-      !Number.isFinite(pulse.expiresAt) || pulse.expiresAt <= databaseNow || pulse.expiresAt > databaseNow + TYPING_TTL_MS) return false;
+      !Number.isFinite(pulse.expiresAt) || pulse.expiresAt <= databaseNow) return false;
     const previous = this.entries.get(pulse.connectionId);
+    // A backward database-clock correction must not prevent a later stop from
+    // carrying the expiry fence of its earlier active pulse. It cannot extend that
+    // fence beyond a fresh TTL; monotonic retention remains independently bounded.
+    if (pulse.expiresAt > Math.max(databaseNow + TYPING_TTL_MS, previous?.pulse.expiresAt ?? 0)) return false;
     if (previous && pulse.sequence <= previous.pulse.sequence) return false;
     if (previous && (previous.pulse.actorId !== pulse.actorId || previous.pulse.sessionId !== pulse.sessionId || pulse.expiresAt < previous.pulse.expiresAt)) return false;
     const key = typingContextKey(pulse.context);
