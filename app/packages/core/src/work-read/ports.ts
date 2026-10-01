@@ -38,10 +38,16 @@ export interface WorkReadPorts { access: WorkReadAccess; rows: WorkReadRepositor
 /** Every count/page/name/ref/policy query runs in ONE read-only REPEATABLE READ transaction. */
 export interface WorkReadUnitOfWork { run<T>(read: (ports: WorkReadPorts) => Promise<T>): Promise<T> }
 export interface WorkReadObservation<T> { value: T; sourceVisibility: string }
+/** Owned normalized selectors must still exist in this project before releasing the observation. */
+export interface WorkReadRequirements {
+  sources?: WorkAssociationSelection;
+  objects?: readonly WorkReadObject[];
+  parkedDecisionId?: string;
+}
 
 /** Outside that observation: require the SAME exact session, current project policy and source digest.
  * Represent native session rejection as DomainError(401), preserving the transport-neutral outcome.
  */
 export interface WorkReadFinalFence {
-  check(principal: Principal, projectId: string, sourceVisibility: string, sources?: WorkAssociationSelection): Promise<ProjectAccess>;
+  check(principal: Principal, projectId: string, sourceVisibility: string, required?: WorkReadRequirements): Promise<ProjectAccess>;
 }

@@ -5,11 +5,10 @@ import {
 import { DomainError, ServiceUnavailableError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import { decodeWorkReadCursor, presentWorkReadPage, workReadScope } from './cursor.js';
-import type { WorkReadFinalFence, WorkReadPorts, WorkReadUnitOfWork, WorkSummaryObservation } from './ports.js';
+import type { WorkReadFinalFence, WorkReadPorts, WorkReadRequirements, WorkReadUnitOfWork, WorkSummaryObservation } from './ports.js';
 import {
   assertEmptyWorkReadQuery, parseWorkAssociationRead, parseWorkRelationRead, parseWorkViewRead,
   workReadId, workReadInvalid, workReadKind,
-  type WorkAssociationSelection,
 } from './query.js';
 
 function caller(principal: Principal): PrincipalRef {
@@ -40,7 +39,8 @@ function rowFacts(rows: readonly NativeWorkRow[], projectId: string, workspaceId
 /** Read orchestration owns validation, global windows, coherent observations and the final fence. */
 export function createBoundedWorkReads(unit: WorkReadUnitOfWork, finalFence: WorkReadFinalFence) {
   async function observe<T>(principal: PrincipalRef, projectId: string,
-    read: (ports: WorkReadPorts, observedAt: string, workspaceId: string) => Promise<T>, sources?: WorkAssociationSelection) {
+    read: (ports: WorkReadPorts, observedAt: string, workspaceId: string) => Promise<T>, required?: WorkReadRequirements) {
+    const sources = required?.sources;
     let observation: { value: T; sourceVisibility: string };
     try {
       observation = await unit.run(async (ports) => {
@@ -57,7 +57,7 @@ export function createBoundedWorkReads(unit: WorkReadUnitOfWork, finalFence: Wor
     }
     // Deliberately outside the read transaction; the adapter re-resolves the exact session.
     try {
-      const access = await finalFence.check(principal, projectId, observation.sourceVisibility, sources);
+      const access = await finalFence.check(principal, projectId, observation.sourceVisibility, required);
       return { value: observation.value, access };
     } catch (error) {
       if (error instanceof DomainError) throw error;
@@ -95,7 +95,9 @@ export function createBoundedWorkReads(unit: WorkReadUnitOfWork, finalFence: Wor
           rowFacts([selected], projectId, workspaceId);
         }
         return { ...page, summary, selected };
-      });
+      }, input.selection.purpose !== 'choices' ? undefined : input.selection.choice === 'parked_work'
+        ? { parkedDecisionId: input.selection.decisionId } : input.selection.choice === 'result_work' && input.selection.selected
+          ? { objects: [{ kind: 'work', id: input.selection.selected }] } : undefined);
       return { ...response.value, summary: { ...response.value.summary, access: response.access } };
     },
 
@@ -122,7 +124,7 @@ export function createBoundedWorkReads(unit: WorkReadUnitOfWork, finalFence: Wor
         for (const edge of edges.items) requireFact(edge.projectId === projectId && edge.to.type === 'message' && objects.some((object) => object.kind === edge.from.type && object.id === edge.from.id) && (input.selection.relation === 'any' || edge.role === 'source'));
         return { ...page, observedAt, sources: sources.items, sourceTotal: sources.total,
           sourceNextCursor: sources.nextCursor, sourcePreviousCursor: sources.previousCursor, edges, edgeTotal };
-      }, input.selection);
+      }, { sources: input.selection });
       return response.value;
     },
 
@@ -137,7 +139,7 @@ export function createBoundedWorkReads(unit: WorkReadUnitOfWork, finalFence: Wor
         const page = presentWorkReadPage(result.page, input.limit, scope, cursor);
         for (const edge of page.items) requireFact(edge.projectId === projectId && (!input.selection.role || edge.role === input.selection.role) && input.selection.objects.some((object) => (edge.from.type === object.kind && edge.from.id === object.id) || (edge.to.type === object.kind && edge.to.id === object.id)));
         return { ...page, observedAt };
-      });
+      }, { objects: input.selection.objects });
       return response.value;
     },
 
@@ -149,7 +151,7 @@ export function createBoundedWorkReads(unit: WorkReadUnitOfWork, finalFence: Wor
         const detail = await rows.detail(projectId, object);
         requireFact(detail.observedAt === observedAt && detail.object.kind === object.kind && detail.object.id === object.id && detail.object.projectId === projectId && detail.object.workspaceId === workspaceId && detail.object.audience.kind === 'project' && detail.object.audience.projectId === projectId && !('links' in detail.object) && detail.context.length <= 3);
         return detail;
-      });
+      }, { objects: [object] });
       return { ...response.value, access: response.access };
     },
   };

@@ -79,10 +79,16 @@ export function nativeWorkReadFinalFence(db: Database, sessions: SessionResolver
     if (!current || current.sessionId !== sessionId || current.principal.kind !== actor.kind || current.principal.id !== actor.id || principal.kind !== actor.kind || principal.id !== actor.id)
       throw new DomainError(401, 'UNAUTHENTICATED', 'Authentication required');
   };
-  return { check: async (principal, projectId, fingerprint, sources) => {
+  return { check: async (principal, projectId, fingerprint, required) => {
     await requireSession(principal);
     await nativeWorkReadAccess(db).requireProject(principal, projectId);
+    const sources = required?.sources;
     if (sources) await nativeWorkReadRepository(db).requireSources(projectId, sources);
+    if (required?.objects && !await nativeWorkAssociationRows(db).objectsExist(projectId, required.objects)) throw new NotFoundError('Work object', 'WORK_OBJECT_NOT_FOUND');
+    if (required?.parkedDecisionId) {
+      const decision = await nativeWorkObjectRows(db).decision(projectId, required.parkedDecisionId);
+      if (!decision || decision.status === 'proposed') throw new NotFoundError('Decision', 'DECISION_NOT_FOUND');
+    }
     const current = await nativeWorkVisibilityRows(db).fingerprint(projectId, sources);
     if (current !== fingerprint) throw new DomainError(409, 'work_read_changed', 'Work sources changed; refresh this view');
     // Re-resolve after the potentially substantial current visibility query.
