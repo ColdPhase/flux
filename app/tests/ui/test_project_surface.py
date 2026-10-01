@@ -598,5 +598,66 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(field).to_have_value("")
 
 
+    def test_16_external_tab_aba_edits_fence_late_success_even_when_unmounted(self) -> None:
+        for unmounted in (False, True):
+            with self.subTest(unmounted=unmounted):
+                page = self.open_project("ada")
+                self.tasks(page)
+                field = page.get_by_label("New work", exact=True)
+                title = f"Another tab's newer edit is preserved {unmounted}"
+                field.fill(title)
+                key = f"flux:draft:{ADA['id']}:project-work:{self.ids['project']}"
+                held = []
+                def hold(route):
+                    if route.request.method != "POST":
+                        return route.continue_()
+                    response = route.fetch()
+                    self.assertEqual(response.status, 201, response.text())
+                    held.append((route, response))
+                page.route(f"**/api/v1/projects/{self.ids['project']}/work", hold)
+                page.get_by_role("button", name="Add work", exact=True).click()
+                if unmounted:
+                    page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
+                page.evaluate("""key => { window.observedDraftWrites = 0;
+                  window.addEventListener('storage', event => { if(event.key === key) window.observedDraftWrites++; });
+                }""", key)
+                other = page.context.new_page()
+                other.goto(f"/projects/{self.ids['project']}/tasks")
+                expect(other.get_by_label("New work", exact=True)).to_be_visible()
+                # Two real, synchronous browser writes; queued events both see the final A.
+                # This is a storage-fence regression, not a typing/performance measurement.
+                other.evaluate("""arg => { localStorage.setItem(arg.key, 'Different draft B'); localStorage.setItem(arg.key, arg.title); }""", {"key": key, "title": title})
+                page.wait_for_function("window.observedDraftWrites >= 2")
+                if unmounted:
+                    self.tasks(page)
+                self.assertEqual(len(held), 1)
+                route, response = held[0]
+                with page.expect_request_finished(lambda request: request.method == "POST" and request.url.endswith("/work")):
+                    route.fulfill(response=response)
+                expect(field).to_have_value(title)
+                page.reload()
+                expect(field).to_have_value(title)
+                other.close()
+
+    def test_17_home_draft_changes_account_on_current_loader_revalidation(self) -> None:
+        page = self.page("ada")
+        page.goto("/")
+        field = page.get_by_label("Private note", exact=True)
+        expect(field).to_be_visible()
+        field.fill("Ada's private Home draft before revalidation")
+        page.context.clear_cookies()
+        page.context.add_cookies(self.states["jonas"]["cookies"])
+        # Same-route router navigation revalidates the mounted Home, without a document reload.
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="Home", exact=True).click()
+        expect(page.get_by_role("button", name=re.compile("^Jonas Berg .*account and sign out"))).to_be_visible()
+        expect(field).to_have_value("")
+        field.fill("Jonas's private Home draft")
+        page.context.clear_cookies()
+        page.context.add_cookies(self.states["ada"]["cookies"])
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="Home", exact=True).click()
+        expect(page.get_by_role("button", name=re.compile("^Ada Kowalska .*account and sign out"))).to_be_visible()
+        expect(field).to_have_value("Ada's private Home draft before revalidation")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

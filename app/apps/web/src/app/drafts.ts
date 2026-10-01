@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore, type RefObject } from 'react';
 
 /**
  * Unfinished work survives a view switch and a reload (#40): the text in a composer before it
@@ -47,25 +47,36 @@ function write(key: string, value: string): DraftState {
   return entry.state;
 }
 
+// A relevant external edit advances the fence even if queued B→A events both read final A.
+// Observe retained keys while their composer is unmounted, because an earlier command may
+// still complete. This store holds only private browser drafts/reading positions, not policy.
+if (typeof window !== 'undefined') window.addEventListener('storage', (event) => {
+  try { if (event.storageArea !== localStorage) return; } catch { /* Conservatively fence a known key. */ }
+  const keys = event.key === null ? [...memory.keys()] : memory.has(event.key) ? [event.key] : [];
+  for (const key of keys) {
+    const current = read(key);
+    const entry = retain(key, current.text, current.storage, true);
+    for (const listener of entry.listeners) listener();
+  }
+});
+
 /**
  * The pending composer text for one account and context; `clear` is called after Send.
- * A composer for another account or context is a new mount (give it a React `key`).
+ * Account/context changes select the current snapshot immediately. A composer with additional
+ * command state must still remount with a React `key` so its busy/error/pending work cannot cross.
  */
 export function useDraft(userId: string, context: string) {
   const key = draftKey(userId, context);
-  const [state, setState] = useState(() => read(key));
-  useLayoutEffect(() => {
+  const subscribe = useCallback((listener: () => void) => {
+    read(key);
     const entry = memory.get(key)!;
-    const update = () => setState(read(key));
-    entry.listeners.add(update);
-    update();
-    const external = (event: StorageEvent) => { if (event.storageArea === localStorage && (event.key === key || event.key === null)) update(); };
-    window.addEventListener('storage', external);
-    return () => { entry.listeners.delete(update); window.removeEventListener('storage', external); };
+    entry.listeners.add(listener);
+    return () => { entry.listeners.delete(listener); };
   }, [key]);
+  const getSnapshot = useCallback(() => read(key), [key]);
+  const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const setText = useCallback((text: string) => {
     const next = write(key, text);
-    setState(next);
     return next.revision;
   }, [key]);
   const clear = useCallback(() => setText(''), [setText]);
