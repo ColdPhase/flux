@@ -44,7 +44,7 @@ export function nativeWorkAssociationRows(db: DbExecutor) {
     async objectsExist(projectId: string, objects: readonly NativeWorkReadObject[]) {
       if (!objects.length || objects.length > 100) throw new Error('Invalid bounded native object selector');
       const refs = sql.join(objects.map((object) => sql`(${object.kind}::text, ${object.id}::uuid)`), sql`, `);
-      const result = await db.execute<{ ok: boolean }>(sql`WITH refs(kind, id) AS (VALUES ${refs}) SELECT bool_and(${nativeWorkEndpointVisible(projectId, sql`kind`, sql`id`)}) AS ok FROM refs`);
+      const result = await db.execute<{ ok: boolean }>(sql`WITH refs(kind, id) AS (VALUES ${refs}) SELECT bool_and(${nativeWorkEndpointVisible(projectId, sql`g.kind`, sql`g.id`)}) AS ok FROM refs g`);
       if (!result.rows[0]) throw new Error('Missing native object validation');
       return result.rows[0].ok;
     },
