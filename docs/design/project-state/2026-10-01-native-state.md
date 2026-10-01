@@ -58,3 +58,11 @@ text-only source rows need a keyboard-reachable exact-version reader link, and
 the New conversation destination must distinguish an empty project from a
 project with existing conversations. Add actual saved-source/body and existing
 conversation journeys with contributor→reader→contributor draft retention.
+
+A second neutral visual review confirmed the improved status/audience/read-only
+layout, but retained one material access-expectation finding: the sidebar still
+exposed New conversation to a reader and the phone footer said Replying to.
+Use current matching project access for the creation link and label a reader
+footer Conversation. This focused third correction addresses the observed role
+contradiction; it is not a new general visual exploration. Verify saved-thread
+navigation through the phone drawer and keep existing writer flows unchanged.
