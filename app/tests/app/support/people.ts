@@ -16,7 +16,7 @@ export function expectStatus(response: ClientResponse, status: number, message?:
 }
 
 export async function person(label: string): Promise<Person> {
-  const email = uniqueEmail(label);
+  const email = uniqueEmail(label.toLowerCase().replace(/[^a-z0-9]+/g, '-'));
   const { browser } = await register(email, password, label);
   const me = await browser.request('GET', '/api/v1/me');
   assert.equal(me.status, 200);
