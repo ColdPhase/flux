@@ -69,3 +69,7 @@ The neutral focused final review found no material role-copy contradiction in
 the two reader Details frames and saved phone conversation. Source reviewer found
 no material delta issue at the current source. Both are bounded independent
 internal reviews; @PelikanFix16 must still provide eligible functional/PR review.
+
+## Peer correction checkpoint
+
+The original evidence above retains its own source pins. See [F1/F2 corrections](peer-fixes/README.md) for the new source, real baseline failures, final24-case verification and remaining visual/copy findings.

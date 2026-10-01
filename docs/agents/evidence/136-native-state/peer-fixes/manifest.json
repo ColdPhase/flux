@@ -1,0 +1,41 @@
+{
+  "date": "2026-10-01",
+  "reviewed_head": "3d12fb92295a2315bb1db5e1be870cc95171ed79",
+  "runtime_test_head": "c1a5d5fc79898199082190ca1daac4c4933c616f",
+  "visual_initial_runtime": "f848a34642f39347672775c85ff92fe96b0f4e39",
+  "visual_additional_runtime": "c1a5d5fc79898199082190ca1daac4c4933c616f",
+  "files": [
+    {
+      "path": "/tmp/flux136-peer-baseline.log",
+      "sha256": "d4af3f1bdcc327fe99a43117c38604979d2b30c879e78c6d48163a06ea01384b"
+    },
+    {
+      "path": "/tmp/flux136-peer-current.log",
+      "sha256": "a5c3f7af98cce8ac2ae8a71776fb82385c61fae23ced1c96e745d6ff8f492160"
+    },
+    {
+      "path": "/tmp/flux136-peer-final.log",
+      "sha256": "b50e633964b589da5cc99b9a0a1c6900eabe92bcb2e5a145b656becc668125fd"
+    },
+    {
+      "path": "docs/agents/evidence/136-native-state/peer-fixes/visual-inputs/136-state-material-reader-downgrade-390.png",
+      "sha256": "9907d2e6808a95e8e2dfb8032a51f6db825e1284d38de69c0f8c94c717c02262"
+    },
+    {
+      "path": "docs/agents/evidence/136-native-state/peer-fixes/visual-inputs/136-state-reader-1280-light.png",
+      "sha256": "6eec937b1aee3c22774b9945396c429f431ad15b1da28b6ca44f6aac8e49a37f"
+    },
+    {
+      "path": "docs/agents/evidence/136-native-state/peer-fixes/visual-inputs/136-state-reader-saved-conversation-390.png",
+      "sha256": "64d53832b7e70b5d42f766a4d87691c59ab0d61eef25572c76020bce98ddd326"
+    },
+    {
+      "path": "docs/agents/evidence/136-native-state/peer-fixes/visual-inputs/136-state-long-title-71-820.png",
+      "sha256": "28556f9ab56f95a07399217ed70fc6ce1c3a4e5b5709b15636d84f1ab8038ab8"
+    },
+    {
+      "path": "docs/agents/evidence/136-native-state/peer-fixes/visual-inputs/136-state-long-title-122-744.png",
+      "sha256": "deb0e05e587b9b7ffc062c68d0fae6090731887e37ab6e1bf426d7e0b44fe75b"
+    }
+  ]
+}
