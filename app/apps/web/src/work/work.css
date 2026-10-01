@@ -47,6 +47,7 @@
 
 /* ---------- Tasks tab ---------- */
 .ws-tasks { padding-top: 16px; }
+.ws-task-controls { position: sticky; top: 0; z-index: 3; background: var(--bg); display: flow-root; }
 .ws-audience { display: flex; align-items: center; gap: 6px; margin: 0 0 14px; font-size: var(--fs-xs); font-weight: 500; color: var(--text-2); }
 .ws-audience svg, .wd-audience svg { color: var(--text-3); }
 .ws-add { display: flex; gap: 8px; margin-bottom: 8px; }
@@ -155,12 +156,19 @@
 .ws-none { margin: 20px 0 0; font-size: var(--fs-md); color: var(--text-2); }
 .ws-none__b { padding: 0; font: inherit; font-weight: 500; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
 .ws-group { scroll-margin-top: 12px; }
+.ws-pages { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin: 12px 0; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.ws-pages__range { color: var(--text-3); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.ws-pages__actions { display: flex; gap: 4px; }
+.ws-pages button { min-height: 32px; padding: 0 10px; border-radius: var(--r-sm); color: var(--text-2); font-size: var(--fs-sm); }
+.ws-pages button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
+.ws-pages button:disabled { opacity: .4; cursor: default; }
+.ws-pages button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 @media (max-width: 640px) {
   .ws-views { gap: 8px; }
   .ws-views__row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 2px 16px; scroll-padding-inline: 16px; }
   .ws-views__row::-webkit-scrollbar { display: none; }
 }
 @media (pointer: coarse) {
-  .ws-view, .ws-mine { min-height: 44px; }
+  .ws-view, .ws-mine, .ws-pages button { min-height: 44px; }
   .ws-mine input { width: 20px; height: 20px; }
 }

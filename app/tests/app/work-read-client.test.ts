@@ -7,6 +7,7 @@ import {
   workAssociationReadUrl, workRelationReadUrl, workViewReadUrl,
 } from '../../apps/web/src/work/read-api.js';
 import { ProjectWorkFacetStore, readScopeKey, readStateForScope, ScopedReadStore, type ReadScope } from '../../apps/web/src/work/read-state.js';
+import { summaryEmptyCaption, summaryStateParts } from '../../apps/web/src/work/state-summary.js';
 
 const scope: ReadScope = { accountId: 'account-a', projectId: 'project-a', selector: '/view?group=all&limit=50' };
 function held<T>() {
@@ -73,6 +74,46 @@ test('current failures are unavailable rather than empty data or retained succes
   await store.read(scope, async () => { throw error; });
   assert.deepEqual(store.getSnapshot(), { phase: 'unavailable', scope, generation: 2, error });
   assert.equal('value' in store.getSnapshot(), false);
+});
+
+test('same-scope passive refresh retains one observation until atomic replacement, but failure or changed scope clears it', async () => {
+  const store = new ScopedReadStore<ProjectWorkView>();
+  const old = page(7);
+  await store.read(scope, async () => old);
+  const pending = held<ProjectWorkView>();
+  const reading = store.read(scope, () => pending.promise, true);
+  const refreshing = store.getSnapshot();
+  assert.equal(refreshing.phase, 'refreshing');
+  if (refreshing.phase === 'refreshing') assert.equal(refreshing.value, old);
+  const changed = page(8);
+  pending.resolve(changed); await reading;
+  const current = store.getSnapshot();
+  if (current.phase === 'ready') assert.equal(current.value, changed); else assert.fail('replacement is ready');
+  const error = new Error('unavailable');
+  await store.read(scope, async () => { throw error; }, true);
+  assert.equal(store.getSnapshot().phase, 'unavailable');
+  assert.equal('value' in store.getSnapshot(), false);
+  await store.read(scope, async () => changed);
+  const next = held<ProjectWorkView>();
+  const nextRead = store.read({ ...scope, accountId: 'other' }, () => next.promise, true);
+  assert.equal(store.getSnapshot().phase, 'loading');
+  assert.equal('value' in store.getSnapshot(), false);
+  next.resolve(page(1)); await nextRead;
+});
+
+test('summary state preserves distinct identical owner labels and captions actual open/parked/finished work', () => {
+  const observed = summary(105);
+  assert.equal(summaryEmptyCaption(observed), '105 work items');
+  assert.equal(summaryEmptyCaption(summary()), 'No decisions or work yet');
+  observed.all.open = 0; observed.all.parked = 105;
+  assert.equal(summaryEmptyCaption(observed), '105 work items');
+  observed.all.parked = 0; observed.all.finished = 105;
+  assert.equal(summaryEmptyCaption(observed), '105 work items');
+  observed.state.active = { count: 12, first: { kind: 'work', id: 'native-work', title: 'Measure low-light noise' }, ownerTotal: 5,
+    owners: [{ kind: 'human', id: 'one', name: 'Ada' }, { kind: 'human', id: 'two', name: 'Ada' }, { kind: 'agent', id: 'three', name: 'Ada' }] };
+  const part = summaryStateParts(observed, true).find((value) => value.key === 'work');
+  assert.equal(part?.text, '12 in progress (Ada, Ada, Ada, 2 others)');
+  assert.deepEqual(part?.open, { kind: 'work', id: 'native-work' });
 });
 
 test('render-time scope gating hides the old account before effect cancellation runs', async () => {

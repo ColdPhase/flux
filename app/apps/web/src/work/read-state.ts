@@ -13,6 +13,7 @@ export type ReadState<T> =
   | { phase: 'idle'; scope: null; generation: number }
   | { phase: 'loading'; scope: ReadScope; generation: number }
   | { phase: 'ready'; scope: ReadScope; generation: number; value: T }
+  | { phase: 'refreshing'; scope: ReadScope; generation: number; value: T }
   | { phase: 'unavailable'; scope: ReadScope; generation: number; error: unknown };
 
 /** Render-time fence: effect cancellation has not necessarily run for a new scope. */
@@ -40,14 +41,17 @@ export class ScopedReadStore<T> {
   }
 
   /** Abort is advisory; the generation check also fences transports that ignore it. */
-  async read(scope: ReadScope, load: (signal: AbortSignal) => Promise<T>): Promise<void> {
+  async read(scope: ReadScope, load: (signal: AbortSignal) => Promise<T>, retainCurrent = false): Promise<void> {
     const previous = this.controller;
     const controller = new AbortController();
     this.controller = controller;
     const captured = Object.freeze({ ...scope });
     const generation = this.state.generation + 1;
     const current = () => this.controller === controller && !controller.signal.aborted && this.state.generation === generation;
-    this.publish({ phase: 'loading', scope: captured, generation });
+    const prior = this.state;
+    this.publish(retainCurrent && (prior.phase === 'ready' || prior.phase === 'refreshing') && readScopeKey(prior.scope) === readScopeKey(captured)
+      ? { phase: 'refreshing', scope: captured, generation, value: prior.value }
+      : { phase: 'loading', scope: captured, generation });
     // Abort listeners run synchronously and may start another read. Establish this
     // operation first, then let a newer reentrant operation retain ownership.
     previous?.abort();
@@ -87,7 +91,7 @@ export class ProjectWorkFacetStore {
 
   readSummary(scope: ReadScope, load: (signal: AbortSignal) => Promise<ProjectWorkSummary>) {
     if (this.pageLease) return Promise.resolve();
-    return this.reads.read(scope, async (signal) => ({ kind: 'summary', summary: await load(signal) }));
+    return this.reads.read(scope, async (signal) => ({ kind: 'summary', summary: await load(signal) }), true);
   }
 
   claimPage(scope: Pick<ReadScope, 'accountId' | 'projectId'>) {
@@ -100,7 +104,7 @@ export class ProjectWorkFacetStore {
 
   readPage(lease: PageLease, scope: ReadScope, load: (signal: AbortSignal) => Promise<ProjectWorkView>) {
     if (this.pageLease !== lease || lease.accountId !== scope.accountId || lease.projectId !== scope.projectId) return Promise.resolve();
-    return this.reads.read(scope, async (signal) => ({ kind: 'page', page: await load(signal) }));
+    return this.reads.read(scope, async (signal) => ({ kind: 'page', page: await load(signal) }), true);
   }
 
   releasePage(lease: PageLease) {

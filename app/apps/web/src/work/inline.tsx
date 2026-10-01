@@ -1,29 +1,19 @@
 import { useCallback, useRef, useState } from 'react';
 import { useRevalidator } from 'react-router';
-import type { ConversationMessage, Decision, Project, WorkItem, WorkResult } from '@flux/contracts';
+import type { ConversationMessage, Decision, Project, ProjectWorkSummary, WorkItem, WorkResult } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Icon, useMediaQuery } from '../ui';
-import { useShellActions, type ObjectView } from '../app/shellContext';
+import { useShellActions } from '../app/shellContext';
 import { createWork, type ProjectWork } from './api';
 import { decisionLine, firstLine, fromMessage, resultLine, workLine } from './format';
+import { summaryEmptyCaption, summaryStateParts, type StatePart } from './state-summary';
 import './work.css';
 
 // Work objects inside the conversation (#101, C direction): the calm state line under the
 // header, the quiet actions of a message and the framed objects that were made from it.
 
 /** One part of the project's current state: what it says and the object it opens. */
-export interface StatePart {
-  key: 'rule' | 'work' | 'blocked' | 'result' | 'proposal';
-  icon: 'rule' | 'result' | 'alert' | null;
-  dot?: 'progress' | 'need';
-  text: string;
-  /** Shorter wording for the phone's one-line summary. */
-  short: string;
-  /** The object's own title, for lists such as the Details overview. */
-  title: string;
-  tone?: 'warn' | 'need';
-  open: ObjectView;
-}
+export type { StatePart } from './state-summary';
 
 /**
  * The project's current state from real records: the rule in force, work in progress, blocked
@@ -48,33 +38,32 @@ export function stateParts(lists: ProjectWork, canDecide: boolean): StatePart[] 
   return parts;
 }
 
-const EMPTY_STATE = 'No decisions or work yet. Anything said here can become one.';
-
 /**
  * The project's current state in one line. Each part opens its object in Details. The line
  * reads like a sentence: what needs you, the rule, the work and what came out of it.
  */
-export function ProjectStateLine({ lists, canDecide }: { lists: ProjectWork; canDecide: boolean }) {
+export function ProjectStateLine({ summary, phase }: { summary: ProjectWorkSummary | null; phase: string }) {
   const { openDetails } = useShellActions();
   // What needs the reader leads, so a narrow header never truncates it away (#117 review).
-  const parts = stateParts(lists, canDecide).sort((a, b) => Number(b.tone === 'need') - Number(a.tone === 'need'));
-  if (!parts.length) return <p className="ws-state ws-state--empty" aria-label="Current state">{EMPTY_STATE}</p>;
-  return <p className="ws-state" aria-label="Current state">{parts.map((part, index) => <span key={part.key} className="ws-part">{index ? <span className="ws-sep" aria-hidden="true">·</span> : null}<button type="button" className={`ws-seg${part.tone ? ` ws-seg--${part.tone}` : ''}`} data-seg={part.key} onClick={() => openDetails(part.open)}>{part.icon ? <Icon name={part.icon} size={13} /> : <span className={`ws-dot ws-dot--${part.dot}`} aria-hidden="true" />}<span>{part.text}</span></button></span>)}</p>;
+  if (!summary) return <p className="ws-state ws-state--empty" aria-label="Current state">{phase === 'unavailable' ? 'Current work unavailable' : 'Loading current work…'}</p>;
+  const parts = summaryStateParts(summary, summary.access !== 'viewer').sort((a, b) => Number(b.tone === 'need') - Number(a.tone === 'need'));
+  if (!parts.length) return <p className="ws-state ws-state--empty" aria-label="Current state" aria-busy={phase === 'refreshing'}>{summaryEmptyCaption(summary)}. Anything said here can become work.</p>;
+  return <p className="ws-state" aria-label="Current state" aria-busy={phase === 'refreshing'}>{parts.map((part, index) => <span key={part.key} className="ws-part">{index ? <span className="ws-sep" aria-hidden="true">·</span> : null}<button type="button" className={`ws-seg${part.tone ? ` ws-seg--${part.tone}` : ''}`} data-seg={part.key} onClick={() => openDetails(part.open)}>{part.icon ? <Icon name={part.icon} size={13} /> : <span className={`ws-dot ws-dot--${part.dot}`} aria-hidden="true" />}<span>{part.text}</span></button></span>)}</p>;
 }
 
 /**
  * On the phone the state line is one 44 px row that opens the project's overview in Details,
  * where every part opens its object (#117).
  */
-export function ProjectStateRow({ lists, canDecide }: { lists: ProjectWork; canDecide: boolean }) {
+export function ProjectStateRow({ summary, phase }: { summary: ProjectWorkSummary | null; phase: string }) {
   const { openDetails } = useShellActions();
   // What needs the reader leads, since the row truncates.
-  const parts = stateParts(lists, canDecide).sort((a, b) => Number(b.tone === 'need') - Number(a.tone === 'need'));
+  const parts = summary ? summaryStateParts(summary, summary.access !== 'viewer').sort((a, b) => Number(b.tone === 'need') - Number(a.tone === 'need')) : [];
   const need = parts.find((part) => part.tone === 'need');
   return (
-    <button type="button" className="ws-state-row" onClick={() => openDetails('place')} aria-haspopup="dialog">
+    <button type="button" className="ws-state-row" onClick={() => openDetails('place')} aria-haspopup="dialog" aria-busy={phase === 'refreshing'}>
       {need ? <span className="ws-dot ws-dot--need" aria-hidden="true" /> : <Icon name={parts[0]?.icon ?? 'tasks'} size={13} />}
-      <span className="ws-state-row__t">{parts.length ? parts.map((part) => part.short).join(' · ') : 'No decisions or work yet'}</span>
+      <span className="ws-state-row__t">{!summary ? phase === 'unavailable' ? 'Current work unavailable' : 'Loading current work…' : parts.length ? parts.map((part) => part.short).join(' · ') : summaryEmptyCaption(summary)}</span>
       <span className="ui-vh">, open project details</span>
       <Icon name="chevron-right" size={16} />
     </button>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { Outlet, useLocation, useNavigate, useRevalidator } from 'react-router';
+import { Outlet, useLocation, useNavigate, useParams, useRevalidator } from 'react-router';
 import { useStreamEvents } from '../api/stream';
 import { Avatar, Button, Drawer, Icon, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useSidePanelMode } from '../ui';
 import { useShellData } from './data';
@@ -22,6 +22,7 @@ import { LiveStage } from '../live/LiveStage';
 import '../live/live.css';
 import { JumpTo } from '../search/JumpTo';
 import { useNeedsYou } from '../returns/useNeedsYou';
+import { WorkReadProvider, useProjectWorkSummary } from '../work/WorkReadContext';
 
 function lastConversationPath(projectId: string) {
   try { return sessionStorage.getItem(`flux.project-conversation.${projectId}`) ?? `/projects/${projectId}`; }
@@ -29,8 +30,8 @@ function lastConversationPath(projectId: string) {
 }
 
 /** The Tasks view last chosen in this project (#136), e.g. `?status=blocked&show=mine`. */
-function lastTasksSearch(projectId: string) {
-  try { return sessionStorage.getItem(`flux.project-tasks.${projectId}`) ?? ''; }
+function lastTasksSearch(projectId: string, accountId: string) {
+  try { return sessionStorage.getItem(`flux.project-tasks.${accountId}.${projectId}`) ?? ''; }
   catch { return ''; }
 }
 
@@ -56,6 +57,12 @@ function isTyping(target: EventTarget | null) {
  * and becomes a full-screen sheet on the phone.
  */
 export function AppLayout() {
+  const { me } = useShellData();
+  const { projectId } = useParams();
+  return <WorkReadProvider accountId={me.user.id} projectId={projectId ?? null}><AppLayoutContent /></WorkReadProvider>;
+}
+
+function AppLayoutContent() {
   const { me, workspace, projects, directMessages } = useShellData();
   const location = useLocation();
   const navDrawer = useMediaQuery(MEDIA.navDrawer);
@@ -174,11 +181,12 @@ export function AppLayout() {
   }, [projectId, onOtherView, location.pathname, location.search]);
   const shellProject = useProjectShell();
   const project = shellProject && shellProject.project.id === projectId ? shellProject : undefined;
-  const openWork = project?.work.work.filter((item) => !item.parked && (item.status === 'open' || item.status === 'in_progress' || item.status === 'blocked')).length;
+  const workSummary = useProjectWorkSummary();
+  const openWork = project ? workSummary.summary?.unfinishedTotal : undefined;
   // Conversation · Tasks · Map · Docs (direction C), each a route of the project (#117).
   const projectViews = projectId ? [
     { id: 'conversation', label: 'Conversation', to: onOtherView ? lastConversationPath(projectId) : `${location.pathname}${location.search}` },
-    { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks${lastTasksSearch(projectId)}`, ...(openWork ? { count: openWork, countLabel: `, ${openWork} open` } : {}) },
+    { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks${lastTasksSearch(projectId, me.user.id)}`, ...(openWork ? { count: openWork, countLabel: `, ${openWork} unfinished work items` } : {}) },
     { id: 'map', label: 'Map', to: `/projects/${projectId}/map`, end: false, ...(project?.sketches?.total ? { count: project.sketches.total, countLabel: `, ${project.sketches.total} ${project.sketches.total === 1 ? 'sketch' : 'sketches'}` } : {}) },
     { id: 'docs', label: 'Docs', to: `/projects/${projectId}/docs`, end: false, ...(project?.docs?.length ? { count: project.docs.length, countLabel: `, ${project.docs.length} ${project.docs.length === 1 ? 'doc' : 'docs'}` } : {}) },
   ] : null;
@@ -256,7 +264,7 @@ export function AppLayout() {
                   <Icon name="lock" size={12} /><span>{audience}</span><span className="ui-vh">, who can see this project</span>
                 </button>
               </div>
-              {project && !phone ? <ProjectStateLine lists={project.work} canDecide={project.project.access !== 'viewer'} /> : null}
+              {project && !phone ? <ProjectStateLine summary={workSummary.summary} phase={workSummary.phase} /> : null}
             </div>
           ) : (
           <div className="top__title">
@@ -279,7 +287,7 @@ export function AppLayout() {
           </div>
         </header>
         {/* On a phone the tab row has no room: the entry joins the one-line project state row. */}
-        {project && phone ? <div className="state-row"><ProjectStateRow lists={project.work} canDecide={project.project.access !== 'viewer'} />{recapEntry}</div> : null}
+        {project && phone ? <div className="state-row"><ProjectStateRow summary={workSummary.summary} phase={workSummary.phase} />{recapEntry}</div> : null}
         {place.views
           ? <Tabs className="views" label="Views" items={VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path }))} />
           : activeProject && projectViews

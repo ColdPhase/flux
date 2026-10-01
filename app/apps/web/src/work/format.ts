@@ -7,7 +7,7 @@ export const STATUS_LABEL: Record<WorkStatus, string> = {
 const day = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
 export const shortDate = (iso: string) => day.format(new Date(iso));
 
-export function isFinished(item: WorkItem) {
+export function isFinished(item: Pick<WorkItem, 'status'>) {
   return item.status === 'done' || item.status === 'not_pursued';
 }
 

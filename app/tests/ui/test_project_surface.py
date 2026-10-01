@@ -212,7 +212,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         page = self.open_project("ada")
         state = page.locator("header.top").get_by_label("Current state")
         expect(state).to_contain_text("Current rule: Use a ToF sensor, not the camera, for gestures")
-        expect(state).to_contain_text("In progress: Test the camera in low light (Nia)")
+        expect(state).to_contain_text("In progress: Test the camera in low light (Nia Okafor)")
         expect(state).to_contain_text("Negative result: Camera caught 38% of gestures at 5 lux")
         expect(state).to_contain_text("Needs you: a proposed decision")
         panel = self.details(page)
