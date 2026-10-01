@@ -178,7 +178,12 @@ class TypingJourney(unittest.TestCase):
         self.composer(alice).fill("A manual switch still works when the sensor is unavailable.")
         expect(bob.locator(".typing-notice")).to_contain_text("Alice Rivera", timeout=2000)
         self.measure("native-send-stop", lambda: self.composer(alice).press("Enter"), lambda: expect(bob.locator(".typing-notice")).not_to_contain_text("Alice Rivera", timeout=750), 750)
-        expect(bob.locator(".project-convo__message", has_text="A manual switch still works when the sensor is unavailable.")).to_have_count(1)
+        expect(alice.locator(".project-convo__message", has_text="A manual switch still works when the sensor is unavailable.")).to_have_count(1)
+        native = alice.request.get(f"/api/v1/conversations/{self.conversations[0]}").json()
+        self.assertEqual(sum(message["body"] == "A manual switch still works when the sensor is unavailable." for message in native["messages"]), 1)
+        # The existing project feed refetches on focus and its 15-second fallback.
+        # Presence remains independent of that durable history refresh.
+        expect(bob.locator(".project-convo__message", has_text="A manual switch still works when the sensor is unavailable.")).to_have_count(1, timeout=20000)
         expect(self.composer(alice)).to_have_value("")
 
     def test_03_dm_is_exact_scope_and_send_is_durable_once(self):
@@ -199,9 +204,8 @@ class TypingJourney(unittest.TestCase):
         self.composer(alice).fill("PRIVATE-DRAFT current reader test")
         expect(viewer.locator(".typing-notice")).to_contain_text("Alice Rivera", timeout=2000)
         self.assertFalse(any(frame.get("type") == "active" for frame in viewer.typing_sent))
-        self.grant(alice, "viewer", "denied")
         try:
-            self.measure("reader-revocation", lambda: None, lambda: expect(viewer.get_by_text("Alice Rivera is typing…", exact=True)).to_have_count(0, timeout=2000), 2000)
+            self.measure("reader-revocation-request-to-dom", lambda: self.grant(alice, "viewer", "denied"), lambda: expect(viewer.get_by_text("Alice Rivera is typing…", exact=True)).to_have_count(0, timeout=2000), 2000)
         finally:
             self.grant(alice, "viewer", "viewer")
 
@@ -253,23 +257,81 @@ class TypingJourney(unittest.TestCase):
                 bob.context.close()
 
     def test_07_reconnect_acknowledges_cookie_account_before_any_new_pulse(self):
-        state = {"connections": 0, "servers": []}
+        for dm in (False, True):
+            with self.subTest(dm=dm):
+                state = {"connections": 0, "servers": [], "identities": []}
+
+                def transport(socket):
+                    server = socket.connect_to_server()
+                    state["connections"] += 1
+                    state["servers"].append(server)
+
+                    def received(payload):
+                        frame = json.loads(payload)
+                        if frame["type"] == "identity":
+                            state["identities"].append(frame["id"])
+                        socket.send(payload)
+
+                    server.on_message(received)
+
+                alice = self.open("alice", dm=dm, transport=transport)
+                self.composer(alice, dm=dm).fill("PRIVATE-DRAFT belonging only to Alice")
+                # Actual shared-cookie switch and real reconnect, without fabricated ACKs.
+                alice.context.add_cookies(self.states["bob"]["cookies"])
+                state["servers"][0].close(code=1001, reason="transport interruption")
+                expect(self.composer(alice, dm=dm)).to_have_value("", timeout=20000)
+                expect(alice.locator(".typing-notice")).to_have_attribute("data-availability", "ready", timeout=15000)
+                self.assertIn(self.ids["bob"], state["identities"])
+                self.assertGreaterEqual(state["connections"], 2)
+                self.composer(alice, dm=dm).fill("PRIVATE-DRAFT belonging only to Bob")
+                alice.context.add_cookies(self.states["alice"]["cookies"])
+                alice.reload()
+                expect(self.composer(alice, dm=dm)).to_have_value("PRIVATE-DRAFT belonging only to Alice")
+                alice.context.close()
+
+    def test_08_failed_stop_retires_generation_before_late_real_frames(self):
+        state = {"connections": 0, "failed": False, "late": 0}
 
         def transport(socket):
             server = socket.connect_to_server()
             state["connections"] += 1
-            state["servers"].append(server)
+            first = state["connections"] == 1
+
+            def received(payload):
+                if first:
+                    if state["failed"]:
+                        state["late"] += 1
+                    socket.send(payload)
+                # New transports have their real ACK withheld in this fault fixture.
+
+            server.on_message(received)
 
         alice = self.open("alice", transport=transport)
-        self.composer(alice).fill("PRIVATE-DRAFT belonging only to Alice")
-        # Simulates the actual shared cookie changing in another tab. No fake ACK.
-        alice.context.add_cookies(self.states["bob"]["cookies"])
-        state["servers"][0].close(code=1001, reason="transport interruption")
-        expect(alice.locator(".typing-notice")).to_have_attribute("data-availability", "ready", timeout=15000)
-        alice.wait_for_function("async () => (await (await fetch('/api/v1/me')).json()).user.name === 'Bob Nowak'")
-        expect(self.composer(alice)).to_have_value("", timeout=15000)
-        self.assertGreaterEqual(state["connections"], 3, "mismatch triggers loaded-account reconciliation and a new owner-bound socket")
-        expect(self.composer(alice)).not_to_have_value("PRIVATE-DRAFT belonging only to Alice")
+        bob = self.open("bob")
+        self.composer(alice).fill("PRIVATE-DRAFT first active author")
+        expect(bob.locator(".typing-notice")).to_contain_text("Alice Rivera", timeout=2000)
+        self.composer(bob).fill("PRIVATE-DRAFT incoming person")
+        expect(alice.locator(".typing-notice")).to_contain_text("Bob Nowak", timeout=2000)
+        # Fault injection at the real browser send boundary. Keep the old native
+        # socket open briefly so genuine checked frames arrive after send throws.
+        alice.evaluate("""() => {
+          const send = WebSocket.prototype.send, close = WebSocket.prototype.close;
+          let fail = true, hold = true;
+          WebSocket.prototype.send = function(value) {
+            if (fail && this.url.endsWith('/api/v1/typing') && value === JSON.stringify({type:'active',active:false})) { fail = false; throw new Error('controlled send failure'); }
+            return send.call(this, value);
+          };
+          WebSocket.prototype.close = function(...args) {
+            if (hold && this.url.endsWith('/api/v1/typing')) { hold = false; setTimeout(() => close.apply(this, args), 2000); return; }
+            return close.apply(this, args);
+          };
+        }""")
+        state["failed"] = True
+        self.composer(alice).blur()
+        expect(alice.locator(".typing-notice")).to_have_text("Typing activity unavailable", timeout=750)
+        alice.wait_for_timeout(1200)
+        self.assertGreater(state["late"], 0, "late frames are actual server output")
+        expect(alice.locator(".typing-notice")).to_have_text("Typing activity unavailable")
 
 
 if __name__ == "__main__":

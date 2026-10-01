@@ -33,8 +33,9 @@ export async function dmLoader({ params, request }: LoaderFunctionArgs): Promise
 
 export function DmConversation() {
   const dm = useLoaderData() as Dm | null;
+  const { me } = useShellData();
   if (!dm) return <DmUnavailable />;
-  return <DmContent key={dm.id} initial={dm} />;
+  return <DmContent key={`${me.user.id}:${dm.id}`} initial={dm} />;
 }
 
 function DmUnavailable() {

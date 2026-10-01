@@ -82,8 +82,9 @@ function mergeMessages(current: Conversation['messages'], incoming: Conversation
 
 export function ProjectConversation() {
   const data = useLoaderData() as ProjectData;
+  const { me } = useShellData();
   return <div className="project-page">
-    <ProjectConversationContent key={`${data.project.id}:${data.conversation?.id ?? 'new'}`} data={data} />
+    <ProjectConversationContent key={`${me.user.id}:${data.project.id}:${data.conversation?.id ?? 'new'}`} data={data} />
   </div>;
 }
 

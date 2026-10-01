@@ -72,7 +72,13 @@ export class TypingClient {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN || this.socket.bufferedAmount > 1024) return false;
     try { this.socket.send(JSON.stringify(command)); return true; } catch { return false; }
   }
-  private transportFailed() { this.update(EMPTY); this.socket?.close(1000); }
+  private transportFailed() {
+    // Retire the generation before closing: already queued frames from a known
+    // failed transport cannot restore ready people while close is in flight.
+    this.published = false;
+    this.suspend();
+    this.schedule();
+  }
   private suspend = () => {
     this.stop(); this.epoch++; this.authenticated = false;
     this.clearFreshness();
