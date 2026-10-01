@@ -47,7 +47,8 @@ async function fixture(maximumUses = 1) {
     return db.transaction(async (tx) => {
       const events: Parameters<typeof recordEvent>[] = [];
       const cases = createWorkUseCases({ run: (work) => work({ access: policyWorkAccess(tx), work: workRepository(tx),
-        events: { record: async (...event) => { events.push([tx, ...event]); } } }) });
+        events: { record: async (...event) => { events.push([tx, ...event]); } },
+        backgroundComparison: { enqueueHumanNegative: async () => 0 } }) });
       const result = await agentExecutionUseCases(agentExecutionInTransaction(tx, claims)).run(input, async (scope) => {
         if (scope.replay) return { value: scope.replay.value, postconditions: scope.replay.postconditions };
         effects++;
