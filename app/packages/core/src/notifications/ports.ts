@@ -28,8 +28,9 @@ export interface ProjectMessageFacts {
   conversationId: string;
   /** The conversation's opening message, its stable label. */
   opening: string;
-  conversationCreatedBy: string;
-  authorId: string;
+  conversationCreatedBy: { kind: 'human' | 'agent'; id: string };
+  author: { kind: 'human' | 'agent'; id: string };
+  authorName: string | null;
   body: string;
   sequence: number;
   /** People who wrote in the conversation before this message. */

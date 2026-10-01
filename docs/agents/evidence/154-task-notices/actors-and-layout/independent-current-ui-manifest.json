@@ -1,0 +1,93 @@
+{
+  "source": "704042da318ead6483fcd14390e26e31be04ebf6",
+  "production_identical_ui_source": "72d743dfc662473ff8446bde6e3d69e3db362148",
+  "date": "2026-10-01",
+  "functional_verdict": "bounded PASS; whole154 open",
+  "visual_verdict": "LIMITED, not fresh-context certification",
+  "artifacts": [
+    {
+      "path": "/tmp/flux154-independent-current-ui-review.md",
+      "bytes": 5248,
+      "sha256": "1189114fcd5ce742f6510513428714cc6b7e0b6161135c7d37404c8d8273f918"
+    },
+    {
+      "path": "/tmp/flux154-independent-current-ui-704042d.log",
+      "bytes": 36025,
+      "sha256": "a084f338be5479b407e741e37de325de1ddba97b9d5192ccd070da90474f386c"
+    },
+    {
+      "path": "/tmp/flux154-independent-current-ui-run.sh",
+      "bytes": 3555,
+      "sha256": "d1fe6a3baba568d1f27248062f41c1699da22a81878d124cb58d1af45da725a8"
+    },
+    {
+      "path": "/tmp/flux154-independent-current-actors.e2e.ts",
+      "bytes": 9676,
+      "sha256": "6e010e2a3c2dfff47c5f7c17b374bf703adbef9131608808bfe1a76049238890"
+    },
+    {
+      "path": "/tmp/flux154-independent-current-ui-equivalence.txt",
+      "bytes": 1686,
+      "sha256": "929bc4ff11e120e66bc771d33726bf7f75627387784a47474c274457ddee367e"
+    },
+    {
+      "path": "/tmp/flux154-native-event-composition-independent-design.md",
+      "bytes": 5487,
+      "sha256": "619950369c9f1c1d706b1cf3a8d8777bb9edd193524a15019d1f0d9ebdfb0020"
+    },
+    {
+      "path": "/tmp/flux154-native-event-composition-independent-design.sha256",
+      "bytes": 126,
+      "sha256": "5b7548491b7a552eda52dde3d9217c8c2947e98888aea4d0cd398224caeaf7d8"
+    },
+    {
+      "path": "/tmp/flux154-independent-current-ui/01-bob-granted-sees-shared-draft.png",
+      "bytes": 47026,
+      "sha256": "121922ce253f712b614651210b333e981d77c48183f81a0b9adfe2da2d803809",
+      "width": 900,
+      "height": 823
+    },
+    {
+      "path": "/tmp/flux154-independent-current-ui/02-carol-non-member-404.png",
+      "bytes": 38107,
+      "sha256": "8d95fa9cc40eb213bf67b936f0b2df80a6306ce0acbfbcc8ee2b705f8d26405c",
+      "width": 900,
+      "height": 786
+    },
+    {
+      "path": "/tmp/flux154-independent-current-ui/03-bob-after-revocation.png",
+      "bytes": 61003,
+      "sha256": "626e852aa3a23266369e7c0555c605f5cb677083306e456256969bc90a91638a",
+      "width": 900,
+      "height": 880
+    },
+    {
+      "path": "/tmp/flux154-independent-current-ui/agent-root-desktop.png",
+      "bytes": 75142,
+      "sha256": "2482cc1a12d322ab42790343b3b9f1bc8eaa030f21dc2a0f7f73763e0644048e",
+      "width": 1280,
+      "height": 900
+    },
+    {
+      "path": "/tmp/flux154-independent-current-ui/agent-root-owner-390.png",
+      "bytes": 44931,
+      "sha256": "b3444bde81e65d3545d866e0ddd09879bb32fcbf104ca8d694afc9e6f17ee8c0",
+      "width": 390,
+      "height": 900
+    },
+    {
+      "path": "/tmp/flux154-independent-current-ui/mixed-authors-reader-1280.png",
+      "bytes": 71351,
+      "sha256": "8b6703de359597c2aa1c801e1cc40e6e3bf8dfba9b334f23ce9a4003927b16af",
+      "width": 1280,
+      "height": 900
+    },
+    {
+      "path": "/tmp/flux154-independent-current-ui/mixed-authors-reader-390.png",
+      "bytes": 41341,
+      "sha256": "ec29b44a2f00af7f9e952884a39360802d4314a136f68d326969e532048b9b2b",
+      "width": 390,
+      "height": 900
+    }
+  ]
+}

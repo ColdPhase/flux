@@ -75,10 +75,11 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       const messageId = id(event.data.messageId);
       const message = messageId ? await facts.projectMessage(messageId) : null;
       if (!message || message.projectId !== event.objectId) return [];
-      const people = [...audience].filter((userId) => userId !== message.authorId && reachable(userId));
-      const names = await facts.names([message.authorId, ...people]);
-      const author = names.get(message.authorId) ?? 'Someone';
-      const involved = new Set([message.conversationCreatedBy, ...message.earlierAuthors]);
+      const authorId = message.author.kind === 'human' ? message.author.id : null;
+      const people = [...audience].filter((userId) => userId !== authorId && reachable(userId));
+      const names = await facts.names([...(authorId ? [authorId] : []), ...people]);
+      const author = authorId ? names.get(authorId) ?? 'Someone' : `${message.authorName ?? 'Agent'} (agent)`;
+      const involved = new Set([...(message.conversationCreatedBy.kind === 'human' ? [message.conversationCreatedBy.id] : []), ...message.earlierAuthors]);
       const url = `/projects/${message.projectId}/conversations/${message.conversationId}#message-${message.id}`;
       const result: Candidate[] = [];
       for (const userId of people) {
