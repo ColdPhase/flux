@@ -1,0 +1,62 @@
+ Container flux155browser-db-1  Running
+ Container flux155browser-mailpit-1  Running
+ Container flux155browser-anthropic-mock-1  Recreate
+ Container flux155browser-worker-1  Running
+ Container flux155browser-api-1  Running
+ Container flux155browser-anthropic-mock-1  Recreated
+ Container flux155browser-anthropic-mock-1  Starting
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-anthropic-mock-1  Started
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-migrate-1  Exited
+test_01_global_bounded_pages_previous_direct_reload_and_per_view_cursor (test_work_pagination.WorkPaginationJourney.test_01_global_bounded_pages_previous_direct_reload_and_per_view_cursor) ... ok
+test_02_passive_refresh_keeps_keyboard_row_focus_and_private_selection (test_work_pagination.WorkPaginationJourney.test_02_passive_refresh_keeps_keyboard_row_focus_and_private_selection) ... ok
+test_03_late_read_and_required_failure_never_become_empty_work (test_work_pagination.WorkPaginationJourney.test_03_late_read_and_required_failure_never_become_empty_work) ... ok
+test_04_cookie_account_change_fences_held_page_and_private_draft (test_work_pagination.WorkPaginationJourney.test_04_cookie_account_change_fences_held_page_and_private_draft) ... ok
+test_05_open_only_project_state_uses_truthful_totals_on_desktop_and_phone (test_work_pagination.WorkPaginationJourney.test_05_open_only_project_state_uses_truthful_totals_on_desktop_and_phone) ... ok
+test_06_keyboard_rows_remain_exposed_below_the_scrolled_controls (test_work_pagination.WorkPaginationJourney.test_06_keyboard_rows_remain_exposed_below_the_scrolled_controls) ...
+  test_06_keyboard_rows_remain_exposed_below_the_scrolled_controls (test_work_pagination.WorkPaginationJourney.test_06_keyboard_rows_remain_exposed_below_the_scrolled_controls) (phone=False) ... FAIL
+  test_06_keyboard_rows_remain_exposed_below_the_scrolled_controls (test_work_pagination.WorkPaginationJourney.test_06_keyboard_rows_remain_exposed_below_the_scrolled_controls) (phone=True) ... FAIL
+test_01_three_people_share_a_project (test_project_surface.ProjectSurfaceJourney.test_01_three_people_share_a_project) ... ok
+test_02_header_names_the_project_and_its_exact_audience (test_project_surface.ProjectSurfaceJourney.test_02_header_names_the_project_and_its_exact_audience) ... ok
+test_03_each_state_segment_opens_its_object (test_project_surface.ProjectSurfaceJourney.test_03_each_state_segment_opens_its_object) ... ok
+test_04_view_tabs_switch_between_the_project_surfaces (test_project_surface.ProjectSurfaceJourney.test_04_view_tabs_switch_between_the_project_surfaces) ... ok
+test_05_details_overview_links_everything_one_step_away (test_project_surface.ProjectSurfaceJourney.test_05_details_overview_links_everything_one_step_away) ... ok
+test_06_map_tab_creates_a_project_sketch (test_project_surface.ProjectSurfaceJourney.test_06_map_tab_creates_a_project_sketch) ... ok
+test_07_phone_collapses_the_state_line_and_keeps_the_audience (test_project_surface.ProjectSurfaceJourney.test_07_phone_collapses_the_state_line_and_keeps_the_audience) ... ok
+test_08_a_sketch_never_shows_under_another_projects_frame (test_project_surface.ProjectSurfaceJourney.test_08_a_sketch_never_shows_under_another_projects_frame) ... ok
+test_09_new_work_survives_native_source_back_views_resize_and_reload (test_project_surface.ProjectSurfaceJourney.test_09_new_work_survives_native_source_back_views_resize_and_reload) ... ok
+test_10_newest_failed_storage_write_and_clear_win_on_spa_remount (test_project_surface.ProjectSurfaceJourney.test_10_newest_failed_storage_write_and_clear_win_on_spa_remount) ... ok
+test_11_uncertain_native_creation_reuses_the_key_after_source_back (test_project_surface.ProjectSurfaceJourney.test_11_uncertain_native_creation_reuses_the_key_after_source_back) ... ok
+test_12_late_native_success_does_not_clear_a_new_draft_or_open_old_details (test_project_surface.ProjectSurfaceJourney.test_12_late_native_success_does_not_clear_a_new_draft_or_open_old_details) ... ok
+test_13_private_work_drafts_are_isolated_by_account_and_project (test_project_surface.ProjectSurfaceJourney.test_13_private_work_drafts_are_isolated_by_account_and_project) ... ok
+test_14_denied_clear_keeps_disclosure_and_native_replay_key_across_reload (test_project_surface.ProjectSurfaceJourney.test_14_denied_clear_keeps_disclosure_and_native_replay_key_across_reload) ... ok
+test_15_untouched_remount_observes_a_confirmed_native_clear (test_project_surface.ProjectSurfaceJourney.test_15_untouched_remount_observes_a_confirmed_native_clear) ... ok
+test_16_external_tab_aba_edits_fence_late_success_even_when_unmounted (test_project_surface.ProjectSurfaceJourney.test_16_external_tab_aba_edits_fence_late_success_even_when_unmounted) ... ok
+test_17_home_draft_changes_account_on_current_loader_revalidation (test_project_surface.ProjectSurfaceJourney.test_17_home_draft_changes_account_on_current_loader_revalidation) ... ok
+
+======================================================================
+FAIL: test_06_keyboard_rows_remain_exposed_below_the_scrolled_controls (test_work_pagination.WorkPaginationJourney.test_06_keyboard_rows_remain_exposed_below_the_scrolled_controls) (phone=False)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/work/tests/ui/test_work_pagination.py", line 272, in test_06_keyboard_rows_remain_exposed_below_the_scrolled_controls
+    self.assertTrue(exposed, "keyboard-focused native row is exposed below the sticky controls")
+AssertionError: False is not true : keyboard-focused native row is exposed below the sticky controls
+
+======================================================================
+FAIL: test_06_keyboard_rows_remain_exposed_below_the_scrolled_controls (test_work_pagination.WorkPaginationJourney.test_06_keyboard_rows_remain_exposed_below_the_scrolled_controls) (phone=True)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/work/tests/ui/test_work_pagination.py", line 272, in test_06_keyboard_rows_remain_exposed_below_the_scrolled_controls
+    self.assertTrue(exposed, "keyboard-focused native row is exposed below the sticky controls")
+AssertionError: False is not true : keyboard-focused native row is exposed below the sticky controls
+
+----------------------------------------------------------------------
+Ran 23 tests in 30.520s
+
+FAILED (failures=2)
