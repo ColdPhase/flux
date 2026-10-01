@@ -12,6 +12,13 @@ List/Map and map navigation retain it; blur never saves. Empty Save leaves the
 draft open; Cancel/Escape discards it without a server mutation. Signing out
 clears the tab's thought drafts. A different account cannot restore them.
 
+This visit's newest copy is authoritative. If the browser refuses a storage write
+(for example a full quota) and still holds an older persisted copy, leaving the
+map and reopening it in the same visit restores the newer text; no shared write
+occurs. A reload can recover only what storage accepted. Once storage accepts
+writes again it holds the newest text, and Save, Cancel and sign-out clear both
+copies. Another tab never sees this tab's draft.
+
 Save locks the submitted text while the existing authorized atomic thought+
 optional-link command runs. Only a confirmed response adds the thought to the
 local document, records its normal undo step, groups its ID in this person's list
