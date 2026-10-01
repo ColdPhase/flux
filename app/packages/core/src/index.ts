@@ -86,7 +86,7 @@ export * from './personal-runs/index.js';
 export * from './task-discussions/ports.js';
 export * from './task-discussions/service.js';
 export { policyPersonalRunAccess } from './access/personal-run-access.js';
-
 export * from './co-work/index.js';
 export * from './agent-connection/execution.js';
 export * from './agent-connection/grants.js';
+export * from './agent-connection/orientation.js';

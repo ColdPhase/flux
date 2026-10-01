@@ -10,7 +10,7 @@ import { assertExactMigrationLedger, assertMigrationSqlLedgerChange, assertMigra
 // authority and do not establish current dependency eligibility or client activation.
 const { pool } = createDatabase(process.env.DATABASE_URL!);
 after(() => pool.end());
-const arrivals = [[35, 34, 33, 37], [34, 33, 37, 35], [33, 35, 34, 37]];
+const arrivals = [[35, 34, 38, 33, 37], [34, 38, 33, 37, 35], [33, 35, 34, 37, 38]];
 
 for (const order of arrivals) test(`co-work, runtime and genuine-actor migrations preserve history in arrival order ${order.join(',')}`, async () => {
   const manifest = await readMigrationManifest('packages/db/migrations', FLUX_SCHEMA_VERSION);
@@ -93,7 +93,7 @@ for (const order of arrivals) test(`co-work, runtime and genuine-actor migration
       assert.equal((await client.query(`SELECT count(*)::int AS n FROM ${table}`)).rows[0].n, 0, `${table}: no inferred authority/content/receipt backfill`);
     const ledger = (await client.query('SELECT version FROM flux_schema_version ORDER BY version')).rows.map((row) => row.version);
     assert.ok(order.every((version) => ledger.includes(version)));
-    assert.equal(Math.max(...ledger), 37);
+    assert.equal(Math.max(...ledger), 38);
     assertExactMigrationLedger(manifest, ledger);
     await client.query('UPDATE agent_connections SET revoked_at=clock_timestamp() WHERE id=$1', [connection]);
     const stopped = await coordination();

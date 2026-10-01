@@ -1,0 +1,82 @@
+#23 [migrate build 8/8] RUN pnpm build && pnpm typecheck && pnpm lint
+#23 0.312 packages/contracts build$ tsc -p tsconfig.build.json
+#23 2.617 packages/db build$ tsc -p tsconfig.build.json
+#23 2.618 packages/sdk build$ tsc -p tsconfig.build.json
+#23 5.740 packages/core build$ tsc -p tsconfig.build.json
+#23 8.090 packages/agent-runtime build$ tsc -p tsconfig.build.json
+#23 8.091 apps/server build$ tsc -p tsconfig.build.json
+#23 9.100 apps/worker build$ tsc -p tsconfig.build.json
+#23 11.87 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#23 19.28 $ eslint .
+test_01_open_task_is_visible_in_header_and_tasks_and_opens_the_actual_object (test_project_state.ProjectStateJourney.test_01_open_task_is_visible_in_header_and_tasks_and_opens_the_actual_object) ... ok
+test_02_closed_native_work_is_history_and_a_persisted_status_update_replaces_the_open_summary (test_project_state.ProjectStateJourney.test_02_closed_native_work_is_history_and_a_persisted_status_update_replaces_the_open_summary) ... ok
+test_03_phone_and_tablet_readers_share_current_counts_and_reachable_details_without_write_access (test_project_state.ProjectStateJourney.test_03_phone_and_tablet_readers_share_current_counts_and_reachable_details_without_write_access) ... ok
+test_04_reader_opens_uncited_source_and_existing_conversation_then_writer_draft_returns (test_project_state.ProjectStateJourney.test_04_reader_opens_uncited_source_and_existing_conversation_then_writer_draft_returns) ... ok
+test_01_three_people_share_a_project (test_project_surface.ProjectSurfaceJourney.test_01_three_people_share_a_project) ... ok
+test_02_header_names_the_project_and_its_exact_audience (test_project_surface.ProjectSurfaceJourney.test_02_header_names_the_project_and_its_exact_audience) ... ok
+test_03_each_state_segment_opens_its_object (test_project_surface.ProjectSurfaceJourney.test_03_each_state_segment_opens_its_object) ... ok
+test_04_view_tabs_switch_between_the_project_surfaces (test_project_surface.ProjectSurfaceJourney.test_04_view_tabs_switch_between_the_project_surfaces) ... ok
+test_05_details_overview_links_everything_one_step_away (test_project_surface.ProjectSurfaceJourney.test_05_details_overview_links_everything_one_step_away) ... ok
+test_06_map_tab_creates_a_project_sketch (test_project_surface.ProjectSurfaceJourney.test_06_map_tab_creates_a_project_sketch) ... ok
+test_07_phone_collapses_the_state_line_and_keeps_the_audience (test_project_surface.ProjectSurfaceJourney.test_07_phone_collapses_the_state_line_and_keeps_the_audience) ... ok
+test_08_a_sketch_never_shows_under_another_projects_frame (test_project_surface.ProjectSurfaceJourney.test_08_a_sketch_never_shows_under_another_projects_frame) ... ok
+test_01_two_people_share_a_project (test_work_decisions.WorkDecisionsJourney.test_01_two_people_share_a_project) ... ok
+test_02_create_work_from_a_message_in_one_action (test_work_decisions.WorkDecisionsJourney.test_02_create_work_from_a_message_in_one_action) ... ok
+test_03_propose_and_accept_a_decision_with_the_keyboard (test_work_decisions.WorkDecisionsJourney.test_03_propose_and_accept_a_decision_with_the_keyboard) ... ok
+test_04_attach_a_negative_result_that_finishes_the_experiment (test_work_decisions.WorkDecisionsJourney.test_04_attach_a_negative_result_that_finishes_the_experiment) ... ok
+test_05_pivot_keeps_history_and_parks_obsolete_work (test_work_decisions.WorkDecisionsJourney.test_05_pivot_keeps_history_and_parks_obsolete_work) ... ok
+test_06_phone_creates_work_and_reads_the_tasks_tab (test_work_decisions.WorkDecisionsJourney.test_06_phone_creates_work_and_reads_the_tasks_tab) ... ok
+test_07_more_than_a_hundred_records_are_all_shown (test_work_decisions.WorkDecisionsJourney.test_07_more_than_a_hundred_records_are_all_shown) ... ok
+test_08_phone_finds_own_blocked_work_and_returns_to_the_same_view (test_work_decisions.WorkDecisionsJourney.test_08_phone_finds_own_blocked_work_and_returns_to_the_same_view) ... ok
+test_09_own_messages_sit_right_and_others_left (test_work_decisions.WorkDecisionsJourney.test_09_own_messages_sit_right_and_others_left) ... ok
+test_10_each_task_view_keeps_its_reading_position (test_work_decisions.WorkDecisionsJourney.test_10_each_task_view_keeps_its_reading_position) ... ok
+test_01_protected_route_redirects_to_sign_in (test_app_shell.AppShellJourney.test_01_protected_route_redirects_to_sign_in) ... ok
+test_02_register (test_app_shell.AppShellJourney.test_02_register) ... ok
+test_03_sign_in_and_reload_keep_the_session (test_app_shell.AppShellJourney.test_03_sign_in_and_reload_keep_the_session) ... ok
+test_04_desktop_layout_views_and_details (test_app_shell.AppShellJourney.test_04_desktop_layout_views_and_details) ... ok
+test_04a_draft_survives_view_switch_and_reload (test_app_shell.AppShellJourney.test_04a_draft_survives_view_switch_and_reload) ... ok
+test_04b_reading_position_is_kept_per_view (test_app_shell.AppShellJourney.test_04b_reading_position_is_kept_per_view) ... ok
+test_04c_personal_assistant_needs_a_connection (test_app_shell.AppShellJourney.test_04c_personal_assistant_needs_a_connection) ... ok
+test_05_desktop_dark_and_tablet (test_app_shell.AppShellJourney.test_05_desktop_dark_and_tablet) ... ok
+test_06_phone_drawer_sheet_and_targets (test_app_shell.AppShellJourney.test_06_phone_drawer_sheet_and_targets) ... ok
+test_07_phone_dark_and_narrow (test_app_shell.AppShellJourney.test_07_phone_dark_and_narrow) ... ok
+test_08_theme_choice_persists_and_reduced_motion (test_app_shell.AppShellJourney.test_08_theme_choice_persists_and_reduced_motion) ... ok
+test_09_password_reset_through_mail (test_app_shell.AppShellJourney.test_09_password_reset_through_mail) ... ok
+test_10_password_reset_unavailable (test_app_shell.AppShellJourney.test_10_password_reset_unavailable) ... ok
+test_11_sign_out_then_protected_routes_redirect (test_app_shell.AppShellJourney.test_11_sign_out_then_protected_routes_redirect) ... ok
+test_12_real_project_capture_phone_and_revocation (test_app_shell.AppShellJourney.test_12_real_project_capture_phone_and_revocation)
+Real UI: create project, send, cite a saved version, reply, revisit on phone, revoke. ... ok
+test_13_project_pagination_and_live_history (test_app_shell.AppShellJourney.test_13_project_pagination_and_live_history)
+The 101st item is reachable, and a fresh reply cannot punch a hole in loaded history. ... ok
+test_14_personal_agent_setup_grant_and_revoke (test_app_shell.AppShellJourney.test_14_personal_agent_setup_grant_and_revoke)
+A first-time owner can create an identity, explicitly grant a project, and revoke access. ... ok
+test_01_three_people_share_a_project (test_personal_assistant.PersonalAssistantJourney.test_01_three_people_share_a_project) ... ok
+test_02_not_set_up_says_so_and_human_work_continues (test_personal_assistant.PersonalAssistantJourney.test_02_not_set_up_says_so_and_human_work_continues) ... ok
+test_03_production_states_are_worded_truthfully (test_personal_assistant.PersonalAssistantJourney.test_03_production_states_are_worded_truthfully)
+Rendering only: the stub stands in for the production composition's real status. ... ok
+test_04_owner_turns_it_on_from_the_account_menu (test_personal_assistant.PersonalAssistantJourney.test_04_owner_turns_it_on_from_the_account_menu) ... ok
+test_05_a_manager_lets_their_assistant_read_the_project (test_personal_assistant.PersonalAssistantJourney.test_05_a_manager_lets_their_assistant_read_the_project) ... ok
+test_06_owner_sees_the_working_line_and_everyone_reads_the_attributed_answer (test_personal_assistant.PersonalAssistantJourney.test_06_owner_sees_the_working_line_and_everyone_reads_the_attributed_answer) ... ok
+test_07_stop_posts_nothing_and_a_failed_provider_says_so (test_personal_assistant.PersonalAssistantJourney.test_07_stop_posts_nothing_and_a_failed_provider_says_so) ... ok
+test_08_a_proposal_waits_for_someone_with_authority (test_personal_assistant.PersonalAssistantJourney.test_08_a_proposal_waits_for_someone_with_authority) ... ok
+test_09_paused_and_capped_are_explicit (test_personal_assistant.PersonalAssistantJourney.test_09_paused_and_capped_are_explicit) ... ok
+test_10_phone_reads_the_answer_and_proposal_without_overflow (test_personal_assistant.PersonalAssistantJourney.test_10_phone_reads_the_answer_and_proposal_without_overflow) ... ok
+test_01_two_people_share_a_project (test_return_view.ReturnViewJourney.test_01_two_people_share_a_project) ... ok
+test_02_viewing_saves_a_return_point_and_first_visits_are_quiet (test_return_view.ReturnViewJourney.test_02_viewing_saves_a_return_point_and_first_visits_are_quiet) ... ok
+test_03_changes_happen_while_nia_is_away (test_return_view.ReturnViewJourney.test_03_changes_happen_while_nia_is_away) ... ok
+test_04_home_shows_the_personal_return_view_with_one_next_step (test_return_view.ReturnViewJourney.test_04_home_shows_the_personal_return_view_with_one_next_step) ... ok
+test_05_what_matters_shows_the_next_step_changes_and_a_digest (test_return_view.ReturnViewJourney.test_05_what_matters_shows_the_next_step_changes_and_a_digest) ... ok
+test_06_closing_without_context_keeps_the_point_and_newer_changes_wait (test_return_view.ReturnViewJourney.test_06_closing_without_context_keeps_the_point_and_newer_changes_wait) ... ok
+test_06b_a_late_answer_for_the_old_scope_is_dropped_and_failures_are_honest (test_return_view.ReturnViewJourney.test_06b_a_late_answer_for_the_old_scope_is_dropped_and_failures_are_honest) ... ok
+test_06c_a_late_newer_check_for_the_old_scope_announces_nothing (test_return_view.ReturnViewJourney.test_06c_a_late_newer_check_for_the_old_scope_announces_nothing)
+The background check for newer changes belongs to its scope: a late answer after a switch is dropped. ... ok
+test_07_phone_layout (test_return_view.ReturnViewJourney.test_07_phone_layout) ... ok
+test_08_matched_viewports_navigation_audience_and_composer (test_return_view.ReturnViewJourney.test_08_matched_viewports_navigation_audience_and_composer)
+Same state at 1440x900, 1280x800 and 390x844 (100% zoom): Home, the project line above a real feed, then live navigation. ... ok
+test_09_same_tab_account_switch_never_shows_the_previous_persons_items (test_return_view.ReturnViewJourney.test_09_same_tab_account_switch_never_shows_the_previous_persons_items)
+AC-5 in the client: nothing from one account's return view survives into the next, even before the API answers. ... ok
+test_09b_dark_renders_of_the_panel (test_return_view.ReturnViewJourney.test_09b_dark_renders_of_the_panel)
+What matters in the dark theme at 1440x900 and 390x844, with the digest open. ... ok
+test_10_revoked_items_disappear_even_when_the_fresh_answer_is_empty (test_return_view.ReturnViewJourney.test_10_revoked_items_disappear_even_when_the_fresh_answer_is_empty) ... ok
+Ran 62 tests in 197.914s
+OK

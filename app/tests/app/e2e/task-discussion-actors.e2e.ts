@@ -95,7 +95,10 @@ test('agent root renders without a human DM link, real human reply persists, and
     const audience = page.locator('.project-convo__composer .composer__audience').filter({ hasText: '1 agent' });
     await audience.waitFor();
     assert.doesNotMatch(await audience.innerText(), /Only you|only you two/);
-    await page.getByRole('textbox', { name: 'Reply', exact: true }).fill('I checked the trial: the counterexample is real.');
+    // The thread starts with an agent, so the composer must not name a person who is not in the visible thread.
+    const composer = page.getByRole('textbox', { name: 'Reply', exact: true });
+    assert.equal(await composer.getAttribute('placeholder'), 'Reply in this conversation…');
+    await composer.fill('I checked the trial: the counterexample is real.');
     const savedReply = page.waitForResponse((response) => response.request().method() === 'POST'
       && new URL(response.url()).pathname === `/api/v1/conversations/${root.conversationId}/messages`);
     await page.getByRole('button', { name: 'Send reply', exact: true }).click();

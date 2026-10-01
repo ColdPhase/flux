@@ -71,7 +71,9 @@ receipt completion, retaining original lease ID/session/generation/outcome.
    project contributor rights alone do not authorize standing execution.
 2. Lock the canonical connection/command identity, locate any durable receipt,
    and check its complete normalized fingerprint and original runtime identity.
-3. Only then lock connection slots, the complete sorted task set, coordination
+3. Only then lock connection slots, the project task-graph locks (an interface pin in
+   the [native-plan contract](../2026-10-01-native-plan-contract.md#task-graph-lock-and-reader-interface-pin),
+   not yet implemented), the complete sorted task set, coordination
    unit/request rows, actor commands, conversations and mutable domain objects.
 4. Read `clock_timestamp()` **after the relevant lock waits**, never PostgreSQL's
    transaction-start `now()`. Validate runtime/grant expiry, revocation and
@@ -139,6 +141,61 @@ The adapter scope is internal and opaque to MCP input; completion verifies the
 same transaction/binding/command, and every typed postcondition is read from the
 canonical domain rows. Claim-specific post-state alignment remains coordinated
 with the #153 implementation owner before enabling claim writes.
+
+## Reserved sender operation: `cowork.request`
+
+Recorded 2026-10-01 after #153's registry-alignment request. This reserves only the
+registry entry, class mapping, typed post-state and the database operation list for
+#153's request enqueue. It adds no request storage, route, MCP tool, grant target or
+recipient behavior; #153 owns those and none is enabled by this reservation. It was
+added after the independent review above and has not itself been reviewed.
+
+| Part | Reserved contract |
+| --- | --- |
+| Operation | `cowork.request`, in `AGENT_OPERATIONS`; migration 0038 adds it to the closed `agent_standing_grants` operation CHECK (0034 stays frozen) |
+| Class | `AGENT_OPERATION_CLASSES['cowork.request'] = ['execute', 'review', 'plan']`: the **sender unit's actual role** only, never the recipient's class or the request `kind` (`help`, `review`, `fix`, `handoff`) |
+| Object | The sender unit ID; required, never null |
+| Payload | Recipient, request kind, source/criteria references, intent key and lifetime travel in the normalized, fingerprinted payload and are neither a class nor authority |
+| Post-state | `cowork.request_state`: `workspaceId`, `projectId`, `connectionId` (sender), `unitId` (sender unit, equal to the object), `requestId`, `role` (equal to the command class), `version`, `state` (the request lifecycle values). No recipient, kind, reference or text |
+
+Non-negotiable semantics:
+
+- **Queued intent only.** The command records a durable request. It is not an effect
+  on the recipient and not a claim, review, execution or publication.
+- **It grants the recipient nothing.** A sender's execution, plan or review role may
+  request a peer review without holding that peer's review grant: the grant checked
+  is the sender's own `cowork.request` grant for its own class, and the requested
+  `review` kind is payload. The exact grant match, the operation and the class are
+  part of the fingerprint, so a `cowork.request` grant cannot authorize
+  `cowork.claim`, `.renew` or `.release`, and a claim grant cannot enqueue.
+- **ACK, deferral, selection, delivery wake and later lifecycle changes are not
+  operations.** They have no registry entry, debit nothing and never create or extend
+  authority. Names such as `cowork.ack` fail normalization and the database CHECK.
+- **The recipient acts only under its own authority.** Before any effect it needs its
+  own current `cowork.claim` grant with the matching class, plus current source
+  visibility and, for GitHub delivery, its own verified repository access and
+  provenance. A request addressed to a foreign owner's connection stays queued
+  intent while that owner's execution authority is absent.
+- **Fail closed until #153 supplies the reader.** The server port validates the exact
+  sender workspace/project/connection/role/unit before it consults any row reader, and
+  completes only through an optional `coordinationRequestPostcondition` callback that
+  #153 provides. Without it, completion is refused (`COMMAND_POSTSTATE_STALE`) and
+  nothing is debited or receipted. Owner grant creation records the operation and
+  class like the other co-work operations, but accepts no exact-unit target until
+  #153's grant-target adapter is composed. Tools must not advertise the operation
+  before an adapter is implemented and independently verified.
+- **Open for the #153 callback, not decided here.** A new enqueue produces a `queued`
+  request at version 1 and the receipt retains that post-state. How a replay observes
+  later request progress (ACK, deferral, claim, resolution, expiry) without a second
+  effect, debit or false stale failure is for the canonical callback to define; the
+  registry pins only the shape.
+
+Migration 0038 is the lowest number at or above 0038 present on neither `origin/main`
+nor any pushed `origin/*` head on 2026-10-01: main ends at 0025 and no pushed head
+holds a number above 0037 (0026-0032 are #58, 0033 and 0037 are #154, 0034 is #152,
+0035 is #153, 0036 is #74). It is idempotent, preserves rows and leaves 0033, 0034
+and 0037 untouched; `FLUX_SCHEMA_VERSION` becomes 38. Numbers above it remain
+unreserved, including #154's unallocated 0040/0041 proposals.
 
 ## Explicit OAuth action ceiling
 

@@ -82,6 +82,14 @@ export function agentExecutionRows(tx: DbExecutor) {
       const rows = await tx.select().from(grants).where(where).orderBy(desc(grants.createdAt), desc(grants.id)).limit(page.limit).offset(page.offset);
       return { items: rows.map(grantView), total: count!.total, ...page };
     },
+    async liveProjectGrants(ownerUserId: string, connectionId: string, projectId: string, observedAt: Date, page: { limit: number; offset: number }) {
+      const where = and(eq(grants.ownerUserId, ownerUserId), eq(grants.connectionId, connectionId), eq(grants.projectId, projectId),
+        isNull(grants.revokedAt), gt(grants.expiresAt, observedAt));
+      const [count] = await tx.select({ total: sql<number>`count(*)::int` }).from(grants).where(where);
+      const rows = await tx.select().from(grants).where(where).orderBy(desc(grants.createdAt), desc(grants.id)).limit(page.limit).offset(page.offset);
+      return { items: rows.map((row) => ({ ...grantView(row), remainingUses: Math.max(0, row.maximumUses - row.used) })), total: count!.total, ...page,
+        nextOffset: page.offset + page.limit < count!.total ? page.offset + page.limit : null };
+    },
     async revokeGrant(ownerUserId: string, connectionId: string, id: string) {
       return (await tx.update(grants).set({ revokedAt: sql`clock_timestamp()`, generation: sql`${grants.generation} + 1` })
         .where(and(eq(grants.id, id), eq(grants.connectionId, connectionId), eq(grants.ownerUserId, ownerUserId), isNull(grants.revokedAt)))
@@ -89,7 +97,7 @@ export function agentExecutionRows(tx: DbExecutor) {
     },
     /** Native post-state readers are operation-specific, same-project and content-free. */
     async nativePostcondition(workspaceId: string, projectId: string, condition: AgentPostcondition, mapId?: string): Promise<boolean> {
-      if (condition.kind === 'cowork.claim_state') return false; // #153 supplies its canonical unit/fence adapter.
+      if (condition.kind === 'cowork.claim_state' || condition.kind === 'cowork.request_state') return false; // #153 supplies its canonical unit/request adapter.
       if (condition.kind === 'map_checkpoint') {
         const table = schema.sketches;
         const [row] = await tx.select({ at: table.updatedAt }).from(table).where(and(eq(table.id, condition.id),

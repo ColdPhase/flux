@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
-import type { Agent, AgentConnection, AgentExecutionCommand, AgentJsonValue, AgentStandingGrant, WorkItem } from '@flux/contracts';
+import type { Agent, AgentConnection, AgentExecutionCommand, AgentJsonValue, AgentPeerRequestClass, AgentPostcondition, AgentStandingGrant, WorkItem } from '@flux/contracts';
 import { createDatabase } from '@flux/db';
 import { agentExecutionUseCases, createWorkUseCases, DomainError, normalizeAgentExecution, recordEvent } from '@flux/core';
 import { agentRuntimeInTransaction } from '../../apps/server/src/agent-connection/runtime.js';
@@ -185,4 +185,83 @@ test('grant expiry after a real lock wait uses DB wall time and publishes no eff
     assert.equal(f.effects(), 0);
     const used = await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [f.grant.id]); assert.equal(used.rows[0].used, 0);
   } finally { await blocker.query('ROLLBACK'); blocker.release(); }
+});
+
+test('cowork.request grants exist per sender class; the closed operation CHECK accepts them and still rejects unknown or non-operation names', async () => {
+  const f = await fixture(); const path = `/api/v1/agent-connections/${f.connection.id}/action-grants`;
+  const body = { projectId: f.p.id, maximumUses: 2, expiresAt: new Date(Date.now() + 3_600_000).toISOString() };
+  for (const peerRequestClass of ['execute', 'review', 'plan']) {
+    const grant = expectStatus(await f.owner.browser.request('POST', path,
+      { body: { ...body, clientCommandId: randomUUID(), operation: 'cowork.request', peerRequestClass } }), 201) as AgentStandingGrant;
+    assert.equal(grant.operation, 'cowork.request'); assert.equal(grant.peerRequestClass, peerRequestClass); assert.equal(grant.objectId, null);
+    const row = await pool.query('SELECT operation, peer_request_class, used FROM agent_standing_grants WHERE id=$1', [grant.id]);
+    assert.deepEqual(row.rows[0], { operation: 'cowork.request', peer_request_class: peerRequestClass, used: 0 });
+  }
+  // Request kinds, the recipient and ACK/deferral/selection are neither classes nor operations.
+  for (const changed of [{ operation: 'cowork.request', peerRequestClass: 'help' }, { operation: 'cowork.request', peerRequestClass: 'recipient' },
+    { operation: 'cowork.ack', peerRequestClass: 'execute' }, { operation: 'cowork.defer', peerRequestClass: 'execute' }, { operation: 'cowork.select', peerRequestClass: 'plan' }])
+    expectStatus(await f.owner.browser.request('POST', path, { body: { ...body, clientCommandId: randomUUID(), ...changed } }), 400);
+  // The exact sender-unit grant target belongs to the #153 coordination adapter: content-free 404 until it is composed.
+  expectStatus(await f.owner.browser.request('POST', path, { body: { ...body, clientCommandId: randomUUID(),
+    operation: 'cowork.request', peerRequestClass: 'execute', objectId: randomUUID() } }), 404);
+  const insert = (operation: string) => pool.query(`INSERT INTO agent_standing_grants (id,workspace_id,project_id,connection_id,owner_user_id,client_command_id,
+    request_fingerprint,operation,peer_request_class,maximum_uses,expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'execute',1,now()+interval '1 hour')`,
+  [randomUUID(), f.p.workspaceId, f.p.id, f.connection.id, f.owner.id, randomUUID(), 'b'.repeat(64), operation]);
+  await insert('cowork.request');
+  for (const operation of ['cowork.ack', 'cowork.request.ack', 'cowork.requests'])
+    await assert.rejects(insert(operation), (error: unknown) => (error as { code?: string; constraint?: string }).code === '23514'
+      && (error as { constraint?: string }).constraint === 'agent_standing_grants_operation_check');
+});
+
+test('a cowork.request grant authorizes only its exact operation and sender class; completing without the canonical #153 callback debits nothing', async () => {
+  const f = await fixture();
+  const create = async (operation: string, peerRequestClass: string) => expectStatus(await f.owner.browser.request('POST',
+    `/api/v1/agent-connections/${f.connection.id}/action-grants`, { body: { clientCommandId: randomUUID(), projectId: f.p.id, operation, peerRequestClass,
+      maximumUses: 3, expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201) as AgentStandingGrant;
+  // Only an execute-class request grant and an execute-class claim grant exist: no review grant of any operation.
+  const requestGrant = await create('cowork.request', 'execute'); const claimGrant = await create('cowork.claim', 'execute');
+  const sender = randomUUID();
+  const command = (grant: AgentStandingGrant, operation: 'cowork.request' | 'cowork.claim', peerRequestClass: AgentPeerRequestClass = 'execute'): AgentExecutionCommand => ({
+    runtimeSessionId: f.runtime.id, grantId: grant.id, clientCommandId: randomUUID(), projectId: f.p.id, operation, peerRequestClass,
+    audience: { kind: 'project', projectId: f.p.id }, objectId: sender, sources: [],
+    payload: { kind: 'review', recipientConnectionId: randomUUID(), intentKey: 'review-round-1' } });
+  const state = (given: AgentExecutionCommand, changed: Record<string, unknown> = {}) => ({ kind: 'cowork.request_state', workspaceId: f.runtime.workspaceId,
+    projectId: f.p.id, connectionId: f.connection.id, unitId: sender, requestId: randomUUID(), role: given.peerRequestClass, version: 1, state: 'queued', ...changed }) as AgentPostcondition;
+  let callbacks = 0;
+  const checks = { async coordinationRequestPostcondition() { callbacks++; return true; } };
+  const prepare = (given: AgentExecutionCommand) => db.transaction((tx) => agentExecutionInTransaction(tx, f.claims).prepare(normalizeAgentExecution(given)));
+  const complete = (given: AgentExecutionCommand, postconditions: AgentPostcondition[], domain = {}) => db.transaction(async (tx) => {
+    const port = agentExecutionInTransaction(tx, f.claims, domain);
+    await port.complete(await port.prepare(normalizeAgentExecution(given)), { value: { requested: true }, postconditions });
+  });
+  const usage = async () => ({ used: (await pool.query('SELECT sum(used)::int AS n FROM agent_standing_grants WHERE connection_id=$1', [f.connection.id])).rows[0].n as number,
+    receipts: (await pool.query('SELECT count(*)::int AS n FROM agent_command_receipts WHERE connection_id=$1', [f.connection.id])).rows[0].n as number });
+
+  // A sender's execution role may queue a review request: the class is the sender's, and the review kind sits in the payload.
+  const sent = command(requestGrant, 'cowork.request');
+  assert.equal((await prepare(sent)).context.connectionId, f.connection.id);
+  // No grant crosses operation or class: request vs claim, a work grant, and a class the sender holds no grant for.
+  for (const denied of [command(requestGrant, 'cowork.claim'), command(claimGrant, 'cowork.request'), command(f.grant, 'cowork.request'),
+    command(requestGrant, 'cowork.request', 'review'), command(requestGrant, 'cowork.request', 'plan')])
+    await rejects(prepare(denied), 'AGENT_EXECUTION_UNAVAILABLE');
+  assert.deepEqual(await usage(), { used: 0, receipts: 0 }, 'selection and preparation debit nothing');
+
+  // No request storage or callback exists in this change: a produced request cannot be accepted, debited or receipted.
+  await rejects(complete(sent, [state(sent)]), 'COMMAND_POSTSTATE_STALE');
+  assert.deepEqual(await usage(), { used: 0, receipts: 0 });
+  // The exact sender context/role/unit binding is enforced before any canonical reader is consulted.
+  for (const changed of [{ role: 'review' }, { role: 'plan' }, { connectionId: randomUUID() }, { projectId: randomUUID() },
+    { workspaceId: randomUUID() }, { unitId: randomUUID() }])
+    await rejects(complete(sent, [state(sent, changed)], checks), 'COMMAND_POSTSTATE_INVALID');
+  await rejects(complete(sent, [{ kind: 'cowork.claim_state', workspaceId: f.runtime.workspaceId, projectId: f.p.id, connectionId: f.connection.id,
+    unitId: sender, role: 'execute', version: 1, generation: 0, state: 'pending', leaseId: null, leaseSessionId: null, leaseExpiresAt: null, checkpointId: null }], checks),
+  'COMMAND_POSTSTATE_INVALID');
+  assert.equal(callbacks, 0); assert.deepEqual(await usage(), { used: 0, receipts: 0 });
+
+  // Fixture callback standing in for #153's canonical row reader: one effect, one debit, one receipt with the typed post-state.
+  await complete(sent, [state(sent, { requestId: '00000000-0000-4000-8000-000000000152' })], checks);
+  assert.equal(callbacks, 1); assert.deepEqual(await usage(), { used: 1, receipts: 1 });
+  const receipt = (await pool.query('SELECT operation, postconditions FROM agent_command_receipts WHERE connection_id=$1', [f.connection.id])).rows[0];
+  assert.equal(receipt.operation, 'cowork.request'); assert.equal(receipt.postconditions[0].kind, 'cowork.request_state');
+  assert.equal(receipt.postconditions[0].role, 'execute'); assert.equal(receipt.postconditions[0].unitId, sender);
 });

@@ -31,11 +31,9 @@
 .project-convo__material-form textarea { border: 1px solid var(--line-strong); border-radius: var(--r); padding: 9px; min-height: 90px; resize: vertical; background: var(--bg); color: var(--text); }
 .project-convo__form-actions { display: flex; gap: 8px; }
 .project-convo__composer { border-top: 1px solid var(--line); background: var(--bg); padding-top: 8px; }
-.project-convo__readonly { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0; }
-.project-convo__readonly p { margin: 0; color: var(--text-2); font-size: var(--fs-sm); }
-.project-convo__readonly .ui-btn { flex: none; }
-.project-convo__composer .composer__audience { display: flex; align-items: center; gap: 5px; min-width: 0; white-space: nowrap; }
-.project-convo__composer .composer__audience > span { overflow: hidden; text-overflow: ellipsis; }
+.project-convo__composer .composer__audience { display: flex; align-items: center; gap: 5px; min-width: 0; flex-wrap: wrap; }
+.project-convo__composer .composer__audience > span { min-width: 0; overflow-wrap: anywhere; }
+.project-convo__read-only { padding: 8px 0; font-size: var(--fs-sm); color: var(--text-2); line-height: 1.5; }
 .project-convo__current-thread { display: none; }
 /* Sources: saved text and links, opened from the composer and cited in one step. */
 .project-convo__materials { margin-bottom: 8px; border-radius: var(--r-lg); background: var(--bg); box-shadow: inset 0 0 0 1px var(--line), 0 6px 18px rgb(0 0 0 / .06); }
@@ -68,9 +66,9 @@
   .project-convo__message { padding-left: 44px; }
   .project-convo__composer { padding-top: 6px; padding-bottom: max(8px, env(safe-area-inset-bottom)); }
   .project-convo__composer .composer__where, .project-convo__sources-t { display: none; }
-  .project-convo__to { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+  .project-convo__to { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 4px; }
   .project-convo__current-thread { display: block; flex: 1; min-width: 0; color: var(--text-2); font-size: var(--fs-xs); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; }
-  .project-convo__to .composer__audience { flex: none; max-width: 55%; margin: 0; }
+  .project-convo__to .composer__audience { flex: 0 1 auto; max-width: 100%; margin: 0; }
 }
 .composer__space { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: var(--fs-xs); color: var(--text-2); }
 .composer__space select { border: 1px solid var(--line); border-radius: var(--r-sm); min-height: 32px; background: var(--bg); color: var(--text); }
@@ -111,3 +109,5 @@
   .project-convo__message > p { max-width: calc(100% - 8px); }
   .project-convo__message.is-mine { padding-left: 0; padding-right: 44px; }
 }
+
+.project-convo__material-read { text-decoration: underline; text-underline-offset: 2px; }

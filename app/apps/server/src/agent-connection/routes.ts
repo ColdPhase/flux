@@ -5,7 +5,6 @@ import { agentConnectionUseCases, agentOauthUseCases, agentProposalUseCases, Dom
 import type { SessionResolver } from '../identity/index.js';
 import { createAgentConnectionStore } from './store.js';
 import { agentStandingGrants } from './grants.js';
-import { coWorkGrantTargetInTransaction } from '../co-work/grants.js';
 import { oauthFlow, verifiedOauthQuery } from '../identity/oauth-query.js';
 
 interface Options { db: Database; sessions: SessionResolver; oauthSecret: string; publicOrigin: string }
@@ -14,7 +13,7 @@ interface Options { db: Database; sessions: SessionResolver; oauthSecret: string
 export async function agentProposalRoutes(app: FastifyInstance, { db, sessions, oauthSecret, publicOrigin }: Options) {
   const connectionStore = createAgentConnectionStore(db);
   const connections = agentConnectionUseCases(connectionStore);
-  const actionGrants = agentStandingGrants(db, { coordinationTarget: coWorkGrantTargetInTransaction });
+  const actionGrants = agentStandingGrants(db);
   const oauth = agentOauthUseCases(connectionStore);
   const store = agentProposalUseCases(agentProposalRepository(db, {
     async authorizeWrite(principal, projectId, tx) {

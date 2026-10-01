@@ -21,6 +21,9 @@ export interface AgentExecutionDomainChecks {
   /** #153 verifies typed claim post-state directly against its canonical rows in this transaction. */
   coordinationPostcondition?(tx: Transaction, context: AuthenticatedAgentRuntime, command: NormalizedAgentExecutionCommand,
     condition: Extract<AgentPostcondition, { kind: 'cowork.claim_state' }>): Promise<boolean>;
+  /** #153 verifies the sender's queued-request identity against its canonical rows; absent means fail closed. */
+  coordinationRequestPostcondition?(tx: Transaction, context: AuthenticatedAgentRuntime, command: NormalizedAgentExecutionCommand,
+    condition: Extract<AgentPostcondition, { kind: 'cowork.request_state' }>): Promise<boolean>;
 }
 function denied(code = 'AGENT_EXECUTION_UNAVAILABLE') {
   return new DomainError(403, code, 'Current runtime, action grant or project authority is unavailable');
@@ -63,15 +66,22 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
     for (const condition of ordered) {
       const target = prepared.command.objectId;
       if (target && (condition.kind === 'work' || condition.kind === 'map' || condition.kind === 'map_checkpoint') && condition.id !== target
-        || target && condition.kind === 'cowork.claim_state' && condition.unitId !== target)
+        || target && (condition.kind === 'cowork.claim_state' || condition.kind === 'cowork.request_state') && condition.unitId !== target)
         throw new DomainError(409, 'COMMAND_POSTSTATE_INVALID', 'The produced post-state belongs to another target');
       if (condition.kind === 'cowork.claim_state' && (condition.workspaceId !== prepared.context.workspaceId
         || condition.projectId !== prepared.command.projectId || condition.connectionId !== prepared.context.connectionId
         || condition.role !== prepared.command.peerRequestClass
         || condition.leaseSessionId !== null && condition.leaseSessionId !== prepared.context.id))
         throw new DomainError(409, 'COMMAND_POSTSTATE_INVALID', 'The claim post-state belongs to another context or role');
+      // The request role is the sender unit's actual class (the grant's), never the recipient's or the request kind.
+      if (condition.kind === 'cowork.request_state' && (condition.workspaceId !== prepared.context.workspaceId
+        || condition.projectId !== prepared.command.projectId || condition.connectionId !== prepared.context.connectionId
+        || condition.role !== prepared.command.peerRequestClass))
+        throw new DomainError(409, 'COMMAND_POSTSTATE_INVALID', 'The request post-state belongs to another context or sender role');
       const allowed = condition.kind === 'cowork.claim_state'
         ? !!domain.coordinationPostcondition && await domain.coordinationPostcondition(tx, prepared.context, prepared.command, condition)
+        : condition.kind === 'cowork.request_state'
+        ? !!domain.coordinationRequestPostcondition && await domain.coordinationRequestPostcondition(tx, prepared.context, prepared.command, condition)
         : await rows.nativePostcondition(prepared.context.workspaceId, prepared.command.projectId, condition,
           prepared.command.operation === 'map.positions.update' || prepared.command.operation === 'map.thought.create'
             || prepared.command.operation === 'map.thought.update' ? prepared.command.objectId ?? undefined : undefined);
