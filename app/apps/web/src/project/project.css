@@ -12,9 +12,9 @@
 .top__audience svg { flex: none; }
 .top__audience:hover { background: var(--bg-hover); color: var(--text); }
 .top--project .ws-state { flex-wrap: wrap; margin: 0 0 0 -6px; font-size: var(--fs-sm); line-height: 1.4; }
-.top--project .ws-part { flex: 0 1 max-content; min-width: 0; }
+.top--project .ws-part { display: contents; }
 
-.top--project .ws-seg { min-height: 24px; min-width: 0; flex: 1; max-width: 100%; color: var(--text-3); }
+.top--project .ws-seg { min-height: 24px; min-width: 0; flex: 0 1 auto; max-width: 100%; color: var(--text-3); }
 .top--project .ws-seg:hover { color: var(--text); }
 .top--project .ws-seg--need { color: var(--attention); }
 .top--project .ws-seg span:last-child { white-space: normal; overflow-wrap: anywhere; }

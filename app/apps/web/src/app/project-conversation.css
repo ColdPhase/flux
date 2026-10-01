@@ -109,3 +109,5 @@
   .project-convo__message > p { max-width: calc(100% - 8px); }
   .project-convo__message.is-mine { padding-left: 0; padding-right: 44px; }
 }
+
+.project-convo__material-read { text-decoration: underline; text-underline-offset: 2px; }

@@ -52,3 +52,9 @@ input/send or a material discussion action. Saved writer drafts remain untouched
 Verify rendered text bounds and reader controls in the real browser separately
 from the second neutral screenshot review. Status transitions use API mutation
 and reload, not proof of stream-driven live refresh.
+
+Source review then identified two reader seams requiring correction: saved
+text-only source rows need a keyboard-reachable exact-version reader link, and
+the New conversation destination must distinguish an empty project from a
+project with existing conversations. Add actual saved-source/body and existing
+conversation journeys with contributor→reader→contributor draft retention.
