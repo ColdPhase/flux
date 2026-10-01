@@ -5,25 +5,30 @@ code: Docker Engine with the Compose plugin pulls one image, `ghcr.io/coldphase/
 by its manifest digest, plus a digest-pinned PostgreSQL. No checkout, Node.js or build is
 needed. Running the checked-out source is a different path: [`./flux up`](README.md).
 
-**Status (2026-09-30).** No Flux release has been published yet. The operator files exist in
+**Status (2026-10-01).** No Flux release has been published yet. The operator files exist in
 the repository as [`docker/compose.yaml`](../../docker/compose.yaml) and
 [`docker/.env.example`](../../docker/.env.example) (issue
 [#76](https://github.com/ColdPhase/flux/issues/76), phase 1). The repository copy carries the
-marker `ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST` on `api`, `worker` and `migrate`; the
-release workflow ([#77](https://github.com/ColdPhase/flux/issues/77)) replaces it with the
-accepted digest and attaches both files, with checksums and the release installation guide, to
-the GitHub Release. Always use the copies from the release you install: a newer `main` can
-need other migrations or variables than your image.
+marker `ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST` on `api`, `worker` and `migrate`. The explicit
+release workflows of [#77](https://github.com/ColdPhase/flux/issues/77)
+([`final-release.yml`](../../.github/workflows/final-release.yml),
+[`publish-release.yml`](../../.github/workflows/publish-release.yml); see the
+[release pipeline](../development/release-pipeline.md)) replace the marker with the accepted digest
+and attach to the GitHub Release: `compose.yaml`, `env.example` (the template; GitHub drops a
+leading period from asset names, so `.env.example` is published as `env.example`), `INSTALL.md`
+(the [release installation guide](release-guide.md)), `release.json`, `sbom.spdx.json`,
+`THIRD_PARTY_NOTICES.json`, `LICENSE` and `SHA256SUMS`. Always use the files from the release you
+install: a newer `main` can need other migrations or variables than your image.
 
 ## Clean installation
 
-1. Download `compose.yaml`, `.env.example` and `SHA256SUMS` from **one** GitHub Release into
-   an empty directory, for example `/srv/flux`, and check them with `sha256sum -c SHA256SUMS`
+1. Download every asset of **one** GitHub Release into an empty directory, for example
+   `/srv/flux`; the checksum file lists all of them. Check them with `sha256sum -c SHA256SUMS`
    (macOS: `shasum -a 256 -c SHA256SUMS`).
 2. Create the private settings file and fill in the three required values:
 
    ```sh
-   cp .env.example .env && chmod 600 .env
+   cp env.example .env && chmod 600 .env
    openssl rand -hex 32    # once for POSTGRES_PASSWORD, once for FLUX_AUTH_SECRET
    ```
 
@@ -95,10 +100,10 @@ new files. The migration runs at the new image revision before API and worker st
 migrations are not assumed reversible: to go back, restore the backup with the **previous**
 release's files, never just an older image over the migrated database.
 
-The release's own installation guide carries the exact backup, upgrade and restore commands
-for that version. The source-checkout equivalents are [`./flux backup` and
-`./flux restore`](backup-restore.md) and [`./flux upgrade`](upgrade.md); they use
-`docker/compose.source.yaml` and are not the release path.
+The release's own installation guide, `INSTALL.md` ([source](release-guide.md)), carries the
+exact backup, upgrade and restore commands for that version. The source-checkout equivalents are
+[`./flux backup` and `./flux restore`](backup-restore.md) and [`./flux upgrade`](upgrade.md); they
+use `docker/compose.source.yaml` and are not the release path.
 
 ## Verification
 
@@ -110,5 +115,9 @@ manifest inside that image, sign-up, a workspace,
 a worker job and a restart, and removes the project, volumes and image. Ports default to
 `18951`; set `FLUX_OPERATOR_TEST_PORT` for a concurrent run.
 `python3 -m unittest tests.test_operator_compose` checks the file statically (pull-only, one
-marker on the three Flux services, digest pins, variables and placeholders). The real
-GHCR pull, both platforms and the downloaded release assets are verified by #77.
+marker on the three Flux services, digest pins, variables and placeholders), and
+`tests.test_release_assets` renders the real files into a release asset set. The real GHCR pull,
+both platforms and the downloaded release assets are verified by #77: its `final-release.yml`
+installs the packaged, digest-pinned release, creates an account and workspace, takes a paired
+backup and restores it into a second project (`scripts/release/smoke_artifacts.sh`), and an
+independent reviewer repeats that on both platforms before publication.

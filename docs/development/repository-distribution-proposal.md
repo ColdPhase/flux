@@ -17,6 +17,13 @@ the repository root; application/configuration paths now follow the accepted map
 Exact-head Docker build/runtime/browser/upgrade checks and independent PR review are
 required before this slice is accepted. The observations at `603b35c` below remain historical.
 
+**#77 packaging note, 2026-10-01:** GitHub stores a Release asset whose name begins with a
+period under another name (`.env.example` becomes `default.env.example`) and
+`actions/upload-artifact` skips hidden files. Wherever this proposal says the release attaches
+`.env.example`, the asset is that same file published as `env.example`; `docker/.env.example`
+keeps its name in the repository. The packaged `compose.yaml` differs from `docker/compose.yaml`
+only in the digest and its header comment. See the [release pipeline](release-pipeline.md).
+
 **Situation and decision:** A contributor should find the application in one
 place, while an operator should install a versioned Flux without cloning its
 source. The founder prefers `app/` for the application workspace and `docker/`
