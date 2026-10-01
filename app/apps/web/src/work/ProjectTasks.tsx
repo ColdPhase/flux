@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { Decision, Project, WorkItem, WorkResult } from '@flux/contracts';
-import { Button, EmptyState, Icon } from '../ui';
+import { EmptyState, Icon } from '../ui';
 import { getProject } from '../app/conversation-api';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
 import { useReadingPosition } from '../app/drafts';
-import { createWork, type ProjectWork } from './api';
+import type { ProjectWork } from './api';
+import { NewWorkComposer } from './NewWorkComposer';
 import { useProjectShell } from '../project/data';
 import { STATUS_LABEL, isFinished, linked, shortDate } from './format';
 import './work.css';
@@ -110,10 +111,6 @@ export function ProjectTasks() {
   const { openDetails } = useShellActions();
   const revalidator = useRevalidator();
   const writable = project.access !== 'viewer';
-  const [title, setTitle] = useState('');
-  const [attempt, setAttempt] = useState(() => crypto.randomUUID());
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
   const [search, setSearch] = useSearchParams();
   const { me } = useShellData();
   const scroller = useRef<HTMLDivElement>(null);
@@ -155,19 +152,6 @@ export function ProjectTasks() {
     return () => { window.removeEventListener('focus', refresh); window.clearInterval(interval); };
   }, [revalidator]);
 
-  async function add(event: FormEvent) {
-    event.preventDefault();
-    if (!title.trim() || busy) return;
-    setBusy(true); setError('');
-    try {
-      const item = await createWork(project.id, { title: title.trim() }, attempt);
-      setTitle(''); setAttempt(crypto.randomUUID());
-      revalidator.revalidate();
-      openDetails({ kind: 'work', id: item.id });
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not add the work.'); }
-    finally { setBusy(false); }
-  }
-
   const own = (item: WorkItem) => !mine || item.owner?.id === me.user.id;
   const live = lists.work.filter((item) => own(item) && (!item.parked || isFinished(item)));
   const by = (state: WorkItem['status']) => live.filter((item) => item.status === state);
@@ -191,14 +175,7 @@ export function ProjectTasks() {
   return (
     <div className="pane-scroll" ref={scroller}>
       <div className="pane-in ws-tasks" data-shift>
-        {writable ? (
-          <form className="ws-add" onSubmit={(event) => void add(event)}>
-            <label className="ui-vh" htmlFor="ws-add">New work</label>
-            <input id="ws-add" className="ui-input" value={title} maxLength={200} placeholder="Add work, e.g. Order a ToF sensor" onChange={(event) => { setTitle(event.target.value); setAttempt(crypto.randomUUID()); setError(''); }} />
-            <Button type="submit" variant="secondary" icon="plus" busy={busy} disabled={!title.trim()}>Add work</Button>
-          </form>
-        ) : null}
-        {error ? <p className="wd-error" role="alert">{error}</p> : null}
+        {writable ? <NewWorkComposer key={`${me.user.id}:${project.id}`} userId={me.user.id} projectId={project.id} /> : null}
 
         {nothing ? (
           <div className="view-empty"><EmptyState icon="tasks" title="No work yet">

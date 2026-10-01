@@ -13,21 +13,24 @@ const memory = new Map<string, string>();
 export const draftKey = (userId: string, context: string) => `flux:draft:${userId}:${context}`;
 export const scrollKey = (userId: string, context: string) => `flux:scroll:${userId}:${context}`;
 
-function read(key: string): string {
+function read(key: string): { text: string; storage: DraftStorage } {
+  // A failed write (including an empty clear) is newer than the value still on disk.
+  // Keep that override until a successful write; ordinary device writes remain cross-tab readable.
+  if (memory.has(key)) return { text: memory.get(key)!, storage: 'visit' };
   try {
     const stored = localStorage.getItem(key);
-    if (stored !== null) return stored;
-  } catch { /* storage refused: fall back to memory */ }
-  return memory.get(key) ?? '';
+    return { text: stored ?? '', storage: 'device' };
+  } catch { return { text: '', storage: 'visit' }; }
 }
 
 /** Writes or removes a value; returns where it now lives. */
 function write(key: string, value: string): DraftStorage {
-  if (value) memory.set(key, value); else memory.delete(key);
   try {
     if (value) localStorage.setItem(key, value); else localStorage.removeItem(key);
+    memory.delete(key);
     return 'device';
   } catch {
+    memory.set(key, value);
     return 'visit';
   }
 }
@@ -38,10 +41,16 @@ function write(key: string, value: string): DraftStorage {
  */
 export function useDraft(userId: string, context: string) {
   const key = draftKey(userId, context);
-  const [state, setState] = useState(() => ({ text: read(key), storage: 'device' as DraftStorage }));
+  const [state, setState] = useState(() => read(key));
   const setText = useCallback((text: string) => setState({ text, storage: write(key, text) }), [key]);
   const clear = useCallback(() => setText(''), [setText]);
-  return { text: state.text, storage: state.storage, setText, clear };
+  // A command can finish after navigation. Never clear a newer draft from a later mount.
+  const clearIfMatches = useCallback((expected: string) => {
+    if (read(key).text !== expected) return false;
+    setText('');
+    return true;
+  }, [key, setText]);
+  return { text: state.text, storage: state.storage, setText, clear, clearIfMatches };
 }
 
 /** Restores, then records, the scroll position of a scroll container for one account and context. */
@@ -53,7 +62,7 @@ export function useReadingPosition(ref: RefObject<HTMLElement | null>, userId: s
     const el = ref.current;
     if (!el || restored.current === key) return;
     restored.current = key;
-    const top = Number(read(key));
+    const top = Number(read(key).text);
     if (Number.isFinite(top) && top > 0) el.scrollTop = top;
   }, [ref, key]);
 

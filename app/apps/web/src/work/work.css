@@ -52,6 +52,7 @@
 .ws-add { display: flex; gap: 8px; margin-bottom: 8px; }
 .ws-add .ui-input { flex: 1; min-width: 0; min-height: var(--ctl-lg); }
 .ws-add .ui-btn { min-height: var(--ctl-lg); }
+.ws-draft-state { margin: 0 0 8px; font-size: var(--fs-xs); color: var(--text-3); line-height: 1.5; }
 .ws-group { margin-top: 24px; }
 .ws-group__h { display: flex; gap: 6px; margin-bottom: 4px; font-size: var(--fs-xs); font-weight: 500; color: var(--text-3); }
 .ws-group__h span { font-variant-numeric: tabular-nums; }
