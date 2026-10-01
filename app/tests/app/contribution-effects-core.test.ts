@@ -17,11 +17,11 @@ const writer: Principal = { kind: 'human', id: 'writer-1' };
 const agent: Principal = { kind: 'agent', id: randomUUID() };
 const at = new Date('2026-10-01T10:00:00.000Z');
 
-function world(options: { writable?: boolean; taskIds?: string[]; hook?: boolean } = {}) {
+function world(options: { writable?: boolean; taskIds?: string[]; hook?: boolean; prerequisites?: Record<string, string[]> } = {}) {
   const log: string[] = [];
   const tasks = new Map<string, WorkRecord>();
   const taskIds = options.taskIds ?? [randomUUID(), randomUUID(), randomUUID()];
-  for (const id of taskIds) tasks.set(id, { id, workspaceId, projectId, title: `Task ${id.slice(0, 4)}`, outcome: '', status: 'open', blocker: null,
+  for (const id of taskIds) tasks.set(id, { id, workspaceId, projectId, title: `Task ${id.slice(0, 4)}`, outcome: '', criteria: [], status: 'open', blocker: null,
     owner: null, parked: null, createdBy: { kind: 'human', id: 'creator' }, version: 1, createdAt: at, updatedAt: at });
   const messages: DiscussionMessage[] = [];
   const conversations = new Map<string, { id: string; workspaceId: string; projectId: string; createdBy: ActorRef; createdAt: Date }>();
@@ -74,6 +74,20 @@ function world(options: { writable?: boolean; taskIds?: string[]; hook?: boolean
     async titles() { return new Map(); },
     async names() { return new Map(); },
     async targetExists(_project: string, ref: { type: string; id: string }) { return ref.type !== 'work' || tasks.has(ref.id); },
+    // The #152 task graph: the project graph lock and the complete sorted task pass.
+    async taskPlans() { return new Map(); },
+    async lockTaskGraphs() { log.push('graph.lock'); },
+    async directPrerequisiteIds(_workspace: string, ids: readonly string[]) {
+      return [...new Set(ids.flatMap((id) => options.prerequisites?.[id] ?? []))].sort();
+    },
+    async lockTasks(_workspace: string, ids: readonly string[]) {
+      log.push(`task.pass:${ids.join(',')}`);
+      return ids.filter((id) => tasks.has(id)).map((id) => ({ id, projectId }));
+    },
+    async prerequisiteStates(_workspace: string, id: string) {
+      return { projectId, prerequisites: (options.prerequisites?.[id] ?? []).map((prerequisite) => ({ id: prerequisite, status: tasks.get(prerequisite)!.status, parked: false })) };
+    },
+    async replaceDependencies() { log.push('graph.edges'); },
   } as unknown as WorkRepository;
   const discussion: TaskDiscussionPorts['discussion'] = {
     async lockCommand(_project, _author, commandId) { log.push(`identity.lock:${commandId}`); },
@@ -296,6 +310,24 @@ describe('a published result contributes to every linked task', () => {
     await w.use.createResult(writer, projectId, { title: 'Done', finding: 'positive', work: [b, a], finishes: { id: b, expectedVersion: 1 } });
     assert.equal(w.tasks.get(b)!.status, 'done');
     assert.equal(w.messages.length, 2);
+  });
+
+  test('finishing locks the graph after every identity, then ONE ascending pass over linked tasks and prerequisites, then the handle', async () => {
+    const ids = sorted([randomUUID(), randomUUID(), randomUUID()]) as [string, string, string];
+    const [linked, finishing, prerequisite] = ids;
+    const w = world({ taskIds: ids, prerequisites: { [finishing]: [prerequisite] } });
+    w.tasks.get(prerequisite)!.status = 'done';
+    await w.use.createResult(writer, projectId, { title: 'Finished with a prerequisite', finding: 'positive', work: [finishing, linked],
+      finishes: { id: finishing, expectedVersion: 1 } });
+    const graph = index(w.log, 'graph.lock');
+    const pass = w.log.filter((line) => line.startsWith('task.pass:'));
+    assert.deepEqual(pass, [`task.pass:${ids.join(',')}`], 'one ascending pass over the union, never two passes');
+    assert.ok(w.log.lastIndexOf(w.log.filter((line) => line.startsWith('identity.lock:')).at(-1)!) < graph, 'every message identity precedes the graph lock');
+    assert.ok(graph < index(w.log, 'task.pass:'), 'the graph lock precedes the task pass');
+    assert.ok(index(w.log, 'task.pass:') < index(w.log, 'task.lock:'), 'the pass precedes the handle that completes the contribution stage');
+    assert.ok(index(w.log, 'task.pass:') < index(w.log, 'append:'));
+    assert.equal(w.tasks.get(finishing)!.status, 'done');
+    assert.deepEqual(w.messages.map((row) => row.kind), ['result', 'result']);
   });
 
   test('a result with no linked task creates no task thread, identity lock or task lock', async () => {

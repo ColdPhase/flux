@@ -24,6 +24,7 @@ export * from './repositories/push.js';
 export * from './repositories/stream.js';
 export * from './repositories/sketches.js';
 export * from './repositories/work.js';
+export * from './repositories/task-graph.js';
 export * from './repositories/task-discussions.js';
 export * from './repositories/direct-messages.js';
 export * from './repositories/docs.js';

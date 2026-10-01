@@ -258,3 +258,60 @@ class ProjectStateJourney(unittest.TestCase):
         self.assertEqual(saved.value.status, 201)
         material = self.call(owner, "GET", f"/api/v1/projects/{project['id']}/materials")["items"][0]
         self.assertEqual(material["title"], "Unpublished calibration source")
+
+    def test_07_phone_keeps_blocked_count_visible_beside_other_current_work(self):
+        owner, project = self.scene()
+        blocked = self.work(owner, project, "Wait for the calibration sensor", "blocked")
+        self.work(owner, project, "Collect observations from the library team", "in_progress")
+        self.call(owner, "POST", f"/api/v1/projects/{project['id']}/decisions",
+            {"title": "Keep manual fallback until the experiment is accepted", "rationale": "Avoid excluding anyone while testing"}, 201)
+        for who in ("Ada State", "Jonas Reader"):
+            for width, scale, dark in ((320, 1, False), (390, 1.25, True), (320, 2, False)):
+                with self.subTest(who=who, width=width, scale=scale):
+                    page = self.page(who, width, 844, dark)
+                    page.goto(f"/projects/{project['id']}")
+                    if scale != 1:
+                        sizes = {"xs": 12, "sm": 13, "md": 14, "base": 15, "lg": 17, "xl": 20, "2xl": 24}
+                        page.add_style_tag(content=":root { " + "; ".join(f"--fs-{key}:{size * scale}px" for key, size in sizes.items()) + "; }")
+                    row = page.get_by_role("button", name=re.compile("open project details"))
+                    expect(row).to_contain_text("1 blocked")
+                    shot(page, f"136-state-blocked-{width}-text-{int(scale * 100)}-{'writer' if who == 'Ada State' else 'reader'}")
+                    # A text assertion alone passes even when the label is past an ellipsis.
+                    # Measure the actual text range against every clipping ancestor and the viewport.
+                    visible = row.evaluate("""(el, text) => {
+                        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+                        let node;
+                        while ((node = walker.nextNode())) {
+                            const at = node.textContent.indexOf(text);
+                            if (at < 0) continue;
+                            const range = document.createRange();
+                            range.setStart(node, at); range.setEnd(node, at + text.length);
+                            const box = range.getBoundingClientRect();
+                            if (box.width <= 0 || box.left < 0 || box.right > innerWidth + 1) continue;
+                            let clipped = false;
+                            for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+                                const style = getComputedStyle(parent), bounds = parent.getBoundingClientRect();
+                                if (['hidden', 'clip', 'auto', 'scroll'].includes(style.overflowX)
+                                    && (box.left < bounds.left - 1 || box.right > bounds.right + 1)) clipped = true;
+                                if (parent === el) break;
+                            }
+                            if (!clipped && [0.1, 0.5, 0.9].every(fraction => {
+                                const hit = document.elementFromPoint(box.left + box.width * fraction, box.top + box.height / 2);
+                                return hit && el.contains(hit);
+                            })) return true;
+                        }
+                        return false;
+                    }""", "1 blocked")
+                    self.assertTrue(visible, "the blocked count must be visibly readable before opening the overview")
+                    self.assertGreaterEqual(row.bounding_box()["height"], 44)
+                    self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), width)
+                    if who == "Ada State":
+                        row.focus()
+                        row.press("Enter")
+                    else:
+                        row.tap()
+                    panel = page.get_by_role("dialog", name="Details")
+                    expect(panel.get_by_role("region", name="Now in this project")).to_contain_text("Blocked")
+                    panel.get_by_role("button", name=re.compile("Blocked.*Wait for the calibration sensor")).click()
+                    expect(panel.get_by_role("heading", name=blocked["title"], exact=True)).to_be_visible()
+                    self.assertEqual(self.call(page, "GET", f"/api/v1/work/{blocked['id']}")["status"], "blocked")

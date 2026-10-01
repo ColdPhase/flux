@@ -94,10 +94,14 @@ export function ProjectStateRow({ lists, canDecide }: { lists: ProjectWork; canD
   // What needs the reader leads, since the row truncates.
   const parts = stateParts(lists, canDecide).sort((a, b) => Number(b.tone === 'need') - Number(a.tone === 'need'));
   const need = parts.find((part) => part.tone === 'need');
+  // Keep blocking work readable even when the rest of the phone summary is clipped.
+  const blocked = parts.length > 1 ? parts.find((part) => part.key === 'blocked') : undefined;
+  const summary = blocked ? parts.filter((part) => part !== blocked) : parts;
   return (
     <button type="button" className="ws-state-row" onClick={() => openDetails('place')} aria-haspopup="dialog">
       {need ? <span className="ws-dot ws-dot--need" aria-hidden="true" /> : <Icon name={parts[0]?.icon ?? 'tasks'} size={13} />}
-      <span className="ws-state-row__t">{parts.length ? parts.map((part) => part.short).join(' · ') : 'No decisions or work yet'}</span>
+      <span className="ws-state-row__t">{summary.length ? summary.map((part) => part.short).join(' · ') : 'No decisions or work yet'}</span>
+      {blocked ? <span className="ws-state-row__blocked">{blocked.short}</span> : null}
       <span className="ui-vh">, open project details</span>
       <Icon name="chevron-right" size={16} />
     </button>

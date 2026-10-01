@@ -20,7 +20,9 @@ import {
 } from '@flux/contracts';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, RuleViolationError, VersionConflictError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
-import type { ActorRef, DecisionRecord, NativeCommandReceipt, ObjectLinkRecord, NewObjectLink, ResultRecord, WorkChanges, WorkPorts, WorkRecord, WorkRepository, WorkUnitOfWork } from './ports.js';
+import type { ActorRef, DecisionRecord, NativeCommandReceipt, ObjectLinkRecord, NewObjectLink, ResultRecord, TaskPlanRecord, WorkChanges, WorkPorts, WorkRecord, WorkRepository, WorkUnitOfWork } from './ports.js';
+import { assertNoDependencyCycle, assertPrerequisitesMet, creationFingerprint, decidePlanIntent, directPrerequisiteIds, ELIGIBLE_STATUSES,
+  lockProjectGraphs, sortedIds } from './task-graph.js';
 import * as valid from './validation.js';
 
 // Work, decision and result use cases (issue #101). Each runs in one unit of work: it asks the
@@ -33,11 +35,19 @@ import * as valid from './validation.js';
 // earlier one is a pivot: the earlier decision is kept as superseded, work that still applies
 // is linked to the new decision and obsolete work is parked, keeping its status.
 //
+// Task plans (#152): a task carries criteria, direct same-project prerequisites and an optional
+// immutable plan intent. Writers that touch the graph or an intent take their locks in one order:
+// project access rows -> the plan material row -> the command identity -> the project task-graph lock
+// -> the complete task rows in ascending id -> everything else. Starting or finishing a task needs every
+// prerequisite done and unparked. Nothing infers that listed criteria are satisfied.
+//
 // Explicit effects on a task's canonical thread (#154): an explicitly saved nonempty blocker and a
 // published result contribute through the mandatory `ports.contributions` hook, inside the same unit
-// of work. The order is always: project write access, the command's durable identity (receipt, then
-// every derived message identity), the complete sorted task set, the domain writes, the canonical
-// appends, the receipt, and the events last (one final batch owned by the caller's unit of work).
+// of work, in that same order: the command's durable identity is the native receipt and then every
+// derived message identity (sorted), before the graph lock; the complete sorted task set (the linked
+// tasks together with the prerequisites a finishing task reads, in ONE ascending pass) precedes the
+// domain writes, the canonical appends, the receipt, and the events last (one final batch owned by the
+// caller's unit of work).
 
 const LABEL: Record<WorkObjectType, string> = { work: 'Work item', decision: 'Decision', result: 'Result' };
 const CODE: Record<WorkObjectType, string> = { work: 'WORK_NOT_FOUND', decision: 'DECISION_NOT_FOUND', result: 'RESULT_NOT_FOUND' };
@@ -82,11 +92,14 @@ export async function linkReader(repo: WorkRepository, ids: string[]): Promise<(
   });
 }
 
-/** Links and names needed to present a set of records to one reader. */
-async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | null)[]) {
-  const [linksOf, names] = await Promise.all([
+const NO_PLAN: TaskPlanRecord = { prerequisites: [], planIntent: null };
+
+/** Links and names needed to present a set of records to one reader. `plans` adds the task graph of work. */
+async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | null)[], plans = false) {
+  const [linksOf, names, planOf] = await Promise.all([
     linkReader(ports.work, ids),
     ports.work.names(actors.filter((item): item is ActorRef => item !== null)),
+    plans && ids.length ? ports.work.taskPlans(ids) : Promise.resolve(new Map<string, TaskPlanRecord>()),
   ]);
   const named = (ref: ActorRef): NamedPrincipal => ({ ...ref, name: names.get(key(ref)) ?? (ref.kind === 'agent' ? 'Agent' : 'Former member') });
   const base = (record: { id: string; projectId: string; workspaceId: string; createdAt: Date }) => ({
@@ -94,12 +107,18 @@ async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | nu
     audience: { kind: 'project' as const, projectId: record.projectId }, links: linksOf(record.id), createdAt: iso(record.createdAt),
   });
   return {
-    work: (record: WorkRecord): WorkItem => ({
-      ...base(record), title: record.title, outcome: record.outcome, status: record.status, blocker: record.blocker,
-      owner: record.owner ? named(record.owner) : null,
-      parked: record.parked ? { decisionId: record.parked.decisionId, at: iso(record.parked.at) } : null,
-      createdBy: named(record.createdBy), version: record.version, updatedAt: iso(record.updatedAt),
-    }),
+    work: (record: WorkRecord): WorkItem => {
+      const plan = planOf.get(record.id) ?? NO_PLAN;
+      return {
+        ...base(record), title: record.title, outcome: record.outcome, criteria: record.criteria, status: record.status, blocker: record.blocker,
+        dependencyIds: plan.prerequisites.map((item) => item.id),
+        prerequisites: plan.prerequisites.map((item) => ({ ...item, met: item.status === 'done' && !item.parked })),
+        planIntent: plan.planIntent,
+        owner: record.owner ? named(record.owner) : null,
+        parked: record.parked ? { decisionId: record.parked.decisionId, at: iso(record.parked.at) } : null,
+        createdBy: named(record.createdBy), version: record.version, updatedAt: iso(record.updatedAt),
+      };
+    },
     decision: (record: DecisionRecord): Decision => ({
       ...base(record), title: record.title, rationale: record.rationale, status: record.status,
       proposedBy: named(record.proposedBy), decidedBy: record.decidedBy ? named({ kind: 'human', id: record.decidedBy }) : null,
@@ -116,7 +135,7 @@ const workActors = (records: WorkRecord[]) => records.flatMap((record) => [recor
 const decisionActors = (records: DecisionRecord[]) => records.flatMap((record) => [record.proposedBy, record.decidedBy ? { kind: 'human' as const, id: record.decidedBy } : null]);
 
 async function presentWork(ports: WorkPorts, record: WorkRecord) {
-  return (await presenter(ports, [record.id], workActors([record]))).work(record);
+  return (await presenter(ports, [record.id], workActors([record]), true)).work(record);
 }
 async function presentDecision(ports: WorkPorts, record: DecisionRecord) {
   return (await presenter(ports, [record.id], decisionActors([record]))).decision(record);
@@ -181,7 +200,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       return { items: await present(ports, items), total, ...window };
     });
   }
-  const presentWorks = async (ports: WorkPorts, items: WorkRecord[]) => { const view = await presenter(ports, items.map((i) => i.id), workActors(items)); return items.map(view.work); };
+  const presentWorks = async (ports: WorkPorts, items: WorkRecord[]) => { const view = await presenter(ports, items.map((i) => i.id), workActors(items), true); return items.map(view.work); };
   const presentDecisions = async (ports: WorkPorts, items: DecisionRecord[]) => { const view = await presenter(ports, items.map((i) => i.id), decisionActors(items)); return items.map(view.decision); };
   const presentResults = async (ports: WorkPorts, items: ResultRecord[]) => { const view = await presenter(ports, items.map((i) => i.id), items.map((i) => i.createdBy)); return items.map(view.result); };
 
@@ -224,7 +243,11 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       return presentResult(ports, (await ports.work.findResult(id))!);
     }),
 
-    /** Creates work in one action, e.g. from a message; the source is linked and stays where it is. */
+    /**
+     * Creates work in one action, e.g. from a message; the source is linked and stays where it is. With
+     * `criteria`, `dependencyIds` and a `planIntent` it is the one native planning command for people,
+     * the API and (later) agents; see the lock order at the top of this file.
+     */
     async createWork(principal: Principal, projectId: string, command: CreateWorkCommand): Promise<WorkItem> {
       const by = actor(principal);
       if (!command || typeof command !== 'object') throw new InvalidInputError('Work item is required');
@@ -237,10 +260,27 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       const owner = command.owner === undefined ? null : valid.owner(command.owner);
       const sources = valid.refs(command.sources, valid.SOURCE_TYPES, 'sources');
       const related = valid.refs(command.related, valid.ANY_TYPES, 'related');
+      const criteria = valid.criteria(command.criteria);
+      const dependencyIds = valid.dependencyIds(command.dependencyIds);
+      const planIntent = valid.planIntent(command.planIntent);
       const clientCommandId = command.clientCommandId === undefined ? undefined : valid.id(command.clientCommandId, 'clientCommandId');
-      const requestFingerprint = clientCommandId ? createHash('sha256').update(JSON.stringify({ title, outcome, status, blocker, owner, sources, related })).digest('hex') : undefined;
+      // The retry fingerprint keeps its original shape (older stored creations still match) and adds the plan
+      // fields only when present. The intent fingerprint is the canonical creation, without retry identity.
+      const plan = { ...(criteria.length ? { criteria } : {}), ...(dependencyIds.length ? { dependencyIds } : {}), ...(planIntent ? { planIntent } : {}) };
+      const requestFingerprint = clientCommandId ? createHash('sha256').update(JSON.stringify({ title, outcome, status, blocker, owner, sources, related, ...plan })).digest('hex') : undefined;
+      const intentFingerprint = planIntent ? creationFingerprint({ title, outcome, status, blocker, owner, sources, related, criteria, dependencyIds }) : undefined;
       return uow.run(async (ports) => {
         const { workspaceId } = await ports.access.requireProject(principal, 'write', project, { lock: true });
+        // The plan material's row lock precedes the command identity and the graph lock, like every source.
+        if (planIntent) {
+          const source = await ports.work.lockPlanSource(workspaceId, project, planIntent.materialId);
+          if (!source) throw new RuleViolationError('The plan source is not part of this project', 'PLAN_SOURCE_NOT_FOUND');
+          if (source.currentVersion !== planIntent.version) {
+            const error = new ConflictError('The plan changed since this revision; read it again before creating tasks', 'SOURCE_VERSION_CONFLICT');
+            error.details = { materialId: planIntent.materialId, requestedVersion: planIntent.version, currentVersion: source.currentVersion };
+            throw error;
+          }
+        }
         if (clientCommandId) {
           const earlier = await ports.work.createdWork(project, by, clientCommandId);
           if (earlier) {
@@ -250,8 +290,27 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         }
         await requireOwner(ports, project, owner);
         await requireTargets(ports, project, [...sources, ...related]);
+        if (planIntent || dependencyIds.length) await lockProjectGraphs(ports.work, [project]);
+        if (planIntent) {
+          const existing = await ports.work.findPlanIntent(project, planIntent);
+          const produced = existing ? await ports.work.findWork(existing.taskId, { lock: true }) : null;
+          const decision = decidePlanIntent(existing, intentFingerprint!, produced);
+          // The same canonical creation of an unchanged task: the original task, actor and times, no new notice or event.
+          if (decision.kind === 'replay') return presentWork(ports, produced!);
+        }
+        if (dependencyIds.length) {
+          const locked = await ports.work.lockTasks(workspaceId, dependencyIds);
+          if (locked.length !== dependencyIds.length || locked.some((task) => task.projectId !== project))
+            throw new RuleViolationError('A prerequisite is not a task of this project', 'TASK_DEPENDENCY_NOT_FOUND');
+        }
         const scope = { workspaceId, projectId: project };
-        const record = await ports.work.insertWork({ id: randomUUID(), ...scope, title, outcome, status, blocker, owner, createdBy: by, clientCommandId, requestFingerprint });
+        const record = await ports.work.insertWork({ id: randomUUID(), ...scope, title, outcome, status, blocker, owner, createdBy: by, criteria, clientCommandId, requestFingerprint });
+        // A brand-new task cannot be anyone's prerequisite yet, so these edges cannot close a cycle.
+        if (dependencyIds.length) {
+          await ports.work.replaceDependencies(scope, record.id, dependencyIds);
+          if (ELIGIBLE_STATUSES.has(status)) await assertPrerequisitesMet(ports.work, workspaceId, record.id);
+        }
+        if (planIntent) await ports.work.insertPlanIntent(scope, planIntent, { taskId: record.id, fingerprint: intentFingerprint!, taskVersion: record.version });
         const from = { type: 'work' as const, id: record.id };
         await ports.work.insertLinks([...linkRows(scope, from, 'source', sources, by), ...linkRows(scope, from, 'related', related, by)]);
         await ports.work.insertCreationNotice(record, sources);
@@ -272,6 +331,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
     async updateWork(principal: Principal, workId: string, command: UpdateWorkCommand, expected: number | undefined): Promise<WorkItem> {
       const by = actor(principal);
       if (!command || typeof command !== 'object') throw new InvalidInputError('Change is required');
+      if ((command as { planIntent?: unknown }).planIntent !== undefined) throw new InvalidInputError('A task keeps the plan intent it was created with', 'PLAN_INTENT_IMMUTABLE');
       const version = valid.expectedVersion(expected);
       const clientCommandId = command.clientCommandId === undefined ? undefined : valid.id(command.clientCommandId, 'clientCommandId');
       const changes: WorkChanges = {};
@@ -284,12 +344,17 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         if (command.parked !== false) throw new InvalidInputError('parked can only be set to false; a pivot parks work');
         changes.parked = null;
       }
-      if (!Object.keys(changes).length) throw new InvalidInputError('Nothing to change');
+      if (command.criteria !== undefined) changes.criteria = valid.criteria(command.criteria);
+      const dependencyIds = command.dependencyIds === undefined ? undefined : valid.dependencyIds(command.dependencyIds);
+      if (!Object.keys(changes).length && dependencyIds === undefined) throw new InvalidInputError('Nothing to change');
       // The exact text the person explicitly saved; undefined/cleared/empty contribute nothing.
       const savedBlocker = changes.blocker || null;
       return uow.run(async (ports) => {
         const { id, projectId, workspaceId } = await authorized(ports, principal, 'work', workId, 'write');
-        const fingerprint = sha256({ operation: 'work.update', workId: id, expectedVersion: version, changes });
+        if (dependencyIds?.includes(id)) throw new RuleViolationError('A task cannot depend on itself', 'TASK_SELF_DEPENDENCY');
+        // Prerequisites are a set: their order is not part of the intent.
+        const fingerprint = sha256({ operation: 'work.update', workId: id, expectedVersion: version, changes,
+          ...(dependencyIds !== undefined ? { dependencyIds: [...dependencyIds].sort() } : {}) });
         if (clientCommandId) {
           // The command identity precedes every other lock below. An exact retry rechecks the current
           // authorization (above), the produced task state and the stored contributions, and writes nothing.
@@ -304,6 +369,19 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         }
         const contribution = savedBlocker ? await ports.contributions.prepare(principal, projectId,
           { operation: 'work.update', commandId: clientCommandId ?? randomUUID() }, [{ workId: id, kind: 'blocker', body: savedBlocker }]) : null;
+        // Replacing prerequisites, or starting/finishing a task, is a graph writer: graph lock (after the command
+        // and message identities above), then every task it reads in one ascending pass (itself and the
+        // prerequisites it will have).
+        if (dependencyIds !== undefined || (changes.status !== undefined && ELIGIBLE_STATUSES.has(changes.status))) {
+          await lockProjectGraphs(ports.work, [projectId]);
+          const prerequisites = dependencyIds ?? await directPrerequisiteIds(ports.work, workspaceId, [id]);
+          const wanted = sortedIds([id, ...prerequisites], 'taskIds');
+          const locked = await ports.work.lockTasks(workspaceId, wanted);
+          if (locked.length !== wanted.length || locked.some((task) => task.projectId !== projectId))
+            throw new RuleViolationError('A prerequisite is not a task of this project', 'TASK_DEPENDENCY_NOT_FOUND');
+        }
+        // The task itself (already held after a graph pass, locked here otherwise); the contribution handle
+        // completes its stage so the append can only follow the complete task set.
         const current = contribution ? (await ports.contributions.lockTasks(contribution))[0]! : (await ports.work.findWork(id, { lock: true }))!;
         if (current.version !== version) throw new VersionConflictError(current.version, await presentWork(ports, current));
         const nextStatus = changes.status ?? current.status;
@@ -315,7 +393,12 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
           changes.blocker = null;
         }
         if (changes.owner !== undefined) await requireOwner(ports, projectId, changes.owner);
+        if (dependencyIds !== undefined) await assertNoDependencyCycle(ports.work, workspaceId, id, dependencyIds);
         const record = await ports.work.updateWork(id, changes);
+        if (dependencyIds !== undefined) await ports.work.replaceDependencies({ workspaceId, projectId }, id, dependencyIds);
+        // It starts or finishes only with every prerequisite done and unparked, and keeps that while it
+        // is active. The check reads the edges as just replaced; a failure rolls back the whole change.
+        if (ELIGIBLE_STATUSES.has(nextStatus) && (dependencyIds !== undefined || nextStatus !== current.status)) await assertPrerequisitesMet(ports.work, workspaceId, id);
         const view = await presentWork(ports, record);
         const newOwner = changes.owner;
         const assignedTo = newOwner?.kind === 'human' && newOwner.id !== principal.id
@@ -448,6 +531,16 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         // then the complete sorted task set, so overlapping results lock in one order and cannot deadlock.
         const contributions = workIds.length ? await ports.contributions.prepare(principal, project, { operation: 'result.create', resultId },
           workIds.map((workId) => ({ workId, kind: 'result' as const, body: title, resultId }))) : null;
+        // Finishing is also a start/finish transition: graph lock, then ONE ascending pass over the linked tasks
+        // together with the finishing task's prerequisites, so no other pass can lock them in another order.
+        if (finishes) {
+          await lockProjectGraphs(ports.work, [project]);
+          const wanted = sortedIds([...workIds, ...await directPrerequisiteIds(ports.work, workspaceId, [finishes.id])], 'taskIds');
+          const held = await ports.work.lockTasks(workspaceId, wanted);
+          if (held.length !== wanted.length || held.some((task) => task.projectId !== project))
+            throw new RuleViolationError('A prerequisite is not a task of this project', 'TASK_DEPENDENCY_NOT_FOUND');
+        }
+        // The linked tasks are now all held (a plain pass when nothing finishes); the handle completes its stage.
         const locked = contributions ? await ports.contributions.lockTasks(contributions) : [];
         // Finishing changes someone's work: it needs the version the author saw and a status
         // that can become done. A parked or not-pursued item is another person's disposition.
@@ -461,7 +554,10 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         const record = await ports.work.insertResult({ id: resultId, ...scope, title, finding, evidence, createdBy: by });
         const from = { type: 'result' as const, id: record.id };
         await ports.work.insertLinks([...linkRows(scope, from, 'source', sources, by), ...linkRows(scope, from, 'about', [...workRefs(workIds), ...decisions], by)]);
-        if (finished && finished.status !== 'done') await ports.work.updateWork(finished.id, { status: 'done', blocker: null });
+        if (finished && finished.status !== 'done') {
+          await ports.work.updateWork(finished.id, { status: 'done', blocker: null });
+          await assertPrerequisitesMet(ports.work, workspaceId, finished.id);
+        }
         const view = await presentResult(ports, record);
         await ports.events.record(principal, workspaceId, 'project.result_recorded.v1', project, { resultId: record.id });
         const messageIds = contributions ? await ports.contributions.append(contributions) : [];

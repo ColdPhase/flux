@@ -248,6 +248,16 @@ Interpretations and refinements (none lowers a requirement):
   unchanged); a consumer validating strictly must use the schema in the bundle. #118 must
   record this. Search, notification, Return/digest and helper-context consumers needed no
   code change: they read the real authored body and actor, which is what the contribution is.
+- Main now contains #171 (native task criteria, prerequisites and plan intent, migration 0039). Both
+  coexist in `core/work/service.ts` under the one order of
+  [that contract](../agent-connection/2026-10-01-native-plan-contract.md): access, (plan material on
+  creation), the command identity (the native receipt and every derived message identity), the project
+  graph lock, the complete sorted task set, the writes and appends, the receipt, one final batch. A finishing
+  result takes its linked tasks and the finisher's prerequisites in a single ascending pass before the
+  contribution handle completes its stage; an unmet prerequisite (`TASK_PREREQUISITES_UNMET`) rolls back the
+  result and its messages. The retry fingerprint of a keyed update adds the prerequisite set (order-insensitive)
+  and covers criteria through the stored changes. 0040 depends on nothing 0039 changed and applies after it;
+  `FLUX_SCHEMA_VERSION` is 40, and the 0039 migration test no longer asserts that 0039 is the latest file.
 - Existing tests whose counts legitimately changed (a linked result now also opens or extends
   task threads) were updated: native session intents, export conversations and the Return
   summary, the Playwright work and return-view journeys (the Conversation tab opens the newest

@@ -619,3 +619,72 @@ test('concurrent exact duplicates of a keyed save or a keyed publication share o
   assert.equal(new Set(publications.map((item) => item.id)).size, 1);
   assert.deepEqual(delta(await f.counts(), base), { messages: 3, conversations: 2, bindings: 2, results: 1, receipts: 2, events: 5, search: 3 });
 });
+
+// ---- the effects coexist with the native task graph (#152 plan, migration 0039) ----
+
+test('a finishing result and a start honor prerequisites: unmet ones write nothing, met ones finish and contribute', async () => {
+  const f = await scene();
+  const [pre, dependent] = [await f.task('Prerequisite'), await f.task('Dependent')];
+  const linked = expectStatus(await f.patch(f.owner, dependent.id, { dependencyIds: [pre.id] }, dependent.version), 200) as WorkItem;
+  assert.deepEqual(linked.dependencyIds, [pre.id]);
+  const base = await f.counts();
+  const early = await f.result(f.writer, { title: 'Too early', finding: 'positive', work: [dependent.id],
+    finishes: { id: dependent.id, expectedVersion: linked.version }, clientCommandId: randomUUID() });
+  assert.deepEqual([early.status, code(early)], [409, 'TASK_PREREQUISITES_UNMET']);
+  const start = await f.patch(f.writer, dependent.id, { status: 'in_progress', blocker: null, clientCommandId: randomUUID() }, linked.version);
+  assert.deepEqual([start.status, code(start)], [409, 'TASK_PREREQUISITES_UNMET']);
+  assert.deepEqual(await f.counts(), base, 'a refused finish or start leaves no result, message, thread, receipt or event');
+  // A blocker save does not start the task, so it is not a graph transition and contributes normally.
+  const blocked = expectStatus(await f.patch(f.writer, dependent.id, { status: 'blocked', blocker: 'Waiting for the prerequisite', clientCommandId: randomUUID() }, linked.version), 200) as WorkItem;
+  assert.equal((await f.discussion(f.reader, dependent.id)).root?.contribution?.kind, 'blocker');
+  expectStatus(await f.patch(f.owner, pre.id, { status: 'done' }, pre.version), 200);
+  const finished = expectStatus(await f.result(f.writer, { title: 'Done after its prerequisite', finding: 'positive', work: [dependent.id],
+    finishes: { id: dependent.id, expectedVersion: blocked.version }, clientCommandId: randomUUID() }), 201) as WorkResult;
+  assert.equal((await f.current(dependent.id)).status, 'done');
+  const thread = await f.discussion(f.reader, dependent.id);
+  assert.deepEqual(thread.messages.map((row) => [row.sequence, row.contribution]), [[1, { kind: 'blocker' }], [2, { kind: 'result', resultId: finished.id }]]);
+});
+
+test('a finishing result locks the linked tasks and the finishing task\'s prerequisites in ONE ascending pass', async () => {
+  const f = await scene();
+  const made = [await f.task('Order A'), await f.task('Order B'), await f.task('Order C')].sort((x, y) => (x.id < y.id ? -1 : 1)) as [WorkItem, WorkItem, WorkItem];
+  const [a, b, c] = made;
+  expectStatus(await f.patch(f.owner, c.id, { status: 'done' }, c.version), 200);
+  const dependent = expectStatus(await f.patch(f.owner, b.id, { dependencyIds: [c.id] }, b.version), 200) as WorkItem;
+  let pending!: ReturnType<typeof f.result>;
+  await db.transaction(async (tx) => {
+    // Hold the HIGHEST task, a prerequisite of the finishing task b. A result linking [b, a] must already hold
+    // both lower tasks before it waits: a separate prerequisite pass would hold only b and leave a free.
+    await tx.execute(sql`SELECT 1 FROM project_work_items WHERE id=${c.id} FOR UPDATE`);
+    const holder = await backendPid(tx);
+    pending = f.result(f.writer, { title: 'One ascending pass', finding: 'positive', work: [b.id, a.id],
+      finishes: { id: b.id, expectedVersion: dependent.version }, clientCommandId: randomUUID() });
+    await waitUntilBlockedBy(pool, holder);
+    for (const id of [a.id, b.id]) {
+      await assert.rejects(pool.query('SELECT 1 FROM project_work_items WHERE id=$1 FOR UPDATE NOWAIT', [id]), /could not obtain lock/, 'held before the wait');
+    }
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_messages WHERE project_id=$1', [f.place.id])).rows[0].n, 0);
+  });
+  expectStatus(await pending, 201);
+  assert.equal((await f.current(b.id)).status, 'done');
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_messages WHERE project_id=$1', [f.place.id])).rows[0].n, 2);
+});
+
+test('replacing prerequisites and saving a blocker in one keyed command is one outcome: exact replay, set semantics, changed intent conflicts', async () => {
+  const f = await scene();
+  const [t, first, second] = [await f.task('Planned'), await f.task('First prerequisite'), await f.task('Second prerequisite')];
+  const command = { status: 'blocked', blocker: 'Waiting for both prerequisites', dependencyIds: [first.id, second.id], clientCommandId: randomUUID() };
+  const base = await f.counts();
+  const saved = expectStatus(await f.patch(f.writer, t.id, command, t.version), 200) as WorkItem;
+  assert.deepEqual(saved.dependencyIds, [first.id, second.id].sort());
+  assert.deepEqual(delta(await f.counts(), base), { messages: 1, conversations: 1, bindings: 1, results: 0, receipts: 1, events: 2, search: 1 });
+  const afterSave = await f.counts();
+  const swapped = await f.patch(f.writer, t.id, { ...command, dependencyIds: [second.id, first.id] }, t.version);
+  assert.deepEqual([swapped.status, (swapped.json as WorkItem).dependencyIds], [200, saved.dependencyIds], 'the order of prerequisites is not part of the intent');
+  assert.deepEqual(await f.counts(), afterSave);
+  const changed = await f.patch(f.writer, t.id, { ...command, dependencyIds: [first.id] }, t.version);
+  assert.deepEqual([changed.status, code(changed)], [409, 'IDEMPOTENCY_CONFLICT']);
+  const cycle = await f.patch(f.writer, first.id, { dependencyIds: [t.id], clientCommandId: randomUUID() }, first.version);
+  assert.deepEqual([cycle.status, code(cycle)], [409, 'TASK_DEPENDENCY_CYCLE']);
+  assert.equal((await f.counts()).messages, afterSave.messages, 'a refused graph change contributes nothing');
+});

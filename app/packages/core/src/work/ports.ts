@@ -1,5 +1,6 @@
-import type { DecisionStatus, LinkOwnerType, LinkRole, ObjectRef, ResultFinding, WorkStatus } from '@flux/contracts';
+import type { DecisionStatus, LinkOwnerType, LinkRole, ObjectRef, ResultFinding, TaskPlanIntent, WorkStatus } from '@flux/contracts';
 import type { Principal } from '../principal.js';
+import type { PlanIntentRecord, TaskGraphReader } from './task-graph.js';
 
 /**
  * Ports of the work, decision and result use cases (issues #101, #46). Core states what it
@@ -24,6 +25,8 @@ export interface WorkRecord {
   blocker: string | null;
   owner: ActorRef | null;
   parked: { decisionId: string; at: Date } | null;
+  /** Distinct trimmed statements; `[]` for tasks that never had any (#152). */
+  criteria: string[];
   createdBy: ActorRef;
   version: number;
   createdAt: Date;
@@ -71,7 +74,8 @@ export interface ObjectLinkRecord {
   createdAt: Date;
 }
 
-export type NewWork = Omit<WorkRecord, 'version' | 'createdAt' | 'updatedAt' | 'parked'> & {
+export type NewWork = Omit<WorkRecord, 'version' | 'createdAt' | 'updatedAt' | 'parked' | 'criteria'> & {
+  criteria?: string[];
   clientCommandId?: string;
   requestFingerprint?: string;
 };
@@ -96,7 +100,7 @@ export interface NativeCommandReceipt {
   /** Contribution messages this command made on canonical task threads. */
   messageIds: string[];
 }
-export type WorkChanges = Partial<Pick<WorkRecord, 'title' | 'outcome' | 'status' | 'blocker' | 'owner' | 'parked'>>;
+export type WorkChanges = Partial<Pick<WorkRecord, 'title' | 'outcome' | 'status' | 'blocker' | 'owner' | 'parked' | 'criteria'>>;
 export type NewDecision = Pick<DecisionRecord, 'id' | 'workspaceId' | 'projectId' | 'title' | 'rationale' | 'proposedBy' | 'supersedesId'>;
 export type DecisionChanges = Partial<Pick<DecisionRecord, 'status' | 'decidedBy' | 'decidedAt' | 'supersededById' | 'supersededAt'>>;
 export type NewResult = Omit<ResultRecord, 'createdAt'>;
@@ -108,6 +112,13 @@ export interface NewObjectLink {
   from: { type: LinkOwnerType; id: string };
   to: ObjectRef;
   createdBy: ActorRef;
+}
+
+/** What a task presents of its plan: its direct prerequisites with their current state and its intent. */
+export interface TaskPlanRecord {
+  /** Ascending by id. */
+  prerequisites: { id: string; title: string; status: WorkStatus; parked: boolean }[];
+  planIntent: TaskPlanIntent | null;
 }
 
 export interface Paged<T> { items: T[]; total: number }
@@ -128,7 +139,7 @@ export interface WorkAccess {
 }
 
 /** Rows only; the repository makes no access decisions (the use cases ask {@link WorkAccess}). */
-export interface WorkRepository {
+export interface WorkRepository extends TaskGraphReader {
   /** The project of an object, whoever may read it; callers must authorize before using it. */
   locate(type: 'work' | 'decision' | 'result', id: string): Promise<{ projectId: string } | null>;
   listWork(projectId: string, page: PageWindow): Promise<Paged<WorkRecord>>;
@@ -153,6 +164,19 @@ export interface WorkRepository {
   recordNativeCommand(scope: { workspaceId: string; projectId: string }, by: ActorRef, receipt: NativeCommandReceipt): Promise<void>;
   /** Applies the changes and increments the version; the caller has checked the version. */
   updateWork(id: string, changes: WorkChanges): Promise<WorkRecord>;
+  /**
+   * Locks the task rows of the workspace in ascending id order and returns those that exist with their
+   * project. Callers hold the project graph locks first; this is the complete sorted task pass.
+   */
+  lockTasks(workspaceId: string, ids: readonly string[]): Promise<{ id: string; projectId: string }[]>;
+  /** Replaces the direct prerequisites of one task. Ids are validated, locked and cycle-checked by the caller. */
+  replaceDependencies(scope: { workspaceId: string; projectId: string }, taskId: string, prerequisiteIds: readonly string[]): Promise<void>;
+  /** Prerequisites with their state and the plan intent of each task; tasks with neither are absent. */
+  taskPlans(taskIds: readonly string[]): Promise<Map<string, TaskPlanRecord>>;
+  /** Share-locks the plan material of the project and returns its current version, or null when it is not there. */
+  lockPlanSource(workspaceId: string, projectId: string, materialId: string): Promise<{ currentVersion: number } | null>;
+  findPlanIntent(projectId: string, intent: TaskPlanIntent): Promise<PlanIntentRecord | null>;
+  insertPlanIntent(scope: { workspaceId: string; projectId: string }, intent: TaskPlanIntent, record: PlanIntentRecord): Promise<void>;
   listDecisions(projectId: string, page: PageWindow): Promise<Paged<DecisionRecord>>;
   findDecision(id: string, options?: { lock?: boolean }): Promise<DecisionRecord | null>;
   insertDecision(decision: NewDecision): Promise<DecisionRecord>;

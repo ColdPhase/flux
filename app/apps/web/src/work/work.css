@@ -94,6 +94,13 @@
 .wd-link:hover { background: var(--bg-hover); }
 .wd-inline { display: inline; padding: 0; color: var(--text); font-weight: 500; text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
 .wd-muted { font-size: var(--fs-sm) !important; color: var(--text-3) !important; }
+/* Criteria and prerequisites of a planned task (#152): plain list, state in words, no checkbox that implies a check. */
+.wd-criteria { margin: 0 0 6px; padding-left: 18px; font-size: var(--fs-md); line-height: 1.5; }
+.wd-criteria li { padding: 2px 0; overflow-wrap: anywhere; }
+.wd-waiting { margin: 0 0 4px; font-size: var(--fs-sm) !important; color: var(--text-2) !important; }
+.wd-link .wd-dot { flex: none; margin-right: 2px; }
+.wd-plan { margin-top: 8px; font-size: var(--fs-sm) !important; color: var(--text-2) !important; overflow-wrap: anywhere; }
+.wd-plan code { padding: 1px 4px; border-radius: var(--r-sm); background: var(--bg-hover); font-size: .92em; }
 .wd-quote { margin-top: 6px; padding-left: 12px; border-left: 2px solid var(--line-strong); font-size: var(--fs-sm) !important; }
 .wd-audience { display: flex; align-items: center; gap: 6px; }
 .wd-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }

@@ -49,7 +49,13 @@ export type WorkObjectType = 'work' | 'decision' | 'result';
 /** Objects that own links: work objects and project docs (#112). */
 export type LinkOwnerType = WorkObjectType | 'doc';
 
-export const WORK_LIMITS = { title: 200, outcome: 4000, blocker: 2000, rationale: 20_000, evidence: 20_000, links: 50 } as const;
+/**
+ * `criteria`, `dependencies` and `intentKey` bound a native task's plan fields (#152): at most 20 distinct
+ * trimmed criteria of 1-`criterion` characters, at most 50 same-project prerequisites and a trimmed 1-120
+ * character plan intent key.
+ */
+export const WORK_LIMITS = { title: 200, outcome: 4000, blocker: 2000, rationale: 20_000, evidence: 20_000, links: 50,
+  criteria: 20, criterion: 1000, dependencies: 50, intentKey: 120 } as const;
 
 /** A stable reference to something in the same project. Material references pin a version. */
 export type ObjectRef =
@@ -103,10 +109,38 @@ interface ProjectObject {
   createdAt: string;
 }
 
+/**
+ * The exact plan revision a task was created for, and a key within that revision (#152). It is an immutable
+ * correlation shared by people and agents: it neither instructs nor authorizes anything, and an ordinary
+ * material or wiki page never becomes approved policy through it.
+ */
+export interface TaskPlanIntent {
+  materialId: string;
+  version: number;
+  intentKey: string;
+}
+
+/** The current state of a direct prerequisite. It is met only while it is `done` and not parked. */
+export interface TaskPrerequisite {
+  id: string;
+  title: string;
+  status: WorkStatus;
+  parked: boolean;
+  met: boolean;
+}
+
 export interface WorkItem extends ProjectObject {
   title: string;
   /** What finishing it should achieve; may be empty for small tasks. */
   outcome: string;
+  /** What should hold when it is done. Listing a criterion never records that it is satisfied. */
+  criteria: string[];
+  /** Direct prerequisites in this project, ascending; none for tasks that never named any. */
+  dependencyIds: string[];
+  /** The same prerequisites with their current state, so one task shows what it is waiting for. */
+  prerequisites: TaskPrerequisite[];
+  /** Null for tasks created without a plan intent, including every task from before this existed. */
+  planIntent: TaskPlanIntent | null;
   status: WorkStatus;
   /** Only while blocked. */
   blocker: string | null;
@@ -153,6 +187,16 @@ export interface CreateWorkCommand {
   sources?: ObjectRef[];
   /** Other objects of the project to connect (thoughts, decisions, results, messages). */
   related?: ObjectRef[];
+  /** At most 20 distinct trimmed statements of 1-1,000 characters. */
+  criteria?: string[];
+  /** At most 50 distinct tasks of the same project that must be done (and unparked) first. */
+  dependencyIds?: string[];
+  /**
+   * Correlates this creation with one revision of a plan material. The revision must be the material's
+   * current version. The same canonical creation returns the same task; another payload for the same
+   * intent is 409 TASK_INTENT_CONFLICT and an edited task 409 TASK_INTENT_STALE.
+   */
+  planIntent?: TaskPlanIntent | null;
 }
 
 /** Creation activity is separate from any canonical discussion message/root. */
@@ -183,6 +227,13 @@ export interface UpdateWorkCommand extends VersionPrecondition {
   blocker?: string | null;
   /** `false` takes parked work back into the plan. Parking happens only through a pivot. */
   parked?: false;
+  /** Replaces the whole list. */
+  criteria?: string[];
+  /**
+   * Replaces the whole set. A task that is in progress or done keeps every prerequisite done and unparked;
+   * cycles, itself and tasks of other projects are rejected. A plan intent can never be changed here.
+   */
+  dependencyIds?: string[];
 }
 
 export interface ProposeDecisionCommand {

@@ -230,8 +230,11 @@ effects, atomicity, hooks and lock order apply; the file corrections remain for 
   HTTP, `nativeWorkInTransaction` (same-transaction agent execution), the helper proposal acceptance and the tests'
   failure injections. It opens no unit of work, commits nothing and never flushes.
 - **Order.** Current project write access, then the command's durable identity (the native receipt, then every
-  derived message identity, sorted), then the complete sorted task set, then the domain writes and canonical
-  appends, then the receipt, then ONE final all-audience event batch owned by the caller's unit of work. The
+  derived message identity, sorted), then the project task-graph lock when the command starts or finishes a task
+  or replaces prerequisites ([native plan order](agent-connection/2026-10-01-native-plan-contract.md); a plan
+  material row, only on creation, precedes the identity), then the complete sorted task set (a finishing result
+  locks its linked tasks and the finisher's prerequisites in ONE ascending pass), then the domain writes and
+  canonical appends, then the receipt, then ONE final all-audience event batch owned by the caller's unit of work. The
   handle enforces `prepare` → `lockTasks` → `append` once each. A generic reply to a task-bound conversation
   discovers the binding without locking and takes the task row before the conversation sequence, like every
   contribution. Message identities are deterministic from the stable command (or the canonical result) plus the

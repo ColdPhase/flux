@@ -776,6 +776,8 @@ export const projectWorkItems = pgTable('project_work_items', {
   createdById: text('created_by_id').notNull(),
   clientCommandId: uuid('client_command_id'),
   requestFingerprint: text('request_fingerprint'),
+  /** Bounded array of distinct trimmed statements (#152, migration 0039); `[]` for tasks without any. */
+  criteria: jsonb('criteria').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -783,6 +785,43 @@ export const projectWorkItems = pgTable('project_work_items', {
   unique().on(table.workspaceId, table.projectId, table.id),
   uniqueIndex('project_work_creation_command_idx').on(table.projectId, table.createdByKind, table.createdById, table.clientCommandId),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+]);
+
+/** Direct same-project prerequisites of a task (#152, migration 0039); the task may start once all are done. */
+export const projectTaskDependencies = pgTable('project_task_dependencies', {
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  taskId: uuid('task_id').notNull(),
+  prerequisiteId: uuid('prerequisite_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.projectId, table.taskId, table.prerequisiteId] }),
+  check('project_task_dependency_not_self', sql`${table.taskId} <> ${table.prerequisiteId}`),
+  index('project_task_dependencies_task_idx').on(table.taskId, table.prerequisiteId),
+  index('project_task_dependencies_prerequisite_idx').on(table.prerequisiteId, table.taskId),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.taskId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.prerequisiteId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+]);
+
+/**
+ * Immutable native plan correlation (#152, migration 0039): one exact plan revision and key produced one task,
+ * with the normalized creation fingerprint and the task's original version. Not an agent receipt or grant.
+ */
+export const projectTaskPlanIntents = pgTable('project_task_plan_intents', {
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  materialId: uuid('material_id').notNull(),
+  materialVersion: integer('material_version').notNull(),
+  intentKey: text('intent_key').notNull(),
+  taskId: uuid('task_id').notNull().unique(),
+  creationFingerprint: text('creation_fingerprint').notNull(),
+  taskVersion: integer('task_version').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.projectId, table.materialId, table.materialVersion, table.intentKey] }),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.materialId, table.materialVersion], foreignColumns: [projectMaterialVersions.workspaceId, projectMaterialVersions.projectId, projectMaterialVersions.materialId, projectMaterialVersions.version] }),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.taskId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }),
 ]);
 
 // Durable compact creation notices, never synthetic conversation roots (#154, migration 0033).
