@@ -15,7 +15,7 @@ export interface AgentConnectionContext {
   agentId: string;
   selectedProjectIds: readonly string[];
   scopes: readonly AgentScope[];
-  computeSource: 'user_operated_claude_code';
+  computeSource: import('@flux/contracts').ExternalComputeSource;
 }
 
 export function requireAgentSelection(context: AgentConnectionContext, projectId: string, scope: AgentScope): void {
