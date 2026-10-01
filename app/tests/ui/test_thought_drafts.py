@@ -14,6 +14,25 @@ from test_theme_accents import MEASURE
 
 STAMP = int(time.time() * 1000)
 PASSWORD = "keep private captures recoverable"
+# Fill this tab's real sessionStorage until the browser itself refuses another write. One filler
+# entry grows to the largest size the quota accepts; nothing is stubbed or simulated.
+EXHAUST_SESSION_STORAGE = """() => {
+  const fits = (size) => {
+    try { sessionStorage.setItem('quota-filler', 'x'.repeat(size)); return true; }
+    catch (error) { if (error.name !== 'QuotaExceededError') throw error; return false; }
+  };
+  let low = 0, high = 1 << 25;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (fits(middle)) low = middle; else high = middle - 1;
+  }
+  try { sessionStorage.setItem('quota-probe', 'x'); } catch (error) { return error.name; }
+  sessionStorage.removeItem('quota-probe');
+  return 'accepted';
+}"""
+STORED_DRAFT_TEXTS = "Object.keys(sessionStorage).filter(k => k.startsWith('flux:thought-draft:')).map(k => JSON.parse(sessionStorage.getItem(k)).text)"
+EARLIER = "Earlier persisted draft"
+LATEST = "Latest recoverable draft after quota exhaustion"
 
 
 class ThoughtDraftJourney(unittest.TestCase):
@@ -110,6 +129,20 @@ class ThoughtDraftJourney(unittest.TestCase):
         field = page.get_by_role("form", name="New thought draft").get_by_label("Thought text")
         expect(field).to_be_focused()
         return field
+
+    def exhaust_session_storage(self, page):
+        self.assertEqual(page.evaluate(EXHAUST_SESSION_STORAGE), "QuotaExceededError", "the browser itself refuses a further session storage write")
+
+    def stored_drafts(self, page):
+        return page.evaluate(STORED_DRAFT_TEXTS)
+
+    def leave_by_sketches_link_and_reopen(self, page):
+        """Follow the header's Sketches link, then open the same map again without reloading the page."""
+        page.locator(".sk-back").click()
+        expect(page).to_have_url(re.compile(rf"/projects/{self.project}/map$"))
+        page.locator(f'.sk-index a[href="/projects/{self.project}/map/{self.sketch}"]').click()
+        expect(page).to_have_url(re.compile(rf"/projects/{self.project}/map/{self.sketch}$"))
+        expect(page.locator(".sk-head")).to_be_visible()
 
     def test_01_cancel_empty_blur_and_composition_never_write(self):
         page = self.owner
@@ -358,3 +391,76 @@ class ThoughtDraftJourney(unittest.TestCase):
                 page.get_by_role('button', name='Cancel edit', exact=True).click()
         if SHOTS:
             (SHOTS / 'thought-draft-contrast.json').write_text(json.dumps(measurements, indent=2) + '\n')
+
+    def test_10_latest_draft_survives_a_refused_storage_write_and_map_navigation(self):
+        page = self.owner
+        self.open(page)
+        writes = []
+        page.on("request", lambda request: writes.append(request.url) if request.method != "GET" and "/sketches/" in request.url else None)
+        field = self.capture(page)
+        field.fill(EARLIER)
+        self.assertEqual(self.stored_drafts(page), [EARLIER])
+        self.exhaust_session_storage(page)
+        field.fill(LATEST)
+        self.assertEqual(self.stored_drafts(page), [EARLIER], "the browser refused the later write, so only the older text is persisted")
+        page.evaluate("window.sameVisit = true")
+        self.leave_by_sketches_link_and_reopen(page)
+        self.assertTrue(page.evaluate("window.sameVisit === true"), "the map reopened inside one page visit, not after a reload")
+        expect(page.get_by_label("Thought text")).to_have_value(LATEST)
+        self.assertEqual(self.stored_drafts(page), [EARLIER])
+        # Session storage belongs to its tab: another tab of the same person starts without this draft.
+        second = page.context.new_page()
+        second.goto(f"/projects/{self.project}/map/{self.sketch}")
+        expect(second.locator(".sk-head")).to_be_visible()
+        expect(second.get_by_role("form", name="New thought draft")).to_have_count(0)
+        self.assertEqual(self.stored_drafts(second), [])
+        second.close()
+        # Cancel removes the visit's copy and the older persisted one; neither returns on reopening.
+        page.get_by_role("button", name="Cancel", exact=True).click()
+        expect(page.get_by_role("form", name="New thought draft")).to_have_count(0)
+        self.assertEqual(self.stored_drafts(page), [])
+        self.leave_by_sketches_link_and_reopen(page)
+        expect(page.get_by_role("form", name="New thought draft")).to_have_count(0)
+        self.assertEqual(self.stored(page), self.before)
+        self.assertEqual(writes, [], "no shared sketch write happened")
+
+    def test_11_storage_that_accepts_writes_again_catches_up_before_a_reload(self):
+        page = self.owner
+        self.open(page)
+        field = self.capture(page)
+        field.fill(EARLIER)
+        self.exhaust_session_storage(page)
+        field.fill(LATEST)
+        self.assertEqual(self.stored_drafts(page), [EARLIER])
+        page.evaluate("sessionStorage.removeItem('quota-filler')")
+        newest = "Newest draft once storage accepts writes again"
+        field.fill(newest)
+        self.assertEqual(self.stored_drafts(page), [newest])
+        page.reload()
+        expect(page.get_by_label("Thought text")).to_have_value(newest)
+        self.assertEqual(self.stored(page), self.before)
+
+    def test_12_sign_out_clears_the_visit_copy_that_outlived_a_refused_write(self):
+        page = self.owner
+        self.open(page)
+        field = self.capture(page)
+        field.fill(EARLIER)
+        self.exhaust_session_storage(page)
+        field.fill(LATEST)
+        page.evaluate("window.sameVisit = true")
+        page.locator(".me__btn").click()
+        page.get_by_role("dialog", name="Account", exact=True).get_by_role("button", name="Sign out", exact=True).click()
+        expect(page).to_have_url(re.compile(r"/sign-in$"))
+        self.assertEqual(self.stored_drafts(page), [])
+        page.get_by_label("Email").fill(self.people["owner"]["email"])
+        page.get_by_label("Password").fill(PASSWORD)
+        page.get_by_role("button", name="Sign in", exact=True).click()
+        expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
+        # The same person in the same page visit, reaching the map through the app's own links.
+        page.get_by_role("navigation", name="Views").get_by_role("link", name="Map").click()
+        page.locator(f'.sk-index a[href="/map/{self.sketch}"]').click()
+        expect(page.locator(".sk-head")).to_be_visible()
+        self.assertTrue(page.evaluate("window.sameVisit === true"), "no reload: only sign-out can have cleared the in-memory copy")
+        expect(page.get_by_role("form", name="New thought draft")).to_have_count(0)
+        self.assertEqual(self.stored_drafts(page), [])
+        self.assertEqual(self.stored(page), self.before)
