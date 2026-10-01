@@ -135,3 +135,22 @@ test('an edge continuation fails on a changed object window before any edge or s
   const { reads } = harness({ requireSources: async () => {}, associationObjects: async () => slice([row(otherId)]) });
   await assert.rejects(reads.associations(actor, projectId, new URLSearchParams(`messageIds=${messageId}&edgeCursor=${edgeCursor}`)), { status: 400, code: 'INVALID_WORK_READ' });
 });
+
+test('all required selectors reach the outside fence as the original normalized request', async () => {
+  const captured: unknown[] = [];
+  const { reads } = harness({
+    selectedWork: async () => row(otherId),
+    requireSources: async () => {},
+    associationObjects: async () => slice<WorkRowProjection>([]),
+    associationSources: async () => ({ ...slice([{ messageId, work: 0, decisions: 0, results: 0, edges: 0 }]), items: [{ key: { rank: 0, createdAt: at, id: messageId }, value: { messageId, work: 0, decisions: 0, results: 0, edges: 0 } }] }),
+    associationEdges: async () => slice<ObjectLink>([]), associationEdgeTotal: async () => 0,
+    relations: async () => ({ page: slice<ObjectLink>([]), observedAt: at }),
+    detail: async () => ({ object: { kind: 'work', id, projectId, workspaceId, audience: { kind: 'project', projectId }, title: 'Own native work', outcome: '', status: 'open', owner: null, blocker: null, parked: null, version: 1, createdAt: at, updatedAt: at, createdBy: { ...actor, name: 'Native' } }, observedAt: at, relations, context: [] }),
+  }, { check: async (_principal, _pid, _digest, required) => { captured.push(required); return 'viewer'; } });
+  await reads.detail(actor, projectId, 'work', id);
+  await reads.relations(actor, projectId, new URLSearchParams(`objects=work:${id}`));
+  await reads.view(actor, projectId, new URLSearchParams(`purpose=choices&choice=parked_work&decisionId=${otherId}`));
+  await reads.view(actor, projectId, new URLSearchParams(`purpose=choices&choice=result_work&selected=${otherId}`));
+  await reads.associations(actor, projectId, new URLSearchParams(`messageIds=${messageId}`));
+  assert.deepEqual(captured, [{ objects: [{ kind: 'work', id }] }, { objects: [{ kind: 'work', id }] }, { parkedDecisionId: otherId }, { objects: [{ kind: 'work', id: otherId }] }, { sources: { relation: 'source', messageIds: [messageId] } }]);
+});
