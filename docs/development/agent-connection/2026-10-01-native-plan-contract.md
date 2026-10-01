@@ -159,8 +159,9 @@ Codex/Claude model-driven decomposition remains required separately.
 
 Implemented 2026-10-01 on `codex-hubert/152-native-plan`, **stacked on PR #167's head
 `7f9bc63285b1ff0a5a15f85c0bfccc56b2873b36`** (no PR yet: it is opened after #167
-merges). Runtime source `7cb735fd21b96e5466f276d898d668a6ccb223a0`; later commits
-on the branch only add documentation. Executed checks and their limits are in the
+merges). Runtime source `7cb735fd21b96e5466f276d898d668a6ccb223a0` (tested head
+`fad6afb059a4b1694bbbdf1dfd89124f54a64577`); later commits change only tests and
+documentation. Executed checks and their limits are in the
 [native-plan checkpoint](2026-10-01-native-plan-checkpoint.md). This is a partial #152
 implementation (AC-2's native task slice), not whole-issue acceptance: the MCP action
 tools stay disabled, #153's claim adapter and real Codex/Claude model-driven

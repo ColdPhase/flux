@@ -1,13 +1,14 @@
 # Native task plan checkpoint
 
-Verified 2026-10-01 at runtime source
-`7cb735fd21b96e5466f276d898d668a6ccb223a0`, branch
-`codex-hubert/152-native-plan`, stacked on PR #167's head
-`7f9bc63285b1ff0a5a15f85c0bfccc56b2873b36` (no PR yet; it is opened after #167
-merges). This records a partial #152 implementation (AC-2's native task slice) for the
+Verified 2026-10-01 at tested head `fad6afb059a4b1694bbbdf1dfd89124f54a64577`
+(production source unchanged since `7cb735fd21b96e5466f276d898d668a6ccb223a0`; later
+commits change only tests and documentation), branch `codex-hubert/152-native-plan`,
+stacked on PR #167's head `7f9bc63285b1ff0a5a15f85c0bfccc56b2873b36` (no PR yet; it is
+opened after #167 merges). This records a partial #152 implementation (AC-2's native
+task slice) for the
 [native-plan contract](2026-10-01-native-plan-contract.md#implemented-at-the-native-plan-slice),
-not whole-issue acceptance. Results marked **pending** were not yet run when this note
-was first committed and are filled in below once they have run.
+not whole-issue acceptance. This note and the two screenshots below are added after that
+tested head and change no code.
 
 ## What was exercised
 
@@ -71,15 +72,32 @@ API started with the exact-ledger check. `scripts/check_backup.sh` was **not run
 
 ## Command outcomes
 
+All Docker runs used this checkout, their own Compose projects and ports
+(19481/19482 application, 19483/19484 browser UI) behind the shared slot limiter, and
+removed only what they created.
+
 | Check | Outcome |
 | --- | --- |
-| Docker build, TypeScript checks and lint (dev image, bind-mounted source) | passed repeatedly; the full-image build in the e2e and application runs also passed |
-| Focused DB/API/core/migration tests: `task-plan` 15, `task-graph-core` 8, `task-plan-migration` 1, plus architecture, work, task-notices, task-discussions, agent-execution, agent-project-reads, agent-proposals, export, docs, returns, return-recap, safe-writes, conversation, search | 121/121 passed together; the new files again after the last test edits (**pending** re-run in the final full run) |
-| `tests/app/e2e/task-plan.e2e.ts` in Chromium | passed |
-| `python3 scripts/check_agent_setup.py`, 34 Python unit tests, `git diff --check` | **pending** at the final head |
-| Portable architecture + `*-core` tests in a `--network none` test image | **pending** |
-| `scripts/check_application.sh` at the final head | **pending** |
-| `tests/ui` work/project/app-shell modules through a trimmed `scripts/check_ui.sh` | **pending** |
+| `scripts/check_application.sh` at `fad6afb` (builds, TypeScript checks, lint, then tests) | **passed, exit 0**, 4 minutes: **399** application tests (375 at #167's head plus the 24 new), then Chromium PWA/offline (3), access-stream (1), genuine task actors (1), **task-plan (1)**, agent-connection consent (1), API restart persistence, push-unavailable (1) and SMTP-unavailable (1) phases |
+| Portable gate: `docker build --target test` then `--network none` `architecture.test.ts` + every `*-core.test.ts` | **56/56 passed** (includes the 8 new core checks and the unchanged architecture allowlist) |
+| Focused dev-image runs while developing (`task-plan` 15, `task-graph-core` 8, `task-plan-migration` 1, `oauth-mcp` 2, plus work, task-notices, task-discussions, agent-execution, agent-project-reads, agent-proposals, export, docs, returns, return-recap, safe-writes, conversation, search, architecture, ledger/migration suites) | all passed (121/121 in one group); the final test edits were re-run and then covered by the full run |
+| `tests/ui` modules `test_work_decisions` (10), `test_project_surface` (8), `test_app_shell` (17) through a trimmed `scripts/check_ui.sh` | **35/35 passed**; the whole `check_ui.sh` was not run |
+| `python3 scripts/check_agent_setup.py`, 34 Python unit tests, `git diff --check` | passed |
+
+Logs are in the author's scratch directory and are not committed; the commands above
+reproduce them.
+
+## Rendered evidence
+
+`2026-10-01-native-plan-evidence/task-plan-desktop.png` (1280px viewport, SHA256
+`a7a0a54eb099425c243b465902810aad4943e6de7ed1c45b84123589ec1c0f62`) shows the Tasks list
+saying "waits for 1 task" and the open details of a planned task with **Done when**,
+**Waits for** (the open prerequisite first, states in words) and the plan revision link.
+`task-plan-phone-viewer.png` (390px viewport, SHA256
+`ba9bf2e58ab7a3f0b739d11cdbd0d15121a6c0f287861c772b0cbc17d32fe6d7`) is a read-only viewer
+after the prerequisites are done. Both come from the passing journey. Fresh independent
+visual assessment is requested; screenshots establish neither interaction nor
+accessibility.
 
 ## Limits
 
