@@ -1171,5 +1171,17 @@
     "scripts/check_ui.sh": "7e4e1a87ddc02066f82527cec61f28a81278f6f63f337e04c1d54ad715ec0a81",
     "scripts/flux-demo.mjs": "06ae9464032d255ba016b0092b082f8b84e073525337f8b99f50ae3d6a34e947",
     "scripts/test_images.sh": "38128f02e905718a1c66bb35e7c042da55e3b9a00ecd5938197b01013e37d391"
+  },
+  "independent_native_runtime": {
+    "tested_source": "d1d03f70f1ddb7c78d05216ac570c9359cb5290c",
+    "production_identical_to": "daa66f06ef81a31e42357adde5555f0318bbfb84",
+    "repository_cases": 84,
+    "independent_sql_cases": 6,
+    "browser_cases": 2,
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "whole154": "UNVERIFIED",
+    "report_sha256": "3fedf102a8deb6bdced58ddbe16a27469377472547e73d5001677a2ea4a43413",
+    "manifest_sha256": "e68b94936426323ee8f4084a93e84bb1df67e111891f42a480188083c2e207d0"
   }
 }

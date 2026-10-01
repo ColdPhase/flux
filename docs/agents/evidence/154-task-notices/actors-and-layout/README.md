@@ -107,8 +107,17 @@ helper proposal acceptance now also proves rollback after the actual proposal
 decision and success through an instrumented real transaction without a nested
 native savepoint or late response/domain queries. Production deadlines are unchanged.
 
-Fresh independent **runtime** review of this new composition remains pending;
-the independently accepted design and prior704 UI review are not its acceptance.
+Fresh independent [native-runtime assessment](independent-native-events-review.md)
+at pushed d1d03f7 (app/docker/scripts identical to daa66f0) passes84 repository
+cases plus6 independent real-SQL cases, access/actor Chromium1 each and fresh
+Docker typecheck/lint. Actual first-event failure retains the same rejected flush
+and rolls back canonical domain/Search/audience; proposal decision/name hydration
+precedes the stream lock, and real generic pending outbox rows roll back before/
+after final flush. [Independent manifest](independent-native-events-manifest.json)
+pins32 artifacts. Reviewer orchestration/invalid fixture failures retain their
+original status; corrected runs EXIT0, no author code/deadline changes. This
+bounded independent acceptance is separate from the prior704 UI opinion and
+owner full349 execution.
 No #152/#153 actual authority/receipt/outgoing/claim integration is inferred.
 Blocker/result/public-handoff messages, files, undo, shared drafts and all other
 remaining original criteria above remain open.

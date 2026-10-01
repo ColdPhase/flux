@@ -3,12 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
 import { and, eq, sql } from 'drizzle-orm';
 import { createDatabase, notificationFactRows, personalRunRows, projectExportRows, schema } from '@flux/db';
-import { candidatesFor, ConflictError, createTaskDiscussionUseCases, NotFoundError } from '@flux/core';
+import { candidatesFor, ConflictError, createTaskDiscussionUseCases, InvalidInputError, NotFoundError } from '@flux/core';
 import type { GeneratorEvent } from '@flux/core';
 import { projectExportPath, type Conversation, type ConversationMessage, type Material, type Page,
   type ConversationSummary, type ProjectExport, type ReturnSummary, type SearchResponse, type TaskDiscussion, type WorkItem } from '@flux/contracts';
 import { taskDiscussionInTransaction, taskDiscussionUnitOfWork, taskDiscussionUseCases } from '../../apps/server/src/work/task-discussions.js';
-import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
+import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
+import { backendPid, settled, waitUntilBlockedBy } from './support/locks.js';
 import { nativeWorkInTransaction } from '../../apps/server/src/work/adapters.js';
 import { transactionEventSession } from '../../apps/server/src/work/transaction-events.js';
 import { guardFinalEventPhase } from './support/final-events.js';
@@ -519,4 +520,177 @@ test('the shared event collector snapshots nested canonical data and rejects ear
     await assert.rejects(session.run(async () => undefined), /session is closed/);
     await assert.rejects(session.record(principal, f.ws.id, 'project.work_updated.v1', f.place.id, data), /session is closed/);
   });
+});
+
+const declaredKeys = ['conversationId', 'messagePage', 'messages', 'projectId', 'root', 'rootMessageId', 'workId', 'workspaceId'];
+const human = (who: Person) => ({ kind: 'human' as const, id: who.id });
+/** The task discussion counts plus every other row a read must never create. */
+async function rowsOf(f: Awaited<ReturnType<typeof scene>>) {
+  return { ...await f.counts(), ...(await pool.query(`SELECT
+    (SELECT count(*)::int FROM outbox o JOIN events e ON e.id=o.event_id WHERE e.object_id=$1) AS outbox,
+    (SELECT count(*)::int FROM search_documents WHERE project_id=$1) AS search,
+    (SELECT count(*)::int FROM project_task_notices WHERE project_id=$1) AS notices,
+    (SELECT count(*)::int FROM project_work_items WHERE project_id=$1) AS work`, [f.place.id])).rows[0] };
+}
+const rootIdentity = (f: Awaited<ReturnType<typeof scene>>, sent: ConversationMessage) => ({ workId: f.task.id,
+  workspaceId: f.ws.id, projectId: f.place.id, conversationId: sent.conversationId, rootMessageId: sent.id });
+
+test('a task in a hidden project is indistinguishable from an unknown task, including its error code', async () => {
+  const f = await scene();
+  const stranger = await person('root-stranger');
+  const open = await project(f.owner, f.ws.id, 'Workspace-visible discussion', 'workspace');
+  const visibleTask = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${open.id}/work`, {
+    body: { title: 'Visible to members', clientCommandId: randomUUID() },
+  }), 201) as WorkItem;
+  const denied = await person('root-denied');
+  await addMember(f.owner, f.ws.id, denied, 'member');
+  await grant(f.owner, open.id, denied, 'denied');
+  const before = await rowsOf(f);
+  const use = taskDiscussionUseCases(db);
+  const unknown = randomUUID();
+  const cases: Array<[string, Person, string]> = [['restricted project, member without a grant', f.outsider, f.task.id],
+    ['restricted project, not a workspace member', stranger, f.task.id], ['denied grant on a visible project', denied, visibleTask.id]];
+  for (const [label, who, workId] of cases) {
+    const missing = await who.browser.request('GET', `/api/v1/work/${unknown}/discussion`);
+    assert.equal(missing.status, 404, label);
+    assert.equal((missing.json as { code: string }).code, 'WORK_NOT_FOUND', label);
+    const read = await who.browser.request('GET', `/api/v1/work/${workId}/discussion`);
+    assert.equal(read.status, missing.status, label);
+    assert.deepEqual(read.json, missing.json, `${label}: the read body must not reveal that the task exists`);
+    const body = { body: 'A contribution that must not be admitted.', clientMessageId: randomUUID() };
+    const write = await who.browser.request('POST', `/api/v1/work/${workId}/discussion`, { body });
+    const writeMissing = await who.browser.request('POST', `/api/v1/work/${unknown}/discussion`, { body });
+    assert.equal(write.status, writeMissing.status, label);
+    assert.deepEqual(write.json, writeMissing.json, `${label}: the write body must not reveal that the task exists`);
+    assert.equal((write.json as { code: string }).code, 'WORK_NOT_FOUND', label);
+    for (const operate of [(id: string) => use.getDiscussion(human(who), id), (id: string) => use.getDiscussionRoot(human(who), id),
+      (id: string) => use.contribute(human(who), id, body)]) {
+      const hiddenError = await operate(workId).then(() => assert.fail('expected rejection'), (error: unknown) => error);
+      const unknownError = await operate(unknown).then(() => assert.fail('expected rejection'), (error: unknown) => error);
+      assert.ok(hiddenError instanceof NotFoundError && unknownError instanceof NotFoundError, label);
+      assert.deepEqual({ status: hiddenError.status, code: hiddenError.code, message: hiddenError.message },
+        { status: 404, code: 'WORK_NOT_FOUND', message: 'Work item not found' }, label);
+      assert.deepEqual({ status: unknownError.status, code: unknownError.code, message: unknownError.message },
+        { status: hiddenError.status, code: hiddenError.code, message: hiddenError.message }, label);
+    }
+  }
+  // A visible task the caller may not change stays an honest 403, not a 404.
+  assert.equal((await f.reader.browser.request('POST', f.path, { body: { body: 'Viewer text', clientMessageId: randomUUID() } })).status, 403);
+  assert.deepEqual(await rowsOf(f), before);
+});
+
+test('the discussion response has exactly the declared keys, unbound and bound', async () => {
+  const f = await scene();
+  const raw = async () => expectStatus(await f.reader.browser.request('GET', f.path), 200) as Record<string, unknown>;
+  assert.deepEqual(Object.keys(await raw()).sort(), declaredKeys);
+  const sent = expectStatus(await f.writer.browser.request('POST', f.path, {
+    body: { body: 'The genuine first message.', clientMessageId: randomUUID() },
+  }), 201) as ConversationMessage;
+  const bound = await raw();
+  assert.deepEqual(Object.keys(bound).sort(), declaredKeys, 'the stored binding row must not be spread into the response');
+  assert.equal(Object.hasOwn(bound, 'rootSequence'), false);
+  assert.deepEqual(Object.keys(await taskDiscussionUseCases(db).getDiscussion(human(f.reader), f.task.id)).sort(), declaredKeys);
+  assert.equal(bound.rootMessageId, sent.id);
+  assert.equal(bound.conversationId, sent.conversationId);
+});
+
+test('getDiscussionRoot is a pure read: null while unbound, then exactly the identity contribute returned', async () => {
+  const f = await scene();
+  const { principal: agent } = await agentIn(f);
+  const use = taskDiscussionUseCases(db);
+  const before = await rowsOf(f);
+  for (const who of [human(f.owner), human(f.writer), human(f.reader), agent])
+    for (let i = 0; i < 3; i++) assert.equal(await use.getDiscussionRoot(who, f.task.id), null);
+  assert.equal(await use.getDiscussionRoot(human(f.owner), f.task.id.toUpperCase()), null);
+  assert.deepEqual(await rowsOf(f), before, 'no binding, message, conversation, event, outbox, search or work row appeared');
+  const root = await use.contribute(human(f.writer), f.task.id, { body: 'The genuine first message.', clientMessageId: randomUUID() });
+  const reply = await use.contribute(agent, f.task.id, { body: 'A genuine agent reply.', clientMessageId: randomUUID() });
+  const expected = rootIdentity(f, root);
+  assert.equal(reply.conversationId, root.conversationId);
+  const bound = await rowsOf(f);
+  for (const who of [human(f.owner), human(f.writer), human(f.reader), agent]) {
+    for (let i = 0; i < 3; i++) assert.deepEqual(await use.getDiscussionRoot(who, f.task.id), expected, 'a later reply never moves the root');
+    assert.deepEqual(await use.getDiscussionRoot(who, f.task.id.toUpperCase()), expected);
+  }
+  const discussion = await f.read();
+  assert.deepEqual({ workId: discussion.workId, workspaceId: discussion.workspaceId, projectId: discussion.projectId,
+    conversationId: discussion.conversationId, rootMessageId: discussion.rootMessageId }, expected);
+  assert.deepEqual(await rowsOf(f), bound);
+  // An agent-authored root is identified the same way.
+  const other = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.place.id}/work`, {
+    body: { title: 'Agent opens this one', clientCommandId: randomUUID() },
+  }), 201) as WorkItem;
+  assert.equal(await use.getDiscussionRoot(agent, other.id), null);
+  const agentRoot = await use.contribute(agent, other.id, { body: 'Measured the actual trial.', clientMessageId: randomUUID() });
+  assert.deepEqual(await use.getDiscussionRoot(human(f.reader), other.id), { workId: other.id, workspaceId: f.ws.id,
+    projectId: f.place.id, conversationId: agentRoot.conversationId, rootMessageId: agentRoot.id });
+  await assert.rejects(use.getDiscussionRoot(human(f.owner), randomUUID()), (error) => error instanceof NotFoundError && error.code === 'WORK_NOT_FOUND');
+  await assert.rejects(use.getDiscussionRoot(human(f.owner), 'not-a-task'), (error) => error instanceof InvalidInputError && error.status === 400);
+});
+
+test('getDiscussionRoot follows current policy: viewers and guests with access read it, denied people get the unknown-task 404', async () => {
+  const f = await scene();
+  const guest = await person('root-guest');
+  await addMember(f.owner, f.ws.id, guest, 'guest');
+  const use = taskDiscussionUseCases(db);
+  const expected = rootIdentity(f, await use.contribute(human(f.writer), f.task.id,
+    { body: 'The genuine first message.', clientMessageId: randomUUID() }));
+  const rejected = (who: Person) => assert.rejects(use.getDiscussionRoot(human(who), f.task.id),
+    (error) => error instanceof NotFoundError && error.status === 404 && error.code === 'WORK_NOT_FOUND');
+  await rejected(guest);
+  await grant(f.owner, f.place.id, guest, 'viewer');
+  assert.deepEqual(await use.getDiscussionRoot(human(guest), f.task.id), expected);
+  assert.deepEqual(await use.getDiscussionRoot(human(f.reader), f.task.id), expected);
+  await rejected(f.outsider);
+  await grant(f.owner, f.place.id, f.writer, 'denied');
+  await rejected(f.writer);
+  await grant(f.owner, f.place.id, f.reader, 'denied');
+  await rejected(f.reader);
+  assert.deepEqual(await use.getDiscussionRoot(human(f.owner), f.task.id), expected);
+});
+
+test('getDiscussionRoot takes no access-row lock, while the window read waits for it', async () => {
+  const f = await scene();
+  const use = taskDiscussionUseCases(db);
+  const root = await use.contribute(human(f.writer), f.task.id, { body: 'The genuine first message.', clientMessageId: randomUUID() });
+  let waiting!: Promise<TaskDiscussion>;
+  await db.transaction(async (tx) => {
+    // The same project-row lock every grant change takes; FOR SHARE access reads must wait for it.
+    await tx.execute(sql`SELECT 1 FROM projects WHERE id=${f.place.id} FOR UPDATE`);
+    const holder = await backendPid(tx);
+    const read = use.getDiscussionRoot(human(f.reader), f.task.id);
+    const done = settled(read);
+    await Promise.race([read.catch(() => undefined), new Promise((resolve) => setTimeout(resolve, 5_000))]);
+    assert.equal(done(), true, 'the lock-free root read must not wait for the access rows');
+    assert.deepEqual(await read, rootIdentity(f, root));
+    waiting = use.getDiscussion(human(f.reader), f.task.id);
+    const blocked = settled(waiting);
+    await waitUntilBlockedBy(pool, holder);
+    assert.equal(blocked(), false);
+  });
+  assert.equal((await waiting).rootMessageId, root.id);
+});
+
+test('getDiscussionRoot in a caller transaction queues no event, flushes nothing and is rejected after the final flush', async () => {
+  const f = await scene();
+  const use = taskDiscussionUseCases(db);
+  const root = await use.contribute(human(f.writer), f.task.id, { body: 'The genuine first message.', clientMessageId: randomUUID() });
+  const unbound = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.place.id}/work`, {
+    body: { title: 'Still without a conversation', clientCommandId: randomUUID() },
+  }), 201) as WorkItem;
+  const before = await rowsOf(f);
+  const sessions = { taskDiscussionInTransaction, nativeWorkInTransaction };
+  for (const [name, open] of Object.entries(sessions)) {
+    await db.transaction(async (tx) => {
+      const session = open(tx);
+      assert.deepEqual(await session.getDiscussionRoot(human(f.reader), f.task.id), rootIdentity(f, root), name);
+      assert.equal(await session.getDiscussionRoot(human(f.reader), unbound.id), null, name);
+      await assert.rejects(session.getDiscussionRoot(human(f.outsider), f.task.id),
+        (error) => error instanceof NotFoundError && error.code === 'WORK_NOT_FOUND', name);
+      assert.deepEqual(session.eventIntents, [], `${name}: a pure read queues no event intent`);
+      assert.deepEqual(await session.flushEvents(), [], name);
+      await assert.rejects(session.getDiscussionRoot(human(f.reader), f.task.id), /session is closed/, name);
+    });
+  }
+  assert.deepEqual(await rowsOf(f), before);
 });
