@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  createBoundedWorkReads, encodeWorkReadCursor, ForbiddenError, NotFoundError, workReadScope,
+  createBoundedWorkReads, DomainError, encodeWorkReadCursor, ForbiddenError, NotFoundError, workReadScope,
   type Principal, type WorkReadFinalFence, type WorkReadPorts, type WorkReadRepository,
   type WorkReadSlice, type WorkReadUnitOfWork, type WorkSummaryObservation,
 } from '@flux/core';
@@ -103,6 +103,15 @@ test('every required message is validated even when it has no edges, before asso
   assert.deepEqual(calls, ['tx-start', 'project-policy', 'observation', 'visibility', 'source-policy', 'tx-end']);
 });
 
+test('required final-fence failures become unavailable; native session and scope rejection stay exact', async () => {
+  const failed = harness({}, { check: async () => { throw new Error('Current-policy database disconnected'); } });
+  await assert.rejects(failed.reads.summary(actor, projectId), { status: 503, code: 'WORK_READ_UNAVAILABLE' });
+  for (const error of [new DomainError(401, 'UNAUTHENTICATED', 'Session expired'), new DomainError(409, 'work_read_changed', 'Source scope changed')]) {
+    const rejected = harness({}, { check: async () => { throw error; } });
+    await assert.rejects(rejected.reads.summary(actor, projectId), (actual) => actual === error);
+  }
+});
+
 test('association rows, all-source counts and global edges keep independent bounded scopes', async () => {
   const edge: ObjectLink = { id: otherId, projectId, role: 'source', from: { type: 'work', id }, to: { type: 'message', id: messageId }, fromTitle: 'Native work', toTitle: 'Source', conversationId: otherId, sketchId: null, createdAt: at };
   const sources: SourceAssociationCounts[] = [{ messageId, work: 2, decisions: 0, results: 0, edges: 3 }, { messageId: otherId, work: 0, decisions: 0, results: 0, edges: 0 }];
@@ -110,18 +119,18 @@ test('association rows, all-source counts and global edges keep independent boun
     requireSources: async () => { calls.push('source-policy'); },
     associationObjects: async (_pid, _selection, limit) => { calls.push('objects'); assert.equal(limit, 1); return slice([row()], 2); },
     associationSources: async () => slice(sources),
-    associationEdges: async (_pid, _selection, objects) => { assert.deepEqual(objects, [{ kind: 'work', id }]); return slice([edge]); },
+    associationEdges: async (_pid, _selection, objects, limit) => { assert.equal(limit, 1); assert.deepEqual(objects, [{ kind: 'work', id }]); return slice([edge]); },
     associationEdgeTotal: async () => 3,
   });
   const response = await reads.associations(actor, projectId, new URLSearchParams(`messageIds=${messageId},${otherId}&limit=1`));
   assert.equal(response.items.length, 1); assert.equal(response.total, 2); assert.equal(response.sourceTotal, 2);
-  assert.equal(response.sources[1]?.edges, 0); assert.equal(response.edges.limit, 100); assert.equal(response.edges.total, 1); assert.equal(response.edgeTotal, 3);
+  assert.equal(response.sources[1]?.edges, 0); assert.equal(response.edges.limit, 1); assert.equal(response.edges.total, 1); assert.equal(response.edgeTotal, 3);
   assert.equal(response.sourceNextCursor, null); assert.ok(calls.indexOf('source-policy') < calls.indexOf('objects'));
 });
 
 test('an edge continuation fails on a changed object window before any edge or source hydration', async () => {
   const selection = { relation: 'source', messageIds: [messageId] };
-  const scope = workReadScope('work-association-edges', projectId, actor, selection, 100, [{ kind: 'work', id }]);
+  const scope = workReadScope('work-association-edges', projectId, actor, selection, 50, [{ kind: 'work', id }]);
   const edgeCursor = encodeWorkReadCursor('next', scope, { rank: 0, createdAt: at, id });
   const { reads } = harness({ requireSources: async () => {}, associationObjects: async () => slice([row(otherId)]) });
   await assert.rejects(reads.associations(actor, projectId, new URLSearchParams(`messageIds=${messageId}&edgeCursor=${edgeCursor}`)), { status: 400, code: 'INVALID_WORK_READ' });

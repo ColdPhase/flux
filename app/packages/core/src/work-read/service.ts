@@ -54,8 +54,13 @@ export function createBoundedWorkReads(unit: WorkReadUnitOfWork, finalFence: Wor
       throw new ServiceUnavailableError('Native work could not be read', 'WORK_READ_UNAVAILABLE');
     }
     // Deliberately outside the read transaction; the adapter re-resolves the exact session.
-    const access = await finalFence.check(principal, projectId, observation.sourceVisibility);
-    return { value: observation.value, access };
+    try {
+      const access = await finalFence.check(principal, projectId, observation.sourceVisibility);
+      return { value: observation.value, access };
+    } catch (error) {
+      if (error instanceof DomainError) throw error;
+      throw new ServiceUnavailableError('Current work access could not be checked', 'WORK_READ_UNAVAILABLE');
+    }
   }
 
   return {
@@ -104,9 +109,9 @@ export function createBoundedWorkReads(unit: WorkReadUnitOfWork, finalFence: Wor
         const page = presentWorkReadPage(await rows.associationObjects(projectId, input.selection, input.limit, cursor), input.limit, scope, cursor);
         rowFacts(page.items, projectId, workspaceId);
         const objects = page.items.map(({ kind, id }) => ({ kind, id }));
-        const edgeScope = workReadScope('work-association-edges', projectId, actor, input.selection, WORK_READ_LIMITS.edges, objects);
+        const edgeScope = workReadScope('work-association-edges', projectId, actor, input.selection, input.limit, objects);
         const edgeCursor = decodeWorkReadCursor(input.edgeCursor, edgeScope);
-        const edges = presentWorkReadPage(await rows.associationEdges(projectId, input.selection, objects, edgeCursor), WORK_READ_LIMITS.edges, edgeScope, edgeCursor);
+        const edges = presentWorkReadPage(await rows.associationEdges(projectId, input.selection, objects, input.limit, edgeCursor), input.limit, edgeScope, edgeCursor);
         const sources = presentWorkReadPage(await rows.associationSources(projectId, input.selection, sourceCursor), WORK_READ_LIMITS.sourceIds, sourceScope, sourceCursor);
         requireFact(new Set(sources.items.map((source) => source.messageId)).size === sources.items.length);
         for (const source of sources.items) requireFact([source.work, source.decisions, source.results, source.edges].every(count));

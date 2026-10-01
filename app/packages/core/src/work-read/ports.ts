@@ -30,7 +30,7 @@ export interface WorkReadRepository {
   requireSources(projectId: string, selection: WorkAssociationSelection): Promise<void>;
   associationObjects(projectId: string, selection: WorkAssociationSelection, limit: number, cursor?: WorkReadCursor): Promise<WorkReadSlice<NativeWorkRow>>;
   associationSources(projectId: string, selection: WorkAssociationSelection, cursor?: WorkReadCursor): Promise<WorkReadSlice<SourceAssociationCounts>>;
-  associationEdges(projectId: string, selection: WorkAssociationSelection, objects: readonly WorkReadObject[], cursor?: WorkReadCursor): Promise<WorkReadSlice<ObjectLink>>;
+  associationEdges(projectId: string, selection: WorkAssociationSelection, objects: readonly WorkReadObject[], limit: number, cursor?: WorkReadCursor): Promise<WorkReadSlice<ObjectLink>>;
   associationEdgeTotal(projectId: string, selection: WorkAssociationSelection): Promise<number>;
   observedAt(): Promise<string>;
 }
@@ -39,7 +39,9 @@ export interface WorkReadPorts { access: WorkReadAccess; rows: WorkReadRepositor
 export interface WorkReadUnitOfWork { run<T>(read: (ports: WorkReadPorts) => Promise<T>): Promise<T> }
 export interface WorkReadObservation<T> { value: T; sourceVisibility: string }
 
-/** Outside that observation: require the SAME exact session, current project policy and source digest. */
+/** Outside that observation: require the SAME exact session, current project policy and source digest.
+ * Represent native session rejection as DomainError(401), preserving the transport-neutral outcome.
+ */
 export interface WorkReadFinalFence {
   check(principal: Principal, projectId: string, sourceVisibility: string): Promise<ProjectAccess>;
 }
