@@ -70,6 +70,78 @@ intents finish before the single final frozen event batch. A matching native
 intent replay adds no new creation intent. Actual code must keep all these rows
 inside the same caller-owned transaction and roll back as one unit.
 
+## Task-graph lock and reader (interface pin)
+
+Pinned 2026-10-01 for #153, interface text only. **Nothing here is implemented:** no
+lock key, reader, graph table or caller exists at this head. The native-plan
+implementation slice of #152 (not PR #167's current head) will export these from one
+core/database-owned module, and #153 consumes them instead of creating a second lock
+namespace. This subsection post-dates the
+[independent design review](2026-10-01-native-plan-independent-review.md), restates
+the lock order #153 and #152 agreed on #153, and has not itself been reviewed apart
+from that exchange.
+
+```ts
+lockProjectTaskGraphs(tx: Transaction, projectIds: readonly string[]): Promise<void>
+taskPrerequisiteIds(tx: Transaction, workspaceId: string, taskIds: readonly string[]): Promise<string[]>
+requireTaskPrerequisitesMet(tx: Transaction, workspaceId: string, taskId: string): Promise<void>
+```
+
+- `lockProjectTaskGraphs` lowercases and de-duplicates the project IDs, sorts them
+  ascending, and takes one lock per project in that order:
+  `pg_advisory_xact_lock(hashtextextended('flux.task-graph:' || projectId, 0))`. It
+  locks no task, unit, stream or material row, so a caller can place it exactly where
+  the order below says and it can never reverse that order. The namespace string is
+  part of the contract: every dependency/intent writer and every #153 claim path uses
+  this primitive.
+- `taskPrerequisiteIds` is read-only. For the given tasks it returns the distinct,
+  lowercase, ascending IDs of their **direct** same-project prerequisites (no
+  transitive closure; the proposed composite foreign keys keep edges inside one
+  project), bounded by
+  `TASK_GRAPH_LIMIT`. Exceeding the bound raises the visible `TASK_GRAPH_LIMIT`
+  error, never a truncated list. The caller adds these IDs to its single sorted task
+  lock pass.
+- `requireTaskPrerequisitesMet` runs only after the caller holds the complete sorted
+  task locks, acquires no lock itself and reads the locked current rows. Each direct
+  prerequisite must exist in that workspace and project and be `done` and unparked; a
+  missing, foreign or tombstoned prerequisite, and one that is `not_pursued`,
+  blocked, parked or open, is unmet and raises a visible domain conflict. Callers
+  run it again before a resumed or publication effect.
+
+Full lock order for every path that touches tasks, in this order and no other:
+
+1. #152 authority locks first: connection, binding, runtime and current policy access
+   rows, then the exact standing grant, then the connection command identity and any
+   durable receipt. Document/material-version locks also precede the graph locks.
+2. Sorted connection slots. While holding them, discover the connection's complete
+   project and task sets.
+3. Sorted project graph locks (`lockProjectTaskGraphs`), ascending project ID across
+   every project the connection touches.
+4. The complete sorted native task set: the units' tasks plus the IDs from
+   `taskPrerequisiteIds`, in one ascending pass.
+5. Coordination rows (units, requests, checkpoints).
+6. Actor commands and conversations.
+7. Final events: all domain, edge, intent, debit, receipt and outgoing writes and all
+   audience reads precede one frozen event batch. Nothing, graph lock or otherwise,
+   is acquired after the first stream insert.
+
+Lifecycle stop/revoke, transfer and effect composition keep this order, and a graph
+lock is never added after a task lock or a stream insert.
+
+#153 would compose it through its injected
+`CoWorkClaimPolicy.prepareTaskLocks(tx, context, units)`: lock the graphs for the
+sorted unique `units[].projectId`, then return
+`taskPrerequisiteIds(tx, context.workspaceId, <the units' native task IDs>)`, so its
+complete sorted task pass covers the dependencies before the first task lock. An
+execution claim then calls `requireTaskPrerequisitesMet` after its task/unit locks;
+review and plan eligibility keep their own explicit rules. That adapter and its
+checks are #153's to write and are likewise not implemented here.
+
+The migration number for the criteria, dependency and intent tables is to be chosen
+in the native-plan slice from the numbers free at that time. It is not reserved
+here (0038 is already used by the separate `cowork.request` operation list; see the
+[execution boundary](2026-09-30/execution-boundary.md#reserved-sender-operation-coworkrequest)).
+
 ## Required verification
 
 Exercise browser/API persistence and MCP against actual canonical rows. Cover

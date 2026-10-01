@@ -71,7 +71,9 @@ receipt completion, retaining original lease ID/session/generation/outcome.
    project contributor rights alone do not authorize standing execution.
 2. Lock the canonical connection/command identity, locate any durable receipt,
    and check its complete normalized fingerprint and original runtime identity.
-3. Only then lock connection slots, the complete sorted task set, coordination
+3. Only then lock connection slots, the project task-graph locks (an interface pin in
+   the [native-plan contract](../2026-10-01-native-plan-contract.md#task-graph-lock-and-reader-interface-pin),
+   not yet implemented), the complete sorted task set, coordination
    unit/request rows, actor commands, conversations and mutable domain objects.
 4. Read `clock_timestamp()` **after the relevant lock waits**, never PostgreSQL's
    transaction-start `now()`. Validate runtime/grant expiry, revocation and
