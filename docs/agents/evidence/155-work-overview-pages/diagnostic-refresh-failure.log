@@ -1,0 +1,32 @@
+ Container flux155browser-db-1  Running
+ Container flux155browser-mailpit-1  Running
+ Container flux155browser-anthropic-mock-1  Recreate
+ Container flux155browser-worker-1  Running
+ Container flux155browser-api-1  Running
+ Container flux155browser-anthropic-mock-1  Recreated
+ Container flux155browser-anthropic-mock-1  Starting
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-anthropic-mock-1  Started
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-migrate-1  Exited
+test_05_refresh_preserves_native_row_reading_focus_and_private_selection_then_failure_clears_rows (test_work_overview.OverviewWorkJourney.test_05_refresh_preserves_native_row_reading_focus_and_private_selection_then_failure_clears_rows) ... OVERVIEW REFRESH DIAGNOSTIC capture {'id': 'e51f37d4-f1cf-4711-863d-6c648c7b98d7', 'offset': 0, 'scrollTop': 0} held 450
+OVERVIEW REFRESH DIAGNOSTIC delivered 450 offset -450
+FAIL
+
+======================================================================
+FAIL: test_05_refresh_preserves_native_row_reading_focus_and_private_selection_then_failure_clears_rows (test_work_overview.OverviewWorkJourney.test_05_refresh_preserves_native_row_reading_focus_and_private_selection_then_failure_clears_rows)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/work/tests/ui/test_work_overview.py", line 222, in test_05_refresh_preserves_native_row_reading_focus_and_private_selection_then_failure_clears_rows
+    self.assertLess(abs(offset-anchor["offset"]),3)
+AssertionError: 450 not less than 3
+
+----------------------------------------------------------------------
+Ran 1 test in 4.150s
+
+FAILED (failures=1)
