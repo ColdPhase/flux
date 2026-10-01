@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   WORK_LIMITS,
   type AcceptDecisionCommand,
@@ -16,6 +16,7 @@ import {
   type WorkItem,
   type WorkObjectType,
   type WorkResult,
+  type TaskCreationNotice,
 } from '@flux/contracts';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, RuleViolationError, VersionConflictError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
@@ -176,6 +177,12 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       list(principal, projectId, query, (ports, project, window) => ports.work.listDecisions(project, window), presentDecisions),
     listResults: (principal: Principal, projectId: string, query?: PageQuery) =>
       list(principal, projectId, query, (ports, project, window) => ports.work.listResults(project, window), presentResults),
+    listTaskNotices: (principal: Principal, projectId: string, query?: PageQuery): Promise<Page<TaskCreationNotice>> =>
+      list(principal, projectId, query, (ports, project, window) => ports.work.listTaskNotices(project, window), async (ports, items) => {
+        const names = await ports.work.names(items.map((item) => item.createdBy));
+        return items.map((item) => ({ ...item, kind: 'task.created', createdAt: iso(item.createdAt),
+          createdBy: { ...item.createdBy, name: names.get(key(item.createdBy)) ?? (item.createdBy.kind === 'agent' ? 'Agent' : 'Former member') } }));
+      }),
 
     /** The caller's unfinished work across the projects of a workspace they can currently read. */
     async listAssigned(principal: Principal, workspaceId: string, query?: PageQuery): Promise<Page<WorkItem>> {
@@ -215,14 +222,24 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       const owner = command.owner === undefined ? null : valid.owner(command.owner);
       const sources = valid.refs(command.sources, valid.SOURCE_TYPES, 'sources');
       const related = valid.refs(command.related, valid.ANY_TYPES, 'related');
+      const clientCommandId = command.clientCommandId === undefined ? undefined : valid.id(command.clientCommandId, 'clientCommandId');
+      const requestFingerprint = clientCommandId ? createHash('sha256').update(JSON.stringify({ title, outcome, status, blocker, owner, sources, related })).digest('hex') : undefined;
       return uow.run(async (ports) => {
         const { workspaceId } = await ports.access.requireProject(principal, 'write', project, { lock: true });
+        if (clientCommandId) {
+          const earlier = await ports.work.createdWork(project, by, clientCommandId);
+          if (earlier) {
+            if (earlier.fingerprint !== requestFingerprint) throw new ConflictError('This clientCommandId was used for another task creation', 'IDEMPOTENCY_CONFLICT');
+            return presentWork(ports, earlier.work);
+          }
+        }
         await requireOwner(ports, project, owner);
         await requireTargets(ports, project, [...sources, ...related]);
         const scope = { workspaceId, projectId: project };
-        const record = await ports.work.insertWork({ id: randomUUID(), ...scope, title, outcome, status, blocker, owner, createdBy: by });
+        const record = await ports.work.insertWork({ id: randomUUID(), ...scope, title, outcome, status, blocker, owner, createdBy: by, clientCommandId, requestFingerprint });
         const from = { type: 'work' as const, id: record.id };
         await ports.work.insertLinks([...linkRows(scope, from, 'source', sources, by), ...linkRows(scope, from, 'related', related, by)]);
+        await ports.work.insertCreationNotice(record, sources);
         const view = await presentWork(ports, record);
         // `assignedTo` names a person given this work by someone else (notifications, #116).
         const assignedTo = owner?.kind === 'human' && owner.id !== by.id ? owner.id : undefined;
