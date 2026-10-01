@@ -144,9 +144,9 @@ export function ProjectOverview({ messageId, onBack }: { messageId?: string; onB
         empty={conversation ? (project.access !== 'viewer' ? 'Nothing linked yet. Any message can become work, a decision or a result.' : 'Nothing linked yet.') : undefined} />
       {state.length ? <Rows label={conversation ? 'Elsewhere in this project' : 'Now in this project'} rows={state} /> : null}
       <Rows label="Sources" rows={[...sources.values()]} />
-      <Rows label={message ? 'On a sketch' : 'Sketches'} rows={sketchRows} empty={message ? undefined : <>No sketches yet. <Link to={`${base}/map`}>Open the Map</Link> to think out loud together.</>} />
+      <Rows label={message ? 'On a sketch' : 'Sketches'} rows={sketchRows} empty={message ? undefined : <>No sketches yet. <Link to={`${base}/map`}>Open the Map</Link> {project.access === 'viewer' ? 'to browse saved sketches.' : 'to think out loud together.'}</>} />
       {moreSketches ? <p className="ov-more"><Link to={`${base}/map`}>All {sketches.total} sketches</Link></p> : null}
-      <Rows label="Docs" rows={[...docRows.values()]} empty={message ? undefined : <>No docs yet. <Link to={`${base}/docs`}>Open Docs</Link> to keep what you learn.</>} />
+      <Rows label="Docs" rows={[...docRows.values()]} empty={message ? undefined : <>No docs yet. <Link to={`${base}/docs`}>Open Docs</Link> {project.access === 'viewer' ? 'to read saved documents.' : 'to keep what you learn.'}</>} />
       {moreDocs ? <p className="ov-more"><Link to={`${base}/docs`}>All {docs.length} docs</Link></p> : null}
 
       <section className="details__sec" aria-labelledby="ov-people">

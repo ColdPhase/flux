@@ -20,7 +20,7 @@ Include an Open part for actual unparked `open` tasks: a quiet static task icon,
 `1 open task` / `N open tasks`, and a control opening the actual first listed task.
 Keep the exact task title available in the existing Details view and control
 tooltip; do not suggest that an open task is executing or animate it as active.
-Desktop and phone share this count; the phone's existing44px state control opens
+Desktop and phone share this count; the phone's existing 44px state control opens
 the overview, where the same native task is reachable under its actual state.
 
 Current rules, work in progress, blocked work, results and proposals keep their
@@ -34,8 +34,8 @@ This is a local correctness correction, not a new global pane/breakpoint design.
 
 Use persisted native API records, two authenticated accounts, current restricted
 project viewer/deny policy, empty→Open→blocked→done transitions, Tasks and actual
-Details navigation. Exercise320/390px phone,820px tablet and1280px desktop, with
-representative light/dark captures at100% zoom. Existing project/work/decision
+Details navigation. Exercise 320/390px phone, 820px tablet and 1280px desktop, with
+representative light/dark captures at 100% zoom. Existing project/work/decision
 journeys must still pass. Obtain a separate neutral rendered review and pin the
 tested source, commands and outcomes. Label emulation as such; it does not prove
 physical phone/tablet/4K/ultrawide or the full F-015 matrix.
@@ -43,7 +43,7 @@ physical phone/tablet/4K/ultrawide or the full F-015 matrix.
 ## First rendered review and bounded correction
 
 The independent review of the first six full-view captures found clipped short
-status summaries on desktop/tablet, a clipped two-person audience at320px, and
+status summaries on desktop/tablet, a clipped two-person audience at 320px, and
 write-oriented empty/composer instructions shown to a reader. Keep native counts
 and existing navigation, but allow header parts and audience text to wrap within
 available space. Reader empty-state guidance describes reading saved objects;
@@ -66,3 +66,10 @@ Use current matching project access for the creation link and label a reader
 footer Conversation. This focused third correction addresses the observed role
 contradiction; it is not a new general visual exploration. Verify saved-thread
 navigation through the phone drawer and keep existing writer flows unchanged.
+
+The focused access review of the final reader frames found one remaining
+material contradiction in Details empty states: Map/Docs invitations still
+implied creation. Use browsing/reading language for project viewers, retaining
+writer wording. The existing phone overview regression now checks both reader
+regions. Repeat affected state/project/work journeys at the new head; retain
+the earlier 62-case wider result at its own source pin, without relabeling it.

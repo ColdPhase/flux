@@ -143,6 +143,8 @@ class ProjectStateJourney(unittest.TestCase):
                     row.tap()
                     panel = page.get_by_role("dialog", name="Details")
                     expect(panel.get_by_role("region", name="Now in this project")).to_contain_text("Open")
+                    expect(panel.get_by_role("region", name="Sketches")).to_contain_text("to browse saved sketches")
+                    expect(panel.get_by_role("region", name="Docs")).to_contain_text("to read saved documents")
                     shot(page, f"136-state-overview-{width}")
                     panel.get_by_role("button", name=re.compile("Open.*Keep a manual switch available")).click()
                     expect(panel.get_by_role("heading", name="Keep a manual switch available", exact=True)).to_be_visible()
