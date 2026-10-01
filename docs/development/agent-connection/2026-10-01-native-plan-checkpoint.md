@@ -99,6 +99,20 @@ after the prerequisites are done. Both come from the passing journey. Fresh inde
 visual assessment is requested; screenshots establish neither interaction nor
 accessibility.
 
+## Rebase onto the merged #167
+
+PR #167 was squash-merged as `919c1dbf319b078d213c3faa2371e25788223380` on 2026-10-01
+at 19:38 UTC, while this slice was being verified, so a merge of `main` into the stacked
+branch conflicts in the squashed #154/#167 files. The six code/test/doc commits were
+replayed onto that commit without conflicts as
+`codex-hubert/152-native-plan-on-main`; the SHAs above name the equivalent pre-rebase
+commits on `codex-hubert/152-native-plan` (kept as the record of the first run).
+Migration 0039 is still free on `origin/main` and every pushed `origin/*` head. On the
+rebased head `7fa53aa4917071f80481fd556856baee9558f4c2` `scripts/check_application.sh`
+passed again, exit 0: **415** application tests (the 399 above plus #154's 16 that
+`main` now carries) and the same browser/restart/unavailable-service phases, including
+`task-plan.e2e.ts`.
+
 ## Limits
 
 - Not run: `scripts/check_backup.sh`, any real Codex or Claude client, real Android or
