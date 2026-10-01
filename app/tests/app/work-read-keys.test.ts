@@ -21,7 +21,7 @@ describe('bounded native PostgreSQL work key selection', () => {
   const results = Array.from({ length: 2 }, () => randomUUID());
   const actor = () => ({ kind: 'human' as const, id: owner.id });
   const tasks: NativeWorkViewSelector = { purpose: 'tasks', group: 'all', mine: false };
-  const read = (selection = tasks, limit = 50, cursor?: WorkReadCursor) => db.transaction(
+  const read = (selection: NativeWorkViewSelector = tasks, limit = 50, cursor?: WorkReadCursor) => db.transaction(
     (tx) => nativeWorkReadKeys(tx).view(projectId, actor(), selection, limit, cursor), { isolationLevel: 'repeatable read', accessMode: 'read only' });
 
   before(async () => {
