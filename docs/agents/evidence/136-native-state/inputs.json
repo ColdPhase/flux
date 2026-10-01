@@ -1,0 +1,14 @@
+{
+  "source": "1f0264b8953c1828895eaf2aeaf1e0289e15da15",
+  "sha256": {
+    "app/apps/web/src/work/inline.tsx": "d98dc4d5eec2fd13cb2c4e47d7b724417e71a90f7c47a42aa40e62a52314d3e5",
+    "app/apps/web/src/work/work.css": "c1b0ad6957d38c32606664d495cbd451333a367c1019d6bee086d47b2b913b19",
+    "app/apps/web/src/project/ProjectOverview.tsx": "249e57aff4aa31c6d0bdc288d49ebeb8ae1567c0948b08e388bc0f4d39f562cc",
+    "app/apps/web/src/project/ProjectThreads.tsx": "e08f1eb6d9b831c6306fe19e0ca1aa6724382a6233604675d3e12f174ef97502",
+    "app/apps/web/src/project/project.css": "ea1f00b39ad0a503d67f9f64ff0cc2043d0aaebc593f00c31923be42972381f9",
+    "app/apps/web/src/app/ProjectConversation.tsx": "af1e3e125849d2e216b4414565b3ff3b946322a155ea1fdf7be3a78a1fa9eab0",
+    "app/apps/web/src/app/Sidebar.tsx": "5bb540e90fa61e012bccb3a2c2d7a0abbd1e1bb86f579e1799307df45561d47e",
+    "app/apps/web/src/app/project-conversation.css": "6a8fccd670617a15cee5b53bbe22bf366fcf72bf0426862ffbf3febb2528e2df",
+    "app/tests/ui/test_project_state.py": "b0e08df4426424133bac44fd65522c52794e29666d9fe649c6c0fdd31750efa3"
+  }
+}
