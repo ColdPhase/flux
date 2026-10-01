@@ -39,7 +39,8 @@ test('a stop survives delayed active, different-session substitution and databas
   assert.deepEqual(state.candidates(a, 400, 800).pulses, []);
   // Monotonic retention expires even though database wall time has moved backwards.
   assert.equal(state.candidates(a, 100, 5500).pulses.length, 0);
-  assert.equal(state.work.entries, 0);
+  assert.equal(state.work.entries, 1);
+  assert.equal(state.work.watermarks, 1);
 });
 
 test('listener loss/reconnect clears presence and invalidates pending revision; no replay', () => {
@@ -82,19 +83,21 @@ test('global saturation cannot silently evict a stop then replay older activity;
   assert.equal(state.accept(pulse({ sequence: 4, expiresAt: 10_300 }), 5300, 5300), true);
 });
 
-test('unwatched foreign contexts never allocate state; bounded watchers retain until last leave', () => {
+test('foreign activity retains bounded anonymous fences only; watchers retain until last leave', () => {
   const state = store({ contexts: 1, perContext: 2, entries: 2 });
   assert.equal(state.watch(b), false);
   for (let i = 0; i < 1000; i++) state.accept(pulse({ connectionId: `foreign-${i}`, context: b }), 0, 0);
   assert.equal(state.work.entries, 0);
-  state.watch(a); state.accept(pulse(), 0, 0); state.leave(a);
-  assert.equal(state.candidates(a, 0, 0).pulses.length, 1);
+  assert.equal(state.work.watermarks, 2);
+  state.candidates(a, 5001, 5001);
+  state.watch(a); state.accept(pulse({ expiresAt: 10001 }), 5001, 5001); state.leave(a);
+  assert.equal(state.candidates(a, 5001, 5001).pulses.length, 1);
   state.leave(a);
-  assert.equal(state.candidates(a, 0, 0).availability, 'unavailable');
+  assert.equal(state.candidates(a, 5001, 5001).availability, 'unavailable');
   state.watch(a);
-  assert.deepEqual(state.candidates(a, 0, 0).pulses, []);
-  state.accept(pulse({ sequence: 1 }), 0, 0);
-  assert.deepEqual(state.candidates(a, 0, 0).pulses, []);
+  assert.deepEqual(state.candidates(a, 5001, 5001).pulses, []);
+  state.accept(pulse({ sequence: 1, expiresAt: 10001 }), 5001, 5001);
+  assert.deepEqual(state.candidates(a, 5001, 5001).pulses, []);
 });
 
 test('expiry, caller mutation and invalid sequence cannot extend a pulse or alter its native scope', () => {
@@ -123,4 +126,46 @@ test('a valid stop and scope withdrawal survive database-clock reversal without 
   assert.deepEqual(moving.candidates(a, 0, 100).pulses, []);
   moving.accept(pulse({ sequence: 2, expiresAt: 6000 }), 0, 200);
   assert.deepEqual(moving.candidates(a, 0, 200).pulses, []);
+});
+
+
+test('negative sequence fences outlive positive monotonic expiry when DB time reverses', () => {
+  const state = store(); state.accept(pulse({ expiresAt: 6000 }), 1000, 0);
+  state.accept(pulse({ active: false, sequence: 3, expiresAt: 6000 }), 0, 100);
+  assert.deepEqual(state.candidates(a, 5000, 5100).pulses, []);
+  assert.equal(state.accept(pulse({ sequence: 2, expiresAt: 6000 }), 5000, 5101), false);
+  assert.equal(state.work.watermarks, 1);
+  state.candidates(a, 6000, 6100); assert.equal(state.work.watermarks, 0);
+});
+
+test('global and context quarantine drain through discarded active and stop validity', () => {
+  for (const limits of [{ contexts: 1, perContext: 2, entries: 1 }, { contexts: 1, perContext: 1, entries: 3 }]) {
+    const state = store(limits); state.accept(pulse(), 0, 0);
+    const second = pulse({ connectionId: 'second', actorId: 'other', sessionId: 'other-session', sequence: 3, expiresAt: 6000 });
+    state.accept(second, 1000, 1000);
+    state.accept({ ...second, sequence: 5, expiresAt: 10000 }, 5000, 5000);
+    state.accept({ ...second, sequence: 6, active: false, expiresAt: 10500 }, 5500, 5500);
+    assert.equal(state.candidates(a, 6001, 6001).availability, 'unavailable');
+    assert.equal(state.accept({ ...second, sequence: 5, expiresAt: 10000 }, 6001, 6001), false);
+    assert.deepEqual(state.candidates(a, 10501, 12000).pulses, []);
+    assert.equal(state.candidates(a, 10501, 12000).availability, 'ready');
+    assert.equal(state.accept({ ...second, sequence: 5, expiresAt: 10000 }, 10501, 12000), false);
+  }
+});
+
+test('an unknown unwatched B watermark suppresses delayed older A without retaining private metadata', () => {
+  const state = store();
+  state.accept(pulse({ context: b, sequence: 3 }), 0, 0);
+  assert.equal(state.work.entries, 0); assert.equal(state.work.watermarks, 1);
+  assert.equal(state.accept(pulse({ sequence: 2 }), 0, 0), false);
+  assert.deepEqual(state.candidates(a, 0, 0).pulses, []);
+});
+
+test('mutating supplied limits cannot bypass validated context or global capacity', () => {
+  const limits = { contexts: 1, perContext: 1, entries: 1 }; const state = store(limits);
+  limits.contexts = limits.perContext = limits.entries = 10000;
+  assert.equal(state.watch(b), false); state.accept(pulse(), 0, 0);
+  state.accept(pulse({ connectionId: 'second', actorId: 'other', sessionId: 'other-session' }), 0, 0);
+  assert.equal(state.work.watermarks, 1); assert.equal(state.work.entries, 1);
+  assert.equal(state.candidates(a, 0, 0).availability, 'unavailable');
 });
