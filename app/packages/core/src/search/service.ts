@@ -136,7 +136,7 @@ function toResult(row: SearchRow): SearchResult {
     title: main.length ? main : [{ text: 'Untitled', match: false }],
     snippet: source.textIsTitle ? null : row.snippet,
     place: searchPlaceOf(row),
-    author: row.authorName,
+    author: row.author?.kind === 'agent' ? `${row.authorName ?? 'Agent'} (agent)` : row.authorName,
     at: row.at.toISOString(),
     target: source.target(row),
   };

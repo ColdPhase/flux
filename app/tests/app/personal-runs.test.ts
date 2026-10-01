@@ -2,17 +2,18 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { createDatabase } from '@flux/db';
-import { createPersonalRunProcessor, recoverPersonalRuns, type PersonalRunHooks, type Principal } from '@flux/core';
+import { createAssistantProposalUseCases, createPersonalRunProcessor, recoverPersonalRuns, type PersonalRunHooks, type Principal, type Transaction } from '@flux/core';
 import {
   PERSONAL_RUN_CONSENT_VERSION,
   type AssistantAnswer, type AssistantProposal, type AssistantRun, type Conversation, type Page, type PersonalAssistantStatus,
   type Project, type WorkItem, type WorkResult, type Workspace,
 } from '@flux/contracts';
-import { assistantProposalUseCases, personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
+import { assistantProposalUseCases, personalRunUseCases, proposalUnitOfWork } from '../../apps/server/src/personal-runs/adapters.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
 import { addMember, expectStatus, person, project as createProject, removeMember, workspace as createWorkspace, type Person } from './support/people.js';
 import { echo, FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
 import { StreamClient } from './support/stream.js';
+import { guardFinalEventPhase } from './support/final-events.js';
 
 // Owner-invoked personal assistant runs (#68, decision O-008), first slice. HTTP routes run
 // against the API container's production composition, where nobody has a key connection yet
@@ -484,7 +485,33 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     await assert.rejects(proposals.accept(human(hubert), proposalId, {}, 1), { code: 'PROPOSAL_AUTHORITY_REQUIRED' });
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_results WHERE project_id = $1', [lamp.id])).rows[0].n, 0);
 
-    const accepted = expectStatus(await accept(kai), 200) as AssistantProposal;
+    // The actual result and proposal decision roll back together after the domain save.
+    const unit = proposalUnitOfWork(db, queue.factory);
+    const failing = createAssistantProposalUseCases({ run: (action) => unit.run((ports) => action({ ...ports,
+      runs: { ...ports.runs, async updateProposal(id, changes) {
+        await ports.runs.updateProposal(id, changes);
+        throw new Error('after actual proposal decision');
+      } } })) });
+    const eventCount = (await pool.query('SELECT count(*)::int AS n FROM events WHERE object_id=$1', [lamp.id])).rows[0]!.n;
+    await assert.rejects(failing.accept(human(kai), proposalId, {}, 1), /after actual proposal decision/);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_results WHERE project_id=$1', [lamp.id])).rows[0]!.n, 0);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM events WHERE object_id=$1', [lamp.id])).rows[0]!.n, eventCount);
+    assert.equal((await proposals.get(human(kai), proposalId)).status, 'proposed');
+
+    // Instrument real SQL: no nested native transaction or domain read/write after first event.
+    let eventPhaseStarted = false;
+    const checkedDb = new Proxy(db, { get(target, property) {
+      if (property === 'transaction') return (action: (tx: Transaction) => Promise<unknown>) => target.transaction(async (tx) => {
+        const guarded = guardFinalEventPhase(tx);
+        const result = await action(guarded.tx);
+        eventPhaseStarted = guarded.started;
+        return result;
+      });
+      const value: unknown = Reflect.get(target, property);
+      return typeof value === 'function' ? value.bind(target) : value;
+    } });
+    const accepted = await assistantProposalUseCases(checkedDb, queue.factory).accept(human(kai), proposalId, {}, 1);
+    assert.equal(eventPhaseStarted, true);
     assert.deepEqual([accepted.status, accepted.decidedBy?.id, accepted.draftedBy.label], ['accepted', kai.id, 'pr-hubert\'s assistant']);
     const result = expectStatus(await viewer.browser.request('GET', `/api/v1/results/${accepted.resultId}`), 200) as WorkResult;
     assert.deepEqual([result.title, result.createdBy.id], ['Camera fails in low light', kai.id]);

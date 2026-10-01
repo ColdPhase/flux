@@ -173,10 +173,14 @@ export function personalRunRows(db: DbExecutor) {
     /** The latest `limit` messages of one project conversation, oldest first. */
     async messages(conversationId: string, limit: number) {
       const m = schema.projectMessages;
-      const rows = await db.select({ id: m.id, sequence: m.sequence, body: m.body, authorName: schema.authUsers.name })
-        .from(m).innerJoin(schema.authUsers, eq(schema.authUsers.id, m.authorId))
+      const rows = await db.select({ id: m.id, sequence: m.sequence, body: m.body,
+        authorId: m.authorId, authorAgentId: m.authorAgentId, humanName: schema.authUsers.name, agentName: schema.agents.name })
+        .from(m).leftJoin(schema.authUsers, eq(schema.authUsers.id, m.authorId))
+        .leftJoin(schema.agents, and(eq(schema.agents.workspaceId, m.workspaceId), eq(schema.agents.id, m.authorAgentId)))
         .where(eq(m.conversationId, conversationId)).orderBy(desc(m.sequence)).limit(limit);
-      return rows.reverse();
+      return rows.reverse().map(({ authorId, authorAgentId, humanName, agentName, ...row }) => ({ ...row,
+        author: authorId !== null ? { kind: 'human' as const, id: authorId } : { kind: 'agent' as const, id: authorAgentId! },
+        authorName: authorId !== null ? humanName ?? 'Former member' : agentName ?? 'Agent' }));
     },
 
     /** Unfinished, unparked work of the project, newest first. */

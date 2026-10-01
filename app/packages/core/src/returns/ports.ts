@@ -1,3 +1,4 @@
+import type { ActorRef } from '../work/ports.js';
 import type { ReturnPlace } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 
@@ -61,9 +62,9 @@ export interface ReturnResult {
   id: string; projectId: string; title: string; finding: 'positive' | 'negative'; evidence: string; createdByKey: string;
 }
 export interface ReturnMessage {
-  id: string; projectId: string; conversationId: string; authorId: string; body: string; sequence: number; createdAt: Date;
+  id: string; projectId: string; conversationId: string; author: ActorRef; body: string; sequence: number; createdAt: Date;
 }
-export interface ReturnConversation { id: string; projectId: string; createdBy: string; opening: string }
+export interface ReturnConversation { id: string; projectId: string; createdBy: ActorRef; opening: string }
 export interface ReturnMaterial { id: string; projectId: string; title: string; version: number }
 export interface ReturnSketch { id: string; workspaceId: string; projectId: string | null; title: string }
 /** A project doc (#112) as it reads now: its current version and that version's reason. */
