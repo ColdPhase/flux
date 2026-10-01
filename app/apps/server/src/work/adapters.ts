@@ -1,6 +1,7 @@
 import { workRows, type DbExecutor } from '@flux/db';
 import {
   visibleFilter,
+  createWorkContributions,
   createWorkUseCases,
   type Database,
   type WorkPorts,
@@ -8,7 +9,7 @@ import {
   type WorkUnitOfWork,
   type Transaction,
 } from '@flux/core';
-import { taskDiscussionInEventSession } from './task-discussions.js';
+import { taskDiscussionInEventSession, taskDiscussionPorts } from './task-discussions.js';
 import { transactionEventSession, type TransactionEventSession } from './transaction-events.js';
 import { policyWorkAccess } from './access.js';
 export { policyWorkAccess } from './access.js';
@@ -27,11 +28,17 @@ export function workRepository(tx: DbExecutor): WorkRepository {
   };
 }
 
-function workPorts(tx: DbExecutor, events: WorkPorts['events']): WorkPorts {
+/**
+ * Every work adapter composes the mandatory contribution hook over the SAME transaction and event session
+ * as the work use cases (#154), so a saved blocker or a published result contributes to its canonical
+ * task thread atomically and its events join the one final batch. There is no adapter without the hook.
+ */
+function workPorts(tx: Transaction, events: TransactionEventSession): WorkPorts {
   return {
     access: policyWorkAccess(tx),
     work: workRepository(tx),
     events,
+    contributions: createWorkContributions(taskDiscussionPorts(tx, events)),
   };
 }
 

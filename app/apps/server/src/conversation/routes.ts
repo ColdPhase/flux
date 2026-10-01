@@ -1,6 +1,6 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
 import type { ConversationWindowQuery, CreateMaterialCommand, PageQuery, SendMessageCommand, UpdateMaterialCommand } from '@flux/contracts';
-import { conversationUseCases, DomainError, type Database } from '@flux/core';
+import { conversationUseCases, DomainError, InvalidInputError, type Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { conversationStore } from './store.js';
 
@@ -14,6 +14,14 @@ const source = { type: 'object', required: ['materialId', 'version'], additional
   properties: { materialId: { type: 'string' }, version: { type: 'integer' } } } as const;
 const send = { type: 'object', required: ['body', 'clientMessageId'], additionalProperties: false,
   properties: { body: { type: 'string', minLength: 1, maxLength: 100_000 }, clientMessageId: { type: 'string' }, source } } as const;
+/**
+ * A generic message is ordinary text. Reject a contribution kind rather than let the schema silently
+ * strip it: blocker, result and handoff contributions come only from their own commands (#154).
+ */
+const plainText = async (request: { body?: unknown }) => {
+  if (request.body && typeof request.body === 'object' && Object.hasOwn(request.body, 'kind'))
+    throw new InvalidInputError('A conversation message has no contribution kind');
+};
 const createMaterialBody = { type: 'object', required: ['clientMutationId', 'title'], additionalProperties: false,
   properties: { clientMutationId: { type: 'string' }, title: { type: 'string', minLength: 1, maxLength: 200 },
     body: { type: 'string', maxLength: 100_000 }, url: { type: 'string', maxLength: 2048 },
@@ -35,13 +43,13 @@ export async function conversationRoutes(app: FastifyInstance, { db, sessions }:
   app.get<{ Params: { projectId: string }; Querystring: PageQuery }>('/api/v1/projects/:projectId/conversations',
     { schema: { querystring: page } }, async (request) => store.listConversations(await principal(request), request.params.projectId, request.query));
   app.post<{ Params: { projectId: string }; Body: SendMessageCommand }>('/api/v1/projects/:projectId/conversations',
-    { schema: { body: send } }, async (request, reply) => reply.code(201).send(
+    { preValidation: plainText, schema: { body: send } }, async (request, reply) => reply.code(201).send(
       await store.createConversation(await principal(request), request.params.projectId, request.body)));
   app.get<{ Params: { conversationId: string }; Querystring: ConversationWindowQuery }>('/api/v1/conversations/:conversationId',
     { schema: { querystring: conversationWindow } },
     async (request) => store.getConversation(await principal(request), request.params.conversationId, request.query));
   app.post<{ Params: { conversationId: string }; Body: SendMessageCommand }>('/api/v1/conversations/:conversationId/messages',
-    { schema: { body: send } }, async (request, reply) => reply.code(201).send(
+    { preValidation: plainText, schema: { body: send } }, async (request, reply) => reply.code(201).send(
       await store.sendMessage(await principal(request), request.params.conversationId, request.body)));
 
   app.get<{ Params: { projectId: string }; Querystring: PageQuery }>('/api/v1/projects/:projectId/materials',

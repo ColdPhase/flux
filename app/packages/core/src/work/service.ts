@@ -20,7 +20,7 @@ import {
 } from '@flux/contracts';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, RuleViolationError, VersionConflictError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
-import type { ActorRef, DecisionRecord, ObjectLinkRecord, NewObjectLink, ResultRecord, WorkChanges, WorkPorts, WorkRecord, WorkRepository, WorkUnitOfWork } from './ports.js';
+import type { ActorRef, DecisionRecord, NativeCommandReceipt, ObjectLinkRecord, NewObjectLink, ResultRecord, WorkChanges, WorkPorts, WorkRecord, WorkRepository, WorkUnitOfWork } from './ports.js';
 import * as valid from './validation.js';
 
 // Work, decision and result use cases (issue #101). Each runs in one unit of work: it asks the
@@ -32,6 +32,12 @@ import * as valid from './validation.js';
 // propose decisions; only a person accepts a decision. Accepting a decision that supersedes an
 // earlier one is a pivot: the earlier decision is kept as superseded, work that still applies
 // is linked to the new decision and obsolete work is parked, keeping its status.
+//
+// Explicit effects on a task's canonical thread (#154): an explicitly saved nonempty blocker and a
+// published result contribute through the mandatory `ports.contributions` hook, inside the same unit
+// of work. The order is always: project write access, the command's durable identity (receipt, then
+// every derived message identity), the complete sorted task set, the domain writes, the canonical
+// appends, the receipt, and the events last (one final batch owned by the caller's unit of work).
 
 const LABEL: Record<WorkObjectType, string> = { work: 'Work item', decision: 'Decision', result: 'Result' };
 const CODE: Record<WorkObjectType, string> = { work: 'WORK_NOT_FOUND', decision: 'DECISION_NOT_FOUND', result: 'RESULT_NOT_FOUND' };
@@ -154,6 +160,15 @@ function linkRows(scope: { workspaceId: string; projectId: string }, from: NewOb
 
 const workRefs = (ids: string[]): ObjectRef[] => ids.map((id) => ({ type: 'work', id }));
 
+const sha256 = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+
+/** A retry of the same client command: the same intent returns its stored outcome, another intent conflicts. */
+function sameCommand(earlier: NativeCommandReceipt, fingerprint: string) {
+  if (earlier.fingerprint !== fingerprint) throw new ConflictError('This clientCommandId was used for another command', 'IDEMPOTENCY_CONFLICT');
+}
+const stale = () => new ConflictError('The result of this command changed afterwards; review the current state', 'COMMAND_POSTSTATE_STALE');
+const invalidPostState = () => new ConflictError('The stored outcome of this command is no longer intact', 'COMMAND_POSTSTATE_INVALID');
+
 export function createWorkUseCases(uow: WorkUnitOfWork) {
   async function list<T, R>(principal: Principal, projectId: string, query: PageQuery | undefined,
     read: (ports: WorkPorts, projectId: string, page: ReturnType<typeof valid.page>) => Promise<{ items: R[]; total: number }>,
@@ -248,10 +263,17 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       });
     },
 
+    /**
+     * Changes a task at the version its author saw. A nonempty explicitly saved blocker is also one authored
+     * contribution to the task's canonical thread, with exactly the saved text, in the same unit; clearing a
+     * blocker or changing only status/owner/text contributes nothing. With `clientCommandId` an exact retry
+     * returns the original outcome without contributing again.
+     */
     async updateWork(principal: Principal, workId: string, command: UpdateWorkCommand, expected: number | undefined): Promise<WorkItem> {
-      actor(principal);
+      const by = actor(principal);
       if (!command || typeof command !== 'object') throw new InvalidInputError('Change is required');
       const version = valid.expectedVersion(expected);
+      const clientCommandId = command.clientCommandId === undefined ? undefined : valid.id(command.clientCommandId, 'clientCommandId');
       const changes: WorkChanges = {};
       if (command.title !== undefined) changes.title = valid.title(command.title);
       if (command.outcome !== undefined) changes.outcome = valid.text(command.outcome, 'outcome', WORK_LIMITS.outcome);
@@ -263,9 +285,26 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         changes.parked = null;
       }
       if (!Object.keys(changes).length) throw new InvalidInputError('Nothing to change');
+      // The exact text the person explicitly saved; undefined/cleared/empty contribute nothing.
+      const savedBlocker = changes.blocker || null;
       return uow.run(async (ports) => {
         const { id, projectId, workspaceId } = await authorized(ports, principal, 'work', workId, 'write');
-        const current = (await ports.work.findWork(id, { lock: true }))!;
+        const fingerprint = sha256({ operation: 'work.update', workId: id, expectedVersion: version, changes });
+        if (clientCommandId) {
+          // The command identity precedes every other lock below. An exact retry rechecks the current
+          // authorization (above), the produced task state and the stored contributions, and writes nothing.
+          const earlier = await ports.work.nativeCommand(projectId, by, 'work.update', clientCommandId);
+          if (earlier) {
+            sameCommand(earlier, fingerprint);
+            const current = await ports.work.findWork(id);
+            if (!current || earlier.object.type !== 'work' || current.version !== earlier.object.version) throw stale();
+            if (!await ports.contributions.confirm(principal, projectId, earlier.messageIds)) throw invalidPostState();
+            return presentWork(ports, current);
+          }
+        }
+        const contribution = savedBlocker ? await ports.contributions.prepare(principal, projectId,
+          { operation: 'work.update', commandId: clientCommandId ?? randomUUID() }, [{ workId: id, kind: 'blocker', body: savedBlocker }]) : null;
+        const current = contribution ? (await ports.contributions.lockTasks(contribution))[0]! : (await ports.work.findWork(id, { lock: true }))!;
         if (current.version !== version) throw new VersionConflictError(current.version, await presentWork(ports, current));
         const nextStatus = changes.status ?? current.status;
         // A person who explicitly finishes parked work with its current version also takes it
@@ -282,6 +321,9 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         const assignedTo = newOwner?.kind === 'human' && newOwner.id !== principal.id
           && !(current.owner?.kind === 'human' && current.owner.id === newOwner.id) ? newOwner.id : undefined;
         await ports.events.record(principal, workspaceId, 'project.work_updated.v1', projectId, { workId: id, ...(assignedTo ? { assignedTo } : {}) });
+        const messageIds = contribution ? await ports.contributions.append(contribution) : [];
+        if (clientCommandId) await ports.work.recordNativeCommand({ workspaceId, projectId }, by,
+          { operation: 'work.update', commandId: clientCommandId, fingerprint, object: { type: 'work', id, version: record.version }, messageIds });
         return view;
       });
     },
@@ -359,7 +401,13 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       });
     },
 
-    /** A positive or negative finding with evidence. It can finish one of the work items it reports on. */
+    /**
+     * A positive or negative finding with evidence. It can finish one of the work items it reports on. One
+     * canonical result is created; every task it reports on (`work`) also gets one authored contribution that
+     * names that exact result, with the result title as its text, made by the creating principal. A result
+     * with no linked task creates no task thread. With `clientCommandId` an exact retry returns the original
+     * result without a second result or message.
+     */
     async createResult(principal: Principal, projectId: string, command: CreateResultCommand): Promise<WorkResult> {
       const by = actor(principal);
       if (!command || typeof command !== 'object') throw new InvalidInputError('Result is required');
@@ -370,6 +418,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       const sources = valid.refs(command.sources, valid.SOURCE_TYPES, 'sources');
       const workIds = valid.ids(command.work, 'work');
       const decisions: ObjectRef[] = valid.ids(command.decisions, 'decisions').map((id) => ({ type: 'decision', id }));
+      const clientCommandId = command.clientCommandId === undefined ? undefined : valid.id(command.clientCommandId, 'clientCommandId');
       let finishes: { id: string; version: number } | null = null;
       if (command.finishes !== undefined) {
         const raw = command.finishes as { id?: unknown; expectedVersion?: unknown } | null;
@@ -377,24 +426,47 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         finishes = { id: valid.id(raw.id, 'finishes.id'), version: valid.expectedVersion(raw.expectedVersion) };
         if (!workIds.includes(finishes.id)) throw new InvalidInputError('finishes must be one of the linked work items');
       }
+      const fingerprint = sha256({ operation: 'result.create', projectId: project, title, finding, evidence, sources: sources.map(valid.refKey).sort(),
+        work: [...workIds].sort(), decisions: decisions.map((decision) => decision.id).sort(), finishes });
       return uow.run(async (ports) => {
         const { workspaceId } = await ports.access.requireProject(principal, 'write', project, { lock: true });
+        if (clientCommandId) {
+          // Command identity before any task lock. An exact retry rechecks current authorization (above), the
+          // canonical sources and the stored result and contributions, and writes nothing.
+          const earlier = await ports.work.nativeCommand(project, by, 'result.create', clientCommandId);
+          if (earlier) {
+            sameCommand(earlier, fingerprint);
+            await requireTargets(ports, project, [...sources, ...workRefs(workIds), ...decisions]);
+            const stored = earlier.object.type === 'result' ? await ports.work.findResult(earlier.object.id) : null;
+            if (!stored || stored.projectId !== project || !await ports.contributions.confirm(principal, project, earlier.messageIds)) throw invalidPostState();
+            return presentResult(ports, stored);
+          }
+        }
         await requireTargets(ports, project, [...sources, ...workRefs(workIds), ...decisions]);
+        const resultId = randomUUID();
+        // Every message identity (derived from this result and its task) is locked before the first task lock,
+        // then the complete sorted task set, so overlapping results lock in one order and cannot deadlock.
+        const contributions = workIds.length ? await ports.contributions.prepare(principal, project, { operation: 'result.create', resultId },
+          workIds.map((workId) => ({ workId, kind: 'result' as const, body: title, resultId }))) : null;
+        const locked = contributions ? await ports.contributions.lockTasks(contributions) : [];
         // Finishing changes someone's work: it needs the version the author saw and a status
         // that can become done. A parked or not-pursued item is another person's disposition.
-        const finished = finishes ? (await ports.work.findWork(finishes.id, { lock: true }))! : null;
+        const finished = finishes ? locked.find((row) => row.id === finishes!.id)! : null;
         if (finished && finishes) {
           if (finished.version !== finishes.version) throw new VersionConflictError(finished.version, await presentWork(ports, finished));
           if (finished.parked) throw new ConflictError('Parked work must be brought back into the plan before a result finishes it', 'WORK_NOT_FINISHABLE');
           if (finished.status === 'not_pursued') throw new ConflictError('Work that is not pursued cannot be finished by a result', 'WORK_NOT_FINISHABLE');
         }
         const scope = { workspaceId, projectId: project };
-        const record = await ports.work.insertResult({ id: randomUUID(), ...scope, title, finding, evidence, createdBy: by });
+        const record = await ports.work.insertResult({ id: resultId, ...scope, title, finding, evidence, createdBy: by });
         const from = { type: 'result' as const, id: record.id };
         await ports.work.insertLinks([...linkRows(scope, from, 'source', sources, by), ...linkRows(scope, from, 'about', [...workRefs(workIds), ...decisions], by)]);
         if (finished && finished.status !== 'done') await ports.work.updateWork(finished.id, { status: 'done', blocker: null });
         const view = await presentResult(ports, record);
         await ports.events.record(principal, workspaceId, 'project.result_recorded.v1', project, { resultId: record.id });
+        const messageIds = contributions ? await ports.contributions.append(contributions) : [];
+        if (clientCommandId) await ports.work.recordNativeCommand(scope, by,
+          { operation: 'result.create', commandId: clientCommandId, fingerprint, object: { type: 'result', id: record.id }, messageIds });
         return view;
       });
     },

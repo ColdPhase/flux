@@ -1,4 +1,5 @@
 import type { ProjectAccess, ProjectGrantRole, ProjectVisibility, WorkspaceRole } from './access.js';
+import type { MessageContribution } from './conversation.js';
 import type { DocState } from './docs.js';
 import type { DecisionStatus, LinkOwnerType, LinkRole, ObjectRef, ResultFinding, WorkStatus } from './work.js';
 
@@ -60,6 +61,8 @@ export interface ProjectExportMessage {
   body: string;
   /** The cited material or doc version, if any. */
   source: { materialId: string; version: number } | null;
+  /** Present only for a saved blocker, a published result (naming that exported result) or a public handoff (#154). */
+  contribution?: MessageContribution;
   createdAt: string;
 }
 
@@ -256,7 +259,12 @@ export const PROJECT_EXPORT_JSON_SCHEMA = {
     actor,
     namedActor,
     objectRef,
-    message: object({ id, sequence: count, author: ref('actor'), body: text, source: nullable(object({ materialId: id, version: count })), createdAt: time }),
+    message: {
+      ...object({ id, sequence: count, author: ref('actor'), body: text, source: nullable(object({ materialId: id, version: count })), createdAt: time }),
+      required: ['id', 'sequence', 'author', 'body', 'source', 'createdAt'],
+      properties: { id, sequence: count, author: ref('actor'), body: text, source: nullable(object({ materialId: id, version: count })), createdAt: time,
+        contribution: { oneOf: [object({ kind: { enum: ['blocker', 'handoff'] } }), object({ kind: { const: 'result' }, resultId: id })] } },
+    },
     conversation: object({ id, createdBy: ref('actor'), createdAt: time, messages: list(ref('message')) }),
     materialVersion: object({ version: count, title: text, body: text, url: nullable(text), author: ref('actor'), createdAt: time }),
     material: object({ id, createdBy: ref('actor'), createdAt: time, currentVersion: count, versions: { ...list(ref('materialVersion')), minItems: 1 } }),
