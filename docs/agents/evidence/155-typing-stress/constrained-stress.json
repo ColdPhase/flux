@@ -1,0 +1,3339 @@
+{
+  "timingDefinition": {
+    "inputToReceipt": "driver send to first ready remote snapshot containing actor after observed stop",
+    "acceptedToReceipt": "signed first receipt minus API publish-promise completion, same monotonic clock; may be negative",
+    "handler": "command execution including authority and publication, queue reported separately"
+  },
+  "durable": {
+    "before": {
+      "messages": "1",
+      "events": "65",
+      "notifications": "0",
+      "outbox": "0",
+      "audience": "1088"
+    },
+    "after": {
+      "messages": "1",
+      "events": "65",
+      "notifications": "0",
+      "outbox": "0",
+      "audience": "1088"
+    },
+    "checkFailure": null
+  },
+  "source": "4817b88f7c9546ee60940005905f51e36baa0664",
+  "phase": "passed",
+  "failure": null,
+  "runtime": {
+    "node": "v24.21.0",
+    "driver": "ws8.22 real cookie sockets",
+    "browserDom": "not measured in this experiment",
+    "memoryScope": "in-process production route plus driver, not API-only RSS",
+    "cpuProfile": "Docker test driver and in-process API capped at2 CPUs; PostgreSQL and other services uncapped; emulation not physical device"
+  },
+  "dataset": {
+    "actors": 32,
+    "requestedSockets": 128,
+    "connectedSockets": 128,
+    "publishers": 32,
+    "additionalWatchers": 96,
+    "warmups": 30,
+    "requestedMeasured": 200,
+    "completedMeasured": 200,
+    "measuredElapsedMs": 97624.41742
+  },
+  "distributions": {
+    "inputToReceipt": {
+      "count": 200,
+      "p50Ms": 135.97195799999463,
+      "p95Ms": 359.3018749999901,
+      "maxMs": 713.5402920000051
+    },
+    "acceptedToReceipt": {
+      "count": 200,
+      "p50Ms": 120.05195799999638,
+      "p95Ms": 230.1974579999951,
+      "maxMs": 711.8239590000012
+    },
+    "stopToReceipt": {
+      "count": 200,
+      "p50Ms": 146.24258300001384,
+      "p95Ms": 199.312625999999,
+      "maxMs": 303.6566670000029
+    }
+  },
+  "freshness": {
+    "observations": 99,
+    "staleSocketObservations": 0,
+    "unavailableSocketObservations": 0,
+    "oldestReadyAgeMs": 797.1172919999954,
+    "readyInterarrivalMaxMs": 928.4242919999961,
+    "unavailableFrames": 0
+  },
+  "sampledMemory": {
+    "intervalMs": 1000,
+    "retainedSamples": 116,
+    "maximumRetainedSamples": 512,
+    "peakRss": 612868096,
+    "peakHeapUsed": 264988904,
+    "workPeaks": "sampled only; source caps independently reviewed"
+  },
+  "api": {
+    "published": 1872,
+    "phases": {
+      "command": {
+        "started": 1937,
+        "completed": 1907,
+        "carryIn": 0,
+        "inFlight": 30,
+        "peak": 31,
+        "failed": 0,
+        "meanMs": 22.68687062401662,
+        "maxMs": 99.38229200000205,
+        "p50UpperMs": 21,
+        "p95UpperMs": 51,
+        "overflow2048Ms": 0
+      },
+      "queue": {
+        "started": 1937,
+        "completed": 1937,
+        "carryIn": 0,
+        "inFlight": 0,
+        "peak": 0,
+        "failed": 0,
+        "meanMs": 40.60335191636571,
+        "maxMs": 208.66183399999863,
+        "p50UpperMs": 33,
+        "p95UpperMs": 124,
+        "overflow2048Ms": 0
+      },
+      "delivery": {
+        "started": 87598,
+        "completed": 87598,
+        "carryIn": 0,
+        "inFlight": 0,
+        "peak": 128,
+        "failed": 0,
+        "meanMs": 99.49305064988867,
+        "maxMs": 316.36566600000515,
+        "p50UpperMs": 107,
+        "p95UpperMs": 153,
+        "overflow2048Ms": 0
+      },
+      "session": {
+        "started": 12416,
+        "completed": 12416,
+        "carryIn": 0,
+        "inFlight": 0,
+        "peak": 128,
+        "failed": 0,
+        "meanMs": 11.197879961420803,
+        "maxMs": 30.147790999995777,
+        "p50UpperMs": 11,
+        "p95UpperMs": 19,
+        "overflow2048Ms": 0
+      },
+      "sender": {
+        "started": 18060,
+        "completed": 18060,
+        "carryIn": 0,
+        "inFlight": 0,
+        "peak": 1,
+        "failed": 0,
+        "meanMs": 1.391210696511641,
+        "maxMs": 82.48291600000084,
+        "p50UpperMs": 1,
+        "p95UpperMs": 2,
+        "overflow2048Ms": 0
+      },
+      "recipient": {
+        "started": 154035,
+        "completed": 154035,
+        "carryIn": 0,
+        "inFlight": 0,
+        "peak": 128,
+        "failed": 0,
+        "meanMs": 40.0639567070473,
+        "maxMs": 107.31100099999458,
+        "p50UpperMs": 39,
+        "p95UpperMs": 55,
+        "overflow2048Ms": 0
+      },
+      "publish": {
+        "started": 1872,
+        "completed": 1872,
+        "carryIn": 0,
+        "inFlight": 0,
+        "peak": 28,
+        "failed": 0,
+        "meanMs": 4.70263458814106,
+        "maxMs": 20.11333300000115,
+        "p50UpperMs": 5,
+        "p95UpperMs": 11,
+        "overflow2048Ms": 0
+      }
+    }
+  },
+  "work": {
+    "contexts": 1,
+    "entries": 32,
+    "watermarks": 32,
+    "sockets": 128,
+    "pendingBroker": 0,
+    "pumping": false,
+    "proofs": {
+      "contexts": 1,
+      "running": 0,
+      "pending": 0,
+      "captured": 0,
+      "peaks": {
+        "contexts": 1,
+        "running": 1,
+        "pending": 1,
+        "captured": 64
+      }
+    },
+    "admissions": 128,
+    "humans": 32
+  },
+  "memory": [
+    {
+      "atMs": 15797.118466,
+      "rss": 573603840,
+      "heapUsed": 85066656,
+      "work": {
+        "contexts": 1,
+        "entries": 0,
+        "watermarks": 0,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 0
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 16800.972216,
+      "rss": 576806912,
+      "heapUsed": 110497896,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 32
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 17800.403675,
+      "rss": 578859008,
+      "heapUsed": 159290784,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 62
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 18800.557926,
+      "rss": 580300800,
+      "heapUsed": 177793592,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 62
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 19804.405968,
+      "rss": 585576448,
+      "heapUsed": 181355768,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 20805.021593,
+      "rss": 587800576,
+      "heapUsed": 206533456,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 1,
+          "pending": 0,
+          "captured": 31,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 21804.571385,
+      "rss": 581005312,
+      "heapUsed": 107933616,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 22806.110552,
+      "rss": 583102464,
+      "heapUsed": 100088208,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 23805.799219,
+      "rss": 584982528,
+      "heapUsed": 153244488,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 24805.747136,
+      "rss": 589996032,
+      "heapUsed": 193296232,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 25817.613679,
+      "rss": 591011840,
+      "heapUsed": 204068416,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 26827.744554,
+      "rss": 593149952,
+      "heapUsed": 236197880,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 27827.40668,
+      "rss": 586674176,
+      "heapUsed": 94273192,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 1,
+        "pumping": true,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 28838.091972,
+      "rss": 587788288,
+      "heapUsed": 115313664,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 29837.393764,
+      "rss": 589119488,
+      "heapUsed": 96569472,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 30837.422806,
+      "rss": 590319616,
+      "heapUsed": 122304864,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 31847.123848,
+      "rss": 591904768,
+      "heapUsed": 121691600,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 32194.620265,
+      "rss": 592683008,
+      "heapUsed": 138487496,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 32846.768182,
+      "rss": 595173376,
+      "heapUsed": 178593000,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 33846.431141,
+      "rss": 597499904,
+      "heapUsed": 201172216,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 34847.699058,
+      "rss": 598511616,
+      "heapUsed": 216371440,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 35847.597225,
+      "rss": 591327232,
+      "heapUsed": 100744248,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 36847.600767,
+      "rss": 592621568,
+      "heapUsed": 115969200,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 37853.578518,
+      "rss": 593891328,
+      "heapUsed": 142867488,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 38852.555726,
+      "rss": 595861504,
+      "heapUsed": 167431920,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 1,
+          "pending": 0,
+          "captured": 31,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 39852.646977,
+      "rss": 597032960,
+      "heapUsed": 210451648,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 40852.706352,
+      "rss": 591589376,
+      "heapUsed": 61512376,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 41863.628853,
+      "rss": 596062208,
+      "heapUsed": 120000840,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 42863.977395,
+      "rss": 597614592,
+      "heapUsed": 147654080,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 43865.802062,
+      "rss": 598601728,
+      "heapUsed": 158840824,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 44865.538271,
+      "rss": 601047040,
+      "heapUsed": 216955704,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 45866.119772,
+      "rss": 602095616,
+      "heapUsed": 208925104,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 46866.592855,
+      "rss": 594829312,
+      "heapUsed": 97865800,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 47866.531272,
+      "rss": 596860928,
+      "heapUsed": 125081496,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 48866.671315,
+      "rss": 598171648,
+      "heapUsed": 171415600,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 49868.283815,
+      "rss": 599588864,
+      "heapUsed": 154002224,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 50867.578941,
+      "rss": 600993792,
+      "heapUsed": 172580272,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 1,
+          "pending": 0,
+          "captured": 32,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 51868.851316,
+      "rss": 602562560,
+      "heapUsed": 205231024,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 52868.672233,
+      "rss": 594530304,
+      "heapUsed": 78252848,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 53869.615025,
+      "rss": 596426752,
+      "heapUsed": 108909152,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 1,
+          "pending": 0,
+          "captured": 31,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 54869.641359,
+      "rss": 597848064,
+      "heapUsed": 157618032,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 55871.415693,
+      "rss": 600715264,
+      "heapUsed": 183028568,
+      "work": {
+        "contexts": 1,
+        "entries": 28,
+        "watermarks": 28,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 56870.962068,
+      "rss": 603381760,
+      "heapUsed": 212234632,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 57871.454694,
+      "rss": 604557312,
+      "heapUsed": 218782520,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 1,
+          "pending": 0,
+          "captured": 31,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 58877.475652,
+      "rss": 597135360,
+      "heapUsed": 84869360,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 59877.940986,
+      "rss": 598786048,
+      "heapUsed": 114228952,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 60877.562945,
+      "rss": 599834624,
+      "heapUsed": 124824840,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 61882.027946,
+      "rss": 602062848,
+      "heapUsed": 163692392,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 62881.951238,
+      "rss": 603750400,
+      "heapUsed": 190472912,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 63881.470113,
+      "rss": 596209664,
+      "heapUsed": 85557840,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 1,
+          "pending": 0,
+          "captured": 31,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 64881.576614,
+      "rss": 598450176,
+      "heapUsed": 149082752,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 65881.493864,
+      "rss": 600649728,
+      "heapUsed": 166933624,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 1,
+          "pending": 0,
+          "captured": 31,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 66881.671948,
+      "rss": 602222592,
+      "heapUsed": 170801136,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 67881.580657,
+      "rss": 604291072,
+      "heapUsed": 232904152,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 68883.056907,
+      "rss": 596701184,
+      "heapUsed": 102226208,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 69882.656574,
+      "rss": 598147072,
+      "heapUsed": 105961584,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 70892.085575,
+      "rss": 599773184,
+      "heapUsed": 144161672,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 71891.51395,
+      "rss": 601464832,
+      "heapUsed": 161587192,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 1,
+          "pending": 0,
+          "captured": 31,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 72891.783201,
+      "rss": 603549696,
+      "heapUsed": 217577176,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 73893.491826,
+      "rss": 604721152,
+      "heapUsed": 246482800,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 74895.889243,
+      "rss": 597516288,
+      "heapUsed": 104715192,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 75896.522036,
+      "rss": 598876160,
+      "heapUsed": 124156408,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 1,
+          "pending": 1,
+          "captured": 62,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 76903.406536,
+      "rss": 600190976,
+      "heapUsed": 152412856,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 77913.292328,
+      "rss": 602488832,
+      "heapUsed": 187020344,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 78913.636204,
+      "rss": 604061696,
+      "heapUsed": 209131840,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 1,
+          "pending": 0,
+          "captured": 31,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 79913.478746,
+      "rss": 605315072,
+      "heapUsed": 263402488,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 80922.33033,
+      "rss": 597999616,
+      "heapUsed": 118375536,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 81923.035538,
+      "rss": 599289856,
+      "heapUsed": 115528440,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 82924.19258,
+      "rss": 599805952,
+      "heapUsed": 158368856,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 83923.488414,
+      "rss": 597708800,
+      "heapUsed": 85591720,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 1,
+          "pending": 0,
+          "captured": 31,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 84923.474748,
+      "rss": 598958080,
+      "heapUsed": 134397200,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 85923.719748,
+      "rss": 601673728,
+      "heapUsed": 186949264,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 86933.379748,
+      "rss": 604024832,
+      "heapUsed": 195669480,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 87933.762291,
+      "rss": 605409280,
+      "heapUsed": 206999592,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 1,
+          "pending": 0,
+          "captured": 31,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 88933.474874,
+      "rss": 596996096,
+      "heapUsed": 105739368,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 89937.109333,
+      "rss": 599416832,
+      "heapUsed": 122662376,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 90936.728167,
+      "rss": 600969216,
+      "heapUsed": 169178392,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 1,
+          "pending": 0,
+          "captured": 31,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 91936.478168,
+      "rss": 602017792,
+      "heapUsed": 171125632,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 1,
+          "pending": 0,
+          "captured": 32,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 92936.651543,
+      "rss": 604233728,
+      "heapUsed": 201581440,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 93936.497127,
+      "rss": 608763904,
+      "heapUsed": 264988904,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 1,
+          "pending": 0,
+          "captured": 31,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 94937.021669,
+      "rss": 603549696,
+      "heapUsed": 122634832,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 95936.521128,
+      "rss": 605777920,
+      "heapUsed": 143404704,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 96936.47492,
+      "rss": 607453184,
+      "heapUsed": 181246760,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 1,
+          "pending": 0,
+          "captured": 31,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 97936.667962,
+      "rss": 608624640,
+      "heapUsed": 169754224,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 98940.613254,
+      "rss": 611205120,
+      "heapUsed": 240710264,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 99940.452005,
+      "rss": 612868096,
+      "heapUsed": 235539904,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 100944.89163,
+      "rss": 604262400,
+      "heapUsed": 88645544,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 101944.510381,
+      "rss": 606822400,
+      "heapUsed": 134008224,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 1,
+          "pending": 0,
+          "captured": 31,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 102944.401548,
+      "rss": 608919552,
+      "heapUsed": 204746248,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 1,
+          "pending": 0,
+          "captured": 31,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 63
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 103944.702465,
+      "rss": 609693696,
+      "heapUsed": 171797592,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 64
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 104953.79184,
+      "rss": 611778560,
+      "heapUsed": 233542560,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 64
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 105953.618758,
+      "rss": 471724032,
+      "heapUsed": 92104192,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 1,
+          "pending": 0,
+          "captured": 31,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 64
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 106953.614966,
+      "rss": 473018368,
+      "heapUsed": 109636512,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 1,
+          "pending": 0,
+          "captured": 32,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 64
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 107963.019009,
+      "rss": 475631616,
+      "heapUsed": 147469376,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 64
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 108962.469467,
+      "rss": 476942336,
+      "heapUsed": 171187560,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 64
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 109964.296468,
+      "rss": 478384128,
+      "heapUsed": 193230776,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 64
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 110974.998593,
+      "rss": 480088064,
+      "heapUsed": 243342824,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 64
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 111974.575635,
+      "rss": 473894912,
+      "heapUsed": 107748344,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 64
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 112979.871885,
+      "rss": 474476544,
+      "heapUsed": 104077472,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 64
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 113979.808886,
+      "rss": 476823552,
+      "heapUsed": 152069720,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 64
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 114979.635678,
+      "rss": 479170560,
+      "heapUsed": 167810544,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 1,
+          "pending": 0,
+          "captured": 31,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 64
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 115979.788387,
+      "rss": 479956992,
+      "heapUsed": 169720496,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 64
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 116983.640345,
+      "rss": 482414592,
+      "heapUsed": 214410448,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 64
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 117981.404221,
+      "rss": 474284032,
+      "heapUsed": 87230616,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 1,
+          "pending": 0,
+          "captured": 31,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 64
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 118981.516805,
+      "rss": 475824128,
+      "heapUsed": 98096512,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 1,
+          "pending": 0,
+          "captured": 32,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 64
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 119984.964264,
+      "rss": 477933568,
+      "heapUsed": 144998712,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 64
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 120984.458222,
+      "rss": 479637504,
+      "heapUsed": 162115864,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 1,
+          "pending": 1,
+          "captured": 62,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 64
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 121984.546056,
+      "rss": 480522240,
+      "heapUsed": 189850848,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 1,
+          "pending": 0,
+          "captured": 32,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 64
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 122986.019473,
+      "rss": 482619392,
+      "heapUsed": 229141512,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 64
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 123985.637307,
+      "rss": 474619904,
+      "heapUsed": 114628864,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 1,
+          "pending": 0,
+          "captured": 31,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 64
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 124985.742224,
+      "rss": 475553792,
+      "heapUsed": 105697608,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 64
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 125991.755933,
+      "rss": 477728768,
+      "heapUsed": 141913320,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 64
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 126991.704142,
+      "rss": 479035392,
+      "heapUsed": 156222256,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 1,
+          "pending": 1,
+          "captured": 62,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 64
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 127991.641017,
+      "rss": 481374208,
+      "heapUsed": 197783848,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 64
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 128995.478185,
+      "rss": 483078144,
+      "heapUsed": 239695720,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 64
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    },
+    {
+      "atMs": 129818.98856,
+      "rss": 474533888,
+      "heapUsed": 81754840,
+      "work": {
+        "contexts": 1,
+        "entries": 32,
+        "watermarks": 32,
+        "sockets": 128,
+        "pendingBroker": 0,
+        "pumping": false,
+        "proofs": {
+          "contexts": 1,
+          "running": 0,
+          "pending": 0,
+          "captured": 0,
+          "peaks": {
+            "contexts": 1,
+            "running": 1,
+            "pending": 1,
+            "captured": 64
+          }
+        },
+        "admissions": 128,
+        "humans": 32
+      }
+    }
+  ],
+  "transport": {
+    "frames": 85650,
+    "bytes": 177934925,
+    "closed": 0,
+    "codes": {}
+  }
+}
