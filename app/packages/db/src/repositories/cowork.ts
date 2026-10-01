@@ -24,12 +24,13 @@ interface SaveCommand {
   maximumConnectionUnits: number;
 }
 interface StorageScope { workspaceId: string; projectId: string; connectionId: string; unitId: string }
+export interface CoWorkTaskLockInput { id: string; taskId: string; projectId: string; lineageTaskId: string }
 const clock = sql<Date>`clock_timestamp()`.mapWith((value: Date | string) => new Date(value instanceof Date ? value.getTime() : value));
 
 export function coworkUnitRows(tx: DbExecutor) {
   return {
     /** The caller holds current authorization/command locks in this same outer transaction. */
-    async lock(scope: StorageScope) {
+    async lock(scope: StorageScope, prepareTasks?: (units: readonly CoWorkTaskLockInput[]) => Promise<readonly string[]>) {
       await tx.insert(schema.coworkConnectionSlots).values({ workspaceId: scope.workspaceId, connectionId: scope.connectionId })
         .onConflictDoNothing();
       await tx.select().from(schema.coworkConnectionSlots).where(and(
@@ -40,12 +41,16 @@ export function coworkUnitRows(tx: DbExecutor) {
       if (!located) return null;
       // Existing claims can belong to other tasks/projects. Gather all their task identities
       // before taking any task lock, then lock the complete set and finally the unit rows.
-      const relevant = await tx.select({ id: units.id, taskId: units.taskId }).from(units)
+      const relevant = await tx.select({ id: units.id, taskId: units.taskId, projectId: units.projectId, lineageTaskId: units.lineageTaskId }).from(units)
         .where(and(own, or(eq(units.state, 'claimed'), eq(units.id, scope.unitId))));
-      const taskIds = [...new Set(relevant.map((row) => row.taskId))].sort();
-      await tx.select({ id: schema.projectWorkItems.id }).from(schema.projectWorkItems)
+      // The server's mandatory production policy locks every relevant project graph
+      // and discovers dependencies here, before the first native task row lock.
+      const additionalTasks = prepareTasks ? await prepareTasks(relevant) : [];
+      const taskIds = [...new Set([...relevant.flatMap((row) => [row.taskId, row.lineageTaskId]), ...additionalTasks])].sort();
+      const tasks = await tx.select({ id: schema.projectWorkItems.id }).from(schema.projectWorkItems)
         .where(and(eq(schema.projectWorkItems.workspaceId, scope.workspaceId), inArray(schema.projectWorkItems.id, taskIds)))
         .orderBy(asc(schema.projectWorkItems.id)).for('update');
+      if (tasks.length !== taskIds.length) throw new Error('The complete native task lock set is unavailable');
       const locked = await tx.select().from(units).where(and(own, inArray(units.id, relevant.map((row) => row.id))))
         .orderBy(asc(units.id)).for('update');
       const target = locked.find((row) => row.id === scope.unitId && row.projectId === scope.projectId);
@@ -56,6 +61,11 @@ export function coworkUnitRows(tx: DbExecutor) {
         && row.leaseExpiresAt && row.leaseExpiresAt.getTime() > now.getTime()).length;
       return {
         unit: unitRecord(target), now, activeConnectionUnits,
+        /** Canonical reread under the retained unit lock; no new upstream lock acquisition. */
+        async current(): Promise<Unit | null> {
+          const [row] = await tx.select().from(units).where(and(own, eq(units.id, target.id), eq(units.projectId, scope.projectId)));
+          return row ? unitRecord(row) : null;
+        },
         /** Actual conditional persisted row, or null if the original fence/lease/capacity is lost. */
         async save(next: Unit, command: SaveCommand): Promise<Unit | null> {
           if (!Number.isSafeInteger(command.leaseSeconds) || command.leaseSeconds < 1 || command.leaseSeconds > 300

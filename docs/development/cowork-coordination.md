@@ -332,3 +332,44 @@ its own verified repository access at delivery; stored native publications need
 provenance-aware current-reader gates as well. This storage does not activate
 that adapter or publish private GitHub facts into existing conversations/events.
 No ordinary standing-rule click substitutes for those gates.
+
+## Caller-owned claim execution composition
+
+The server's internal `coWorkClaimInTransaction(tx, verifiedClaims, command,
+policy)` binds the existing core claim/renew/release commands to #152's actual
+`agentExecutionInTransaction` preparation/completion and sole command ledger.
+It opens no new transaction, model call or final event flush. Only prepared
+server runtime identity constructs the co-work context. Claim payload fields
+are exact bounded version/fence/checkpoint inputs; copied prompts, policy or
+capacity overrides are rejected. Actual unit role must match the grant class.
+
+Its server-owned policy is mandatory: before the first native task lock it must
+lock the complete sorted relevant project graphs and return every dependency
+task; after the retained task/unit locks it checks role-specific current
+eligibility. Replay is explicitly an observation, not permission to resume.
+The complete task set includes every retained claim's task and canonical
+lineage root, including other projects. Public composition remains disabled
+until the actual shared graph/role/checkpoint providers are implemented and
+independently verified; passing fixture callbacks is not their implementation.
+
+Release requires the actual scoped checkpoint's current connection/generation/
+original runtime fence. Historical checkpoints from earlier assignees remain
+readable only under current same-unit/source authorization; historical
+connection identity is not an authority requirement. Source coverage must be
+included in the original prepared command, locked before graph/tasks and
+rechecked without acquiring late upstream material/version locks. An incomplete
+coverage or changed source fails closed. A typed checkpoint producer/schema
+and complete current source adapters remain required unfinished work.
+
+The SQL save returns actual persisted expiry. Completion rereads every exact
+canonical claim field under the retained unit lock and rechecks current
+checkpoint sources. The core stages one outcome; #152 writes its sole debit
+and durable receipt once. JSON replay hydrates Date values and uses stable
+semantic comparison, including PostgreSQL jsonb key-order changes. An unchanged
+expired historical lease can be observed without renewing it. New generation/
+version/assignment/checkpoint state makes the old receipt stale; current
+runtime/grant/source expiry or revocation still denies observation. Failure
+must escape the caller's outer transaction. Actual domain publication needs its
+appropriate operation/grant and live fence; it is not an arbitrary side effect
+authorized by `cowork.claim`. All domain/receipt/outgoing work finishes before
+the shared genuine native final event flush.
