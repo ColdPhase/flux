@@ -31,6 +31,9 @@
 .project-convo__material-form textarea { border: 1px solid var(--line-strong); border-radius: var(--r); padding: 9px; min-height: 90px; resize: vertical; background: var(--bg); color: var(--text); }
 .project-convo__form-actions { display: flex; gap: 8px; }
 .project-convo__composer { border-top: 1px solid var(--line); background: var(--bg); padding-top: 8px; }
+.project-convo__readonly { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0; }
+.project-convo__readonly p { margin: 0; color: var(--text-2); font-size: var(--fs-sm); }
+.project-convo__readonly .ui-btn { flex: none; }
 .project-convo__composer .composer__audience { display: flex; align-items: center; gap: 5px; min-width: 0; white-space: nowrap; }
 .project-convo__composer .composer__audience > span { overflow: hidden; text-overflow: ellipsis; }
 .project-convo__current-thread { display: none; }

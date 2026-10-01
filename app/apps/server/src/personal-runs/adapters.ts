@@ -13,8 +13,10 @@ import {
   type PersonalRunQueue,
   type PersonalRunUnitOfWork,
   type ProposalUnitOfWork,
+  type Transaction,
 } from '@flux/core';
-import { workUseCases } from '../work/adapters.js';
+import { nativeWorkInEventSession } from '../work/adapters.js';
+import { transactionEventSession } from '../work/transaction-events.js';
 
 // Adapters that connect the personal-run use cases (#68, O-008) to the access policy, the
 // Drizzle rows, the event log and pg-boss. Core defines the ports (#46); the server assembles
@@ -32,12 +34,13 @@ export function pgBossPersonalRunQueue(boss: Pick<PgBoss, 'send'>): PersonalRunQ
   });
 }
 
-function personalRunPorts(tx: DbExecutor, queue: PersonalRunQueueFactory): PersonalRunPorts {
+function personalRunPorts(tx: DbExecutor, queue: PersonalRunQueueFactory,
+  events?: PersonalRunPorts['events']): PersonalRunPorts {
   return {
     access: policyPersonalRunAccess(tx),
     runs: personalRunRows(tx),
     queue: queue(tx),
-    events: { record: async (principal, workspaceId, kind, projectId, data) => { await recordEvent(tx, principal, workspaceId, kind, projectId, data); } },
+    events: events ?? { record: async (principal, workspaceId, kind, projectId, data) => { await recordEvent(tx, principal, workspaceId, kind, projectId, data); } },
   };
 }
 
@@ -49,18 +52,22 @@ export function personalRunUnitOfWork(db: Database, queue: PersonalRunQueueFacto
 /** Accept records the result through the #101 work use case, in the accept's own transaction. */
 export function proposalUnitOfWork(db: Database, queue: PersonalRunQueueFactory): ProposalUnitOfWork {
   return {
-    run: (work) => db.transaction((tx) => {
+    run: (work) => db.transaction(async (tx) => {
+      const session = transactionEventSession(tx);
+      const native = nativeWorkInEventSession(tx as Transaction, session);
       const rows = workRows(tx);
-      return work({
-        ...personalRunPorts(tx, queue),
+      const result = await session.run(() => work({
+        ...personalRunPorts(tx, queue, session),
         results: {
           async findWork(workId, options) {
             const item = await rows.findWork(workId, options);
             return item ? { id: item.id, projectId: item.projectId, version: item.version, ownerUserId: item.owner?.kind === 'human' ? item.owner.id : null } : null;
           },
-          recordResult: (principal, projectId, command) => workUseCases(tx as unknown as Database).createResult(principal, projectId, command),
+          recordResult: (principal, projectId, command) => native.createResult(principal, projectId, command),
         },
-      });
+      }));
+      await session.flushEvents();
+      return result;
     }),
   };
 }
