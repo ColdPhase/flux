@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
+import { sql } from 'drizzle-orm';
 import { createDatabase, schema } from '@flux/db';
-import { DomainError, type Principal } from '@flux/core';
+import { agentExecutionUseCases, DomainError, type Principal } from '@flux/core';
 import type { Agent, AgentConnection, AgentStandingGrant, Decision, Material, Page, WorkItem, WorkResult } from '@flux/contracts';
 import { agentRuntimeInTransaction } from '../../apps/server/src/agent-connection/runtime.js';
 import { agentExecutionInTransaction } from '../../apps/server/src/agent-connection/execution.js';
 import { lockProjectTaskGraphs, requireTaskPrerequisitesMet, taskPrerequisiteIds } from '../../apps/server/src/work/task-graph.js';
 import { nativeWorkInTransaction, workUseCases } from '../../apps/server/src/work/adapters.js';
-import { agentExecutionUseCases } from '@flux/core';
 import { backendPid, settled, waitUntilBlockedBy } from './support/locks.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 
@@ -435,7 +435,8 @@ test('claim-versus-writer lock waits use the exported primitives in the pinned o
     await lockProjectTaskGraphs(tx, [f.place.id]);
     const prerequisites = await taskPrerequisiteIds(tx, ws, [unit.id]);
     assert.deepEqual(prerequisites, [x.id]);
-    const locked = await tx.execute(`SELECT id FROM project_work_items WHERE id = ANY(ARRAY['${[unit.id, ...prerequisites].sort().join("','")}']::uuid[]) ORDER BY id FOR UPDATE` as never);
+    const wanted = [unit.id, ...prerequisites].sort();
+    const locked = await tx.execute(sql`SELECT id FROM project_work_items WHERE id IN (${sql.join(wanted.map((id) => sql`${id}::uuid`), sql`, `)}) ORDER BY id FOR UPDATE`);
     assert.equal(locked.rows.length, 2);
     await assert.rejects(requireTaskPrerequisitesMet(tx, ws, unit.id), code('TASK_PREREQUISITES_UNMET'));
   });
@@ -504,7 +505,7 @@ test('the reader is direct, distinct, ascending, lock-free and bounded; the star
     assert.deepEqual(await taskPrerequisiteIds(tx, f.ws.id, []), []);
     assert.deepEqual(await taskPrerequisiteIds(tx, randomUUID(), [e.id]), [], 'another workspace sees none');
     await assert.rejects(taskPrerequisiteIds(tx, f.ws.id, ['nope']), code('INVALID_INPUT'));
-    const locks = (await tx.execute(`SELECT count(*)::int AS n FROM pg_locks WHERE pid = pg_backend_pid() AND (locktype IN ('advisory','transactionid','tuple','page') OR mode IN ('RowShareLock','RowExclusiveLock'))` as never)).rows[0] as { n: number };
+    const locks = (await tx.execute(sql`SELECT count(*)::int AS n FROM pg_locks WHERE pid = pg_backend_pid() AND (locktype IN ('advisory','transactionid','tuple','page') OR mode IN ('RowShareLock','RowExclusiveLock'))`)).rows[0] as { n: number };
     assert.equal(locks.n, 0, 'reading locks nothing');
     await assert.rejects(requireTaskPrerequisitesMet(tx, f.ws.id, randomUUID()), code('WORK_NOT_FOUND'));
     await requireTaskPrerequisitesMet(tx, f.ws.id, a.id);
@@ -520,8 +521,6 @@ test('the reader is direct, distinct, ascending, lock-free and bounded; the star
     await client.query('INSERT INTO project_task_dependencies (workspace_id, project_id, task_id, prerequisite_id) VALUES ($1,$2,$3,$4)', [f.ws.id, f.place.id, a.id, orphan]);
     const foreign = await work.createWork(actor, f.elsewhere.id, { title: 'In another project', status: 'done' });
     await client.query('INSERT INTO project_task_dependencies (workspace_id, project_id, task_id, prerequisite_id) VALUES ($1,$2,$3,$4)', [f.ws.id, f.place.id, a.id, foreign.id]);
-    const { rows } = await client.query('SELECT 1');
-    assert.equal(rows.length, 1);
     await client.query('COMMIT');
   } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
   await db.transaction(async (tx) => {
