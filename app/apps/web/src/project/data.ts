@@ -60,8 +60,8 @@ export function audienceLine(people: ProjectPerson[] | null, meId: string): stri
   if (!people) return 'People with project access';
   const others = people.filter((person) => person.kind === 'human' && person.id !== meId).map((person) => firstName(person.name));
   const agents = people.filter((person) => person.kind === 'agent').length;
-  const humans = !others.length ? 'Only you'
-    : others.length === 1 ? `${others[0]} and you · only you two`
+  const humans = !others.length ? (agents ? 'You' : 'Only you')
+    : others.length === 1 ? `${others[0]} and you${agents ? '' : ' · only you two'}`
       : others.length <= 3 ? join([...others, 'you'])
         : `${others.slice(0, 2).join(', ')}, you and ${others.length - 2} others`;
   return agents ? `${humans} · ${agents} ${agents === 1 ? 'agent' : 'agents'}` : humans;

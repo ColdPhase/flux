@@ -32,17 +32,33 @@ export async function eventAudience(tx: Executor, event: EventRef): Promise<stri
   return recipients;
 }
 
+export interface EventIntent {
+  readonly principal: Readonly<Principal>;
+  readonly workspaceId: string;
+  readonly kind: string;
+  readonly objectId: string;
+  readonly data: Readonly<Record<string, unknown>>;
+}
+
 /**
- * Records a versioned event in the caller's transaction, with one `event_audience` row per
- * principal that may read it (the per-recipient stream index). Events carry identifiers
- * and audience, never content. The audience is decided before the event insert: the seq
- * trigger takes a lock held until commit, so write the event as the last statement of a
- * transaction and keep the work after the insert to the audience rows.
+ * Final event storage in the caller's transaction. Resolve every audience before the
+ * first insert takes the sequence lock; after that point write only events and their
+ * derived audience/outbox records. Domain, coordination and receipt writes precede
+ * this call. Events contain canonical identifiers, never copied public content.
  */
+export async function recordEvents(tx: Executor, intents: readonly EventIntent[]): Promise<string[]> {
+  const prepared: { intent: EventIntent; id: string; recipients: string[] }[] = [];
+  for (const intent of intents) prepared.push({ intent, id: randomUUID(),
+    recipients: await eventAudience(tx, { kind: intent.kind, workspaceId: intent.workspaceId, objectId: intent.objectId }) });
+  for (const { intent, id, recipients } of prepared) {
+    const [row] = await tx.insert(schema.events).values({ id, kind: intent.kind, objectId: intent.objectId,
+      actorId: principalKey(intent.principal), data: intent.data, workspaceId: intent.workspaceId }).returning({ seq: schema.events.seq });
+    if (recipients.length) await tx.insert(schema.eventAudience).values(recipients.map((recipient) => ({ recipient, seq: row!.seq, eventId: id })));
+  }
+  return prepared.map(({ id }) => id);
+}
+
+/** Single-event compatibility entry; the same final-write ordering applies. */
 export async function recordEvent(tx: Executor, principal: Principal, workspaceId: string, kind: string, objectId: string, data: Record<string, unknown>) {
-  const id = randomUUID();
-  const recipients = await eventAudience(tx, { kind, workspaceId, objectId });
-  const [row] = await tx.insert(schema.events).values({ id, kind, objectId, actorId: principalKey(principal), data, workspaceId }).returning({ seq: schema.events.seq });
-  if (recipients.length) await tx.insert(schema.eventAudience).values(recipients.map((recipient) => ({ recipient, seq: row!.seq, eventId: id })));
-  return id;
+  return (await recordEvents(tx, [{ principal, workspaceId, kind, objectId, data }]))[0]!;
 }

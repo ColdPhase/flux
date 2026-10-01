@@ -1,4 +1,5 @@
-import { pgTable, text, timestamp, uuid, integer, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { pgTable, text, timestamp, uuid, integer, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, check, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
 export const samples = pgTable('samples', {
   id: uuid('id').primaryKey(),
@@ -459,12 +460,15 @@ export const projectConversations = pgTable('project_conversations', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),
   projectId: uuid('project_id').notNull(),
-  createdBy: text('created_by').notNull(),
+  createdBy: text('created_by'),
+  createdByAgentId: uuid('created_by_agent_id'),
   nextSequence: integer('next_sequence').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique().on(table.workspaceId, table.projectId, table.id),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.createdByAgentId], foreignColumns: [agents.workspaceId, agents.id] }),
+  check('project_conversation_exact_actor', sql`num_nonnulls(${table.createdBy}, ${table.createdByAgentId}) = 1`),
 ]);
 
 export const projectMaterials = pgTable('project_materials', {
@@ -513,7 +517,8 @@ export const projectMessages = pgTable('project_messages', {
   workspaceId: uuid('workspace_id').notNull(),
   projectId: uuid('project_id').notNull(),
   conversationId: uuid('conversation_id').notNull(),
-  authorId: text('author_id').notNull(),
+  authorId: text('author_id'),
+  authorAgentId: uuid('author_agent_id'),
   clientMessageId: uuid('client_message_id').notNull(),
   requestFingerprint: text('request_fingerprint').notNull(),
   sequence: integer('sequence').notNull(),
@@ -523,7 +528,11 @@ export const projectMessages = pgTable('project_messages', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique().on(table.conversationId, table.sequence),
+  unique('project_messages_root_identity').on(table.conversationId, table.id, table.sequence),
   unique().on(table.projectId, table.authorId, table.clientMessageId),
+  unique().on(table.projectId, table.authorAgentId, table.clientMessageId),
+  foreignKey({ columns: [table.workspaceId, table.authorAgentId], foreignColumns: [agents.workspaceId, agents.id] }),
+  check('project_message_exact_actor', sql`num_nonnulls(${table.authorId}, ${table.authorAgentId}) = 1`),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.conversationId], foreignColumns: [projectConversations.workspaceId, projectConversations.projectId, projectConversations.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.sourceMaterialId, table.sourceMaterialVersion], foreignColumns: [projectMaterialVersions.workspaceId, projectMaterialVersions.projectId, projectMaterialVersions.materialId, projectMaterialVersions.version] }),
 ]);
@@ -669,12 +678,47 @@ export const projectWorkItems = pgTable('project_work_items', {
   parkedAt: timestamp('parked_at', { withTimezone: true }),
   createdByKind: text('created_by_kind', { enum: ['human', 'agent'] }).notNull(),
   createdById: text('created_by_id').notNull(),
+  clientCommandId: uuid('client_command_id'),
+  requestFingerprint: text('request_fingerprint'),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique().on(table.workspaceId, table.projectId, table.id),
+  uniqueIndex('project_work_creation_command_idx').on(table.projectId, table.createdByKind, table.createdById, table.clientCommandId),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+]);
+
+// Durable compact creation notices, never synthetic conversation roots (#154, migration 0033).
+export const projectTaskNotices = pgTable('project_task_notices', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  workId: uuid('work_id').notNull(),
+  kind: text('kind', { enum: ['task.created'] }).notNull(),
+  createdByKind: text('created_by_kind', { enum: ['human', 'agent'] }).notNull(),
+  createdById: text('created_by_id').notNull(),
+  sources: jsonb('sources').$type<import('@flux/contracts').ObjectRef[]>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+}, (table) => [
+  unique().on(table.workId, table.kind),
+  index('project_task_notices_project_idx').on(table.projectId, table.createdAt, table.id),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.workId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+]);
+
+/** A task never manufactures a conversation. Its first genuine message binds the root. */
+export const projectTaskDiscussions = pgTable('project_task_discussions', {
+  workId: uuid('work_id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  conversationId: uuid('conversation_id').notNull().unique(),
+  rootMessageId: uuid('root_message_id').notNull().unique(),
+  rootSequence: integer('root_sequence').notNull().default(1),
+}, (table) => [
+  check('project_task_discussion_root_sequence', sql`${table.rootSequence} = 1`),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.workId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.conversationId], foreignColumns: [projectConversations.workspaceId, projectConversations.projectId, projectConversations.id] }),
+  foreignKey({ columns: [table.conversationId, table.rootMessageId, table.rootSequence], foreignColumns: [projectMessages.conversationId, projectMessages.id, projectMessages.sequence] }),
 ]);
 
 export const projectResults = pgTable('project_results', {

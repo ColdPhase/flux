@@ -6,6 +6,8 @@ import {
   projectLinksPath,
   projectResultsPath,
   projectWorkPath,
+  projectTaskNoticesPath,
+  taskDiscussionPath,
   resultPath,
   WORK_LIMITS,
   WORK_STATUSES,
@@ -18,11 +20,14 @@ import {
   type PageQuery,
   type ProposeDecisionCommand,
   type UpdateWorkCommand,
+  type ConversationWindowQuery,
+  type SendMessageCommand,
 } from '@flux/contracts';
-import { assertAuthorized, type Database, type ResourceRef } from '@flux/core';
+import { assertAuthorized, InvalidInputError, type Database, type ResourceRef } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, expectedVersion, useDomainErrors, versionEtag, type ReplayCheck } from '../http/commands.js';
 import { workUseCases } from './adapters.js';
+import { taskDiscussionUseCases } from './task-discussions.js';
 
 interface Options { db: Database; sessions: SessionResolver }
 
@@ -39,7 +44,7 @@ const version = { type: 'integer', minimum: 1 } as const;
 
 const createWork = { type: 'object', required: ['title'], additionalProperties: false, properties: {
   title, outcome: { type: 'string', maxLength: WORK_LIMITS.outcome }, owner: principalRef, status,
-  blocker: { type: 'string', maxLength: WORK_LIMITS.blocker }, sources: refs, related: refs,
+  blocker: { type: 'string', maxLength: WORK_LIMITS.blocker }, sources: refs, related: refs, clientCommandId: { type: 'string', format: 'uuid' },
 } } as const;
 const updateWork = { type: 'object', additionalProperties: false, minProperties: 1, properties: {
   title, outcome: { type: 'string', maxLength: WORK_LIMITS.outcome }, owner: principalRef, status,
@@ -72,6 +77,25 @@ export async function workRoutes(app: FastifyInstance, { db, sessions }: Options
   const { principal, command } = commandRunner(db, sessions);
   const work = workUseCases(db);
   const projectScope = (id: string): ResourceRef => ({ type: 'project', id });
+
+  const discussion = taskDiscussionUseCases(db);
+  app.get<{ Params: { workId: string }; Querystring: ConversationWindowQuery }>(taskDiscussionPath(':workId'),
+    { schema: { querystring: { type: 'object', additionalProperties: false,
+      properties: { limit: { type: 'integer' }, beforeSequence: { type: 'integer' } } } } },
+    async (request) => discussion.getDiscussion(await principal(request), request.params.workId, request.query));
+  app.post<{ Params: { workId: string }; Body: SendMessageCommand }>(taskDiscussionPath(':workId'),
+    { preValidation: async (request) => {
+      // Reject attempted authorship before AJV can strip additional fields.
+      if (request.body && (Object.hasOwn(request.body, 'author') || Object.hasOwn(request.body, 'authorId')))
+        throw new InvalidInputError('The authenticated actor supplies message authorship');
+    }, schema: { body: { type: 'object', required: ['body', 'clientMessageId'], additionalProperties: false,
+      properties: { body: { type: 'string', minLength: 1, maxLength: 100_000 }, clientMessageId: { type: 'string' },
+        source: { type: 'object', required: ['materialId', 'version'], additionalProperties: false,
+          properties: { materialId: { type: 'string' }, version: { type: 'integer' } } } } } } },
+    async (request, reply) => reply.code(201).send(await discussion.contribute(await principal(request), request.params.workId, request.body)));
+
+  app.get<{ Params: { projectId: string }; Querystring: PageQuery }>(projectTaskNoticesPath(':projectId'), { schema: { querystring: page } },
+    async (request) => work.listTaskNotices(await principal(request), request.params.projectId, request.query));
 
   app.get<{ Params: { projectId: string }; Querystring: PageQuery }>(projectWorkPath(':projectId'), { schema: { querystring: page } },
     async (request) => work.listWork(await principal(request), request.params.projectId, request.query));
