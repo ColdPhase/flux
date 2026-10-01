@@ -141,11 +141,7 @@ class ProjectStateJourney(unittest.TestCase):
                     row = page.get_by_role("button", name=re.compile("open project details"))
                     expect(row).to_contain_text("2 open tasks")
                     self.assertGreaterEqual(row.bounding_box()["height"], 44)
-                    if who == "Ada State":
-                        row.focus()
-                        row.press("Enter")
-                    else:
-                        row.tap()
+                    row.tap()
                     panel = page.get_by_role("dialog", name="Details")
                     expect(panel.get_by_role("region", name="Now in this project")).to_contain_text("Open")
                     expect(panel.get_by_role("region", name="Sketches")).to_contain_text("to browse saved sketches")
@@ -309,7 +305,11 @@ class ProjectStateJourney(unittest.TestCase):
                     self.assertTrue(visible, "the blocked count must be visibly readable before opening the overview")
                     self.assertGreaterEqual(row.bounding_box()["height"], 44)
                     self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), width)
-                    row.tap()
+                    if who == "Ada State":
+                        row.focus()
+                        row.press("Enter")
+                    else:
+                        row.tap()
                     panel = page.get_by_role("dialog", name="Details")
                     expect(panel.get_by_role("region", name="Now in this project")).to_contain_text("Blocked")
                     panel.get_by_role("button", name=re.compile("Blocked.*Wait for the calibration sensor")).click()
