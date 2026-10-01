@@ -205,6 +205,7 @@ class OverviewWorkJourney(unittest.TestCase):
         field = page.get_by_label("Reply", exact=True); field.fill("Keep my reply and its unfinished sentence")
         rows = ov.get_by_role("region", name="Linked in this conversation").locator(".ov-rows")
         rows.hover(); page.mouse.wheel(0,450)
+        page.wait_for_function("el=>el.scrollTop>=440",arg=rows.element_handle())
         anchor = rows.evaluate("el=>{const top=el.getBoundingClientRect().top;const row=[...el.querySelectorAll('[data-work-id]')].find(row=>row.getBoundingClientRect().bottom>top);return {id:row.dataset.workId,offset:row.getBoundingClientRect().top-top};}")
         def hold(route):
             response=route.fetch(); self.assertEqual(response.status,200); held.append((route,response)); page.evaluate("window.__overviewRefreshHeld=true")
