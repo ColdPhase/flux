@@ -1,0 +1,5 @@
+TURN visual evidence directory: /tmp/flux63-code-dbec
+Unable to find image 'flux-e2e:flux-live-turn-1790765730-796987' locally
+docker: Error response from daemon: pull access denied for flux-e2e, repository does not exist or may require 'docker login': denied: requested access to the resource is denied
+
+Run 'docker run --help' for more information

@@ -1,0 +1,19 @@
+{
+  "source": "4a6f51dd51e287fbf743612f0a0a8505f6fa54f4",
+  "tests": 9,
+  "seconds": 21.372,
+  "browser_measurements": 30,
+  "source_sha256": {
+    "apps/web/src/sketch/createdDraft.ts": "34ed3d0d9018a7dcd765e3c8b9865e2f7d283a544a912987b35aa6433913a6bc",
+    "apps/web/src/sketch/DraftCapture.tsx": "feea7a01d97a9e7f26a13c99e21ec63f2961f81fd9dc42c9de07bbb216ddaf0e",
+    "apps/web/src/sketch/SketchView.tsx": "fa46259c71fe2969a9d87a0a3803d67536f06169921e83ff2f5bcb12bee96652",
+    "apps/web/src/sketch/SketchList.tsx": "acdd93432c634fc162bafd7b02d3b3a6a88a215e38ae11bf7ca23aee741c0396",
+    "apps/web/src/sketch/ThoughtEditor.tsx": "c530bff811b8d31395e6dfd3a352078b3057e79b65bb9dc77fcfd49986d4eed2",
+    "apps/web/src/sketch/sketch.css": "09f5965e94d551117686e2a07249c2512566571be981e023968b64d2c4e0a863",
+    "apps/web/src/app/errors.tsx": "0659117deefa0ee8298cca441d6be8dd2e2437eb5e1c22c77f28d0439b6e9804",
+    "apps/web/src/auth/logic.ts": "1d7bab3d95348e0e66f9f5890d58518d9299e91e17044dcdefd002235d65968f",
+    "tests/ui/test_thought_drafts.py": "a0d445d32763640dc6d7a69c79138c73d2b2f84994674ad60b4b1aa518459633",
+    "apps/web/src/sketch/doc.ts": "8abc0239d0f69f36fd9ee97a4cd72494ac33cf6d5b8e4f736ad55b38bbbd918e"
+  },
+  "scope": "Full regression 131 passed and 4 optional media skips belongs to earlier source 0739dc1. This corrected source changes recovery-row layout and its clipping checks; the nine affected journeys pass, including all capture/edit states and 30 contrast measurements."
+}

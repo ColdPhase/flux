@@ -56,9 +56,10 @@ export async function forwardPublicOrigin(): Promise<void> {
  * A browser context holding exactly `client`'s Flux cookies, on a small page of the public
  * origin with the SDK loaded. Same-origin signaling then carries that session's cookie.
  */
-export async function mediaPage(chromium: ChromiumBrowser, client: Browser): Promise<Page> {
+export async function mediaPage(chromium: ChromiumBrowser, client: Browser,
+  options: { viewport?: { width: number; height: number } | null } = {}): Promise<Page> {
   await forwardPublicOrigin();
-  const context = await chromium.newContext();
+  const context = await chromium.newContext(options);
   // tsx keeps function names with an `__name` helper that page.evaluate callbacks do not carry.
   await context.addInitScript({ content: 'window.__name = (fn) => fn;' });
   await context.addCookies([...client.cookies].map(([name, value]) => ({ name, value, url: publicOrigin })));

@@ -1,0 +1,25 @@
+{
+  "profile": "code-1440p",
+  "productionPublishDefaults": true,
+  "physicalDevicesUsed": false,
+  "startedUtc": "2026-09-30T10:11:08.188Z",
+  "sources": [
+    {
+      "sourceKind": "getDisplayMedia/Xvfb",
+      "share": 1,
+      "settings": {
+        "aspectRatio": 1.7777777777777777,
+        "cursor": "always",
+        "deviceId": "screen:400:0",
+        "displaySurface": "monitor",
+        "frameRate": 15,
+        "height": 1440,
+        "logicalSurface": true,
+        "resizeMode": "crop-and-scale",
+        "width": 2560
+      },
+      "contentHint": "detail",
+      "readyState": "live"
+    }
+  ]
+}
