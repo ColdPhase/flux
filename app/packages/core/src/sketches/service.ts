@@ -115,12 +115,27 @@ async function lockedThought(ports: SketchPorts, sketchId: string, thoughtId: st
 type PromotionChoice = { kind: 'new' } | { kind: 'existing'; projectId: string } | null;
 
 /**
+ * Whether a new project from a DM sketch gives the DM's other participants access (#188). `grant`
+ * (the #96 default) or `none`; the web app states it, unchecked by default, so nobody is added
+ * without the person choosing it. An existing project's audience never changes by a promotion.
+ */
+function participantChoice(value: unknown): boolean {
+  if (value === undefined || value === 'grant') return true;
+  if (value === 'none') return false;
+  throw new InvalidInputError('participants must be grant or none');
+}
+
+/** The participants a new project is granted to: all of them, or only the caller. */
+const grantees = (participants: { id: string; name: string }[], principal: Principal, grant: boolean) =>
+  grant ? participants : participants.filter((person) => person.id === principal.id);
+
+/**
  * The exact audience and content of copying `sketch` (a DM sketch) to `choice`. The token names
  * the target, every reader and every thought, link and version, so a promotion commits only what
  * the person saw. Without a choice it proposes a new project, or else the first project they can change.
  */
 async function promotionPreview(ports: SketchPorts, principal: Principal, sketch: SketchRecord, requested: PromotionChoice,
-  participants: { id: string; name: string }[]): Promise<SketchPromotionPreview> {
+  participants: { id: string; name: string }[], grant = true): Promise<SketchPromotionPreview> {
   const dmId = sketch.dmId!;
   const [targets, thoughts, links, messageCount] = await Promise.all([
     ports.promotion.targets(principal, sketch.workspaceId),
@@ -129,7 +144,7 @@ async function promotionPreview(ports: SketchPorts, principal: Principal, sketch
   let choice = requested;
   if (!choice) choice = targets.canCreateProject ? { kind: 'new' } : targets.projects[0] ? { kind: 'existing', projectId: targets.projects[0].id } : null;
   if (choice?.kind === 'new' && !targets.canCreateProject) throw new ForbiddenError('Only workspace owners and admins can create a project; copy it into a project you can change', 'PROJECT_CREATE_FORBIDDEN');
-  const { people, projectName } = choice ? await ports.promotion.audience(principal, sketch.workspaceId, participants, choice) : { people: [], projectName: null };
+  const { people, projectName } = choice ? await ports.promotion.audience(principal, sketch.workspaceId, grantees(participants, principal, grant), choice) : { people: [], projectName: null };
   const readers = new Set(people.map((person) => person.id));
   const fromMessages = thoughts.filter((thought) => thought.source?.messageId);
   const quoted = new Set(fromMessages.map((thought) => thought.source!.messageId));
@@ -397,20 +412,21 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
     },
 
     /** What copying a DM sketch into a project would share, and with whom (#96). Changes nothing. */
-    async previewPromotion(principal: Principal, sketchId: string, query: { target?: unknown; projectId?: unknown } = {}): Promise<SketchPromotionPreview> {
+    async previewPromotion(principal: Principal, sketchId: string, query: { target?: unknown; projectId?: unknown; participants?: unknown } = {}): Promise<SketchPromotionPreview> {
       const choice = promotionChoice(query);
+      const grant = participantChoice(query.participants);
       return uow.run(async (ports) => {
         const { sketch, access } = await authorized(ports, principal, 'sketch.read', sketchId);
         if (sketch.scope !== 'dm') throw new RuleViolationError('Only a sketch in a direct message is copied into a project', 'NOT_A_DM_SKETCH');
         await ports.access.requireDmOpen(principal, sketch.dmId!);
         if (access !== 'write') throw new ForbiddenError('Not allowed to perform this action on the sketch');
-        return promotionPreview(ports, principal, sketch, choice, await ports.sketches.dmParticipants(sketch.dmId!));
+        return promotionPreview(ports, principal, sketch, choice, await ports.sketches.dmParticipants(sketch.dmId!), grant);
       });
     },
 
     /**
-     * Copies a DM sketch into a new restricted project (granted to exactly the DM's participants) or
-     * an existing project the caller can change. Only the sketch's thoughts, links and each source
+     * Copies a DM sketch into a new restricted project (granted to exactly the DM's participants, or
+     * with `participants: 'none'` to nobody but its managers, #188) or an existing project the caller can change. Only the sketch's thoughts, links and each source
      * message's author and time are copied; the copy keeps no reference into the DM, so later DM
      * messages and sketch changes never reach it. `token` must match the current preview.
      */
@@ -422,6 +438,7 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
       else if (target?.kind === 'existing') choice = { kind: 'existing', projectId: valid.id(target.projectId, 'target.projectId') };
       else throw new InvalidInputError('target.kind must be new or existing');
       if (typeof command.token !== 'string' || !command.token) throw new InvalidInputError('token must be the preview token');
+      const grant = participantChoice(command.participants);
       return uow.run(async (ports) => {
         // The audience is locked before it is read, and read once: every row whose change would
         // alter who can open the copy (workspace members, the target project's grants, the DM's
@@ -437,10 +454,10 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
         await ports.access.requireDmOpen(principal, sketch.dmId!);
         if (access !== 'write') throw new ForbiddenError('Not allowed to perform this action on the sketch');
         const participants = (await ports.sketches.dmParticipants(sketch.dmId!)).filter((p) => locked.has(p.id));
-        const preview = await promotionPreview(ports, principal, sketch, choice, participants);
+        const preview = await promotionPreview(ports, principal, sketch, choice, participants, grant);
         if (preview.token !== command.token) throw new PromotionChangedError(preview);
         const project = choice.kind === 'new'
-          ? await ports.promotion.createProject(principal, sketch.workspaceId, name!, participants.map((p) => p.id))
+          ? await ports.promotion.createProject(principal, sketch.workspaceId, name!, grantees(participants, principal, grant).map((p) => p.id))
           : { id: choice.projectId, name: preview.target?.kind === 'existing' ? preview.target.projectName : '' };
         const copy = await ports.sketches.insertSketch({
           id: randomUUID(), workspaceId: sketch.workspaceId, scope: 'project', projectId: project.id, dmId: null, title: sketch.title,

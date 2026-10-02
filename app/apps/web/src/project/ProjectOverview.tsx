@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react';
 import { Link, useMatches } from 'react-router';
 import type { Conversation, Decision, Material, ObjectLink, WorkItem, WorkResult } from '@flux/contracts';
-import { Avatar, Icon, type IconName } from '../ui';
+import { Icon, type IconName } from '../ui';
 import { useShellData } from '../app/data';
 import { useShellActions, type DetailsView } from '../app/shellContext';
 import { STATUS_LABEL, decisionLine, resultLine } from '../work/format';
 import { stateParts } from '../work/inline';
-import { ACCESS_LABEL, audienceLine, useProjectShell } from './data';
+import { audienceLine, useProjectShell } from './data';
+import { ProjectAccess } from '../people/ProjectAccess';
 import { docUrl } from '../docs/api';
 import { docsLinking } from '../docs/AddToDoc';
 
@@ -64,7 +65,7 @@ const touches = (links: ObjectLink[], id: string, match: (link: ObjectLink) => b
  * and results, sources, sketches and docs, and exactly who can see it. Nothing here is a
  * permanent panel; it opens with Details, the state line or a message's Details action.
  */
-export function ProjectOverview({ messageId, onBack }: { messageId?: string; onBack: () => void }) {
+export function ProjectOverview({ messageId, focusPeople = null, onBack }: { messageId?: string; focusPeople?: object | null; onBack: () => void }) {
   const shell = useProjectShell();
   const open = useOpenConversation();
   const { me } = useShellData();
@@ -130,7 +131,6 @@ export function ProjectOverview({ messageId, onBack }: { messageId?: string; onB
   }));
   const author = message ? (message.authorId === null ? `${message.author.name ?? 'Agent'} · agent` : message.authorId === me.user.id ? 'you' : people?.find((person) => person.id === message.authorId)?.name ?? 'a member') : null;
   const title = message ? `Message from ${author}` : conversation ? conversation.firstMessageBody.split('\n')[0] || 'Conversation' : project.name;
-  const others = (people ?? []).filter((person) => !(person.kind === 'human' && person.id === me.user.id));
 
   return (
     <div className="details ov">
@@ -149,16 +149,8 @@ export function ProjectOverview({ messageId, onBack }: { messageId?: string; onB
       <Rows label="Docs" rows={[...docRows.values()]} empty={message ? undefined : <>No docs yet. <Link to={`${base}/docs`}>Open Docs</Link> {project.access === 'viewer' ? 'to read saved documents.' : 'to keep what you learn.'}</>} />
       {moreDocs ? <p className="ov-more"><Link to={`${base}/docs`}>All {docs.length} docs</Link></p> : null}
 
-      <section className="details__sec" aria-labelledby="ov-people">
-        <h4 id="ov-people">Who can see this</h4>
-        {people ? (
-          <ul className="details__rows">
-            <li className="details__person"><Avatar name={me.user.name} size="md" tone="me" /><b>{me.user.name} (you)</b></li>
-            {others.map((person) => <li key={`${person.kind}:${person.id}`} className="details__person"><Avatar name={person.name} size="md" /><span className="ov-person"><b>{person.name}{person.kind === 'agent' ? ' (agent)' : ''}</b><span>{ACCESS_LABEL[person.access]}</span></span></li>)}
-          </ul>
-        ) : <p>Everyone with access to {project.name}.</p>}
-        <p className="ov-note">Direct messages with these people stay private; nothing in them is shared with this project.</p>
-      </section>
+      {/* Exactly who can open it, and for its managers the controls to change that (#188). */}
+      <ProjectAccess project={project} people={people} focusToken={focusPeople} />
       <p className="details__keys"><kbd>]</kbd> toggles this panel · <kbd>Esc</kbd> closes it</p>
     </div>
   );
