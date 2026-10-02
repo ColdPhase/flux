@@ -1,0 +1,14 @@
+test_01_cancel_empty_blur_and_composition_never_write (test_thought_drafts.ThoughtDraftJourney.test_01_cancel_empty_blur_and_composition_never_write) ... ok
+test_02_draft_survives_projection_map_navigation_and_reload (test_thought_drafts.ThoughtDraftJourney.test_02_draft_survives_projection_map_navigation_and_reload) ... ok
+test_03_uncertain_committed_response_retries_exactly_once_and_undo_removes_link (test_thought_drafts.ThoughtDraftJourney.test_03_uncertain_committed_response_retries_exactly_once_and_undo_removes_link) ... ok
+test_04_deleted_parent_leaves_text_and_no_partial_thought (test_thought_drafts.ThoughtDraftJourney.test_04_deleted_parent_leaves_text_and_no_partial_thought) ... ok
+test_05_lost_permission_and_revocation_recover_private_text_even_after_reload (test_thought_drafts.ThoughtDraftJourney.test_05_lost_permission_and_revocation_recover_private_text_even_after_reload) ... ok
+test_06_f2_cancel_multiline_and_real_concurrent_edit_are_recoverable (test_thought_drafts.ThoughtDraftJourney.test_06_f2_cancel_multiline_and_real_concurrent_edit_are_recoverable) ... ok
+test_07_failed_existing_edit_keeps_text_and_retries (test_thought_drafts.ThoughtDraftJourney.test_07_failed_existing_edit_keeps_text_and_retries) ... ok
+test_08_sign_out_discards_drafts_before_another_account_signs_in (test_thought_drafts.ThoughtDraftJourney.test_08_sign_out_discards_drafts_before_another_account_signs_in) ... ok
+test_09_matched_desktop_phone_tablet_and_touch_save (test_thought_drafts.ThoughtDraftJourney.test_09_matched_desktop_phone_tablet_and_touch_save) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 21.428s
+
+OK

@@ -1,0 +1,4 @@
+2026-09-30T10:11:20.055Z	INFO	livekit	routing/interfaces.go:181	using single-node routing
+2026-09-30T10:11:20.056Z	INFO	livekit	rtcconfig/webrtc_config.go:112	using explicit node IP for NAT1To1Ips	{"ip": {"V4":"127.0.0.1","V6":""}, "advertiseInternalIP": false}
+2026-09-30T10:11:20.056Z	WARN	livekit	service/server.go:160	prometheus_port is deprecated, please switch to prometheus.port instead
+2026-09-30T10:11:20.057Z	INFO	livekit	service/server.go:298	starting LiveKit server	{"portHttp": 17880, "nodeID": "ND_rUXzQ6qDZ7em", "nodeIP": "127.0.0.1", "version": "1.13.7", "bindAddresses": ["127.0.0.1"], "rtc.portTCP": 17881, "rtc.portUDP": {"Start":17882,"End":0}, "portPrometheus": 16789}

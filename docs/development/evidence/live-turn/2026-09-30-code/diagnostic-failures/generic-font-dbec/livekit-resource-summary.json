@@ -1,0 +1,26 @@
+[
+  {
+    "profile": "code_2_active",
+    "phaseStartUtc": "2026-09-30T10:56:55.186Z",
+    "phaseEndUtc": "2026-09-30T10:57:07.879Z",
+    "durationMs": 12693,
+    "sampleCount": 6,
+    "cpuMeanPercent": 2.1,
+    "cpuPeakPercent": 3.17,
+    "memoryPeakMiB": 54.9,
+    "networkReceiveBytes": 1340000,
+    "networkTransmitBytes": 1313000
+  },
+  {
+    "profile": "code_4_active",
+    "phaseStartUtc": "2026-09-30T10:57:10.791Z",
+    "phaseEndUtc": "2026-09-30T10:57:26.774Z",
+    "durationMs": 15983,
+    "sampleCount": 8,
+    "cpuMeanPercent": 5.5,
+    "cpuPeakPercent": 6.92,
+    "memoryPeakMiB": 72.4,
+    "networkReceiveBytes": 3730000,
+    "networkTransmitBytes": 10200000
+  }
+]

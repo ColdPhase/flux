@@ -12,15 +12,20 @@ import { freeSpot, rectOf } from './geometry';
 import { SketchList } from './SketchList';
 import { SketchMap } from './SketchMap';
 import { useOutline } from './useOutline';
+import { useThoughtDraft } from './createdDraft';
+import { DraftCapture } from './DraftCapture';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import './sketch.css';
 
 export interface Editing {
   id: string;
-  isNew: boolean;
-  parentId: string | null;
-  /** Text to start from instead of the stored one. */
-  initial?: string;
+  initial: string;
+  /** The text the editor opened on, at `version`; only a changed text is a conflict. */
+  opened: string;
+  version: number;
+  key: string;
+  attempt: number;
+  saving: boolean;
 }
 
 type Mode = 'map' | 'list';
@@ -61,6 +66,9 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   const doc = useSketchDoc(sketchId, { id: me.user.id, name: me.user.name });
   const { sketch } = doc;
   const personalOutline = useOutline(me.user.id, sketch);
+  const capture = useThoughtDraft(me.user.id, sketchId, sketch);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const draftSaveInFlight = useRef(false);
   const coarse = useMediaQuery('(pointer: coarse)');
   const phone = useMediaQuery(MEDIA.phone);
   const [mode, setModeState] = useState<Mode>(storedMode);
@@ -75,6 +83,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   }
   const [connectState, setConnectFrom] = useState<string | null>(null);
   const [editingState, setEditing] = useState<Editing | null>(null);
+  const editSaveInFlight = useRef(false);
   const dmAudience = directMessages.find((item) => item.id === (doc.sketch?.dmId ?? dmId))?.audience ?? null;
   // "Start sketch from these messages" lands here: say what happened and who sees it.
   const [status, setStatus] = useState<{ text: string; change: boolean }>(() => ({
@@ -116,6 +125,18 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
       label: firstSelected ? (firstSelected.length > 60 ? `${firstSelected.slice(0, 59)}…` : firstSelected) : projectSketch.title,
       what: selection.length === 0 ? 'map' : selection.length === 1 ? 'thought on the map' : `${selection.length} thoughts on the map` } : null);
   const editing = editingState && present.has(editingState.id) ? editingState : null;
+  const startEdit = (id: string) => {
+    const thought = find(id);
+    if (!thought || !canWrite || editSaveInFlight.current) return;
+    if (editingState) {
+      rootRef.current?.querySelector<HTMLTextAreaElement>('.sk-edit, .sk-li-edit')?.focus();
+      say('Finish or cancel your current edit first');
+      return;
+    }
+    setConnectFrom(null);
+    doc.clearProblem();
+    setEditing({ id, initial: thought.text, opened: thought.text, version: thought.version, key: doc.newId(), attempt: 0, saving: false });
+  };
 
   const setMode = (next: Mode) => {
     setModeState(next);
@@ -191,34 +212,58 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
 
   const add = (parentId: string | null) => {
     if (!sketch || !canWrite) return;
+    if (editingState) { say('Finish or cancel your current edit first'); return; }
+    if (capture.draft) { rootRef.current?.querySelector<HTMLTextAreaElement>('.sk-draft textarea')?.focus(); say('Finish or cancel your current thought draft first'); return; }
     const parent = parentId ? find(parentId) : undefined;
     const rects = sketch.thoughts.map((t) => rectOf(t, heights));
     const spot = freeSpot(rects, parent ? rectOf(parent, heights) : null, { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height }, phone);
-    const id = doc.newId();
-    personalOutline.group(id, parent?.id ?? null, false);
-    doc.perform([{ kind: 'add', thought: { id, text: 'New thought', x: spot.x, y: spot.y }, link: parent ? { id: doc.newId(), fromId: parent.id, label: null } : undefined }], 'added a thought');
+    capture.set({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text: '', x: spot.x, y: spot.y, parentId });
     setConnectFrom(null);
-    setSelection([id]);
-    setEditing({ id, isNew: true, parentId: parent?.id ?? null });
-    say(parent ? `New thought connected to ${quote(parent.text)} · Enter saves, Esc keeps “New thought”` : 'New thought · type its text, Enter saves');
+    setEditing(null);
+    say('Private thought draft · Enter saves, Escape cancels');
   };
 
-  const finishEdit = (text: string | null) => {
+  const saveDraft = async () => {
+    const draft = capture.draft;
+    if (!draft || draftSaveInFlight.current || !canWrite || !draft.text.trim()) return;
+    draftSaveInFlight.current = true;
+    setSavingDraft(true);
+    const saved = await doc.saveThought({ id: draft.id, text: draft.text.trim(), x: draft.x, y: draft.y },
+      draft.parentId ? { id: draft.parentId, linkId: draft.linkId } : null, draft.key);
+    setSavingDraft(false);
+    draftSaveInFlight.current = false;
+    if (!saved) { say('Couldn’t confirm the save. Your thought draft is kept; try again.'); return; }
+    personalOutline.group(draft.id, draft.parentId, false);
+    capture.set(null);
+    setSelection([draft.id]);
+    say(`Added ${quote(draft.text.trim())}`, true);
+    focusThought(`.sk-node[data-id="${draft.id}"], .sk-li-t[data-id="${draft.id}"]`);
+  };
+
+  const finishEdit = async (text: string | null) => {
     const current = editing;
-    setEditing(null);
-    if (!current) return;
+    if (!current || editSaveInFlight.current) return;
     const thought = find(current.id);
     if (!thought) return;
     const value = text?.trim() ?? '';
-    const parent = current.parentId ? find(current.parentId) : undefined;
-    if (value && value !== thought.text) {
-      // A new thought's text belongs to the "added" step: one undo removes it.
-      doc.perform([{ kind: 'update', id: thought.id, changes: { text: value } }], 'edited a thought', { undoable: !current.isNew });
+    if (text === null || !value || (value === thought.text && (current.version === thought.version || value === current.opened))) {
+      setEditing(null);
+      doc.clearProblem();
+      say('Edit cancelled');
+      focusThought(`.sk-node[data-id="${thought.id}"], .sk-li-t[data-id="${thought.id}"]`);
+      return;
     }
-    const final = value || thought.text;
-    if (current.isNew) say(parent ? `Added ${quote(final)}, connected to ${quote(parent.text)}` : `Added ${quote(final)}`, true);
-    else if (value && value !== thought.text) say(`Edited ${quote(final)}`, true);
-    else say('Edit cancelled');
+    editSaveInFlight.current = true;
+    setEditing({ ...current, initial: text, saving: true });
+    const saved = await doc.saveText(current.id, value, { text: current.opened, version: current.version }, current.key);
+    editSaveInFlight.current = false;
+    if (!saved) {
+      setEditing({ ...current, initial: text, saving: false, attempt: current.attempt + 1 });
+      say('Your edit is kept. Cancel to inspect the current shared version.');
+      return;
+    }
+    setEditing(null);
+    say(`Edited ${quote(value)}`, true);
     focusThought(`.sk-node[data-id="${thought.id}"], .sk-li-t[data-id="${thought.id}"]`);
   };
 
@@ -241,6 +286,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   };
 
   const remove = (ids: string[]) => {
+    if (editingState) { say('Finish or cancel your current edit first'); return; }
     const thoughts = ids.flatMap((id) => { const t = find(id); return t ? [t] : []; });
     if (!thoughts.length) return;
     doc.perform(thoughts.map((t): Op => ({ kind: 'remove', id: t.id })), thoughts.length === 1 ? 'removed a thought' : 'removed thoughts');
@@ -290,6 +336,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   };
 
   const undo = () => {
+    if (editingState) { say('Finish or cancel your current edit first'); return; }
     setEditing(null);
     setConnectFrom(null);
     const label = doc.undo();
@@ -321,6 +368,8 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
           <EmptyState icon="map" title={doc.load === 'not-found' ? 'This sketch isn’t available' : 'The sketch couldn’t be opened'}
             action={doc.load === 'not-found' ? <Link className="ui-btn ui-btn--secondary" to={back}>All sketches</Link> : <Button onClick={() => void doc.reload()}>Try again</Button>}>
             <p>{doc.load === 'not-found' ? 'It may have been shared with other people only, or you no longer have access to where it lives.' : 'Flux could not be reached. Your changes are safe; try again in a moment.'}</p>
+            {capture.draft ? <label>Your private thought draft<textarea aria-label="Recoverable thought draft" readOnly value={capture.draft.text} /></label> : null}
+            {editingState ? <label>Your unsaved edit<textarea aria-label="Recoverable thought edit" readOnly value={editingState.initial} /></label> : null}
           </EmptyState>
         </div>
       </div>
@@ -329,7 +378,9 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   if (!sketch) return null;
 
   const busy = doc.saving ? 'Saving…' : 'Saved';
-  const shared = { sketch, meId: me.user.id, selection, connectFrom, editing, canWrite, onPick: pick, onToggle: toggle, onEdit: (id: string) => { setConnectFrom(null); setEditing({ id, isNew: false, parentId: null }); }, onFinishEdit: finishEdit, onAdd: add, onRemove: remove, onEscape: escape };
+  const shared = { sketch, meId: me.user.id, selection, connectFrom, editing, canWrite, onPick: pick, onToggle: toggle, onEdit: startEdit,
+    onEditText: (text: string) => setEditing((current) => current ? { ...current, initial: text, key: doc.newId() } : null),
+    onFinishEdit: (text: string | null) => { void finishEdit(text); }, onAdd: add, onRemove: remove, onEscape: escape };
   const navigateThought = (id: string, previous?: string[]) => {
     if (!present.has(id)) return;
     setConnectFrom(null);
@@ -378,14 +429,13 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
         ) : null}
 
         {canWrite ? (
-          <div className="sk-bar">
+          <div className={`sk-bar${doc.problem ? ' sk-bar--problem' : ''}`}>
             <div className={`sk-tools${sketch.scope === 'project' ? ' sk-tools--seven' : ''}`} role="toolbar" aria-label="Sketch tools">
             <button type="button" className="ui-btn ui-btn--quiet sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={14} />Thought</button>
             <button type="button" className="ui-btn ui-btn--quiet" aria-pressed={!!connectFrom} onClick={connect} aria-label="Connect"><Icon name="link" size={14} /><span className="sk-bl">Connect</span></button>
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={selection.length !== 1} onClick={() => {
               if (selection.length !== 1) { say('Select one thought, then Edit'); return; }
-              setConnectFrom(null);
-              setEditing({ id: selection[0]!, isNew: false, parentId: null });
+              startEdit(selection[0]!);
             }} aria-label="Edit"><Icon name="edit" size={14} /><span className="sk-bl">Edit</span></button>
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={cycleShape} aria-label="Change shape"><Icon name="shape" size={14} /><span className="sk-bl">Shape</span></button>
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={() => remove(selection)} aria-label="Remove from sketch"><Icon name="trash" size={14} /><span className="sk-bl">Remove</span></button>
@@ -403,6 +453,22 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
             ? 'Nobody else is in this conversation now, so the sketch is read-only until the other person reopens it.'
             : 'You can look at this sketch; people who can change it keep it up to date.'}</p>
         )}
+
+        {/* Pressing these keeps focus in the editor. Safari and macOS Firefox never focus a pressed
+            button: the editor would blur first, and leaving the field saves, even for Cancel edit. */}
+        {editing && canWrite ? <div className="sk-edit-controls" role="group" aria-label="Current thought edit" onMouseDown={(event) => event.preventDefault()}>
+          <Button disabled={editing.saving || !editing.initial.trim()} onClick={() => void finishEdit(editing.initial)}>{editing.saving ? 'Saving…' : 'Save edit'}</Button>
+          <Button variant="secondary" disabled={editing.saving} onClick={() => void finishEdit(null)}>Cancel edit</Button>
+        </div> : null}
+
+        {capture.draft ? <DraftCapture draft={capture.draft} parent={capture.draft.parentId ? find(capture.draft.parentId)?.text ?? null : null}
+          saving={savingDraft} canWrite={canWrite} onText={(text) => { if (capture.draft) capture.set({ ...capture.draft, text, key: doc.newId() }); }}
+          onSave={() => void saveDraft()} onCancel={() => { capture.set(null); say('Thought draft cancelled'); focusThought('.sk-add'); }} /> : null}
+
+        {editingState && (!editing || !canWrite) ? <label className="sk-draft">Your unsaved edit is kept
+          <textarea aria-label="Recoverable thought edit" readOnly value={editingState.initial} />
+          <Button variant="secondary" onClick={() => setEditing(null)}>Discard edit</Button>
+        </label> : null}
 
         {mode === 'map' ? (
           sketch.thoughts.length || canWrite ? (

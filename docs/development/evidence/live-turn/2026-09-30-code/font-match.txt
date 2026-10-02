@@ -1,0 +1,2 @@
+wqy-zenhei.ttc: "WenQuanYi Zen Hei Mono" "Regular"
+LiberationMono-Regular.ttf: "Liberation Mono" "Regular"

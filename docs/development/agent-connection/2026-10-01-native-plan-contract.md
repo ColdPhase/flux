@@ -252,7 +252,9 @@ ledger is exercised (checkpoint).
 - **No database cycle guard.** A trigger cannot see an uncommitted reciprocal edge, so
   cycles are rejected only by the command under the graph lock. Any other writer would
   have to take the same lock; none exists.
-- **Not implemented here:** MCP action tools (disabled), provider UI for agents, #153's
+- **Not implemented here:** MCP action tools (disabled; the `work.create`/`work.update`
+  wrappers followed on 2026-10-02, see
+  [native work actions](../agent-connection.md#native-work-actions-152)), provider UI for agents, #153's
   claim adapter, authoring criteria or prerequisites in the browser (creation and
   editing are API-only; the browser displays them), project export of the new fields
   (the export bundle keeps its current shape and does not carry criteria, edges or

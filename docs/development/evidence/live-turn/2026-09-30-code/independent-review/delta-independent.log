@@ -1,0 +1,19 @@
+F1_FIXED {"who":"Unknown participant","what":"Voice","values":["183566 kbit/s","10 ms jitter","0.0 % lost","0 gaps total"],"warning":null}
+F2_FIXED audio {"values":["– kbit/s","10 ms jitter","0.0 % lost","– gaps total"],"warning":"Receiver measurements unavailable; waiting for a valid interval","sample":{"intervalMs":2000,"tracks":[{"id":"rtp-one","kind":"audio","packetsReceived":200,"packetsDelta":100,"lossPercent":0,"jitterMs":10}]},"quality":{"status":"unknown","warnings":[]}}
+F2_FIXED audio {"values":["– kbit/s","10 ms jitter","0.0 % lost","– gaps total"],"warning":"Receiver measurements unavailable; waiting for a valid interval","sample":{"intervalMs":2000,"tracks":[{"id":"rtp-one","kind":"audio","packetsReceived":200,"packetsDelta":100,"lossPercent":0,"jitterMs":10}]},"quality":{"status":"unknown","warnings":[]}}
+F2_FIXED video {"values":["2560×1440","15.0 fps","– kbit/s","0.0 % lost"],"warning":"Receiver measurements unavailable; waiting for a valid interval","sample":{"intervalMs":2000,"tracks":[{"id":"rtp-one","kind":"video","packetsReceived":200,"packetsDelta":100,"lossPercent":0,"fps":15,"framesDelta":30,"width":2560,"height":1440}]},"quality":{"status":"unknown","warnings":[]}}
+F2_FIXED video {"values":["2560×1440","15.0 fps","– kbit/s","0.0 % lost"],"warning":"Receiver measurements unavailable; waiting for a valid interval","sample":{"intervalMs":2000,"tracks":[{"id":"rtp-one","kind":"video","packetsReceived":200,"packetsDelta":100,"lossPercent":0,"fps":15,"framesDelta":30,"width":2560,"height":1440}]},"quality":{"status":"unknown","warnings":[]}}
+F3_FIXED remove
+F3_FIXED disconnect
+✔ independent F1: actual SDK raw report and production audio diagnostic expose interval loss (2.069316ms)
+✔ independent F2: isolated missing/reset bytes are unknown for audio and video (0.450431ms)
+✔ independent F3: real production/SDK pending raw read stays cancelled after removal and disconnect (0.638632ms)
+✔ independent error/pause/ambiguity: no fake loss or warnings while intentionally quiet/muted/paused (0.445871ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 240.077776
