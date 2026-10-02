@@ -63,6 +63,9 @@ function moveError(error: unknown, title: string) {
   return `“${title}” could not be moved. Its current state is shown; try again.`;
 }
 
+/** A keyboard or menu move keeps focus on its card for this long while the card is redrawn. */
+const focusDeadline = () => performance.now() + 5000;
+
 const without = <T,>(record: Record<string, T>, key: string) => {
   const next = { ...record };
   delete next[key];
@@ -317,7 +320,7 @@ export function TaskBoard({ project, lists, meId, mine, query, writable, adding,
     const key = JSON.stringify([item.id, item.version, status]);
     const commandId = attempts.current.get(key) ?? crypto.randomUUID();
     attempts.current.set(key, commandId);
-    if (keepFocus) focusCard.current = { id: item.id, until: performance.now() + 5000 };
+    if (keepFocus) focusCard.current = { id: item.id, until: focusDeadline() };
     setPending((now) => ({ ...now, [item.id]: to }));
     show(null);
     try {
