@@ -162,7 +162,9 @@ selected revision's title or first line, ignoring any model-supplied label.
 Work/thought links display their cited version and open the current
 object, since those objects have no historical content API. Creating work from a
 proposal preserves those project relationships and does not add that generated
-work back into comparison evidence.
+work back into comparison evidence. It links the citations its reader can open
+now; a cited source deleted since the proposal is omitted rather than blocking
+the use.
 
 The controlled dispatch path saves the complete inspected metadata vector
 before sending source content to compute; cited references remain a distinct

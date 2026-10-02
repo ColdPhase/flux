@@ -201,25 +201,25 @@ test('a proposal dismissal answers with the same current references as the reads
   await assertAnswersLikeReads(f, 'the dismissal response', dismissed);
 });
 
-test('using a proposal whose cited thought was deleted is refused without a change or the thought', async () => {
+test('a proposal whose cited thought was deleted can still be used, linking only the references the reader sees', async () => {
   const f = await fixture();
   const proposal = await proposalWithDeletedThought(f);
-  const refused = await f.peer.browser.request('POST', `/api/v1/proactive-comparison-proposals/${proposal.id}/use`,
-    { body: { expectedVersion: 1, title: 'Repeat the 5 lux trial' } });
-  assert.equal(refused.status, 422, refused.text);
-  assert.equal((refused.json as { code: string }).code, 'LINK_TARGET_NOT_FOUND');
-  assert.ok(!refused.text.includes(f.thought.id) && !refused.text.includes(thoughtText), 'the refusal does not name the thought');
-  const [stored] = (await pool.query('SELECT status, version, used_work_id FROM proactive_comparison_proposals WHERE id=$1', [proposal.id])).rows;
-  assert.deepEqual(stored, { status: 'proposed', version: 1, used_work_id: null });
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_work_items WHERE project_id=$1 AND title=$2',
-    [f.projectId, 'Repeat the 5 lux trial'])).rows[0].n, 0, 'no work was created');
+  const used = expectStatus(await f.peer.browser.request('POST', `/api/v1/proactive-comparison-proposals/${proposal.id}/use`,
+    { body: { expectedVersion: 1, title: 'Repeat the 5 lux trial' } }), 200) as {
+    proposal: ProactiveComparisonProposal; work: { id: string; title: string; links: Array<{ role: string; to: { type: string; id: string } }> } };
+  assert.equal(used.work.title, 'Repeat the 5 lux trial');
+  assert.deepEqual([used.proposal.status, used.proposal.version, used.proposal.usedWorkId], ['used', 2, used.work.id]);
+  await assertAnswersLikeReads(f, 'the use response', used.proposal);
+  assert.ok(!JSON.stringify(used.work).includes(f.thought.id) && !JSON.stringify(used.work).includes(thoughtText),
+    'the work does not link the deleted thought');
+  assert.deepEqual(used.work.links.filter((link) => link.role === 'related').map((link) => link.to.type),
+    used.proposal.sources.map((source) => source.type), 'the work links exactly the citations the reader can open');
 });
 
 test('using a proposal answers with the same current references as the reads', async () => {
   const f = await fixture();
   const proposal = await citedProposal(f);
-  // A deleted thought makes the work link, and so this action, fail (previous test). Its response is therefore checked with
-  // a citation that still links but no longer opens as cited, because the thought's map is not recorded with it.
+  // A citation that still exists but no longer opens as cited, because the thought's map is not recorded with it.
   await pool.query(`UPDATE proactive_comparison_proposals SET sources = (
       SELECT jsonb_agg(CASE WHEN s.value->>'type' = 'thought' THEN s.value - 'sketchId' ELSE s.value END ORDER BY s.ord)
       FROM jsonb_array_elements(sources) WITH ORDINALITY AS s(value, ord)) WHERE id = $1`, [proposal.id]);

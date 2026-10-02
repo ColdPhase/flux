@@ -1,7 +1,7 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
 import { backgroundComputeUsagePath, proactiveComparisonOutcomePath, proactiveComparisonOutcomesPath,
   proactiveComparisonProposalsPath, type ConnectBackgroundComputeCommand, type CreateProactiveComparisonRule } from '@flux/contracts';
-import { backgroundConnectionRepository, proactiveOutboxRows, proactiveRuleRows, sealBackgroundKey } from '@flux/db';
+import { backgroundConnectionRepository, comparisonProposalView, proactiveOutboxRows, proactiveRuleRows, sealBackgroundKey } from '@flux/db';
 import { backgroundConnectionUseCases, ConflictError, DomainError, enforce, evaluateProject, InvalidInputError,
   isUuid, NotFoundError, proactiveRuleUseCases, VersionConflictError, visibleProposal, type Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
@@ -121,7 +121,11 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
       enforce(await evaluateProject(principal, 'project.write', current.projectId, tx, { lock: true }), 'project');
       if (current.version !== body.expectedVersion) throw new VersionConflictError(current.version, { version: current.version });
       if (current.status !== 'proposed') throw new ConflictError('The proposal has already been reviewed', 'PROPOSAL_REVIEWED');
-      const sourceRefs = current.sources.reduce<Array<{ type: 'material'; id: string; version: number } | { type: 'message'; id: string }>>(
+      const access = comparisonOutcomeAccess(tx);
+      // The work links the citations this reader can open now, like the proposal they used. A cited
+      // source deleted since the proposal is not linked and does not make the proposal unusable.
+      const { sources: cited } = await visibleProposal(access, principal, comparisonProposalView(current));
+      const sourceRefs = cited.reduce<Array<{ type: 'material'; id: string; version: number } | { type: 'message'; id: string }>>(
         (refs, source) => {
           if (source.type === 'material') refs.push({ type: 'material', id: source.id, version: source.version });
           if (source.type === 'message') refs.push({ type: 'message', id: source.id });
@@ -130,12 +134,12 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
       const created = await workUseCases(tx).createWork(principal, current.projectId, {
         title: body.title.trim(), outcome: current.suggestedAction,
         sources: sourceRefs,
-        related: current.sources.flatMap((source) => source.type === 'result' || source.type === 'work' || source.type === 'thought'
+        related: cited.flatMap((source) => source.type === 'result' || source.type === 'work' || source.type === 'thought'
           ? [{ type: source.type, id: source.id }] : []),
       });
       const used = await rows.reviseProposal(current.id, { status: 'used', usedWorkId: created.id, editedByUserId: principal.id });
       if (!used) throw new NotFoundError('Proposal');
-      return { proposal: await visibleProposal(comparisonOutcomeAccess(tx), principal, used), work: created };
+      return { proposal: await visibleProposal(access, principal, used), work: created };
     }));
   app.patch<{ Params: { ruleId: string }; Body: { expectedVersion: number; status: 'enabled' | 'paused' | 'revoked' } }>(
     '/api/v1/proactive-comparison-rules/:ruleId', async (request) => rules.setStatus(
