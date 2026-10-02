@@ -1,21 +1,17 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
-import { createDatabase } from '@flux/db';
 import type { SearchWork } from '@flux/core';
 import type { Conversation, Decision, Dm, Draft, Material, Project, SearchResponse, SearchResult, Sketch, CreatedThought, WorkItem, WorkResult, Workspace } from '@flux/contracts';
-import { register, uniqueEmail, type ClientResponse } from './support/http.js';
-import { addMember, draft as createDraft, expectStatus, grant, password, project as createProject, workspace, type Person } from './support/people.js';
+import { pool } from './support/db.js';
+import { type ClientResponse } from './support/http.js';
+import { addMember, draft as createDraft, expectStatus, grant, person, project as createProject, workspace, type Person } from './support/people.js';
 
 // Search across Flux (issue #114): one query over project and direct messages, materials and
 // their versions, work, decisions, results, sketches and thoughts, drafts and people. The access
 // policy is applied in SQL before ranking, limits, counts and snippets, so nothing hidden ever
 // shows, counts, or changes the work the database does.
 
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { pool } = createDatabase(connectionString);
-after(() => pool.end());
 
 const post = (someone: Person, path: string, body: unknown, headers?: Record<string, string>) => someone.browser.request('POST', path, { body, headers });
 const patch = (someone: Person, path: string, body: unknown, headers?: Record<string, string>) => someone.browser.request('PATCH', path, { body, headers });
@@ -27,12 +23,6 @@ const searchRaw = (someone: Person, params: Params) => someone.browser.request('
 const search = async (someone: Person, params: Params | string) => json<SearchResponse>(await searchRaw(someone, typeof params === 'string' ? { q: params } : params), 200, 'search');
 const explain = async (someone: Person, params: Params) => json<SearchWork>(await someone.browser.request('GET', `/api/v1/search/explain?${qs(params)}`), 200, 'explain');
 /** A person with a full display name, as the search results show it. */
-async function person(name: string): Promise<Person> {
-  const email = uniqueEmail(name.toLowerCase().replace(/[^a-z]+/g, '-'));
-  const { browser } = await register(email, password, name);
-  const me = json<{ user: { id: string } }>(await browser.request('GET', '/api/v1/me'), 200, 'me');
-  return { id: me.user.id, email, browser };
-}
 const text = (value: SearchResult['title'] | null) => (value ?? []).map((part) => part.text).join('');
 const titles = (answer: SearchResponse) => answer.items.map((item) => text(item.title));
 const kinds = (answer: SearchResponse) => answer.items.map((item) => item.kind).sort();

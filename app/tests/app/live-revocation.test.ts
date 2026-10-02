@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
 import Fastify from 'fastify';
 import { eq } from 'drizzle-orm';
-import { createDatabase, schema } from '@flux/db';
+import { schema } from '@flux/db';
 import { DomainError, ServiceUnavailableError, grantProject, liveUseCases, removeMember as removeWorkspaceMember, type LiveMedia } from '@flux/core';
 import type { Conversation } from '@flux/contracts';
 import { liveAccess } from '../../apps/server/src/live/access.js';
@@ -12,12 +12,9 @@ import { liveSessionStore } from '../../apps/server/src/live/store.js';
 import { liveRevocationCoordinator, withNoMediaAccessChange } from '../../apps/server/src/live/revocation.js';
 import { accessRoutes } from '../../apps/server/src/access/routes.js';
 import { liveRoutes } from '../../apps/server/src/live/routes.js';
+import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
 
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { db, pool } = createDatabase(connectionString);
-after(() => pool.end());
 
 function mediaFixture() {
   const rooms = new Set<string>();

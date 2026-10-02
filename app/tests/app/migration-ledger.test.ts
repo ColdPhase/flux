@@ -7,18 +7,14 @@ import {
   assertKnownMigrationVersions,
   assertMigrationSqlLedgerChange,
   assertMigrationStepLedger,
-  createDatabase,
   FLUX_SCHEMA_VERSION,
   parseMigrationManifest,
   readAppliedMigrationVersions,
   readMigrationManifest,
 } from '@flux/db';
+import { pool } from './support/db.js';
 
 const migrationsDir = 'packages/db/migrations';
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { pool } = createDatabase(connectionString);
-after(() => pool.end());
 
 const first = { name: '0001_first.sql', version: 1 };
 const late = { name: '0015_late.sql', version: 15 };

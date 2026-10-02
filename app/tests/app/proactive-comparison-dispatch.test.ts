@@ -5,16 +5,12 @@ import { readFileSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, describe, test } from 'node:test';
-import { createDatabase } from '@flux/db';
 import type { ComparisonProvider } from '@flux/core';
 import type { Conversation, Material, ProactiveComparisonProposal, WorkResult } from '@flux/contracts';
 import { dispatchProactiveComparison } from '../../apps/worker/src/proactive-comparison/dispatch.js';
+import { db, pool } from './support/db.js';
 import { addMember, draft, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { db, pool } = createDatabase(connectionString);
-after(() => pool.end());
 
 describe('controlled background comparison dispatch (#58)', () => {
   let owner: Person;

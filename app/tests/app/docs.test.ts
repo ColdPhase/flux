@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
-import { createDatabase } from '@flux/db';
 import { DomainError, upsertSection, type Principal } from '@flux/core';
 import type { Agent, Conversation, Decision, Doc, DocPreview, DocSummary, DocVersion, DocVersionSummary, Material, MaterialVersion, Page, Project, Workspace, WorkItem, WorkResult } from '@flux/contracts';
 import { docUseCases } from '../../apps/server/src/docs/adapters.js';
+import { db, pool } from './support/db.js';
 import type { ClientResponse } from './support/http.js';
 import { addMember, expectStatus, grant, person, project as createProject, workspace, type Person } from './support/people.js';
 import { StreamClient } from './support/stream.js';
@@ -14,10 +14,6 @@ import { StreamClient } from './support/stream.js';
 // backlinks to work, decisions, results, messages, sketches and other docs; "Add to docs" from
 // a result or decision; sanitized Markdown; events and the workspace list filter.
 
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { pool, db } = createDatabase(connectionString);
-after(() => pool.end());
 
 const post = (someone: Person, path: string, body: unknown, headers?: Record<string, string>) => someone.browser.request('POST', path, { body, headers });
 const patch = (someone: Person, path: string, body: unknown, headers?: Record<string, string>) => someone.browser.request('PATCH', path, { body, headers });

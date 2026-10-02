@@ -3,16 +3,12 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { after, test } from 'node:test';
-import { createDatabase } from '@flux/db';
 import type { ComparisonProvider } from '@flux/core';
 import type { Material } from '@flux/contracts';
 import { dispatchProactiveComparison } from '../../apps/worker/src/proactive-comparison/dispatch.js';
+import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
 
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { db, pool } = createDatabase(connectionString);
-after(() => pool.end());
 const masterKey = readFileSync('/run/secrets/flux_background_key');
 
 function deferred<T>() {

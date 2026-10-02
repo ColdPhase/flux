@@ -2,15 +2,11 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import type { Draft, VersionConflict, Workspace } from '@flux/contracts';
-import { createDatabase } from '@flux/db';
 import { deleteExpiredIdempotencyKeys } from '@flux/core';
+import { db, pool } from './support/db.js';
 import { addMember, draft, expectStatus, grant, person, project, type Person } from './support/people.js';
 
 // If-Match preconditions and idempotency keys over HTTP (issue #29, AC-4).
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { db, pool } = createDatabase(connectionString);
-after(() => pool.end());
 
 async function stored(draftId: string) {
   const result = await pool.query('SELECT title, body, visibility, project_id, version FROM drafts WHERE id = $1', [draftId]);

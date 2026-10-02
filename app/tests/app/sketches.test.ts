@@ -2,18 +2,14 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import type { CreatedThought, MovedThoughts, PositionsConflict, Project, Sketch, SketchDetail, SketchPage, Thought, ThoughtLink, VersionConflict, Workspace } from '@flux/contracts';
-import { createDatabase } from '@flux/db';
 import { authorize, createAgent, grantProject, type Principal } from '@flux/core';
+import { db, pool } from './support/db.js';
 import { addMember, draft, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 import { StreamClient } from './support/stream.js';
 
 // Persistent sketches over HTTP (issue #69, AC-1/AC-2/AC-4): access through the #29 policy,
 // private and DM sketches, cross-workspace rejection, If-Match, concurrent moves, idempotent
 // retries, placements that never delete their object, and stream events with a policy audience.
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { db, pool } = createDatabase(connectionString);
-after(() => pool.end());
 
 const ifMatch = (version: number) => ({ 'if-match': `"${version}"` });
 

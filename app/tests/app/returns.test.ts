@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
-import { createDatabase } from '@flux/db';
 import type { Conversation, Decision, Doc, Project, ReturnPlace, ReturnPoint, ReturnSummary, Workspace, WorkItem, WorkResult } from '@flux/contracts';
+import { pool } from './support/db.js';
 import type { ClientResponse } from './support/http.js';
 import { addMember, expectStatus, grant, person, project as createProject, workspace, type Person } from './support/people.js';
 
@@ -11,10 +11,6 @@ import { addMember, expectStatus, grant, person, project as createProject, works
 // final access check), human-language grouping with source links, one next step with its
 // reason, and nothing about places the reader cannot currently see.
 
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { pool } = createDatabase(connectionString);
-after(() => pool.end());
 
 const post = (someone: Person, path: string, body: unknown, headers?: Record<string, string>) => someone.browser.request('POST', path, { body, headers });
 const patch = (someone: Person, path: string, body: unknown, headers?: Record<string, string>) => someone.browser.request('PATCH', path, { body, headers });

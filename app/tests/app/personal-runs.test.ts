@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
-import { createDatabase } from '@flux/db';
 import { createAssistantProposalUseCases, createPersonalRunProcessor, recoverPersonalRuns, type PersonalRunHooks, type Principal, type Transaction } from '@flux/core';
 import {
   PERSONAL_RUN_CONSENT_VERSION,
@@ -10,9 +9,11 @@ import {
 } from '@flux/contracts';
 import { assistantProposalUseCases, personalRunUseCases, proposalUnitOfWork } from '../../apps/server/src/personal-runs/adapters.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
+import { db, pool } from './support/db.js';
 import { addMember, expectStatus, person, project as createProject, removeMember, workspace as createWorkspace, type Person } from './support/people.js';
 import { echo, FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
 import { StreamClient } from './support/stream.js';
+import { waitFor } from './support/wait.js';
 import { guardFinalEventPhase } from './support/final-events.js';
 
 // Owner-invoked personal assistant runs (#68, decision O-008), first slice. HTTP routes run
@@ -21,11 +22,6 @@ import { guardFinalEventPhase } from './support/final-events.js';
 // driven in this process through the same core use cases and worker processor with the test-only
 // fakes of `support/personal-runs.ts`: a fake connection lookup, a fake queue and a FAKE COMPUTE.
 // No model is called; none of these tests is a provider, billing or compatibility pass.
-
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { pool, db } = createDatabase(connectionString);
-after(() => pool.end());
 
 const connections = new FakeConnections();
 const compute = new FakeCompute();
@@ -55,16 +51,6 @@ async function row(runId: string) {
 
 async function runCount(ownerId: string) {
   return (await pool.query('SELECT count(*)::int AS n FROM personal_runs WHERE owner_user_id = $1', [ownerId])).rows[0].n as number;
-}
-
-async function waitFor<T>(check: () => Promise<T | null | undefined | false>, label: string, timeoutMs = 8000): Promise<T> {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    const value = await check();
-    if (value) return value;
-    if (Date.now() > deadline) throw new Error(`Timed out waiting for ${label}`);
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
 }
 
 describe('personal assistant runs (#68, fake compute: no provider pass is claimed)', () => {
@@ -349,7 +335,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
       resolve({ kind: 'completed', stopReason: 'end_turn', text: 'Late answer [S1]', usage: { inputTokens: 900, outputTokens: 40 } })));
     const long = await ask(hubert);
     const processing = processor.process(long.run.id);
-    await waitFor(async () => (await row(long.run.id)).status === 'dispatching', 'dispatch');
+    await waitFor(async () => (await row(long.run.id)).status === 'dispatching', 'dispatch', 8000);
     expectStatus(await hubert.browser.request('POST', `/api/v1/assistant-runs/${long.run.id}/stop`), 200);
     assert.equal(await processing, 'stopped');
     compute.respond = echo;

@@ -1,15 +1,11 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
-import { createDatabase } from '@flux/db';
+import { test } from 'node:test';
 import { COWORK_PLAYBOOK, coworkPlaybookReference, coworkPlaybookTools, coworkPlaybookUri, renderCoworkPlaybook } from '@flux/core';
+import { pool } from './support/db.js';
 import { publicOrigin, register, uniqueEmail } from './support/http.js';
 import { beginOauth, expect, mcp, oauthToken, toolValue } from './support/mcp.js';
 
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { pool } = createDatabase(connectionString);
-after(() => pool.end());
 
 test('the shipped playbook has one stable version/digest that changes with its content and covers every role module', () => {
   const reference = coworkPlaybookReference();

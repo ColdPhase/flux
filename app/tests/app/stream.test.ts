@@ -1,17 +1,14 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 import type { Draft, Workspace } from '@flux/contracts';
-import { audiencePageQuery, createDatabase, lastAudienceSeqQuery } from '@flux/db';
+import { audiencePageQuery, lastAudienceSeqQuery } from '@flux/db';
 import { audienceKey, type Principal } from '@flux/core';
+import { db, pool } from './support/db.js';
 import { Browser } from './support/http.js';
 import { addMember, draft, expectStatus, grant, person, project, removeMember, secondSession, share, workspace, type Person } from './support/people.js';
 import { StreamClient, upgradeStatus } from './support/stream.js';
 
 // WebSocket stream: replay, live delivery and per-recipient policy (issue #29, AC-3).
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { pool, db } = createDatabase(connectionString);
-after(() => pool.end());
 const heartbeatMs = Number(process.env.FLUX_STREAM_HEARTBEAT_MS ?? 25_000);
 
 async function head(someone: Person) {

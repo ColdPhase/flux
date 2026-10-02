@@ -2,22 +2,19 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
 import { sql } from 'drizzle-orm';
-import { createDatabase, schema } from '@flux/db';
+import { schema } from '@flux/db';
 import { agentExecutionUseCases, DomainError, type Principal } from '@flux/core';
 import type { Agent, AgentConnection, AgentStandingGrant, Decision, Material, Page, WorkItem, WorkResult } from '@flux/contracts';
 import { agentRuntimeInTransaction } from '../../apps/server/src/agent-connection/runtime.js';
 import { agentExecutionInTransaction } from '../../apps/server/src/agent-connection/execution.js';
 import { lockProjectTaskGraphs, requireTaskPrerequisitesMet, taskPrerequisiteIds } from '../../apps/server/src/work/task-graph.js';
 import { nativeWorkInTransaction, workUseCases } from '../../apps/server/src/work/adapters.js';
+import { db, pool } from './support/db.js';
 import { backendPid, settled, waitUntilBlockedBy } from './support/locks.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 
 // Native task criteria, prerequisites and plan intent (#152): API/persistence behavior against the real
 // database. Pure rules are in task-graph-core.test.ts; the migration is in task-plan-migration.test.ts.
-const url = process.env.DATABASE_URL;
-if (!url) throw new Error('DATABASE_URL is required');
-const { db, pool } = createDatabase(url);
-after(() => pool.end());
 
 type Body = Record<string, unknown>;
 interface ApiFailure { code: string; error: string; [key: string]: unknown }

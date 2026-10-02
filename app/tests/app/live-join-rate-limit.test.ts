@@ -2,21 +2,17 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
 import Fastify from 'fastify';
-import { createDatabase } from '@flux/db';
 import { RateLimitedError, type LiveMedia } from '@flux/core';
 import type { Conversation } from '@flux/contracts';
 import { liveAccess } from '../../apps/server/src/live/access.js';
 import { liveSessionStore } from '../../apps/server/src/live/store.js';
 import { liveRoutes } from '../../apps/server/src/live/routes.js';
 import { joinRateLimiter } from '../../apps/server/src/live/rate-limit.js';
+import { db, pool } from './support/db.js';
 import { addMember, expectStatus, person, project, workspace } from './support/people.js';
 
 // Per-user, per-API-instance limit on live join grants (#62), with an injected clock and an
 // in-memory media port.
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { db, pool } = createDatabase(connectionString);
-after(() => pool.end());
 
 function memoryMedia(): LiveMedia {
   const rooms = new Set<string>();
