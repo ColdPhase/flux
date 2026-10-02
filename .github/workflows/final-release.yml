@@ -1,0 +1,263 @@
+name: Final release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version, for example v1.0.0 or v1.0.0-rc.1
+        required: true
+        type: string
+      candidate_sha:
+        description: Exact independently accepted protected-main SHA
+        required: true
+        type: string
+      acceptance_issue:
+        description: Issue with both agents' exact-SHA integrated acceptance comments
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: final-release
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    name: Validate accepted candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: read
+    outputs:
+      source_sha: ${{ steps.check.outputs.source_sha }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify main SHA, version and independent acceptance
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          ACCEPTANCE_ISSUE: ${{ inputs.acceptance_issue }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RELEASE_VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$ ]]
+          [[ "$ACCEPTANCE_ISSUE" =~ ^[1-9][0-9]*$ ]]
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git rev-parse origin/main)" = "$CANDIDATE_SHA"
+          test -f docker/compose.yaml
+          test -f docker/.env.example
+          # ls-remote --exit-code reports 2 only for an absent ref; another failure is not "free".
+          tag_status=0
+          git ls-remote --exit-code --tags --refs origin "refs/tags/$RELEASE_VERSION" >/dev/null ||
+            tag_status=$?
+          if [ "$tag_status" -eq 0 ]; then
+            echo 'Version tag already exists; inspect the existing release before retrying.' >&2
+            exit 1
+          fi
+          if [ "$tag_status" -ne 2 ]; then
+            echo 'Could not read the remote tags; not assuming the version is unused.' >&2
+            exit 1
+          fi
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/issues/$ACCEPTANCE_ISSUE/comments?per_page=100" \
+            > "$RUNNER_TEMP/acceptance-comments.json"
+          python3 scripts/release/verify_acceptance.py \
+            --comments "$RUNNER_TEMP/acceptance-comments.json" --source-sha "$CANDIDATE_SHA"
+          echo "source_sha=$CANDIDATE_SHA" >> "$GITHUB_OUTPUT"
+          echo "version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+
+  image:
+    name: Build amd64 and arm64 OCI image
+    needs: candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.candidate.outputs.source_sha }}
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+        with:
+          # The action's default is the moving tonistiigi/binfmt:latest; pin the emulator that
+          # builds the arm64 image (qemu-v10.2.3, the digest of the index) and install only arm64.
+          image: docker.io/tonistiigi/binfmt:qemu-v10.2.3@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+          platforms: arm64
+          cache-image: false
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        with:
+          version: v0.37.1
+          driver-opts: image=moby/buildkit:v0.33.0@sha256:6c2fa84a6b61ccd72899dde4239f8d5717f05f9a8ca6f3cad185fb1a95a94de3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Build and push the untagged candidate manifest
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          # The same inputs as the source Compose and the PR check: docker/Dockerfile with app/ as
+          # the context; its final (runtime) stage is the image that api, worker and migrate run.
+          context: ./app
+          file: ./docker/Dockerfile
+          target: runtime
+          platforms: linux/amd64,linux/arm64
+          outputs: type=image,name=ghcr.io/coldphase/flux,push=true,push-by-digest=true,name-canonical=true
+          provenance: mode=max
+          # BuildKit's default scanner is the moving docker/buildkit-syft-scanner:stable-1; pin 1.12.0.
+          sbom: generator=docker/buildkit-syft-scanner@sha256:ae4f3b554449e7e25548e7d8ccc029d17357348e30c6e3df01b92bc93654d6a9
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.candidate.outputs.source_sha }}
+            org.opencontainers.image.version=${{ needs.candidate.outputs.version }}
+      - name: Attest the pushed manifest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-name: ghcr.io/coldphase/flux
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - name: Confirm both platform manifests
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          docker buildx imagetools inspect --raw "ghcr.io/coldphase/flux@$IMAGE_DIGEST" \
+            > "$RUNNER_TEMP/index.json"
+          python3 - "$RUNNER_TEMP/index.json" <<'PY'
+          import json, sys
+          index = json.load(open(sys.argv[1], encoding='utf-8'))
+          platforms = {
+              (item.get('platform', {}).get('os'), item.get('platform', {}).get('architecture'))
+              for item in index.get('manifests', [])
+          }
+          assert {('linux', 'amd64'), ('linux', 'arm64')} <= platforms, platforms
+          PY
+      - name: Generate image SPDX SBOM
+        uses: anchore/sbom-action@006b7ce8314066bdf1765b4500370d40fa6917a3 # v0.24.2
+        with:
+          image: ghcr.io/coldphase/flux@${{ steps.build.outputs.digest }}
+          output-file: sbom.spdx.json
+          format: spdx-json
+          upload-artifact: false
+          upload-release-assets: false
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-sbom
+          path: sbom.spdx.json
+          if-no-files-found: error
+
+  package:
+    name: Test packaged installation
+    needs: [candidate, image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.candidate.outputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-sbom
+          path: release-input
+      - name: Prepare release assets
+        env:
+          RELEASE_VERSION: ${{ needs.candidate.outputs.version }}
+          CANDIDATE_SHA: ${{ needs.candidate.outputs.source_sha }}
+          IMAGE_DIGEST: ${{ needs.image.outputs.digest }}
+        run: |
+          python3 scripts/release/prepare_assets.py \
+            --version "$RELEASE_VERSION" --source-sha "$CANDIDATE_SHA" \
+            --digest "$IMAGE_DIGEST" --sbom release-input/sbom.spdx.json \
+            --destination release-assets
+          cd release-assets
+          sha256sum -c SHA256SUMS
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Install, back up and restore the packaged image
+        run: bash scripts/release/smoke_artifacts.sh release-assets "$RUNNER_TEMP/flux-smoke" "fluxrelease${{ github.run_id }}" "fluxrestore${{ github.run_id }}"
+      # No asset name starts with a period (prepare_assets.py enforces it): upload-artifact skips
+      # hidden files and GitHub renames them as Release assets.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-assets
+          path: release-assets/*
+          if-no-files-found: error
+
+  draft:
+    name: Create draft for independent artifact review
+    needs: [candidate, image, package]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.candidate.outputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-assets
+          path: release-assets
+      - name: Create immutable-source draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.candidate.outputs.version }}
+          CANDIDATE_SHA: ${{ needs.candidate.outputs.source_sha }}
+          IMAGE_DIGEST: ${{ needs.image.outputs.digest }}
+          ACCEPTANCE_ISSUE: ${{ inputs.acceptance_issue }}
+        run: |
+          set -euo pipefail
+          cd release-assets
+          sha256sum -c SHA256SUMS
+          python3 "$GITHUB_WORKSPACE/scripts/release/check_asset_set.py" .
+          # Drafts have no tag yet, so a retry could add a second draft for the same version.
+          existing=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | select(.tag_name == env.RELEASE_VERSION) | .id')
+          if [ -n "$existing" ]; then
+            echo "A release or draft for $RELEASE_VERSION already exists; delete the unpublished draft or use a new version." >&2
+            exit 1
+          fi
+          cat > "$RUNNER_TEMP/release-notes.md" <<EOF
+          Flux $RELEASE_VERSION candidate
+
+          Source: $CANDIDATE_SHA
+          OCI candidate image: ghcr.io/coldphase/flux@$IMAGE_DIGEST
+          Platforms: linux/amd64, linux/arm64
+          Build: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+          Integrated acceptance: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/issues/$ACCEPTANCE_ISSUE
+
+          Install with the attached version-matched compose.yaml, env.example and INSTALL.md; check every file with SHA256SUMS first.
+          This draft requires independent packaged install, upgrade and restore review before the version tag and release are published.
+          EOF
+          release_flags=(--draft)
+          if [[ "$RELEASE_VERSION" == *-rc.* ]]; then
+            release_flags+=(--prerelease)
+          fi
+          gh release create "$RELEASE_VERSION" ./* \
+            --repo "$GITHUB_REPOSITORY" --target "$CANDIDATE_SHA" \
+            --title "Flux $RELEASE_VERSION" --notes-file "$RUNNER_TEMP/release-notes.md" \
+            "${release_flags[@]}"
