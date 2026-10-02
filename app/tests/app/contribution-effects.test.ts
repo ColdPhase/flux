@@ -2,11 +2,14 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
 import { eq, sql } from 'drizzle-orm';
-import { createDatabase, schema } from '@flux/db';
-import { agentExecutionUseCases, createWorkContributions, createWorkUseCases, DomainError, type Principal, type WorkPorts } from '@flux/core';
-import type { AgentConnection, AgentExecutionCommand, AgentJsonValue, AgentPostcondition, AgentStandingGrant, Conversation, ConversationMessage, Decision,
-  TaskDiscussion, WorkItem, WorkResult } from '@flux/contracts';
+import { createDatabase, schema, TASK_GRAPH_LOCK_NAMESPACE } from '@flux/db';
+import { agentExecutionUseCases, createAssistantProposalUseCases, createWorkContributions, createWorkUseCases, DomainError, type Principal, type ProposalRecord,
+  type WorkPorts } from '@flux/core';
+import type { AgentConnection, AgentExecutionCommand, AgentJsonValue, AgentPostcondition, AgentStandingGrant, AssistantProposal, Conversation, ConversationMessage,
+  Decision, TaskDiscussion, WorkItem, WorkResult } from '@flux/contracts';
 import { nativeWorkInTransaction, policyWorkAccess, workRepository } from '../../apps/server/src/work/adapters.js';
+import { proposalUnitOfWork } from '../../apps/server/src/personal-runs/adapters.js';
+import { FakeQueue } from './support/personal-runs.js';
 import { taskDiscussionPorts, taskDiscussionUseCases } from '../../apps/server/src/work/task-discussions.js';
 import { transactionEventSession } from '../../apps/server/src/work/transaction-events.js';
 import { agentRuntimeInTransaction } from '../../apps/server/src/agent-connection/runtime.js';
@@ -668,6 +671,54 @@ test('a finishing result locks the linked tasks and the finishing task\'s prereq
   expectStatus(await pending, 201);
   assert.equal((await f.current(b.id)).status, 'done');
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_messages WHERE project_id=$1', [f.place.id])).rows[0].n, 2);
+});
+
+test('a helper acceptance that finishes a task takes the graph lock before the task row and fences the version it authorized', async () => {
+  const f = await scene();
+  const unit = proposalUnitOfWork(db, new FakeQueue().factory);
+  // Only the acceptance's lock order and fence are under test: the helper run and proposal rows (#68) are stood in for.
+  const decide = (proposal: ProposalRecord) => createAssistantProposalUseCases({ run: (action) => unit.run((ports) => action({ ...ports,
+    runs: { ...ports.runs, findProposal: async () => proposal,
+      updateProposal: async (_id, changes) => ({ ...proposal, ...changes, version: proposal.version + 1 }) } })) });
+  const proposalFor = (work: WorkItem): ProposalRecord => ({ id: randomUUID(), workspaceId: f.ws.id, projectId: f.place.id, runId: randomUUID(),
+    ownerUserId: f.owner.id, fact: 'Measured at the bench', interpretation: 'It holds', resultTitle: `Accepted: ${work.title}`, resultFinding: 'positive',
+    resultEvidence: '', finishesWorkId: work.id, status: 'proposed', decidedBy: null, decidedAt: null, resultId: null, version: 1,
+    createdAt: new Date(), updatedAt: new Date() });
+  const graphLock = sql`SELECT pg_advisory_xact_lock(hashtextextended(${TASK_GRAPH_LOCK_NAMESPACE + f.place.id}, 0))`;
+
+  // A graph writer holds the graph lock and then takes the task row; the waiting acceptance must not already hold it.
+  const t = await f.task('Accepted task');
+  const proposal = proposalFor(t);
+  let accepted!: Promise<AssistantProposal>;
+  await db.transaction(async (tx) => {
+    await tx.execute(graphLock);
+    const holder = await backendPid(tx);
+    accepted = decide(proposal).accept(human(f.owner), proposal.id, {}, 1);
+    await waitUntilBlockedBy(pool, holder);
+    await tx.execute(sql`SELECT 1 FROM project_work_items WHERE id=${t.id} FOR UPDATE NOWAIT`);
+  });
+  const view = await accepted;
+  assert.equal(view.status, 'accepted');
+  assert.equal((await f.current(t.id)).status, 'done');
+  assert.deepEqual((await f.discussion(f.reader, t.id)).root?.contribution, { kind: 'result', resultId: view.resultId });
+
+  // The owner check is not weakened: a change to the task after the authority read is a version conflict that writes nothing.
+  const owned = await f.task('Owned task');
+  const mine = expectStatus(await f.patch(f.owner, owned.id, { owner: { kind: 'human', id: f.writer.id } }, owned.version), 200) as WorkItem;
+  const second = proposalFor(mine);
+  const before = await f.counts();
+  let refused!: Promise<unknown>;
+  await db.transaction(async (tx) => {
+    await tx.execute(graphLock);
+    const holder = await backendPid(tx);
+    refused = decide(second).accept(human(f.writer), second.id, {}, 1).catch((error: unknown) => error);
+    await waitUntilBlockedBy(pool, holder);
+    await tx.execute(sql`UPDATE project_work_items SET owner_user_id=${f.owner.id}, version=version+1 WHERE id=${owned.id}`);
+  });
+  const error = await refused;
+  assert.ok(error instanceof DomainError && error.code === 'VERSION_CONFLICT', String(error));
+  assert.deepEqual(await f.counts(), before);
+  assert.equal((await f.current(owned.id)).status, 'open');
 });
 
 test('replacing prerequisites and saving a blocker in one keyed command is one outcome: exact replay, set semantics, changed intent conflicts', async () => {

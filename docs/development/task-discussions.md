@@ -238,7 +238,8 @@ effects, atomicity, hooks and lock order apply; the file corrections remain for 
   handle enforces `prepare` → `lockTasks` → `append` once each. A generic reply to a task-bound conversation
   discovers the binding without locking and takes the task row before the conversation sequence, like every
   contribution. Message identities are deterministic from the stable command (or the canonical result) plus the
-  exact task. The helper acceptance path uses its locked proposal as the command identity.
+  exact task. The helper acceptance path uses its locked proposal as the command identity and only reads the task it
+  finishes (authority check); the result then locks that task in the order above and fences the version it read.
 - **Retries.** `clientCommandId` on `PATCH /api/v1/work/:id` and `POST /api/v1/projects/:id/results`; semantics in
   [work and decisions](work-decisions.md#contributions-to-the-task-conversation-154).
 - **Consumers.** Search, notifications, Return and helper context needed no code change: each reads the real
