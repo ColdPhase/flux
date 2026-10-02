@@ -25,10 +25,13 @@ interface TabsProps {
   panelIdPrefix?: string;
 }
 
+/** A quiet tab without a visible count still names it, e.g. "Tasks, 2 open" (an exact name). */
+function quietName(item: TabItem): string | undefined {
+  return item.count === undefined && item.countLabel ? `${item.label}${item.countLabel}` : undefined;
+}
+
 function Count({ item }: { item: TabItem }): ReactNode {
-  // The hidden label sits in an inline wrapper, as with a visible count, so the accessible name
-  // reads "Tasks, 2 open" without a space before the comma.
-  if (item.count === undefined) return item.countLabel ? <span><span className="ui-vh">{item.countLabel}</span></span> : null;
+  if (item.count === undefined) return null;
   return (
     <span className="ui-tabs__count">
       <span aria-hidden="true">{item.count}</span>
@@ -112,7 +115,7 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix }
       <nav className={['ui-tabs', className].filter(Boolean).join(' ')} aria-label={label}>
         <div ref={barRef} className="ui-tabs__bar">
           {items.map((item) => (
-            <NavLink key={item.id} to={item.to ?? '.'} end={item.end ?? true} className="ui-tabs__tab" data-tab={item.id} onClick={(event) => event.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' })}>
+            <NavLink key={item.id} to={item.to ?? '.'} end={item.end ?? true} className="ui-tabs__tab" data-tab={item.id} aria-label={quietName(item)} onClick={(event) => event.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' })}>
               {item.label}<Count item={item} />
             </NavLink>
           ))}
@@ -134,6 +137,7 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix }
               role="tab"
               className="ui-tabs__tab"
               data-tab={item.id}
+              aria-label={quietName(item)}
               id={panelIdPrefix ? `${panelIdPrefix}-tab-${item.id}` : undefined}
               aria-controls={panelIdPrefix ? `${panelIdPrefix}-${item.id}` : undefined}
               aria-selected={selected}
