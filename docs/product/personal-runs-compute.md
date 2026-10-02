@@ -2,7 +2,8 @@
 
 > **Provider scope superseded by [F-020](model-providers.md), 2026-10-02.** The owner's
 > connection may now use any supported provider and model ([PROV-1–PROV-6](model-providers.md));
-> the rest of this decision stays in force.
+> the rest of this decision stays in force, except that the input bound is now the
+> provider-neutral Flux estimate ([PROV-3](model-providers.md#prov-3--cost-caps-and-token-bounds)).
 
 **Status:** accepted, 2026-09-28, by independent
 [review](https://github.com/ColdPhase/flux/pull/125#pullrequestreview-5334126978)
