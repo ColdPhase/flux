@@ -49,7 +49,7 @@ Limits: Segoe UI / -apple-system / Roboto / Inter are not installed in the conta
 | Copper | `#985035` / `#f6ede7` / `#fff` | `#dba88c` / `#42342d` / `#302820` |
 
 Accent is used only for selection and pointers: active nav bar, tab underline, focus ring, unread dot, wordmark dot, links/inline refs, focused borders, "doing" status ring, card hover border. It is **not** the primary button colour (that is `--action`). The settings swatch dots still show the older 11.4 preview values (light `#3f654c/#456581/#895c43`, dark `#b2c89f/#acc1d2/#d6b99b`), which differ from the applied accents.
-Contrast (computed): light text/surface 13.7, muted/surface 5.9, dim/surface 4.9, **dim/chrome 4.45 (fails AA for the 11px sidebar labels)**, accent/surface 5.9–6.8; dark muted/surface 7.6, dim/surface 6.6, accent/surface 7.3–8.2; line/surface ≈1.3 (input borders fail WCAG 1.4.11).
+Contrast (computed): light text/surface 13.7, muted/surface 5.9, dim/surface 4.9, **dim/chrome 4.45 (fails AA for the 11px sidebar labels)**, accent/surface 5.9–6.8; dark muted/surface 7.6, dim/surface 6.6, accent/surface 7.3–8.2; line/surface ≈1.3 light and 1.52 dark (input borders fail WCAG 1.4.11).
 
 ### Radii and shadows in use
 4px pills/badges · 5px segmented, settings tab, menu item, PR card, swatch, agent avatar · 6px nav item, wiki item, outline row, node plus · 7px buttons, icon buttons, inputs, select, toast, wiki pre · 8px task card, canvas controls · 9px menu, agents composer · 10px composer, map node, card drop zone · 12px modal, kanban column · **13px sheet** · 50% avatars and dots. Shadows: only `--shadow` (overlays), node `0 1px 3px #00000004`, agents composer `0 3px 12px #00000004`. The sheet has no shadow.
@@ -213,13 +213,15 @@ The 11.4 media rules set `--sidebar` to 232/193/180/160px, but the unconditional
 |---|---|
 | ≥1600 (11.4) | `--drawer 430`, `--space-page 44`, sidebar padding-inline 26/20, agents column 894 |
 | default | `--drawer 408`, `--space-page 36`, shell padding 12/12/12/0 |
-| ≥1550 / ≤1100 (11.5) | wiki document max 890 (≥1550); wiki list 180 and doc padding 28 (≤1100) |
-| ≤1200 (11.4) | `--space-page 26`, `--drawer 375`, kbd hidden, tabs gap 23, wiki list 186, board gap 18 |
+| ≥1550 / ≤1100 (11.5) | ≥1550: wiki document max 890 with padding-top 42, wiki list 230; ≤1100: wiki list 180 (min 170), document padding 28/28/48 |
+| ≤1200 (11.4) | `--space-page 26`, `--drawer 375`, kbd hidden, tabs gap 23, board gap 18 |
 | ≤1000 (11.4) | `--space-page 22`; tabs gap 20 at 11px; context drawer becomes an absolute 390px overlay; Tasks search wraps to its own row |
 | ≤760 (11.4) | shell padding **8/8/8/0**, `--space-page 18`, nav 11px, tabs gap 16, profile subtitle hidden |
 | **≤680** (11.4–11.6) | phone layout, see below |
 | ≤370 (11.4) | tabs gap 19, tab 11px, tab icons hidden |
 | max-height 710 | tighter header top padding (16) and agents room |
+
+The 11.4 wiki list widths (186 ≤1200, 166 ≤1000, 145 ≤760) are overridden by the later unconditional 11.6 `.wiki-list{width:212px}`. The effective wiki list is **230px ≥1550, 212px at 1101–1549, 180px at 681–1100 and full width ≤680** (checked in Chromium at 1150px: 212px).
 
 **Phone, 390×844** (light):
 - Shell is a flex column with no padding. The **sheet loses its border and radius** and fills the screen (`--surface`).
@@ -232,7 +234,7 @@ The 11.4 media rules set `--sidebar` to 232/193/180/160px, but the unconditional
 
 ---
 
-## Gap vs production app (origin/main 5fbb8d12)
+## Gap vs production app (origin/main 9c96cbe2; `tokens.css` unchanged since 5fbb8d12)
 
 Read from `app/apps/web/src/ui/tokens.css`, `app/app.css`, `app/project-conversation.css`, `ui/ui.css`, `work/work.css`, `docs/docs.css` on `origin/main`. Map, sketch, Agents and connection CSS were not compared.
 
@@ -290,7 +292,7 @@ Keep production's semantic names. Change values and add the four missing roles: 
 | `--own` | **new `--bubble-own`** (replaces `--accent-soft` on own messages) | Sky `#e7edf4` · Mint `#e5eee5` · Copper `#f3e8de` | `#2e3742` | `--accent-soft` |
 | `--text` | `--text` | `#272e38` | `#e8ecf2` | `#1b1c1f / #ededef` |
 | `--muted` | `--text-2` | `#596577` | `#adb7c6` | `#3c3f45 / #c9cace` |
-| `--dim` | `--text-3` (on the chrome sidebar use `--text-2`: dim on chrome is 4.45:1) | `#657185` | `#a0abba` | `#62666d / #9a9ca3` |
+| `--dim` | `--text-3` (on the chrome sidebar use `--text-2`: dim on chrome is 4.45:1). Production uses `#5e6a7d` in light, see [the design system](../../../studio-v11.6-design-system.md) | `#657185` | `#a0abba` | `#62666d / #9a9ca3` |
 | `--line` | `--line` | `#dde2e9` | `#3b424e` | `#e7e7ea / #26272b` |
 | — | `--line-strong`: keep a stronger slate | ≈`#cfd6df` (derived, not in the prototype) | ≈`#46505d` | `#d5d6da / #34353a` |
 | — | `--line-input`: **keep ≥3:1**, retinted to slate; the prototype's 1.3:1 field border fails WCAG 1.4.11 | e.g. `#8a93a1` (3.1:1 on white) | e.g. `#6b7583` (3.3:1 on #21252b) | `#8b8f97 / #6b6e76` |

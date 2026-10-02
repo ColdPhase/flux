@@ -10,7 +10,7 @@ Run from the repository root. `pylib` must contain the Python Playwright client 
 ```sh
 out=$(mktemp -d); cp docs/design/references/studio-v11.6/tools/measure/*.py "$out"
 cp -r docs/design/references/studio-v11.6/supplied "$out/supplied"
-docker run --rm -v "$out:/out:z" -w /out mcr.microsoft.com/playwright/python:v1.62.0-noble \
+docker run --rm -i -v "$out:/out:z" -w /out mcr.microsoft.com/playwright/python:v1.62.0-noble \
   pip install --target /out/pylib -r /dev/stdin < app/tests/ui/requirements.txt
 docker run --rm --network none --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$out:/out:z" -w /out \
   mcr.microsoft.com/playwright/python:v1.62.0-noble python3 extract.py
