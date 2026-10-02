@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { AI_PROVIDERS, BACKGROUND_CONSENT_VERSION, isAiProviderKind, type AiPrice, type BackgroundComputeConnection,
-  type ConnectBackgroundComputeCommand } from '@flux/contracts';
+  type ConnectBackgroundComputeCommand, type UpdateBackgroundComputeConnectionCommand } from '@flux/contracts';
 import { InvalidInputError, NotFoundError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import { refuseAllEndpoints, type AiEndpointPolicyPort } from '../ai/index.js';
@@ -11,10 +11,15 @@ export interface BackgroundKeySealer {
   seal(plainKey: string, ownerUserId: string, connectionId: string): string;
 }
 export interface BackgroundConnectionPort {
-  replace(input: { id: string; ownerUserId: string; encryptedKey: string; keyLastFour: string; keyFingerprint: string;
-    price: AiPrice | null; consentVersion: BackgroundComputeConnection['consentVersion'];
-    command: Omit<ConnectBackgroundComputeCommand, 'apiKey' | 'price'> }): Promise<BackgroundComputeConnection>;
+  /** Adds a connection (PROV-1: it never replaces another). It becomes the background one when asked or when the owner has none. */
+  add(input: { id: string; ownerUserId: string; encryptedKey: string; keyLastFour: string; keyFingerprint: string;
+    price: AiPrice | null; consentVersion: BackgroundComputeConnection['consentVersion']; name: string; useForBackground: boolean;
+    command: Omit<ConnectBackgroundComputeCommand, 'apiKey' | 'price' | 'name' | 'useForBackground'> }): Promise<BackgroundComputeConnection>;
+  /** The owner's active connections, background one first, then newest. */
+  list(ownerUserId: string): Promise<BackgroundComputeConnection[]>;
+  /** The one background comparisons use, or null. */
   current(ownerUserId: string): Promise<BackgroundComputeConnection | null>;
+  update(ownerUserId: string, connectionId: string, change: { name?: string; usedForBackground?: true }): Promise<BackgroundComputeConnection | null>;
   revoke(ownerUserId: string, connectionId: string): Promise<boolean>;
 }
 /** What a connection save needs beyond storage (F-020): the endpoint policy of owner-set URLs. */
@@ -30,6 +35,9 @@ function bounded(value: number, low: number, high: number): boolean {
   return Number.isInteger(value) && value >= low && value <= high;
 }
 function label(value: string): boolean { return typeof value === 'string' && value.trim() === value && value.length >= 2 && value.length <= 120; }
+function connectionName(value: unknown): value is string {
+  return typeof value === 'string' && value.trim() === value && value.length >= 1 && value.length <= 80;
+}
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
@@ -50,6 +58,10 @@ export function validateBackgroundConnection(input: ConnectBackgroundComputeComm
   } else if (input.baseUrl !== undefined) {
     throw new InvalidInputError('A named provider always uses its own public API address', 'AI_BASE_URL_INVALID');
   }
+  if (input.name !== undefined && !connectionName(input.name))
+    throw new InvalidInputError('A connection name is 1–80 characters without leading or trailing spaces', 'AI_CONNECTION_NAME_INVALID');
+  if (input.useForBackground !== undefined && typeof input.useForBackground !== 'boolean')
+    throw new InvalidInputError('useForBackground is true or false');
   if (input.price !== undefined && !validPrice(input.price))
     throw new InvalidInputError('Prices are whole micro-dollars per 1M tokens, from 0 to 1,000,000,000', 'AI_PRICE_INVALID');
   if (!label(input.payerOrganization) || !label(input.providerWorkspace)
@@ -88,10 +100,26 @@ export function backgroundConnectionUseCases(port: BackgroundConnectionPort, sea
         maxRunsPerDay: input.maxRunsPerDay, periodDays: input.periodDays,
         periodBudgetCents: input.periodBudgetCents, perRunCents: input.perRunCents,
       };
-      return port.replace({ id, ownerUserId, encryptedKey, keyLastFour: input.apiKey.slice(-4), keyFingerprint,
-        price, consentVersion: BACKGROUND_CONSENT_VERSION, command });
+      const name = input.name ?? `${AI_PROVIDERS[input.provider].label} · ${input.model}`.slice(0, 80);
+      return port.add({ id, ownerUserId, encryptedKey, keyLastFour: input.apiKey.slice(-4), keyFingerprint,
+        price, consentVersion: BACKGROUND_CONSENT_VERSION, name, useForBackground: input.useForBackground === true, command });
     },
+    list(principal: Principal): Promise<BackgroundComputeConnection[]> { return port.list(owner(principal)); },
     current(principal: Principal): Promise<BackgroundComputeConnection | null> { return port.current(owner(principal)); },
+    async update(principal: Principal, connectionId: string, change: UpdateBackgroundComputeConnectionCommand): Promise<BackgroundComputeConnection> {
+      const ownerUserId = owner(principal);
+      if (!change || typeof change !== 'object' || (change.name === undefined && change.usedForBackground === undefined))
+        throw new InvalidInputError('Change the name or choose the connection for background comparisons');
+      if (change.name !== undefined && !connectionName(change.name))
+        throw new InvalidInputError('A connection name is 1–80 characters without leading or trailing spaces', 'AI_CONNECTION_NAME_INVALID');
+      if (change.usedForBackground !== undefined && change.usedForBackground !== true)
+        throw new InvalidInputError('Choose another connection for background comparisons by marking it');
+      const updated = typeof connectionId === 'string' && UUID.test(connectionId)
+        ? await port.update(ownerUserId, connectionId, { ...(change.name !== undefined ? { name: change.name } : {}), ...(change.usedForBackground ? { usedForBackground: true as const } : {}) })
+        : null;
+      if (!updated) throw new NotFoundError('Background connection', 'BACKGROUND_CONNECTION_NOT_FOUND');
+      return updated;
+    },
     async revoke(principal: Principal, connectionId: string): Promise<void> {
       const ownerUserId = owner(principal);
       if (typeof connectionId !== 'string' || !UUID.test(connectionId) || !await port.revoke(ownerUserId, connectionId))

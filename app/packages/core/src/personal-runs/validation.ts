@@ -47,7 +47,8 @@ export function normalizeEnable(command: EnablePersonalRunsCommand) {
   const perRunCents = cents(command.perRunCents, 'perRunCents', PERSONAL_RUN_LIMITS.perRunCents);
   const dailyCapCents = cents(command.dailyCapCents, 'dailyCapCents', PERSONAL_RUN_LIMITS.dailyCapCents);
   if (perRunCents > dailyCapCents) throw new InvalidInputError('perRunCents cannot exceed dailyCapCents');
-  return { agentId: id(command.agentId, 'agentId'), perRunCents, dailyCapCents, timeZone: timeZone(command.timeZone) };
+  const connectionId = command.connectionId === undefined ? null : id(command.connectionId, 'connectionId');
+  return { agentId: id(command.agentId, 'agentId'), connectionId, perRunCents, dailyCapCents, timeZone: timeZone(command.timeZone) };
 }
 
 export function normalizeUpdate(command: UpdatePersonalRunsCommand) {

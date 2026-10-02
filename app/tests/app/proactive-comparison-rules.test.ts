@@ -96,19 +96,34 @@ describe('owner standing comparison rule', () => {
     assert.equal(expectStatus(await peer.browser.request('GET', `${connectionPath}/current`), 200), null);
     assert.equal((await peer.browser.request('DELETE', `${connectionPath}/${first.id}`)).status, 404);
 
-    // Replacement must retire and erase the earlier ciphertext in one transaction.
+    // PROV-1: a second connection is added beside the first, which stays the background connection
+    // until the owner marks another one; nothing is replaced or erased.
     const second = expectStatus(await owner.browser.request('POST', connectionPath,
-      { body: connectionBody(50) }), 201) as BackgroundComputeConnection;
+      { body: { ...connectionBody(50), name: 'Second key' } }), 201) as BackgroundComputeConnection;
     assert.notEqual(second.id, first.id);
-    assert.deepEqual(expectStatus(await owner.browser.request('GET', `${connectionPath}/current`), 200), second);
-    const old = await pool.query('SELECT encrypted_key, revoked_at FROM background_compute_connections WHERE id=$1', [first.id]);
-    assert.equal(old.rows[0].encrypted_key, null);
-    assert.ok(old.rows[0].revoked_at);
-    assert.equal((await owner.browser.request('DELETE', `${connectionPath}/${first.id}`)).status, 404);
+    assert.deepEqual([first.usedForBackground, second.usedForBackground, second.name], [true, false, 'Second key']);
+    assert.equal((expectStatus(await owner.browser.request('GET', `${connectionPath}/current`), 200) as BackgroundComputeConnection).id, first.id);
+    const listed = expectStatus(await owner.browser.request('GET', connectionPath), 200) as BackgroundComputeConnection[];
+    assert.deepEqual(listed.map((item) => [item.id, item.usedForBackground]), [[first.id, true], [second.id, false]]);
+    assert.deepEqual(expectStatus(await peer.browser.request('GET', connectionPath), 200), [], 'never another person\'s connections');
+    assert.equal((await peer.browser.request('PATCH', `${connectionPath}/${second.id}`, { body: { usedForBackground: true } })).status, 404);
+    // Marking another connection moves the background use; at most one is marked.
+    const marked = expectStatus(await owner.browser.request('PATCH', `${connectionPath}/${second.id}`, { body: { usedForBackground: true } }), 200) as BackgroundComputeConnection;
+    assert.equal(marked.usedForBackground, true);
+    assert.equal((expectStatus(await owner.browser.request('GET', `${connectionPath}/current`), 200) as BackgroundComputeConnection).id, second.id);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM background_compute_connections WHERE owner_user_id=$1 AND used_for_background', [owner.id])).rows[0].n, 1);
+    const kept = await pool.query('SELECT encrypted_key, revoked_at FROM background_compute_connections WHERE id=$1', [first.id]);
+    assert.ok(kept.rows[0].encrypted_key && !kept.rows[0].revoked_at, 'the first connection is kept');
+    // Removing the marked connection stops background comparisons: the other one does not take over.
     expectStatus(await owner.browser.request('DELETE', `${connectionPath}/${second.id}`), 204);
-    const erased = await pool.query('SELECT encrypted_key, revoked_at FROM background_compute_connections WHERE id=$1', [second.id]);
+    const erased = await pool.query('SELECT encrypted_key, revoked_at, used_for_background FROM background_compute_connections WHERE id=$1', [second.id]);
     assert.equal(erased.rows[0].encrypted_key, null);
     assert.ok(erased.rows[0].revoked_at);
+    assert.equal(erased.rows[0].used_for_background, false);
+    assert.equal(expectStatus(await owner.browser.request('GET', `${connectionPath}/current`), 200), null, 'no fallback to another connection');
+    expectStatus(await owner.browser.request('DELETE', `${connectionPath}/${first.id}`), 204);
+    assert.equal((await owner.browser.request('DELETE', `${connectionPath}/${first.id}`)).status, 404);
+    assert.deepEqual(expectStatus(await owner.browser.request('GET', connectionPath), 200), []);
     assert.equal(expectStatus(await owner.browser.request('GET', `${connectionPath}/current`), 200), null);
   });
 

@@ -7,6 +7,7 @@ import { costMicros, SYSTEM_PROMPT, type PersonalComputeRequest } from '@flux/co
 import { anthropicPersonalCompute, parsePrivateTargets } from '../../packages/agent-runtime/src/index.js';
 import { personalRunServerComposition } from '../../apps/server/src/personal-runs/composition.js';
 import { personalRunWorkerComposition } from '../../apps/worker/src/personal-runs/composition.js';
+import { createDatabase } from '@flux/db';
 
 // The Anthropic adapter behind `PersonalCompute` (#68, O-008 §3–§4), against a LOCAL MOCK HTTP
 // server in this test process. No real provider is called and no key exists: the "key" is a
@@ -172,24 +173,38 @@ describe('Anthropic personal compute adapter (#68, local mock server: no provide
   });
 });
 
-describe('personal-run composition: production fails closed, the mock switch is test only', () => {
-  test('without the switch both apps compose no connections and the provider off', async () => {
-    const server = personalRunServerComposition({});
-    const worker = personalRunWorkerComposition({});
+describe('personal-run composition: production is off until the operator switches it on, the mock switch is test only', () => {
+  const { db, pool } = createDatabase(process.env.DATABASE_URL!);
+  after(() => pool.end());
+  test('without the operator switch both apps look up the owner\'s own connections and keep the provider off', async () => {
+    const server = personalRunServerComposition({}, db);
+    const worker = personalRunWorkerComposition({}, db);
     assert.deepEqual([server.mode, server.providerEnabled, worker.mode, worker.compute.enabled], ['production', false, 'production', false]);
-    assert.equal(await server.connections.resolve('someone'), null);
-    assert.equal(await worker.connections.resolve('someone'), null);
+    assert.equal(await server.connections.resolve('someone-without-a-connection'), null);
+    assert.equal(await worker.connections.resolve('someone-without-a-connection'), null);
+    assert.equal(personalRunServerComposition({ FLUX_PERSONAL_RUNS: 'off' }, db).providerEnabled, false);
+  });
+
+  test('FLUX_PERSONAL_RUNS=on enables the provider in both apps; any other value refuses to start', () => {
+    const on = { FLUX_PERSONAL_RUNS: 'on' };
+    assert.equal(personalRunServerComposition(on, db).providerEnabled, true);
+    // The worker also needs the instance key that seals connection keys (present in the test stack).
+    assert.equal(personalRunWorkerComposition(on, db).compute.enabled, true);
+    for (const value of ['yes', 'ON', 'true']) {
+      assert.throws(() => personalRunServerComposition({ FLUX_PERSONAL_RUNS: value }, db));
+      assert.throws(() => personalRunWorkerComposition({ FLUX_PERSONAL_RUNS: value }, db));
+    }
   });
 
   test('the switch needs the test flag and a plain mock origin, and anything else refuses to start', () => {
     const on = { FLUX_TEST_PERSONAL_RUNS: 'anthropic-mock', FLUX_TEST_FAILURE_INJECTION: 'true', FLUX_TEST_ANTHROPIC_URL: 'http://anthropic-mock:8090' };
-    assert.equal(personalRunServerComposition(on).mode, 'test-anthropic-mock');
-    assert.equal(personalRunWorkerComposition(on).compute.enabled, true);
+    assert.equal(personalRunServerComposition(on, db).mode, 'test-anthropic-mock');
+    assert.equal(personalRunWorkerComposition(on, db).compute.enabled, true);
     for (const env of [{ ...on, FLUX_TEST_FAILURE_INJECTION: 'false' }, { ...on, FLUX_TEST_PERSONAL_RUNS: 'real' }]) {
-      assert.throws(() => personalRunServerComposition(env));
-      assert.throws(() => personalRunWorkerComposition(env));
+      assert.throws(() => personalRunServerComposition(env, db));
+      assert.throws(() => personalRunWorkerComposition(env, db));
     }
-    assert.throws(() => personalRunWorkerComposition({ ...on, FLUX_TEST_ANTHROPIC_URL: 'https://api.anthropic.com' }));
+    assert.throws(() => personalRunWorkerComposition({ ...on, FLUX_TEST_ANTHROPIC_URL: 'https://api.anthropic.com' }, db));
   });
 });
 

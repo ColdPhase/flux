@@ -72,6 +72,7 @@ services:
       # Owner AI connections (#179, F-020): private targets an OpenAI-compatible endpoint may reach.
       # Empty allows public HTTPS endpoints only. See docs/development/containers.md.
       FLUX_AI_PRIVATE_TARGETS: ${FLUX_AI_PRIVATE_TARGETS:-}
+      FLUX_PERSONAL_RUNS: ${FLUX_PERSONAL_RUNS:-}
       PORT: 8080
     volumes:
       - files:/data/files:z
@@ -108,6 +109,7 @@ services:
       FLUX_TEST_ANTHROPIC_URL: ${FLUX_TEST_ANTHROPIC_URL:-}
       # The same operator allowlist as the API: the worker checks it again at every request.
       FLUX_AI_PRIVATE_TARGETS: ${FLUX_AI_PRIVATE_TARGETS:-}
+      FLUX_PERSONAL_RUNS: ${FLUX_PERSONAL_RUNS:-}
     volumes:
       - files:/data/files:z
       - ${FLUX_BACKGROUND_KEY_HOST_FILE:-./background-key-unavailable}:/run/secrets/flux_background_key:ro,z

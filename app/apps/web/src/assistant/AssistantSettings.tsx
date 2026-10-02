@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
-import { AI_PROVIDERS, aiConnectionLabel, PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUN_LIMITS, type Agent, type PersonalAssistantStatus } from '@flux/contracts';
+import { AI_PROVIDERS, aiConnectionLabel, PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUN_LIMITS, type Agent, type BackgroundComputeConnection, type PersonalAssistantStatus } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useShellData } from '../app/data';
 import { createPersonalAgent } from '../agent-connection/api';
 import { listAgents } from '../work/api';
 import { Button, ErrorState, Icon, Spinner } from '../ui';
+import { listBackgroundConnections } from '../proactive-comparison/api';
 import { enableAssistant, getAssistantStatus, pauseAssistant, removeAssistant, resumeAssistant, selectAssistantAgent, updateAssistant } from './api';
 import { dollars, micros, perMillion, stateLine, unavailableText } from './format';
 import '../notifications/notifications.css';
@@ -61,7 +62,7 @@ export function AssistantSettings() {
 /** Why the assistant cannot run on this server, when that is the case. Never pretends it can. */
 function SetupProblem({ status }: { status: PersonalAssistantStatus }) {
   if (status.setup.provider === 'off') return <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>In-app AI is turned off on this Flux server.</b> Nothing is sent to an AI provider, and Flux works as usual. Your own MCP client, such as Claude Code or Codex, can still connect through a <Link className="ui-link" to="/connect-agent">personal Flux grant</Link>.</span></p>;
-  if (status.setup.connection === 'none') return <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Your own AI key isn’t connected.</b> Connecting a personal API key for your assistant isn’t available on this server yet, so your assistant can’t run in Flux. Nobody else’s key is ever used for you.</span></p>;
+  if (status.setup.connection === 'none') return <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Your own AI key isn’t connected.</b> Add an AI connection with your own key in <Link className="ui-link" to="/settings/background-compute">AI connections</Link>, from any supported provider. Nobody else’s key is ever used for you.</span></p>;
   return null;
 }
 
@@ -121,6 +122,15 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // F-020 PROV-1: with more than one of the owner's own connections, they choose which one the
+  // assistant uses; with one, that one is used. Never another person's.
+  const [owned, setOwned] = useState<BackgroundComputeConnection[]>([]);
+  const [connectionId, setConnectionId] = useState('');
+  useEffect(() => {
+    const controller = new AbortController();
+    listBackgroundConnections(controller.signal).then((items) => { setOwned(items); setConnectionId(items[0]?.id ?? ''); }).catch(() => setOwned([]));
+    return () => controller.abort();
+  }, []);
   const timeZone = browserTimeZone();
   const usable = status.setup.provider === 'on' && status.setup.connection === 'active';
   const picked = Object.entries(chosen).filter(([, agentId]) => agentId);
@@ -129,7 +139,8 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
     if (!usable || !consent || !picked.length || busy) return;
     setBusy(true); setError('');
     try {
-      let next = await enableAssistant({ consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId: picked[0]![1], perRunCents: perRun, dailyCapCents: daily, timeZone });
+      let next = await enableAssistant({ consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId: picked[0]![1], perRunCents: perRun, dailyCapCents: daily, timeZone,
+        ...(owned.length > 1 && connectionId ? { connectionId } : {}) });
       for (const [, agentId] of picked.slice(1)) next = await selectAssistantAgent(agentId);
       onEnabled(next);
     } catch (cause) {
@@ -151,6 +162,11 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
         <Disclosure status={status} perRun={perRun} daily={daily} timeZone={timeZone} />
         <fieldset className="aset__fields" disabled={!usable || busy}>
           <legend className="ui-vh">Limits and assistant</legend>
+          {owned.length > 1 ? <label className="aset__field">AI connection
+            <select aria-label="AI connection" value={connectionId} onChange={(event) => setConnectionId(event.target.value)}>
+              {owned.map((item) => <option key={item.id} value={item.id}>{item.name} · {aiConnectionLabel(item.provider, item.model)}</option>)}
+            </select>
+          </label> : null}
           <label className="aset__field">Up to per request
             <select aria-label="Up to per request" value={perRun} onChange={(event) => setPerRun(Number(event.target.value))}>{PER_RUN.map((value) => <option key={value} value={value}>{dollars(value)}</option>)}</select>
           </label>

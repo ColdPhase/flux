@@ -102,17 +102,24 @@ in [AI providers](ai-providers.md#provider-kinds-and-wire-formats).
 
 ## Switching production on
 
-Production stays off until all of these exist, each reviewed on its own:
+Done in #179 (F-020 PROV-1), 2026-10-03:
 
-1. #124's owner key custody, and a `PersonalConnectionLookup` over it that returns only
-   the caller's current active connection, plus the foreign key from `connection_id`;
-2. a worker `PersonalKeyResolver` that decrypts only that connection's key for one dispatch;
-3. an operator switch (for example `FLUX_PERSONAL_RUNS=on`) that composes
-   `providerEnabled: true` in the API and
-   `providerPersonalCompute({ enabled: true, resolveKey, policy: aiEndpointPolicyFromEnv(env) })`
-   in the worker, next to the real lookup, in `personalRunServerComposition` and
-   `personalRunWorkerComposition`;
-4. a fresh price and model check, and an independently verified provider pass.
+1. `personalConnectionLookup(db)` (`packages/db/src/repositories/personal-connections.ts`)
+   over #124's owner key custody. It returns only the caller's own active connections with a
+   stored key: exactly the one the enablement names, and without a name the newest, used only to
+   describe enabling. A removed connection is gone with no fallback. No foreign key is added from
+   `personal_run_enablements.connection_id`: the test-only fixture connections are not rows.
+2. `personalKeyResolver(db, masterKey)` opens only that connection's sealed key for one
+   dispatch, bound to its owner and id.
+3. The operator switch `FLUX_PERSONAL_RUNS=on`. The API composes the real lookup with
+   `providerEnabled: true`, and the worker composes `providerPersonalCompute({ enabled: true,
+   resolveKey, policy })`. Empty or `off`, the default, keeps the real lookup and a disabled
+   provider, so every run is `provider_off` at zero cost. Any other value stops both apps.
+
+Still required before an instance should switch it on:
+
+4. a fresh price and model check, and an independently verified real-key provider pass
+   (PROV-6).
 
 ## Test-only switch
 

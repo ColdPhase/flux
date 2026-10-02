@@ -964,6 +964,10 @@ export const backgroundComputeConnections = pgTable('background_compute_connecti
   model: text('model').notNull(),
   /** `openai_compatible` only. */
   baseUrl: text('base_url'),
+  /** The owner's label, e.g. "Work OpenRouter" (PROV-1: an owner may keep several connections). */
+  name: text('name').notNull(),
+  /** The one connection background comparisons use; at most one active per owner. */
+  usedForBackground: boolean('used_for_background').notNull().default(false),
   /** Micro-dollars per 1M tokens; all null when no price is known. */
   inputPriceMicrosPerMTok: integer('input_price_micros_per_mtok'),
   outputPriceMicrosPerMTok: integer('output_price_micros_per_mtok'),
@@ -983,7 +987,7 @@ export const backgroundComputeConnections = pgTable('background_compute_connecti
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
 }, (table) => [
-  uniqueIndex('background_compute_connections_active_owner_idx').on(table.ownerUserId).where(isNull(table.revokedAt)),
+  uniqueIndex('background_compute_connections_background_owner_idx').on(table.ownerUserId).where(sql`${table.usedForBackground}`),
   index('background_compute_connections_owner_idx').on(table.ownerUserId, table.createdAt, table.id),
 ]);
 

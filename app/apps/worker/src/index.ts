@@ -34,7 +34,7 @@ await boss.work<{ resultId: string }>(DRAFT_SUMMARY_JOB, async (jobs) => {
   }
 });
 // Personal assistant runs (#68): the payload is a run id; every step rechecks the owner.
-const personalRuns = personalRunWorkerComposition(process.env);
+const personalRuns = personalRunWorkerComposition(process.env, db);
 if (personalRuns.mode !== 'production') console.warn(JSON.stringify({ warning: 'TEST ONLY: personal runs use fixture connections and a mock provider', mode: personalRuns.mode }));
 const personalRunRecovery = await registerPersonalRunWorker(boss, db, personalRuns);
 await boss.work(IDEMPOTENCY_CLEANUP_JOB, async () => {

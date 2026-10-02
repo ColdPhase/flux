@@ -131,6 +131,8 @@ export interface EnablePersonalRunsCommand {
   consentVersion: string;
   /** The caller's own, unrevoked person-owned agent. */
   agentId: string;
+  /** Which of the caller's own AI connections the assistant uses (F-020 PROV-1); default: their newest. */
+  connectionId?: string;
   perRunCents?: number;
   dailyCapCents?: number;
   timeZone?: string;

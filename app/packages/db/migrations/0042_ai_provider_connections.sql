@@ -35,6 +35,20 @@ ALTER TABLE background_compute_connections
       AND (output_price_micros_per_mtok IS NULL) = (price_source IS NULL)
       AND (price_checked_on IS NULL) = (price_source IS NULL OR price_source = 'owner'));
 
+-- PROV-1: an owner may keep several connections. Each has a name, and the owner marks at most one
+-- of them for background comparisons; the assistant's connection is the one its consent names
+-- (personal_run_enablements.connection_id). Nothing falls back to another connection.
+DROP INDEX background_compute_connections_active_owner_idx;
+ALTER TABLE background_compute_connections
+  ADD COLUMN name text NOT NULL DEFAULT 'Anthropic · claude-sonnet-5' CHECK (length(btrim(name)) BETWEEN 1 AND 80 AND name = btrim(name)),
+  ADD COLUMN used_for_background boolean NOT NULL DEFAULT false,
+  ADD CONSTRAINT background_compute_connections_background_active_check CHECK (NOT used_for_background OR revoked_at IS NULL);
+ALTER TABLE background_compute_connections ALTER COLUMN name DROP DEFAULT;
+CREATE UNIQUE INDEX background_compute_connections_background_owner_idx
+  ON background_compute_connections(owner_user_id) WHERE used_for_background;
+-- The single connection an owner had before served background comparisons.
+UPDATE background_compute_connections SET used_for_background = true WHERE revoked_at IS NULL;
+
 -- O-007 recorded $2/M input and $10/M output for its pinned model on 2026-09-28.
 UPDATE background_compute_connections
   SET input_price_micros_per_mtok = 2000000, output_price_micros_per_mtok = 10000000,

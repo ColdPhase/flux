@@ -12,10 +12,23 @@ export const BACKGROUND_CONSENT_VERSION: BackgroundConsentVersion = 'o-007-2026-
 /** One bounded background comparison request (O-007 §3), the same for every provider. */
 export const BACKGROUND_COMPARISON_LIMITS = { maxInputTokens: 8_000, maxOutputTokens: 1_200, minimumReserveCents: 5 } as const;
 
+/**
+ * An owner's AI connections (F-020 PROV-1): one or more, each with a name. Adding a connection never
+ * replaces another. Background comparisons use the one marked `usedForBackground`; the assistant in
+ * Flux uses the one its consent names. Removing a connection stops the uses that point to it, with no
+ * fallback to another connection or payer.
+ */
+export const backgroundComputeConnectionsPath = '/api/v1/background-compute-connections';
+export const backgroundComputeConnectionPath = (connectionId: string) => `${backgroundComputeConnectionsPath}/${connectionId}`;
+
 /** Metadata only. The API never returns the key or its ciphertext. */
 export interface BackgroundComputeConnection {
   id: string;
   ownerUserId: string;
+  /** The owner's label, e.g. "Work OpenRouter". */
+  name: string;
+  /** Whether background comparisons run on this connection (at most one of the owner's). */
+  usedForBackground: boolean;
   provider: AiProviderKind;
   model: string;
   /** The owner's endpoint for `openai_compatible`; null for a named provider's fixed URL. */
@@ -41,6 +54,10 @@ export interface BackgroundComputeConnection {
  * accepted only when neither does (PROV-3), in micro-dollars per 1M tokens, and may be zero.
  */
 export interface ConnectBackgroundComputeCommand {
+  /** 1–80 characters; defaults to "<Provider> · <model>". */
+  name?: string;
+  /** Make this the connection background comparisons use; the owner's first connection always is. */
+  useForBackground?: boolean;
   provider: AiProviderKind;
   model: string;
   /** Required for `openai_compatible`, refused for the named providers. */
@@ -86,3 +103,10 @@ export interface ProactiveComparisonProposal {
 
 export const proactiveComparisonProposalsPath = (projectId: string) =>
   `/api/v1/projects/${projectId}/proactive-comparison-proposals`;
+
+/** `PATCH /api/v1/background-compute-connections/:id`: rename it, or make it the background connection. */
+export interface UpdateBackgroundComputeConnectionCommand {
+  name?: string;
+  /** Only `true`: another connection is chosen by marking it; none is chosen by removing the marked one. */
+  usedForBackground?: true;
+}

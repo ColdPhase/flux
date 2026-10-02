@@ -156,9 +156,13 @@ open for every named provider.
 
 ## Not yet done
 
-- More than one connection per owner, and choosing the connection per use (PROV-1).
-- The production personal-run connection lookup and key resolver (#68), which then composes
-  `providerPersonalCompute({ enabled, resolveKey, policy: aiEndpointPolicyFromEnv(env) })`.
+- Done 2026-10-03 (PROV-1):
+  - Several connections per owner, each named. Adding one never replaces another.
+  - Background comparisons use the one the owner marks (`PATCH …/:id` `usedForBackground`). The
+    assistant uses the one its consent names, chosen when enabling.
+  - Removing a connection stops its use, with no fallback.
+  - The production personal-run lookup, key resolver and the `FLUX_PERSONAL_RUNS` operator switch
+    are in place (see personal-runs.md).
 - Real-key smoke tests per named provider, and a check of OpenAI, OpenRouter and Gemini terms
   against dated primary sources (PROV-6). Their base URLs (Gemini and OpenRouter) and the OpenAI
   and Gemini prices were checked on 2026-10-03.

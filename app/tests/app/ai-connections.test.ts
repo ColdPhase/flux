@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createDecipheriv, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { after, before, beforeEach, describe, test } from 'node:test';
-import { createDatabase } from '@flux/db';
+import { createDatabase, personalConnectionLookup, personalKeyResolver } from '@flux/db';
 import { AI_MODEL_LISTS_PATH, type AiModelList, type BackgroundComputeConnection, type Material, type ProactiveComparisonProposal,
   type WorkResult } from '@flux/contracts';
 import { parsePrivateTargets, providerComparison } from '../../packages/agent-runtime/src/index.js';
@@ -72,7 +72,8 @@ describe('provider-neutral owner AI connections (#179)', () => {
         expect: { provider: 'openai_compatible', model: 'llama3.1:8b', baseUrl: COMPATIBLE, price: { inputMicrosPerMTok: 0, outputMicrosPerMTok: 0, source: 'owner', checkedOn: null } } },
     ];
     for (const { body, key, expect } of cases) {
-      const response = await owner.browser.request('POST', path, { body: { ...consent, ...body, apiKey: key } });
+      // Each saved connection is marked for background comparisons, so `current` is the one just saved (PROV-1).
+      const response = await owner.browser.request('POST', path, { body: { ...consent, ...body, apiKey: key, useForBackground: true } });
       const saved = expectStatus(response, 201, String(body.provider)) as BackgroundComputeConnection;
       for (const [field, value] of Object.entries(expect)) assert.deepEqual(saved[field as keyof BackgroundComputeConnection], value, `${body.provider} ${field}`);
       assert.equal(saved.consentVersion, 'o-007-2026-10-02');
@@ -111,7 +112,7 @@ describe('provider-neutral owner AI connections (#179)', () => {
       if (code) assert.equal(codeOf(response), code, JSON.stringify(body));
       for (const key of Object.values(keys)) assert.equal(response.text.includes(key), false, 'no key in an error body');
     }
-    assert.deepEqual(expectStatus(await owner.browser.request('GET', `${path}/current`), 200), before, 'a refused replacement keeps the earlier connection');
+    assert.deepEqual(expectStatus(await owner.browser.request('GET', `${path}/current`), 200), before, 'a refused save changes nothing');
   });
 
   test('SSRF guard when saved: private, loopback, link-local, ULA and metadata endpoints are refused unless the operator allows them', async () => {
@@ -153,8 +154,9 @@ describe('enabling and dispatch on any provider (#179 PROV-2/PROV-3)', () => {
   const masterKey = readFileSync('/run/secrets/flux_background_key');
   // The worker's adapter registry, with Anthropic's fixed URL replaced by the mock for this test only.
   const providers = providerComparison({ policy: parsePrivateTargets(new URL(MOCK).hostname), baseUrls: { anthropic: `${MOCK}/anthropic` }, timeoutMs: 5_000 });
+  // Each new connection is marked for background comparisons (PROV-1: adding one never replaces another).
   const connect = async (body: Record<string, unknown>) => expectStatus(await owner.browser.request('POST', path,
-    { body: { ...consent, ...body } }), 201) as BackgroundComputeConnection;
+    { body: { ...consent, ...body, useForBackground: true } }), 201) as BackgroundComputeConnection;
   const enable = async () => {
     const rule = (await pool.query('SELECT version FROM proactive_comparison_rules WHERE id=$1', [ruleId])).rows[0] as { version: number };
     return owner.browser.request('PATCH', `/api/v1/proactive-comparison-rules/${ruleId}`, { body: { expectedVersion: rule.version, status: 'enabled' } });
@@ -237,5 +239,37 @@ describe('enabling and dispatch on any provider (#179 PROV-2/PROV-3)', () => {
       const leaked = await pool.query(`SELECT count(*)::int AS n FROM ${table} t WHERE row_to_json(t)::text LIKE $1`, [`%${marker}%`]);
       assert.equal(leaked.rows[0].n, 0, table);
     }
+  });
+});
+
+describe('several connections per owner and the assistant\'s own one (#179 PROV-1, #68 switch-on steps 1-2)', () => {
+  test('the lookup returns only the owner\'s own active connection, exactly the one named; the resolver opens only that key', async () => {
+    const [owner, other] = await Promise.all(['prov1-owner', 'prov1-other'].map(person));
+    const add = async (someone: Person, body: Record<string, unknown>) => expectStatus(await someone.browser.request('POST', path,
+      { body: { ...consent, ...body } }), 201) as BackgroundComputeConnection;
+    const first = await add(owner, { name: 'Work Anthropic', provider: 'anthropic', model: 'claude-sonnet-5', apiKey: keys.anthropic });
+    const second = await add(owner, { name: 'Home OpenRouter', provider: 'openrouter', model: 'vendor/flux-test-model',
+      price: { inputMicrosPerMTok: 3_000_000, outputMicrosPerMTok: 15_000_000 }, apiKey: keys.openrouter });
+    const foreign = await add(other, { provider: 'openai', model: 'gpt-model', price: { inputMicrosPerMTok: 1, outputMicrosPerMTok: 1 }, apiKey: keys.openai });
+    assert.deepEqual([first.usedForBackground, second.usedForBackground, second.name], [true, false, 'Home OpenRouter'], 'adding never replaces');
+
+    const lookup = personalConnectionLookup(db);
+    assert.equal((await lookup.resolve(owner.id))?.id, second.id, 'without a choice: the newest, only to describe enabling');
+    const named = await lookup.resolve(owner.id, first.id);
+    assert.deepEqual([named?.id, named?.provider, named?.model, named?.keyRef, named?.payer.organization], [first.id, 'anthropic', 'claude-sonnet-5', first.id, 'Fixture payer']);
+    assert.equal(await lookup.resolve(owner.id, foreign.id), null, 'another person\'s connection is never returned');
+    assert.equal(await lookup.resolve(other.id, first.id), null);
+
+    const resolveKey = personalKeyResolver(db, readFileSync('/run/secrets/flux_background_key'));
+    assert.equal(await resolveKey(first.id), keys.anthropic);
+    assert.equal(await resolveKey(second.id), keys.openrouter);
+    assert.equal(await resolveKey('not-a-connection'), null);
+    assert.equal(await personalKeyResolver(db, null)(first.id), null, 'without the instance key nothing can be opened');
+
+    expectStatus(await owner.browser.request('DELETE', `${path}/${first.id}`), 204);
+    assert.equal(await lookup.resolve(owner.id, first.id), null, 'a removed connection is gone for the assistant too: no fallback');
+    assert.equal(await resolveKey(first.id), null);
+    assert.equal((await lookup.resolve(owner.id))?.id, second.id);
+    assert.equal(expectStatus(await owner.browser.request('GET', `${path}/current`), 200), null, 'and background comparisons stop');
   });
 });

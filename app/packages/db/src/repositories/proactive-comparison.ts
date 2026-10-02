@@ -33,7 +33,7 @@ export function proactiveRuleRows(db: DbExecutor) {
         periodBudgetCents: c.periodBudgetCents, perRunCents: c.perRunCents,
         inputPriceMicrosPerMTok: c.inputPriceMicrosPerMTok, outputPriceMicrosPerMTok: c.outputPriceMicrosPerMTok,
         priceSource: c.priceSource, priceCheckedOn: c.priceCheckedOn }).from(c)
-        .where(and(eq(c.ownerUserId, ownerId), isNull(c.revokedAt))).for('share');
+        .where(and(eq(c.ownerUserId, ownerId), eq(c.usedForBackground, true), isNull(c.revokedAt))).for('share');
       if (!row) return null;
       return { maxRunsPerDay: row.maxRunsPerDay, periodDays: row.periodDays, periodBudgetCents: row.periodBudgetCents,
         perRunCents: row.perRunCents, price: connectionPrice(row) };

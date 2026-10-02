@@ -1,7 +1,7 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
 import { AI_BASE_URL_MAX_LENGTH, AI_MODEL_LISTS_PATH, AI_PRICE_MAX_MICROS_PER_MTOK, AI_PROVIDER_KINDS, backgroundComputeUsagePath,
   proactiveComparisonOutcomePath, proactiveComparisonOutcomesPath, proactiveComparisonProposalsPath, WORK_LIMITS, type AiModelListQuery,
-  type ConnectBackgroundComputeCommand, type CreateProactiveComparisonRule } from '@flux/contracts';
+  type ConnectBackgroundComputeCommand, type UpdateBackgroundComputeConnectionCommand, type CreateProactiveComparisonRule } from '@flux/contracts';
 import { backgroundConnectionRepository, comparisonProposalView, proactiveOutboxRows, proactiveRuleRows, sealBackgroundKey } from '@flux/db';
 import { backgroundConnectionUseCases, baseUrlSyntaxProblem, ConflictError, DomainError, enforce, evaluateProject, InvalidInputError,
   isUuid, normalizeBaseUrl, NotFoundError, proactiveRuleUseCases, VersionConflictError, visibleProposal, type Database } from '@flux/core';
@@ -41,6 +41,8 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
         'payerAuthorityConfirmed', 'providerBillingAcknowledged', 'projectDataDisclosureAcknowledged',
         'maxRunsPerDay', 'periodDays', 'periodBudgetCents', 'perRunCents'],
       properties: {
+        name: { type: 'string', minLength: 1, maxLength: 80 },
+        useForBackground: { type: 'boolean' },
         provider: { type: 'string', enum: [...AI_PROVIDER_KINDS] },
         model: { type: 'string', minLength: 1, maxLength: 200 },
         baseUrl: { type: 'string', minLength: 1, maxLength: AI_BASE_URL_MAX_LENGTH },
@@ -57,8 +59,16 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
       } } },
   }, async (request, reply) => reply.code(201).send(await connections.connect(
     (await sessions.requirePrincipal(request)).principal, request.body)));
+  // PROV-1: all of the owner's own connections; never another person's.
+  app.get('/api/v1/background-compute-connections', async (request) => connections.list(
+    (await sessions.requirePrincipal(request)).principal));
+  // The connection background comparisons use (kept for earlier clients).
   app.get('/api/v1/background-compute-connections/current', async (request) => connections.current(
     (await sessions.requirePrincipal(request)).principal));
+  app.patch<{ Params: { connectionId: string }; Body: UpdateBackgroundComputeConnectionCommand }>('/api/v1/background-compute-connections/:connectionId', {
+    schema: { body: { type: 'object', additionalProperties: false, minProperties: 1, properties: {
+      name: { type: 'string', minLength: 1, maxLength: 80 }, usedForBackground: { const: true } } } },
+  }, async (request) => connections.update((await sessions.requirePrincipal(request)).principal, request.params.connectionId, request.body));
   // A provider's models, listed by this server without a key and through the endpoint guard (PROV-1).
   app.post<{ Body: AiModelListQuery }>(AI_MODEL_LISTS_PATH, {
     schema: { body: { type: 'object', additionalProperties: false, required: ['provider'], properties: {

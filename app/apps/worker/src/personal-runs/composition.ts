@@ -1,17 +1,16 @@
 import { aiEndpointPolicyFromEnv, parsePrivateTargets, providerPersonalCompute } from '@flux/agent-runtime';
 import {
-  noPersonalConnections, TEST_FIXTURE_API_KEY, TEST_FIXTURE_KEY_REF, testFixturePersonalConnections, unavailablePersonalCompute,
-  type PersonalCompute, type PersonalConnectionLookup,
+  TEST_FIXTURE_API_KEY, TEST_FIXTURE_KEY_REF, testFixturePersonalConnections, unavailablePersonalCompute,
+  type Database, type PersonalCompute, type PersonalConnectionLookup,
 } from '@flux/core';
+import { loadBackgroundMasterKey, personalConnectionLookup, personalKeyResolver } from '@flux/db';
 
 // Which connection lookup and provider the worker composes for personal runs (#68, O-008; F-020).
 //
-// Production: nobody has a usable key connection until the real lookup over #124's custody is
-// wired (#68, owned by @Zamojski5), and the provider is off, so every queued run ends `unavailable`
-// at zero cost. The adapters exist (`@flux/agent-runtime`'s registry, one per wire format, selected
-// by the connection's provider kind) but are wired only when a real connection lookup and key
-// resolver exist; see docs/development/personal-runs.md "Switching production on". When they are,
-// compose `providerPersonalCompute({ enabled, resolveKey, policy: aiEndpointPolicyFromEnv(env) })`.
+// Production: the owner's own AI connections (#124 custody, F-020 PROV-1) and, only when the
+// operator sets `FLUX_PERSONAL_RUNS=on`, the provider registry with a key resolver that opens one
+// connection's sealed key for one dispatch. Off (the default) or without the instance key, every
+// queued run ends `unavailable` at zero cost. See docs/development/personal-runs.md.
 //
 // Test only: `FLUX_TEST_PERSONAL_RUNS=anthropic-mock`, accepted only together with the existing
 // test flag `FLUX_TEST_FAILURE_INJECTION=true`, composes the fixture connections and the REAL
@@ -25,11 +24,23 @@ export interface PersonalRunWorkerComposition {
   mode: 'production' | 'test-anthropic-mock';
 }
 
-export function personalRunWorkerComposition(env: NodeJS.ProcessEnv): PersonalRunWorkerComposition {
+export function personalRunWorkerComposition(env: NodeJS.ProcessEnv, db: Database): PersonalRunWorkerComposition {
   const mode = env.FLUX_TEST_PERSONAL_RUNS ?? '';
-  // A malformed operator allowlist stops the worker in every mode.
-  aiEndpointPolicyFromEnv(env);
-  if (!mode) return { connections: noPersonalConnections, compute: unavailablePersonalCompute, mode: 'production' };
+  // A malformed operator allowlist or switch stops the worker in every mode.
+  const policy = aiEndpointPolicyFromEnv(env);
+  const switchedOn = (() => {
+    const value = env.FLUX_PERSONAL_RUNS ?? '';
+    if (value !== '' && value !== 'off' && value !== 'on') throw new Error('FLUX_PERSONAL_RUNS must be empty, off or on');
+    return value === 'on';
+  })();
+  if (!mode) {
+    const masterKey = switchedOn ? loadBackgroundMasterKey() : null;
+    return {
+      connections: personalConnectionLookup(db),
+      compute: switchedOn && masterKey ? providerPersonalCompute({ enabled: true, resolveKey: personalKeyResolver(db, masterKey), policy }) : unavailablePersonalCompute,
+      mode: 'production',
+    };
+  }
   if (mode !== 'anthropic-mock') throw new Error('FLUX_TEST_PERSONAL_RUNS must be empty or anthropic-mock');
   if (env.FLUX_TEST_FAILURE_INJECTION !== 'true') throw new Error('FLUX_TEST_PERSONAL_RUNS is test only and needs FLUX_TEST_FAILURE_INJECTION=true');
   const baseURL = env.FLUX_TEST_ANTHROPIC_URL ?? '';

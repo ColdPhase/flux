@@ -191,12 +191,12 @@ export function proactiveOutboxRows(db: DbExecutor) {
     async connectionState(ownerId: string) {
       const [row] = await db.select({ id: connections.id, perRunCents: connections.perRunCents,
         keyAvailable: sql<boolean>`${connections.encryptedKey} IS NOT NULL` }).from(connections)
-        .where(and(eq(connections.ownerUserId, ownerId), isNull(connections.revokedAt))).for('share');
+        .where(and(eq(connections.ownerUserId, ownerId), eq(connections.usedForBackground, true), isNull(connections.revokedAt))).for('share');
       return row ?? null;
     },
     async connection(ownerId: string) {
       const [row] = await db.select().from(connections)
-        .where(and(eq(connections.ownerUserId, ownerId), isNull(connections.revokedAt))).for('share');
+        .where(and(eq(connections.ownerUserId, ownerId), eq(connections.usedForBackground, true), isNull(connections.revokedAt))).for('share');
       return row ?? null;
     },
     async usage(ownerId: string, startOfDay: Date, startOfPeriod: Date) {

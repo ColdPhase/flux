@@ -22,7 +22,7 @@ const FIXTURE_PRICE = tablePrice('anthropic', FIXTURE_MODEL)!;
 
 /** Every person has one stable, active fixture connection of their own: Anthropic at its table price. */
 export const testFixturePersonalConnections: PersonalConnectionLookup = {
-  resolve: async (ownerUserId) => ({
+  resolve: async (ownerUserId, connectionId) => (connectionId !== undefined && connectionId !== connectionIdOf(ownerUserId) ? null : {
     id: connectionIdOf(ownerUserId), ownerUserId, status: 'active', keyRef: TEST_FIXTURE_KEY_REF,
     payer: { organization: 'Test fixture payer', workspace: 'Test fixture workspace' },
     provider: 'anthropic', model: FIXTURE_MODEL, baseUrl: null,

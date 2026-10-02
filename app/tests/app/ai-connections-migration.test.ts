@@ -48,16 +48,22 @@ test('0042 keeps earlier connections and consents, enforces the new shape, and r
       to_char(price_checked_on, 'YYYY-MM-DD') AS checked FROM background_compute_connections`)).rows,
     [{ base_url: null, input_price_micros_per_mtok: 2_000_000, output_price_micros_per_mtok: 10_000_000, price_source: 'table', checked: '2026-09-28' }],
     'the O-007 rate recorded on 2026-09-28 becomes the earlier connection\'s table price');
+    // PROV-1: the one connection an owner had keeps serving background comparisons, under a readable name.
+    assert.deepEqual((await history.query('SELECT name, used_for_background FROM background_compute_connections')).rows,
+      [{ name: 'Anthropic · claude-sonnet-5', used_for_background: true }]);
+    const nameInfo: unknown = (await history.query(`SELECT is_nullable, column_default FROM information_schema.columns
+      WHERE table_name='background_compute_connections' AND column_name='name'`)).rows[0];
+    assert.deepEqual(nameInfo, { is_nullable: 'NO', column_default: null }, 'every writer names a new connection');
     for (const [table, column] of [['personal_runs', 'provider'], ['proactive_comparison_proposals', 'provider'], ['proactive_comparison_proposals', 'model']]) {
       const info: unknown = (await history.query(`SELECT is_nullable, column_default FROM information_schema.columns WHERE table_name=$1 AND column_name=$2`, [table, column])).rows[0];
       assert.deepEqual(info, { is_nullable: 'NO', column_default: null }, `${table}.${column} is required and set explicitly by every writer`);
     }
 
-    // Probe rows are revoked (no ciphertext), so the one-active-connection index plays no part; each probe rolls back.
-    const insert = (fields: Record<string, unknown>) => history!.query(`INSERT INTO background_compute_connections(id,owner_user_id,provider,model,base_url,
+    // Probe rows are revoked (no ciphertext) and never the background connection; each probe rolls back.
+    const insert = (fields: Record<string, unknown>) => history!.query(`INSERT INTO background_compute_connections(id,owner_user_id,name,provider,model,base_url,
       payer_organization,provider_workspace,encrypted_key,revoked_at,key_last_four,key_fingerprint,max_runs_per_day,period_days,period_budget_cents,per_run_cents,
       consent_version,input_price_micros_per_mtok,output_price_micros_per_mtok,price_source,price_checked_on)
-      VALUES($1,$2,$3,$4,$5,'Payer org','Workspace',NULL,now(),'ABCD','0123456789abcdef',1,30,50,5,$6,$7,$8,$9,$10)`,
+      VALUES($1,$2,'Probe',$3,$4,$5,'Payer org','Workspace',NULL,now(),'ABCD','0123456789abcdef',1,30,50,5,$6,$7,$8,$9,$10)`,
     [randomUUID(), user, fields.provider ?? 'openai', fields.model ?? 'gpt-model', fields.baseUrl ?? null, fields.consent ?? 'o-007-2026-10-02',
       'input' in fields ? fields.input : 400_000, 'output' in fields ? fields.output : 1_600_000, 'source' in fields ? fields.source : 'owner',
       'checked' in fields ? fields.checked : null]);
@@ -106,11 +112,11 @@ test('0042 keeps earlier connections and consents, enforces the new shape, and r
     assert.deepEqual(await keep(), before);
 
     // After real use the previous schema cannot represent the data: the reversal refuses and changes nothing.
-    await history.query("UPDATE background_compute_connections SET encrypted_key=NULL, revoked_at=now()");
-    await history.query(`INSERT INTO background_compute_connections(id,owner_user_id,provider,model,payer_organization,provider_workspace,
+    await history.query("UPDATE background_compute_connections SET encrypted_key=NULL, revoked_at=now(), used_for_background=false");
+    await history.query(`INSERT INTO background_compute_connections(id,owner_user_id,name,provider,model,payer_organization,provider_workspace,
       encrypted_key,key_last_four,key_fingerprint,max_runs_per_day,period_days,period_budget_cents,per_run_cents,consent_version,
       input_price_micros_per_mtok,output_price_micros_per_mtok,price_source)
-      VALUES($1,$2,'openai','gpt-model','Payer org','Workspace','v1.cipher','ABCD','0123456789abcdef',1,30,50,5,'o-007-2026-10-02',1,1,'owner')`, [randomUUID(), user]);
+      VALUES($1,$2,'OpenAI','openai','gpt-model','Payer org','Workspace','v1.cipher','ABCD','0123456789abcdef',1,30,50,5,'o-007-2026-10-02',1,1,'owner')`, [randomUUID(), user]);
     await assert.rejects(history.query(reverse), /reversal refused: provider-neutral background connections exist/);
     assert.equal((await history.query("SELECT count(*)::int AS n FROM information_schema.columns WHERE table_name='background_compute_connections' AND column_name='base_url'")).rows[0].n, 1);
   } finally {

@@ -227,9 +227,13 @@ export interface PersonalConnection {
   price: AiPrice | null;
 }
 
-/** Resolves the connection of `ownerUserId` only; there is no lookup by connection id. */
+/**
+ * Resolves a connection of `ownerUserId` only (F-020 PROV-1: an owner may keep several). With a
+ * `connectionId` it returns exactly that one when the owner still has it, otherwise null; without
+ * one, the owner's newest active connection, used only to describe what enabling would use.
+ */
 export interface PersonalConnectionLookup {
-  resolve(ownerUserId: string): Promise<PersonalConnection | null>;
+  resolve(ownerUserId: string, connectionId?: string): Promise<PersonalConnection | null>;
 }
 
 /**

@@ -13,6 +13,9 @@ BEGIN
       WHERE consent_provider <> 'anthropic' OR consent_version <> 'o-008-2026-09-28') THEN
     RAISE EXCEPTION '0042 reversal refused: provider-neutral personal-run consents exist' USING ERRCODE = 'restrict_violation';
   END IF;
+  IF (SELECT count(*) FROM background_compute_connections WHERE revoked_at IS NULL GROUP BY owner_user_id ORDER BY 1 DESC LIMIT 1) > 1 THEN
+    RAISE EXCEPTION '0042 reversal refused: an owner has more than one active connection' USING ERRCODE = 'restrict_violation';
+  END IF;
   IF EXISTS (SELECT 1 FROM personal_runs WHERE provider <> 'anthropic')
     OR EXISTS (SELECT 1 FROM proactive_comparison_proposals WHERE provider <> 'anthropic' OR model <> 'claude-sonnet-5') THEN
     RAISE EXCEPTION '0042 reversal refused: runs or proposals of other providers exist' USING ERRCODE = 'restrict_violation';
@@ -26,6 +29,13 @@ ALTER TABLE personal_run_enablements
   DROP CONSTRAINT personal_run_enablements_consent_version_check,
   ADD CONSTRAINT personal_run_enablements_consent_provider_check CHECK (consent_provider = 'anthropic'),
   ADD CONSTRAINT personal_run_enablements_consent_version_check CHECK (consent_version = 'o-008-2026-09-28');
+DROP INDEX background_compute_connections_background_owner_idx;
+ALTER TABLE background_compute_connections
+  DROP CONSTRAINT background_compute_connections_background_active_check,
+  DROP COLUMN used_for_background,
+  DROP COLUMN name;
+CREATE UNIQUE INDEX background_compute_connections_active_owner_idx
+  ON background_compute_connections(owner_user_id) WHERE revoked_at IS NULL;
 ALTER TABLE background_compute_connections
   DROP CONSTRAINT background_compute_connections_price_check,
   DROP COLUMN price_checked_on,

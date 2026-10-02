@@ -10,6 +10,7 @@ provider, billing or compatibility pass.
 from __future__ import annotations
 
 import json
+import re
 import os
 import time
 import unittest
@@ -133,8 +134,9 @@ class AiConnectionSettings(unittest.TestCase):
         self.fill_consent(page, KEYS["openai_compatible"])
         shot(page, "ai-connection-1440-compatible-form")
         page.get_by_role("button", name="Save connection and consent").click()
-        expect(page.get_by_role("heading", name="Your saved connection")).to_be_visible()
-        metadata = page.locator('[aria-labelledby="background-current"] .background-settings__metadata')
+        expect(page.get_by_role("heading", name="Your AI connections")).to_be_visible()
+        expect(page.get_by_text("Used for background suggestions", exact=True)).to_be_visible()
+        metadata = page.locator('[aria-labelledby="background-current"] .background-settings__metadata').first
         expect(metadata).to_contain_text("OpenAI-compatible endpoint · llama3.1:8b")
         expect(metadata).to_contain_text(ENDPOINT)
         expect(metadata).to_contain_text("$0.00 input · $0.00 output per 1M tokens · Entered by you")
@@ -148,7 +150,8 @@ class AiConnectionSettings(unittest.TestCase):
     def test_04_a_table_priced_model_needs_no_price_and_names_its_provider(self) -> None:
         page = self.page()
         page.goto("/settings/background-compute")
-        page.get_by_role("button", name="Replace connection").click()
+        page.get_by_role("button", name="Add a connection").click()
+        page.get_by_label("Connection name").fill("Work Anthropic")
         page.get_by_label("Provider", exact=True).select_option(label="Anthropic")
         expect(page.get_by_label("Endpoint base URL")).to_have_count(0)
         expect(page.get_by_role("button", name="Show available models")).to_have_count(0)
@@ -157,12 +160,16 @@ class AiConnectionSettings(unittest.TestCase):
         expect(page.get_by_test_id("connection-price")).to_contain_text("$2.00 input · $10.00 output per 1M tokens · Flux price table, checked 2026-10-02")
         expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_have_count(0)
         self.fill_consent(page, KEYS["anthropic"])
-        page.get_by_role("button", name="Replace and save consent").click()
-        expect(page.get_by_role("heading", name="Replace your connection")).to_have_count(0)
-        metadata = page.locator('[aria-labelledby="background-current"] .background-settings__metadata')
+        # PROV-1: a second connection is added beside the first; marked, it serves background suggestions.
+        page.get_by_label(re.compile("^Use this connection for background suggestions")).check()
+        page.get_by_role("button", name="Save connection and consent").click()
+        expect(page.get_by_role("heading", name="Add a connection")).to_have_count(0)
+        expect(page.locator(".background-settings__connection")).to_have_count(2)
+        expect(page.locator(".background-settings__connection").first.get_by_role("heading", name="Work Anthropic")).to_be_visible()
+        metadata = page.locator('[aria-labelledby="background-current"] .background-settings__metadata').first
         expect(metadata).to_contain_text("Anthropic · claude-sonnet-5")
         expect(metadata).to_contain_text("One request reserves up to $0.05")
-        expect(page.locator("[aria-labelledby=background-current]")).to_contain_text("pays Anthropic")
+        expect(page.locator(".background-settings__connection").first).to_contain_text("pays Anthropic")
         self.assertEqual(self.current(page)["price"]["source"], "table")
         self.no_key_anywhere(page)
 
@@ -170,7 +177,7 @@ class AiConnectionSettings(unittest.TestCase):
         page = self.page()
         page.goto("/settings/background-compute")
         before = self.current(page)
-        page.get_by_role("button", name="Replace connection").click()
+        page.get_by_role("button", name="Add a connection").click()
         page.get_by_label("Provider", exact=True).select_option(label="OpenAI-compatible endpoint")
         page.get_by_label("Endpoint base URL").fill("http://10.20.30.40:11434/v1")
         page.get_by_role("button", name="Show available models").click()
@@ -179,18 +186,18 @@ class AiConnectionSettings(unittest.TestCase):
         page.get_by_label("Input price").fill("0")
         page.get_by_label("Output price").fill("0")
         self.fill_consent(page, KEYS["openai_compatible"])
-        page.get_by_role("button", name="Replace and save consent").click()
+        page.get_by_role("button", name="Save connection and consent").click()
         alert = page.get_by_role("alert")
         expect(alert).to_contain_text("This endpoint cannot be used")
         expect(page.get_by_label("Background API key", exact=True)).to_have_value("")
-        self.assertEqual(self.current(page), before, "the refused replacement keeps the earlier connection")
+        self.assertEqual(self.current(page), before, "a refused connection changes nothing")
         self.no_key_anywhere(page)
         shot(page, "ai-connection-1440-endpoint-refused")
 
     def test_06_the_form_fits_a_phone_and_the_price_fields_are_touch_sized(self) -> None:
         page = self.page(phone=True)
         page.goto("/settings/background-compute")
-        page.get_by_role("button", name="Replace connection").tap()
+        page.get_by_role("button", name="Add a connection").tap()
         page.get_by_label("Provider", exact=True).select_option(label="OpenRouter")
         page.get_by_label("Model", exact=True).fill("vendor/model-without-a-listing")
         expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_be_visible()

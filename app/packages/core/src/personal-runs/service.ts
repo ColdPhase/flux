@@ -105,7 +105,8 @@ export async function runView(ports: PersonalRunPorts, record: RunRecord): Promi
 export async function usableConnection(connections: PersonalConnectionLookup, providerEnabled: boolean, enablement: EnablementRecord):
   Promise<{ problem: PersonalAssistantUnavailableReason } | { problem: null; connection: PersonalConnection; reservedMicros: number }> {
   if (!providerEnabled) return { problem: 'provider_off' };
-  const connection = await connections.resolve(enablement.ownerUserId);
+  // The connection the consent names, and no other (PROV-1): removing it stops the assistant.
+  const connection = enablement.connectionId ? await connections.resolve(enablement.ownerUserId, enablement.connectionId) : null;
   if (!connection || connection.status !== 'active' || connection.ownerUserId !== enablement.ownerUserId) return { problem: 'no_connection' };
   // The consent was given for one connection; a replaced key needs a new consent.
   if (connection.id !== enablement.connectionId) return { problem: 'connection_changed' };
@@ -150,7 +151,8 @@ export interface PersonalRunDeps {
 
 export function createPersonalRunUseCases({ uow, connections, providerEnabled }: PersonalRunDeps) {
   async function status(ports: PersonalRunPorts, owner: string): Promise<PersonalAssistantStatus> {
-    const connection = providerEnabled ? await connections.resolve(owner) : null;
+    const named = await ports.runs.enablement(owner);
+    const connection = providerEnabled ? await connections.resolve(owner, named?.connectionId ?? undefined) : null;
     const usable = connection && connection.status === 'active' && connection.ownerUserId === owner ? connection : null;
     // The disclosure names the caller's own connection: its provider, model and price (F-020).
     const disclosure = {
@@ -261,7 +263,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
       return uow.run(async (ports) => {
         const { workspaceId } = await ports.access.requireInvoke(principal, input.agentId, { lock: true });
         if (await ports.runs.enablement(owner, { lock: true })) throw new ConflictError('Your assistant is already enabled', 'PERSONAL_RUN_ALREADY_ENABLED');
-        const connection = await connections.resolve(owner);
+        // The owner chooses which of their connections the assistant uses; without a choice, their newest.
+        const connection = await connections.resolve(owner, input.connectionId ?? undefined);
         if (!connection || connection.status !== 'active' || connection.ownerUserId !== owner)
           throw new ConflictError('Connect your own AI key before enabling your assistant', 'PERSONAL_RUN_CONNECTION_REQUIRED');
         // PROV-3: a connection without a known price cannot be enabled; a model whose largest
