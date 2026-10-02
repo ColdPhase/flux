@@ -233,7 +233,7 @@ class WikiPanesJourney(unittest.TestCase):
         self.assertGreaterEqual(dot["ratio"], 3, dot)
         tint = active.evaluate("e => getComputedStyle(e).backgroundColor")
         self.assertNotIn(tint, ("rgba(0, 0, 0, 0)", "transparent"), "the open page has a quiet tint")
-        self.assertEqual(tint, page.evaluate("getComputedStyle(document.querySelector('.wiki-page[aria-current]')).backgroundColor"))
+        self.assertNotEqual(tint, index.evaluate("e => getComputedStyle(e).backgroundColor"), "the tint differs from the index")
         # Studio 11.6 geometry: a 212px index, a 57px bar and an 820px document with 30px titles.
         self.assertAlmostEqual(index.bounding_box()["width"], 212, delta=1)
         self.assertAlmostEqual(page.locator(".wiki-bar").bounding_box()["height"], 57, delta=1)
