@@ -157,7 +157,7 @@ export function BackgroundComputeSettings() {
         <div><dt>Provider / model</dt><dd>{aiConnectionLabel(connection.provider, connection.model)}</dd></div>
         {connection.baseUrl ? <div><dt>Endpoint</dt><dd>{connection.baseUrl}</dd></div> : null}
         <div><dt>Price</dt><dd>{connection.price
-          ? <>{priceText(connection.price)} · {priceSourceText(connection.price, connection.provider)}. One request reserves up to {comparisonReserveText(connection.price)}.</>
+          ? <>{priceText(connection.price)} · {priceSourceText(connection.price)}. One request reserves up to {comparisonReserveText(connection.price)}.</>
           : 'Unknown. No rule can be enabled until a price is known; replace the connection to enter one.'}</dd></div>
         <div><dt>Paid by</dt><dd>{connection.payerOrganization} · {connection.providerWorkspace}</dd></div>
         <div><dt>Key</dt><dd>Ending {connection.keyLastFour}</dd></div>

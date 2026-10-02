@@ -26,7 +26,10 @@ export interface AiProviderInfo {
   keyHint: string;
   /** Whether the server may list the provider's models without a key (PROV-1). */
   keylessModelList: boolean;
-  /** Whether a response reports its own cost (PROV-3 price source 1): OpenRouter's `usage.cost`. */
+  /**
+   * Whether a response reports its own cost (OpenRouter's `usage.cost`). It only reconciles the
+   * run's actual charge; it never raises or bypasses the reservation (PROV-3).
+   */
   reportsCost: boolean;
 }
 
@@ -70,15 +73,18 @@ export const AI_BASE_URL_MAX_LENGTH = 2048;
 /** $1,000 per 1M tokens, in micro-dollars: far above any listed model, so a typo cannot pass silently. */
 export const AI_PRICE_MAX_MICROS_PER_MTOK = 1_000_000_000;
 
-/** PROV-3: where a connection's price per 1M tokens comes from. */
-export type AiPriceSource = 'table' | 'provider_reported' | 'owner';
+/**
+ * PROV-3: where a connection's price per 1M tokens comes from. A reservation needs a price before
+ * any response exists, so only Flux's dated table or the owner sets it.
+ */
+export type AiPriceSource = 'table' | 'owner';
 
 export interface AiPrice {
   /** Micro-dollars per 1M input tokens ($2/M is 2,000,000). */
   inputMicrosPerMTok: number;
   outputMicrosPerMTok: number;
   source: AiPriceSource;
-  /** When a table or provider-reported price was read (YYYY-MM-DD); null for an owner-entered price. */
+  /** When a table price was read (YYYY-MM-DD); null for an owner-entered price. */
   checkedOn: string | null;
 }
 
@@ -95,14 +101,14 @@ export interface AiPriceTableEntry {
 const ANTHROPIC_PRICING = 'https://platform.claude.com/docs/en/about-claude/pricing';
 
 /**
- * Flux's dated price table for named models (PROV-3 price source 2). Each row was read from the
+ * Flux's dated price table for named models (PROV-3). Each row was read from the
  * provider's own pricing page on `checkedOn`; the model id from the provider's model overview
  * (https://platform.claude.com/docs/en/models/overview, 2026-10-02; `claude-sonnet-5` from the same
  * page on 2026-09-28, recorded in O-007). Standard rates only: no batch, regional or fast-mode
  * multipliers. Only prices verified from a primary source are listed. OpenAI, OpenRouter and Gemini
  * pages could not be reached from the implementation sandbox on 2026-10-02, so none of their models
- * is listed: for those, the price comes from the provider's own listing (OpenRouter) or the owner.
- * A missing row never means free. Recheck a row before relying on it after its date.
+ * is listed: for those, the owner enters the price. A missing row never means free. Recheck a row
+ * before relying on it after its date.
  */
 export const AI_PRICE_TABLE: readonly AiPriceTableEntry[] = [
   { provider: 'anthropic', model: 'claude-sonnet-5', inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, checkedOn: '2026-10-02', source: ANTHROPIC_PRICING },
@@ -135,7 +141,10 @@ export interface AiModelListQuery {
 
 export interface AiListedModel {
   id: string;
-  /** Present when the provider's own listing states it (OpenRouter). */
+  /**
+   * The provider's own listed price (OpenRouter), shown to the owner as a suggestion for the price
+   * they enter. It is never a price source by itself (PROV-3).
+   */
   price: { inputMicrosPerMTok: number; outputMicrosPerMTok: number } | null;
 }
 

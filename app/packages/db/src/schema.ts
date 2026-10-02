@@ -967,7 +967,7 @@ export const backgroundComputeConnections = pgTable('background_compute_connecti
   /** Micro-dollars per 1M tokens; all null when no price is known. */
   inputPriceMicrosPerMTok: integer('input_price_micros_per_mtok'),
   outputPriceMicrosPerMTok: integer('output_price_micros_per_mtok'),
-  priceSource: text('price_source', { enum: ['table', 'provider_reported', 'owner'] }),
+  priceSource: text('price_source', { enum: ['table', 'owner'] }),
   priceCheckedOn: date('price_checked_on', { mode: 'string' }),
   payerOrganization: text('payer_organization').notNull(),
   providerWorkspace: text('provider_workspace').notNull(),

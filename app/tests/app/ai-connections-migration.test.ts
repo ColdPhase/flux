@@ -67,7 +67,7 @@ test('0042 keeps earlier connections and consents, enforces the new shape, and r
     };
     const valid: Record<string, unknown>[] = [
       { provider: 'openai', model: 'gpt-model' },
-      { provider: 'openrouter', model: 'vendor/model:free', source: 'provider_reported', checked: '2026-10-02' },
+      { provider: 'openrouter', model: 'vendor/model:free' },
       { provider: 'gemini', model: 'gemini-model', input: null, output: null, source: null },
       { provider: 'openai_compatible', model: 'llama3.1:8b', baseUrl: 'http://ollama:11434/v1', input: 0, output: 0 },
       { provider: 'anthropic', model: 'claude-sonnet-5-5', source: 'table', checked: '2026-10-02' },
@@ -83,6 +83,7 @@ test('0042 keeps earlier connections and consents, enforces the new shape, and r
       [{ provider: 'openai_compatible', baseUrl: 'https://host/v1?x=1' }, /base_url_check/],
       [{ input: null }, /price_check/],
       [{ source: 'table' }, /price_check/],
+      [{ source: 'provider_reported', checked: '2026-10-02' }, /price_source_check/],
       [{ input: -1 }, /check/],
       [{ output: 1_000_000_001 }, /check/],
     ];

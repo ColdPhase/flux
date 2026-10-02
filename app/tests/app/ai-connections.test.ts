@@ -191,6 +191,9 @@ describe('enabling and dispatch on any provider (#179 PROV-2/PROV-3)', () => {
   test('a connection without a known price cannot be enabled; a model whose request exceeds the allowance is refused', async () => {
     await connect({ provider: 'gemini', model: 'gemini-model', apiKey: keys.gemini });
     assert.equal(codeOf(await enable()), 'BACKGROUND_PRICE_UNKNOWN');
+    // PROV-3: a provider's own listing or reported cost is never a reservation price.
+    assert.equal((await connect({ provider: 'openrouter', model: 'vendor/priced-model', apiKey: keys.openrouter })).price, null);
+    assert.equal(codeOf(await enable()), 'BACKGROUND_PRICE_UNKNOWN');
     // 8,000 × $30/M + 1,200 × $60/M = $0.312 per request, above the $0.20 allowance.
     await connect({ provider: 'openai', model: 'gpt-model', price: { inputMicrosPerMTok: 30_000_000, outputMicrosPerMTok: 60_000_000 }, apiKey: keys.openai });
     assert.equal(codeOf(await enable()), 'BACKGROUND_BUDGET_TOO_LOW');

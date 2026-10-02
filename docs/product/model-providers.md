@@ -187,18 +187,18 @@ above.
 | --- | --- | --- |
 | PROV-1 | Partly | Five provider kinds, owner model (server-side keyless list where available, else typed), fixed or owner base URL, custody unchanged (migration `0042`). **Still one connection per owner**, used by both uses; "one or more connections" with a per-use choice is a follow-up. |
 | PROV-2 | Implemented for both uses | One prompt assembly, parser, proposal path and stop/retry/pause flow in core; two wire adapters and a registry in `@flux/agent-runtime`; neutral copy. Production personal runs remain off (#68). |
-| PROV-3 | Implemented | Price table, provider-reported and owner prices; reservation formula; enabling refused without a price; the conservative estimate bounds every provider. |
+| PROV-3 | Implemented | Price from Flux's dated table or the owner only; reservation formula; enabling refused without a price; a provider-reported cost (OpenRouter `usage.cost`) only reconciles the charge; the conservative estimate bounds every provider. |
 | PROV-4 | Implemented | Guarded transport for every adapter; save-time and connect-time host checks; operator allowlist `FLUX_AI_PRIVATE_TARGETS`; key absence checked per adapter. |
 | PROV-5 | Implemented in the UI | Connect shows Claude Code, Codex and another MCP client with their commands. **Real Codex and Claude Code activations, and one other client, are not recorded** (no clients or public HTTPS host in the implementation sandbox). |
 | PROV-6 | Partly | The adapter contract suite runs identically against Docker mocks of both wire formats. **Real-key smoke tests are unverified** for every named provider (no keys). **Provider terms marked `unknown` were not re-checked**: OpenAI, OpenRouter and Google pages were unreachable from the sandbox (egress blocked, 2026-10-02). |
 
 Choices made within the contract, for review:
 
-- **Price sources.** `provider_reported` is OpenRouter's own per-model price, read without a key
-  when a connection is saved; each OpenRouter response's `usage.cost` is then the charge. A table
-  or provider price cannot be overridden by the owner; an owner price is accepted only when
-  neither exists, and may be zero. A connection may be saved without a price; no use can be
-  enabled on it.
+- **Price sources.** `table` or `owner` only. A table price cannot be overridden by the owner; an
+  owner price is accepted only when the table has no row for the model, and may be zero. A price
+  OpenRouter lists for a model is only offered as the starting value of the owner's price. A
+  connection may be saved without a price; no use can be enabled on it. OpenRouter's response
+  `usage.cost` reconciles the run's charge and never changes its reservation.
 - **Price table.** Only Anthropic rows, read from Anthropic's pricing page and model overview on
   2026-10-02 (`claude-sonnet-5`, `claude-sonnet-5-5`, `claude-haiku-4-5` and its dated snapshot,
   `claude-fable-5-1`). Other providers' pages could not be reached, so none of their models is

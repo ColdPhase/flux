@@ -29,7 +29,7 @@ consent, caps and fail-closed rules are those of
 | --- | --- | --- | --- | --- |
 | `anthropic` | Anthropic Messages | `https://api.anthropic.com` | `sk-ant-…` | typed (listing needs a key) |
 | `openai` | Chat Completions | `https://api.openai.com/v1` | `sk-…`, not `sk-admin-…` | typed |
-| `openrouter` | Chat Completions | `https://openrouter.ai/api/v1` | `sk-or-…` | listed with prices, no key |
+| `openrouter` | Chat Completions | `https://openrouter.ai/api/v1` | `sk-or-…` | listed without a key (listed prices only prefill the owner's price) |
 | `gemini` | Chat Completions | `https://generativelanguage.googleapis.com/v1beta/openai` | `AIza…` | typed |
 | `openai_compatible` | Chat Completions | the owner's URL | any visible ASCII, 8–512 characters | listed when the server answers `GET /models` without a key |
 
@@ -60,21 +60,25 @@ or `failed` with `rate_limited` (429), `overloaded` (503, 529), `timeout`, `abor
 
 ## Prices, reservations and the input bound
 
-A connection's price per 1M tokens (micro-dollars) comes from, in order: OpenRouter's own listing
-(`provider_reported`, read without a key when the connection is saved), Flux's dated table
-(`AI_PRICE_TABLE`, Anthropic models read on 2026-10-02), or the owner (`owner`, zero allowed). An
-owner price is refused when a listed or table price exists. A connection without a price can be
-saved but not enabled: `BACKGROUND_PRICE_UNKNOWN`, `PERSONAL_RUN_PRICE_UNKNOWN`, the reservation
-refusal `CONNECTION_PRICE_UNKNOWN`, and the assistant state `unavailable` / `price_unknown`.
+A connection's price per 1M tokens (micro-dollars) comes only from Flux's dated table
+(`AI_PRICE_TABLE`, Anthropic models read on 2026-10-02; source `table`) or from the owner
+(`owner`, zero allowed), because a reservation needs a price before any response exists. An owner
+price is refused when the table has the model. A price OpenRouter lists is shown in the form as
+the starting value of the owner's price, never stored as a source of its own. A connection without
+a price can be saved but not enabled: `BACKGROUND_PRICE_UNKNOWN`, `PERSONAL_RUN_PRICE_UNKNOWN`, the
+reservation refusal `CONNECTION_PRICE_UNKNOWN`, and the assistant state `unavailable` /
+`price_unknown`.
 
 - A personal run reserves `16,000 × input + 1,500 × output` at the connection's price. The owner's
   per-run setting is the ceiling it must fit (`PERSONAL_RUN_COST_OVER_LIMIT`, `run_cost_over_limit`).
 - A comparison reserves `8,000 × input + 1,200 × output`, at least O-007's $0.05.
-- Usage is charged at the connection's price, or as the provider reported it.
+- Usage is charged at the connection's price, or reconciled at the cost the provider reported in
+  the response (OpenRouter `usage.cost`), which never raises or bypasses the reservation.
 
 The input of every provider is bounded by `conservativeTokenEstimate`: one token per two UTF-8
 bytes plus framing, above the major tokenizers' counts for prose in Latin, Polish and CJK text.
-Anthropic's count endpoint is still called when the estimate fits; only a higher count is used.
+It replaces O-007/O-008's Anthropic preflight count as the bound. Anthropic's count endpoint is
+still called when the estimate fits, as an optional refinement: only a higher count is used.
 The estimate is not an exact count: a provider may still report more input than estimated for
 unusual text (long digit runs, emoji), which the comparison treats as invalid usage (`unknown`).
 
@@ -102,7 +106,8 @@ never read into errors or logs.
 ## Model lists
 
 `POST /api/v1/ai-model-lists` `{ provider, baseUrl? }` (signed-in person) returns
-`{ provider, status, models, checkedOn }`. `listed` comes with model ids (and OpenRouter prices);
+`{ provider, status, models, checkedOn }`. `listed` comes with model ids (and OpenRouter's listed
+prices, a suggestion for the owner only);
 `needs_key` for providers that list models only with a key, which the API never holds; `refused`
 for an endpoint the guard refuses; `unavailable` when the endpoint does not answer a model list.
 

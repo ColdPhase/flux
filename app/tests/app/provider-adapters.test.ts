@@ -3,7 +3,7 @@ import { after, afterEach, before, beforeEach, describe, test } from 'node:test'
 import { tablePrice, type AiProviderKind } from '@flux/contracts';
 import { ComparisonNotSentError, costMicros, SYSTEM_PROMPT, type ComparisonProvider, type ComparisonSource, type PersonalCompute,
   type PersonalComputeRequest } from '@flux/core';
-import { listProviderModels, keylessPriceListing, parsePrivateTargets, providerComparison, providerPersonalCompute } from '../../packages/agent-runtime/src/index.js';
+import { listProviderModels, parsePrivateTargets, providerComparison, providerPersonalCompute } from '../../packages/agent-runtime/src/index.js';
 import type { RecordedProviderRequest } from './support/provider-mock.js';
 
 // The adapter contract suite (F-020 PROV-6): ONE set of cases runs identically against the Docker
@@ -221,11 +221,11 @@ describe('wire details beyond the shared contract', () => {
   const openai = (provider: AiProviderKind): WireCase => ({ wire: 'openai', provider, model: 'vendor/priced-model', key: `sk-or-v1-${'owner-budget-key-'.repeat(3)}OR01`,
     connectionBaseUrl: null, maxTokensField: 'max_tokens' });
 
-  test('a named OpenAI-wire provider uses its own URL, and only OpenRouter\'s reported cost is taken as the charge', async () => {
+  test('a named OpenAI-wire provider uses its own URL; only OpenRouter\'s reported cost reconciles the charge', async () => {
     await script('openai', { cost: 0.0042 });
     const reported = await personal(openai('openrouter')).dispatch(request(openai('openrouter')), new AbortController().signal);
     assert.deepEqual(reported.kind === 'completed' && reported.usage, { inputTokens: 1_200, outputTokens: 80, reportedCostMicros: 4_200 });
-    assert.equal(reported.kind === 'completed' && costMicros(reported.usage, PRICE), 4_200, 'PROV-3 source 1: the provider-reported cost');
+    assert.equal(reported.kind === 'completed' && costMicros(reported.usage, PRICE), 4_200, 'PROV-3: the reported cost reconciles the actual charge');
     assert.deepEqual(((await sent('openai'))[0]!.body as { usage?: unknown }).usage, { include: true }, 'OpenRouter is asked for its usage accounting');
     // Any other wire user may print a cost field; it is not a documented price source and is ignored.
     const compatible = await personal(WIRES[1]!).dispatch(request(WIRES[1]!), new AbortController().signal);
@@ -258,8 +258,5 @@ describe('wire details beyond the shared contract', () => {
     for (const listed of (await sent()).filter((item) => item.method === 'GET')) assert.equal(listed.key, null, 'no key is sent to list models');
     for (const provider of ['anthropic', 'openai', 'gemini'] as const) assert.equal((await listProviderModels(provider, null, { policy })).status, 'needs_key');
     assert.equal((await listProviderModels('openai_compatible', 'http://10.1.2.3:11434/v1', { policy })).status, 'refused');
-    const listing = keylessPriceListing({ policy, baseUrls: { openrouter: `${MOCK}/openrouter/v1` } });
-    assert.deepEqual(await listing.listedPrice('openrouter', 'vendor/priced-model', null), { inputMicrosPerMTok: 3_000_000, outputMicrosPerMTok: 15_000_000 });
-    assert.equal(await listing.listedPrice('openai_compatible', 'llama3.1:8b', `${MOCK}/openai/v1`), null, 'only a provider that reports prices has a listed price');
   });
 });

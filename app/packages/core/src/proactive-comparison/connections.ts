@@ -4,7 +4,7 @@ import { AI_PROVIDERS, BACKGROUND_CONSENT_VERSION, isAiProviderKind, type AiPric
 import { InvalidInputError, NotFoundError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import { refuseAllEndpoints, type AiEndpointPolicyPort } from '../ai/index.js';
-import { isoDay, noPriceListing, resolveConnectionPrice, type AiPriceListing } from '../ai/price.js';
+import { resolveConnectionPrice } from '../ai/price.js';
 import { baseUrlSyntaxProblem, normalizeBaseUrl, validAiKey, validModelId, validPrice } from '../ai/validation.js';
 
 export interface BackgroundKeySealer {
@@ -17,11 +17,9 @@ export interface BackgroundConnectionPort {
   current(ownerUserId: string): Promise<BackgroundComputeConnection | null>;
   revoke(ownerUserId: string, connectionId: string): Promise<boolean>;
 }
-/** What a connection save needs beyond storage (F-020): the endpoint policy and the provider's price listing. */
+/** What a connection save needs beyond storage (F-020): the endpoint policy of owner-set URLs. */
 export interface BackgroundConnectionProviders {
   endpoints: AiEndpointPolicyPort;
-  listing: AiPriceListing;
-  now?: () => Date;
 }
 
 function owner(principal: Principal): string {
@@ -64,7 +62,7 @@ export function validateBackgroundConnection(input: ConnectBackgroundComputeComm
 }
 
 export function backgroundConnectionUseCases(port: BackgroundConnectionPort, sealer: BackgroundKeySealer,
-  providers: BackgroundConnectionProviders = { endpoints: refuseAllEndpoints, listing: noPriceListing }) {
+  providers: BackgroundConnectionProviders = { endpoints: refuseAllEndpoints }) {
   return {
     async connect(principal: Principal, input: ConnectBackgroundComputeCommand): Promise<BackgroundComputeConnection> {
       const ownerUserId = owner(principal);
@@ -75,8 +73,8 @@ export function backgroundConnectionUseCases(port: BackgroundConnectionPort, sea
         const refused = await providers.endpoints.check(baseUrl);
         if (refused) throw new InvalidInputError(`This endpoint cannot be used: ${refused}`, 'AI_ENDPOINT_REFUSED');
       }
-      const price = await resolveConnectionPrice({ provider: input.provider, model: input.model, baseUrl,
-        ownerPrice: input.price, listing: providers.listing, today: isoDay(providers.now?.() ?? new Date()) });
+      // PROV-3: Flux's dated table or the owner's price; a provider's listing is never a price source.
+      const price = resolveConnectionPrice({ provider: input.provider, model: input.model, ownerPrice: input.price });
       const id = randomUUID();
       const encryptedKey = sealer.seal(input.apiKey, ownerUserId, id);
       const keyFingerprint = createHash('sha256').update(input.apiKey).digest('hex').slice(0, 16);

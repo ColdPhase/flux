@@ -1,5 +1,5 @@
 import { AI_PRICE_MAX_MICROS_PER_MTOK, AI_PROVIDERS, type AiListedModel, type AiModelList, type AiProviderKind } from '@flux/contracts';
-import { validModelId, type AiEndpointPolicyPort, type AiPriceListing } from '@flux/core';
+import { validModelId, type AiEndpointPolicyPort } from '@flux/core';
 import { chatBaseUrl } from './chat-completions.js';
 import { checkEndpoint, PUBLIC_ONLY, type AiEndpointPolicy, type Resolver, systemResolver } from './endpoint-policy.js';
 import { endpointRefusal, guardedFetch } from './guarded-fetch.js';
@@ -7,7 +7,8 @@ import { endpointRefusal, guardedFetch } from './guarded-fetch.js';
 // A provider's model list, read by the server without a key (F-020 PROV-1): OpenRouter lists its
 // models and their prices publicly, and an OpenAI-compatible server usually answers `GET /models`
 // without one. The other named providers list models only with a key, which only the worker may
-// use, so the owner types the model id. The same guarded transport bounds every listing.
+// use, so the owner types the model id. The same guarded transport bounds every listing. A listed
+// price is only a suggestion the owner may enter; it is never a reservation price (PROV-3).
 
 export interface ModelListOptions {
   policy?: AiEndpointPolicy;
@@ -57,17 +58,6 @@ export async function listProviderModels(provider: AiProviderKind, baseUrl: stri
   } catch (error) {
     return result(endpointRefusal(error) ? 'refused' : 'unavailable');
   }
-}
-
-/** Core's price listing over the provider's own keyless listing: OpenRouter reports per-model prices. */
-export function keylessPriceListing(options: ModelListOptions = {}): AiPriceListing {
-  return {
-    async listedPrice(provider, model, baseUrl) {
-      if (!AI_PROVIDERS[provider].reportsCost) return null;
-      const list = await listProviderModels(provider, baseUrl, options).catch(() => null);
-      return list?.models.find((entry) => entry.id === model)?.price ?? null;
-    },
-  };
 }
 
 /** Core's endpoint policy port over the guard: the save-time half of the check (PROV-4). */

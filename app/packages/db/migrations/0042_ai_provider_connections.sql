@@ -27,7 +27,8 @@ ALTER TABLE background_compute_connections
     CHECK (input_price_micros_per_mtok BETWEEN 0 AND 1000000000),
   ADD COLUMN output_price_micros_per_mtok integer
     CHECK (output_price_micros_per_mtok BETWEEN 0 AND 1000000000),
-  ADD COLUMN price_source text CHECK (price_source IN ('table', 'provider_reported', 'owner')),
+  -- PROV-3: Flux's dated table or the owner; a provider-reported cost only reconciles a run's charge.
+  ADD COLUMN price_source text CHECK (price_source IN ('table', 'owner')),
   ADD COLUMN price_checked_on date,
   ADD CONSTRAINT background_compute_connections_price_check
     CHECK ((input_price_micros_per_mtok IS NULL) = (price_source IS NULL)

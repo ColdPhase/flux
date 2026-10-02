@@ -4,7 +4,8 @@ import type { AddressInfo } from 'node:net';
 import { after, before, describe, test } from 'node:test';
 import { checkEndpoint, classifyAddress, EndpointRefusedError, guardedFetch, parsePrivateTargets, PUBLIC_ONLY, ResponseTooLargeError,
   type Resolver } from '../../packages/agent-runtime/src/index.js';
-import { baseUrlSyntaxProblem, boundedInputTokens, conservativeTokenEstimate, resolveConnectionPrice, validAiKey, validModelId } from '@flux/core';
+import { baseUrlSyntaxProblem, boundedInputTokens, conservativeTokenEstimate, requestReservationMicros, resolveConnectionPrice, usageMicros, validAiKey,
+  validModelId } from '@flux/core';
 
 // The SSRF guard of owner AI endpoints (F-020 PROV-4) and the pure connection rules. DNS answers
 // come from a scripted resolver; redirects, size and time bounds use local HTTP servers that this
@@ -165,21 +166,20 @@ describe('connection rules (F-020 PROV-1/PROV-3)', () => {
       assert.notEqual(baseUrlSyntaxProblem(value), null, value);
   });
 
-  test('price sources apply in PROV-3 order; an owner price only where neither the provider nor the table has one', async () => {
-    const listing = { listedPrice: async (provider: string, model: string) => (provider === 'openrouter' && model === 'vendor/listed'
-      ? { inputMicrosPerMTok: 3_000_000, outputMicrosPerMTok: 15_000_000 } : null) };
+  test('PROV-3: a connection price comes only from Flux\'s dated table or the owner; a reported cost only reconciles', () => {
     const resolve = (provider: 'anthropic' | 'openrouter' | 'openai', model: string, ownerPrice?: { inputMicrosPerMTok: number; outputMicrosPerMTok: number }) =>
-      resolveConnectionPrice({ provider, model, baseUrl: null, ownerPrice, listing, today: '2026-10-02' });
-    assert.deepEqual(await resolve('openrouter', 'vendor/listed'), { inputMicrosPerMTok: 3_000_000, outputMicrosPerMTok: 15_000_000, source: 'provider_reported', checkedOn: '2026-10-02' });
-    assert.deepEqual(await resolve('anthropic', 'claude-sonnet-5'), { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, source: 'table', checkedOn: '2026-10-02' });
-    assert.deepEqual(await resolve('openai', 'gpt-model', { inputMicrosPerMTok: 0, outputMicrosPerMTok: 0 }), { inputMicrosPerMTok: 0, outputMicrosPerMTok: 0, source: 'owner', checkedOn: null });
-    assert.equal(await resolve('openai', 'gpt-model'), null, 'no price is never treated as free');
-    await assert.rejects(resolve('anthropic', 'claude-sonnet-5', { inputMicrosPerMTok: 1, outputMicrosPerMTok: 1 }), { code: 'AI_PRICE_ALREADY_KNOWN' });
-    await assert.rejects(resolve('openrouter', 'vendor/listed', { inputMicrosPerMTok: 1, outputMicrosPerMTok: 1 }), { code: 'AI_PRICE_ALREADY_KNOWN' });
-    const failing = { listedPrice: async () => { throw new Error('listing down'); } };
-    assert.equal((await resolveConnectionPrice({ provider: 'openrouter', model: 'vendor/x', baseUrl: null,
-      ownerPrice: { inputMicrosPerMTok: 5, outputMicrosPerMTok: 5 }, listing: failing, today: '2026-10-02' }))?.source, 'owner',
-    'an unreachable listing falls back to the owner price, never to a guess');
+      resolveConnectionPrice({ provider, model, ownerPrice });
+    assert.deepEqual(resolve('anthropic', 'claude-sonnet-5'), { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, source: 'table', checkedOn: '2026-10-02' });
+    assert.deepEqual(resolve('openai', 'gpt-model', { inputMicrosPerMTok: 0, outputMicrosPerMTok: 0 }), { inputMicrosPerMTok: 0, outputMicrosPerMTok: 0, source: 'owner', checkedOn: null });
+    assert.deepEqual(resolve('openrouter', 'vendor/listed', { inputMicrosPerMTok: 3_000_000, outputMicrosPerMTok: 15_000_000 })?.source, 'owner',
+      'a model the provider lists with a price still takes the owner\'s price');
+    assert.equal(resolve('openrouter', 'vendor/listed'), null, 'a provider listing is never a price source; no price is never treated as free');
+    assert.throws(() => resolve('anthropic', 'claude-sonnet-5', { inputMicrosPerMTok: 1, outputMicrosPerMTok: 1 }), { code: 'AI_PRICE_ALREADY_KNOWN' });
+    // The reservation is the formula at the connection's price; a reported cost changes only the reconciled charge.
+    const price = { inputMicrosPerMTok: 3_000_000, outputMicrosPerMTok: 15_000_000 };
+    assert.equal(requestReservationMicros(price, 16_000, 1_500), 16_000 * 3 + 1_500 * 15);
+    assert.equal(usageMicros(price, { inputTokens: 1_000, outputTokens: 100, reportedCostMicros: 900_000 }), 900_000, 'reconciled at the reported cost, even above the reservation');
+    assert.equal(usageMicros(price, { inputTokens: 1_000, outputTokens: 100 }), 4_500);
   });
 
   test('the conservative estimate bounds every provider the same way; a count may only raise it', () => {
