@@ -454,7 +454,9 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
             : 'You can look at this sketch; people who can change it keep it up to date.'}</p>
         )}
 
-        {editing && canWrite ? <div className="sk-edit-controls" role="group" aria-label="Current thought edit">
+        {/* Pressing these keeps focus in the editor. Safari and macOS Firefox never focus a pressed
+            button: the editor would blur first, and leaving the field saves, even for Cancel edit. */}
+        {editing && canWrite ? <div className="sk-edit-controls" role="group" aria-label="Current thought edit" onMouseDown={(event) => event.preventDefault()}>
           <Button disabled={editing.saving || !editing.initial.trim()} onClick={() => void finishEdit(editing.initial)}>{editing.saving ? 'Saving…' : 'Save edit'}</Button>
           <Button variant="secondary" disabled={editing.saving} onClick={() => void finishEdit(null)}>Cancel edit</Button>
         </div> : null}

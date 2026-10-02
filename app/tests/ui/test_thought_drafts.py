@@ -30,6 +30,15 @@ EXHAUST_SESSION_STORAGE = """() => {
   sessionStorage.removeItem('quota-probe');
   return 'accepted';
 }"""
+# Safari (macOS, iPhone/iPad) and macOS Firefox never focus a pressed <button>: the default action
+# of an unprevented mousedown clears focus instead, so the editor blurs with no related target.
+# Chromium focuses the button; this models those browsers' default action in the real page.
+BUTTONS_TAKE_NO_FOCUS = """document.addEventListener('mousedown', (event) => {
+  const button = event.target instanceof Element ? event.target.closest('button') : null;
+  if (!button || event.defaultPrevented) return;
+  event.preventDefault();
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+});"""
 STORED_DRAFT_TEXTS = "Object.keys(sessionStorage).filter(k => k.startsWith('flux:thought-draft:')).map(k => JSON.parse(sessionStorage.getItem(k)).text)"
 EARLIER = "Earlier persisted draft"
 LATEST = "Latest recoverable draft after quota exhaustion"
@@ -489,3 +498,25 @@ class ThoughtDraftJourney(unittest.TestCase):
         expect(page.locator(".sk-status")).not_to_contain_text("Someone else")
         stored = next(t for t in self.stored(page)["thoughts"] if t["id"] == self.parent)
         self.assertEqual((stored["text"], stored["x"]), ("Nudged, then renamed by the same person", opened["x"] + 12))
+
+    def test_14_edit_buttons_work_where_a_pressed_button_takes_no_focus(self):
+        page = self.owner
+        page.add_init_script(BUTTONS_TAKE_NO_FOCUS)
+        self.open(page)
+        writes = []
+        page.on("request", lambda request: writes.append(request.url) if request.method != "GET" and "/sketches/" in request.url else None)
+        row = page.locator(f'.sk-li-t[data-id="{self.parent}"]')
+        row.focus()
+        row.press("F2")
+        page.get_by_label("Thought text").fill("Discard this existing edit")
+        page.get_by_role("button", name="Cancel edit", exact=True).click()
+        expect(page.locator(".sk-status")).to_contain_text("Edit cancelled")
+        expect(row).to_contain_text("Capture a gesture without recording camera images")
+        self.assertEqual(writes, [], "Cancel edit never saves the discarded text")
+        self.assertEqual(self.stored(page), self.before)
+        row.press("F2")
+        page.get_by_label("Thought text").fill("Saved with the visible button")
+        page.get_by_role("button", name="Save edit", exact=True).click()
+        expect(page.locator(".sk-status")).to_contain_text("Edited")
+        self.assertEqual(next(t for t in self.stored(page)["thoughts"] if t["id"] == self.parent)["text"], "Saved with the visible button")
+        self.assertEqual(len(writes), 1, "one save")
