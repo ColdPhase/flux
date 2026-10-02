@@ -99,16 +99,20 @@ export interface AiPriceTableEntry {
 }
 
 const ANTHROPIC_PRICING = 'https://platform.claude.com/docs/en/about-claude/pricing';
+const OPENAI_PRICING = 'https://developers.openai.com/api/docs/pricing';
+const GEMINI_PRICING = 'https://ai.google.dev/gemini-api/docs/pricing';
 
 /**
  * Flux's dated price table for named models (PROV-3). Each row was read from the
  * provider's own pricing page on `checkedOn`; the model id from the provider's model overview
  * (https://platform.claude.com/docs/en/models/overview, 2026-10-02; `claude-sonnet-5` from the same
  * page on 2026-09-28, recorded in O-007). Standard rates only: no batch, regional or fast-mode
- * multipliers. Only prices verified from a primary source are listed. OpenAI, OpenRouter and Gemini
- * pages could not be reached from the implementation sandbox on 2026-10-02, so none of their models
- * is listed: for those, the owner enters the price. A missing row never means free. Recheck a row
- * before relying on it after its date.
+ * multipliers. Only prices verified from a primary source are listed. OpenAI rows were read on
+ * 2026-10-03 from its pricing page (undated). Gemini rows were read on 2026-10-03 from its pricing page,
+ * last updated 2026-10-01; they are the <=200k-token prompt tier, the only one Flux's bounded input can
+ * reach. Time-limited promotional prices are not listed, because they expire and would under-reserve.
+ * OpenRouter prices vary per model and are shown only as a suggestion (`listedPrice`). A missing row
+ * never means free: the owner enters the price. Recheck a row before relying on it after its date.
  */
 export const AI_PRICE_TABLE: readonly AiPriceTableEntry[] = [
   { provider: 'anthropic', model: 'claude-sonnet-5', inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, checkedOn: '2026-10-02', source: ANTHROPIC_PRICING },
@@ -116,6 +120,33 @@ export const AI_PRICE_TABLE: readonly AiPriceTableEntry[] = [
   { provider: 'anthropic', model: 'claude-haiku-4-5', inputMicrosPerMTok: 1_000_000, outputMicrosPerMTok: 5_000_000, checkedOn: '2026-10-02', source: ANTHROPIC_PRICING },
   { provider: 'anthropic', model: 'claude-haiku-4-5-20251001', inputMicrosPerMTok: 1_000_000, outputMicrosPerMTok: 5_000_000, checkedOn: '2026-10-02', source: ANTHROPIC_PRICING },
   { provider: 'anthropic', model: 'claude-fable-5-1', inputMicrosPerMTok: 10_000_000, outputMicrosPerMTok: 50_000_000, checkedOn: '2026-10-02', source: ANTHROPIC_PRICING },
+  { provider: 'openai', model: 'gpt-6-astra', inputMicrosPerMTok: 10_000_000, outputMicrosPerMTok: 50_000_000, checkedOn: '2026-10-03', source: OPENAI_PRICING },
+  { provider: 'openai', model: 'gpt-6.1-sol', inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, checkedOn: '2026-10-03', source: OPENAI_PRICING },
+  { provider: 'openai', model: 'gpt-6-sol', inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, checkedOn: '2026-10-03', source: OPENAI_PRICING },
+  { provider: 'openai', model: 'gpt-6-luna', inputMicrosPerMTok: 100_000, outputMicrosPerMTok: 500_000, checkedOn: '2026-10-03', source: OPENAI_PRICING },
+  { provider: 'openai', model: 'gpt-5.6-sol', inputMicrosPerMTok: 4_000_000, outputMicrosPerMTok: 20_000_000, checkedOn: '2026-10-03', source: OPENAI_PRICING },
+  { provider: 'openai', model: 'gpt-5.6-terra', inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 12_000_000, checkedOn: '2026-10-03', source: OPENAI_PRICING },
+  { provider: 'openai', model: 'gpt-5.6-luna', inputMicrosPerMTok: 200_000, outputMicrosPerMTok: 1_200_000, checkedOn: '2026-10-03', source: OPENAI_PRICING },
+  { provider: 'openai', model: 'gpt-5.5', inputMicrosPerMTok: 5_000_000, outputMicrosPerMTok: 30_000_000, checkedOn: '2026-10-03', source: OPENAI_PRICING },
+  { provider: 'openai', model: 'gpt-5.4', inputMicrosPerMTok: 2_500_000, outputMicrosPerMTok: 15_000_000, checkedOn: '2026-10-03', source: OPENAI_PRICING },
+  { provider: 'openai', model: 'gpt-5.4-mini', inputMicrosPerMTok: 750_000, outputMicrosPerMTok: 4_500_000, checkedOn: '2026-10-03', source: OPENAI_PRICING },
+  { provider: 'openai', model: 'gpt-5.4-nano', inputMicrosPerMTok: 200_000, outputMicrosPerMTok: 1_250_000, checkedOn: '2026-10-03', source: OPENAI_PRICING },
+  { provider: 'openai', model: 'gpt-5.2', inputMicrosPerMTok: 1_750_000, outputMicrosPerMTok: 14_000_000, checkedOn: '2026-10-03', source: OPENAI_PRICING },
+  { provider: 'openai', model: 'gpt-5.1', inputMicrosPerMTok: 1_250_000, outputMicrosPerMTok: 10_000_000, checkedOn: '2026-10-03', source: OPENAI_PRICING },
+  { provider: 'openai', model: 'gpt-5', inputMicrosPerMTok: 1_250_000, outputMicrosPerMTok: 10_000_000, checkedOn: '2026-10-03', source: OPENAI_PRICING },
+  { provider: 'openai', model: 'gpt-5-mini', inputMicrosPerMTok: 250_000, outputMicrosPerMTok: 2_000_000, checkedOn: '2026-10-03', source: OPENAI_PRICING },
+  { provider: 'openai', model: 'gpt-5-nano', inputMicrosPerMTok: 50_000, outputMicrosPerMTok: 400_000, checkedOn: '2026-10-03', source: OPENAI_PRICING },
+  { provider: 'openai', model: 'gpt-4.1', inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 8_000_000, checkedOn: '2026-10-03', source: OPENAI_PRICING },
+  { provider: 'openai', model: 'gpt-4o', inputMicrosPerMTok: 2_500_000, outputMicrosPerMTok: 10_000_000, checkedOn: '2026-10-03', source: OPENAI_PRICING },
+  { provider: 'openai', model: 'o3', inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 8_000_000, checkedOn: '2026-10-03', source: OPENAI_PRICING },
+  { provider: 'openai', model: 'o3-mini', inputMicrosPerMTok: 1_100_000, outputMicrosPerMTok: 4_400_000, checkedOn: '2026-10-03', source: OPENAI_PRICING },
+  { provider: 'gemini', model: 'gemini-3.5-flash', inputMicrosPerMTok: 1_500_000, outputMicrosPerMTok: 9_000_000, checkedOn: '2026-10-03', source: GEMINI_PRICING },
+  { provider: 'gemini', model: 'gemini-3.5-flash-lite', inputMicrosPerMTok: 300_000, outputMicrosPerMTok: 2_500_000, checkedOn: '2026-10-03', source: GEMINI_PRICING },
+  { provider: 'gemini', model: 'gemini-3.1-flash-lite', inputMicrosPerMTok: 250_000, outputMicrosPerMTok: 1_500_000, checkedOn: '2026-10-03', source: GEMINI_PRICING },
+  { provider: 'gemini', model: 'gemini-3.1-pro-preview', inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 12_000_000, checkedOn: '2026-10-03', source: GEMINI_PRICING },
+  { provider: 'gemini', model: 'gemini-2.5-pro', inputMicrosPerMTok: 1_250_000, outputMicrosPerMTok: 10_000_000, checkedOn: '2026-10-03', source: GEMINI_PRICING },
+  { provider: 'gemini', model: 'gemini-2.5-flash', inputMicrosPerMTok: 300_000, outputMicrosPerMTok: 2_500_000, checkedOn: '2026-10-03', source: GEMINI_PRICING },
+  { provider: 'gemini', model: 'gemini-2.5-flash-lite', inputMicrosPerMTok: 100_000, outputMicrosPerMTok: 400_000, checkedOn: '2026-10-03', source: GEMINI_PRICING },
 ];
 
 export function tablePrice(provider: AiProviderKind, model: string): AiPriceTableEntry | null {

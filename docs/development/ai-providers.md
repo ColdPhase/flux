@@ -34,9 +34,18 @@ consent, caps and fail-closed rules are those of
 | `openai_compatible` | Chat Completions | the owner's URL | any visible ASCII, 8–512 characters | listed when the server answers `GET /models` without a key |
 
 The base URLs are the providers' documented roots, written into the code; no environment
-variable is read for them, so none can redirect a key. The OpenAI, OpenRouter and Gemini URLs and
-key formats could not be re-checked against their documentation from the implementation sandbox
-(2026-10-02); they are unverified until a real-key smoke test. A model id is the owner's free choice
+variable is read for them, so none can redirect a key.
+
+Re-checked on 2026-10-03 against the providers' own documentation:
+
+- **Gemini:** OpenAI compatibility, last updated 2026-09-02. Base URL
+  `https://generativelanguage.googleapis.com/v1beta/openai/`, `Authorization: Bearer`, chat
+  completions and a models list.
+- **OpenRouter:** API reference. Base `https://openrouter.ai/api/v1`, `Authorization: Bearer`, and
+  `usage.cost` in the response.
+
+Both are vendor claims. The key formats are not stated on those pages, and none of the three
+providers is exercised with a real key yet. A model id is the owner's free choice
 within `^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}$`; OpenRouter's `:online` variants, which add a
 provider-hosted web search, are refused.
 
@@ -61,13 +70,24 @@ or `failed` with `rate_limited` (429), `overloaded` (503, 529), `timeout`, `abor
 ## Prices, reservations and the input bound
 
 A connection's price per 1M tokens (micro-dollars) comes only from Flux's dated table
-(`AI_PRICE_TABLE`, Anthropic models read on 2026-10-02; source `table`) or from the owner
+(`AI_PRICE_TABLE`; source `table`) or from the owner
 (`owner`, zero allowed), because a reservation needs a price before any response exists. An owner
 price is refused when the table has the model. A price OpenRouter lists is shown in the form as
 the starting value of the owner's price, never stored as a source of its own. A connection without
 a price can be saved but not enabled: `BACKGROUND_PRICE_UNKNOWN`, `PERSONAL_RUN_PRICE_UNKNOWN`, the
 reservation refusal `CONNECTION_PRICE_UNKNOWN`, and the assistant state `unavailable` /
 `price_unknown`.
+
+The table rows come from these pages (all vendor claims):
+
+| Provider | Read on | Page | What the rows are |
+| --- | --- | --- | --- |
+| Anthropic | 2026-10-02 | platform.claude.com pricing | Standard rates |
+| OpenAI | 2026-10-03 | developers.openai.com pricing (undated) | Standard text rates, not batch, flex or priority |
+| Gemini | 2026-10-03 | ai.google.dev pricing (last updated 2026-10-01) | Paid tier, ≤200k-token prompt tier |
+
+Gemini's promotional prices that double on 2027-01-01 (3.6–3.8 Flash) are left out. A stale table
+row would under-reserve, so for those models the owner enters the price.
 
 - A personal run reserves `16,000 × input + 1,500 × output` at the connection's price. The owner's
   per-run setting is the ceiling it must fit (`PERSONAL_RUN_COST_OVER_LIMIT`, `run_cost_over_limit`).
@@ -139,6 +159,7 @@ open for every named provider.
 - More than one connection per owner, and choosing the connection per use (PROV-1).
 - The production personal-run connection lookup and key resolver (#68), which then composes
   `providerPersonalCompute({ enabled, resolveKey, policy: aiEndpointPolicyFromEnv(env) })`.
-- Real-key smoke tests per named provider, and a check of OpenAI, OpenRouter and Gemini terms and
-  documentation against dated primary sources (PROV-6).
+- Real-key smoke tests per named provider, and a check of OpenAI, OpenRouter and Gemini terms
+  against dated primary sources (PROV-6). Their base URLs (Gemini and OpenRouter) and the OpenAI
+  and Gemini prices were checked on 2026-10-03.
 - Real Codex and Claude Code connections and one other MCP client (PROV-5).
