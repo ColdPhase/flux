@@ -390,15 +390,30 @@ export function useSketchDoc(sketchId: string, me: Me) {
     return operation;
   }, [commit, flushMoves, reload, sketchId]);
 
-  /** Text belongs to the version opened by the editor, even if the stream learns a newer one. */
-  const saveText = useCallback(async (id: string, text: string, expectedVersion: number, key: string): Promise<boolean> => {
+  /**
+   * Text belongs to the version opened by the editor, even if the stream learns a newer one.
+   * A newer version that still has the opened text (a move, resize or shape change, such as this
+   * person's own nudge just before editing) holds nothing this edit would overwrite: the edit is
+   * sent once on that version, which then stays with its request key for an explicit retry.
+   */
+  const rebased = useRef(new Map<string, number>());
+  const saveText = useCallback(async (id: string, text: string, opened: { text: string; version: number }, key: string): Promise<boolean> => {
     flushMoves();
     inFlight.current += 1;
     setSaving(true);
     setProblem(null);
     const operation = queue.current.then(async () => {
       const before = ref.current;
-      const updated = await withRetry(() => api.updateThought(sketchId, id, { text }, expectedVersion, key));
+      const send = (version: number) => withRetry(() => api.updateThought(sketchId, id, { text }, version, key));
+      let updated: Thought;
+      try {
+        updated = await send(rebased.current.get(key) ?? opened.version);
+      } catch (error) {
+        const current = error instanceof ApiError && error.status === 409 ? (error.body as { current?: Thought } | null)?.current : undefined;
+        if (!current || current.text !== opened.text) throw error;
+        rebased.current.set(key, current.version);
+        updated = await send(current.version);
+      }
       patchThought(updated, true);
       if (before) {
         undoStack.current.push({ label: 'edited a thought', ops: inverse(before, { kind: 'update', id, changes: { text } }), at: Date.now() });

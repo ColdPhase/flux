@@ -20,6 +20,8 @@ import './sketch.css';
 export interface Editing {
   id: string;
   initial: string;
+  /** The text the editor opened on, at `version`; only a changed text is a conflict. */
+  opened: string;
   version: number;
   key: string;
   attempt: number;
@@ -133,7 +135,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     }
     setConnectFrom(null);
     doc.clearProblem();
-    setEditing({ id, initial: thought.text, version: thought.version, key: doc.newId(), attempt: 0, saving: false });
+    setEditing({ id, initial: thought.text, opened: thought.text, version: thought.version, key: doc.newId(), attempt: 0, saving: false });
   };
 
   const setMode = (next: Mode) => {
@@ -244,7 +246,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     const thought = find(current.id);
     if (!thought) return;
     const value = text?.trim() ?? '';
-    if (text === null || !value || (value === thought.text && current.version === thought.version)) {
+    if (text === null || !value || (value === thought.text && (current.version === thought.version || value === current.opened))) {
       setEditing(null);
       doc.clearProblem();
       say('Edit cancelled');
@@ -253,7 +255,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     }
     editSaveInFlight.current = true;
     setEditing({ ...current, initial: text, saving: true });
-    const saved = await doc.saveText(current.id, value, current.version, current.key);
+    const saved = await doc.saveText(current.id, value, { text: current.opened, version: current.version }, current.key);
     editSaveInFlight.current = false;
     if (!saved) {
       setEditing({ ...current, initial: text, saving: false, attempt: current.attempt + 1 });

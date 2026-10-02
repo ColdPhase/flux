@@ -470,3 +470,22 @@ class ThoughtDraftJourney(unittest.TestCase):
         expect(page.get_by_role("form", name="New thought draft")).to_have_count(0)
         self.assertEqual(self.stored_drafts(page), [])
         self.assertEqual(self.stored(page), self.before)
+
+    def test_13_own_nudge_just_before_editing_is_not_a_conflict(self):
+        page = self.owner
+        self.open(page, mode="Map")
+        node = page.locator(f'.sk-node[data-id="{self.parent}"]')
+        node.focus()
+        node.press("ArrowRight")
+        # Edit at once: the coalesced nudge is still unsent, so the editor opens on the older version.
+        node.press("F2")
+        field = page.get_by_label("Thought text")
+        expect(field).to_be_focused()
+        field.fill("Nudged, then renamed by the same person")
+        opened = next(t for t in self.before["thoughts"] if t["id"] == self.parent)
+        self.wait_stored(page, lambda current: next(t for t in current["thoughts"] if t["id"] == self.parent)["version"] > opened["version"])
+        field.press("Enter")
+        expect(page.locator(".sk-status")).to_contain_text("Edited")
+        expect(page.locator(".sk-status")).not_to_contain_text("Someone else")
+        stored = next(t for t in self.stored(page)["thoughts"] if t["id"] == self.parent)
+        self.assertEqual((stored["text"], stored["x"]), ("Nudged, then renamed by the same person", opened["x"] + 12))
