@@ -13,6 +13,7 @@ import { ApiError, NetworkError } from '../api/client';
 import { signOutDevice } from '../pwa';
 import { forgetRecentSearches } from '../search/recent';
 import { resetStream } from '../api/stream';
+import { forgetThoughtDrafts } from '../sketch/createdDraft';
 
 export type FieldErrors = Partial<Record<'name' | 'email' | 'password' | 'confirm', string>>;
 
@@ -198,5 +199,6 @@ export async function signOutAction(): Promise<FormResult | Response> {
   resetStream();
   // Recent searches are per account and never outlive the session in this browser (#114).
   forgetRecentSearches();
+  forgetThoughtDrafts();
   return redirect('/sign-in?notice=signed-out');
 }

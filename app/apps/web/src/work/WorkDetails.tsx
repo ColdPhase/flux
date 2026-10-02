@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useRevalidator } from 'react-router';
 import type { Agent, Decision, ObjectLink, Project, WorkItem, WorkResult, WorkspaceMember, WorkStatus } from '@flux/contracts';
 import { WORK_STATUSES } from '@flux/contracts';
@@ -150,10 +150,15 @@ function WorkPanel({ item, context, reload }: { item: WorkItem; context: Context
   const liveAnchor = { projectId: item.projectId, context: { type: 'work' as const, id: item.id }, label: item.title };
   useRegisterLiveHere(liveAnchor, { ref: { type: 'work', id: item.id, version: item.version }, label: item.title, what: 'task' });
 
+  // The same change of the same version retried after a lost response reuses its command UUID: it never
+  // contributes the saved blocker to the task conversation twice. A different change gets a new one.
+  const attempt = useRef<{ key: string; id: string } | null>(null);
   async function change(command: Parameters<typeof updateWork>[1]) {
+    const key = JSON.stringify([item.id, item.version, command]);
+    if (attempt.current?.key !== key) attempt.current = { key, id: crypto.randomUUID() };
     setBusy(true); setError('');
-    try { await updateWork(item, command); reload(); }
-    catch (cause) { setError(readable(cause)); if (cause instanceof ApiError && cause.status === 409) reload(); }
+    try { await updateWork(item, command, attempt.current.id); attempt.current = null; reload(); }
+    catch (cause) { setError(readable(cause)); if (cause instanceof ApiError && cause.status === 409) { attempt.current = null; reload(); } }
     finally { setBusy(false); }
   }
   const ownerValue = item.owner ? `${item.owner.kind}:${item.owner.id}` : '';

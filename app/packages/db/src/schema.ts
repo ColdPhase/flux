@@ -526,6 +526,9 @@ export const projectMessages = pgTable('project_messages', {
   body: text('body').notNull(),
   sourceMaterialId: uuid('source_material_id'),
   sourceMaterialVersion: integer('source_material_version'),
+  /** Plain text unless an explicit native effect (#154, migration 0040) says otherwise. */
+  contributionKind: text('contribution_kind', { enum: ['text', 'blocker', 'result', 'handoff'] }).notNull().default('text'),
+  resultId: uuid('result_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique().on(table.conversationId, table.sequence),
@@ -536,6 +539,9 @@ export const projectMessages = pgTable('project_messages', {
   check('project_message_exact_actor', sql`num_nonnulls(${table.authorId}, ${table.authorAgentId}) = 1`),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.conversationId], foreignColumns: [projectConversations.workspaceId, projectConversations.projectId, projectConversations.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.sourceMaterialId, table.sourceMaterialVersion], foreignColumns: [projectMaterialVersions.workspaceId, projectMaterialVersions.projectId, projectMaterialVersions.materialId, projectMaterialVersions.version] }),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.resultId], foreignColumns: [projectResults.workspaceId, projectResults.projectId, projectResults.id] }),
+  check('project_message_contribution_kind', sql`${table.contributionKind} IN ('text', 'blocker', 'result', 'handoff')`),
+  check('project_message_result_reference', sql`(${table.contributionKind} = 'result') = (${table.resultId} IS NOT NULL)`),
 ]);
 
 // One person's selected agent, scopes and project ceiling for an external MCP client (#52).
@@ -863,6 +869,31 @@ export const projectResults = pgTable('project_results', {
 }, (table) => [
   unique().on(table.workspaceId, table.projectId, table.id),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+]);
+
+/**
+ * One receipt per real actor, project, operation and client command UUID (#154, migration 0040). It keeps the
+ * produced object, the produced task version and the contribution messages for an exact replay; it is not the
+ * #152 connection-command ledger and never debits a grant.
+ */
+export const nativeCommandReceipts = pgTable('native_command_receipts', {
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  actorKind: text('actor_kind', { enum: ['human', 'agent'] }).notNull(),
+  actorId: text('actor_id').notNull(),
+  operation: text('operation', { enum: ['work.update', 'result.create'] }).notNull(),
+  clientCommandId: uuid('client_command_id').notNull(),
+  requestFingerprint: text('request_fingerprint').notNull(),
+  workId: uuid('work_id'),
+  workVersion: integer('work_version'),
+  resultId: uuid('result_id'),
+  messageIds: uuid('message_ids').array().notNull().default(sql`'{}'`),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.projectId, table.actorKind, table.actorId, table.operation, table.clientCommandId] }),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.workId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.resultId], foreignColumns: [projectResults.workspaceId, projectResults.projectId, projectResults.id] }).onDelete('cascade'),
 ]);
 
 export const projectObjectLinks = pgTable('project_object_links', {

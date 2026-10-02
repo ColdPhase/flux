@@ -2,6 +2,8 @@
 
 Optional project GitHub App configuration and current integration limits are
 documented in [GitHub integration](github-integration/README.md).
+The optional SFU and restrictive-network TURN/TLS profile are covered in
+[live media operation](live-media.md).
 
 Founder decision, 2026-09-27: **the application and its dependencies run in
 Docker/Compose**. Do not install PostgreSQL, Redis, queues, or application

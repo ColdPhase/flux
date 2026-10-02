@@ -58,7 +58,7 @@ names.
 | `people` | Everyone who can read the project now, with `access` (`manager`, `contributor`, `viewer`) and `workspaceRole`, decided by the access policy. |
 | `grants` | Explicit project grants, including `denied`. |
 | `actors` | Names of every person and agent referenced anywhere in the export. |
-| `conversations` | Each conversation with all messages in sequence: author, text, cited material or doc version, time. |
+| `conversations` | Each conversation with all messages in sequence: author, text, cited material or doc version, time. A message made by a saved blocker, a published result or a public handoff (#154) also has `contribution` (`{ "kind": "blocker" \| "handoff" }` or `{ "kind": "result", "resultId" }`); ordinary messages omit it. |
 | `materials` | Published materials with every immutable version: title, text, URL, author, time. |
 | `docs` | Docs with every version: title, Markdown text, `draft`/`published`, reason, author, time, and `file` (the Markdown file of the current text). |
 | `sketches` | Project sketches with their thoughts (text, position, size, shape, author, version) and links between thoughts (label). |

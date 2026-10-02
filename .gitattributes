@@ -1,2 +1,8 @@
 # Preserve the founder's original Markdown hard line breaks on import.
 docs/product/FLUX-FOUNDATION.md whitespace=-blank-at-eol
+# Frozen terminal captures retain their original bytes and verified hashes.
+# Application source and authored documentation keep the normal whitespace check.
+docs/development/evidence/live-turn/2026-09-30-code/**/*.log whitespace=-blank-at-eol,-blank-at-eof,cr-at-eol
+docs/development/evidence/live-turn/2026-09-30-code/**/*.prom whitespace=-blank-at-eol
+docs/development/evidence/live-k3s/2026-09-30/relative-key-health-check.txt whitespace=-blank-at-eol
+docs/development/evidence/live-k3s/2026-09-30/relative-key-repeat-health.txt whitespace=-blank-at-eol

@@ -24,8 +24,9 @@ test('0039 upgrades the previous ledger in place: tasks are preserved exactly, p
     const manifest = await readMigrationManifest(migrationsDir, FLUX_SCHEMA_VERSION);
     const migration = manifest.find((file) => file.version === 39);
     assert.equal(migration?.name, '0039_native_task_plan.sql');
-    assert.equal(manifest.filter((file) => file.version >= 39).length, 1, 'exactly one new migration, at 0039');
-    assert.equal(FLUX_SCHEMA_VERSION, 39);
+    assert.equal(manifest.filter((file) => file.version === 39).length, 1, 'exactly one migration at 0039');
+    // Later sparse migrations (0040, #154) apply after it and do not depend on it; this fixture stops at 0039.
+    assert.ok(FLUX_SCHEMA_VERSION >= 39);
     const upToCurrent = manifest.filter((file) => file.version <= 39);
     // The migrator owns ledger rows for files that do not self-record, so replay exactly its apply loop.
     for (const file of upToCurrent.filter((file) => file.version < 39)) {

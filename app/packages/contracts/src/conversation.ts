@@ -11,6 +11,15 @@ export interface MaterialSource {
   version: number;
 }
 
+/**
+ * What an explicit native effect contributed to a canonical task thread (#154). Ordinary text carries
+ * no marker, so the JSON of every existing message is unchanged. A result contribution names the one
+ * canonical result; its finding, evidence and sources come from that result's ordinary authorized API.
+ */
+export type MessageContribution =
+  | { kind: 'blocker' | 'handoff' }
+  | { kind: 'result'; resultId: string };
+
 export interface ConversationMessageFields {
   id: string;
   conversationId: string;
@@ -19,6 +28,8 @@ export interface ConversationMessageFields {
   /** Monotonic per conversation, including concurrent sends. */
   sequence: number;
   createdAt: string;
+  /** Present only for a saved blocker, a published result or an explicit public handoff. */
+  contribution?: MessageContribution;
 }
 
 export type MessageIdentity =

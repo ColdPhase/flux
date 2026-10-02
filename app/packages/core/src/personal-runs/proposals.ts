@@ -2,7 +2,7 @@ import type { AssistantProposal, DecideAssistantProposalCommand, Page, PageQuery
 import { ConflictError, ForbiddenError, NotFoundError, VersionConflictError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import { expectedVersion, isId, page } from '../work/validation.js';
-import type { PersonalRunPorts, ProposalPorts, ProposalRecord, ProposalUnitOfWork } from './ports.js';
+import type { PersonalRunPorts, ProposalRecord, ProposalUnitOfWork } from './ports.js';
 import { assistantLabel, ownerOf } from './service.js';
 
 // Assistant proposals (#68 AC-7, design principle 4). A personal run never saves a
@@ -45,9 +45,9 @@ async function visible(ports: PersonalRunPorts, principal: Principal, proposalId
 }
 
 /** Authority over the target: finishing an owned work item needs its owner or a manager. */
-async function requireAuthority(ports: ProposalPorts, principal: Principal, proposal: ProposalRecord, level: 'viewer' | 'contributor' | 'manager') {
+function requireAuthority(principal: Principal, proposal: ProposalRecord, level: 'viewer' | 'contributor' | 'manager',
+  work: { ownerUserId: string | null } | null) {
   if (!proposal.finishesWorkId || level === 'manager') return;
-  const work = await ports.results.findWork(proposal.finishesWorkId, { lock: true });
   if (work?.ownerUserId && work.ownerUserId !== principal.id)
     throw new ForbiddenError('Only the owner of the work item or a project manager can decide this proposal', 'PROPOSAL_AUTHORITY_REQUIRED');
 }
@@ -58,12 +58,17 @@ export function createAssistantProposalUseCases(uow: ProposalUnitOfWork) {
     const version = expectedVersion(expected ?? command?.expectedVersion);
     return uow.run(async (ports) => {
       const { proposal, access } = await visible(ports, principal, proposalId, 'write');
-      await requireAuthority(ports, principal, proposal, access.level);
+      // Accepting finishes the work item through the work use case, which takes the project task-graph lock
+      // before any task row (#171/#154 order) and fences exactly the version read here: the item is only read,
+      // so a change after this authority check is a 409, never a stale owner. Locking it here first would
+      // invert that order and deadlock with graph writers. Dismissing touches no graph and keeps the row lock.
+      const work = proposal.finishesWorkId
+        ? await ports.results.findWork(proposal.finishesWorkId, { lock: outcome === 'dismissed' && access.level !== 'manager' }) : null;
+      requireAuthority(principal, proposal, access.level, work);
       if (proposal.version !== version) throw new VersionConflictError(proposal.version, await proposalView(ports, proposal));
       if (proposal.status !== 'proposed') throw new ConflictError('The proposal was already decided', 'PROPOSAL_DECIDED');
       let resultId: string | null = null;
       if (outcome === 'accepted') {
-        const work = proposal.finishesWorkId ? await ports.results.findWork(proposal.finishesWorkId, { lock: true }) : null;
         if (proposal.finishesWorkId && (!work || work.projectId !== proposal.projectId))
           throw new ConflictError('The work item no longer exists', 'PROPOSAL_TARGET_GONE');
         resultId = (await ports.results.recordResult(principal, proposal.projectId, {

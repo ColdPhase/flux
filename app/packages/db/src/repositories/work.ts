@@ -115,6 +115,24 @@ export function workRows(db: DbExecutor) {
       }).returning();
       return toWorkRecord(row!);
     },
+    /** The durable native-command lock, then the earlier receipt of this exact actor, project, operation and command. */
+    async nativeCommand(projectId: string, by: Actor, operation: 'work.update' | 'result.create', commandId: string) {
+      await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`native-command:${projectId}:${by.kind}:${by.id}:${operation}:${commandId}`}))`);
+      const n = schema.nativeCommandReceipts;
+      const [row] = await db.select().from(n).where(and(eq(n.projectId, projectId), eq(n.actorKind, by.kind), eq(n.actorId, by.id),
+        eq(n.operation, operation), eq(n.clientCommandId, commandId)));
+      if (!row) return null;
+      const object = row.operation === 'work.update' ? { type: 'work' as const, id: row.workId!, version: row.workVersion! } : { type: 'result' as const, id: row.resultId! };
+      return { operation: row.operation, commandId: row.clientCommandId, fingerprint: row.requestFingerprint, object, messageIds: row.messageIds };
+    },
+    async recordNativeCommand(scope: { workspaceId: string; projectId: string }, by: Actor,
+      receipt: { operation: 'work.update' | 'result.create'; commandId: string; fingerprint: string;
+        object: { type: 'work'; id: string; version: number } | { type: 'result'; id: string }; messageIds: string[] }) {
+      await db.insert(schema.nativeCommandReceipts).values({ ...scope, actorKind: by.kind, actorId: by.id, operation: receipt.operation,
+        clientCommandId: receipt.commandId, requestFingerprint: receipt.fingerprint,
+        workId: receipt.object.type === 'work' ? receipt.object.id : null, workVersion: receipt.object.type === 'work' ? receipt.object.version : null,
+        resultId: receipt.object.type === 'result' ? receipt.object.id : null, messageIds: receipt.messageIds });
+    },
     async createdWork(projectId: string, by: Actor, commandId: string) {
       await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`work-create:${projectId}:${by.kind}:${by.id}:${commandId}`}))`);
       const [row] = await db.select().from(w).where(and(eq(w.projectId, projectId), eq(w.createdByKind, by.kind),

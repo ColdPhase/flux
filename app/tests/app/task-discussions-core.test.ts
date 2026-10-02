@@ -19,7 +19,7 @@ function world({ bound = false, visible = true, writable = true, rootSequence = 
   const access: Array<{ action: string; projectId: string; lock: boolean | undefined }> = [];
   const writes: string[] = [];
   const root: DiscussionMessage = { id: ids.root, conversationId: ids.conversation, author, body: 'The first genuine message.', source: null,
-    sequence: rootSequence, projectId: rootProject, clientMessageId: randomUUID(), requestFingerprint: 'fingerprint', createdAt: created };
+    sequence: rootSequence, projectId: rootProject, clientMessageId: randomUUID(), requestFingerprint: 'fingerprint', kind: 'text', resultId: null, createdAt: created };
   const ports: TaskDiscussionPorts = {
     access: {
       async requireProject(_principal, action, projectId, options) {
