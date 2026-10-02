@@ -46,6 +46,7 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix }
   const barRef = useRef<HTMLDivElement>(null);
   const indicatorRef = useRef<HTMLSpanElement>(null);
   const placedRef = useRef(false);
+  const shownRef = useRef<HTMLElement | null>(null);
   const isNav = items.some((item) => item.to);
 
   const place = useCallback((animate: boolean) => {
@@ -54,6 +55,18 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix }
     if (!bar || !indicator) return;
     const current = bar.querySelector<HTMLElement>('[aria-current="page"], [aria-selected="true"]');
     if (!current) { indicator.style.opacity = '0'; return; }
+    // When the strip scrolls sideways (five tabs at 320px), bring a newly current tab into view
+    // once; later renders leave the person's own scrolling alone.
+    if (shownRef.current !== current) {
+      shownRef.current = current;
+      const scroller = [bar, bar.parentElement].find((el): el is HTMLElement => !!el && el.scrollWidth > el.clientWidth + 1);
+      if (scroller) {
+        const box = scroller.getBoundingClientRect();
+        const tab = current.getBoundingClientRect();
+        if (tab.left < box.left) scroller.scrollLeft -= box.left - tab.left + 8;
+        else if (tab.right > box.right) scroller.scrollLeft += tab.right - box.right + 8;
+      }
+    }
     const pad = parseFloat(getComputedStyle(current).paddingLeft) || 0;
     if (!animate) indicator.style.transition = 'none';
     indicator.style.opacity = '1';
