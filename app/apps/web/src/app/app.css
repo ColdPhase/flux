@@ -64,7 +64,7 @@ body:has(.app) { background: var(--bg-chrome); }
 .side__word span { color: var(--accent); }
 .side__jump {
   display: flex; align-items: center; gap: 8px; width: 100%; min-height: 39px; margin: 22px 0 18px; padding: 8px 4px;
-  border-bottom: 1px solid var(--line); color: var(--text-2); font-size: var(--fs-md); text-align: left; transition: var(--tr);
+  border-bottom: 1px solid var(--line); background: var(--bg-chrome); color: var(--text-2); font-size: var(--fs-md); text-align: left; transition: var(--tr);
 }
 .side__jump svg { color: var(--text-2); }
 .side__jump kbd { margin-left: auto; box-shadow: none; color: var(--text-2); font: 9px/1 var(--mono); }
