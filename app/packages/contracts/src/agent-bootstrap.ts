@@ -50,6 +50,13 @@ export interface AgentInstructionReference {
   toolContractVersion: number;
   retrievalReference: string;
 }
+/** What a client reported loading for this runtime session: compatibility evidence, never authority or obedience. */
+export interface AgentInstructionAcknowledgment {
+  bundleId: string;
+  version: string;
+  digest: string;
+  acknowledgedAt: string;
+}
 export interface AgentPolicyReference {
   policyId: string;
   revision: number;
@@ -70,9 +77,12 @@ export interface AgentBootstrap {
   capabilities: AgentToolCapability[];
   trusted: { playbook: AgentInstructionReference | null; approvedPolicy: AgentPolicyReference | null;
     coordination: AgentCoordinationReference | null; repositoryReferences: string[] | null };
+  /** The bundle this runtime session's client acknowledged, and whether it is the one the server serves now. */
+  playbookAcknowledgment: (AgentInstructionAcknowledgment & { current: boolean }) | null;
   gaps: ('trusted_playbook_unavailable' | 'approved_policy_unavailable' | 'coordination_unavailable' |
     'verified_repository_context_unavailable' | 'goal_plan_classification_unavailable' | 'dependency_index_unavailable')[];
   readiness: { state: 'pending' | 'ready'; meaning: 'server_context_available_only' };
   coverage: { projectIndex: 'bounded_canonical_metadata'; changesSince: 'supplied_references_only';
-    instructionLoading: 'unverified'; modelObedience: 'unverified' };
+    /** `client_acknowledged`: the client reported loading the current bundle; the server cannot observe loading itself. */
+    instructionLoading: 'unverified' | 'client_acknowledged'; modelObedience: 'unverified' };
 }

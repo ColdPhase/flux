@@ -77,7 +77,8 @@ export async function oauthToken(browser: Browser, connectionId: string, clientI
 }
 
 export async function mcp(accessToken: string, id: number, method: string, params: Record<string, unknown> = {}) {
-  const toolName = typeof params.name === 'string' ? params.name : null;
+  // The 2026-07-28 transport repeats the tool/prompt name or the resource URI in Mcp-Name.
+  const toolName = typeof params.name === 'string' ? params.name : typeof params.uri === 'string' ? params.uri : null;
   const response = await fetch(new URL('/mcp', apiUrl), {
     method: 'POST',
     headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json',
