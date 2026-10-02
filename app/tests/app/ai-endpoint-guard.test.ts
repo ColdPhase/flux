@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { after, before, describe, test } from 'node:test';
 import { checkEndpoint, classifyAddress, EndpointRefusedError, guardedFetch, parsePrivateTargets, PUBLIC_ONLY, ResponseTooLargeError,
   type Resolver } from '../../packages/agent-runtime/src/index.js';
-import { baseUrlSyntaxProblem, boundedInputTokens, conservativeTokenEstimate, validAiKey, validModelId } from '@flux/core';
+import { baseUrlSyntaxProblem, boundedInputTokens, conservativeTokenEstimate, resolveConnectionPrice, validAiKey, validModelId } from '@flux/core';
 
 // The SSRF guard of owner AI endpoints (F-020 PROV-4) and the pure connection rules. DNS answers
 // come from a scripted resolver; redirects, size and time bounds use local HTTP servers that this
@@ -163,6 +163,23 @@ describe('connection rules (F-020 PROV-1/PROV-3)', () => {
     for (const value of ['', 'llm.example.org/v1', 'https://user:pw@llm.example.org', 'https://llm.example.org/v1?x=1', 'https://llm.example.org/#a',
       'file:///etc/passwd', 'https://llm.example.org/ v1', `https://x.org/${'a'.repeat(2048)}`])
       assert.notEqual(baseUrlSyntaxProblem(value), null, value);
+  });
+
+  test('price sources apply in PROV-3 order; an owner price only where neither the provider nor the table has one', async () => {
+    const listing = { listedPrice: async (provider: string, model: string) => (provider === 'openrouter' && model === 'vendor/listed'
+      ? { inputMicrosPerMTok: 3_000_000, outputMicrosPerMTok: 15_000_000 } : null) };
+    const resolve = (provider: 'anthropic' | 'openrouter' | 'openai', model: string, ownerPrice?: { inputMicrosPerMTok: number; outputMicrosPerMTok: number }) =>
+      resolveConnectionPrice({ provider, model, baseUrl: null, ownerPrice, listing, today: '2026-10-02' });
+    assert.deepEqual(await resolve('openrouter', 'vendor/listed'), { inputMicrosPerMTok: 3_000_000, outputMicrosPerMTok: 15_000_000, source: 'provider_reported', checkedOn: '2026-10-02' });
+    assert.deepEqual(await resolve('anthropic', 'claude-sonnet-5'), { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, source: 'table', checkedOn: '2026-10-02' });
+    assert.deepEqual(await resolve('openai', 'gpt-model', { inputMicrosPerMTok: 0, outputMicrosPerMTok: 0 }), { inputMicrosPerMTok: 0, outputMicrosPerMTok: 0, source: 'owner', checkedOn: null });
+    assert.equal(await resolve('openai', 'gpt-model'), null, 'no price is never treated as free');
+    await assert.rejects(resolve('anthropic', 'claude-sonnet-5', { inputMicrosPerMTok: 1, outputMicrosPerMTok: 1 }), { code: 'AI_PRICE_ALREADY_KNOWN' });
+    await assert.rejects(resolve('openrouter', 'vendor/listed', { inputMicrosPerMTok: 1, outputMicrosPerMTok: 1 }), { code: 'AI_PRICE_ALREADY_KNOWN' });
+    const failing = { listedPrice: async () => { throw new Error('listing down'); } };
+    assert.equal((await resolveConnectionPrice({ provider: 'openrouter', model: 'vendor/x', baseUrl: null,
+      ownerPrice: { inputMicrosPerMTok: 5, outputMicrosPerMTok: 5 }, listing: failing, today: '2026-10-02' }))?.source, 'owner',
+    'an unreachable listing falls back to the owner price, never to a guess');
   });
 
   test('the conservative estimate bounds every provider the same way; a count may only raise it', () => {
