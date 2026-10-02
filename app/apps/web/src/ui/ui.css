@@ -17,6 +17,8 @@ svg { flex: none; }
 [hidden] { display: none !important; }
 
 /* Focus: a ring that fades in and settles 2px out, only for keyboard focus. */
+:root[data-theme-switching] *, :root[data-theme-switching] *::before, :root[data-theme-switching] *::after { transition: none !important; }
+
 :focus { outline-style: none; }
 :where(a[href], button, textarea, input, select, [tabindex]) { outline: 2px solid transparent; outline-offset: 4px; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
