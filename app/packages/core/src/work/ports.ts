@@ -259,6 +259,10 @@ export interface WorkPorts {
   work: WorkRepository;
   events: WorkEventLog;
   contributions: WorkContributions;
+  backgroundComparison: {
+    /** A candidate only: the outbox never grants permission to call a provider. */
+    enqueueHumanNegative(resultId: string, projectId: string, authorId: string): Promise<number>;
+  };
 }
 
 /**

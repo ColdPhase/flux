@@ -62,6 +62,7 @@ function isTyping(target: EventTarget | null) {
 export function AppLayout() {
   const { me, workspace, projects, directMessages } = useShellData();
   const location = useLocation();
+  const backgroundSettings = location.pathname === '/settings/background-compute';
   const navDrawer = useMediaQuery(MEDIA.navDrawer);
   const phone = useMediaQuery(MEDIA.phone);
   const panelMode = useSidePanelMode();
@@ -116,7 +117,7 @@ export function AppLayout() {
   const [shownPath, setShownPath] = useState(location.pathname);
   if (shownPath !== location.pathname) {
     setShownPath(location.pathname);
-    if (panelMode !== 'docked' && detailsOpen) setDetailsOpen(false);
+    if ((panelMode !== 'docked' || backgroundSettings) && detailsOpen) setDetailsOpen(false);
   }
   // `?open=work:<id>` (a notification's link, #116) opens that object in Details on its project.
   const navigate = useNavigate();
@@ -146,6 +147,7 @@ export function AppLayout() {
   // "]" toggles Details, as in the header tooltip.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if (backgroundSettings) return;
       if (event.key !== ']' || event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target)) return;
       if (document.getElementById('root')?.inert && !detailsOpen) return;
       event.preventDefault();
@@ -154,7 +156,7 @@ export function AppLayout() {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [toggleDetails, detailsOpen]);
+  }, [toggleDetails, detailsOpen, backgroundSettings]);
 
 
   // A new view slides in from the side its tab sits on.
@@ -210,7 +212,9 @@ export function AppLayout() {
     { id: 'messages', label: 'Messages', to: `/dm/${activeDm.id}` },
     { id: 'sketches', label: 'Sketches', to: `/dm/${activeDm.id}/sketches`, end: false, ...(dmSketches ? { count: dmSketches, countLabel: `, ${dmSketches} ${dmSketches === 1 ? 'sketch' : 'sketches'}` } : {}) },
   ] : null;
-  const place = location.pathname === '/search'
+  const place = backgroundSettings
+    ? { crumb: null, title: 'Background suggestions', topic: 'Your connection and allowance', views: false, noDetails: true }
+    : location.pathname === '/search'
     ? { crumb: null, title: 'Search', topic: 'Only what you can open is searched', views: false }
     : location.pathname === '/settings/assistant'
     ? { crumb: null, title: 'Your assistant', topic: 'Only you can use it · optional', views: false, noDetails: true }

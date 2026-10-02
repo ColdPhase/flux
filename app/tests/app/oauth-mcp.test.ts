@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
 import { createDatabase } from '@flux/db';
-import { DomainError } from '@flux/core';
+import { coworkPlaybookReference, DomainError } from '@flux/core';
 import { withAgentConnection } from '../../apps/server/src/agent-connection/context.js';
 import { apiUrl, publicOrigin, register, uniqueEmail, type Browser } from './support/http.js';
 import { beginOauth, expect, mcp, oauthToken, toolValue, type Tokens } from './support/mcp.js';
@@ -159,8 +159,9 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
   const repeatedBootstrap = toolValue((await mcp(bearer, 47, 'tools/call', { name: 'flux_bootstrap', arguments: { projectId, clientSessionId } })).message);
   assert.deepEqual(repeatedBootstrap.runtime, bootstrap.runtime, 'runtime retry preserves original identity and expiry');
   assert.equal((bootstrap.readiness as { state: string }).state, 'pending');
-  assert.deepEqual(bootstrap.trusted, { playbook: null, approvedPolicy: null, coordination: null, repositoryReferences: null });
-  assert.ok((bootstrap.gaps as string[]).includes('trusted_playbook_unavailable'));
+  assert.deepEqual(bootstrap.trusted, { playbook: coworkPlaybookReference(), approvedPolicy: null, coordination: null, repositoryReferences: null });
+  assert.ok(!(bootstrap.gaps as string[]).includes('trusted_playbook_unavailable'));
+  assert.ok((bootstrap.gaps as string[]).includes('coordination_unavailable'));
   assert.equal((bootstrap.runtime as { clientId: string }).clientId, clientId);
   const discovery = await mcp(bearer, 48, 'tools/list');
   const tools = (discovery.message?.result as { tools: { name: string }[] }).tools;
@@ -169,8 +170,11 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
   const writes = (bootstrap.capabilities as { name: string; operation: string | null; available: boolean }[]).filter((row) => row.operation !== null);
   assert.deepEqual(writes.map(({ name, operation, available }) => ({ name, operation, available })),
     [{ name: 'flux_create_task', operation: 'work.create', available: false }, { name: 'flux_update_task', operation: 'work.update', available: false },
-      { name: 'flux_record_result', operation: 'result.record', available: false }, { name: 'flux_propose_decision', operation: 'decision.propose', available: false }],
-    'only the verified native work actions are advertised, unavailable without the action scope');
+      { name: 'flux_record_result', operation: 'result.record', available: false }, { name: 'flux_propose_decision', operation: 'decision.propose', available: false },
+      ...['flux_create_map:map.create', 'flux_rename_map:map.rename', 'flux_add_thought:map.thought.create', 'flux_update_thought:map.thought.update',
+        'flux_remove_thought:map.thought.delete', 'flux_move_thoughts:map.positions.update', 'flux_link_thoughts:map.link.create',
+        'flux_unlink_thoughts:map.link.delete'].map((entry) => ({ name: entry.split(':')[0], operation: entry.split(':')[1], available: false }))],
+    'only the verified native work and map actions are advertised, unavailable without the action scope');
   const unscoped = await mcp(bearer, 147, 'tools/call', { name: 'flux_create_task', arguments: { projectId,
     runtimeSessionId: (bootstrap.runtime as { id: string }).id, grantId: randomUUID(), clientCommandId: randomUUID(),
     peerRequestClass: 'plan', sources: [], task: { title: 'Not without the action scope' } } });

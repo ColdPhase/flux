@@ -10,6 +10,15 @@ adapter packaging must be bound to implemented, versioned capabilities in #152/
 Keep one canonical content source; generate native wrappers without diverging
 workflow copies. Record version/digest, compatible tool contract and change notes.
 
+**Shipped content (2026-10-02).** The canonical bundle the server delivers is
+`COWORK_PLAYBOOK` in `app/packages/core/src/agent-connection/playbook.ts`
+(`flux.cowork` 1.0.0). It adapts this seed to the tools that actually exist and
+declares, per module, the tools and providers it needs; coordination, approved
+policy and verified repository context are named as requirements, never as working
+features. This page remains the design rationale; change the shipped text in
+that module, with a new version. Delivery is described in
+[agent connection](../development/agent-connection.md#built-in-co-work-playbook-160).
+
 ## Internal payload for the built-in Start / Resume action
 
 The supported Flux integration supplies this payload to the agent. It is not

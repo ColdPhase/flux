@@ -277,9 +277,11 @@ outside tests.
 
 ## Web app and browser tests
 
-The configured `pnpm test` command runs at most four application test files at
-once (`--test-concurrency=4`). This keeps the shared API/database load independent
-of the host CPU count; the [Node test runner](https://nodejs.org/download/release/v24.8.0/docs/api/cli.html#--test-concurrency)
+The configured `pnpm test` command runs one application test file at a time
+(`--test-concurrency=1`), never more than four. The controlled comparison scheduling
+fixtures (#58) deliberately own the one global comparison cursor of the shared test
+database, so files must not overlap. A fixed bound also keeps the shared API/database
+load independent of the host CPU count; the [Node test runner](https://nodejs.org/download/release/v24.8.0/docs/api/cli.html#--test-concurrency)
 otherwise derives file parallelism from available processors. Explicit concurrent
 requests and race assertions inside each suite remain unchanged. Keep the same
 command in local Docker validation and CI; do not extend API/database deadlines
