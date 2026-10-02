@@ -133,16 +133,9 @@ jobs:
             '.version == $v and .source_sha == $s and .image == $i' release.json
           bash "$GITHUB_WORKSPACE/scripts/release/check_release_target.sh" \
             "$RELEASE_VERSION" "$SOURCE_SHA" draft
-          image=ghcr.io/coldphase/flux
-          tag="$image:$RELEASE_VERSION"
-          if docker buildx imagetools inspect "$tag" >/dev/null 2>&1; then
-            echo 'Version image tag already exists; never retag it.' >&2
-          else
-            docker buildx imagetools create --prefer-index=false \
-              --tag "$tag" "$image@$IMAGE_DIGEST"
-          fi
-          actual=$(docker buildx imagetools inspect "$tag" --format '{{json .Manifest}}' | jq -r .digest)
-          test "$actual" = "$IMAGE_DIGEST"
+          bash "$GITHUB_WORKSPACE/scripts/release/promote_image_tag.sh" \
+            "$RELEASE_VERSION" "$IMAGE_DIGEST"
+          tag="ghcr.io/coldphase/flux:$RELEASE_VERSION"
           mkdir -p "$RUNNER_TEMP/anonymous-docker"
           DOCKER_CONFIG="$RUNNER_TEMP/anonymous-docker" \
             docker buildx imagetools inspect "$tag" >/dev/null
