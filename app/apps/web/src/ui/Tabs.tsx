@@ -26,7 +26,9 @@ interface TabsProps {
 }
 
 function Count({ item }: { item: TabItem }): ReactNode {
-  if (item.count === undefined) return item.countLabel ? <span className="ui-vh">{item.countLabel}</span> : null;
+  // The hidden label sits in an inline wrapper, as with a visible count, so the accessible name
+  // reads "Tasks, 2 open" without a space before the comma.
+  if (item.count === undefined) return item.countLabel ? <span><span className="ui-vh">{item.countLabel}</span></span> : null;
   return (
     <span className="ui-tabs__count">
       <span aria-hidden="true">{item.count}</span>
