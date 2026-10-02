@@ -17,6 +17,7 @@ access rules and accessibility. Where the two conflict, this page records the ch
 | Language | Polish labels | English labels in the same order: **Conversation · Map · Tasks · Wiki · Agents**; "What matters", "Together" | Flux is a global product. Localization is a separate concern; order, vocabulary and placement follow 11.6. |
 | Sidebar label contrast | `--dim` on chrome is 4.45:1 for 11px labels | Use the `--text-2` role on the chrome background | WCAG 1.4.3 AA for small text |
 | Input borders | 1px `--line`, about 1.3:1 | Keep `--line-input` at ≥3:1, retinted to the slate family | WCAG 1.4.11 for field boundaries |
+| Dim text | `#657185` (4.2:1 on hover, own-bubble and selected fills) | `--text-3` `#5e6a7d` in light, the nearest same-hue value with ≥4.5:1 on every light fill | WCAG 1.4.3 for metadata on those fills |
 | Tab indicator | Static 16×2px accent underline at the tab's left edge | The same 16×2px accent underline, which slides between tabs for at most 180ms; static under reduced motion | UI116-5 requires a subtle sliding indicator |
 | Arrivals and typing | No motion; demo typing | Real scoped typing (#155) and small arrival opacity only for new visible messages | UI116-5 |
 | Tooltips | Native `title` only | Keep production's accessible labels; no custom tooltip is required | Behaviour parity with less code |
@@ -39,7 +40,7 @@ sheet edge, action, bubbles, tints and canvas. Rail tokens are retired.
 | `--bubble-own` (new) | Mint `#e5eee5`, Sky `#e7edf4`, Copper `#f3e8de` | `#2e3742` | `--accent-soft` on own bubbles |
 | `--text` | `#272e38` | `#e8ecf2` | `#1b1c1f` / `#ededef` |
 | `--text-2` (muted) | `#596577` | `#adb7c6` | `#3c3f45` / `#c9cace` |
-| `--text-3` (dim; not on chrome for small text) | `#657185` | `#a0abba` | `#62666d` / `#9a9ca3` |
+| `--text-3` (dim; not on chrome for small text) | `#5e6a7d` (prototype `#657185`, darkened for AA) | `#a0abba` | `#62666d` / `#9a9ca3` |
 | `--line` | `#dde2e9` | `#3b424e` | `#e7e7ea` / `#26272b` |
 | `--line-strong` | `#cfd6df` | `#46505d` | derived, not in the prototype |
 | `--line-input` (≥3:1) | `#8a93a1` | `#6b7583` | `#8b8f97` / `#6b6e76` |
