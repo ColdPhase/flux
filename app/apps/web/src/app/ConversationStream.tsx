@@ -1,0 +1,319 @@
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Link } from 'react-router';
+import type { Conversation, ConversationMessage, ConversationRoot, ConversationRootWindow, Project } from '@flux/contracts';
+import { Avatar, Button, EmptyState, Icon } from '../ui';
+import { MessageActions, MessageObjects, useCreateWorkFromMessage } from '../work/inline';
+import type { ProjectWork } from '../work/api';
+import { useShellActions } from './shellContext';
+import { listConversationRoots } from './conversation-api';
+import { ContributionMark, SourceCitation, clock, day, openOnWholeMessages, when } from './messageParts';
+
+// One project conversation (UI116-1, 2026-10-02): a chronological stream of roots. Each root is the
+// opening message of a stored conversation; its replies open beside it in a one-level thread.
+
+const PAGE = 100;
+/** At most this many pages (10,000 roots) are read to reach one root or close a gap. */
+const MAX_PAGES = 100;
+
+function mergeRoots(current: ConversationRoot[], incoming: ConversationRoot[]) {
+  const byId = new Map(current.map((root) => [root.conversationId, root]));
+  for (const root of incoming) byId.set(root.conversationId, root);
+  return [...byId.values()].sort((a, b) => a.message.createdAt.localeCompare(b.message.createdAt) || a.conversationId.localeCompare(b.conversationId));
+}
+
+/**
+ * One entry of the stream, in time order. UI116-3 adds a `notice` kind here (one compact task-created
+ * event linking its task); it is merged by `at` and rendered beside roots, never as a root itself.
+ */
+export type StreamEntry = { kind: 'root'; key: string; at: string; root: ConversationRoot };
+
+export function streamEntries(roots: ConversationRoot[]): StreamEntry[] {
+  return roots.map((root) => ({ kind: 'root' as const, key: root.conversationId, at: root.message.createdAt, root }));
+}
+
+export interface ConversationRoots {
+  roots: ConversationRoot[];
+  hasOlder: boolean;
+  olderBusy: boolean;
+  loadOlder(): Promise<void>;
+  /** A root the signed-in person just started. */
+  posted(conversation: Conversation): void;
+  /** The open thread's latest size, so the stream's count matches what the thread shows. */
+  threadSize(conversationId: string, replyCount: number, lastReplyAt: string | null): void;
+}
+
+/**
+ * The loaded roots: the newest window from the route, older windows on request, and the window
+ * around a root that a link names. A refreshed newest window is merged, reading back when more roots
+ * arrived than one window holds, so already loaded history never gets a hole.
+ */
+export function useConversationRoots(projectId: string, window: ConversationRootWindow, seek: string | null, onDenied: (cause: unknown) => void): ConversationRoots {
+  const [roots, setRoots] = useState(window.roots);
+  const [olderCursor, setOlderCursor] = useState(window.rootPage.nextBefore);
+  const [olderBusy, setOlderBusy] = useState(false);
+  const rootsRef = useRef(roots);
+  const cursorRef = useRef(olderCursor);
+  const deniedRef = useRef(onDenied);
+  const seen = useRef(window);
+  useEffect(() => { rootsRef.current = roots; cursorRef.current = olderCursor; deniedRef.current = onDenied; });
+
+  useEffect(() => {
+    if (seen.current === window) return;
+    seen.current = window;
+    let cancelled = false;
+    void (async () => {
+      const known = new Set(rootsRef.current.map((root) => root.conversationId));
+      let incoming = window.roots;
+      let cursor = window.rootPage.nextBefore;
+      for (let page = 0; page < MAX_PAGES && known.size && cursor && !incoming.some((root) => known.has(root.conversationId)); page += 1) {
+        const older = await listConversationRoots(projectId, { before: cursor, limit: PAGE });
+        incoming = [...older.roots, ...incoming];
+        cursor = older.rootPage.nextBefore;
+      }
+      if (!cancelled) setRoots((current) => mergeRoots(current, incoming));
+    })().catch((cause: unknown) => deniedRef.current(cause));
+    return () => { cancelled = true; };
+  }, [projectId, window]);
+
+  // A link to a root older than the loaded window (search, inbox, "Since you left"): read back to it.
+  useEffect(() => {
+    if (!seek || rootsRef.current.some((root) => root.conversationId === seek) || !cursorRef.current) return;
+    let cancelled = false;
+    setOlderBusy(true);
+    void (async () => {
+      let cursor = cursorRef.current;
+      const pages: ConversationRoot[] = [];
+      for (let page = 0; page < MAX_PAGES && cursor; page += 1) {
+        const older = await listConversationRoots(projectId, { before: cursor, limit: PAGE });
+        pages.unshift(...older.roots);
+        cursor = older.rootPage.nextBefore;
+        if (older.roots.some((root) => root.conversationId === seek)) break;
+      }
+      if (cancelled) return;
+      setRoots((current) => mergeRoots(current, pages));
+      setOlderCursor(cursor);
+    })().catch((cause: unknown) => deniedRef.current(cause)).finally(() => { if (!cancelled) setOlderBusy(false); });
+    return () => { cancelled = true; setOlderBusy(false); };
+  }, [projectId, seek]);
+
+  const loadOlder = useCallback(async () => {
+    const cursor = cursorRef.current;
+    if (!cursor) return;
+    setOlderBusy(true);
+    try {
+      const page = await listConversationRoots(projectId, { before: cursor });
+      setRoots((current) => mergeRoots(current, page.roots));
+      setOlderCursor(page.rootPage.nextBefore);
+    } finally { setOlderBusy(false); }
+  }, [projectId]);
+
+  const posted = useCallback((conversation: Conversation) => {
+    const message = conversation.messages.find((item) => item.sequence === 1);
+    if (!message) return;
+    setRoots((current) => current.some((root) => root.conversationId === conversation.id) ? current
+      : mergeRoots(current, [{ conversationId: conversation.id, message, replyCount: 0, lastReplyAt: null }]));
+  }, []);
+
+  const threadSize = useCallback((conversationId: string, replyCount: number, lastReplyAt: string | null) => {
+    setRoots((current) => current.some((root) => root.conversationId === conversationId && (root.replyCount !== replyCount || root.lastReplyAt !== lastReplyAt))
+      ? current.map((root) => root.conversationId === conversationId ? { ...root, replyCount, lastReplyAt } : root) : current);
+  }, []);
+
+  return { roots, hasOlder: !!olderCursor, olderBusy, loadOlder, posted, threadSize };
+}
+
+export interface StreamProps {
+  project: Project;
+  meId: string;
+  roots: ConversationRoots;
+  work: ProjectWork;
+  author: (message: ConversationMessage) => string;
+  audience: string;
+  /** The root whose thread is open beside the stream. */
+  openId: string | null;
+  /** A root to bring into view: a link named it, rather than the person choosing it here. */
+  reveal: { conversationId: string; key: string } | null;
+  /** The message a link points at (`#message-…`), when it is a root. */
+  arrived: string | null;
+  /** Increments when the person starts a root: the stream shows its newest message. */
+  endToken: number;
+  onOpen: (root: ConversationRoot, reply: boolean) => void;
+  onDenied: (cause: unknown) => void;
+}
+
+/** The project's stream of roots, oldest first, with day dividers, each root's thread size and reply action. */
+export function ConversationStream({ project, meId, roots: stream, work, author, audience, openId, reveal, arrived, endToken, onOpen, onDenied }: StreamProps) {
+  const { roots } = stream;
+  const writable = project.access !== 'viewer';
+  const feedRef = useRef<HTMLDivElement>(null);
+  const columnRef = useRef<HTMLDivElement>(null);
+  const restoreRef = useRef<number | null>(null);
+  const pinRef = useRef<{ id: string; offset: number } | null>(null);
+  // The root a person opens keeps its place while the thread docks beside the stream and leaves again.
+  const openRoot = (root: ConversationRoot, reply: boolean) => {
+    const feed = feedRef.current;
+    const element = document.getElementById(`message-${root.message.id}`);
+    if (feed && element) pinRef.current = { id: element.id, offset: element.getBoundingClientRect().top - feed.getBoundingClientRect().top };
+    onOpen(root, reply);
+  };
+  const stickRef = useRef(!reveal);
+  const [failure, setFailure] = useState('');
+  const makeWork = useCreateWorkFromMessage(project);
+  const { openDetails } = useShellActions();
+
+  // Open on whole messages at the latest, unless a link names a root.
+  useEffect(() => {
+    const feed = feedRef.current;
+    const column = columnRef.current;
+    if (reveal || !feed || !column) return;
+    return openOnWholeMessages(feed, column, '.project-convo__message');
+    // Once, when the stream opens; later arrivals are handled below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // A linked root comes into view once it is loaded, and takes focus when the link named it exactly.
+  const revealRoot = reveal ? roots.find((root) => root.conversationId === reveal.conversationId) ?? null : null;
+  useEffect(() => {
+    if (!revealRoot) return;
+    const element = document.getElementById(`message-${revealRoot.message.id}`);
+    if (!element) return;
+    stickRef.current = false;
+    element.scrollIntoView({ block: 'start' });
+    if (arrived === revealRoot.message.id) element.focus({ preventScroll: true });
+    // Once per link: later refreshes of the same root never move the reader.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reveal?.key, !!revealRoot]);
+
+  // Earlier roots keep the reader's place; new roots follow the reader only while they are at the end.
+  useLayoutEffect(() => {
+    const feed = feedRef.current;
+    if (!feed) return;
+    if (restoreRef.current !== null) { feed.scrollTop = feed.scrollHeight - restoreRef.current; restoreRef.current = null; return; }
+    if (stickRef.current) feed.scrollTop = feed.scrollHeight;
+  }, [roots]);
+  useLayoutEffect(() => {
+    const feed = feedRef.current;
+    if (!feed || !endToken) return;
+    stickRef.current = true;
+    feed.scrollTop = feed.scrollHeight;
+  }, [endToken]);
+
+  // The thread docks beside the stream and leaves again: the root whose replies the person opened stays
+  // at the same place (otherwise the first root in view, or the end when they were reading the end).
+  useEffect(() => {
+    const feed = feedRef.current;
+    if (!feed) return;
+    let anchor: { id: string; offset: number } | null = null;
+    let width = feed.clientWidth;
+    let frame = 0;
+    const record = () => {
+      frame = 0;
+      const { top, bottom } = feed.getBoundingClientRect();
+      stickRef.current = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 48;
+      const pinned = pinRef.current ? document.getElementById(pinRef.current.id)?.getBoundingClientRect() : null;
+      pinRef.current = pinned && pinned.bottom > top && pinned.top < bottom ? { id: pinRef.current!.id, offset: pinned.top - top } : null;
+      anchor = null;
+      for (const item of feed.querySelectorAll<HTMLElement>('.project-convo__message')) {
+        const box = item.getBoundingClientRect();
+        if (box.bottom > top + 1) { anchor = { id: item.id, offset: box.top - top }; break; }
+      }
+    };
+    const onScroll = () => { if (!frame) frame = requestAnimationFrame(record); };
+    const observer = new ResizeObserver(() => {
+      if (feed.clientWidth === width) return;
+      width = feed.clientWidth;
+      const keep = pinRef.current ?? (stickRef.current ? null : anchor);
+      const element = keep ? document.getElementById(keep.id) : null;
+      if (element && keep) feed.scrollTop += element.getBoundingClientRect().top - feed.getBoundingClientRect().top - keep.offset;
+      else if (stickRef.current) feed.scrollTop = feed.scrollHeight;
+    });
+    record();
+    feed.addEventListener('scroll', onScroll, { passive: true });
+    observer.observe(feed);
+    return () => { feed.removeEventListener('scroll', onScroll); observer.disconnect(); if (frame) cancelAnimationFrame(frame); };
+  }, []);
+
+  async function loadOlder() {
+    const feed = feedRef.current;
+    setFailure('');
+    if (feed) restoreRef.current = feed.scrollHeight - feed.scrollTop;
+    try { await stream.loadOlder(); }
+    catch (cause) { restoreRef.current = null; onDenied(cause); setFailure('Earlier messages could not be loaded.'); }
+  }
+
+  const entries = streamEntries(roots);
+  const dayOf = entries.map((entry) => day(entry.at));
+  return (
+    <div className="project-convo__feed is-stream" ref={feedRef}>
+      <div className="project-convo__in" data-shift ref={columnRef}>
+        <section aria-label="Messages" className="project-convo__messages">
+          {stream.hasOlder ? <Button variant="quiet" busy={stream.olderBusy} onClick={() => void loadOlder()}>Load earlier messages</Button> : null}
+          {failure ? <p className="project-convo__error" role="alert">{failure} <button type="button" onClick={() => void loadOlder()}>Retry</button></p> : null}
+          {entries.length ? (
+            <ol className="project-convo__message-list">
+              {entries.map((entry, index) => {
+                const label = dayOf[index]!;
+                const divider = index === 0 || dayOf[index - 1] !== label ? <li className="project-convo__day" key={`day-${entry.key}`}><span>{label}</span></li> : null;
+                const { root } = entry;
+                return [divider, <RootItem key={entry.key} root={root} project={project} meId={meId} author={author} work={work}
+                  open={root.conversationId === openId} arrived={arrived === root.message.id} makeWork={makeWork} onOpen={openRoot}
+                  onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} onDenied={onDenied} />];
+              })}
+            </ol>
+          ) : stream.hasOlder ? null : writable
+            ? <EmptyState icon="chat" title="Where do we start?"><p>Write a thought. You don’t need a topic or a ready plan. {audience === 'Only you' ? 'Only you see it for now; people you add to the project will see it too.' : `Everyone in ${project.name} sees it.`} Anything said here can later become work, a decision or a sketch.</p></EmptyState>
+            : <EmptyState icon="chat" title="No messages yet"><p>You have read access to {project.name}. Messages appear here when someone writes. You can browse saved tasks, maps, docs and sources.</p></EmptyState>}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function RootItem({ root, project, meId, author, work, open, arrived, makeWork, onOpen, onOpenResult, onDenied }: {
+  root: ConversationRoot; project: Project; meId: string; author: (message: ConversationMessage) => string; work: ProjectWork;
+  open: boolean; arrived: boolean; makeWork: ReturnType<typeof useCreateWorkFromMessage>;
+  onOpen: (root: ConversationRoot, reply: boolean) => void; onOpenResult: (resultId: string) => void; onDenied: (cause: unknown) => void;
+}) {
+  const { message } = root;
+  const writable = project.access !== 'viewer';
+  const mine = message.authorId === meId;
+  const name = author(message);
+  return (
+    <li id={`message-${message.id}`} tabIndex={-1} data-conversation-id={root.conversationId}
+      className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${open ? ' is-open' : ''}`}>
+      <Avatar name={name} size="md" tone={mine ? 'me' : 'neutral'} />
+      <div className="project-convo__message-meta">
+        <strong>{mine ? `${name} · you` : message.authorId === null ? name : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</Link>}</strong>
+        <time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time>
+      </div>
+      <p>{message.body}</p>
+      {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={onOpenResult} /> : null}
+      {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
+      <MessageObjects messageId={message.id} lists={work} />
+      <Replies root={root} open={open} writable={writable} onOpen={(reply) => onOpen(root, reply)} />
+      <MessageActions projectId={project.id} message={message} writable={writable} busy={makeWork.busy === message.id} onCreateWork={() => void makeWork.create(message)} />
+      {makeWork.failed?.messageId === message.id ? <p className="ws-act-error" role="alert">{makeWork.failed.text} <button type="button" onClick={() => void makeWork.create(message)}>Retry</button></p> : null}
+    </li>
+  );
+}
+
+/** Under a root: how many replies its thread has, and the reply action. Both open the thread beside the stream. */
+function Replies({ root, open, writable, onOpen }: { root: ConversationRoot; open: boolean; writable: boolean; onOpen: (reply: boolean) => void }) {
+  const count = root.replyCount;
+  if (!count && !writable) return null;
+  const last = root.lastReplyAt ? (day(root.lastReplyAt) === 'Today' ? clock(root.lastReplyAt) : day(root.lastReplyAt)) : null;
+  return (
+    <div className="convo-replies">
+      {count ? (
+        <button type="button" className="convo-replies__open" aria-expanded={open} aria-controls={open ? 'thread' : undefined} onClick={() => onOpen(false)}>
+          <Icon name="chat" size={13} />{count} {count === 1 ? 'reply' : 'replies'}{last ? <span className="convo-replies__when">· last {last}</span> : null}
+        </button>
+      ) : null}
+      {writable ? (
+        <button type="button" className="convo-replies__reply" aria-expanded={count ? undefined : open} aria-controls={open ? 'thread' : undefined} onClick={() => onOpen(true)}>
+          {count ? null : <Icon name="chat" size={13} />}Reply
+        </button>
+      ) : null}
+    </div>
+  );
+}

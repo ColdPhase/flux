@@ -1,0 +1,480 @@
+"""Browser tests for one project conversation (UI116-1 clarification, 2026-10-02).
+
+A project has one chronological stream of roots, with replies beside each root in a one-level thread.
+Runs with the other tests/ui modules through scripts/check_ui.sh against the running Compose
+application. Three people share a project: Ada manages it, Jonas writes and Lee only reads. The
+stream holds more roots than one window, so links to old conversations read back to them. Every
+change is checked against the API. Screenshots (one-conversation-*.png) go to FLUX_UI_SCREENSHOTS.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import time
+import unittest
+import uuid
+
+from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
+
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_theme_accents import MEASURE
+
+PASSWORD = "one calm conversation for the lamp"
+STAMP = int(time.time() * 1000)
+PEOPLE = {
+    "ada": ("Ada Kowalska", f"ada.one+{STAMP}@example.test"),
+    "jonas": ("Jonas Berg", f"jonas.one+{STAMP}@example.test"),
+    "lee": ("Lee Park", f"lee.one+{STAMP}@example.test"),
+}
+FILLERS = 55
+OPENING = "Should the lamp react to gestures in the dark, or only when someone is close?"
+FIRST_REPLY = "Above 50 lux the camera catches almost every wave; below that it gets unreliable fast."
+SECOND_REPLY = "Then the camera cannot be the only sensor. A ToF board works in the dark."
+NUMBERS = "Camera numbers are in: 38% of gestures at 5 lux."
+NUMBERS_REPLY = "Thanks. Let's keep the negative result next to the ToF test."
+ORDER = "Order two ToF boards today?"
+
+
+class OneConversationJourney(unittest.TestCase):
+    """Tests run in name order and share three accounts and one project."""
+
+    pw = None
+    browser: Browser
+    states: dict[str, dict] = {}
+    ids: dict[str, str] = {}
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        if UPSTREAM:
+            start_forwarder(ORIGIN, UPSTREAM)
+        cls.pw = sync_playwright().start()
+        cls.browser = cls.pw.chromium.launch()
+        expect.set_options(timeout=10000)
+        contexts: dict[str, BrowserContext] = {}
+        for key, (name, email) in PEOPLE.items():
+            context = cls.browser.new_context(base_url=ORIGIN)
+            response = context.request.post("/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": name}, headers={"origin": ORIGIN})
+            assert response.status == 200, response.text()
+            cls.ids[key] = context.request.get("/api/v1/me").json()["user"]["id"]
+            cls.states[key] = context.storage_state()
+            contexts[key] = context
+
+        def post(who: str, path: str, body: dict) -> dict:
+            response = contexts[who].request.post(path, data=body, headers={"origin": ORIGIN})
+            assert response.status in (200, 201), f"{path}: {response.status} {response.text()}"
+            return response.json()
+
+        ws = post("ada", "/api/v1/workspaces", {"name": "Riverside Makers"})
+        for key in ("jonas", "lee"):
+            post("ada", f"/api/v1/workspaces/{ws['id']}/members", {"email": PEOPLE[key][1], "role": "member"})
+        project = post("ada", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Night lamp", "visibility": "restricted"})
+        pid = project["id"]
+        post("ada", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": cls.ids["jonas"]}, "role": "contributor"})
+        post("ada", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": cls.ids["lee"]}, "role": "viewer"})
+        start = lambda who, body: post(who, f"/api/v1/projects/{pid}/conversations", {"body": body, "clientMessageId": str(uuid.uuid4())})  # noqa: E731
+        reply = lambda who, cid, body: post(who, f"/api/v1/conversations/{cid}/messages", {"body": body, "clientMessageId": str(uuid.uuid4())})  # noqa: E731
+        # More roots than the newest window (50), oldest first, from two people.
+        oldest = None
+        for index in range(1, FILLERS + 1):
+            started = start("ada" if index % 2 else "jonas", f"Earlier note {index:02}: a short idea about the lamp shade, the base or the sensor.")
+            oldest = oldest or started
+        r1 = start("ada", OPENING)
+        first = reply("jonas", r1["id"], FIRST_REPLY)
+        second = reply("ada", r1["id"], SECOND_REPLY)
+        r2 = start("jonas", NUMBERS)
+        reply("ada", r2["id"], NUMBERS_REPLY)
+        r3 = start("ada", ORDER)
+        for context in contexts.values():
+            context.close()
+        cls.ids.update(project=pid, workspace=ws["id"], oldest=oldest["id"], oldest_root=oldest["messages"][0]["id"],
+                       c1=r1["id"], r1=r1["messages"][0]["id"], first=first["id"], second=second["id"],
+                       c2=r2["id"], r2=r2["messages"][0]["id"], c3=r3["id"], r3=r3["messages"][0]["id"])
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.browser.close()
+        cls.pw.stop()
+
+    def page(self, who: str, *, phone: bool = False, dark: bool = False, viewport: dict | None = None) -> Page:
+        options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw",
+                         "storage_state": self.states[who]}
+        if phone:
+            options.update(viewport=viewport or PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
+        else:
+            options.update(viewport=viewport or DESKTOP, device_scale_factor=1)
+        context = self.browser.new_context(**options)
+        self.addCleanup(context.close)
+        page = context.new_page()
+        errors: list[str] = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
+        return page
+
+    def api(self, page: Page, method: str, path: str, body: dict | None = None, status: int | None = None) -> dict:
+        response = page.request.fetch(f"{ORIGIN}{path}", method=method, headers={"origin": ORIGIN, "content-type": "application/json"},
+                                      data=json.dumps(body) if body is not None else None)
+        if status is not None:
+            self.assertEqual(response.status, status, response.text())
+        return json.loads(response.text()) if response.text() else {}
+
+    def project_url(self, suffix: str = "") -> str:
+        return f"/projects/{self.ids['project']}{suffix}"
+
+    def stream(self, page: Page):
+        return page.get_by_role("region", name="Messages")
+
+    def thread(self, page: Page):
+        return page.get_by_role("complementary", name="Replies")
+
+    def root(self, page: Page, key: str):
+        return page.locator(f"#message-{self.ids[key]}")
+
+    def no_sideways_scroll(self, page: Page) -> None:
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"), "no horizontal overflow")
+
+    def all_roots(self, page: Page) -> list[dict]:
+        roots: list[dict] = []
+        cursor = None
+        while True:
+            window = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/conversation-roots?limit=100" + (f"&before={cursor}" if cursor else ""), status=200)
+            roots = window["roots"] + roots
+            cursor = window["rootPage"]["nextBefore"]
+            if not cursor:
+                return roots
+
+    # ---------------------------------------------------------------- the stream
+
+    def test_01_one_stream_of_roots_from_several_people(self) -> None:
+        page = self.page("ada")
+        page.goto(self.project_url())
+        stream = self.stream(page)
+        roots = stream.locator(".project-convo__message")
+        expect(roots).to_have_count(50)
+        self.assertEqual([text.strip() for text in stream.locator(".project-convo__message > p").all_inner_texts()[-3:]], [OPENING, NUMBERS, ORDER], "chronological, newest last")
+        expect(self.root(page, "r1")).to_have_class(re.compile("is-mine"))
+        expect(self.root(page, "r2")).not_to_have_class(re.compile("is-mine"))
+        expect(self.root(page, "r2")).to_contain_text("Jonas Berg")
+        # Each root says how many replies it has; the reply action opens the same thread.
+        expect(self.root(page, "r1").get_by_role("button", name=re.compile(r"^2 replies"))).to_be_visible()
+        expect(self.root(page, "r2").get_by_role("button", name=re.compile(r"^1 reply"))).to_be_visible()
+        expect(self.root(page, "r3").get_by_role("button", name="Reply", exact=True)).to_be_visible()
+        expect(self.root(page, "r3").get_by_role("button", name=re.compile(r"repl(y|ies) ·"))).to_have_count(0)
+        expect(stream.locator(".project-convo__day", has_text="Today")).to_have_count(1)
+        # No thread is open and no topic is needed: one composer writes the next root.
+        expect(self.thread(page)).to_have_count(0)
+        expect(page.get_by_label("Write a message", exact=True)).to_be_visible()
+        expect(page.get_by_role("link", name="New conversation")).to_have_count(0)
+        sidebar = page.get_by_role("complementary", name="Sidebar")
+        expect(sidebar.get_by_role("link", name="Night lamp")).to_be_visible()
+        expect(sidebar.get_by_role("link", name=re.compile("Should the lamp react"))).to_have_count(0)
+        # The stream opens on whole messages with the latest fully visible.
+        page.wait_for_timeout(600)
+        clipped = page.evaluate("""() => {
+          const feed = document.querySelector('.project-convo__feed');
+          const top = feed.getBoundingClientRect().top;
+          return [...feed.querySelectorAll('.project-convo__message')].filter((el) => { const r = el.getBoundingClientRect(); return r.top < top - 1 && r.bottom > top + 1; }).length;
+        }""")
+        self.assertEqual(clipped, 0, "no root is cut off at the top of the opening screen")
+        last, feed = self.root(page, "r3").bounding_box(), page.locator(".project-convo__feed").bounding_box()
+        assert last and feed
+        self.assertLessEqual(last["y"] + last["height"], feed["y"] + feed["height"] + 1, "the newest root is fully visible")
+        self.no_sideways_scroll(page)
+        shot(page, "one-conversation-desktop-1440-light")
+        # Earlier roots load in place, above the reader's position.
+        page.locator(".project-convo__feed").evaluate("el => { el.scrollTop = 0; }")
+        page.wait_for_timeout(200)
+        anchor = page.locator("#" + (roots.first.get_attribute("id") or ""))
+        before = anchor.bounding_box()
+        stream.get_by_role("button", name="Load earlier messages").click()
+        expect(roots).to_have_count(FILLERS + 3)
+        expect(stream.get_by_role("button", name="Load earlier messages")).to_have_count(0)
+        after = anchor.bounding_box()
+        assert before and after
+        self.assertAlmostEqual(before["y"], after["y"], delta=4, msg="loading earlier roots keeps the reader's place")
+        self.assertTrue(stream.locator(".project-convo__message > p").first.inner_text().startswith("Earlier note 01"))
+
+    def test_02_a_thread_opens_beside_the_stream_and_takes_a_reply(self) -> None:
+        page = self.page("ada")
+        page.goto(self.project_url())
+        r1 = self.root(page, "r1")
+        expect(r1).to_be_visible()
+        r1.evaluate("el => el.scrollIntoView({ block: 'center' })")
+        page.wait_for_timeout(300)
+        start = r1.bounding_box()
+        assert start
+        r1.get_by_role("button", name=re.compile(r"^2 replies")).click()
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/conversations/{self.ids['c1']}$"))
+        thread = self.thread(page)
+        expect(thread).to_be_visible()
+        expect(thread).to_be_focused()
+        expect(thread.locator(".thread__root")).to_contain_text(OPENING)
+        expect(thread.locator(f"#message-{self.ids['first']}")).to_contain_text(FIRST_REPLY)
+        expect(thread.locator(f"#message-{self.ids['second']}")).to_contain_text(SECOND_REPLY)
+        expect(r1.get_by_role("button", name=re.compile(r"^2 replies"))).to_have_attribute("aria-expanded", "true")
+        expect(r1).to_have_class(re.compile("is-open"))
+        # Docked beside the stream on a wide screen; the root stays where the reader left it.
+        stream_box, thread_box = page.locator(".project-convo__feed").bounding_box(), thread.bounding_box()
+        assert stream_box and thread_box
+        self.assertGreaterEqual(thread_box["x"], stream_box["x"] + stream_box["width"] - 1, "the thread docks to the right of the stream")
+        self.assertGreaterEqual(stream_box["width"], 420, "the stream stays readable")
+        page.wait_for_timeout(300)
+        docked = r1.bounding_box()
+        assert docked
+        self.assertAlmostEqual(docked["y"], start["y"], delta=4, msg="opening the thread keeps the stream in place")
+        # A reply's actions open from one ⋯ in its corner and never cover its author or time.
+        first = thread.locator(f"#message-{self.ids['first']}")
+        first.hover()
+        expect(first.get_by_role("button", name="Create work")).to_have_count(0)
+        more = first.get_by_role("button", name="Make from this message")
+        more_box, name_box = more.bounding_box(), first.locator(".project-convo__message-meta strong").bounding_box()
+        assert more_box and name_box
+        self.assertTrue(more_box["x"] >= name_box["x"] + name_box["width"] or more_box["y"] >= name_box["y"] + name_box["height"], "the ⋯ is clear of the author")
+        more.click()
+        expect(more).to_have_attribute("aria-expanded", "true")
+        first.get_by_role("button", name="Details of this message").click()
+        expect(page.locator("#details").get_by_role("heading", name="Message from Jonas Berg")).to_be_visible()
+        page.locator("#details").get_by_role("button", name="Close details").click()
+        composer = thread.get_by_label("Reply", exact=True)
+        composer.fill("Agreed, ToF first. I will order the boards.")
+        thread.get_by_role("button", name="Send reply").click()
+        expect(thread.locator(".project-convo__message", has_text="Agreed, ToF first.")).to_be_visible()
+        expect(composer).to_have_value("")
+        expect(r1.get_by_role("button", name=re.compile(r"^3 replies"))).to_be_visible()
+        expect(thread.locator(".thread__n")).to_have_text(re.compile("3"))
+        saved = self.api(page, "GET", f"/api/v1/conversations/{self.ids['c1']}", status=200)
+        self.assertEqual([m["body"] for m in saved["messages"]][-1], "Agreed, ToF first. I will order the boards.")
+        self.assertEqual(len(saved["messages"]), 4, "a reply joins the same one-level thread")
+        shot(page, "one-conversation-desktop-1440-thread-light")
+        thread.get_by_role("button", name="Close replies").click()
+        expect(self.thread(page)).to_have_count(0)
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}$"))
+        page.wait_for_timeout(300)
+        closed = r1.bounding_box()
+        assert closed
+        self.assertAlmostEqual(closed["y"], start["y"], delta=4, msg="closing returns to the same place in the stream")
+        expect(r1.get_by_role("button", name=re.compile(r"^3 replies"))).to_be_focused()
+        # Reply on a root without replies opens its thread with the reply box ready; Esc closes it.
+        self.root(page, "r3").get_by_role("button", name="Reply", exact=True).click()
+        expect(page).to_have_url(re.compile(rf"/conversations/{self.ids['c3']}$"))
+        expect(page.locator("#thread-composer")).to_be_focused()
+        expect(self.thread(page)).to_contain_text("Reply to this message. No new topic needed.")
+        page.keyboard.press("Escape")
+        expect(self.thread(page)).to_have_count(0)
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}$"))
+
+    # ---------------------------------------------------------------- links keep working
+
+    def test_03_old_conversation_urls_and_message_anchors_open_the_stream_there(self) -> None:
+        page = self.page("ada")
+        # The oldest conversation is outside the newest window: the stream reads back to its root.
+        page.goto(self.project_url(f"/conversations/{self.ids['oldest']}"))
+        oldest = self.root(page, "oldest_root")
+        expect(oldest).to_be_in_viewport()
+        expect(self.thread(page).locator(".thread__root")).to_contain_text("Earlier note 01")
+        expect(self.thread(page)).to_contain_text("Reply to this message. No new topic needed.")
+        # A reply's anchor opens its thread on that whole reply, focused; the stream shows its root.
+        page.goto(self.project_url(f"/conversations/{self.ids['c1']}#message-{self.ids['first']}"))
+        arrived = self.thread(page).locator(".project-convo__message.is-arrived")
+        expect(arrived).to_contain_text(FIRST_REPLY)
+        expect(arrived).to_be_focused()
+        expect(arrived).to_be_in_viewport()
+        expect(self.root(page, "r1")).to_be_in_viewport()
+        expect(page.locator(".is-arrived")).to_have_count(1)
+        # A root's anchor marks the root in the stream, with its thread beside it.
+        page.goto(self.project_url(f"/conversations/{self.ids['c2']}#message-{self.ids['r2']}"))
+        root = self.stream(page).locator(".project-convo__message.is-arrived")
+        expect(root).to_have_attribute("id", f"message-{self.ids['r2']}")
+        expect(root).to_be_focused()
+        expect(self.thread(page)).to_contain_text(NUMBERS_REPLY)
+        # The Conversation tab returns to the open thread after another view.
+        tabs = page.get_by_role("navigation", name="Project views")
+        tabs.get_by_role("link", name=re.compile("^Tasks")).click()
+        expect(page).to_have_url(re.compile(r"/tasks$"))
+        tabs.get_by_role("link", name=re.compile("^Conversation")).click()
+        expect(self.thread(page)).to_contain_text(NUMBERS_REPLY)
+        expect(self.root(page, "r2")).to_be_in_viewport()
+
+    def test_04_an_inbox_notification_opens_the_thread_at_the_message(self) -> None:
+        jonas = self.page("jonas")
+        asked = self.api(jonas, "POST", f"/api/v1/conversations/{self.ids['c2']}/messages",
+                         {"body": "@Ada Kowalska could you send the lux table before Friday?", "clientMessageId": str(uuid.uuid4())}, status=201)
+        page = self.page("ada")
+        url = None
+        for _ in range(80):
+            items = self.api(page, "GET", "/api/v1/inbox", status=200)["items"]
+            url = next((item["url"] for item in items if item.get("url") and item["url"].endswith(f"#message-{asked['id']}")), None)
+            if url:
+                break
+            time.sleep(0.25)
+        self.assertEqual(url, self.project_url(f"/conversations/{self.ids['c2']}#message-{asked['id']}"), "the notification links the exact message")
+        page.goto("/inbox")
+        page.locator(".inbox__row", has_text="asked you in Night lamp").get_by_role("link").click()
+        expect(page).to_have_url(re.compile(re.escape(url) + "$"))
+        message = self.thread(page).locator(f"#message-{asked['id']}")
+        expect(message).to_have_class(re.compile("is-arrived"))
+        expect(message).to_be_in_viewport()
+        expect(self.root(page, "r2")).to_be_in_viewport()
+
+    # ---------------------------------------------------------------- writing a root
+
+    def test_05_the_main_composer_starts_a_root_once_and_keeps_its_draft(self) -> None:
+        page = self.page("jonas")
+        page.goto(self.project_url())
+        composer = page.get_by_label("Write a message", exact=True)
+        body = "Shall we keep a PIR sensor as the backup for the ToF board?"
+        composer.fill(body)
+        expect(page.locator(".composer__audience")).to_contain_text("Ada, Lee and you")
+        # The draft stays with the project across views.
+        tabs = page.get_by_role("navigation", name="Project views")
+        tabs.get_by_role("link", name=re.compile("^Tasks")).click()
+        expect(page).to_have_url(re.compile(r"/tasks$"))
+        tabs.get_by_role("link", name=re.compile("^Conversation")).click()
+        expect(composer).to_have_value(body)
+
+        # The server commits, the response is lost: the retry reuses the same key and adds one root.
+        def lose_committed_start(route) -> None:
+            if route.request.method != "POST":
+                route.continue_()
+                return
+            response = route.fetch()
+            self.assertEqual(response.status, 201)
+            route.abort("failed")
+        page.route("**/api/v1/projects/*/conversations", lose_committed_start)
+        page.get_by_role("button", name="Send message").click()
+        expect(page.get_by_role("alert")).to_contain_text("Flux could not be reached")
+        page.unroute("**/api/v1/projects/*/conversations", lose_committed_start)
+        page.get_by_role("button", name="Retry send").click()
+        expect(composer).to_have_value("")
+        last = self.stream(page).locator(".project-convo__message").last
+        expect(last).to_contain_text(body)
+        expect(last).to_have_class(re.compile("is-mine"))
+        expect(last).to_be_in_viewport()
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}$"))
+        expect(self.thread(page)).to_have_count(0)
+        roots = self.all_roots(page)
+        self.assertEqual(sum(root["message"]["body"] == body for root in roots), 1, "one root despite the lost response")
+        self.assertEqual(roots[-1]["message"]["body"], body)
+        page.reload()
+        expect(page.get_by_label("Write a message", exact=True)).to_have_value("")
+
+    def test_06_a_reader_reads_the_stream_and_threads_without_a_composer(self) -> None:
+        page = self.page("lee")
+        page.goto(self.project_url())
+        stream = self.stream(page)
+        expect(self.root(page, "r1")).to_be_visible()
+        expect(page.locator("#project-composer")).to_have_count(0)
+        expect(page.locator("#thread-composer")).to_have_count(0)
+        expect(page.locator(".project-convo__read-only")).to_be_visible()
+        expect(stream.get_by_role("button", name="Reply", exact=True)).to_have_count(0)
+        self.root(page, "r1").get_by_role("button", name=re.compile(r"^3 replies")).click()
+        thread = self.thread(page)
+        expect(thread.locator(f"#message-{self.ids['first']}")).to_be_visible()
+        expect(thread.get_by_role("textbox")).to_have_count(0)
+        expect(thread.locator(".project-convo__read-only")).to_be_visible()
+        expect(thread.get_by_role("button", name="Ask my assistant")).to_have_count(0)
+        expect(thread.locator(".project-convo__current-thread")).not_to_contain_text("Replying to")
+        self.api(page, "POST", f"/api/v1/conversations/{self.ids['c1']}/messages", {"body": "A reader cannot reply", "clientMessageId": str(uuid.uuid4())}, status=403)
+        shot(page, "one-conversation-desktop-1440-reader")
+
+    # ---------------------------------------------------------------- phone and tablet
+
+    def test_07_phone_opens_the_thread_as_a_sheet(self) -> None:
+        page = self.page("ada", phone=True)
+        page.goto(self.project_url())
+        r2 = self.root(page, "r2")
+        expect(r2).to_be_visible()
+        self.no_sideways_scroll(page)
+        shot(page, "one-conversation-phone-390-light")
+        r2.get_by_role("button", name=re.compile(r"^2 replies")).tap()
+        thread = self.thread(page)
+        expect(thread).to_be_visible()
+        page.wait_for_timeout(400)
+        sheet, header, pane = thread.bounding_box(), page.locator("header.top").bounding_box(), page.locator(".app__pane").bounding_box()
+        assert sheet and header and pane
+        self.assertEqual((round(sheet["x"]), round(sheet["width"])), (0, PHONE["width"]), "a full-width sheet")
+        self.assertAlmostEqual(sheet["y"], pane["y"], delta=1, msg="the sheet covers the whole work area")
+        self.assertAlmostEqual(sheet["y"] + sheet["height"], pane["y"] + pane["height"], delta=1)
+        expect(page.locator("header.top")).to_be_visible()
+        close = thread.get_by_role("button", name="Close replies")
+        close_box = close.bounding_box()
+        assert close_box
+        self.assertGreaterEqual(min(close_box["width"], close_box["height"]), 44, "a 44px way back")
+        self.assertLess(close_box["x"], 60, "the way back sits first, at the left")
+        composer = page.locator("#thread-composer")
+        composer.tap()
+        composer.fill("I will bring the lux meter tonight.")
+        expect(composer).to_be_in_viewport()
+        replies = thread.get_by_role("region", name="Replies to this message")
+        expect(replies.locator(".project-convo__message").first).to_be_visible()
+        self.no_sideways_scroll(page)
+        shot(page, "one-conversation-phone-390-thread-light")
+        thread.get_by_role("button", name="Send reply").tap()
+        expect(thread.locator(".project-convo__message", has_text="I will bring the lux meter tonight.")).to_be_visible()
+        close.tap()
+        expect(self.thread(page)).to_have_count(0)
+        expect(r2).to_be_in_viewport()
+        expect(r2.get_by_role("button", name=re.compile(r"^3 replies"))).to_be_visible()
+
+        dark = self.page("ada", phone=True, dark=True)
+        dark.goto(self.project_url(f"/conversations/{self.ids['c1']}"))
+        expect(self.thread(dark)).to_be_visible()
+        self.no_sideways_scroll(dark)
+        shot(dark, "one-conversation-phone-390-thread-dark")
+
+        narrow = self.page("ada", phone=True, viewport={"width": 320, "height": 640})
+        narrow.goto(self.project_url())
+        expect(self.root(narrow, "r1")).to_be_visible()
+        self.no_sideways_scroll(narrow)
+        narrow.goto(self.project_url(f"/conversations/{self.ids['c1']}"))
+        expect(self.thread(narrow).locator(f"#message-{self.ids['first']}")).to_be_visible()
+        self.no_sideways_scroll(narrow)
+        shot(narrow, "one-conversation-phone-320-thread-light")
+
+    def test_08_tablet_and_desktop_renders(self) -> None:
+        tablet = self.page("ada", phone=True, viewport={"width": 820, "height": 1180})
+        tablet.goto(self.project_url())
+        expect(self.root(tablet, "r1")).to_be_visible()
+        self.no_sideways_scroll(tablet)
+        shot(tablet, "one-conversation-tablet-820-light")
+        self.root(tablet, "r1").get_by_role("button", name=re.compile(r"^3 replies")).tap()
+        thread = self.thread(tablet)
+        expect(thread).to_be_visible()
+        tablet.wait_for_timeout(400)
+        box, pane = thread.bounding_box(), tablet.locator(".app__pane").bounding_box()
+        assert box and pane
+        self.assertAlmostEqual(box["width"], pane["width"], delta=2, msg="too narrow to dock: the thread is a sheet over the stream")
+        self.no_sideways_scroll(tablet)
+        shot(tablet, "one-conversation-tablet-820-thread-light")
+
+        dark = self.page("ada", dark=True)
+        dark.goto(self.project_url(f"/conversations/{self.ids['c1']}"))
+        expect(self.thread(dark)).to_be_visible()
+        expect(self.root(dark, "r1")).to_be_in_viewport()
+        shot(dark, "one-conversation-desktop-1440-thread-dark")
+        dark.goto(self.project_url())
+        expect(self.root(dark, "r3")).to_be_visible()
+        shot(dark, "one-conversation-desktop-1440-dark")
+
+    def test_09_light_and_dark_contrast_of_the_new_parts(self) -> None:
+        for theme in ("light", "dark"):
+            with self.subTest(theme=theme):
+                page = self.page("ada", dark=theme == "dark")
+                page.goto(self.project_url(f"/conversations/{self.ids['c1']}"))
+                expect(self.thread(page).locator(f"#message-{self.ids['first']}")).to_be_visible()
+                for selector in (f"#message-{self.ids['r1']} .convo-replies__open", f"#message-{self.ids['r1']} .convo-replies__when",
+                                 ".thread__title", ".thread__n", ".thread__hint", ".thread__root-meta time", ".thread__root > p",
+                                 f"#message-{self.ids['first']} > p", f"#message-{self.ids['r3']} .convo-replies__reply"):
+                    if selector.endswith("convo-replies__reply"):
+                        page.locator(selector).hover()
+                    page.wait_for_function("""selector => {
+                      const el = document.querySelector(selector); if (!el) return false;
+                      for (let n = el; n; n = n.parentElement) if (Number(getComputedStyle(n).opacity) !== 1) return false;
+                      return true;
+                    }""", arg=selector, timeout=5000)
+                    value = page.evaluate(MEASURE, {"selector": selector})
+                    self.assertGreaterEqual(value["ratio"], 4.5, value)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

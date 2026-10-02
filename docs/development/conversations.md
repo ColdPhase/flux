@@ -7,6 +7,12 @@ private helper prompts. [#154](https://github.com/ColdPhase/flux/issues/154) own
 claimed to satisfy the new semantics. [UI116-5](../design/studio-v11.6.md#subtle-motion-and-truthful-typing--ui116-5)
 adds scoped ephemeral typing without durable messages or notification/model effects.
 
+**One project conversation, 2026-10-02:** [UI116-1 clarification](../design/studio-v11.6.md#one-project-conversation--ui116-1-clarification).
+The UI presents a project's stored conversations as one stream: each conversation's
+opening message (sequence 1) is a root, and its later messages are that root's
+one-level thread. Storage, commands and URLs are unchanged; see
+[the stream and its threads](#one-stream-of-roots-ui116-1) below.
+
 The current slice stores project conversations, direct text replies and versioned
 project materials. A signed-in person with contributor access can send from the
 current project without
@@ -62,6 +68,34 @@ FLUX_TEST_PORT=18136 FLUX_TEST_MAILPIT_PORT=18137 scripts/check_application.sh
 The script creates its own isolated Compose project, builds, typechecks, lints,
 runs API/PostgreSQL integration tests and restarts the API to verify a session,
 material and linked conversation survive. It removes only its own test volumes.
+
+## One stream of roots (UI116-1)
+
+`GET /api/v1/projects/:projectId/conversation-roots` returns the project's roots
+for the Conversation tab: `{ projectId, roots, rootPage }`. Each root is
+`{ conversationId, message, replyCount, lastReplyAt }`, where `message` is the
+sequence-1 message with its true author, time, source and contribution, and
+`replyCount` counts the later messages of that conversation. The window is the
+newest `?limit=1..100` roots (default 50) in ascending display order, ordered by
+the conversation's `(created_at, id)`. `rootPage.nextBefore` is a conversation id;
+pass it as `?before=<conversationId>` while `hasMoreBefore` is true. The cursor is
+compared in PostgreSQL, so a root started between two reads never shifts or
+repeats an older window. A `before` that is not a conversation of this project is
+`400`. Current project read access is checked and its rows locked in the same
+transaction before the cursor, counts and page are read; every root shares the
+project audience, so nothing is filtered after the page is cut. Readers who lost
+access get `404`, like every other conversation read.
+
+The browser starts a root with the existing `POST
+/api/v1/projects/:projectId/conversations` and replies with `POST
+/api/v1/conversations/:id/messages`, both idempotent with `clientMessageId`.
+`/projects/:projectId/conversations/:conversationId` (with an optional
+`#message-<id>`) opens the stream at that root, reading older windows back when
+needed, with its thread open beside it on a wide sheet or as a full sheet on a
+phone. Every existing producer of these URLs (notifications, search, "Since you
+left", What matters, task and doc sources, comparison sources, live invitations)
+therefore keeps working unchanged. The personal assistant is asked from a thread
+and answers there; its answers are not counted in `replyCount`.
 
 ## Stacked web surface (#36)
 

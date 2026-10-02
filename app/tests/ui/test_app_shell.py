@@ -85,12 +85,21 @@ def start_forwarder(origin: str, upstream: str) -> None:
     threading.Thread(target=accept, daemon=True).start()
 
 
-def open_sources(page: Page) -> None:
-    """Opens the project's sources above the composer (#117), where materials are saved and cited."""
-    button = page.get_by_role("button", name=re.compile("^Sources"))
+def open_sources(page: Page, scope=None) -> None:
+    """Opens the project's sources above a composer (#117), where materials are saved and cited.
+
+    With a thread open (UI116-1) both the stream's and the thread's composer have Sources: pass the
+    thread as `scope` to use its composer."""
+    within = scope or page
+    button = within.get_by_role("button", name=re.compile("^Sources"))
     if button.get_attribute("aria-expanded") != "true":
         button.click()
-    expect(page.get_by_role("region", name="Project materials")).to_be_visible()
+    expect(within.get_by_role("region", name="Project materials")).to_be_visible()
+
+
+def thread_of(page: Page):
+    """The open root's thread beside the stream (UI116-1)."""
+    return page.get_by_role("complementary", name="Replies")
 
 
 def shot(page: Page, name: str) -> None:
@@ -681,12 +690,16 @@ class AppShellJourney(unittest.TestCase):
         expect(owner.get_by_role("region", name="Private drafts").get_by_text("home address 123; PIR avoids storing images")).to_be_visible()
         draft_id = owner.context.request.get(f"{ORIGIN}/api/v1/workspaces/{ws['id']}/drafts").json()["items"][0]["id"]
         owner.get_by_role("navigation", name="Projects").get_by_role("link", name="Gesture lamp").click()
-        owner.get_by_label("Start a conversation").fill("Try a PIR sensor before considering a camera")
-        owner.get_by_role("button", name="Start conversation").click()
+        owner.get_by_label("Write a message").fill("Try a PIR sensor before considering a camera")
+        owner.get_by_role("button", name="Send message").click()
         expect(owner.locator(".project-convo__message > p").filter(has_text="Try a PIR sensor before considering a camera")).to_be_visible()
-        expect(owner).to_have_url(re.compile(r"/conversations/[0-9a-f-]+$"))
-        conversation_id = owner.url.split("/conversations/")[-1]
-        open_sources(owner)
+        # One project conversation (UI116-1): the root joins the stream; its replies open beside it.
+        expect(owner).to_have_url(f"{ORIGIN}/projects/{project_id}")
+        opening = owner.locator(".project-convo__message").filter(has_text="Try a PIR sensor before considering a camera")
+        conversation_id = opening.get_attribute("data-conversation-id")
+        opening.get_by_role("button", name="Reply", exact=True).click()
+        expect(owner).to_have_url(re.compile(rf"/conversations/{conversation_id}$"))
+        open_sources(owner, thread_of(owner))
         owner.get_by_role("button", name="Add material").click()
         owner.get_by_label("Start from a private draft").select_option(draft_id)
         expect(owner.get_by_label("Text")).to_have_value("home address 123; PIR avoids storing images")
@@ -751,21 +764,22 @@ class AppShellJourney(unittest.TestCase):
         saved = owner.context.request.get(f"{ORIGIN}/api/v1/conversations/{conversation_id}").json()
         self.assertEqual(sum(message["body"] == "Reload after lost reply" for message in saved["messages"]), 1)
 
-        owner.get_by_role("link", name="New conversation").click()
+        thread_of(owner).get_by_role("button", name="Close replies").click()
+        expect(thread_of(owner)).to_have_count(0)
         def lose_committed_opening(route) -> None:
             response = route.fetch()
             self.assertEqual(response.status, 201)
             route.abort("failed")
         owner.route("**/api/v1/projects/*/conversations", lose_committed_opening)
-        owner.get_by_label("Start a conversation").fill("Revisit after lost opening")
-        owner.get_by_role("button", name="Start conversation").click()
+        owner.get_by_label("Write a message").fill("Revisit after lost opening")
+        owner.get_by_role("button", name="Send message").click()
         expect(owner.get_by_role("alert")).to_contain_text("Flux could not be reached")
         owner.unroute("**/api/v1/projects/*/conversations", lose_committed_opening)
         owner.get_by_role("link", name="Home").click()
-        owner.goto(f"/projects/{project_id}?new=1")
-        expect(owner.get_by_label("Start a conversation")).to_have_value("Revisit after lost opening")
-        owner.get_by_role("button", name="Start conversation").click()
-        # The sidebar lists the same thread (#117); the message itself is in the feed.
+        owner.goto(f"/projects/{project_id}")
+        expect(owner.get_by_label("Write a message")).to_have_value("Revisit after lost opening")
+        owner.get_by_role("button", name="Send message").click()
+        # The retried root joins the one stream once.
         expect(owner.get_by_role("region", name="Messages").get_by_text("Revisit after lost opening", exact=True)).to_be_visible()
         threads = owner.context.request.get(f"{ORIGIN}/api/v1/projects/{project_id}/conversations").json()["items"]
         self.assertEqual(sum(thread["firstMessageBody"] == "Revisit after lost opening" for thread in threads), 1)
@@ -781,7 +795,7 @@ class AppShellJourney(unittest.TestCase):
                 route.continue_()
         owner.route("**/api/v1/materials/*/versions/1", fail_first_citation)
         owner.get_by_label("Reply", exact=True).fill("Do not send this draft on read retry")
-        open_sources(owner)
+        open_sources(owner, thread_of(owner))
         owner.get_by_role("button", name="Discuss this version").click()
         expect(owner.get_by_role("button", name="Retry read")).to_be_visible()
         owner.get_by_role("button", name="Retry read").click()
@@ -829,7 +843,7 @@ class AppShellJourney(unittest.TestCase):
         expect(phone.locator(".project-convo__current-thread")).to_contain_text("Try a PIR sensor before considering a camera")
         phone.set_viewport_size({"width": 390, "height": 500})
         phone.get_by_label("Reply", exact=True).focus()
-        composer = phone.locator(".project-convo__composer").bounding_box()
+        composer = thread_of(phone).locator(".project-convo__composer").bounding_box()
         self.assertIsNotNone(composer)
         self.assertLessEqual(composer["y"] + composer["height"], 500, "focused composer remains inside a reduced phone viewport")
         phone.set_viewport_size(PHONE)
@@ -858,7 +872,7 @@ class AppShellJourney(unittest.TestCase):
 
         denial = owner.context.request.post(f"{ORIGIN}/api/v1/projects/{project_id}/grants", data={"principal": {"kind": "human", "id": partner_id}, "role": "denied"}, headers={"Origin": ORIGIN})
         self.assertEqual(denial.status, 201, denial.text())
-        open_sources(phone)
+        open_sources(phone, thread_of(phone))
         phone.get_by_role("button", name="Discuss this version").click()
         expect(phone.get_by_text("Agreed. Test low light too.", exact=True)).to_have_count(0)
         expect(phone.get_by_label("Reply", exact=True)).to_have_count(0)
@@ -894,13 +908,19 @@ class AppShellJourney(unittest.TestCase):
         self.assertTrue(first_id)
         owner.reload()
         open_sources(owner)
-        expect(owner.get_by_role("button", name="Load more conversations")).to_be_visible()
+        # One stream (UI116-1): the newest 50 roots, then earlier windows on request.
+        stream = owner.get_by_role("region", name="Messages")
+        roots = stream.locator(".project-convo__message")
+        expect(roots).to_have_count(50)
         expect(owner.get_by_role("button", name="Load more materials")).to_be_visible()
-        owner.get_by_role("button", name="Load more conversations").click()
+        for loaded_count in (100, 101):
+            stream.get_by_role("button", name="Load earlier messages").click()
+            expect(roots).to_have_count(loaded_count)
+        expect(stream.get_by_role("button", name="Load earlier messages")).to_have_count(0)
         owner.get_by_role("button", name="Load more materials").click()
-        expect(owner.get_by_role("link", name=re.compile("Thread 000"))).to_be_visible()
+        expect(roots.first).to_contain_text("Thread 000")
         expect(owner.get_by_role("article").filter(has_text="Material 000")).to_be_visible()
-        self.assertEqual(owner.locator(".project-convo__thread").count(), 102)  # 101 threads + New
+        self.assertEqual(roots.count(), 101)
         self.assertEqual(owner.locator(".project-convo__material").count(), 101)
 
         for index in range(1, 121):
@@ -908,18 +928,21 @@ class AppShellJourney(unittest.TestCase):
             self.assertEqual(result.status, 201, result.text())
         owner.goto(f"/projects/{project_id}/conversations/{first_id}")
         expect(owner.get_by_label("Reply", exact=True)).to_be_visible()
-        expect(owner.locator(".project-convo__message")).to_have_count(50)
-        for loaded_count in (100, 121):
+        # The thread beside the stream holds the replies; its root (sequence 1) sits at its top (UI116-1).
+        replies = thread_of(owner).locator(".project-convo__message")
+        expect(replies).to_have_count(50)
+        for loaded_count in (100, 120):
             owner.get_by_role("button", name="Load earlier replies").click()
-            expect(owner.locator(".project-convo__message")).to_have_count(loaded_count)
+            expect(replies).to_have_count(loaded_count)
         expect(owner.get_by_role("button", name="Load earlier replies")).to_have_count(0)
-        self.assertEqual(owner.locator(".project-convo__message").count(), 121)
+        expect(thread_of(owner).locator(".thread__root")).to_contain_text("Thread 000")
+        self.assertEqual(replies.count(), 120)
         result = request.post(f"{ORIGIN}/api/v1/conversations/{first_id}/messages", data={"body": "Reply 121", "clientMessageId": str(uuid.uuid4())}, headers=headers)
         self.assertEqual(result.status, 201, result.text())
         owner.evaluate("window.dispatchEvent(new Event('focus'))")
         expect(owner.get_by_text("Reply 121", exact=True)).to_be_visible()
-        self.assertEqual(owner.locator(".project-convo__message").count(), 122, "revalidation retains every loaded sequence")
-        self.assertEqual([int(text.lstrip('#')) for text in owner.locator(".project-convo__message-meta span").all_text_contents()], list(range(1, 123)))
+        self.assertEqual(replies.count(), 121, "revalidation retains every loaded sequence")
+        self.assertEqual([int(text.lstrip('#')) for text in thread_of(owner).locator(".project-convo__message-meta span").all_text_contents()], list(range(2, 123)))
 
         # More than one server window arrives while this page is idle. Refresh must fill
         # the middle before presenting the new tail beside already loaded history.
@@ -928,8 +951,8 @@ class AppShellJourney(unittest.TestCase):
             self.assertEqual(result.status, 201, result.text())
         owner.evaluate("window.dispatchEvent(new Event('focus'))")
         expect(owner.get_by_text("Missed reply 59", exact=True)).to_be_visible()
-        expect(owner.locator(".project-convo__message")).to_have_count(182)
-        self.assertEqual([int(text.lstrip('#')) for text in owner.locator(".project-convo__message-meta span").all_text_contents()], list(range(1, 183)))
+        expect(replies).to_have_count(181)
+        self.assertEqual([int(text.lstrip('#')) for text in thread_of(owner).locator(".project-convo__message-meta span").all_text_contents()], list(range(2, 183)))
 
         # Hold the browser's POST, then prove the in-flight text cannot be overwritten.
         owner.evaluate("""() => {
@@ -951,7 +974,7 @@ class AppShellJourney(unittest.TestCase):
         expect(owner.get_by_text("Held reply", exact=True)).to_be_visible()
         expect(reply_box).to_have_value("")
 
-        open_sources(owner)
+        open_sources(owner, thread_of(owner))
         owner.get_by_role("button", name="Add material").click()
         owner.get_by_label("Title").fill("Held material")
         owner.get_by_label("Text").fill("Do not lose this text")

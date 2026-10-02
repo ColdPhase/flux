@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { ConversationWindowQuery, CreateMaterialCommand, MaterialSource, SendMessageCommand, UpdateMaterialCommand } from '@flux/contracts';
+import type { ConversationRootQuery, ConversationWindowQuery, CreateMaterialCommand, MaterialSource, SendMessageCommand, UpdateMaterialCommand } from '@flux/contracts';
 import { InvalidInputError } from '../access/errors.js';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -32,6 +32,14 @@ export function normalizeConversationWindow(query: ConversationWindowQuery = {})
   if (beforeSequence !== null && (!Number.isSafeInteger(beforeSequence) || beforeSequence < 1))
     throw new InvalidInputError('beforeSequence must be a positive integer');
   return { limit, beforeSequence };
+}
+
+/** The project stream's root window (UI116-1): `before` is a conversation id cursor. */
+export function normalizeRootWindow(query: ConversationRootQuery = {}) {
+  const limit = query.limit === undefined ? 50 : Number(query.limit);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new InvalidInputError('limit must be 1–100');
+  const before = query.before === undefined ? null : uuid(query.before, 'before').toLowerCase();
+  return { limit, before };
 }
 
 export function optionalUrl(value: unknown): string | null {

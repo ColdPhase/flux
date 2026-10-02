@@ -1,7 +1,7 @@
 import {
   WORKSPACES_PATH, conversationMessagesPath, conversationPath, materialPath,
-  materialVersionPath, projectConversationsPath, projectMaterialsPath, projectPath, workspaceProjectsPath,
-  type Conversation, type ConversationMessage, type ConversationSummary, type CreateMaterialCommand,
+  materialVersionPath, projectConversationRootsPath, projectConversationsPath, projectMaterialsPath, projectPath, workspaceProjectsPath,
+  type Conversation, type ConversationMessage, type ConversationRootWindow, type ConversationSummary, type CreateMaterialCommand,
   type Draft, type WorkspaceMember, type Material, type MaterialVersion, type Page, type Project, type SendMessageCommand, type Workspace, workspaceDraftsPath,
 } from '@flux/contracts';
 import { request } from '../api/client';
@@ -23,6 +23,14 @@ export const createWorkspace = (name: string) => request<Workspace>(WORKSPACES_P
 export const createProject = (workspaceId: string, name: string) => request<Project>(workspaceProjectsPath(workspaceId), { method: 'POST', body: { name, visibility: 'restricted' } });
 export const getProject = (id: string, signal?: AbortSignal) => request<Project>(projectPath(id), { signal });
 export const listConversations = (projectId: string, signal?: AbortSignal, offset = 0) => request<Page<ConversationSummary>>(`${projectConversationsPath(projectId)}?limit=100&offset=${offset}`, { signal });
+/** The project's one stream (UI116-1): the newest roots, or those before a conversation id. */
+export const listConversationRoots = (projectId: string, options: { before?: string | null; limit?: number } = {}, signal?: AbortSignal) => {
+  const query = new URLSearchParams();
+  if (options.limit) query.set('limit', String(options.limit));
+  if (options.before) query.set('before', options.before);
+  const search = query.toString();
+  return request<ConversationRootWindow>(`${projectConversationRootsPath(projectId)}${search ? `?${search}` : ''}`, { signal });
+};
 export const getConversation = (id: string, signal?: AbortSignal) => request<Conversation>(conversationPath(id), { signal });
 export const olderMessages = (id: string, beforeSequence: number, signal?: AbortSignal, limit?: number) =>
   request<Conversation>(`${conversationPath(id)}?beforeSequence=${beforeSequence}${limit ? `&limit=${limit}` : ''}`, { signal });

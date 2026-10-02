@@ -1,40 +1,44 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
-import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, type LoaderFunctionArgs } from 'react-router';
-import type { AssistantAnswer, ConversationMessage, Conversation, ConversationSummary, Draft, Material, Project, SendMessageCommand, WorkspaceMember } from '@flux/contracts';
+import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
+import type { AssistantAnswer, ConversationMessage, Conversation, ConversationRootWindow, Draft, Material, Project, SendMessageCommand, WorkspaceMember } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { Avatar, Button, EmptyState, Icon, Input } from '../ui';
-import { getConversation, getMaterialVersion, getProject, listConversations, listDrafts, listMaterials, listWorkspaceMembers, olderMessages, publishMaterial, reply, startConversation } from './conversation-api';
+import { Avatar, Button, Icon, Input } from '../ui';
+import { getConversation, getMaterialVersion, getProject, listConversationRoots, listDrafts, listMaterials, listWorkspaceMembers, olderMessages, publishMaterial, reply, startConversation } from './conversation-api';
 import { pageBackTo } from './seekMessage';
 import { useShellData } from './data';
 import { MessageActions, MessageObjects, useCreateWorkFromMessage } from '../work/inline';
 import { audienceLine, replyTo, useProjectShell } from '../project/data';
-import { useRegisterLiveHere } from '../live/LiveProvider';
-import { excerpt } from '../live/anchors';
 import { useShellActions } from './shellContext';
 import { useConversationAssistant } from '../assistant/useConversationAssistant';
 import { AnswerItem, AskBar, ProposalCard, WorkingLine } from '../assistant/ConversationParts';
 import { askError as askErrorText, askState } from '../assistant/format';
 import { grantAgentProject } from '../agent-connection/api';
+import { ContributionMark, SourceCitation, clock, day, openOnWholeMessages, when } from './messageParts';
+import { OneConversation, type PaneProps } from './OneConversation';
+import { ThreadMessageActions } from './ThreadDrawer';
 import './project-conversation.css';
 
-export interface ProjectData { project: Project; conversations: ConversationSummary[]; conversationTotal: number; materials: Material[]; materialTotal: number; members: WorkspaceMember[]; conversation: Conversation | null }
+/** The project's one conversation (UI116-1): the newest roots, and the thread a URL opens. */
+export interface ProjectData { project: Project; roots: ConversationRootWindow; materials: Material[]; materialTotal: number; members: WorkspaceMember[]; conversation: Conversation | null }
 export async function projectConversationLoader({ params, request }: LoaderFunctionArgs): Promise<ProjectData> {
   const projectId = params.projectId!;
   const project = await getProject(projectId, request.signal);
   // Work, decisions and results come with the project (#117 parent route).
-  const [threads, materials, members] = await Promise.all([
-    listConversations(projectId, request.signal),
+  const [roots, materials, members] = await Promise.all([
+    listConversationRoots(projectId, {}, request.signal),
     listMaterials(projectId, request.signal),
     listWorkspaceMembers(project.workspaceId, request.signal).catch((error: unknown) => {
       if (error instanceof ApiError && error.status === 403) return [];
       throw error;
     }),
   ]);
-  const selected = params.conversationId;
-  const first = selected ?? (new URL(request.url).searchParams.has('new') ? undefined : threads.items[0]?.id);
-  const conversation = first ? await getConversation(first, request.signal) : null;
+  const conversation = params.conversationId ? await getConversation(params.conversationId, request.signal) : null;
   if (conversation && conversation.projectId !== projectId) throw new Response('Not found', { status: 404 });
-  return { project, conversations: threads.items, conversationTotal: threads.total, materials: materials.items, materialTotal: materials.total, members, conversation };
+  return { project, roots, materials: materials.items, materialTotal: materials.total, members, conversation };
+}
+/** The stream stays mounted while a thread opens or closes; its loader refreshes the open thread then. */
+export function shouldRevalidateProjectConversation({ currentParams, nextParams, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {
+  return defaultShouldRevalidate || currentParams.projectId !== nextParams.projectId || currentParams.conversationId !== nextParams.conversationId;
 }
 
 function readableError(error: unknown) {
@@ -64,14 +68,6 @@ function savedMaterialForm(key: string): MaterialFormSnapshot {
     return { open: value.open === true, title: value.title ?? '', body: value.body ?? '', url: value.url ?? '', sourceDraft: value.sourceDraft ?? null, mutationId: value.mutationId ?? crypto.randomUUID() };
   } catch { return { open: false, title: '', body: '', url: '', sourceDraft: null, mutationId: crypto.randomUUID() }; }
 }
-function when(iso: string) { return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); }
-const clockFormat = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
-const dayFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
-function clock(iso: string) { return clockFormat.format(new Date(iso)); }
-function day(iso: string) {
-  const date = new Date(iso);
-  return new Date().toDateString() === date.toDateString() ? 'Today' : dayFormat.format(date);
-}
 function mergeMessages(current: Conversation['messages'], incoming: Conversation['messages']) {
   const byId = new Map(current.map((message) => [message.id, message]));
   for (const message of incoming) byId.set(message.id, message);
@@ -81,14 +77,17 @@ function mergeMessages(current: Conversation['messages'], incoming: Conversation
 export function ProjectConversation() {
   const data = useLoaderData() as ProjectData;
   return <div className="project-page">
-    <ProjectConversationContent key={`${data.project.id}:${data.conversation?.id ?? 'new'}`} data={data} />
+    <OneConversation key={data.project.id} data={data} Pane={ProjectConversationContent} />
   </div>;
 }
 
-function ProjectConversationContent({ data }: { data: ProjectData }) {
-  const { project, materials, members, conversation } = data;
-  // The open conversation is where "Work on this together" starts; nothing is shown by itself.
-  useRegisterLiveHere(conversation ? { projectId: project.id, context: { type: 'conversation', id: conversation.id }, label: excerpt(conversation.firstMessageBody) } : null, null);
+/**
+ * One conversation's pane: in the stream it is the composer that starts a root (UI116-1); in the thread
+ * beside it, the replies with their own composer, assistant and sources.
+ */
+function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessageId = null, onPosted, onThreadSize, focusComposer = false }: PaneProps) {
+  const { project, materials, members } = data;
+  const conversation = variant === 'thread' ? data.conversation : null;
   const shell = useProjectShell();
   const work = shell?.work ?? { work: [], decisions: [], results: [] };
   const people = shell?.people ?? null;
@@ -97,7 +96,9 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
   const revalidator = useRevalidator();
   const audience = audienceLine(people, me.user.id);
   const audienceShort = audience.replace(/ · only you two$/, '');
-  const materialFormKey = `flux.project-material.${me.user.id}.${project.id}`;
+  // The stream's composer keeps the former new-conversation draft; each thread keeps its own reply draft.
+  const materialFormKey = `flux.project-material.${me.user.id}.${project.id}${conversation ? '.thread' : ''}`;
+  const composerId = conversation ? 'thread-composer' : 'project-composer';
   const draftKey = `flux.project-composer.${me.user.id}.${project.id}.${conversation?.id ?? 'new'}`;
   const pendingKey = `${draftKey}.pending`;
   const savedMaterial = useMemo(() => savedMaterialForm(materialFormKey), [materialFormKey]);
@@ -161,7 +162,8 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
   const refresh = useCallback(async () => {
     if (refreshingRef.current) return;
     refreshingRef.current = true;
-    revalidator.revalidate();
+    // The stream's refresh reloads the route (newest roots, the project); a thread reads only its own replies.
+    if (!conversationId) revalidator.revalidate();
     try {
       const [latestMaterials, latestConversation] = await Promise.all([
         listMaterials(project.id),
@@ -198,8 +200,19 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
     const interval = window.setInterval(onFocus, 15000);
     return () => { window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVisible); window.clearInterval(interval); };
   }, [refresh]);
+  // The thread's size goes back to the stream (UI116-1); sequences are dense, so the newest one counts the root.
+  useEffect(() => {
+    const newest = messages.at(-1);
+    if (conversationId && newest) onThreadSize?.(conversationId, newest.sequence - 1, newest.sequence > 1 ? newest.createdAt : null);
+  }, [conversationId, messages, onThreadSize]);
+  useEffect(() => {
+    if (focusComposer) document.getElementById(composerId)?.focus();
+    // When the thread opens for a reply.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const hash = useLocation().hash;
-  const arrived = hash.startsWith('#message-') ? hash.slice('#message-'.length) : null;
+  // The root is the stream's message; the thread arrives only at its replies.
+  const arrived = conversation && hash.startsWith('#message-') && hash.slice('#message-'.length) !== rootMessageId ? hash.slice('#message-'.length) : null;
   const arrivedLoaded = !!arrived && messages.some((message) => message.id === arrived);
   // A search result or source older than the loaded window (#114): page back until it is loaded.
   useEffect(() => {
@@ -216,36 +229,12 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
   }, [conversation?.id, arrived]);
   useEffect(() => {
     // A source link from "Since you left" or search opens on that whole message; otherwise on the latest.
-    const anchor = arrived ? document.getElementById(`message-${arrived}`) : null;
-    if (anchor) { anchor.scrollIntoView({ block: 'start' }); anchor.focus({ preventScroll: true }); return; }
     const feed = scrollRef.current;
+    const anchor = arrived ? document.getElementById(`message-${arrived}`) : null;
+    if (anchor && feed?.contains(anchor)) { anchor.scrollIntoView({ block: 'start' }); anchor.focus({ preventScroll: true }); return; }
     const column = feed?.firstElementChild as HTMLElement | null;
     if (!feed || !column) return;
-    // Open on whole messages: when the latest screen would start mid-message, begin at the next
-    // message instead, with a little room below the last one (direction C "return anchor").
-    // Layout settles as the return line and fonts arrive, so this repeats until the reader acts.
-    const settle = () => {
-      column.style.paddingBottom = '';
-      feed.scrollTop = feed.scrollHeight;
-      const top = feed.getBoundingClientRect().top;
-      const list = [...feed.querySelectorAll<HTMLElement>('.project-convo__message')];
-      const index = list.findIndex((item) => { const box = item.getBoundingClientRect(); return box.top < top - 1 && box.bottom > top + 1; });
-      if (index < 0) return;
-      const next = list[index + 1];
-      if (!next) { list[index]!.scrollIntoView({ block: 'start' }); return; }
-      const delta = next.getBoundingClientRect().top - top;
-      if (delta <= 0) return;
-      column.style.paddingBottom = `${parseFloat(getComputedStyle(column).paddingBottom) + delta}px`;
-      feed.scrollTop = feed.scrollHeight;
-    };
-    settle();
-    const observer = new ResizeObserver(() => settle());
-    observer.observe(feed);
-    observer.observe(column.firstElementChild ?? column);
-    const stop = () => observer.disconnect();
-    const timer = window.setTimeout(stop, 2000);
-    for (const type of ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const) feed.addEventListener(type, stop, { once: true, passive: true });
-    return () => { stop(); window.clearTimeout(timer); for (const type of ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const) feed.removeEventListener(type, stop); };
+    return openOnWholeMessages(feed, column, '.project-convo__message');
   }, [conversation?.id, arrived, arrivedLoaded]);
 
   function changeDraft(input: string) {
@@ -257,7 +246,7 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
     if (pending && pending.body !== value.trim()) { setPending(null); putPending(pendingKey, null); }
     setError('');
   }
-  function exitAsk() { setAsking(false); setAskFailure(''); document.getElementById('project-composer')?.focus(); }
+  function exitAsk() { setAsking(false); setAskFailure(''); document.getElementById(composerId)?.focus(); }
   async function sendToAssistant() {
     const prompt = draft.trim();
     if (!conversation || !writable || askBusy || !prompt || askState(assistant.status, audience).kind !== 'ready') return;
@@ -283,8 +272,9 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
     try {
       const result = conversation ? await reply(conversation.id, command) : await startConversation(project.id, command);
       setPending(null); putPending(pendingKey, null); setDraft(''); putDraft(draftKey, ''); setCitation(null);
-      if (!conversation) navigate(`/projects/${project.id}/conversations/${(result as Conversation).id}`);
-      else void refresh();
+      // A new root joins the stream where it was written; the thread stays closed (UI116-1).
+      if (!conversation) onPosted?.(result as Conversation);
+      void refresh();
     } catch (cause) {
       setError(readableError(cause));
       hideIfDenied(cause);
@@ -332,13 +322,14 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
         setPending(null); putPending(pendingKey, null);
       }
       setCitation(selected); setError(''); setSourcesOpen(false);
-      document.getElementById('project-composer')?.focus();
+      document.getElementById(composerId)?.focus();
     } catch (cause) { hideIfDenied(cause); setReadFailure({ message: readableError(cause), retry: () => void cite(material) }); }
   }
 
   if (accessLost) return <div className="pane-scroll"><div className="pane-in project-setup" role="alert"><h2>Project unavailable</h2><p>Your access to this project may have changed. Reload to check current access.</p></div></div>;
   const ask = askState(assistant.status, audienceShort);
-  const entries = feedEntries(messages, assistant.answers, !!olderCursor);
+  // The root sits at the thread's top (and in the stream); the list holds its replies and answers.
+  const entries = feedEntries(messages.filter((message) => message.sequence > 1), assistant.answers, !!olderCursor);
   const lookups = { projectId: project.id, messages, work: work.work, author };
   // A manager can let their own assistant read this project in one step; anyone else asks a manager.
   const ownAgent = assistant.status?.enablement?.agents.find((item) => item.workspaceId === project.workspaceId)?.agentId ?? null;
@@ -354,19 +345,16 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
     return !owner || owner.kind !== 'human' || owner.id === me.user.id;
   };
   const trayOpen = sourcesOpen || (writable && showMaterialForm);
-  const title = conversation ? conversation.firstMessageBody.split('\n')[0] || 'Conversation' : writable ? 'New conversation' : 'Project conversations';
+  const title = conversation ? conversation.firstMessageBody.split('\n')[0] || 'Conversation' : project.name;
   let lastDay = '';
-  return <div className="project-convo" data-project-id={project.id}>
-    <div className="project-convo__feed" ref={scrollRef}>
-      <div className="project-convo__in" data-shift>
-        <div className="project-convo__head">
-          <h2 title={title}>{title}</h2>
-          {conversation ? <p>{messages.length} {messages.length === 1 ? 'message' : 'messages'}{olderCursor ? ' shown' : ''} · started {day(conversation.createdAt)}</p> : null}
-        </div>
-        <section aria-label="Messages" className="project-convo__messages">
+  return <div className={conversation ? 'thread__pane' : 'project-convo'} data-project-id={conversation ? undefined : project.id}>
+    {!conversation ? feed : <div className="thread__feed" ref={scrollRef}>
+      <div className="thread__in">
+        {rootHeader}
+        <section aria-label="Replies to this message" className="project-convo__messages">
           {conversation ? <>
             {olderCursor ? <Button variant="quiet" busy={olderBusy} onClick={() => void loadOlder()}>Load earlier replies</Button> : null}
-            <ol className="project-convo__message-list">{entries.map((entry) => {
+            <ol className="thread__list">{entries.map((entry) => {
               const label = day(entry.at);
               const divider = label !== lastDay ? <li className="project-convo__day" key={`day-${entry.key}`}><span>{label}</span></li> : null;
               lastDay = label;
@@ -382,7 +370,7 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
                     }} /> : null}
                   onRetry={() => assistant.retry(answer.runId)}
                   onContinue={async () => { await assistant.ask('Continue', { continuesRunId: answer.runId }); }}
-                  onAskAbout={writable ? () => { setAsking(true); document.getElementById('project-composer')?.focus(); } : null} />];
+                  onAskAbout={writable ? () => { setAsking(true); document.getElementById(composerId)?.focus(); } : null} />];
               }
               const message = entry.message;
               const mine = message.authorId === me.user.id;
@@ -393,25 +381,25 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
                 {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} /> : null}
                 {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={hideIfDenied} /> : null}
                 <MessageObjects messageId={message.id} lists={work} />
-                <MessageActions projectId={project.id} message={message} writable={writable} busy={makeWork.busy === message.id} onCreateWork={() => void makeWork.create(message)} />
+                <ThreadMessageActions writable={writable}><MessageActions projectId={project.id} message={message} writable={writable} busy={makeWork.busy === message.id} onCreateWork={() => void makeWork.create(message)} /></ThreadMessageActions>
                 {makeWork.failed?.messageId === message.id ? <p className="ws-act-error" role="alert">{makeWork.failed.text} <button type="button" onClick={() => void makeWork.create(message)}>Retry</button></p> : null}
               </li>];
             })}
             {assistant.run ? <WorkingLine key={assistant.run.id} run={assistant.run} onStop={assistant.stop} onRetry={() => assistant.retry(assistant.run!.id)} onDismiss={assistant.dismissRun} /> : null}
             </ol>
-          </> : <EmptyState icon="chat" title={writable ? "Start a conversation" : data.conversationTotal ? "Choose a conversation" : "No conversations yet"}>{writable ? <p>Share a thought with {audience === 'Only you' ? 'yourself for now; people you add to the project will see it' : `everyone in ${project.name}`}. No form is needed: anything said here can later become work, a decision or a sketch.</p> : <p>You have read access to {project.name}. {data.conversationTotal ? "Open a saved conversation from navigation." : "Conversations will appear here when someone shares them."} You can browse saved tasks, maps, docs and sources.</p>}</EmptyState>}
+          </> : null}
         </section>
       </div>
-    </div>
-    <div className="composer project-convo__composer"><div className="composer__in" data-shift>
-      {trayOpen ? <section id="project-sources" aria-label="Project materials" className="project-convo__materials">
+    </div>}
+    <div className="composer project-convo__composer"><div className="composer__in" data-shift={conversation ? undefined : true}>
+      {trayOpen ? <section id={`${conversation ? 'thread' : 'project'}-sources`} aria-label="Project materials" className="project-convo__materials">
         <div className="project-convo__section-head"><h3>Sources · saved for {project.name}</h3><span>{materialTotal}</span><button type="button" className="project-convo__tray-close" aria-label="Close sources" onClick={() => { setSourcesOpen(false); setShowMaterialForm(false); }}><Icon name="x" size={14} /></button></div>
         <div className="project-convo__tray">
           {materialItems.map((material) => <article className="project-convo__material" key={material.materialId}><div><strong>{writable ? material.title : <Link className="project-convo__material-read" to={`/materials/${material.materialId}/versions/${material.version}`}>{material.title}</Link>}</strong><small>v{material.version} · {author(material.authorId)} · {day(material.updatedAt)}{material.url ? <> · <a href={material.url} target="_blank" rel="noreferrer">Open link</a></> : null}</small></div>{writable ? <Button variant="link" onClick={() => void cite(material)}>Discuss this version</Button> : null}</article>)}
           {!materialItems.length ? <p className="project-convo__muted">{writable ? "Text and links you save here can be cited in any reply." : "No sources have been saved to this project yet."}</p> : null}
           {materialOffset < materialTotal ? <Button variant="quiet" busy={moreMaterialsBusy} onClick={() => void loadMoreMaterials()}>Load more materials</Button> : null}
           {writable && !showMaterialForm ? <Button variant="secondary" icon="plus" disabled={materialBusy} onClick={() => setShowMaterialForm(true)}>Add material</Button> : null}
-          {writable && showMaterialForm ? <form className="project-convo__material-form" onSubmit={(event) => void submitMaterial(event)}><fieldset className="project-convo__material-fields" disabled={materialBusy}>{privateDrafts.length ? <label>Start from a private draft<select value={sourceDraft?.id ?? ''} onChange={(event) => { const chosen = privateDrafts.find((item) => item.id === event.target.value) ?? null; setSourceDraft(chosen); if (chosen) { setMaterialTitle(chosen.title); setMaterialBody(chosen.body); } setMaterialMutationId(crypto.randomUUID()); }}><option value="">No private draft</option>{privateDrafts.map((item) => <option key={item.id} value={item.id}>{item.title} · v{item.version}</option>)}</select></label> : null}<Input label="Title" value={materialTitle} onChange={(event) => { setMaterialTitle(event.target.value); setMaterialMutationId(crypto.randomUUID()); }} required maxLength={200} /><label htmlFor="material-body">Text</label><textarea id="material-body" value={materialBody} onChange={(event) => { setMaterialBody(event.target.value); setMaterialMutationId(crypto.randomUUID()); }} maxLength={100000} /><Input label="Link (optional)" type="url" value={materialUrl} onChange={(event) => { setMaterialUrl(event.target.value); setMaterialMutationId(crypto.randomUUID()); }} />{sourceDraft ? <p className="project-convo__publication">Publishing selected content from private draft v{sourceDraft.version}. Review the exact text and link above. Your original draft remains private.</p> : null}{materialError ? <p role="alert">{materialError}</p> : null}<div className="project-convo__form-actions"><Button type="submit" variant="primary" busy={materialBusy}>Save for this project</Button><Button variant="quiet" disabled={materialBusy} onClick={() => setShowMaterialForm(false)}>Cancel</Button></div></fieldset></form> : null}
+          {writable && showMaterialForm ? <form className="project-convo__material-form" onSubmit={(event) => void submitMaterial(event)}><fieldset className="project-convo__material-fields" disabled={materialBusy}>{privateDrafts.length ? <label>Start from a private draft<select value={sourceDraft?.id ?? ''} onChange={(event) => { const chosen = privateDrafts.find((item) => item.id === event.target.value) ?? null; setSourceDraft(chosen); if (chosen) { setMaterialTitle(chosen.title); setMaterialBody(chosen.body); } setMaterialMutationId(crypto.randomUUID()); }}><option value="">No private draft</option>{privateDrafts.map((item) => <option key={item.id} value={item.id}>{item.title} · v{item.version}</option>)}</select></label> : null}<Input label="Title" value={materialTitle} onChange={(event) => { setMaterialTitle(event.target.value); setMaterialMutationId(crypto.randomUUID()); }} required maxLength={200} /><label htmlFor={`${composerId}-material-body`}>Text</label><textarea id={`${composerId}-material-body`} value={materialBody} onChange={(event) => { setMaterialBody(event.target.value); setMaterialMutationId(crypto.randomUUID()); }} maxLength={100000} /><Input label="Link (optional)" type="url" value={materialUrl} onChange={(event) => { setMaterialUrl(event.target.value); setMaterialMutationId(crypto.randomUUID()); }} />{sourceDraft ? <p className="project-convo__publication">Publishing selected content from private draft v{sourceDraft.version}. Review the exact text and link above. Your original draft remains private.</p> : null}{materialError ? <p role="alert">{materialError}</p> : null}<div className="project-convo__form-actions"><Button type="submit" variant="primary" busy={materialBusy}>Save for this project</Button><Button variant="quiet" disabled={materialBusy} onClick={() => setShowMaterialForm(false)}>Cancel</Button></div></fieldset></form> : null}
           {materialError && !showMaterialForm ? <p role="alert">{materialError}</p> : null}
         </div>
       </section> : null}
@@ -425,31 +413,12 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
         <p className="composer__audience"><Icon name="lock" size={13} /><span>{audience}</span><span className="composer__where"> · saved to {project.name}</span></p>
       </div>}
       {citation && writable ? <div className="project-convo__citation">Discussing “{citation.title}” v{citation.version}<button type="button" disabled={busy} onClick={() => { setCitation(null); setPending(null); putPending(pendingKey, null); setError(''); }} aria-label="Remove material citation">×</button></div> : null}
-      <div className="composer__box"><button type="button" className="composer__ask project-convo__sources-btn" aria-expanded={trayOpen} aria-controls={trayOpen ? 'project-sources' : undefined} aria-label={`Sources${materialTotal ? `, ${materialTotal} saved` : ''}`} data-tip={writable ? 'Sources to cite' : 'Saved sources to read'} data-tip-align="start" onClick={() => { if (trayOpen) { setSourcesOpen(false); if (writable) setShowMaterialForm(false); } else setSourcesOpen(true); }}><Icon name="doc" /><span className="project-convo__sources-t" aria-hidden="true">Sources</span>{materialTotal ? <span className="project-convo__sources-n" aria-hidden="true">{materialTotal > 99 ? '99+' : materialTotal}</span> : null}</button>{conversation && writable ? <button type="button" className="composer__ask" aria-pressed={asking} aria-label="Ask my assistant" aria-controls={asking ? 'project-ask' : undefined} data-tip="Ask my assistant · /ai" data-tip-align="start"
-        onClick={() => { if (asking) exitAsk(); else { setAsking(true); document.getElementById('project-composer')?.focus(); } }}><Icon name="spark" /></button> : null}{writable ? <><label className="ui-vh" htmlFor="project-composer">{asking ? 'Ask your assistant' : conversation ? 'Reply' : 'Start a conversation'}</label><textarea id="project-composer" value={draft} onChange={(event) => changeDraft(event.target.value)} onKeyDown={onComposerKey} disabled={!writable || busy || askBusy} aria-describedby={asking ? 'project-ask' : undefined} placeholder={asking ? 'Ask your assistant…' : conversation ? replyHint : 'Share a thought…'} rows={1} /><button className="composer__send" aria-label={asking ? 'Send to your assistant' : conversation ? 'Send reply' : 'Start conversation'} aria-disabled={!draft.trim() || !writable || busy || askBusy || (asking && ask.kind !== 'ready')} type="button" onClick={() => void send()}><Icon name="send" /></button></> : <p className="project-convo__read-only">Read-only · <span>You have read access to this project.</span></p>}</div>
+      <div className="composer__box"><button type="button" className="composer__ask project-convo__sources-btn" aria-expanded={trayOpen} aria-controls={trayOpen ? `${conversation ? 'thread' : 'project'}-sources` : undefined} aria-label={`Sources${materialTotal ? `, ${materialTotal} saved` : ''}`} data-tip={writable ? 'Sources to cite' : 'Saved sources to read'} data-tip-align="start" onClick={() => { if (trayOpen) { setSourcesOpen(false); if (writable) setShowMaterialForm(false); } else setSourcesOpen(true); }}><Icon name="doc" /><span className="project-convo__sources-t" aria-hidden="true">Sources</span>{materialTotal ? <span className="project-convo__sources-n" aria-hidden="true">{materialTotal > 99 ? '99+' : materialTotal}</span> : null}</button>{conversation && writable ? <button type="button" className="composer__ask" aria-pressed={asking} aria-label="Ask my assistant" aria-controls={asking ? 'project-ask' : undefined} data-tip="Ask my assistant · /ai" data-tip-align="start"
+        onClick={() => { if (asking) exitAsk(); else { setAsking(true); document.getElementById(composerId)?.focus(); } }}><Icon name="spark" /></button> : null}{writable ? <><label className="ui-vh" htmlFor={composerId}>{asking ? 'Ask your assistant' : conversation ? 'Reply' : 'Write a message'}</label><textarea id={composerId} value={draft} onChange={(event) => changeDraft(event.target.value)} onKeyDown={onComposerKey} disabled={!writable || busy || askBusy} aria-describedby={asking ? 'project-ask' : undefined} placeholder={asking ? 'Ask your assistant…' : conversation ? replyHint : 'Write a message…'} rows={1} /><button className="composer__send" aria-label={asking ? 'Send to your assistant' : conversation ? 'Send reply' : 'Send message'} aria-disabled={!draft.trim() || !writable || busy || askBusy || (asking && ask.kind !== 'ready')} type="button" onClick={() => void send()}><Icon name="send" /></button></> : <p className="project-convo__read-only">Read-only · <span>You have read access to this project.</span></p>}</div>
       {readFailure ? <p className="project-convo__error" role="alert">{readFailure.message} <button type="button" onClick={readFailure.retry}>Retry read</button></p> : null}
       {writable && error ? <p className="project-convo__error" role="alert">{error} <button type="button" onClick={() => void send()}>Retry send</button></p> : null}
     </div></div>
   </div>;
-}
-
-/**
- * What an explicit native effect contributed to a task thread: a saved blocker, a published result (a link to
- * that exact canonical result) or an explicit public handoff. Ordinary replies show no marker.
- */
-function ContributionMark({ contribution, onOpenResult }: { contribution: NonNullable<ConversationMessage['contribution']>; onOpenResult: (resultId: string) => void }) {
-  if (contribution.kind === 'result') {
-    return <button type="button" className="project-convo__source project-convo__contribution" data-contribution="result" onClick={() => onOpenResult(contribution.resultId)}><Icon name="result" size={13} />Result · open details</button>;
-  }
-  return <span className="project-convo__source project-convo__contribution" data-contribution={contribution.kind}>{contribution.kind === 'blocker' ? 'Saved as the task blocker' : 'Handoff instruction'}</span>;
-}
-
-function SourceCitation({ materialId, version, onDenied }: { materialId: string; version: number; onDenied: (cause: unknown) => void }) {
-  const [title, setTitle] = useState('Material');
-  const onDeniedRef = useRef(onDenied);
-  useEffect(() => { onDeniedRef.current = onDenied; }, [onDenied]);
-  useEffect(() => { const controller = new AbortController(); getMaterialVersion(materialId, version, controller.signal).then((item) => setTitle(item.title)).catch((cause: unknown) => { if (!controller.signal.aborted) { onDeniedRef.current(cause); setTitle('Material unavailable'); } }); return () => controller.abort(); }, [materialId, version]);
-  return <Link to={`/materials/${materialId}/versions/${version}`} className="project-convo__source">Source: {title} · v{version}</Link>;
 }
 
 type FeedEntry =

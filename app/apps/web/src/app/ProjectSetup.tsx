@@ -21,7 +21,7 @@ export function ProjectSetup() {
       const space = workspace ?? createdSpace ?? await createWorkspace(spaceName.trim());
       if (!workspace && !createdSpace) setCreatedSpace(space);
       const project = await createProject(space.id, projectName.trim());
-      revalidator.revalidate(); navigate(`/projects/${project.id}?new=1`);
+      revalidator.revalidate(); navigate(`/projects/${project.id}`);
     } catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Could not create this project. Try again.'); }
     finally { setBusy(false); }
   }

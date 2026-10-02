@@ -1,5 +1,5 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
-import type { ConversationWindowQuery, CreateMaterialCommand, PageQuery, SendMessageCommand, UpdateMaterialCommand } from '@flux/contracts';
+import type { ConversationRootQuery, ConversationWindowQuery, CreateMaterialCommand, PageQuery, SendMessageCommand, UpdateMaterialCommand } from '@flux/contracts';
 import { conversationUseCases, DomainError, InvalidInputError, type Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { conversationStore } from './store.js';
@@ -10,6 +10,8 @@ const page = { type: 'object', additionalProperties: false,
   properties: { limit: { type: 'integer' }, offset: { type: 'integer' } } } as const;
 const conversationWindow = { type: 'object', additionalProperties: false,
   properties: { limit: { type: 'integer' }, beforeSequence: { type: 'integer' } } } as const;
+const rootWindow = { type: 'object', additionalProperties: false,
+  properties: { limit: { type: 'integer' }, before: { type: 'string' } } } as const;
 const source = { type: 'object', required: ['materialId', 'version'], additionalProperties: false,
   properties: { materialId: { type: 'string' }, version: { type: 'integer' } } } as const;
 const send = { type: 'object', required: ['body', 'clientMessageId'], additionalProperties: false,
@@ -45,6 +47,9 @@ export async function conversationRoutes(app: FastifyInstance, { db, sessions }:
   app.post<{ Params: { projectId: string }; Body: SendMessageCommand }>('/api/v1/projects/:projectId/conversations',
     { preValidation: plainText, schema: { body: send } }, async (request, reply) => reply.code(201).send(
       await store.createConversation(await principal(request), request.params.projectId, request.body)));
+  // The project's one conversation (UI116-1): its roots with reply counts, newest window first.
+  app.get<{ Params: { projectId: string }; Querystring: ConversationRootQuery }>('/api/v1/projects/:projectId/conversation-roots',
+    { schema: { querystring: rootWindow } }, async (request) => store.listRoots(await principal(request), request.params.projectId, request.query));
   app.get<{ Params: { conversationId: string }; Querystring: ConversationWindowQuery }>('/api/v1/conversations/:conversationId',
     { schema: { querystring: conversationWindow } },
     async (request) => store.getConversation(await principal(request), request.params.conversationId, request.query));

@@ -99,12 +99,10 @@ body:has(.app) { background: var(--bg-chrome); }
 .side__sub { margin-left: auto; font-size: var(--fs-xs); color: var(--text-2); white-space: nowrap; }
 .side__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .side__dm .ui-avatar { flex: none; }
-/* The open project's conversations, indented under its row. */
+/* Sub-places indented under their row (Inbox → Notification settings). */
 .side__threads { margin: 0 0 6px 18px; padding-left: 8px; border-left: 1px solid var(--line); }
 .side__threads .side__item { min-height: 32px; margin: 1px 0; padding: 5px 8px; font-size: var(--fs-sm); }
 .side__threads .side__item.is-current { background: var(--bg-hover); color: var(--text); }
-.side__when { margin-left: auto; font-size: var(--fs-xs); color: var(--text-2); flex: none; }
-.side__threads .ui-btn { min-height: 28px; font-size: var(--fs-sm); }
 
 /* Account button and popover */
 .me { position: relative; margin: 8px -10px 0; border-top: 1px solid var(--line); padding: 6px 6px; padding-bottom: max(6px, env(safe-area-inset-bottom)); }

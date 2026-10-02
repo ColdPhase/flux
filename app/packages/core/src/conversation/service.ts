@@ -1,14 +1,16 @@
 import type {
-  Conversation, ConversationMessage, ConversationSummary, ConversationWindowQuery, CreateMaterialCommand, Material,
-  MaterialVersion, Page, PageQuery, SendMessageCommand, UpdateMaterialCommand,
+  Conversation, ConversationMessage, ConversationRootQuery, ConversationRootWindow, ConversationSummary, ConversationWindowQuery,
+  CreateMaterialCommand, Material, MaterialVersion, Page, PageQuery, SendMessageCommand, UpdateMaterialCommand,
 } from '@flux/contracts';
 import type { Principal } from '../types.js';
-import { normalizeConversationWindow, normalizeMaterial, normalizeMaterialUpdate, normalizeMessage } from './commands.js';
+import { normalizeConversationWindow, normalizeMaterial, normalizeMaterialUpdate, normalizeMessage, normalizeRootWindow } from './commands.js';
 
 /** Storage and current-access boundary. The adapter must authorize before every read and
  * authorize under the write transaction before every mutation or idempotent replay. */
 export interface ConversationPort {
   listConversations(principal: Principal, projectId: string, query?: PageQuery): Promise<Page<ConversationSummary>>;
+  /** The project's one stream (UI116-1): authorize the project first, then count and page its roots. */
+  listRoots(principal: Principal, projectId: string, window: ReturnType<typeof normalizeRootWindow>): Promise<ConversationRootWindow>;
   getConversation(principal: Principal, conversationId: string, window: ReturnType<typeof normalizeConversationWindow>): Promise<Conversation>;
   createConversation(principal: Principal, projectId: string, input: ReturnType<typeof normalizeMessage>): Promise<Conversation>;
   sendMessage(principal: Principal, conversationId: string, input: ReturnType<typeof normalizeMessage>): Promise<ConversationMessage>;
@@ -23,6 +25,8 @@ export interface ConversationPort {
 export function conversationUseCases(port: ConversationPort) {
   return {
     listConversations: (principal: Principal, projectId: string, query?: PageQuery) => port.listConversations(principal, projectId, query),
+    listRoots: (principal: Principal, projectId: string, query?: ConversationRootQuery) =>
+      port.listRoots(principal, projectId, normalizeRootWindow(query)),
     getConversation: (principal: Principal, conversationId: string, query?: ConversationWindowQuery) =>
       port.getConversation(principal, conversationId, normalizeConversationWindow(query)),
     createConversation: (principal: Principal, projectId: string, command: SendMessageCommand) =>

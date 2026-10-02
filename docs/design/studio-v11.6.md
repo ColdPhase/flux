@@ -30,6 +30,32 @@ and pending writes survive navigation/pane changes. Preserve historical results,
 decisions and useful #44 journeys with no AI. The design should be learnable from
 ordinary use; expose one primary action and reveal advanced details on demand.
 
+### One project conversation — UI116-1 clarification
+
+**2026-10-02, founder direction (Hubert).** A project has one Conversation: a
+single chronological stream with no mandatory topic, where replies sit with the
+message they answer in one flat thread. This follows the 11.6 prototype: its About
+dialog (“Jedna rozmowa projektu, bez obowiązkowych tematów”; “Odpowiedzi przy
+wiadomości, bez nieskończonych podwątków”), its empty state (“Napisz myśl. Nie
+potrzebujesz tematu ani gotowego planu.”) and its reply drawer (“Odpowiedz na tę
+konkretną myśl. Bez zakładania tematu.”). It replaces the #117 list of separately
+started conversations under the open project in the sidebar and its “New
+conversation” control. The founder's condition: the flow must not break and must
+stay intuitive and connected.
+
+The stored model is unchanged. Each existing conversation is one root message
+(sequence 1) in the project stream; its later messages are that root's one-level
+thread. There is no migration, rewrite or loss of history. The main composer
+starts a root with the existing start command; the thread drawer (a side panel on
+desktop, a full-screen sheet on the phone) replies with the existing reply
+command. Existing conversation URLs and message anchors open the stream at that
+root with its thread open. The personal assistant is asked from a thread and
+answers there. UI116-3 task notices join this stream when that slice lands.
+
+Reconsider if people cannot find or follow earlier discussions in one stream in
+observed use, if root volume makes the stream unreadable without filtering, or if
+UI116-3 needs a different root model.
+
 ## Agents as a view of existing work — UI116-2
 
 Show each connection with client/name, owner and truthful current state, including
