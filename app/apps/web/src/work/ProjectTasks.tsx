@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
-import type { Decision, Project, WorkItem, WorkResult } from '@flux/contracts';
+import type { Decision, Project, ProactiveComparisonOutcome, WorkItem, WorkResult } from '@flux/contracts';
 import { Button, EmptyState, Icon } from '../ui';
 import { getProject } from '../app/conversation-api';
 import { useShellActions } from '../app/shellContext';
@@ -8,14 +8,19 @@ import { useShellData } from '../app/data';
 import { useReadingPosition } from '../app/drafts';
 import { createWork, type ProjectWork } from './api';
 import { useProjectShell } from '../project/data';
+import { ProjectProposals } from '../project/ProjectProposals';
+import { listComparisonOutcomes } from '../project/proposals';
 import { STATUS_LABEL, isFinished, linked, shortDate } from './format';
 import './work.css';
 
-interface TasksData { project: Project }
+interface TasksData { project: Project; outcomes: ProactiveComparisonOutcome[] }
 
 /** Work, decisions and results come with the project's parent route (#117). */
 export async function projectTasksLoader({ params, request }: LoaderFunctionArgs): Promise<TasksData> {
-  return { project: await getProject(params.projectId!, request.signal) };
+  const [project, outcomes] = await Promise.all([
+    getProject(params.projectId!, request.signal), listComparisonOutcomes(params.projectId!, request.signal),
+  ]);
+  return { project, outcomes };
 }
 
 function Group({ id, title, count, children }: { id: string; title: string; count: number; children: ReactNode }) {
@@ -107,8 +112,9 @@ const dot = (kind: string) => <span className={`ws-dot ws-dot--${kind}`} />;
 
 /** The project's Tasks tab: committed work, the rules it follows and what was learned. */
 export function ProjectTasks() {
-  const { project } = useLoaderData() as TasksData;
-  const lists: ProjectWork = useProjectShell()?.work ?? { work: [], decisions: [], results: [] };
+  const { project, outcomes } = useLoaderData() as TasksData;
+  const shell = useProjectShell();
+  const lists: ProjectWork = shell?.work ?? { work: [], decisions: [], results: [] };
   const { openDetails } = useShellActions();
   const revalidator = useRevalidator();
   const writable = project.access !== 'viewer';
@@ -124,6 +130,7 @@ export function ProjectTasks() {
   // instant and does not reload the project, and back/forward or a shared link restore it.
   const fromUrl = () => ({ project: project.id, status: isGroup(search.get('status')) ? search.get('status') as GroupId : null, mine: search.get('show') === 'mine' });
   const [stored, setViewState] = useState(fromUrl);
+  const jumpId = useRef<string | null>(null);
   // The route stays mounted when another project's Tasks opens: that project starts from its URL.
   const view = stored.project === project.id ? stored : fromUrl();
   const { status, mine } = view;
@@ -140,6 +147,14 @@ export function ProjectTasks() {
     // `routerSearch`: a router navigation on this page (e.g. dropping `?open=`) would drop the view.
   }, [project.id, viewSearch, status, mine, routerSearch]);
   const setView = (next: { status?: GroupId | null; mine?: boolean }) => setViewState({ ...view, ...next });
+  // Outcome links refer to the whole project's work/results. Restore All before
+  // scrolling, since a saved status/mine filter can hide their destination.
+  const jumpToSection = (id: string) => { jumpId.current = id; setView({ status: null, mine: false }); };
+  useEffect(() => {
+    if (!jumpId.current) return;
+    document.getElementById(jumpId.current)?.scrollIntoView({ block: 'start' });
+    jumpId.current = null;
+  }, [view]);
 
   // `?open=work:<id>` (a doc reference opened in a new tab, #112) opens that object's details.
   const open = search.get('open');
@@ -188,7 +203,8 @@ export function ProjectTasks() {
   const openDecision = (item: Decision) => () => openDetails({ kind: 'decision', id: item.id });
   const openResult = (item: WorkResult) => () => openDetails({ kind: 'result', id: item.id });
   const workRow = (item: WorkItem, muted = false) => <Row key={item.id} icon={dot(item.parked ? 'parked' : item.status)} title={item.title} sub={workSub(item, lists)} right={item.owner ? <span className="ws-av" aria-hidden="true">{item.owner.name.slice(0, 1)}</span> : null} onOpen={openWork(item)} muted={muted} />;
-  const nothing = !lists.work.length && !lists.decisions.length && !lists.results.length;
+  const nothing = !lists.work.length && !lists.decisions.length && !lists.results.length
+    && !outcomes.some((outcome) => outcome.kind === 'comparison' ? outcome.proposal.status === 'proposed' : outcome.status === 'open');
 
   return (
     <div className="pane-scroll" ref={scroller}>
@@ -208,6 +224,14 @@ export function ProjectTasks() {
           </EmptyState></div>
         ) : null}
 
+        <ProjectProposals outcomes={outcomes} people={shell?.people ?? null} projectName={project.name}
+          resultTitles={new Map(lists.results.map((result) => [result.id, result.title]))}
+          workCount={lists.work.length} resultCount={lists.results.length}
+          workJumpId={lists.work.some((item) => !item.parked && item.status === 'in_progress') ? 'g-progress' : lists.work.some((item) => !item.parked && item.status === 'blocked') ? 'g-blocked' : lists.work.some((item) => !item.parked && item.status === 'open') ? 'g-open' : lists.work.some((item) => item.parked && !isFinished(item)) ? 'g-parked' : 'g-finished'}
+          jumpToSection={jumpToSection}
+          writable={writable} refresh={() => revalidator.revalidate()}
+          openResult={(id) => openDetails({ kind: 'result', id })}
+          openWork={(item) => openDetails({ kind: 'work', id: item.id })} />
         {!nothing ? <TaskViews counts={counts} status={status} mine={mine} writable={writable} onStatus={(next) => setView({ status: next })} onMine={(next) => setView({ mine: next })} /> : null}
         {!nothing && (status ? !counts[status] : !Object.values(counts).some(Boolean)) ? (
           <p className="ws-none" role="status">

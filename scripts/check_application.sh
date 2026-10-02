@@ -12,6 +12,10 @@ export FLUX_PORT="${FLUX_TEST_PORT:-18089}"
 export FLUX_MAILPIT_PORT="${FLUX_TEST_MAILPIT_PORT:-18025}"
 export FLUX_PUBLIC_ORIGIN="http://127.0.0.1:${FLUX_PORT}"
 export FLUX_AUTH_SECRET="auth-test-$$-$(date +%s)-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+background_secret_dir=$(mktemp -d)
+head -c 32 /dev/urandom > "$background_secret_dir/background_key"
+chmod 0444 "$background_secret_dir/background_key"
+export FLUX_BACKGROUND_KEY_HOST_FILE="$background_secret_dir/background_key"
 export FLUX_SMTP_URL="smtp://mailpit:1025"
 export FLUX_MAIL_FROM="Flux <flux@example.test>"
 # The suite signs in many times from one address; rate limiting is covered separately.
@@ -28,8 +32,15 @@ cleanup() {
   fi
   $compose down -v || true
   remove_project_images
+  chmod 0600 "$background_secret_dir/background_key"
+  unlink "$background_secret_dir/background_key"
+  rmdir "$background_secret_dir"
 }
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+# An interruption ends the run; do not resume checks after cleanup removed their stack.
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 run_browser() {
   if [ -n "${FLUX_E2E_EVIDENCE_DIR:-}" ]; then
@@ -57,6 +68,10 @@ if [ -z "$FLUX_VAPID_PUBLIC_KEY" ] || [ -z "$FLUX_VAPID_PRIVATE_KEY" ]; then
 fi
 
 $compose run --rm test
+if $compose logs --no-color api | grep -F 'owner-budget-key-' >/dev/null; then
+  echo 'Background provider key appeared in API logs' >&2
+  exit 1
+fi
 
 # Service worker registration, offline fallback and the update prompt in Chromium over HTTPS.
 run_browser e2e
@@ -69,6 +84,12 @@ run_browser -e DATABASE_URL="postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5
 
 # A saved blocker, a published result and a public handoff reach the task conversation (#154).
 run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/task-contribution-effects.e2e.ts
+
+# A seeded project proposal must remain editable, dismissible and usable through the actual UI.
+# The fixture bypasses rule activation, which stays unavailable until #58 runtime gates pass.
+$compose run --rm test pnpm exec tsx tests/app/seed-proactive-ui.ts
+$compose run --rm test pnpm exec tsx tests/app/seed-proactive-outcomes-ui.ts
+$compose run --rm e2e node_modules/.bin/tsx --test --test-concurrency=1 tests/app/e2e/proactive-comparison.e2e.ts tests/app/e2e/proactive-outcomes.e2e.ts
 
 # Criteria, prerequisites and plan revision in the real task details, with the unmet-prerequisite refusal (#152).
 run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/task-plan.e2e.ts

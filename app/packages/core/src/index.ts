@@ -81,6 +81,13 @@ export async function createSample(principal: Principal, command: SampleCommand,
 export * from './push/index.js';
 export * from './notifications/index.js';
 export { policySourceReader } from './access/source-reader.js';
+export * from './proactive-comparison/rules.js';
+export * from './proactive-comparison/connections.js';
+export * from './proactive-comparison/reservation.js';
+export * from './proactive-comparison/dispatch.js';
+export * from './proactive-comparison/outcomes.js';
+export * from './proactive-comparison/scheduling.js';
+export * from './proactive-comparison/recovery.js';
 export * from './search/index.js';
 export * from './personal-runs/index.js';
 export * from './task-discussions/ports.js';
@@ -90,3 +97,4 @@ export { policyPersonalRunAccess } from './access/personal-run-access.js';
 export * from './agent-connection/execution.js';
 export * from './agent-connection/grants.js';
 export * from './agent-connection/orientation.js';
+export * from './agent-connection/playbook.js';

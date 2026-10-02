@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { AGENT_SOURCE_KINDS, type AgentBootstrap, type AgentSourceCheckpoint } from '@flux/contracts';
-import { agentOrientationUseCases, agentSourcePage, getProject, type Database } from '@flux/core';
-import { agentExecutionRows, agentOrientationRows } from '@flux/db';
+import { agentOrientationUseCases, agentSourcePage, coworkPlaybookReference, getProject, type Database } from '@flux/core';
+import { agentExecutionRows, agentOrientationRows, agentPlaybookRows } from '@flux/db';
 import { withAgentConnection, type FluxMcpClaims } from './context.js';
 import { agentRuntimeInTransaction } from './runtime.js';
 import type { AgentToolRegistry } from './tool-registry.js';
@@ -19,7 +19,7 @@ const checkpoint = z.discriminatedUnion('kind', [
 export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, claims: FluxMcpClaims) {
   const read = tools.forScope('flux.context.read');
   read.registerTool('flux_bootstrap', { title: 'Recover authenticated project context',
-    description: 'Recover the original server runtime, current project and bounded grants/tool catalog. Missing instruction, policy, coordination and repository providers are explicit setup gaps; this does not prove instruction loading or grant action authority.',
+    description: 'Recover the original server runtime, current project, bounded grants/tool catalog and the trusted co-work playbook version. Missing policy, coordination and repository providers are explicit setup gaps; this does not prove instruction loading or grant action authority.',
     inputSchema: z.strictObject({ clientSessionId: z.uuid(), projectId: z.uuid(), grantLimit: page.limit.optional(), grantOffset: page.offset.optional() }),
     annotations: { readOnlyHint: true, idempotentHint: true } }, async ({ clientSessionId, projectId, grantLimit, grantOffset }) => {
     try {
@@ -30,15 +30,21 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
         const observedAt = await rows.now();
         const grants = await rows.liveProjectGrants(runtime.ownerUserId, runtime.connectionId, projectId, observedAt,
           agentSourcePage({ limit: grantLimit, offset: grantOffset }));
-        // Trusted adapters are not yet handed off by #160/#153/#74. No client input or wiki prose fills their fields.
+        // The playbook is #160's server-owned bundle; #153/#74 and policy providers are not yet handed off.
+        // No client input or wiki prose fills these fields.
+        const playbook = coworkPlaybookReference();
+        const acknowledged = await agentPlaybookRows(tx).acknowledgment(runtime.id);
+        const current = !!acknowledged && acknowledged.bundleId === playbook.bundleId && acknowledged.version === playbook.version
+          && acknowledged.digest === playbook.digest;
         const result: AgentBootstrap = { contractVersion: 1, observedAt: observedAt.toISOString(), runtime,
           project: { id: project.id, workspaceId: project.workspaceId, name: project.name }, grants,
           capabilities: tools.capabilities(runtime.scopes),
-          trusted: { playbook: null, approvedPolicy: null, coordination: null, repositoryReferences: null },
-          gaps: ['trusted_playbook_unavailable', 'approved_policy_unavailable', 'coordination_unavailable',
+          trusted: { playbook, approvedPolicy: null, coordination: null, repositoryReferences: null },
+          playbookAcknowledgment: acknowledged ? { ...acknowledged, current } : null,
+          gaps: ['approved_policy_unavailable', 'coordination_unavailable',
             'verified_repository_context_unavailable', 'goal_plan_classification_unavailable', 'dependency_index_unavailable'],
           readiness: { state: 'pending', meaning: 'server_context_available_only' },
-          coverage: { projectIndex: 'bounded_canonical_metadata', changesSince: 'supplied_references_only', instructionLoading: 'unverified', modelObedience: 'unverified' } };
+          coverage: { projectIndex: 'bounded_canonical_metadata', changesSince: 'supplied_references_only', instructionLoading: current ? 'client_acknowledged' : 'unverified', modelObedience: 'unverified' } };
         return result;
       });
       return toolResult(value);
