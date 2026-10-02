@@ -319,7 +319,7 @@ class LiveJourney(LiveBase):
 
         # AC-2: navigation keeps one connection; showing a doc does not move anybody.
         tabs = nia.get_by_role("navigation", name="Project views")
-        tabs.get_by_role("link", name=re.compile("^Docs")).click()
+        tabs.get_by_role("link", name=re.compile("^Wiki")).click()
         nia.get_by_role("link", name=re.compile(DOC)).click()
         expect(nia.get_by_role("heading", name=DOC, level=2)).to_be_visible()
         expect(self.bar(nia)).to_be_visible()

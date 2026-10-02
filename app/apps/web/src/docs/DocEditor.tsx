@@ -1,38 +1,29 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Link, useLoaderData, useNavigate, type LoaderFunctionArgs } from 'react-router';
-import { DOC_LIMITS, docRef, type Doc, type DocState, type Project } from '@flux/contracts';
+import { DOC_LIMITS, docRef, type Doc } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Button, Icon, useMediaQuery } from '../ui';
-import { getProject } from '../app/conversation-api';
 import { useShellData } from '../app/data';
 import { createDoc, docUrl, getDoc, previewDoc, updateDoc } from './api';
 import { diffDocs, readableRefs, type DiffRow } from './diff';
+import { draftKey, keep, readKept, type Fields, type Kept } from './drafts';
 import { STATE_LABEL, longDate } from './format';
 import { LinkPicker, type PickedRef } from './LinkPicker';
+import { WikiBar } from './WikiParts';
+import { useWiki } from './wiki-context';
 import './docs.css';
 
 // The doc editor (#112): Markdown with a server-rendered preview, a link picker for objects of
 // the project and keyboard shortcuts. A save sends If-Match with the version the editor started
 // from; when someone saved in between, the text is kept and the person chooses what to do.
-// Unsaved text survives a reload in this tab.
+// Unsaved text survives a reload in this tab. It sits in the wiki's document pane (#136).
 
-interface EditData { project: Project; doc: Doc | null }
+interface EditData { doc: Doc | null }
 
 export async function docEditLoader({ params, request }: LoaderFunctionArgs): Promise<EditData> {
-  const project = await getProject(params.projectId!, request.signal);
   const doc = params.docId ? await getDoc(params.docId, request.signal) : null;
-  if (doc && doc.projectId !== project.id) throw new Response('Not found', { status: 404 });
-  return { project, doc };
-}
-
-interface Fields { title: string; body: string; state: DocState; reason: string }
-interface Kept extends Fields { base: number }
-
-function readKept(key: string): Kept | null {
-  try { const raw = sessionStorage.getItem(key); return raw ? JSON.parse(raw) as Kept : null; } catch { return null; }
-}
-function keep(key: string, value: Kept | null) {
-  try { if (value) sessionStorage.setItem(key, JSON.stringify(value)); else sessionStorage.removeItem(key); } catch { /* private mode */ }
+  if (doc && doc.projectId.toLowerCase() !== (params.projectId ?? '').toLowerCase()) throw new Response('Not found', { status: 404 });
+  return { doc };
 }
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform);
@@ -55,11 +46,12 @@ function ChangeList({ title, rows }: { title: string; rows: DiffRow[] }) {
 }
 
 export function DocEditor() {
-  const { project, doc } = useLoaderData() as EditData;
+  const { doc } = useLoaderData() as EditData;
+  const { project } = useWiki();
   const { me } = useShellData();
   const navigate = useNavigate();
   const wide = useMediaQuery('(min-width: 1280px)');
-  const storageKey = `flux:doc-edit:${me.user.id}:${doc?.id ?? `new:${project.id}`}`;
+  const storageKey = draftKey(me.user.id, doc?.id ?? null, project.id);
   const initial = useMemo<Kept>(() => readKept(storageKey) ?? {
     title: doc?.title ?? '', body: doc?.body ?? '', state: doc?.state ?? 'draft', reason: '', base: doc?.version ?? 0,
     // Only the first render reads storage; later renders keep the editor's own state.
@@ -119,7 +111,7 @@ export function DocEditor() {
   async function save(event?: FormEvent) {
     event?.preventDefault();
     if (busy) return;
-    if (!fields.title.trim()) { setError('Give the doc a title.'); return; }
+    if (!fields.title.trim()) { setError('Give the page a title.'); return; }
     setBusy(true); setError('');
     try {
       const command = { title: fields.title.trim(), body: fields.body, state: fields.state, ...(fields.reason.trim() ? { reason: fields.reason.trim() } : {}) };
@@ -130,8 +122,8 @@ export function DocEditor() {
       if (cause instanceof ApiError && cause.code === 'VERSION_CONFLICT') {
         const latest = (cause.body as { current?: Doc } | null)?.current ?? null;
         setConflict(latest); setShowTheirs(false); setAttempt(crypto.randomUUID());
-      } else if (cause instanceof ApiError && cause.status === 403) setError('You can read this project but not change its docs.');
-      else if (cause instanceof ApiError && cause.status === 404) setError('This doc is no longer available to you.');
+      } else if (cause instanceof ApiError && cause.status === 403) setError('You can read this project but not change its pages.');
+      else if (cause instanceof ApiError && cause.status === 404) setError('This page is no longer available to you.');
       else setError(cause instanceof Error ? `${cause.message}. Your text is kept; try again.` : 'Could not save. Your text is kept; try again.');
     } finally { setBusy(false); }
   }
@@ -161,10 +153,10 @@ export function DocEditor() {
   const back = doc ? docUrl(project.id, doc.id) : `/projects/${project.id}/docs`;
 
   return (
-    <div className="pane-scroll">
-      <form className={`pane-in doc-edit${mode === 'both' ? ' doc-edit--both' : ''}`} data-shift onSubmit={(event) => void save(event)} onKeyDown={onKey} aria-labelledby={titleId}>
-        <nav className="doc-crumb" aria-label="Breadcrumb"><Link to={back}><Icon name="chevron-left" size={14} />{doc ? doc.title : 'Docs'}</Link></nav>
-        <p className="doc-head__k">{doc ? <>Editing version {base} · a save makes version {base + 1}</> : 'New doc'} · everyone in {project.name} can read it</p>
+    <>
+      <WikiBar meta={<span className="doc-head__k">{doc ? <>Editing version {base} · a save makes version {base + 1}</> : 'New page'}</span>} />
+      <form className={`wiki-doc doc-edit${mode === 'both' ? ' doc-edit--both' : ''}`} data-shift onSubmit={(event) => void save(event)} onKeyDown={onKey} aria-labelledby={titleId}>
+        <p className="wiki-doc__crumb"><Icon name="lock" size={12} /><span>Everyone in {project.name} can read it</span></p>
         {restored ? <p className="doc-notice"><Icon name="undo" size={14} />Your unsaved text from earlier is back.</p> : null}
 
         {conflict ? (
@@ -205,7 +197,7 @@ export function DocEditor() {
             <div className="doc-edit__write">
               <label className="ui-vh" htmlFor={bodyId}>Text (Markdown)</label>
               <textarea id={bodyId} ref={textRef} className="doc-edit__text" value={fields.body} maxLength={DOC_LIMITS.body} spellCheck
-                placeholder={'Write in Markdown: ## Heading, **bold**, - list, [link](https://…)\nUse Link to refer to a decision, result or another doc.'}
+                placeholder={'Write in Markdown: ## Heading, **bold**, - list, [link](https://…)\nUse Link to refer to a decision, result or another page.'}
                 onChange={(event) => edit({ body: event.target.value })} autoFocus={!!doc} />
             </div>
           ) : null}
@@ -230,12 +222,12 @@ export function DocEditor() {
           </div>
           <div className="doc-edit__acts">
             <Link className="ui-btn ui-btn--quiet" to={back} onClick={() => keep(storageKey, null)}>Cancel</Link>
-            <Button type="submit" variant="primary" busy={busy} disabled={!!conflict || (!!doc && !dirty)} aria-keyshortcuts={isMac ? 'Meta+S' : 'Control+S'}>{doc ? 'Save version' : 'Create doc'}</Button>
+            <Button type="submit" variant="primary" busy={busy} disabled={!!conflict || (!!doc && !dirty)} aria-keyshortcuts={isMac ? 'Meta+S' : 'Control+S'}>{doc ? 'Save version' : 'Create page'}</Button>
           </div>
         </div>
         {error ? <p className="doc-error" role="alert">{error}</p> : null}
-        <p className="doc-muted doc-edit__foot">Earlier versions never change. {fields.state === 'draft' ? 'A draft is visible to the project too; publishing marks it as ready.' : 'Published docs are marked as ready to rely on.'}</p>
+        <p className="doc-muted doc-edit__foot">Earlier versions never change. {fields.state === 'draft' ? 'A draft is visible to the project too; publishing marks it as ready.' : 'Published pages are marked as ready to rely on.'}</p>
       </form>
-    </div>
+    </>
   );
 }

@@ -24,7 +24,7 @@ async function candidates(projectId: string, workspaceId: string, selfId: string
   const recent = await Promise.all(threads.slice(0, 3).map((thread) => getConversation(thread.id, signal).catch(() => null)));
   const line = (text: string) => { const first = text.trim().split('\n', 1)[0] ?? ''; return first.length > 90 ? `${first.slice(0, 89)}…` : first; };
   return [
-    ...docs.filter((doc) => doc.id !== selfId).map((doc) => ({ type: 'doc' as const, id: doc.id, title: doc.title, hint: doc.state === 'draft' ? 'Draft doc' : 'Doc' })),
+    ...docs.filter((doc) => doc.id !== selfId).map((doc) => ({ type: 'doc' as const, id: doc.id, title: doc.title, hint: doc.state === 'draft' ? 'Draft page' : 'Page' })),
     ...work.decisions.map((item) => ({ type: 'decision' as const, id: item.id, title: item.title, hint: item.status === 'accepted' ? 'Current rule' : item.status === 'proposed' ? 'Proposed decision' : 'Earlier rule' })),
     ...work.results.map((item) => ({ type: 'result' as const, id: item.id, title: item.title, hint: item.finding === 'negative' ? 'Negative result' : 'Positive result' })),
     ...work.work.map((item) => ({ type: 'work' as const, id: item.id, title: item.title, hint: 'Work' })),

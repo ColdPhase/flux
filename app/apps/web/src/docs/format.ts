@@ -8,7 +8,7 @@ export const longDate = (iso: string) => stamp.format(new Date(iso));
 export const STATE_LABEL: Record<DocState, string> = { draft: 'Draft', published: 'Published' };
 
 const KIND: Record<string, string> = {
-  doc: 'Doc', work: 'Work', decision: 'Decision', result: 'Result', message: 'Message', thought: 'Thought', sketch: 'Sketch', material: 'Material',
+  doc: 'Page', work: 'Work', decision: 'Decision', result: 'Result', message: 'Message', thought: 'Thought', sketch: 'Sketch', material: 'Material',
 };
 export const kindLabel = (type: string) => KIND[type] ?? type;
 
