@@ -213,7 +213,7 @@ class AiConnectionSettings(unittest.TestCase):
         expect(guide).to_contain_text("codex mcp login flux")
         shot(page, "ai-connection-1440-connect-guide")
         page.goto("/settings/assistant")
-        expect(page.get_by_role("heading", name="Your assistant", exact=True)).to_be_visible()
+        expect(page.get_by_role("heading", level=1, name="Your assistant")).to_be_visible()
         self.assertNotIn("Anthropic API key", page.locator("body").inner_text())
 
 

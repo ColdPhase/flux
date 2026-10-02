@@ -30,7 +30,7 @@ function failure(error: unknown) {
   if (error instanceof ApiError) {
     if (error.code === 'BACKGROUND_KEY_CUSTODY_UNAVAILABLE') return 'This server cannot store background credentials yet. Contact its operator.';
     // Provider, model, endpoint and price refusals carry a safe, specific reason.
-    if (error.status === 400 && error.code?.startsWith('AI_')) return `${error.message}. The key was cleared; enter it again.`;
+    if (error.status === 400 && error.code?.startsWith('AI_')) return `${error.message.replace(/\.$/, '')}. The key was cleared; enter it again.`;
     if (error.status === 401) return 'Your session ended. Sign in again before changing the connection.';
     if (error.status === 404) return 'This connection is no longer available. Reload to see your current connection.';
     if (error.status === 400) return 'Flux could not accept these values. The key was cleared; enter it again, then check the organization, workspace, allowance and confirmations.';

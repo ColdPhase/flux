@@ -319,16 +319,24 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     assert.deepEqual([(await row(paused.run.id)).status, (await row(revoked.run.id)).status], ['paused', 'revoked']);
     assert.equal(compute.dispatched.length, dispatchedBefore + 1, 'none of them reached the provider');
 
-    // Capped at invoke and at dispatch; the cap counts reservations as well as observed usage.
+    // A run reserves its largest possible cost at the connection's price (F-020 PROV-3): at the
+    // table price of the fake connection's model that is the nominal maximum of O-008 §3.
+    compute.respond = async () => ({ kind: 'completed', stopReason: 'end_turn', text: 'Fact: long answer [S1]', usage: { inputTokens: 16_000, outputTokens: 1_500 } });
+    const nominal = await ask(hubert);
+    assert.equal(await processor.process(nominal.run.id), 'completed');
+    assert.deepEqual([(await row(nominal.run.id)).reserved_micros, (await row(nominal.run.id)).charged_micros], [47_000, 47_000],
+      'the nominal maximum of O-008 §3 is both the reservation and the largest charge');
+
+    // Capped at invoke and at dispatch; the cap counts reservations as well as observed usage. The
+    // spend so far includes the nominal run, so the cap below is above the 10-cent minimum.
     const spend = (await runs.status(human(hubert))).today!;
     const used = spend.chargedMicros + spend.reservedMicros;
-    const cap = Math.max(10, Math.ceil((used + 60_000) / 10_000));
+    const cap = Math.ceil((used + 47_000) / 10_000);
     let status = await runs.status(human(hubert));
     await runs.update(human(hubert), { dailyCapCents: cap }, status.enablement!.version);
-    compute.respond = async () => ({ kind: 'completed', stopReason: 'end_turn', text: 'Fact: long answer [S1]', usage: { inputTokens: 16_000, outputTokens: 1_500 } });
     const heavy = await ask(hubert);
     assert.equal(await processor.process(heavy.run.id), 'completed');
-    assert.equal((await row(heavy.run.id)).charged_micros, 47_000, 'the nominal maximum of O-008 §3');
+    assert.equal((await row(heavy.run.id)).charged_micros, 47_000);
     compute.respond = echo;
     const rowsBefore = await runCount(hubert.id);
     await assert.rejects(ask(hubert), { code: 'PERSONAL_RUN_CAPPED' });
@@ -386,7 +394,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     const mine = await ask(maurycy, 'What did the ToF test show?');
     assert.equal(await processor.process(mine.run.id), 'completed');
     const request = compute.dispatched.at(-1)!;
-    assert.deepEqual(request.connection, { id: maurycyConnection, keyRef: `test-key-ref-${maurycyConnection}` });
+    assert.deepEqual(request.connection, { id: maurycyConnection, keyRef: `test-key-ref-${maurycyConnection}`, provider: 'anthropic', baseUrl: null });
     const stored = await pool.query('SELECT owner_user_id, agent_id, connection_id FROM personal_runs WHERE id = $1', [mine.run.id]);
     assert.deepEqual(stored.rows[0], { owner_user_id: maurycy.id, agent_id: agents.maurycy, connection_id: maurycyConnection });
     assert.deepEqual((await runs.status(human(hubert))).today, hubertBefore);
