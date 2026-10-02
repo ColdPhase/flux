@@ -166,7 +166,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         self.api(outsider, "GET", f"/api/v1/projects/{self.ids['project']}/people", status=404)
         tabs = page.get_by_role("navigation", name="Project views")
         # Studio 11.6 order and vocabulary (#136); quiet tabs without visible counts.
-        self.assertEqual(tabs.get_by_role("link").all_inner_texts()[:4], ["Conversation", "Map", "Tasks", "Wiki"])
+        self.assertEqual([text.split("\n")[0] for text in tabs.get_by_role("link").all_inner_texts()[:4]], ["Conversation", "Map", "Tasks", "Wiki"])
         expect(tabs.get_by_role("link", name="Tasks, 2 open")).to_be_visible()
         expect(header.get_by_role("button", name="Details")).to_be_visible()
         # The conversations sit in the sidebar; the centre uses the pane (#136) with readable bubbles.

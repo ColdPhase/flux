@@ -264,7 +264,8 @@ class ThemeAccentsJourney(unittest.TestCase):
                     shot(page, f"accent-{theme.lower()}-{family.lower()}-conversation-1440")
                     pop = self.account(page)
                     samples = page.locator(".me-accent__sample").evaluate_all("els => els.map(e => getComputedStyle(e).backgroundColor)")
-                    expected = ["rgb(36, 115, 88)", "rgb(44, 96, 155)", "rgb(152, 80, 53)"] if theme == "Light" else ["rgb(142, 216, 184)", "rgb(148, 188, 243)", "rgb(219, 168, 140)"]
+                    # Studio 11.6 measured family values (#136): Mint #28664f/#91c9b3, Sky #345f93/#9bb7e1, Copper #985035/#dba88c.
+                    expected = ["rgb(40, 102, 79)", "rgb(52, 95, 147)", "rgb(152, 80, 53)"] if theme == "Light" else ["rgb(145, 201, 179)", "rgb(155, 183, 225)", "rgb(219, 168, 140)"]
                     self.assertEqual(samples, expected, "each named sample keeps its own family regardless of the active choice")
                     self.measure(page, theme, family, f'[data-accent-option="{family.lower()}"]')
                     selected = pop.get_by_role("radio", name=family, exact=True)
