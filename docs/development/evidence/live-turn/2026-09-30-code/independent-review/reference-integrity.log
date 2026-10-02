@@ -1,0 +1,65 @@
+{
+  "observedOriginalPixels": [
+    {
+      "suffix": "decoded-natural",
+      "width": 2560,
+      "height": 1440,
+      "boxes": [
+        {
+          "label": "title",
+          "inkLeft": 513,
+          "inkRight": 891,
+          "inkWidth": 379
+        },
+        {
+          "label": "first 14px code row",
+          "inkLeft": 65,
+          "inkRight": 453,
+          "inkWidth": 389
+        },
+        {
+          "label": "first 16px terminal row",
+          "inkLeft": 1345,
+          "inkRight": 1718,
+          "inkWidth": 374
+        }
+      ],
+      "backgroundRgb": [
+        0,
+        9,
+        24
+      ]
+    },
+    {
+      "suffix": "source-natural",
+      "width": 2560,
+      "height": 1440,
+      "boxes": [
+        {
+          "label": "title",
+          "inkLeft": 513,
+          "inkRight": 981,
+          "inkWidth": 469
+        },
+        {
+          "label": "first 14px code row",
+          "inkLeft": 65,
+          "inkRight": 530,
+          "inkWidth": 466
+        },
+        {
+          "label": "first 16px terminal row",
+          "inkLeft": 1345,
+          "inkRight": 1793,
+          "inkWidth": 449
+        }
+      ],
+      "backgroundRgb": [
+        16,
+        24,
+        39
+      ]
+    }
+  ],
+  "limitation": "Ink extents establish raster/reference difference only; no transport/codec cause or readability threshold is inferred."
+}

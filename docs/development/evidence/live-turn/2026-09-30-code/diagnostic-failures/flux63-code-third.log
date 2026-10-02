@@ -1,0 +1,932 @@
+TURN visual evidence directory: /tmp/flux63-code-third
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 2.81kB done
+#1 DONE 0.1s
+
+#2 [internal] load metadata for mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#3 DONE 0.0s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 185B done
+#4 DONE 0.1s
+
+#5 [build 1/6] FROM docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#5 DONE 0.0s
+
+#6 [e2e 1/3] FROM mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+#6 DONE 0.0s
+
+#7 [internal] load build context
+#7 transferring context: 197.66kB 0.0s done
+#7 DONE 0.1s
+
+#8 [build 2/6] WORKDIR /app
+#8 CACHED
+
+#9 [build 3/6] RUN corepack enable && corepack install -g pnpm@12.6.0
+#9 CACHED
+
+#10 [build 4/6] COPY . .
+#10 DONE 0.4s
+
+#11 [build 5/6] RUN pnpm install --frozen-lockfile
+#11 0.406 Downloading the pnpm 12.6.0 binary for linux-x64...
+#11 6.835 Scope: all 10 workspace projects
+#11 6.856 ? Verifying lockfile against supply-chain policies (482 entries)...
+#11 7.504 Packages are hard linked from the content-addressable store to the virtual store.
+#11 7.504   Content-addressable store is at: /root/.local/share/pnpm/store/v11
+#11 7.504   Virtual store is at:             node_modules/.pnpm
+#11 7.916 Update available! 12.6.0 → 12.8.1.
+#11 7.916 Changelog: https://pnpm.io/v/12.8.1
+#11 7.916 To update, run: curl -fsSL https://get.pnpm.io/install.sh | sh -
+#11 8.139 Downloading @rolldown/binding-linux-x64-musl@1.2.11: 0.00 B/7.92 MB
+#11 8.947 [WARN] Tarball download average speed 29 KiB/s (size 37 KiB) is below 50 KiB/s: https://registry.npmjs.org/ignore/-/ignore-7.0.10.tgz (GET)
+#11 9.298 [WARN] Tarball download average speed 4 KiB/s (size 9 KiB) is below 50 KiB/s: https://registry.npmjs.org/@jridgewell/resolve-uri/-/resolve-uri-3.1.2.tgz (GET)
+#11 9.376 [WARN] Tarball download average speed 9 KiB/s (size 18 KiB) is below 50 KiB/s: https://registry.npmjs.org/@typescript-eslint/type-utils/-/type-utils-8.44.1.tgz (GET)
+#11 9.472 [WARN] Tarball download average speed 8 KiB/s (size 15 KiB) is below 50 KiB/s: https://registry.npmjs.org/ajv-formats/-/ajv-formats-3.0.1.tgz (GET)
+#11 9.508 [WARN] Tarball download average speed 8 KiB/s (size 13 KiB) is below 50 KiB/s: https://registry.npmjs.org/debug/-/debug-4.4.3.tgz (GET)
+#11 9.588 [WARN] Tarball download average speed 7 KiB/s (size 13 KiB) is below 50 KiB/s: https://registry.npmjs.org/@babel/helper-module-imports/-/helper-module-imports-7.29.7.tgz (GET)
+#11 10.26 [WARN] Tarball download average speed 13 KiB/s (size 27 KiB) is below 50 KiB/s: https://registry.npmjs.org/pg/-/pg-8.23.0.tgz (GET)
+#11 10.78 [WARN] Tarball download average speed 30 KiB/s (size 43 KiB) is below 50 KiB/s: https://registry.npmjs.org/fast-uri/-/fast-uri-3.1.8.tgz (GET)
+#11 10.84 [WARN] Tarball download average speed 3 KiB/s (size 11 KiB) is below 50 KiB/s: https://registry.npmjs.org/flatted/-/flatted-3.4.4.tgz (GET)
+#11 11.02 [WARN] Tarball download average speed 8 KiB/s (size 30 KiB) is below 50 KiB/s: https://registry.npmjs.org/light-my-request/-/light-my-request-6.6.0.tgz (GET)
+#11 12.02 Progress: resolved 411, reused 0, downloaded 236, added 224
+#11 12.20 [WARN] Tarball download average speed 10 KiB/s (size 18 KiB) is below 50 KiB/s: https://registry.npmjs.org/browserslist/-/browserslist-4.29.1.tgz (GET)
+#11 13.21 Progress: resolved 411, reused 0, downloaded 316, added 288
+#11 13.34 [WARN] Tarball download average speed 6 KiB/s (size 13 KiB) is below 50 KiB/s: https://registry.npmjs.org/sdp-transform/-/sdp-transform-2.15.0.tgz (GET)
+#11 13.54 [WARN] Tarball download average speed 43 KiB/s (size 71 KiB) is below 50 KiB/s: https://registry.npmjs.org/jose/-/jose-5.10.0.tgz (GET)
+#11 13.63 [WARN] Tarball download average speed 6 KiB/s (size 9 KiB) is below 50 KiB/s: https://registry.npmjs.org/json-schema-ref-resolver/-/json-schema-ref-resolver-3.0.0.tgz (GET)
+#11 13.69 [WARN] Tarball download average speed 2 KiB/s (size 3 KiB) is below 50 KiB/s: https://registry.npmjs.org/fast-decode-uri-component/-/fast-decode-uri-component-1.0.1.tgz (GET)
+#11 14.04 [WARN] Tarball download average speed 49 KiB/s (size 148 KiB) is below 50 KiB/s: https://registry.npmjs.org/type-fest/-/type-fest-5.10.0.tgz (GET)
+#11 14.39 [WARN] Tarball download average speed 41 KiB/s (size 73 KiB) is below 50 KiB/s: https://registry.npmjs.org/@eslint/config-array/-/config-array-0.21.2.tgz (GET)
+#11 14.45 [WARN] Tarball download average speed 8 KiB/s (size 15 KiB) is below 50 KiB/s: https://registry.npmjs.org/minimist/-/minimist-1.2.8.tgz (GET)
+#11 14.71 [WARN] Tarball download average speed 5 KiB/s (size 21 KiB) is below 50 KiB/s: https://registry.npmjs.org/@eslint/core/-/core-0.17.0.tgz (GET)
+#11 14.93 [WARN] Tarball download average speed 9 KiB/s (size 32 KiB) is below 50 KiB/s: https://registry.npmjs.org/readable-stream/-/readable-stream-3.6.2.tgz (GET)
+#11 15.31 [WARN] Tarball download average speed 3 KiB/s (size 28 KiB) is below 50 KiB/s: https://registry.npmjs.org/esbuild/-/esbuild-0.18.20.tgz (GET)
+#11 16.11 [WARN] Tarball download average speed 0 KiB/s (size 6 KiB) is below 50 KiB/s: https://registry.npmjs.org/fast-json-stable-stringify/-/fast-json-stable-stringify-2.1.0.tgz (GET)
+#11 17.17 Downloading @rolldown/binding-linux-x64-musl@1.2.11: 3.86 MB/7.92 MB
+#11 17.72 [WARN] Tarball download average speed 2 KiB/s (size 13 KiB) is below 50 KiB/s: https://registry.npmjs.org/@humanfs/core/-/core-0.19.2.tgz (GET)
+#11 21.98 [WARN] Request took 13415ms: https://registry.npmjs.org/@typescript-eslint%2Futils
+#11 24.15 [WARN] Request took 14150ms: https://registry.npmjs.org/lightningcss-win32-arm64-msvc
+#11 24.15 ✓ Lockfile passes supply-chain policies (482 entries in 17.3s)
+#11 24.15 Lockfile is up to date, resolution step is skipped
+#11 47.47 [WARN] Tarball download average speed 40 KiB/s (size 1376 KiB) is below 50 KiB/s: https://registry.npmjs.org/react-dom/-/react-dom-19.3.0.tgz (GET)
+#11 47.59 Packages: +411
+#11 47.59 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#11 47.63 Progress: resolved 411, reused 0, downloaded 411, added 411, done
+#11 47.64 .../esbuild@0.18.20/node_modules/esbuild postinstall$ node install.js
+#11 47.64 .../esbuild@0.25.12/node_modules/esbuild postinstall$ node install.js
+#11 47.70 .../esbuild@0.25.12/node_modules/esbuild postinstall: Done
+#11 47.70 .../esbuild@0.18.20/node_modules/esbuild postinstall: Done
+#11 47.84 
+#11 47.84 dependencies:
+#11 47.84 + @flux/contracts link:packages/contracts
+#11 47.84 + @flux/core link:packages/core
+#11 47.84 + @flux/db link:packages/db
+#11 47.84 + pg-boss 12.35.0
+#11 47.84 
+#11 47.84 devDependencies:
+#11 47.84 + @eslint/js 9.37.0
+#11 47.84 + @types/node 24.6.2
+#11 47.84 + @types/nodemailer 8.0.2
+#11 47.84 + @types/pg 8.15.5
+#11 47.84 + @types/sanitize-html 2.16.1
+#11 47.84 + @types/ws 8.18.1
+#11 47.84 + drizzle-orm 0.45.3
+#11 47.84 + eslint 9.37.0
+#11 47.84 + eslint-plugin-react-hooks 7.1.1
+#11 47.84 + fastify 5.6.1
+#11 47.84 + playwright 1.63.0
+#11 47.84 + tsx 4.20.5
+#11 47.84 + typescript 5.9.2
+#11 47.84 + typescript-eslint 8.44.1
+#11 47.84 + ws 8.22.0
+#11 47.84 
+#11 47.85 Done in 41s using pnpm v12.6.0
+#11 DONE 47.9s
+
+#12 [build 6/6] RUN pnpm build && pnpm typecheck && pnpm lint
+#12 1.027 $ pnpm -r --if-present build && tsc -p infra/tsconfig.build.json
+#12 1.110 packages/contracts build$ tsc -p tsconfig.build.json
+#12 2.704 packages/contracts build: Done
+#12 2.704 apps/web build$ vite build
+#12 2.704 packages/db build$ tsc -p tsconfig.build.json
+#12 2.705 packages/sdk build$ tsc -p tsconfig.build.json
+#12 2.927 apps/web build: vite v8.3.1 building client environment for production...
+#12 2.939 apps/web build: transforming...
+#12 3.382 apps/web build: ✓ 250 modules transformed.
+#12 3.643 apps/web build: rendering chunks...
+#12 3.826 apps/web build: computing gzip size...
+#12 3.833 apps/web build: dist/index.html                                              1.21 kB │ gzip:   0.53 kB
+#12 3.833 apps/web build: dist/sw.js                                                   6.70 kB
+#12 3.833 apps/web build: dist/assets/inter-vietnamese-wght-normal-CBcvBZtf.woff2     10.25 kB
+#12 3.833 apps/web build: dist/assets/inter-greek-ext-wght-normal-DlzME5K_.woff2      11.23 kB
+#12 3.833 apps/web build: dist/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2       18.74 kB
+#12 3.833 apps/web build: dist/assets/inter-greek-wght-normal-CkhJZR-_.woff2          18.99 kB
+#12 3.833 apps/web build: dist/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2   25.96 kB
+#12 3.833 apps/web build: dist/assets/inter-latin-wght-normal-Dx4kXJAl.woff2          48.25 kB
+#12 3.833 apps/web build: dist/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2      85.06 kB
+#12 3.833 apps/web build: dist/assets/index-BHattIdx.css                             150.11 kB │ gzip:  26.62 kB
+#12 3.833 apps/web build: dist/assets/media-Nyeo--h0.js                              423.02 kB │ gzip: 109.78 kB
+#12 3.833 apps/web build: dist/assets/index-Bq5DKV5t.js                              732.95 kB │ gzip: 217.20 kB
+#12 3.833 apps/web build: 
+#12 3.834 apps/web build: [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "use client" in "../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js" may not be preserved when bundling.
+#12 3.834 apps/web build:     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m ../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js:11:1 [38;5;246m][0m
+#12 3.834 apps/web build:     [38;5;246m│[0m
+#12 3.834 apps/web build:  [38;5;246m11 │[0m "use client";
+#12 3.834 apps/web build:  [38;5;240m   │[0m ──────┬──────  
+#12 3.834 apps/web build:  [38;5;240m   │[0m       ╰──────── module level directive may not be preserved
+#12 3.834 apps/web build:  [38;5;240m   │[0m 
+#12 3.834 apps/web build:  [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+#12 3.834 apps/web build: [38;5;246m────╯[0m
+#12 3.834 apps/web build: 
+#12 3.834 apps/web build: [plugin builtin:vite-reporter] 
+#12 3.834 apps/web build: (!) Some chunks are larger than 500 kB after minification. Consider:
+#12 3.834 apps/web build: - Using dynamic import() to code-split the application
+#12 3.834 apps/web build: - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+#12 3.834 apps/web build: - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+#12 3.835 apps/web build: ✓ built in 907ms
+#12 3.866 apps/web build: Done
+#12 4.642 packages/sdk build: Done
+#12 5.641 packages/db build: Done
+#12 5.642 packages/core build$ tsc -p tsconfig.build.json
+#12 7.460 packages/core build: Done
+#12 7.460 packages/agent-runtime build$ tsc -p tsconfig.build.json
+#12 7.460 apps/server build$ tsc -p tsconfig.build.json
+#12 8.414 packages/agent-runtime build: Done
+#12 8.414 apps/worker build$ tsc -p tsconfig.build.json
+#12 9.390 apps/worker build: Done
+#12 10.44 apps/server build: Done
+#12 11.31 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#12 19.17 $ eslint .
+#12 DONE 27.4s
+
+#13 [e2e 2/3] WORKDIR /app
+#13 CACHED
+
+#14 [e2e 3/3] COPY --from=build /app /app
+#14 DONE 3.0s
+
+#15 exporting to image
+#15 exporting layers
+#15 exporting layers 3.3s done
+#15 writing image sha256:cbdf6f909704598bbea563fb0053c8078c02c27bb37098ff1b4b211015546c52 done
+#15 naming to docker.io/library/flux-e2e:flux-live-turn-1790762884-623302 0.0s done
+#15 DONE 3.4s
+ Image flux-live-sfu-test:flux-live-turn-1790762884-623302 Building 
+ Image flux-foundation:flux-live-turn-1790762884-623302 Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.32kB done
+#1 DONE 0.0s
+
+#2 [live-sfu-test internal] load build definition from live-sfu-tests.Dockerfile
+#2 transferring dockerfile: 691B done
+#2 DONE 0.1s
+
+#3 [live-sfu-test internal] load metadata for docker.io/library/flux-e2e:flux-live-turn-1790762884-623302
+#3 DONE 0.0s
+
+#4 [migrate internal] load build definition from Dockerfile
+#4 transferring dockerfile: 2.81kB done
+#4 DONE 0.2s
+
+#5 [migrate internal] load metadata for docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#5 DONE 0.0s
+
+#6 [migrate internal] load .dockerignore
+#6 transferring context: 185B done
+#6 DONE 0.1s
+
+#7 [migrate build 1/6] FROM docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#7 DONE 0.0s
+
+#8 [live-sfu-test internal] load build context
+#8 transferring context: 415B 0.0s done
+#8 DONE 0.2s
+
+#9 [migrate internal] load build context
+#9 transferring context: 904.47kB 0.0s done
+#9 DONE 0.2s
+
+#10 [live-sfu-test 1/4] FROM docker.io/library/flux-e2e:flux-live-turn-1790762884-623302
+#10 ...
+
+#11 [migrate build 2/6] WORKDIR /app
+#11 CACHED
+
+#12 [migrate build 3/6] RUN corepack enable && corepack install -g pnpm@12.6.0
+#12 CACHED
+
+#10 [live-sfu-test 1/4] FROM docker.io/library/flux-e2e:flux-live-turn-1790762884-623302
+#10 DONE 0.5s
+
+#13 [migrate build 4/6] COPY . .
+#13 DONE 1.0s
+
+#14 [live-sfu-test 2/4] RUN apt-get update && apt-get install -y --no-install-recommends iptables iproute2 libnss3-tools && rm -rf /var/lib/apt/lists/*
+#14 0.521 Get:1 http://azure.archive.ubuntu.com/ubuntu noble InRelease [256 kB]
+#14 0.525 Get:2 http://security.ubuntu.com/ubuntu noble-security InRelease [126 kB]
+#14 0.553 Get:3 https://deb.nodesource.com/node_24.x nodistro InRelease [12.1 kB]
+#14 0.569 Get:4 http://azure.archive.ubuntu.com/ubuntu noble-updates InRelease [126 kB]
+#14 0.599 Get:5 http://azure.archive.ubuntu.com/ubuntu noble-backports InRelease [126 kB]
+#14 0.610 Get:6 https://deb.nodesource.com/node_24.x nodistro/main amd64 Packages [9115 B]
+#14 0.653 Get:7 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 Packages [1808 kB]
+#14 0.791 Get:8 http://security.ubuntu.com/ubuntu noble-security/restricted amd64 Packages [1943 kB]
+#14 1.074 Get:9 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages [1314 kB]
+#14 1.211 Get:10 http://security.ubuntu.com/ubuntu noble-security/multiverse amd64 Packages [50.0 kB]
+#14 1.218 Get:11 http://security.ubuntu.com/ubuntu noble-security/universe amd64 Packages [1542 kB]
+#14 1.668 Get:12 http://azure.archive.ubuntu.com/ubuntu noble/multiverse amd64 Packages [331 kB]
+#14 1.737 Get:13 http://azure.archive.ubuntu.com/ubuntu noble/restricted amd64 Packages [117 kB]
+#14 1.754 Get:14 http://azure.archive.ubuntu.com/ubuntu noble/universe amd64 Packages [19.3 MB]
+#14 ...
+
+#15 [migrate build 5/6] RUN pnpm install --frozen-lockfile
+#15 1.716 Downloading the pnpm 12.6.0 binary for linux-x64...
+#15 4.636 Scope: all 10 workspace projects
+#15 4.659 ? Verifying lockfile against supply-chain policies (482 entries)...
+#15 5.206 Packages are hard linked from the content-addressable store to the virtual store.
+#15 5.206   Content-addressable store is at: /root/.local/share/pnpm/store/v11
+#15 5.206   Virtual store is at:             node_modules/.pnpm
+#15 5.843 Update available! 12.6.0 → 12.8.1.
+#15 5.843 Changelog: https://pnpm.io/v/12.8.1
+#15 5.843 To update, run: curl -fsSL https://get.pnpm.io/install.sh | sh -
+#15 6.608 [WARN] Tarball download average speed 17 KiB/s (size 27 KiB) is below 50 KiB/s: https://registry.npmjs.org/@fastify/send/-/send-4.1.1.tgz (GET)
+#15 6.627 [WARN] Tarball download average speed 36 KiB/s (size 64 KiB) is below 50 KiB/s: https://registry.npmjs.org/fast-uri/-/fast-uri-4.2.1.tgz (GET)
+#15 6.645 [WARN] Tarball download average speed 31 KiB/s (size 40 KiB) is below 50 KiB/s: https://registry.npmjs.org/baseline-browser-mapping/-/baseline-browser-mapping-2.11.26.tgz (GET)
+#15 6.751 [WARN] Tarball download average speed 1 KiB/s (size 2 KiB) is below 50 KiB/s: https://registry.npmjs.org/color-name/-/color-name-1.1.4.tgz (GET)
+#15 6.765 [WARN] Tarball download average speed 2 KiB/s (size 4 KiB) is below 50 KiB/s: https://registry.npmjs.org/@eslint/js/-/js-9.37.0.tgz (GET)
+#15 7.184 [WARN] Tarball download average speed 7 KiB/s (size 15 KiB) is below 50 KiB/s: https://registry.npmjs.org/sonic-boom/-/sonic-boom-4.2.1.tgz (GET)
+#15 7.652 [WARN] Tarball download average speed 14 KiB/s (size 21 KiB) is below 50 KiB/s: https://registry.npmjs.org/sdp/-/sdp-3.2.2.tgz (GET)
+#15 7.889 Downloading @rolldown/binding-linux-x64-musl@1.2.11: 0.00 B/7.92 MB
+#15 8.296 [WARN] Tarball download average speed 5 KiB/s (size 19 KiB) is below 50 KiB/s: https://registry.npmjs.org/thread-stream/-/thread-stream-3.2.0.tgz (GET)
+#15 9.306 Progress: resolved 411, reused 0, downloaded 314, added 288
+#15 9.854 [WARN] Tarball download average speed 20 KiB/s (size 78 KiB) is below 50 KiB/s: https://registry.npmjs.org/@typescript-eslint/typescript-estree/-/typescript-estree-8.44.1.tgz (GET)
+#15 10.19 [WARN] Tarball download average speed 6 KiB/s (size 13 KiB) is below 50 KiB/s: https://registry.npmjs.org/sdp-transform/-/sdp-transform-2.15.0.tgz (GET)
+#15 10.77 [WARN] Tarball download average speed 16 KiB/s (size 33 KiB) is below 50 KiB/s: https://registry.npmjs.org/cron-parser/-/cron-parser-5.10.1.tgz (GET)
+#15 10.94 [WARN] Tarball download average speed 8 KiB/s (size 13 KiB) is below 50 KiB/s: https://registry.npmjs.org/@better-auth/cimd/-/cimd-1.7.6.tgz (GET)
+#15 11.04 [WARN] Tarball download average speed 4 KiB/s (size 7 KiB) is below 50 KiB/s: https://registry.npmjs.org/punycode/-/punycode-2.3.1.tgz (GET)
+#15 11.61 [WARN] Tarball download average speed 3 KiB/s (size 11 KiB) is below 50 KiB/s: https://registry.npmjs.org/flatted/-/flatted-3.4.4.tgz (GET)
+#15 11.89 [WARN] Tarball download average speed 2 KiB/s (size 14 KiB) is below 50 KiB/s: https://registry.npmjs.org/@better-auth/kysely-adapter/-/kysely-adapter-1.7.6.tgz (GET)
+#15 12.93 Progress: resolved 411, reused 0, downloaded 406, added 384
+#15 ...
+
+#14 [live-sfu-test 2/4] RUN apt-get update && apt-get install -y --no-install-recommends iptables iproute2 libnss3-tools && rm -rf /var/lib/apt/lists/*
+#14 15.35 Get:15 http://azure.archive.ubuntu.com/ubuntu noble-updates/multiverse amd64 Packages [56.2 kB]
+#14 15.35 Get:16 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages [1637 kB]
+#14 15.52 Get:17 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe amd64 Packages [2162 kB]
+#14 15.71 Get:18 http://azure.archive.ubuntu.com/ubuntu noble-updates/restricted amd64 Packages [2057 kB]
+#14 15.90 Get:19 http://azure.archive.ubuntu.com/ubuntu noble-backports/main amd64 Packages [49.0 kB]
+#14 15.90 Get:20 http://azure.archive.ubuntu.com/ubuntu noble-backports/universe amd64 Packages [36.0 kB]
+#14 15.91 Get:21 http://azure.archive.ubuntu.com/ubuntu noble-backports/multiverse amd64 Packages [671 B]
+#14 15.96 Fetched 33.1 MB in 16s (2133 kB/s)
+#14 15.96 Reading package lists...
+#14 16.42 Reading package lists...
+#14 16.89 Building dependency tree...
+#14 17.01 Reading state information...
+#14 17.10 The following additional packages will be installed:
+#14 17.10   libbpf1 libip4tc2 libip6tc2 libmnl0 libnetfilter-conntrack3 libnfnetlink0
+#14 17.10   libnftnl11 libxtables12
+#14 17.10 Suggested packages:
+#14 17.10   iproute2-doc firewalld kmod
+#14 17.10 Recommended packages:
+#14 17.10   libatm1t64 nftables
+#14 17.14 The following NEW packages will be installed:
+#14 17.14   iproute2 iptables libbpf1 libip4tc2 libip6tc2 libmnl0
+#14 17.14   libnetfilter-conntrack3 libnfnetlink0 libnftnl11 libnss3-tools libxtables12
+#14 17.17 0 upgraded, 11 newly installed, 0 to remove and 59 not upgraded.
+#14 17.17 Need to get 2503 kB of archives.
+#14 17.17 After this operation, 8927 kB of additional disk space will be used.
+#14 17.17 Get:1 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 libbpf1 amd64 1:1.3.0-2build2 [166 kB]
+#14 17.21 Get:2 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 libmnl0 amd64 1.0.5-2build1 [12.3 kB]
+#14 17.21 Get:3 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 libxtables12 amd64 1.8.10-3ubuntu2 [35.7 kB]
+#14 17.22 Get:4 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 iproute2 amd64 6.1.0-1ubuntu6.4 [1120 kB]
+#14 17.36 Get:5 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 libip4tc2 amd64 1.8.10-3ubuntu2 [23.3 kB]
+#14 17.37 Get:6 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 libip6tc2 amd64 1.8.10-3ubuntu2 [23.7 kB]
+#14 17.37 Get:7 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 libnfnetlink0 amd64 1.0.2-2build1 [14.8 kB]
+#14 17.37 Get:8 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 libnetfilter-conntrack3 amd64 1.0.9-6build1 [45.2 kB]
+#14 17.37 Get:9 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 libnftnl11 amd64 1.2.6-2build1 [66.0 kB]
+#14 17.38 Get:10 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 iptables amd64 1.8.10-3ubuntu2 [381 kB]
+#14 17.42 Get:11 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 libnss3-tools amd64 2:3.98-1ubuntu0.2 [615 kB]
+#14 17.58 debconf: delaying package configuration, since apt-utils is not installed
+#14 17.61 Fetched 2503 kB in 0s (7261 kB/s)
+#14 17.66 Selecting previously unselected package libbpf1:amd64.
+#14 17.66 (Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 34933 files and directories currently installed.)
+#14 17.71 Preparing to unpack .../00-libbpf1_1%3a1.3.0-2build2_amd64.deb ...
+#14 17.83 Unpacking libbpf1:amd64 (1:1.3.0-2build2) ...
+#14 17.92 Selecting previously unselected package libmnl0:amd64.
+#14 17.93 Preparing to unpack .../01-libmnl0_1.0.5-2build1_amd64.deb ...
+#14 17.94 Unpacking libmnl0:amd64 (1.0.5-2build1) ...
+#14 18.03 Selecting previously unselected package libxtables12:amd64.
+#14 18.04 Preparing to unpack .../02-libxtables12_1.8.10-3ubuntu2_amd64.deb ...
+#14 18.05 Unpacking libxtables12:amd64 (1.8.10-3ubuntu2) ...
+#14 18.16 Selecting previously unselected package iproute2.
+#14 18.16 Preparing to unpack .../03-iproute2_6.1.0-1ubuntu6.4_amd64.deb ...
+#14 18.18 Unpacking iproute2 (6.1.0-1ubuntu6.4) ...
+#14 18.28 Selecting previously unselected package libip4tc2:amd64.
+#14 18.28 Preparing to unpack .../04-libip4tc2_1.8.10-3ubuntu2_amd64.deb ...
+#14 18.30 Unpacking libip4tc2:amd64 (1.8.10-3ubuntu2) ...
+#14 18.39 Selecting previously unselected package libip6tc2:amd64.
+#14 18.39 Preparing to unpack .../05-libip6tc2_1.8.10-3ubuntu2_amd64.deb ...
+#14 18.41 Unpacking libip6tc2:amd64 (1.8.10-3ubuntu2) ...
+#14 18.50 Selecting previously unselected package libnfnetlink0:amd64.
+#14 18.50 Preparing to unpack .../06-libnfnetlink0_1.0.2-2build1_amd64.deb ...
+#14 18.52 Unpacking libnfnetlink0:amd64 (1.0.2-2build1) ...
+#14 18.61 Selecting previously unselected package libnetfilter-conntrack3:amd64.
+#14 18.61 Preparing to unpack .../07-libnetfilter-conntrack3_1.0.9-6build1_amd64.deb ...
+#14 18.62 Unpacking libnetfilter-conntrack3:amd64 (1.0.9-6build1) ...
+#14 18.71 Selecting previously unselected package libnftnl11:amd64.
+#14 18.72 Preparing to unpack .../08-libnftnl11_1.2.6-2build1_amd64.deb ...
+#14 18.73 Unpacking libnftnl11:amd64 (1.2.6-2build1) ...
+#14 18.82 Selecting previously unselected package iptables.
+#14 18.83 Preparing to unpack .../09-iptables_1.8.10-3ubuntu2_amd64.deb ...
+#14 18.84 Unpacking iptables (1.8.10-3ubuntu2) ...
+#14 18.93 Selecting previously unselected package libnss3-tools.
+#14 18.94 Preparing to unpack .../10-libnss3-tools_2%3a3.98-1ubuntu0.2_amd64.deb ...
+#14 18.95 Unpacking libnss3-tools (2:3.98-1ubuntu0.2) ...
+#14 19.04 Setting up libip4tc2:amd64 (1.8.10-3ubuntu2) ...
+#14 19.07 Setting up libip6tc2:amd64 (1.8.10-3ubuntu2) ...
+#14 19.11 Setting up libmnl0:amd64 (1.0.5-2build1) ...
+#14 19.15 Setting up libxtables12:amd64 (1.8.10-3ubuntu2) ...
+#14 19.19 Setting up libnfnetlink0:amd64 (1.0.2-2build1) ...
+#14 19.23 Setting up libbpf1:amd64 (1:1.3.0-2build2) ...
+#14 19.27 Setting up libnss3-tools (2:3.98-1ubuntu0.2) ...
+#14 19.30 Setting up iproute2 (6.1.0-1ubuntu6.4) ...
+#14 19.51 debconf: unable to initialize frontend: Dialog
+#14 19.51 debconf: (TERM is not set, so the dialog frontend is not usable.)
+#14 19.51 debconf: falling back to frontend: Readline
+#14 19.52 debconf: unable to initialize frontend: Readline
+#14 19.52 debconf: (This frontend requires a controlling tty.)
+#14 19.52 debconf: falling back to frontend: Teletype
+#14 19.56 Setting up libnftnl11:amd64 (1.2.6-2build1) ...
+#14 19.60 Setting up libnetfilter-conntrack3:amd64 (1.0.9-6build1) ...
+#14 19.63 Setting up iptables (1.8.10-3ubuntu2) ...
+#14 19.66 update-alternatives: using /usr/sbin/iptables-legacy to provide /usr/sbin/iptables (iptables) in auto mode
+#14 19.67 update-alternatives: using /usr/sbin/ip6tables-legacy to provide /usr/sbin/ip6tables (ip6tables) in auto mode
+#14 19.68 update-alternatives: using /usr/sbin/iptables-nft to provide /usr/sbin/iptables (iptables) in auto mode
+#14 19.69 update-alternatives: using /usr/sbin/ip6tables-nft to provide /usr/sbin/ip6tables (ip6tables) in auto mode
+#14 19.69 update-alternatives: using /usr/sbin/arptables-nft to provide /usr/sbin/arptables (arptables) in auto mode
+#14 19.70 update-alternatives: using /usr/sbin/ebtables-nft to provide /usr/sbin/ebtables (ebtables) in auto mode
+#14 19.72 Processing triggers for libc-bin (2.39-0ubuntu8.8) ...
+#14 DONE 20.8s
+
+#15 [migrate build 5/6] RUN pnpm install --frozen-lockfile
+#15 ...
+
+#16 [live-sfu-test 3/4] COPY infra/live-sfu-test/package*.json /opt/live-sfu/
+#16 DONE 0.2s
+
+#15 [migrate build 5/6] RUN pnpm install --frozen-lockfile
+#15 ...
+
+#17 [live-sfu-test 4/4] RUN npm ci --prefix /opt/live-sfu --ignore-scripts --no-audit --no-fund
+#17 1.403 
+#17 1.403 added 15 packages in 952ms
+#17 1.404 npm notice
+#17 1.404 npm notice New major version of npm available! 11.19.0 -> 12.1.0
+#17 1.404 npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.1.0
+#17 1.404 npm notice To update run: npm install -g npm@12.1.0
+#17 1.404 npm notice
+#17 DONE 1.6s
+
+#15 [migrate build 5/6] RUN pnpm install --frozen-lockfile
+#15 ...
+
+#18 [live-sfu-test] exporting to image
+#18 exporting layers
+#18 exporting layers 0.4s done
+#18 writing image sha256:037dade5f2941396fd57fb5f52a1d32453dd80b37cec2bad999c5255b2992c31 done
+#18 naming to docker.io/library/flux-live-sfu-test:flux-live-turn-1790762884-623302 0.0s done
+#18 DONE 0.5s
+
+#15 [migrate build 5/6] RUN pnpm install --frozen-lockfile
+#15 ...
+
+#19 [live-sfu-test] resolving provenance for metadata file
+#19 DONE 0.0s
+
+#15 [migrate build 5/6] RUN pnpm install --frozen-lockfile
+#15 25.77 ✓ Lockfile passes supply-chain policies (482 entries in 21.1s)
+#15 25.77 Lockfile is up to date, resolution step is skipped
+#15 25.78 Packages: +411
+#15 25.78 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#15 25.82 Progress: resolved 411, reused 0, downloaded 411, added 411, done
+#15 25.83 .../esbuild@0.18.20/node_modules/esbuild postinstall$ node install.js
+#15 25.83 .../esbuild@0.25.12/node_modules/esbuild postinstall$ node install.js
+#15 25.87 .../esbuild@0.18.20/node_modules/esbuild postinstall: Done
+#15 25.87 .../esbuild@0.25.12/node_modules/esbuild postinstall: Done
+#15 26.01 
+#15 26.01 dependencies:
+#15 26.01 + @flux/contracts link:packages/contracts
+#15 26.01 + @flux/core link:packages/core
+#15 26.01 + @flux/db link:packages/db
+#15 26.01 + pg-boss 12.35.0
+#15 26.01 
+#15 26.01 devDependencies:
+#15 26.01 + @eslint/js 9.37.0
+#15 26.01 + @types/node 24.6.2
+#15 26.01 + @types/nodemailer 8.0.2
+#15 26.01 + @types/pg 8.15.5
+#15 26.01 + @types/sanitize-html 2.16.1
+#15 26.01 + @types/ws 8.18.1
+#15 26.01 + drizzle-orm 0.45.3
+#15 26.01 + eslint 9.37.0
+#15 26.01 + eslint-plugin-react-hooks 7.1.1
+#15 26.01 + fastify 5.6.1
+#15 26.01 + playwright 1.63.0
+#15 26.01 + tsx 4.20.5
+#15 26.01 + typescript 5.9.2
+#15 26.01 + typescript-eslint 8.44.1
+#15 26.01 + ws 8.22.0
+#15 26.01 
+#15 26.02 Done in 21.4s using pnpm v12.6.0
+#15 DONE 26.2s
+
+#20 [migrate build 6/6] RUN pnpm build && pnpm typecheck && pnpm lint
+#20 0.435 $ pnpm -r --if-present build && tsc -p infra/tsconfig.build.json
+#20 0.526 packages/contracts build$ tsc -p tsconfig.build.json
+#20 1.957 packages/contracts build: Done
+#20 1.958 apps/web build$ vite build
+#20 1.958 packages/sdk build$ tsc -p tsconfig.build.json
+#20 1.958 packages/db build$ tsc -p tsconfig.build.json
+#20 2.114 apps/web build: vite v8.3.1 building client environment for production...
+#20 2.120 apps/web build: transforming...
+#20 2.495 apps/web build: ✓ 250 modules transformed.
+#20 2.633 apps/web build: rendering chunks...
+#20 2.795 apps/web build: computing gzip size...
+#20 2.803 apps/web build: dist/index.html                                              1.21 kB │ gzip:   0.53 kB
+#20 2.803 apps/web build: dist/sw.js                                                   6.70 kB
+#20 2.803 apps/web build: dist/assets/inter-vietnamese-wght-normal-CBcvBZtf.woff2     10.25 kB
+#20 2.803 apps/web build: dist/assets/inter-greek-ext-wght-normal-DlzME5K_.woff2      11.23 kB
+#20 2.803 apps/web build: dist/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2       18.74 kB
+#20 2.803 apps/web build: dist/assets/inter-greek-wght-normal-CkhJZR-_.woff2          18.99 kB
+#20 2.803 apps/web build: dist/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2   25.96 kB
+#20 2.803 apps/web build: dist/assets/inter-latin-wght-normal-Dx4kXJAl.woff2          48.25 kB
+#20 2.803 apps/web build: dist/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2      85.06 kB
+#20 2.803 apps/web build: dist/assets/index-BHattIdx.css                             150.11 kB │ gzip:  26.62 kB
+#20 2.803 apps/web build: dist/assets/media-Nyeo--h0.js                              423.02 kB │ gzip: 109.78 kB
+#20 2.803 apps/web build: dist/assets/index-Bq5DKV5t.js                              732.95 kB │ gzip: 217.20 kB
+#20 2.803 apps/web build: 
+#20 2.804 apps/web build: [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "use client" in "../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js" may not be preserved when bundling.
+#20 2.804 apps/web build:     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m ../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js:11:1 [38;5;246m][0m
+#20 2.804 apps/web build:     [38;5;246m│[0m
+#20 2.804 apps/web build:  [38;5;246m11 │[0m "use client";
+#20 2.804 apps/web build:  [38;5;240m   │[0m ──────┬──────  
+#20 2.804 apps/web build:  [38;5;240m   │[0m       ╰──────── module level directive may not be preserved
+#20 2.804 apps/web build:  [38;5;240m   │[0m 
+#20 2.804 apps/web build:  [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+#20 2.804 apps/web build: [38;5;246m────╯[0m
+#20 2.804 apps/web build: 
+#20 2.804 apps/web build: [plugin builtin:vite-reporter] 
+#20 2.804 apps/web build: (!) Some chunks are larger than 500 kB after minification. Consider:
+#20 2.804 apps/web build: - Using dynamic import() to code-split the application
+#20 2.804 apps/web build: - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+#20 2.804 apps/web build: - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+#20 2.805 apps/web build: ✓ built in 690ms
+#20 2.833 apps/web build: Done
+#20 3.702 packages/sdk build: Done
+#20 4.746 packages/db build: Done
+#20 4.755 packages/core build$ tsc -p tsconfig.build.json
+#20 6.545 packages/core build: Done
+#20 6.546 packages/agent-runtime build$ tsc -p tsconfig.build.json
+#20 6.546 apps/server build$ tsc -p tsconfig.build.json
+#20 7.466 packages/agent-runtime build: Done
+#20 7.467 apps/worker build$ tsc -p tsconfig.build.json
+#20 8.435 apps/worker build: Done
+#20 9.396 apps/server build: Done
+#20 10.29 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#20 18.37 $ eslint .
+#20 DONE 27.1s
+
+#21 [migrate production-dependencies 1/1] RUN pnpm install --prod --offline --frozen-lockfile
+#21 0.512 Scope: all 10 workspace projects
+#21 0.546 ✓ Lockfile passes supply-chain policies (verified 28s ago)
+#21 0.546 Lockfile is up to date, resolution step is skipped
+#21 0.699 Packages: -199
+#21 0.699 --------------------------------------------------------------------------------
+#21 0.758 
+#21 0.758 devDependencies:
+#21 0.758 - @eslint/js 9.37.0
+#21 0.758 - @types/node 24.6.2
+#21 0.758 - @types/nodemailer 8.0.2
+#21 0.758 - @types/pg 8.15.5
+#21 0.758 - @types/sanitize-html 2.16.1
+#21 0.758 - @types/ws 8.18.1
+#21 0.758 - drizzle-orm 0.45.3
+#21 0.758 - eslint 9.37.0
+#21 0.758 - eslint-plugin-react-hooks 7.1.1
+#21 0.758 - fastify 5.6.1
+#21 0.758 - playwright 1.63.0
+#21 0.758 - tsx 4.20.5
+#21 0.758 - typescript 5.9.2
+#21 0.758 - typescript-eslint 8.44.1
+#21 0.758 - ws 8.22.0
+#21 0.758 
+#21 0.758 Done in 252ms using pnpm v12.6.0
+#21 DONE 1.0s
+
+#11 [migrate build 2/6] WORKDIR /app
+#11 CACHED
+
+#22 [migrate runtime  3/25] COPY --from=production-dependencies /app/node_modules ./node_modules
+#22 DONE 3.0s
+
+#23 [migrate runtime  4/25] COPY --from=production-dependencies /app/apps/server/node_modules ./apps/server/node_modules
+#23 DONE 0.3s
+
+#24 [migrate runtime  5/25] COPY --from=production-dependencies /app/apps/worker/node_modules ./apps/worker/node_modules
+#24 DONE 0.3s
+
+#25 [migrate runtime  6/25] COPY --from=production-dependencies /app/packages/core/node_modules ./packages/core/node_modules
+#25 DONE 0.3s
+
+#26 [migrate runtime  7/25] COPY --from=production-dependencies /app/packages/db/node_modules ./packages/db/node_modules
+#26 DONE 0.3s
+
+#27 [migrate runtime  8/25] COPY --from=production-dependencies /app/packages/agent-runtime/node_modules ./packages/agent-runtime/node_modules
+#27 DONE 0.3s
+
+#28 [migrate runtime  9/25] COPY --from=build /app/package.json ./package.json
+#28 DONE 0.3s
+
+#29 [migrate runtime 10/25] COPY --from=build /app/apps/server/package.json ./apps/server/package.json
+#29 DONE 0.3s
+
+#30 [migrate runtime 11/25] COPY --from=build /app/apps/worker/package.json ./apps/worker/package.json
+#30 DONE 0.6s
+
+#31 [migrate runtime 12/25] COPY --from=build /app/packages/contracts/package.json ./packages/contracts/package.json
+#31 DONE 0.3s
+
+#32 [migrate runtime 13/25] COPY --from=build /app/packages/core/package.json ./packages/core/package.json
+#32 DONE 0.3s
+
+#33 [migrate runtime 14/25] COPY --from=build /app/packages/db/package.json ./packages/db/package.json
+#33 DONE 0.8s
+
+#34 [migrate runtime 15/25] COPY --from=build /app/packages/agent-runtime/package.json ./packages/agent-runtime/package.json
+#34 DONE 0.7s
+
+#35 [migrate runtime 16/25] COPY --from=build /app/apps/server/dist ./apps/server/dist
+#35 DONE 0.3s
+
+#36 [migrate runtime 17/25] COPY --from=build /app/apps/worker/dist ./apps/worker/dist
+#36 DONE 0.2s
+
+#37 [migrate runtime 18/25] COPY --from=build /app/apps/web/dist ./apps/web/dist
+#37 DONE 0.2s
+
+#38 [migrate runtime 19/25] COPY --from=build /app/packages/contracts/dist ./packages/contracts/dist
+#38 DONE 0.2s
+
+#39 [migrate runtime 20/25] COPY --from=build /app/packages/core/dist ./packages/core/dist
+#39 DONE 0.3s
+
+#40 [migrate runtime 21/25] COPY --from=build /app/packages/db/dist ./packages/db/dist
+#40 DONE 0.3s
+
+#41 [migrate runtime 22/25] COPY --from=build /app/packages/agent-runtime/dist ./packages/agent-runtime/dist
+#41 DONE 0.2s
+
+#42 [migrate runtime 23/25] COPY --from=build /app/packages/db/migrations ./packages/db/migrations
+#42 DONE 0.3s
+
+#43 [migrate runtime 24/25] COPY --from=build /app/infra/dist ./infra/dist
+#43 DONE 0.3s
+
+#44 [migrate runtime 25/25] RUN mkdir -p /data/files && chown -R node:node /data
+#44 DONE 0.5s
+
+#45 [migrate] exporting to image
+#45 exporting layers
+#45 exporting layers 3.8s done
+#45 writing image sha256:c34ba58b766d0604c3b3830a085a13246e8386e1676510c6192ca92bb3593dd8 done
+#45 naming to docker.io/library/flux-foundation:flux-live-turn-1790762884-623302 0.0s done
+#45 DONE 3.8s
+
+#46 [migrate] resolving provenance for metadata file
+#46 DONE 0.0s
+ Image flux-foundation:flux-live-turn-1790762884-623302 Built 
+ Image flux-live-sfu-test:flux-live-turn-1790762884-623302 Built 
+ Network flux-live-turn-1790762884-623302_default Creating 
+ Network flux-live-turn-1790762884-623302_default Created 
+ Network flux-live-turn-1790762884-623302_livekit-signal Creating 
+ Network flux-live-turn-1790762884-623302_livekit-signal Created 
+ Network flux-live-turn-1790762884-623302_livekit-media Creating 
+ Network flux-live-turn-1790762884-623302_livekit-media Created 
+ Volume flux-live-turn-1790762884-623302_files Creating 
+ Volume flux-live-turn-1790762884-623302_files Created 
+ Volume flux-live-turn-1790762884-623302_pgdata Creating 
+ Volume flux-live-turn-1790762884-623302_pgdata Created 
+ Container flux-live-turn-1790762884-623302-db-1 Creating 
+ Container flux-live-turn-1790762884-623302-livekit-1 Creating 
+ Container flux-live-turn-1790762884-623302-db-1 Created 
+ Container flux-live-turn-1790762884-623302-migrate-1 Creating 
+ Container flux-live-turn-1790762884-623302-livekit-1 Created 
+ Container flux-live-turn-1790762884-623302-migrate-1 Created 
+ Container flux-live-turn-1790762884-623302-api-1 Creating 
+time="2026-09-30T12:10:46+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-live-turn-1790762884-623302-api-1 Created 
+ Container flux-live-turn-1790762884-623302-livekit-1 Starting 
+ Container flux-live-turn-1790762884-623302-db-1 Starting 
+ Container flux-live-turn-1790762884-623302-db-1 Started 
+ Container flux-live-turn-1790762884-623302-db-1 Waiting 
+ Container flux-live-turn-1790762884-623302-livekit-1 Started 
+ Container flux-live-turn-1790762884-623302-db-1 Healthy 
+ Container flux-live-turn-1790762884-623302-migrate-1 Starting 
+ Container flux-live-turn-1790762884-623302-migrate-1 Started 
+ Container flux-live-turn-1790762884-623302-migrate-1 Waiting 
+ Container flux-live-turn-1790762884-623302-livekit-1 Waiting 
+ Container flux-live-turn-1790762884-623302-livekit-1 Healthy 
+ Container flux-live-turn-1790762884-623302-migrate-1 Exited 
+ Container flux-live-turn-1790762884-623302-api-1 Starting 
+ Container flux-live-turn-1790762884-623302-api-1 Started 
+ Container flux-live-turn-1790762884-623302-api-1 Waiting 
+ Container flux-live-turn-1790762884-623302-db-1 Waiting 
+ Container flux-live-turn-1790762884-623302-migrate-1 Waiting 
+ Container flux-live-turn-1790762884-623302-livekit-1 Waiting 
+ Container flux-live-turn-1790762884-623302-migrate-1 Exited 
+ Container flux-live-turn-1790762884-623302-db-1 Healthy 
+ Container flux-live-turn-1790762884-623302-livekit-1 Healthy 
+ Container flux-live-turn-1790762884-623302-api-1 Healthy 
+ Container flux-live-turn-1790762884-623302-db-1 Running 
+ Container flux-live-turn-1790762884-623302-livekit-1 Running 
+ Container flux-live-turn-1790762884-623302-api-1 Running 
+ Container flux-live-turn-1790762884-623302-db-1 Waiting 
+ Container flux-live-turn-1790762884-623302-db-1 Healthy 
+ Container flux-live-turn-1790762884-623302-migrate-1 Starting 
+ Container flux-live-turn-1790762884-623302-migrate-1 Started 
+ Container flux-live-turn-1790762884-623302-livekit-1 Waiting 
+ Container flux-live-turn-1790762884-623302-migrate-1 Waiting 
+ Container flux-live-turn-1790762884-623302-livekit-1 Healthy 
+ Container flux-live-turn-1790762884-623302-migrate-1 Exited 
+ Container flux-live-turn-1790762884-623302-api-1 Waiting 
+ Container flux-live-turn-1790762884-623302-livekit-1 Waiting 
+ Container flux-live-turn-1790762884-623302-livekit-1 Healthy 
+ Container flux-live-turn-1790762884-623302-api-1 Healthy 
+ Container flux-live-turn-1790762884-623302-live-sfu-test-run-78e72525b0da Creating 
+ Container flux-live-turn-1790762884-623302-live-sfu-test-run-78e72525b0da Created 
+rehash: warning: skipping ca-certificates.crt,it does not contain exactly one certificate or CRL
+CONNECTION ESTABLISHED
+Protocol version: TLSv1.3
+Ciphersuite: TLS_AES_128_GCM_SHA256
+Peer certificate: CN = turn.flux.test
+Hash used: SHA256
+Signature type: RSA-PSS
+Verification: OK
+Verified peername: turn.flux.test
+Server Temp Key: X25519, 253 bits
+DONE
+✖ code-1440p: two then four authorized peers receive scrolling 14/16px text over TURN/TLS (32187.162231ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 32588.187444
+
+✖ failing tests:
+
+test at tests/app/e2e/live-code-quality.e2e.ts:1:6896
+✖ code-1440p: two then four authorized peers receive scrolling 14/16px text over TURN/TLS (32187.162231ms)
+  page.waitForFunction: Timeout 30000ms exceeded.
+      at attach (/app/tests/app/e2e/live-code-quality.e2e.ts:119:14)
+      at async TestContext.<anonymous> (/app/tests/app/e2e/live-code-quality.e2e.ts:198:7) {
+    name: 'TimeoutError',
+    log: []
+  }
+Chain OUTPUT (policy ACCEPT 4214 packets, 2508K bytes)
+ pkts bytes target     prot opt in     out     source               destination         
+   92  7248 REJECT     17   --  *      *       0.0.0.0/0            172.26.0.2           reject-with icmp-port-unreachable
+    1    60 REJECT     6    --  *      *       0.0.0.0/0            172.26.0.2           tcp dpt:7881 reject-with icmp-port-unreachable
+
+api-1  | {"level":30,"time":1790763067218,"pid":1,"hostname":"3e4d478da440","reqId":"req-3","req":{"method":"POST","url":"/api/auth/sign-up/email","host":"api:8080","remoteAddress":"172.24.0.4","remotePort":42836},"msg":"incoming request"}
+api-1  | {"level":30,"time":1790763067234,"pid":1,"hostname":"3e4d478da440","reqId":"req-4","req":{"method":"POST","url":"/api/auth/sign-up/email","host":"api:8080","remoteAddress":"172.24.0.4","remotePort":42846},"msg":"incoming request"}
+api-1  | {"level":30,"time":1790763067236,"pid":1,"hostname":"3e4d478da440","reqId":"req-5","req":{"method":"POST","url":"/api/auth/sign-up/email","host":"api:8080","remoteAddress":"172.24.0.4","remotePort":42860},"msg":"incoming request"}
+api-1  | {"level":30,"time":1790763067237,"pid":1,"hostname":"3e4d478da440","reqId":"req-6","req":{"method":"POST","url":"/api/auth/sign-up/email","host":"api:8080","remoteAddress":"172.24.0.4","remotePort":42870},"msg":"incoming request"}
+api-1  | {"level":30,"time":1790763067343,"pid":1,"hostname":"3e4d478da440","reqId":"req-3","res":{"statusCode":200},"responseTime":125.22839903831482,"msg":"request completed"}
+api-1  | {"level":30,"time":1790763067348,"pid":1,"hostname":"3e4d478da440","reqId":"req-4","res":{"statusCode":200},"responseTime":114.23690092563629,"msg":"request completed"}
+api-1  | {"level":30,"time":1790763067348,"pid":1,"hostname":"3e4d478da440","reqId":"req-6","res":{"statusCode":200},"responseTime":111.55398392677307,"msg":"request completed"}
+api-1  | {"level":30,"time":1790763067349,"pid":1,"hostname":"3e4d478da440","reqId":"req-5","res":{"statusCode":200},"responseTime":113.11146903038025,"msg":"request completed"}
+api-1  | {"level":30,"time":1790763067349,"pid":1,"hostname":"3e4d478da440","reqId":"req-7","req":{"method":"GET","url":"/api/v1/me","host":"api:8080","remoteAddress":"172.24.0.4","remotePort":42878},"msg":"incoming request"}
+api-1  | {"level":30,"time":1790763067351,"pid":1,"hostname":"3e4d478da440","reqId":"req-8","req":{"method":"GET","url":"/api/v1/me","host":"api:8080","remoteAddress":"172.24.0.4","remotePort":42836},"msg":"incoming request"}
+api-1  | {"level":30,"time":1790763067351,"pid":1,"hostname":"3e4d478da440","reqId":"req-9","req":{"method":"GET","url":"/api/v1/me","host":"api:8080","remoteAddress":"172.24.0.4","remotePort":42846},"msg":"incoming request"}
+api-1  | {"level":30,"time":1790763067353,"pid":1,"hostname":"3e4d478da440","reqId":"req-a","req":{"method":"GET","url":"/api/v1/me","host":"api:8080","remoteAddress":"172.24.0.4","remotePort":42880},"msg":"incoming request"}
+api-1  | {"level":30,"time":1790763067374,"pid":1,"hostname":"3e4d478da440","reqId":"req-7","res":{"statusCode":200},"responseTime":24.371522068977356,"msg":"request completed"}
+api-1  | {"level":30,"time":1790763067378,"pid":1,"hostname":"3e4d478da440","reqId":"req-a","res":{"statusCode":200},"responseTime":25.771634936332703,"msg":"request completed"}
+api-1  | {"level":30,"time":1790763067379,"pid":1,"hostname":"3e4d478da440","reqId":"req-8","res":{"statusCode":200},"responseTime":28.025151014328003,"msg":"request completed"}
+api-1  | {"level":30,"time":1790763067379,"pid":1,"hostname":"3e4d478da440","reqId":"req-9","res":{"statusCode":200},"responseTime":27.73188006877899,"msg":"request completed"}
+api-1  | {"level":30,"time":1790763067382,"pid":1,"hostname":"3e4d478da440","reqId":"req-b","req":{"method":"POST","url":"/api/v1/workspaces","host":"api:8080","remoteAddress":"172.24.0.4","remotePort":42860},"msg":"incoming request"}
+api-1  | {"level":30,"time":1790763067402,"pid":1,"hostname":"3e4d478da440","reqId":"req-b","res":{"statusCode":201},"responseTime":20.279502034187317,"msg":"request completed"}
+api-1  | {"level":30,"time":1790763067406,"pid":1,"hostname":"3e4d478da440","reqId":"req-c","req":{"method":"POST","url":"/api/v1/workspaces/02ee26c4-5c8e-4947-845b-2006533fb5d1/members","host":"api:8080","remoteAddress":"172.24.0.4","remotePort":42846},"msg":"incoming request"}
+api-1  | {"level":30,"time":1790763067424,"pid":1,"hostname":"3e4d478da440","reqId":"req-c","res":{"statusCode":201},"responseTime":17.785244941711426,"msg":"request completed"}
+api-1  | {"level":30,"time":1790763067429,"pid":1,"hostname":"3e4d478da440","reqId":"req-d","req":{"method":"POST","url":"/api/v1/workspaces/02ee26c4-5c8e-4947-845b-2006533fb5d1/members","host":"api:8080","remoteAddress":"172.24.0.4","remotePort":42836},"msg":"incoming request"}
+api-1  | {"level":30,"time":1790763067444,"pid":1,"hostname":"3e4d478da440","reqId":"req-d","res":{"statusCode":201},"responseTime":15.200477957725525,"msg":"request completed"}
+api-1  | {"level":30,"time":1790763067447,"pid":1,"hostname":"3e4d478da440","reqId":"req-e","req":{"method":"POST","url":"/api/v1/workspaces/02ee26c4-5c8e-4947-845b-2006533fb5d1/members","host":"api:8080","remoteAddress":"172.24.0.4","remotePort":42846},"msg":"incoming request"}
+api-1  | {"level":30,"time":1790763067460,"pid":1,"hostname":"3e4d478da440","reqId":"req-e","res":{"statusCode":201},"responseTime":13.536265015602112,"msg":"request completed"}
+api-1  | {"level":30,"time":1790763067462,"pid":1,"hostname":"3e4d478da440","reqId":"req-f","req":{"method":"POST","url":"/api/v1/workspaces/02ee26c4-5c8e-4947-845b-2006533fb5d1/projects","host":"api:8080","remoteAddress":"172.24.0.4","remotePort":42836},"msg":"incoming request"}
+api-1  | {"level":30,"time":1790763067479,"pid":1,"hostname":"3e4d478da440","reqId":"req-f","res":{"statusCode":201},"responseTime":16.447452068328857,"msg":"request completed"}
+api-1  | {"level":30,"time":1790763067482,"pid":1,"hostname":"3e4d478da440","reqId":"req-g","req":{"method":"POST","url":"/api/v1/projects/a1f7bc7d-b1ad-4e01-a56f-5283cb758234/grants","host":"api:8080","remoteAddress":"172.24.0.4","remotePort":42846},"msg":"incoming request"}
+api-1  | {"level":30,"time":1790763067525,"pid":1,"hostname":"3e4d478da440","reqId":"req-g","res":{"statusCode":201},"responseTime":42.227458000183105,"msg":"request completed"}
+api-1  | {"level":30,"time":1790763067527,"pid":1,"hostname":"3e4d478da440","reqId":"req-h","req":{"method":"POST","url":"/api/v1/projects/a1f7bc7d-b1ad-4e01-a56f-5283cb758234/grants","host":"api:8080","remoteAddress":"172.24.0.4","remotePort":42836},"msg":"incoming request"}
+api-1  | {"level":30,"time":1790763067560,"pid":1,"hostname":"3e4d478da440","reqId":"req-h","res":{"statusCode":201},"responseTime":33.404675006866455,"msg":"request completed"}
+api-1  | {"level":30,"time":1790763067562,"pid":1,"hostname":"3e4d478da440","reqId":"req-i","req":{"method":"POST","url":"/api/v1/projects/a1f7bc7d-b1ad-4e01-a56f-5283cb758234/grants","host":"api:8080","remoteAddress":"172.24.0.4","remotePort":42846},"msg":"incoming request"}
+api-1  | {"level":30,"time":1790763067596,"pid":1,"hostname":"3e4d478da440","reqId":"req-i","res":{"statusCode":201},"responseTime":33.66079497337341,"msg":"request completed"}
+api-1  | {"level":30,"time":1790763067598,"pid":1,"hostname":"3e4d478da440","reqId":"req-j","req":{"method":"POST","url":"/api/v1/projects/a1f7bc7d-b1ad-4e01-a56f-5283cb758234/conversations","host":"api:8080","remoteAddress":"172.24.0.4","remotePort":42836},"msg":"incoming request"}
+api-1  | {"level":30,"time":1790763067617,"pid":1,"hostname":"3e4d478da440","reqId":"req-j","res":{"statusCode":201},"responseTime":18.514997005462646,"msg":"request completed"}
+api-1  | {"level":30,"time":1790763067619,"pid":1,"hostname":"3e4d478da440","reqId":"req-k","req":{"method":"POST","url":"/api/v1/live-sessions","host":"api:8080","remoteAddress":"172.24.0.4","remotePort":42846},"msg":"incoming request"}
+db-1   | The files belonging to this database system will be owned by user "postgres".
+db-1   | This user must also own the server process.
+db-1   | 
+db-1   | The database cluster will be initialized with locale "en_US.utf8".
+db-1   | The default database encoding has accordingly been set to "UTF8".
+db-1   | The default text search configuration will be set to "english".
+db-1   | 
+db-1   | Data page checksums are enabled.
+db-1   | 
+db-1   | fixing permissions on existing directory /var/lib/postgresql/18/docker ... ok
+db-1   | creating subdirectories ... ok
+db-1   | selecting dynamic shared memory implementation ... posix
+db-1   | selecting default "max_connections" ... 100
+db-1   | selecting default "shared_buffers" ... 128MB
+db-1   | selecting default time zone ... UTC
+migrate-1  | Applied migration 0001_foundation.sql
+migrate-1  | Applied migration 0002_identity.sql
+migrate-1  | Applied migration 0003_access.sql
+db-1       | creating configuration files ... ok
+db-1       | running bootstrap script ... ok
+migrate-1  | Applied migration 0004_stream_safe_writes.sql
+migrate-1  | Applied migration 0005_push.sql
+migrate-1  | Applied migration 0006_conversation.sql
+db-1       | sh: locale: not found
+db-1       | 2026-09-30 10:10:46.996 UTC [40] WARNING:  no usable system locales were found
+db-1       | performing post-bootstrap initialization ... ok
+db-1       | initdb: warning: enabling "trust" authentication for local connections
+db-1       | initdb: hint: You can change this by editing pg_hba.conf or using the option -A, or --auth-local and --auth-host, the next time you run initdb.
+db-1       | syncing data to disk ... ok
+db-1       | 
+db-1       | 
+livekit-1  | 2026-09-30T10:10:46.933Z	INFO	livekit	routing/interfaces.go:181	using single-node routing
+livekit-1  | 2026-09-30T10:10:46.934Z	INFO	livekit	service/turn.go:204	Starting TURN server	{"turn.relay_range_start": 30000, "turn.relay_range_end": 40000, "turn.per_user_relay_allocation_limit": 12, "turn.portTLS": 443, "turn.externalTLS": false, "turn.proxyProtocol": false, "turn.portUDP": 3478}
+livekit-1  | 2026-09-30T10:10:46.935Z	WARN	livekit	service/server.go:160	prometheus_port is deprecated, please switch to prometheus.port instead
+livekit-1  | 2026-09-30T10:10:46.935Z	INFO	livekit	service/server.go:298	starting LiveKit server	{"portHttp": 7880, "nodeID": "ND_sAw9bqMSMGX4", "nodeIP": "172.26.0.2", "version": "1.13.7", "bindAddresses": ["172.25.0.2", "127.0.0.1"], "rtc.portTCP": 7881, "rtc.portUDP": {"Start":7882,"End":0}, "portPrometheus": 6789}
+livekit-1  | 2026-09-30T10:11:07.639Z	INFO	livekit.api	service/twirp.go:149	API RoomService.CreateRoom	{"service": "RoomService", "method": "CreateRoom", "room": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "request": {"name": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "emptyTimeout": 420, "departureTimeout": 180, "maxParticipants": 16}, "duration": "1.249503ms", "status": "200"}
+livekit-1  | 2026-09-30T10:11:07.646Z	INFO	livekit.webhook	webhook/resource_url_notifier.go:337	sent webhook	{"event": "room_started", "id": "EV_FfbjqKjJKJL8", "webhookTime": 1790763067, "url": "http://api:8080/api/v1/internal/livekit/webhook", "room": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "roomID": "RM_QHFLNb7KX3CT", "queueDuration": "8.74µs", "qLen": 0, "sendDuration": "6.828117ms", "status": "204 No Content", "statusCode": 204}
+livekit-1  | 2026-09-30T10:11:07.651Z	INFO	livekit.api	service/twirp.go:149	API RoomService.ListParticipants	{"service": "RoomService", "method": "ListParticipants", "room": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "duration": "55.72µs", "status": "200"}
+db-1       | Success. You can now start the database server using:
+db-1       | 
+db-1       |     pg_ctl -D /var/lib/postgresql/18/docker -l logfile start
+db-1       | 
+db-1       | waiting for server to start....2026-09-30 10:10:53.827 UTC [64] LOG:  starting PostgreSQL 18.6 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+db-1       | 2026-09-30 10:10:53.834 UTC [64] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+db-1       | 2026-09-30 10:10:53.855 UTC [70] LOG:  database system was shut down at 2026-09-30 10:10:47 UTC
+db-1       | 2026-09-30 10:10:53.864 UTC [64] LOG:  database system is ready to accept connections
+db-1       |  done
+db-1       | server started
+db-1       | CREATE DATABASE
+db-1       | 
+db-1       | 
+db-1       | /usr/local/bin/docker-entrypoint.sh: ignoring /docker-entrypoint-initdb.d/*
+db-1       | 
+db-1       | waiting for server to shut down....2026-09-30 10:10:53.997 UTC [64] LOG:  received fast shutdown request
+api-1      | {"level":30,"time":1790763067644,"pid":1,"hostname":"3e4d478da440","reqId":"req-l","req":{"method":"POST","url":"/api/v1/internal/livekit/webhook","host":"api:8080","remoteAddress":"172.25.0.2","remotePort":49874},"msg":"incoming request"}
+migrate-1  | Applied migration 0007_sketches.sql
+migrate-1  | Applied migration 0008_work.sql
+livekit-1  | 2026-09-30T10:11:08.204Z	INFO	livekit.api	service/twirp.go:149	API RoomService.ListRooms	{"service": "RoomService", "method": "ListRooms", "room": ["live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk"], "duration": "161.28µs", "status": "200"}
+db-1       | 2026-09-30 10:10:54.004 UTC [64] LOG:  aborting any active transactions
+livekit-1  | 2026-09-30T10:11:08.206Z	INFO	livekit.api	service/twirp.go:149	API RoomService.ListParticipants	{"service": "RoomService", "method": "ListParticipants", "room": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "duration": "33.36µs", "status": "200"}
+db-1       | 2026-09-30 10:10:54.006 UTC [64] LOG:  background worker "logical replication launcher" (PID 73) exited with exit code 1
+db-1       | 2026-09-30 10:10:54.006 UTC [68] LOG:  shutting down
+db-1       | 2026-09-30 10:10:54.012 UTC [68] LOG:  checkpoint starting: shutdown immediate
+db-1       | ..2026-09-30 10:10:56.029 UTC [68] LOG:  checkpoint complete: wrote 943 buffers (5.8%), wrote 3 SLRU buffers; 0 WAL file(s) added, 0 removed, 0 recycled; write=0.029 s, sync=1.951 s, total=2.024 s; sync files=303, longest=0.013 s, average=0.007 s; distance=4362 kB, estimate=4362 kB; lsn=0/1BA8858, redo lsn=0/1BA8858
+db-1       | 2026-09-30 10:10:56.057 UTC [64] LOG:  database system is shut down
+db-1       |  done
+db-1       | server stopped
+db-1       | 
+db-1       | PostgreSQL init process complete; ready for start up.
+db-1       | 
+db-1       | 2026-09-30 10:10:56.130 UTC [1] LOG:  starting PostgreSQL 18.6 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+db-1       | 2026-09-30 10:10:56.130 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+db-1       | 2026-09-30 10:10:56.130 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+db-1       | 2026-09-30 10:10:56.143 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+livekit-1  | 2026-09-30T10:11:08.549Z	INFO	livekit	service/roommanager.go:433	starting RTC session	{"room": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "roomID": "RM_QHFLNb7KX3CT", "participant": "u_MzFhMWJiODYtNTY0OC00YTVlLTg5ZjAtMzY3MjA1Y2YzNmM2.6n_GMdMufX-hxgPck-zpYA", "participantID": "PA_EsUvnVdUg3Js", "remote": false, "room": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "nodeID": "ND_sAw9bqMSMGX4", "numParticipants": 0, "participantInit": {"Identity": "u_MzFhMWJiODYtNTY0OC00YTVlLTg5ZjAtMzY3MjA1Y2YzNmM2.6n_GMdMufX-hxgPck-zpYA", "Reconnect": false, "ReconnectReason": "RR_UNKNOWN", "AutoSubscribe": true, "AutoSubscribeDataTrack": false, "Client": {"sdk": "JS", "version": "2.17.2", "protocol": 16, "os": "Other", "deviceModel": "Other", "browser": "Other"}, "Grants": {"Identity": "u_MzFhMWJiODYtNTY0OC00YTVlLTg5ZjAtMzY3MjA1Y2YzNmM2.6n_GMdMufX-hxgPck-zpYA", "Kind": "", "KindDetails": [], "Video": {"RoomCreate": false, "RoomList": false, "RoomRecord": false, "RoomAdmin": false, "RoomJoin": true, "Room": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "CanPublish": true, "CanSubscribe": true, "CanPublishData": false, "CanPublishSources": [], "CanUpdateOwnMetadata": false, "IngressAdmin": false, "Hidden": false, "Recorder": false, "Agent": false, "CanSubscribeMetrics": "not-set", "CanManageAgentSession": "not-set", "DestinationRoom": ""}, "SIP": {}, "Agent": {}, "Inference": {}, "Observability": {}, "RoomConfig": {}, "RoomPreset": ""}, "TokenExpiresAt": "2026-09-30T10:12:38.000Z", "Region": "", "AdaptiveStream": false, "ID": "", "SubscriberAllowPause": false, "DisableICELite": false, "CreateRoom": {"name": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk"}, "AddTrackRequests": [], "PublisherOffer": {}, "SyncState": {}, "UseSinglePeerConnection": true}}
+livekit-1  | 2026-09-30T10:11:08.689Z	INFO	livekit	rtc/room.go:1284	participant active	{"room": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "roomID": "RM_QHFLNb7KX3CT", "participant": "u_MzFhMWJiODYtNTY0OC00YTVlLTg5ZjAtMzY3MjA1Y2YzNmM2.6n_GMdMufX-hxgPck-zpYA", "participantID": "PA_EsUvnVdUg3Js", "remote": false, "publisherCandidates": ["[local][selected:1][trickle] udp4 host 172.26.0.2:7882 (resolved: 172.26.0.2:7882)", "[local][trickle] udp4 host 172.25.0.2:7882 (resolved: 172.25.0.2:7882)", "[local][trickle] tcp4 host 172.26.0.2:7881 (resolved: 172.26.0.2:7881)", "[local][trickle] tcp4 host 172.25.0.2:7881 (resolved: 172.25.0.2:7881)", "[local][trickle] udp4 srflx 87.205.6.198:44696 related 0.0.0.0:56287 (resolved: 87.205.6.198:44696)", "[local][trickle] udp4 srflx 87.205.6.198:29201 related 0.0.0.0:47360 (resolved: 87.205.6.198:29201)", "[local][trickle] udp4 srflx 87.205.6.198:49104 related 0.0.0.0:49552 (resolved: 87.205.6.198:49104)", "[remote][filtered][trickle] udp host :36419", "[remote][selected:1][trickle] udp relay 172.26.0.2:32399  related 172.26.0.3:48786", "[remote][trickle] udp relay 172.26.0.2:31639  related 172.26.0.3:48790"], "connectionType": "turn", "clientInfo": {"sdk": "JS", "version": "2.17.2", "protocol": 16, "os": "Other", "deviceModel": "Other", "browser": "Other"}, "connectTime": "139.841706ms"}
+livekit-1  | 2026-09-30T10:11:08.699Z	INFO	livekit.api	service/twirp.go:149	API RoomService.ListParticipants	{"service": "RoomService", "method": "ListParticipants", "room": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "duration": "134.14µs", "status": "200"}
+livekit-1  | 2026-09-30T10:11:08.703Z	INFO	livekit.api	service/twirp.go:149	API RoomService.ListParticipants	{"service": "RoomService", "method": "ListParticipants", "room": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "duration": "29.82µs", "status": "200"}
+livekit-1  | 2026-09-30T10:11:08.710Z	INFO	livekit.webhook	webhook/resource_url_notifier.go:337	sent webhook	{"event": "participant_joined", "id": "EV_6MBGxY5UXfYR", "webhookTime": 1790763068, "url": "http://api:8080/api/v1/internal/livekit/webhook", "room": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "roomID": "RM_QHFLNb7KX3CT", "participant": "u_MzFhMWJiODYtNTY0OC00YTVlLTg5ZjAtMzY3MjA1Y2YzNmM2.6n_GMdMufX-hxgPck-zpYA", "participantID": "PA_EsUvnVdUg3Js", "queueDuration": "10.65µs", "qLen": 0, "sendDuration": "20.462002ms", "status": "204 No Content", "statusCode": 204}
+livekit-1  | 2026-09-30T10:11:08.718Z	INFO	livekit.api	service/twirp.go:149	API RoomService.ListRooms	{"service": "RoomService", "method": "ListRooms", "room": ["live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk"], "duration": "64.1µs", "status": "200"}
+livekit-1  | 2026-09-30T10:11:08.719Z	INFO	livekit.api	service/twirp.go:149	API RoomService.ListParticipants	{"service": "RoomService", "method": "ListParticipants", "room": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "duration": "39.581µs", "status": "200"}
+livekit-1  | 2026-09-30T10:11:08.918Z	INFO	livekit	service/roommanager.go:433	starting RTC session	{"room": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "roomID": "RM_QHFLNb7KX3CT", "participant": "u_NmViNWY0MmYtZjQ0ZC00ZjM0LTkyM2QtNDYxNDA1NWU5YzA0.mYT6vVihOKjYLUZvYR-9yQ", "participantID": "PA_h3sn4gePewxo", "remote": false, "room": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "nodeID": "ND_sAw9bqMSMGX4", "numParticipants": 1, "participantInit": {"Identity": "u_NmViNWY0MmYtZjQ0ZC00ZjM0LTkyM2QtNDYxNDA1NWU5YzA0.mYT6vVihOKjYLUZvYR-9yQ", "Reconnect": false, "ReconnectReason": "RR_UNKNOWN", "AutoSubscribe": true, "AutoSubscribeDataTrack": false, "Client": {"sdk": "JS", "version": "2.17.2", "protocol": 16, "os": "Other", "deviceModel": "Other", "browser": "Other"}, "Grants": {"Identity": "u_NmViNWY0MmYtZjQ0ZC00ZjM0LTkyM2QtNDYxNDA1NWU5YzA0.mYT6vVihOKjYLUZvYR-9yQ", "Kind": "", "KindDetails": [], "Video": {"RoomCreate": false, "RoomList": false, "RoomRecord": false, "RoomAdmin": false, "RoomJoin": true, "Room": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "CanPublish": true, "CanSubscribe": true, "CanPublishData": false, "CanPublishSources": [], "CanUpdateOwnMetadata": false, "IngressAdmin": false, "Hidden": false, "Recorder": false, "Agent": false, "CanSubscribeMetrics": "not-set", "CanManageAgentSession": "not-set", "DestinationRoom": ""}, "SIP": {}, "Agent": {}, "Inference": {}, "Observability": {}, "RoomConfig": {}, "RoomPreset": ""}, "TokenExpiresAt": "2026-09-30T10:12:38.000Z", "Region": "", "AdaptiveStream": false, "ID": "", "SubscriberAllowPause": false, "DisableICELite": false, "CreateRoom": {"name": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk"}, "AddTrackRequests": [], "PublisherOffer": {}, "SyncState": {}, "UseSinglePeerConnection": true}}
+livekit-1  | 2026-09-30T10:11:09.049Z	INFO	livekit	rtc/room.go:1284	participant active	{"room": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "roomID": "RM_QHFLNb7KX3CT", "participant": "u_NmViNWY0MmYtZjQ0ZC00ZjM0LTkyM2QtNDYxNDA1NWU5YzA0.mYT6vVihOKjYLUZvYR-9yQ", "participantID": "PA_h3sn4gePewxo", "remote": false, "publisherCandidates": ["[local][selected:1][trickle] udp4 host 172.26.0.2:7882 (resolved: 172.26.0.2:7882)", "[local][trickle] udp4 host 172.25.0.2:7882 (resolved: 172.25.0.2:7882)", "[local][trickle] tcp4 host 172.26.0.2:7881 (resolved: 172.26.0.2:7881)", "[local][trickle] tcp4 host 172.25.0.2:7881 (resolved: 172.25.0.2:7881)", "[local][trickle] udp4 srflx 87.205.6.198:26961 related 0.0.0.0:34379 (resolved: 87.205.6.198:26961)", "[local][trickle] udp4 srflx 87.205.6.198:15090 related 0.0.0.0:34075 (resolved: 87.205.6.198:15090)", "[local][trickle] udp4 srflx 87.205.6.198:40604 related 0.0.0.0:48223 (resolved: 87.205.6.198:40604)", "[remote][filtered][trickle] udp host :40194", "[remote][selected:1][trickle] udp relay 172.26.0.2:34855  related 172.26.0.3:48806", "[remote][trickle] udp relay 172.26.0.2:33735  related 172.26.0.3:48810"], "connectionType": "turn", "clientInfo": {"sdk": "JS", "version": "2.17.2", "protocol": 16, "os": "Other", "deviceModel": "Other", "browser": "Other"}, "connectTime": "131.361592ms"}
+livekit-1  | 2026-09-30T10:11:09.059Z	INFO	livekit.api	service/twirp.go:149	API RoomService.ListParticipants	{"service": "RoomService", "method": "ListParticipants", "room": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "duration": "119.45µs", "status": "200"}
+livekit-1  | 2026-09-30T10:11:09.061Z	INFO	livekit.api	service/twirp.go:149	API RoomService.ListParticipants	{"service": "RoomService", "method": "ListParticipants", "room": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "duration": "53.5µs", "status": "200"}
+livekit-1  | 2026-09-30T10:11:09.069Z	INFO	livekit.webhook	webhook/resource_url_notifier.go:337	sent webhook	{"event": "participant_joined", "id": "EV_22fBFppPBir5", "webhookTime": 1790763069, "url": "http://api:8080/api/v1/internal/livekit/webhook", "room": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "roomID": "RM_QHFLNb7KX3CT", "participant": "u_NmViNWY0MmYtZjQ0ZC00ZjM0LTkyM2QtNDYxNDA1NWU5YzA0.mYT6vVihOKjYLUZvYR-9yQ", "participantID": "PA_h3sn4gePewxo", "queueDuration": "33.7µs", "qLen": 0, "sendDuration": "20.189792ms", "status": "204 No Content", "statusCode": 204}
+livekit-1  | 2026-09-30T10:11:09.240Z	INFO	livekit.pub	rtc/participant.go:2423	mediaTrack published	{"room": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "roomID": "RM_QHFLNb7KX3CT", "participant": "u_MzFhMWJiODYtNTY0OC00YTVlLTg5ZjAtMzY3MjA1Y2YzNmM2.6n_GMdMufX-hxgPck-zpYA", "participantID": "PA_EsUvnVdUg3Js", "remote": false, "kind": "video", "trackID": "TR_VSpB6o8ghh3Aob", "webrtcTrackID": "37e81876-3161-4ba2-ae79-1d8848f315c8", "rid": "", "ssrc": 2109267368, "rtxSsrc": 2416640035, "mime": "video/VP8", "trackInfo": {"sid": "TR_VSpB6o8ghh3Aob", "type": "VIDEO", "name": "<redacted>", "width": 2560, "height": 1440, "source": "SCREEN_SHARE", "layers": [{"quality": "HIGH", "width": 2560, "height": 1440, "bitrate": 3500000, "ssrc": 2109267368}], "mimeType": "video/VP8", "mid": "1", "codecs": [{"mimeType": "video/VP8", "mid": "1", "cid": "37e81876-3161-4ba2-ae79-1d8848f315c8", "layers": [{"quality": "HIGH", "width": 2560, "height": 1440, "bitrate": 3500000, "ssrc": 2109267368}], "videoLayerMode": "ONE_SPATIAL_LAYER_PER_STREAM"}], "encryption": "NONE", "stream": "screen", "version": {"unixMicro": 1790763069239591}, "backupCodecPolicy": "PREFER_REGRESSION"}, "fromSdp": true, "isReceiverAdded": true, "sdpRids": ["", "", ""]}
+livekit-1  | 2026-09-30T10:11:09.246Z	INFO	livekit.webhook	webhook/resource_url_notifier.go:337	sent webhook	{"event": "track_published", "id": "EV_CyQUrehBdSPJ", "webhookTime": 1790763069, "url": "http://api:8080/api/v1/internal/livekit/webhook", "room": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "roomID": "RM_QHFLNb7KX3CT", "participant": "u_MzFhMWJiODYtNTY0OC00YTVlLTg5ZjAtMzY3MjA1Y2YzNmM2.6n_GMdMufX-hxgPck-zpYA", "participantID": "PA_EsUvnVdUg3Js", "trackID": "TR_VSpB6o8ghh3Aob", "queueDuration": "13.52µs", "qLen": 0, "sendDuration": "5.596444ms", "status": "204 No Content", "statusCode": 204}
+db-1       | 2026-09-30 10:10:56.157 UTC [92] LOG:  database system was shut down at 2026-09-30 10:10:56 UTC
+livekit-1  | 2026-09-30T10:11:30.494Z	INFO	livekit.api	service/twirp.go:149	API RoomService.ListParticipants	{"service": "RoomService", "method": "ListParticipants", "room": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "duration": "247.45µs", "status": "200"}
+livekit-1  | 2026-09-30T10:11:30.502Z	INFO	livekit.api	service/twirp.go:149	API RoomService.ListParticipants	{"service": "RoomService", "method": "ListParticipants", "room": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "duration": "162.55µs", "status": "200"}
+livekit-1  | 2026-09-30T10:11:39.329Z	INFO	livekit	telemetry/events.go:212	stats worker active	{"room": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "roomID": "RM_QHFLNb7KX3CT", "participant": "u_NmViNWY0MmYtZjQ0ZC00ZjM0LTkyM2QtNDYxNDA1NWU5YzA0.mYT6vVihOKjYLUZvYR-9yQ", "participantID": "PA_h3sn4gePewxo", "worker": {"room": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "roomID": "RM_QHFLNb7KX3CT", "participant": "u_NmViNWY0MmYtZjQ0ZC00ZjM0LTkyM2QtNDYxNDA1NWU5YzA0.mYT6vVihOKjYLUZvYR-9yQ", "participantID": "PA_h3sn4gePewxo", "isConnected": true, "closedAt": "0001-01-01T00:00:00.000Z", "refCount": {"count": 1}}, "guard": {"self": 19878277475274, "activated": true, "released": true}}
+livekit-1  | 2026-09-30T10:11:39.346Z	INFO	livekit	telemetry/events.go:212	stats worker active	{"room": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "roomID": "RM_QHFLNb7KX3CT", "participant": "u_MzFhMWJiODYtNTY0OC00YTVlLTg5ZjAtMzY3MjA1Y2YzNmM2.6n_GMdMufX-hxgPck-zpYA", "participantID": "PA_EsUvnVdUg3Js", "worker": {"room": "live_Y-z6KOPE99YnjFDfk53bWUGEsCJhYEOk", "roomID": "RM_QHFLNb7KX3CT", "participant": "u_MzFhMWJiODYtNTY0OC00YTVlLTg5ZjAtMzY3MjA1Y2YzNmM2.6n_GMdMufX-hxgPck-zpYA", "participantID": "PA_EsUvnVdUg3Js", "isConnected": true, "closedAt": "0001-01-01T00:00:00.000Z", "refCount": {"count": 1}}, "guard": {"self": 19878260230888, "activated": true, "released": true}}
+api-1      | {"level":30,"time":1790763067646,"pid":1,"hostname":"3e4d478da440","reqId":"req-l","res":{"statusCode":204},"responseTime":1.9925251007080078,"msg":"request completed"}
+migrate-1  | Applied migration 0009_return_points.sql
+migrate-1  | Applied migration 0010_direct_messages.sql
+migrate-1  | Applied migration 0011_agent_connection.sql
+migrate-1  | Applied migration 0012_agent_oauth.sql
+migrate-1  | Applied migration 0013_docs.sql
+migrate-1  | Applied migration 0014_search.sql
+migrate-1  | Applied migration 0015_notifications.sql
+migrate-1  | Applied migration 0016_live_sessions.sql
+migrate-1  | Applied migration 0017_live_access_fences.sql
+migrate-1  | Applied migration 0018_live_lifecycle.sql
+migrate-1  | Applied migration 0019_live_webhook_events.sql
+migrate-1  | Applied migration 0020_live_invitations.sql
+migrate-1  | Applied migration 0021_live_invitation_notifications.sql
+migrate-1  | Applied migration 0022_search_restore_path.sql
+migrate-1  | Applied migration 0023_live_admissions.sql
+migrate-1  | Applied migration 0024_personal_runs.sql
+migrate-1  | Applied migration 0025_dm_sketches.sql
+migrate-1  | Flux schema 25 and pg-boss ready
+migrate-1  | Flux schema 25 and pg-boss ready
+api-1      | {"level":30,"time":1790763067651,"pid":1,"hostname":"3e4d478da440","reqId":"req-k","res":{"statusCode":201},"responseTime":32.19320201873779,"msg":"request completed"}
+api-1      | {"level":30,"time":1790763068194,"pid":1,"hostname":"3e4d478da440","reqId":"req-m","req":{"method":"POST","url":"/api/v1/live-sessions/6f818727-6df0-4a2e-8f99-337d1e8d5b7b/join","host":"api:8080","remoteAddress":"172.24.0.4","remotePort":42846},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790763068218,"pid":1,"hostname":"3e4d478da440","reqId":"req-m","res":{"statusCode":200},"responseTime":24.555812001228333,"msg":"request completed"}
+db-1       | 2026-09-30 10:10:56.166 UTC [1] LOG:  database system is ready to accept connections
+api-1      | {"level":30,"time":1790763068310,"pid":1,"hostname":"3e4d478da440","reqId":"req-n","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:19061","remoteAddress":"172.24.0.4","remotePort":55030},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790763068312,"pid":1,"hostname":"3e4d478da440","reqId":"req-n","res":{"statusCode":200},"responseTime":2.3150359392166138,"msg":"request completed"}
+api-1      | {"level":30,"time":1790763068325,"pid":1,"hostname":"3e4d478da440","reqId":"req-o","req":{"method":"GET","url":"/favicon.ico","host":"127.0.0.1:19061","remoteAddress":"172.24.0.4","remotePort":55030},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790763068327,"pid":1,"hostname":"3e4d478da440","reqId":"req-o","res":{"statusCode":404},"responseTime":1.7310340404510498,"msg":"request completed"}
+api-1      | {"level":30,"time":1790763068389,"pid":1,"hostname":"3e4d478da440","reqId":"req-p","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:19061","remoteAddress":"172.24.0.4","remotePort":55030},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790763068391,"pid":1,"hostname":"3e4d478da440","reqId":"req-p","res":{"statusCode":200},"responseTime":1.4935240745544434,"msg":"request completed"}
+api-1      | {"level":30,"time":1790763068690,"pid":1,"hostname":"3e4d478da440","reqId":"req-q","req":{"method":"POST","url":"/api/v1/internal/livekit/webhook","host":"api:8080","remoteAddress":"172.25.0.2","remotePort":49874},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790763068697,"pid":1,"hostname":"3e4d478da440","reqId":"req-r","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:8080","remoteAddress":"127.0.0.1","remotePort":39854},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790763068702,"pid":1,"hostname":"3e4d478da440","reqId":"req-r","res":{"statusCode":200},"responseTime":4.429591059684753,"msg":"request completed"}
+api-1      | {"level":30,"time":1790763068710,"pid":1,"hostname":"3e4d478da440","reqId":"req-q","res":{"statusCode":204},"responseTime":20.14112102985382,"msg":"request completed"}
+api-1      | {"level":30,"time":1790763068710,"pid":1,"hostname":"3e4d478da440","reqId":"req-s","req":{"method":"POST","url":"/api/v1/live-sessions/6f818727-6df0-4a2e-8f99-337d1e8d5b7b/join","host":"api:8080","remoteAddress":"172.24.0.4","remotePort":42846},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790763068726,"pid":1,"hostname":"3e4d478da440","reqId":"req-s","res":{"statusCode":200},"responseTime":15.841579914093018,"msg":"request completed"}
+api-1      | {"level":30,"time":1790763068755,"pid":1,"hostname":"3e4d478da440","reqId":"req-t","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:19061","remoteAddress":"172.24.0.4","remotePort":55038},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790763068756,"pid":1,"hostname":"3e4d478da440","reqId":"req-t","res":{"statusCode":200},"responseTime":1.4121040105819702,"msg":"request completed"}
+api-1      | {"level":30,"time":1790763068822,"pid":1,"hostname":"3e4d478da440","reqId":"req-u","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:19061","remoteAddress":"172.24.0.4","remotePort":55038},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790763068823,"pid":1,"hostname":"3e4d478da440","reqId":"req-u","res":{"statusCode":200},"responseTime":1.097702980041504,"msg":"request completed"}
+api-1      | {"level":30,"time":1790763069050,"pid":1,"hostname":"3e4d478da440","reqId":"req-v","req":{"method":"POST","url":"/api/v1/internal/livekit/webhook","host":"api:8080","remoteAddress":"172.25.0.2","remotePort":49874},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790763069069,"pid":1,"hostname":"3e4d478da440","reqId":"req-v","res":{"statusCode":204},"responseTime":19.21955895423889,"msg":"request completed"}
+api-1      | {"level":30,"time":1790763069241,"pid":1,"hostname":"3e4d478da440","reqId":"req-w","req":{"method":"POST","url":"/api/v1/internal/livekit/webhook","host":"api:8080","remoteAddress":"172.25.0.2","remotePort":49874},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790763069246,"pid":1,"hostname":"3e4d478da440","reqId":"req-w","res":{"statusCode":204},"responseTime":4.50642204284668,"msg":"request completed"}
+api-1      | {"level":30,"time":1790763071802,"pid":1,"hostname":"3e4d478da440","reqId":"req-x","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:8080","remoteAddress":"127.0.0.1","remotePort":39872},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790763071805,"pid":1,"hostname":"3e4d478da440","reqId":"req-x","res":{"statusCode":200},"responseTime":2.6227760314941406,"msg":"request completed"}
+api-1      | {"level":30,"time":1790763074892,"pid":1,"hostname":"3e4d478da440","reqId":"req-y","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:8080","remoteAddress":"127.0.0.1","remotePort":39906},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790763074893,"pid":1,"hostname":"3e4d478da440","reqId":"req-y","res":{"statusCode":200},"responseTime":1.3449740409851074,"msg":"request completed"}
+api-1      | {"level":30,"time":1790763077972,"pid":1,"hostname":"3e4d478da440","reqId":"req-z","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:8080","remoteAddress":"127.0.0.1","remotePort":33418},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790763077973,"pid":1,"hostname":"3e4d478da440","reqId":"req-z","res":{"statusCode":200},"responseTime":1.2103739976882935,"msg":"request completed"}
+api-1      | {"level":30,"time":1790763081052,"pid":1,"hostname":"3e4d478da440","reqId":"req-10","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:8080","remoteAddress":"127.0.0.1","remotePort":33456},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790763081053,"pid":1,"hostname":"3e4d478da440","reqId":"req-10","res":{"statusCode":200},"responseTime":1.1517620086669922,"msg":"request completed"}
+api-1      | {"level":30,"time":1790763084130,"pid":1,"hostname":"3e4d478da440","reqId":"req-11","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:8080","remoteAddress":"127.0.0.1","remotePort":33492},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790763084131,"pid":1,"hostname":"3e4d478da440","reqId":"req-11","res":{"statusCode":200},"responseTime":0.8913730382919312,"msg":"request completed"}
+api-1      | {"level":30,"time":1790763087216,"pid":1,"hostname":"3e4d478da440","reqId":"req-12","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:8080","remoteAddress":"127.0.0.1","remotePort":33506},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790763087217,"pid":1,"hostname":"3e4d478da440","reqId":"req-12","res":{"statusCode":200},"responseTime":1.774725079536438,"msg":"request completed"}
+api-1      | {"level":30,"time":1790763090294,"pid":1,"hostname":"3e4d478da440","reqId":"req-13","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:8080","remoteAddress":"127.0.0.1","remotePort":34892},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790763090295,"pid":1,"hostname":"3e4d478da440","reqId":"req-13","res":{"statusCode":200},"responseTime":1.0872230529785156,"msg":"request completed"}
+api-1      | {"level":30,"time":1790763093379,"pid":1,"hostname":"3e4d478da440","reqId":"req-14","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:8080","remoteAddress":"127.0.0.1","remotePort":34920},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790763093381,"pid":1,"hostname":"3e4d478da440","reqId":"req-14","res":{"statusCode":200},"responseTime":2.2052561044692993,"msg":"request completed"}
+api-1      | {"level":30,"time":1790763096463,"pid":1,"hostname":"3e4d478da440","reqId":"req-15","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:8080","remoteAddress":"127.0.0.1","remotePort":34970},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790763096465,"pid":1,"hostname":"3e4d478da440","reqId":"req-15","res":{"statusCode":200},"responseTime":1.3312530517578125,"msg":"request completed"}
+api-1      | {"level":30,"time":1790763099542,"pid":1,"hostname":"3e4d478da440","reqId":"req-16","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:8080","remoteAddress":"127.0.0.1","remotePort":39286},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790763099543,"pid":1,"hostname":"3e4d478da440","reqId":"req-16","res":{"statusCode":200},"responseTime":0.9907619953155518,"msg":"request completed"}
+ Container flux-live-turn-1790762884-623302-api-1 Stopping 
+ Container flux-live-turn-1790762884-623302-api-1 Stopped 
+ Container flux-live-turn-1790762884-623302-api-1 Removing 
+ Container flux-live-turn-1790762884-623302-api-1 Removed 
+ Container flux-live-turn-1790762884-623302-livekit-1 Stopping 
+ Container flux-live-turn-1790762884-623302-migrate-1 Stopping 
+ Container flux-live-turn-1790762884-623302-migrate-1 Stopped 
+ Container flux-live-turn-1790762884-623302-migrate-1 Removing 
+ Container flux-live-turn-1790762884-623302-migrate-1 Removed 
+ Container flux-live-turn-1790762884-623302-db-1 Stopping 
+ Container flux-live-turn-1790762884-623302-db-1 Stopped 
+ Container flux-live-turn-1790762884-623302-db-1 Removing 
+ Container flux-live-turn-1790762884-623302-db-1 Removed 
+ Container flux-live-turn-1790762884-623302-livekit-1 Stopped 
+ Container flux-live-turn-1790762884-623302-livekit-1 Removing 
+ Container flux-live-turn-1790762884-623302-livekit-1 Removed 
+ Volume flux-live-turn-1790762884-623302_pgdata Removing 
+ Network flux-live-turn-1790762884-623302_livekit-media Removing 
+ Network flux-live-turn-1790762884-623302_default Removing 
+ Volume flux-live-turn-1790762884-623302_files Removing 
+ Network flux-live-turn-1790762884-623302_livekit-signal Removing 
+ Volume flux-live-turn-1790762884-623302_pgdata Removed 
+ Volume flux-live-turn-1790762884-623302_files Removed 
+ Network flux-live-turn-1790762884-623302_default Removed 
+ Network flux-live-turn-1790762884-623302_livekit-media Removed 
+ Network flux-live-turn-1790762884-623302_livekit-signal Removed 
+Untagged: flux-foundation:flux-live-turn-1790762884-623302
+Deleted: sha256:c34ba58b766d0604c3b3830a085a13246e8386e1676510c6192ca92bb3593dd8
+Untagged: flux-e2e:flux-live-turn-1790762884-623302
+Deleted: sha256:cbdf6f909704598bbea563fb0053c8078c02c27bb37098ff1b4b211015546c52
+Untagged: flux-live-sfu-test:flux-live-turn-1790762884-623302
+Deleted: sha256:037dade5f2941396fd57fb5f52a1d32453dd80b37cec2bad999c5255b2992c31

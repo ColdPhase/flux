@@ -1,0 +1,165 @@
+name: Publish reviewed release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        required: true
+        description: Existing draft version, for example v1.0.0
+        type: string
+      source_sha:
+        required: true
+        description: Exact accepted source SHA
+        type: string
+      image_digest:
+        required: true
+        description: Exact reviewed OCI index digest, sha256:...
+        type: string
+      review_issue:
+        required: true
+        description: Issue with the independent exact-artifact review
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: final-release
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Check draft, assets and independent review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # GitHub shows a draft Release only to identities with push access: a read-only token gets
+      # "release not found" for the draft this job must inspect. Every step here only reads.
+      contents: write
+      issues: read
+    outputs:
+      checksums_sha: ${{ steps.check.outputs.checksums_sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact draft and peer artifact record
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FLUX_RELEASE_ADMIN_READ_TOKEN: ${{ secrets.FLUX_RELEASE_ADMIN_READ_TOKEN }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          IMAGE_DIGEST: ${{ inputs.image_digest }}
+          REVIEW_ISSUE: ${{ inputs.review_issue }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          [[ "$RELEASE_VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$ ]]
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$REVIEW_ISSUE" =~ ^[1-9][0-9]*$ ]]
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+          test -n "$FLUX_RELEASE_ADMIN_READ_TOKEN" || {
+            echo 'Configure FLUX_RELEASE_ADMIN_READ_TOKEN with repository Administration (read) permission.' >&2
+            exit 1
+          }
+          GH_TOKEN="$FLUX_RELEASE_ADMIN_READ_TOKEN" \
+            gh api "repos/$GITHUB_REPOSITORY/immutable-releases" | \
+            python3 scripts/release/check_immutable_releases.py
+          bash scripts/release/check_release_target.sh "$RELEASE_VERSION" "$SOURCE_SHA" draft
+          mkdir -p "$RUNNER_TEMP/reviewed-assets"
+          gh release download "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" \
+            --dir "$RUNNER_TEMP/reviewed-assets"
+          cd "$RUNNER_TEMP/reviewed-assets"
+          sha256sum -c SHA256SUMS
+          python3 "$GITHUB_WORKSPACE/scripts/release/check_asset_set.py" .
+          jq -e --arg v "$RELEASE_VERSION" --arg s "$SOURCE_SHA" \
+            --arg i "ghcr.io/coldphase/flux@$IMAGE_DIGEST" \
+            '.version == $v and .source_sha == $s and .image == $i' release.json
+          test "$(grep -Fc "image: ghcr.io/coldphase/flux@$IMAGE_DIGEST" compose.yaml)" = 3
+          checksums_sha=$(sha256sum SHA256SUMS | cut -d ' ' -f1)
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/issues/$REVIEW_ISSUE/comments?per_page=100" \
+            > "$RUNNER_TEMP/artifact-comments.json"
+          python3 "$GITHUB_WORKSPACE/scripts/release/verify_artifact_review.py" \
+            --comments "$RUNNER_TEMP/artifact-comments.json" \
+            --version "$RELEASE_VERSION" --source-sha "$SOURCE_SHA" \
+            --digest "$IMAGE_DIGEST" --checksums-sha "$checksums_sha"
+          echo "checksums_sha=$checksums_sha" >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: Pin version tag and publish immutable release
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        with:
+          version: v0.37.1
+          driver-opts: image=moby/buildkit:v0.33.0@sha256:6c2fa84a6b61ccd72899dde4239f8d5717f05f9a8ca6f3cad185fb1a95a94de3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Promote reviewed digest and publish draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FLUX_RELEASE_ADMIN_READ_TOKEN: ${{ secrets.FLUX_RELEASE_ADMIN_READ_TOKEN }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          IMAGE_DIGEST: ${{ inputs.image_digest }}
+          CHECKSUMS_SHA: ${{ needs.verify.outputs.checksums_sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/publish-assets"
+          gh release download "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" \
+            --dir "$RUNNER_TEMP/publish-assets"
+          cd "$RUNNER_TEMP/publish-assets"
+          sha256sum -c SHA256SUMS
+          python3 "$GITHUB_WORKSPACE/scripts/release/check_asset_set.py" .
+          test "$(sha256sum SHA256SUMS | cut -d ' ' -f1)" = "$CHECKSUMS_SHA"
+          jq -e --arg v "$RELEASE_VERSION" --arg s "$SOURCE_SHA" \
+            --arg i "ghcr.io/coldphase/flux@$IMAGE_DIGEST" \
+            '.version == $v and .source_sha == $s and .image == $i' release.json
+          bash "$GITHUB_WORKSPACE/scripts/release/check_release_target.sh" \
+            "$RELEASE_VERSION" "$SOURCE_SHA" draft
+          bash "$GITHUB_WORKSPACE/scripts/release/promote_image_tag.sh" \
+            "$RELEASE_VERSION" "$IMAGE_DIGEST"
+          tag="ghcr.io/coldphase/flux:$RELEASE_VERSION"
+          mkdir -p "$RUNNER_TEMP/anonymous-docker"
+          DOCKER_CONFIG="$RUNNER_TEMP/anonymous-docker" \
+            docker buildx imagetools inspect "$tag" >/dev/null
+          bash "$GITHUB_WORKSPACE/scripts/release/check_release_target.sh" \
+            "$RELEASE_VERSION" "$SOURCE_SHA" draft
+          test -n "$FLUX_RELEASE_ADMIN_READ_TOKEN" || {
+            echo 'Configure FLUX_RELEASE_ADMIN_READ_TOKEN with repository Administration (read) permission.' >&2
+            exit 1
+          }
+          GH_TOKEN="$FLUX_RELEASE_ADMIN_READ_TOKEN" \
+            gh api "repos/$GITHUB_REPOSITORY/immutable-releases" | \
+            python3 "$GITHUB_WORKSPACE/scripts/release/check_immutable_releases.py"
+          gh release edit "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" --draft=false
+          bash "$GITHUB_WORKSPACE/scripts/release/check_release_target.sh" \
+            "$RELEASE_VERSION" "$SOURCE_SHA" published
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_VERSION" \
+            > "$RUNNER_TEMP/published-release.json"
+          jq -e '.draft == false and .immutable == true' "$RUNNER_TEMP/published-release.json"
+          mkdir -p "$RUNNER_TEMP/public-assets"
+          jq -r '.assets[].browser_download_url' "$RUNNER_TEMP/published-release.json" | \
+            while IFS= read -r url; do
+              curl --fail --location --silent --show-error "$url" \
+                -o "$RUNNER_TEMP/public-assets/${url##*/}"
+            done
+          cd "$RUNNER_TEMP/public-assets"
+          sha256sum -c SHA256SUMS
+          echo "Published $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$RELEASE_VERSION"
