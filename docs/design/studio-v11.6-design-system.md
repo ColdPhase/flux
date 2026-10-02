@@ -117,8 +117,10 @@ There is no web font. The root is 14px/1.55 with no body tracking, and headings 
      - footer: user, settings and theme
    - Navigation rows are 42px tall in 12px weight-400 text; the active row is `--bg-active`.
    - The content sits in a rounded **sheet** with a 1px `--sheet-edge` border and no shadow.
-   - Per-project conversation threads move out of the global sidebar into the Conversation
-     view. The thread list stays reachable and no thread is lost.
+   - The sidebar lists no conversation threads. A project has **one conversation**
+     (UI116-1 clarification, #195): a chronological stream of messages, and each
+     message's replies open beside it. Earlier conversations become roots in that stream,
+     and their existing links keep working, so no history is lost.
 2. **Project header**, inside the sheet:
    - The title is 21px weight 600.
    - Below it, a members line and a compact goal.
