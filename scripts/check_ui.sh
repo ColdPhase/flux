@@ -24,6 +24,13 @@ export FLUX_AUTH_RATE_LIMIT=false
 export FLUX_TEST_FAILURE_INJECTION=true
 export FLUX_TEST_PERSONAL_RUNS=anthropic-mock
 export FLUX_TEST_ANTHROPIC_URL=http://anthropic-mock:8090
+# Owner AI connection settings (#179): a throwaway key-custody secret, and an operator allowlist
+# naming only the local OpenAI-compatible mock (tests/ui/openai_mock.py).
+background_secret_dir=$(mktemp -d)
+head -c 32 /dev/urandom > "$background_secret_dir/background_key"
+chmod 0444 "$background_secret_dir/background_key"
+export FLUX_BACKGROUND_KEY_HOST_FILE="$background_secret_dir/background_key"
+export FLUX_AI_PRIVATE_TARGETS=openai-mock
 if [ -n "${FLUX_UI_SCREENSHOT_DIR:-}" ]; then mkdir -p "$FLUX_UI_SCREENSHOT_DIR"; fi
 . scripts/test_images.sh
 compose="docker compose -p $project -f docker/compose.source.yaml --profile ui"
@@ -35,6 +42,9 @@ cleanup() {
   fi
   $compose down -v || true
   remove_project_images
+  chmod 0600 "$background_secret_dir/background_key"
+  unlink "$background_secret_dir/background_key"
+  rmdir "$background_secret_dir"
 }
 trap cleanup EXIT HUP INT TERM
 

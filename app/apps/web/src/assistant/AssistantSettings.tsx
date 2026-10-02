@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
-import { PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUN_LIMITS, type Agent, type PersonalAssistantStatus } from '@flux/contracts';
+import { AI_PROVIDERS, aiConnectionLabel, PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUN_LIMITS, type Agent, type PersonalAssistantStatus } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useShellData } from '../app/data';
 import { createPersonalAgent } from '../agent-connection/api';
 import { listAgents } from '../work/api';
 import { Button, ErrorState, Icon, Spinner } from '../ui';
 import { enableAssistant, getAssistantStatus, pauseAssistant, removeAssistant, resumeAssistant, selectAssistantAgent, updateAssistant } from './api';
-import { dollars, micros, stateLine, unavailableText } from './format';
+import { dollars, micros, perMillion, stateLine, unavailableText } from './format';
 import '../notifications/notifications.css';
 import './assistant.css';
 
@@ -60,8 +60,8 @@ export function AssistantSettings() {
 
 /** Why the assistant cannot run on this server, when that is the case. Never pretends it can. */
 function SetupProblem({ status }: { status: PersonalAssistantStatus }) {
-  if (status.setup.provider === 'off') return <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>In-app AI is turned off on this Flux server.</b> Nothing is sent to an AI provider, and Flux works as usual. Your own Claude Code can still connect through a <Link className="ui-link" to="/connect-agent">personal Flux grant</Link>.</span></p>;
-  if (status.setup.connection === 'none') return <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Your own AI key isn’t connected.</b> Connecting a personal Anthropic API key isn’t available on this server yet, so your assistant can’t run in Flux. Nobody else’s key is ever used for you.</span></p>;
+  if (status.setup.provider === 'off') return <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>In-app AI is turned off on this Flux server.</b> Nothing is sent to an AI provider, and Flux works as usual. Your own MCP client, such as Claude Code or Codex, can still connect through a <Link className="ui-link" to="/connect-agent">personal Flux grant</Link>.</span></p>;
+  if (status.setup.connection === 'none') return <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Your own AI key isn’t connected.</b> Connecting a personal API key for your assistant isn’t available on this server yet, so your assistant can’t run in Flux. Nobody else’s key is ever used for you.</span></p>;
   return null;
 }
 
@@ -92,16 +92,21 @@ function AgentPicker({ workspace, agents, value, onChange, onAgent, name, disabl
   );
 }
 
+/** The provider of the caller's own connection, named only when that is the connection (PROV-2). */
+const providerName = (status: PersonalAssistantStatus) =>
+  status.disclosure.provider ? (status.disclosure.provider === 'openai_compatible' ? 'your own endpoint' : AI_PROVIDERS[status.disclosure.provider].label) : 'your connection’s AI provider';
+
 function Disclosure({ status, perRun, daily, timeZone }: { status: PersonalAssistantStatus; perRun: number; daily: number; timeZone: string }) {
   const { disclosure } = status;
   const payer = status.enablement?.consent.payer;
+  const price = disclosure.price;
   return (
     <ul className="aset__facts">
-      <li><b>Provider</b><span>Anthropic, model {disclosure.model}. Your request is sent from the Flux server, never from your browser.</span></li>
-      <li><b>Who pays</b><span>{payer ? `${payer.organization} · ${payer.workspace}, through your own API key.` : 'The organization of your own Anthropic API key. Never another person or the workspace.'}</span></li>
+      <li><b>Provider</b><span>{disclosure.provider && disclosure.model ? aiConnectionLabel(disclosure.provider, disclosure.model) : 'The provider and model of your own AI connection'}. Your request is sent from the Flux server, never from your browser.</span></li>
+      <li><b>Who pays</b><span>{payer ? `${payer.organization} · ${payer.workspace}, through your own API key.` : 'The organization of your own API key. Never another person or the workspace.'}</span></li>
       <li><b>What leaves Flux</b><span>Excerpts from the one project conversation you ask in: its latest messages, its open work and a map thought you select. Never your direct messages, private notes, private maps or other projects.</span></li>
       <li><b>Who sees answers</b><span>The people in that conversation. They never see your cost, cap or key.</span></li>
-      <li><b>Cost</b><span>Each request reserves up to {dollars(perRun)} and uses at most {disclosure.maxInputTokens.toLocaleString('en')} input and {disclosure.maxOutputTokens.toLocaleString('en')} output tokens. It stops at {dollars(daily)} a day, reset at midnight in {timeZone}. The cap is a Flux limit, not a guarantee on the provider’s invoice. Prices checked {disclosure.priceCheckedOn}.</span></li>
+      <li><b>Cost</b><span>Each request uses at most {disclosure.maxInputTokens.toLocaleString('en')} input and {disclosure.maxOutputTokens.toLocaleString('en')} output tokens{disclosure.maxRunMicros !== null ? ` and reserves the most that can cost, ${micros(disclosure.maxRunMicros)}` : ''}, never more than your {dollars(perRun)} per-request limit. It stops at {dollars(daily)} a day, reset at midnight in {timeZone}. The cap is a Flux limit, not a guarantee on the provider’s invoice. {price ? `Price ${perMillion(price.inputMicrosPerMTok)} input and ${perMillion(price.outputMicrosPerMTok)} output per 1M tokens, ${price.source === 'table' ? `from Flux’s price table, checked ${price.checkedOn}` : price.source === 'provider_reported' ? `reported by the provider on ${price.checkedOn}` : 'entered by you'}.` : 'No price is known for your connection yet, so it cannot be used.'}</span></li>
     </ul>
   );
 }
@@ -128,7 +133,10 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
       for (const [, agentId] of picked.slice(1)) next = await selectAssistantAgent(agentId);
       onEnabled(next);
     } catch (cause) {
-      setError(cause instanceof ApiError && cause.code === 'PERSONAL_RUN_CONNECTION_REQUIRED' ? 'Connect your own AI key first. Nothing was turned on.' : failure(cause, 'Couldn’t turn it on. Try again.'));
+      setError(cause instanceof ApiError && cause.code === 'PERSONAL_RUN_CONNECTION_REQUIRED' ? 'Connect your own AI key first. Nothing was turned on.'
+        : cause instanceof ApiError && cause.code === 'PERSONAL_RUN_PRICE_UNKNOWN' ? 'Your AI connection has no known price. Nothing was turned on.'
+          : cause instanceof ApiError && cause.code === 'PERSONAL_RUN_COST_OVER_LIMIT' ? 'One request to your model can cost more than this per-request limit. Choose a higher limit. Nothing was turned on.'
+            : failure(cause, 'Couldn’t turn it on. Try again.'));
     } finally { setBusy(false); }
   }
   return (
@@ -157,7 +165,7 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
           </div>
           <label className="aset__consent">
             <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
-            <span>I agree that excerpts from the project conversations I ask in are sent to Anthropic under my key’s organization, which pays for them.</span>
+            <span>I agree that excerpts from the project conversations I ask in are sent to {providerName(status)} under my key’s organization, which pays for them.</span>
           </label>
         </fieldset>
         {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}

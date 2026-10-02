@@ -247,7 +247,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     const privateRun = await runs.invoke(human(hubert), thread.id, { clientRunId: randomUUID(), kind: 'map_thought', prompt: 'Expand this', target: { type: 'thought', sketchId: privateSketch.id, thoughtId: privateSketch.thoughtId } });
     const before = compute.dispatched.length;
     assert.equal(await processor.process(privateRun.run.id), 'denied');
-    assert.deepEqual(await row(privateRun.run.id), { status: 'denied', cost_state: 'released', charged_micros: 0, reserved_micros: 60_000, answer_body: null, stopped_at_stage: 'before_read' });
+    assert.deepEqual(await row(privateRun.run.id), { status: 'denied', cost_state: 'released', charged_micros: 0, reserved_micros: 47_000, answer_body: null, stopped_at_stage: 'before_read' });
     assert.equal(compute.dispatched.length, before);
     assert.equal(compute.counted.some((request) => request.input.includes(TOKENS.sketch)), false);
     await assert.rejects(runs.invoke(human(maurycy), thread.id, { clientRunId: randomUUID(), kind: 'map_thought', prompt: 'x', target: { type: 'thought', sketchId: privateSketch.id, thoughtId: privateSketch.thoughtId } }), { code: 'THOUGHT_NOT_FOUND' });
@@ -572,7 +572,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     try {
       const run = await ask(hubert, 'Count fails');
       assert.equal(await processor.process(run.run.id), 'provider_failed');
-      assert.deepEqual(await row(run.run.id), { status: 'provider_failed', cost_state: 'released', charged_micros: 0, reserved_micros: 60_000, answer_body: null, stopped_at_stage: 'before_dispatch' });
+      assert.deepEqual(await row(run.run.id), { status: 'provider_failed', cost_state: 'released', charged_micros: 0, reserved_micros: 47_000, answer_body: null, stopped_at_stage: 'before_dispatch' });
       assert.equal(compute.dispatched.length, dispatched);
     } finally { compute.count = count; }
   });
@@ -585,7 +585,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     try {
       const pending = await ask(hubert);
       assert.equal(await processor.process(pending.run.id), 'skipped', 'late completed provider result cannot commit');
-      assert.deepEqual(await row(pending.run.id), { status: 'provider_failed', cost_state: 'unknown', charged_micros: 0, reserved_micros: 60_000, answer_body: null, stopped_at_stage: null });
+      assert.deepEqual(await row(pending.run.id), { status: 'provider_failed', cost_state: 'unknown', charged_micros: 0, reserved_micros: 47_000, answer_body: null, stopped_at_stage: null });
       const dispatched = compute.dispatched.length;
       assert.equal(await processor.process(pending.run.id), 'skipped');
       assert.equal(compute.dispatched.length, dispatched, 'queue redelivery cannot call the provider again');

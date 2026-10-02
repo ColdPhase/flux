@@ -2,16 +2,18 @@ import assert from 'node:assert/strict';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, beforeEach, describe, test } from 'node:test';
-import { PERSONAL_RUN_LIMITS } from '@flux/contracts';
+import { PERSONAL_RUN_LIMITS, tablePrice } from '@flux/contracts';
 import { costMicros, SYSTEM_PROMPT, type PersonalComputeRequest } from '@flux/core';
-import { anthropicPersonalCompute } from '../../packages/agent-runtime/src/index.js';
+import { anthropicPersonalCompute, parsePrivateTargets } from '../../packages/agent-runtime/src/index.js';
 import { personalRunServerComposition } from '../../apps/server/src/personal-runs/composition.js';
 import { personalRunWorkerComposition } from '../../apps/worker/src/personal-runs/composition.js';
 
 // The Anthropic adapter behind `PersonalCompute` (#68, O-008 §3–§4), against a LOCAL MOCK HTTP
 // server in this test process. No real provider is called and no key exists: the "key" is a
 // fixed test string. These tests prove what the adapter sends and how it maps answers and
-// failures; they are not a provider, billing or compatibility pass.
+// failures; they are not a provider, billing or compatibility pass. The same behaviour of every
+// wire format against the Docker mock provider is `provider-adapters.test.ts` (F-020 PROV-6). The
+// loopback mock is reached only because this test's endpoint policy allows 127.0.0.1.
 
 const KEY = 'test-only-not-a-key-7f3a';
 const KEY_REF = 'key-ref-of-owner';
@@ -38,19 +40,19 @@ function json(response: ServerResponse, status: number, body: unknown, headers: 
   response.end(JSON.stringify(body));
 }
 const message = (overrides: Record<string, unknown> = {}) => ({
-  id: 'msg_test', type: 'message', role: 'assistant', model: PERSONAL_RUN_LIMITS.model,
+  id: 'msg_test', type: 'message', role: 'assistant', model: 'claude-sonnet-5',
   content: [{ type: 'text', text: 'Fact: the camera fails below 5 lux [S1].' }],
   stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 1_200, output_tokens: 80 }, ...overrides,
 });
 const apiError = (type: string) => ({ type: 'error', error: { type, message: `scripted ${type}` } });
 
 const request: PersonalComputeRequest = {
-  connection: { id: 'connection-1', keyRef: KEY_REF }, model: PERSONAL_RUN_LIMITS.model, maxTokens: PERSONAL_RUN_LIMITS.maxOutputTokens,
+  connection: { id: 'connection-1', keyRef: KEY_REF, provider: 'anthropic', baseUrl: null }, model: 'claude-sonnet-5', maxTokens: PERSONAL_RUN_LIMITS.maxOutputTokens,
   effort: PERSONAL_RUN_LIMITS.effort, system: SYSTEM_PROMPT, input: 'Task: Answer the request.\nRequest: Where are we?\n\nSources:\n[S1] Message 1 by Kai: Camera fails below 5 lux',
 };
 const resolved: string[] = [];
 const compute = () => anthropicPersonalCompute({
-  enabled: true, baseURL, timeoutMs: 2_000,
+  enabled: true, baseURL, timeoutMs: 2_000, policy: parsePrivateTargets('127.0.0.1'),
   resolveKey: async (keyRef) => { resolved.push(keyRef); return keyRef === KEY_REF ? KEY : null; },
 });
 
@@ -62,7 +64,7 @@ describe('Anthropic personal compute adapter (#68, local mock server: no provide
   after(() => new Promise<void>((resolve) => server.close(() => resolve())));
   beforeEach(() => { seen = []; resolved.length = 0; handler = (_seen, response) => json(response, 200, message()); });
 
-  test('one bounded Messages request: pinned model, max_tokens 1500, low effort, no tools, the owner\'s key', async () => {
+  test('one bounded Messages request: the connection\'s model, max_tokens 1500, low effort, no tools, the owner\'s key', async () => {
     const result = await compute().dispatch(request, new AbortController().signal);
     assert.deepEqual(result, { kind: 'completed', text: 'Fact: the camera fails below 5 lux [S1].', stopReason: 'end_turn', usage: { inputTokens: 1_200, outputTokens: 80 } });
     assert.equal(seen.length, 1);
@@ -75,8 +77,8 @@ describe('Anthropic personal compute adapter (#68, local mock server: no provide
       messages: [{ role: 'user', content: request.input }], output_config: { effort: 'low' },
     }, 'no tools, hosted search, MCP or streaming');
     assert.deepEqual(resolved, [KEY_REF]);
-    // Usage → cost at the recorded O-008 price ($2/M input, $10/M output).
-    assert.equal(result.kind === 'completed' && costMicros(result.usage), 1_200 * 2 + 80 * 10);
+    // Usage → cost at the connection's table price ($2/M input, $10/M output).
+    assert.equal(result.kind === 'completed' && costMicros(result.usage, tablePrice('anthropic', 'claude-sonnet-5')!), 1_200 * 2 + 80 * 10);
     assert.equal(JSON.stringify(result).includes(KEY), false, 'the key never appears in the result');
   });
 
@@ -93,13 +95,13 @@ describe('Anthropic personal compute adapter (#68, local mock server: no provide
 
   test('the preflight uses the token-counting endpoint with the same input and key', async () => {
     handler = (_seen, response) => json(response, 200, { input_tokens: 4_321 });
-    assert.equal(await compute().countInputTokens(request), 4_321);
+    assert.equal(await compute().countInputTokens!(request), 4_321);
     assert.equal(seen.length, 1);
     assert.equal(seen[0]!.path, '/v1/messages/count_tokens');
     assert.equal(seen[0]!.headers['x-api-key'], KEY);
     assert.deepEqual(seen[0]!.body, { model: 'claude-sonnet-5', system: SYSTEM_PROMPT, messages: [{ role: 'user', content: request.input }] });
     handler = (_seen, response) => json(response, 500, apiError('api_error'));
-    await assert.rejects(compute().countInputTokens(request));
+    await assert.rejects(compute().countInputTokens!(request));
     assert.equal(seen.length, 2, 'a failed count is not retried');
   });
 
@@ -108,7 +110,8 @@ describe('Anthropic personal compute adapter (#68, local mock server: no provide
       [429, 'rate_limit_error', { 'retry-after': '0' }, { reason: 'rate_limited', billed: 'unknown' }],
       [529, 'overloaded_error', {}, { reason: 'overloaded', billed: 'unknown' }],
       [500, 'api_error', {}, { reason: 'provider_error', billed: 'unknown' }],
-      [503, 'api_error', {}, { reason: 'provider_error', billed: 'unknown' }],
+      // 503 is "overloaded" on every wire format (F-020 PROV-6), as 529 is.
+      [503, 'api_error', {}, { reason: 'overloaded', billed: 'unknown' }],
       [400, 'invalid_request_error', {}, { reason: 'provider_error', billed: 'unknown' }],
       [401, 'authentication_error', {}, { reason: 'provider_error', billed: 'unknown' }],
     ];
@@ -143,12 +146,13 @@ describe('Anthropic personal compute adapter (#68, local mock server: no provide
   });
 
   test('nothing is sent without a usable key or outside the O-008 limits', async () => {
-    const other = { ...request, connection: { id: 'connection-2', keyRef: 'someone-else' } };
+    const other = { ...request, connection: { ...request.connection, id: 'connection-2', keyRef: 'someone-else' } };
     assert.deepEqual(await compute().dispatch(other, new AbortController().signal), { kind: 'failed', reason: 'provider_error', billed: 'none' });
-    await assert.rejects(compute().countInputTokens(other));
-    for (const bad of [{ ...request, model: 'claude-opus-5' }, { ...request, maxTokens: 1_501 }, { ...request, effort: 'high' as 'low' }]) {
+    await assert.rejects(compute().countInputTokens!(other));
+    const otherWire = { ...request, connection: { ...request.connection, provider: 'openai' as const } };
+    for (const bad of [{ ...request, model: 'not a model id' }, { ...request, maxTokens: 1_501 }, { ...request, effort: 'high' as 'low' }, otherWire]) {
       await assert.rejects(compute().dispatch(bad, new AbortController().signal));
-      await assert.rejects(compute().countInputTokens(bad));
+      await assert.rejects(compute().countInputTokens!(bad));
     }
     assert.equal(seen.length, 0, 'no request reached the provider');
     assert.deepEqual(resolved, ['someone-else', 'someone-else'], 'an out-of-limit request never even resolves a key');

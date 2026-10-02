@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { createDatabase, schema } from '@flux/db';
 import { recoverPersonalRuns, type PersonalRunUnitOfWork } from '@flux/core';
-import { PERSONAL_RUN_LIMITS, type Conversation, type Project, type Workspace } from '@flux/contracts';
+import type { Conversation, Project, Workspace } from '@flux/contracts';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
 import { addMember, expectStatus, person, project, workspace, type Person } from './support/people.js';
 
@@ -21,7 +21,7 @@ async function seed(owner: Person, status: 'queued' | 'reading' | 'dispatching' 
     id, workspaceId: ws.id, projectId: place.id, conversationId: conversation.id,
     ownerUserId: owner.id, agentId: agents.get(owner.id)!, connectionId: randomUUID(),
     clientRunId: randomUUID(), requestFingerprint: randomUUID(), kind: 'ask', prompt: 'Synthetic crash fixture',
-    status, reservedMicros: 60_000, model: PERSONAL_RUN_LIMITS.model,
+    status, reservedMicros: 60_000, provider: 'anthropic', model: 'claude-sonnet-5',
     costState: status === 'completed' ? 'observed' : 'reserved',
     chargedMicros: status === 'completed' ? 2500 : 0,
     answerBody: status === 'completed' ? 'Existing answer' : null,

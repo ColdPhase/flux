@@ -18,7 +18,7 @@ const connectionPath = '/api/v1/background-compute-connections';
 const codeOf = (response: { json: unknown }) => (response.json as { code?: string } | null)?.code;
 const fakeKey = `sk-ant-api03-${'owner-budget-key-'.repeat(4)}END9`;
 const connectionBody = (periodBudgetCents = 50) => ({
-  apiKey: fakeKey, payerOrganization: 'Example payer org', providerWorkspace: 'Dedicated maker workspace',
+  provider: 'anthropic', model: 'claude-sonnet-5', apiKey: fakeKey, payerOrganization: 'Example payer org', providerWorkspace: 'Dedicated maker workspace',
   workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true,
   providerBillingAcknowledged: true, projectDataDisclosureAcknowledged: true,
   maxRunsPerDay: 1, periodDays: 30, periodBudgetCents, perRunCents: 5,
@@ -92,7 +92,7 @@ describe('owner standing comparison rule', () => {
     assert.ok(blob.startsWith('v1.') && !blob.includes(fakeKey));
     assert.equal(decryptForTest(blob, owner.id, first.id), fakeKey);
     assert.throws(() => decryptForTest(blob, peer.id, first.id), /auth|authenticate|Unsupported state/i);
-    assert.equal(record.rows[0].consent_version, 'o-007-2026-09-28');
+    assert.equal(record.rows[0].consent_version, 'o-007-2026-10-02', 'a new connection records the provider-neutral F-020 disclosure');
     assert.equal(expectStatus(await peer.browser.request('GET', `${connectionPath}/current`), 200), null);
     assert.equal((await peer.browser.request('DELETE', `${connectionPath}/${first.id}`)).status, 404);
 

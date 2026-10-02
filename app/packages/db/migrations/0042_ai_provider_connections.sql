@@ -1,0 +1,65 @@
+-- #179 / F-020 (PROV-1, PROV-3): an owner's AI connection may use any supported provider and model.
+-- Relaxes the Anthropic-only pins of 0027 (O-007) and 0024 (O-008) without rewriting what they
+-- recorded: every earlier connection stays anthropic/claude-sonnet-5 under its earlier consent, and
+-- gets that model's dated table price. Sparse after 0041 (0035 is #166's and 0036 is #168's), and
+-- independent of both. Custody (ciphertext, fingerprint, last four, revocation) is unchanged.
+ALTER TABLE background_compute_connections
+  DROP CONSTRAINT background_compute_connections_provider_check,
+  DROP CONSTRAINT background_compute_connections_model_check,
+  DROP CONSTRAINT background_compute_connections_consent_version_check,
+  ADD CONSTRAINT background_compute_connections_provider_check
+    CHECK (provider IN ('anthropic', 'openai', 'openrouter', 'gemini', 'openai_compatible')),
+  -- The owner's choice within bounds: no spaces, controls or quotes.
+  ADD CONSTRAINT background_compute_connections_model_check
+    CHECK (model ~ '^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}$'),
+  ADD CONSTRAINT background_compute_connections_consent_version_check
+    CHECK (consent_version IN ('o-007-2026-09-28', 'o-007-2026-10-02')),
+  -- The 2026-09-28 disclosure named only this provider and model.
+  ADD CONSTRAINT background_compute_connections_legacy_consent_check
+    CHECK (consent_version <> 'o-007-2026-09-28' OR (provider = 'anthropic' AND model = 'claude-sonnet-5')),
+  -- Owner-set for an OpenAI-compatible endpoint only; the named providers use their fixed public URL.
+  ADD COLUMN base_url text,
+  ADD CONSTRAINT background_compute_connections_base_url_check
+    CHECK ((provider = 'openai_compatible') = (base_url IS NOT NULL)
+      AND (base_url IS NULL OR (length(base_url) <= 2048 AND base_url ~ '^https?://[^[:space:]@?#]+$'))),
+  -- Micro-dollars per 1M tokens. All null when no price is known: such a connection cannot be enabled.
+  ADD COLUMN input_price_micros_per_mtok integer
+    CHECK (input_price_micros_per_mtok BETWEEN 0 AND 1000000000),
+  ADD COLUMN output_price_micros_per_mtok integer
+    CHECK (output_price_micros_per_mtok BETWEEN 0 AND 1000000000),
+  ADD COLUMN price_source text CHECK (price_source IN ('table', 'provider_reported', 'owner')),
+  ADD COLUMN price_checked_on date,
+  ADD CONSTRAINT background_compute_connections_price_check
+    CHECK ((input_price_micros_per_mtok IS NULL) = (price_source IS NULL)
+      AND (output_price_micros_per_mtok IS NULL) = (price_source IS NULL)
+      AND (price_checked_on IS NULL) = (price_source IS NULL OR price_source = 'owner'));
+
+-- O-007 recorded $2/M input and $10/M output for its pinned model on 2026-09-28.
+UPDATE background_compute_connections
+  SET input_price_micros_per_mtok = 2000000, output_price_micros_per_mtok = 10000000,
+    price_source = 'table', price_checked_on = DATE '2026-09-28';
+
+ALTER TABLE personal_run_enablements
+  DROP CONSTRAINT personal_run_enablements_consent_version_check,
+  DROP CONSTRAINT personal_run_enablements_consent_provider_check,
+  ADD CONSTRAINT personal_run_enablements_consent_version_check
+    CHECK (consent_version IN ('o-008-2026-09-28', 'o-008-2026-10-02')),
+  ADD CONSTRAINT personal_run_enablements_consent_provider_check
+    CHECK (consent_provider IN ('anthropic', 'openai', 'openrouter', 'gemini', 'openai_compatible')),
+  ADD CONSTRAINT personal_run_enablements_legacy_consent_check
+    CHECK (consent_version <> 'o-008-2026-09-28' OR consent_provider = 'anthropic');
+
+-- The provider each run was sent to, for the answer's provenance (PROV-2). Earlier runs were Anthropic.
+ALTER TABLE personal_runs
+  ADD COLUMN provider text NOT NULL DEFAULT 'anthropic'
+    CHECK (provider IN ('anthropic', 'openai', 'openrouter', 'gemini', 'openai_compatible'));
+ALTER TABLE personal_runs ALTER COLUMN provider DROP DEFAULT;
+
+-- A quiet comparison proposal names the provider and model it ran on, as the run's connection did.
+-- Earlier proposals could only come from the O-007 pin.
+ALTER TABLE proactive_comparison_proposals
+  ADD COLUMN provider text NOT NULL DEFAULT 'anthropic'
+    CHECK (provider IN ('anthropic', 'openai', 'openrouter', 'gemini', 'openai_compatible')),
+  ADD COLUMN model text NOT NULL DEFAULT 'claude-sonnet-5'
+    CHECK (model ~ '^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}$');
+ALTER TABLE proactive_comparison_proposals ALTER COLUMN provider DROP DEFAULT, ALTER COLUMN model DROP DEFAULT;

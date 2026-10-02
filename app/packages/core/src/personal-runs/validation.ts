@@ -3,6 +3,7 @@ import {
   PERSONAL_RUN_CONSENT_VERSION,
   PERSONAL_RUN_LIMITS,
   WORK_LIMITS,
+  type AiPrice,
   type AssistantRunKind,
   type AssistantRunTarget,
   type AssistantSourceRef,
@@ -13,6 +14,7 @@ import {
 } from '@flux/contracts';
 import { InvalidInputError, RuleViolationError } from '../access/errors.js';
 import { id, isId } from '../work/validation.js';
+import { requestReservationMicros, usageMicros } from '../ai/price.js';
 import type { PersonalComputeUsage } from './ports.js';
 
 // Input and output rules of personal runs (#68, O-008). Pure functions shared by every entry
@@ -111,9 +113,20 @@ export function retryRequest(run: { kind: AssistantRunKind; prompt: string; targ
   return { clientRunId: id(clientRunId, 'clientRunId'), ...request, fingerprint: fingerprint(request), claimed: { ownerId: null, connectionId: null, agentId: null } };
 }
 
-/** Micro-dollars of reported usage at the O-008 rate. */
-export function costMicros(usage: PersonalComputeUsage): number {
-  return usage.inputTokens * PERSONAL_RUN_LIMITS.price.inputMicrosPerToken + usage.outputTokens * PERSONAL_RUN_LIMITS.price.outputMicrosPerToken;
+/**
+ * Micro-dollars of reported usage: the provider-reported cost when the response carries one,
+ * otherwise the tokens at the connection's price (F-020 PROV-3).
+ */
+export function costMicros(usage: PersonalComputeUsage, price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>): number {
+  return usageMicros(price, usage);
+}
+
+/**
+ * What one run reserves (PROV-3): its largest possible cost at the connection's price, or null
+ * when the connection has no known price and cannot be used.
+ */
+export function runReservationMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'> | null): number | null {
+  return requestReservationMicros(price, PERSONAL_RUN_LIMITS.maxInputTokens, PERSONAL_RUN_LIMITS.maxOutputTokens);
 }
 
 export const centsToMicros = (value: number) => value * 10_000;

@@ -20,11 +20,16 @@ suite, with the real adapter against a mock provider server (see
 [Test-only switch](#test-only-switch)). No test is a provider, billing or
 compatibility pass.
 
+**Any provider (F-020, #179).** A run goes to the owner's connection, whatever its provider kind
+and model: the same use cases, rechecks, reservation and commit, with the wire format chosen by
+the adapter registry of `@flux/agent-runtime`. See [AI providers](ai-providers.md). The production
+connection lookup is still `noPersonalConnections`.
+
 ## Layout
 
 | Path | Role |
 | --- | --- |
-| `app/packages/contracts/src/personal-runs.ts` | Paths, wire types, the consent version `o-008-2026-09-28` and the O-008 limits (`PERSONAL_RUN_LIMITS`). |
+| `app/packages/contracts/src/personal-runs.ts` | Paths, wire types, the consent versions (`o-008-2026-10-02` for new consents; `o-008-2026-09-28` stays valid for Anthropic) and the O-008 limits (`PERSONAL_RUN_LIMITS`), the same for every provider. |
 | `app/packages/core/src/personal-runs/` | Ports, input and output rules, use cases (`service.ts`), the worker processor (`processor.ts`) and assistant proposals (`proposals.ts`). |
 | `app/packages/core/src/access/personal-run-access.ts` | The access policy as the `PersonalRunAccess` port. |
 | `app/packages/core/src/access/policy.ts` | New agent action `agent.invoke`: only the person who owns the unrevoked agent. A workspace role never grants it. |
@@ -33,37 +38,47 @@ compatibility pass.
 | `app/apps/worker/src/personal-runs/` | The `personal-run.dispatch.v1` handler and its composition (`composition.ts`). The queue never retries a job (`PERSONAL_RUN_QUEUE`). |
 | `app/packages/core/src/personal-runs/progress.ts` | Owner-only progress events (`assistant_run.changed.v1`). |
 | `app/packages/core/src/access/policy.ts` (`evaluateAssistantRun`) | The `assistant_run` object: its only reader is the run's owner. |
-| `app/packages/agent-runtime/src/anthropic.ts` | The Anthropic adapter behind `PersonalCompute` (`@anthropic-ai/sdk` 0.129.0, pinned). |
+| `app/packages/agent-runtime/src/anthropic.ts`, `openai-compatible.ts`, `registry.ts` | The adapters behind `PersonalCompute`, one per wire format (`@anthropic-ai/sdk` 0.129.0, pinned; a fetch client for Chat Completions), and `providerPersonalCompute`, which picks one by the connection's provider. |
 | `app/apps/web/src/assistant/` | The UI (AC-8): ask mode, working line, answers, proposals, settings. |
 | `app/packages/core/src/personal-runs/test-fixture.ts`, `app/tests/ui/anthropic_mock.py` | TEST ONLY: fixture key connections and the mock provider of the browser suite. |
 
 ## Ports
 
 - `PersonalConnectionLookup.resolve(ownerUserId)` returns the owner's own
-  connection: its id, status, payer and an opaque `keyRef`. There is no lookup by
-  connection id, and core never sees key material. Production composes
-  `noPersonalConnections` until #124 lands.
-- `PersonalCompute` has `enabled` (the instance operator's switch, O-008 §6),
-  `countInputTokens` (preflight) and `dispatch(request, signal)`. A dispatch is one
-  bounded Messages request with the pinned model, `max_tokens` 1500, low effort
-  and no tools. The result is either `completed` with text, `stopReason` and
-  usage, or `failed` with `billed: 'none' | 'unknown'`. Production composes
-  `unavailablePersonalCompute`; the Anthropic adapter is described below.
+  connection: its id, status, payer, an opaque `keyRef`, and its provider kind,
+  model, base URL and price (F-020). There is no lookup by connection id, and core
+  never sees key material. Production composes `noPersonalConnections` until the
+  real lookup over #124's custody is wired (#68).
+- `PersonalCompute` has `enabled` (the instance operator's switch, O-008 §6), an
+  optional `countInputTokens` (a provider count, which may only raise the Flux
+  estimate) and `dispatch(request, signal)`. A dispatch is one bounded request to
+  the connection's provider and model, at most 1500 output tokens, low effort where
+  the wire format has it, and no tools. The result is either `completed` with text,
+  `stopReason` and usage (with the provider-reported cost when there is one), or
+  `failed` with `billed: 'none' | 'unknown'`. Production composes
+  `unavailablePersonalCompute`; the adapters are described below.
 - `PersonalRunUnitOfWork` bundles, in one transaction, the access port, the rows,
   the queue (the job is sent in the same transaction) and the event log.
   `ProposalUnitOfWork` adds the #101 work use case that records an accepted result.
 
-**Price and model recheck (O-008).** Rechecked on 2026-09-30 against the Anthropic
-[pricing page](https://platform.claude.com/docs/en/about-claude/pricing): Claude Sonnet 5
-is listed, not retired, at $2/M input and $10/M output, which the page now calls the
-standard price (the scheduled rise to $3/$15 on 2026-09-01 "will not occur").
-`PERSONAL_RUN_LIMITS.price.checkedOn` is `2026-09-30`. Check again when production
-dispatch is switched on.
+**Price and model (F-020).** The model and its price belong to the owner's connection
+(see [AI providers](ai-providers.md#prices-reservations-and-the-input-bound)); there is no
+pinned model. Claude Sonnet 5 is in Flux's price table at $2/M input and $10/M output, read
+from the Anthropic [pricing page](https://platform.claude.com/docs/en/about-claude/pricing)
+on 2026-10-02 (2026-09-30: the page called it the standard price, and the scheduled rise to
+$3/$15 "will not occur"). Check again when production dispatch is switched on.
 
-## Anthropic adapter
+## Provider adapters
 
-`anthropicPersonalCompute({ enabled, resolveKey, baseURL?, timeoutMs? })` in
-`@flux/agent-runtime` implements `PersonalCompute` with the official SDK:
+`providerPersonalCompute({ enabled, resolveKey, policy, ... })` in `@flux/agent-runtime` picks
+the adapter of the connection's wire format: `anthropicPersonalCompute` for Anthropic Messages,
+`openAiCompatiblePersonalCompute` for OpenAI, OpenRouter, Gemini's compatible endpoint and
+OpenAI-compatible servers. Both use the guarded transport, refuse a request outside the O-008
+limits before a key is resolved, send no tools and never retry; the Chat Completions details are
+in [AI providers](ai-providers.md#provider-kinds-and-wire-formats).
+
+`anthropicPersonalCompute({ enabled, resolveKey, baseURL?, timeoutMs?, policy? })` implements
+`PersonalCompute` with the official SDK:
 
 - one client per request, with the owner's key from `resolveKey(keyRef)`, an explicit
   `baseURL` (so `ANTHROPIC_BASE_URL` in the environment never redirects a key) and
@@ -71,13 +86,14 @@ dispatch is switched on.
 - `messages.create({ model, max_tokens, system, messages: [user input], output_config: { effort: 'low' } })`
   with no tools, and the `AbortSignal` of the owner's Stop;
 - `messages.countTokens` with the same model, system and input for the preflight;
-- a request outside the O-008 limits (another model, `max_tokens` above 1500, another
+- a request outside the O-008 limits (a malformed model id, `max_tokens` above 1500, another
   effort) is refused before a key is resolved;
 - usage: `input_tokens` plus cache tokens counted conservatively (reads as full input,
-  5-minute writes ×1.25), and `output_tokens`. Core charges them at `PERSONAL_RUN_LIMITS.price`.
+  5-minute writes ×1.25), and `output_tokens`. Core charges them at the connection's price.
 - failures: only a request that was never sent (no usable key; the O-008 limits refuse before a
-  key is resolved) is `billed: 'none'`. Every failure after the request reached the provider —
-  429 `rate_limited`, 529 `overloaded`, other 4xx and 5xx `provider_error`, timeouts, lost
+  key is resolved, and an endpoint the guard refuses) is `billed: 'none'`. Every failure after the
+  request reached the provider — 429 `rate_limited`, 529 and 503 `overloaded`, other 4xx and 5xx
+  `provider_error`, timeouts, lost
   connections and aborts — is `billed: 'unknown'` and keeps the reservation counted: the
   provider's error and pricing references (checked 2026-09-30) define these errors but promise
   no billing outcome. Token counting is free per the provider's documentation. Retry is a new
@@ -91,8 +107,9 @@ Production stays off until all of these exist, each reviewed on its own:
 1. #124's owner key custody, and a `PersonalConnectionLookup` over it that returns only
    the caller's current active connection, plus the foreign key from `connection_id`;
 2. a worker `PersonalKeyResolver` that decrypts only that connection's key for one dispatch;
-3. an operator switch (for example `FLUX_PERSONAL_RUNS_PROVIDER=anthropic`) that composes
-   `providerEnabled: true` in the API and `anthropicPersonalCompute({ enabled: true, resolveKey })`
+3. an operator switch (for example `FLUX_PERSONAL_RUNS=on`) that composes
+   `providerEnabled: true` in the API and
+   `providerPersonalCompute({ enabled: true, resolveKey, policy: aiEndpointPolicyFromEnv(env) })`
    in the worker, next to the real lookup, in `personalRunServerComposition` and
    `personalRunWorkerComposition`;
 4. a fresh price and model check, and an independently verified provider pass.
@@ -102,8 +119,9 @@ Production stays off until all of these exist, each reviewed on its own:
 `FLUX_TEST_PERSONAL_RUNS=anthropic-mock`, accepted by the API and the worker only together
 with `FLUX_TEST_FAILURE_INJECTION=true` (any other value refuses to start), composes
 `testFixturePersonalConnections` (every person has one stable fixture connection) and turns
-the switch on. The worker then uses the **real** adapter with `baseURL` =
-`FLUX_TEST_ANTHROPIC_URL` (a plain `http://host:port` origin) and a fixed non-secret fixture
+the switch on. The worker then uses the **real** adapter registry with Anthropic's URL =
+`FLUX_TEST_ANTHROPIC_URL` (a plain `http://host:port` origin, whose host the endpoint policy then
+allows; the fixture connection is Anthropic `claude-sonnet-5` at its table price) and a fixed non-secret fixture
 "key". Only `scripts/check_ui.sh` sets it, against the `anthropic-mock` Compose service. It
 lets the browser suite drive a whole run through the production code paths without a model.
 
@@ -178,6 +196,7 @@ tokens:
   workspace copied from the connection. It also holds `per_run_cents` (6–50,
   default 6), `daily_cap_cents` (10–1000, default 100), the IANA `time_zone`
   whose midnight resets the cap, `status` (`active` or `paused`) and `version`.
+  The consent provider is any F-020 provider kind (`0042`).
   `connection_id` is a nullable uuid **without a foreign key**. It will reference
   #124's connection table when that table lands. Until then, every step compares
   it with the connection the lookup returns. A replaced key shows as
@@ -185,7 +204,8 @@ tokens:
 - `personal_run_agents` maps each workspace to the owner's assistant agent in it.
   The agent's project grants, capped by the owner's own access, bound what a run
   may read.
-- `personal_runs` stores the request, place, agent and connection snapshot,
+- `personal_runs` stores the request, place, agent and connection snapshot
+  (with the connection's `provider` and `model`, shown as the answer's provenance),
   status, reservation (`reserved_micros`), `cost_state`, observed usage and
   charge. It stores the committed answer only after the final recheck. A partial
   unique index enforces one run in flight per owner.
@@ -200,13 +220,20 @@ interpretation and proposal shape, and adds the accept path AC-7 needs.
 
 ## Money
 
-Amounts are integer micro-dollars. The ceiling (`per_run_cents × 10 000`) is
-reserved when the run is created, in the same transaction as the run row and the
-job, under the owner's enablement row lock. Today's use is the charge of
-`observed` runs plus the reservations of in-flight and `unknown` runs since the
-owner's local midnight. `released` runs cost nothing. Usage is charged at the
-O-008 rate. The nominal maximum is 16 000 × 2 + 1 500 × 10 = 47 000 micros
-($0.047), below the default $0.06 reservation.
+Amounts are integer micro-dollars. A run reserves its largest possible cost at the
+connection's price (F-020 PROV-3): 16 000 × the input price + 1 500 × the output
+price per token, rounded up. It is reserved when the run is created, in the same
+transaction as the run row and the job, under the owner's enablement row lock.
+The owner's per-run setting (`per_run_cents × 10 000`) is the ceiling that
+reservation must fit: a connection whose largest request exceeds it cannot be
+enabled (`PERSONAL_RUN_COST_OVER_LIMIT`) and is `unavailable` /
+`run_cost_over_limit` afterwards; one without a price is `PERSONAL_RUN_PRICE_UNKNOWN`
+/ `price_unknown`. Today's use is the charge of `observed` runs plus the
+reservations of in-flight and `unknown` runs since the owner's local midnight.
+`released` runs cost nothing. Usage is charged at the connection's price, or at the
+provider-reported cost when the response carries one (OpenRouter). For Claude
+Sonnet 5 at $2/M and $10/M the reservation is 16 000 × 2 + 1 500 × 10 = 47 000
+micros ($0.047), below the default $0.06 ceiling.
 
 ## HTTP API
 
@@ -265,8 +292,9 @@ A run reads, as its agent, only project-audience objects of the requested place:
 - up to 20 open work items of the project;
 - the target thought, only on a project sketch of that project.
 
-It never reads DMs, drafts, private sketches or other projects. Preflight counting
-drops the oldest messages until the input fits 16 000 tokens, or ends the run as
+It never reads DMs, drafts, private sketches or other projects. The fit drops the
+oldest messages until the conservative Flux estimate (raised, never lowered, by a
+provider count where the wire format has one) fits 16 000 tokens, or ends the run as
 `input_too_large`.
 
 At commit, citations `[S<n>]` count only for supplied sources. A

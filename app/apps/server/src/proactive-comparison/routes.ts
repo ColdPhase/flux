@@ -1,23 +1,27 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
-import { backgroundComputeUsagePath, proactiveComparisonOutcomePath, proactiveComparisonOutcomesPath,
-  proactiveComparisonProposalsPath, WORK_LIMITS, type ConnectBackgroundComputeCommand, type CreateProactiveComparisonRule } from '@flux/contracts';
+import { AI_BASE_URL_MAX_LENGTH, AI_MODEL_LISTS_PATH, AI_PRICE_MAX_MICROS_PER_MTOK, AI_PROVIDER_KINDS, backgroundComputeUsagePath,
+  proactiveComparisonOutcomePath, proactiveComparisonOutcomesPath, proactiveComparisonProposalsPath, WORK_LIMITS, type AiModelListQuery,
+  type ConnectBackgroundComputeCommand, type CreateProactiveComparisonRule } from '@flux/contracts';
 import { backgroundConnectionRepository, comparisonProposalView, proactiveOutboxRows, proactiveRuleRows, sealBackgroundKey } from '@flux/db';
-import { backgroundConnectionUseCases, ConflictError, DomainError, enforce, evaluateProject, InvalidInputError,
-  isUuid, NotFoundError, proactiveRuleUseCases, VersionConflictError, visibleProposal, type Database } from '@flux/core';
+import { backgroundConnectionUseCases, baseUrlSyntaxProblem, ConflictError, DomainError, enforce, evaluateProject, InvalidInputError,
+  isUuid, normalizeBaseUrl, NotFoundError, proactiveRuleUseCases, VersionConflictError, visibleProposal, type Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { workUseCases } from '../work/adapters.js';
 import { comparisonOutcomeAccess, comparisonOutcomes } from './outcome-adapter.js';
+import { aiConnectionServerComposition, type AiConnectionServerComposition } from './ai-composition.js';
 
-interface Options { db: Database; sessions: SessionResolver; backgroundMasterKey: Buffer | null }
+interface Options { db: Database; sessions: SessionResolver; backgroundMasterKey: Buffer | null; ai?: AiConnectionServerComposition }
 
-export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sessions, backgroundMasterKey }: Options) {
+const microsPerMTok = { type: 'integer', minimum: 0, maximum: AI_PRICE_MAX_MICROS_PER_MTOK };
+
+export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sessions, backgroundMasterKey, ai = aiConnectionServerComposition(process.env) }: Options) {
   const outcomes = comparisonOutcomes(db);
   const connections = backgroundConnectionUseCases(backgroundConnectionRepository(db), {
     seal(plainKey, ownerUserId, connectionId) {
       if (!backgroundMasterKey) throw new ConflictError('Background key custody is unavailable on this instance', 'BACKGROUND_KEY_CUSTODY_UNAVAILABLE');
       return sealBackgroundKey(plainKey, ownerUserId, connectionId, backgroundMasterKey);
     },
-  });
+  }, ai.providers);
   const rules = proactiveRuleUseCases({ run: (action) => db.transaction(async (tx) => action({
     access: { async requireProject(principal, projectId, mode) {
       const result = enforce(await evaluateProject(principal, mode === 'write' ? 'project.write' : 'project.read', projectId, tx,
@@ -33,11 +37,16 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
   });
   app.post<{ Body: ConnectBackgroundComputeCommand }>('/api/v1/background-compute-connections', {
     schema: { body: { type: 'object', additionalProperties: false,
-      required: ['apiKey', 'payerOrganization', 'providerWorkspace', 'workspaceScopedKeyConfirmed',
+      required: ['provider', 'model', 'apiKey', 'payerOrganization', 'providerWorkspace', 'workspaceScopedKeyConfirmed',
         'payerAuthorityConfirmed', 'providerBillingAcknowledged', 'projectDataDisclosureAcknowledged',
         'maxRunsPerDay', 'periodDays', 'periodBudgetCents', 'perRunCents'],
       properties: {
-        apiKey: { type: 'string', minLength: 24, maxLength: 263 },
+        provider: { type: 'string', enum: [...AI_PROVIDER_KINDS] },
+        model: { type: 'string', minLength: 1, maxLength: 200 },
+        baseUrl: { type: 'string', minLength: 1, maxLength: AI_BASE_URL_MAX_LENGTH },
+        price: { type: 'object', additionalProperties: false, required: ['inputMicrosPerMTok', 'outputMicrosPerMTok'],
+          properties: { inputMicrosPerMTok: microsPerMTok, outputMicrosPerMTok: microsPerMTok } },
+        apiKey: { type: 'string', minLength: 8, maxLength: 512 },
         payerOrganization: { type: 'string', minLength: 2, maxLength: 120 },
         providerWorkspace: { type: 'string', minLength: 2, maxLength: 120 },
         workspaceScopedKeyConfirmed: { const: true }, payerAuthorityConfirmed: { const: true },
@@ -50,6 +59,20 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
     (await sessions.requirePrincipal(request)).principal, request.body)));
   app.get('/api/v1/background-compute-connections/current', async (request) => connections.current(
     (await sessions.requirePrincipal(request)).principal));
+  // A provider's models, listed by this server without a key and through the endpoint guard (PROV-1).
+  app.post<{ Body: AiModelListQuery }>(AI_MODEL_LISTS_PATH, {
+    schema: { body: { type: 'object', additionalProperties: false, required: ['provider'], properties: {
+      provider: { type: 'string', enum: [...AI_PROVIDER_KINDS] },
+      baseUrl: { type: 'string', minLength: 1, maxLength: AI_BASE_URL_MAX_LENGTH } } } },
+  }, async (request) => {
+    await sessions.requirePrincipal(request);
+    const { provider, baseUrl } = request.body;
+    if (provider === 'openai_compatible') {
+      const problem = baseUrlSyntaxProblem(baseUrl);
+      if (problem) throw new InvalidInputError(problem, 'AI_BASE_URL_INVALID');
+    } else if (baseUrl !== undefined) throw new InvalidInputError('A named provider always uses its own public API address', 'AI_BASE_URL_INVALID');
+    return ai.listModels(provider, provider === 'openai_compatible' ? normalizeBaseUrl(baseUrl!) : null);
+  });
   app.delete<{ Params: { connectionId: string } }>('/api/v1/background-compute-connections/:connectionId', async (request, reply) => {
     await connections.revoke((await sessions.requirePrincipal(request)).principal, request.params.connectionId);
     return reply.code(204).send();

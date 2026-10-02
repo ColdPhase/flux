@@ -30,23 +30,30 @@ The rule starts paused. The owner alone may create or replace a background compu
 connection through `POST /api/v1/background-compute-connections`, inspect safe
 metadata through `GET /api/v1/background-compute-connections/current`, and revoke
 it through `DELETE /api/v1/background-compute-connections/:connectionId`. This is
-separate from the external MCP/OAuth connection. The request includes the
-Claude Platform key, its payer organization and dedicated provider workspace,
+separate from the external MCP/OAuth connection. The request names the provider
+kind and model (any of [F-020](../product/model-providers.md); see
+[AI providers](ai-providers.md)), the base URL for an OpenAI-compatible endpoint,
+an owner price only when neither the provider's listing nor Flux's price table has
+the model, and includes the key, its payer organization and dedicated provider workspace,
 affirmation of spending authority and single-workspace scope, acknowledgement
 that project-published excerpts may leave the instance, and a **consented 30-day
 local budget**, per-run ceiling and maximum daily runs. An internal reservation
 gate now counts possible charges across the owner's connections in a rolling
-30-day window and UTC day; it reserves at least 5 cents atomically, keeps
-unknown charges counted, and allows one in-flight reservation per owner. It does
+30-day window and UTC day; it reserves the most one request can cost at the
+connection's price (8,000 input and 1,200 output tokens), at least 5 cents,
+atomically, keeps unknown charges counted, and allows one in-flight reservation per
+owner. A connection without a known price is refused (`CONNECTION_PRICE_UNKNOWN`). It does
 not call the provider. The provider organization
-owning the key pays Anthropic; Flux cannot verify the caller's spending authority
+owning the key pays its provider; Flux cannot verify the caller's spending authority
 or guarantee the provider invoice. Metadata returns only the last four key
 characters and a short SHA-256 fingerprint. It never returns plaintext or
 ciphertext. Replacing/revoking clears the earlier ciphertext in the database.
 
 Enabling returns `BACKGROUND_CONNECTION_REQUIRED` without a current owner
-connection, `BACKGROUND_BUDGET_TOO_LOW` if the rule exceeds that owner's
-consented budget, and `BACKGROUND_RUNTIME_UNAVAILABLE` after those checks because
+connection, `BACKGROUND_PRICE_UNKNOWN` when that connection has no known price,
+`BACKGROUND_BUDGET_TOO_LOW` if the rule exceeds that owner's consented budget or
+one request at the connection's price exceeds the per-request allowance, and
+`BACKGROUND_RUNTIME_UNAVAILABLE` after those checks because
 the complete worker/provider path is not implemented yet. The stored rule remains
 paused. A configured key does not start a provider call or emit a proposal. A
 negative result authored by any currently authorized human contributor creates a
@@ -56,7 +63,9 @@ still disabled, so current production rules do not create candidates. The worker
 adapter rechecks current owner/agent access, result authorship, the selected source
 snapshot and budget before reserving; production scheduling is not registered. An explicitly
 invoked dispatch path in the worker decrypts only the owner's active
-key, token-counts up to 8,000 inputs, makes at most one 1,200-output-token call,
+key, bounds the input at 8,000 tokens by the conservative Flux estimate (raised,
+never lowered, by Anthropic's token count), makes at most one 1,200-output-token
+call on the connection's provider and model,
 validates cited output and persists a separate quiet proposal. It checks current
 owner/agent project write access and pinned project-audience sources before the
 call and again within the commit transaction. Provider calls hold no SQL locks:
@@ -82,11 +91,12 @@ invalid comparison with valid observed usage, can instead become a quiet
 insufficient-evidence item after final current authorization checks. Validation
 failures use fixed safe text rather than provider output. The project-read API
 exposes proposals and insufficient items to current readers without a
-notification. The adapter for
-Claude Platform uses fixed token-count and Messages requests, a structured
-answer schema, no tools and no automatic retry. Local HTTP fixtures exercise
-the wire format; the adapter is not registered in the running worker and no
-real Claude Platform call has been observed. Project contributors can inspect,
+notification. The adapters of `@flux/agent-runtime` (`providerComparison`, chosen
+by the connection's provider kind) send the same prompt and answer schema on the
+Anthropic Messages or Chat Completions wire format, with no tools and no automatic
+retry; a proposal records the provider and model it ran on. Docker mock servers
+exercise both wire formats; the adapters are not registered in the running worker
+and no real provider call has been observed. Project contributors can inspect,
 edit or dismiss a proposal, or explicitly use it to create work in one database
 transaction. Citations retain source versions and project-message conversation
 links. These controls are available only after a proposal has been created by

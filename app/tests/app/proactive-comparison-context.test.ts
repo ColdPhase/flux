@@ -28,7 +28,7 @@ async function fixture() {
       dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal',
       maxRunsPerDay: 3, periodBudgetCents: 50, perRunCents: 5 } }), 201) as { id: string };
   expectStatus(await owner.browser.request('POST', '/api/v1/background-compute-connections', { body: {
-    apiKey: `sk-ant-api03-${'context-fixture-'.repeat(5)}END8`, payerOrganization: 'Fixture payer', providerWorkspace: 'Fixture workspace',
+    provider: 'anthropic', model: 'claude-sonnet-5', apiKey: `sk-ant-api03-${'context-fixture-'.repeat(5)}END8`, payerOrganization: 'Fixture payer', providerWorkspace: 'Fixture workspace',
     workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true, providerBillingAcknowledged: true,
     projectDataDisclosureAcknowledged: true, maxRunsPerDay: 3, periodDays: 30, periodBudgetCents: 50, perRunCents: 5,
   } }), 201);

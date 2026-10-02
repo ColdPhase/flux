@@ -173,6 +173,48 @@ evidence is recorded. The requirement itself does not wait for that check.
 **External clients.** Real Codex and Claude Code connections are recorded,
 together with one other MCP client as a smoke test.
 
+## Implementation status (#179, 2026-10-02)
+
+First implementation slice of #179. Engineering details are in
+[AI providers](../development/ai-providers.md). This section records what is implemented and
+verified in Docker, what is still open, and the implementation choices made inside the contract
+above.
+
+| Criterion | State | Evidence or reason |
+| --- | --- | --- |
+| PROV-1 | Partly | Five provider kinds, owner model (server-side keyless list where available, else typed), fixed or owner base URL, custody unchanged (migration `0042`). **Still one connection per owner**, used by both uses; "one or more connections" with a per-use choice is a follow-up. |
+| PROV-2 | Implemented for both uses | One prompt assembly, parser, proposal path and stop/retry/pause flow in core; two wire adapters and a registry in `@flux/agent-runtime`; neutral copy. Production personal runs remain off (#68). |
+| PROV-3 | Implemented | Price table, provider-reported and owner prices; reservation formula; enabling refused without a price; the conservative estimate bounds every provider. |
+| PROV-4 | Implemented | Guarded transport for every adapter; save-time and connect-time host checks; operator allowlist `FLUX_AI_PRIVATE_TARGETS`; key absence checked per adapter. |
+| PROV-5 | Implemented in the UI | Connect shows Claude Code, Codex and another MCP client with their commands. **Real Codex and Claude Code activations, and one other client, are not recorded** (no clients or public HTTPS host in the implementation sandbox). |
+| PROV-6 | Partly | The adapter contract suite runs identically against Docker mocks of both wire formats. **Real-key smoke tests are unverified** for every named provider (no keys). **Provider terms marked `unknown` were not re-checked**: OpenAI, OpenRouter and Google pages were unreachable from the sandbox (egress blocked, 2026-10-02). |
+
+Choices made within the contract, for review:
+
+- **Price sources.** `provider_reported` is OpenRouter's own per-model price, read without a key
+  when a connection is saved; each OpenRouter response's `usage.cost` is then the charge. A table
+  or provider price cannot be overridden by the owner; an owner price is accepted only when
+  neither exists, and may be zero. A connection may be saved without a price; no use can be
+  enabled on it.
+- **Price table.** Only Anthropic rows, read from Anthropic's pricing page and model overview on
+  2026-10-02 (`claude-sonnet-5`, `claude-sonnet-5-5`, `claude-haiku-4-5` and its dated snapshot,
+  `claude-fable-5-1`). Other providers' pages could not be reached, so none of their models is
+  listed and no price was invented.
+- **Reservation.** A personal run reserves the formula at the connection's price; O-008's per-run
+  setting is the ceiling it must fit, so a model whose largest request exceeds it is refused at
+  enable and at invoke. A background comparison reserves the formula with O-007's 5-cent floor.
+- **Input bound.** The Flux estimate is one token per two UTF-8 bytes plus framing. Anthropic's
+  count endpoint is still called when the estimate fits, and only a higher count is used.
+- **Effort and output.** Anthropic gets `effort: low`. Chat Completions has no field every model
+  accepts (non-reasoning models reject `reasoning_effort`), so none is sent; `max_completion_tokens`
+  (OpenAI) or `max_tokens` (others) bounds the output including any reasoning.
+- **Structured comparison answers.** Core embeds the answer schema in the prompt for every
+  provider; each wire format also carries it in its structured-output field (`output_config.format`,
+  `response_format`). A compatible server that rejects that field fails closed.
+- **Failure mapping.** 503 and 529 are `overloaded` on both wire formats.
+- **Consent versions.** New consents are `o-007-2026-10-02` and `o-008-2026-10-02`; the earlier
+  versions stay valid only for Anthropic `claude-sonnet-5` connections.
+
 ## Revisit when
 
 Revisit when either of these holds:

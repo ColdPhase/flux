@@ -69,6 +69,9 @@ services:
       # Web Push (issue #41). The API only needs the public key; empty reports push unavailable.
       FLUX_VAPID_PUBLIC_KEY: ${FLUX_VAPID_PUBLIC_KEY:-}
       FLUX_STREAM_HEARTBEAT_MS: ${FLUX_STREAM_HEARTBEAT_MS:-25000}
+      # Owner AI connections (#179, F-020): private targets an OpenAI-compatible endpoint may reach.
+      # Empty allows public HTTPS endpoints only. See docs/development/containers.md.
+      FLUX_AI_PRIVATE_TARGETS: ${FLUX_AI_PRIVATE_TARGETS:-}
       PORT: 8080
     volumes:
       - files:/data/files:z
@@ -103,6 +106,8 @@ services:
       FLUX_TEST_FAILURE_INJECTION: ${FLUX_TEST_FAILURE_INJECTION:-false}
       FLUX_TEST_PERSONAL_RUNS: ${FLUX_TEST_PERSONAL_RUNS:-}
       FLUX_TEST_ANTHROPIC_URL: ${FLUX_TEST_ANTHROPIC_URL:-}
+      # The same operator allowlist as the API: the worker checks it again at every request.
+      FLUX_AI_PRIVATE_TARGETS: ${FLUX_AI_PRIVATE_TARGETS:-}
     volumes:
       - files:/data/files:z
       - ${FLUX_BACKGROUND_KEY_HOST_FILE:-./background-key-unavailable}:/run/secrets/flux_background_key:ro,z
@@ -173,6 +178,8 @@ services:
       FLUX_UI_SCREENSHOTS: /screenshots
       # TEST ONLY (#68): the browser tests script the mock provider's next answers.
       FLUX_ANTHROPIC_MOCK_URL: http://anthropic-mock:8090
+      # TEST ONLY (#179): an OpenAI-compatible endpoint for the connection settings form.
+      FLUX_OPENAI_MOCK_URL: http://openai-mock:8091
     volumes:
       # Tests are baked into the image (see docker/ui-tests.Dockerfile). Only the screenshot
       # output is mounted; "z" relabels it for SELinux hosts and is ignored elsewhere.
@@ -187,6 +194,8 @@ services:
         condition: service_healthy
       anthropic-mock:
         condition: service_healthy
+      openai-mock:
+        condition: service_healthy
   anthropic-mock:
     # TEST ONLY (#68): a local stand-in for the Anthropic Messages and token-counting endpoints,
     # scripted by the browser tests. No real provider is ever called; nothing here is a provider pass.
@@ -195,6 +204,17 @@ services:
     command: ["python3", "tests/ui/anthropic_mock.py"]
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/__health', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+  openai-mock:
+    # TEST ONLY (#179): a local OpenAI-compatible endpoint (model list and Chat Completions) for the
+    # browser tests of the AI connection settings. No real provider is ever called.
+    profiles: ["ui"]
+    image: flux-ui-tests:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
+    command: ["python3", "tests/ui/openai_mock.py"]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/__health', timeout=2)"]
       interval: 2s
       timeout: 3s
       retries: 20

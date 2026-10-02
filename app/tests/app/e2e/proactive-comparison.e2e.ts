@@ -268,6 +268,11 @@ test('owner-only background setup persists consent, clears keys and preserves an
   page.on('request', (request) => {
     if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/v1/background-compute-connections') writes++;
   });
+  // F-020: no provider is preselected; the owner chooses one and its model.
+  assert.equal(await page.getByLabel('Provider', { exact: true }).inputValue(), '');
+  await page.getByLabel('Provider', { exact: true }).selectOption({ label: 'Anthropic' });
+  await page.getByLabel('Model', { exact: true }).fill('claude-sonnet-5');
+  await page.getByText('Flux price table, checked 2026-10-02', { exact: false }).waitFor();
   await page.getByLabel('Background API key', { exact: true }).fill('sk-ant-fixture-background-setup-key-ABCD');
   await page.getByLabel('Provider organization', { exact: true }).fill('Fixture Sensor Research');
   await page.getByLabel('Provider workspace', { exact: true }).fill('Fixture Only');

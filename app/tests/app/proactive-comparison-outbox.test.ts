@@ -50,7 +50,7 @@ describe('negative-result candidate and budget reservation (#58)', () => {
         dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal',
         maxRunsPerDay: 1, periodBudgetCents: 5, perRunCents: 5 } }), 201) as { id: string }).id;
     expectStatus(await owner.browser.request('POST', '/api/v1/background-compute-connections', { body: {
-      apiKey: fakeKey, payerOrganization: 'Owner payer', providerWorkspace: 'Dedicated test workspace',
+      provider: 'anthropic', model: 'claude-sonnet-5', apiKey: fakeKey, payerOrganization: 'Owner payer', providerWorkspace: 'Dedicated test workspace',
       workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true,
       providerBillingAcknowledged: true, projectDataDisclosureAcknowledged: true,
       maxRunsPerDay: 1, periodDays: 30, periodBudgetCents: 5, perRunCents: 5,

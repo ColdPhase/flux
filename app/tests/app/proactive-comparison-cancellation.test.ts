@@ -45,7 +45,7 @@ async function fixture() {
       dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal',
       maxRunsPerDay: 3, periodBudgetCents: 15, perRunCents: 5 } }), 201) as { id: string; version: number };
   const connection = expectStatus(await owner.browser.request('POST', '/api/v1/background-compute-connections', { body: {
-    apiKey: `sk-ant-api03-${'cancellation-fixture-'.repeat(4)}END8`,
+    provider: 'anthropic', model: 'claude-sonnet-5', apiKey: `sk-ant-api03-${'cancellation-fixture-'.repeat(4)}END8`,
     payerOrganization: 'Local fixture payer', providerWorkspace: 'Local fixture workspace',
     workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true,
     providerBillingAcknowledged: true, projectDataDisclosureAcknowledged: true,

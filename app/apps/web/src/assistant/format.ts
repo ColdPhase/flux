@@ -12,6 +12,11 @@ export function micros(value: number) {
   return `$${(value / 1_000_000).toFixed(value > 0 && value < 10_000 ? 3 : 2)}`;
 }
 
+/** A price per 1M tokens in micro-dollars, with the precision small prices need ($0.075). */
+export function perMillion(value: number) {
+  return `$${(value / 1_000_000).toFixed(value % 10_000 === 0 ? 2 : 4)}`;
+}
+
 export const WORKING: readonly AssistantRunStatus[] = ['queued', 'reading', 'dispatching'];
 export const isWorking = (run: AssistantRun) => WORKING.includes(run.status);
 
@@ -63,6 +68,8 @@ export function unavailableText(status: PersonalAssistantStatus) {
   switch (status.unavailableReason) {
     case 'provider_off': return 'In-app AI is turned off on this Flux server, so nothing is sent.';
     case 'connection_changed': return 'Your AI key changed. Review your assistant’s consent before it runs again.';
+    case 'price_unknown': return 'Your AI connection has no known price, so nothing is sent.';
+    case 'run_cost_over_limit': return 'One request to your model can cost more than your per-request limit, so nothing is sent. Raise the limit or choose a cheaper model.';
     default: return 'Your AI key isn’t connected, so nothing is sent.';
   }
 }
