@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
+import { createDatabase } from '@flux/db';
 import { ConflictError, createWorkUseCases, type Principal } from '@flux/core';
 import type { Agent, Conversation, CreateWorkCommand, Page, TaskCreationNotice, WorkItem } from '@flux/contracts';
 import { workUnitOfWork, workUseCases } from '../../apps/server/src/work/adapters.js';
@@ -57,7 +58,7 @@ test('task creation keeps source messages intact and stores exactly one distinct
     expectStatus(await f.owner.browser.request('GET', `/api/v1/work/${item.id}`), 200);
     await f.notices();
   }
-  assert.deepEqual(await f.counts(), 'opening/render reads never manufacture a notice or root');
+  assert.deepEqual(await f.counts(), after, 'opening/render reads never manufacture a notice or root');
   assert.equal((await f.outsider.browser.request('GET', f.noticePath)).status, 404);
   assert.equal((await f.reader.browser.request('POST', f.path, { body: { title: 'Forbidden' } })).status, 403);
 });

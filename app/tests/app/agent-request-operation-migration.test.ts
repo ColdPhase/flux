@@ -69,7 +69,7 @@ test('0038 widens only the closed grant operation CHECK: the prior ledger upgrad
     assertMigrationSqlLedgerChange(before, afterSql, migration!);
     await client.query('INSERT INTO flux_schema_version(version) VALUES ($1) ON CONFLICT DO NOTHING', [migration!.version]);
     const after = await readAppliedMigrationVersions(client);
-    assertMigrationStepLedger(before, migration!);
+    assertMigrationStepLedger(before, after, migration!);
     assertExactMigrationLedger(upToCurrent, after);
 
     // After: rows are untouched; the database list is exactly the contract list plus nothing else.
@@ -87,7 +87,7 @@ test('0038 widens only the closed grant operation CHECK: the prior ledger upgrad
     const rows = await count();
     await client.query(sql);
     assert.equal((await constraint())[0]!.definition, definition); assert.equal(await count(), rows);
-    assert.deepEqual(await readAppliedMigrationVersions(client), 'the SQL records no ledger version itself');
+    assert.deepEqual(await readAppliedMigrationVersions(client), after, 'the SQL records no ledger version itself');
   } finally {
     await client.query('ROLLBACK'); client.release();
   }
