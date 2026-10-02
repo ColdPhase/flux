@@ -19,6 +19,8 @@ export interface DiscussionConversation {
   createdBy: ActorRef;
   createdAt: Date;
 }
+/** `text` is ordinary; the others are explicit native effects (#154) and `result` names its canonical result. */
+export type ContributionKind = 'text' | 'blocker' | 'result' | 'handoff';
 export interface DiscussionMessage {
   id: string;
   conversationId: string;
@@ -29,6 +31,8 @@ export interface DiscussionMessage {
   projectId: string;
   clientMessageId: string;
   requestFingerprint: string;
+  kind: ContributionKind;
+  resultId: string | null;
   createdAt: Date;
 }
 export interface NewDiscussionMessage {
@@ -36,6 +40,9 @@ export interface NewDiscussionMessage {
   clientMessageId: string;
   fingerprint: string;
   source: MaterialSource | null;
+  /** Defaults to ordinary text. */
+  kind?: ContributionKind;
+  resultId?: string | null;
 }
 /** Rows only. Current access and the task identity are checked by the use case. */
 export interface TaskDiscussionRepository {

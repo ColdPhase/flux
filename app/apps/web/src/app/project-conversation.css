@@ -24,6 +24,8 @@
 .project-convo__message > p, .material-view__body { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; margin: 2px 0 0; }
 .project-convo__source { display: inline-flex; align-items: center; min-height: 24px; margin-top: 4px; padding: 0 8px; border-radius: var(--r-sm); background: var(--bg-side); font-size: var(--fs-xs); color: var(--text-2); text-decoration: none; }
 .project-convo__source:hover { background: var(--bg-hover); color: var(--text); }
+.project-convo__contribution { gap: 5px; margin-right: 6px; border: 0; cursor: default; }
+button.project-convo__contribution { cursor: pointer; }
 .project-convo__muted { color: var(--text-3); font-size: var(--fs-sm); padding: 6px 0; }
 .project-convo__material-form, .project-setup form { display: grid; gap: 14px; margin-top: 16px; }
 .project-convo__material-fields { display: grid; gap: 12px; min-width: 0; padding: 0; margin: 0; border: 0; }

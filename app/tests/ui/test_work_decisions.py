@@ -219,7 +219,9 @@ class WorkDecisionsJourney(unittest.TestCase):
         page.get_by_role("button", name="Add work").click()
         expect(panel.get_by_role("heading", name="Design the diffuser")).to_be_visible()
 
-        page.get_by_role("navigation", name="Project views").get_by_role("link", name="Conversation").click()
+        # Attaching a result to work opened that task's own conversation (#154), now the project's newest one:
+        # open the original conversation explicitly.
+        page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
         message = page.locator(f"#message-{self.messages['pivot']}")
         message.hover()
         message.get_by_role("button", name="Propose decision").click()
@@ -344,7 +346,8 @@ class WorkDecisionsJourney(unittest.TestCase):
         sheet.get_by_role("button", name="Close details").tap()
         expect(blocked).to_have_attribute("aria-pressed", "true")
         page.get_by_role("navigation", name="Project views").get_by_role("link", name="Conversation").tap()
-        expect(page.locator(f"#message-{self.messages['idea']}")).to_be_visible()
+        # The Conversation tab opens the newest conversation, which is the task thread that the earlier result opened (#154).
+        expect(page.locator(".project-convo__message-list")).to_be_visible()
         page.go_back()
         expect(page.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^Blocked"))).to_have_attribute("aria-pressed", "true")
         expect(page.get_by_role("navigation", name="Task views").get_by_label("Only mine")).to_be_checked()
@@ -448,7 +451,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         self.assertGreater(saved, 600, "the list is long enough to scroll")
         # Through the Conversation tab and back through the Tasks tab.
         page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Conversation")).tap()
-        expect(page.locator(f"#message-{self.messages['idea']}")).to_be_visible()
+        expect(page.locator(".project-convo__message-list")).to_be_visible()
         page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks")).tap()
         expect(page.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^Blocked"))).to_have_attribute("aria-pressed", "true")
         page.wait_for_timeout(300)

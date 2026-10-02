@@ -114,7 +114,9 @@ describe('return view: since you left', () => {
     assert.ok(list.includes('Ari started a sketch: Sensing options'));
     assert.equal(JSON.stringify(back).includes(secret.id), false, 'a private sketch of someone else never appears');
     assert.equal(JSON.stringify(back).includes('Ari private ideas'), false);
-    assert.equal(list.length, 8, list.join('\n'));
+    // The result, linked to Nia's task, also opened that task's own thread with its title as the first contribution (#154).
+    assert.ok(list.includes('Ari started “Camera misses gestures at 5 lux”'), list.join('\n'));
+    assert.equal(list.length, 9, list.join('\n'));
 
     // Every item links to its source.
     const sources = new Map(back.items.map((item) => [item.text, item.source]));

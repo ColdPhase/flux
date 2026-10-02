@@ -226,7 +226,7 @@ from the request.
 | `POST /api/v1/assistant-runs/:id/retry` | the run's owner | `{ clientRunId }`: a new, separately capped run with the same request (202). |
 | `GET /api/v1/conversations/:id/assistant-answers` | project readers | Committed answers with label, request, body, provenance (provider and model) and cited sources. No cost, cap, connection or hidden source. |
 | `GET /api/v1/projects/:id/assistant-proposals`, `GET /api/v1/assistant-proposals/:id` | project readers | Proposals with "drafted by" and the decision. |
-| `POST /api/v1/assistant-proposals/:id/accept`, `…/dismiss` | a person with authority | `If-Match` or `expectedVersion`. The caller needs project write access. For a result that finishes an owned work item, they must be its owner or a project manager. |
+| `POST /api/v1/assistant-proposals/:id/accept`, `…/dismiss` | a person with authority | `If-Match` or `expectedVersion`. The caller needs project write access. For a result that finishes an owned work item, they must be its owner or a project manager. Accepting a result linked to a work item also contributes it to that task's conversation, authored by the accepting person with the exact result id (#154); the assistant and its owner never author it, and a rolled-back acceptance leaves no contribution. |
 
 The invoke checks run in this order. A body that names another `ownerId`,
 `agentId` or `connectionId` gets `403 PERSONAL_RUN_NOT_OWNER`. A conversation the
