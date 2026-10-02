@@ -50,6 +50,16 @@ class FoundationValidationTests(unittest.TestCase):
     def test_repository_foundation_is_valid(self):
         self.assertEqual(CHECKER.validate(REPOSITORY), [])
 
+    def test_links_are_checked_in_every_docs_folder(self):
+        self.write("docs/operations/README.md", "[gone](missing.md)\n")
+        self.assertTrue(any("docs/operations/README.md" in error for error in self.check()))
+
+    def test_prototype_storage_keys_are_not_skill_references(self):
+        self.write("docs/prototype/README.md", "Key `flux-ux-v8-local`.\n")
+        self.assertEqual(self.check(), [])
+        self.write("docs/operations/README.md", "Use `flux-missing-skill`.\n")
+        self.assertTrue(any("missing skill flux-missing-skill" in error for error in self.check()))
+
     def test_claude_must_import_shared_instructions(self):
         self.write("CLAUDE.md", "# Separate instructions\n")
         self.assertTrue(any("CLAUDE.md" in error for error in self.check()))

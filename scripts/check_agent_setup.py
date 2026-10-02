@@ -34,11 +34,9 @@ def validate(root: Path) -> list[str]:
     skill_files = sorted(shared.glob("*/SKILL.md"))
     require(bool(skill_files), ".agents/skills: no SKILL.md files found")
     skill_names = {path.parent.name for path in skill_files}
+    # Every Markdown file under docs/ (#84 AC-1), plus the root instructions and skills.
     documents = [root / "README.md", agents, claude, root / "docs/README.md",
-                 root / "docs/CONTRIBUTING.md", *sorted((root / "docs/agents").rglob("*.md")),
-                 *sorted((root / "docs/product").rglob("*.md")),
-                 *sorted((root / "docs/design").rglob("*.md")),
-                 *sorted((root / "docs/development").rglob("*.md")),
+                 root / "docs/CONTRIBUTING.md", *sorted((root / "docs").rglob("*.md")),
                  *skill_files]
     for path in skill_files:
         body = path.read_text(encoding="utf-8")
@@ -58,7 +56,9 @@ def validate(root: Path) -> list[str]:
             errors.append(f"missing document: {path.relative_to(root)}")
             continue
         content = path.read_text(encoding="utf-8")
-        for skill in re.findall(r"`(flux-[a-z0-9-]+)`", content):
+        # The v8 prototype notes (Polish, historical) use `flux-*` for browser storage keys.
+        skills = [] if path.is_relative_to(root / "docs/prototype") else re.findall(r"`(flux-[a-z0-9-]+)`", content)
+        for skill in skills:
             require(skill in skill_names,
                     f"{path.relative_to(root)}: references missing skill {skill}")
         for link in re.findall(r"\[[^\]\n]*\]\(([^)\n]+)\)", content):
