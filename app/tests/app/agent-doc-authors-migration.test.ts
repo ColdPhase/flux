@@ -33,7 +33,8 @@ test('0043 lets only docs name a genuine agent author, keeps every historical ro
       await client.query('INSERT INTO flux_schema_version(version) VALUES ($1) ON CONFLICT DO NOTHING', [file.version]);
     }
     const before = await readAppliedMigrationVersions(client);
-    assert.equal(before.at(-1), 41, 'the previous ledger ends at 0041');
+    // Lower-numbered migrations may land later (sparse ledger): 0041 is applied and 0043 is not, whatever lies between.
+    assert.ok(before.includes(41) && !before.includes(43), 'the previous ledger has 0041 and not yet 0043');
     assert.throws(() => assertExactMigrationLedger(upToCurrent, before), /0043_agent_doc_authors\.sql/, 'the migrator must apply 0043 before Flux starts');
 
     // History written under the previous schema: a person's material and doc, with their search rows, and a grant.

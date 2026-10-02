@@ -134,3 +134,19 @@ test('doc actions never reach a private draft, a guessed or other project doc, a
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM draft_versions WHERE draft_id=$1', [draft.id])).rows[0].n, drafted);
   assert.equal((await getDoc(f, docB.id)).author.kind, 'human');
 });
+
+test('a doc action refuses when its agent is only a viewer of the project now, with no version, event or debit', async () => {
+  const f = await actionScene(pool);
+  const create = await f.grant('doc.create', 'plan');
+  const update = await f.grant('doc.update', 'execute');
+  const created = toolValue(await f.tool('flux_create_doc', { ...base(f, create.id, 'plan'), doc: { title: 'Wiring notes', body: 'First pass.' } }));
+  const docId = String(created.docId);
+  // The owner narrows the agent to read-only: the standing grant no longer carries write authority.
+  expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/grants`,
+    { body: { principal: { kind: 'agent', id: f.agentId }, role: 'viewer' } }), 201);
+  const refused = toolFailure(await f.tool('flux_update_doc', { ...base(f, update.id, 'execute'), docId, expectedVersion: 1,
+    changes: { body: 'Second pass.' } }));
+  assert.ok(refused.code, 'a coded refusal, not a silent no-op');
+  assert.deepEqual([await versions(docId), await docEvents(docId), await f.used(update.id)], [1, 1, 0]);
+  assert.equal((await getDoc(f, docId)).version, 1);
+});

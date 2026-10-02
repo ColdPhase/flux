@@ -7,7 +7,8 @@ export const longDate = (iso: string) => stamp.format(new Date(iso));
 
 export const STATE_LABEL: Record<DocState, string> = { draft: 'Draft', published: 'Published' };
 /** Who made a version: an agent writing under its owner's standing grant (#152) is named as an agent. */
-export const authorLabel = (who: NamedPrincipal) => (who.kind === 'agent' ? `${who.name} (agent)` : who.name);
+/** Agents are named as in the conversation: "name · agent". */
+export const authorLabel = (who: NamedPrincipal) => (who.kind === 'agent' ? `${who.name} · agent` : who.name);
 
 const KIND: Record<string, string> = {
   doc: 'Doc', work: 'Work', decision: 'Decision', result: 'Result', message: 'Message', thought: 'Thought', sketch: 'Sketch', material: 'Material',

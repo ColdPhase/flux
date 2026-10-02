@@ -248,8 +248,9 @@ Authorship:
   - search and the project export.
 
   The conversation UI already shows agent messages as "name · agent".
-- The person-facing doc and conversation routes still refuse an agent principal
-  (`DOC_NEEDS_PERSON`). Only this standing-grant composition opts in (`agentAuthors`).
+- The person-facing doc and conversation routes still refuse an agent principal: doc routes
+  with `DOC_NEEDS_PERSON`, conversation routes with "A signed-in person is required". Only this
+  standing-grant composition opts in (`agentAuthors`).
 - A message's canonical client message ID is derived from the connection and the
   command ID. A retry computes the same send, and two connections of one agent never collide.
 
