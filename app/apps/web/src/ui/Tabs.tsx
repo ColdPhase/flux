@@ -26,7 +26,7 @@ interface TabsProps {
 }
 
 function Count({ item }: { item: TabItem }): ReactNode {
-  if (item.count === undefined) return null;
+  if (item.count === undefined) return item.countLabel ? <span className="ui-vh">{item.countLabel}</span> : null;
   return (
     <span className="ui-tabs__count">
       <span aria-hidden="true">{item.count}</span>
@@ -36,7 +36,7 @@ function Count({ item }: { item: TabItem }): ReactNode {
 }
 
 /**
- * Quiet view switcher: labels only, one 2px underline that slides between tabs
+ * Quiet view switcher: labels only, one short 2px accent mark that slides between tabs
  * (translate + scaleX of a 1px bar, so only transform animates).
  * Navigation tabs are links with aria-current; in-page tabs follow the ARIA tabs pattern.
  */
@@ -55,7 +55,8 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix }
     const pad = parseFloat(getComputedStyle(current).paddingLeft) || 0;
     if (!animate) indicator.style.transition = 'none';
     indicator.style.opacity = '1';
-    indicator.style.transform = `translateX(${current.offsetLeft + pad}px) scaleX(${Math.max(1, current.offsetWidth - pad * 2)})`;
+    // A short mark at the start of the current label (Studio 11.6): at most 16px wide.
+    indicator.style.transform = `translateX(${current.offsetLeft + pad}px) scaleX(${Math.min(16, Math.max(1, current.offsetWidth - pad * 2))})`;
     if (!animate) { void indicator.offsetWidth; indicator.style.transition = ''; }
   }, []);
 

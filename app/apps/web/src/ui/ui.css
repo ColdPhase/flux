@@ -5,7 +5,6 @@ html, body, #root { height: 100%; }
 body {
   margin: 0; background: var(--bg); color: var(--text);
   font: 400 var(--fs-base)/var(--lh) var(--font); letter-spacing: var(--tracking);
-  font-feature-settings: "cv11", "ss01"; /* Inter: single-storey a off, open digits */
   -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility;
   -webkit-tap-highlight-color: transparent;
 }
@@ -59,15 +58,15 @@ svg { flex: none; }
   transition: var(--tr);
 }
 .ui-btn:hover { background: var(--bg-hover); color: var(--text); }
-.ui-btn:active:not([aria-disabled="true"]):not(:disabled) { transform: scale(.98); transition-duration: calc(var(--dur-1) / 2); }
 .ui-btn:disabled, .ui-btn[aria-disabled="true"] { cursor: default; }
 .ui-btn:disabled { color: var(--text-3); background: transparent; }
-.ui-btn--primary { background: var(--accent); color: var(--on-accent); }
-.ui-btn--primary:hover { background: var(--accent-hover); color: var(--on-accent); }
-.ui-btn--primary:active:not([aria-disabled="true"]):not(:disabled) { background: var(--accent-pressed); color: var(--on-accent); }
-.ui-btn--primary:disabled { background: var(--bg-active); color: var(--text-3); }
+/* Studio 11.6: the primary action is neutral; accent is reserved for selection, links and focus. */
+.ui-btn--primary { background: var(--action); color: var(--on-action); }
+.ui-btn--primary:hover { background: var(--action); color: var(--on-action); filter: brightness(.95); }
+.ui-btn--primary:active:not([aria-disabled="true"]):not(:disabled) { background: var(--action); color: var(--on-action); filter: brightness(.9); }
+.ui-btn--primary:disabled { background: var(--bg-active); color: var(--text-3); filter: none; }
 .ui-btn--secondary { box-shadow: inset 0 0 0 1px var(--line-strong); color: var(--text); }
-.ui-btn--secondary:hover { box-shadow: inset 0 0 0 1px var(--line-input); }
+.ui-btn--secondary:hover { box-shadow: inset 0 0 0 1px var(--line-input); background: transparent; }
 .ui-btn--quiet { color: var(--text-3); }
 .ui-btn--link { padding: 0 6px; color: var(--link); }
 .ui-btn--link:hover { background: var(--accent-soft); color: var(--accent); }
@@ -82,7 +81,6 @@ svg { flex: none; }
   border-radius: var(--r); color: var(--text-3); transition: var(--tr);
 }
 .ui-icon-btn:hover { background: var(--bg-hover); color: var(--text); }
-.ui-icon-btn:active { transform: scale(.94); transition-duration: calc(var(--dur-1) / 2); }
 .ui-icon-btn[aria-expanded="true"] { background: var(--bg-active); color: var(--text); }
 
 /* Text links inside prose */
@@ -101,7 +99,7 @@ svg { flex: none; }
 }
 .ui-input::placeholder { color: var(--text-3); }
 .ui-input:hover { box-shadow: inset 0 0 0 1px var(--text-3); }
-.ui-input:focus-visible, .ui-input:focus { outline: none; box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 3px var(--accent-soft); }
+.ui-input:focus-visible, .ui-input:focus { outline: 2px solid var(--focus); outline-offset: 1px; box-shadow: inset 0 0 0 1px var(--line-input); }
 .ui-field--invalid .ui-input { box-shadow: inset 0 0 0 1px var(--danger); }
 .ui-field--invalid .ui-input:focus { box-shadow: inset 0 0 0 1px var(--danger), 0 0 0 3px var(--tint-danger); }
 .ui-field__hint { font-size: var(--fs-sm); color: var(--text-3); line-height: 1.5; }
@@ -112,6 +110,7 @@ svg { flex: none; }
 /* ---------- Tabs (view switcher) ---------- */
 .ui-tabs { position: relative; min-width: 0; }
 .ui-tabs__bar { position: relative; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+/* Studio 11.6 project tabs: plain labels 27px apart with a short accent mark under the current one. */
 .ui-tabs__bar::-webkit-scrollbar { display: none; }
 .ui-tabs__tab {
   position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 8px;
@@ -121,11 +120,10 @@ svg { flex: none; }
 .ui-tabs__tab:hover { color: var(--text); }
 .ui-tabs__tab[aria-current="page"], .ui-tabs__tab[aria-selected="true"] { color: var(--text); }
 .ui-tabs__tab:focus-visible { outline-offset: -4px; }
-.ui-tabs__tab:active { transform: scale(.98); transition-duration: calc(var(--dur-1) / 2); }
 .ui-tabs__count { font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
 .ui-tabs__indicator {
-  position: absolute; left: 0; bottom: 0; width: 1px; height: 2px; border-radius: 1px; background: var(--text);
-  transform-origin: 0 0; pointer-events: none; opacity: 0; transition: transform var(--dur-3) var(--ease-sheet);
+  position: absolute; left: 0; bottom: 0; width: 1px; height: 2px; border-radius: 1px; background: var(--accent);
+  transform-origin: 0 0; pointer-events: none; opacity: 0; transition: transform var(--dur-2) var(--ease-out);
 }
 @media (pointer: coarse) { .ui-tabs__tab { min-height: 44px; padding: 0 12px; } }
 
@@ -166,14 +164,14 @@ svg { flex: none; }
   display: flex; flex-direction: column; align-items: center; gap: 8px; width: max-content; max-width: calc(100vw - 32px); pointer-events: none;
 }
 .ui-toast {
-  display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 4px 4px 4px 14px; border-radius: var(--r-lg);
-  background: var(--text); color: var(--bg); font-size: var(--fs-md); line-height: 1.45; box-shadow: var(--shadow); pointer-events: auto;
+  display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 4px 4px 4px 14px; border-radius: var(--r);
+  background: var(--action); color: var(--on-action); font-size: var(--fs-md); line-height: 1.65; box-shadow: var(--shadow); pointer-events: auto;
 }
-.ui-toast--success svg:first-child { color: var(--bg); }
+.ui-toast--success svg:first-child { color: var(--on-action); }
 .ui-toast__msg { padding: 6px 0; }
 .ui-toast__close { display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--r); color: inherit; opacity: .7; transition: var(--tr); }
-.ui-toast__close:hover { opacity: 1; background: color-mix(in srgb, var(--bg) 14%, transparent); }
-.ui-toast__close:focus-visible { outline-color: var(--bg); }
+.ui-toast__close:hover { opacity: 1; background: color-mix(in srgb, var(--on-action) 14%, transparent); }
+.ui-toast__close:focus-visible { outline-color: var(--on-action); }
 @media (pointer: coarse) { .ui-toast__close { width: 44px; height: 44px; } }
 
 /* ---------- Empty and error states ---------- */

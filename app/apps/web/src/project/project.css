@@ -1,30 +1,25 @@
-/* The project surface (#117, direction C): header with monogram, audience and the one-line
-   current state; the phone's 44px state row; conversations in the sidebar; Details overview. */
+/* The project surface (#117, Studio 11.6 #136): a header block inside the sheet with the 21px
+   title, then who can read it and the one-line current state; the tabs continue the same block. */
 
 /* ---------- Header ---------- */
-.top--project { height: auto; min-height: 58px; padding-top: 6px; padding-bottom: 4px; }
-.top__head { display: flex; flex: 1; flex-direction: column; justify-content: center; min-width: 0; }
-.top__title--project { align-items: center; gap: 8px; flex: none; }
-.top__title--project h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.top__pm { display: inline-grid; place-items: center; flex: none; width: 22px; height: 22px; border-radius: 6px; font-size: 12px; font-weight: 600; line-height: 1; background: var(--pm-1); color: var(--pm-1-t); }
-.top__pm.rail__pm--3 { border-radius: 10px 3px 10px 3px; }
-.top__audience { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; max-width: 55%; min-width: 0; min-height: 24px; margin-left: -2px; padding: 0 6px; border-radius: var(--r-sm); font-size: var(--fs-md); color: var(--text-3); white-space: normal; transition: var(--tr); }
+.top--project { height: auto; min-height: 0; align-items: flex-start; padding: 23px var(--space-page) 0; }
+.top__head { display: flex; flex: 1; flex-direction: column; justify-content: flex-start; min-width: 0; gap: 7px; }
+.top__title--project { align-items: baseline; gap: 8px; flex: none; }
+.top__title--project h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-title); font-weight: 600; letter-spacing: -0.65px; line-height: 1.2; }
+.top__meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 13px; min-width: 0; }
+.top__audience { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; max-width: 55%; min-width: 0; min-height: 22px; margin-left: -4px; padding: 0 4px; border-radius: var(--r-sm); font-size: 10.5px; color: var(--text-2); white-space: normal; transition: var(--tr); }
 .top__audience > span:not(.ui-vh) { min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-.top__audience svg { flex: none; }
+.top__audience svg { flex: none; width: 10px; height: 10px; }
 .top__audience:hover { background: var(--bg-hover); color: var(--text); }
-.top--project .ws-state { flex-wrap: wrap; margin: 0 0 0 -6px; font-size: var(--fs-sm); line-height: 1.4; }
+.top--project .ws-state { flex-wrap: wrap; margin: 0; padding-left: 12px; border-left: 1px solid var(--line); font-size: var(--fs-sm); line-height: 1.4; }
 .top--project .ws-part { display: contents; }
 
-.top--project .ws-seg { min-height: 24px; min-width: 0; flex: 0 1 auto; max-width: 100%; color: var(--text-3); }
+.top--project .ws-seg { min-height: 22px; min-width: 0; flex: 0 1 auto; max-width: 100%; color: var(--text-2); }
 .top--project .ws-seg:hover { color: var(--text); }
 .top--project .ws-seg--need { color: var(--attention); }
 .top--project .ws-seg span:last-child { white-space: normal; overflow-wrap: anywhere; }
-.top--project .ws-state--empty { padding: 0 0 0 6px; overflow: hidden; text-overflow: ellipsis; }
-.top__faces { display: flex; align-items: center; margin: 0 6px 0 4px; }
-.top__faces .ui-avatar { box-shadow: 0 0 0 2px var(--bg); }
-.top__faces .ui-avatar { font-size: 11px; }
-.top__faces .ui-avatar + .ui-avatar { margin-left: -3px; }
-.top__more { font-size: 11px; }
+.top--project .ws-state--empty { overflow: hidden; text-overflow: ellipsis; }
+.top--project .top__right { padding-top: 2px; }
 
 /* ---------- Phone: the state line is one 44px row that opens Details ---------- */
 .ws-state-row { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 0 10px 0 16px; border-top: 1px solid var(--line); font-size: var(--fs-sm); color: var(--text-3); text-align: left; white-space: nowrap; transition: var(--tr); }
@@ -32,20 +27,19 @@
 .ws-state-row__blocked { flex: none; color: var(--text-2); }
 .ws-state-row svg { flex: none; }
 .ws-state-row:active { background: var(--bg-hover); }
-@media (max-width: 640px) {
-  .top--project { min-height: calc(56px + env(safe-area-inset-top)); padding-bottom: 0; }
+@media (max-width: 680px) {
+  .top--project { min-height: calc(56px + env(safe-area-inset-top)); padding: max(18px, env(safe-area-inset-top)) 12px 0 8px; align-items: center; }
   .top--project .top__title--project { flex-direction: column; align-items: flex-start; gap: 0; text-align: left; line-height: 1.25; }
-  .top--project .top__title--project h1 { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
-  .top--project .top__pm, .top--project .top__crumb { display: none; }
-  .top--project .top__audience { max-width: 100%; min-height: 22px; margin-left: -6px; font-size: var(--fs-xs); }
-  .top--project .top__head { padding-left: 2px; }
+  .top--project .top__title--project h1 { max-width: 100%; font-size: 18px; }
+  .top--project .top__crumb { display: none; }
+  .top--project .top__audience { max-width: 100%; min-height: 22px; font-size: var(--fs-xs); }
+  .top--project .top__head { padding-left: 2px; gap: 2px; }
 }
 
-/* ---------- Sidebar: the project's conversations ---------- */
-.side__count { margin-left: 6px; font-variant-numeric: tabular-nums; }
+/* ---------- Sidebar: the open project's conversations ---------- */
 .side__thread { align-items: center; }
-.side__when { margin-left: auto; padding-left: 6px; flex: none; font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
-.side__thread.is-current, .project-convo__thread.is-current { background: var(--bg-active); color: var(--text); font-weight: 500; }
+.side__when { font-variant-numeric: tabular-nums; }
+.project-convo__thread.is-current { background: var(--bg-active); color: var(--text); font-weight: 500; }
 
 /* ---------- Details overview ---------- */
 .ov-audience { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--text-2); }
