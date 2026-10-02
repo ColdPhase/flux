@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import { coworkPlaybookReference, DomainError } from '@flux/core';
 import { withAgentConnection } from '../../apps/server/src/agent-connection/context.js';
 import { db, pool } from './support/db.js';

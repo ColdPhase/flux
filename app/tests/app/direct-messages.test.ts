@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, before, describe, test } from 'node:test';
+import { before, describe, test } from 'node:test';
 import type { ConversationMessage, Dm, DmSummary, Page, Workspace } from '@flux/contracts';
 import { authorize, createAgent, type Principal } from '@flux/core';
 import { db, pool } from './support/db.js';

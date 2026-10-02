@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import type { InboxResponse, NotificationPreferences } from '@flux/contracts';
 import { pool } from './support/db.js';
 import { mailCount, register, uniqueEmail } from './support/http.js';

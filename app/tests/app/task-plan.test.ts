@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import { sql } from 'drizzle-orm';
 import { schema } from '@flux/db';
 import { agentExecutionUseCases, DomainError, type Principal } from '@flux/core';

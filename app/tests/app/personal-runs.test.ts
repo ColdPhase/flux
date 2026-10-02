@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, before, describe, test } from 'node:test';
+import { before, describe, test } from 'node:test';
 import { createAssistantProposalUseCases, createPersonalRunProcessor, recoverPersonalRuns, type PersonalRunHooks, type Principal, type Transaction } from '@flux/core';
 import {
   PERSONAL_RUN_CONSENT_VERSION,

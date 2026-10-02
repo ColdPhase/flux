@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, before, describe, test } from 'node:test';
+import { before, describe, test } from 'node:test';
 import type { Draft, VersionConflict, Workspace } from '@flux/contracts';
 import { deleteExpiredIdempotencyKeys } from '@flux/core';
 import { db, pool } from './support/db.js';

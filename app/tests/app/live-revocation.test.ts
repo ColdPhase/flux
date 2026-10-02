@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import Fastify from 'fastify';
 import { eq } from 'drizzle-orm';
 import { schema } from '@flux/db';

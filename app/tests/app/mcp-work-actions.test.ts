@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import { pool } from './support/db.js';
 import { expect, toolValue } from './support/mcp.js';
 import { actionScene, toolFailure } from './support/mcp-actions.js';

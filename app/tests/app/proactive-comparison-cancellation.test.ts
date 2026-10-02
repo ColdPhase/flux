@@ -2,7 +2,7 @@ import { comparisonDispatchFixtureDue } from './support/comparison-dispatch-fixt
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import type { ComparisonProvider } from '@flux/core';
 import type { Material } from '@flux/contracts';
 import { dispatchProactiveComparison } from '../../apps/worker/src/proactive-comparison/dispatch.js';

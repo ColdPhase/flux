@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import type { Agent, AgentConnection, AgentExecutionCommand, AgentJsonValue, AgentPeerRequestClass, AgentPostcondition, AgentStandingGrant, WorkItem } from '@flux/contracts';
 import { agentExecutionUseCases, DomainError, normalizeAgentExecution } from '@flux/core';
 import { agentRuntimeInTransaction } from '../../apps/server/src/agent-connection/runtime.js';

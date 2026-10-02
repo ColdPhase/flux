@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import { grantProject, liveInvitationUseCases } from '@flux/core';
 import type { Conversation, InboxItem, InboxResponse } from '@flux/contracts';
 import { liveInvitationStore } from '../../apps/server/src/live/invitations.js';

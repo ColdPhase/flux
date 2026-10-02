@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, before, describe, test } from 'node:test';
+import { before, describe, test } from 'node:test';
 import { agentProposalRepository } from '@flux/db';
 import { agentProposalUseCases, enforce, evaluateProject, recordEvent, validateProposalCommand } from '@flux/core';
 import type { AgentProposal, Material, Project, Workspace } from '@flux/contracts';

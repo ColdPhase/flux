@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash, createHmac, randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import Fastify from 'fastify';
 import type { Conversation } from '@flux/contracts';
 import { liveSessionStore } from '../../apps/server/src/live/store.js';

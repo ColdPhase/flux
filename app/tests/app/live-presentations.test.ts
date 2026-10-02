@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import Fastify, { type FastifyRequest } from 'fastify';
 import type { Conversation, ConversationMessage, LivePresentationPage, WorkItem } from '@flux/contracts';
 import { livePresentPath, livePresentationsPath } from '@flux/contracts';
