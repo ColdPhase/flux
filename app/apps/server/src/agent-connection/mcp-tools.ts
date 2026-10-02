@@ -2,10 +2,12 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { agentProposalRepository } from '@flux/db';
 import { agentProposalUseCases, enforce, evaluateProject, recordEvent, type Database } from '@flux/core';
+import { registerAgentPlaybook } from './playbook.js';
 import { agentToolRegistry } from './tool-registry.js';
 import { registerAgentBootstrap } from './bootstrap.js';
 import { registerAgentDomainReads } from './domain-reads.js';
 import { registerAgentWorkActions } from './work-actions.js';
+import { registerAgentMapActions } from './map-actions.js';
 import { withAgentConnection, type FluxMcpClaims } from './context.js';
 import { toolError, toolResult } from './tool-results.js';
 
@@ -15,9 +17,11 @@ export type { FluxMcpClaims } from './context.js';
 export function createFluxMcpServer(db: Database, claims: FluxMcpClaims, cursorSecret: string): McpServer {
   const server = new McpServer({ name: 'flux', version: '0.1.0' });
   const tools = agentToolRegistry(server);
+  registerAgentPlaybook(server, tools, db, claims);
   registerAgentDomainReads(tools.forScope('flux.context.read'), db, claims, cursorSecret);
   registerAgentBootstrap(tools, db, claims);
   registerAgentWorkActions(tools, db, claims);
+  registerAgentMapActions(tools, db, claims);
   tools.forScope('flux.proposal.write').registerTool('flux_create_proposal', {
     title: 'Propose a sourced project action',
     description: 'Submit a human-reviewable suggestion based on the current version of a selected project material.',

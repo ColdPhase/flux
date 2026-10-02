@@ -669,6 +669,16 @@ export const agentCommandReceipts = pgTable('agent_command_receipts', {
   foreignKey({ columns: [table.connectionId, table.grantId], foreignColumns: [agentStandingGrants.connectionId, agentStandingGrants.id] }),
 ]);
 
+// The co-work playbook a client reports having loaded for one runtime session (migration 0041, #160).
+// Compatibility evidence only; it authorizes nothing.
+export const agentPlaybookAcknowledgments = pgTable('agent_playbook_acknowledgments', {
+  runtimeSessionId: uuid('runtime_session_id').primaryKey().references(() => agentRuntimeSessions.id, { onDelete: 'cascade' }),
+  bundleId: text('bundle_id').notNull(),
+  version: text('version').notNull(),
+  digest: text('digest').notNull(),
+  acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // Sketches: thoughts on a map and the links between them (migration 0007, issue #69).
 export const sketches = pgTable('sketches', {
   id: uuid('id').primaryKey(),
