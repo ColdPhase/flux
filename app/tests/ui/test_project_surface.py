@@ -247,7 +247,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         # At 320px the tab strip scrolls sideways; the current tab is brought into view.
         page.set_viewport_size({"width": 320, "height": 640})
         tabs.get_by_role("link", name=re.compile("^Wiki")).click()
-        expect(page).to_have_url(re.compile(r"/docs$"))
+        expect(page).to_have_url(re.compile(rf"/docs/{self.ids['doc']}$"))
         current = tabs.get_by_role("link", name=re.compile("^Wiki"))
         expect(current).to_have_attribute("aria-current", "page")
         box = current.bounding_box()
