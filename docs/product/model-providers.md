@@ -49,7 +49,7 @@ An owner may keep one or more AI connections. Each connection records:
 - **Model:** the owner's choice. Where the provider lists models, they come from
   that list, fetched server-side. Otherwise the owner types the model id.
 - **Base URL:** fixed for the named providers; owner-set for `openai_compatible`.
-- **Key:** custody exactly as in O-007 §2.
+- **Key:** custody as in O-007 §2, generalised per provider: "one provider workspace" means the provider account or project the key belongs to, and "revoke at Claude Platform" means revoking the key with that provider.
 - **Price:** see PROV-3.
 
 The owner chooses which connection each use runs on (assistant in Flux,
@@ -90,14 +90,16 @@ adapters.
 O-008's consent, daily cap, per-run reservation, reconciliation and fail-closed
 rules apply to every provider.
 
-**Price source.** A connection's price per 1M input and output tokens comes from
-the first of these that applies:
+**Price source.** A reservation needs a price before any response exists, so a
+connection's price per 1M input and output tokens comes from:
 
-1. Provider-reported cost in the response, when present.
-2. Flux's dated price table for named models.
-3. An owner-entered price. Zero is allowed for self-hosted endpoints.
+1. Flux's dated price table for named models, or
+2. an owner-entered price. Zero is allowed for self-hosted endpoints.
 
-A connection without a known price cannot be enabled.
+A connection without one of these cannot be enabled. Enabling and reservation use
+only this price. A provider-reported cost in a response (for example OpenRouter's
+`usage.cost`) never raises or bypasses the reservation; it is used only to reconcile
+the run's actual charge.
 
 **Reservation.** For a run, the reservation is:
 
@@ -108,7 +110,8 @@ as `unknown`.
 
 **Input bound.** The same conservative Flux token estimate bounds input for every
 provider. A provider token-count endpoint may tighten the estimate, never loosen
-the bound.
+the bound. This replaces O-007/O-008's preflight count with the Anthropic
+token-counting endpoint as the bound; that endpoint becomes one optional refinement.
 
 ## PROV-4 — security
 
@@ -142,7 +145,7 @@ client, with each client's own add and login commands. All of them get the same:
 
 - OAuth consent
 - grants and standing autonomy
-- identity and three-connection presentation in the Agents view (UI116-2)
+- identity and one entry per connection in the Agents view (UI116-2)
 
 The client label stays a recognition aid, not a verified identity.
 

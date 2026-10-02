@@ -15,7 +15,8 @@ No prompt/output/body/provider ID is added, and no new compute or migration occu
 
 > **Provider scope superseded by [F-020](model-providers.md), 2026-10-02.** The owner's
 > connection may now use any supported provider and model ([PROV-1–PROV-6](model-providers.md));
-> the rest of this decision stays in force.
+> the rest of this decision stays in force, except that the input bound is now the
+> provider-neutral Flux estimate ([PROV-3](model-providers.md#prov-3--cost-caps-and-token-bounds)).
 
 **Status:** accepted after [independent review of `2a2fa82`](https://github.com/ColdPhase/flux/pull/108#pullrequestreview-5332961366), merged as [`841ddc97`](https://github.com/ColdPhase/flux/pull/108) on 2026-09-28. **Decision owner:**
 `@PelikanFix16`; **evaluator:** `@Zamojski5`. This resolves the compute-source
