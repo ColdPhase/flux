@@ -586,7 +586,7 @@ class TasksBoardJourney(unittest.TestCase):
                         (".tb-card__state--blocked", 4.5, {}), (".tb-card__blocker", 4.5, {}), (".tb-col__n", 4.5, {}), (".tb-col__b", 4.5, {}),
                         (".tb-col__h", 4.5, {}), ('.tb-mode__b[aria-checked="true"]', 4.5, {}), ('.tb-mode__b[aria-checked="false"]', 4.5, {}),
                         (".tb-dr", 4.5, {}), (".tb-mine", 4.5, {}), (".tb-also__b--need", 4.5, {}), (".tb-search input", 4.5, {"pseudo": "::placeholder"}),
-                        (".tb-ring--in_progress", 3, {"property": "borderTopColor"}), (".tb-search", 3, {"property": "color"}),
+                        (".tb-col__head .tb-ring--in_progress", 3, {"property": "borderTopColor"}), (".tb-search", 3, {"property": "color"}),
                     ):
                         value = page.evaluate(MEASURE, {"selector": selector, **spec})
                         value.update(theme=theme, family=family, minimum=minimum)

@@ -202,6 +202,8 @@ class WorkDecisionsJourney(unittest.TestCase):
 
         page.get_by_role("navigation", name="Project views").get_by_role("link", name="Tasks").click()
         expect(page).to_have_url(re.compile(r"/tasks$"))
+        # Finished work, decisions and results are grouped in the List (#136; the board shows work by status).
+        page.get_by_role("radio", name="List", exact=True).click()
         expect(page.get_by_role("region", name=re.compile("^Finished"))).to_contain_text(IDEA)
         expect(page.get_by_role("region", name=re.compile("^Decisions"))).to_contain_text("Use a camera for gesture control")
         expect(page.get_by_role("region", name=re.compile("^Results"))).to_contain_text("The camera cannot track gestures")
@@ -211,12 +213,13 @@ class WorkDecisionsJourney(unittest.TestCase):
     def test_05_pivot_keeps_history_and_parks_obsolete_work(self) -> None:
         page = self.page("owner")
         page.goto(f"/projects/{self.project_id}/tasks")
-        page.get_by_label("New work").fill("Mount the camera in the lamp head")
-        page.get_by_role("button", name="Add work").click()
+        page.get_by_role("radio", name="List", exact=True).click()
+        page.get_by_label("New task").fill("Mount the camera in the lamp head")
+        page.get_by_role("button", name="Add task").click()
         panel = self.details(page)
         expect(panel.get_by_role("heading", name="Mount the camera in the lamp head")).to_be_visible()
-        page.get_by_label("New work").fill("Design the diffuser")
-        page.get_by_role("button", name="Add work").click()
+        page.get_by_label("New task").fill("Design the diffuser")
+        page.get_by_role("button", name="Add task").click()
         expect(panel.get_by_role("heading", name="Design the diffuser")).to_be_visible()
 
         # Attaching a result to work opened that task's own conversation (#154), now the project's newest one:
@@ -295,6 +298,7 @@ class WorkDecisionsJourney(unittest.TestCase):
             self.api(page, "POST", f"{base}/work", {"title": f"Work item {index:03d}"}, status=201)
         self.assertEqual(self.api(page, "GET", f"{base}/work?limit=1", status=200)["total"], 101)
         page.goto(f"/projects/{project['id']}/tasks")
+        page.get_by_role("radio", name="List", exact=True).click()
         # Item 101 counted from the newest is the oldest one, beyond the first page of 100.
         expect(page.get_by_role("region", name=re.compile("^Open")).get_by_role("button", name=re.compile("^Work item 001"))).to_be_visible()
         expect(page.get_by_role("region", name=re.compile("^Open")).locator(".ws-group__h")).to_contain_text("101")
@@ -315,6 +319,7 @@ class WorkDecisionsJourney(unittest.TestCase):
 
         page = self.page("partner", phone=True)
         page.goto(f"/projects/{self.project_id}/tasks")
+        page.get_by_role("radio", name="List", exact=True).tap()
         views = page.get_by_role("navigation", name="Task views")
         expect(views.get_by_role("button", name="All", exact=True)).to_have_attribute("aria-pressed", "true")
         # Whole labels with their counts, no clipped column; every view is a 44 px touch target.
@@ -441,6 +446,7 @@ class WorkDecisionsJourney(unittest.TestCase):
                      {"title": f"Blocked step {index:02d}: check the ToF bracket", "status": "blocked", "blocker": "parts", "owner": me}, status=201)
         page = self.page("partner", phone=True)
         page.goto(f"/projects/{self.project_id}/tasks")
+        page.get_by_role("radio", name="List", exact=True).tap()
         views = page.get_by_role("navigation", name="Task views")
         views.get_by_role("button", name=re.compile("^Blocked")).tap()
         pane = page.locator(".pane-scroll").first
