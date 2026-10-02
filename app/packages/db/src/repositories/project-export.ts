@@ -46,7 +46,8 @@ export function projectExportRows(db: DbExecutor) {
     const materials = await db.select().from(m).where(and(eq(m.projectId, projectId), eq(m.kind, kind))).orderBy(asc(m.createdAt), asc(m.id));
     if (!materials.length) return [];
     const versions = groupBy(await db.select({
-      materialId: v.materialId, version: v.version, title: v.title, body: v.body, url: v.url, state: v.state, reason: v.reason, authorId: v.authorId, createdAt: v.createdAt,
+      materialId: v.materialId, version: v.version, title: v.title, body: v.body, url: v.url, state: v.state, reason: v.reason,
+      authorId: v.authorId, authorAgentId: v.authorAgentId, createdAt: v.createdAt,
     }).from(v).where(and(eq(v.projectId, projectId), inArray(v.materialId, materials.map((row) => row.id)))).orderBy(asc(v.materialId), asc(v.version)), (row) => row.materialId);
     return materials.map((row) => ({ row, versions: versions.get(row.id) ?? [] }));
   }
@@ -88,17 +89,19 @@ export function projectExportRows(db: DbExecutor) {
 
     async materials(projectId: string) {
       return (await versioned(projectId, 'material')).map(({ row, versions }) => ({
-        id: row.id, createdBy: human(row.createdBy), createdAt: iso(row.createdAt), currentVersion: row.currentVersion,
-        versions: versions.map((version) => ({ version: version.version, title: version.title, body: version.body, url: version.url, author: human(version.authorId), createdAt: iso(version.createdAt) })),
+        id: row.id, createdBy: creator(row.createdBy, row.createdByAgentId), createdAt: iso(row.createdAt), currentVersion: row.currentVersion,
+        versions: versions.map((version) => ({ version: version.version, title: version.title, body: version.body, url: version.url,
+          author: creator(version.authorId, version.authorAgentId), createdAt: iso(version.createdAt) })),
       }));
     },
 
     async docs(projectId: string) {
       return (await versioned(projectId, 'doc')).map(({ row, versions }) => ({
-        id: row.id, createdBy: human(row.createdBy), createdAt: iso(row.createdAt), currentVersion: row.currentVersion,
+        // A doc and its versions may be agent-written under a standing grant (#152, migration 0043).
+        id: row.id, createdBy: creator(row.createdBy, row.createdByAgentId), createdAt: iso(row.createdAt), currentVersion: row.currentVersion,
         versions: versions.map((version) => ({
           version: version.version, title: version.title, body: version.body, state: version.state ?? 'published' as const, reason: version.reason,
-          author: human(version.authorId), createdAt: iso(version.createdAt),
+          author: creator(version.authorId, version.authorAgentId), createdAt: iso(version.createdAt),
         })),
       }));
     },

@@ -22,6 +22,7 @@ import { ForbiddenError, InvalidInputError, NotFoundError, RuleViolationError, V
 import type { Principal } from '../principal.js';
 import { linkReader } from '../work/service.js';
 import * as valid from '../work/validation.js';
+import type { ActorRef } from '../work/ports.js';
 import type { DocPorts, DocUnitOfWork, DocVersionRecord, DocWithCurrent, NewDocVersion } from './ports.js';
 import * as text from './text.js';
 
@@ -30,16 +31,21 @@ import * as text from './text.js';
 // the expected version under the doc's row lock, appends an immutable version, rewrites the
 // doc's `mentions` links from the new text and records exactly one project event, so the
 // decision, the change and the stream event commit together. People write docs; agents with a
-// project grant can read them.
+// project grant can read them. An agent writes a doc only through the #152 standing-grant
+// composition, which opts in with `agentAuthors` and adds its own grant, runtime and receipt checks.
 
 const iso = (date: Date) => date.toISOString();
 const notFound = () => new NotFoundError('Doc', 'DOC_NOT_FOUND');
 const versionNotFound = () => new NotFoundError('Doc version', 'DOC_VERSION_NOT_FOUND');
 
-function author(principal: Principal): string {
-  if (principal.kind === 'agent') throw new ForbiddenError('Docs are written by people in this version; agents can read them', 'DOC_NEEDS_PERSON');
+/** The real author of a change: the person, or an agent where the composition explicitly allows agent authors. */
+function authorOf(principal: Principal, agentAuthors: boolean): ActorRef {
+  if (principal.kind === 'agent') {
+    if (!agentAuthors) throw new ForbiddenError('People write docs here; an agent writes them only under a standing grant', 'DOC_NEEDS_PERSON');
+    return { kind: 'agent', id: valid.id(principal.id, 'agentId') };
+  }
   if (principal.kind !== 'human' || !principal.id) throw new InvalidInputError('A signed-in person is required');
-  return principal.id;
+  return { kind: 'human', id: principal.id };
 }
 
 /** App path of a mentioned object, from where it lives in the project. */
@@ -76,17 +82,19 @@ async function resolve(ports: DocPorts, projectId: string, markdown: string, sel
   return { mentions, map, targets };
 }
 
-async function names(ports: DocPorts, ids: string[]) {
-  const found = await ports.work.names([...new Set(ids)].map((id) => ({ kind: 'human' as const, id })));
-  return (id: string): NamedPrincipal => ({ kind: 'human', id, name: found.get(`human:${id}`) ?? 'Former member' });
+async function names(ports: DocPorts, actors: ActorRef[]) {
+  const unique = [...new Map(actors.map((actor) => [`${actor.kind}:${actor.id}`, actor])).values()];
+  const found = await ports.work.names(unique);
+  return (actor: ActorRef): NamedPrincipal => ({ kind: actor.kind, id: actor.id,
+    name: found.get(`${actor.kind}:${actor.id}`) ?? (actor.kind === 'agent' ? 'Agent' : 'Former member') });
 }
 
-function summaryOf(version: DocVersionRecord, named: (id: string) => NamedPrincipal): DocVersionSummary {
-  return { docId: version.docId, version: version.version, title: version.title, state: version.state, reason: version.reason, author: named(version.authorId), createdAt: iso(version.createdAt) };
+function summaryOf(version: DocVersionRecord, named: (actor: ActorRef) => NamedPrincipal): DocVersionSummary {
+  return { docId: version.docId, version: version.version, title: version.title, state: version.state, reason: version.reason, author: named(version.author), createdAt: iso(version.createdAt) };
 }
 
 async function presentVersion(ports: DocPorts, version: DocVersionRecord): Promise<DocVersion> {
-  const [{ mentions, map }, named] = await Promise.all([resolve(ports, version.projectId, version.body), names(ports, [version.authorId])]);
+  const [{ mentions, map }, named] = await Promise.all([resolve(ports, version.projectId, version.body), names(ports, [version.author])]);
   return { ...summaryOf(version, named), projectId: version.projectId, body: version.body, html: ports.renderer.render(version.body, map), mentions };
 }
 
@@ -99,10 +107,10 @@ async function present(ports: DocPorts, row: DocWithCurrent): Promise<Doc> {
 }
 
 async function summaries(ports: DocPorts, rows: DocWithCurrent[]): Promise<DocSummary[]> {
-  const named = await names(ports, rows.map((row) => row.current.authorId));
+  const named = await names(ports, rows.map((row) => row.current.author));
   return rows.map(({ doc, current, projectName }) => ({
     id: doc.id, projectId: doc.projectId, projectName, workspaceId: doc.workspaceId, title: current.title, state: current.state,
-    version: current.version, updatedBy: named(current.authorId), updatedAt: iso(current.createdAt), reason: current.reason, excerpt: excerpt(current.body),
+    version: current.version, updatedBy: named(current.author), updatedAt: iso(current.createdAt), reason: current.reason, excerpt: excerpt(current.body),
   }));
 }
 
@@ -154,19 +162,28 @@ async function composeSection(ports: DocPorts, projectId: string, source: DocSec
   return { section: lines.join('\n'), title: decision.title, label: 'decision' };
 }
 
-export function createDocUseCases(uow: DocUnitOfWork) {
+export interface DocUseCaseOptions {
+  /**
+   * Accept an agent principal as the author of a change. Only the #152 standing-grant composition sets it; the
+   * person-facing entry points keep refusing an agent (`DOC_NEEDS_PERSON`).
+   */
+  agentAuthors?: boolean;
+}
+
+export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions = {}) {
+  const agentAuthors = options.agentAuthors === true;
   /** Stores the next version, rewrites mentions and records one event; returns the doc as its readers see it. */
   async function commit(ports: DocPorts, principal: Principal, scope: { workspaceId: string; projectId: string }, row: DocWithCurrent, created: boolean) {
     const { targets } = await resolve(ports, scope.projectId, row.current.body, row.doc.id);
-    await ports.docs.replaceMentions(scope, row.doc.id, targets, { kind: 'human', id: row.current.authorId });
+    await ports.docs.replaceMentions(scope, row.doc.id, targets, row.current.author);
     const view = await present(ports, row);
     await ports.events.record(principal, scope.workspaceId, created ? 'project.doc_created.v1' : 'project.doc_updated.v1', scope.projectId,
       { docId: row.doc.id, version: row.current.version });
     return view;
   }
 
-  function linkSource(ports: DocPorts, scope: { workspaceId: string; projectId: string }, docId: string, source: DocSectionSource, by: string) {
-    return ports.work.insertLinks([{ id: randomUUID(), ...scope, role: 'source', from: { type: 'doc', id: docId }, to: { type: source.type, id: source.id }, createdBy: { kind: 'human', id: by } }]);
+  function linkSource(ports: DocPorts, scope: { workspaceId: string; projectId: string }, docId: string, source: DocSectionSource, by: ActorRef) {
+    return ports.work.insertLinks([{ id: randomUUID(), ...scope, role: 'source', from: { type: 'doc', id: docId }, to: { type: source.type, id: source.id }, createdBy: by }]);
   }
 
   return {
@@ -203,7 +220,7 @@ export function createDocUseCases(uow: DocUnitOfWork) {
       return uow.run(async (ports) => {
         const { id } = await authorized(ports, principal, docId, 'read');
         const { items, total } = await ports.docs.versions(id, window);
-        const named = await names(ports, items.map((item) => item.authorId));
+        const named = await names(ports, items.map((item) => item.author));
         return { items: items.map((item) => summaryOf(item, named)), total, ...window };
       });
     },
@@ -229,7 +246,7 @@ export function createDocUseCases(uow: DocUnitOfWork) {
     },
 
     async createDoc(principal: Principal, projectId: string, command: CreateDocCommand): Promise<Doc> {
-      const by = author(principal);
+      const by = authorOf(principal, agentAuthors);
       if (!command || typeof command !== 'object') throw new InvalidInputError('Doc is required');
       const project = valid.id(projectId, 'projectId');
       const title = text.title(command.title);
@@ -248,7 +265,7 @@ export function createDocUseCases(uow: DocUnitOfWork) {
           reason = given || `Started from the ${composed.label} “${composed.title}”`;
         }
         if (body.length > DOC_LIMITS.body) throw new InvalidInputError(`body must be at most ${DOC_LIMITS.body} characters`);
-        const first: NewDocVersion = { title, body, state, reason, authorId: by };
+        const first: NewDocVersion = { title, body, state, reason, author: by };
         const row = await ports.docs.insert({ id: randomUUID(), workspaceId, projectId: project, createdBy: by }, first);
         if (from) await linkSource(ports, scope, row.doc.id, from, by);
         return commit(ports, principal, scope, row, true);
@@ -261,7 +278,7 @@ export function createDocUseCases(uow: DocUnitOfWork) {
      * silent overwrite. Saving without a change returns the doc as it is.
      */
     async updateDoc(principal: Principal, docId: string, command: UpdateDocCommand, expected: number | undefined): Promise<Doc> {
-      const by = author(principal);
+      const by = authorOf(principal, agentAuthors);
       if (!command || typeof command !== 'object') throw new InvalidInputError('Change is required');
       const version = valid.expectedVersion(expected);
       const title = command.title === undefined ? undefined : text.title(command.title);
@@ -276,7 +293,7 @@ export function createDocUseCases(uow: DocUnitOfWork) {
         const next = { title: title ?? current.current.title, body: body ?? current.current.body, state: state ?? current.current.state };
         const change = text.describeChange(current.current, next);
         if (!change) return present(ports, current);
-        const row = await ports.docs.append(id, { ...next, reason: given || change, authorId: by });
+        const row = await ports.docs.append(id, { ...next, reason: given || change, author: by });
         return commit(ports, principal, { workspaceId, projectId }, row, false);
       });
     },
@@ -287,7 +304,7 @@ export function createDocUseCases(uow: DocUnitOfWork) {
      * statement stays in the earlier version, and the doc links to its source.
      */
     async addSection(principal: Principal, docId: string, command: AddDocSectionCommand, expected: number | undefined): Promise<Doc> {
-      const by = author(principal);
+      const by = authorOf(principal, agentAuthors);
       const version = valid.expectedVersion(expected);
       const from = text.sectionSource(command?.from);
       return uow.run(async (ports) => {
@@ -301,7 +318,7 @@ export function createDocUseCases(uow: DocUnitOfWork) {
         if (body === current.current.body) return present(ports, current);
         if (body.length > DOC_LIMITS.body) throw new RuleViolationError('The doc would become too long; start a new doc for this', 'DOC_TOO_LONG');
         const reason = `${replaced ? 'Updated' : 'Added'} the ${composed.label} “${composed.title}”`;
-        const row = await ports.docs.append(id, { title: current.current.title, body, state: current.current.state, reason, authorId: by });
+        const row = await ports.docs.append(id, { title: current.current.title, body, state: current.current.state, reason, author: by });
         return commit(ports, principal, scope, row, false);
       });
     },

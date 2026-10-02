@@ -218,6 +218,74 @@ Composition:
   as the work commands (`nativeSketchInEventSession`).
 - Each committed command adds exactly one event, after its receipt.
 
+### Project wiki docs and conversations
+
+The same executor runs the canonical doc (#112) and conversation (#36, #154) commands:
+
+| Tool | Operation | Target | Change |
+| --- | --- | --- | --- |
+| `flux_create_doc` | `doc.create` | none | One project doc: title, Markdown text, draft or published state, reason |
+| `flux_update_doc` | `doc.update` | the doc | The next version at the version last read (like `If-Match`): title, the complete text, state, reason |
+| `flux_start_conversation` | `conversation.create` | none | One new project conversation with its first message, optionally citing one material or doc version |
+| `flux_reply_in_conversation` | `conversation.reply` | the conversation | One reply in an existing project conversation, including a task's discussion thread |
+
+Grants and classes:
+
+- All four operations take the execute or plan class; review grants never write.
+- A grant for an update or a reply can name one doc or conversation, or the whole project.
+- Migration `0043` adds the four operations to the closed grant operation list.
+
+Authorship:
+
+- The agent is the real author. Migration `0043` gives docs the exact-actor shape of
+  #154 messages. A doc and each version name either a person (`created_by`, `author_id`)
+  or an agent of the same workspace (`created_by_agent_id`, `author_agent_id`), never both.
+- Only docs can be agent-written. Plain materials stay person-written, and existing
+  rows are not backfilled.
+- Every existing reader names the real actor:
+  - the doc reader, history and lists (`kind: 'agent'`);
+  - the material citation reader (`authorId: null` with `author`);
+  - search and the project export.
+
+  The conversation UI already shows agent messages as "name · agent".
+- The person-facing doc and conversation routes still refuse an agent principal
+  (`DOC_NEEDS_PERSON`). Only this standing-grant composition opts in (`agentAuthors`).
+- A message's canonical client message ID is derived from the connection and the
+  command ID. A retry computes the same send, and two connections of one agent never collide.
+
+Audience and privacy:
+
+- A target must be a doc or conversation of the command's project. These are all
+  `OBJECT_NOT_FOUND`: a private draft or note, a direct message, another project's
+  object and a guessed ID.
+- A private draft is never a citation (`MATERIAL_VERSION_NOT_FOUND`) or a source
+  (`SOURCE_VERSION_CONFLICT`).
+- There is no private-to-project publication path. The doc text is exactly what the
+  agent sends, and `flux:` references outside the project render as not available.
+  A draft doc is a state visible to the project audience, not a private note.
+- Messages are plain text. Blocker, result and handoff contributions still come from
+  their own commands.
+
+Versions, post-state and replay:
+
+- An edit at a stale version is `VERSION_CONFLICT`. A change that alters nothing is
+  `DOC_UNCHANGED`. Neither saves a version or debits the grant.
+- The produced post-state is the doc at its new version, or the posted message. A
+  message is immutable, and a reply's message must be in the targeted conversation.
+- A doc replay after a later edit is `COMMAND_POSTSTATE_STALE`. A message replay
+  returns the stored outcome even after later messages.
+- Each committed command adds exactly one event after its receipt:
+  `project.doc_created.v1` or `project.doc_updated.v1`, and
+  `project.conversation_created.v1` or `project.message_sent.v1`.
+
+Not yet agent tools:
+
+- "Add to docs" sections and docs started from a result or decision.
+- A task's first discussion contribution and explicit blocker, result or handoff
+  contributions. Once a task thread exists, a reply joins it.
+
+The built-in playbook 1.0.0 does not name these tools yet; its revision belongs to #160.
+
 Co-work operations remain registry entries without tools. #153's claim adapter,
 the #160 playbook and real Codex/Claude model-driven activation are still required
 before agent decomposition counts as delivered.

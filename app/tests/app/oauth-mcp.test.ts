@@ -173,8 +173,10 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
       { name: 'flux_record_result', operation: 'result.record', available: false }, { name: 'flux_propose_decision', operation: 'decision.propose', available: false },
       ...['flux_create_map:map.create', 'flux_rename_map:map.rename', 'flux_add_thought:map.thought.create', 'flux_update_thought:map.thought.update',
         'flux_remove_thought:map.thought.delete', 'flux_move_thoughts:map.positions.update', 'flux_link_thoughts:map.link.create',
-        'flux_unlink_thoughts:map.link.delete'].map((entry) => ({ name: entry.split(':')[0], operation: entry.split(':')[1], available: false }))],
-    'only the verified native work and map actions are advertised, unavailable without the action scope');
+        'flux_unlink_thoughts:map.link.delete', 'flux_create_doc:doc.create', 'flux_update_doc:doc.update',
+        'flux_start_conversation:conversation.create', 'flux_reply_in_conversation:conversation.reply']
+        .map((entry) => ({ name: entry.split(':')[0], operation: entry.split(':')[1], available: false }))],
+    'only the verified native work, map, doc and conversation actions are advertised, unavailable without the action scope');
   const unscoped = await mcp(bearer, 147, 'tools/call', { name: 'flux_create_task', arguments: { projectId,
     runtimeSessionId: (bootstrap.runtime as { id: string }).id, grantId: randomUUID(), clientCommandId: randomUUID(),
     peerRequestClass: 'plan', sources: [], task: { title: 'Not without the action scope' } } });

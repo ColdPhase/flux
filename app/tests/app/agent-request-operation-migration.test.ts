@@ -3,11 +3,15 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
-import { AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES } from '@flux/contracts';
+import { AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES, type AgentOperation } from '@flux/contracts';
 import { assertExactMigrationLedger, assertMigrationSqlLedgerChange, assertMigrationStepLedger, createDatabase,
   FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
 
 const migrationsDir = 'packages/db/migrations';
+/** Exactly the list 0038 writes. Later migrations (0043) widen it; 0038 itself stays frozen. */
+const OPERATIONS_AT_0038: readonly AgentOperation[] = ['work.create', 'work.update', 'result.record', 'decision.propose',
+  'map.create', 'map.rename', 'map.thought.create', 'map.thought.update', 'map.thought.delete', 'map.positions.update',
+  'map.link.create', 'map.link.delete', 'cowork.claim', 'cowork.renew', 'cowork.release', 'cowork.request'];
 const { pool } = createDatabase(process.env.DATABASE_URL!);
 after(() => pool.end());
 
@@ -73,15 +77,16 @@ test('0038 widens only the closed grant operation CHECK: the prior ledger upgrad
     assertMigrationStepLedger(before, after, migration!);
     assertExactMigrationLedger(upToCurrent, after);
 
-    // After: rows are untouched; the database list is exactly the contract list plus nothing else.
+    // After: rows are untouched; the database list is exactly the 0038 list plus nothing else.
     assert.deepEqual((await client.query('SELECT * FROM agent_standing_grants WHERE id=$1', [historicGrant])).rows[0], historic);
-    for (const operation of AGENT_OPERATIONS) for (const peerRequestClass of AGENT_PEER_REQUEST_CLASSES) await insert(randomUUID(), operation, peerRequestClass);
+    assert.ok(OPERATIONS_AT_0038.every((operation) => AGENT_OPERATIONS.includes(operation)), 'every 0038 operation is still a contract operation');
+    for (const operation of OPERATIONS_AT_0038) for (const peerRequestClass of AGENT_PEER_REQUEST_CLASSES) await insert(randomUUID(), operation, peerRequestClass);
     for (const operation of ['cowork.ack', 'cowork.defer', 'cowork.select', 'cowork.requests', 'cowork.request ', 'COWORK.REQUEST', 'cowork', '']) {
       const error = await refused(operation);
       assert.equal(error.code, '23514', `${JSON.stringify(operation)} stays refused`); assert.equal(error.constraint, 'agent_standing_grants_operation_check');
     }
     const definition = (await constraint())[0]!.definition as string;
-    assert.deepEqual([...definition.matchAll(/'([^']*)'::text/g)].map((match) => match[1]).sort(), [...AGENT_OPERATIONS].sort());
+    assert.deepEqual([...definition.matchAll(/'([^']*)'::text/g)].map((match) => match[1]).sort(), [...OPERATIONS_AT_0038].sort());
 
     // Idempotent: a second application keeps the same definition and every row.
     const count = async () => (await client.query('SELECT count(*)::int AS n FROM agent_standing_grants')).rows[0].n as number;

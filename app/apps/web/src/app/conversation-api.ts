@@ -2,7 +2,7 @@ import {
   WORKSPACES_PATH, conversationMessagesPath, conversationPath, materialPath,
   materialVersionPath, projectConversationsPath, projectMaterialsPath, projectPath, workspaceProjectsPath,
   type Conversation, type ConversationMessage, type ConversationSummary, type CreateMaterialCommand,
-  type Draft, type WorkspaceMember, type Material, type MaterialVersion, type Page, type Project, type SendMessageCommand, type Workspace, workspaceDraftsPath,
+  type Draft, type WorkspaceMember, type Material, type MaterialOrDoc, type MaterialVersion, type Page, type Project, type SendMessageCommand, type Workspace, workspaceDraftsPath,
 } from '@flux/contracts';
 import { request } from '../api/client';
 
@@ -30,7 +30,7 @@ export const startConversation = (projectId: string, command: SendMessageCommand
 export const reply = (id: string, command: SendMessageCommand) => request<ConversationMessage>(conversationMessagesPath(id), { method: 'POST', body: command });
 export const listMaterials = (projectId: string, signal?: AbortSignal, offset = 0) => request<Page<Material>>(`${projectMaterialsPath(projectId)}?limit=100&offset=${offset}`, { signal });
 export const publishMaterial = (projectId: string, command: CreateMaterialCommand) => request<Material>(projectMaterialsPath(projectId), { method: 'POST', body: command });
-export const getMaterial = (id: string, signal?: AbortSignal) => request<Material>(materialPath(id), { signal });
+export const getMaterial = (id: string, signal?: AbortSignal) => request<MaterialOrDoc>(materialPath(id), { signal });
 export const getMaterialVersion = (id: string, version: number, signal?: AbortSignal) => request<MaterialVersion>(materialVersionPath(id, version), { signal });
 
 export const listDrafts = (workspaceId: string, signal?: AbortSignal) => request<Page<Draft>>(`${workspaceDraftsPath(workspaceId)}?limit=100`, { signal });
