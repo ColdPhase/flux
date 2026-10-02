@@ -1,4 +1,5 @@
 /* Agents (Studio 11.6 UI116-2, #136): one centred reading column over the project's work. */
+.agents-scroll { display: flex; flex-direction: column; }
 .agents {
   width: min(100%, 854px);
   margin: 0 auto;
@@ -6,7 +7,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--s-5);
-  min-height: 100%;
+  flex: 1 0 auto;
 }
 .agents__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-4); flex-wrap: wrap; }
 .agents__title { margin: 0; font-size: var(--fs-2xl); font-weight: 600; letter-spacing: -0.025em; }
@@ -49,7 +50,8 @@
 /* On a tall screen the thread and its composer sit together at the bottom, as in a conversation.
    An auto margin on the first item takes only free space; justify-content: flex-end would push
    an overflowing thread up over the connections and the task picker on a phone. */
-/* It never shrinks below its messages (no min-height: 0), so a long thread grows the page. */
+/* It never shrinks below its messages (no min-height: 0): a long thread grows the view, which
+   scrolls in its own pane (.agents-scroll) under the sticky composer. */
 .agents-thread { display: flex; flex-direction: column; gap: var(--s-3); flex: 1 0 auto; }
 .agents-thread > :first-child { margin-top: auto; }
 .agents-thread__top { margin: 0; font-size: var(--fs-xs); color: var(--text-3); }

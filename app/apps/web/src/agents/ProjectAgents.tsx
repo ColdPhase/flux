@@ -106,6 +106,14 @@ function TaskThread({ task, meId, names, canWrite }: { task: WorkItem; meId: str
     return () => controller.abort();
   }, [task.id, attempt]);
 
+  // A thread opens at its newest message, like a conversation (once per load, not on every update).
+  const opened = useRef(false);
+  useEffect(() => {
+    if (!discussion || opened.current) return;
+    opened.current = true;
+    requestAnimationFrame(() => end.current?.scrollIntoView({ block: 'end' }));
+  }, [discussion]);
+
   const messages = useMemo(() => {
     if (!discussion) return [];
     const all = discussion.root ? [discussion.root, ...discussion.messages.filter((item) => item.id !== discussion.root!.id)] : discussion.messages;
@@ -129,7 +137,8 @@ function TaskThread({ task, meId, names, canWrite }: { task: WorkItem; meId: str
       pendingStore.clear();
       draft.clear();
       setDiscussion((current) => current && !current.messages.some((item) => item.id === message.id) && current.root?.id !== message.id
-        ? { ...current, rootMessageId: current.rootMessageId ?? message.id, root: current.root ?? message, messages: [...current.messages, message] }
+        ? { ...current, conversationId: current.conversationId ?? message.conversationId, rootMessageId: current.rootMessageId ?? message.id,
+          root: current.root ?? message, messages: [...current.messages, message] }
         : current);
       requestAnimationFrame(() => { end.current?.scrollIntoView({ block: 'nearest' }); box.current?.focus(); });
     } catch (cause) {
@@ -196,7 +205,10 @@ export function ProjectAgents() {
   const select = (id: string) => setSearch((current) => { const next = new URLSearchParams(current); next.set('task', id); return next; }, { replace: true });
   const projectId = shell?.project.id ?? data.projectId;
 
+  // The view scrolls in its own pane like every other view, so a long thread stays reachable
+  // above the sticky composer on any screen.
   return (
+    <div className="pane-scroll agents-scroll">
     <div className="agents">
       <header className="agents__head">
         <h1 className="agents__title">Working together</h1>
@@ -226,6 +238,7 @@ export function ProjectAgents() {
       ) : (
         <p className="agents__no-tasks">No open tasks. Create one in Tasks; agents and people then work on it here.</p>
       )}
+    </div>
     </div>
   );
 }
