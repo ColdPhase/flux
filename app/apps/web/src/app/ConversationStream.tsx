@@ -185,11 +185,17 @@ export function ConversationStream({ project, meId, roots: stream, work, author,
   }, [reveal?.key, !!revealRoot]);
 
   // Earlier roots keep the reader's place; new roots follow the reader only while they are at the end.
+  // A changed reply count or edit (the same last root) never moves the stream: a reply sent in an open
+  // thread must leave the root the person opened where it was.
+  const lastRootRef = useRef<string | null>(roots.at(-1)?.message.id ?? null);
   useLayoutEffect(() => {
     const feed = feedRef.current;
+    const last = roots.at(-1)?.message.id ?? null;
+    const appended = last !== lastRootRef.current;
+    lastRootRef.current = last;
     if (!feed) return;
     if (restoreRef.current !== null) { feed.scrollTop = feed.scrollHeight - restoreRef.current; restoreRef.current = null; return; }
-    if (stickRef.current) feed.scrollTop = feed.scrollHeight;
+    if (stickRef.current && appended) feed.scrollTop = feed.scrollHeight;
   }, [roots]);
   useLayoutEffect(() => {
     const feed = feedRef.current;
