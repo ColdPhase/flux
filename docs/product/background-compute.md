@@ -1,5 +1,9 @@
 # O-007 proposal — owner-authorized background comparison
 
+> **Provider scope superseded by [F-020](model-providers.md), 2026-10-02.** The owner's
+> connection may now use any supported provider and model ([PROV-1–PROV-6](model-providers.md));
+> the rest of this decision stays in force.
+
 **Status:** proposed for independent review, 2026-09-28. **Decision owner:**
 `@PelikanFix16`; **evaluator:** `@Zamojski5`. This resolves the compute-source
 dependency of [#58](https://github.com/ColdPhase/flux/issues/58), not its

@@ -1,0 +1,184 @@
+# F-020 — provider-neutral Flux agent
+
+**Founder requirement, 2026-10-02.** Hubert (@PelikanFix16) gave this direction in
+the supervising session: the Flux agent must not be only a connectable cloud
+Claude agent. It must also work with OpenAI Codex and similar clients, and with
+an API key for OpenRouter or any other provider. Every model must get equal
+support inside the Flux agent. Implementation is tracked in
+[#179](https://github.com/ColdPhase/flux/issues/179).
+**Owner:** @PelikanFix16. **Evaluator:** @Zamojski5.
+
+This decision **supersedes the Anthropic-only provider scope** of
+[O-007](background-compute.md) and [O-008](personal-runs-compute.md), and O-008's
+deferral of local models. Everything else in those decisions stays in force:
+
+- owner custody of the key and payer attestation
+- [F-019](decisions.md) owner-only use
+- separate consent per use
+- daily caps and per-run reservations
+- one bounded request per run
+- source and audience limits
+- stop, retry and continue semantics
+- fail-closed behaviour with no payer fallback
+
+## What was true before this decision (observed on `main` `471b22dd`, 2026-10-02)
+
+- **Assistant in Flux and background comparison (#68/#58).**
+  - Anthropic only: one adapter in `app/packages/agent-runtime/src/anthropic.ts`
+    and one pinned model, `PERSONAL_RUN_LIMITS.model`.
+  - Settings and Details copy says "your own Anthropic API key".
+  - O-008 rejected local models "for now". OpenAI, OpenRouter and Gemini keys
+    were never assessed as in-product compute.
+- **External co-work over MCP (#152).**
+  - A connection can carry the label Claude Code, Codex or External client.
+  - The Connect guide shows only `claude mcp add/login`.
+  - Details names only "Claude Code on your computer".
+  - Real Codex activation remains unverified (#152/#160).
+
+## PROV-1 — owner AI connections
+
+An owner may keep one or more AI connections. Each connection records:
+
+- **Provider kind:**
+  - `anthropic`
+  - `openai`
+  - `openrouter`
+  - `gemini`
+  - `openai_compatible`: self-hosted Ollama/vLLM/LM Studio, gateways and other
+    endpoints speaking the same wire format.
+- **Model:** the owner's choice. Where the provider lists models, they come from
+  that list, fetched server-side. Otherwise the owner types the model id.
+- **Base URL:** fixed for the named providers; owner-set for `openai_compatible`.
+- **Key:** custody exactly as in O-007 §2.
+- **Price:** see PROV-3.
+
+The owner chooses which connection each use runs on (assistant in Flux,
+background rule). Configuring a connection enables neither use; each use keeps
+its own consent, cap and pause (O-008). Replacing or deleting a connection stops
+the uses that point to it. Nothing falls back to another connection or payer.
+
+## PROV-2 — equal treatment of every model
+
+One provider-neutral runtime port carries the same steps for every provider:
+
+- prompt assembly
+- source selection
+- output parsing
+- proposals
+- stop, retry and continue
+- pause
+- audit
+
+Adapters translate only the wire format, the stop reason, usage and errors into
+the port's closed result set. The result set (truncated/refusal/rate limit/
+overloaded/timeout/aborted/provider error, with a billing hint) is shared by all
+adapters.
+
+- **No vendor-exclusive features.** No Flux feature is reserved to a vendor or
+  model. Provider-hosted tools (web search, code execution, connectors) stay off
+  for every provider. Flux asks for plain text and parses it the same way for
+  all.
+- **Neutral UI.** The UI names the selected provider and model neutrally, e.g.
+  "OpenRouter · model-id". "Anthropic" or "Claude" appears only where that is
+  the selected connection or an external client the person labelled that way.
+- **Model differences are shown, not hidden.** A model with a smaller context
+  window gets the same bounded input when it fits. When it does not fit, the run
+  fails closed with a clear state, as any provider would.
+
+## PROV-3 — cost, caps and token bounds
+
+O-008's consent, daily cap, per-run reservation, reconciliation and fail-closed
+rules apply to every provider.
+
+**Price source.** A connection's price per 1M input and output tokens comes from
+the first of these that applies:
+
+1. Provider-reported cost in the response, when present.
+2. Flux's dated price table for named models.
+3. An owner-entered price. Zero is allowed for self-hosted endpoints.
+
+A connection without a known price cannot be enabled.
+
+**Reservation.** For a run, the reservation is:
+
+> maximum input tokens × input price + maximum output tokens × output price
+
+It is reconciled against reported usage. A lost response keeps its reservation
+as `unknown`.
+
+**Input bound.** The same conservative Flux token estimate bounds input for every
+provider. A provider token-count endpoint may tighten the estimate, never loosen
+the bound.
+
+## PROV-4 — security
+
+The O-007 §2 custody rules apply to every adapter:
+
+- AEAD at rest.
+- Only the worker decrypts the key.
+- The key never appears in API responses, stream frames, jobs, logs, exports or
+  error bodies.
+- The existing seeded-key absence test runs for each adapter.
+
+**Base URL (SSRF guard).**
+
+- Public HTTPS by default.
+- Redirects are not followed.
+- Response time and size are bounded.
+- The URL is resolved and checked at dispatch.
+- Private, loopback and link-local targets are allowed only when the instance
+  operator enables them explicitly with an allowlist.
+- Environment variables never redirect a key.
+
+Flux holds **no consumer subscription sign-in** (ChatGPT, Claude.ai or similar).
+O-007/O-008 evidence and the [feasibility study](own-ai-feasibility.md) keep that
+rejected. A person uses such a subscription through their own external client
+over MCP (PROV-5).
+
+## PROV-5 — external clients are equal too
+
+Connect offers equivalent guidance for Claude Code, Codex and a generic MCP
+client, with each client's own add and login commands. All of them get the same:
+
+- OAuth consent
+- grants and standing autonomy
+- identity and three-connection presentation in the Agents view (UI116-2)
+
+The client label stays a recognition aid, not a verified identity.
+
+## PROV-6 — evidence
+
+**Adapter contract suite.** One suite runs identically, in Docker, against mock
+servers for each wire format:
+
+- Anthropic Messages.
+- OpenAI-compatible Chat Completions, used by OpenAI, OpenRouter, Gemini's
+  compatible endpoint and self-hosted servers.
+
+The suite covers success, truncation, refusal, rate limit, overload, timeout,
+abort, malformed output and usage/cost reconciliation. A native adapter is added
+only when a provider cannot meet this suite through a compatible endpoint, and
+the added adapter must pass the same suite.
+
+**Real-key smoke tests.** Each named provider gets a dated smoke test with the
+owner's own key. A provider without a key at hand is reported unverified, not
+passed.
+
+**Provider terms.** Rows marked `unknown` in the
+[feasibility study](own-ai-feasibility.md) (OpenAI API terms; OpenRouter and
+Gemini were not assessed) are checked against dated primary sources during
+implementation. A provider whose terms forbid this use is disabled, and the
+evidence is recorded. The requirement itself does not wait for that check.
+
+**External clients.** Real Codex and Claude Code connections are recorded,
+together with one other MCP client as a smoke test.
+
+## Revisit when
+
+Revisit when either of these holds:
+
+- A provider's terms forbid the mode.
+- Independent evidence shows that a provider cannot meet the same custody, cap
+  and fail-closed gates. In that case only that provider is disabled.
+
+The equal-treatment requirement stays.
