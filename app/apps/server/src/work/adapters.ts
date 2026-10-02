@@ -1,8 +1,10 @@
-import { workRows, type DbExecutor } from '@flux/db';
+import { proactiveOutboxRows, workRows, type DbExecutor } from '@flux/db';
 import {
+  evaluateProject,
   visibleFilter,
   createWorkContributions,
   createWorkUseCases,
+  COMPARISON_QUIET_WINDOW_MS,
   type Database,
   type WorkPorts,
   type WorkRepository,
@@ -39,6 +41,16 @@ function workPorts(tx: Transaction, events: TransactionEventSession): WorkPorts 
     work: workRepository(tx),
     events,
     contributions: createWorkContributions(taskDiscussionPorts(tx, events)),
+    backgroundComparison: { async enqueueHumanNegative(resultId, projectId, authorId) {
+      const rows = proactiveOutboxRows(tx);
+      const eligible: string[] = [];
+      for (const rule of await rows.enabledRules(projectId)) {
+        const owner = await evaluateProject({ kind: 'human', id: rule.ownerUserId }, 'project.write', projectId, tx, { lock: true });
+        const agent = await evaluateProject({ kind: 'agent', id: rule.agentId }, 'project.write', projectId, tx, { lock: true });
+        if (owner.allowed && agent.allowed && agent.actor?.agent?.ownerUserId === rule.ownerUserId) eligible.push(rule.id);
+      }
+      return rows.enqueueHumanNegative(resultId, projectId, authorId, eligible, new Date(Date.now() + COMPARISON_QUIET_WINDOW_MS));
+    } },
   };
 }
 

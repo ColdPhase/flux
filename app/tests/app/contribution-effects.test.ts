@@ -279,7 +279,8 @@ function failingAt(point: string) {
       work: { ...work, updateWork: thrower('updateWork', work.updateWork), insertResult: thrower('insertResult', work.insertResult),
         insertLinks: thrower('insertLinks', work.insertLinks), recordNativeCommand: thrower('recordNativeCommand', work.recordNativeCommand) },
       events: { record: thrower('record', async (...args: Parameters<typeof session.record>) => session.record(...args)) } as WorkPorts['events'],
-      contributions: createWorkContributions({ ...base, discussion }) };
+      contributions: createWorkContributions({ ...base, discussion }),
+      backgroundComparison: { enqueueHumanNegative: async () => 0 } };
     const result = await session.run(() => action(ports));
     if (point === 'beforeFlush') throw new Error('injected failure before the final flush');
     await session.flushEvents();

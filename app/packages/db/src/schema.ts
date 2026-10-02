@@ -1,4 +1,5 @@
-import { sql } from 'drizzle-orm';
+import { eq, isNull, ne, sql } from 'drizzle-orm';
+import type { InspectedComparisonSource } from '@flux/contracts';
 import { pgTable, text, timestamp, uuid, integer, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, check, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES, type AgentJsonValue, type AgentPostcondition } from '@flux/contracts';
 
@@ -954,6 +955,55 @@ export const agentProposals = pgTable('agent_proposals', {
   foreignKey({ columns: [table.workspaceId, table.projectId, table.sourceMaterialId, table.sourceMaterialVersion], foreignColumns: [projectMaterialVersions.workspaceId, projectMaterialVersions.projectId, projectMaterialVersions.materialId, projectMaterialVersions.version] }),
 ]);
 
+export const backgroundComputeConnections = pgTable('background_compute_connections', {
+  id: uuid('id').primaryKey(),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  provider: text('provider', { enum: ['anthropic'] }).notNull(),
+  model: text('model', { enum: ['claude-sonnet-5'] }).notNull(),
+  payerOrganization: text('payer_organization').notNull(),
+  providerWorkspace: text('provider_workspace').notNull(),
+  encryptedKey: text('encrypted_key'),
+  keyLastFour: text('key_last_four').notNull(),
+  keyFingerprint: text('key_fingerprint').notNull(),
+  maxRunsPerDay: integer('max_runs_per_day').notNull(),
+  periodDays: integer('period_days').notNull(),
+  periodBudgetCents: integer('period_budget_cents').notNull(),
+  perRunCents: integer('per_run_cents').notNull(),
+  consentVersion: text('consent_version', { enum: ['o-007-2026-09-28'] }).notNull(),
+  consentedAt: timestamp('consented_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, (table) => [
+  uniqueIndex('background_compute_connections_active_owner_idx').on(table.ownerUserId).where(isNull(table.revokedAt)),
+  index('background_compute_connections_owner_idx').on(table.ownerUserId, table.createdAt, table.id),
+]);
+
+export const proactiveComparisonRules = pgTable('proactive_comparison_rules', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  agentId: uuid('agent_id').notNull(),
+  triggerKind: text('trigger_kind', { enum: ['human_negative_result'] }).notNull().default('human_negative_result'),
+  purpose: text('purpose', { enum: ['camera_sensor_comparison'] }).notNull().default('camera_sensor_comparison'),
+  dataScope: text('data_scope', { enum: ['current_project_published'] }).notNull().default('current_project_published'),
+  permittedEffect: text('permitted_effect', { enum: ['quiet_project_proposal'] }).notNull().default('quiet_project_proposal'),
+  maxRunsPerDay: integer('max_runs_per_day').notNull(),
+  periodBudgetCents: integer('period_budget_cents').notNull(),
+  perRunCents: integer('per_run_cents').notNull(),
+  status: text('status', { enum: ['enabled', 'paused', 'revoked'] }).notNull().default('paused'),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, (table) => [
+  uniqueIndex('proactive_comparison_rules_active_owner_project_idx').on(table.ownerUserId, table.projectId, table.purpose)
+    .where(ne(table.status, 'revoked')),
+  index('proactive_comparison_rules_owner_idx').on(table.ownerUserId, table.projectId),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }),
+]);
+
 // Durable project-bound live sessions and identifier-only presentation trace (#61).
 // Access belongs to the existing project policy; media room IDs do not encode titles or users.
 export const liveSessions = pgTable('live_sessions', {
@@ -1108,6 +1158,83 @@ export const notificationCursor = pgTable('notification_cursor', {
   id: text('id').primaryKey(),
   seq: bigint('seq', { mode: 'number' }).notNull(),
 });
+
+// An event candidate and any reserved possible charge remain separate from rule consent (#58).
+export const proactiveComparisonCursor = pgTable('proactive_comparison_cursor', {
+  id: integer('id').primaryKey(),
+  seq: bigint('seq', { mode: 'number' }).notNull(),
+});
+export const proactiveComparisonProjectChanges = pgTable('proactive_comparison_project_changes', {
+  projectId: uuid('project_id').primaryKey().references(() => projects.id, { onDelete: 'cascade' }),
+  firstChangedAt: timestamp('first_changed_at', { withTimezone: true }).notNull(),
+  lastChangedAt: timestamp('last_changed_at', { withTimezone: true }).notNull(),
+  dueAt: timestamp('due_at', { withTimezone: true }).notNull(),
+}, (table) => [index('proactive_comparison_project_changes_due_idx').on(table.dueAt, table.projectId)]);
+
+export const proactiveComparisonOutbox = pgTable('proactive_comparison_outbox', {
+  id: uuid('id').primaryKey(),
+  ruleId: uuid('rule_id').notNull().references(() => proactiveComparisonRules.id),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  projectId: uuid('project_id').notNull(),
+  resultId: uuid('result_id').notNull().references(() => projectResults.id),
+  sourceFingerprint: text('source_fingerprint').notNull(),
+  availableAfter: timestamp('available_after', { withTimezone: true }).notNull().defaultNow(),
+  status: text('status', { enum: ['queued', 'reserved', 'not_run', 'unknown', 'completed'] }).notNull().default('queued'),
+  connectionId: uuid('connection_id').references(() => backgroundComputeConnections.id),
+  reservedCents: integer('reserved_cents').notNull().default(0),
+  reservedAt: timestamp('reserved_at', { withTimezone: true }),
+  dispatchStartedAt: timestamp('dispatch_started_at', { withTimezone: true }),
+  inspectedSources: jsonb('inspected_sources').$type<InspectedComparisonSource[]>(),
+  proposalId: uuid('proposal_id'),
+  insufficientOutcomeId: uuid('insufficient_outcome_id'),
+  usageInputTokens: integer('usage_input_tokens'),
+  usageOutputTokens: integer('usage_output_tokens'),
+  usageEstimatedCents: integer('usage_estimated_cents'),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+  failureCode: text('failure_code'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique().on(table.ruleId, table.resultId, table.sourceFingerprint),
+  index('proactive_comparison_outbox_owner_time_idx').on(table.ownerUserId, table.reservedAt),
+  uniqueIndex('proactive_comparison_outbox_owner_inflight_idx').on(table.ownerUserId).where(eq(table.status, 'reserved')),
+  index('proactive_comparison_outbox_queued_idx').on(table.createdAt, table.id).where(eq(table.status, 'queued')),
+  index('proactive_comparison_outbox_ready_idx').on(table.availableAfter, table.id).where(eq(table.status, 'queued')),
+]);
+
+export const proactiveComparisonProposals = pgTable('proactive_comparison_proposals', {
+  id: uuid('id').primaryKey(),
+  outboxId: uuid('outbox_id').notNull().unique().references(() => proactiveComparisonOutbox.id),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
+  agentId: uuid('agent_id').notNull().references(() => agents.id),
+  projectId: uuid('project_id').notNull().references(() => projects.id),
+  resultId: uuid('result_id').notNull().references(() => projectResults.id),
+  sourceFingerprint: text('source_fingerprint').notNull(),
+  sources: jsonb('sources').$type<Array<{ type: 'result' | 'message' | 'material' | 'work' | 'thought'; id: string; version: number; conversationId?: string; sketchId?: string; title?: string }>>().notNull(),
+  fact: text('fact').notNull(),
+  interpretation: text('interpretation').notNull(),
+  suggestedAction: text('suggested_action').notNull(),
+  status: text('status', { enum: ['proposed', 'dismissed', 'used'] }).notNull().default('proposed'),
+  version: integer('version').notNull().default(1),
+  editedByUserId: text('edited_by_user_id').references(() => authUsers.id),
+  usedWorkId: uuid('used_work_id').unique().references(() => projectWorkItems.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [index('proactive_comparison_proposals_project_idx').on(table.projectId, table.createdAt.desc(), table.id.desc())]);
+
+export const proactiveComparisonInsufficientOutcomes = pgTable('proactive_comparison_insufficient_outcomes', {
+  id: uuid('id').primaryKey(),
+  outboxId: uuid('outbox_id').notNull().unique().references(() => proactiveComparisonOutbox.id),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
+  agentId: uuid('agent_id').notNull().references(() => agents.id),
+  projectId: uuid('project_id').notNull().references(() => projects.id),
+  resultId: uuid('result_id').notNull().references(() => projectResults.id),
+  reason: text('reason').notNull(),
+  status: text('status', { enum: ['open', 'dismissed'] }).notNull().default('open'),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [index('proactive_comparison_insufficient_project_idx').on(table.projectId, table.createdAt.desc(), table.id.desc())]);
 
 export const notificationGenerationFailures = pgTable('notification_generation_failures', {
   eventId: uuid('event_id').primaryKey(),

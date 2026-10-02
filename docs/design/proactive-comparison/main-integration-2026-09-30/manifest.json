@@ -1,0 +1,134 @@
+{
+  "observedDate": "2026-09-30",
+  "captureSource": "1ea1c6c121c66eb30149404b3ab916d9eb378686 plus history UI working tree, exact production UI committed as 19d233bc41d784f19d2f01391fb65fc9a8dc72c7; subsequent tests/docs only",
+  "browserZoom": "100%",
+  "deviceScaleFactor": 1,
+  "captures": [
+    {
+      "file": "images/comparison-outcomes-1024-checked.png",
+      "sha256": "be7f67f23812af5c6b30705f4334d9c0c614ba4e1ed5cb995546034fba6643ca",
+      "width": 1024,
+      "height": 768
+    },
+    {
+      "file": "images/comparison-outcomes-1024-collapsed.png",
+      "sha256": "0afb31fee902897ca1206f49c71ad7a2fe847e95e95bb4a6a672af47b02e7099",
+      "width": 1024,
+      "height": 768
+    },
+    {
+      "file": "images/comparison-outcomes-1024-insufficient-footer.png",
+      "sha256": "e29862069012565e5d339fa49c37251bf9c6c3041cdc3e62623610e3a03bf761",
+      "width": 1024,
+      "height": 768
+    },
+    {
+      "file": "images/comparison-outcomes-1440-checked.png",
+      "sha256": "45e3893f9b6376faca5a6f3e1742e02742221049ab3f718620821eb311369304",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "images/comparison-outcomes-1440-collapsed.png",
+      "sha256": "f4eb7897ce793dd5059bf1e27aaeaf480ae4209314e4427d6cdc34c3fbff60c7",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "images/comparison-outcomes-1440-dark.png",
+      "sha256": "a6dc914e5c058b1214ea106f65c3c067e81a8e23c53dc838c9d62627541e939f",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "images/comparison-outcomes-1440-insufficient-footer.png",
+      "sha256": "0a9b304be09468edec7de0a52323d3b25e09a1a22ae54c812819c4ad55dbeb79",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "images/comparison-outcomes-1440-text125.png",
+      "sha256": "4a13f7e92f3c6b0398d68daa9d0f77b8087f407b4581b2740adebc02b3caec57",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "images/comparison-outcomes-390-checked.png",
+      "sha256": "aee8d6fe9e2dfa4848a6c664a79719c2db7a7954dd9b4acbab303fb7d5b9407e",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "file": "images/comparison-outcomes-390-collapsed.png",
+      "sha256": "2a0df0b216df125fa2aa2fb8b782e4e245d3c208dc159531fbc24d9b33d4ed92",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "file": "images/comparison-outcomes-390-insufficient-footer.png",
+      "sha256": "0b031c2a43b787213954908b71eacb00bbfa7838962b16ffab9eaeff106dbeac",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "file": "images/comparison-usage-1024-history.png",
+      "sha256": "430a3bf42bd1acc3b1bf1efdd27f803f3853fbbbdace7706efddbdee737b7f93",
+      "width": 1024,
+      "height": 768
+    },
+    {
+      "file": "images/comparison-usage-1024-owner.png",
+      "sha256": "293f8b04dc29786caa62d60c0994da54e71245aa0f1df04b5a1d960d3a51ae08",
+      "width": 1024,
+      "height": 768
+    },
+    {
+      "file": "images/comparison-usage-1024-summary.png",
+      "sha256": "f45a78921cebf3911966c0648667d89a6450f7d675a990c8b843f9fbe76eed73",
+      "width": 1024,
+      "height": 768
+    },
+    {
+      "file": "images/comparison-usage-1440-history.png",
+      "sha256": "b6e1e2cfe2f166a5b8f92929eb81d5193987a68f4f60a90bf042f3564e80ef1f",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "images/comparison-usage-1440-owner.png",
+      "sha256": "5f808ff9dfbfde88b64aa309d50914ce2adda6187635acd05ec121978921ef90",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "images/comparison-usage-1440-summary.png",
+      "sha256": "49074f996ecd564681ab029e95d92ba6cdcd0b7c3d4d41050887f4edab8c93c1",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "images/comparison-usage-390-history.png",
+      "sha256": "d4ad570bf6b7d6d7dfad7b3089620253384b9ce8e34144ca4edf63ac014b2156",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "file": "images/comparison-usage-390-owner.png",
+      "sha256": "7225d6486c0545166dd9440b8d399799b0f9701715fe563d2098f6e60b1aa8ce",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "file": "images/comparison-usage-390-summary.png",
+      "sha256": "befd857a8ac574969e8303720214ae99ed19d4fc02380534b462037a31476b0e",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "file": "images/comparison-usage-390-viewer.png",
+      "sha256": "e930fe9d1b299d03d363faf3f2127d9a8836958f674b04847a63554d89639c66",
+      "width": 390,
+      "height": 844
+    }
+  ]
+}
