@@ -144,6 +144,8 @@ runtime from `flux_bootstrap`, a connection can make these native project change
 | `flux_record_result` | `result.record` | execute | One positive or negative finding with evidence, linked to tasks and decisions; it can finish one of those tasks at its read version |
 | `flux_propose_decision` | `decision.propose` | execute, plan | One proposed decision with rationale, affected tasks and an optional accepted decision it would replace. An agent never accepts or rejects; a person decides |
 
+The executor is `nativeActionExecutor` in `apps/server/src/agent-connection/action-execution.ts`.
+
 Every tool also takes the runtime ID, the grant ID and its class, one UUID
 command ID, and the exact current material revisions the action relies on. Those
 revisions become the new object's sources.
@@ -179,9 +181,46 @@ Retries and refusals:
 bearer's scopes make them available. A connection without the action scope sees
 them as unavailable and gets `MCP_SCOPE_REQUIRED`.
 
-Map and co-work operations remain registry entries without tools. #153's claim
-adapter, the #160 playbook and real Codex/Claude model-driven activation are still
-required before agent decomposition counts as delivered.
+### Shared project maps
+
+The same executor runs the canonical sketch commands for the project's shared
+maps:
+
+| Tool | Operation | Change |
+| --- | --- | --- |
+| `flux_create_map` | `map.create` | One shared project map |
+| `flux_rename_map` | `map.rename` | The title, at the map version |
+| `flux_add_thought` | `map.thought.create` | One thought, optionally linked from another |
+| `flux_update_thought` | `map.thought.update` | Text, position, size or shape, at the thought version |
+| `flux_remove_thought` | `map.thought.delete` | One thought and its links, at the thought version |
+| `flux_move_thoughts` | `map.positions.update` | Up to 200 thoughts, each at its version; a stale one moves none |
+| `flux_link_thoughts` | `map.link.create` | One link with an optional label |
+| `flux_unlink_thoughts` | `map.link.delete` | One link |
+
+Targets and grants:
+
+- Every command targets the map, so a standing grant can name one map or the
+  whole project.
+- Private and direct-message maps are never targets (`OBJECT_NOT_FOUND`).
+- A grant naming another map is refused (`AGENT_EXECUTION_UNAVAILABLE`).
+
+Post-state and replay:
+
+- The produced post-state is the changed thought(s) plus the map checkpoint (its
+  `updatedAt` after the change).
+- A retry right after a lost response returns the stored outcome.
+- A replay after anything else has changed that map is `COMMAND_POSTSTATE_STALE`,
+  never a second effect.
+
+Composition:
+
+- Sketch commands record their events through the same transaction event session
+  as the work commands (`nativeSketchInEventSession`).
+- Each committed command adds exactly one event, after its receipt.
+
+Co-work operations remain registry entries without tools. #153's claim adapter,
+the #160 playbook and real Codex/Claude model-driven activation are still required
+before agent decomposition counts as delivered.
 
 ## Verification boundary
 
