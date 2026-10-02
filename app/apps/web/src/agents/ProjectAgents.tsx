@@ -106,12 +106,18 @@ function TaskThread({ task, meId, names, canWrite }: { task: WorkItem; meId: str
     return () => controller.abort();
   }, [task.id, attempt]);
 
+  // The view's scroll pane, scrolled to its end: the newest message then sits above the sticky composer
+  // (scrollIntoView would ignore the composer and leave the message under it).
+  const toEnd = () => requestAnimationFrame(() => {
+    const pane = end.current?.closest<HTMLElement>('.agents-scroll');
+    if (pane) pane.scrollTop = pane.scrollHeight;
+  });
   // A thread opens at its newest message, like a conversation (once per load, not on every update).
   const opened = useRef(false);
   useEffect(() => {
     if (!discussion || opened.current) return;
     opened.current = true;
-    requestAnimationFrame(() => end.current?.scrollIntoView({ block: 'end' }));
+    toEnd();
   }, [discussion]);
 
   const messages = useMemo(() => {
@@ -140,7 +146,8 @@ function TaskThread({ task, meId, names, canWrite }: { task: WorkItem; meId: str
         ? { ...current, conversationId: current.conversationId ?? message.conversationId, rootMessageId: current.rootMessageId ?? message.id,
           root: current.root ?? message, messages: [...current.messages, message] }
         : current);
-      requestAnimationFrame(() => { end.current?.scrollIntoView({ block: 'nearest' }); box.current?.focus(); });
+      toEnd();
+      requestAnimationFrame(() => box.current?.focus({ preventScroll: true }));
     } catch (cause) {
       setSendError(cause instanceof ApiError && (cause.status === 404 || cause.status === 403) ? 'Not sent: you can no longer write to this task.'
         : cause instanceof NetworkError ? 'Not sent: Flux is unreachable. Your text is kept; send again.' : 'Not sent. Your text is kept; send again.');

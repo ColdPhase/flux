@@ -24,6 +24,13 @@ HUBERT = {"name": "Hubert Nowak", "email": f"hubert.n+{STAMP}@example.test"}
 MAREK = {"name": "Marek Lis", "email": f"marek.l+{STAMP}@example.test"}
 OUTSIDER = {"name": "Lee Park", "email": f"lee.agents+{STAMP}@example.test"}
 TASK = "Restore the connection to the lamp"
+NEWEST_PLACEMENT = """() => {
+  const items = [...document.querySelectorAll('.agents-thread__list > li')];
+  const last = items[items.length - 1].getBoundingClientRect();
+  const composer = document.querySelector('.agents-composer').getBoundingClientRect();
+  const hit = document.elementFromPoint(last.left + 8, last.top + last.height / 2);
+  return { lastBottom: last.bottom, composerTop: composer.top, visible: !!hit && !!hit.closest('.agents-thread__list') };
+}"""
 
 
 class AgentsViewJourney(unittest.TestCase):
@@ -230,6 +237,12 @@ class AgentsViewJourney(unittest.TestCase):
         # the sticky composer instead of under it (independent delta review of 466daf8).
         thread = page.get_by_role("region", name=f"Thread of {TASK}")
         self.assertGreaterEqual(thread.get_by_role("listitem").count(), 3)
+        # Opened without any manual scroll, the thread already shows its newest message above the composer.
+        page.wait_for_timeout(300)
+        placed = page.evaluate(NEWEST_PLACEMENT)
+        self.assertLessEqual(placed["lastBottom"], placed["composerTop"] + 1, "on open, the newest message ends above the composer")
+        self.assertTrue(placed["visible"], "on open, the newest message is not covered by the composer")
+        page.locator(".agents-scroll").evaluate("el => { el.scrollTop = 0; }")
         page.locator(".agents-scroll").evaluate("el => { el.scrollTop = el.scrollHeight; }")
         page.wait_for_timeout(200)
         placed = page.evaluate("""() => {
@@ -241,6 +254,14 @@ class AgentsViewJourney(unittest.TestCase):
         }""")
         self.assertLessEqual(placed["lastBottom"], placed["composerTop"] + 1, "the newest message ends above the composer")
         self.assertTrue(placed["visible"], "the newest message is not covered by the composer")
+        # A message just sent is shown above the composer too.
+        page.get_by_label("Write to this task").fill("Phone check: the newest reply stays in view.")
+        page.get_by_role("button", name="Send to task").click()
+        expect(thread.get_by_text("Phone check: the newest reply stays in view.")).to_be_visible()
+        page.wait_for_timeout(300)
+        placed = page.evaluate(NEWEST_PLACEMENT)
+        self.assertLessEqual(placed["lastBottom"], placed["composerTop"] + 1, "after a send, the newest message ends above the composer")
+        self.assertTrue(placed["visible"], "after a send, the newest message is not covered by the composer")
         shot(page, "agents-phone-390")
 
     def test_07_the_thread_links_to_conversation_and_stays_by_the_composer(self) -> None:
