@@ -27,6 +27,10 @@ client IDs/key for explicit retry; no replacement ID or partial-link command is
 created. The server rechecks the intended parent and current write access.
 Editing after a failed attempt gets a fresh request key while retaining the
 thought ID, so an uncertain earlier creation cannot become a duplicate thought.
+If that earlier creation did commit, the next Save finds the thought by its ID
+(`THOUGHT_EXISTS`). It then finishes the save: the newer text is sent as an
+ordinary edit at the version just read, so another author's change in between
+is still a conflict.
 A parent removed or access revoked is an error; it never silently becomes a root.
 
 Existing thought editing remains inline. F2 and visible Edit open the same text

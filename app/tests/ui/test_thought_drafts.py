@@ -533,3 +533,32 @@ class ThoughtDraftJourney(unittest.TestCase):
         expect(jump).to_have_count(0)
         expect(page.get_by_role("form", name="New thought draft").get_by_label("Thought text")).to_have_value("Ask Jonas about the radar module")
         self.assertEqual(self.stored(page), self.before)
+
+    def test_16_committed_save_with_every_response_lost_then_refined_saves_the_refined_text_once(self):
+        page = self.owner
+        self.open(page)
+        field = self.capture(page)
+        field.fill("First text")
+        path = f"**/api/v1/sketches/{self.sketch}/thoughts"
+
+        def lose_response(route):
+            actual = route.fetch()
+            self.assertEqual(actual.status, 201, actual.text())
+            route.fulfill(status=503, json={"message": "test: committed response lost"})
+
+        page.route(path, lose_response)
+        field.press("Enter")
+        expect(page.locator(".sk-status")).to_contain_text("draft is kept")
+        page.unroute(path, lose_response)
+        committed = self.stored(page)
+        created = [t for t in committed["thoughts"] if t["text"] == "First text"]
+        self.assertEqual(len(created), 1, "the first save committed although its response was lost")
+        # Editing gives the draft a fresh request key; its stable thought ID already exists on the server.
+        field.fill("First text, then refined")
+        field.press("Enter")
+        expect(page.get_by_role("form", name="New thought draft")).to_have_count(0)
+        expect(page.locator(".sk-status")).to_contain_text("Saved")
+        stored = self.wait_stored(page, lambda current: any(t["text"] == "First text, then refined" for t in current["thoughts"]))
+        self.assertEqual([t["id"] for t in stored["thoughts"] if t["text"].startswith("First text")], [created[0]["id"]],
+                         "the refined text lands on the thought that committed, never a second thought")
+        self.assertEqual(len(stored["thoughts"]), len(committed["thoughts"]))

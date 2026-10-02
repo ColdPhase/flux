@@ -361,10 +361,24 @@ export function useSketchDoc(sketchId: string, me: Me) {
     setSaving(true);
     setProblem(null);
     const operation = queue.current.then(async () => {
-      const created = await withRetry(() => api.addThought(sketchId, {
-        id: thought.id, text: thought.text, x: thought.x, y: thought.y,
-        ...(parent ? { linkFrom: { thoughtId: parent.id, linkId: parent.linkId } } : {}),
-      }, key));
+      let created: { thought: Thought; link: ThoughtLink | null };
+      try {
+        created = await withRetry(() => api.addThought(sketchId, {
+          id: thought.id, text: thought.text, x: thought.x, y: thought.y,
+          ...(parent ? { linkFrom: { thoughtId: parent.id, linkId: parent.linkId } } : {}),
+        }, key));
+      } catch (error) {
+        // The draft's stable ID already exists: an earlier save of this draft committed although every response was
+        // lost, and its text may predate edits made since. Finish that save instead of failing forever: the newer
+        // text becomes an ordinary edit at the version just read, so another author's change still conflicts.
+        if (!(error instanceof ApiError && error.status === 409 && error.code === 'THOUGHT_EXISTS')) throw error;
+        const saved = await api.getSketch(sketchId);
+        const existing = saved.thoughts.find((item) => item.id === thought.id);
+        if (!existing) throw error;
+        const text = existing.text === thought.text ? existing
+          : await withRetry(() => api.updateThought(sketchId, existing.id, { text: thought.text }, existing.version, `${key}-text`));
+        created = { thought: text, link: parent ? saved.links.find((item) => item.id === parent.linkId) ?? null : null };
+      }
       const current = ref.current;
       if (!current) return false;
       versions.current.set(created.thought.id, created.thought.version);
