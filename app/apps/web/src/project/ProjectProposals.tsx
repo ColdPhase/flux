@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import type { InsufficientComparisonOutcome, ProactiveComparisonOutcome, ProactiveComparisonProposal, ProjectPerson, WorkItem } from '@flux/contracts';
+import { WORK_LIMITS, type InsufficientComparisonOutcome, type ProactiveComparisonOutcome, type ProactiveComparisonProposal, type ProjectPerson, type WorkItem } from '@flux/contracts';
 import { Button } from '../ui';
 import { applyComparisonProposal, comparisonSourceHref, editComparisonProposal } from './proposals';
 import { ComparisonEvidence } from './ComparisonEvidence';
@@ -71,7 +71,7 @@ export function ProjectProposals({ outcomes, people, projectName, resultTitles, 
           {isEditing ? <>
             <label>Observed fact<textarea value={fact} maxLength={10000} onChange={(event) => setFact(event.target.value)} /></label>
             <label>Interpretation<textarea value={interpretation} maxLength={10000} onChange={(event) => setInterpretation(event.target.value)} /></label>
-            <label>Suggested next step<textarea value={action} maxLength={10000} onChange={(event) => setAction(event.target.value)} /></label>
+            <label>Suggested next step<textarea value={action} maxLength={WORK_LIMITS.outcome} onChange={(event) => setAction(event.target.value)} /></label>
           </> : <>
             <p className="ws-proposal__detail"><strong>Observed fact</strong> <span>{proposal.fact}</span></p>
             <p className="ws-proposal__detail"><strong>Interpretation</strong> <span>{proposal.interpretation}</span></p>

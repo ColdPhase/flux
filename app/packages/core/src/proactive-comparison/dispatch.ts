@@ -1,3 +1,4 @@
+import { WORK_LIMITS } from '@flux/contracts';
 export const BACKGROUND_COMPARISON_MODEL = 'claude-sonnet-5';
 export const BACKGROUND_COMPARISON_MAX_INPUT_TOKENS = 8_000;
 export const BACKGROUND_COMPARISON_MAX_OUTPUT_TOKENS = 1_200;
@@ -62,6 +63,8 @@ export function validateComparisonResponse(response: ComparisonProviderResponse,
     || Object.keys(response.answer).some((field) => !['kind', 'fact', 'interpretation', 'suggestedAction', 'citations'].includes(field))
     || !validText(response.answer.fact)
     || !validText(response.answer.interpretation) || !validText(response.answer.suggestedAction)
+    // The suggested step can become a work outcome, which has its own limit.
+    || response.answer.suggestedAction.trim().length > WORK_LIMITS.outcome
     || !Array.isArray(response.answer.citations) || response.answer.citations.length < 1
     || response.answer.citations.length > supplied.length) return null;
   const allowed = new Set(supplied.map(key));

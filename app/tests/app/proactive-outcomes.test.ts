@@ -231,6 +231,18 @@ test('using a proposal answers with the same current references as the reads', a
   await assertAnswersLikeReads(f, 'the use response', used.proposal);
 });
 
+test('the suggested next step keeps the work outcome limit, so an edited proposal can always be used', async () => {
+  const f = await fixture();
+  const proposal = await citedProposal(f);
+  const path = `/api/v1/proactive-comparison-proposals/${proposal.id}`;
+  assert.equal((await f.peer.browser.request('PATCH', path, { body: { expectedVersion: 1, suggestedAction: 'x'.repeat(4001) } })).status, 400);
+  const edited = expectStatus(await f.peer.browser.request('PATCH', path,
+    { body: { expectedVersion: 1, suggestedAction: 'y'.repeat(4000) } }), 200) as ProactiveComparisonProposal;
+  const used = expectStatus(await f.peer.browser.request('POST', `${path}/use`,
+    { body: { expectedVersion: edited.version, title: 'Repeat with the longest step' } }), 200) as { work: { outcome: string } };
+  assert.equal(used.work.outcome, 'y'.repeat(4000));
+});
+
 test('terminal pre-paid refusals persist zero usage without retry, while owner accounting survives access loss and disconnection', async () => {
   const f = await fixture();
   const first = await f.negative();

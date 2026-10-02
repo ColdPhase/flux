@@ -1,6 +1,6 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
 import { backgroundComputeUsagePath, proactiveComparisonOutcomePath, proactiveComparisonOutcomesPath,
-  proactiveComparisonProposalsPath, type ConnectBackgroundComputeCommand, type CreateProactiveComparisonRule } from '@flux/contracts';
+  proactiveComparisonProposalsPath, WORK_LIMITS, type ConnectBackgroundComputeCommand, type CreateProactiveComparisonRule } from '@flux/contracts';
 import { backgroundConnectionRepository, comparisonProposalView, proactiveOutboxRows, proactiveRuleRows, sealBackgroundKey } from '@flux/db';
 import { backgroundConnectionUseCases, ConflictError, DomainError, enforce, evaluateProject, InvalidInputError,
   isUuid, NotFoundError, proactiveRuleUseCases, VersionConflictError, visibleProposal, type Database } from '@flux/core';
@@ -94,6 +94,9 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
         if (value !== undefined && (typeof value !== 'string' || !value.trim() || value.trim().length > 10_000))
           throw new InvalidInputError('Proposal text must be 1–10000 characters');
       }
+      // The suggested next step becomes the outcome of work created from the proposal, so it keeps that limit.
+      if (typeof body.suggestedAction === 'string' && body.suggestedAction.trim().length > WORK_LIMITS.outcome)
+        throw new InvalidInputError(`The suggested next step must be at most ${WORK_LIMITS.outcome} characters`);
       const rows = proactiveOutboxRows(tx);
       const current = await rows.lockProposal(request.params.proposalId);
       if (!current) throw new NotFoundError('Proposal');

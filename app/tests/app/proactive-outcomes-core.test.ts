@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import type { BackgroundComputeUsage, InspectedComparisonSource, InsufficientComparisonOutcome,
   ProactiveComparisonOutcome, ProactiveComparisonProposal } from '@flux/contracts';
-import { comparisonOutcomeUseCases, ConflictError, InvalidInputError, NotFoundError, VersionConflictError, visibleProposal,
+import { comparisonOutcomeUseCases, ConflictError, InvalidInputError, NotFoundError, validateComparisonResponse, VersionConflictError, visibleProposal,
   type ComparisonOutcomePorts, type Principal } from '@flux/core';
 
 const owner: Principal = { kind: 'human', id: 'outcome-owner' };
@@ -180,4 +180,13 @@ test('unexpected usage policy and metadata failures propagate rather than claim 
   s.ports.access.requireProject = async () => undefined;
   s.ports.outcomes.usageContext = async () => { throw new Error('metadata unavailable'); };
   await assert.rejects(s.cases.usage(owner, now), /metadata unavailable/);
+});
+
+test('a model suggestion longer than a work outcome is rejected before any proposal exists', () => {
+  const supplied = [{ type: 'result' as const, id: '00000000-0000-4000-8000-000000000001', version: 1, text: 'Negative result' }];
+  const response = (suggestedAction: string) => ({ stopReason: 'end_turn', usage: { inputTokens: 100, outputTokens: 100 },
+    answer: { kind: 'comparison' as const, fact: 'Observed', interpretation: 'Inferred', suggestedAction,
+      citations: [{ type: 'result' as const, id: supplied[0]!.id, version: 1 }] } });
+  assert.ok(validateComparisonResponse(response('s'.repeat(4000)), supplied));
+  assert.equal(validateComparisonResponse(response('s'.repeat(4001)), supplied), null);
 });
