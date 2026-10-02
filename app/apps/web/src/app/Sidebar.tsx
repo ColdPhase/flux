@@ -39,10 +39,11 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
   return (
     <div className="side">
       <div className="side__brand">
-        <Link to="/" className="side__logo" onClick={navigate} aria-label="Flux, Home">
-          <span className="side__mark" role="img" aria-label="Flux" id={titleId}><FluxMark size={21} /></span>
+        {/* The wordmark names the drawer; Home is the first place below, so the mark is not a second link. */}
+        <span className="side__logo">
+          <span className="side__glyph" role="img" aria-label="Flux" id={titleId}><FluxMark size={21} /></span>
           <span className="side__word" aria-hidden="true">flux<span>.</span></span>
-        </Link>
+        </span>
         {onClose ? <IconButton icon="x" label="Close navigation" onClick={onClose} /> : null}
       </div>
       <button type="button" className="side__jump" aria-keyshortcuts={mac ? 'Meta+K' : 'Control+K'} onClick={() => { onClose?.(); openSearch(); }}>
@@ -57,6 +58,13 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
             <Icon name="inbox" className="side__ic" /><span className="side__label">Inbox</span>
             {inboxUnread ? <span className="side__dot" aria-hidden="true" /> : null}
           </NavLink>
+          {place === 'inbox' ? (
+            <div className="side__threads">
+              <NavLink to="/settings/notifications" className="side__item" onClick={navigate}>
+                <Icon name="bell" className="side__ic" /><span className="side__label">Notification settings</span>
+              </NavLink>
+            </div>
+          ) : null}
           <NavLink to="/dm" className="side__item" aria-current={location.pathname === '/dm' ? 'page' : undefined} onClick={navigate}>
             <Icon name="chat" className="side__ic" /><span className="side__label">Direct messages</span>
           </NavLink>
@@ -69,7 +77,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
           <Icon name="plus" className="side__ic" />New thought<span className="side__hint"><Icon name="lock" size={12} />Private</span>
         </button>
 
-        <section className="side__sec" aria-labelledby="side-projects">
+        <nav className="side__sec" aria-labelledby="side-projects">
           <div className="side__head">
             <h2 className="side__h" id="side-projects">Projects</h2>
             <Link to="/projects/new" className="side__add" aria-label="New project" onClick={navigate}><Icon name="plus" size={14} /></Link>
@@ -95,9 +103,9 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
           ) : (
             <p className="side__empty">No projects yet. When someone adds you to one, it appears here.</p>
           )}
-        </section>
+        </nav>
 
-        <section className="side__sec" aria-labelledby="side-dms">
+        <nav className="side__sec" aria-labelledby="side-dms">
           <div className="side__head">
             <h2 className="side__h" id="side-dms">Messages</h2>
             <Link to="/dm/new" className="side__add" aria-label="New message" onClick={navigate}><Icon name="plus" size={14} /></Link>
@@ -116,7 +124,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
           ) : (
             <p className="side__empty">No conversations yet. Only the people in each one can read it.</p>
           )}
-        </section>
+        </nav>
       </div>
       <UserMenu name={user.name} email={user.email} sessionExpiresAt={session.expiresAt} />
     </div>

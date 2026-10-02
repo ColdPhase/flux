@@ -231,17 +231,22 @@ class AppShellJourney(unittest.TestCase):
         page.goto("/")
         sidebar = page.get_by_role("complementary", name="Sidebar")
         expect(sidebar).to_be_visible()
-        # Identity rail: the Flux mark, Home, Inbox (#116) and Direct messages; no project monograms yet.
-        rail = sidebar.get_by_role("navigation", name="Places")
-        expect(rail.get_by_role("img", name="Flux")).to_be_visible()
-        expect(rail.get_by_role("link", name="Home")).to_have_attribute("aria-current", "page")
-        expect(rail.get_by_role("link", name="Direct messages")).not_to_have_attribute("aria-current", "page")
-        self.assertEqual(rail.get_by_role("link").count(), 3, "only Home, Inbox and Direct messages until projects exist")
-        rail_box = box(page, rail)
-        self.assertEqual((round(rail_box["x"]), round(rail_box["width"])), (0, 60), "a 60px rail at the far left")
-        self.assertEqual(rail.evaluate("el => getComputedStyle(el).backgroundColor"), "rgb(17, 19, 16)")
-        marker = rail.get_by_role("link", name="Home").evaluate("el => { const s = getComputedStyle(el, '::before'); return [s.opacity, s.backgroundColor]; }")
-        self.assertEqual(marker, ["1", "rgb(211, 234, 138)"], "a lime marker beside the current place")
+        # Studio 11.6 (#136): one sidebar on the chrome with the Flux mark and the places, then the
+        # work on a rounded sheet. No identity rail.
+        expect(sidebar.get_by_role("img", name="Flux")).to_be_visible()
+        places = sidebar.get_by_role("navigation", name="Places")
+        expect(places.get_by_role("link", name="Home")).to_have_attribute("aria-current", "page")
+        expect(places.get_by_role("link", name="Direct messages")).not_to_have_attribute("aria-current", "page")
+        self.assertEqual(places.get_by_role("link").all_inner_texts(), ["Home", "Inbox", "Direct messages", "My sketchbook"])
+        side_box = box(page, sidebar)
+        self.assertEqual((round(side_box["x"]), round(side_box["width"])), (0, 220), "a 220px sidebar at the far left")
+        self.assertEqual(page.evaluate("getComputedStyle(document.querySelector('.app')).backgroundColor"), "rgb(242, 243, 245)", "the chrome")
+        sheet = page.locator(".app__main")
+        self.assertEqual(sheet.evaluate("el => [getComputedStyle(el).borderTopLeftRadius, getComputedStyle(el).backgroundColor]"), ["13px", "rgb(255, 255, 255)"], "a rounded white sheet")
+        self.assertEqual(round(box(page, sheet)["x"]), 220, "the sheet meets the sidebar")
+        rail = places
+        marker = places.get_by_role("link", name="Home").evaluate("el => { const s = getComputedStyle(el, '::before'); return [s.width, s.height]; }")
+        self.assertEqual(marker, ["2px", "14px"], "a short accent bar beside the current place")
         expect(sidebar.get_by_text("No projects yet")).to_be_visible()
         expect(sidebar.get_by_role("button", name=re.compile("^New thought"))).to_be_visible()
         views = page.get_by_role("navigation", name="Views")
@@ -427,10 +432,8 @@ class AppShellJourney(unittest.TestCase):
         page = self.page(dark=True)
         page.goto("/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
-        self.assertEqual(page.evaluate("getComputedStyle(document.body).backgroundColor"), "rgb(20, 21, 23)")
-        rail = page.get_by_role("navigation", name="Places")
-        self.assertEqual(rail.evaluate("el => getComputedStyle(el).backgroundColor"), "rgb(11, 12, 10)")
-        self.assertIn("inset", rail.evaluate("el => getComputedStyle(el).boxShadow"), "a 1px edge separates the rail in dark theme")
+        self.assertEqual(page.evaluate("getComputedStyle(document.body).backgroundColor"), "rgb(25, 28, 33)", "the dark chrome")
+        self.assertEqual(page.locator(".app__main").evaluate("el => getComputedStyle(el).backgroundColor"), "rgb(33, 37, 43)", "the dark sheet")
         shot(page, "desktop-1440-dark")
         page.get_by_role("button", name="Details", exact=True).click()
         expect(page.get_by_role("complementary", name="Details")).to_be_visible()
@@ -438,9 +441,9 @@ class AppShellJourney(unittest.TestCase):
 
         tablet = self.page(viewport={"width": 1024, "height": 768})
         tablet.goto("/")
-        # At 1024px the sidebar is a drawer and Details docks.
-        expect(tablet.get_by_role("complementary", name="Sidebar")).to_have_count(0)
-        expect(tablet.get_by_role("button", name="Open navigation")).to_be_visible()
+        # At 1024px the 220px sidebar stays beside the sheet (Studio 11.6 keeps it down to 681px).
+        expect(tablet.get_by_role("complementary", name="Sidebar")).to_be_visible()
+        expect(tablet.get_by_role("button", name="Open navigation")).to_have_count(0)
         shot(tablet, "tablet-1024-light")
 
     # ---------------------------------------------------------------- phone layout
@@ -469,12 +472,12 @@ class AppShellJourney(unittest.TestCase):
         drawer = page.get_by_role("dialog", name="Flux")
         expect(drawer).to_be_visible()
         expect(menu).to_have_attribute("aria-expanded", "true")
-        # The rail travels inside the drawer, beside the sidebar.
-        drawer_rail = drawer.get_by_role("navigation", name="Places")
-        expect(drawer_rail).to_be_visible()
-        self.assertEqual(round(box(page, drawer_rail)["width"]), 60)
+        # The sidebar is a 260px drawer with the places as 44px+ rows.
+        drawer_places = drawer.get_by_role("navigation", name="Places")
+        expect(drawer_places).to_be_visible()
+        self.assertLessEqual(round(box(page, drawer)["width"]), 260)
         for name in ("Home", "Inbox", "Direct messages"):
-            self.assertGreaterEqual(box(page, drawer_rail.get_by_role("link", name=name))["height"], 44, f"44px rail target: {name}")
+            self.assertGreaterEqual(box(page, drawer_places.get_by_role("link", name=name))["height"], 44, f"44px place target: {name}")
         self.assertTrue(drawer.evaluate("el => el.contains(document.activeElement)"), "focus moves into the drawer")
         self.assertTrue(page.evaluate("document.getElementById('root').inert"), "the page behind the drawer is inert")
         # Tab stays inside the drawer.
@@ -677,7 +680,7 @@ class AppShellJourney(unittest.TestCase):
         owner.reload()
         expect(owner.get_by_role("region", name="Private drafts").get_by_text("home address 123; PIR avoids storing images")).to_be_visible()
         draft_id = owner.context.request.get(f"{ORIGIN}/api/v1/workspaces/{ws['id']}/drafts").json()["items"][0]["id"]
-        owner.get_by_role("navigation", name="Home").get_by_role("link", name="Gesture lamp").click()
+        owner.get_by_role("navigation", name="Projects").get_by_role("link", name="Gesture lamp").click()
         owner.get_by_label("Start a conversation").fill("Try a PIR sensor before considering a camera")
         owner.get_by_role("button", name="Start conversation").click()
         expect(owner.locator(".project-convo__message > p").filter(has_text="Try a PIR sensor before considering a camera")).to_be_visible()

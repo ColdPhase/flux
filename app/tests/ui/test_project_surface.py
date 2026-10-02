@@ -165,11 +165,9 @@ class ProjectSurfaceJourney(unittest.TestCase):
         outsider = self.page("outsider")
         self.api(outsider, "GET", f"/api/v1/projects/{self.ids['project']}/people", status=404)
         tabs = page.get_by_role("navigation", name="Project views")
-        self.assertEqual(tabs.get_by_role("link").all_inner_texts()[:1], ["Conversation"])
-        for name in ("Conversation", "Tasks", "Map", "Docs"):
-            expect(tabs.get_by_role("link", name=re.compile(f"^{name}"))).to_be_visible()
-        expect(tabs.get_by_role("link", name=re.compile("^Tasks"))).to_contain_text("2")
-        expect(tabs.get_by_role("link", name=re.compile("^Map"))).to_contain_text("1")
+        # Studio 11.6 order and vocabulary (#136); quiet tabs without visible counts.
+        self.assertEqual(tabs.get_by_role("link").all_inner_texts()[:4], ["Conversation", "Map", "Tasks", "Wiki"])
+        expect(tabs.get_by_role("link", name="Tasks, 2 open")).to_be_visible()
         expect(header.get_by_role("button", name="Details")).to_be_visible()
         # The conversations sit in the sidebar; the centre uses the pane (#136) with readable bubbles.
         expect(page.get_by_role("complementary", name="Sidebar").get_by_role("link", name=re.compile("^Should the lamp react"))).to_have_attribute("aria-current", "page")
@@ -237,7 +235,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         tabs.get_by_role("link", name=re.compile("^Map")).click()
         expect(page).to_have_url(re.compile(r"/map$"))
         expect(page.get_by_role("list", name="Sketches in Gesture lamp").get_by_role("link", name=re.compile("Sensing options"))).to_be_visible()
-        tabs.get_by_role("link", name=re.compile("^Docs")).click()
+        tabs.get_by_role("link", name=re.compile("^Wiki")).click()
         expect(page).to_have_url(re.compile(r"/docs$"))
         expect(page.get_by_role("link", name=re.compile("What we learned about low light"))).to_be_visible()
         tabs.get_by_role("link", name=re.compile("^Conversation")).click()

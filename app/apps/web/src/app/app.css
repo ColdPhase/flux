@@ -6,7 +6,7 @@
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } }
 
 .brand { display: inline-flex; align-items: center; gap: 10px; min-height: var(--ctl); padding: 0 6px; margin-left: -6px; border-radius: var(--r); text-decoration: none; font-weight: 600; font-size: var(--fs-md); color: var(--text); }
-.brand__mark, .side__mark {
+.brand__mark {
   display: grid; place-items: center; width: 22px; height: 22px; flex: none; border-radius: 6px;
   background: var(--text); color: var(--bg); font-size: 12px; font-weight: 600; letter-spacing: 0;
 }
@@ -58,8 +58,8 @@ body:has(.app) { background: var(--bg-chrome); }
   padding: 19px 18px 0 22px; padding-top: max(19px, env(safe-area-inset-top));
 }
 .side__brand { display: flex; align-items: center; gap: 8px; min-height: 46px; }
-.side__logo { display: inline-flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 4px; margin-left: -4px; border-radius: var(--r); color: var(--text); text-decoration: none; flex: 1; min-width: 0; }
-.side__mark { display: grid; place-items: center; color: var(--text); }
+.side__logo { display: inline-flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 4px; margin-left: -4px; color: var(--text); flex: 1; min-width: 0; }
+.side__glyph { display: grid; place-items: center; color: var(--text); }
 .side__word { font-size: 30px; font-weight: 650; letter-spacing: -1.3px; line-height: 1; }
 .side__word span { color: var(--accent); }
 .side__jump {
@@ -193,7 +193,7 @@ body:has(.app) { background: var(--bg-chrome); }
 @media (max-width: 1000px) { .views .ui-tabs__bar { gap: 20px; } }
 @media (max-width: 760px) { .views .ui-tabs__bar { gap: 16px; } }
 @media (max-width: 640px) { .views--project { padding-right: 8px; gap: 4px; } .views__recap { padding: 0 8px; gap: 4px; } }
-@media (pointer: coarse) { .views__recap { min-height: 44px; } .views .ui-tabs__tab { min-height: 44px; } }
+@media (pointer: coarse) { .views__recap { min-height: 44px; } .views .ui-tabs__tab { min-height: 44px; min-width: 44px; padding-inline: 6px; justify-content: center; } .views .ui-tabs__bar { gap: 12px; } }
 .views--none { height: 0; border-bottom: 0; }
 
 /* ---------- Work area ---------- */
