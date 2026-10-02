@@ -60,7 +60,7 @@ export async function readMarkdownFile(file: File): Promise<ImportedPage> {
     return { ok: false, error: `${quoted} is not readable UTF-8 text, so it cannot become a page.` };
   }
   if (text.includes('\u0000')) return { ok: false, error: `${quoted} is not readable UTF-8 text, so it cannot become a page.` };
-  text = text.replace(/^﻿/, '').replace(/\r\n?/g, '\n');
+  text = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
   const { title, body } = splitTitle(text, file.name);
   if (body.length > DOC_LIMITS.body) {
     return { ok: false, error: `${quoted} has ${number.format(body.length)} characters. A page holds up to ${number.format(DOC_LIMITS.body)}.` };
