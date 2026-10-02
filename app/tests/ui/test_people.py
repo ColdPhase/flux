@@ -225,6 +225,13 @@ class PeopleJourney(unittest.TestCase):
         # Lee is the only owner there, so leaving says what to do first.
         expect(lee.get_by_text("You’re the only owner of Harbour Studio. To leave, make someone else an owner first.")).to_be_visible()
         expect(lee.get_by_role("button", name="Leave Harbour Studio")).to_have_count(0)
+        # Stepping down as the last owner is refused with what to do instead.
+        lee.get_by_role("button", name="Change your role").click()
+        mine = lee.get_by_role("group", name="Change your role")
+        mine.get_by_label("Role").select_option(label="Admin")
+        mine.get_by_role("button", name="Save role").click()
+        expect(mine.get_by_role("alert")).to_have_text("Harbour Studio needs at least one owner. Make someone else an owner first.")
+        self.assertEqual(self.roles(lee, self.harbour)[self.ids["lee"]], "owner")
 
         kai = self.page("kai")
         self.open_people(kai, "Riverside Makers")
