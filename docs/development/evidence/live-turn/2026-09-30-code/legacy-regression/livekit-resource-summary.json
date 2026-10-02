@@ -1,0 +1,14 @@
+[
+  {
+    "profile": "four-person-two-synthetic-screens-local-TURN-TLS",
+    "phaseStartUtc": "2026-09-30T11:10:16.689Z",
+    "phaseEndUtc": "2026-09-30T11:10:29.497Z",
+    "durationMs": 12808,
+    "sampleCount": 7,
+    "cpuMeanPercent": 3.5,
+    "cpuPeakPercent": 5.22,
+    "memoryPeakMiB": 73.4,
+    "networkReceiveBytes": 4957000,
+    "networkTransmitBytes": 2854000
+  }
+]

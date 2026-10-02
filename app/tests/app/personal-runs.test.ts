@@ -6,7 +6,7 @@ import { createAssistantProposalUseCases, createPersonalRunProcessor, recoverPer
 import {
   PERSONAL_RUN_CONSENT_VERSION,
   type AssistantAnswer, type AssistantProposal, type AssistantRun, type Conversation, type Page, type PersonalAssistantStatus,
-  type Project, type WorkItem, type WorkResult, type Workspace,
+  type Project, type TaskDiscussion, type WorkItem, type WorkResult, type Workspace,
 } from '@flux/contracts';
 import { assistantProposalUseCases, personalRunUseCases, proposalUnitOfWork } from '../../apps/server/src/personal-runs/adapters.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
@@ -497,6 +497,8 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_results WHERE project_id=$1', [lamp.id])).rows[0]!.n, 0);
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM events WHERE object_id=$1', [lamp.id])).rows[0]!.n, eventCount);
     assert.equal((await proposals.get(human(kai), proposalId)).status, 'proposed');
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_task_discussions WHERE work_id=$1', [work.id])).rows[0]!.n, 0,
+      'the rolled back acceptance left no task thread or contribution');
 
     // Instrument real SQL: no nested native transaction or domain read/write after first event.
     let eventPhaseStarted = false;
@@ -516,6 +518,11 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     const result = expectStatus(await viewer.browser.request('GET', `/api/v1/results/${accepted.resultId}`), 200) as WorkResult;
     assert.deepEqual([result.title, result.createdBy.id], ['Camera fails in low light', kai.id]);
     assert.equal((expectStatus(await kai.browser.request('GET', `/api/v1/work/${work.id}`), 200) as WorkItem).status, 'done');
+    // The accepted result also contributes to the finished task's canonical thread, authored by the accepting
+    // person with the exact result id (#154); the helper owner and the helper agent never author it.
+    const contributed = expectStatus(await viewer.browser.request('GET', `/api/v1/work/${work.id}/discussion`), 200) as TaskDiscussion;
+    assert.deepEqual([contributed.root?.body, contributed.root?.contribution, contributed.root?.authorId, contributed.messages.length],
+      ['Camera fails in low light', { kind: 'result', resultId: accepted.resultId }, kai.id, 1]);
     assert.equal((await accept(kai)).status, 409, 'a decided proposal cannot be accepted again');
 
     // A truncated answer is shown as truncated and never becomes a proposal.

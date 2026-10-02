@@ -43,12 +43,13 @@ export const getResult = (id: string, signal?: AbortSignal) => request<WorkResul
 /** Create commands carry an Idempotency-Key that the caller reuses when retrying the same submission. */
 export const createWork = (projectId: string, command: CreateWorkCommand, idempotencyKey: string) =>
   request<WorkItem>(projectWorkPath(projectId), { method: 'POST', body: { ...command, clientCommandId: command.clientCommandId ?? idempotencyKey }, headers: key(idempotencyKey) });
-export const updateWork = (item: WorkItem, command: UpdateWorkCommand) =>
-  request<WorkItem>(workItemPath(item.id), { method: 'PATCH', body: command, headers: ifMatch(item.version) });
+/** A change carries a stable command UUID that the caller reuses when it retries the same change (#154). */
+export const updateWork = (item: WorkItem, command: UpdateWorkCommand, clientCommandId: string) =>
+  request<WorkItem>(workItemPath(item.id), { method: 'PATCH', body: { ...command, clientCommandId }, headers: ifMatch(item.version) });
 export const proposeDecision = (projectId: string, command: ProposeDecisionCommand, idempotencyKey: string) =>
   request<Decision>(projectDecisionsPath(projectId), { method: 'POST', body: command, headers: key(idempotencyKey) });
 export const acceptDecision = (decision: Decision, command: AcceptDecisionCommand, idempotencyKey: string) =>
   request<Decision>(decisionAcceptPath(decision.id), { method: 'POST', body: command, headers: { ...ifMatch(decision.version), ...key(idempotencyKey) } });
 export const createResult = (projectId: string, command: CreateResultCommand, idempotencyKey: string) =>
-  request<WorkResult>(projectResultsPath(projectId), { method: 'POST', body: command, headers: key(idempotencyKey) });
+  request<WorkResult>(projectResultsPath(projectId), { method: 'POST', body: { ...command, clientCommandId: command.clientCommandId ?? idempotencyKey }, headers: key(idempotencyKey) });
 export const listAgents = (workspaceId: string, signal?: AbortSignal) => request<Agent[]>(`/api/v1/workspaces/${workspaceId}/agents`, { signal });

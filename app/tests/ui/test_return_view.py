@@ -187,7 +187,8 @@ class ReturnViewJourney(unittest.TestCase):
         page.goto("/")
         region = page.get_by_role("region", name=re.compile("^Since you left"))
         expect(region).to_be_visible()
-        expect(region).to_contain_text("8 updates since today")
+        # Eight updates plus the task thread that the result opened (#154): "Ari started “Camera misses 62% of gestures at 5 lux”".
+        expect(region).to_contain_text("9 updates since today")
         expect(region).to_contain_text("3 need you")
         expect(region.get_by_role("heading", level=4, name="Gesture lamp")).to_be_visible()
         expect(region.locator(".since__next")).to_contain_text("Answer Ari's question")
@@ -224,7 +225,8 @@ class ReturnViewJourney(unittest.TestCase):
         needs = panel.locator("section[aria-labelledby=wm-needs] .since__item")
         expect(needs).to_have_count(2)
         changes = panel.locator("section[aria-labelledby=wm-changes] .since__item")
-        expect(changes).to_have_count(5)
+        expect(changes).to_have_count(6)
+        expect(changes.filter(has_text="Ari started “Camera misses 62% of gestures at 5 lux”")).to_have_count(1)
         expect(panel.get_by_role("link", name=re.compile("Ari recorded a result: Camera misses 62% of gestures"))).to_contain_text("It did not work out, about “Mount the PIR sensor in the lamp base”")
         expect(panel.get_by_role("link", name=re.compile("New material: Low-light test plan"))).to_have_attribute("href", re.compile(r"^/materials/.+/versions/1$"))
         # The conversation stays readable beside the panel.
@@ -252,7 +254,8 @@ class ReturnViewJourney(unittest.TestCase):
         quote = digest.get_by_role("link", name=re.compile(re.escape(QUESTION)))
         expect(quote).to_have_attribute("href", re.compile(f"#message-{self.ids['question']}$"))
         expect(digest).to_contain_text("I ordered a PIR sensor too")
-        expect(digest.get_by_role("link", name=re.compile("Camera misses 62% of gestures"))).to_be_visible()
+        # The result, and the opening of the task thread it created (#154), both quote the finding.
+        expect(digest.get_by_role("link", name=re.compile("Camera misses 62% of gestures")).first).to_be_visible()
         # The quotes themselves, scrolled into view and clear of the footer.
         quote.scroll_into_view_if_needed()
         q_box, f_box = quote.bounding_box(), panel.get_by_role("button", name="I have the context").bounding_box()

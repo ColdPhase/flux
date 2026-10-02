@@ -180,6 +180,16 @@ provides versioned release notes and downloadable assets. A runnable backend nee
 a hosting/deployment target; [GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages)
 serves static sites. Choose hosting with the application's architecture.
 
+Flux implements this as two explicit `workflow_dispatch` workflows on `main`, neither run
+by a PR or a push ([#77](https://github.com/ColdPhase/flux/issues/77)):
+[`final-release.yml`](../../.github/workflows/final-release.yml) checks the exact candidate
+SHA and both agents' acceptance, builds the amd64/arm64 image by digest, packages the
+digest-pinned operator assets, smoke-tests their install and paired backup/restore, and creates
+a draft Release; [`publish-release.yml`](../../.github/workflows/publish-release.yml) publishes
+only after an independent exact artifact review. Their assets, flow, design notes and the gates
+that remain open (credential, package visibility, candidate acceptance, platform evidence)
+are in the [release pipeline](../development/release-pipeline.md).
+
 ## Evidence for completion
 
 A delivery task reports the workflow PR, successful/failing run evidence, effective

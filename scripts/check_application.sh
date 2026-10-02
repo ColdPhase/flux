@@ -82,6 +82,9 @@ run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/access-stream.e2e.ts
 # Genuine human/agent task history in Chromium; trusted core writes use this isolated DB.
 run_browser -e DATABASE_URL="postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5432/$POSTGRES_DB" e2e node_modules/.bin/tsx --test tests/app/e2e/task-discussion-actors.e2e.ts
 
+# A saved blocker, a published result and a public handoff reach the task conversation (#154).
+run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/task-contribution-effects.e2e.ts
+
 # A seeded project proposal must remain editable, dismissible and usable through the actual UI.
 # The fixture bypasses rule activation, which stays unavailable until #58 runtime gates pass.
 $compose run --rm test pnpm exec tsx tests/app/seed-proactive-ui.ts

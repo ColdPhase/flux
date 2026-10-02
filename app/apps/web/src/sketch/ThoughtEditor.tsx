@@ -5,12 +5,12 @@ import { SKETCH_LIMITS } from '@flux/contracts';
  * Inline editing of a thought's text, in place on the map or in the list. Enter saves,
  * Shift+Enter adds a line, Escape keeps the previous text, leaving the field saves.
  */
-export function ThoughtEditor({ initial, className, style, onDone }: { initial: string; className: string; style?: CSSProperties; onDone(text: string | null): void }) {
+export function ThoughtEditor({ initial, className, style, disabled = false, onChange, onDone }: { initial: string; className: string; style?: CSSProperties; disabled?: boolean; onChange(text: string): void; onDone(text: string | null): void }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [value, setValue] = useState(initial);
   const done = useRef(false);
   const finish = (text: string | null) => {
-    if (done.current) return;
+    if (done.current || disabled) return;
     done.current = true;
     onDone(text);
   };
@@ -26,14 +26,15 @@ export function ThoughtEditor({ initial, className, style, onDone }: { initial: 
     ref.current?.select();
   }, []);
   return (
-    <textarea ref={ref} className={className} style={style} rows={1} value={value} maxLength={SKETCH_LIMITS.text} aria-label="Thought text"
-      onChange={(event) => { setValue(event.target.value); autosize(); }}
+    <textarea ref={ref} className={className} style={style} rows={1} value={value} readOnly={disabled} aria-busy={disabled} maxLength={SKETCH_LIMITS.text} aria-label="Thought text"
+      onChange={(event) => { setValue(event.target.value); onChange(event.target.value); autosize(); }}
       onPointerDown={(event) => event.stopPropagation()}
       onKeyDown={(event) => {
         event.stopPropagation();
-        if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); finish(value); }
+        if (event.nativeEvent.isComposing) return;
+        if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); finish(value); }
         else if (event.key === 'Escape') { event.preventDefault(); finish(null); }
       }}
-      onBlur={() => finish(value)} />
+      onBlur={(event) => { if (!(event.relatedTarget instanceof HTMLElement && event.relatedTarget.closest('.sk-edit-controls'))) finish(value); }} />
   );
 }

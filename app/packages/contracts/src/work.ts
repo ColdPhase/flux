@@ -1,4 +1,5 @@
 import type { PrincipalRef, VersionPrecondition } from './access.js';
+import type { SendMessageCommand } from './conversation.js';
 
 /**
  * Work items, decisions and results of a project (issue #101, foundation 8.5/8.6).
@@ -9,6 +10,15 @@ import type { PrincipalRef, VersionPrecondition } from './access.js';
 export const projectWorkPath = (projectId: string) => `/api/v1/projects/${projectId}/work`;
 export const projectTaskNoticesPath = (projectId: string) => `/api/v1/projects/${projectId}/task-notices`;
 export const taskDiscussionPath = (workId: string) => `/api/v1/work/${workId}/discussion`;
+
+/**
+ * A direct public contribution to a task thread. `handoff` marks an explicit public instruction to the next
+ * person or agent; it carries no authority by itself. Blocker and result contributions are never sent this way:
+ * they come from saving a blocker or publishing a result.
+ */
+export interface TaskContributionCommand extends SendMessageCommand {
+  kind?: 'text' | 'handoff';
+}
 
 /** Explicit canonical root, also returned outside the bounded newest-message window. */
 export interface TaskDiscussion {
@@ -204,6 +214,12 @@ export interface TaskCreationNotice {
 }
 
 export interface UpdateWorkCommand extends VersionPrecondition {
+  /**
+   * Durable domain retry identity of this exact change (#154). A retry with the same UUID returns the original
+   * outcome and never contributes the saved blocker twice; a changed payload conflicts. Without it the
+   * version precondition alone fences a stale identical retry.
+   */
+  clientCommandId?: string;
   title?: string;
   outcome?: string;
   owner?: PrincipalRef | null;
@@ -241,6 +257,8 @@ export interface AcceptDecisionCommand extends VersionPrecondition {
 }
 
 export interface CreateResultCommand {
+  /** Durable domain retry identity of this exact publication (#154); a retry never duplicates the result or its task messages. */
+  clientCommandId?: string;
   title: string;
   finding: ResultFinding;
   evidence?: string;

@@ -187,10 +187,14 @@ describe('project export', () => {
     assert.deepEqual(data.grants.map((item) => [item.principal.id, item.role]).sort(), [[agentId, 'contributor'], [partner.id, 'contributor'], [viewer.id, 'viewer']].sort());
     assert.deepEqual(data.people.find((someone) => someone.id === agentId), { kind: 'agent', id: agentId, name: 'export-agent', access: 'contributor', workspaceRole: null });
 
-    assert.equal(data.conversations.length, 1);
+    // The ordinary thread, and the work item's own thread that the result linked to it (#154) created.
+    assert.equal(data.conversations.length, 2);
     assert.deepEqual(data.conversations[0]!.messages.map((message) => [message.sequence, message.body, message.author.id]),
       [[1, token('MESSAGE-one'), owner.id], [2, token('MESSAGE-two'), partner.id]]);
     assert.deepEqual(data.conversations[0]!.messages[1]!.source, { materialId, version: 1 });
+    assert.equal(data.conversations[0]!.messages.some((message) => Object.hasOwn(message, 'contribution')), false, 'ordinary messages carry no marker');
+    assert.deepEqual(data.conversations[1]!.messages.map((message) => [message.sequence, message.body, message.author.id, message.contribution]),
+      [[1, token('RESULT-title'), partner.id, { kind: 'result', resultId: result.id }]]);
 
     assert.equal(data.materials.length, 1);
     assert.deepEqual(data.materials[0]!.versions.map((version) => [version.version, version.body]), [[1, token('MATERIAL-body')], [2, token('MATERIAL-body-v2')]]);

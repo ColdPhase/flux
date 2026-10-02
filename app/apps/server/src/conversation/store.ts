@@ -7,7 +7,7 @@ import type {
 } from '@flux/contracts';
 import {
   ConflictError, enforce, evaluateDraft, evaluateProject, InvalidInputError, NotFoundError,
-  positiveVersion, uuid,
+  messageContribution, positiveVersion, uuid,
   parsePage, recordEvent, type Database, type Principal,
 } from '@flux/core';
 import type { ConversationPort } from '@flux/core';
@@ -29,10 +29,11 @@ function creator(row: ConversationRow, names: Map<string, string>) {
     createdByActor: { kind: 'agent' as const, id: row.createdByAgentId!, name: names.get(`agent:${row.createdByAgentId}`) ?? 'Agent' } };
 }
 function message(row: MessageRow, names: Map<string, string> = new Map()): ConversationMessage {
+  const contribution = messageContribution(row.contributionKind, row.resultId);
   return { id: row.id, conversationId: row.conversationId, ...(row.authorId !== null ? { authorId: row.authorId } : { authorId: null,
     author: { kind: 'agent' as const, id: row.authorAgentId!, name: names.get(`agent:${row.authorAgentId}`) ?? 'Agent' } }), body: row.body,
     source: row.sourceMaterialId && row.sourceMaterialVersion ? { materialId: row.sourceMaterialId, version: row.sourceMaterialVersion } : null,
-    sequence: row.sequence, createdAt: row.createdAt.toISOString() };
+    sequence: row.sequence, createdAt: row.createdAt.toISOString(), ...(contribution ? { contribution } : {}) };
 }
 
 function version(row: VersionRow, principal: Principal): MaterialVersion {
@@ -189,6 +190,9 @@ export function conversationStore(db: Database) {
       return db.transaction(async (tx) => {
         const row = await locateConversation(principal, conversationId, tx, true, true);
         await lockIdempotency(tx, row.projectId, authorId, input.clientMessageId);
+        // A reply to a task's bound conversation enters the task order (access, command identity, task row,
+        // conversation sequence), exactly like a contribution; it never takes the conversation first.
+        await taskDiscussionRows(tx).lockBoundTask(row.id);
         const sent = await sendInTransaction(tx, row, authorId, input);
         if (sent.message.sequence === 1)
           throw new ConflictError('This clientMessageId was used to start the conversation', 'IDEMPOTENCY_CONFLICT');
