@@ -221,6 +221,11 @@ class AgentsViewJourney(unittest.TestCase):
         expect(page.get_by_label("Write to this task")).to_be_visible()
         overflow = page.evaluate("() => document.documentElement.scrollWidth - document.documentElement.clientWidth")
         self.assertLessEqual(overflow, 0, "no horizontal page scroll at 390px")
+        # The sections stack: the thread never starts above the task picker or the connections.
+        boxes = page.evaluate("""() => ['.agents__connections', '.agents__task', '.agents-thread'].map((s) => {
+          const r = document.querySelector(s).getBoundingClientRect(); return { top: r.top, bottom: r.bottom }; })""")
+        self.assertLessEqual(boxes[0]["bottom"], boxes[1]["top"] + 1, "connections end before the task picker")
+        self.assertLessEqual(boxes[1]["bottom"], boxes[2]["top"] + 1, "the task picker ends before the thread")
         shot(page, "agents-phone-390")
 
     def test_07_the_thread_links_to_conversation_and_stays_by_the_composer(self) -> None:
