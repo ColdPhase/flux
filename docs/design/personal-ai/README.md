@@ -119,7 +119,7 @@ with production activation still disabled ([proactive comparison](../../developm
 
 | Example | Enforced by | Regression | State |
 | --- | --- | --- | --- |
-| Hubert invokes `/ai` in a shared conversation | `POST /api/v1/conversations/:id/assistant-runs` resolves the owner from the session; a body naming another owner, agent or connection is `403 PERSONAL_RUN_NOT_OWNER`. The committed answer is labelled as Hubert's AI and requested by Hubert. | `personal-runs.test.ts` AC-1 (the `403 PERSONAL_RUN_NOT_OWNER` refusal), AC-3 and AC-5; owner-only `agent.invoke` in `core/src/access/policy.ts`; browser `test_personal_assistant` | Merged (#141, #142, #161), fake compute |
+| Hubert invokes `/ai` in a shared conversation | `POST /api/v1/conversations/:id/assistant-runs` resolves the owner from the session; a body naming another owner, agent or connection is `403 PERSONAL_RUN_NOT_OWNER`. The committed answer is labelled as Hubert's AI and requested by Hubert. | `personal-runs.test.ts` AC-1 (the `403 PERSONAL_RUN_NOT_OWNER` refusal), AC-3 and AC-5; owner-only `agent.invoke` in `app/packages/core/src/access/policy.ts`; browser `test_personal_assistant` | Merged (#141, #142, #161), fake compute |
 | Maurycy has no connection; `/ai`, a mention or reply, or the run endpoint | No route reaches Hubert's assistant. Runs, stop and retry are owner-only (404 otherwise). The stream ignores every client frame, so there is no WebSocket command path. | `personal-runs.test.ts` AC-1: "another person reaches the owner's assistant by no route". The same test sends `assistant.run`/`assistant.stop` frames on the stream, and nothing happens | Merged |
 | Maurycy connects his own agent | His run uses his enablement, connection and cap only; Hubert's usage is unchanged. | `personal-runs.test.ts` AC-3 | Merged, fake compute |
 | A connection is unavailable, paused, capped or revoked | Explicit state (`unavailable`, `paused`, `capped`, `cap_reached`); zero cost before dispatch; no payer fallback; human work continues. | `personal-runs.test.ts` AC-2 and AC-4 | Merged |
@@ -141,8 +141,9 @@ one, and it has no implementation issue.
   status and "someone else's assistant" panel, real devices.
 - #152: wiki/doc agent actions and real Codex/Claude clients.
 - #58: production activation of owner rules (merged in #124, still disabled).
-- #179 / F-020: the same rules for every provider and model.
-- #57 AC-4: independent peer check, recorded on #57 (2026-10-02).
+- #179 / F-020 (proposed in #180): the same rules for every provider and model.
+
+**Done:** #57 AC-4, the independent peer check, recorded on #57 and repeated on #181 (2026-10-02).
 
 ## Verification (2026-09-27)
 
