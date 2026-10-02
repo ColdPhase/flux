@@ -318,12 +318,12 @@ class MapTaskCountJourney(unittest.TestCase):
     def test_03_escape_and_close_return_to_the_same_camera_selection_and_count(self) -> None:
         page = self.page()
         self.open(page)
+        self.node(page, "camera").click()
+        expect(self.node(page, "camera")).to_have_attribute("aria-pressed", "true")
         page.get_by_role("button", name=re.compile(r"^Zoom \d+%, reset to 100%$")).click()
         page.get_by_role("button", name="Zoom in", exact=True).click()
         expect(page.locator(".sk-zoom__level")).to_have_text("110%")
         page.locator(".sk-canvas").evaluate("(el) => { el.scrollLeft = 300; el.scrollTop = 150; }")
-        self.node(page, "camera").click()
-        expect(self.node(page, "camera")).to_have_attribute("aria-pressed", "true")
         badge = self.badge(page, "dark")
         badge.focus()
         before = self.camera(page)
@@ -425,7 +425,8 @@ class MapTaskCountJourney(unittest.TestCase):
         expect(page.locator(".details__title")).to_have_text(ORDER)
         page.get_by_role("radio", name="List", exact=True).click()
         expect(self.row_badge(page, "dark")).to_have_text("3")
-        self.unchanged(page)
+        # Compared as the owner, who can also read the private placement.
+        self.unchanged(self.page())
 
     def test_06_phone_390_sheet_without_horizontal_overflow(self) -> None:
         for scheme in ("light", "dark"):
