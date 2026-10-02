@@ -377,6 +377,9 @@ class ThemeAccentsJourney(unittest.TestCase):
                     end = sign_out.bounding_box()
                     self.assertGreaterEqual(end["y"], rect["y"])
                     self.assertLessEqual(end["y"] + end["height"], rect["y"] + rect["height"])
+                    # Reverse order stays inside the menu: the background suggestions link (#124) precedes Sign out.
+                    page.keyboard.press("Shift+Tab")
+                    expect(pop.get_by_role("link", name="Your background suggestions", exact=True)).to_be_focused()
                     page.keyboard.press("Shift+Tab")
                     expect(pop.get_by_role("link", name="Your assistant", exact=True)).to_be_focused()
 

@@ -310,8 +310,9 @@ class DirectMessageJourney(unittest.TestCase):
         self.assertEqual(post(lee, f"/api/v1/dms/{pair_id}/leave", {}).status, 204)
 
         # Ada clicks Lee's name in the project conversation: a calm notice, no thread for "Only you".
+        # Scoped to the conversation: the sidebar's Messages list also links "Lee Moreno" (the 1:1).
         ada.goto(f"/projects/{self.project_id}")
-        ada.get_by_role("link", name="Lee Moreno").first.click()
+        ada.get_by_role("region", name="Messages").get_by_role("link", name="Lee Moreno").first.click()
         notice = ada.get_by_role("status").filter(has_text="Lee left this conversation. They can reopen it by messaging you.")
         expect(notice).to_be_visible()
         expect(ada.get_by_label(re.compile(r"^Message "))).to_have_count(0)

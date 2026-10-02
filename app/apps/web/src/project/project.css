@@ -6,12 +6,15 @@
 .top__head { display: flex; flex: 1; flex-direction: column; justify-content: flex-start; min-width: 0; gap: 7px; }
 .top__title--project { align-items: baseline; gap: 8px; flex: none; }
 .top__title--project h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-title); font-weight: 600; letter-spacing: -0.65px; line-height: 1.2; }
-.top__meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 13px; min-width: 0; }
+/* The divider before the state line sits in the gap. When the state line wraps to its own row,
+   the divider falls outside this box and is clipped; the 4px padding keeps focus rings visible. */
+.top__meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 25px; min-width: 0; overflow: hidden; margin: -4px; padding: 4px; }
 .top__audience { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; max-width: 55%; min-width: 0; min-height: 22px; margin-left: -4px; padding: 0 4px; border-radius: var(--r-sm); font-size: 10.5px; color: var(--text-2); white-space: normal; transition: var(--tr); }
 .top__audience > span:not(.ui-vh) { min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .top__audience svg { flex: none; width: 10px; height: 10px; }
 .top__audience:hover { background: var(--bg-hover); color: var(--text); }
-.top--project .ws-state { flex-wrap: wrap; margin: 0; padding-left: 12px; border-left: 1px solid var(--line); font-size: var(--fs-sm); line-height: 1.4; }
+.top--project .ws-state { position: relative; flex-wrap: wrap; margin: 0; font-size: var(--fs-sm); line-height: 1.4; }
+.top--project .ws-state::before { content: ""; position: absolute; left: -13px; top: 2px; bottom: 2px; border-left: 1px solid var(--line); }
 .top--project .ws-part { display: contents; }
 
 .top--project .ws-seg { min-height: 22px; min-width: 0; flex: 0 1 auto; max-width: 100%; color: var(--text-2); }
