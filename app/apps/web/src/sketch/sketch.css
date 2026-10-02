@@ -1,6 +1,7 @@
 /* Sketches (issue #69): direction C `#lamp-map`, `-select`, `-edit`, `-list`. Calm: one accent for
-   selection, 1px rules, no badges. Positions animate only through transform, and every duration
-   comes from the motion tokens, which are 0ms under prefers-reduced-motion. */
+   selection, 1px rules, no badges beyond a thought's quiet task count (UI116-4). Positions animate
+   only through transform, and every duration comes from the motion tokens, which are 0ms under
+   prefers-reduced-motion. */
 
 .sk-page { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
 .sk-page--center { display: grid; place-items: center; min-height: 240px; color: var(--text-3); }
