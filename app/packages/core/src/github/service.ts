@@ -139,6 +139,11 @@ export function githubUseCases(uow: GithubUnitOfWork) {
     async process(deliveryId: string, bindingId: string) {
       return uow.run(async (ports) => {
         const located = await ports.rows.binding(bindingId);
+        if (located && located.state !== 'active') {
+          // A disconnected or revoked binding never regains this delivery's authority; stop retrying it so it can be pruned.
+          if (await ports.rows.processing(deliveryId, bindingId) === 'pending') await ports.rows.complete(deliveryId, bindingId, 'GITHUB_BINDING_UNAVAILABLE');
+          return 'binding_unavailable';
+        }
         if (!located?.authorUserId) throw new ServiceUnavailableError('Binding authorization is unavailable', 'GITHUB_BINDING_UNAVAILABLE');
         const principal: Principal = { kind: 'human', id: located.authorUserId };
         await ports.access.requireProject(principal, 'read', located.projectId);

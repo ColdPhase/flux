@@ -140,6 +140,12 @@ describe('GitHub App binding, provenance and durable per-binding inbox (#74)', (
     const unrelated = JSON.stringify({ action: 'created', installation: { id: Number(INSTALL) }, repository: { id: Number(REPO) }, issue: { number: 1234, pull_request: {} }, comment: { id: 2222 } });
     const unrelatedId = randomUUID(); assert.equal((await webhook(app, unrelated, unrelatedId, 'issue_comment')).statusCode, 202); await github.process(unrelatedId, binding.id);
     assert.equal((await pool.query('SELECT * FROM github_bridge_outbox WHERE delivery_id=$1', [unrelatedId])).rowCount, 0, 'unlinked external comment creates no work request');
+    const ordinary = JSON.stringify({ action: 'created', installation: { id: Number(INSTALL) }, repository: { id: Number(REPO) }, issue: { number: 7 }, comment: { id: 3333 } });
+    const ordinaryId = randomUUID(); const ignored = await webhook(app, ordinary, ordinaryId, 'issue_comment');
+    assert.equal(ignored.statusCode, 202, 'Issues: read delivers ordinary issue comments; GitHub must not record them as failed');
+    assert.deepEqual(ignored.json(), { accepted: false });
+    assert.equal((await pool.query('SELECT 1 FROM github_deliveries WHERE id=$1', [ordinaryId])).rowCount, 0, 'ordinary issue comments are never stored');
+    assert.equal((await webhook(app, ordinary, randomUUID(), 'issue_comment', 'sha256=' + '0'.repeat(64))).statusCode, 401, 'ignored events still require the signature');
   });
   test('current Flux access and authorization generation are rechecked on retry; disconnect retains inaccessible history', async () => {
     const before = await pool.query('SELECT count(*)::int AS n FROM github_task_links WHERE binding_id=$1', [binding.id]);
@@ -148,6 +154,9 @@ describe('GitHub App binding, provenance and durable per-binding inbox (#74)', (
     await rejected(github.process(id, binding.id), 'GITHUB_AUTHORIZATION_CHANGED'); fixture.generations.set(owner.id, oldGeneration);
     await github.disconnect(actor(owner), binding.id);
     await rejected(github.links(actor(owner), work.id), 'GITHUB_BINDING_UNAVAILABLE');
+    assert.equal(await github.process(id, binding.id), 'binding_unavailable');
+    assert.deepEqual((await pool.query('SELECT state,error_code FROM github_processing WHERE delivery_id=$1 AND binding_id=$2', [id, binding.id])).rows[0],
+      { state: 'completed', error_code: 'GITHUB_BINDING_UNAVAILABLE' }, 'a disconnected binding stops retrying instead of staying pending forever');
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM github_task_links WHERE binding_id=$1', [binding.id])).rows[0].n, before.rows[0].n);
     binding = await github.bind(actor(owner), place.id, { installationId: INSTALL, repositoryId: REPO });
     await grant(owner, place.id, viewer, 'denied');

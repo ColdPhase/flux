@@ -82,8 +82,8 @@ export function githubRows(db: DbExecutor) {
       const [row] = await db.select().from(p).where(and(eq(p.deliveryId, deliveryId), eq(p.bindingId, bindingId))).for('update');
       return row?.state ?? null;
     },
-    async complete(deliveryId: string, bindingId: string) {
-      await db.update(p).set({ state: 'completed', errorCode: null }).where(and(eq(p.deliveryId, deliveryId), eq(p.bindingId, bindingId)));
+    async complete(deliveryId: string, bindingId: string, errorCode: string | null = null) {
+      await db.update(p).set({ state: 'completed', errorCode }).where(and(eq(p.deliveryId, deliveryId), eq(p.bindingId, bindingId)));
     },
     async reconciliationCandidates(appId: string, window: string, limit: number) {
       return (await db.select().from(b).where(and(eq(b.appId, appId), eq(b.state, 'active'),

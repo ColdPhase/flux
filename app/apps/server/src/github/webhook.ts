@@ -15,8 +15,8 @@ const obj = (value: unknown): Record<string, unknown> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new InvalidInputError('Invalid webhook object', 'GITHUB_INVALID_EVENT');
   return value as Record<string, unknown>;
 };
-/** Headers select parsing only; signed body identities are validated independently. */
-export function parseGithubDelivery(id: string, event: string, raw: Buffer, appId: string): GithubDelivery {
+/** Headers select parsing only; signed body identities are validated independently. Null means a valid but irrelevant event. */
+export function parseGithubDelivery(id: string, event: string, raw: Buffer, appId: string): GithubDelivery | null {
   if (!/^[A-Za-z0-9_-]{8,200}$/.test(id) || !EVENTS.includes(event)) throw new InvalidInputError('Unsupported webhook identity or event', 'GITHUB_INVALID_EVENT');
   let payload: Record<string, unknown>;
   try { payload = obj(JSON.parse(raw.toString('utf8'))); } catch { throw new InvalidInputError('Invalid webhook JSON', 'GITHUB_INVALID_EVENT'); }
@@ -54,7 +54,9 @@ export function parseGithubDelivery(id: string, event: string, raw: Buffer, appI
     if (event === 'pull_request_review_comment') providerObjectId = githubId(obj(payload.comment).id);
   } else if (event === 'issue_comment') {
     const issue = obj(payload.issue);
-    if (!issue.pull_request || !Number.isSafeInteger(issue.number) || Number(issue.number) < 1) throw new InvalidInputError('Only already linked pull request comments are supported', 'GITHUB_INVALID_EVENT');
+    // The required Issues: read permission also delivers ordinary issue comments; they are acknowledged, never stored.
+    if (!issue.pull_request) return null;
+    if (!Number.isSafeInteger(issue.number) || Number(issue.number) < 1) throw new InvalidInputError('Only already linked pull request comments are supported', 'GITHUB_INVALID_EVENT');
     providerObjectId = githubId(obj(payload.comment).id);
   } else if (event === 'status') {
     if (!['pending', 'success', 'failure', 'error'].includes(String(payload.state)) || typeof payload.sha !== 'string' || !/^[a-f0-9]{40}([a-f0-9]{24})?$/.test(payload.sha)) throw new InvalidInputError('Invalid status commit', 'GITHUB_INVALID_EVENT');
@@ -76,7 +78,9 @@ export async function githubWebhookRoutes(app: FastifyInstance, options: { secre
       return reply.code(401).send({ code: 'GITHUB_SIGNATURE_INVALID', error: 'Invalid webhook signature' });
     const expected = createHmac('sha256', options.secret).update(raw).digest(); const actual = Buffer.from(signature.slice(7), 'hex');
     if (!timingSafeEqual(expected, actual)) return reply.code(401).send({ code: 'GITHUB_SIGNATURE_INVALID', error: 'Invalid webhook signature' });
-    await options.admit(parseGithubDelivery(id, event, raw, options.appId));
+    const delivery = parseGithubDelivery(id, event, raw, options.appId);
+    if (!delivery) return reply.code(202).send({ accepted: false });
+    await options.admit(delivery);
     return reply.code(202).send({ accepted: true });
   });
 }

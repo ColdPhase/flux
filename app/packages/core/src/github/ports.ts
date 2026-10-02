@@ -35,7 +35,7 @@ export interface GithubRepositoryPort {
   admit(delivery: GithubDelivery): Promise<'created' | 'duplicate' | 'conflict'>;
   delivery(id: string): Promise<GithubDelivery | null>;
   processing(deliveryId: string, bindingId: string): Promise<'pending' | 'completed' | null>;
-  complete(deliveryId: string, bindingId: string): Promise<void>;
+  complete(deliveryId: string, bindingId: string, errorCode?: string): Promise<void>;
   reconciliationCandidates(appId: string, window: string, limit: number): Promise<GithubBindingRecord[]>;
   pendingReconciliation(bindingId: string): Promise<string | null>;
   /** Internal metadata only; cannot deliver to a client until #153's audience adapter exists. */
