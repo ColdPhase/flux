@@ -169,7 +169,7 @@ export function AppLayout() {
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const activeProject = projects.find((project) => project.id === projectId);
   // The Conversation tab returns to the conversation that was open before Tasks, Map or Docs.
-  const onOtherView = /^\/projects\/[^/]+\/(tasks|map|docs)(\/|$)/.test(location.pathname);
+  const onOtherView = /^\/projects\/[^/]+\/(tasks|map|docs|agents)(\/|$)/.test(location.pathname);
   useEffect(() => {
     if (!projectId || onOtherView) return;
     try { sessionStorage.setItem(`flux.project-conversation.${projectId}`, `${location.pathname}${location.search}`); } catch { /* private mode */ }
@@ -177,12 +177,13 @@ export function AppLayout() {
   const shellProject = useProjectShell();
   const project = shellProject && shellProject.project.id === projectId ? shellProject : undefined;
   const openWork = project?.work.work.filter((item) => !item.parked && (item.status === 'open' || item.status === 'in_progress' || item.status === 'blocked')).length;
-  // Conversation · Tasks · Map · Docs (direction C), each a route of the project (#117).
+  // Conversation · Tasks · Map · Docs · Agents, each a route of the project (#117, #136).
   const projectViews = projectId ? [
     { id: 'conversation', label: 'Conversation', to: onOtherView ? lastConversationPath(projectId) : `${location.pathname}${location.search}` },
     { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks${lastTasksSearch(projectId)}`, ...(openWork ? { count: openWork, countLabel: `, ${openWork} open` } : {}) },
     { id: 'map', label: 'Map', to: `/projects/${projectId}/map`, end: false, ...(project?.sketches?.total ? { count: project.sketches.total, countLabel: `, ${project.sketches.total} ${project.sketches.total === 1 ? 'sketch' : 'sketches'}` } : {}) },
     { id: 'docs', label: 'Docs', to: `/projects/${projectId}/docs`, end: false, ...(project?.docs?.length ? { count: project.docs.length, countLabel: `, ${project.docs.length} ${project.docs.length === 1 ? 'doc' : 'docs'}` } : {}) },
+    { id: 'agents', label: 'Agents', to: `/projects/${projectId}/agents` },
   ] : null;
   const projectIndex = projects.findIndex((item) => item.id === projectId);
   const audience = project ? audienceLine(project.people, me.user.id) : 'People with project access';
