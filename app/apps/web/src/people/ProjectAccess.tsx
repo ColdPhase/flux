@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useRevalidator } from 'react-router';
 import type { Project, ProjectAccess as Access, ProjectGrant, ProjectGrantRole, ProjectPerson, WorkspaceMember } from '@flux/contracts';
 import { useShellData } from '../app/data';
@@ -35,21 +35,20 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
   const manager = project.access === 'manager';
   const workspaceName = workspaces.find((space) => space.id === project.workspaceId)?.name ?? 'this workspace';
 
-  const load = useCallback(async (signal?: AbortSignal) => {
+  // Managers also read the workspace's members and the project's grants: who could be given access.
+  const [reload, setReload] = useState(0);
+  useEffect(() => {
     if (!manager) return;
-    try {
-      const [members, grants] = await Promise.all([listMembers(project.workspaceId, signal), listGrants(project.id, signal)]);
+    const controller = new AbortController();
+    Promise.all([listMembers(project.workspaceId, controller.signal), listGrants(project.id, controller.signal)]).then(([members, grants]) => {
       setRoster({ members, grants }); setRosterFailed(false);
-    } catch (error) {
+    }, (error: unknown) => {
       if (error instanceof DOMException && error.name === 'AbortError') return;
       setRosterFailed(true);
-    }
-  }, [manager, project.id, project.workspaceId]);
-  useEffect(() => {
-    const controller = new AbortController();
-    void load(controller.signal);
+    });
     return () => controller.abort();
-  }, [load]);
+  }, [manager, project.id, project.workspaceId, reload]);
+  const load = () => setReload((n) => n + 1);
 
   // The header's audience line (and a new project) lead here: bring the section into view.
   useEffect(() => {
@@ -63,7 +62,7 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
 
   const changed = (message: string) => {
     setDone(message); setEditing(null);
-    void load();
+    load();
     revalidator.revalidate();
   };
 
@@ -177,7 +176,7 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
             onGranted={(member, role) => changed(`${firstName(member.name)} ${role === 'contributor' ? 'can now write in' : 'can now read'} ${project.name}.`)}
             onAddPeople={() => openDetails({ kind: 'people', workspaceId: project.workspaceId })} />
         ) : rosterFailed ? (
-          <p className="people__notice" role="alert"><Icon name="alert" size={13} />Who could be given access couldn’t be loaded.<button type="button" onClick={() => void load()}>Try again</button></p>
+          <p className="people__notice" role="alert"><Icon name="alert" size={13} />Who could be given access couldn’t be loaded.<button type="button" onClick={load}>Try again</button></p>
         ) : null
       ) : <p className="ov-note">Only owners and admins of {workspaceName} change who can see this.</p>}
       <p className="ov-note">Direct messages with these people stay private; nothing in them is shared with this project.</p>

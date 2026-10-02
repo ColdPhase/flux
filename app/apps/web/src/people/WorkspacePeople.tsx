@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, useRevalidator } from 'react-router';
 import type { Workspace, WorkspaceMember, WorkspaceRole } from '@flux/contracts';
 import { ApiError } from '../api/client';
@@ -13,6 +13,16 @@ const assignable = (mine: WorkspaceRole) => ROLES.filter((role) => role !== 'own
 
 type Roster = { workspace: Workspace; members: WorkspaceMember[] | null };
 
+async function fetchRoster(workspaceId: string, signal: AbortSignal): Promise<Roster> {
+  const workspace = await getWorkspace(workspaceId, signal);
+  // Guests may not read the roster (`workspace.read_members`): they see their own place only.
+  const members = await listMembers(workspaceId, signal).catch((error: unknown) => {
+    if (error instanceof ApiError && error.status === 403) return null;
+    throw error;
+  });
+  return { workspace, members };
+}
+
 /**
  * People in one workspace (#188, AC-1). Everyone sees who is here and their role (guests see only
  * their own place, as the access policy allows). Owners and admins add an existing account by
@@ -25,31 +35,22 @@ export function WorkspacePeople({ workspaceId, onBack }: { workspaceId: string; 
   const [failed, setFailed] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
   const [done, setDone] = useState('');
+  const [reload, setReload] = useState(0);
   const revalidator = useRevalidator();
 
-  const load = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const workspace = await getWorkspace(workspaceId, signal);
-      // Guests may not read the roster (`workspace.read_members`): they see their own place only.
-      const members = await listMembers(workspaceId, signal).catch((error: unknown) => {
-        if (error instanceof ApiError && error.status === 403) return null;
-        throw error;
-      });
-      setRoster({ workspace, members }); setFailed('');
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') return;
-      setFailed(error instanceof ApiError && error.status === 404 ? 'You’re no longer in this workspace.' : 'The people here couldn’t be loaded. Try again.');
-    }
-  }, [workspaceId]);
   useEffect(() => {
     const controller = new AbortController();
-    void load(controller.signal);
+    fetchRoster(workspaceId, controller.signal).then((next) => { setRoster(next); setFailed(''); }, (error: unknown) => {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      setFailed(error instanceof ApiError && error.status === 404 ? 'You’re no longer in this workspace.' : 'The people here couldn’t be loaded. Try again.');
+    });
     return () => controller.abort();
-  }, [load]);
+  }, [workspaceId, reload]);
+  const load = () => setReload((n) => n + 1);
 
   const changed = (message: string) => {
     setDone(message); setEditing(null);
-    void load();
+    load();
     // Roles change what the sidebar may list for the caller.
     revalidator.revalidate();
   };
@@ -61,7 +62,7 @@ export function WorkspacePeople({ workspaceId, onBack }: { workspaceId: string; 
         {back}
         <p className="details__eyebrow">Workspace</p>
         <h3 className="details__title">People</h3>
-        {failed ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{failed}<button type="button" onClick={() => void load()}>Try again</button></p>
+        {failed ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{failed}<button type="button" onClick={load}>Try again</button></p>
           : <div className="people__loading"><Spinner label="Loading people" /></div>}
       </div>
     );
