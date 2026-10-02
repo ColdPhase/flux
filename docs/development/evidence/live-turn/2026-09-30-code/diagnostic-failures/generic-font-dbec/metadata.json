@@ -1,0 +1,73 @@
+{
+  "date": "2026-09-30",
+  "issue": 63,
+  "productionSourceCommit": "7cfa12b60f1eec5a6eb5410b55b9894c095ac920",
+  "testedHarnessCommit": "dbecbc61b14429d2171eed31ddafba0e0ba965ca",
+  "harnessFile": "tests/app/e2e/live-code-quality.e2e.ts",
+  "harnessSha256": "949ca050c527b1a8f380bdac0f5c2d145d053b3427c433adc7d4150677d94ca1",
+  "sourceSha256": {
+    "apps/web/src/live/media.ts": "9646f93a30897cf21e19f6b80a5b86a74dfcf5c704e95a52273f210249cb41ea",
+    "apps/web/src/live/diagnostics.ts": "1687a43e62d8d3e5b7899e6dc70c870c4ecd7cbb9f497a3172cd452a9fba8f56",
+    "apps/web/src/live/receiver-quality.ts": "6b238c85c097fa2a328fb0d8ccb35984d073d65fc3029818f3b595489bdf546f",
+    "tests/app/support/live-turn.ts": "38d97ca2d4c710e44692c6f6d8863309870226f610c850ac7e0558ecb10aae16",
+    "tests/app/support/live-sfu.ts": "e7965290df6ff118bd74383148e5a32b00f4033e755b72dfe865277758a381d1",
+    "tests/app/support/live-code-source.ts": "1671f26cd7d5b243f0bfdc0e3fb3898e7fb33b5c2fd6bf3344596f0e0dba2198",
+    "tests/app/live-diagnostics.test.ts": "3153aa2ac2111bcab8df47e35ebcca9a6a99fdf77936b0586b53d3b80c6dfc8b",
+    "infra/compose.live.turn.test.yaml": "8d8fd3a70cdd8963865ca55a594bcb62292289c686a2ee77a138af64bd65c537",
+    "scripts/summarize_live_code.mjs": "4b75041a79c11d223da33cab50dfa0a4c191363af991f25a4458cd0e577b60d9",
+    "scripts/summarize_live_turn_resources.mjs": "e501cf1a704c34e78f1fc712cbd1be1db2af5de60bff8c31c74ff503f7f8470e",
+    "pnpm-lock.yaml": "9d5b9b3bf8e7f29e40560a6036b70b4d6616ae23683da11bbf5fe1cc14ddb111"
+  },
+  "images": [
+    {
+      "id": "sha256:caaedf142713e4446a1696387bf5beee021f21772f6b22f8641ef9fb5707f698",
+      "tags": [
+        "flux-foundation:flux-live-turn-1790765298-762312"
+      ]
+    },
+    {
+      "id": "sha256:31a721eb636b1112e5188df24cefab00768417481f5483764a51ab95b5dfeaca",
+      "tags": [
+        "flux-e2e:flux-live-turn-1790765298-762312"
+      ]
+    },
+    {
+      "id": "sha256:5c3febb525a2c1f455a0ca8b6a79fb4a03d9975538a0930d3fa7499a616d0c34",
+      "tags": [
+        "flux-live-sfu-test:flux-live-turn-1790765298-762312"
+      ]
+    }
+  ],
+  "livekitImage": "livekit/livekit-server:v1.13.7@sha256:6fd3b7088874c4d119160dd688798dfec852bc014786d392caad15f6f63912a3",
+  "lockedSdk": "2.17.2",
+  "playwright": "1.63.0",
+  "browser": "Chromium153.0.8010.12",
+  "composeProject": "flux-live-turn-1790765789-799755",
+  "publicLoopbackPort": 19061,
+  "otherHostPorts": [
+    19062,
+    19063,
+    19064,
+    19065,
+    19067
+  ],
+  "checks": {
+    "sourceBuildTypecheckLint": "passed fresh source-build at7cfa",
+    "harnessTypecheckLint": "passed updated test module on unchanged production image",
+    "selectedCodeProfile": 1,
+    "receiverDiagnosticsUnits": 11,
+    "revocationSignoutCases": 2,
+    "exitCode": 0
+  },
+  "transportScope": {
+    "calibrationClients": "explicit relay-only ICE, global client direct media UDP/TCP7881 blockade",
+    "productUi": "unchanged automatic ICE and same real cookie/media gate; no response mocking or ICE policy proxy",
+    "sfu": "test-only RTC node_ip/interface filter aligned TURN relay allocation; private signal binding preserved"
+  },
+  "limits": [
+    "independent text/diagnostics review pending at archive preparation",
+    "not whole #63 acceptance",
+    "no physical speech/motion/weak receiver/public-network/k3s certification",
+    "generic monospace reference appearance differs in some viewer2 samples; PSNR is observation, not calibrated readability score"
+  ]
+}

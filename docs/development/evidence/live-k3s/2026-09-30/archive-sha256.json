@@ -1,0 +1,17 @@
+{
+  "ARCHIVE.md": "eb2c0fffdcba5da47407097b26cea44ab2dc4f6d6ab6bdf2fd62fd0e6341da9d",
+  "README.md": "2e74f2bc7648a5aad987727962e47d0a82d25ba2b2e4c46a9495bf459061e8ad",
+  "candidate-render.yaml": "7fd70d9ad522c1b4b0fd7d19f2a0ec4e269c33354c048e889de37744487c090c",
+  "candidate-values.yaml": "c9e05ed5337eeef764c23260d922dfc1f3acf3fa67a95e3741fcc3cc84aeb4e6",
+  "evidence-sha256.json": "f2fca1a3f852fa9b30de852a8a6318df8529e6d8bb5d8eeced41f1df5c80079e",
+  "independent-research.md": "e69e688be68fb233e8795924d092b780848866989e63a90cbd68cbbe25d5390f",
+  "independent-research.original.md": "a6b8aa04c3e0b0a65b35775b17ac3d0bac9848143382fd99ec25949ae1574491",
+  "relative-key-container-state.json": "70b169477688265f57488ef951a107d719eda694704502ae25b1fe9ddbb3b3ba",
+  "relative-key-health-check.txt": "314125d1647c816331f188ef8fed6706f719cd498bed8a41f03e83c897b10f7d",
+  "relative-key-permission-diagnostic.txt": "8be8516c6b28d174008ff34e98c10523099cde5fd4b122b4506ebbba5e88bc7c",
+  "relative-key-repeat-health.txt": "23edb0461068983b8c68b4753790f044ea01247974f70ae5697c168b6704ff9b",
+  "relative-key-repeat-runtime-metadata.json": "323bb0096ad72754deba17f612734d717dff742a3a35084b5df382e8008e44b6",
+  "relative-key-repeat-startup.txt": "ccb70bade6ebf606ba2337df030ea0f19806de64e416ce9087e8f02c0747169c",
+  "runtime-relative-key-config.yaml": "033e83bb98476a2dc1ab081870dfcce92efd0bbf4b8e890c6ace30994a8aac6f",
+  "supplemental-probe-sha256.json": "6d9a3b6925d62e97178c1999ec8c7ae824c7b2209c048fad53c517d858d02482"
+}
