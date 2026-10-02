@@ -380,6 +380,17 @@ class PeopleJourney(unittest.TestCase):
         expect(region.get_by_role("list", name="Kept out")).to_have_count(0)
         self.assertEqual(self.api(lee, f"/api/v1/projects/{self.garden}")[1]["access"], "contributor")
 
+        # A member sees the same audience, read-only.
+        kai = self.page("kai")
+        kai.goto(f"/projects/{self.garden}")
+        kai.locator(".top__audience").click()
+        theirs = self.access_region(kai)
+        expect(theirs.get_by_role("list", name=f"People who can see {OPEN}").get_by_role("listitem")).to_have_count(3)
+        expect(theirs.get_by_role("button", name=re.compile("^Change access"))).to_have_count(0)
+        expect(theirs.get_by_role("button", name="Give someone access")).to_have_count(0)
+        expect(theirs).to_contain_text("Only owners and admins of Riverside Makers change who can see this.")
+        shot(kai, "people-desktop-1440-project-access-read-only")
+
     def test_08_promote_a_dm_sketch_with_and_without_giving_access(self) -> None:
         page = self.page("ada")
         dm = page.request.post(f"/api/v1/workspaces/{self.riverside}/dms", data={"participantIds": [self.ids["kai"]]}, headers={"origin": ORIGIN})
