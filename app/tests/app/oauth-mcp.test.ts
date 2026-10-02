@@ -168,8 +168,9 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
     'bootstrap capability names come from actual registered MCP tools');
   const writes = (bootstrap.capabilities as { name: string; operation: string | null; available: boolean }[]).filter((row) => row.operation !== null);
   assert.deepEqual(writes.map(({ name, operation, available }) => ({ name, operation, available })),
-    [{ name: 'flux_create_task', operation: 'work.create', available: false }, { name: 'flux_update_task', operation: 'work.update', available: false }],
-    'only the verified native task actions are advertised, unavailable without the action scope');
+    [{ name: 'flux_create_task', operation: 'work.create', available: false }, { name: 'flux_update_task', operation: 'work.update', available: false },
+      { name: 'flux_record_result', operation: 'result.record', available: false }, { name: 'flux_propose_decision', operation: 'decision.propose', available: false }],
+    'only the verified native work actions are advertised, unavailable without the action scope');
   const unscoped = await mcp(bearer, 147, 'tools/call', { name: 'flux_create_task', arguments: { projectId,
     runtimeSessionId: (bootstrap.runtime as { id: string }).id, grantId: randomUUID(), clientCommandId: randomUUID(),
     peerRequestClass: 'plan', sources: [], task: { title: 'Not without the action scope' } } });

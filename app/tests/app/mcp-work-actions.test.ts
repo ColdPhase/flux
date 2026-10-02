@@ -49,7 +49,7 @@ async function scene() {
     [randomUUID(), clientId, `${publicOrigin}/mcp`]);
   const tokens = await oauthToken(owner, connectionId, clientId, redirectUri,
     await beginOauth(owner, clientId, redirectUri, { prompt: 'consent', scope: actionScope }));
-  const grant = async (operation: 'work.create' | 'work.update', peerRequestClass: 'execute' | 'plan', maximumUses = 5) =>
+  const grant = async (operation: 'work.create' | 'work.update' | 'result.record' | 'decision.propose', peerRequestClass: 'execute' | 'plan', maximumUses = 5) =>
     expect(await owner.request('POST', `/api/v1/agent-connections/${connectionId}/action-grants`, { body: {
       clientCommandId: randomUUID(), projectId, operation, peerRequestClass, maximumUses,
       expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201) as { id: string; used: number };
@@ -71,8 +71,9 @@ async function scene() {
 test('a standing work.create grant creates one planned native task through MCP; retries and repeated intents never duplicate it', async () => {
   const f = await scene();
   const capabilities = f.bootstrap.capabilities as { name: string; operation: string | null; classes: string[]; available: boolean }[];
-  assert.deepEqual(capabilities.filter((item) => item.operation?.startsWith('work.')).map(({ name, operation, available }) => ({ name, operation, available })),
-    [{ name: 'flux_create_task', operation: 'work.create', available: true }, { name: 'flux_update_task', operation: 'work.update', available: true }]);
+  assert.deepEqual(capabilities.filter((item) => item.operation !== null).map(({ name, operation, available }) => ({ name, operation, available })),
+    [{ name: 'flux_create_task', operation: 'work.create', available: true }, { name: 'flux_update_task', operation: 'work.update', available: true },
+      { name: 'flux_record_result', operation: 'result.record', available: true }, { name: 'flux_propose_decision', operation: 'decision.propose', available: true }]);
   const create = await f.grant('work.create', 'plan');
   const command = (clientCommandId: string, title = 'Compare against the baseline') => ({ projectId: f.projectId,
     runtimeSessionId: f.runtimeSessionId, grantId: create.id, clientCommandId, peerRequestClass: 'plan', sources: [f.source],
@@ -152,4 +153,37 @@ test('a standing work.update grant changes a task at its read version and keeps 
   const rejected = await f.tool('flux_update_task', change(Number(started.version), { planIntent: null }));
   assert.equal((rejected?.result as { isError?: boolean } | undefined)?.isError ?? !!rejected?.error, true);
   assert.equal(await f.used(update.id), 1);
+});
+
+test('standing result and decision grants record a finding that finishes a task and propose a decision, never accept it', async () => {
+  const f = await scene();
+  const results = await f.grant('result.record', 'execute');
+  const decisions = await f.grant('decision.propose', 'plan');
+  const prerequisite = await f.read(f.prerequisiteId);
+  const base = (grantId: string, peerRequestClass: string, clientCommandId: string = randomUUID()) => ({ projectId: f.projectId,
+    runtimeSessionId: f.runtimeSessionId, grantId, clientCommandId, peerRequestClass, sources: [f.source] });
+  const finding = (clientCommandId?: string) => ({ ...base(results.id, 'execute', clientCommandId), result: { title: 'Baseline measured',
+    finding: 'negative', evidence: 'Runtime stayed at four hours', workIds: [f.prerequisiteId],
+    finishes: { workId: f.prerequisiteId, expectedVersion: Number(prerequisite.version) } } });
+  const first = randomUUID();
+  const recorded = toolValue(await f.tool('flux_record_result', finding(first)));
+  assert.equal(recorded.replayed, false);
+  const result = expect(await f.owner.request('GET', `/api/v1/results/${recorded.resultId}`), 200);
+  assert.deepEqual([result.title, result.finding, (result.createdBy as { id: string }).id], ['Baseline measured', 'negative', f.agentId]);
+  assert.equal((await f.read(f.prerequisiteId)).status, 'done', 'the result finished the task it names');
+  assert.deepEqual(toolValue(await f.tool('flux_record_result', finding(first))), { ...recorded, replayed: true });
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_results WHERE project_id=$1', [f.projectId])).rows[0].n, 1);
+  const planClass = await f.tool('flux_record_result', { ...finding(), peerRequestClass: 'plan' });
+  assert.ok(planClass?.error || (planClass?.result as { isError?: boolean } | undefined)?.isError, 'a result needs an execute-class grant');
+  assert.equal(await f.used(results.id), 1);
+
+  const proposal = { ...base(decisions.id, 'plan'), decision: { title: 'Keep the four-hour baseline', rationale: 'The measured runtime holds',
+    affects: [f.prerequisiteId] } };
+  const proposed = toolValue(await f.tool('flux_propose_decision', proposal));
+  const decision = expect(await f.owner.request('GET', `/api/v1/decisions/${proposed.decisionId}`), 200);
+  assert.deepEqual([decision.status, (decision.proposedBy as { id: string }).id, decision.decidedBy], ['proposed', f.agentId, null],
+    'an agent proposal stays proposed for a person to decide');
+  assert.equal(await f.used(decisions.id), 1);
+  // A decision.propose grant authorizes nothing else: it cannot record a result.
+  assert.equal(toolFailure(await f.tool('flux_record_result', { ...finding(), grantId: decisions.id })).code, 'AGENT_EXECUTION_UNAVAILABLE');
 });

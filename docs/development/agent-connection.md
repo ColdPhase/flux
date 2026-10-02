@@ -132,50 +132,56 @@ transaction with the project/grant rows locked. A later revocation hides the
 proposal through current project policy. Any published material derived from a
 proposal remains a separate human action.
 
-## Native task actions (#152)
+## Native work actions (#152)
 
 With the `flux.action.execute` scope, an owner-created standing grant and the
-runtime from `flux_bootstrap`, a connection can create and change native tasks.
-`flux_create_task` (`work.create`) takes a title and optional outcome, status,
-blocker, done-when criteria, same-project prerequisites and a plan intent.
-`flux_update_task` (`work.update`) changes one task at the exact version the agent
-last read, with the same fields except the immutable plan intent. Both tools also
-take the runtime ID, the grant ID and its class (`execute` or `plan`), one UUID
-command ID and the exact current material revisions the action relies on. A created
-task links those revisions as its sources.
+runtime from `flux_bootstrap`, a connection can make these native project changes:
+
+| Tool | Operation | Classes | Change |
+| --- | --- | --- | --- |
+| `flux_create_task` | `work.create` | execute, plan | One task with an optional outcome, status, blocker, done-when criteria, same-project prerequisites and plan intent |
+| `flux_update_task` | `work.update` | execute, plan | One task at the exact version last read; same fields, but the plan intent never changes |
+| `flux_record_result` | `result.record` | execute | One positive or negative finding with evidence, linked to tasks and decisions; it can finish one of those tasks at its read version |
+| `flux_propose_decision` | `decision.propose` | execute, plan | One proposed decision with rationale, affected tasks and an optional accepted decision it would replace. An agent never accepts or rejects; a person decides |
+
+Every tool also takes the runtime ID, the grant ID and its class, one UUID
+command ID, and the exact current material revisions the action relies on. Those
+revisions become the new object's sources.
 
 Each call is one transaction composed from existing parts; nothing is
 MCP-specific:
 
-1. The #152 execution port authorizes the exact runtime, grant, project, class,
-   target and source versions.
+1. The #152 execution port authorizes the exact runtime, grant, operation, project,
+   class, target and source versions.
 2. The canonical native work command makes the change as the agent, with the same
-   validation, graph lock, prerequisite and plan-intent rules as the browser and
-   the HTTP API.
-3. The port checks the produced task version, debits the grant once and stores
-   the receipt.
+   validation, graph lock, prerequisite, plan-intent and decision rules as the
+   browser and the HTTP API.
+3. The port checks the produced post-state (task or decision version, result
+   identity), debits the grant once and stores the receipt.
 4. Only then is the single final event batch flushed.
 
 Retries and refusals:
 
 - Retrying with the same command ID returns the stored outcome (`replayed: true`)
-  with no second task, debit or event. The same ID with a changed payload is
+  with no second effect, debit or event. The same ID with a changed payload is
   `IDEMPOTENCY_CONFLICT`.
 - A new command ID for the same plan intent returns the existing task, and a
   different task for that intent is `TASK_INTENT_CONFLICT`.
-- A changed source revision (`SOURCE_VERSION_CONFLICT`), a revoked, expired or
-  exhausted grant (`AGENT_EXECUTION_UNAVAILABLE`), a task of another project
-  (`OBJECT_NOT_FOUND`), a stale version (`VERSION_CONFLICT`) or an unmet
-  prerequisite (`TASK_PREREQUISITES_UNMET`) is refused before any effect, and
-  nothing is debited.
+- These are refused before any effect, and nothing is debited:
+  - a changed source revision (`SOURCE_VERSION_CONFLICT`);
+  - a revoked, expired or exhausted grant, or a grant for another operation or
+    class (`AGENT_EXECUTION_UNAVAILABLE`);
+  - an object of another project (`OBJECT_NOT_FOUND`);
+  - a stale version (`VERSION_CONFLICT`);
+  - an unmet prerequisite (`TASK_PREREQUISITES_UNMET`).
 
-`flux_bootstrap` lists both tools with their operation and whether the current
+`flux_bootstrap` lists these tools with their operation and whether the current
 bearer's scopes make them available. A connection without the action scope sees
 them as unavailable and gets `MCP_SCOPE_REQUIRED`.
 
-Map, result, decision and co-work operations remain registry entries without
-tools. #153's claim adapter, the #160 playbook and real Codex/Claude model-driven
-activation are still required before agent decomposition counts as delivered.
+Map and co-work operations remain registry entries without tools. #153's claim
+adapter, the #160 playbook and real Codex/Claude model-driven activation are still
+required before agent decomposition counts as delivered.
 
 ## Verification boundary
 
