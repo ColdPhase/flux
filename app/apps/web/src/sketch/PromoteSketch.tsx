@@ -112,8 +112,10 @@ export function PromoteSketch({ view, dmTitle, onBack }: { view: PromoteSketchVi
   const people = preview?.audience ?? [];
   const managers = people.filter((p) => p.reason === 'manager' && p.id !== me.user.id);
   // The DM's other people a new project could also be given to: exactly who the checkbox names.
+  // Unticked they are left out; ticked they are readers. Either preview names the same people, so
+  // the checkbox stays put while the other one loads.
   const invited = preview?.target?.kind !== 'new' ? []
-    : alsoGrant ? people.filter((p) => p.reason === 'participant' && p.id !== me.user.id) : preview.leftOut;
+    : preview.leftOut.length ? preview.leftOut : people.filter((p) => p.reason === 'participant' && p.id !== me.user.id);
   const shown = [...people.filter((p) => p.id === me.user.id), ...people.filter((p) => p.id !== me.user.id)].slice(0, 4);
 
   return (
