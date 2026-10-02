@@ -244,6 +244,16 @@ class ProjectSurfaceJourney(unittest.TestCase):
         # The state line stays with the project on every tab.
         tabs.get_by_role("link", name=re.compile("^Map")).click()
         expect(page.locator("header.top").get_by_label("Current state")).to_contain_text("Current rule")
+        # At 320px the tab strip scrolls sideways; the current tab is brought into view.
+        page.set_viewport_size({"width": 320, "height": 640})
+        tabs.get_by_role("link", name=re.compile("^Wiki")).click()
+        expect(page).to_have_url(re.compile(r"/docs$"))
+        current = tabs.get_by_role("link", name=re.compile("^Wiki"))
+        expect(current).to_have_attribute("aria-current", "page")
+        box = current.bounding_box()
+        assert box
+        self.assertGreaterEqual(box["x"], 0)
+        self.assertLessEqual(box["x"] + box["width"], 320, "the current tab is visible in the strip")
 
     # ---------------------------------------------------------------- Details overview
 
