@@ -559,6 +559,8 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
           await assertPrerequisitesMet(ports.work, workspaceId, finished.id);
         }
         const view = await presentResult(ports, record);
+        if (finding === 'negative' && by.kind === 'human')
+          await ports.backgroundComparison.enqueueHumanNegative(record.id, project, by.id);
         await ports.events.record(principal, workspaceId, 'project.result_recorded.v1', project, { resultId: record.id });
         const messageIds = contributions ? await ports.contributions.append(contributions) : [];
         if (clientCommandId) await ports.work.recordNativeCommand(scope, by,

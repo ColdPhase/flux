@@ -170,8 +170,11 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
   const writes = (bootstrap.capabilities as { name: string; operation: string | null; available: boolean }[]).filter((row) => row.operation !== null);
   assert.deepEqual(writes.map(({ name, operation, available }) => ({ name, operation, available })),
     [{ name: 'flux_create_task', operation: 'work.create', available: false }, { name: 'flux_update_task', operation: 'work.update', available: false },
-      { name: 'flux_record_result', operation: 'result.record', available: false }, { name: 'flux_propose_decision', operation: 'decision.propose', available: false }],
-    'only the verified native work actions are advertised, unavailable without the action scope');
+      { name: 'flux_record_result', operation: 'result.record', available: false }, { name: 'flux_propose_decision', operation: 'decision.propose', available: false },
+      ...['flux_create_map:map.create', 'flux_rename_map:map.rename', 'flux_add_thought:map.thought.create', 'flux_update_thought:map.thought.update',
+        'flux_remove_thought:map.thought.delete', 'flux_move_thoughts:map.positions.update', 'flux_link_thoughts:map.link.create',
+        'flux_unlink_thoughts:map.link.delete'].map((entry) => ({ name: entry.split(':')[0], operation: entry.split(':')[1], available: false }))],
+    'only the verified native work and map actions are advertised, unavailable without the action scope');
   const unscoped = await mcp(bearer, 147, 'tools/call', { name: 'flux_create_task', arguments: { projectId,
     runtimeSessionId: (bootstrap.runtime as { id: string }).id, grantId: randomUUID(), clientCommandId: randomUUID(),
     peerRequestClass: 'plan', sources: [], task: { title: 'Not without the action scope' } } });

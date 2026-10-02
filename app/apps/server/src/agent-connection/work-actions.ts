@@ -1,67 +1,21 @@
 import { z } from 'zod';
-import { AGENT_OPERATION_CLASSES, WORK_LIMITS, WORK_STATUSES, type AgentExecutionCommand, type AgentJsonValue,
-  type AgentOperation, type AgentPostcondition, type CreateResultCommand, type CreateWorkCommand, type ObjectRef,
-  type ProposeDecisionCommand, type UpdateWorkCommand } from '@flux/contracts';
-import { agentExecutionUseCases, type Database, type Principal } from '@flux/core';
-import { nativeWorkInTransaction } from '../work/adapters.js';
+import { AGENT_OPERATION_CLASSES, WORK_LIMITS, WORK_STATUSES, type AgentJsonValue, type AgentOperation, type CreateResultCommand,
+  type CreateWorkCommand, type ProposeDecisionCommand, type UpdateWorkCommand } from '@flux/contracts';
+import type { Database } from '@flux/core';
+import { actionAnnotations as annotations, actionId as id, actionInput as execution, actionVersion as version, materialSources,
+  nativeActionExecutor } from './action-execution.js';
 import type { FluxMcpClaims } from './context.js';
-import { agentExecutionInTransaction } from './execution.js';
 import type { AgentToolRegistry } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
 
-const id = z.uuid();
-const version = z.int().min(1).max(2_147_483_647);
 const text = (maximum: number) => z.string().min(1).max(maximum);
 const ids = z.array(id).max(WORK_LIMITS.links);
-/** Exact current material revisions the action relies on; each must still be current when it commits. */
-const sources = z.array(z.strictObject({ materialId: id, version })).max(50).default([]);
-const execution = <C extends readonly ['execute', ...('execute' | 'plan')[]]>(classes: C) => ({
-  projectId: id,
-  runtimeSessionId: id.describe('The runtime ID returned by flux_bootstrap for this client session.'),
-  grantId: id.describe('A live standing grant from flux_bootstrap for this exact operation, project and class.'),
-  clientCommandId: id.describe('One UUID per intended effect; reuse it only to retry that same effect.'),
-  peerRequestClass: z.enum(classes).describe('The class of the standing grant being used.'),
-  sources,
-});
 const criteria = z.array(text(WORK_LIMITS.criterion)).max(WORK_LIMITS.criteria);
 const dependencyIds = z.array(id).max(WORK_LIMITS.dependencies);
-const annotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: true };
 
-type ExecutionInput = { projectId: string; runtimeSessionId: string; grantId: string; clientCommandId: string;
-  peerRequestClass: 'execute' | 'plan'; sources: { materialId: string; version: number }[] };
-type Native = ReturnType<typeof nativeWorkInTransaction>;
-type Produced<T> = { value: T; postconditions: AgentPostcondition[] };
-
-/** The authorized material revisions become the object's sources; nothing else is linked implicitly. */
-const materialSources = (input: ExecutionInput): { sources?: ObjectRef[] } => input.sources.length
-  ? { sources: input.sources.map((source) => ({ type: 'material' as const, id: source.materialId, version: source.version })) } : {};
-
-/**
- * Standing-grant native work actions. Each call is one caller-owned transaction: the #152 receipt port
- * authorizes the exact runtime/grant/source versions, the canonical native work command makes the change
- * as the agent, the receipt and debit are written, and only then the single final event batch is flushed.
- * A retry with the same command ID returns the stored outcome without a second effect, debit or event.
- */
+/** Standing-grant native work actions through the shared one-transaction executor (`action-execution.ts`). */
 export function registerAgentWorkActions(tools: AgentToolRegistry, db: Database, claims: FluxMcpClaims) {
-  async function execute<T extends { [key: string]: AgentJsonValue }>(input: ExecutionInput, operation: AgentOperation,
-    objectId: string | null, payload: AgentJsonValue, effect: (native: Native, agent: Principal) => Promise<Produced<T>>) {
-    const command: AgentExecutionCommand = { runtimeSessionId: input.runtimeSessionId, grantId: input.grantId,
-      clientCommandId: input.clientCommandId, projectId: input.projectId, operation, peerRequestClass: input.peerRequestClass,
-      audience: { kind: 'project', projectId: input.projectId }, objectId, sources: input.sources, payload };
-    return db.transaction(async (tx) => {
-      const native = nativeWorkInTransaction(tx);
-      let replayed = false;
-      const value = await agentExecutionUseCases(agentExecutionInTransaction(tx, claims)).run(command, async (scope) => {
-        if (scope.replay) {
-          replayed = true;
-          return { value: scope.replay.value, postconditions: scope.replay.postconditions };
-        }
-        return effect(native, { kind: 'agent', id: scope.context.agentId });
-      });
-      await native.flushEvents();
-      return { ...(value as T), replayed };
-    });
-  }
+  const execute = nativeActionExecutor(db, claims);
   const register = (operation: AgentOperation) => tools.forScope('flux.action.execute', { operation, classes: AGENT_OPERATION_CLASSES[operation] });
 
   register('work.create').registerTool('flux_create_task', {
@@ -80,7 +34,7 @@ export function registerAgentWorkActions(tools: AgentToolRegistry, db: Database,
   }, async ({ task, ...input }) => {
     try {
       const created: CreateWorkCommand = { ...task, ...materialSources(input) };
-      return toolResult(await execute(input, 'work.create', null, created as unknown as AgentJsonValue, async (native, agent) => {
+      return toolResult(await execute(input, 'work.create', null, created as unknown as AgentJsonValue, async ({ work: native, agent }) => {
         const work = await native.createWork(agent, input.projectId, created);
         return { value: { workId: work.id, version: work.version }, postconditions: [{ kind: 'work', id: work.id, version: work.version }] };
       }));
@@ -103,7 +57,7 @@ export function registerAgentWorkActions(tools: AgentToolRegistry, db: Database,
     try {
       const update: UpdateWorkCommand = changes;
       return toolResult(await execute(input, 'work.update', workId, { expectedVersion, changes: update } as unknown as AgentJsonValue,
-        async (native, agent) => {
+        async ({ work: native, agent }) => {
           const work = await native.updateWork(agent, workId, update, expectedVersion);
           return { value: { workId: work.id, version: work.version }, postconditions: [{ kind: 'work', id: work.id, version: work.version }] };
         }));
@@ -127,7 +81,7 @@ export function registerAgentWorkActions(tools: AgentToolRegistry, db: Database,
     try {
       const recorded: CreateResultCommand = { ...result, ...materialSources(input), ...(workIds ? { work: workIds } : {}),
         ...(decisionIds ? { decisions: decisionIds } : {}), ...(finishes ? { finishes: { id: finishes.workId, expectedVersion: finishes.expectedVersion } } : {}) };
-      return toolResult(await execute(input, 'result.record', null, recorded as unknown as AgentJsonValue, async (native, agent) => {
+      return toolResult(await execute(input, 'result.record', null, recorded as unknown as AgentJsonValue, async ({ work: native, agent }) => {
         const created = await native.createResult(agent, input.projectId, recorded);
         return { value: { resultId: created.id }, postconditions: [{ kind: 'result', id: created.id }] };
       }));
@@ -148,7 +102,7 @@ export function registerAgentWorkActions(tools: AgentToolRegistry, db: Database,
   }, async ({ decision, ...input }) => {
     try {
       const proposed: ProposeDecisionCommand = { ...decision, ...materialSources(input) };
-      return toolResult(await execute(input, 'decision.propose', null, proposed as unknown as AgentJsonValue, async (native, agent) => {
+      return toolResult(await execute(input, 'decision.propose', null, proposed as unknown as AgentJsonValue, async ({ work: native, agent }) => {
         const created = await native.proposeDecision(agent, input.projectId, proposed);
         return { value: { decisionId: created.id, version: created.version },
           postconditions: [{ kind: 'decision', id: created.id, version: created.version }] };

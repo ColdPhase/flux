@@ -1,0 +1,39 @@
+{
+  "date": "2026-09-30",
+  "sourceRevision": "363ac0442f75251c636dcba79864174cbd138ab8",
+  "sourceSha256": {
+    "packages/contracts/src/proactive-outcomes.ts": "5043fd8a81fac2f412a6b276c4fbaa74ec0c945f260342dc72cf4f4ca15ccc11",
+    "packages/core/src/proactive-comparison/outcomes.ts": "dbd9af0ab166ea5658f176d4ae05c75c1f23d679cda4626cb2a67eeed4cde3d4",
+    "packages/db/src/repositories/proactive-comparison.ts": "7ad63856893e94d70e439171b222dcc34e0e51c683340be8f0b48c37edf8dbc0",
+    "apps/web/src/proactive-comparison/BackgroundUsage.tsx": "5e77e6849f01a04accff9ae4f86bf6de7cc8b21e5ee11e8e9a957362b16d1bc2",
+    "apps/web/src/proactive-comparison/BackgroundComputeSettings.tsx": "cf99661e59c6cfbd14e871f70556e3035a85930cd89feb89222bb2d43ef42410",
+    "apps/web/src/proactive-comparison/background.css": "1c0111545376cb47d75d13c91cca7f31210904ef57ae0f2c0aaaaa26497c8aca",
+    "tests/app/proactive-outcomes-core.test.ts": "7782c55b3521f689d10e53b48cc3aa3e374178d674d0762daf061feac0230ff1",
+    "tests/app/proactive-outcomes.test.ts": "98140eed1abe6f5a225ccaffda13742e326b60c6777ef415aa21ac944922ba95",
+    "tests/app/e2e/proactive-outcomes.e2e.ts": "9bcfc23d09d8edd4ffd43e7da58f19f280c0d59b3f769c3ca7876d286962583f"
+  },
+  "screenshots": {
+    "comparison-usage-390-viewer.png": "6c1ea014e9e7e368ef76ed6854510b0b5865ebd49f922b95ada70c08c585093b",
+    "comparison-usage-390-summary.png": "befd857a8ac574969e8303720214ae99ed19d4fc02380534b462037a31476b0e",
+    "comparison-usage-390-owner.png": "6f1b5af2d2d016de7bb1d7e98d6a543d20350537d257f5d591844bb1df9c7f95",
+    "comparison-usage-390-history.png": "496c33701a4faf3515027c6b9a02f9900ed9af5d5bd06cf3bb23e14fbbe4bf7b",
+    "comparison-usage-1440-summary.png": "b46fb520833f75d33e1142b2ac93db2863b1c13abf23398cc0ee8ee5e40c131f",
+    "comparison-usage-1440-redacted.png": "cbc24c73896e5a68626990fc4c0f8c38062e903392e0fae723785f11283f7e9f",
+    "comparison-usage-1440-owner.png": "064a18071eb59b25df085b34366a6efa4e9bbe5a93be141bacf7e04613ce4968",
+    "comparison-usage-1440-history.png": "ff8957913141463b17da6e5c5b65b19859a96fef01d79caf1eeba25dd12771a3",
+    "comparison-usage-1024-summary.png": "f45a78921cebf3911966c0648667d89a6450f7d675a990c8b843f9fbe76eed73",
+    "comparison-usage-1024-owner.png": "e73e3b2931c152169a34fc35f39d08627cf7daef7d7dd98aac68fb8f23409c29",
+    "comparison-usage-1024-history.png": "1f96160e57d6d3ee91cdd31d83e868180bceebbbb626a34bad8fcf958e3d0f14",
+    "comparison-outcomes-390-insufficient-footer.png": "0b031c2a43b787213954908b71eacb00bbfa7838962b16ffab9eaeff106dbeac",
+    "comparison-outcomes-390-collapsed.png": "2a0df0b216df125fa2aa2fb8b782e4e245d3c208dc159531fbc24d9b33d4ed92",
+    "comparison-outcomes-390-checked.png": "aee8d6fe9e2dfa4848a6c664a79719c2db7a7954dd9b4acbab303fb7d5b9407e",
+    "comparison-outcomes-1440-text125.png": "b580c75f2bc2485189a2c225b32368c24020cba9315c123e3924389dec053018",
+    "comparison-outcomes-1440-insufficient-footer.png": "8134bd420cef9f9da3aeaa829dbeab603b790bea3662a6b3b8a0ab010b707c2c",
+    "comparison-outcomes-1440-dark.png": "315a86d643229847efcaeaf0156ba72ab729a81f6bd2c1e4e5e9585dbd38e101",
+    "comparison-outcomes-1440-collapsed.png": "2d6811592a130fa0969f04b61e73b7ecbc5b6b1703c1e2bc84804d7374a3c62b",
+    "comparison-outcomes-1440-checked.png": "1584528cdbcab577c572141026cbc23acb57b7c58b70fd1094b9b2f8746f1f2a",
+    "comparison-outcomes-1024-insufficient-footer.png": "e29862069012565e5d339fa49c37251bf9c6c3041cdc3e62623610e3a03bf761",
+    "comparison-outcomes-1024-collapsed.png": "0afb31fee902897ca1206f49c71ad7a2fe847e95e95bb4a6a672af47b02e7099",
+    "comparison-outcomes-1024-checked.png": "be7f67f23812af5c6b30705f4334d9c0c614ba4e1ed5cb995546034fba6643ca"
+  }
+}
