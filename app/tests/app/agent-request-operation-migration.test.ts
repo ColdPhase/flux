@@ -2,14 +2,13 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import { AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES } from '@flux/contracts';
-import { assertExactMigrationLedger, assertMigrationSqlLedgerChange, assertMigrationStepLedger, createDatabase,
+import { assertExactMigrationLedger, assertMigrationSqlLedgerChange, assertMigrationStepLedger,
   FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
+import { pool } from './support/db.js';
 
 const migrationsDir = 'packages/db/migrations';
-const { pool } = createDatabase(process.env.DATABASE_URL!);
-after(() => pool.end());
 
 test('0038 widens only the closed grant operation CHECK: the prior ledger upgrades in place, rows survive and it is idempotent', async () => {
   const client = await pool.connect();
@@ -70,7 +69,7 @@ test('0038 widens only the closed grant operation CHECK: the prior ledger upgrad
     assertMigrationSqlLedgerChange(before, afterSql, migration!);
     await client.query('INSERT INTO flux_schema_version(version) VALUES ($1) ON CONFLICT DO NOTHING', [migration!.version]);
     const after = await readAppliedMigrationVersions(client);
-    assertMigrationStepLedger(before, after, migration!);
+    assertMigrationStepLedger(before, migration!);
     assertExactMigrationLedger(upToCurrent, after);
 
     // After: rows are untouched; the database list is exactly the contract list plus nothing else.
@@ -88,7 +87,7 @@ test('0038 widens only the closed grant operation CHECK: the prior ledger upgrad
     const rows = await count();
     await client.query(sql);
     assert.equal((await constraint())[0]!.definition, definition); assert.equal(await count(), rows);
-    assert.deepEqual(await readAppliedMigrationVersions(client), after, 'the SQL records no ledger version itself');
+    assert.deepEqual(await readAppliedMigrationVersions(client), 'the SQL records no ledger version itself');
   } finally {
     await client.query('ROLLBACK'); client.release();
   }

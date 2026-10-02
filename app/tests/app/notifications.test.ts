@@ -35,7 +35,6 @@ const smtp = smtpNotificationMailer(mailConfig);
 after(() => smtp.close());
 
 /** A person with a real display name, which mentions match against. */
-
 async function named(name: string, email: string): Promise<Person> {
   const { browser } = await register(email, password, name);
   const me = expectStatus(await browser.request('GET', '/api/v1/me'), 200) as { user: { id: string } };

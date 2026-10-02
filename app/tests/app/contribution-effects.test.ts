@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import { eq, sql } from 'drizzle-orm';
-import { createDatabase, schema, TASK_GRAPH_LOCK_NAMESPACE } from '@flux/db';
+import { schema, TASK_GRAPH_LOCK_NAMESPACE } from '@flux/db';
 import { agentExecutionUseCases, createAssistantProposalUseCases, createWorkContributions, createWorkUseCases, DomainError, type Principal, type ProposalRecord,
   type WorkPorts } from '@flux/core';
 import type { AgentConnection, AgentExecutionCommand, AgentJsonValue, AgentPostcondition, AgentStandingGrant, AssistantProposal, Conversation, ConversationMessage,
@@ -17,12 +17,11 @@ import { agentExecutionInTransaction } from '../../apps/server/src/agent-connect
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 import { backendPid, settled, waitUntilBlockedBy } from './support/locks.js';
 import { guardFinalEventPhase } from './support/final-events.js';
+import { db, pool } from './support/db.js';
 
 // Explicit native contribution effects on the canonical task thread (#154): a saved blocker, a published result
 // and an explicit public handoff, each through the one canonical append, over real PostgreSQL and HTTP.
 
-const { db, pool } = createDatabase(process.env.DATABASE_URL!);
-after(() => pool.end());
 
 async function scene() {
   const [owner, writer, reader, outsider] = await Promise.all(['fx-owner', 'fx-writer', 'fx-reader', 'fx-outsider'].map(person));
