@@ -13,14 +13,16 @@
 .top__audience > span:not(.ui-vh) { min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .top__audience svg { flex: none; width: 10px; height: 10px; }
 .top__audience:hover { background: var(--bg-hover); color: var(--text); }
-.top--project .ws-state { position: relative; flex-wrap: wrap; margin: 0; font-size: var(--fs-sm); line-height: 1.4; }
+.top--project .ws-state { position: relative; flex: 0 1 auto; flex-wrap: nowrap; min-width: 0; max-width: 100%; margin: 0; font-size: var(--fs-sm); line-height: 1.4; }
 .top--project .ws-state::before { content: ""; position: absolute; left: -13px; top: 2px; bottom: 2px; border-left: 1px solid var(--line); }
-.top--project .ws-part { display: contents; }
+/* One line: a segment shortens with an ellipsis (its title keeps the full text) instead of
+   wrapping mid-phrase, and a separator always starts its segment, never ends a line. */
+.top--project .ws-part { flex: 0 1 auto; min-width: 0; }
 
 .top--project .ws-seg { min-height: 22px; min-width: 0; flex: 0 1 auto; max-width: 100%; color: var(--text-2); }
 .top--project .ws-seg:hover { color: var(--text); }
 .top--project .ws-seg--need { color: var(--attention); }
-.top--project .ws-seg span:last-child { white-space: normal; overflow-wrap: anywhere; }
+.top--project .ws-seg span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .top--project .ws-state--empty { overflow: hidden; text-overflow: ellipsis; }
 .top--project .top__right { padding-top: 2px; }
 
