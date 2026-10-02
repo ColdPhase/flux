@@ -84,16 +84,25 @@ function WikiIndex({ activeId, hidden }: { activeId: string | null; hidden: bool
   const pages = useMemo(() => [...docs].sort((a, b) => collator.compare(a.title, b.title)), [docs]);
   const needle = fold(query.trim());
   const shown = needle ? pages.filter((doc) => fold(`${doc.title} ${doc.excerpt}`).includes(needle)) : pages;
+  const listed = shown.length > 0;
 
-  // As a strip (narrow work area) the index scrolls sideways; keep the open page in view.
+  // As a strip (narrow work area) the index scrolls sideways; keep the open page in view, also
+  // when the strip's width changes (rotation, resize, a panel opening).
   useEffect(() => {
     const list = listRef.current;
-    const link = list?.querySelector<HTMLElement>('[aria-current="page"]');
-    if (!list || !link || list.scrollWidth <= list.clientWidth) return;
-    const box = list.getBoundingClientRect();
-    const item = link.getBoundingClientRect();
-    if (item.left < box.left || item.right > box.right) list.scrollLeft += item.left - box.left - 16;
-  }, [activeId, hidden]);
+    if (!list) return;
+    const reveal = () => {
+      const link = list.querySelector<HTMLElement>('[aria-current="page"]');
+      if (!link || list.scrollWidth <= list.clientWidth) return;
+      const box = list.getBoundingClientRect();
+      const item = link.getBoundingClientRect();
+      if (item.left < box.left || item.right > box.right) list.scrollLeft += item.left - box.left - 16;
+    };
+    reveal();
+    const observer = new ResizeObserver(reveal);
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, [activeId, hidden, listed]);
 
   async function importFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];

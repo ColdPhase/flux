@@ -596,6 +596,9 @@ class WikiPanesJourney(unittest.TestCase):
         page.set_viewport_size(SMALL_PHONE)
         page.wait_for_timeout(200)
         self.no_horizontal_overflow(page, SMALL_PHONE["width"])
+        box = index.get_by_role("link", name=LAMP).bounding_box()
+        self.assertGreaterEqual(box["x"], 0)
+        self.assertLessEqual(box["x"] + box["width"], SMALL_PHONE["width"], "the open page stays in the strip after a resize")
         for control in (index.get_by_role("link", name="New page"), index.get_by_role("button", name="Import .md")):
             expect(control).to_be_visible()
             box = control.bounding_box()
