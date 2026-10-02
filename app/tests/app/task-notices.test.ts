@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { createDatabase } from '@flux/db';
 import { ConflictError, createWorkUseCases, type Principal } from '@flux/core';
 import type { Agent, Conversation, CreateWorkCommand, Page, TaskCreationNotice, WorkItem } from '@flux/contracts';
 import { workUnitOfWork, workUseCases } from '../../apps/server/src/work/adapters.js';
