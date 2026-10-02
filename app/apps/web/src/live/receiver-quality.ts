@@ -9,7 +9,8 @@ export const RECEIVER_QUALITY_LIMITS = {
   packetLossPoorPercent: 10,
   videoFpsWarning: 10,
   videoFpsPoor: 5,
-  stalledTrackAfterMs: 2_000,
+  // Below the diagnostics panel's 2 s cadence: aligned interval timers can sample a few ms early.
+  stalledTrackAfterMs: 1_500,
 } as const;
 
 export interface RtcStatsRecord {

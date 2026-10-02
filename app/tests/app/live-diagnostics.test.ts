@@ -142,6 +142,11 @@ test('observed idle counters warn for expected flow; intentional pause does not 
   const idle = d.receiver('screen', 'video', video, 2500, true);
   assert.equal(idle.quality.status, 'poor');
   assert.match(idle.warning!, /stopped receiving/);
+  // The panel polls every 2 s; an aligned interval timer can sample slightly early.
+  const early = d.receiver('screen', 'video', video, 4495, true);
+  assert.equal(early.sample.intervalMs, 1995);
+  assert.equal(early.quality.status, 'poor');
+  assert.match(early.warning!, /stopped receiving for 2 s/);
   assert.equal(d.receiver('screen', 'video', video, 5000, false).warning, null);
   d.receiver('voice', 'audio', { packetsReceived: 100, packetsLost: 0, bytesReceived: 1000, jitter: 0.01 }, 0, true);
   const audio = d.receiver('voice', 'audio', { packetsReceived: 102, packetsLost: 1,

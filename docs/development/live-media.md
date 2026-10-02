@@ -136,8 +136,10 @@ receiver `getStats()` samples: selected ICE round-trip time; inbound audio/video
 packets, interval bitrate and loss; audio jitter; and decoded video fps and
 dimensions. A counter reset, absent report or short interval without fresh
 packets is unknown, never fabricated as zero loss or good throughput. An
-expected receiver with no new packets for at least two seconds is poor even
-if its cumulative packet count and ICE round-trip time look healthy. The
+expected receiver with no new packets over a sampled interval of at least 1.5
+seconds (the diagnostics panel samples every two seconds, and its interval timer
+can fire a few milliseconds early) is poor even if its cumulative packet count
+and ICE round-trip time look healthy. The
 module returns specific warning reasons for
 the live interface in [#62](https://github.com/ColdPhase/flux/issues/62) to
 present on demand. #62's integrated LivePanel already displays diagnostics and
