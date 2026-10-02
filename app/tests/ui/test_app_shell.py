@@ -259,7 +259,7 @@ class AppShellJourney(unittest.TestCase):
         expect(sidebar.get_by_text("No projects yet")).to_be_visible()
         expect(sidebar.get_by_role("button", name=re.compile("^New thought"))).to_be_visible()
         views = page.get_by_role("navigation", name="Views")
-        for label in ("Conversation", "Tasks", "Map", "Docs"):
+        for label in ("Conversation", "Map", "Tasks", "Wiki"):
             expect(views.get_by_role("link", name=label, exact=True)).to_be_visible()
         expect(views.get_by_role("link", name="Conversation")).to_have_attribute("aria-current", "page")
         expect(page.get_by_role("heading", name="Nothing here yet")).to_be_visible()
@@ -389,7 +389,7 @@ class AppShellJourney(unittest.TestCase):
             scroller.evaluate("el => { el.scrollTop = 600; el.dispatchEvent(new Event('scroll')); }")
             page.wait_for_timeout(100)
             views = page.get_by_role("navigation", name="Views")
-            views.get_by_role("link", name="Docs").click()
+            views.get_by_role("link", name="Wiki").click()
             expect(page.get_by_role("heading", name="No docs yet")).to_be_visible()
             views.get_by_role("link", name="Conversation").click()
             self.assertAlmostEqual(page.locator(".convo .pane-scroll").evaluate("el => el.scrollTop"), 600, delta=2, msg="position restored after a view switch")
@@ -470,7 +470,7 @@ class AppShellJourney(unittest.TestCase):
         # Coarse pointer: primary targets are at least 44px.
         menu = page.get_by_role("button", name="Open navigation")
         details_button = page.get_by_role("button", name="Details", exact=True)
-        targets = [menu, details_button, *[page.get_by_role("navigation", name="Views").get_by_role("link", name=n, exact=True) for n in ("Conversation", "Tasks", "Map", "Docs")]]
+        targets = [menu, details_button, *[page.get_by_role("navigation", name="Views").get_by_role("link", name=n, exact=True) for n in ("Conversation", "Map", "Tasks", "Wiki")]]
         for target in targets:
             size = box(page, target)
             self.assertGreaterEqual(min(size["width"], size["height"]), 44, f"44px target: {target}")

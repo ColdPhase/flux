@@ -48,13 +48,14 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
       </button>
       <div className="side__scroll">
         <nav className="side__places" aria-label="Places">
-          <NavLink to="/" className="side__item" aria-current={place === 'home' && !sketchbook ? 'page' : undefined} onClick={navigate}>
+          {/* Plain links with an explicit current place: NavLink would also mark a parent path current. */}
+          <Link to="/" className="side__item" aria-current={place === 'home' && !sketchbook ? 'page' : undefined} onClick={navigate}>
             <Icon name="home" className="side__ic" /><span className="side__label">Home</span>
-          </NavLink>
-          <NavLink to="/inbox" className="side__item" aria-label={inboxUnread ? 'Inbox, something new' : 'Inbox'} aria-current={place === 'inbox' ? 'page' : undefined} onClick={navigate}>
+          </Link>
+          <Link to="/inbox" className="side__item" aria-label={inboxUnread ? 'Inbox, something new' : 'Inbox'} aria-current={/^\/inbox(\/|$)/.test(location.pathname) ? 'page' : undefined} onClick={navigate}>
             <Icon name="inbox" className="side__ic" /><span className="side__label">Inbox</span>
             {inboxUnread ? <span className="side__dot" aria-hidden="true" /> : null}
-          </NavLink>
+          </Link>
           {place === 'inbox' ? (
             <div className="side__threads">
               <NavLink to="/settings/notifications" className="side__item" onClick={navigate}>
@@ -62,13 +63,13 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
               </NavLink>
             </div>
           ) : null}
-          <NavLink to="/dm" className="side__item" aria-current={location.pathname === '/dm' ? 'page' : undefined} onClick={navigate}>
+          <Link to="/dm" className="side__item" aria-current={location.pathname === '/dm' ? 'page' : undefined} onClick={navigate}>
             <Icon name="chat" className="side__ic" /><span className="side__label">Direct messages</span>
-          </NavLink>
-          <NavLink to="/map" className="side__item" aria-current={sketchbook ? 'page' : undefined} onClick={navigate}>
+          </Link>
+          <Link to="/map" className="side__item" aria-current={sketchbook ? 'page' : undefined} onClick={navigate}>
             <Icon name="map" className="side__ic" /><span className="side__label">My sketchbook</span>
             <Icon name="lock" size={12} className="side__trail" />
-          </NavLink>
+          </Link>
         </nav>
         <button type="button" className="side__item side__capture" onClick={() => { onClose?.(); startCapture(go); }}>
           <Icon name="plus" className="side__ic" />New thought<span className="side__hint"><Icon name="lock" size={12} />Private</span>
@@ -86,6 +87,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
                 return (
                   <li key={project.id}>
                     <NavLink to={`/projects/${project.id}`} end={false} className={`side__item side__project${open ? ' is-open' : ''}`} onClick={navigate}
+                      title={project.workspaceName ? `${project.name} · ${project.workspaceName}` : project.name}
                       aria-label={project.hasNew ? `${project.name}, new activity` : undefined}>
                       <span className="side__pi" aria-hidden="true"><Icon name="spark" size={15} /></span>
                       <span className="side__label">{project.name}</span>

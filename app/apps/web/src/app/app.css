@@ -64,12 +64,13 @@ body:has(.app) { background: var(--bg-chrome); }
 .side__word span { color: var(--accent); }
 .side__jump {
   display: flex; align-items: center; gap: 8px; width: 100%; min-height: 39px; margin: 22px 0 18px; padding: 8px 4px;
-  border-bottom: 1px solid var(--line); color: var(--text-2); font-size: var(--fs-md); text-align: left; transition: var(--tr);
+  border-bottom: 1px solid var(--line); background: var(--bg-chrome); color: var(--text-2); font-size: var(--fs-md); text-align: left; transition: var(--tr);
 }
 .side__jump svg { color: var(--text-2); }
 .side__jump kbd { margin-left: auto; box-shadow: none; color: var(--text-2); font: 9px/1 var(--mono); }
 .side__jump:hover { color: var(--text); border-bottom-color: var(--line-strong); }
-.side__scroll { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -6px; padding: 0 6px 12px; }
+/* The 12px side padding keeps the current-place bar (left: -9px) inside the scroll box, unclipped. */
+.side__scroll { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -12px; padding: 0 12px 12px; }
 .side__places { display: flex; flex-direction: column; }
 .side__sec { margin-top: 14px; }
 .side__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 4px 4px 7px; }
@@ -96,7 +97,9 @@ body:has(.app) { background: var(--bg-chrome); }
 .side__hint { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; font-size: var(--fs-xs); color: var(--text-2); }
 .side__empty { padding: 2px 8px 6px; font-size: var(--fs-sm); line-height: 1.5; color: var(--text-2); }
 .side__person { display: flex; align-items: center; gap: 10px; min-height: 30px; padding: 0 8px; font-size: var(--fs-md); color: var(--text-2); }
-.side__sub { margin-left: auto; font-size: var(--fs-xs); color: var(--text-2); white-space: nowrap; }
+/* A long workspace label truncates before the project name does; the full text is the row's title. */
+.side__sub { margin-left: auto; flex: 0 1 auto; min-width: 0; max-width: 42%; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-xs); color: var(--text-2); white-space: nowrap; }
+.side__project .side__label { flex: 1 1 auto; }
 .side__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .side__dm .ui-avatar { flex: none; }
 /* Sub-places indented under their row (Inbox → Notification settings). */
@@ -180,6 +183,7 @@ body:has(.app) { background: var(--bg-chrome); }
 .views .ui-tabs__tab { min-height: 40px; padding: 9px 0 13px; border-radius: 0; font-size: var(--fs-md); font-weight: 450; color: var(--text-2); }
 .views .ui-tabs__tab[aria-current="page"] { color: var(--text); font-weight: 550; }
 .views .ui-tabs__tab:hover { color: var(--text); }
+.views .ui-tabs__tab:focus-visible { outline-offset: 3px; }
 /* "What matters" (#133): one quiet entry at the end of the project's tabs, its count as plain text. */
 .views--project { display: flex; align-items: center; gap: 18px; padding-right: var(--space-page); }
 .views--project .views__tabs { flex: 1; min-width: 0; }
@@ -299,7 +303,10 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 }
 /* ---------- Coarse pointers: 44px targets ---------- */
 @media (pointer: coarse) {
-  .side__item, .side__person { min-height: 44px; }
+  .side__item, .side__person, .side__threads .side__item { min-height: 44px; }
+  .side__jump { min-height: 44px; }
+  .side__add { width: 44px; height: 44px; margin: -10px -10px -10px 0; }
+  .side__threads .ui-btn { min-height: 44px; }
   .me__item { min-height: 44px; }
   .seg__b { min-height: 44px; }
   .brand { min-height: 44px; }
