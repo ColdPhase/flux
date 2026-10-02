@@ -8,6 +8,7 @@ import {
   loadPushSenderConfig,
   loadPushServerConfig,
   pushEndpointViolation,
+  type PushSendJob,
 } from '@flux/core';
 import type { PushPayload, PushSubscriptionSummary } from '@flux/contracts';
 import { deliverPush, RetryableDeliveryError } from '../../apps/worker/src/push/index.js';
@@ -17,7 +18,7 @@ import { connectionString, db, pool } from './support/db.js';
 import { Browser, publicOrigin, register, signIn, uniqueEmail, waitForMail } from './support/http.js';
 import { capturingNotifier } from './support/notifier.js';
 import { password } from './support/people.js';
-import { decryptPush, own, pushRecipient, recordedPushes, subscribe, subscriptionBody, testSubscription, waitFor } from './support/push.js';
+import { decryptPush, own, pushRecipient, recordedPushes, subscribe, subscriptionBody, testSubscription, waitFor, type PushRecipient } from './support/push.js';
 
 // Web Push and inbox checks (issue #41) against the running API and worker containers, a local
 // push service mock over https, and in-process delivery for the recheck paths.
@@ -269,7 +270,7 @@ describe('push delivery rechecks (in process)', () => {
 });
 
 describe('subscriptions are bound to the signed-in session', () => {
-  async function queuedFor(recipient: Person) {
+  async function queuedFor(recipient: PushRecipient) {
     const captured = capturingNotifier();
     await captured.notify(own(recipient, { title: 'Private text for this account' }));
     return captured.jobs;

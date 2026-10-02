@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import type { Draft, Page, Project, ProjectGrant, ProjectPerson, Workspace, WorkspaceMember } from '@flux/contracts';
+import { pool } from './support/db.js';
 import { Browser } from './support/http.js';
 import { addMember, draft, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 

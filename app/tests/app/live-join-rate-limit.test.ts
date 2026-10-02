@@ -8,7 +8,7 @@ import { liveAccess } from '../../apps/server/src/live/access.js';
 import { liveSessionStore } from '../../apps/server/src/live/store.js';
 import { liveRoutes } from '../../apps/server/src/live/routes.js';
 import { joinRateLimiter } from '../../apps/server/src/live/rate-limit.js';
-import { db, pool } from './support/db.js';
+import { db } from './support/db.js';
 import { addMember, expectStatus, person, project, workspace } from './support/people.js';
 
 // Per-user, per-API-instance limit on live join grants (#62), with an injected clock and an

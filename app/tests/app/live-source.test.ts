@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { DomainError } from '@flux/core';
 import type { Conversation, Material, WorkItem } from '@flux/contracts';
 import { requireLivePresentationSource } from '../../apps/server/src/live/access.js';
-import { db, pool } from './support/db.js';
+import { db } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
 
 
