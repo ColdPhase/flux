@@ -28,6 +28,8 @@
 .agents-conn__dot { width: 6px; height: 6px; border-radius: 50%; border: 1px solid var(--text-3); flex: none; }
 .agents-conn[data-state="session_open"] .agents-conn__dot { background: var(--ok); border-color: var(--ok); }
 .agents-conn[data-state="offline"] .agents-conn__dot { background: transparent; }
+.agents-conn[data-state="unavailable"] .agents-conn__dot { border-color: var(--warning); background: transparent; }
+.agents-conn[data-state="unavailable"] .agents-conn__state { color: var(--warning); }
 
 .agents__task {
   display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap;
@@ -70,7 +72,7 @@
 .agents-composer textarea:focus-visible { outline: none; border-color: var(--focus); }
 .agents-composer__row { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); margin-top: var(--s-2); }
 .agents-composer__hint { font-size: var(--fs-xs); color: var(--text-3); }
-.agents-composer__hint [role="alert"] { color: var(--danger); }
+.agents-composer__error { margin: var(--s-2) 0 0; font-size: var(--fs-sm); color: var(--danger); }
 
 @media (max-width: 680px) {
   .agents { padding: var(--s-4); gap: var(--s-4); }

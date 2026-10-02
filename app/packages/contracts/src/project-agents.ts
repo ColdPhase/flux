@@ -13,8 +13,12 @@ export const projectAgentsPath = (projectId: string) => `/api/v1/projects/${proj
  * - `offline`: authorized before, no open client session now.
  * - `session_open`: a client started a session that has not expired. It says a client connected,
  *   not that it is working; activity is shown only by `lastActivity`.
+ * - `unavailable`: Flux would refuse this connection's calls now (its agent lost the access its
+ *   scopes need on one of its selected projects). Only its owner can restore it.
+ * `offline` and `not_signed_in` differ by whether a token was ever issued or a session ever opened;
+ * choosing the connection on the consent page alone is not an authorization.
  */
-export type ProjectAgentConnectionState = 'not_signed_in' | 'offline' | 'session_open';
+export type ProjectAgentConnectionState = 'not_signed_in' | 'offline' | 'session_open' | 'unavailable';
 
 export interface ProjectAgentConnection {
   id: string;
@@ -29,7 +33,7 @@ export interface ProjectAgentConnection {
   state: ProjectAgentConnectionState;
   /** The open session's start and end; null unless `session_open`. */
   session: { startedAt: string; expiresAt: string } | null;
-  /** The connection's latest completed native action in this project. */
+  /** The connection's latest completed action in this project; lease renewals (heartbeats) are not activity. */
   lastActivity: { operation: AgentOperation; at: string } | null;
 }
 

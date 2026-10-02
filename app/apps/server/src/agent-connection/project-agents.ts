@@ -11,8 +11,8 @@ export async function projectAgentRoutes(app: FastifyInstance, { db, sessions }:
     async authorizeRead(reader, projectId, tx) {
       enforce(await evaluateProject(reader, 'project.read', projectId, tx), 'project');
     },
-    async canRead(principal, projectId, tx) {
-      return (await evaluateProject(principal, 'project.read', projectId, tx)).allowed;
+    async allows(principal, action, projectId, tx) {
+      return (await evaluateProject(principal, action, projectId, tx)).allowed;
     },
   }));
   app.setErrorHandler((error: FastifyError | DomainError, _request, reply) => {

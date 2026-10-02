@@ -145,13 +145,13 @@ class AgentsViewJourney(unittest.TestCase):
         self.assertEqual(discussion["root"]["body"], "I'll take the reconnect bug with Codex; Claude Code reviews it.")
         self.assertEqual(discussion["root"]["authorId"], HUBERT["id"])
         marek = self.open_agents("marek")
-        expect(marek.get_by_text("I'll take the reconnect bug with Codex")).to_be_visible()
+        expect(marek.get_by_role("region", name=f"Thread of {TASK}").get_by_text("I'll take the reconnect bug with Codex")).to_be_visible()
         reply = marek.get_by_label("Write to this task")
         reply.fill("OK. Workshop PC is offline until tonight.")
         marek.get_by_role("button", name="Send to task").click()
-        expect(marek.get_by_text("Workshop PC is offline until tonight")).to_be_visible()
+        expect(marek.get_by_role("region", name=f"Thread of {TASK}").get_by_text("Workshop PC is offline until tonight")).to_be_visible()
         page.reload()
-        expect(page.get_by_text("Workshop PC is offline until tonight")).to_be_visible()
+        expect(page.get_by_role("region", name=f"Thread of {TASK}").get_by_text("Workshop PC is offline until tonight")).to_be_visible()
         discussion = self.api(page, "GET", f"/api/v1/work/{self.ids['task']}/discussion", status=200)
         bodies = [discussion["root"]["body"], *[m["body"] for m in discussion["messages"] if m["id"] != discussion["root"]["id"]]]
         self.assertEqual(bodies.count("OK. Workshop PC is offline until tonight."), 1, "one send, one message")
@@ -162,6 +162,52 @@ class AgentsViewJourney(unittest.TestCase):
         page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks")).click()
         page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Agents")).click()
         expect(page.get_by_label("Write to this task")).to_have_value("Half-written note about the firmware")
+
+    def test_04b_a_draft_belongs_to_its_account(self) -> None:
+        page = self.open_agents("hubert")
+        page.get_by_label("Write to this task").fill("Hubert's private half-thought")
+        # Another account signs in within the same browser storage: Hubert's unsent text is not theirs.
+        page.context.clear_cookies()
+        page.context.add_cookies(self.states["marek"]["cookies"])
+        page.goto(f"/projects/{self.ids['project']}/agents")
+        expect(page.get_by_role("heading", level=1, name="Working together")).to_be_visible()
+        expect(page.get_by_label("Write to this task")).to_have_value("")
+
+    def test_04c_a_lost_response_is_retried_without_a_duplicate(self) -> None:
+        page = self.open_agents("hubert")
+        path = f"/api/v1/work/{self.ids['task']}/discussion"
+        lost: list[str] = []
+
+        def lose_first(route) -> None:
+            if route.request.method != "POST" or lost:
+                route.continue_()
+                return
+            route.fetch()  # the server commits the contribution ...
+            lost.append(route.request.post_data or "")
+            route.fulfill(status=503, body="{}")  # ... but the browser never learns it
+
+        page.route(f"**{path}", lose_first)
+        box = page.get_by_label("Write to this task")
+        box.fill("Firmware 1.4 fixes the reconnect loop.")
+        box.press("Enter")
+        expect(page.get_by_role("alert")).to_contain_text("Your text is kept")
+        expect(box).to_have_value("Firmware 1.4 fixes the reconnect loop.")
+        page.reload()
+        expect(box).to_have_value("Firmware 1.4 fixes the reconnect loop.")
+        page.get_by_role("button", name="Send to task").click()
+        expect(box).to_have_value("")
+        discussion = self.api(page, "GET", path, status=200)
+        bodies = [discussion["root"]["body"], *[m["body"] for m in discussion["messages"] if m["id"] != discussion["root"]["id"]]]
+        self.assertEqual(bodies.count("Firmware 1.4 fixes the reconnect loop."), 1, "the retry reused the first attempt's message id")
+        self.assertEqual(len(lost), 1, "exactly one attempt lost its response")
+
+    def test_04d_a_failed_send_is_visible_on_a_phone(self) -> None:
+        page = self.open_agents("hubert", phone=True)
+        page.route(f"**/api/v1/work/{self.ids['task']}/discussion", lambda route: route.abort() if route.request.method == "POST" else route.continue_())
+        page.get_by_label("Write to this task").fill("Battery check tonight")
+        page.get_by_role("button", name="Send to task").click()
+        expect(page.get_by_role("alert")).to_be_visible()
+        expect(page.get_by_role("alert")).to_contain_text("Not sent")
 
     def test_05_outsiders_cannot_open_the_view(self) -> None:
         outsider = self.page("outsider")

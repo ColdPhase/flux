@@ -36,8 +36,8 @@ function lastTasksSearch(projectId: string) {
 
 /** Tab order for the slide direction: Home's views, or a project's Conversation · Tasks · Map · Docs. */
 function viewOrder(pathname: string) {
-  const inProject = pathname.match(/^\/projects\/[^/]+(?:\/(tasks|map|docs))?/);
-  if (inProject) return ['conversation', 'tasks', 'map', 'docs'].indexOf(inProject[1] ?? 'conversation');
+  const inProject = pathname.match(/^\/projects\/[^/]+(?:\/(tasks|map|docs|agents))?/);
+  if (inProject) return ['conversation', 'tasks', 'map', 'docs', 'agents'].indexOf(inProject[1] ?? 'conversation');
   // A direct message's Messages · Sketches (#96).
   const inDm = pathname.match(/^\/dm\/(?!new$)[^/]+(\/sketches)?/);
   if (inDm) return inDm[1] ? 1 : 0;

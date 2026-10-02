@@ -3,6 +3,7 @@ import { Link, useLoaderData, useSearchParams, type LoaderFunctionArgs } from 'r
 import type { AgentOperation, ConversationMessage, ProjectAgentConnection, ProjectAgents as ProjectAgentsData, TaskDiscussion, WorkItem } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { useShellData } from '../app/data';
+import { useDraft } from '../app/drafts';
 import { useProjectShell } from '../project/data';
 import { Button, EmptyState, Icon } from '../ui';
 import { STATUS_LABEL, isFinished } from '../work/format';
@@ -22,9 +23,12 @@ const CLIENT_LABEL: Record<ProjectAgentConnection['clientDesignation'], string> 
   claude_code: 'Claude Code', codex: 'Codex', other: 'External client',
 };
 
-const OPERATION_LABEL: Partial<Record<AgentOperation, string>> = {
+const OPERATION_LABEL: Record<AgentOperation, string> = {
   'work.create': 'created a task', 'work.update': 'updated a task', 'result.record': 'recorded a result',
-  'decision.propose': 'proposed a decision',
+  'decision.propose': 'proposed a decision', 'map.create': 'created a map', 'map.rename': 'renamed a map',
+  'map.thought.create': 'added a thought', 'map.thought.update': 'edited a thought', 'map.thought.delete': 'removed a thought',
+  'map.positions.update': 'arranged the map', 'map.link.create': 'linked thoughts', 'map.link.delete': 'unlinked thoughts',
+  'cowork.claim': 'took a task', 'cowork.renew': 'is still on a task', 'cowork.release': 'released a task', 'cowork.request': 'asked for help',
 };
 
 const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
@@ -38,13 +42,14 @@ function when(iso: string) {
 function stateLine(connection: ProjectAgentConnection) {
   if (connection.state === 'session_open') return `Session open since ${when(connection.session!.startedAt)}`;
   if (connection.state === 'offline') return 'Offline';
+  if (connection.state === 'unavailable') return connection.own ? 'Can’t act here now: check this agent’s project access' : 'Can’t act here now';
   return connection.own ? 'Not signed in from your client yet' : 'Not signed in yet';
 }
 
 function activityLine(connection: ProjectAgentConnection) {
   const last = connection.lastActivity;
   if (!last) return null;
-  const label = OPERATION_LABEL[last.operation] ?? last.operation.replace(/[._]/g, ' ');
+  const label = OPERATION_LABEL[last.operation];
   return `Last: ${label} · ${when(last.at)}`;
 }
 
@@ -66,38 +71,40 @@ function Connection({ connection }: { connection: ProjectAgentConnection }) {
   );
 }
 
-const DRAFT_KEY = (workId: string) => `flux.task-draft.${workId}`;
-function readDraft(workId: string) {
-  try { return sessionStorage.getItem(DRAFT_KEY(workId)) ?? ''; } catch { return ''; }
-}
-function writeDraft(workId: string, text: string) {
-  try { if (text) sessionStorage.setItem(DRAFT_KEY(workId), text); else sessionStorage.removeItem(DRAFT_KEY(workId)); } catch { /* private mode */ }
-}
-
 function authorName(message: ConversationMessage, names: Map<string, string>) {
   if (message.authorId === null) return `${message.author.name ?? 'Agent'}`;
   return names.get(message.authorId) ?? 'Someone';
 }
 
+/** A sent-but-unconfirmed contribution: its text and the one client id every retry reuses. */
+function parsePending(raw: string): { body: string; id: string } | null {
+  try {
+    const value = JSON.parse(raw) as { body?: unknown; id?: unknown };
+    return typeof value.body === 'string' && typeof value.id === 'string' ? { body: value.body, id: value.id } : null;
+  } catch { return null; }
+}
+
 /** The task's one thread: the real first contribution as root, then its replies. */
-function TaskThread({ task, meId, names }: { task: WorkItem; meId: string; names: Map<string, string> }) {
+function TaskThread({ task, meId, names, canWrite }: { task: WorkItem; meId: string; names: Map<string, string>; canWrite: boolean }) {
   const [discussion, setDiscussion] = useState<TaskDiscussion | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [draft, setDraft] = useState(() => readDraft(task.id));
+  const [attempt, setAttempt] = useState(0);
+  // Per account and task, kept across views and reloads like every other composer (#40).
+  const draft = useDraft(meId, `task:${task.id}`);
+  const pendingStore = useDraft(meId, `task:${task.id}:pending`);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
-  // One client message id per submitted text: a retry of the same text never posts twice.
-  const pending = useRef<{ body: string; id: string } | null>(null);
+  const box = useRef<HTMLTextAreaElement>(null);
   const end = useRef<HTMLDivElement>(null);
 
   // Keyed by task id: a different task mounts a fresh thread with its own draft.
   useEffect(() => {
     const controller = new AbortController();
-    getTaskDiscussion(task.id, controller.signal).then(setDiscussion).catch((cause: unknown) => {
-      if (!controller.signal.aborted) setLoadError(cause instanceof NetworkError ? 'Flux is unreachable. Try again.' : 'This task thread could not be loaded.');
+    getTaskDiscussion(task.id, controller.signal).then((value) => { setDiscussion(value); setLoadError(null); }).catch((cause: unknown) => {
+      if (!controller.signal.aborted) setLoadError(cause instanceof NetworkError ? 'Flux is unreachable.' : 'This task thread could not be loaded.');
     });
     return () => controller.abort();
-  }, [task.id]);
+  }, [task.id, attempt]);
 
   const messages = useMemo(() => {
     if (!discussion) return [];
@@ -107,20 +114,24 @@ function TaskThread({ task, meId, names }: { task: WorkItem; meId: string; names
 
   const send = async (event?: FormEvent) => {
     event?.preventDefault();
-    const body = draft.trim();
-    if (!body || sending) return;
-    if (!pending.current || pending.current.body !== body) pending.current = { body, id: crypto.randomUUID() };
+    const body = draft.text.trim();
+    if (!body || sending || !canWrite) return;
+    // One client message id per text, persisted before sending: a retry after a lost response or a
+    // reload reuses it, so the server stores the contribution once.
+    const stored = parsePending(pendingStore.text);
+    const pending = stored && stored.body === body ? stored : { body, id: crypto.randomUUID() };
+    pendingStore.setText(JSON.stringify(pending));
     setSending(true); setSendError(null);
     try {
-      const message = await contributeToTask(task.id, { body, clientMessageId: pending.current.id, kind: 'text' });
-      pending.current = null;
-      setDraft(''); writeDraft(task.id, '');
+      const message = await contributeToTask(task.id, { body, clientMessageId: pending.id, kind: 'text' });
+      pendingStore.clear();
+      draft.clear();
       setDiscussion((current) => current && !current.messages.some((item) => item.id === message.id) && current.root?.id !== message.id
         ? { ...current, rootMessageId: current.rootMessageId ?? message.id, root: current.root ?? message, messages: [...current.messages, message] }
         : current);
-      requestAnimationFrame(() => end.current?.scrollIntoView({ block: 'nearest' }));
+      requestAnimationFrame(() => { end.current?.scrollIntoView({ block: 'nearest' }); box.current?.focus(); });
     } catch (cause) {
-      setSendError(cause instanceof ApiError && cause.status === 404 ? 'You can no longer write to this task.'
+      setSendError(cause instanceof ApiError && (cause.status === 404 || cause.status === 403) ? 'Not sent: you can no longer write to this task.'
         : cause instanceof NetworkError ? 'Not sent: Flux is unreachable. Your text is kept; send again.' : 'Not sent. Your text is kept; send again.');
     } finally {
       setSending(false);
@@ -134,10 +145,10 @@ function TaskThread({ task, meId, names }: { task: WorkItem; meId: string; names
   return (
     <section className="agents-thread" aria-label={`Thread of ${task.title}`}>
       <p className="agents-thread__top">Thread of this task · the same one shown in Conversation and Tasks</p>
-      {loadError ? <p className="agents-thread__error" role="alert">{loadError}</p> : null}
+      {loadError ? <p className="agents-thread__error" role="alert">{loadError} <button type="button" className="ui-link" onClick={() => setAttempt((n) => n + 1)}>Try again</button></p> : null}
       {!discussion && !loadError ? <p className="agents-thread__empty">Loading…</p> : null}
       {discussion && !messages.length ? <p className="agents-thread__empty">No one has written about this task yet. The first message starts its thread.</p> : null}
-      <ol className="agents-thread__list">
+      <ol className="agents-thread__list" aria-live="polite">
         {messages.map((message) => {
           const own = message.authorId === meId;
           const agent = message.authorId === null;
@@ -153,14 +164,17 @@ function TaskThread({ task, meId, names }: { task: WorkItem; meId: string; names
           );
         })}
       </ol>
+      {discussion?.messagePage.hasMoreBefore ? <p className="agents-thread__empty">Earlier messages are in the task's thread in Conversation.</p> : null}
       <div ref={end} />
       <form className="agents-composer" onSubmit={(event) => { void send(event); }}>
         <label className="ui-vh" htmlFor="agents-draft">Write to this task</label>
-        <textarea id="agents-draft" value={draft} rows={2} placeholder="Add to this work…" disabled={sending || !discussion}
-          onChange={(event) => { setDraft(event.target.value); writeDraft(task.id, event.target.value); }} onKeyDown={onKeyDown} />
+        <textarea id="agents-draft" ref={box} value={draft.text} rows={2} readOnly={sending} aria-busy={sending}
+          placeholder={canWrite ? 'Add to this work…' : 'You can read this task but not write to it.'} disabled={!discussion || !canWrite}
+          onChange={(event) => draft.setText(event.target.value)} onKeyDown={onKeyDown} />
+        {sendError ? <p className="agents-composer__error" role="alert">{sendError}</p> : null}
         <div className="agents-composer__row">
-          <span className="agents-composer__hint">{sendError ? <span role="alert">{sendError}</span> : 'Goes to the task thread · Enter sends, Shift+Enter new line'}</span>
-          <Button type="submit" variant="primary" icon="send" busy={sending} disabled={!draft.trim() || !discussion} aria-label="Send to task">Send</Button>
+          <span className="agents-composer__hint">Goes to the task thread · Enter sends, Shift+Enter new line</span>
+          <Button type="submit" variant="primary" icon="send" busy={sending} disabled={!draft.text.trim() || !discussion || !canWrite} aria-label="Send to task">Send</Button>
         </div>
       </form>
     </section>
@@ -173,8 +187,9 @@ export function ProjectAgents() {
   const { me } = useShellData();
   const [search, setSearch] = useSearchParams();
   const tasks = useMemo(() => (shell?.work.work ?? []).filter((item) => !item.parked && !isFinished(item)), [shell]);
-  const selectedId = search.get('task') ?? tasks[0]?.id ?? null;
-  const task = (shell?.work.work ?? []).find((item) => item.id === selectedId) ?? null;
+  // A `?task=` that is not one of this project's tasks falls back to the first open one.
+  const requested = (shell?.work.work ?? []).find((item) => item.id === search.get('task'));
+  const task = requested ?? tasks[0] ?? null;
   const names = useMemo(() => new Map((shell?.people ?? []).map((person) => [person.id, person.name])), [shell]);
   const select = (id: string) => setSearch((current) => { const next = new URLSearchParams(current); next.set('task', id); return next; }, { replace: true });
   const projectId = shell?.project.id ?? data.projectId;
@@ -204,7 +219,7 @@ export function ProjectAgents() {
             </select>
             {task ? <Link className="ui-link agents__open" to={`/projects/${projectId}/tasks?open=work:${task.id}`}>Open task<Icon name="chevron-right" size={12} /></Link> : null}
           </div>
-          {task ? <TaskThread key={task.id} task={task} meId={me.user.id} names={names} /> : null}
+          {task ? <TaskThread key={task.id} task={task} meId={me.user.id} names={names} canWrite={shell?.project.access !== 'viewer'} /> : null}
         </>
       ) : (
         <p className="agents__no-tasks">No open tasks. Create one in Tasks; agents and people then work on it here.</p>
