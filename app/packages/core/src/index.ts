@@ -90,3 +90,4 @@ export { policyPersonalRunAccess } from './access/personal-run-access.js';
 export * from './agent-connection/execution.js';
 export * from './agent-connection/grants.js';
 export * from './agent-connection/orientation.js';
+export * from './agent-connection/playbook.js';
