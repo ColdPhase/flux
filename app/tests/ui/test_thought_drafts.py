@@ -520,3 +520,16 @@ class ThoughtDraftJourney(unittest.TestCase):
         expect(page.locator(".sk-status")).to_contain_text("Edited")
         self.assertEqual(next(t for t in self.stored(page)["thoughts"] if t["id"] == self.parent)["text"], "Saved with the visible button")
         self.assertEqual(len(writes), 1, "one save")
+
+    def test_15_jump_to_shortcut_still_opens_while_typing_a_draft(self):
+        page = self.owner
+        self.open(page)
+        field = self.capture(page)
+        field.fill("Ask Jonas about the radar module")
+        field.press("Control+k")
+        jump = page.get_by_role("dialog", name="Jump to")
+        expect(jump).to_be_visible()
+        page.keyboard.press("Escape")
+        expect(jump).to_have_count(0)
+        expect(page.get_by_role("form", name="New thought draft").get_by_label("Thought text")).to_have_value("Ask Jonas about the radar module")
+        self.assertEqual(self.stored(page), self.before)

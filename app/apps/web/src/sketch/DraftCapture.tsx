@@ -12,7 +12,7 @@ export function DraftCapture({ draft, parent, saving, canWrite, onText, onSave, 
     <p className="sk-draft__context">New thought · {draft.parentId ? parent ? `Connected to “${parent}” on save` : 'Its parent is no longer available' : 'Top level'} · private until saved</p>
     <textarea ref={input} className="ui-input" rows={2} aria-label="Thought text" value={draft.text} maxLength={SKETCH_LIMITS.text} disabled={saving}
       onChange={(event) => onText(event.target.value)} onKeyDown={(event) => {
-        event.stopPropagation();
+        // Unrelated shortcuts (Ctrl/⌘ K opens Jump to… while typing) keep reaching the app.
         if (event.nativeEvent.isComposing) return;
         if (event.key === 'Escape' && !saving) { event.preventDefault(); onCancel(); }
         else if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (!saving && canWrite && draft.text.trim()) onSave(); }
