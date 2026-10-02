@@ -142,8 +142,9 @@ function AddPerson({ workspace, members, myRole, onAdded }: { workspace: Workspa
   return (
     <section className="details__sec" aria-labelledby="people-add">
       <h4 id="people-add">Add someone</h4>
-      <form className="people__add" onSubmit={(event) => void submit(event)} noValidate aria-describedby={problem ? 'people-add-problem' : undefined}>
-        <Input ref={emailRef} label="Email" type="email" inputMode="email" autoComplete="off" spellCheck={false} placeholder="name@example.com" value={email}
+      <form className="people__add" onSubmit={(event) => void submit(event)} noValidate>
+        <Input ref={emailRef} id="people-add-email" label="Email" type="email" inputMode="email" autoComplete="off" spellCheck={false} placeholder="name@example.com" value={email}
+          aria-invalid={problem ? true : undefined} aria-describedby={problem ? 'people-add-problem people-add-email-hint' : 'people-add-email-hint'}
           onChange={(event) => { setEmail(event.target.value); if (problem) setProblem(''); }}
           hint="They need an account at this Flux address first. Flux doesn’t send invitations." />
         <div className="people__field">
