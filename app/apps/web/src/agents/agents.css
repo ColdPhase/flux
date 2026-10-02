@@ -46,7 +46,8 @@
 .agents__open { display: inline-flex; align-items: center; gap: 2px; font-size: var(--fs-sm); }
 .agents__no-tasks { color: var(--text-3); font-size: var(--fs-sm); margin: 0; }
 
-.agents-thread { display: flex; flex-direction: column; gap: var(--s-3); flex: 1; min-height: 0; }
+/* On a tall screen the thread and its composer sit together at the bottom, as in a conversation. */
+.agents-thread { display: flex; flex-direction: column; justify-content: flex-end; gap: var(--s-3); flex: 1; min-height: 0; }
 .agents-thread__top { margin: 0; font-size: var(--fs-xs); color: var(--text-3); }
 .agents-thread__empty { margin: 0; color: var(--text-3); font-size: var(--fs-sm); }
 .agents-thread__error { margin: 0; color: var(--danger); font-size: var(--fs-sm); }
@@ -61,7 +62,7 @@
 .agents-msg--own .agents-msg__body { background: var(--accent-soft); border-radius: 10px 3px 10px 10px; padding: var(--s-3) var(--s-4); }
 
 .agents-composer {
-  position: sticky; bottom: 0; margin-top: auto;
+  position: sticky; bottom: 0;
   background: var(--bg); padding: var(--s-2) 0 var(--s-1);
 }
 .agents-composer textarea {

@@ -111,6 +111,8 @@ function TaskThread({ task, meId, names, canWrite }: { task: WorkItem; meId: str
     const all = discussion.root ? [discussion.root, ...discussion.messages.filter((item) => item.id !== discussion.root!.id)] : discussion.messages;
     return [...all].sort((a, b) => a.sequence - b.sequence);
   }, [discussion]);
+  // The same thread in the project conversation, once it has a root.
+  const inConversation = discussion?.conversationId ? `/projects/${discussion.projectId}/conversations/${discussion.conversationId}` : null;
 
   const send = async (event?: FormEvent) => {
     event?.preventDefault();
@@ -144,7 +146,7 @@ function TaskThread({ task, meId, names, canWrite }: { task: WorkItem; meId: str
 
   return (
     <section className="agents-thread" aria-label={`Thread of ${task.title}`}>
-      <p className="agents-thread__top">Thread of this task · the same one shown in Conversation and Tasks</p>
+      <p className="agents-thread__top">Thread of this task · the same one shown in Conversation{inConversation ? <> · <Link className="ui-link" to={inConversation}>Open in Conversation</Link></> : null}</p>
       {loadError ? <p className="agents-thread__error" role="alert">{loadError} <button type="button" className="ui-link" onClick={() => setAttempt((n) => n + 1)}>Try again</button></p> : null}
       {!discussion && !loadError ? <p className="agents-thread__empty">Loading…</p> : null}
       {discussion && !messages.length ? <p className="agents-thread__empty">No one has written about this task yet. The first message starts its thread.</p> : null}
@@ -164,7 +166,7 @@ function TaskThread({ task, meId, names, canWrite }: { task: WorkItem; meId: str
           );
         })}
       </ol>
-      {discussion?.messagePage.hasMoreBefore ? <p className="agents-thread__empty">Earlier messages are in the task's thread in Conversation.</p> : null}
+      {discussion?.messagePage.hasMoreBefore ? <p className="agents-thread__empty">Earlier messages are in the task's thread in {inConversation ? <Link className="ui-link" to={inConversation}>Conversation</Link> : 'Conversation'}.</p> : null}
       <div ref={end} />
       <form className="agents-composer" onSubmit={(event) => { void send(event); }}>
         <label className="ui-vh" htmlFor="agents-draft">Write to this task</label>

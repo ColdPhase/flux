@@ -223,6 +223,25 @@ class AgentsViewJourney(unittest.TestCase):
         self.assertLessEqual(overflow, 0, "no horizontal page scroll at 390px")
         shot(page, "agents-phone-390")
 
+    def test_07_the_thread_links_to_conversation_and_stays_by_the_composer(self) -> None:
+        page = self.open_agents("hubert")
+        thread = page.get_by_role("region", name=f"Thread of {TASK}")
+        expect(thread.get_by_text("Workshop PC is offline until tonight")).to_be_visible()
+        # The caption only names where the same thread is shown, and links to it.
+        expect(thread.get_by_text("the same one shown in Conversation", exact=False)).to_be_visible()
+        expect(thread.get_by_text("Conversation and Tasks")).to_have_count(0)
+        thread.get_by_role("link", name="Open in Conversation").click()
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/conversations/"))
+        expect(page.get_by_text("Workshop PC is offline until tonight").first).to_be_visible()
+        # On a tall screen a short thread sits next to its composer, not a screen away from it.
+        tall = self.open_agents("hubert")
+        tall.set_viewport_size({"width": 1080, "height": 1920})
+        last = tall.get_by_role("region", name=f"Thread of {TASK}").get_by_role("listitem").last.bounding_box()
+        composer = tall.get_by_label("Write to this task").bounding_box()
+        assert last and composer
+        self.assertLess(composer["y"] - (last["y"] + last["height"]), 120, "the composer follows the last message")
+        shot(tall, "agents-tall-1080x1920")
+
 
 if __name__ == "__main__":
     unittest.main()
