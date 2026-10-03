@@ -95,8 +95,12 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
                       title={project.workspaceName ? `${project.name} · ${project.workspaceName}` : project.name}
                       aria-label={project.hasNew ? `${project.name}, new activity` : undefined}>
                       <span className="side__pi" aria-hidden="true"><Icon name="spark" size={15} /></span>
-                      <span className="side__label">{project.name}</span>
-                      {project.workspaceName ? <span className="side__sub">{project.workspaceName}</span> : null}
+                      {project.workspaceName ? (
+                        <span className="side__names">
+                          <span className="side__label">{project.name}</span>
+                          <span className="side__sub">{project.workspaceName}</span>
+                        </span>
+                      ) : <span className="side__label">{project.name}</span>}
                       {project.hasNew ? <span className="side__dot" aria-hidden="true" /> : null}
                     </NavLink>
                     {open ? <ProjectThreads key={project.id} projectId={project.id} canStart={shell?.project.id === project.id && shell?.project.access !== 'viewer'} onNavigate={navigate} /> : null}
