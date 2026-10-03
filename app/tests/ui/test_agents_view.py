@@ -236,7 +236,7 @@ class AgentsViewJourney(unittest.TestCase):
         # Every message is reachable: the view scrolls, and at its end the newest message sits above
         # the sticky composer instead of under it (independent delta review of 466daf8).
         thread = page.get_by_role("region", name=f"Thread of {TASK}")
-        self.assertGreaterEqual(thread.get_by_role("listitem").count(), 3)
+        expect(thread.get_by_role("listitem").nth(2)).to_be_attached()
         # Opened without any manual scroll, the thread already shows its newest message above the composer.
         page.wait_for_timeout(300)
         placed = page.evaluate(NEWEST_PLACEMENT)
@@ -245,13 +245,7 @@ class AgentsViewJourney(unittest.TestCase):
         page.locator(".agents-scroll").evaluate("el => { el.scrollTop = 0; }")
         page.locator(".agents-scroll").evaluate("el => { el.scrollTop = el.scrollHeight; }")
         page.wait_for_timeout(200)
-        placed = page.evaluate("""() => {
-          const items = [...document.querySelectorAll('.agents-thread__list > li')];
-          const last = items[items.length - 1].getBoundingClientRect();
-          const composer = document.querySelector('.agents-composer').getBoundingClientRect();
-          const hit = document.elementFromPoint(last.left + 8, last.top + last.height / 2);
-          return { lastBottom: last.bottom, composerTop: composer.top, visible: !!hit && !!hit.closest('.agents-thread__list') };
-        }""")
+        placed = page.evaluate(NEWEST_PLACEMENT)
         self.assertLessEqual(placed["lastBottom"], placed["composerTop"] + 1, "the newest message ends above the composer")
         self.assertTrue(placed["visible"], "the newest message is not covered by the composer")
         # A message just sent is shown above the composer too.

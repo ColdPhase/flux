@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { flushSync } from 'react-dom';
 import { Link, useLoaderData, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { AgentOperation, ConversationMessage, ProjectAgentConnection, ProjectAgents as ProjectAgentsData, TaskDiscussion, WorkItem } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
@@ -84,6 +85,15 @@ function parsePending(raw: string): { body: string; id: string } | null {
   } catch { return null; }
 }
 
+/**
+ * Scrolls the view's pane to its end, so the newest message sits above the sticky composer
+ * (scrollIntoView would ignore the composer and leave the message under it).
+ */
+function scrollPaneToEnd(marker: HTMLElement | null) {
+  const pane = marker?.closest<HTMLElement>('.agents-scroll');
+  if (pane) pane.scrollTop = pane.scrollHeight;
+}
+
 /** The task's one thread: the real first contribution as root, then its replies. */
 function TaskThread({ task, meId, names, canWrite }: { task: WorkItem; meId: string; names: Map<string, string>; canWrite: boolean }) {
   const [discussion, setDiscussion] = useState<TaskDiscussion | null>(null);
@@ -106,25 +116,19 @@ function TaskThread({ task, meId, names, canWrite }: { task: WorkItem; meId: str
     return () => controller.abort();
   }, [task.id, attempt]);
 
-  // The view's scroll pane, scrolled to its end: the newest message then sits above the sticky composer
-  // (scrollIntoView would ignore the composer and leave the message under it).
-  const toEnd = () => requestAnimationFrame(() => {
-    const pane = end.current?.closest<HTMLElement>('.agents-scroll');
-    if (pane) pane.scrollTop = pane.scrollHeight;
-  });
-  // A thread opens at its newest message, like a conversation (once per load, not on every update).
-  const opened = useRef(false);
-  useEffect(() => {
-    if (!discussion || opened.current) return;
-    opened.current = true;
-    toEnd();
-  }, [discussion]);
-
   const messages = useMemo(() => {
     if (!discussion) return [];
     const all = discussion.root ? [discussion.root, ...discussion.messages.filter((item) => item.id !== discussion.root!.id)] : discussion.messages;
     return [...all].sort((a, b) => a.sequence - b.sequence);
   }, [discussion]);
+  // A thread opens at its newest message, like a conversation: once per load, after its messages are
+  // on the page, and not on later updates. An empty thread keeps the view at its top.
+  const opened = useRef(false);
+  useLayoutEffect(() => {
+    if (!discussion || opened.current) return;
+    opened.current = true;
+    if (messages.length) scrollPaneToEnd(end.current);
+  }, [discussion, messages.length]);
   // The same thread in the project conversation, once it has a root.
   const inConversation = discussion?.conversationId ? `/projects/${discussion.projectId}/conversations/${discussion.conversationId}` : null;
 
@@ -142,12 +146,13 @@ function TaskThread({ task, meId, names, canWrite }: { task: WorkItem; meId: str
       const message = await contributeToTask(task.id, { body, clientMessageId: pending.id, kind: 'text' });
       pendingStore.clear();
       draft.clear();
-      setDiscussion((current) => current && !current.messages.some((item) => item.id === message.id) && current.root?.id !== message.id
+      // The sent message is on the page before the pane scrolls to it.
+      flushSync(() => setDiscussion((current) => current && !current.messages.some((item) => item.id === message.id) && current.root?.id !== message.id
         ? { ...current, conversationId: current.conversationId ?? message.conversationId, rootMessageId: current.rootMessageId ?? message.id,
           root: current.root ?? message, messages: [...current.messages, message] }
-        : current);
-      toEnd();
-      requestAnimationFrame(() => box.current?.focus({ preventScroll: true }));
+        : current));
+      scrollPaneToEnd(end.current);
+      box.current?.focus({ preventScroll: true });
     } catch (cause) {
       setSendError(cause instanceof ApiError && (cause.status === 404 || cause.status === 403) ? 'Not sent: you can no longer write to this task.'
         : cause instanceof NetworkError ? 'Not sent: Flux is unreachable. Your text is kept; send again.' : 'Not sent. Your text is kept; send again.');
