@@ -6,6 +6,7 @@ import { agentProposalRepository } from '@flux/db';
 import { agentProposalUseCases, enforce, evaluateProject, recordEvent, validateProposalCommand } from '@flux/core';
 import type { AgentProposal, Material, Project, Workspace } from '@flux/contracts';
 import { register, uniqueEmail, type ClientResponse } from './support/http.js';
+import { eventPorts } from '../../apps/server/src/events.js';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
@@ -20,7 +21,7 @@ const store = agentProposalUseCases(agentProposalRepository(db, {
     enforce(await evaluateProject(principal, 'project.read', projectId, tx, { lock: true }), 'project');
   },
   async recordCreated(principal, workspaceId, projectId, tx) {
-    await recordEvent(tx, principal, workspaceId, 'project.proposal_created.v1', projectId, {});
+    await recordEvent(eventPorts(tx), principal, workspaceId, 'project.proposal_created.v1', projectId, {});
   },
 }));
 

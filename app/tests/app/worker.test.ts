@@ -4,7 +4,7 @@ import { after, before, describe, test } from 'node:test';
 import { eq } from 'drizzle-orm';
 import { PgBoss } from 'pg-boss';
 import type { DraftSummary } from '@flux/contracts';
-import { createDatabase, draftResultRepository, schema } from '@flux/db';
+import { createDatabase, draftResultRepository, eventRepository, schema } from '@flux/db';
 import {
   addMember,
   createDraft,
@@ -37,7 +37,8 @@ after(async () => { await boss.stop(); await pool.end(); });
  * Enqueues through the real transactional path but delays the job for an hour, so the
  * Compose worker does not claim it and the test can run the handler with a barrier.
  */
-const delayed = { results: draftResultRepository, queue: pgBossQueue({ send: (name: string, data: object, options: object) =>
+const summaryPorts = { results: draftResultRepository, events: eventRepository };
+const delayed = { ...summaryPorts, queue: pgBossQueue({ send: (name: string, data: object, options: object) =>
   boss.send(name, data, { ...options, startAfter: 3600 }) } as unknown as Pick<PgBoss, 'send'>) };
 
 async function human(label: string): Promise<Principal> {
@@ -97,7 +98,7 @@ describe('draft.summarize.v1 worker', () => {
     const { owner, member, ws, item, summary } = await scenario('before-read');
     await removeMember(owner, ws.id, member.id, db);
     let read = false;
-    const outcome = await processDraftSummary(summary.id, db, draftResultRepository, { afterRead: async () => { read = true; } });
+    const outcome = await processDraftSummary(summary.id, db, summaryPorts, { afterRead: async () => { read = true; } });
     assert.equal(outcome, 'denied');
     assert.equal(read, false, 'inputs were not read');
     const stored = await row(summary.id);
@@ -110,7 +111,7 @@ describe('draft.summarize.v1 worker', () => {
   test('revocation between read and commit prevents the commit (race)', async () => {
     const { owner, member, ws, item, summary } = await scenario('race');
     let read = false;
-    const outcome = await processDraftSummary(summary.id, db, draftResultRepository, {
+    const outcome = await processDraftSummary(summary.id, db, summaryPorts, {
       afterRead: async () => {
         read = true;
         await removeMember(owner, ws.id, member.id, db);
@@ -127,7 +128,7 @@ describe('draft.summarize.v1 worker', () => {
 
   test('a draft made private between read and commit also prevents the commit', async () => {
     const { owner, item, summary } = await scenario('reshare');
-    const outcome = await processDraftSummary(summary.id, db, draftResultRepository, {
+    const outcome = await processDraftSummary(summary.id, db, summaryPorts, {
       afterRead: async () => { await shareDraft(owner, item.id, { scope: 'private', expectedVersion: item.version }, db); },
     });
     assert.equal(outcome, 'denied');
@@ -136,12 +137,12 @@ describe('draft.summarize.v1 worker', () => {
 
   test('an authorized run commits once and a redelivered job is skipped', async () => {
     const { item, summary } = await scenario('commit');
-    assert.equal(await processDraftSummary(summary.id, db, draftResultRepository), 'completed');
+    assert.equal(await processDraftSummary(summary.id, db, summaryPorts), 'completed');
     const stored = await row(summary.id);
     assert.equal(stored.status, 'completed');
     assert.equal(stored.wordCount, 3);
     assert.equal(stored.draftVersion, item.version);
-    assert.equal(await processDraftSummary(summary.id, db, draftResultRepository), 'skipped');
+    assert.equal(await processDraftSummary(summary.id, db, summaryPorts), 'skipped');
     assert.deepEqual(await completionEvents(item.id), ['draft.summary_requested.v1', 'draft.summary_completed.v1']);
   });
 
@@ -163,7 +164,7 @@ describe('draft.summarize.v1 worker', () => {
     const { owner, room, access, item, summary } = await grantScenario('grant-commit-first');
     const holding = barrier<number>();
     const gate = barrier();
-    const outcome = processDraftSummary(summary.id, db, draftResultRepository, {
+    const outcome = processDraftSummary(summary.id, db, summaryPorts, {
       beforeCommit: async (tx) => { holding.resolve(await backendPid(tx)); await gate.promise; },
     });
     const worker = await holding.promise;
@@ -183,7 +184,7 @@ describe('draft.summarize.v1 worker', () => {
     const revoked = barrier<number>();
     const gate = barrier();
     let revocation: Promise<void> | null = null;
-    const outcome = processDraftSummary(summary.id, db, draftResultRepository, {
+    const outcome = processDraftSummary(summary.id, db, summaryPorts, {
       afterRead: async () => {
         // The revoke runs on another connection and stays uncommitted while the worker commits.
         revocation = db.transaction(async (tx) => {

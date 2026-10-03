@@ -2,6 +2,7 @@ import { docRows, type DbExecutor } from '@flux/db';
 import { createDocUseCases, recordEvent, visibleFilter, type Database, type DocPorts, type DocRepository, type DocUnitOfWork } from '@flux/core';
 import { policyWorkAccess, workRepository } from '../work/adapters.js';
 import { markdownRenderer } from './markdown.js';
+import { eventPorts } from '../events.js';
 
 // Adapters that connect the core doc use cases (#112) to the access policy, the Drizzle rows,
 // the #101 link rows, the event log and the Markdown renderer. Core defines the ports (#46).
@@ -22,7 +23,7 @@ function docPorts(tx: DbExecutor): DocPorts {
     access: policyWorkAccess(tx),
     docs: docRepository(tx),
     work: workRepository(tx),
-    events: { record: async (principal, workspaceId, kind, projectId, data) => { await recordEvent(tx, principal, workspaceId, kind, projectId, data); } },
+    events: { record: async (principal, workspaceId, kind, projectId, data) => { await recordEvent(eventPorts(tx), principal, workspaceId, kind, projectId, data); } },
     renderer: markdownRenderer,
   };
 }

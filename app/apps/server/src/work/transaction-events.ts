@@ -1,4 +1,5 @@
 import { recordEvents, type EventIntent, type Transaction } from '@flux/core';
+import { eventPorts } from '../events.js';
 
 function freezeNested(value: unknown): void {
   if (value && typeof value === 'object') {
@@ -32,7 +33,7 @@ export function transactionEventSession(tx: Transaction) {
       if (flushing) return flushing;
       if (active) throw new Error('Await all native commands before flushing events');
       closed = true;
-      flushing = recordEvents(tx, intents);
+      flushing = recordEvents(eventPorts(tx), intents);
       return flushing;
     },
   };

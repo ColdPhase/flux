@@ -48,18 +48,6 @@
       "import": "pg-boss",
       "issue": "https://github.com/ColdPhase/flux/issues/46",
       "reason": "Manifest counterpart of the source exceptions above; remove each dependency once no core file imports it."
-    },
-    {
-      "file": "packages/core/src/events.ts",
-      "import": "drizzle-orm",
-      "issue": "https://github.com/ColdPhase/flux/issues/46",
-      "reason": "recordEvent writes events and fan-out audience rows with Drizzle (merged in #47 before this rule); move to an EventRepository port with a @flux/db adapter."
-    },
-    {
-      "file": "packages/core/src/events.ts",
-      "import": "@flux/db",
-      "issue": "https://github.com/ColdPhase/flux/issues/46",
-      "reason": "recordEvent writes events and fan-out audience rows with Drizzle (merged in #47 before this rule); move to an EventRepository port with a @flux/db adapter."
     }
   ]
 }

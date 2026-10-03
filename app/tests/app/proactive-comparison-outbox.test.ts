@@ -7,6 +7,7 @@ import { recordEvent } from '@flux/core';
 import type { WorkResult } from '@flux/contracts';
 import { proactiveReservation } from '../../apps/worker/src/proactive-comparison/reservation-adapter.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
+import { eventPorts } from '../../apps/server/src/events.js';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
@@ -68,7 +69,7 @@ describe('negative-result candidate and budget reservation (#58)', () => {
     assert.deepEqual([(await candidate(peerNegative.id))?.owner_user_id, (await candidate(peerNegative.id))?.rule_id],
       [owner.id, ruleId], 'the peer’s project-visible result uses only the owner’s explicit rule and budget');
     const beforeProposal = (await pool.query('SELECT count(*)::int AS n FROM proactive_comparison_outbox WHERE project_id=$1', [projectId])).rows[0].n;
-    await db.transaction((tx) => recordEvent(tx, { kind: 'agent', id: agentId }, workspaceId,
+    await db.transaction((tx) => recordEvent(eventPorts(tx), { kind: 'agent', id: agentId }, workspaceId,
       'project.proposal_created.v1', projectId, {}));
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM proactive_comparison_outbox WHERE project_id=$1', [projectId])).rows[0].n,
       beforeProposal, 'a proposal-origin event cannot start another comparison');
