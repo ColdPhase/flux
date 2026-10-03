@@ -166,6 +166,9 @@ describe('return view: since you left', () => {
     assert.deepEqual(back.nextStep && [back.nextStep.text, back.nextStep.reason, back.nextStep.item],
       ['Decide on the proposed rule', 'Ari proposed “Warm light after 22:00”. You can accept it.', `decision:${proposal.id}`]);
     assert.equal((await summary(ari, place)).nextStep, null, 'the proposer is not asked');
+    // Decided and seen, so it does not stay on Nia's Home for the tests that follow.
+    json(await post(nia, `/api/v1/decisions/${proposal.id}/accept`, {}, { 'if-match': '"1"' }), 200);
+    await view(nia, place);
   });
 
   test('doc changes (#112) are one item in human language that opens what changed', async () => {
