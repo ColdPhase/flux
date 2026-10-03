@@ -1,11 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
-import { fromDrizzle, type PgBoss } from 'pg-boss';
-import { schema } from '@flux/db';
 import type { DraftSummary } from '@flux/contracts';
 import { ForbiddenError, NotFoundError } from '../access/errors.js';
 import { assertAuthorized, enforce, evaluateDraft, isUuid } from '../access/policy.js';
 import { recordEvent } from '../events.js';
+import type { JobQueue } from '../push/ports.js';
 import type { Database, Executor, Principal } from '../types.js';
 
 /**
@@ -16,10 +14,44 @@ import type { Database, Executor, Principal } from '../types.js';
  */
 export const DRAFT_SUMMARY_JOB = 'draft.summarize.v1';
 
-type ResultRow = typeof schema.draftResults.$inferSelect;
-type JobQueue = Pick<PgBoss, 'send'>;
+export interface DraftResultRecord {
+  id: string;
+  workspaceId: string;
+  draftId: string;
+  principalKind: 'human' | 'agent';
+  principalId: string;
+  status: 'queued' | 'running' | 'completed' | 'denied';
+  deniedAtStage: 'before_read' | 'before_commit' | null;
+  draftVersion: number | null;
+  wordCount: number | null;
+  createdAt: Date;
+  completedAt: Date | null;
+}
 
-function toSummary(row: ResultRow): DraftSummary {
+/** Result rows and the draft text they are computed from (#87), bound to one transaction or connection. */
+export interface DraftResultRepository {
+  insert(result: { id: string; workspaceId: string; draftId: string; principalKind: 'human' | 'agent'; principalId: string }): Promise<void>;
+  setJobId(id: string, jobId: string): Promise<DraftResultRecord>;
+  /** The draft's newest results first. */
+  list(draftId: string, limit: number): Promise<DraftResultRecord[]>;
+  get(draftId: string, resultId: string): Promise<DraftResultRecord | null>;
+  /** Marks a queued or running result running; null when it is missing or already finished. */
+  claim(resultId: string): Promise<DraftResultRecord | null>;
+  markDenied(resultId: string, stage: 'before_read' | 'before_commit'): Promise<void>;
+  /** Completes a running result; false when it is no longer running. */
+  complete(resultId: string, wordCount: number, draftVersion: number): Promise<boolean>;
+  readDraftBody(draftId: string): Promise<{ body: string; version: number } | null>;
+}
+
+export type DraftResultStores = (db: Executor) => DraftResultRepository;
+
+export interface DraftSummaryRequestPorts {
+  results: DraftResultStores;
+  /** Bound to the request transaction, so the job commits with its result row. */
+  queue: (tx: Executor) => Pick<JobQueue, 'enqueueDraftSummary'>;
+}
+
+function toSummary(row: DraftResultRecord): DraftSummary {
   return {
     id: row.id,
     draftId: row.draftId,
@@ -43,33 +75,31 @@ export function countWords(text: string) {
  * Queues a summary of a draft the principal can read. The result row, the event and the
  * pg-boss job commit in one transaction.
  */
-export async function requestDraftSummary(principal: Principal, draftId: string, db: Database, boss: JobQueue): Promise<DraftSummary> {
+export async function requestDraftSummary(principal: Principal, draftId: string, db: Database, ports: DraftSummaryRequestPorts): Promise<DraftSummary> {
   if (principal.kind !== 'human' && principal.kind !== 'agent') throw new ForbiddenError('Only people and agents can request summaries');
   const kind = principal.kind;
   return db.transaction(async (tx) => {
     const { draft } = enforce(await evaluateDraft(principal, 'draft.read', draftId, tx, { lock: true }), 'draft');
+    const results = ports.results(tx);
     const id = randomUUID();
-    await tx.insert(schema.draftResults).values({ id, workspaceId: draft!.workspaceId, draftId, principalKind: kind, principalId: principal.id });
-    const jobId = await boss.send(DRAFT_SUMMARY_JOB, { resultId: id }, { db: fromDrizzle(tx, sql) });
+    await results.insert({ id, workspaceId: draft!.workspaceId, draftId, principalKind: kind, principalId: principal.id });
+    const jobId = await ports.queue(tx).enqueueDraftSummary({ resultId: id });
     if (!jobId) throw new Error('Job enqueue failed');
-    const [row] = await tx.update(schema.draftResults).set({ jobId }).where(eq(schema.draftResults.id, id)).returning();
+    const row = await results.setJobId(id, jobId);
     await recordEvent(tx, principal, draft!.workspaceId, 'draft.summary_requested.v1', draftId, { resultId: id });
-    return toSummary(row!);
+    return toSummary(row);
   });
 }
 
-export async function listDraftSummaries(principal: Principal, draftId: string, db: Database): Promise<DraftSummary[]> {
+export async function listDraftSummaries(principal: Principal, draftId: string, db: Database, results: DraftResultStores): Promise<DraftSummary[]> {
   enforce(await evaluateDraft(principal, 'draft.read', draftId, db), 'draft');
-  const rows = await db.select().from(schema.draftResults).where(eq(schema.draftResults.draftId, draftId))
-    .orderBy(desc(schema.draftResults.createdAt), desc(schema.draftResults.id)).limit(20);
-  return rows.map(toSummary);
+  return (await results(db).list(draftId, 20)).map(toSummary);
 }
 
 /** A result is readable by whoever can currently read its draft. */
-export async function getDraftSummary(principal: Principal, draftId: string, resultId: string, db: Database): Promise<DraftSummary> {
+export async function getDraftSummary(principal: Principal, draftId: string, resultId: string, db: Database, results: DraftResultStores): Promise<DraftSummary> {
   enforce(await evaluateDraft(principal, 'draft.read', draftId, db), 'draft');
-  const [row] = isUuid(resultId) ? await db.select().from(schema.draftResults)
-    .where(and(eq(schema.draftResults.id, resultId), eq(schema.draftResults.draftId, draftId))) : [];
+  const row = isUuid(resultId) ? await results(db).get(draftId, resultId) : null;
   if (!row) throw new NotFoundError('Summary', 'SUMMARY_NOT_FOUND');
   return toSummary(row);
 }
@@ -90,10 +120,9 @@ function isAccessDenial(error: unknown) {
   return error instanceof NotFoundError || error instanceof ForbiddenError;
 }
 
-async function deny(db: Database, row: ResultRow, principal: Principal, stage: 'before_read' | 'before_commit') {
-  await db.update(schema.draftResults).set({ status: 'denied', deniedAtStage: stage, updatedAt: new Date(), completedAt: new Date() })
-    .where(eq(schema.draftResults.id, row.id));
-  await recordEvent(db, principal, row.workspaceId, 'draft.summary_denied.v1', row.draftId, { resultId: row.id, stage });
+async function deny(tx: Executor, results: DraftResultStores, row: DraftResultRecord, principal: Principal, stage: 'before_read' | 'before_commit') {
+  await results(tx).markDenied(row.id, stage);
+  await recordEvent(tx, principal, row.workspaceId, 'draft.summary_denied.v1', row.draftId, { resultId: row.id, stage });
 }
 
 /**
@@ -105,10 +134,9 @@ async function deny(db: Database, row: ResultRow, principal: Principal, stage: '
  * later waits until the result has committed. If access was lost at either point, nothing
  * is computed or committed and the result becomes `denied`.
  */
-export async function processDraftSummary(resultId: string, db: Database, hooks: DraftSummaryHooks = {}): Promise<DraftSummaryOutcome> {
+export async function processDraftSummary(resultId: string, db: Database, results: DraftResultStores, hooks: DraftSummaryHooks = {}): Promise<DraftSummaryOutcome> {
   if (!isUuid(resultId)) return 'skipped';
-  const [row] = await db.update(schema.draftResults).set({ status: 'running', updatedAt: new Date() })
-    .where(and(eq(schema.draftResults.id, resultId), inArray(schema.draftResults.status, ['queued', 'running']))).returning();
+  const row = await results(db).claim(resultId);
   if (!row) return 'skipped';
   const principal: Principal = { kind: row.principalKind, id: row.principalId };
   const draftRef = { type: 'draft', id: row.draftId } as const;
@@ -117,10 +145,10 @@ export async function processDraftSummary(resultId: string, db: Database, hooks:
     await assertAuthorized(principal, 'draft.read', draftRef, db);
   } catch (error) {
     if (!isAccessDenial(error)) throw error;
-    await db.transaction((tx) => deny(tx, row, principal, 'before_read'));
+    await db.transaction((tx) => deny(tx, results, row, principal, 'before_read'));
     return 'denied';
   }
-  const [draft] = await db.select({ body: schema.drafts.body, version: schema.drafts.version }).from(schema.drafts).where(eq(schema.drafts.id, row.draftId));
+  const draft = await results(db).readDraftBody(row.draftId);
   if (!draft) return 'skipped';
   const wordCount = countWords(draft.body);
   await hooks.afterRead?.();
@@ -130,13 +158,10 @@ export async function processDraftSummary(resultId: string, db: Database, hooks:
       await assertAuthorized(principal, 'draft.read', draftRef, tx, { lock: true });
     } catch (error) {
       if (!isAccessDenial(error)) throw error;
-      await deny(tx, row, principal, 'before_commit');
+      await deny(tx, results, row, principal, 'before_commit');
       return 'denied' as const;
     }
-    const updated = await tx.update(schema.draftResults)
-      .set({ status: 'completed', wordCount, draftVersion: draft.version, updatedAt: new Date(), completedAt: new Date() })
-      .where(and(eq(schema.draftResults.id, row.id), eq(schema.draftResults.status, 'running'))).returning({ id: schema.draftResults.id });
-    if (!updated.length) return 'skipped' as const;
+    if (!(await results(tx).complete(row.id, wordCount, draft.version))) return 'skipped' as const;
     await hooks.beforeCommit?.(tx);
     await recordEvent(tx, principal, row.workspaceId, 'draft.summary_completed.v1', row.draftId, { resultId: row.id });
     return 'completed' as const;

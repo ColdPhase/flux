@@ -408,10 +408,12 @@ exists so the worker authorization contract is real and tested:
   `GET /api/v1/drafts/:id/summaries/:resultId` are visible to whoever can currently
   read the draft.
 
-`processDraftSummary(resultId, db, hooks)` accepts two hooks. `afterRead` runs between
-the read and the commit transaction. `beforeCommit(tx)` runs inside the commit
-transaction after the recheck, while its locks are held. Only tests pass them, to place
-a revocation at those points. The Compose worker never passes hooks.
+`processDraftSummary(resultId, db, results, hooks)` reads and writes result rows through
+its `DraftResultRepository` port (`results`, bound to each step's transaction), and the
+request sends its job through the core `JobQueue` port in the same transaction. It accepts
+two hooks. `afterRead` runs between the read and the commit transaction. `beforeCommit(tx)`
+runs inside the commit transaction after the recheck, while its locks are held. Only tests
+pass them, to place a revocation at those points. The Compose worker never passes hooks.
 
 ## If-Match preconditions
 

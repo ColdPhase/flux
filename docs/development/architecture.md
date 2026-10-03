@@ -120,7 +120,6 @@ recorded in the allowlist and tracked by [#46](https://github.com/ColdPhase/flux
 | `app/packages/core/src/index.ts` | `drizzle-orm`, `pg-boss`, `@flux/db` | Move the integration-fixture sample use case behind a transaction/outbox port or out of core; leave `index.ts` as exports only. |
 | `app/packages/core/src/types.ts` | `@flux/db` | Replace the Drizzle-derived `Database`/`Executor` types with a core-owned transaction port. |
 | `app/packages/core/src/events.ts` | `drizzle-orm`, `@flux/db` | Merged in #47 before this rule. Move event recording to a `@flux/db` repository behind an `EventRepository` port. The per-recipient audience reads already sit behind `StreamAudienceRepository` ([#80](https://github.com/ColdPhase/flux/issues/80)). |
-| `app/packages/core/src/jobs/draft-summary.ts` | `drizzle-orm`, `pg-boss`, `@flux/db` | Merged in #47. Split it into a pure use case plus repository and `JobQueue` ports. |
 | `app/packages/core/package.json` | `@flux/db`, `drizzle-orm`, `pg-boss` | Remove each dependency when no core file uses it. |
 
 Until the access policy is split, new core modules that call `authorize` import it
@@ -150,3 +149,11 @@ hashing, the expiry decision, the reuse error and replay authorization; key stor
 transaction-scoped advisory lock, lookup, save for 2xx only and expired-key cleanup) sits behind
 its `IdempotencyStore` port with the adapter `app/packages/db/src/repositories/idempotency.ts`
 ([#86](https://github.com/ColdPhase/flux/issues/86)).
+
+Resolved from the allowlist: `app/packages/core/src/jobs/draft-summary.ts` keeps the word
+count, the summary shape and the orchestration (the locked read check before the request's
+insert and enqueue, the recheck with locks inside the commit transaction). Result rows sit
+behind its `DraftResultRepository` port (`app/packages/db/src/repositories/draft-results.ts`),
+and the job is sent through the shared core `JobQueue` port, whose pg-boss adapter
+(`pgBossQueue` in `app/apps/server/src/push/adapters.ts`) enqueues in the caller's transaction
+([#87](https://github.com/ColdPhase/flux/issues/87)).
