@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import { and, eq, sql } from 'drizzle-orm';
-import { createDatabase, notificationFactRows, personalRunRows, projectExportRows, schema } from '@flux/db';
+import { notificationFactRows, personalRunRows, projectExportRows, schema } from '@flux/db';
 import { candidatesFor, ConflictError, createTaskDiscussionUseCases, InvalidInputError, NotFoundError } from '@flux/core';
 import type { GeneratorEvent } from '@flux/core';
 import { projectExportPath, type Conversation, type ConversationMessage, type Material, type Page,
@@ -13,9 +13,7 @@ import { backendPid, settled, waitUntilBlockedBy } from './support/locks.js';
 import { nativeWorkInTransaction } from '../../apps/server/src/work/adapters.js';
 import { transactionEventSession } from '../../apps/server/src/work/transaction-events.js';
 import { guardFinalEventPhase } from './support/final-events.js';
-
-const { db, pool } = createDatabase(process.env.DATABASE_URL!);
-after(() => pool.end());
+import { db, pool } from './support/db.js';
 
 async function scene() {
   const [owner, writer, reader, outsider] = await Promise.all(['root-owner', 'root-writer', 'root-reader', 'root-outsider'].map(person));

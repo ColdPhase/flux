@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, before, describe, test } from 'node:test';
+import { before, describe, test } from 'node:test';
 import type { ConversationMessage, Dm, DmSummary, Page, Workspace } from '@flux/contracts';
-import { createDatabase } from '@flux/db';
 import { authorize, createAgent, type Principal } from '@flux/core';
+import { db, pool } from './support/db.js';
 import { addMember, expectStatus, person, removeMember, workspace, type Person } from './support/people.js';
 import { StreamClient } from './support/stream.js';
 
@@ -11,10 +11,6 @@ import { StreamClient } from './support/stream.js';
 // participants (owners and admins outside a DM get 404), one idempotent 1:1 DM per pair, group
 // DMs, leaving and workspace removal, #36 message retries, If-Match, Idempotency-Key and
 // stream events whose audience is the participants.
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { db, pool } = createDatabase(connectionString);
-after(() => pool.end());
 
 const dmsOf = (workspaceId: string) => `/api/v1/workspaces/${workspaceId}/dms`;
 
