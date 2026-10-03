@@ -1,6 +1,7 @@
 import { docRows, type DbExecutor } from '@flux/db';
-import { createDocUseCases, recordEvent, visibleFilter, type Database, type DocPorts, type DocRepository, type DocUnitOfWork } from '@flux/core';
+import { createDocUseCases, recordEvent, visibleFilter, type Database, type DocPorts, type DocRepository, type DocUnitOfWork, type Transaction } from '@flux/core';
 import { policyWorkAccess, workRepository } from '../work/adapters.js';
+import type { TransactionEventSession } from '../work/transaction-events.js';
 import { markdownRenderer } from './markdown.js';
 import { eventPorts } from '../events.js';
 
@@ -18,12 +19,12 @@ export function docRepository(tx: DbExecutor): DocRepository {
   };
 }
 
-function docPorts(tx: DbExecutor): DocPorts {
+function docPorts(tx: DbExecutor, events?: DocPorts['events']): DocPorts {
   return {
     access: policyWorkAccess(tx),
     docs: docRepository(tx),
     work: workRepository(tx),
-    events: { record: async (principal, workspaceId, kind, projectId, data) => { await recordEvent(eventPorts(tx), principal, workspaceId, kind, projectId, data); } },
+    events: events ?? { record: async (principal, workspaceId, kind, projectId, data) => { await recordEvent(eventPorts(tx), principal, workspaceId, kind, projectId, data); } },
     renderer: markdownRenderer,
   };
 }
@@ -34,3 +35,12 @@ export function docUnitOfWork(db: Database): DocUnitOfWork {
 }
 
 export const docUseCases = (db: Database) => createDocUseCases(docUnitOfWork(db));
+
+/**
+ * The same doc commands inside a #152 standing-grant execution: the caller's transaction, its single final event
+ * batch, and the agent as the real author. Only that composition accepts an agent principal.
+ */
+export function nativeDocsInEventSession(tx: Transaction, session: TransactionEventSession) {
+  const ports = docPorts(tx, session);
+  return createDocUseCases({ run: (action) => session.run(() => action(ports)) }, { agentAuthors: true });
+}

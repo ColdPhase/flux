@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { eq } from 'drizzle-orm';
 import { PgBoss } from 'pg-boss';
 import type { DraftSummary } from '@flux/contracts';
-import { createDatabase, draftResultRepository, eventRepository, schema } from '@flux/db';
+import { draftResultRepository, eventRepository, schema } from '@flux/db';
 import {
   addMember,
   createDraft,
@@ -19,19 +18,16 @@ import {
   revokeProjectGrant,
   shareDraft,
   type Database,
-  type Principal,
 } from '@flux/core';
 import { pgBossQueue } from '../../apps/server/src/push/adapters.js';
+import { connectionString, db, insertedHuman, pool } from './support/db.js';
 import { barrier, backendPid, settled, waitUntilBlockedBy } from './support/locks.js';
 import { draft, expectStatus, person } from './support/people.js';
 
 // Worker read/commit authorization for draft.summarize.v1 (issue #29, AC-3).
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { db, pool } = createDatabase(connectionString);
 const boss = new PgBoss({ connectionString, migrate: false });
 before(() => boss.start().then(() => undefined));
-after(async () => { await boss.stop(); await pool.end(); });
+after(() => boss.stop());
 
 /**
  * Enqueues through the real transactional path but delays the job for an hour, so the
@@ -40,12 +36,6 @@ after(async () => { await boss.stop(); await pool.end(); });
 const summaryPorts = { results: draftResultRepository, events: eventRepository };
 const delayed = { ...summaryPorts, queue: pgBossQueue({ send: (name: string, data: object, options: object) =>
   boss.send(name, data, { ...options, startAfter: 3600 }) } as unknown as Pick<PgBoss, 'send'>) };
-
-async function human(label: string): Promise<Principal> {
-  const id = randomUUID();
-  await db.insert(schema.authUsers).values({ id, name: label, email: `${label}-${id}@example.test` });
-  return { id, kind: 'human' };
-}
 
 async function row(resultId: string) {
   const [result] = await db.select().from(schema.draftResults).where(eq(schema.draftResults.id, resultId));
@@ -84,8 +74,8 @@ describe('draft.summarize.v1 worker', () => {
   });
 
   async function scenario(label: string) {
-    const owner = await human(`${label}-owner`);
-    const member = await human(`${label}-member`);
+    const owner = await insertedHuman(`${label}-owner`);
+    const member = await insertedHuman(`${label}-member`);
     const ws = await createWorkspace(owner, { name: label }, db);
     await addMember(owner, ws.id, { userId: member.id, role: 'member' }, db);
     const created = await createDraft(owner, ws.id, { title: 'Shared', body: 'alpha beta gamma' }, db);
@@ -148,8 +138,8 @@ describe('draft.summarize.v1 worker', () => {
 
   /** A member reads a restricted-project draft only through an explicit viewer grant. */
   async function grantScenario(label: string) {
-    const owner = await human(`${label}-owner`);
-    const member = await human(`${label}-member`);
+    const owner = await insertedHuman(`${label}-owner`);
+    const member = await insertedHuman(`${label}-member`);
     const ws = await createWorkspace(owner, { name: label }, db);
     await addMember(owner, ws.id, { userId: member.id, role: 'member' }, db);
     const room = await createProject(owner, ws.id, { name: 'Room', visibility: 'restricted' }, db);
@@ -211,7 +201,7 @@ describe('draft.summarize.v1 worker', () => {
 
   test('requesting needs read access to the draft', async () => {
     const { item } = await scenario('request');
-    const stranger = await human('request-stranger');
+    const stranger = await insertedHuman('request-stranger');
     await assert.rejects(requestDraftSummary(stranger, item.id, db, delayed), NotFoundError);
   });
 });

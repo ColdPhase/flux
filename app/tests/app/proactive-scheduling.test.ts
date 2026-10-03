@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import { comparisonSchedulingRows, createDatabase, proactiveOutboxRows } from '@flux/db';
 import { collectComparisonSourceChanges, COMPARISON_QUIET_WINDOW_MS, reconsiderComparisonSources, recordEvent } from '@flux/core';
 import { comparisonScheduling } from '../../apps/worker/src/proactive-comparison/scheduling-adapter.js';
@@ -12,9 +12,8 @@ import { proactiveComparisonOutcomePath } from '@flux/contracts';
 import { expectStatus, person, project, workspace } from './support/people.js';
 import { comparisonDispatchFixtureDue } from './support/comparison-dispatch-fixture.js';
 import { eventPorts } from '../../apps/server/src/events.js';
+import { db, pool } from './support/db.js';
 
-const { db, pool } = createDatabase(process.env.DATABASE_URL!);
-after(() => pool.end());
 const start = new Date('2030-01-01T00:00:00Z');
 const at = (minutes: number) => new Date(start.getTime() + minutes * 60_000);
 const unit = comparisonScheduling(db);
@@ -217,6 +216,7 @@ test('two consumers, restart and more than 100 negative results create each cand
   await collect(start);
   await Promise.all([reconsiderComparisonSources(unit, at(2)), reconsiderComparisonSources(comparisonScheduling(db), at(2))]);
   assert.equal((await f.candidates()).length, 123);
+  // A deliberate second pool: scheduling resumes from a reopened connection, not the shared one.
   const reopened = createDatabase(process.env.DATABASE_URL!);
   try { await comparisonSchedulingTick(reopened.db, at(3)); } finally { await reopened.pool.end(); }
   assert.equal((await f.candidates()).length, 123, 'a restart retains the cursor, unique fingerprints and due state');

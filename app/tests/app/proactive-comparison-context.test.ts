@@ -2,16 +2,15 @@ import { comparisonDispatchFixtureDue } from './support/comparison-dispatch-fixt
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { after, test } from 'node:test';
-import { createDatabase, proactiveOutboxRows } from '@flux/db';
+import { test } from 'node:test';
+import { proactiveOutboxRows } from '@flux/db';
 import { recordEvent, type ComparisonProvider, type ComparisonSource } from '@flux/core';
 import type { Conversation, Material, WorkItem, WorkResult } from '@flux/contracts';
 import { dispatchProactiveComparison } from '../../apps/worker/src/proactive-comparison/dispatch.js';
 import { addMember, draft, expectStatus, grant, person, project, workspace } from './support/people.js';
 import { eventPorts } from '../../apps/server/src/events.js';
+import { db, pool } from './support/db.js';
 
-const { db, pool } = createDatabase(process.env.DATABASE_URL!);
-after(() => pool.end());
 const masterKey = readFileSync('/run/secrets/flux_background_key');
 
 async function fixture() {
