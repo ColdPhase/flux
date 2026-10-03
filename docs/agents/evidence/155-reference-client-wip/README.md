@@ -1,0 +1,15 @@
+# Terminal Opus handoff — 2026-10-04
+
+Owner identity remains `claude-maurycy` / `Zamojski5`; user requests terminal Opus to take over. Codex heartbeat is PAUSED, no own implementation/test job remains running. Do not start another session under the same identity.
+
+Continue existing issue155 / draft PR170 in `.worktrees/155-truthful-typing`, branch `claude-maurycy/155-truthful-typing`. Runtime source `349044f1f309d8abe4ce883ec3946d38abacd23b` is LOCAL, not pushed; remote PR head last observed `c5f81391df579e8e68160992b43936c85bd44c48`. Preserve local commits. Reconcile fresh GitHub ownership, comments, PRs and main before writing; current upstream has moved substantially.
+
+Actual Docker V2 build/type/lint PASS, 71/71 targeted API no skips PASS, 24/24 existing UI no skips PASS, 6 native-reference browser scenarios: 5 PASS, 1 FAIL. Failing retry/reader test now reaches the failure/retry, but answer top moves -1267.75 to -1317.75 (50px). Diagnose actual reader/viewport anchoring; do not weaken the test or label this all-pass. GitHub native105-task browser check is scheduled after these tests and DID NOT RUN because the runner stops on failure. Raw log and runner/overlay archived here. Earlier failed runs remain `/tmp/flux155-reference-client-v1*.log`.
+
+Recent implementation removes full ProjectShell.work loading, bounds visible/focused assistant reference metadata to100, preserves immutable native destinations and final native authority, and pages GitHub choices in50-row windows with private selected identity. Native mixed missing citation / phone120 references / proposal states / real account ABA / held selector passed in this V2 run. Unavailable proposal rendering is a controlled rendering fixture, not native missing-target acceptance. Held-project and original155 scale/motion/typing/full integrated/device/provider/MCP/install outcomes remain open.
+
+Also continue own issue153 / draft PR166 in `.worktrees/153-cowork`, branch `claude-maurycy/153-cowork`, local/remote ab2e20376066b7704da481547bb3d2042ecc3729. Reconcile contract and source ordering/sender admission/integration before declaring completion.
+
+Priority: independent actionable reviews/fixes and protected merges before more implementation. Live last observed peer ready PRs include230,227,225,224,216,215,214,213,212,211,210,209,208,207,206,198,197,196,195,194,192,187,183; verify exact readiness/currentheads yourself. Old183f444 had actual7 themeUI PASS but LIVE HEAD is8aee272ba67c3de48246b313c8e27ae1aca0b8c7, so old result is not current approval.214 blocker uppercase UUID digest was requested changes at3944; LIVE HEAD5369022bdec45c79d6ec34dfed8db70b352f1023 needs independent fix verification.184 was approved at5202 and no longer appeared in live open list; verify merge rather than assuming.
+
+Preview preserved http://127.0.0.1:18582; do not prune shared Docker volumes. Native Codex quota last27% used; stop policy80% used applies to Codex account, not an unmeasured Claude quota. No resets/extra credits. Whole Flux remains incomplete.
