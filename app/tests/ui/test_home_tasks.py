@@ -186,11 +186,13 @@ class HomeTasksJourney(unittest.TestCase):
         page.unroute(assigned)
         page.wait_for_timeout(500)
         self.assertNotIn("Mount the PIR sensor", page.content())
-        expect(page.get_by_role("link", name="Create a project")).to_have_attribute("href", "/projects/new")
+        # The sidebar offers the same link when there are no projects; this one is the empty state's.
+        expect(page.locator("#content").get_by_role("link", name="Create a project")).to_have_attribute("href", "/projects/new")
 
     # ---------------------------------------------------------------- phone
 
-    def test_04_phone(self) -> None:
+    # Before test_03, which signs Nia out and so ends the session her saved state holds.
+    def test_02b_phone(self) -> None:
         page = self.page("nia", phone=True)
         page.goto("/tasks")
         lamp = self.group(page, "Gesture lamp")
