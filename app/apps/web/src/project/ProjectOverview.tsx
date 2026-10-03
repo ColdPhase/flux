@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link, useMatches } from 'react-router';
-import type { Conversation, Decision, Material, ObjectLink, WorkItem, WorkResult } from '@flux/contracts';
+import type { Conversation, ConversationRootWindow, Decision, Material, ObjectLink, WorkItem, WorkResult } from '@flux/contracts';
 import { Avatar, Icon, type IconName } from '../ui';
 import { useShellData } from '../app/data';
 import { useShellActions, type DetailsView } from '../app/shellContext';
@@ -11,10 +11,10 @@ import { docUrl } from '../docs/api';
 import { docsLinking } from '../docs/AddToDoc';
 import { authorLabel } from '../docs/format';
 
-/** The open conversation's loader data, when the Conversation tab is showing one. */
-function useOpenConversation(): { conversation: Conversation | null; materials: Material[] } | null {
+/** The Conversation tab's loader data: the open thread, if any, and the stream's newest roots (UI116-1). */
+function useOpenConversation(): { conversation: Conversation | null; materials: Material[]; roots?: ConversationRootWindow } | null {
   const match = useMatches().find((entry) => entry.loaderData && typeof entry.loaderData === 'object' && 'conversation' in entry.loaderData);
-  return (match?.loaderData as { conversation: Conversation | null; materials: Material[] } | undefined) ?? null;
+  return (match?.loaderData as { conversation: Conversation | null; materials: Material[]; roots?: ConversationRootWindow } | undefined) ?? null;
 }
 
 interface Row {
@@ -72,7 +72,9 @@ export function ProjectOverview({ messageId, onBack }: { messageId?: string; onB
   if (!shell) return null;
   const { project, people, work: lists, sketches, docs } = shell;
   const conversation = open?.conversation ?? null;
-  const message = messageId ? conversation?.messages.find((item) => item.id === messageId) ?? null : null;
+  // A root's Details also work from the stream, while no thread is open.
+  const message = messageId ? conversation?.messages.find((item) => item.id === messageId)
+    ?? open?.roots?.roots.find((root) => root.message.id === messageId)?.message ?? null : null;
   const base = `/projects/${project.id}`;
 
   // Linked objects: from this message, or from any message of this conversation.

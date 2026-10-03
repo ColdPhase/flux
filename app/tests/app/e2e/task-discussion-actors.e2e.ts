@@ -90,7 +90,8 @@ test('agent root renders without a human DM link, real human reply persists, and
     assert.match(await row.innerText(), /Trial analyst · agent/);
     assert.equal(await row.locator('a[href*="/dm/new"]').count(), 0);
     assert.equal(await row.locator('.project-convo__message-meta time').getAttribute('datetime'), root.createdAt);
-    const audience = page.locator('.project-convo__composer .composer__audience').filter({ hasText: '1 agent' });
+    // One project conversation (UI116-1): the root is in the stream, its replies and reply box in the thread beside it.
+    const audience = page.locator('#thread .project-convo__composer .composer__audience').filter({ hasText: '1 agent' });
     await audience.waitFor();
     assert.doesNotMatch(await audience.innerText(), /Only you|only you two/);
     // The thread starts with an agent, so the composer must not name a person who is not in the visible thread.
@@ -126,10 +127,11 @@ test('agent root renders without a human DM link, real human reply persists, and
       const humanRow = view.locator(`#message-${human.id}`);
       await humanRow.waitFor();
       assert.equal(await humanRow.locator(`a[href$="with=${owner.id}"]`).count(), 1);
-      await view.getByText('You have read access to this project.', { exact: true }).waitFor();
+      const thread = view.locator('#thread');
+      await thread.getByText('You have read access to this project.', { exact: true }).waitFor();
       assert.equal(await view.getByRole('textbox', { name: 'Reply', exact: true }).count(), 0);
       assert.equal(await view.getByRole('button', { name: 'Send reply', exact: true }).count(), 0);
-      const sources = view.getByRole('button', { name: 'Sources', exact: true });
+      const sources = thread.getByRole('button', { name: 'Sources', exact: true });
       await sources.focus();
       await sources.press('Enter');
       await view.getByRole('heading', { name: `Sources · saved for ${place.name}`, exact: true }).waitFor();

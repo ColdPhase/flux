@@ -3,7 +3,7 @@ import { ToastProvider } from './ui';
 import { UpdatePrompt } from './pwa';
 import { AppLayout } from './app/AppLayout';
 import { appLoader } from './app/data';
-import { ProjectConversation, projectConversationLoader } from './app/ProjectConversation';
+import { ProjectConversation, projectConversationLoader, shouldRevalidateProjectConversation } from './app/ProjectConversation';
 import { ProjectSetup } from './app/ProjectSetup';
 import { MaterialView, materialLoader } from './app/MaterialView';
 import { ProjectTasks, projectTasksLoader } from './work/ProjectTasks';
@@ -80,8 +80,9 @@ export const router = createBrowserRouter([
             path: 'projects/:projectId',
             loader: projectShellLoader,
             children: [
-              { index: true, loader: projectConversationLoader, Component: ProjectConversation },
-              { path: 'conversations/:conversationId', loader: projectConversationLoader, Component: ProjectConversation },
+              // One conversation (UI116-1): the stream stays mounted while a root's thread opens beside it.
+              { loader: projectConversationLoader, shouldRevalidate: shouldRevalidateProjectConversation, Component: ProjectConversation,
+                children: [{ index: true }, { path: 'conversations/:conversationId' }] },
               { path: 'github', Component: GithubSettings },
               { path: 'tasks', loader: projectTasksLoader, Component: ProjectTasks },
               { path: 'map', Component: ProjectMap },

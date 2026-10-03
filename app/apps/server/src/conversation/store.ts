@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, lt, sql, type SQL } from 'drizzle-orm';
 import { schema, taskDiscussionRows, workRows } from '@flux/db';
 import type {
-  Conversation, ConversationMessage, ConversationSummary, Material, MaterialOrDoc,
+  Conversation, ConversationMessage, ConversationRootWindow, ConversationSummary, Material, MaterialOrDoc,
   MaterialVersion, Page, PageQuery,
 } from '@flux/contracts';
 import {
@@ -182,6 +182,43 @@ export function conversationStore(db: Database, options: ConversationStoreOption
           lastMessageBody: last?.body ?? '' };
       }));
       return { items, total: count?.total ?? 0, ...page };
+    },
+
+    /**
+     * The project's one stream (UI116-1, 2026-10-02): each stored conversation's opening message,
+     * newest first by (created_at, id) and returned oldest first, with its thread's size. Current
+     * project access is checked and held before the cursor, counts and page are read; every root of
+     * the project shares the project audience, so nothing is filtered after the page is cut.
+     */
+    async listRoots(principal: Principal, projectId: string, window: Parameters<ConversationPort['listRoots']>[2]): Promise<ConversationRootWindow> {
+      return db.transaction(async (tx) => {
+        await requireProject(principal, projectId, tx, false, true);
+        const conversations = schema.projectConversations;
+        let before: SQL | undefined;
+        if (window.before !== null) {
+          const [cursor] = await tx.select({ id: conversations.id }).from(conversations)
+            .where(and(eq(conversations.id, window.before), eq(conversations.projectId, projectId)));
+          if (!cursor) throw new InvalidInputError('before must be a conversation of this project');
+          // Compared in SQL so the cursor keeps PostgreSQL's microsecond precision.
+          before = sql`(${conversations.createdAt}, ${conversations.id}) < (SELECT c.created_at, c.id FROM project_conversations c WHERE c.id = ${window.before})`;
+        }
+        const rows = await tx.select({
+          root: schema.projectMessages,
+          replyCount: sql<number>`(SELECT count(*)::int FROM project_messages r WHERE r.conversation_id = ${conversations.id} AND r.sequence > 1)`,
+          lastReplyAt: sql<string | null>`(SELECT max(r.created_at) FROM project_messages r WHERE r.conversation_id = ${conversations.id} AND r.sequence > 1)`,
+        }).from(conversations)
+          .innerJoin(schema.projectMessages, and(eq(schema.projectMessages.conversationId, conversations.id), eq(schema.projectMessages.sequence, 1)))
+          .where(and(eq(conversations.projectId, projectId), before))
+          .orderBy(desc(conversations.createdAt), desc(conversations.id))
+          .limit(window.limit + 1);
+        const hasMoreBefore = rows.length > window.limit;
+        const page = rows.slice(0, window.limit).reverse();
+        const names = await workRows(tx).names(page.filter((row) => row.root.authorAgentId !== null)
+          .map((row) => ({ kind: 'agent' as const, id: row.root.authorAgentId! })));
+        const roots = page.map((row) => ({ conversationId: row.root.conversationId, message: message(row.root, names), replyCount: Number(row.replyCount),
+          lastReplyAt: row.lastReplyAt === null ? null : new Date(row.lastReplyAt).toISOString() }));
+        return { projectId, roots, rootPage: { hasMoreBefore, nextBefore: hasMoreBefore ? roots[0]!.conversationId : null, limit: window.limit } };
+      });
     },
 
     async getConversation(principal: Principal, conversationId: string, window: Parameters<ConversationPort['getConversation']>[2]): Promise<Conversation> {

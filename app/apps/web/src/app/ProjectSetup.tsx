@@ -26,7 +26,7 @@ export function ProjectSetup() {
       const projectIntent = `project:${space.id}:${projectName.trim()}`;
       const project = await createProject(space.id, projectName.trim(), intents.keyFor(projectIntent));
       intents.settle(projectIntent);
-      revalidator.revalidate(); navigate(`/projects/${project.id}?new=1`);
+      revalidator.revalidate(); navigate(`/projects/${project.id}`);
     } catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Could not create this project. Try again.'); }
     finally { setBusy(false); }
   }

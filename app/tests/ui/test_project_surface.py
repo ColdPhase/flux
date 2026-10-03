@@ -169,8 +169,11 @@ class ProjectSurfaceJourney(unittest.TestCase):
         self.assertEqual([text.split("\n")[0] for text in tabs.get_by_role("link").all_inner_texts()[:4]], ["Conversation", "Map", "Tasks", "Wiki"])
         expect(tabs.get_by_role("link", name="Tasks, 2 open")).to_be_visible()
         expect(header.get_by_role("button", name="Details")).to_be_visible()
-        # The conversations sit in the sidebar; the centre uses the pane (#136) with readable bubbles.
-        expect(page.get_by_role("complementary", name="Sidebar").get_by_role("link", name=re.compile("^Should the lamp react"))).to_have_attribute("aria-current", "page")
+        # One project conversation (UI116-1): the sidebar lists no threads; the stream shows the root
+        # with its thread open beside it, and the centre uses the pane (#136) with readable bubbles.
+        expect(page.get_by_role("complementary", name="Sidebar").get_by_role("link", name=re.compile("^Should the lamp react"))).to_have_count(0)
+        expect(page.locator(f"#message-{self.ids['m_opening']}").get_by_role("button", name=re.compile("^6 replies"))).to_have_attribute("aria-expanded", "true")
+        expect(page.get_by_role("complementary", name="Replies")).to_be_visible()
         column = page.locator(".project-convo__in").bounding_box()
         assert column
         self.assertLessEqual(column["width"], 1000, "conversation pane")
@@ -191,18 +194,20 @@ class ProjectSurfaceJourney(unittest.TestCase):
         shot(small, "project-conversation-desktop-1280")
 
     def assert_whole_messages(self, page: Page) -> None:
-        """The feed opens on whole messages: none starts above the top edge of the feed."""
+        """The stream and the open thread (UI116-1) each open on whole messages: none starts above the
+        top edge of its feed, and its latest message is fully visible."""
         page.wait_for_timeout(600)
-        clipped = page.evaluate("""() => {
-          const feed = document.querySelector('.project-convo__feed');
-          const top = feed.getBoundingClientRect().top;
-          return [...feed.querySelectorAll('.project-convo__message')].filter((el) => { const r = el.getBoundingClientRect(); return r.top < top - 1 && r.bottom > top + 1; }).length;
-        }""")
-        self.assertEqual(clipped, 0, "no message is cut off at the top of the opening screen")
-        last = page.locator(".project-convo__message").last.bounding_box()
-        feed = page.locator(".project-convo__feed").bounding_box()
-        assert last and feed
-        self.assertLessEqual(last["y"] + last["height"], feed["y"] + feed["height"] + 1, "the latest message is fully visible")
+        for selector in (".project-convo__feed", ".thread__feed"):
+            clipped = page.evaluate("""(selector) => {
+              const feed = document.querySelector(selector);
+              const top = feed.getBoundingClientRect().top;
+              return [...feed.querySelectorAll('.project-convo__message')].filter((el) => { const r = el.getBoundingClientRect(); return r.top < top - 1 && r.bottom > top + 1; }).length;
+            }""", selector)
+            self.assertEqual(clipped, 0, f"{selector}: no message is cut off at the top of the opening screen")
+            last = page.locator(f"{selector} .project-convo__message").last.bounding_box()
+            feed = page.locator(selector).bounding_box()
+            assert last and feed
+            self.assertLessEqual(last["y"] + last["height"], feed["y"] + feed["height"] + 1, f"{selector}: the latest message is fully visible")
 
     # ---------------------------------------------------------------- current state
 
@@ -282,9 +287,11 @@ class ProjectSurfaceJourney(unittest.TestCase):
         panel.get_by_role("region", name="Sources").get_by_role("link", name=re.compile("Low-light test notes")).click()
         expect(page).to_have_url(re.compile(rf"/materials/{self.ids['material']}/versions/1$"))
         page.go_back()
-        # A message's own Details show what was made from it.
+        # A message's own Details show what was made from it. Nia's message is a reply in the thread beside
+        # the stream (UI116-1), where its actions open from one ⋯ in its corner.
         message = page.locator(f"#message-{self.ids['m1']}")
         message.hover()
+        message.get_by_role("button", name="Make from this message").click()
         message.get_by_role("button", name="Details of this message").click()
         expect(panel.get_by_role("heading", name="Message from Nia Okafor")).to_be_visible()
         made = panel.get_by_role("region", name="Made from this message")
@@ -385,18 +392,15 @@ class ProjectSurfaceJourney(unittest.TestCase):
         self.assertEqual(bar["width"], 2, "the 2px accent bar")
         self.assertTrue(bar["inside"], f"the bar lies inside the sidebar's scroll box: {bar}")
         self.assertTrue(bar["hit"], "the bar is painted, not clipped")
-        # On a phone every sidebar control is a 44px target: +, Jump to, places, projects and threads.
+        # On a phone every sidebar control is a 44px target: +, Jump to, places and projects.
         phone = self.open_project("ada", phone=True)
         phone.get_by_role("button", name="Open navigation").tap()
         drawer = phone.get_by_role("dialog")
         expect(drawer.locator(".side__project.is-open")).to_be_visible()
         targets = [drawer.get_by_role("link", name="New project"), drawer.get_by_role("link", name="New message"),
                    drawer.locator(".side__jump"), drawer.get_by_role("link", name="Home"), drawer.locator(".side__project.is-open")]
-        threads = drawer.locator(".side__threads .side__item, .side__threads .ui-btn")
-        # "New conversation" comes first; wait for the conversations themselves before counting.
-        expect(drawer.locator(".side__threads .side__thread").first).to_be_visible()
-        targets += [threads.nth(index) for index in range(threads.count())]
-        self.assertGreater(threads.count(), 0, "the open project's threads are listed")
+        # One project conversation (UI116-1): the sidebar lists no conversation threads under the project.
+        expect(drawer.locator(".side__thread")).to_have_count(0)
         for target in targets:
             box = target.bounding_box()
             assert box
