@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import WebSocket, { WebSocketServer } from 'ws';
 import type { SessionContext, SessionResolver } from '../identity/session.js';

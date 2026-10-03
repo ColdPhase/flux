@@ -1,4 +1,5 @@
 import { Worker } from 'node:worker_threads';
+import { URL } from 'node:url';
 import { setTimeout, clearTimeout } from 'node:timers';
 import { CAPS } from './caps.mjs';
 import { Refusal } from './codec.mjs';

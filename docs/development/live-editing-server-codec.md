@@ -51,3 +51,5 @@ Three prepared deferred-admission regressions cover oversized retained input bef
 the representative asynchronous boundary, full cold-state accounting/shrink, bounded
 initialization replacement and completed-assembly wait/retry/expiry ownership.
 They are not yet executed and do not replace actual controller/API/SQL falsification.
+
+The first production build/type check passed at c09ab51; lint then exposed an explicit Node URL import missing in both worker-pool copies. Their correction imports the public `node:url` URL class without changing pool behavior. The current source manifest reflects that import-only difference from the historical first-copy hashes. Runtime cases were not reached in that run.
