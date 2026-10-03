@@ -114,12 +114,16 @@ describe('selected native reference rows with exact sessions and current members
   test('zero-link selected found-to-marker and marker-to-found drift rejects assembled metadata', async () => {
     for (const direction of ['delete', 'foreign', 'appear'] as const) {
       const isolated = (await project(owner, workspaceId, `Reference drift ${direction}`, 'restricted')).id;
-      const target = await createWork('Zero-link selected target', direction === 'appear' ? foreignId : isolated);
+      // Native tasks have scoped notice FKs, so do not fabricate an illegal task move.
+      // A zero-link unaccepted decision has no dependent scoped records in this fixture.
+      const kind = direction === 'delete' ? 'work' : 'decision';
+      const target = direction === 'delete' ? await createWork('Zero-link selected target', isolated)
+        : await post<Decision>(owner, `/api/v1/projects/${direction === 'appear' ? foreignId : isolated}/decisions`, { title: 'Zero-link selected direction' });
       const mutate = () => direction === 'delete' ? pool.query('DELETE FROM project_work_items WHERE id=$1', [target.id])
-        : pool.query('UPDATE project_work_items SET project_id=$1 WHERE id=$2', [direction === 'appear' ? isolated : foreignId, target.id]);
-      await assert.rejects(heldRead(owner, isolated, `work:${target.id}`, mutate),
+        : pool.query('UPDATE project_decisions SET project_id=$1 WHERE id=$2', [direction === 'appear' ? isolated : foreignId, target.id]);
+      await assert.rejects(heldRead(owner, isolated, `${kind}:${target.id}`, mutate),
         (error: unknown) => error instanceof DomainError && error.status === 409 && error.code === 'work_read_changed');
-      const fresh = await read(`work:${target.id}`, owner, isolated);
+      const fresh = await read(`${kind}:${target.id}`, owner, isolated);
       assert.equal(fresh.items.length, direction === 'appear' ? 1 : 0); assert.equal(fresh.unavailable.length, direction === 'appear' ? 0 : 1);
     }
   });
@@ -131,7 +135,10 @@ describe('selected native reference rows with exact sessions and current members
     await assert.rejects(heldRead(owner, isolated, `work:${target.id}`, () => post(owner, `/api/v1/projects/${isolated}/links`,
       { from: { type: 'work', id: target.id }, to: { type: 'message', id: conversation.messages[0]!.id }, role: 'source' })),
     (error: unknown) => error instanceof DomainError && error.status === 409 && error.code === 'work_read_changed');
-    assert.equal((await read(`work:${target.id}`, owner, isolated)).items[0]?.relations.sourceMessages, 1);
+    const fresh = (await read(`work:${target.id}`, owner, isolated)).items[0];
+    assert.equal(fresh?.relations.edges, 1);
+    // Native createLink admits an ordinary related link; its client role is not source authority.
+    assert.equal(fresh?.relations.sourceMessages, 0);
   });
 
   test('real SQL observation failure remains unavailable instead of invented missing markers', async () => {
