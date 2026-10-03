@@ -55,7 +55,8 @@ export function useConversationRoots(projectId: string, window: ConversationRoot
   const cursorRef = useRef(olderCursor);
   const deniedRef = useRef(onDenied);
   const seen = useRef(window);
-  useEffect(() => { rootsRef.current = roots; cursorRef.current = olderCursor; deniedRef.current = onDenied; });
+  const windowRootsRef = useRef(window.roots);
+  useEffect(() => { rootsRef.current = roots; cursorRef.current = olderCursor; deniedRef.current = onDenied; windowRootsRef.current = window.roots; });
 
   useEffect(() => {
     if (seen.current === window) return;
@@ -77,7 +78,9 @@ export function useConversationRoots(projectId: string, window: ConversationRoot
 
   // A link to a root older than the loaded window (search, inbox, "Since you left"): read back to it.
   useEffect(() => {
-    if (!seek || rootsRef.current.some((root) => root.conversationId === seek) || !cursorRef.current) return;
+    // A root in the refreshed newest window (not merged yet) is newer, never older: nothing to read back.
+    const loaded = (root: ConversationRoot) => root.conversationId === seek;
+    if (!seek || rootsRef.current.some(loaded) || windowRootsRef.current.some(loaded) || !cursorRef.current) return;
     let cancelled = false;
     setOlderBusy(true);
     void (async () => {

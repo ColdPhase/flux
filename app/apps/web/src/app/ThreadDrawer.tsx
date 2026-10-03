@@ -19,7 +19,8 @@ export function ThreadDrawer({ mode, count, focusOnOpen, onClose, children }: { 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.key !== 'Escape' || event.defaultPrevented) return;
+    // Escape that ends an input method's composition is not a request to close.
+    if (event.key !== 'Escape' || event.defaultPrevented || event.nativeEvent.isComposing) return;
     event.stopPropagation();
     onClose();
   };
