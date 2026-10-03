@@ -68,7 +68,30 @@ function ScopedDocEditor({ project, doc, accountId }: EditData & { accountId: st
   const navigation = useNavigation();
   const reconciling = revalidator.state !== 'idle' || navigation.state !== 'idle';
   const mounted = useRef(false);
-  useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const settled = useRef(true);
+  const pending = useRef(new Set<(current: boolean) => void>());
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      for (const resolve of pending.current) resolve(false);
+      pending.current.clear();
+    };
+  }, []);
+  useLayoutEffect(() => {
+    settled.current = !reconciling;
+    if (settled.current) {
+      for (const resolve of pending.current) resolve(true);
+      pending.current.clear();
+    }
+  }, [reconciling]);
+  // A completed command waits for loader ownership to settle. A different editor
+  // lifetime retires it; revalidation of the same editor lets it finish normally.
+  async function currentAfterReconciliation() {
+    if (!mounted.current) return false;
+    if (!settled.current) await new Promise<boolean>((resolve) => pending.current.add(resolve));
+    return mounted.current && settled.current;
+  }
   const wide = useMediaQuery('(min-width: 1280px)');
   const storageKey = `flux:doc-edit:${accountId}:${doc?.id ?? `new:${project.id}`}`;
   const initial = useMemo<Kept>(() => readKept(storageKey) ?? {
@@ -124,7 +147,12 @@ function ScopedDocEditor({ project, doc, accountId }: EditData & { accountId: st
     const body = fields.body.slice(0, start) + text + fields.body.slice(end);
     edit({ body });
     if (mode === 'preview') setMode('write');
-    requestAnimationFrame(() => { area?.focus(); area?.setSelectionRange(start + text.length, start + text.length); });
+    requestAnimationFrame(() => {
+      // Restore focus from the removed picker, but respect a newer user focus.
+      if (area?.isConnected && (document.activeElement === document.body || document.activeElement === area)) {
+        area.focus(); area.setSelectionRange(start + text.length, start + text.length);
+      }
+    });
   }, [fields.body, mode]);
 
   async function save(event?: FormEvent) {
@@ -135,11 +163,11 @@ function ScopedDocEditor({ project, doc, accountId }: EditData & { accountId: st
     try {
       const command = { title: fields.title.trim(), body: fields.body, state: fields.state, ...(fields.reason.trim() ? { reason: fields.reason.trim() } : {}) };
       const saved = doc ? await updateDoc(doc.id, base, command, attempt) : await createDoc(project.id, command, attempt);
-      if (!mounted.current) return;
+      if (!await currentAfterReconciliation()) return;
       keep(storageKey, null);
       navigate(docUrl(project.id, saved.id), { replace: true });
     } catch (cause) {
-      if (!mounted.current) return;
+      if (!await currentAfterReconciliation()) return;
       if (cause instanceof ApiError && cause.code === 'VERSION_CONFLICT') {
         const latest = (cause.body as { current?: Doc } | null)?.current ?? null;
         setConflict(latest); setShowTheirs(false); setAttempt(crypto.randomUUID());

@@ -153,26 +153,28 @@ class DocReferenceJourney(unittest.TestCase):
         expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(0)
 
     def test_03_required_failure_retries_without_publishing_partial_matches_or_erasing_editor(self):
-        page, text = self.scene()
-        fault = {"on": True}
-        def intercept(route):
-            query = parse_qs(urlsplit(route.request.url).query)
-            if fault["on"] and query.get("choice") == ["doc_refs"] and query.get("kind") == ["work"]:
-                route.fulfill(status=503, content_type="application/json", body=json.dumps({"error": {"code": "UNAVAILABLE"}}))
-            else:
-                route.continue_()
-        page.route("**/work-view?**", intercept)
-        picker = self.picker(page, text)
-        expect(picker.get_by_role("alert")).to_contain_text("Could not load")
-        expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(0)
-        query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
-        query.fill("Native work reference 000")
-        expect(picker.get_by_role("alert")).to_be_visible()
-        fault["on"] = False
-        picker.get_by_role("button", name="Retry objects").click()
-        expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(1)
-        expect(query).to_have_value("Native work reference 000")
-        expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page, text = self.scene(phone)
+                fault = {"on": True}
+                def intercept(route):
+                    query = parse_qs(urlsplit(route.request.url).query)
+                    if fault["on"] and query.get("choice") == ["doc_refs"] and query.get("kind") == ["work"]:
+                        route.fulfill(status=503, content_type="application/json", body=json.dumps({"error": {"code": "UNAVAILABLE"}}))
+                    else:
+                        route.continue_()
+                page.route("**/work-view?**", intercept)
+                picker = self.picker(page, text)
+                expect(picker.get_by_role("alert")).to_contain_text("Could not load")
+                expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(0)
+                query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
+                query.fill("Native work reference 000")
+                expect(picker.get_by_role("alert")).to_be_visible()
+                fault["on"] = False
+                picker.get_by_role("button", name="Retry objects").click()
+                expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(1)
+                expect(query).to_have_value("Native work reference 000")
+                expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")
 
     def navigate_editor(self, page, project, suffix="new"):
         # Actual browser history navigation observed by React Router, preserving the
@@ -181,158 +183,168 @@ class DocReferenceJourney(unittest.TestCase):
         expect(page.get_by_label("Text (Markdown)")).to_be_visible()
 
     def test_04_private_draft_follows_project_and_document_scope_without_document_reload(self):
-        page, text = self.scene()
-        page.evaluate("window.privateDraftDocument = crypto.randomUUID()")
-        marker = page.evaluate("window.privateDraftDocument")
-        self.navigate_editor(page, self.foreign)
-        expect(page.get_by_text("New doc · everyone in Other library can read it", exact=True)).to_be_visible()
-        expect(text).to_have_value("")
-        text.fill("PRIVATE-DRAFT in another project")
-        self.navigate_editor(page, self.project)
-        expect(page.get_by_text("New doc · everyone in Library lighting can read it", exact=True)).to_be_visible()
-        expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")
-        self.navigate_editor(page, self.project, f"{self.self_doc['id']}/edit")
-        expect(page.get_by_label("Title", exact=True)).to_have_value(self.self_doc["title"])
-        expect(text).to_have_value("A native document")
-        text.fill("PRIVATE-DRAFT of an existing document")
-        self.navigate_editor(page, self.project)
-        expect(page.get_by_text("New doc · everyone in Library lighting can read it", exact=True)).to_be_visible()
-        expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")
-        self.assertEqual(page.evaluate("window.privateDraftDocument"), marker)
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page, text = self.scene(phone)
+                page.evaluate("window.privateDraftDocument = crypto.randomUUID()")
+                marker = page.evaluate("window.privateDraftDocument")
+                self.navigate_editor(page, self.foreign)
+                expect(page.get_by_text("New doc · everyone in Other library can read it", exact=True)).to_be_visible()
+                expect(text).to_have_value("")
+                text.fill("PRIVATE-DRAFT in another project")
+                self.navigate_editor(page, self.project)
+                expect(page.get_by_text("New doc · everyone in Library lighting can read it", exact=True)).to_be_visible()
+                expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")
+                self.navigate_editor(page, self.project, f"{self.self_doc['id']}/edit")
+                expect(page.get_by_label("Title", exact=True)).to_have_value(self.self_doc["title"])
+                expect(text).to_have_value("A native document")
+                text.fill("PRIVATE-DRAFT of an existing document")
+                self.navigate_editor(page, self.project)
+                expect(page.get_by_text("New doc · everyone in Library lighting can read it", exact=True)).to_be_visible()
+                expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")
+                self.assertEqual(page.evaluate("window.privateDraftDocument"), marker)
 
     def test_05_account_revalidation_does_not_copy_or_insert_into_another_private_draft(self):
-        page, text = self.scene()
-        picker = self.picker(page, text)
-        picker.get_by_label("Reference type").select_option("work")
-        expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(50)
-        held = []
-        def hold_old_account(route):
-            q = parse_qs(urlsplit(route.request.url).query)
-            if not held and q.get("kind") == ["work"] and q.get("q") == [self.native["work"][1]["title"]]:
-                response = route.fetch(); self.assertEqual(response.status, 200)
-                held.append((route, response)); page.evaluate("window.oldReferenceHeld = true")
-            else: route.continue_()
-        page.route("**/work-view?**", hold_old_account)
-        self.addCleanup(lambda: page.unroute_all(behavior="ignoreErrors"))
-        picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True).fill(self.native["work"][1]["title"])
-        page.wait_for_function("window.oldReferenceHeld === true")
-        page.context.clear_cookies(); page.context.add_cookies(self.other_state["cookies"])
-        self.navigate_editor(page, self.project)
-        expect(page.get_by_role("button", name=re.compile("^Jonas Reference .*account and sign out"))).to_be_visible()
-        expect(text).to_have_value("")
-        expect(picker).to_have_count(0)
-        other_key = f"flux:doc-edit:{self.other_user}:new:{self.project}"
-        self.assertIsNone(page.evaluate("key => sessionStorage.getItem(key)", other_key))
-        text.fill("PRIVATE-DRAFT belonging only to Jonas")
-        picker = self.picker(page, text)
-        picker.get_by_label("Reference type").select_option("work")
-        query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
-        query.fill(self.native["work"][0]["title"])
-        expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(1)
-        route, response = held.pop(); route.fulfill(response=response)
-        page.wait_for_function("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))")
-        expect(picker.get_by_role("listbox", name="Matches")).to_contain_text(self.native["work"][0]["title"])
-        expect(picker.get_by_role("listbox", name="Matches")).not_to_contain_text(self.native["work"][1]["title"])
-        query.press("Enter")
-        expect(text).to_have_value(re.compile("PRIVATE-DRAFT belonging only to Jonas"))
-        expect(text).not_to_have_value(re.compile("PRIVATE-DRAFT of native reference notes"))
-        page.context.clear_cookies(); page.context.add_cookies(self.state["cookies"])
-        self.navigate_editor(page, self.project)
-        expect(page.get_by_role("button", name=re.compile("^Ada Reference .*account and sign out"))).to_be_visible()
-        expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page, text = self.scene(phone)
+                picker = self.picker(page, text)
+                picker.get_by_label("Reference type").select_option("work")
+                expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(50)
+                held = []
+                def hold_old_account(route):
+                    q = parse_qs(urlsplit(route.request.url).query)
+                    if not held and q.get("kind") == ["work"] and q.get("q") == [self.native["work"][1]["title"]]:
+                        response = route.fetch(); self.assertEqual(response.status, 200)
+                        held.append((route, response)); page.evaluate("window.oldReferenceHeld = true")
+                    else: route.continue_()
+                page.route("**/work-view?**", hold_old_account)
+                self.addCleanup(lambda: page.unroute_all(behavior="ignoreErrors"))
+                picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True).fill(self.native["work"][1]["title"])
+                page.wait_for_function("window.oldReferenceHeld === true")
+                page.context.clear_cookies(); page.context.add_cookies(self.other_state["cookies"])
+                self.navigate_editor(page, self.project)
+                expect(page.get_by_role("button", name=re.compile("^Jonas Reference .*account and sign out"))).to_be_visible()
+                expect(text).to_have_value("")
+                expect(picker).to_have_count(0)
+                other_key = f"flux:doc-edit:{self.other_user}:new:{self.project}"
+                self.assertIsNone(page.evaluate("key => sessionStorage.getItem(key)", other_key))
+                text.fill("PRIVATE-DRAFT belonging only to Jonas")
+                picker = self.picker(page, text)
+                picker.get_by_label("Reference type").select_option("work")
+                query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
+                query.fill(self.native["work"][0]["title"])
+                expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(1)
+                route, response = held.pop(); route.fulfill(response=response)
+                page.wait_for_function("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))")
+                expect(picker.get_by_role("listbox", name="Matches")).to_contain_text(self.native["work"][0]["title"])
+                expect(picker.get_by_role("listbox", name="Matches")).not_to_contain_text(self.native["work"][1]["title"])
+                query.press("Enter")
+                expect(text).to_have_value(re.compile("PRIVATE-DRAFT belonging only to Jonas"))
+                expect(text).not_to_have_value(re.compile("PRIVATE-DRAFT of native reference notes"))
+                page.context.clear_cookies(); page.context.add_cookies(self.state["cookies"])
+                self.navigate_editor(page, self.project)
+                expect(page.get_by_role("button", name=re.compile("^Ada Reference .*account and sign out"))).to_be_visible()
+                expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")
 
     def test_06_delayed_query_does_not_revive_stale_native_results_after_aba(self):
-        item = api(self.ctx, "POST", f"/api/v1/projects/{self.project}/work", {"title": "Only the original shield measurement"}, 201)
-        page, text = self.scene()
-        picker = self.picker(page, text)
-        picker.get_by_label("Reference type").select_option("work")
-        query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
-        held = []
-        def hold(route):
-            q = parse_qs(urlsplit(route.request.url).query)
-            if not held and q.get("q") == [item["title"]]:
-                response = route.fetch(); self.assertEqual(response.status, 200)
-                held.append((route, response)); page.evaluate("window.oldQueryHeld = true")
-            else: route.continue_()
-        page.route("**/work-view?**", hold)
-        self.addCleanup(lambda: page.unroute_all(behavior="ignoreErrors"))
-        query.fill(item["title"]); page.wait_for_function("window.oldQueryHeld === true")
-        api(self.ctx, "PATCH", f"/api/v1/work/{item['id']}", {"title": "Current shield measurement", "expectedVersion": item["version"]})
-        query.fill(self.native["work"][1]["title"])
-        expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(1)
-        query.fill(item["title"])
-        expect(picker).to_contain_text("Nothing matches")
-        route, response = held.pop(); route.fulfill(response=response)
-        page.wait_for_function("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))")
-        expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(0)
-        expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")
-        self.assertEqual(api(self.ctx, "GET", f"/api/v1/work/{item['id']}")["title"], "Current shield measurement")
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                item = api(self.ctx, "POST", f"/api/v1/projects/{self.project}/work", {"title": "Only the original shield measurement"}, 201)
+                page, text = self.scene(phone)
+                picker = self.picker(page, text)
+                picker.get_by_label("Reference type").select_option("work")
+                query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
+                held = []
+                def hold(route):
+                    q = parse_qs(urlsplit(route.request.url).query)
+                    if not held and q.get("q") == [item["title"]]:
+                        response = route.fetch(); self.assertEqual(response.status, 200)
+                        held.append((route, response)); page.evaluate("window.oldQueryHeld = true")
+                    else: route.continue_()
+                page.route("**/work-view?**", hold)
+                self.addCleanup(lambda: page.unroute_all(behavior="ignoreErrors"))
+                query.fill(item["title"]); page.wait_for_function("window.oldQueryHeld === true")
+                api(self.ctx, "PATCH", f"/api/v1/work/{item['id']}", {"title": "Current shield measurement", "expectedVersion": item["version"]})
+                query.fill(self.native["work"][1]["title"])
+                expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(1)
+                query.fill(item["title"])
+                expect(picker).to_contain_text("Nothing matches")
+                route, response = held.pop(); route.fulfill(response=response)
+                page.wait_for_function("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))")
+                expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(0)
+                expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")
+                self.assertEqual(api(self.ctx, "GET", f"/api/v1/work/{item['id']}")["title"], "Current shield measurement")
 
     def test_07_retired_save_keeps_its_retry_key_and_cannot_navigate_the_new_scope(self):
-        page, text = self.scene()
-        title = "A document saved once across an editor scope change"
-        page.get_by_label("Title", exact=True).fill(title)
-        held = []
-        def hold(route):
-            if route.request.method == "POST" and not held:
-                response = route.fetch(); self.assertEqual(response.status, 201)
-                held.append((route, response)); page.evaluate("window.oldSaveHeld = true")
-            else: route.continue_()
-        page.route(f"**/api/v1/projects/{self.project}/docs", hold)
-        text.press("Control+s"); page.wait_for_function("window.oldSaveHeld === true")
-        key = f"flux:doc-edit:{self.user}:new:{self.project}"
-        attempt = page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).attempt", key)
-        self.navigate_editor(page, self.foreign)
-        expect(page.get_by_text("New doc · everyone in Other library can read it", exact=True)).to_be_visible()
-        expect(text).to_have_value("")
-        text.fill("PRIVATE-DRAFT of a new project while an old save completes")
-        route, response = held.pop()
-        with page.expect_request_finished(lambda request: request.method == "POST" and request.url.endswith(f"/{self.project}/docs")):
-            route.fulfill(response=response)
-        self.assertEqual(urlsplit(page.url).path, f"/projects/{self.foreign}/docs/new")
-        expect(text).to_have_value("PRIVATE-DRAFT of a new project while an old save completes")
-        self.assertEqual(page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).attempt", key), attempt)
-        self.navigate_editor(page, self.project)
-        expect(page.get_by_label("Title", exact=True)).to_have_value(title)
-        expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")
-        self.assertEqual(page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).attempt", key), attempt)
-        page.unroute(f"**/api/v1/projects/{self.project}/docs", hold)
-        submitted = []
-        page.on("request", lambda request: submitted.append(request.headers.get("idempotency-key")) if request.method == "POST" and request.url.endswith(f"/{self.project}/docs") else None)
-        text.press("Control+s")
-        expect(page.get_by_role("heading", level=2, name=title)).to_be_visible()
-        self.assertEqual(submitted, [attempt])
-        docs = api(self.ctx, "GET", f"/api/v1/projects/{self.project}/docs?limit=100")["items"]
-        self.assertEqual(sum(doc["title"] == title for doc in docs), 1)
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page, text = self.scene(phone)
+                title = f"A document saved once across an editor scope change {phone}"
+                page.get_by_label("Title", exact=True).fill(title)
+                held = []
+                def hold(route):
+                    if route.request.method == "POST" and not held:
+                        response = route.fetch(); self.assertEqual(response.status, 201)
+                        held.append((route, response)); page.evaluate("window.oldSaveHeld = true")
+                    else: route.continue_()
+                page.route(f"**/api/v1/projects/{self.project}/docs", hold)
+                text.press("Control+s"); page.wait_for_function("window.oldSaveHeld === true")
+                key = f"flux:doc-edit:{self.user}:new:{self.project}"
+                attempt = page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).attempt", key)
+                self.navigate_editor(page, self.foreign)
+                expect(page.get_by_text("New doc · everyone in Other library can read it", exact=True)).to_be_visible()
+                expect(text).to_have_value("")
+                text.fill("PRIVATE-DRAFT of a new project while an old save completes")
+                route, response = held.pop()
+                with page.expect_request_finished(lambda request: request.method == "POST" and request.url.endswith(f"/{self.project}/docs")):
+                    route.fulfill(response=response)
+                self.assertEqual(urlsplit(page.url).path, f"/projects/{self.foreign}/docs/new")
+                expect(text).to_have_value("PRIVATE-DRAFT of a new project while an old save completes")
+                self.assertEqual(page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).attempt", key), attempt)
+                self.navigate_editor(page, self.project)
+                expect(page.get_by_label("Title", exact=True)).to_have_value(title)
+                expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")
+                self.assertEqual(page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).attempt", key), attempt)
+                page.unroute(f"**/api/v1/projects/{self.project}/docs", hold)
+                submitted = []
+                page.on("request", lambda request: submitted.append(request.headers.get("idempotency-key")) if request.method == "POST" and request.url.endswith(f"/{self.project}/docs") else None)
+                text.press("Control+s")
+                expect(page.get_by_role("heading", level=2, name=title)).to_be_visible()
+                self.assertEqual(submitted, [attempt])
+                docs = api(self.ctx, "GET", f"/api/v1/projects/{self.project}/docs?limit=100")["items"]
+                self.assertEqual(sum(doc["title"] == title for doc in docs), 1)
 
     def test_08_old_save_cannot_redirect_during_the_destination_loader(self):
-        page, text = self.scene()
-        page.get_by_label("Title", exact=True).fill("Saved before destination loaders finish")
-        saves, projects = [], []
-        def hold_save(route):
-            if route.request.method == "POST":
-                response = route.fetch(); self.assertEqual(response.status, 201)
-                saves.append((route, response)); page.evaluate("window.saveBeforeNavigationHeld = true")
-            else: route.continue_()
-        def hold_project(route):
-            response = route.fetch(); self.assertEqual(response.status, 200)
-            projects.append((route, response)); page.evaluate("count => window.destinationLoadersHeld = count", len(projects))
-        page.route(f"**/api/v1/projects/{self.project}/docs", hold_save)
-        page.route(f"**/api/v1/projects/{self.foreign}", hold_project)
-        self.addCleanup(lambda: page.unroute_all(behavior="ignoreErrors"))
-        text.press("Control+s"); page.wait_for_function("window.saveBeforeNavigationHeld === true")
-        key = f"flux:doc-edit:{self.user}:new:{self.project}"
-        attempt = page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).attempt", key)
-        self.navigate_editor(page, self.foreign)
-        page.wait_for_function("window.destinationLoadersHeld === 2")
-        route, response = saves.pop()
-        with page.expect_request_finished(lambda request: request.method == "POST" and request.url.endswith(f"/{self.project}/docs")):
-            route.fulfill(response=response)
-        page.wait_for_function("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))")
-        self.assertEqual(urlsplit(page.url).path, f"/projects/{self.foreign}/docs/new")
-        self.assertEqual(page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).attempt", key), attempt)
-        for route, response in projects: route.fulfill(response=response)
-        expect(page.get_by_text("New doc · everyone in Other library can read it", exact=True)).to_be_visible()
-        expect(text).to_have_value("")
-        self.assertEqual(urlsplit(page.url).path, f"/projects/{self.foreign}/docs/new")
-        self.assertEqual(page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).attempt", key), attempt)
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page, text = self.scene(phone)
+                page.get_by_label("Title", exact=True).fill(f"Saved before destination loaders finish {phone}")
+                saves, projects = [], []
+                def hold_save(route):
+                    if route.request.method == "POST":
+                        response = route.fetch(); self.assertEqual(response.status, 201)
+                        saves.append((route, response)); page.evaluate("window.saveBeforeNavigationHeld = true")
+                    else: route.continue_()
+                def hold_project(route):
+                    response = route.fetch(); self.assertEqual(response.status, 200)
+                    projects.append((route, response)); page.evaluate("count => window.destinationLoadersHeld = count", len(projects))
+                page.route(f"**/api/v1/projects/{self.project}/docs", hold_save)
+                page.route(f"**/api/v1/projects/{self.foreign}", hold_project)
+                self.addCleanup(lambda: page.unroute_all(behavior="ignoreErrors"))
+                text.press("Control+s"); page.wait_for_function("window.saveBeforeNavigationHeld === true")
+                key = f"flux:doc-edit:{self.user}:new:{self.project}"
+                attempt = page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).attempt", key)
+                self.navigate_editor(page, self.foreign)
+                page.wait_for_function("window.destinationLoadersHeld === 2")
+                route, response = saves.pop()
+                with page.expect_request_finished(lambda request: request.method == "POST" and request.url.endswith(f"/{self.project}/docs")):
+                    route.fulfill(response=response)
+                page.wait_for_function("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))")
+                self.assertEqual(urlsplit(page.url).path, f"/projects/{self.foreign}/docs/new")
+                self.assertEqual(page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).attempt", key), attempt)
+                for route, response in projects: route.fulfill(response=response)
+                expect(page.get_by_text("New doc · everyone in Other library can read it", exact=True)).to_be_visible()
+                expect(text).to_have_value("")
+                self.assertEqual(urlsplit(page.url).path, f"/projects/{self.foreign}/docs/new")
+                self.assertEqual(page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).attempt", key), attempt)
