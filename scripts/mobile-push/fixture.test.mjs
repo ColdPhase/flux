@@ -88,6 +88,9 @@ test('lease expiry disconnects an existing upgraded socket and its upstream', ()
   const upstream = http.createServer();
   upstream.on('upgrade', (_req, socket) => {
     upstreamSocket = socket; socket.write('HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n');
+    // HTTP upgrade sockets allow half-open transport. Behave like a receiving
+    // WebSocket peer: consume FIN and finish our side before asserting both close.
+    socket.on('end', () => socket.end()); socket.resume();
   });
   upstream.listen(0, '127.0.0.1'); await once(upstream, 'listening');
   const gateway = startGateway(directory, 0, { hostname: '127.0.0.1', port: upstream.address().port }); await once(gateway, 'listening');
