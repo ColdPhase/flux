@@ -64,6 +64,7 @@ services:
         condition: service_healthy
   test:
     environment:
+      FLUX_TEST_FILES_DIR: /data/files
       FLUX_VAPID_PUBLIC_KEY: ${FLUX_VAPID_PUBLIC_KEY:-}
       FLUX_VAPID_PRIVATE_KEY: ${FLUX_VAPID_PRIVATE_KEY:-}
       FLUX_VAPID_SUBJECT: ${FLUX_VAPID_SUBJECT:-}
@@ -74,6 +75,7 @@ services:
       NODE_EXTRA_CA_CERTS: /tls/cert.pem
     volumes:
       - pushtls:/tls:ro
+      - files:/data/files:z
     depends_on:
       worker:
         condition: service_started

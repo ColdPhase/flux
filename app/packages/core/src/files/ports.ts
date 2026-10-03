@@ -25,11 +25,12 @@ export interface StoredFileRow {
 export interface FileRepository {
   /** Serializes one uploader's admission, finalization and cleanup in one project (quota and upload id). */
   lockUploader(projectId: string, uploader: ActorRef): Promise<void>;
+  activeReplay(fileId: string, now: Date): Promise<boolean>;
   findUpload(projectId: string, uploader: ActorRef, uploadId: string): Promise<StoredFileRow | null>;
   /** Unexpired reservations plus unexpired ready unpublished files of this uploader in this project, in bytes. */
   stagedBytes(projectId: string, uploader: ActorRef, now: Date): Promise<number>;
   reserve(input: { id: string; workspaceId: string; projectId: string; uploader: ActorRef; uploadId: string; name: string;
-    reservedBytes: number; expiresAt: Date }): Promise<StoredFileRow>;
+    reservedBytes: number; expiresAt: Date; replayOf?: string }): Promise<StoredFileRow>;
   findFile(id: string): Promise<StoredFileRow | null>;
   /** Marks a still-receiving reservation ready; false when it is gone or no longer receiving. */
   markReady(id: string, input: { size: number; sha256: string; readyAt: Date; expiresAt: Date }): Promise<boolean>;
@@ -40,6 +41,9 @@ export interface FileRepository {
   /** Up to `limit` unpublished rows whose expiry has passed, oldest expiry first. Not locked. */
   expired(now: Date, limit: number): Promise<StoredFileRow[]>;
   /** The published files of these messages, each list in attachment order. */
+  /** Durable deletion queue: rows are retired atomically before any physical deletion. */
+  pendingGarbage(limit: number): Promise<string[]>;
+  forgetGarbage(ids: readonly string[]): Promise<void>;
   messageFiles(messageIds: readonly string[]): Promise<Map<string, MessageFile[]>>;
 }
 
@@ -66,8 +70,8 @@ export interface FileStorage {
   receive(bytes: AsyncIterable<Uint8Array>, limits: { maxBytes: number; deadline: number }): Promise<ReceivedFile>;
   /** The object's bytes, or null when it is missing. */
   read(objectId: string): Promise<Uint8Array | null>;
-  /** Whether the object exists with exactly this size. */
-  has(objectId: string, size: number): Promise<boolean>;
+  /** Whether immutable bytes exist with exactly this size and, when supplied, SHA-256. */
+  has(objectId: string, size: number, sha256?: string): Promise<boolean>;
   /** Removes the object durably; a missing object is not an error. */
   remove(objectId: string): Promise<void>;
   /** Removes scratch files older than this age (abandoned receives). */

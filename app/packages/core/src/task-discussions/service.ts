@@ -15,7 +15,7 @@ const wire = (row: DiscussionMessage, names: Map<string, string>): ConversationM
     ...(row.author.kind === 'human' ? { authorId: row.author.id } : { authorId: null,
       author: { kind: 'agent' as const, id: row.author.id, name: names.get(`agent:${row.author.id}`) ?? 'Agent' } }),
     body: row.body, source: row.source, sequence: row.sequence, createdAt: row.createdAt.toISOString(),
-    ...(contribution ? { contribution } : {}) };
+    ...(contribution ? { contribution } : {}), ...(row.files?.length ? { files: row.files } : {}) };
 };
 
 /**
@@ -150,8 +150,14 @@ export function createTaskDiscussionUseCases(unit: TaskDiscussionUnitOfWork) {
         const project = await authorize(ports, principal, workId, 'write');
         const author = actorOf(principal);
         await ports.discussion.lockCommand(project.projectId, author, input.clientMessageId);
+        const existing = await ports.discussion.existingMessage(project.projectId, author, input.clientMessageId);
+        let files;
+        if (!existing && input.attachmentIds.length) {
+          if (!ports.attachments) throw new InvalidInputError('Files are unavailable from this entry point', 'AGENT_FILES_UNAVAILABLE');
+          files = await ports.attachments.lock(project.projectId, author, input.attachmentIds);
+        }
         if (!await ports.work.findWork(workId, { lock: true })) throw missing();
-        const { message } = await appendToTask(ports, project, author, workId, { ...input, kind });
+        const { message } = await appendToTask(ports, project, author, workId, { ...input, kind, files });
         return wire(message, await ports.work.names([message.author]));
       });
     },

@@ -135,6 +135,12 @@ while read -r path; do
   [ "$(sha256 "$bundle/$path")" = "$expected" ] || fail "bundle checksum mismatch for $path"
 done < "$work/manifest-paths"
 ls "$bundle"/docs/*.md >/dev/null 2>&1 || fail "bundle has no docs/*.md"
+# The fixture publishes a binary attachment through HTTP; the operator CLI must export its
+# exact bytes and the paired restore later rechecks them through the authorized download.
+file_id=$(printf '%s' "$state" | sed -n 's/.*"fileId":"\([0-9a-f-]*\)".*/\1/p')
+file_hex=$(printf '%s' "$state" | sed -n 's/.*"fileHex":"\([0-9a-f]*\)".*/\1/p')
+[ -n "$file_id" ] && [ -n "$file_hex" ] || fail "no binary attachment fixture"
+[ "$(od -An -v -tx1 "$bundle/files/$file_id" | tr -d ' \n')" = "$file_hex" ] || fail "CLI export attachment bytes differ"
 if flux_a export 'Community garden sensors' --as jonas@demo.flux.test --output "$work/denied.tar.gz" > "$work/denied.out" 2>&1; then fail "a member without project.manage exported"; fi
 grep -q 'may not manage' "$work/denied.out" || fail "no project.manage refusal: $(cat "$work/denied.out")"
 [ ! -e "$work/denied.tar.gz" ] || fail "a refused export left a file"

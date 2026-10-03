@@ -49,3 +49,8 @@ export interface MessageFile {
   name: string;
   size: number;
 }
+
+/** A system preview; the stored authored message body remains unchanged. */
+export function messagePreview(body: string, count = 0): string {
+  return body || (count === 1 ? '1 attached file' : count > 1 ? `${count} attached files` : '');
+}
