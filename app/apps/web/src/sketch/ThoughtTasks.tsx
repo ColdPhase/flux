@@ -101,15 +101,16 @@ export function ThoughtTasks({ thought, tasks, projectId, variant, onOpenTask }:
   return (
     <>
       <button ref={anchor} type="button" className={`sk-work sk-work--${variant}`} aria-haspopup="dialog" aria-expanded={open}
-        aria-label={`${count(tasks.length)} linked to ${quote(thought.text)}`} title={variant === 'list' ? count(tasks.length) : undefined}
+        aria-label={`${count(tasks.length)} linked to ${quote(thought.text)}`}
         onClick={(event) => {
           // Some touch browsers never focus a tapped button; the chooser returns here when it closes.
           event.currentTarget.focus({ preventScroll: true });
           if (open) close(true); else setOpen(true);
         }}>
         <Icon name="tasks" size={12} />
-        <span>{variant === 'map' ? count(tasks.length) : tasks.length}</span>
-        {variant === 'map' ? <Icon name="chevron-right" size={11} /> : null}
+        {/* Worded and with a chevron in the List too, so it reads as a button, not as metadata. */}
+        <span>{count(tasks.length)}</span>
+        <Icon name="chevron-right" size={11} />
       </button>
       {phone
         ? <Sheet open={open} onClose={() => close(true)} labelledBy={titleId} className="sk-tasks-sheet">{body}</Sheet>

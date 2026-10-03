@@ -432,7 +432,7 @@ class MapTaskCountJourney(unittest.TestCase):
         self.chooser(page, DARK_ROOM).get_by_role("link", name=re.compile(re.escape(ORDER))).click()
         expect(page.locator(".details__title")).to_have_text(ORDER)
         page.get_by_role("radio", name="List", exact=True).click()
-        expect(self.row_badge(page, "dark")).to_have_text("3")
+        expect(self.row_badge(page, "dark")).to_have_text("3 tasks")
         # Compared as the owner, who can also read the private placement.
         self.unchanged(self.page())
 
@@ -471,7 +471,7 @@ class MapTaskCountJourney(unittest.TestCase):
 
             page.get_by_role("radio", name="List", exact=True).tap()
             row = self.row_badge(page, "dark")
-            expect(row).to_have_text("3")
+            expect(row).to_have_text("3 tasks")
             self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), PHONE["width"], "the List with counts fits too")
             row_box = row.bounding_box()
             self.assertGreaterEqual(row_box["height"], 44)
