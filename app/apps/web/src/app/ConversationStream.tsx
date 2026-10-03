@@ -212,12 +212,25 @@ export function ConversationStream({ project, meId, roots: stream, work, author,
     let anchor: { id: string; offset: number } | null = null;
     let width = feed.clientWidth;
     let frame = 0;
+    // Only the person's own scrolling moves the opened root's place. A width change (the thread or Details
+    // docking) makes the browser clamp the scroll position and this view adjust it; those scroll events
+    // must not be taken for the reader moving, or the root would not come back to where it was.
+    let personAt = -Infinity;
+    const person = () => { personAt = performance.now(); };
+    // A press on the scroll bar targets the feed itself; a press on a message or button does not scroll.
+    const press = (event: PointerEvent) => { if (event.target === feed) person(); };
+    const scrollKeys = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
+    const key = (event: KeyboardEvent) => {
+      if (scrollKeys.has(event.key) && !(event.target as Element | null)?.closest?.('button, a, input, textarea, select, [contenteditable]')) person();
+    };
     const record = () => {
       frame = 0;
       const { top, bottom } = feed.getBoundingClientRect();
       stickRef.current = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 48;
-      const pinned = pinRef.current ? document.getElementById(pinRef.current.id)?.getBoundingClientRect() : null;
-      pinRef.current = pinned && pinned.bottom > top && pinned.top < bottom ? { id: pinRef.current!.id, offset: pinned.top - top } : null;
+      if (performance.now() - personAt < 500) {
+        const pinned = pinRef.current ? document.getElementById(pinRef.current.id)?.getBoundingClientRect() : null;
+        pinRef.current = pinned && pinned.bottom > top && pinned.top < bottom ? { id: pinRef.current!.id, offset: pinned.top - top } : null;
+      }
       anchor = null;
       for (const item of feed.querySelectorAll<HTMLElement>('.project-convo__message')) {
         const box = item.getBoundingClientRect();
@@ -235,8 +248,18 @@ export function ConversationStream({ project, meId, roots: stream, work, author,
     });
     record();
     feed.addEventListener('scroll', onScroll, { passive: true });
+    for (const name of ['wheel', 'touchmove'] as const) feed.addEventListener(name, person, { passive: true });
+    feed.addEventListener('pointerdown', press, { passive: true });
+    feed.addEventListener('keydown', key);
     observer.observe(feed);
-    return () => { feed.removeEventListener('scroll', onScroll); observer.disconnect(); if (frame) cancelAnimationFrame(frame); };
+    return () => {
+      feed.removeEventListener('scroll', onScroll);
+      for (const name of ['wheel', 'touchmove'] as const) feed.removeEventListener(name, person);
+      feed.removeEventListener('pointerdown', press);
+      feed.removeEventListener('keydown', key);
+      observer.disconnect();
+      if (frame) cancelAnimationFrame(frame);
+    };
   }, []);
 
   async function loadOlder() {
