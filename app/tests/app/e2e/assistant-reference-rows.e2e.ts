@@ -185,14 +185,14 @@ test('proposal authority distinguishes loading, failed read, owned, manager, vie
   const committed=await answer('Draft a result for the range');
   proposal=expectStatus(await manager.browser.request('GET',`/api/v1/assistant-proposals/${committed.proposalId}`),200) as AssistantProposal;
   const nonowner=await open(writer);
-  const card=nonowner.locator('.assistant-proposal').last;
+  const card=nonowner.locator('.assistant-proposal').last();
   await card.scrollIntoViewIfNeeded();await expect(card).toContainText('waits for someone who can decide it');
   await expect(card.getByRole('button',{name:'Accept',exact:true})).toHaveCount(0);
   await expect(card.getByRole('button',{name:'Dismiss',exact:true})).toHaveCount(0);
   const denied=await writer.browser.request('POST',`/api/v1/assistant-proposals/${proposal.id}/accept`,{body:{expectedVersion:proposal.version}});assert.equal(denied.status,403);
-  const readonly=await open(viewer);const readonlyCard=readonly.locator('.assistant-proposal').last;await readonlyCard.scrollIntoViewIfNeeded();
+  const readonly=await open(viewer);const readonlyCard=readonly.locator('.assistant-proposal').last();await readonlyCard.scrollIntoViewIfNeeded();
   await expect(readonlyCard).toContainText('waits for someone who can decide it');await expect(readonlyCard.getByRole('button',{name:'Accept',exact:true})).toHaveCount(0);
-  const mine=await open(owner);const mineCard=mine.locator('.assistant-proposal').last;await mineCard.scrollIntoViewIfNeeded();await expect(mineCard.getByRole('button',{name:'Accept',exact:true})).toBeVisible();
+  const mine=await open(owner);const mineCard=mine.locator('.assistant-proposal').last();await mineCard.scrollIntoViewIfNeeded();await expect(mineCard.getByRole('button',{name:'Accept',exact:true})).toBeVisible();
   await mine.locator('#project-composer').fill('Keep the private reply during a required read failure');
   await mine.route(referencePattern,(route)=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({code:'WORK_READ_UNAVAILABLE',error:'Injected required read failure'})}));
   await mine.evaluate(()=>window.dispatchEvent(new Event('focus')));
@@ -209,7 +209,7 @@ test('proposal authority distinguishes loading, failed read, owned, manager, vie
   await expect(card.getByRole('button',{name:'Accept',exact:true})).toBeVisible();
   target=await patchTask(target,{owner:{kind:'human',id:owner.id}});await nonowner.evaluate(()=>window.dispatchEvent(new Event('focus')));
   await expect(card.getByRole('button',{name:'Accept',exact:true})).toHaveCount(0);
-  const managerPage=await open(manager);const managerCard=managerPage.locator('.assistant-proposal').last;await managerCard.scrollIntoViewIfNeeded();await expect(managerCard.getByRole('button',{name:'Accept',exact:true})).toBeVisible();
+  const managerPage=await open(manager);const managerCard=managerPage.locator('.assistant-proposal').last();await managerCard.scrollIntoViewIfNeeded();await expect(managerCard.getByRole('button',{name:'Accept',exact:true})).toBeVisible();
   // Unavailable proposal target rendering only: scoped native FK prevents deleting
   // this actual target. The native final command authority remains independently checked.
   await managerPage.route(referencePattern,async(route)=>{
@@ -228,7 +228,7 @@ test('proposal authority distinguishes loading, failed read, owned, manager, vie
 
 test('required metadata retry preserves lost-response command UUID, native reply identity and answer reading anchor', {timeout:60_000},async()=>{
   const page=await open(owner,390,844);
-  const card=page.locator('.assistant-proposal').last;await card.scrollIntoViewIfNeeded();await expect(card.getByRole('button',{name:'Accept',exact:true})).toBeVisible();
+  const card=page.locator('.assistant-proposal').last();await card.scrollIntoViewIfNeeded();await expect(card.getByRole('button',{name:'Accept',exact:true})).toBeVisible();
   const replyText='One native reply despite lost response and metadata retry';
   const sends:string[]=[];
   const replies=`**/api/v1/conversations/${thread.id}/messages`;
@@ -268,7 +268,7 @@ test('required metadata retry preserves lost-response command UUID, native reply
 
 test('late authorized metadata cannot resurrect manager actions across real account A→B→A revalidation', {timeout:60_000},async()=>{
   const page=await open(manager);
-  const card=page.locator('.assistant-proposal').last;await card.scrollIntoViewIfNeeded();await expect(card.getByRole('button',{name:'Accept',exact:true})).toBeVisible();
+  const card=page.locator('.assistant-proposal').last();await card.scrollIntoViewIfNeeded();await expect(card.getByRole('button',{name:'Accept',exact:true})).toBeVisible();
   const held:{route:Route,response:Awaited<ReturnType<Route['fetch']>>}[]=[];
   let captureNext=true;
   await page.route(referencePattern,async(route)=>{
@@ -277,19 +277,19 @@ test('late authorized metadata cannot resurrect manager actions across real acco
   });
   await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
   await expect.poll(()=>held.length).toBe(1);
-  const oldValue=await held[0]!.response.json();assert.equal(oldValue.access,'manager');
+  const oldValue=await held[0]!.response.json() as {access:string};assert.equal(oldValue.access,'manager');
   async function switchAccount(who:Person){
     const signedOut=await page.context().request.post('/api/auth/sign-out',{headers:{origin:origin.origin}});assert.equal(signedOut.status(),200);
     const signedIn=await page.context().request.post('/api/auth/sign-in/email',{headers:{origin:origin.origin},data:{email:who.email,password}});assert.equal(signedIn.status(),200);
     await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
   }
   await switchAccount(writer);
-  await expect(page.locator('.assistant-answer__asked').last).toHaveText('asked by Reference manager');
+  await expect(page.locator('.assistant-answer__asked').last()).toHaveText('asked by Reference manager');
   await expect(page.getByRole('button',{name:'Refresh task references',exact:true})).toBeVisible();
   await expect(card.getByRole('button',{name:'Accept',exact:true})).toHaveCount(0);
   await page.locator('#project-composer').fill('Only the second account owns this private draft');
   await switchAccount(manager);
-  await expect(page.locator('.assistant-answer__asked').last).toHaveText('asked by you');
+  await expect(page.locator('.assistant-answer__asked').last()).toHaveText('asked by you');
   await expect(page.getByRole('button',{name:'Refresh task references',exact:true})).toBeVisible();
   await held[0]!.route.fulfill({response:held[0]!.response});
   await page.waitForTimeout(500);
