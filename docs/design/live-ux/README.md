@@ -140,4 +140,4 @@ Its findings, and what happened to each:
   candidates for merging after the device checks in #63.
 - **Open.** The screen stage has no card framing.
 - **Not assessable from an image.** Sheet dismissal. Keyboard, focus and reduced motion are
-  exercised by `tests/ui/test_live_sessions.py`.
+  exercised by `app/tests/ui/test_live_sessions.py`.
