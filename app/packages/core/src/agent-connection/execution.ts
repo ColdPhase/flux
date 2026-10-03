@@ -66,7 +66,7 @@ export function normalizeAgentExecution(command: AgentExecutionCommand): Normali
     grantId: uuid(command.grantId, 'grantId'), clientCommandId: uuid(command.clientCommandId, 'clientCommandId'), projectId,
     operation: command.operation, peerRequestClass: command.peerRequestClass, audience: { kind: 'project', projectId },
     objectId: command.objectId === null ? null : uuid(command.objectId, 'objectId'), sources, payload: json(command.payload) };
-  const creates = ['work.create', 'map.create', 'result.record', 'decision.propose'];
+  const creates = ['work.create', 'map.create', 'result.record', 'decision.propose', 'doc.create', 'conversation.create'];
   if (creates.includes(command.operation) ? normalized.objectId !== null : normalized.objectId === null)
     throw new InvalidInputError('Creates have no existing target; changes require their exact canonical target ID');
   const serialized = JSON.stringify(normalized);
@@ -84,6 +84,7 @@ const POSTCONDITIONS: Record<AgentExecutionCommand['operation'], readonly AgentP
   'map.create': ['map'], 'map.rename': ['map'], 'map.thought.create': ['thought', 'map_checkpoint'],
   'map.thought.update': ['thought', 'map_checkpoint'], 'map.thought.delete': ['map_checkpoint'],
   'map.positions.update': ['thought', 'map_checkpoint'], 'map.link.create': ['map_checkpoint'], 'map.link.delete': ['map_checkpoint'],
+  'doc.create': ['doc'], 'doc.update': ['doc'], 'conversation.create': ['message'], 'conversation.reply': ['message'],
   'cowork.claim': ['cowork.claim_state'], 'cowork.renew': ['cowork.claim_state'], 'cowork.release': ['cowork.claim_state'],
   'cowork.request': ['cowork.request_state'],
 };
@@ -123,8 +124,14 @@ export function validateAgentPostconditions(operation: AgentExecutionCommand['op
         || !['queued', 'deferred', 'claimed', 'resolved', 'declined', 'superseded', 'expired', 'cancelled'].includes(condition.state)) postconditionInvalid();
     } else {
       if (!isUuid(condition.id)) postconditionInvalid();
-      fields = condition.kind === 'result' ? ['kind', 'id'] : condition.kind === 'map_checkpoint' ? ['kind', 'id', 'updatedAt'] : ['kind', 'id', 'version'];
-      if (condition.kind === 'map_checkpoint' ? !iso(condition.updatedAt) : condition.kind !== 'result' && !integer(condition.version)) postconditionInvalid();
+      if (condition.kind === 'result' || condition.kind === 'message') fields = ['kind', 'id'];
+      else if (condition.kind === 'map_checkpoint') {
+        fields = ['kind', 'id', 'updatedAt'];
+        if (!iso(condition.updatedAt)) postconditionInvalid();
+      } else {
+        fields = ['kind', 'id', 'version'];
+        if (!integer(condition.version)) postconditionInvalid();
+      }
     }
     if (Object.keys(raw).length !== fields.length || Object.keys(raw).some((key) => !fields.includes(key))) postconditionInvalid();
   }

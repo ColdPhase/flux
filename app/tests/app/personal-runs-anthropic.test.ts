@@ -126,10 +126,10 @@ describe('Anthropic personal compute adapter (#68, local mock server: no provide
     handler = () => undefined; // never answers
     const controller = new AbortController();
     const pending = compute().dispatch(request, controller.signal);
-    await waitFor(() => seen.length === 1);
+    await waitUntil(() => seen.length === 1);
     controller.abort();
     assert.deepEqual(await pending, { kind: 'failed', reason: 'aborted', billed: 'unknown' });
-    await waitFor(() => seen[0]!.aborted);
+    await waitUntil(() => seen[0]!.aborted);
     assert.equal(seen.length, 1);
 
     seen = [];
@@ -189,7 +189,7 @@ describe('personal-run composition: production fails closed, the mock switch is 
   });
 });
 
-async function waitFor(check: () => boolean, timeoutMs = 3_000) {
+async function waitUntil(check: () => boolean, timeoutMs = 3_000) {
   const deadline = Date.now() + timeoutMs;
   while (!check()) {
     if (Date.now() > deadline) throw new Error('Timed out');

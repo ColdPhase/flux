@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
 import { chromium, type Browser as ChromiumBrowser } from 'playwright';
-import { createDatabase } from '@flux/db';
 import type { Conversation, LiveJoinGrant, LiveSession } from '@flux/contracts';
+import { pool as webhookPool } from '../support/db.js';
 import { publicOrigin } from '../support/http.js';
 import { mediaPage, openRoom, refreshedToken, refusedAtGate, roomName, type MediaPage } from '../support/live-sfu.js';
 import { addMember, expectStatus, grant, person, project, workspace } from '../support/people.js';
@@ -13,11 +13,9 @@ import { addMember, expectStatus, grant, person, project, workspace } from '../s
  * participate in one revocation. This deliberately does not mock the media port.
  * Run only through scripts/check_live_sfu.sh; the ordinary PR suite has no SFU.
  */
+// Signed LiveKit webhook observation reads rows through the shared pool, which support/db ends.
 let browser: ChromiumBrowser | undefined;
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required for signed LiveKit webhook observation');
-const { pool: webhookPool } = createDatabase(connectionString);
-after(async () => { await browser?.close(); await webhookPool.end(); });
+after(async () => { await browser?.close(); });
 
 test('Flux revocation retires the real SFU room, rejects original and refreshed grants, and rejoins a remaining member',
   { timeout: 120_000 }, async () => {

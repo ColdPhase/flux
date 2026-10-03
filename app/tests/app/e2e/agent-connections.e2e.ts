@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { createDatabase } from '@flux/db';
 import { chromium, type BrowserContext } from 'playwright';
+import { password } from '../support/people.js';
 
 /** Real browser consent and sign-in against Compose; this fixture is not a Codex/Claude activation test. */
 const origin = process.env.FLUX_PUBLIC_ORIGIN!;
@@ -27,7 +28,6 @@ test('named connections and two tabs in one login complete distinct consent flow
   try {
     const seed = await browser.newContext(); contexts.push(seed);
     const email = `oauth-browser-${randomUUID()}@example.test`;
-    const password = 'correct horse battery staple';
     async function post(path: string, body: unknown) {
       const response = await seed.request.post(`${origin}${path}`, { data: body, headers: { origin } });
       assert.ok(response.ok(), `${path}: ${response.status()} ${await response.text()}`);
