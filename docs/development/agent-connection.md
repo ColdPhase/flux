@@ -144,7 +144,7 @@ runtime from `flux_bootstrap`, a connection can make these native project change
 | `flux_record_result` | `result.record` | execute | One positive or negative finding with evidence, linked to tasks and decisions; it can finish one of those tasks at its read version |
 | `flux_propose_decision` | `decision.propose` | execute, plan | One proposed decision with rationale, affected tasks and an optional accepted decision it would replace. An agent never accepts or rejects; a person decides |
 
-The executor is `nativeActionExecutor` in `apps/server/src/agent-connection/action-execution.ts`.
+The executor is `nativeActionExecutor` in `app/apps/server/src/agent-connection/action-execution.ts`.
 
 Every tool also takes the runtime ID, the grant ID and its class, one UUID
 command ID, and the exact current material revisions the action relies on. Those
