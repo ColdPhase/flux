@@ -135,7 +135,14 @@ The original frozen model failed the independent pre-worker retention control. T
 correction reserves input, transferable copy, charged state and maximum result in
 the same budget used by the actual pool before immutable intent hashing/queueing.
 Borrowed byte mutation is checked before dispatch and before result publication.
-The correction and its refusal/recovery cases await execution and fresh review.
+The corrected `7c5e447f` checkpoint passed 30 author cases and 10 independent probes
+in the root's isolated Docker runs. A later independent source review found that a
+small typed-array view still retained its full, previously uncharged backing store.
+The next source refinement reserves the entire backing capacity (maximum capacity
+for resizable/growable stores) plus the transferable view copy, and refuses a backing
+larger than 8 MiB before hashing/queueing. Its new positive accounting and oversized/
+growable refusal cases are **unexecuted**; the earlier PASS is historical evidence,
+not a claim that the new resource boundary has passed review.
 
 | Candidate limit | Value / accounting |
 | --- | --- |
@@ -143,7 +150,7 @@ The correction and its refusal/recovery cases await execution and fresh review.
 | Assembly | one per connection; four / 32 MiB per process; ≤144 chunks, 8 MiB, 10-second expiry; reordered exact duplicates allowed, altered/scope/count changes refused |
 | Assembly completion | charge original chunks plus contiguous result before allocation; refuse if that copy would exceed the shared 32 MiB assembly budget |
 | Workers | two; 64 MiB JS heap candidate partitioned 48 MiB old + 16 MiB young; explicit 16 MiB code range / 2 MiB stack; verify public worker-reported values; terminate after 100 ms task deadline; separate **2,000 ms finite bootstrap** deadline |
-| Jobs | ≤8 waiting; reserve retry bytes + transferable input + charged checkpoint/ledger + full 8 MiB result copy **before queueing**; 32 MiB aggregate; the external limit can refuse before the count limit |
+| Jobs | ≤8 waiting; reserve complete retained input backing capacity + transferable view copy + charged checkpoint/ledger + full 8 MiB result copy **before queueing**; input backing ≤8 MiB; 32 MiB aggregate; the external limit can refuse before the count limit |
 | Serialized intent admission | shares that job budget; proposed 3,000 ms finite waiting deadline, current cancellation and close rejection; no per-room promise tail outside the reservation |
 | Graph decode | ≤65,536 decoded/retained structs and ≤65,536 delete ranges; larger headers remain constrained by worker heap/deadline |
 | Confirmed room cache | ≤8 MiB charged state, including original deleted text, body/checkpoint strings, receipts, enrollment and explicit object headroom; 16 rooms / 128 MiB aggregate |

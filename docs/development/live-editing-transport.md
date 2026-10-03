@@ -13,6 +13,12 @@ controller/SQL adapter is the next composition step. The independently reviewed
 peer #170 typing route uses the existing emitter and retains its 1,024-byte receiver.
 No peer branch was edited or assumed merged.
 
+The root's first build of `3334ed1f` failed type checking because the older pinned
+`@types/ws` omits the public ws 8.22 fragment options; none of the six runtime cases
+ran. The narrow source correction declares the exact numeric `maxFragments`,
+`maxBufferedChunks` and `closeTimeout` options documented by the pinned public API.
+It retains checking of every other server option; its build/runtime are unverified.
+
 `apps/server/src/editing/gate.ts` uses the supported detached `ws` server with its
 own 65,536-byte message limit and compression disabled. Pinned primary sources read
 2026-10-04: [ws 8.22 API](https://github.com/websockets/ws/blob/8.22.0/doc/ws.md),

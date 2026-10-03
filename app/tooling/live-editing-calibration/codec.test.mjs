@@ -15,6 +15,7 @@ import { item, wire } from './wire-fixtures.mjs';
 import { RoomCache } from './room-cache.mjs';
 import { Assemblies, packet } from './assembly.mjs';
 import { IntentRegistry } from './intent-registry.mjs';
+import { AdmissionBudget } from './admission-budget.mjs';
 
 const digest = (value) => createHash('sha256').update(canonical(value)).digest('hex');
 function capture(doc, change) {
@@ -375,6 +376,23 @@ test('registry reserves before a blocked first admission and releases retained i
   release(); const results = await settled;
   assert.ok(results.some((result) => result.status === 'rejected' && result.reason.code === 'EXTERNAL_BUFFER_LIMIT'));
   assert.equal(h.intents.budget.bytes, 0); assert.equal(h.intents.budget.leases.size, 0);
+});
+
+test('admission accounts for full retained backing and refuses oversized views before hashing or queueing', async (t) => {
+  const h = harness(t); const budget = new AdmissionBudget();
+  const backing = new ArrayBuffer(1_024); const view = new Uint8Array(backing, 17, 16);
+  const lease = budget.reserve(h.state, view);
+  assert.equal(lease.amount, backing.byteLength + view.byteLength + stateCharge(h.state) + CAPS.roomCacheBytes);
+  budget.release(lease); assert.equal(budget.bytes, 0);
+  const oversized = new Uint8Array(new ArrayBuffer(64 * 1024 * 1024), 0, 16);
+  let hashes = 0; let calls = 0;
+  const envelope = { get workspace() { hashes++; throw new Error('must refuse before fingerprint'); } };
+  await assert.rejects(h.intents.run({ run: async () => { calls++; } }, h.state, envelope, oversized), { code: 'EXTERNAL_BUFFER_LIMIT' });
+  assert.equal(hashes, 0); assert.equal(calls, 0); assert.equal(h.intents.waiting.length, 0);
+  assert.equal(h.intents.budget.bytes, 0); assert.equal(h.intents.budget.leases.size, 0);
+  const growable = new Uint8Array(new ArrayBuffer(16, { maxByteLength: CAPS.assemblyBytes + 1 }));
+  assert.throws(() => budget.reserve(h.state, growable), { code: 'EXTERNAL_BUFFER_LIMIT' });
+  assert.equal(budget.bytes, 0); assert.equal(budget.leases.size, 0);
 });
 
 test('actual registry and pool share one reservation and cancel active plus waiting jobs on close', async (t) => {

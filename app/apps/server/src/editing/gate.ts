@@ -41,9 +41,11 @@ function refuse(socket: Duplex, status: number, text: string) {
 
 /** Supported detached server: bounds do not change the existing stream/media receivers. */
 export function editingGate(options: EditingGateOptions): EditingGate {
-  // ws 8.22 documents closeTimeout; the older pinned @types/ws has not declared it.
-  // Describe that one public option explicitly, retaining checking of all other options.
-  const serverOptions: NonNullable<ConstructorParameters<typeof WebSocketServer>[0]> & { closeTimeout: number } = {
+  // Public ws 8.22 options missing from the older pinned @types/ws declaration.
+  // Keep their exact numeric types and retain checking of all other options.
+  const serverOptions: NonNullable<ConstructorParameters<typeof WebSocketServer>[0]> & {
+    closeTimeout: number; maxFragments: number; maxBufferedChunks: number;
+  } = {
     noServer: true, maxPayload: EDITING_FRAME_BYTES, perMessageDeflate: false,
     maxFragments: 144, maxBufferedChunks: 144, closeTimeout: 1_000,
   };

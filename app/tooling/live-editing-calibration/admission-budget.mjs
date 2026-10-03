@@ -7,9 +7,13 @@ export class AdmissionBudget {
   reserve(state, bytes) {
     if (this.closed) throw new Refusal('POOL_CLOSED');
     if (!(bytes instanceof Uint8Array) || bytes.byteLength > CAPS.assemblyBytes) throw new Refusal('EXTERNAL_BUFFER_LIMIT');
+    // Keeping a view also keeps its entire backing store alive. A resizable/growable
+    // store reserves its maximum capacity so a later grow cannot escape this lease.
+    const backing = bytes.buffer.maxByteLength ?? bytes.buffer.byteLength;
+    if (backing > CAPS.assemblyBytes) throw new Refusal('EXTERNAL_BUFFER_LIMIT');
     const charge = stateCharge(state);
     if (charge > CAPS.roomCacheBytes) throw new Refusal('ROOM_CACHE_LIMIT');
-    const amount = 2 * bytes.byteLength + charge + CAPS.roomCacheBytes;
+    const amount = backing + bytes.byteLength + charge + CAPS.roomCacheBytes;
     if (this.bytes + amount > CAPS.assembliesBytesPerApi) throw new Refusal('EXTERNAL_BUFFER_LIMIT');
     if (this.leases.size >= CAPS.workers + CAPS.waitingTasks) throw new Refusal('WORK_QUEUE_LIMIT');
     const lease = { budget: this, state, input: bytes, amount };
