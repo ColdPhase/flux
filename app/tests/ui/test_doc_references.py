@@ -304,3 +304,35 @@ class DocReferenceJourney(unittest.TestCase):
         self.assertEqual(submitted, [attempt])
         docs = api(self.ctx, "GET", f"/api/v1/projects/{self.project}/docs?limit=100")["items"]
         self.assertEqual(sum(doc["title"] == title for doc in docs), 1)
+
+    def test_08_old_save_cannot_redirect_during_the_destination_loader(self):
+        page, text = self.scene()
+        page.get_by_label("Title", exact=True).fill("Saved before destination loaders finish")
+        saves, projects = [], []
+        def hold_save(route):
+            if route.request.method == "POST":
+                response = route.fetch(); self.assertEqual(response.status, 201)
+                saves.append((route, response)); page.evaluate("window.saveBeforeNavigationHeld = true")
+            else: route.continue_()
+        def hold_project(route):
+            response = route.fetch(); self.assertEqual(response.status, 200)
+            projects.append((route, response)); page.evaluate("count => window.destinationLoadersHeld = count", len(projects))
+        page.route(f"**/api/v1/projects/{self.project}/docs", hold_save)
+        page.route(f"**/api/v1/projects/{self.foreign}", hold_project)
+        self.addCleanup(lambda: page.unroute_all(behavior="ignoreErrors"))
+        text.press("Control+s"); page.wait_for_function("window.saveBeforeNavigationHeld === true")
+        key = f"flux:doc-edit:{self.user}:new:{self.project}"
+        attempt = page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).attempt", key)
+        self.navigate_editor(page, self.foreign)
+        page.wait_for_function("window.destinationLoadersHeld === 2")
+        route, response = saves.pop()
+        with page.expect_request_finished(lambda request: request.method == "POST" and request.url.endswith(f"/{self.project}/docs")):
+            route.fulfill(response=response)
+        page.wait_for_function("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))")
+        self.assertEqual(urlsplit(page.url).path, f"/projects/{self.foreign}/docs/new")
+        self.assertEqual(page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).attempt", key), attempt)
+        for route, response in projects: route.fulfill(response=response)
+        expect(page.get_by_text("New doc · everyone in Other library can read it", exact=True)).to_be_visible()
+        expect(text).to_have_value("")
+        self.assertEqual(urlsplit(page.url).path, f"/projects/{self.foreign}/docs/new")
+        self.assertEqual(page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).attempt", key), attempt)
