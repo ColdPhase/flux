@@ -163,6 +163,105 @@ class AgentsViewJourney(unittest.TestCase):
         bodies = [discussion["root"]["body"], *[m["body"] for m in discussion["messages"] if m["id"] != discussion["root"]["id"]]]
         self.assertEqual(bodies.count("OK. Workshop PC is offline until tonight."), 1, "one send, one message")
 
+    def thread(self, page: Page):
+        return page.get_by_role("region", name=f"Thread of {TASK}")
+
+    def contribute(self, who: str, body: str) -> None:
+        self.api(self.page(who), "POST", f"/api/v1/work/{self.ids['task']}/discussion", {"body": body, "clientMessageId": str(uuid.uuid4()), "kind": "text"}, status=201)
+
+    def test_03b_another_persons_contribution_arrives_without_reload(self) -> None:
+        # Both have the thread open; neither reloads (#183 B1). Live within a few seconds, well
+        # before the 15 s fallback refresh, so this is the event stream at work.
+        hubert = self.open_agents("hubert")
+        expect(self.thread(hubert).get_by_text("Workshop PC is offline until tonight")).to_be_visible()
+        box = hubert.get_by_label("Write to this task")
+        box.fill("Then I'll flash it tonight.")
+        marek = self.open_agents("marek")
+        expect(self.thread(marek).get_by_text("Workshop PC is offline until tonight")).to_be_visible()
+        marek.get_by_label("Write to this task").fill("Independent review: Marek repaired the cable")
+        marek.get_by_role("button", name="Send to task").click()
+        expect(self.thread(marek).get_by_text("Independent review: Marek repaired the cable")).to_have_count(1)
+        expect(self.thread(hubert).get_by_text("Independent review: Marek repaired the cable")).to_have_count(1, timeout=6000)
+        expect(box).to_have_value("Then I'll flash it tonight.")
+        # The reply goes to the same thread and each message shows once in both views.
+        hubert.get_by_role("button", name="Send to task").click()
+        expect(box).to_have_value("")
+        expect(self.thread(hubert).get_by_text("Then I'll flash it tonight.")).to_have_count(1)
+        expect(self.thread(marek).get_by_text("Then I'll flash it tonight.")).to_have_count(1, timeout=6000)
+        expect(self.thread(marek).get_by_text("Independent review: Marek repaired the cable")).to_have_count(1)
+        expect(self.thread(hubert).get_by_text("Independent review: Marek repaired the cable")).to_have_count(1)
+
+    def test_03c_a_dropped_stream_recovers_what_was_missed(self) -> None:
+        hubert = self.page("hubert")
+        sockets: list = []
+        down = {"value": False}
+
+        def stream(ws) -> None:
+            if down["value"]:
+                ws.close()
+                return
+            ws.connect_to_server()
+            sockets.append(ws)
+
+        hubert.route_web_socket(re.compile(r"/api/v1/stream"), stream)
+        hubert.goto(f"/projects/{self.ids['project']}/agents")
+        expect(self.thread(hubert).get_by_text("Then I'll flash it tonight.")).to_be_visible()
+        for _ in range(50):
+            if sockets:
+                break
+            hubert.wait_for_timeout(100)
+        self.assertEqual(len(sockets), 1, "the view listens to the event stream")
+        # The connection drops and stays down while Marek writes; it comes back on its own.
+        down["value"] = True
+        sockets[0].close()
+        self.contribute("marek", "Cable ordered while your link was down")
+        hubert.wait_for_timeout(1500)
+        down["value"] = False
+        expect(self.thread(hubert).get_by_text("Cable ordered while your link was down")).to_have_count(1, timeout=12000)
+        self.assertGreaterEqual(len(sockets), 2, "the stream reconnected")
+
+    def test_03d_new_messages_keep_an_earlier_reader_in_place_and_follow_one_at_the_end(self) -> None:
+        page = self.open_agents("hubert", phone=True)
+        thread = self.thread(page)
+        expect(thread.get_by_text("Cable ordered while your link was down")).to_be_visible()
+        pane = page.locator(".agents-scroll")
+        self.assertGreater(pane.evaluate("el => el.scrollHeight - el.clientHeight"), 100, "the phone pane scrolls")
+        pane.evaluate("el => { el.scrollTop = 0; }")
+        self.contribute("marek", "Reading earlier? This one waits below.")
+        expect(thread.get_by_text("Reading earlier? This one waits below.")).to_have_count(1, timeout=6000)
+        self.assertLessEqual(pane.evaluate("el => el.scrollTop"), 2, "a reader of earlier messages is not moved")
+        pane.evaluate("el => { el.scrollTop = el.scrollHeight; }")
+        self.contribute("marek", "At the end, this one comes into view.")
+        expect(thread.get_by_text("At the end, this one comes into view.")).to_have_count(1, timeout=6000)
+        page.wait_for_timeout(200)
+        placement = page.evaluate(NEWEST_PLACEMENT)
+        self.assertTrue(placement["visible"], "the newest message is visible, not under the composer")
+        self.assertLessEqual(placement["lastBottom"], placement["composerTop"] + 1)
+
+    def test_03e_losing_access_hides_an_open_thread_and_keeps_the_draft(self) -> None:
+        marek = self.open_agents("marek")
+        expect(self.thread(marek).get_by_text("At the end, this one comes into view.")).to_be_visible()
+        box = marek.get_by_label("Write to this task")
+        box.fill("Unsent note from Marek")
+        hubert = self.page("hubert")
+        grants = self.api(hubert, "GET", f"/api/v1/projects/{self.ids['project']}/grants", status=200)
+        grant = next(item for item in grants if item["principal"]["kind"] == "human" and item["principal"]["id"] == MAREK["id"])
+        self.api(hubert, "DELETE", f"/api/v1/projects/{self.ids['project']}/grants/{grant['id']}", status=204)
+        try:
+            # No event reaches someone who lost access; returning to the tab refetches.
+            marek.evaluate("() => window.dispatchEvent(new Event('focus'))")
+            expect(self.thread(marek).get_by_role("alert")).to_contain_text("You can no longer read this task")
+            expect(self.thread(marek).get_by_text("At the end, this one comes into view.")).to_have_count(0)
+            expect(box).to_be_disabled()
+            expect(box).to_have_value("Unsent note from Marek")
+        finally:
+            self.api(hubert, "POST", f"/api/v1/projects/{self.ids['project']}/grants", {"principal": {"kind": "human", "id": MAREK["id"]}, "role": "contributor"}, status=201)
+        marek.evaluate("() => window.dispatchEvent(new Event('focus'))")
+        expect(self.thread(marek).get_by_text("At the end, this one comes into view.")).to_be_visible()
+        expect(box).to_be_enabled()
+        expect(box).to_have_value("Unsent note from Marek")
+        box.fill("")
+
     def test_04_a_draft_survives_leaving_the_view(self) -> None:
         page = self.open_agents("hubert")
         page.get_by_label("Write to this task").fill("Half-written note about the firmware")

@@ -13,6 +13,8 @@ import { STREAM_CLOSE_UNAUTHENTICATED, STREAM_PATH, type StreamEvent, type Strea
  * refused upgrade, so a connection that closes before it opened while resuming from a cursor is
  * treated as a rejected cursor (`400 CURSOR_INVALID`): the cursor is dropped, listeners are
  * told to refetch, and it reconnects once from the head. It never retries the same cursor.
+ * The same close also happens while the network is down, when that refetch fails too, so
+ * listeners are told to refetch again once a connection from the head opens.
  */
 export interface StreamListener {
   onEvent(event: StreamEvent): void;
@@ -29,6 +31,8 @@ let cursor: string | null = null;
 let retry = 0;
 let timer: number | null = null;
 let seen = new Set<string>();
+/** A cursor was dropped: events since then were not replayed, so the next open asks for a refetch. */
+let resyncOnOpen = false;
 
 function clearTimer() {
   if (timer !== null) { window.clearTimeout(timer); timer = null; }
@@ -43,6 +47,7 @@ export function resetStream() {
   cursor = null;
   retry = 0;
   seen = new Set();
+  resyncOnOpen = false;
   identity = null;
 }
 
@@ -60,7 +65,12 @@ function connect() {
   const ws = new WebSocket(url);
   socket = ws;
   let opened = false;
-  ws.onopen = () => { opened = true; };
+  ws.onopen = () => {
+    opened = true;
+    if (!resyncOnOpen) return;
+    resyncOnOpen = false;
+    for (const { listener } of [...subscriptions]) listener.onResync?.();
+  };
   ws.onmessage = (message) => {
     let data: StreamMessage;
     try { data = JSON.parse(String(message.data)) as StreamMessage; } catch { return; }
@@ -79,6 +89,7 @@ function connect() {
     if (!opened && resumed && cursor === resumed) {
       // Refused while resuming: most likely a cursor this person cannot use. Start from the head once.
       cursor = null;
+      resyncOnOpen = true;
       for (const { listener } of [...subscriptions]) listener.onResync?.();
       schedule(0);
       return;

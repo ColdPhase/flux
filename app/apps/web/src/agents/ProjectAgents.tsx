@@ -1,8 +1,9 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { Link, useLoaderData, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { AgentOperation, ConversationMessage, ProjectAgentConnection, ProjectAgents as ProjectAgentsData, TaskDiscussion, WorkItem } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
+import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { useDraft } from '../app/drafts';
 import { useProjectShell } from '../project/data';
@@ -94,11 +95,49 @@ function scrollPaneToEnd(marker: HTMLElement | null) {
   if (pane) pane.scrollTop = pane.scrollHeight;
 }
 
+/** Messages by id in sequence order; a later copy of a message replaces the earlier one. */
+function mergeMessages(current: ConversationMessage[], incoming: ConversationMessage[]) {
+  const byId = new Map(current.map((message) => [message.id, message]));
+  for (const message of incoming) byId.set(message.id, message);
+  return [...byId.values()].sort((a, b) => a.sequence - b.sequence);
+}
+
+/**
+ * The thread's latest window with everything since `shown` (paged back, so a burst of replies
+ * leaves no gap), merged into what is shown. Earlier messages already on the page stay.
+ */
+async function latestThread(workId: string, shown: TaskDiscussion, signal: AbortSignal): Promise<TaskDiscussion> {
+  const latest = await getTaskDiscussion(workId, signal);
+  const newestSeen = Math.max(shown.root?.sequence ?? 0, ...shown.messages.map((message) => message.sequence));
+  let incoming = latest.messages;
+  let page = latest;
+  while (newestSeen > 0 && page.messagePage.hasMoreBefore && (page.messages[0]?.sequence ?? 0) > newestSeen + 1) {
+    const before = page.messages[0]!.sequence;
+    page = await getTaskDiscussion(workId, signal, before);
+    if (!page.messages.length || page.messages[0]!.sequence >= before) throw new Error('Could not load the replies in between');
+    incoming = mergeMessages(page.messages, incoming);
+  }
+  return { ...latest, root: latest.root ?? shown.root, messages: mergeMessages(shown.messages, incoming), messagePage: shown.messagePage };
+}
+
+/** Whether the reader is at the end of the pane (within a few pixels), so new messages should follow. */
+function paneAtEnd(marker: HTMLElement | null) {
+  const pane = marker?.closest<HTMLElement>('.agents-scroll');
+  return !!pane && pane.scrollHeight - pane.scrollTop - pane.clientHeight < 40;
+}
+
 /** The task's one thread: the real first contribution as root, then its replies. */
-function TaskThread({ task, meId, names, canWrite }: { task: WorkItem; meId: string; names: Map<string, string>; canWrite: boolean }) {
+function TaskThread({ task, projectId, meId, names, canWrite }: { task: WorkItem; projectId: string; meId: string; names: Map<string, string>; canWrite: boolean }) {
   const [discussion, setDiscussion] = useState<TaskDiscussion | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [attempt, setAttempt] = useState(0);
+  const [accessLost, setAccessLost] = useState(false);
+  // What is on the page, for merging a refetch; every change goes through `show`.
+  const shown = useRef<TaskDiscussion | null>(null);
+  const show = useCallback((update: (current: TaskDiscussion | null) => TaskDiscussion | null) => {
+    shown.current = update(shown.current);
+    setDiscussion(shown.current);
+  }, []);
+  const reload = useRef(() => { /* set while mounted */ });
   // Per account and task, kept across views and reloads like every other composer (#40).
   const draft = useDraft(meId, `task:${task.id}`);
   const pendingStore = useDraft(meId, `task:${task.id}:pending`);
@@ -107,14 +146,62 @@ function TaskThread({ task, meId, names, canWrite }: { task: WorkItem; meId: str
   const box = useRef<HTMLTextAreaElement>(null);
   const end = useRef<HTMLDivElement>(null);
 
-  // Keyed by task id: a different task mounts a fresh thread with its own draft.
+  // Keyed by task id: a different task mounts a fresh thread with its own draft. The first load and
+  // every later refetch share one loop: one request at a time, and a change during it asks for
+  // one more pass, so nothing that arrives meanwhile is missed.
   useEffect(() => {
     const controller = new AbortController();
-    getTaskDiscussion(task.id, controller.signal).then((value) => { setDiscussion(value); setLoadError(null); }).catch((cause: unknown) => {
-      if (!controller.signal.aborted) setLoadError(cause instanceof NetworkError ? 'Flux is unreachable.' : 'This task thread could not be loaded.');
-    });
-    return () => controller.abort();
-  }, [task.id, attempt]);
+    let loading = false;
+    let again = false;
+    const load = async () => {
+      if (loading) { again = true; return; }
+      loading = true;
+      try {
+        do {
+          again = false;
+          const before = shown.current;
+          try {
+            const next = before ? await latestThread(task.id, before, controller.signal) : await getTaskDiscussion(task.id, controller.signal);
+            if (controller.signal.aborted) return;
+            // New messages follow a reader who is at the end; anyone reading earlier stays in place.
+            const follow = !!before && paneAtEnd(end.current);
+            flushSync(() => {
+              show((current) => current ? { ...next, messages: mergeMessages(current.messages, next.messages), messagePage: current.messagePage } : next);
+              setLoadError(null); setAccessLost(false);
+            });
+            if (follow) scrollPaneToEnd(end.current);
+          } catch (cause) {
+            if (controller.signal.aborted) return;
+            if (!before) setLoadError(cause instanceof NetworkError ? 'Flux is unreachable.' : 'This task thread could not be loaded.');
+            else if (cause instanceof ApiError && (cause.status === 401 || cause.status === 403 || cause.status === 404)) setAccessLost(true);
+            // Unreachable: what is shown stays; the next change, focus or resync tries again.
+            return;
+          }
+        } while (again && !controller.signal.aborted);
+      } finally {
+        loading = false;
+      }
+    };
+    reload.current = () => { void load(); };
+    void load();
+    return () => { controller.abort(); reload.current = () => { /* unmounted */ }; };
+  }, [task.id, show]);
+
+  // Another person's or agent's contribution appears without a reload (#183 B1). Events carry only
+  // ids and kinds, and any change in this project may touch this thread (a message, a result posted
+  // to it, a changed grant), so each one refetches; so does a resync after missed events.
+  useStreamEvents(meId, (event) => {
+    if (event.objectType === 'project' && event.objectId === projectId) reload.current();
+  }, () => reload.current());
+  // Without a live stream (a proxy that drops WebSockets), focus, a visible tab and a slow timer refetch.
+  useEffect(() => {
+    const onFocus = () => reload.current();
+    const onVisible = () => { if (document.visibilityState === 'visible') reload.current(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisible);
+    const interval = window.setInterval(onVisible, 15_000);
+    return () => { window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVisible); window.clearInterval(interval); };
+  }, []);
 
   const messages = useMemo(() => {
     if (!discussion) return [];
@@ -130,12 +217,12 @@ function TaskThread({ task, meId, names, canWrite }: { task: WorkItem; meId: str
     if (messages.length) scrollPaneToEnd(end.current);
   }, [discussion, messages.length]);
   // The same thread in the project conversation, once it has a root.
-  const inConversation = discussion?.conversationId ? `/projects/${discussion.projectId}/conversations/${discussion.conversationId}` : null;
+  const inConversation = discussion?.conversationId && !accessLost ? `/projects/${discussion.projectId}/conversations/${discussion.conversationId}` : null;
 
   const send = async (event?: FormEvent) => {
     event?.preventDefault();
     const body = draft.text.trim();
-    if (!body || sending || !canWrite) return;
+    if (!body || sending || !canWrite || accessLost) return;
     // One client message id per text, persisted before sending: a retry after a lost response or a
     // reload reuses it, so the server stores the contribution once.
     const stored = parsePending(pendingStore.text);
@@ -147,7 +234,7 @@ function TaskThread({ task, meId, names, canWrite }: { task: WorkItem; meId: str
       pendingStore.clear();
       draft.clear();
       // The sent message is on the page before the pane scrolls to it.
-      flushSync(() => setDiscussion((current) => current && !current.messages.some((item) => item.id === message.id) && current.root?.id !== message.id
+      flushSync(() => show((current) => current && !current.messages.some((item) => item.id === message.id) && current.root?.id !== message.id
         ? { ...current, conversationId: current.conversationId ?? message.conversationId, rootMessageId: current.rootMessageId ?? message.id,
           root: current.root ?? message, messages: [...current.messages, message] }
         : current));
@@ -168,10 +255,11 @@ function TaskThread({ task, meId, names, canWrite }: { task: WorkItem; meId: str
   return (
     <section className="agents-thread" aria-label={`Thread of ${task.title}`}>
       <p className="agents-thread__top">Thread of this task · the same one shown in Conversation{inConversation ? <> · <Link className="ui-link" to={inConversation}>Open in Conversation</Link></> : null}</p>
-      {loadError ? <p className="agents-thread__error" role="alert">{loadError} <button type="button" className="ui-link" onClick={() => setAttempt((n) => n + 1)}>Try again</button></p> : null}
+      {loadError ? <p className="agents-thread__error" role="alert">{loadError} <button type="button" className="ui-link" onClick={() => reload.current()}>Try again</button></p> : null}
+      {accessLost ? <p className="agents-thread__error" role="alert">You can no longer read this task. Your unsent text is kept on this device.</p> : null}
       {!discussion && !loadError ? <p className="agents-thread__empty">Loading…</p> : null}
-      {discussion && !messages.length ? <p className="agents-thread__empty">No one has written about this task yet. The first message starts its thread.</p> : null}
-      <ol className="agents-thread__list" aria-live="polite">
+      {discussion && !accessLost && !messages.length ? <p className="agents-thread__empty">No one has written about this task yet. The first message starts its thread.</p> : null}
+      {accessLost ? null : <ol className="agents-thread__list" aria-live="polite">
         {messages.map((message) => {
           const own = message.authorId === meId;
           const agent = message.authorId === null;
@@ -186,18 +274,18 @@ function TaskThread({ task, meId, names, canWrite }: { task: WorkItem; meId: str
             </li>
           );
         })}
-      </ol>
-      {discussion?.messagePage.hasMoreBefore ? <p className="agents-thread__empty">Earlier messages are in the task's thread in {inConversation ? <Link className="ui-link" to={inConversation}>Conversation</Link> : 'Conversation'}.</p> : null}
+      </ol>}
+      {discussion?.messagePage.hasMoreBefore && !accessLost ? <p className="agents-thread__empty">Earlier messages are in the task's thread in {inConversation ? <Link className="ui-link" to={inConversation}>Conversation</Link> : 'Conversation'}.</p> : null}
       <div ref={end} />
       <form className="agents-composer" onSubmit={(event) => { void send(event); }}>
         <label className="ui-vh" htmlFor="agents-draft">Write to this task</label>
         <textarea id="agents-draft" ref={box} value={draft.text} rows={2} readOnly={sending} aria-busy={sending}
-          placeholder={canWrite ? 'Add to this work…' : 'You can read this task but not write to it.'} disabled={!discussion || !canWrite}
+          placeholder={canWrite ? 'Add to this work…' : 'You can read this task but not write to it.'} disabled={!discussion || !canWrite || accessLost}
           onChange={(event) => draft.setText(event.target.value)} onKeyDown={onKeyDown} />
         {sendError ? <p className="agents-composer__error" role="alert">{sendError}</p> : null}
         <div className="agents-composer__row">
           <span className="agents-composer__hint">Goes to the task thread · Enter sends, Shift+Enter new line</span>
-          <Button type="submit" variant="primary" icon="send" busy={sending} disabled={!draft.text.trim() || !discussion || !canWrite} aria-label="Send to task">Send</Button>
+          <Button type="submit" variant="primary" icon="send" busy={sending} disabled={!draft.text.trim() || !discussion || !canWrite || accessLost} aria-label="Send to task">Send</Button>
         </div>
       </form>
     </section>
@@ -245,7 +333,7 @@ export function ProjectAgents() {
             </select>
             {task ? <Link className="ui-link agents__open" to={`/projects/${projectId}/tasks?open=work:${task.id}`}>Open task<Icon name="chevron-right" size={12} /></Link> : null}
           </div>
-          {task ? <TaskThread key={task.id} task={task} meId={me.user.id} names={names} canWrite={shell?.project.access !== 'viewer'} /> : null}
+          {task ? <TaskThread key={task.id} task={task} projectId={projectId} meId={me.user.id} names={names} canWrite={shell?.project.access !== 'viewer'} /> : null}
         </>
       ) : (
         <p className="agents__no-tasks">No open tasks. Create one in Tasks; agents and people then work on it here.</p>
