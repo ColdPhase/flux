@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
-import { createDatabase } from '@flux/db';
+import { test } from 'node:test';
 import type { InboxResponse, NotificationPreferences } from '@flux/contracts';
+import { pool } from './support/db.js';
 import { mailCount, register, uniqueEmail } from './support/http.js';
 import { addMember, expectStatus, password, workspace } from './support/people.js';
 import { waitFor } from './support/push.js';
@@ -10,10 +10,6 @@ import { waitFor } from './support/push.js';
 // Run by scripts/check_application.sh after the API and worker restart without FLUX_SMTP_URL
 // (issues #116, #113): email delivery is visibly unavailable and nothing is dropped silently —
 // notifications still reach the inbox, and no email is queued.
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { pool } = createDatabase(connectionString);
-after(async () => { await pool.end(); });
 
 async function someone(name: string) {
   const email = uniqueEmail(name.toLowerCase());

@@ -1,16 +1,11 @@
 import assert from 'node:assert/strict';
-import { after, describe, test } from 'node:test';
-import { createDatabase } from '@flux/db';
+import { describe, test } from 'node:test';
+import { pool } from './support/db.js';
 import { Browser, mailCount, publicOrigin, register, signIn, uniqueEmail, waitForMail } from './support/http.js';
+import { password } from './support/people.js';
 
 // End-to-end identity checks against the running API container (issue #29, AC-1).
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
 if (!publicOrigin) throw new Error('FLUX_PUBLIC_ORIGIN is required');
-const { pool } = createDatabase(connectionString);
-after(() => pool.end());
-
-const password = 'correct horse battery staple';
 
 interface Me { principal: { id: string; kind: string }; user: { id: string; email: string }; session: { id: string } }
 interface SessionSummary { id: string; current: boolean; ipAddress: string | null; token?: string }

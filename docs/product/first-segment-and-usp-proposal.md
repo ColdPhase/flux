@@ -1,6 +1,6 @@
 # First segment, persona, and USP hypotheses
 
-**Status:** O-001 recommendation awaiting independent agent evaluation; not an accepted product promise. The [later founder delegation](autonomy.md) assigns the decision to the agents.
+**Status:** O-001 recommendation; O-001 is still **Open** in the [decision register](decisions.md) (checked 2026-10-02). Not an accepted product promise. The [later founder delegation](autonomy.md) assigns the decision to the agents.
 
 **Research date / source access:** 2026-09-27.
 
