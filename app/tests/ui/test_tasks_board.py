@@ -519,6 +519,11 @@ class TasksBoardJourney(unittest.TestCase):
         self.card(open_, PETG).get_by_role("button", name="Move to…").tap()
         page.get_by_role("menu").get_by_role("menuitemradio", name="Done").tap()
         expect(self.card(open_, PETG)).to_have_count(0)
+        # The visible column follows the card, and focus stays on it (#194 review B1).
+        done = self.column(page, "Done")
+        expect(done).to_be_visible()
+        expect(overview.get_by_role("button", name=re.compile("^Done"))).to_have_attribute("aria-pressed", "true")
+        expect(self.card(done, PETG).locator(".tb-card__open")).to_be_focused()
         expect(page.locator(".tb-note--ok")).to_contain_text(f"Moved “{PETG}” to Done.")
         expect(overview.get_by_role("button", name=re.compile("^Done"))).to_contain_text("4")
         self.assertEqual(next(item for item in self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100", status=200)["items"] if item["title"] == PETG)["status"], "done")

@@ -186,7 +186,12 @@ function Card({ item, column, projectId, meId, writable, hintId, saving, dragged
       </div>
       {menuOpen ? (
         <MoveMenu item={item} column={column} busy={saving} buttonRef={menuButton}
-          onMove={(to) => { onMenu(false); onMove(to); }}
+          onMove={(to) => {
+            onMenu(false);
+            // Its own column changes nothing: focus goes back to the menu's button, as on Escape.
+            if (to === column) menuButton.current?.focus();
+            else onMove(to);
+          }}
           onOpen={() => { onMenu(false); onOpen(); }}
           onClose={(restore) => { onMenu(false); if (restore) menuButton.current?.focus(); }} />
       ) : null}
@@ -320,7 +325,11 @@ export function TaskBoard({ project, lists, meId, mine, query, writable, adding,
     const key = JSON.stringify([item.id, item.version, status]);
     const commandId = attempts.current.get(key) ?? crypto.randomUUID();
     attempts.current.set(key, commandId);
-    if (keepFocus) focusCard.current = { id: item.id, until: focusDeadline() };
+    if (keepFocus) {
+      focusCard.current = { id: item.id, until: focusDeadline() };
+      // On a narrow board one column shows: it follows the card, so focus stays on a visible card.
+      setPicked(to);
+    }
     setPending((now) => ({ ...now, [item.id]: to }));
     show(null);
     try {
@@ -336,6 +345,8 @@ export function TaskBoard({ project, lists, meId, mine, query, writable, adding,
       if (cause instanceof ApiError) attempts.current.delete(key);
       const text = moveError(cause, item.title);
       show({ tone: 'error', text });
+      // Refused: the card is back where it was, and so is the narrow board's column.
+      if (keepFocus) setPicked(from);
     } finally {
       setPending((now) => without(now, item.id));
       refresh();

@@ -50,7 +50,7 @@
 .tb-note--error { background: var(--tint-warning); }
 .tb-note--error svg { color: var(--warning); }
 .tb-note__x { flex: none; margin-left: auto; min-height: 24px; font-weight: 500; color: var(--text-2); text-decoration: underline; text-underline-offset: 3px; }
-.tb-none { margin: 14px var(--space-page) 0; font-size: var(--fs-md); color: var(--text-2); }
+.tb-none { margin: 14px var(--space-page) 0; font-size: var(--fs-md); color: var(--text-2); overflow-wrap: anywhere; }
 
 .tb-board { flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 26px; padding: 24px var(--space-page) 32px; }
 .tb-col { display: flex; flex-direction: column; min-width: 0; }
