@@ -134,6 +134,32 @@ Keep touch hit targets, readable text and keyboard focus independent of animatio
 checked 2026-09-30, supports user ability to disable nonessential interaction
 motion; this contract deliberately applies that approach throughout Flux.
 
+## Home: acknowledgement, your tasks, first notes — HOME-1 to HOME-3
+
+Accepted 2026-10-03, with amendments, by independent peer review of the proposal on
+[#190](https://github.com/ColdPhase/flux/issues/190) (proposal and the
+[review with amendments](https://github.com/ColdPhase/flux/issues/190#issuecomment-5963558501)).
+
+- **HOME-1, visiting acknowledges nothing** (amends #106 AC-1). Home's "Since you left" never moves
+  its return point on a visit. It ends with "Caught up to …" and **I have the context**, which saves
+  the visit's mark; the list then closes to "You're caught up. New changes will show here."
+  A failure keeps the list ("Could not save. Try again; nothing was changed."). The only automatic
+  save is a first visit with no point, which sets a starting point. "Keep these for next time" goes
+  away. Details: [return view](../development/return-view.md).
+- **HOME-2, your unfinished work on Home's Tasks.** Work you own (open, in progress, blocked; not
+  done, not pursued, parked or owned by your agents) across every workspace and project you can
+  read now, from `GET /api/v1/workspaces/:id/work/assigned`, every page until `total`, at most 500
+  shown. Grouped by project (workspace added when names collide), ordered as the project Tasks
+  view (In progress, Blocked, Open), blocked rows with their blocker. Partial failures say so;
+  the empty state appears only when every read succeeded. Nothing is kept between mounts or
+  accounts; it reads again on mount, visibility and relevant stream events, without polling.
+- **HOME-3, first notes go to your account.** The first Home note creates the personal space
+  ("Personal", one per account, one shared helper with sketches) and is saved as a private
+  draft. Notes kept only in this browser are offered once per visit as "Move N notes from this
+  browser into Personal", with a stable per-note idempotency key and target space, cross-tab
+  safety and an account-bound abort. Notes stay private drafts: not readable by other members,
+  workspace owners or admins, or agents; only the person's own action changes that (F-019).
+
 ## Integration and proof
 
 #136 owns the full appearance/integrated UI; #151 its adaptive layout. No parallel

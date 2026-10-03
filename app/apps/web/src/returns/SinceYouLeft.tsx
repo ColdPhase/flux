@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import type { ReturnItem, ReturnNextStep, ReturnPlace, ReturnSource, ReturnSummary } from '@flux/contracts';
-import { Icon } from '../ui';
+import { Button, Icon } from '../ui';
 import { useShellActions } from '../app/shellContext';
-import { getReturnSummary, restoreReturnPoint, saveReturnPoint, sourceHref } from './api';
+import { getReturnSummary, saveReturnPoint, sourceHref } from './api';
 import './since.css';
 
 // "Since you left" (#106) on Home: a short list in human language; every item opens its source.
-// No guilt: nothing to clear, no streaks, one next step with its reason, and "Keep these for next
-// time" moves the saved point back. A project's recap is "What matters" (#133, WhatMatters.tsx),
-// which reuses the rows below.
+// No guilt: nothing to clear, no streaks, one next step with its reason. Visiting acknowledges
+// nothing (HOME-1, #190): the list stays until "I have the context", as a project's "What matters"
+// (#133, WhatMatters.tsx) does, which reuses the rows below.
 
 const day = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
 const dayTime = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -18,21 +18,20 @@ const sameDay = (iso: string) => new Date(iso).toDateString() === new Date().toD
 const shortWhen = (iso: string) => (sameDay(iso) ? time.format(new Date(iso)) : day.format(new Date(iso)));
 const since = (iso: string) => (sameDay(iso) ? `today, ${time.format(new Date(iso))}` : day.format(new Date(iso)));
 
-type Keep = 'idle' | 'busy' | 'kept' | 'failed';
+type Ack = 'idle' | 'busy' | 'done' | 'failed';
 
 
 /**
- * Loads the summary of a place and then saves the return point at what was shown, so the next
- * visit starts after it.
+ * Loads the summary of a place. A visit never moves the return point (HOME-1, #190): only
+ * "I have the context" saves it, at the mark this visit showed. The one exception is a place with no
+ * point yet, whose first visit saves a starting point: nothing was shown, so nothing is acknowledged.
  */
 function useReturn(place: ReturnPlace) {
   const placeKey = place.type === 'home' ? 'home' : `${place.type}:${place.id}`;
   // Only the current request's authorized response is ever shown: nothing is kept on the client
   // between mounts, accounts or visits, so a revoked item or another account's item never appears.
   const [loadedFor, setLoaded] = useState<{ key: string; summary: ReturnSummary } | null>(null);
-  const [keep, setKeep] = useState<Keep>('idle');
-  // "Keep these" must run after the save of this visit, or the save would overwrite it.
-  const saving = useRef<Promise<unknown>>(Promise.resolve());
+  const [ack, setAck] = useState<{ key: string; state: Ack }>({ key: placeKey, state: 'idle' });
   // A summary is shown only for the place it was loaded for.
   const summary = loadedFor?.key === placeKey ? loadedFor.summary : null;
   useEffect(() => {
@@ -41,18 +40,19 @@ function useReturn(place: ReturnPlace) {
     getReturnSummary(target, controller.signal).then(async (loaded) => {
       if (controller.signal.aborted) return;
       setLoaded({ key: placeKey, summary: loaded });
-      saving.current = saveReturnPoint(target, loaded.mark).catch(() => undefined);
-      await saving.current;
+      if (loaded.point.savedAt === null) await saveReturnPoint(target, loaded.mark).catch(() => undefined);
     }).catch(() => { /* the line is optional; the place works without it */ });
     return () => controller.abort();
   }, [placeKey]);
-  const keepForLater = async () => {
-    setKeep('busy');
+  const acknowledge = async () => {
+    if (!summary) return;
+    setAck({ key: placeKey, state: 'busy' });
     try {
-      await saving.current;
-      await restoreReturnPoint(place); setKeep('kept'); } catch { setKeep('failed'); }
+      await saveReturnPoint(place, summary.mark);
+      setAck({ key: placeKey, state: 'done' });
+    } catch { setAck({ key: placeKey, state: 'failed' }); }
   };
-  return { summary, keep, keepForLater };
+  return { summary, ack: ack.key === placeKey ? ack.state : 'idle' as Ack, acknowledge };
 }
 
 /** Opens a source: a link for messages, materials and sketches; Details on the project for work objects. */
@@ -102,14 +102,12 @@ export function NextStep({ step }: { step: ReturnNextStep }) {
   );
 }
 
-function Foot({ summary, keep, onKeep }: { summary: ReturnSummary; keep: Keep; onKeep: () => void }) {
+function Foot({ summary, ack, onAcknowledge }: { summary: ReturnSummary; ack: Ack; onAcknowledge: () => void }) {
   return (
     <div className="since__foot">
-      <span>{summary.point.savedAt ? `You were last here ${dayTime.format(new Date(summary.point.savedAt))}` : ''}</span>
-      {keep === 'kept'
-        ? <span role="status">These will show again next time.</span>
-        : <button type="button" className="since__keep" disabled={keep === 'busy'} onClick={onKeep}>
-          {keep === 'failed' ? 'Could not keep them. Try again' : 'Keep these for next time'}</button>}
+      <span>{summary.point.savedAt ? `Caught up to ${dayTime.format(new Date(summary.point.savedAt))}` : ''}</span>
+      {ack === 'failed' ? <span className="since__failed" role="alert">Could not save. Try again; nothing was changed.</span> : null}
+      <Button variant="secondary" icon="check" className="since__ack" busy={ack === 'busy'} onClick={onAcknowledge}>I have the context</Button>
     </div>
   );
 }
@@ -122,9 +120,13 @@ function headline(summary: ReturnSummary) {
 
 /** Home: the personal return view across the places the person can see now, grouped by place. */
 export function SinceYouLeftHome({ onShown }: { onShown?: (shown: boolean) => void }) {
-  const { summary, keep, keepForLater } = useReturn({ type: 'home' });
+  const { summary, ack, acknowledge } = useReturn({ type: 'home' });
+  const done = useRef<HTMLParagraphElement>(null);
   const visible = !!summary?.point.savedAt && !!summary.items.length;
   useEffect(() => { onShown?.(visible); }, [onShown, visible]);
+  // After "I have the context" the list closes; focus stays here, on what happened.
+  useEffect(() => { if (ack === 'done') done.current?.focus(); }, [ack]);
+  if (ack === 'done') return <p className="since-home__done" role="status" tabIndex={-1} ref={done}>You’re caught up. New changes will show here.</p>;
   // Nothing new is not news: Home stays as it was.
   if (!summary || !summary.point.savedAt || !summary.items.length) return null;
   const groups = new Map<string, { name: string; items: ReturnItem[] }>();
@@ -144,7 +146,7 @@ export function SinceYouLeftHome({ onShown }: { onShown?: (shown: boolean) => vo
           <ul className="since__list">{group.items.map((item) => <Item key={item.id} item={item} />)}</ul>
         </div>
       ))}
-      <Foot summary={summary} keep={keep} onKeep={() => void keepForLater()} />
+      <Foot summary={summary} ack={ack} onAcknowledge={() => void acknowledge()} />
     </section>
   );
 }
