@@ -679,6 +679,20 @@ export const agentPlaybookAcknowledgments = pgTable('agent_playbook_acknowledgme
   acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// The approved project policy for connected agents (migration 0044, #160 / CW-1): every published
+// revision, kept unchanged. Policy narrows work inside owner grants; it never grants anything.
+export const agentProjectPolicies = pgTable('agent_project_policies', {
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  revision: integer('revision').notNull(),
+  scope: text('scope').notNull(),
+  priorities: text('priorities').notNull(),
+  reviewCriteria: text('review_criteria').notNull(),
+  allowedWork: text('allowed_work').notNull(),
+  digest: text('digest').notNull(),
+  publishedByUserId: text('published_by_user_id').notNull().references(() => authUsers.id, { onDelete: 'restrict' }),
+  publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [primaryKey({ columns: [table.projectId, table.revision] })]);
+
 // Sketches: thoughts on a map and the links between them (migration 0007, issue #69).
 export const sketches = pgTable('sketches', {
   id: uuid('id').primaryKey(),
