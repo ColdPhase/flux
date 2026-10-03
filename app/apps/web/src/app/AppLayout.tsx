@@ -107,6 +107,7 @@ export function AppLayout() {
       toggleDetails(true);
     },
     openSearch() { setNavOpen(false); setJumpOpen(true); },
+    openNavigation() { setDetailsOpen(false); setNavOpen(true); },
     actionSlot,
   }), [toggleDetails, actionSlot]);
 

@@ -8,6 +8,7 @@ import { useShellData } from './data';
 import { useDraft, useReadingPosition } from './drafts';
 import { useShellActions } from './shellContext';
 import { SinceYouLeftHome } from '../returns/SinceYouLeft';
+import { HomeTasks } from './HomeTasks';
 import { getAssistantStatus } from '../assistant/api';
 
 /** Home's views in the same order and words as a project's (Studio 11.6, #136). */
@@ -211,14 +212,9 @@ export function ConversationView() {
   );
 }
 
+/** Home's Tasks: the work you own across your projects (#190 HOME-2). */
 export function TasksView() {
-  return (
-    <Pane>
-      <ViewEmpty icon="tasks" title="No tasks yet">
-        <p>When a note or message turns into something to do, its task shows up here, linked to where it came from. Nothing is due, and nothing needs clearing.</p>
-      </ViewEmpty>
-    </Pane>
-  );
+  return <Pane><HomeTasks /></Pane>;
 }
 
 export function NotFoundView() {

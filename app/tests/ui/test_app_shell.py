@@ -281,7 +281,7 @@ class AppShellJourney(unittest.TestCase):
         views.get_by_role("link", name="Tasks").click()
         expect(page).to_have_url(f"{ORIGIN}/tasks")
         expect(views.get_by_role("link", name="Tasks")).to_have_attribute("aria-current", "page")
-        expect(page.get_by_role("heading", name="No tasks yet")).to_be_visible()
+        expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
         self.assertNotEqual(before, indicator.evaluate("el => el.style.transform"), "the underline moves to the chosen view")
         views.get_by_role("link", name="Map").click()
         expect(page.get_by_role("heading", name="Start a sketch")).to_be_visible()
@@ -341,7 +341,7 @@ class AppShellJourney(unittest.TestCase):
 
         # A view switch remounts the composer; the text comes back.
         views.get_by_role("link", name="Tasks").click()
-        expect(page.get_by_role("heading", name="No tasks yet")).to_be_visible()
+        expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
         views.get_by_role("link", name="Conversation").click()
         expect(composer).to_have_value(unfinished)
         expect(state).to_have_text("Draft kept on this device")
@@ -510,7 +510,7 @@ class AppShellJourney(unittest.TestCase):
 
         narrow = self.page(phone=True, viewport={"width": 360, "height": 780})
         narrow.goto("/tasks")
-        expect(narrow.get_by_role("heading", name="No tasks yet")).to_be_visible()
+        expect(narrow.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
         self.assertLessEqual(narrow.evaluate("document.documentElement.scrollWidth"), 360, "no horizontal scroll at 360px")
         shot(narrow, "phone-360-tasks-light")
 

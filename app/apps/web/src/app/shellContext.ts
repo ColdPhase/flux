@@ -37,11 +37,13 @@ export interface ShellActions {
   openDetails(view?: DetailsView): void;
   /** Opens Jump to… (⌘K), the search across everything the person may open (#114). */
   openSearch(): void;
+  /** Opens the navigation drawer on a narrow screen, where the projects are listed. */
+  openNavigation(): void;
   /** A place in the header where the current view can put one quiet action (a DM's Select, #96). */
   actionSlot: HTMLElement | null;
 }
 
-export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, openSearch: () => undefined, actionSlot: null });
+export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, openSearch: () => undefined, openNavigation: () => undefined, actionSlot: null });
 
 export function useShellActions(): ShellActions {
   return useContext(ShellContext);
