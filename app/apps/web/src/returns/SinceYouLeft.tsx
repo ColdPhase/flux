@@ -124,8 +124,14 @@ export function SinceYouLeftHome({ onShown }: { onShown?: (shown: boolean) => vo
   const done = useRef<HTMLParagraphElement>(null);
   const visible = !!summary?.point.savedAt && !!summary.items.length;
   useEffect(() => { onShown?.(visible); }, [onShown, visible]);
-  // After "I have the context" the list closes; focus stays here, on what happened.
-  useEffect(() => { if (ack === 'done') done.current?.focus(); }, [ack]);
+  // After "I have the context" the list closes and focus moves to the Home heading (#190 A1.3);
+  // the status line says what happened.
+  useEffect(() => {
+    if (ack !== 'done') return;
+    const heading = document.querySelector<HTMLElement>('header.top h1') ?? done.current;
+    if (heading && heading !== done.current && !heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1');
+    heading?.focus();
+  }, [ack]);
   if (ack === 'done') return <p className="since-home__done" role="status" tabIndex={-1} ref={done}>You’re caught up. New changes will show here.</p>;
   // Nothing new is not news: Home stays as it was.
   if (!summary || !summary.point.savedAt || !summary.items.length) return null;

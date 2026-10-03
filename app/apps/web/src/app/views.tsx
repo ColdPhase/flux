@@ -4,7 +4,7 @@ import type { Draft } from '@flux/contracts';
 import { Button, EmptyState, Icon, IconButton, MEDIA, duration, sendsOnEnter, useMediaQuery, type IconName } from '../ui';
 import { createPrivateDraft, listDrafts } from './conversation-api';
 import { captureExists, clearMoveTarget, moveKey, moveTarget, noteTitle, removeCapture, useCaptures } from './captures';
-import { ensurePersonalSpace } from './personalSpace';
+import { AccountChangedError, assertSignedInAs, ensurePersonalSpace } from './personalSpace';
 import { useIntentKeys } from '../api/intent-keys';
 import { useShellData } from './data';
 import { useDraft, useReadingPosition } from './drafts';
@@ -68,7 +68,13 @@ export function startCapture(navigate: NavigateFunction) {
  * explicitly, to move into the account. Project conversations and direct messages (#36) open from
  * the sidebar.
  */
+/** Home's notes. Everything it holds (space, drafts, a move in progress) is one account's: another starts afresh. */
 export function ConversationView() {
+  const { me } = useShellData();
+  return <HomeNotes key={me.user.id} />;
+}
+
+function HomeNotes() {
   // Touch devices add a line with Enter and send with the button (#189).
   const touch = useMediaQuery(MEDIA.touch);
   const hintId = useId();
@@ -89,6 +95,12 @@ export function ConversationView() {
   }
   const [serverDrafts, setServerDrafts] = useState<Draft[]>([]);
   const [draftsTotal, setDraftsTotal] = useState(0);
+  // The list API pages over every draft the person can read; only their own private ones are shown,
+  // so the next page starts after all drafts read so far, not after the shown ones.
+  const [draftsRead, setDraftsRead] = useState(0);
+  // Drafts saved here while a list read was in flight: that older answer must not hide them.
+  const savedHere = useRef<{ draft: Draft; seq: number }[]>([]);
+  const saves = useRef(0);
   const [draftsReload, setDraftsReload] = useState(0);
   // Saving and moving belong to the account that started them: a sign-out stops them (HOME-3).
   const work = useRef<AbortController>(new AbortController());
@@ -114,8 +126,18 @@ export function ConversationView() {
   useEffect(() => {
     if (!selectedWorkspace) return;
     const controller = new AbortController();
+    const since = saves.current;
     listDrafts(selectedWorkspace, controller.signal)
-      .then((page) => { setServerDrafts(page.items.filter(ownPrivate(me.user.id))); setDraftsTotal(page.total); })
+      .then((page) => {
+        const fetched = page.items.filter(ownPrivate(me.user.id));
+        // Only saves newer than this read can be missing from it; older ones it answers for.
+        savedHere.current = savedHere.current.filter((saved) => saved.seq > since);
+        const missing = savedHere.current.map((saved) => saved.draft)
+          .filter((item) => item.workspaceId === selectedWorkspace && !fetched.some((had) => had.id === item.id));
+        setServerDrafts([...missing, ...fetched]);
+        setDraftsRead(page.items.length);
+        setDraftsTotal(page.total);
+      })
       .catch(() => { if (!controller.signal.aborted) setSaveState('Could not load private drafts.'); });
     return () => controller.abort();
   }, [selectedWorkspace, me.user.id, draftsReload]);
@@ -124,8 +146,9 @@ export function ConversationView() {
     if (!selectedWorkspace || moreBusy) return;
     setMoreBusy(true);
     try {
-      const page = await listDrafts(selectedWorkspace, work.current.signal, serverDrafts.length);
+      const page = await listDrafts(selectedWorkspace, work.current.signal, draftsRead);
       setServerDrafts((current) => [...current, ...page.items.filter(ownPrivate(me.user.id)).filter((item) => !current.some((had) => had.id === item.id))]);
+      setDraftsRead((read) => read + page.items.length);
       setDraftsTotal(page.total);
     } catch { /* the button stays for another try */ } finally { setMoreBusy(false); }
   };
@@ -176,16 +199,21 @@ export function ConversationView() {
       if (!space) { setSaveState('Choose a space for this private draft.'); return; }
       // One stable key per text and space (#178): a retry after a lost answer returns the same draft.
       const intent = `draft:${space}:${body}`;
+      await assertSignedInAs(me.user.id, signal);
       const created = await createPrivateDraft(space, noteTitle(body), body, intents.keyFor(intent), signal);
       if (signal.aborted) return;
       intents.settle(intent);
+      saves.current += 1;
+      savedHere.current = [{ draft: created, seq: saves.current }, ...savedHere.current.filter((saved) => saved.draft.id !== created.id)];
       setServerDrafts((current) => [created, ...current.filter((item) => item.id !== created.id)]);
       draft.clear();
       setSaveState('Saved privately to your space');
       requestAnimationFrame(() => { autosize(); endRef.current?.scrollIntoView({ block: 'end', behavior: duration('--dur-1') ? 'smooth' : 'auto' }); });
-    } catch {
+    } catch (cause) {
       // The text stays in the composer: nothing falls back to this browser.
-      if (!signal.aborted) setSaveState('Save failed. Your text is still here; retry when ready.');
+      if (signal.aborted) return;
+      if (cause instanceof AccountChangedError) { setSaveState(cause.message); revalidator.revalidate(); return; }
+      setSaveState('Save failed. Your text is still here; retry when ready.');
     } finally { setSaving(false); }
   };
   // Notes this account once kept only in this browser move into the account only on request: one
@@ -206,6 +234,8 @@ export function ConversationView() {
         // Another tab may have moved or deleted it meanwhile.
         if (!captureExists(userId, note.id)) continue;
         const target = moveTarget(userId, note.id, space);
+        // Another account signed in elsewhere: stop before writing this account's notes into it.
+        await assertSignedInAs(userId, signal);
         try {
           await createPrivateDraft(target, noteTitle(note.text), note.text, moveKey(note), signal);
           if (signal.aborted) return;
@@ -218,8 +248,14 @@ export function ConversationView() {
           failed += 1;
         }
       }
-    } catch {
+    } catch (cause) {
       if (signal.aborted) return;
+      if (cause instanceof AccountChangedError) {
+        setMove({ state: moved ? 'partial' : 'idle', moved, of: moved ? notes.length : 0 });
+        setSaveState(cause.message);
+        revalidator.revalidate();
+        return;
+      }
       failed = notes.length - moved;
     }
     setMove({ state: failed ? 'partial' : 'done', moved, of: notes.length });
@@ -246,7 +282,7 @@ export function ConversationView() {
           <section className="notes" aria-label="Private drafts">
             <p className="notes__h"><Icon name="lock" size={13} />Private drafts · saved in your space</p>
             <ol className="notes__list">{serverDrafts.map((item) => <li className={`note${arrivedDraft === item.id ? ' is-arrived' : ''}`} key={item.id} id={`draft-${item.id}`} tabIndex={-1}><p className="note__text">{item.body}</p><div className="note__meta">You · v{item.version} · <time dateTime={item.updatedAt}>{when(item.updatedAt)}</time></div></li>)}</ol>
-            {serverDrafts.length < draftsTotal ? <Button variant="quiet" busy={moreBusy} onClick={() => void loadMoreDrafts()}>Show more drafts</Button> : null}
+            {draftsRead < draftsTotal ? <Button variant="quiet" busy={moreBusy} onClick={() => void loadMoreDrafts()}>Show more drafts</Button> : null}
           </section>
         ) : null}
         {move.state === 'done' && !items.length ? <p className="notes__moved" role="status">Moved {move.moved} {move.moved === 1 ? 'note' : 'notes'} into {targetName ?? 'your space'}.</p> : null}

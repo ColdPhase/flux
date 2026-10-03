@@ -210,7 +210,9 @@ class ReturnViewJourney(unittest.TestCase):
         expect(region).to_contain_text("Caught up to")
         region.get_by_role("button", name="I have the context").click()
         done = page.get_by_role("status").filter(has_text="You’re caught up. New changes will show here.")
-        expect(done).to_be_focused()
+        expect(done).to_be_visible()
+        # Focus moves to the Home heading (#190 A1.3); the status line says what happened.
+        expect(page.locator("header.top").get_by_role("heading", level=1, name="Home")).to_be_focused()
         expect(page.get_by_role("region", name=re.compile("^Since you left"))).to_have_count(0)
         self.wait_saved(page, "home")
 

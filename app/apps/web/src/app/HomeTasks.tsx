@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { WorkItem } from '@flux/contracts';
 import { useStreamEvents } from '../api/stream';
@@ -28,7 +28,13 @@ export function HomeTasks() {
   const narrow = useMediaQuery(MEDIA.navDrawer);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [refresh, setRefresh] = useState(0);
-  const again = () => setRefresh((n) => n + 1);
+  // A burst of project events (messages, assistant progress) reads once, not once per event.
+  const soon = useRef<number | null>(null);
+  const again = () => {
+    if (soon.current !== null) window.clearTimeout(soon.current);
+    soon.current = window.setTimeout(() => { soon.current = null; setRefresh((n) => n + 1); }, 400);
+  };
+  useEffect(() => () => { if (soon.current !== null) window.clearTimeout(soon.current); }, []);
 
   useStreamEvents(me.user.id, (event) => { if (event.objectType === 'project' || event.objectType === 'workspace') again(); }, again);
   useEffect(() => {

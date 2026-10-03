@@ -214,16 +214,25 @@ class HomeNotesJourney(unittest.TestCase):
         page.reload()
         offer = self.offer(page)
         expect(offer.get_by_role("listitem")).to_have_count(3)
-        # Hold the first note's request, then sign out and in as Olek in the same tab.
+        # The move's look at Nia's spaces is answered only after Olek has signed in to this tab, and as a real
+        # success ("no spaces yet"). Only the page dropping Nia's move keeps it from creating a space and
+        # drafts under Olek's session; the held request itself would otherwise just fail on the server.
         held: list = []
-        drafts_path = re.compile(r"/api/v1/workspaces/[^/]+/drafts$")
-        page.route(drafts_path, lambda route: held.append(route) if route.request.method == "POST" else route.continue_())
+
+        def hold_first_list(route) -> None:
+            if route.request.method == "GET" and not held:
+                held.append(route)
+                return
+            route.continue_()
+
+        spaces_path = re.compile(r"/api/v1/workspaces$")
+        page.route(spaces_path, hold_first_list)
         offer.get_by_role("button", name="Move 3 notes into Personal").click()
         for _ in range(60):
             if held:
                 break
             page.wait_for_timeout(50)
-        self.assertEqual(len(held), 1, "one note was on its way")
+        self.assertEqual(len(held), 1, "the move asked for Nia's spaces")
         page.get_by_role("button", name=re.compile("Nia Switch")).click()
         page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
         expect(page).to_have_url(re.compile("/sign-in"))
@@ -231,20 +240,50 @@ class HomeNotesJourney(unittest.TestCase):
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Sign in").click()
         expect(page.get_by_role("heading", name="Welcome, Olek")).to_be_visible()
-        for route in held:
-            try:
-                route.continue_()
-            except Exception:  # the page already gave up on it when the account changed
-                pass
-        page.unroute(drafts_path)
+        try:
+            held[0].fulfill(status=200, content_type="application/json", body="[]")
+        except Exception:  # the page already gave up on it when the account changed
+            pass
+        page.unroute(spaces_path)
         page.wait_for_timeout(800)
         # Olek is never offered Nia's notes, and nothing of hers was saved under his session.
         expect(self.offer(page)).to_have_count(0)
         self.assertNotIn("switch note", page.content())
-        self.assertEqual([space["name"] for space in self.spaces(page)], [], "Olek has no space and no drafts")
-        remaining = [item["id"] for item in self.in_browser(page, nia["id"])]
-        self.assertIn("switch-2", remaining, "the move stopped with the account switch")
-        self.assertIn("switch-3", remaining)
+        self.assertEqual(self.spaces(page), [], "Olek has no space and so no drafts")
+        self.assertEqual(sorted(item["id"] for item in self.in_browser(page, nia["id"])), ["switch-1", "switch-2", "switch-3"],
+                         "the move stopped with the account switch; every note is still Nia's, in this browser")
+
+    def test_05b_a_sign_in_in_another_tab_never_receives_this_tabs_notes(self) -> None:
+        # Requests carry the browser's one session. After Nia signs out and Olek signs in in another tab, tabs
+        # that still show Nia write nothing: not her browser notes, not a typed first note (#211 review B1).
+        context = self.context()
+        moving, nia = self.sign_up(context, "Nia Stale")
+        _, olek = self.sign_up(self.context(), "Olek Stale")
+        kept = notes("stale", 2)
+        self.keep_in_browser(moving, nia["id"], kept)
+        moving.reload()
+        expect(self.offer(moving).get_by_role("listitem")).to_have_count(2)
+        typing = self.watch(context.new_page())
+        typing.goto("/")
+        typing.get_by_label("Private note").fill("Typed while Nia was signed in")
+        switching = self.watch(context.new_page())
+        switching.goto("/")
+        switching.get_by_role("button", name=re.compile("Nia Stale")).click()
+        switching.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+        expect(switching).to_have_url(re.compile("/sign-in"))
+        switching.get_by_label("Email").fill(olek["email"])
+        switching.get_by_label("Password").fill(PASSWORD)
+        switching.get_by_role("button", name="Sign in").click()
+        expect(switching.get_by_role("heading", name="Welcome, Olek")).to_be_visible()
+        # The stale tabs still show Nia's Home. Moving and saving check the session first, write nothing,
+        # and the tab catches up with the account that is signed in now.
+        self.offer(moving).get_by_role("button", name="Move 2 notes into Personal").click()
+        expect(moving.get_by_role("heading", name="Welcome, Olek")).to_be_visible()
+        typing.get_by_role("button", name="Save note").click()
+        expect(typing.get_by_role("heading", name="Welcome, Olek")).to_be_visible()
+        self.assertEqual(self.spaces(switching), [], "nothing was created or saved for Olek")
+        self.assertEqual(sorted(item["id"] for item in self.in_browser(moving, nia["id"])), ["stale-1", "stale-2"],
+                         "Nia's notes stay in this browser, still hers")
 
     def test_06_not_now_and_phone(self) -> None:
         context = self.context(phone=True)

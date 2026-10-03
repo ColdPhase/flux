@@ -167,25 +167,43 @@ class HomeTasksJourney(unittest.TestCase):
         page = self.page("nia")
         page.goto("/tasks")
         expect(self.tasks(page)).to_contain_text("Mount the PIR sensor")
+        # Nia's next read is answered only after Olek has signed in to this tab, and as a real success
+        # with her tasks: a late answer for the previous account must never be shown (#211 review B2).
+        late: list = []
+
+        def answer_late(route) -> None:
+            if late:
+                route.continue_()
+                return
+            late.append((route, route.fetch()))
+
+        assigned = re.compile(r"/work/assigned")
+        page.route(assigned, answer_late)
+        page.evaluate("document.dispatchEvent(new Event('visibilitychange'))")
+        for _ in range(60):
+            if late:
+                break
+            page.wait_for_timeout(50)
+        self.assertEqual(len(late), 1, "Nia's tasks were being read again")
+        self.assertEqual(late[0][1].status, 200)
         page.get_by_role("button", name=re.compile("Nia Berg")).click()
         page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
         expect(page).to_have_url(re.compile("/sign-in"))
-        held: list = []
-        assigned = re.compile(r"/work/assigned")
-        page.route(assigned, lambda route: held.append(route))
         page.get_by_label("Email").fill(PEOPLE["olek"][1])
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Sign in").click()
         expect(page.get_by_role("heading", name="Welcome, Olek")).to_be_visible()
         page.get_by_role("navigation", name="Views").get_by_role("link", name="Tasks").click()
-        # Olek has no workspace, so nothing is asked; Nia's tasks are gone before and after any answer.
         expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
-        self.assertNotIn("Mount the PIR sensor", page.content())
-        for route in held:
-            route.continue_()
+        route, response = late[0]
+        try:
+            route.fulfill(response=response)
+        except Exception:  # the page already gave up on it when the account changed
+            pass
         page.unroute(assigned)
-        page.wait_for_timeout(500)
+        page.wait_for_timeout(800)
         self.assertNotIn("Mount the PIR sensor", page.content())
+        expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
         # The sidebar offers the same link when there are no projects; this one is the empty state's.
         expect(page.locator("#content").get_by_role("link", name="Create a project")).to_have_attribute("href", "/projects/new")
 

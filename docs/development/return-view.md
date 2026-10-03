@@ -115,8 +115,8 @@ Details (a quiet count of `needsYou`), which opens a private view of the Details
 - `app/apps/server/src/returns/`: the policy adapter (`authorizeEvent`, `evaluateProject`,
   `authorize`, `visibleFilter`) and the routes. No architecture allowlist entries were added.
 - `app/apps/web/src/returns/`: `SinceYouLeftHome` (on Home, grouped by place, with "Caught up to …"
-  and "I have the context"; afterwards one status line, "You're caught up. New changes will show
-  here.", takes focus) and `WhatMatters` (a project's recap, #133). A source link to a message opens on that whole
+  and "I have the context"; afterwards one status line says "You're caught up. New changes will
+  show here." and focus moves to the Home heading, #190 A1.3) and `WhatMatters` (a project's recap, #133). A source link to a message opens on that whole
   message (`#message-<id>`). Only the current request's authorized answer is ever shown: the
   client keeps no return-view state between mounts, accounts or visits, so a revoked item or
   another account's item never appears, even before a fresh answer arrives (tested in Playwright
