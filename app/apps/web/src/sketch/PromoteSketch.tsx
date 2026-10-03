@@ -198,7 +198,7 @@ export function PromoteSketch({ view, dmTitle, onBack }: { view: PromoteSketchVi
               <section className="details__sec" aria-label="What stays in the conversation">
                 <h4>What stays in the conversation</h4>
                 <ul className="promote__inc">
-                  <li><Icon name="lock" size={14} /><span>{preview.staysInDm.messages ? `The other ${plural(preview.staysInDm.messages, 'message', 'messages')} of the conversation` : 'The conversation itself'}, and everything written there later. Nothing is synced to the project.</span></li>
+                  <li><Icon name="lock" size={14} /><span>{preview.staysInDm.messages === 1 ? 'The other message of the conversation' : preview.staysInDm.messages ? `The other ${plural(preview.staysInDm.messages, 'message', 'messages')} of the conversation` : 'The conversation itself'}, and everything written there later. Nothing is synced to the project.</span></li>
                 </ul>
               </section>
               {notice ? <p className="promote__notice" role="alert"><Icon name="alert" size={13} />{notice}</p> : null}

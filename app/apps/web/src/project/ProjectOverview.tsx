@@ -139,7 +139,7 @@ export function ProjectOverview({ messageId, focusPeople = null, onBack }: { mes
       <p className="details__eyebrow">{project.name}{conversation && !message ? ' · Conversation' : ''}</p>
       <h3 className="details__title">{title}</h3>
       {message ? <p className="details__lead ov-quote">{message.body.length > 280 ? `${message.body.slice(0, 279)}…` : message.body}</p> : null}
-      <p className="ov-audience"><Icon name="lock" size={13} />{audienceLine(people, me.user.id)}</p>
+      <p className="ov-audience"><Icon name={project.visibility === 'workspace' ? 'people' : 'lock'} size={13} />{audienceLine(people, me.user.id, project.visibility === 'workspace')}</p>
 
       <Rows label={message ? 'Made from this message' : 'Linked in this conversation'} rows={linked}
         empty={conversation ? (project.access !== 'viewer' ? 'Nothing linked yet. Any message can become work, a decision or a result.' : 'Nothing linked yet.') : undefined} />

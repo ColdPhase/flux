@@ -95,7 +95,7 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
   const { me } = useShellData();
   const navigate = useNavigate();
   const revalidator = useRevalidator();
-  const audience = audienceLine(people, me.user.id);
+  const audience = audienceLine(people, me.user.id, project.visibility === 'workspace');
   const audienceShort = audience.replace(/ · only you two$/, '');
   const materialFormKey = `flux.project-material.${me.user.id}.${project.id}`;
   const draftKey = `flux.project-composer.${me.user.id}.${project.id}.${conversation?.id ?? 'new'}`;

@@ -286,6 +286,17 @@ class PeopleJourney(unittest.TestCase):
         give.get_by_label("Person").select_option(value=self.ids["kai"])
         expect(give).to_contain_text("Only Kai Tanaka gains access. Kai will be able to read and write in Kiln controller")
         expect(give).to_contain_text("Nobody else is added.")
+        # The two access choices share the form's width, each on one line, and say which is chosen.
+        access = give.get_by_role("group", name="Access")
+        expect(access.get_by_role("radio", name="Can write")).to_be_checked()
+        width = access.bounding_box()["width"]
+        for name in ("Can write", "Can read"):
+            choice = access.locator("label", has_text=name).bounding_box()
+            self.assertGreater(choice["width"], width * 0.4, f"{name} has room")
+            self.assertLess(choice["height"], 40, f"{name} stays on one line")
+        access.get_by_text("Can read", exact=True).click()
+        expect(give).to_contain_text("Kai will be able to read Kiln controller, but not write in it.")
+        access.get_by_text("Can write", exact=True).click()
         shot(page, "people-desktop-1440-give-access")
         give.get_by_role("button", name="Give Kai access").click()
         expect(region.locator(".people__done")).to_have_text("Kai can now write in Kiln controller.")
@@ -485,8 +496,12 @@ class PeopleJourney(unittest.TestCase):
             shot(page, f"people-phone-390-{theme}")
 
             page.goto(f"/projects/{self.garden}")
+            # Open to the workspace: never "only you two", since whoever joins Riverside Makers reads it too.
+            expect(page.locator(".top__audience")).to_have_text(re.compile("^Kai and you"))
+            expect(page.locator(".top__audience")).not_to_contain_text("only")
             page.locator(".top__audience").click()
             region = self.access_region(page)
+            expect(page.locator(".ov-audience")).not_to_contain_text("only")
             expect(region.get_by_role("heading", name="Who can see this")).to_be_focused()
             region.get_by_role("button", name="Change access for Kai Tanaka").click()
             expect(region.get_by_role("group", name="Change access for Kai Tanaka")).to_be_visible()

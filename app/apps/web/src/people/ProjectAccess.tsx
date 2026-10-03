@@ -143,7 +143,7 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
   return (
     <section className="details__sec access" aria-labelledby="ov-people">
       <h4 id="ov-people" ref={headingRef} tabIndex={-1}>Who can see this</h4>
-      <p className="access__mode"><Icon name="lock" size={13} />
+      <p className="access__mode"><Icon name={project.visibility === 'restricted' ? 'lock' : 'people'} size={13} />
         {project.visibility === 'restricted'
           ? <span><b>Restricted.</b> Only the people listed here can open it; others in {workspaceName} don’t see it at all.</span>
           : <span><b>Open to {workspaceName}.</b> Every member can write here; guests only with access given here.</span>}
@@ -325,8 +325,10 @@ function GiveAccess({ project, candidates, workspaceName, onlyMe, onGranted, onA
       </div>
       <fieldset className="access__seg">
         <legend>Access</legend>
-        <label className="access__seg-b"><input type="radio" name={`${formId}-role`} value="contributor" checked={role === 'contributor'} onChange={() => setRole('contributor')} />Can write</label>
-        <label className="access__seg-b"><input type="radio" name={`${formId}-role`} value="viewer" checked={role === 'viewer'} onChange={() => setRole('viewer')} />Can read</label>
+        <div className="access__seg-track">
+          <label className="access__seg-b"><input type="radio" name={`${formId}-role`} value="contributor" checked={role === 'contributor'} onChange={() => setRole('contributor')} />Can write</label>
+          <label className="access__seg-b"><input type="radio" name={`${formId}-role`} value="viewer" checked={role === 'viewer'} onChange={() => setRole('viewer')} />Can read</label>
+        </div>
       </fieldset>
       <p className="access__preview" aria-live="polite">
         {person

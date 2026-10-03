@@ -191,7 +191,8 @@ export function AppLayout() {
     { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks${lastTasksSearch(projectId)}`, ...(openWork ? { countLabel: `, ${openWork} open` } : {}) },
     { id: 'docs', label: 'Wiki', to: `/projects/${projectId}/docs`, end: false },
   ] : null;
-  const audience = project ? audienceLine(project.people, me.user.id) : 'People with project access';
+  const audienceOpen = project?.project.visibility === 'workspace';
+  const audience = project ? audienceLine(project.people, me.user.id, audienceOpen) : 'People with project access';
   // The audience line leads to "Who can see this", where managers change it (#188).
   const openAudience = () => { setDetailsView({ kind: 'overview', focus: 'people' }); toggleDetails(true); };
   const recapOpen = detailsOpen && typeof detailsView === 'object' && detailsView.kind === 'recap';
@@ -265,7 +266,7 @@ export function AppLayout() {
               <div className="top__meta">
                 {/* Who can read the project, then its current state; Details retains the full names. */}
                 <button type="button" className="top__audience" onClick={openAudience} aria-haspopup="dialog" title={audience}>
-                  <Icon name="lock" size={12} /><span>{audience}</span><span className="ui-vh">, who can see this project</span>
+                  <Icon name={audienceOpen ? 'people' : 'lock'} size={12} /><span>{audience}</span><span className="ui-vh">, who can see this project</span>
                 </button>
                 {project && !phone ? <ProjectStateLine lists={project.work} canDecide={project.project.access !== 'viewer'} /> : null}
               </div>

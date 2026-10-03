@@ -10,7 +10,7 @@
 .people__who b { font-weight: 500; color: var(--text); overflow-wrap: anywhere; }
 .people__who span { font-size: var(--fs-sm); color: var(--text-3); overflow-wrap: anywhere; }
 .people__role { flex: none; font-size: var(--fs-sm); color: var(--text-2); }
-.people__change.ui-btn { flex: none; min-height: 28px; margin-right: -8px; padding: 0 8px; color: var(--text-2); }
+.people__change.ui-btn { flex: none; min-height: 28px; padding: 0 8px; color: var(--text-2); }
 .people__change[aria-expanded="true"] { background: var(--bg-active); color: var(--text); }
 .people__edit { display: grid; gap: 10px; margin: 0 0 12px; padding: 12px; border-radius: var(--r-lg); box-shadow: inset 0 0 0 1px var(--line-strong); animation: rise var(--dur-2) var(--ease-out) both; }
 .people__edit .details__actions { flex-wrap: wrap; }
@@ -43,8 +43,10 @@
 .access__give { display: grid; justify-items: start; gap: 8px; margin-top: 14px; }
 .access__give.people__edit { justify-items: stretch; }
 .access__link.ui-btn { justify-self: start; margin-left: -6px; white-space: normal; text-align: left; }
-.access__seg { display: flex; gap: 0; margin: 0; padding: 2px; border: 0; border-radius: var(--r); background: var(--bg-hover); }
-.access__seg legend { float: left; width: 100%; margin-bottom: 6px; padding: 0; }
+/* The legend sits above its own track: a fieldset's legend is not a flex item, so the track holds the choices. */
+.access__seg { min-width: 0; margin: 0; padding: 0; border: 0; }
+.access__seg legend { margin-bottom: 6px; padding: 0; }
+.access__seg-track { display: flex; padding: 2px; border-radius: var(--r); background: var(--bg-hover); }
 .access__seg-b { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; min-height: 32px; border-radius: 6px; font-size: var(--fs-sm); font-weight: 500; color: var(--text-3); cursor: pointer; transition: var(--tr); }
 .access__seg-b input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
 .access__seg-b:has(input:checked) { background: var(--bg-raised); color: var(--text); box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--line); }
