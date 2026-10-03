@@ -392,18 +392,15 @@ class ProjectSurfaceJourney(unittest.TestCase):
         self.assertEqual(bar["width"], 2, "the 2px accent bar")
         self.assertTrue(bar["inside"], f"the bar lies inside the sidebar's scroll box: {bar}")
         self.assertTrue(bar["hit"], "the bar is painted, not clipped")
-        # On a phone every sidebar control is a 44px target: +, Jump to, places, projects and threads.
+        # On a phone every sidebar control is a 44px target: +, Jump to, places and projects.
         phone = self.open_project("ada", phone=True)
         phone.get_by_role("button", name="Open navigation").tap()
         drawer = phone.get_by_role("dialog")
         expect(drawer.locator(".side__project.is-open")).to_be_visible()
         targets = [drawer.get_by_role("link", name="New project"), drawer.get_by_role("link", name="New message"),
                    drawer.locator(".side__jump"), drawer.get_by_role("link", name="Home"), drawer.locator(".side__project.is-open")]
-        threads = drawer.locator(".side__threads .side__item, .side__threads .ui-btn")
-        # "New conversation" comes first; wait for the conversations themselves before counting.
-        expect(drawer.locator(".side__threads .side__thread").first).to_be_visible()
-        targets += [threads.nth(index) for index in range(threads.count())]
-        self.assertGreater(threads.count(), 0, "the open project's threads are listed")
+        # One project conversation (UI116-1): the sidebar lists no conversation threads under the project.
+        expect(drawer.locator(".side__thread")).to_have_count(0)
         for target in targets:
             box = target.bounding_box()
             assert box
