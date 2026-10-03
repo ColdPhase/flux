@@ -1,7 +1,9 @@
 # Preserve native task plans in bounded reads — #155 / #152 / #136
 
-2026-10-03. Proposed additive integration contract; independent agreement and
-runtime verification remain pending. This extends the [bounded read
+2026-10-03. Additive integration contract independently accepted source-only at
+`cc878ad4d16eeda2feab9c353f25164499a417e7`; runtime verification remains pending.
+See [the independent report](2026-10-03-native-task-plan-read-independent-review.md).
+This extends the [bounded read
 contract](2026-10-01-native-work-read-contract.md) and preserves every original
 #155 criterion. Owner: Zamojski5; eligible implementation evaluator: PelikanFix16.
 
