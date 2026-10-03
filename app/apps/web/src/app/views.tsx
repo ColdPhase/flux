@@ -47,7 +47,7 @@ function when(iso: string) {
   return today ? timeFormat.format(date) : `${dayFormat.format(date)}, ${timeFormat.format(date)}`;
 }
 
-/** Focus the Home composer, e.g. from "+ New thought". */
+/** Focus the Home composer, e.g. from "+ New note". */
 export function startCapture(navigate: NavigateFunction) {
   const composer = document.getElementById('composer');
   if (composer && window.location.pathname === '/') { composer.focus(); return; }
@@ -116,7 +116,7 @@ export function ConversationView() {
     try {
       const body = draft.text.trim();
       if (selectedWorkspace) {
-        const created = await createPrivateDraft(selectedWorkspace, body.slice(0, 80).split('\n')[0] || 'Private thought', body);
+        const created = await createPrivateDraft(selectedWorkspace, body.slice(0, 80).split('\n')[0] || 'Private note', body);
         setServerDrafts((current) => [created, ...current]);
       } else add(body);
       draft.clear();
@@ -137,7 +137,7 @@ export function ConversationView() {
       <Pane>
         <div className="intro">
           <h2>Welcome, {firstName}</h2>
-          <p>Jot down a thought, a link or a half-formed idea. It stays with you until you choose to share it.</p>
+          <p>Jot down a note, a link or a half-formed idea. It stays with you until you choose to share it.</p>
         </div>
         <SinceYouLeftHome onShown={setReturning} />
         {serverDrafts.length ? <section className="notes" aria-label="Private drafts"><p className="notes__h"><Icon name="lock" size={13} />Private drafts · saved in your space</p><ol className="notes__list">{serverDrafts.map((item) => <li className={`note${arrivedDraft === item.id ? ' is-arrived' : ''}`} key={item.id} id={`draft-${item.id}`} tabIndex={-1}><p className="note__text">{item.body}</p><div className="note__meta">You · v{item.version} · <time dateTime={item.updatedAt}>{when(item.updatedAt)}</time></div></li>)}</ol></section> : null}
@@ -158,7 +158,7 @@ export function ConversationView() {
           </section>
         ) : !serverDrafts.length && !returning ? (
           <ViewEmpty icon="chat" title="Nothing here yet" level={3}>
-            <p>Write your first thought below. When you’re added to a project or someone messages you, those conversations open from the sidebar.</p>
+            <p>Write your first note below. When you’re added to a project or someone messages you, those conversations open from the sidebar.</p>
           </ViewEmpty>
         ) : null}
         <div ref={endRef} />
@@ -183,7 +183,7 @@ export function ConversationView() {
               onClick={() => { setAsking(!asking); textareaRef.current?.focus(); }}>
               <Icon name="spark" />
             </button>
-            <textarea id="composer" ref={textareaRef} rows={1} value={draft.text} disabled={saving} placeholder={asking ? 'Ask your assistant…' : 'Capture a thought…'}
+            <textarea id="composer" ref={textareaRef} rows={1} value={draft.text} disabled={saving} placeholder={asking ? 'Ask your assistant…' : 'Write a note…'}
               aria-describedby={`${asking ? askId : audienceId} ${hintId}`} onChange={(event) => { draft.setText(event.target.value); autosize(); }} onKeyDown={onKeyDown} />
             <button type="button" className="composer__send" aria-label={asking ? 'Send to your assistant' : 'Save note'} aria-disabled={!canSend} onClick={() => void send()}><Icon name="send" /></button>
           </div>
@@ -206,7 +206,7 @@ export function TasksView() {
   return (
     <Pane>
       <ViewEmpty icon="tasks" title="No tasks yet">
-        <p>When a thought turns into something to do, its task shows up here, linked to where it came from. Nothing is due, and nothing needs clearing.</p>
+        <p>When a note or message turns into something to do, its task shows up here, linked to where it came from. Nothing is due, and nothing needs clearing.</p>
       </ViewEmpty>
     </Pane>
   );

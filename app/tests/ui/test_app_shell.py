@@ -248,7 +248,7 @@ class AppShellJourney(unittest.TestCase):
         marker = places.get_by_role("link", name="Home").evaluate("el => { const s = getComputedStyle(el, '::before'); return [s.width, s.height]; }")
         self.assertEqual(marker, ["2px", "14px"], "a short accent bar beside the current place")
         expect(sidebar.get_by_text("No projects yet")).to_be_visible()
-        expect(sidebar.get_by_role("button", name=re.compile("^New thought"))).to_be_visible()
+        expect(sidebar.get_by_role("button", name=re.compile("^New note"))).to_be_visible()
         views = page.get_by_role("navigation", name="Views")
         for label in ("Conversation", "Map", "Tasks", "Wiki"):
             expect(views.get_by_role("link", name=label, exact=True)).to_be_visible()
