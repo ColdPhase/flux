@@ -3,6 +3,7 @@ import { Link, useLocation, type NavigateFunction } from 'react-router';
 import type { Draft } from '@flux/contracts';
 import { EmptyState, Icon, IconButton, duration, type IconName } from '../ui';
 import { createPrivateDraft, listDrafts } from './conversation-api';
+import { useIntentKeys } from '../api/intent-keys';
 import { useCaptures } from './captures';
 import { useShellData } from './data';
 import { useDraft, useReadingPosition } from './drafts';
@@ -71,6 +72,7 @@ export function ConversationView() {
   const [serverDrafts, setServerDrafts] = useState<Draft[]>([]);
   const [saveState, setSaveState] = useState('');
   const [saving, setSaving] = useState(false);
+  const intents = useIntentKeys();
   // With changes to return to, the "nothing here yet" empty state would contradict them.
   const [returning, setReturning] = useState(false);
   useEffect(() => {
@@ -113,8 +115,10 @@ export function ConversationView() {
     try {
       const body = draft.text.trim();
       if (selectedWorkspace) {
-        const created = await createPrivateDraft(selectedWorkspace, body.slice(0, 80).split('\n')[0] || 'Private thought', body);
-        setServerDrafts((current) => [created, ...current]);
+        const intent = `draft:${selectedWorkspace}:${body}`;
+        const created = await createPrivateDraft(selectedWorkspace, body.slice(0, 80).split('\n')[0] || 'Private thought', body, intents.keyFor(intent));
+        intents.settle(intent);
+        setServerDrafts((current) => [created, ...current.filter((item) => item.id !== created.id)]);
       } else add(body);
       draft.clear();
       setSaveState(selectedWorkspace ? 'Saved privately to your space' : 'Saved in this browser');
