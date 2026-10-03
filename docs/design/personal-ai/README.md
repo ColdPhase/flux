@@ -109,34 +109,41 @@ In-Flux `/ai` needs an accepted compute contract (O-005: "embedded/API/local …
 
 The founder's ownership model is recorded as [F-019](../../product/decisions.md). The table
 below maps every required example from #57 to the server rule that enforces it, the
-regression that pins it, and where it stands on `main` at `471b22dd`. Every merged
+regression that pins it, and where it stands on `main` at `9c96cbe2` (after #176 and
+#124 merged). Every merged
 behaviour runs on fake or mock compute in Docker. **No real provider call, billing or
-device is claimed.** Personal runs still fail closed in production until #124's key
-custody and a real provider pass land; see [personal runs](../../development/personal-runs.md).
+device is claimed.** Personal runs still fail closed in production until their connection
+lookup is wired to #124's key custody and a real provider pass lands; see
+[personal runs](../../development/personal-runs.md). Owner background rules (#124) are merged
+with production activation still disabled ([proactive comparison](../../development/proactive-comparison.md)).
 
 | Example | Enforced by | Regression | State |
 | --- | --- | --- | --- |
-| Hubert invokes `/ai` in a shared conversation | `POST /api/v1/conversations/:id/assistant-runs` resolves the owner from the session; a body naming another owner, agent or connection is `403 PERSONAL_RUN_NOT_OWNER`. The committed answer is labelled as Hubert's AI and requested by Hubert. | `personal-runs.test.ts` AC-3 and AC-5; browser `test_personal_assistant` | Merged (#141, #142, #161), fake compute |
+| Hubert invokes `/ai` in a shared conversation | `POST /api/v1/conversations/:id/assistant-runs` resolves the owner from the session; a body naming another owner, agent or connection is `403 PERSONAL_RUN_NOT_OWNER`. The committed answer is labelled as Hubert's AI and requested by Hubert. | `personal-runs.test.ts` AC-1 (the `403 PERSONAL_RUN_NOT_OWNER` refusal), AC-3 and AC-5; owner-only `agent.invoke` in `app/packages/core/src/access/policy.ts`; browser `test_personal_assistant` | Merged (#141, #142, #161), fake compute |
 | Maurycy has no connection; `/ai`, a mention or reply, or the run endpoint | No route reaches Hubert's assistant. Runs, stop and retry are owner-only (404 otherwise). The stream ignores every client frame, so there is no WebSocket command path. | `personal-runs.test.ts` AC-1: "another person reaches the owner's assistant by no route". The same test sends `assistant.run`/`assistant.stop` frames on the stream, and nothing happens | Merged |
 | Maurycy connects his own agent | His run uses his enablement, connection and cap only; Hubert's usage is unchanged. | `personal-runs.test.ts` AC-3 | Merged, fake compute |
 | A connection is unavailable, paused, capped or revoked | Explicit state (`unavailable`, `paused`, `capped`, `cap_reached`); zero cost before dispatch; no payer fallback; human work continues. | `personal-runs.test.ts` AC-2 and AC-4 | Merged |
-| Hubert asks for a permitted map/wiki/task change | **Via MCP:** standing-grant native actions through the canonical commands and the #152 execution port. Tasks, results and decisions are merged (#174); shared-map actions are in #176. **In product:** assistant proposals that only a person with authority accepts. | `mcp-work-actions.test.ts`, `mcp-map-actions.test.ts` (#176), `personal-runs.test.ts` AC-7 | Tasks/results/decisions merged. Map actions pending (#176). **Wiki/doc edits and done-with-undo actions from a personal run are not implemented**; tracked in #68 and #152 |
-| AI has an unsolicited idea | Only owner-enabled rules can act, and they produce a quiet, editable, dismissible proposal. Production rule activation stays unavailable until #58's runtime gates pass. | `proactive-comparison-rules`, `proactive-outcomes` (#124) | Pending in #124; no merged unsolicited path exists |
-| A background rule is paused or revoked, or the owner loses access mid-job | Recheck before reads, dispatch and commit; revocation commits nothing. | `personal-runs.test.ts` AC-6 (both cases); `proactive-comparison-cancellation` (#124) | Personal runs merged; rules pending in #124 |
+| Hubert asks for a permitted map/wiki/task change | **Via MCP:** standing-grant native actions through the canonical commands and the #152 execution port. Tasks, results and decision proposals are merged (#174); shared-map actions are merged (#176). MCP can propose a decision, never accept it. **In product:** assistant proposals that only a person with authority accepts. | `mcp-work-actions.test.ts`, `mcp-map-actions.test.ts` (#176), `personal-runs.test.ts` AC-7 | Tasks, results, decision proposals and map actions merged, fake compute. **Wiki/doc edits and done-with-undo actions from a personal run are not implemented**; tracked in #68 and #152 |
+| AI has an unsolicited idea | Only owner-enabled rules can act, and they produce a quiet, editable, dismissible proposal. Production rule activation stays unavailable until #58's runtime gates pass. | `proactive-comparison-rules`, `proactive-outcomes` (#124) | Merged (#124), fake/mock compute; production rule activation still disabled |
+| A background rule is paused or revoked, or the owner loses access mid-job | Recheck before reads, dispatch and commit; revocation commits nothing. | `personal-runs.test.ts` AC-6 (both cases); `proactive-comparison-cancellation` (#124) | Merged (personal runs; #124 rules), fake/mock compute; production activation still disabled |
 | An external MCP client authenticates as Maurycy | Reads and writes require the bearer's own connection, selected projects, scopes and standing grants, rechecked on execution and replay. Another owner's runtime or connection cannot be selected. | `oauth-mcp.test.ts` (three named connections, two owners; revocation); `agent-proposals.test.ts`; `mcp-work-actions.test.ts` | Merged (#103, #167, #174) |
 | A shared answer is prepared | Input is only the requested place's project-audience sources. DMs, private captures and other projects never enter input or output. `GET …/assistant-answers` exposes no cost, cap, connection or hidden source. | `personal-runs.test.ts` AC-5 | Merged |
 
 **Live sessions** (founder direction on #57). No AI run receives audio, video or screen
-data, and no audio-notes feature exists. Any future one must meet the consent and pause
-rules above before it can be offered. This is a deliberately unimplemented capability,
-not a delivered one.
+data, and no audio-notes feature exists. Any future one is separately scoped, outside
+milestone 2, and must meet the consent and pause rules of
+[live collaboration §5](../../product/live-collaboration.md#5-personal-ai-help-and-optional-audio-notes)
+before it can be offered. This is a deliberately unimplemented capability, not a delivered
+one, and it has no implementation issue.
 
 **Still required, owned and tracked:**
 - #68: real connection custody and provider pass, done actions with undo, the header
   status and "someone else's assistant" panel, real devices.
 - #152: wiki/doc agent actions and real Codex/Claude clients.
-- #58 / #124: owner rules in production.
-- #57 AC-4: a peer check of this contract head.
+- #58: production activation of owner rules (merged in #124, still disabled).
+- #179 / F-020 (proposed in #180): the same rules for every provider and model.
+
+**Done:** #57 AC-4, the independent peer check, recorded on #57 and repeated on #181 (2026-10-02).
 
 ## Verification (2026-09-27)
 
