@@ -41,6 +41,7 @@ export interface SessionSummary {
 export * from './access.js';
 export * from './push.js';
 export * from './conversation.js';
+export * from './files.js';
 export * from './sketch.js';
 export * from './work.js';
 export * from './live.js';
@@ -58,3 +59,4 @@ export * from './export.js';
 export * from './github.js';
 export * from './agent-execution.js';
 export * from './agent-bootstrap.js';
+export * from './project-agents.js';

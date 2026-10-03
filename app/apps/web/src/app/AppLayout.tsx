@@ -26,7 +26,7 @@ function lastConversationPath(projectId: string) {
   try {
     const saved = sessionStorage.getItem(`flux.project-conversation.${projectId}`);
     // Discard a non-conversation destination remembered by an older shell.
-    return saved && !/^\/projects\/[^/]+\/(tasks|map|docs|github)(\/|\?|$)/.test(saved) ? saved : `/projects/${projectId}`;
+    return saved && !/^\/projects\/[^/]+\/(tasks|map|docs|agents|github)(\/|\?|$)/.test(saved) ? saved : `/projects/${projectId}`;
   }
   catch { return `/projects/${projectId}`; }
 }
@@ -171,8 +171,9 @@ export function AppLayout() {
   const where = placeOf(location.pathname);
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const activeProject = projects.find((project) => project.id === projectId);
-  // Project settings also preserve the last conversation without selecting its tab.
-  const onOtherView = /^\/projects\/[^/]+\/(tasks|map|docs|github)(\/|$)/.test(location.pathname);
+  // The Conversation tab returns to the conversation that was open before Map, Tasks, Wiki or
+  // Agents; project settings (GitHub) also keep it without selecting the tab.
+  const onOtherView = /^\/projects\/[^/]+\/(tasks|map|docs|agents|github)(\/|$)/.test(location.pathname);
   useEffect(() => {
     if (!projectId || onOtherView) return;
     try { sessionStorage.setItem(`flux.project-conversation.${projectId}`, `${location.pathname}${location.search}`); } catch { /* private mode */ }
@@ -180,13 +181,14 @@ export function AppLayout() {
   const shellProject = useProjectShell();
   const project = shellProject && shellProject.project.id === projectId ? shellProject : undefined;
   const openWork = project?.work.work.filter((item) => !item.parked && (item.status === 'open' || item.status === 'in_progress' || item.status === 'blocked')).length;
-  // Conversation · Map · Tasks · Wiki in the Studio 11.6 order (#117, #136); quiet tabs without
+  // Conversation · Map · Tasks · Wiki · Agents in the Studio 11.6 order (#117, #136); quiet tabs without
   // counts. The open work count stays readable to assistive technology on the Tasks tab.
   const projectViews = projectId ? [
     { id: 'conversation', label: 'Conversation', to: onOtherView ? lastConversationPath(projectId) : `${location.pathname}${location.search}` },
     { id: 'map', label: 'Map', to: `/projects/${projectId}/map`, end: false },
     { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks${lastTasksSearch(projectId)}`, ...(openWork ? { countLabel: `, ${openWork} open` } : {}) },
     { id: 'docs', label: 'Wiki', to: `/projects/${projectId}/docs`, end: false },
+    { id: 'agents', label: 'Agents', to: `/projects/${projectId}/agents` },
   ] : null;
   const audience = project ? audienceLine(project.people, me.user.id) : 'People with project access';
   const openOverview = () => { setDetailsView('place'); toggleDetails(true); };

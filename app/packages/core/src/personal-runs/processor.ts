@@ -102,7 +102,7 @@ async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<{ s
     sources.push({ label: next(), ref: { type: 'thought', id: thought.id, sketchId: thought.sketchId, revision: thought.version }, text: `Selected map thought: ${thought.text}` });
   }
   for (const message of await ports.runs.messages(run.conversationId, MESSAGE_WINDOW))
-    sources.push({ label: next(), ref: { type: 'message', id: message.id, revision: 1 }, text: `Message ${message.sequence} by ${message.authorName}${message.author.kind === 'agent' ? ' (agent)' : ''}: ${message.body}` });
+    sources.push({ label: next(), ref: { type: 'message', id: message.id, revision: 1 }, text: `Message ${message.sequence}${message.contribution ? ` (${message.contribution.kind}${message.contribution.kind === 'result' ? `; result ${message.contribution.resultId}` : ''})` : ''} by ${message.authorName}${message.author.kind === 'agent' ? ' (agent)' : ''}: ${message.body}${message.files?.length ? `\nAttached files (contents not included): ${message.files.map((file) => `${file.name} (${file.size} bytes; file ${file.id})`).join(', ')}` : ''}` });
   for (const work of await ports.runs.openWork(run.projectId, WORK_WINDOW))
     sources.push({ label: next(), ref: { type: 'work', id: work.id, revision: work.version }, text: `Open work item "${work.title}" (${work.status})${work.outcome ? `: ${work.outcome}` : ''}` });
   let earlier: string | null = null;

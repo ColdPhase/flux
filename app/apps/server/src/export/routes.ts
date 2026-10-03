@@ -1,11 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { projectExportPath } from '@flux/contracts';
-import type { Database } from '@flux/core';
+import type { Database, FileStorage } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, useDomainErrors } from '../http/commands.js';
 import { exportUseCases } from './adapters.js';
 
-interface Options { db: Database; sessions: SessionResolver; publicOrigin: string }
+interface Options { db: Database; sessions: SessionResolver; publicOrigin: string; storage: FileStorage }
 
 const query = { type: 'object', additionalProperties: false, properties: { format: { type: 'string', enum: ['json', 'bundle'] } } } as const;
 
@@ -14,17 +14,19 @@ const query = { type: 'object', additionalProperties: false, properties: { forma
  * `404`, a visible one the caller may not manage is `403`. `?format=bundle` answers the `.tar.gz`
  * bundle (docs/operations/export.md); the default is the `project.json` document.
  */
-export async function exportRoutes(app: FastifyInstance, { db, sessions, publicOrigin }: Options) {
+export async function exportRoutes(app: FastifyInstance, { db, sessions, publicOrigin, storage }: Options) {
   useDomainErrors(app);
   const { principal } = commandRunner(db, sessions);
-  const exports = exportUseCases(db, publicOrigin);
+  const exports = exportUseCases(db, publicOrigin, storage);
 
   app.get<{ Params: { projectId: string }; Querystring: { format?: 'json' | 'bundle' } }>(projectExportPath(':projectId'), { schema: { querystring: query } },
     async (request, reply) => {
       const actor = await principal(request);
       reply.header('cache-control', 'no-store');
       if (request.query.format === 'bundle') {
-        const bundle = await exports.exportBundle(actor, request.params.projectId);
+        const controller = new AbortController();
+        reply.raw.once('close', () => { if (!reply.raw.writableFinished) controller.abort(); });
+        const bundle = await exports.exportBundle(actor, request.params.projectId, { signal: controller.signal });
         return reply.header('content-type', 'application/gzip')
           .header('content-disposition', `attachment; filename="${bundle.fileName}"`).send(bundle.content);
       }

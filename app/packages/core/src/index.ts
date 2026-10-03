@@ -99,3 +99,7 @@ export * from './agent-connection/execution.js';
 export * from './agent-connection/grants.js';
 export * from './agent-connection/orientation.js';
 export * from './agent-connection/playbook.js';
+export * from './agent-connection/project-agents.js';
+
+export * from './files/ports.js';
+export * from './files/service.js';
