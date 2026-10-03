@@ -14,9 +14,9 @@ type Failing = 'begin' | 'rollback';
 /** A Flux pool whose next BEGIN (after running) or ROLLBACK (instead of running) fails on the client. */
 function poolFailingOn(statement: Failing) {
   const database = createDatabase(connectionString);
-  const connect = database.pool.connect.bind(database.pool) as () => Promise<pg.PoolClient>;
+  const connect = database.pool.connect.bind(database.pool) as (callback?: unknown) => Promise<pg.PoolClient>;
   const failed: { pid?: number } = {};
-  (database.pool as unknown as { connect: () => Promise<pg.PoolClient> }).connect = async () => {
+  const guarded = async () => {
     const client = await connect();
     const query = client.query.bind(client) as (config: unknown, values?: unknown) => Promise<unknown>;
     (client as unknown as { query: typeof query }).query = async (config, values) => {
@@ -30,8 +30,22 @@ function poolFailingOn(statement: Failing) {
     };
     return client;
   };
+  // drizzle's transactions check out a client with connect(); pool.query() passes a callback and
+  // is left untouched.
+  (database.pool as unknown as { connect: (callback?: unknown) => unknown }).connect = (callback?: unknown) => {
+    if (callback) return connect(callback);
+    return guarded();
+  };
   after(() => database.pool.end());
   return { ...database, failed };
+}
+
+/** drizzle wraps a failed query ("Failed query: begin"); the client's own error is its cause. */
+function failedWith(pattern: RegExp) {
+  return (error: unknown) => {
+    for (let cause = error; cause instanceof Error; cause = (cause as { cause?: unknown }).cause) if (pattern.test(cause.message)) return true;
+    return false;
+  };
 }
 
 /** The server-side state of one backend, polled until the predicate holds or two seconds pass. */
@@ -47,9 +61,9 @@ async function backendState(pid: number, settled: (state: string | null) => bool
 }
 
 describe('pooled transactions release a failed client (#234)', () => {
-  test('a BEGIN that fails on the client destroys the client instead of leaking an open transaction', async () => {
+  test('a BEGIN that fails on the client destroys the client instead of leaking an open transaction', { timeout: 15_000 }, async () => {
     const { db, pool, failed } = poolFailingOn('begin');
-    await assert.rejects(db.transaction(async (tx) => { await tx.execute(sql`SELECT 1`); }), /Query read timeout/);
+    await assert.rejects(db.transaction(async (tx) => { await tx.execute(sql`SELECT 1`); }), failedWith(/Query read timeout/));
     assert.ok(failed.pid, 'the injected failure ran');
     assert.equal(pool.totalCount, 0, 'the client left the pool instead of staying checked out');
     assert.equal(await backendState(failed.pid, (state) => state === null), null, 'no session is left idle in a transaction');
@@ -57,12 +71,12 @@ describe('pooled transactions release a failed client (#234)', () => {
     assert.equal(row?.ok, 1, 'the pool keeps working');
   });
 
-  test('a ROLLBACK that fails destroys the client, keeps the original error and leaves the next user a clean session', async () => {
+  test('a ROLLBACK that fails destroys the client, keeps the original error and leaves the next user a clean session', { timeout: 15_000 }, async () => {
     const { db, pool, failed } = poolFailingOn('rollback');
     await assert.rejects(db.transaction(async (tx) => {
       await tx.execute(sql`SELECT 1`);
       throw new Error('the transaction body failed');
-    }), /the transaction body failed/);
+    }), (error: unknown) => error instanceof Error && error.message === 'the transaction body failed');
     assert.ok(failed.pid, 'the injected failure ran');
     assert.equal(pool.totalCount, 0, 'the client was destroyed, not returned to the pool');
     assert.equal(await backendState(failed.pid, (state) => state === null), null, 'its open transaction ended with the session');
@@ -70,7 +84,7 @@ describe('pooled transactions release a failed client (#234)', () => {
     assert.equal(rows[0]?.open, false, 'the next pool user is not inside a leftover transaction');
   });
 
-  test('ordinary commits and rollbacks keep reusing the pooled client', async () => {
+  test('ordinary commits and rollbacks keep reusing the pooled client', { timeout: 15_000 }, async () => {
     const { db, pool } = createDatabase(connectionString);
     after(() => pool.end());
     assert.equal(await db.transaction(async (tx) => (await tx.execute<{ n: number }>(sql`SELECT 2 AS n`)).rows[0]?.n), 2);
