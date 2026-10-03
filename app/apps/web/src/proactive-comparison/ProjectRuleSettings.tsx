@@ -116,7 +116,7 @@ export function ProjectRuleSettings({ connection }: { connection: BackgroundComp
           <div><dt>Rule allowance</dt><dd>{money(current.periodBudgetCents)} over rolling 30 days · up to {current.maxRunsPerDay} requests a UTC day · {money(current.perRunCents)} per request</dd></div>
         </dl>
         {current.status === 'paused' ? <p className="background-settings__help">{runtime === 'available'
-          ? 'Your rule is saved and paused. Enabling it lets a contributor’s negative result start one comparison on your connection, within the allowance above.'
+          ? 'Your rule is saved and paused. Once enabled, a negative result recorded in this project, or a later change to the evidence it cites, can start a paid comparison for any of the project’s negative results, including earlier ones, on your connection and within the allowance above.'
           : 'Background execution is unavailable on this instance. Your rule is saved and paused.'}</p> : null}
         <div className="background-settings__actions">
           {current.status === 'enabled' ? <Button disabled={!writable || busy} onClick={() => void mutate(async () => {
@@ -125,7 +125,7 @@ export function ProjectRuleSettings({ connection }: { connection: BackgroundComp
           }, 'Rule paused.')}>Pause rule</Button> : runtime === 'available' ? <Button variant="primary" disabled={!writable || busy} onClick={() => void mutate(async () => {
             const changed = await changeBackgroundRule(current, 'enabled');
             setSetup({ ...ready, rules: ready.rules.map((rule) => rule.id === changed.id ? changed : rule) });
-          }, 'Rule enabled. It runs only after a contributor’s negative result, within your allowance.')}>Enable rule</Button> : <Button disabled>Enable unavailable</Button>}
+          }, 'Rule enabled. New or changed negative results in this project can now start comparisons, within your allowance.')}>Enable rule</Button> : <Button disabled>Enable unavailable</Button>}
           <Button disabled={!writable || busy} onClick={() => void mutate(async () => {
             const changed = await changeBackgroundRule(current, 'revoked');
             setSetup({ ...ready, rules: ready.rules.map((rule) => rule.id === changed.id ? changed : rule) });

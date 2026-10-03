@@ -54,16 +54,15 @@ Enabling returns `BACKGROUND_CONNECTION_REQUIRED` without a current owner
 connection, `BACKGROUND_PRICE_UNKNOWN` when that connection has no known price,
 `BACKGROUND_BUDGET_TOO_LOW` if the rule exceeds that owner's consented budget or
 one request at the connection's price exceeds the per-request allowance, and
-`BACKGROUND_RUNTIME_UNAVAILABLE` after those checks because
-the complete worker/provider path is not implemented yet. The stored rule remains
-paused. A configured key does not start a provider call or emit a proposal. A
+`BACKGROUND_RUNTIME_UNAVAILABLE` after those checks while the operator's runtime switch
+is off (the default; see "Runtime switch"). The stored rule then remains paused. A configured key does not start a provider call or emit a proposal. A
 negative result authored by any currently authorized human contributor creates a
 deduplicated outbox candidate for each opted-in owner of that named project in the
-result transaction **only for an enabled rule**; production activation is
-still disabled, so current production rules do not create candidates. The worker
+result transaction **only for an enabled rule**; with the runtime switch off (the
+default) no rule can be enabled, so production rules do not create candidates. The worker
 adapter rechecks current owner/agent access, result authorship, the selected source
-snapshot and budget before reserving; production scheduling is not registered. An explicitly
-invoked dispatch path in the worker decrypts only the owner's active
+snapshot and budget before reserving; scheduling is registered only with the runtime switch
+on. The dispatch path in the worker decrypts only the owner's active
 key, bounds the input at 8,000 tokens by the conservative Flux estimate (raised,
 never lowered, by Anthropic's token count), makes at most one 1,200-output-token
 call on the connection's provider and model,
@@ -309,9 +308,17 @@ acceptance remains a separate check.
   - `proactive.comparison.recovery.v1`, every ten minutes: `comparisonRecoveryTick`.
 - **Anything else** stops both apps at startup.
 
-Still required before an instance should switch it on: an authorized real-provider test call with
-an observed bill, live cancellation, an independent full-context quality evaluation and real crash
-reconciliation (the remaining #58 gates below).
+Still required before an instance should switch it on (the remaining #58 gates below):
+- a running-app check with the switch on for the API and the worker and a mock provider: enable a
+  rule, record a negative result, see one proposal after a tick, pause, and see no further request;
+- an authorized real-provider test call with an observed bill;
+- live cancellation;
+- an independent full-context quality evaluation;
+- real crash reconciliation.
+
+What runs today: `proactive-comparison-runtime.test.ts` enables a rule through the switch, records
+one negative result and runs the worker's registered tick handler twice at once against that ready
+candidate with a counting provider: exactly one paid request, and none on a later tick.
 
 ## Key file, restore and rotation
 
@@ -433,7 +440,8 @@ project and save a **paused** comparison rule. An earlier revoked rule remains
 unchanged: renewal creates a new paused identity/version with fresh scope and
 allowance confirmation. Concurrent renewal allows one creation; unknown possible
 charges remain counted across connections and renewed rules. Enable truthfully
-stays unavailable until the accepted runtime is registered and verified.
+stays unavailable unless the operator switched the runtime on, which must wait for the
+real-provider gates (see "Runtime switch").
 
 The [owner-setup evidence](../design/proactive-comparison/owner-setup-2026-09-30/)
 separately records rendered states, independent visual findings and their
