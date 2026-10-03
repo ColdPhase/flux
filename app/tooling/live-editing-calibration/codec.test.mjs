@@ -433,8 +433,10 @@ test('100k UTF-8 update assembles reordered duplicate chunks and expires cross-s
   assert.deepEqual(complete, Buffer.from(update)); assert.equal(assemblies.bytes, 0);
   await h.accept(a, complete, intent);
   assert.throws(() => assemblies.receive('x', frames[0], { ...intent, actor: 'other' }, 0), { code: 'ASSEMBLY_CONTEXT' });
+  assert.throws(() => assemblies.receive('x', packet({ ...intent, room: 'other', index: 0, count }, update.subarray(0, CAPS.chunkBytes)), intent, 0), { code: 'ASSEMBLY_CONTEXT' });
   assemblies.receive('a', frames[0], intent, 0);
-  assert.throws(() => assemblies.receive('a', packet({ ...intent, uuid: 'other', index: 0, count }, update.subarray(0, CAPS.chunkBytes)), intent, 1), { code: 'ASSEMBLY_CONNECTION_LIMIT' });
+  const anotherIntent = { ...intent, uuid: 'other' };
+  assert.throws(() => assemblies.receive('a', packet({ ...anotherIntent, index: 0, count }, update.subarray(0, CAPS.chunkBytes)), anotherIntent, 1), { code: 'ASSEMBLY_CONNECTION_LIMIT' });
   assemblies.expire(CAPS.assemblyTimeoutMs); assert.equal(assemblies.pending.size, 0); assert.equal(assemblies.bytes, 0);
   assert.throws(() => assemblies.receive('a', Buffer.alloc(CAPS.frameBytes + 1), intent, 0), { code: 'FRAME_LIMIT' });
 });
