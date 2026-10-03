@@ -366,6 +366,41 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(page.get_by_role("dialog", name="Details").get_by_role("region", name="Who can see this")).to_contain_text("Jonas Berg")
 
 
+    # ---------------------------------------------------------------- sidebar: current place and touch targets
+
+    def test_07b_the_current_place_bar_shows_and_touch_targets_reach_44px(self) -> None:
+        """#136 evaluation of 52b61e03: B2 (the accent bar was clipped by the scroll box) and B1 (coarse targets)."""
+        page = self.open_project("ada")
+        row = page.locator(".side__project.is-open")
+        expect(row).to_have_count(1)
+        bar = row.evaluate("""el => {
+          const r = el.getBoundingClientRect();
+          const before = getComputedStyle(el, '::before');
+          const x = r.left + parseFloat(before.left) + parseFloat(before.width) / 2;
+          const y = r.top + parseFloat(before.top) + parseFloat(before.height) / 2;
+          const box = el.closest('.side__scroll').getBoundingClientRect();
+          const hit = document.elementFromPoint(x, y);
+          return { x, inside: x >= box.left && x <= box.right, hit: !!hit && (hit === el || el.contains(hit)), width: parseFloat(before.width) };
+        }""")
+        self.assertEqual(bar["width"], 2, "the 2px accent bar")
+        self.assertTrue(bar["inside"], f"the bar lies inside the sidebar's scroll box: {bar}")
+        self.assertTrue(bar["hit"], "the bar is painted, not clipped")
+        # On a phone every sidebar control is a 44px target: +, Jump to, places, projects and threads.
+        phone = self.open_project("ada", phone=True)
+        phone.get_by_role("button", name="Open navigation").tap()
+        drawer = phone.get_by_role("dialog")
+        expect(drawer.locator(".side__project.is-open")).to_be_visible()
+        targets = [drawer.get_by_role("link", name="New project"), drawer.get_by_role("link", name="New message"),
+                   drawer.locator(".side__jump"), drawer.get_by_role("link", name="Home"), drawer.locator(".side__project.is-open")]
+        threads = drawer.locator(".side__threads .side__item, .side__threads .ui-btn")
+        expect(threads.first).to_be_visible()
+        targets += [threads.nth(index) for index in range(threads.count())]
+        self.assertGreater(threads.count(), 0, "the open project's threads are listed")
+        for target in targets:
+            box = target.bounding_box()
+            assert box
+            self.assertGreaterEqual(box["height"], 44, f"touch target: {target}")
+
     # ---------------------------------------------------------------- the Map route is bound to its project
 
     def test_08_a_sketch_never_shows_under_another_projects_frame(self) -> None:
