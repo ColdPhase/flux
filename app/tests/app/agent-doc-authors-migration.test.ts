@@ -113,8 +113,20 @@ test('0043 lets only docs name a genuine agent author, keeps every historical ro
       [{ author_kind: 'agent', author_id: agent }]);
     const agentDoc = randomUUID();
     await client.query("INSERT INTO project_materials (id,workspace_id,project_id,created_by_agent_id,kind) VALUES ($1,$2,$3,$4,'doc')", [agentDoc, workspace, project, agent]);
-    // Never on a plain material, never both or neither actor, never an agent of another workspace.
-    assert.equal((await refused(...agentVersion(material, 2, null, null, agent))).constraint, 'project_material_version_agent_doc');
+    // Never on a plain material, whatever state the version claims (#193 B1), never both or neither actor,
+    // never an agent of another workspace.
+    for (const state of [null, 'draft', 'published'])
+      assert.equal((await refused(...agentVersion(material, 2, state, null, agent))).constraint, 'project_material_version_agent_doc_parent', `state ${state}`);
+    assert.equal((await refused(...agentVersion(doc, 3, null, null, agent))).constraint, 'project_material_version_agent_doc', 'a doc version has a state');
+    // A doc with an agent-written version stays a doc; a doc written only by people is unaffected by the rule.
+    assert.equal((await refused("UPDATE project_materials SET kind='material', client_mutation_id=$2, request_fingerprint=$3 WHERE id=$1",
+      [doc, randomUUID(), 'e'.repeat(64)])).constraint, 'project_material_version_agent_doc_parent');
+    assert.equal((await refused("UPDATE project_materials SET kind='material', client_mutation_id=$2, request_fingerprint=$3 WHERE id=$1",
+      [agentDoc, randomUUID(), 'e'.repeat(64)])).constraint, 'project_material_agent_doc');
+    const humanDoc = randomUUID();
+    await client.query("INSERT INTO project_materials (id,workspace_id,project_id,created_by,kind) VALUES ($1,$2,$3,$4,'doc')", [humanDoc, workspace, project, owner]);
+    await client.query("UPDATE project_materials SET kind='material', client_mutation_id=$2, request_fingerprint=$3 WHERE id=$1", [humanDoc, randomUUID(), 'f'.repeat(64)]);
+    assert.equal((await refused(...agentVersion(humanDoc, 1, 'draft', null, agent))).constraint, 'project_material_version_agent_doc_parent');
     assert.equal((await refused(...agentVersion(doc, 3, 'draft', owner, agent))).constraint, 'project_material_version_exact_actor');
     assert.equal((await refused(...agentVersion(doc, 3, 'draft', null, null))).constraint, 'project_material_version_exact_actor');
     assert.equal((await refused(...agentVersion(doc, 3, 'draft', null, foreignAgent))).constraint, 'project_material_version_agent_workspace');
@@ -140,7 +152,8 @@ test('0043 lets only docs name a genuine agent author, keeps every historical ro
     // Idempotent: a second application keeps every row, constraint and the ledger.
     const counts = async () => (await client.query(`SELECT (SELECT count(*)::int FROM project_materials) AS m, (SELECT count(*)::int FROM project_material_versions) AS v,
       (SELECT count(*)::int FROM agent_standing_grants) AS g, (SELECT count(*)::int FROM pg_constraint WHERE conrelid IN
-        ('project_materials'::regclass, 'project_material_versions'::regclass)) AS c`)).rows[0];
+        ('project_materials'::regclass, 'project_material_versions'::regclass)) AS c, (SELECT count(*)::int FROM pg_trigger WHERE NOT tgisinternal
+        AND tgrelid IN ('project_materials'::regclass, 'project_material_versions'::regclass)) AS t`)).rows[0];
     const once = await counts();
     await client.query(sql);
     assert.deepEqual(await counts(), once);

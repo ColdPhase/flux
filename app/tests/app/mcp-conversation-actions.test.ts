@@ -2,14 +2,16 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
 import type { Conversation, ConversationMessage, Doc, TaskDiscussion } from '@flux/contracts';
+import { conversationUseCases, InvalidInputError } from '@flux/core';
 import { createDatabase } from '@flux/db';
+import { conversationStore } from '../../apps/server/src/conversation/store.js';
 import { register, uniqueEmail } from './support/http.js';
 import { expect, toolValue } from './support/mcp.js';
 import { actionScene, agentConnection, toolFailure } from './support/mcp-actions.js';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
-const { pool } = createDatabase(connectionString);
+const { pool, db } = createDatabase(connectionString);
 after(() => pool.end());
 
 type Scene = Awaited<ReturnType<typeof actionScene>>;
@@ -152,6 +154,15 @@ test('two owners and three connections stay isolated: grants, receipts, targets 
     [hubert.agentId, String(second.id)]);
   assert.deepEqual(toolValue(await hubert.tool('flux_start_conversation', { ...command(hubert.projectId, hubert, planning.id, 'plan', shared),
     message: { body: 'From the planning agent' } })), { ...one, replayed: true }, 'a replay returns only its own connection\'s receipt');
+  // Two connections of one agent (two of Hubert's clients) are two runtimes too: the same command ID and text
+  // make a second message by that agent, never a replay of the other connection's receipt.
+  const twin = await agentConnection(pool, hubert.owner, hubert.agentId, [hubert.projectId]);
+  const twinStart = await twin.grant('conversation.create', 'plan');
+  const three = toolValue(await twin.tool('flux_start_conversation', { ...command(hubert.projectId, twin, twinStart.id, 'plan', shared), message: { body: 'From the planning agent' } }));
+  assert.equal(three.replayed, false);
+  assert.notEqual(three.conversationId, one.conversationId);
+  assert.notEqual(three.messageId, one.messageId);
+  assert.equal((await read(hubert, String(three.conversationId))).messages[0]!.author?.id, hubert.agentId);
 
   // A grant belongs to exactly one connection: neither Hubert's other connection nor Marek's can use it.
   const doc = await hubert.grant('doc.create', 'plan');
@@ -180,4 +191,16 @@ test('two owners and three connections stay isolated: grants, receipts, targets 
     [1, 1, 0, 0, 0]);
   assert.deepEqual([await projectMessages(hubert.projectId), await projectMessages(String(own.id))], [3, 0]);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_material_versions WHERE material_id=$1', [hubertDoc.id])).rows[0].n, 1);
+});
+
+test('the person-facing conversation commands still refuse an agent principal; only the standing-grant composition opts in', async () => {
+  const f = await actionScene(pool);
+  const people = conversationUseCases(conversationStore(db));
+  const agent = { kind: 'agent', id: f.agentId } as const;
+  const opened = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/conversations`,
+    { body: { body: 'People write here', clientMessageId: randomUUID() } }), 201) as unknown as Conversation;
+  const personOnly = (error: unknown) => error instanceof InvalidInputError && error.message === 'A signed-in person is required';
+  await assert.rejects(people.createConversation(agent, f.projectId, { body: 'Agent start', clientMessageId: randomUUID() }), personOnly);
+  await assert.rejects(people.sendMessage(agent, opened.id, { body: 'Agent reply', clientMessageId: randomUUID() }), personOnly);
+  assert.deepEqual([await messages(opened.id), await projectMessages(f.projectId)], [1, 1], 'nothing was written');
 });
