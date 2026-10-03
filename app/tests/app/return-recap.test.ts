@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, before, describe, test } from 'node:test';
-import { createDatabase } from '@flux/db';
+import { before, describe, test } from 'node:test';
 import type { Conversation, Project, ReturnSummary, Workspace, WorkItem, WorkResult } from '@flux/contracts';
+import { pool } from './support/db.js';
 import type { ClientResponse } from './support/http.js';
 import { addMember, expectStatus, grant, person, project as createProject, workspace, type Person } from './support/people.js';
 
@@ -10,11 +10,6 @@ import { addMember, expectStatus, grant, person, project as createProject, works
 // only what concerns the reader, a chosen period, a stable snapshot (`until`) and the sourced
 // digest behind "Summarize". Everything is still built from the reader's own audience with the
 // final access check; nothing is shared, posted or notified.
-
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { pool } = createDatabase(connectionString);
-after(() => pool.end());
 
 const post = (someone: Person, path: string, body: unknown) => someone.browser.request('POST', path, { body });
 const json = <T>(response: ClientResponse, status: number, label?: string) => expectStatus(response, status, label) as T;

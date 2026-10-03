@@ -1,0 +1,177 @@
+{
+  "review_source": "93d3ecbd89050e96dd2681b07b54c3e4465bc719",
+  "production_identical_observations_and_changed_browser_source": "da3da03fe496915dce83cf437ccd2ddea66dff3a",
+  "date": "2026-10-01",
+  "result": "changes required; partial issue74; no approval",
+  "artifacts": [
+    {
+      "path": "/tmp/flux74-independent-functional-review.md",
+      "bytes": 9889,
+      "sha256": "f1f1c3a1ffeae331d80ec05c3cf5b3d34b774e1f3c1117cb465d59d7c915d6fe"
+    },
+    {
+      "path": "/tmp/flux74-independent-run-93d3ecb.log",
+      "bytes": 24375,
+      "sha256": "dcd95668d7a6ed9c7489bf9b30c778e519731ed4c6a2cd70dbadd622146a408d"
+    },
+    {
+      "path": "/tmp/flux74-independent-observations-da3da03.log",
+      "bytes": 96180,
+      "sha256": "72888de9e3f53f5a868e4694cea53d10bbae9872b21ab7576c14b76c7773f71e"
+    },
+    {
+      "path": "/tmp/flux74-independent-lock-graph-da3da03.log",
+      "bytes": 28055,
+      "sha256": "a512a125cc29f3b7e4f14ff7cac09569f6dc6c094ec88c5c8ea49a8074906954"
+    },
+    {
+      "path": "/tmp/flux74-independent-run-93d3ecb.sh",
+      "bytes": 3107,
+      "sha256": "3dba166803beced88005c381c6a48360ba43bfa16cf18fea39d45c3b971c502d"
+    },
+    {
+      "path": "/tmp/flux74-independent-observations-run.sh",
+      "bytes": 2998,
+      "sha256": "f5847ee9c7ad05045f232fcceb031c0365abd74d7e083a7515e9fa37cf04e557"
+    },
+    {
+      "path": "/tmp/flux74-independent-lock-graph-run.sh",
+      "bytes": 2874,
+      "sha256": "9d952e90004b16b8d233a4d2081628437c059474778ec86b0896757854ef768e"
+    },
+    {
+      "path": "/tmp/flux74-independent-extra.ts",
+      "bytes": 10356,
+      "sha256": "69d6d8ac448ff838c287eb2d4ba956e28960a112accc45b431a80772c9392afb"
+    },
+    {
+      "path": "/tmp/flux74-independent-observations.ts",
+      "bytes": 7664,
+      "sha256": "cfab3c467dca60350fe0a2b99d487a9b4bd233a903fc697f8edc8525ee927b48"
+    },
+    {
+      "path": "/tmp/flux74-independent-lock-graph.ts",
+      "bytes": 8600,
+      "sha256": "12b690fc767f98c439a9bd7f653a366373b07ddfd62faba7f77e9d7fe25366fe"
+    },
+    {
+      "path": "/tmp/flux74-independent-source-delta.txt",
+      "bytes": 688,
+      "sha256": "5a438d715c7711c18d3764403b5f3defb88b214ead0f17b14980da8bc1fef844"
+    },
+    {
+      "path": "/tmp/flux74-independent-issue74.json",
+      "bytes": 6244,
+      "sha256": "5b33ebf25cd7c27045312b4d21fb511f1216cb802c045e051cb33bc81d0763b2"
+    },
+    {
+      "path": "/tmp/flux74-independent-pr168.json",
+      "bytes": 784,
+      "sha256": "e757c09eecc564c1d05ba270ec5682a3d41e1f32cc8881df7d5c8442f97868a9"
+    },
+    {
+      "path": "/tmp/flux-review-74/docs/development/github-integration/2026-09-30-design.md",
+      "bytes": 15022,
+      "sha256": "c409b8ee05be611ddd519ee1f9098fcd8f79d4d3a94db6aefcd3c7f20eeeb15a"
+    },
+    {
+      "path": "/tmp/flux-review-74/docs/development/github-integration/2026-09-30-independent-design-review.md",
+      "bytes": 4416,
+      "sha256": "1cfe37910e562f3d8aa04f471f081bc2f266925a52754ed4131df565a5c240a6"
+    },
+    {
+      "path": "/tmp/flux-review-74/docs/development/github-integration/README.md",
+      "bytes": 6294,
+      "sha256": "6d565a8de09cdfbaab47035794d2ea05b81999861f77eb18c3a222f322705683"
+    },
+    {
+      "path": "/tmp/flux74-independent-ui/github-settings-desktop-linked.png",
+      "bytes": 108068,
+      "sha256": "e9c85cb2364453da0ad882c4246c2b39d5cb1393f5fe37bf66a8c7fe00f56265",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "path": "/tmp/flux74-independent-ui/github-settings-desktop.png",
+      "bytes": 105702,
+      "sha256": "a2f00aa488b92b7a0b2ba76e2f0d03fc30119d14f1c5762f70a5b3cdaf166825",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "path": "/tmp/flux74-independent-ui/github-settings-phone-linked.png",
+      "bytes": 49213,
+      "sha256": "5f5a82e2dfd0140221abbf961c2be885ab5c70bb872564310e8a5d8724b0279d",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "path": "/tmp/flux74-independent-ui/github-settings-phone.png",
+      "bytes": 51090,
+      "sha256": "eb480f36f1c580b922b332a3d51f3c63f6e79539cfd2b64509291004bceddfc6",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "path": "/tmp/flux74-independent-ui/github-settings-tablet-linked.png",
+      "bytes": 100959,
+      "sha256": "510ccee178d68c043213ac9fda3d610573e2eb8d13c6555a4c0537f86e26e87d",
+      "width": 820,
+      "height": 1180
+    },
+    {
+      "path": "/tmp/flux74-independent-ui/github-settings-tablet.png",
+      "bytes": 100959,
+      "sha256": "510ccee178d68c043213ac9fda3d610573e2eb8d13c6555a4c0537f86e26e87d",
+      "width": 820,
+      "height": 1180
+    },
+    {
+      "path": "/tmp/flux74-independent-ui-da3da03/github-settings-desktop-linked.png",
+      "bytes": 108220,
+      "sha256": "6836d6ae109eb24b18bbec1760cd50739b07df0b0d6ce119225d10aa5e66545e",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "path": "/tmp/flux74-independent-ui-da3da03/github-settings-desktop.png",
+      "bytes": 105835,
+      "sha256": "c5e36c49ca2db2e175fd672c73874af68e8f957bec73853caf4093f843824193",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "path": "/tmp/flux74-independent-ui-da3da03/github-settings-phone-linked.png",
+      "bytes": 49302,
+      "sha256": "3f4c864d0b206a127ee56a69441a806fdd4923fa7092837294e1bebfd16a2b8f",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "path": "/tmp/flux74-independent-ui-da3da03/github-settings-phone.png",
+      "bytes": 51090,
+      "sha256": "eb480f36f1c580b922b332a3d51f3c63f6e79539cfd2b64509291004bceddfc6",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "path": "/tmp/flux74-independent-ui-da3da03/github-settings-tablet-linked.png",
+      "bytes": 101021,
+      "sha256": "c809bbda50e9efd55c887097eb717a11a9c157ca721e5f023b4cfcb15e1eed15",
+      "width": 820,
+      "height": 1180
+    },
+    {
+      "path": "/tmp/flux74-independent-ui-da3da03/github-settings-tablet.png",
+      "bytes": 101021,
+      "sha256": "c809bbda50e9efd55c887097eb717a11a9c157ca721e5f023b4cfcb15e1eed15",
+      "width": 820,
+      "height": 1180
+    },
+    {
+      "path": "/tmp/flux74-independent-review-threads.json",
+      "bytes": 176,
+      "sha256": "08a18bc10b6bbb50beaa3a97666340343bc60cbe265cc593e504503f4f489fb8"
+    }
+  ]
+}

@@ -1,20 +1,15 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import Fastify, { type FastifyRequest } from 'fastify';
 import type { Conversation, ConversationMessage, LivePresentationPage, WorkItem } from '@flux/contracts';
 import { livePresentPath, livePresentationsPath } from '@flux/contracts';
-import { createDatabase } from '@flux/db';
 import { liveAccess } from '../../apps/server/src/live/access.js';
 import { liveRoutes } from '../../apps/server/src/live/routes.js';
 import { liveSessionStore } from '../../apps/server/src/live/store.js';
 import type { SessionResolver } from '../../apps/server/src/identity/index.js';
+import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
-
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { db, pool } = createDatabase(connectionString);
-after(() => pool.end());
 
 test('recipient pages only current, readable presentation refs after hidden sources and loses replay on revoke',
   { timeout: 120_000 }, async () => {

@@ -83,6 +83,8 @@ are the only places that choose concrete adapters and wire them together.
 | Shared test helpers and mocks | `app/tests/app/support/` | imported by the above |
 | Browser checks (PWA, service worker) | `app/tests/app/e2e/*.e2e.ts` | `e2e` service |
 | Checks against a restarted or reconfigured stack | `app/tests/app/*.ts` / `*.check.ts` called by the script | `check_application.sh` |
+| Browser journeys in the web app (Playwright, Python) | `app/tests/ui/test_*.py` | `./scripts/check_ui.sh` |
+| The normal (non-test) deployment: fixture rollback header ignored, worker processes, restart keeps data | `scripts/check_runtime.sh` | `./scripts/check_runtime.sh` |
 | Repository and agent tooling | `tests/test_*.py` | `python3 -m unittest discover -s tests -p 'test_*.py'` |
 
 Pure core use cases can be tested with in-memory port implementations
