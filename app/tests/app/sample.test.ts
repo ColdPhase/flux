@@ -5,10 +5,8 @@ import { PgBoss } from 'pg-boss';
 import { createSample } from '@flux/core';
 import { createDatabase, schema } from '@flux/db';
 import { SAMPLE_COMMAND_PATH } from '@flux/contracts';
+import { connectionString } from './support/db.js';
 import { Browser } from './support/http.js';
-
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
 
 test('sample command commits a domain row, event, outbox and queued job atomically', async () => {
   const { db, pool } = createDatabase(connectionString);
