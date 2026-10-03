@@ -165,7 +165,7 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
 
   // The project's current state, without repeating what is already linked here.
   const state = messageMode || !current.summary ? [] : summaryStateParts(current.summary, current.summary.access !== 'viewer').filter((part) => !linkedIds.has(`${part.open.kind}:${part.open.id}`)).map((part): Row => ({
-    key: part.key, icon: part.icon ?? (part.key === 'work' ? 'tasks' : 'rule'), kind: part.key === 'rule' ? 'Current rule' : part.key === 'result' ? 'Latest result' : part.key === 'proposal' ? 'Proposed decision' : part.key === 'blocked' ? 'Blocked' : 'In progress',
+    key: part.key, icon: part.icon ?? (part.key === 'work' ? 'tasks' : 'rule'), kind: part.key === 'rule' ? 'Current rule' : part.key === 'result' ? 'Latest result' : part.key === 'proposal' ? 'Proposed decision' : part.key === 'blocked' ? 'Blocked' : part.key === 'open' ? 'Open task' : part.key === 'history' ? 'Earlier work or decision' : 'In progress',
     title: part.title, need: part.tone === 'need', sub: part.tone === 'need' ? 'Needs you' : undefined, open: part.open,
   }));
   const author = message ? (message.authorId === me.user.id ? 'you' : people?.find((person) => person.id === message.authorId)?.name ?? 'a member') : null;

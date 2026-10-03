@@ -115,6 +115,9 @@ export interface ProjectWorkSummary {
     proposal: WorkReadRef | null;
     active: { count: number; first: WorkReadRef | null; owners: NamedPrincipal[]; ownerTotal: number };
     blocked: { count: number; first: WorkReadRef | null };
+    open: { count: number; first: WorkReadRef | null };
+    history: { completed: number; notPursued: number; parked: number; firstWork: WorkReadRef | null;
+      decisionCount: number; firstDecision: WorkReadRef | null };
     result: (WorkReadRef & { finding: ResultFinding }) | null;
   };
 }

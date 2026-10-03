@@ -25,7 +25,7 @@ export function nativeWorkSummaryRows(db: DbExecutor) {
     }
     return counts;
   }
-  async function firstWork(projectId: string, status: 'in_progress' | 'blocked'): Promise<WorkReadRef | null> {
+  async function firstWork(projectId: string, status: 'in_progress' | 'blocked' | 'open'): Promise<WorkReadRef | null> {
     const [row] = await db.select({ id: w.id, title: w.title }).from(w).where(and(eq(w.projectId, projectId), eq(w.status, status), isNull(w.parkedAt))).orderBy(desc(w.createdAt), desc(w.id)).limit(1);
     return row ? { kind: 'work', ...row } : null;
   }
@@ -39,6 +39,17 @@ export function nativeWorkSummaryRows(db: DbExecutor) {
       const [proposal] = await db.select({ id: d.id, title: d.title }).from(d).where(and(eq(d.projectId, projectId), eq(d.status, 'proposed'))).orderBy(desc(d.createdAt), desc(d.id)).limit(1);
       const [result] = await db.select({ id: r.id, title: r.title, finding: r.finding }).from(r).where(eq(r.projectId, projectId)).orderBy(desc(r.createdAt), desc(r.id)).limit(1);
       const activeFirst = await firstWork(projectId, 'in_progress'), blockedFirst = await firstWork(projectId, 'blocked');
+      const openFirst = await firstWork(projectId, 'open');
+      const historyCounts = await db.execute<{ completed: number; not_pursued: number; parked: number }>(sql`SELECT
+        count(*) FILTER (WHERE status = 'done' AND parked_at IS NULL)::int AS completed,
+        count(*) FILTER (WHERE status = 'not_pursued' AND parked_at IS NULL)::int AS not_pursued,
+        count(*) FILTER (WHERE parked_at IS NOT NULL)::int AS parked
+        FROM project_work_items WHERE project_id = ${projectId}::uuid`);
+      const [historyWork] = await db.select({ id: w.id, title: w.title }).from(w).where(eq(w.projectId, projectId)).orderBy(desc(w.createdAt), desc(w.id)).limit(1);
+      const [historyDecision] = await db.select({ id: d.id, title: d.title }).from(d).where(eq(d.projectId, projectId)).orderBy(desc(d.createdAt), desc(d.id)).limit(1);
+      const decisionTotal = await db.execute<{ total: number }>(sql`SELECT count(*)::int AS total FROM project_decisions WHERE project_id = ${projectId}::uuid`);
+      const history = historyCounts.rows[0];
+      if (!history || !decisionTotal.rows[0]) throw new Error('Missing native history counts');
       const ownerScope = sql`SELECT DISTINCT CASE WHEN owner_user_id IS NOT NULL THEN 'human' ELSE 'agent' END AS kind,
         coalesce(owner_user_id, owner_agent_id::text) AS id FROM project_work_items WHERE project_id = ${projectId}::uuid AND status = 'in_progress'
         AND parked_at IS NULL AND (owner_user_id IS NOT NULL OR owner_agent_id IS NOT NULL)`;
@@ -51,7 +62,11 @@ export function nativeWorkSummaryRows(db: DbExecutor) {
         state: { rule: rule ? { kind: 'decision', ...rule } : null, proposal: proposal ? { kind: 'decision', ...proposal } : null,
           active: { count: all.in_progress, first: activeFirst, ownerTotal: total.rows[0].total,
             owners: owners.rows.map((owner) => ({ ...owner, name: names.get(`${owner.kind}:${owner.id}`) ?? (owner.kind === 'agent' ? 'Agent' : 'Former member') })) },
-          blocked: { count: all.blocked, first: blockedFirst }, result: result ? { kind: 'result', ...result } : null } };
+          blocked: { count: all.blocked, first: blockedFirst }, open: { count: all.open, first: openFirst },
+          history: { completed: history.completed, notPursued: history.not_pursued, parked: history.parked,
+            firstWork: historyWork ? { kind: 'work', ...historyWork } : null, decisionCount: decisionTotal.rows[0].total,
+            firstDecision: historyDecision ? { kind: 'decision', ...historyDecision } : null },
+          result: result ? { kind: 'result', ...result } : null } };
     },
   };
 }

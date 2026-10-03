@@ -89,6 +89,47 @@ describe('bounded native work reads through HTTP and current native fences', () 
     assert.equal(mine.total, 1);
   });
 
+  test('bounded state retains native open and history refs with stable tie ordering and actual parking transitions', async () => {
+    const isolated = await project(owner, workspaceId, 'Native retained state', 'restricted');
+    const path = `/api/v1/projects/${isolated.id}`;
+    const create = (title: string, status = 'open') => post<WorkItem>(owner, `${path}/work`, { title, status });
+    const openA = await create('Open A'), openB = await create('Open B');
+    const done = await create('Completed native work', 'done');
+    const stopped = await create('Not pursued native work', 'not_pursued');
+    const parkDone = await create('Park then complete'), parkStopped = await create('Park then stop');
+    const original = await post<Decision>(owner, `${path}/decisions`, { title: 'Earlier parking direction' });
+    expectStatus(await owner.browser.request('POST', `/api/v1/decisions/${original.id}/accept`, { body: {}, headers: { 'if-match': '"1"' } }), 200);
+    const proposal = await post<Decision>(owner, `${path}/decisions`, { title: 'Actual parking rule', supersedes: original.id });
+    const accepted = expectStatus(await owner.browser.request('POST', `/api/v1/decisions/${proposal.id}/accept`,
+      { body: { park: [parkDone.id, parkStopped.id] }, headers: { 'if-match': '"1"' } }), 200) as Decision;
+    // Native command records, then tied timestamps to exercise the documented id tie-break.
+    await pool.query("UPDATE project_work_items SET created_at='2026-10-01T00:00:00Z' WHERE project_id=$1", [isolated.id]);
+    const observation = await get<ProjectWorkSummary>(`${path}/work-summary`);
+    assert.equal(observation.state.open.count, 2);
+    assert.equal(observation.state.open.first?.id, [openA.id, openB.id].sort().at(-1));
+    assert.deepEqual(observation.state.history, { completed: 1, notPursued: 1, parked: 2,
+      firstWork: { kind: 'work', id: [openA, openB, done, stopped, parkDone, parkStopped].map(({ id }) => id).sort().at(-1)!,
+        title: [openA, openB, done, stopped, parkDone, parkStopped].sort((a, b) => b.id.localeCompare(a.id))[0]!.title },
+      decisionCount: 2, firstDecision: { kind: 'decision', id: accepted.id, title: accepted.title } });
+    for (const ref of [observation.state.open.first, observation.state.history.firstWork, observation.state.history.firstDecision])
+      assert.deepEqual(Object.keys(ref!).sort(), ['id', 'kind', 'title'], 'additional refs contain no body, collections or permissions');
+    for (const [item, status] of [[parkDone, 'done'], [parkStopped, 'not_pursued']] as const) {
+      const current = expectStatus(await owner.browser.request('GET', `/api/v1/work/${item.id}`), 200) as WorkItem;
+      assert.ok(current.parked);
+      await assert.rejects(pool.query('UPDATE project_work_items SET status=$1 WHERE id=$2', [status, item.id]),
+        (error: unknown) => (error as { code?: string }).code === '23514', 'illegal parked-finished native storage remains rejected');
+      const finished = expectStatus(await owner.browser.request('PATCH', `/api/v1/work/${item.id}`,
+        { body: { status }, headers: { 'if-match': `"${current.version}"` } }), 200) as WorkItem;
+      assert.equal(finished.parked, null, 'actual native finish clears parking');
+    }
+    const updated = await get<ProjectWorkSummary>(`${path}/work-summary`);
+    assert.equal(updated.state.history.completed, 2); assert.equal(updated.state.history.notPursued, 2);
+    assert.equal(updated.state.history.parked, 0); assert.equal(updated.state.open.count, 2);
+    expectStatus(await outsider.browser.request('GET', `${path}/work-summary`), 404);
+    const mixed = await get<ProjectWorkSummary>(`${base()}/work-summary`);
+    assert.equal(mixed.state.history.decisionCount, 2, 'accepted plus genuine superseded history are both counted');
+  });
+
   test('own details preserve full fields and native history without implicit links; finished selection stays separate', async () => {
     for (const [kind, id, field, expected] of [['work', main.id, 'outcome', 'Own full outcome'], ['decision', oldRule.id, 'rationale', 'Own full rationale'], ['result', result.id, 'evidence', 'Own full evidence']]) {
       const detail = await get<WorkDetailProjection>(`${base()}/work-objects/${kind}/${id}`);

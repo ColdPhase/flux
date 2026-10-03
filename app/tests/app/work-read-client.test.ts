@@ -21,7 +21,8 @@ function summary(open = 0): ProjectWorkSummary {
   return {
     projectId: scope.projectId, observedAt: `2026-10-01T00:00:${String(open).padStart(2, '0')}.000000Z`, access: 'contributor',
     all: { ...counts }, mine: { ...counts }, workTotal: open, unfinishedTotal: open,
-    state: { rule: null, proposal: null, active: { count: 0, first: null, owners: [], ownerTotal: 0 }, blocked: { count: 0, first: null }, result: null },
+    state: { rule: null, proposal: null, active: { count: 0, first: null, owners: [], ownerTotal: 0 }, blocked: { count: 0, first: null }, open: { count: open, first: open ? { kind: 'work', id: 'first-open', title: 'Open native work' } : null },
+      history: { completed: 0, notPursued: 0, parked: 0, firstWork: open ? { kind: 'work', id: 'first-open', title: 'Open native work' } : null, decisionCount: 0, firstDecision: null }, result: null },
   };
 }
 function page(open = 0): ProjectWorkView {
@@ -279,4 +280,24 @@ test('five client adapters make one cookie-bearing GET each and preserve failure
   await assert.rejects(getProjectWorkView('project'), (error: unknown) => error instanceof ApiError && error.status === 503 && error.code === 'WORK_READ_UNAVAILABLE');
   assert.equal(calls.length, 6);
   fetchMock.mock.restore();
+});
+
+
+test('bounded state opens actual open/history refs without labelling history as active or hiding superseded decisions', () => {
+  const observed = summary(2);
+  assert.equal(summaryStateParts(observed, true)[0]?.text, '2 open tasks');
+  assert.deepEqual(summaryStateParts(observed, true)[0]?.open, { kind: 'work', id: 'first-open' });
+  observed.all.open = 0; observed.state.open = { count: 0, first: null };
+  observed.state.history = { completed: 1, notPursued: 1, parked: 2,
+    firstWork: { kind: 'work', id: 'retained', title: 'Retained native work' }, decisionCount: 0, firstDecision: null };
+  const history = summaryStateParts(observed, true);
+  assert.equal(history.length, 1); assert.equal(history[0]?.key, 'history');
+  assert.equal(history[0]?.text, '1 completed task · 1 not pursued · 2 parked');
+  assert.deepEqual(history[0]?.open, { kind: 'work', id: 'retained' });
+  observed.state.history = { completed: 0, notPursued: 0, parked: 0, firstWork: null,
+    decisionCount: 1, firstDecision: { kind: 'decision', id: 'superseded', title: 'Earlier rule' } };
+  assert.equal(summaryStateParts(observed, false)[0]?.text, '1 earlier decision');
+  assert.deepEqual(summaryStateParts(observed, false)[0]?.open, { kind: 'decision', id: 'superseded' });
+  observed.state.proposal = { kind: 'decision', id: 'proposal', title: 'Needs review' };
+  assert.equal(summaryStateParts(observed, true)[0]?.tone, 'need', 'current needs-you wins over retained history');
 });
