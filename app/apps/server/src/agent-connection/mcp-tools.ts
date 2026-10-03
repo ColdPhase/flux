@@ -12,6 +12,7 @@ import { registerAgentDocActions } from './doc-actions.js';
 import { registerAgentConversationActions } from './conversation-actions.js';
 import { withAgentConnection, type FluxMcpClaims } from './context.js';
 import { toolError, toolResult } from './tool-results.js';
+import { eventPorts } from '../events.js';
 
 export type { FluxMcpClaims } from './context.js';
 
@@ -47,7 +48,7 @@ export function createFluxMcpServer(db: Database, claims: FluxMcpClaims, cursorS
             enforce(await evaluateProject(principal, 'project.read', id, transaction, { lock: true }), 'project');
           },
           async recordCreated(principal, workspaceId, id, transaction) {
-            await recordEvent(transaction, principal, workspaceId, 'project.proposal_created.v1', id, {});
+            await recordEvent(eventPorts(transaction), principal, workspaceId, 'project.proposal_created.v1', id, {});
           },
         }));
         return proposals.create(connection, { projectId, source: { materialId, version }, clientCommandId, fact, interpretation, suggestedAction });

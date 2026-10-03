@@ -9,6 +9,7 @@ import {
   type DmRepository,
   type DmUnitOfWork,
 } from '@flux/core';
+import { eventPorts } from '../events.js';
 
 // Adapters that connect the core direct-message use cases to Drizzle, the access policy and the
 // event log (issue #107; #46: core defines the ports, the server assembles them).
@@ -28,7 +29,7 @@ function dmPorts(tx: DbExecutor): DmPorts {
   return {
     access: policyDmAccess(tx),
     dms: dmRepository(tx),
-    events: { record: async (principal, workspaceId, kind, dmId, data) => { await recordEvent(tx, principal, workspaceId, kind, dmId, data); } },
+    events: { record: async (principal, workspaceId, kind, dmId, data) => { await recordEvent(eventPorts(tx), principal, workspaceId, kind, dmId, data); } },
   };
 }
 

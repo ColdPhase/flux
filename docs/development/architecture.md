@@ -120,7 +120,6 @@ recorded in the allowlist and tracked by [#46](https://github.com/ColdPhase/flux
 | `app/packages/core/src/access/policy.ts` | `drizzle-orm`, `@flux/db` | Split pure policy decisions from the SQL grant lookup and visibility filter, which move to a `@flux/db` adapter behind a core port. |
 | `app/packages/core/src/access/domain.ts` | `drizzle-orm`, `@flux/db` | Split the workspace, project/grant, agent and draft use cases; move queries and row mapping to `@flux/db` repositories. Keep the current locks and transactions. |
 | `app/packages/core/src/types.ts` | `@flux/db` | Replace the Drizzle-derived `Database`/`Executor` types with a core-owned transaction port. |
-| `app/packages/core/src/events.ts` | `drizzle-orm`, `@flux/db` | Merged in #47 before this rule. Move event recording to a `@flux/db` repository behind an `EventRepository` port. The per-recipient audience reads already sit behind `StreamAudienceRepository` ([#80](https://github.com/ColdPhase/flux/issues/80)). |
 | `app/packages/core/package.json` | `@flux/db`, `drizzle-orm`, `pg-boss` | Remove each dependency when no core file uses it. |
 
 Until the access policy is split, new core modules that call `authorize` import it
@@ -173,3 +172,10 @@ with the same `UNAUTHENTICATED` body ([#85](https://github.com/ColdPhase/flux/is
 401 was Fastify's default body before. Route plugins that tests register alone call `useDomainErrors`,
 the same mapper; agent connection, conversation and proactive comparison still set their own handlers,
 which drop a domain error's details (follow-up with #36).
+
+Resolved from the allowlist: `app/packages/core/src/events.ts` keeps `principalKey`, the audience
+loop over an `EventAuthorizer` and the final-write ordering (every audience resolved before the
+first insert takes the sequence lock). Storage is the `EventRepository` port (`candidates`,
+`insert`), implemented by `app/packages/db/src/repositories/events.ts`. Callers pass
+`policyEventPorts(tx, eventRepository(tx))`; the server and worker build it with their
+`events.ts` helper ([#89](https://github.com/ColdPhase/flux/issues/89)).
