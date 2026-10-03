@@ -30,9 +30,10 @@ const NON_PUBLIC: [string, number, 'ipv4' | 'ipv6'][] = [
   ['169.254.0.0', 16, 'ipv4'], ['172.16.0.0', 12, 'ipv4'], ['192.0.0.0', 24, 'ipv4'], ['192.0.2.0', 24, 'ipv4'],
   ['192.88.99.0', 24, 'ipv4'], ['192.168.0.0', 16, 'ipv4'], ['198.18.0.0', 15, 'ipv4'], ['198.51.100.0', 24, 'ipv4'],
   ['203.0.113.0', 24, 'ipv4'], ['224.0.0.0', 4, 'ipv4'], ['240.0.0.0', 4, 'ipv4'],
-  // ::/96 holds the unspecified and loopback addresses and the deprecated IPv4-compatible form; ::ffff:0:0/96
-  // any IPv4-mapped form left unnormalized, and ::ffff:0:0:0/96 the IPv4-translated one. None is a public endpoint.
-  ['::', 96, 'ipv6'], ['::ffff:0:0', 96, 'ipv6'], ['::ffff:0:0:0', 96, 'ipv6'], ['64:ff9b::', 96, 'ipv6'], ['64:ff9b:1::', 48, 'ipv6'], ['100::', 64, 'ipv6'],
+  // ::/96 holds the unspecified and loopback addresses and the deprecated IPv4-compatible form, and
+  // ::ffff:0:0:0/96 the IPv4-translated one: neither is a public endpoint. (IPv4-mapped ::ffff:0:0/96 is not
+  // listed: those addresses are normalized to IPv4 first, and BlockList matches every IPv4 address against it.)
+  ['::', 96, 'ipv6'], ['::ffff:0:0:0', 96, 'ipv6'], ['64:ff9b::', 96, 'ipv6'], ['64:ff9b:1::', 48, 'ipv6'], ['100::', 64, 'ipv6'],
   ['2001::', 32, 'ipv6'], ['2001:db8::', 32, 'ipv6'], ['2002::', 16, 'ipv6'], ['fc00::', 7, 'ipv6'], ['fe80::', 10, 'ipv6'],
   ['fec0::', 10, 'ipv6'], ['ff00::', 8, 'ipv6'],
 ];
