@@ -198,3 +198,8 @@
   .doc-links__k { width: 56px; }
   .doc-picker__k { width: 84px; }
 }
+
+.doc-picker__type { display: flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: var(--fs-sm); }
+.doc-picker__type select { flex: 1; min-width: 0; min-height: 44px; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-sm); }
+.doc-picker__browse { margin: 0; padding: 4px 12px; font-size: var(--fs-xs); }
+.doc-picker .ws-pages { padding: 4px 12px; }
