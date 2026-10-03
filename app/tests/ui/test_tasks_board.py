@@ -325,6 +325,8 @@ class TasksBoardJourney(unittest.TestCase):
         expect(target).to_have_class(re.compile("is-over"))
         study.mouse.up()
         expect(self.card(self.column(study, "In progress"), SAMPLE)).to_be_visible()
+        # The card moves at once; the stored state is read once the move is confirmed.
+        expect(study.locator(".tb-note--ok")).to_contain_text(f"Moved “{SAMPLE}” to In progress.")
         self.assertEqual(self.task(study, "sample")["status"], "in_progress")
 
     # ---------------------------------------------------------------- keyboard
@@ -397,6 +399,7 @@ class TasksBoardJourney(unittest.TestCase):
         menu.get_by_role("menuitemradio", name="Done").click()
         expect(menu).to_have_count(0)
         expect(self.card(done, CALIBRATE)).to_be_visible()
+        expect(page.locator(".tb-note--ok")).to_contain_text(f"Moved “{CALIBRATE}” to Done.")
         self.assertEqual(self.task(page, "calibrate")["status"], "done")
         page.reload()
         expect(self.card(self.column(page, "Done"), CALIBRATE)).to_be_visible()
@@ -502,7 +505,8 @@ class TasksBoardJourney(unittest.TestCase):
         self.assertLessEqual(column["x"] + column["width"], PHONE["width"], "the column fits the phone")
         self.no_sideways_scroll(page, PHONE["width"], "phone")
         for control in (*overview.get_by_role("button").all(), page.get_by_role("radio", name="List", exact=True),
-                        page.get_by_role("button", name="Mine", exact=True), page.get_by_role("button", name="New Task"),
+                        page.get_by_role("button", name="Mine", exact=True), page.get_by_role("button", name="New Task", exact=True),
+                        page.get_by_role("button", name="New task in In progress"),
                         self.card(page, SOLDER).get_by_role("button", name="Move to…")):
             box = control.bounding_box()
             assert box
