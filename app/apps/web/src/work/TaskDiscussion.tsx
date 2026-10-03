@@ -41,7 +41,6 @@ export function TaskDiscussionSection({ workId, project, members, me }: {
 
   useEffect(() => {
     const controller = new AbortController();
-    setFailed(false);
     getTaskDiscussion(workId, 1, controller.signal).then(setDiscussion).catch(() => { if (!controller.signal.aborted) setFailed(true); });
     return () => controller.abort();
   }, [workId, attempt]);
@@ -83,7 +82,7 @@ export function TaskDiscussionSection({ workId, project, members, me }: {
   return (
     <section className="details__sec" aria-labelledby={headingId}>
       <h4 id={headingId}>Discussion</h4>
-      {failed ? <p className="wd-error" role="alert">The discussion could not be loaded. <button type="button" className="wd-inline" onClick={() => setAttempt((value) => value + 1)}>Retry</button></p>
+      {failed ? <p className="wd-error" role="alert">The discussion could not be loaded. <button type="button" className="wd-inline" onClick={() => { setFailed(false); setAttempt((value) => value + 1); }}>Retry</button></p>
         : !discussion ? <p className="wd-muted" aria-busy="true">Loading…</p>
           : root && thread ? (
             <Link className="wd-discussion" to={thread}>
