@@ -388,9 +388,10 @@ test('owner-only background setup persists consent, clears keys and preserves an
   await page.getByLabel('Background API key', { exact: true }).fill('sk-ant-fixture-background-setup-key-WXYZ');
   await page.getByRole('button', { name: 'Replace and save consent', exact: true }).click();
   await page.getByRole('heading', { name: 'Replace your connection', exact: true }).waitFor({ state: 'hidden' });
-  const replacement = (await api('GET', '/api/v1/background-compute-connections/current')).data as { id: string; keyLastFour: string };
+  const replacement = (await api('GET', '/api/v1/background-compute-connections/current')).data as { id: string; keyLastFour: string; name: string };
   assert.notEqual(replacement.id, first.id); assert.equal(replacement.keyLastFour, 'WXYZ');
-  await page.getByRole('button', { name: 'Disconnect', exact: true }).click();
+  // Each connection's button names it (F-020: several connections can be listed).
+  await page.getByRole('button', { name: `Disconnect ${replacement.name}`, exact: true }).click();
   await page.getByRole('heading', { name: 'Connect your background source', exact: true }).waitFor();
   assert.equal((await api('GET', '/api/v1/background-compute-connections/current')).data, null);
   await page.reload();

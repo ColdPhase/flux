@@ -66,7 +66,8 @@ export function ConnectionFields({ connection, disabled, onProvider }: {
 
   return <>
     <label>Provider
-      <select name="provider" required value={provider} disabled={disabled}
+      {/* Named explicitly: inside its label, the options would otherwise join the field's name. */}
+      <select name="provider" aria-label="Provider" required value={provider} disabled={disabled}
         onChange={(event) => { setProvider(event.target.value as AiProviderKind | ''); setList(null); setListStatus(''); }}>
         <option value="">Choose a provider</option>
         {AI_PROVIDER_KINDS.map((kind) => <option key={kind} value={kind}>{AI_PROVIDERS[kind].label}</option>)}
