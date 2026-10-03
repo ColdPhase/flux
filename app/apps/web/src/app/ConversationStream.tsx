@@ -245,7 +245,6 @@ export function ConversationStream({ project, meId, roots: stream, notices, work
   const writable = project.access !== 'viewer';
   const feedRef = useRef<HTMLDivElement>(null);
   const columnRef = useRef<HTMLDivElement>(null);
-  const restoreRef = useRef<number | null>(null);
   const pinRef = useRef<{ id: string; offset: number } | null>(null);
   /** The first entry in view and its offset from the top, as the reader last left it. */
   const anchorRef = useRef<{ id: string; offset: number } | null>(null);
@@ -268,7 +267,7 @@ export function ConversationStream({ project, meId, roots: stream, notices, work
     const feed = feedRef.current;
     const column = columnRef.current;
     if (reveal || !feed || !column) return;
-    return openOnWholeMessages(feed, column, '.project-convo__message');
+    return openOnWholeMessages(feed, column, '.project-convo__message, .convo-notice');
     // Once, when the stream opens; later arrivals are handled below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -281,15 +280,24 @@ export function ConversationStream({ project, meId, roots: stream, notices, work
     if (!element) return;
     stickRef.current = false;
     element.scrollIntoView({ block: 'start' });
+    // This is now the reader's place: entries that join the stream later keep it, and when the link opened
+    // this root's thread it keeps its place while panels dock, as if the person had opened it here.
+    const feed = feedRef.current;
+    if (feed) {
+      const place = { id: element.id, offset: element.getBoundingClientRect().top - feed.getBoundingClientRect().top };
+      anchorRef.current = place;
+      if (openRef.current === revealRoot.conversationId) pinRef.current = place;
+    }
     if (arrived === revealRoot.message.id) element.focus({ preventScroll: true });
     // Once per link: later refreshes of the same root never move the reader.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reveal?.key, !!revealRoot]);
 
   // New entries follow the reader only while they are at the end. Anything else that joins the stream
-  // (earlier roots, or announcements that arrive on their own between roots already shown) keeps the
-  // entry the reader was looking at where it was. A changed reply count or edit (the same entries) never
-  // moves the stream: a reply sent in an open thread must leave the root the person opened where it was.
+  // (earlier roots from "Load earlier" or a link, or announcements that arrive on their own between roots
+  // already shown) keeps the entry the reader was looking at where it was. A changed reply count or edit
+  // (the same entries) never moves the stream: a reply sent in an open thread must leave the root the
+  // person opened where it was.
   const lastKey = entries.at(-1)?.key ?? null;
   const firstKey = entries[0]?.key ?? null;
   const edgeRef = useRef({ first: firstKey, last: lastKey, count: entries.length });
@@ -298,13 +306,12 @@ export function ConversationStream({ project, meId, roots: stream, notices, work
     const edge = edgeRef.current;
     const changed = lastKey !== edge.last || firstKey !== edge.first || entries.length !== edge.count;
     edgeRef.current = { first: firstKey, last: lastKey, count: entries.length };
-    if (!feed) return;
-    if (restoreRef.current !== null) { feed.scrollTop = feed.scrollHeight - restoreRef.current; restoreRef.current = null; return; }
-    if (!changed) return;
+    if (!feed || !changed) return;
     if (stickRef.current) { feed.scrollTop = feed.scrollHeight; return; }
     const anchor = anchorRef.current;
     const element = anchor ? document.getElementById(anchor.id) : null;
-    if (anchor && element) feed.scrollTop += element.getBoundingClientRect().top - feed.getBoundingClientRect().top - anchor.offset;
+    const drift = anchor && element ? element.getBoundingClientRect().top - feed.getBoundingClientRect().top - anchor.offset : 0;
+    if (Math.abs(drift) > 1) feed.scrollTop += drift;
   }, [roots, firstKey, lastKey, entries.length]);
   useLayoutEffect(() => {
     const feed = feedRef.current;
@@ -396,12 +403,11 @@ export function ConversationStream({ project, meId, roots: stream, notices, work
     };
   }, []);
 
+  // Earlier roots join above the reader, who keeps their place (the layout effect above).
   async function loadOlder() {
-    const feed = feedRef.current;
     setFailure('');
-    if (feed) restoreRef.current = feed.scrollHeight - feed.scrollTop;
     try { await stream.loadOlder(); }
-    catch (cause) { restoreRef.current = null; onDenied(cause); setFailure('Earlier messages could not be loaded.'); }
+    catch (cause) { onDenied(cause); setFailure('Earlier messages could not be loaded.'); }
   }
 
   const dayOf = entries.map((entry) => day(entry.at));

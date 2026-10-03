@@ -36,10 +36,11 @@ FIRST_WORD = "I will measure it tonight in the dark room and post the numbers he
 FIRST_REPLY = "Use the black cloth so the shelf does not reflect."
 LATER = "Which shop has the boards in stock this week?"
 LIVE_TASK = "Write the shop a question about delivery"
-LINKED = "The message a link points to: does the base need a heavier foot?"
+LINKED = "Starting on the first chore: does the base need a heavier foot?"
 EARLY_CHORES = 10
 CHORES = 100
-LATER_NOTES = 48
+LATER_NOTES = 52
+SHORT_NOTES = 20
 
 
 class TaskAnnouncements(unittest.TestCase):
@@ -92,25 +93,30 @@ class TaskAnnouncements(unittest.TestCase):
         first = post("jonas", f"/api/v1/work/{measure['id']}/discussion", {"body": FIRST_WORD, "clientMessageId": str(uuid.uuid4())})
         post("ada", f"/api/v1/conversations/{first['conversationId']}/messages", {"body": FIRST_REPLY, "clientMessageId": str(uuid.uuid4())})
         later = start("ada", LATER)
-        # A busy board: more announcements than one page (100), all roots in one window (50). The ten
-        # oldest announcements arrive after the stream is shown and sit between roots already on screen.
-        busy = post("ada", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Busy board", "visibility": "restricted"})
-        bid = busy["id"]
-        start_in = lambda body: post("ada", f"/api/v1/projects/{bid}/conversations", {"body": body, "clientMessageId": str(uuid.uuid4())})  # noqa: E731
-        chore = lambda title: post("ada", f"/api/v1/projects/{bid}/work", {"title": title, "clientCommandId": str(uuid.uuid4())})  # noqa: E731
-        start_in("The board's first idea: a list of every small job.")
-        for index in range(EARLY_CHORES):
-            chore(f"Early chore {index:02}")
-        linked = start_in(LINKED)
-        for index in range(CHORES):
-            chore(f"Chore {index:03}")
-        for index in range(LATER_NOTES):
-            start_in(f"Later note {index:02} on the board.")
+        # Two boards with more announcements than one page (100). The ten oldest announcements arrive after
+        # the stream is shown and sit between entries already on screen. On the busy board the roots also
+        # take more than one window (50), and the oldest task's discussion opened early.
+        def board(name: str, notes: int, discussed: bool) -> tuple[str, dict | None]:
+            bid = post("ada", f"/api/v1/workspaces/{ws['id']}/projects", {"name": name, "visibility": "restricted"})["id"]
+            start_in = lambda body: post("ada", f"/api/v1/projects/{bid}/conversations", {"body": body, "clientMessageId": str(uuid.uuid4())})  # noqa: E731
+            chore = lambda title: post("ada", f"/api/v1/projects/{bid}/work", {"title": title, "clientCommandId": str(uuid.uuid4())})  # noqa: E731
+            start_in(f"{name}'s first idea: a list of every small job.")
+            early_chores = [chore(f"Early chore {index:02}") for index in range(EARLY_CHORES)]
+            opened = post("ada", f"/api/v1/work/{early_chores[0]['id']}/discussion", {"body": LINKED, "clientMessageId": str(uuid.uuid4())}) if discussed else None
+            for index in range(CHORES):
+                chore(f"Chore {index:03}")
+            for index in range(notes):
+                start_in(f"Later note {index:02} on the board.")
+            return bid, opened
+
+        bid, linked = board("Busy board", LATER_NOTES, True)
+        assert linked
+        short, _ = board("Short board", SHORT_NOTES, False)
         for context in contexts.values():
             context.close()
         cls.ids.update(project=pid, early=early["id"], question=question["messages"][0]["id"], from_message=from_message["id"],
                        measure=measure["id"], first=first["id"], thread=first["conversationId"], later=later["messages"][0]["id"],
-                       busy=bid, linked=linked["id"], linked_root=linked["messages"][0]["id"])
+                       busy=bid, linked=linked["conversationId"], linked_root=linked["id"], short=short)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -373,7 +379,6 @@ class TaskAnnouncements(unittest.TestCase):
         expect(section.get_by_role("textbox")).to_have_count(0)
         expect(section.get_by_role("button", name="Start the discussion")).to_have_count(0)
 
-
     def hold_earlier_announcements(self, page: Page) -> list:
         """Holds the read of the second announcement page until the test lets it through."""
         held: list = []
@@ -387,32 +392,76 @@ class TaskAnnouncements(unittest.TestCase):
             page.wait_for_timeout(100)
         self.fail(label)
 
-    def test_12_late_announcements_keep_a_linked_root_in_place(self) -> None:
+    def held_root_stays(self, page: Page, held: list, root, expected: int) -> None:
+        """Lets the held announcements through and checks the root stays where it is."""
+        self.wait_for(page, lambda: bool(held), "the stream reads the earlier announcements")
+        page.wait_for_timeout(1500)
+        expect(page.locator(".convo-notice")).to_have_count(expected)
+        before = root.bounding_box()
+        assert before
+        held[0].continue_()
+        expect(page.locator(".convo-notice")).to_have_count(expected + EARLY_CHORES)
+        page.wait_for_timeout(300)
+        after = root.bounding_box()
+        assert after
+        self.assertAlmostEqual(after["y"], before["y"], delta=2, msg="announcements arriving above it do not move it")
+
+    def test_12_late_announcements_keep_a_linked_old_root_in_place(self) -> None:
+        # The linked root is older than the newest window: the stream reads back to it first.
         page = self.page("ada")
         held = self.hold_earlier_announcements(page)
         page.goto(f"/projects/{self.ids['busy']}/conversations/{self.ids['linked']}")
         root = page.locator(f"#message-{self.ids['linked_root']}")
         expect(root).to_be_in_viewport()
         expect(page.locator("#thread")).to_be_visible()
-        self.wait_for(page, lambda: bool(held), "the stream reads the earlier announcements")
-        page.wait_for_timeout(1500)
-        expect(page.locator(".convo-notice")).to_have_count(CHORES)
-        before = root.bounding_box()
-        assert before
-        held[0].continue_()
-        expect(page.locator(".convo-notice")).to_have_count(CHORES + EARLY_CHORES)
-        page.wait_for_timeout(300)
-        after = root.bounding_box()
-        assert after
-        self.assertAlmostEqual(after["y"], before["y"], delta=2, msg="announcements arriving above the linked root do not move it")
+        self.held_root_stays(page, held, root, CHORES)
         order = self.stream_order(page)
         early = [index for index, key in enumerate(order) if key.startswith("task:")][:EARLY_CHORES]
         self.assertTrue(all(index < order.index(f"message-{self.ids['linked_root']}") for index in early), "they sit above it, in time order")
 
-    def test_13_late_announcements_keep_a_reader_at_the_end(self) -> None:
+    def test_12b_a_link_followed_from_an_open_thread_keeps_the_new_root_in_place(self) -> None:
         page = self.page("ada")
         held = self.hold_earlier_announcements(page)
         page.goto(f"/projects/{self.ids['busy']}")
+        newest = page.locator(".project-convo__message", has_text=f"Later note {LATER_NOTES - 1:02} on the board.")
+        newest.get_by_role("button", name="Reply").click()
+        expect(page.locator("#thread")).to_be_visible()
+        page.wait_for_timeout(1200)
+        # Search is a link inside the open stream: the thread changes, the stream stays mounted.
+        page.keyboard.press("Control+k")
+        dialog = page.get_by_role("dialog", name="Jump to")
+        dialog.get_by_role("combobox", name="Jump to").fill("heavier foot")
+        expect(dialog.get_by_role("option").first).to_contain_text("heavier foot")
+        dialog.get_by_role("combobox", name="Jump to").press("Enter")
+        expect(page).to_have_url(re.compile(f"/conversations/{self.ids['linked']}"))
+        root = page.locator(f"#message-{self.ids['linked_root']}")
+        expect(root).to_be_in_viewport()
+        self.held_root_stays(page, held, root, CHORES)
+        expect(root).to_be_in_viewport()
+
+    def test_12c_load_earlier_keeps_the_reader_through_late_announcements(self) -> None:
+        page = self.page("ada")
+        held = self.hold_earlier_announcements(page)
+        page.goto(f"/projects/{self.ids['busy']}")
+        expect(page.locator(".project-convo__message").last).to_be_in_viewport()
+        page.wait_for_timeout(2500)
+        page.locator(".project-convo__feed").evaluate("feed => { feed.scrollTop = 0; }")
+        first = page.locator(".project-convo__message", has_text="Later note 02 on the board.")
+        expect(first).to_be_in_viewport()
+        page.wait_for_timeout(300)
+        before = first.bounding_box()
+        page.get_by_role("button", name="Load earlier messages").click()
+        expect(page.locator(".project-convo__message", has_text=LINKED)).to_have_count(1)
+        page.wait_for_timeout(300)
+        loaded = first.bounding_box()
+        assert before and loaded
+        self.assertAlmostEqual(loaded["y"], before["y"], delta=2, msg="earlier roots join above the reader")
+        self.held_root_stays(page, held, first, CHORES)
+
+    def test_13_late_announcements_keep_a_reader_at_the_end(self) -> None:
+        page = self.page("ada")
+        held = self.hold_earlier_announcements(page)
+        page.goto(f"/projects/{self.ids['short']}")
         feed = page.locator(".project-convo__feed")
         at_end = "feed => feed.scrollHeight - feed.scrollTop - feed.clientHeight < 48"
         last = page.locator(".project-convo__message-list > li").last
@@ -425,7 +474,7 @@ class TaskAnnouncements(unittest.TestCase):
         expect(page.locator(".convo-notice")).to_have_count(CHORES + EARLY_CHORES)
         page.wait_for_timeout(300)
         self.assertTrue(feed.evaluate(at_end), "the reader stays at the end")
-        expect(page.get_by_text(f"Later note {LATER_NOTES - 1:02} on the board.")).to_be_in_viewport()
+        expect(page.get_by_text(f"Later note {SHORT_NOTES - 1:02} on the board.")).to_be_in_viewport()
 
     def test_14_lost_write_access_keeps_the_text_and_stores_nothing(self) -> None:
         page = self.page("jonas")
