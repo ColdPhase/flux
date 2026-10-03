@@ -365,26 +365,36 @@ class WikiPanesJourney(unittest.TestCase):
         # The server saves the import but the answer is lost; choosing the same file again makes no
         # second page: the retry reuses the first attempt's Idempotency-Key (#197 review B3).
         page.goto(self.url("lamp"))
-        lost: list[str] = []
+        keys: list[str] = []
 
         def lose_first(route) -> None:
-            if route.request.method != "POST" or lost:
+            if route.request.method != "POST":
+                route.continue_()
+                return
+            keys.append(route.request.headers.get("idempotency-key", ""))
+            if len(keys) > 1:
                 route.continue_()
                 return
             response = route.fetch()
-            lost.append(route.request.headers.get("idempotency-key", ""))
             self.assertEqual(response.status, 201)
             route.abort("failed")
 
-        page.route(f"**/api/v1/projects/{self.project_id}/docs", lose_first)
+        docs_url = f"**/api/v1/projects/{self.project_id}/docs"
+        page.route(docs_url, lose_first)
         retry = "# Retried import\n\nSaved once even when the answer was lost.\n"
         self.choose_file(page, "retried.md", retry.encode(), "text/markdown")
         expect(index.get_by_role("alert")).to_contain_text("Check the connection and try again")
-        self.choose_file(page, "retried.md", retry.encode(), "text/markdown")
+        # The button kept keyboard focus while it was busy, so the person can try again from it.
+        expect(index.get_by_role("button", name="Import .md")).to_be_focused()
+        with page.expect_response(lambda r: r.request.method == "POST" and r.url.endswith(f"/api/v1/projects/{self.project_id}/docs")) as again:
+            self.choose_file(page, "retried.md", retry.encode(), "text/markdown")
         expect(page.get_by_role("heading", level=2, name="Retried import")).to_be_visible()
-        page.unroute(f"**/api/v1/projects/{self.project_id}/docs", lose_first)
+        page.unroute(docs_url, lose_first)
+        self.assertEqual(len(keys), 2)
+        self.assertTrue(keys[0], "the import sends an Idempotency-Key")
+        self.assertEqual(keys[1], keys[0], "the retry reuses the first attempt's key")
+        self.assertEqual(again.value.headers.get("idempotent-replayed"), "true", "the server replayed the saved page")
         self.assertEqual(sum(item["title"] == "Retried import" for item in self.docs(page)), 1, "one page, not two")
-        self.assertEqual(len(lost), 1)
 
     # ---------------------------------------------------------------- history and drafts
 

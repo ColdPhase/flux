@@ -121,7 +121,7 @@ function WikiIndex({ activeId, hidden }: { activeId: string | null; hidden: bool
       const read = await readMarkdownFile(file);
       if (!read.ok) { setError(read.error); return; }
       // The same file chosen again after a lost answer reuses its key (#178): one page, never two.
-      const intent = `import:${project.id}:${file.name}:${read.title}\n${read.body}`;
+      const intent = JSON.stringify(['import', project.id, file.name, read.title, read.body]);
       const doc = await createDoc(project.id, { title: read.title, body: read.body, state: 'draft', reason: `Imported from ${file.name}` }, intents.keyFor(intent));
       intents.settle(intent);
       toast({ message: `Imported “${doc.title}” as a draft page.`, tone: 'success' });
@@ -165,8 +165,8 @@ function WikiIndex({ activeId, hidden }: { activeId: string | null; hidden: bool
           <Link className="ui-btn ui-btn--quiet wiki-index__act" to={`/projects/${project.id}/docs/new`} aria-current={creating ? 'page' : undefined}>
             <Icon name="plus" size={14} /><span className="wiki-index__act-t">New page</span>
           </Link>
-          <button type="button" className="ui-btn ui-btn--quiet wiki-index__act" onClick={() => fileRef.current?.click()}
-            disabled={importing} aria-busy={importing || undefined} aria-describedby={error ? errorId : undefined}>
+          <button type="button" className="ui-btn ui-btn--quiet wiki-index__act" onClick={() => { if (!importing) fileRef.current?.click(); }}
+            aria-disabled={importing || undefined} aria-busy={importing || undefined} aria-describedby={error ? errorId : undefined}>
             {importing ? <Spinner /> : <WikiIcon name="upload" size={14} />}<span className="wiki-index__act-t">Import .md</span>
           </button>
           <input ref={fileRef} type="file" accept=".md,.markdown,text/markdown,text/x-markdown" hidden tabIndex={-1}
