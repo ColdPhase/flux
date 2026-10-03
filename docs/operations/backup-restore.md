@@ -187,6 +187,13 @@ after A is destroyed, as a replacement machine would, because OAuth issuer and a
 the public origin. The file must be byte for
 byte identical and owned by the API user. The same script covers [upgrade](upgrade.md).
 
+GitHub provider credentials, bindings and pending authorization flows (#74) are
+always revoked after exact migrations and before API/worker restart, independently
+of `--revoke-agent-connections`. The original source/link history is retained as
+unavailable; reconnect your own account and explicitly select repository bindings.
+This prevents a provider authorization revoked after the backup from silently
+becoming active again. It does not broaden the portable project export contract.
+
 Not covered yet: very large databases (the dump is streamed through `docker compose --env-file docker/.env exec`,
 which is fine for gigabytes but untested there), point-in-time recovery (WAL archiving), and
 backups while writers keep running, and email outbox rows (`check_backup.sh` runs without SMTP;
