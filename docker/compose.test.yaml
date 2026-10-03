@@ -2,6 +2,11 @@
 # scripts/check_application.sh with the `test` profile. Never use it for a real deployment:
 # it lets the worker reach a private-network push mock and trust its throwaway certificate.
 services:
+  files-init:
+    # The non-root application test runner also writes session/browser seed state.
+    command: ["chown", "-R", "1000:1000", "/data/files", "/state"]
+    volumes:
+      - teststate:/state
   pushmock:
     profiles: ["test"]
     build:
