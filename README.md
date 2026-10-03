@@ -31,6 +31,11 @@ cd flux
 ./flux demo    # optional: sample workspace, project, conversation and note; prints two logins
 ```
 
+<p align="center"><img src="docs/assets/demo/flux-demo.gif" width="88%" alt="The core journey on the ./flux demo data: Home shows what changed since Ada left, with Jonas's question as her next step; it opens the project conversation; the Map tab shows the shared sketch; one action turns a message into a task; a decision is proposed from a message with its reason, accepted, and shown under that message."></p>
+
+<p align="center"><sub>The <code>./flux demo</code> data in the running app: return view, conversation, sketch, task and
+decision (<a href="docs/assets/demo/README.md">how this was recorded</a>).</sub></p>
+
 Then open <http://127.0.0.1:8081/>. `./flux up` never overwrites an existing `docker/.env`. An older root `.env` is moved once with its secrets and project name intact; if both files exist, choose the intended one before continuing. `app/.env.example` documents variables and is never loaded.
 Other commands: `./flux dev` (hot reload in Docker), `./flux down`, `./flux logs`,
 `./flux reset` (deletes data after confirmation), `./flux clean` (also removes the
