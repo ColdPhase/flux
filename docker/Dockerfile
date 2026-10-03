@@ -12,7 +12,12 @@ RUN pnpm install --offline --frozen-lockfile
 RUN pnpm build && pnpm typecheck && pnpm lint
 
 FROM build AS test
-CMD ["pnpm", "test"]
+# Fixtures share the private files volume with the runtime API. Use its identity so
+# a fixture's 0700 object shard remains writable by the API, independent of UUID order.
+USER node
+# Dependencies are already baked in. Running the installed binary also avoids a
+# user-specific package-manager bootstrap mutating the root-owned build workspace.
+CMD ["sh", "-c", "exec node_modules/.bin/tsx --test --test-concurrency=1 tests/app/*.test.ts"]
 
 FROM build AS production-dependencies
 RUN pnpm install --prod --offline --frozen-lockfile

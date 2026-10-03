@@ -79,8 +79,9 @@ export async function dmRoutes(app: FastifyInstance, { db, sessions }: DmRouteOp
     schema: {
       body: {
         type: 'object', required: ['body', 'clientMessageId'], additionalProperties: false,
-        // `source` is accepted only to answer 422 DM_SOURCE_UNSUPPORTED instead of a generic 400.
-        properties: { body: { type: 'string', minLength: 1, maxLength: 100_000 }, clientMessageId: { type: 'string' }, source: { type: 'object' } },
+        // Unsupported source/files must reach the core refusal instead of being silently stripped.
+        properties: { body: { type: 'string', minLength: 1, maxLength: 100_000 }, clientMessageId: { type: 'string' },
+          source: { type: 'object' }, attachmentIds: {} },
       },
     },
   }, async (request, reply) => command(request, reply, {

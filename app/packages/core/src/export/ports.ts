@@ -5,6 +5,7 @@ import type {
   ProjectExportDecision,
   ProjectExportDoc,
   ProjectExportGrant,
+  ProjectExportFile,
   ProjectExportLink,
   ProjectExportMaterial,
   ProjectExportResult,
@@ -23,6 +24,7 @@ import type { Principal } from '../principal.js';
 
 /** Rows of one project, already in their wire shape. No access decisions are made here. */
 export interface ProjectExportRows {
+  files?(projectId: string): Promise<ProjectExportFile[]>;
   project(projectId: string): Promise<ProjectExport['project'] | null>;
   grants(projectId: string): Promise<ProjectExportGrant[]>;
   workspaceRoles(workspaceId: string): Promise<{ userId: string; role: WorkspaceRole }[]>;
@@ -53,6 +55,7 @@ export interface ProjectExportAccess {
 }
 
 export interface ProjectExportPorts {
+  files?: { read(id: string): Promise<Uint8Array | null> };
   access: ProjectExportAccess;
   rows: ProjectExportRows;
 }
