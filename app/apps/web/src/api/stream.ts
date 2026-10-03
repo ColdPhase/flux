@@ -11,10 +11,11 @@ import { STREAM_CLOSE_UNAUTHENTICATED, STREAM_PATH, type StreamEvent, type Strea
  * a different account subscribes in the same tab (sign-out, then sign-in), or on sign-out, the
  * cursor, the dedupe set and the socket are dropped. A browser cannot read the HTTP status of a
  * refused upgrade, so a connection that closes before it opened while resuming from a cursor is
- * treated as a rejected cursor (`400 CURSOR_INVALID`): the cursor is dropped, listeners are
- * told to refetch, and it reconnects once from the head. It never retries the same cursor.
- * The same close also happens while the network is down, when that refetch fails too, so
- * listeners are told to refetch again once a connection from the head opens.
+ * treated as a rejected cursor (`400 CURSOR_INVALID`): the cursor is dropped and it reconnects
+ * from the head. It never retries the same cursor. The same close also happens while the network
+ * is down, so listeners are told to refetch only once a connection from the head has opened: a
+ * refetch during an outage would fail, and a failed route reload replaces the whole app with its
+ * error page. When the browser reports it is online again, a waiting reconnect happens at once.
  */
 export interface StreamListener {
   onEvent(event: StreamEvent): void;
@@ -87,15 +88,25 @@ function connect() {
     if (event.code === STREAM_CLOSE_UNAUTHENTICATED) { cursor = null; return; }
     if (!subscriptions.size) return;
     if (!opened && resumed && cursor === resumed) {
-      // Refused while resuming: most likely a cursor this person cannot use. Start from the head once.
+      // Refused while resuming: a cursor this person cannot use, or no network. Start from the head;
+      // listeners refetch when that connection opens (see onopen), never while it cannot.
       cursor = null;
       resyncOnOpen = true;
-      for (const { listener } of [...subscriptions]) listener.onResync?.();
       schedule(0);
       return;
     }
     schedule(Math.min(15_000, 500 * 2 ** retry++));
   };
+}
+
+// Back online: a reconnect waiting out its backoff happens now, not up to 15 s later.
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    if (socket || !subscriptions.size) return;
+    retry = 0;
+    clearTimer();
+    connect();
+  });
 }
 
 function subscribe(owner: string, listener: StreamListener) {

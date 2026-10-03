@@ -24,6 +24,20 @@ HUBERT = {"name": "Hubert Nowak", "email": f"hubert.n+{STAMP}@example.test"}
 MAREK = {"name": "Marek Lis", "email": f"marek.l+{STAMP}@example.test"}
 OUTSIDER = {"name": "Lee Park", "email": f"lee.agents+{STAMP}@example.test"}
 TASK = "Restore the connection to the lamp"
+# The page's sockets are recorded; while __fluxDown is set, every new one fails before it opens.
+RECORD_SOCKETS = """(() => {
+  const Native = window.WebSocket;
+  window.__fluxSockets = [];
+  window.__fluxDown = false;
+  window.WebSocket = class extends Native {
+    constructor(...args) {
+      super(...args);
+      window.__fluxSockets.push(this);
+      if (window.__fluxDown) this.close();
+    }
+  };
+})()"""
+STREAM_OPEN = "() => window.__fluxSockets.some((ws) => ws.url.includes('/api/v1/stream') && ws.readyState === 1)"
 NEWEST_PLACEMENT = """() => {
   const items = [...document.querySelectorAll('.agents-thread__list > li')];
   const last = items[items.length - 1].getBoundingClientRect();
@@ -194,28 +208,17 @@ class AgentsViewJourney(unittest.TestCase):
     def test_03c_a_dropped_stream_recovers_what_was_missed(self) -> None:
         hubert = self.page("hubert")
         # The page's sockets are recorded; while the network is "down" every new one fails before it opens.
-        hubert.add_init_script("""(() => {
-          const Native = window.WebSocket;
-          window.__fluxSockets = [];
-          window.__fluxDown = false;
-          window.WebSocket = class extends Native {
-            constructor(...args) {
-              super(...args);
-              window.__fluxSockets.push(this);
-              if (window.__fluxDown) this.close();
-            }
-          };
-        })()""")
+        hubert.add_init_script(RECORD_SOCKETS)
         hubert.goto(f"/projects/{self.ids['project']}/agents")
         expect(self.thread(hubert).get_by_text("Then I'll flash it tonight.")).to_be_visible()
-        hubert.wait_for_function("() => window.__fluxSockets.some((ws) => ws.url.includes('/api/v1/stream') && ws.readyState === 1)")
+        hubert.wait_for_function(STREAM_OPEN)
         # The connection drops and stays down while Marek writes; then the network returns.
         hubert.evaluate("() => { window.__fluxDown = true; window.__fluxSockets.forEach((ws) => ws.close()); }")
         self.contribute("marek", "Cable ordered while your link was down")
         hubert.wait_for_timeout(1500)
         hubert.evaluate("() => { window.__fluxDown = false; }")
         expect(self.thread(hubert).get_by_text("Cable ordered while your link was down")).to_have_count(1, timeout=12000)
-        hubert.wait_for_function("() => window.__fluxSockets.some((ws) => ws.url.includes('/api/v1/stream') && ws.readyState === 1)")
+        hubert.wait_for_function(STREAM_OPEN)
         self.assertGreaterEqual(hubert.evaluate("() => window.__fluxSockets.length"), 2, "the stream reconnected")
 
     def test_03d_new_messages_keep_an_earlier_reader_in_place_and_follow_one_at_the_end(self) -> None:
@@ -260,6 +263,36 @@ class AgentsViewJourney(unittest.TestCase):
         expect(self.thread(marek).get_by_text("At the end, this one comes into view.")).to_be_visible()
         expect(box).to_be_enabled()
         expect(box).to_have_value("Unsent note from Marek")
+        box.fill("")
+
+    def test_03f_a_real_outage_with_a_burst_recovers_without_reload(self) -> None:
+        # #183 review B2: the device goes offline (HTTP and WebSocket), another person writes 66
+        # messages, the device comes back. Its own task keeps the shared thread's window unchanged.
+        hubert = self.page("hubert")
+        task = self.api(hubert, "POST", f"/api/v1/projects/{self.ids['project']}/work", {"title": "Measure the lamp after dark"}, status=201)
+        marek = self.page("marek")
+        self.api(marek, "POST", f"/api/v1/work/{task['id']}/discussion", {"body": "Starting the night measurements.", "clientMessageId": str(uuid.uuid4()), "kind": "text"}, status=201)
+        hubert.add_init_script(RECORD_SOCKETS)
+        hubert.goto(f"/projects/{self.ids['project']}/agents?task={task['id']}")
+        thread = hubert.get_by_role("region", name="Thread of Measure the lamp after dark")
+        expect(thread.get_by_text("Starting the night measurements.")).to_be_visible()
+        hubert.wait_for_function(STREAM_OPEN)
+        box = hubert.get_by_label("Write to this task")
+        box.fill("Draft kept through the outage")
+        hubert.context.set_offline(True)
+        hubert.evaluate("() => window.__fluxSockets.forEach((ws) => ws.close())")
+        for index in range(1, 67):
+            self.api(marek, "POST", f"/api/v1/work/{task['id']}/discussion", {"body": f"Reading {index:02d} while Hubert is offline", "clientMessageId": str(uuid.uuid4()), "kind": "text"}, status=201)
+        hubert.wait_for_timeout(1500)
+        expect(hubert.get_by_text("Flux can’t be reached")).to_have_count(0)
+        hubert.context.set_offline(False)
+        # Back online: the stream reconnects at once and the thread pages in the whole burst.
+        expect(thread.get_by_text("Reading 66 while Hubert is offline")).to_be_visible(timeout=12000)
+        expect(thread.get_by_text("Reading 01 while Hubert is offline")).to_have_count(1)
+        expect(thread.locator(".agents-thread__list > li")).to_have_count(67)
+        expect(hubert.get_by_text("Flux can’t be reached")).to_have_count(0)
+        expect(box).to_have_value("Draft kept through the outage")
+        hubert.wait_for_function(STREAM_OPEN)
         box.fill("")
 
     def test_04_a_draft_survives_leaving_the_view(self) -> None:
