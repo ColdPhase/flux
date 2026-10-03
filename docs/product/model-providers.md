@@ -185,12 +185,12 @@ above.
 
 | Criterion | State | Evidence or reason |
 | --- | --- | --- |
-| PROV-1 | Partly | Five provider kinds, owner model (server-side keyless list where available, else typed), fixed or owner base URL, custody unchanged (migration `0042`). **Still one connection per owner**, used by both uses; "one or more connections" with a per-use choice is a follow-up. |
+| PROV-1 | Implemented | Five provider kinds, owner model (server-side keyless list where available, else typed), fixed or owner base URL, custody unchanged (migration `0042`). Since 2026-10-03, several named connections per owner: background comparisons use the one the owner marks, the assistant the one its consent names; removing one stops its use without fallback. |
 | PROV-2 | Implemented for both uses | One prompt assembly, parser, proposal path and stop/retry/pause flow in core; two wire adapters and a registry in `@flux/agent-runtime`; neutral copy. Production personal runs remain off (#68). |
 | PROV-3 | Implemented | Price from Flux's dated table or the owner only; reservation formula; enabling refused without a price; a provider-reported cost (OpenRouter `usage.cost`) only reconciles the charge; the conservative estimate bounds every provider. |
 | PROV-4 | Implemented | Guarded transport for every adapter; save-time and connect-time host checks; operator allowlist `FLUX_AI_PRIVATE_TARGETS`; key absence checked per adapter. |
 | PROV-5 | Implemented in the UI | Connect shows Claude Code, Codex and another MCP client with their commands. **Real Codex and Claude Code activations, and one other client, are not recorded** (no clients or public HTTPS host in the implementation sandbox). |
-| PROV-6 | Partly | The adapter contract suite runs identically against Docker mocks of both wire formats. **Real-key smoke tests are unverified** for every named provider (no keys). **Provider terms marked `unknown` were not re-checked**: OpenAI, OpenRouter and Google pages were unreachable from the sandbox (egress blocked, 2026-10-02). |
+| PROV-6 | Partly | The adapter contract suite runs identically against Docker mocks of both wire formats. **Real-key smoke tests are unverified** for every named provider (no keys). Provider terms were re-checked on 2026-10-03 against dated primary sources (see [AI providers](../development/ai-providers.md#provider-terms-2026-10-03)): none forbids an owner using their own key in their own Flux, so no provider is disabled; Gemini's conditions are shown with its key field. |
 
 Choices made within the contract, for review:
 

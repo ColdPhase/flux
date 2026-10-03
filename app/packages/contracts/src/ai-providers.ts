@@ -52,7 +52,7 @@ export const AI_PROVIDERS: Readonly<Record<AiProviderKind, AiProviderInfo>> = {
   },
   gemini: {
     kind: 'gemini', label: 'Google Gemini', wire: 'openai_chat_completions', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-    keyHint: 'A Gemini API key beginning with AIza.', keylessModelList: false, reportsCost: false,
+    keyHint: 'A Gemini API key beginning with AIza. Google’s terms allow only a paid (billing-enabled) key for use in the EEA, Switzerland and the UK.', keylessModelList: false, reportsCost: false,
   },
   openai_compatible: {
     kind: 'openai_compatible', label: 'OpenAI-compatible endpoint', wire: 'openai_chat_completions', baseUrl: null,

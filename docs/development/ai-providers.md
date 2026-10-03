@@ -67,6 +67,23 @@ or `failed` with `rate_limited` (429), `overloaded` (503, 529), `timeout`, `abor
 `provider_error` (other statuses, redirects, malformed or oversized answers, lost connections).
 `billed: 'none'` only when nothing was sent (no key, a refused endpoint); otherwise `unknown`.
 
+## Provider terms (2026-10-03)
+
+PROV-6 asks for the terms marked `unknown` in the [feasibility study](../product/own-ai-feasibility.md)
+to be checked against dated primary sources. Read on 2026-10-03; quotes are vendor claims, the
+conclusions are Flux inferences. Flux's use is the same for every provider: one owner enters
+their own key, it is encrypted at rest, and only that owner's runs and comparisons use it
+(F-019); Flux never shares, pools, resells or pays for a key.
+
+| Provider | Source and date | What it says | Conclusion |
+| --- | --- | --- | --- |
+| OpenAI | OpenAI Services Agreement, `cdn.openai.com/osa/openai-services-agreement.pdf` ("ONLINE v.010126", effective 2026-01-01; file Last-Modified 2025-12-01). The HTML policy page answered HTTP 403, so a later revision cannot be excluded. | §2.2: the right "to use OpenAI's API to integrate the Services into Customer Applications and to make Customer Applications available to End Users". §3.1: "Customer will not share Account access credentials or individual login credentials between multiple users." §3.3(g): no "buy, sell, or transfer API keys from, to, or with a third party". | Allowed: the owner integrates their own key into an application they use. Flux keeps each key to its one owner, which matches §3.1 and §3.3(g). |
+| OpenRouter | Terms of Service, `openrouter.ai/terms`, "Last Updated: August 31, 2026". | §2: "at least 18 years of age". §3.2: keep "confidentiality and security of all API keys, tokens, passwords, and other credentials". §7: no "reselling API access to Models or otherwise developing a competing service", no "sell or otherwise transfer the access granted". | Allowed: an owner's own key for their own use, stored encrypted, is neither resold nor transferred. |
+| Gemini | Gemini API Additional Terms of Service, `ai.google.dev/gemini-api/terms`, "Effective March 23, 2026". | "for developers building with Google AI models for professional or business purposes, not for consumer use"; "18 years of age or older"; access only "within an available region"; "You may use only Paid Services when making API Clients available to users in the European Economic Area, Switzerland, or the United Kingdom." Unpaid Services may use prompts and responses to improve Google's products, with human review. | Allowed with conditions that bind the key owner. The key field says that only a paid key may be used in the EEA, Switzerland and the UK. Flux cannot see a key's billing state, so it does not enforce this. |
+
+`openai_compatible` endpoints are the owner's own servers or services and carry their own terms.
+Anthropic was confirmed in O-007/O-008 and is unchanged.
+
 ## Prices, reservations and the input bound
 
 A connection's price per 1M tokens (micro-dollars) comes only from Flux's dated table
@@ -163,7 +180,6 @@ open for every named provider.
   - Removing a connection stops its use, with no fallback.
   - The production personal-run lookup, key resolver and the `FLUX_PERSONAL_RUNS` operator switch
     are in place (see personal-runs.md).
-- Real-key smoke tests per named provider, and a check of OpenAI, OpenRouter and Gemini terms
-  against dated primary sources (PROV-6). Their base URLs (Gemini and OpenRouter) and the OpenAI
-  and Gemini prices were checked on 2026-10-03.
+- Real-key smoke tests per named provider (PROV-6). The provider terms, the base URLs (Gemini and
+  OpenRouter) and the OpenAI and Gemini prices were checked on 2026-10-03.
 - Real Codex and Claude Code connections and one other MCP client (PROV-5).
