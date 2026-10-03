@@ -71,11 +71,12 @@ function ScopedDocEditor({ project, doc, accountId }: EditData & { accountId: st
   const settled = useRef(true);
   const pending = useRef(new Set<(current: boolean) => void>());
   useLayoutEffect(() => {
+    const waiters = pending.current;
     mounted.current = true;
     return () => {
       mounted.current = false;
-      for (const resolve of pending.current) resolve(false);
-      pending.current.clear();
+      for (const resolve of waiters) resolve(false);
+      waiters.clear();
     };
   }, []);
   useLayoutEffect(() => {

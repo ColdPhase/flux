@@ -129,7 +129,7 @@ class DocReferenceJourney(unittest.TestCase):
                 selected = picker.locator('[role="option"][aria-selected="true"]')
                 self.assertTrue(selected.evaluate("el => { const row=el.getBoundingClientRect(), list=el.parentElement.getBoundingClientRect(); return row.top>=list.top-1 && row.bottom<=list.bottom+1; }"), "the keyboard-selected option stays exposed inside its own list")
                 self.assertEqual({read["kind"] for read in page.choice_observations}, {"work", "decision", "result"})
-                if phone: expect(picker.get_by_text("Tap a match to insert its link.", exact=True)).to_be_visible()
+                if phone: expect(picker.get_by_text("Tap a match to insert its link.", exact=True)).to_be_in_viewport()
                 shot(page, f"155-doc-reference-work-{'phone' if phone else 'desktop'}")
                 query.press("Enter")
                 expect(text).to_have_value(re.compile("PRIVATE-DRAFT"))

@@ -109,6 +109,7 @@ export function LinkPicker({ projectId, workspaceId, selfId, onPick, onClose }: 
       <div className="doc-picker__type"><label htmlFor={`${listId}-type`}>Type</label><select id={`${listId}-type`} aria-label="Reference type" value={type} onChange={(event) => setType(event.target.value as ReferenceType)}>
         {TYPES.map((kind) => <option key={kind} value={kind}>{kind === 'all' ? 'All types' : kindLabel(kind)}</option>)}
       </select></div>
+      <p className="doc-picker__keys doc-picker__touch">Tap a match to insert its link.</p>
       {failed ? <p className="doc-muted doc-picker__empty" role="alert">Could not load this project’s objects. <button type="button" className="ui-link" onClick={retry}>Retry objects</button></p> : null}
       {busy && !failed ? <p className="doc-muted doc-picker__empty" aria-busy="true">Loading…</p> : null}
       {!busy && !failed && !shown.length ? <p className="doc-muted doc-picker__empty">Nothing matches “{query}”.</p> : null}
@@ -122,7 +123,6 @@ export function LinkPicker({ projectId, workspaceId, selfId, onPick, onClose }: 
           </li>
         ))}
       </ul>
-      <p className="doc-picker__keys doc-picker__touch">Tap a match to insert its link.</p>
       <p className="doc-picker__keys"><kbd>↑</kbd><kbd>↓</kbd> choose · <kbd>Enter</kbd> insert · <kbd>Esc</kbd> close</p>
     </div>
   );
