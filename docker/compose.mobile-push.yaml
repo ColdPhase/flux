@@ -50,10 +50,10 @@ services:
   files-init:
     <<: *runtime
     user: root
-    cap_drop: []
+    cap_drop: [ALL]
     cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
     command: ["chown", "-R", "1000:1000", "/data/files"]
-    volumes: ["files:/data/files"]
+    volumes: ["files:/data/files:z"]
   api:
     <<: *runtime
     environment:
@@ -63,7 +63,7 @@ services:
       FLUX_AUTH_RATE_LIMIT: "true"
       FLUX_TRUSTED_PROXIES: ""
       FLUX_FIXTURE_TOKEN: ""
-    volumes: ["files:/data/files"]
+    volumes: ["files:/data/files:z"]
     depends_on:
       migrate: { condition: service_completed_successfully }
       files-init: { condition: service_completed_successfully }
@@ -80,7 +80,7 @@ services:
       DATABASE_URL: postgres://flux:${MOBILE_DB_PASSWORD:?}@db:5432/flux
       FLUX_VAPID_PRIVATE_KEY: ${MOBILE_VAPID_PRIVATE:?}
       FLUX_VAPID_SUBJECT: ${MOBILE_VAPID_SUBJECT:?}
-    volumes: ["files:/data/files"]
+    volumes: ["files:/data/files:z"]
     depends_on:
       migrate: { condition: service_completed_successfully }
       files-init: { condition: service_completed_successfully }
