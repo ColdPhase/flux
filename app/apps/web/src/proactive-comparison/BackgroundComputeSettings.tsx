@@ -210,6 +210,8 @@ export function BackgroundComputeSettings() {
     {!connections.length || editing ? <section ref={connectSectionRef} className="background-settings__section" aria-labelledby="background-connect">
       <div className="background-settings__section-head">
         <h3 id="background-connect">{connections.length ? 'Add a connection' : 'Connect your background source'}</h3>
+        {/* Backing out is possible from the top of a long form, on a phone too. */}
+        {connections.length ? <Button variant="quiet" onClick={cancelAdding}>Cancel adding</Button> : null}
       </div>
       {error ? <p id="background-connect-error" ref={errorRef} className="background-settings__error" role="alert" tabIndex={-1}>{error}</p> : null}
       <p className="background-settings__help">Choose any supported provider and model; every one takes the same path in Flux. A named-project rule may send its published human evidence for one camera/sensor comparison. It can prepare a quiet suggestion; people choose whether to use it.</p>
