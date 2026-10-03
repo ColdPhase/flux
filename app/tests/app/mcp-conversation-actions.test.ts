@@ -189,7 +189,8 @@ test('two owners and three connections stay isolated: grants, receipts, targets 
 
   assert.deepEqual([await hubert.used(planning.id), await hubert.used(reviewing.id), await hubert.used(doc.id), await hubert.used(marekReply.id), await hubert.used(marekDoc.id)],
     [1, 1, 0, 0, 0]);
-  assert.deepEqual([await projectMessages(hubert.projectId), await projectMessages(String(own.id))], [3, 0]);
+  // Three starts (planning, review and the twin connection) and one reply; nothing in Marek's project.
+  assert.deepEqual([await projectMessages(hubert.projectId), await projectMessages(String(own.id))], [4, 0]);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_material_versions WHERE material_id=$1', [hubertDoc.id])).rows[0].n, 1);
 });
 
