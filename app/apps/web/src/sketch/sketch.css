@@ -25,6 +25,8 @@
 .sk-bar { display: flex; align-items: center; gap: 2px; min-height: 40px; padding: 4px; border-radius: var(--r-lg);
   box-shadow: inset 0 0 0 1px var(--line); background: var(--bg); }
 .sk-tools { display: flex; align-items: center; gap: 2px; flex: none; }
+.sk--map .sk-bar { flex-wrap: wrap; }
+.sk--map .sk-tools { flex: 0 1 auto; min-width: 0; flex-wrap: wrap; }
 .sk-bar .ui-btn { min-height: 32px; padding: 0 10px; gap: 6px; }
 .sk-bar .ui-btn svg { color: var(--text-3); }
 .sk-bar .sk-add { color: var(--text); }
