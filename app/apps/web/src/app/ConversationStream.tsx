@@ -152,6 +152,8 @@ export function ConversationStream({ project, meId, roots: stream, work, author,
   const columnRef = useRef<HTMLDivElement>(null);
   const restoreRef = useRef<number | null>(null);
   const pinRef = useRef<{ id: string; offset: number } | null>(null);
+  const openRef = useRef(openId);
+  useEffect(() => { openRef.current = openId; }, [openId]);
   // The root a person opens keeps its place while the thread docks beside the stream and leaves again.
   const openRoot = (root: ConversationRoot, reply: boolean) => {
     const feed = feedRef.current;
@@ -241,10 +243,18 @@ export function ConversationStream({ project, meId, roots: stream, work, author,
       }
     };
     const onScroll = () => { if (!frame) frame = requestAnimationFrame(record); };
+    // The stream's own content can also change height after a width change (the thread docking or
+    // becoming a sheet re-renders a frame later): while a thread is open, its root keeps its place then too.
+    const column = columnRef.current;
+    let height = column?.offsetHeight ?? 0;
     const observer = new ResizeObserver(() => {
-      if (feed.clientWidth === width) return;
+      const widened = feed.clientWidth !== width;
+      const grown = !!column && column.offsetHeight !== height;
+      if (!widened && !grown) return;
       width = feed.clientWidth;
-      const keep = pinRef.current ?? (stickRef.current ? null : anchor);
+      height = column?.offsetHeight ?? 0;
+      const keep = widened ? pinRef.current ?? (stickRef.current ? null : anchor) : openRef.current ? pinRef.current : null;
+      if (!widened && !keep) return;
       const element = keep ? document.getElementById(keep.id) : null;
       if (element && keep) feed.scrollTop += element.getBoundingClientRect().top - feed.getBoundingClientRect().top - keep.offset;
       else if (stickRef.current) feed.scrollTop = feed.scrollHeight;
@@ -255,6 +265,7 @@ export function ConversationStream({ project, meId, roots: stream, work, author,
     feed.addEventListener('pointerdown', press, { passive: true });
     feed.addEventListener('keydown', key);
     observer.observe(feed);
+    if (column) observer.observe(column);
     return () => {
       feed.removeEventListener('scroll', onScroll);
       for (const name of ['wheel', 'touchmove'] as const) feed.removeEventListener(name, person);
