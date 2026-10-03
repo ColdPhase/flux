@@ -112,6 +112,16 @@ describe('sketch access', () => {
     assert.ok(!projectList.items.some((item) => item.id === mine.id), 'not in the project’s sketches, even for its author');
     const aliceList = expectStatus(await alice.browser.request('GET', `/api/v1/workspaces/${ws.id}/sketches`), 200) as SketchPage;
     assert.ok(aliceList.items.some((item) => item.id === mine.id));
+    // The sketchbook asks for private sketches only (#189): paged and counted without the project ones.
+    const projectSketch = await createSketch(alice, ws.id, { title: 'In the lamp', scope: 'project', projectId: lamp.id });
+    const sketchbook = expectStatus(await alice.browser.request('GET', `/api/v1/workspaces/${ws.id}/sketches?scope=private`), 200) as SketchPage;
+    assert.ok(sketchbook.items.some((item) => item.id === mine.id));
+    assert.ok(sketchbook.items.every((item) => item.scope === 'private'), 'only private sketches');
+    assert.ok(!sketchbook.items.some((item) => item.id === projectSketch.id));
+    assert.equal(sketchbook.total, sketchbook.items.length, 'the total counts private sketches only');
+    const carolBook = expectStatus(await carol.browser.request('GET', `/api/v1/workspaces/${ws.id}/sketches?scope=private`), 200) as SketchPage;
+    assert.ok(!carolBook.items.some((item) => item.id === mine.id), 'never another person’s private sketch');
+    expectStatus(await alice.browser.request('GET', `/api/v1/workspaces/${ws.id}/sketches?scope=project`), 400, 'only the private filter exists');
     assert.deepEqual(await audience(mine.id), new Set([`human:${alice.id}`]), 'its events reach only the author');
 
     // Agents: not even the author's own agent sees a private sketch; a granted agent sees project sketches.

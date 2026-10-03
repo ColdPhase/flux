@@ -162,9 +162,11 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
       const page = valid.page(query);
       const projectId = valid.optionalId(query.projectId, 'projectId') ?? undefined;
       const dmId = valid.optionalId(query.dmId, 'dmId') ?? undefined;
+      if (query.scope !== undefined && query.scope !== 'private') throw new InvalidInputError('scope can only be private', 'INVALID_SCOPE');
+      const scope = query.scope;
       return uow.run(async (ports) => {
         await ports.access.requireWorkspace(principal, workspaceId);
-        const { items, total } = await ports.sketches.listVisible(principal, workspaceId, { projectId, dmId }, page);
+        const { items, total } = await ports.sketches.listVisible(principal, workspaceId, { projectId, dmId, scope }, page);
         const sketches: Sketch[] = [];
         for (const item of items) {
           const access = await ports.access.accessOf(principal, item.id);
