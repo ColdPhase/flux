@@ -141,10 +141,10 @@ export function AppLayout() {
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
-  // "]" toggles Details, as in the header tooltip.
+  // "]" toggles Details, as in the header tooltip, only where the header offers Details.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (backgroundSettings) return;
+      if (!detailsButtonRef.current) return;
       if (event.key !== ']' || event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target)) return;
       if (document.getElementById('root')?.inert && !detailsOpen) return;
       event.preventDefault();
@@ -153,7 +153,7 @@ export function AppLayout() {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [toggleDetails, detailsOpen, backgroundSettings]);
+  }, [toggleDetails, detailsOpen]);
 
 
   // A new view slides in from the side its tab sits on.
@@ -214,7 +214,7 @@ export function AppLayout() {
   const place = backgroundSettings
     ? { crumb: null, title: 'Background suggestions', topic: 'Your connection and allowance', views: false, noDetails: true }
     : location.pathname === '/search'
-    ? { crumb: null, title: 'Search', topic: 'Only what you can open is searched', views: false }
+    ? { crumb: null, title: 'Search', topic: 'Only what you can open is searched', views: false, noDetails: true }
     : location.pathname === '/settings/assistant'
     ? { crumb: null, title: 'Your assistant', topic: 'Only you can use it · optional', views: false, noDetails: true }
     : activeProject
@@ -228,9 +228,11 @@ export function AppLayout() {
         // A DM's header names its exact audience (design principle 5).
         ? { crumb: null, title: activeDm.title, topic: activeDm.audience, views: false }
         : dmId === 'new'
-          ? { crumb: null, title: 'New message', topic: 'Only the people you choose can read it', views: false }
-          : { crumb: null, title: 'Direct messages', topic: 'Conversations with people, outside any project', views: false }
+          ? { crumb: null, title: 'New message', topic: 'Only the people you choose can read it', views: false, noDetails: true }
+          : { crumb: null, title: 'Direct messages', topic: 'Conversations with people, outside any project', views: false, noDetails: true }
       : { crumb: workspace?.name ?? null, title: 'Home', topic: 'Your private notes and where you left off', views: true };
+  // A place without its own Details (Search, Inbox, the DM list) never keeps the generic panel open.
+  if ('noDetails' in place && detailsOpen && detailsView === 'place') setDetailsOpen(false);
 
   return (
     <ShellContext.Provider value={shell}>
