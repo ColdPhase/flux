@@ -1,8 +1,12 @@
 # Live map and wiki editing — proposal for #228
 
-Date: 2026-10-03. Owner: @PelikanFix16. Status: **proposed; independent contract
-assessment and Docker calibration pending**. No implementation or runtime result is
-claimed here. [#228](https://github.com/ColdPhase/flux/issues/228) admits the outcome:
+Date: 2026-10-03. Owner: @PelikanFix16. Status: **accepted for bounded, isolated,
+disabled non-production calibration; all runtime gates pending**. The independent
+[reassessment](../agents/evidence/228-live-editing/contract-rereview.md) accepted
+the exact proposal at [8d71f582](https://github.com/ColdPhase/flux/blob/8d71f58217cf40f9c2575f3a8d226ea0bf76a9c7/docs/development/live-editing-proposal.md),
+SHA-256 `1366410fea8a2d020274ee75febad6ac86cef459dcb3ae3d3ad66e5063b9ce38`.
+This status recording changes no technical criterion. No implementation, runtime
+or performance result is claimed. [#228](https://github.com/ColdPhase/flux/issues/228) admits the outcome:
 two people see map movement during a drag and wiki writing during typing, with
 identified collaborators. Foundation 8.4, 8.7, 8.14 and 8.15 apply.
 Revision 2 addresses the independent 2026-10-03 contract review's C1–C4; it does
