@@ -189,7 +189,8 @@ body:has(.app) { background: var(--bg-chrome); }
 .views .ui-tabs__tab { min-height: 40px; padding: 9px 6px 13px; border-radius: 0; font-size: var(--fs-md); font-weight: 450; color: var(--text-2); }
 .views .ui-tabs__tab[aria-current="page"] { color: var(--text); font-weight: 550; }
 .views .ui-tabs__tab:hover { color: var(--text); }
-.views .ui-tabs__tab:focus-visible { outline-offset: -2px; }
+/* The ring is drawn in place (no offset transition from the global 4px), so no frame of it is clipped. */
+.views .ui-tabs__tab, .views .ui-tabs__tab:focus-visible { outline-offset: -2px; }
 /* "What matters" (#133): one quiet entry at the end of the project's tabs, its count as plain text. */
 .views--project { display: flex; align-items: center; gap: 18px; padding-right: var(--space-page); }
 .views--project .views__tabs { flex: 1; min-width: 0; }

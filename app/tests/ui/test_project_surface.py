@@ -408,7 +408,14 @@ class ProjectSurfaceJourney(unittest.TestCase):
         tabs = page.get_by_role("navigation", name="Project views")
         tabs.get_by_role("link", name="Conversation").focus()
         page.keyboard.press("Tab")
-        ring = page.evaluate("""() => {
+        # The first frame counts as much as the settled one: read the ring at once and after transitions.
+        for _ in range(2):
+            ring = self.focus_ring(page)
+            self.assert_ring_inside(ring)
+            page.wait_for_timeout(400)
+
+    def focus_ring(self, page: Page) -> dict | None:
+        return page.evaluate("""() => {
           const tab = document.activeElement;
           if (!tab || !tab.matches('.views .ui-tabs__tab:focus-visible')) return null;
           const style = getComputedStyle(tab);
@@ -418,6 +425,8 @@ class ProjectSurfaceJourney(unittest.TestCase):
           return { style: style.outlineStyle, top: r.top - out, bottom: r.bottom + out, left: r.left - out, right: r.right + out,
             barTop: bar.top, barBottom: bar.bottom, inner: r.left + Math.max(0, -parseFloat(style.outlineOffset)), labelLeft: label ? label.left : null };
         }""")
+
+    def assert_ring_inside(self, ring: dict | None) -> None:
         self.assertIsNotNone(ring, "a view tab has keyboard focus")
         self.assertEqual(ring["style"], "solid")
         self.assertGreaterEqual(ring["top"], ring["barTop"] - 0.5, f"the ring's top edge is inside the strip: {ring}")
