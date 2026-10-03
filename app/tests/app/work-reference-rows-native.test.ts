@@ -48,7 +48,7 @@ describe('selected native reference rows with exact sessions and current members
     work = await createWork('Current native cited work', projectId, { outcome: 'Long own outcome must not escape', criteria: ['Own full criterion'], owner: { kind: 'human', id: writer.id } });
     foreign = await createWork('Foreign title must not escape', foreignId, { owner: { kind: 'human', id: owner.id } });
     decision = await post<Decision>(owner, `/api/v1/projects/${projectId}/decisions`, { title: 'Selected native decision', rationale: 'Long private-to-detail rationale' });
-    result = await post<WorkResult>(owner, `/api/v1/projects/${projectId}/results`, { title: 'Selected native result', finding: 'neutral', evidence: 'Long own evidence', work: [work.id] });
+    result = await post<WorkResult>(owner, `/api/v1/projects/${projectId}/results`, { title: 'Selected native result', finding: 'positive', evidence: 'Long own evidence', work: [work.id] });
   });
 
   test('mixed historical identities isolate opaque markers and preserve exact native rows, owners and versions', async () => {
