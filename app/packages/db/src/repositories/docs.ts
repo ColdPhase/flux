@@ -15,22 +15,35 @@ type Ref = { type: 'message' | 'thought' | 'work' | 'decision' | 'result' | 'doc
 type Window = { limit: number; offset: number };
 type MaterialRow = typeof schema.projectMaterials.$inferSelect;
 type VersionRow = typeof schema.projectMaterialVersions.$inferSelect;
-type NewVersion = { title: string; body: string; state: 'draft' | 'published'; reason: string; authorId: string };
+type NewVersion = { title: string; body: string; state: 'draft' | 'published'; reason: string; author: Actor };
 
 const m = schema.projectMaterials;
 const v = schema.projectMaterialVersions;
 const p = schema.projects;
 const l = schema.projectObjectLinks;
 
+/** Exactly one stored actor (migration 0043): a person, or the agent that wrote under a standing grant (#152). */
+function actor(human: string | null, agent: string | null): Actor {
+  if ((human === null) === (agent === null)) throw new Error('Stored doc actor invariant failed');
+  return human !== null ? { kind: 'human', id: human } : { kind: 'agent', id: agent! };
+}
+const columns = (by: Actor) => ({ human: by.kind === 'human' ? by.id : null, agent: by.kind === 'agent' ? by.id : null });
+
 function toDoc(row: MaterialRow) {
-  return { id: row.id, workspaceId: row.workspaceId, projectId: row.projectId, createdBy: row.createdBy, currentVersion: row.currentVersion, createdAt: row.createdAt, updatedAt: row.updatedAt };
+  return { id: row.id, workspaceId: row.workspaceId, projectId: row.projectId, createdBy: actor(row.createdBy, row.createdByAgentId),
+    currentVersion: row.currentVersion, createdAt: row.createdAt, updatedAt: row.updatedAt };
 }
 
 function toVersion(row: VersionRow) {
   return {
     docId: row.materialId, projectId: row.projectId, version: row.version, title: row.title, body: row.body,
-    state: row.state ?? 'published', reason: row.reason, authorId: row.authorId, createdAt: row.createdAt,
+    state: row.state ?? 'published', reason: row.reason, author: actor(row.authorId, row.authorAgentId), createdAt: row.createdAt,
   };
+}
+
+function versionValues({ author, ...version }: NewVersion) {
+  const by = columns(author);
+  return { ...version, authorId: by.human, authorAgentId: by.agent };
 }
 
 export function docRows(db: DbExecutor) {
@@ -79,15 +92,16 @@ export function docRows(db: DbExecutor) {
       return { items: rows.map(toVersion), total: counted?.total ?? 0 };
     },
 
-    async insert(doc: { id: string; workspaceId: string; projectId: string; createdBy: string }, first: NewVersion) {
-      await db.insert(m).values({ id: doc.id, workspaceId: doc.workspaceId, projectId: doc.projectId, createdBy: doc.createdBy, kind: 'doc' });
-      await db.insert(v).values({ workspaceId: doc.workspaceId, projectId: doc.projectId, materialId: doc.id, version: 1, ...first });
+    async insert(doc: { id: string; workspaceId: string; projectId: string; createdBy: Actor }, first: NewVersion) {
+      const by = columns(doc.createdBy);
+      await db.insert(m).values({ id: doc.id, workspaceId: doc.workspaceId, projectId: doc.projectId, createdBy: by.human, createdByAgentId: by.agent, kind: 'doc' });
+      await db.insert(v).values({ workspaceId: doc.workspaceId, projectId: doc.projectId, materialId: doc.id, version: 1, ...versionValues(first) });
       return (await find(doc.id))!;
     },
 
     async append(id: string, next: NewVersion) {
       const [updated] = await db.update(m).set({ currentVersion: sql`${m.currentVersion} + 1`, updatedAt: new Date() }).where(and(eq(m.id, id), eq(m.kind, 'doc'))).returning();
-      await db.insert(v).values({ workspaceId: updated!.workspaceId, projectId: updated!.projectId, materialId: id, version: updated!.currentVersion, ...next });
+      await db.insert(v).values({ workspaceId: updated!.workspaceId, projectId: updated!.projectId, materialId: id, version: updated!.currentVersion, ...versionValues(next) });
       return (await find(id))!;
     },
 
