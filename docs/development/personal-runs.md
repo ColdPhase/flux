@@ -269,7 +269,7 @@ the caller needs project write access there, as for a message (403 otherwise). T
 continued run (404 otherwise) and the target thought. After that the caller's own
 enablement is checked: `409 PERSONAL_RUN_NOT_ENABLED` or `409 PERSONAL_RUN_PAUSED`.
 Then the provider and connection (`503 PERSONAL_RUN_UNAVAILABLE` with `reason`),
-the workspace agent (`409 PERSONAL_RUN_NO_AGENT`), the agent's project access
+the caller's own agent in this workspace (`409 PERSONAL_RUN_NO_AGENT`), the agent's project access
 (`409 PERSONAL_RUN_NO_PROJECT_ACCESS`), the one run in flight
 (`409 PERSONAL_RUN_IN_FLIGHT`) and the cap (`429 PERSONAL_RUN_CAPPED`). A refused
 invoke writes nothing and reserves nothing.

@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import Fastify from 'fastify';
-import { createDatabase } from '@flux/db';
 import { DomainError, grantProject, liveInvitationUseCases, type LiveMedia } from '@flux/core';
 import type { Doc, LiveSession, Material } from '@flux/contracts';
 import { liveRoutes } from '../../apps/server/src/live/routes.js';
@@ -11,12 +10,8 @@ import { discoverLiveSessions } from '../../apps/server/src/live/discovery.js';
 import { liveSessionStore } from '../../apps/server/src/live/store.js';
 import { liveInvitationStore } from '../../apps/server/src/live/invitations.js';
 import { liveRevocationCoordinator } from '../../apps/server/src/live/revocation.js';
+import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
-
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { db, pool } = createDatabase(connectionString);
-after(() => pool.end());
 
 test('wiki doc is a project-bound live anchor; non-doc, foreign and hidden anchors are refused', async () => {
   const owner = await person('live-doc-owner');

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import { eq } from 'drizzle-orm';
 import { createDatabase, proactiveOutboxRows, schema, sealBackgroundKey } from '@flux/db';
 import { COMPARISON_RESERVATION_STALE_MS, type ComparisonProvider } from '@flux/core';
@@ -12,9 +12,8 @@ import { dispatchProactiveComparison } from '../../apps/worker/src/proactive-com
 import { proactiveReservation } from '../../apps/worker/src/proactive-comparison/reservation-adapter.js';
 import { expectStatus, person, project, workspace } from './support/people.js';
 import { comparisonDispatchFixtureDue } from './support/comparison-dispatch-fixture.js';
+import { db, pool } from './support/db.js';
 
-const { db, pool } = createDatabase(process.env.DATABASE_URL!);
-after(() => pool.end());
 const masterKey = readFileSync('/run/secrets/flux_background_key');
 const now = new Date();
 const old = new Date(now.getTime() - COMPARISON_RESERVATION_STALE_MS - 1_000);
@@ -54,6 +53,7 @@ async function stale(id: string) { await pool.query('UPDATE proactive_comparison
 test('persistent pre-intent recovery is zero cost, post-intent recovery retains uncertainty/history, and fresh rows stay reserved', async () => {
   const f = await fixture(); const before = await f.negative();
   assert.equal((await proactiveReservation(db).reserve(before.candidate)).status, 'reserved'); await stale(before.candidate);
+  // A deliberate second pool: the recovery must work from a fresh process view, not the shared one.
   const restart = createDatabase(process.env.DATABASE_URL!);
   try { assert.deepEqual(await comparisonRecoveryTick(restart.db, now), { notRun: 1, unknown: 0 }); }
   finally { await restart.pool.end(); }

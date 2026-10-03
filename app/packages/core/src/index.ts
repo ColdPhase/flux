@@ -96,6 +96,7 @@ export * from './task-discussions/ports.js';
 export * from './task-discussions/service.js';
 export { derivedUuid, contributionIdentity, messageContribution } from './task-discussions/identity.js';
 export { policyPersonalRunAccess } from './access/personal-run-access.js';
+export * from './github/index.js';
 export * from './agent-connection/execution.js';
 export * from './agent-connection/grants.js';
 export * from './agent-connection/orientation.js';

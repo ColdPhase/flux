@@ -1,5 +1,7 @@
 # Container development
 
+Optional project GitHub App configuration and current integration limits are
+documented in [GitHub integration](github-integration/README.md).
 The optional SFU and restrictive-network TURN/TLS profile are covered in
 [live media operation](live-media.md).
 

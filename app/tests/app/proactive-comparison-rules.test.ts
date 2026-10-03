@@ -1,15 +1,11 @@
 import assert from 'node:assert/strict';
 import { createDecipheriv } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { after, before, describe, test } from 'node:test';
-import { createDatabase } from '@flux/db';
+import { before, describe, test } from 'node:test';
 import type { BackgroundComputeConnection, ProactiveComparisonRule, Workspace, Project } from '@flux/contracts';
+import { pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project as createProject, workspace, type Person } from './support/people.js';
 
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { pool } = createDatabase(connectionString);
-after(() => pool.end());
 const body = (agentId: string) => ({ agentId, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
   dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal',
   maxRunsPerDay: 1, periodBudgetCents: 25, perRunCents: 5 });

@@ -215,7 +215,9 @@ class matching or actual reviewer independence.
 
 Only operations with implemented and verified canonical adapters can be advertised.
 Wiki writes and #154 conversation contributions remain unavailable until their
-real-actor storage/readers and transaction handoff are verified. Changed consent
+real-actor storage/readers and transaction handoff are verified. (2026-10-02: doc
+create/edit and project conversation start/reply now have both; see
+[the agent connection page](../../agent-connection.md#project-wiki-docs-and-conversations).) Changed consent
 states need fresh visual review; the earlier two-action screenshots certify only
 their pinned historical state. Same-client two-tab consent and signed-scope
 substitution regressions remain required after this change.

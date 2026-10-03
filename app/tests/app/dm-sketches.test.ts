@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, before, describe, test } from 'node:test';
+import { before, describe, test } from 'node:test';
 import type { ConversationMessage, Dm, ProjectPerson, PromotedSketch, SearchResponse, Sketch, SketchDetail, SketchPage, SketchPromotionPreview, Workspace } from '@flux/contracts';
-import { createDatabase } from '@flux/db';
 import { authorize, createAgent, createSketchUseCases, type Principal, type SketchUnitOfWork } from '@flux/core';
 import { sketchPorts } from '../../apps/server/src/sketches/adapters.js';
+import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, removeMember, workspace, type Person } from './support/people.js';
 import { StreamClient } from './support/stream.js';
 
@@ -13,10 +13,6 @@ import { StreamClient } from './support/stream.js';
 // workspaces), "Start sketch from these messages" with provenance, leaving and removal on the
 // next request and in the stream, the #107 rule that only the person who left reopens a 1:1, and
 // promotion into a project with an exact audience preview and a copy that never syncs.
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { db, pool } = createDatabase(connectionString);
-after(() => pool.end());
 
 async function openDm(actor: Person, workspaceId: string, others: Person[], title?: string) {
   const response = await actor.browser.request('POST', `/api/v1/workspaces/${workspaceId}/dms`, { body: { participantIds: others.map((o) => o.id), ...(title ? { title } : {}) } });
