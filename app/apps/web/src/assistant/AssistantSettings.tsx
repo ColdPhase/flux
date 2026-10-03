@@ -97,14 +97,17 @@ function AgentPicker({ workspace, agents, value, onChange, onAgent, name, disabl
 const providerName = (status: PersonalAssistantStatus) =>
   status.disclosure.provider ? (status.disclosure.provider === 'openai_compatible' ? 'your own endpoint' : AI_PROVIDERS[status.disclosure.provider].label) : 'your connection’s AI provider';
 
-function Disclosure({ status, perRun, daily, timeZone, payer: chosenPayer }: {
+function Disclosure({ status, perRun, daily, timeZone, payer: chosenPayer, connection }: {
   status: PersonalAssistantStatus; perRun: number; daily: number; timeZone: string; payer?: { organization: string; workspace: string } | null;
+  /** The chosen connection, named in full when the person has several. */
+  connection?: BackgroundComputeConnection | null;
 }) {
   const { disclosure } = status;
   const payer = chosenPayer ?? status.enablement?.consent.payer;
   const price = disclosure.price;
   return (
     <ul className="aset__facts">
+      {connection ? <li><b>Connection</b><span>{connection.name} · key ending {connection.keyLastFour}</span></li> : null}
       <li><b>Provider</b><span>{disclosure.provider && disclosure.model ? aiConnectionLabel(disclosure.provider, disclosure.model) : 'The provider and model of your own AI connection'}. Your request is sent from the Flux server, never from your browser.</span></li>
       <li><b>Who pays</b><span>{payer ? `${payer.organization} · ${payer.workspace}, through your own API key.` : 'The organization of your own API key. Never another person or the workspace.'}</span></li>
       <li><b>What leaves Flux</b><span>Excerpts from the one project conversation you ask in: its latest messages, its open work and a map thought you select. Never your direct messages, private notes, private maps or other projects.</span></li>
@@ -127,10 +130,15 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
   // F-020 PROV-1: with more than one of the owner's own connections, they choose which one the
   // assistant uses; with one, that one is used. Never another person's.
   const [owned, setOwned] = useState<BackgroundComputeConnection[]>([]);
+  const [ownedState, setOwnedState] = useState<'loading' | 'loaded' | 'failed'>('loading');
   const [connectionId, setConnectionId] = useState('');
+  // A consent given while one connection was shown never carries over to another.
+  const choose = (id: string) => { setConnectionId(id); setConsent(false); };
   useEffect(() => {
     const controller = new AbortController();
-    listBackgroundConnections(controller.signal).then((items) => { setOwned(items); setConnectionId(items[0]?.id ?? ''); }).catch(() => setOwned([]));
+    listBackgroundConnections(controller.signal)
+      .then((items) => { setOwned(items); setConnectionId(items[0]?.id ?? ''); setConsent(false); setOwnedState('loaded'); })
+      .catch(() => { if (!controller.signal.aborted) { setOwned([]); setOwnedState('failed'); } });
     return () => controller.abort();
   }, []);
   // The disclosure and the consent describe exactly the connection being enabled: its provider, model,
@@ -141,7 +149,9 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
     maxRunMicros: selected.price ? maxRequestMicros(selected.price, PERSONAL_RUN_LIMITS.maxInputTokens, PERSONAL_RUN_LIMITS.maxOutputTokens) : null } } : status;
   const payer = selected ? { organization: selected.payerOrganization, workspace: selected.providerWorkspace } : null;
   const timeZone = browserTimeZone();
-  const usable = status.setup.provider === 'on' && status.setup.connection === 'active';
+  // Turning it on waits for the list of the owner's connections and names the chosen one; with none
+  // listed, the server's own connection (shown by the status) is the only one there is.
+  const usable = status.setup.provider === 'on' && status.setup.connection === 'active' && ownedState === 'loaded' && (!owned.length || !!selected);
   const picked = Object.entries(chosen).filter(([, agentId]) => agentId);
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -149,7 +159,7 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
     setBusy(true); setError('');
     try {
       let next = await enableAssistant({ consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId: picked[0]![1], perRunCents: perRun, dailyCapCents: daily, timeZone,
-        ...(connectionId ? { connectionId } : {}) });
+        ...(selected ? { connectionId: selected.id } : {}) });
       for (const [, agentId] of picked.slice(1)) next = await selectAssistantAgent(agentId);
       onEnabled(next);
     } catch (cause) {
@@ -168,11 +178,11 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
       </section>
       <form className="nset__sec" aria-labelledby="aset-consent" onSubmit={(event) => void submit(event)}>
         <h3 id="aset-consent">Before you turn it on</h3>
-        <Disclosure status={shown} perRun={perRun} daily={daily} timeZone={timeZone} payer={payer} />
+        <Disclosure status={shown} perRun={perRun} daily={daily} timeZone={timeZone} payer={payer} connection={owned.length > 1 ? selected : null} />
         <fieldset className="aset__fields" disabled={!usable || busy}>
           <legend className="ui-vh">Limits and assistant</legend>
-          {owned.length > 1 ? <label className="aset__field">AI connection
-            <select aria-label="AI connection" value={connectionId} onChange={(event) => setConnectionId(event.target.value)}>
+          {owned.length > 1 ? <label className="aset__field aset__field--connection">AI connection
+            <select aria-label="AI connection" value={connectionId} onChange={(event) => choose(event.target.value)}>
               {owned.map((item) => <option key={item.id} value={item.id}>{item.name} · {aiConnectionLabel(item.provider, item.model)}</option>)}
             </select>
           </label> : null}
@@ -196,7 +206,10 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
         {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
         <div className="aset__actions">
           <Button type="submit" variant="primary" busy={busy} disabled={!usable || !consent || !picked.length}>Turn on my assistant</Button>
-          {!usable ? <span className="nset__note">Not available on this server yet.</span> : null}
+          {usable ? null
+            : ownedState === 'failed' ? <span className="nset__note" role="alert">Your AI connections could not be loaded. Reload the page to try again.</span>
+              : ownedState === 'loading' ? <span className="nset__note">Loading your AI connections…</span>
+                : <span className="nset__note">Not available on this server yet.</span>}
         </div>
       </form>
     </>
