@@ -4,6 +4,7 @@ import { Button, Input } from '../ui';
 import { createProject, createWorkspace } from './conversation-api';
 import { useShellData } from './data';
 import { ApiError } from '../api/client';
+import { useIntentKeys } from '../api/intent-keys';
 
 export function ProjectSetup() {
   const { workspace } = useShellData();
@@ -14,13 +15,17 @@ export function ProjectSetup() {
   const [error, setError] = useState('');
   const navigate = useNavigate();
   const revalidator = useRevalidator();
+  const intents = useIntentKeys();
   async function submit(event: FormEvent) {
     event.preventDefault(); if (!projectName.trim() || (!workspace && !createdSpace && !spaceName.trim()) || busy) return;
     setBusy(true); setError('');
     try {
-      const space = workspace ?? createdSpace ?? await createWorkspace(spaceName.trim());
-      if (!workspace && !createdSpace) setCreatedSpace(space);
-      const project = await createProject(space.id, projectName.trim());
+      const spaceIntent = `workspace:${spaceName.trim()}`;
+      const space = workspace ?? createdSpace ?? await createWorkspace(spaceName.trim(), intents.keyFor(spaceIntent));
+      if (!workspace && !createdSpace) { setCreatedSpace(space); intents.settle(spaceIntent); }
+      const projectIntent = `project:${space.id}:${projectName.trim()}`;
+      const project = await createProject(space.id, projectName.trim(), intents.keyFor(projectIntent));
+      intents.settle(projectIntent);
       revalidator.revalidate(); navigate(`/projects/${project.id}?new=1`);
     } catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Could not create this project. Try again.'); }
     finally { setBusy(false); }

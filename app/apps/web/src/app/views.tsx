@@ -5,6 +5,7 @@ import { Button, EmptyState, Icon, IconButton, MEDIA, duration, sendsOnEnter, us
 import { createPrivateDraft, listDrafts } from './conversation-api';
 import { captureExists, clearMoveTarget, moveKey, moveTarget, noteTitle, removeCapture, useCaptures } from './captures';
 import { ensurePersonalSpace } from './personalSpace';
+import { useIntentKeys } from '../api/intent-keys';
 import { useShellData } from './data';
 import { useDraft, useReadingPosition } from './drafts';
 import { useShellActions } from './shellContext';
@@ -107,6 +108,7 @@ export function ConversationView() {
     getAssistantStatus(controller.signal).then((status) => setNoAssistant(status.state === 'not_enabled'), () => undefined);
     return () => controller.abort();
   }, [me.user.id]);
+  const intents = useIntentKeys();
   // With changes to return to, the "nothing here yet" empty state would contradict them.
   const [returning, setReturning] = useState(false);
   useEffect(() => {
@@ -170,8 +172,11 @@ export function ConversationView() {
       const space = await spaceForNotes(signal);
       if (signal.aborted) return;
       if (!space) { setSaveState('Choose a space for this private draft.'); return; }
-      const created = await createPrivateDraft(space, noteTitle(body), body, undefined, signal);
+      // One stable key per text and space (#178): a retry after a lost answer returns the same draft.
+      const intent = `draft:${space}:${body}`;
+      const created = await createPrivateDraft(space, noteTitle(body), body, intents.keyFor(intent), signal);
       if (signal.aborted) return;
+      intents.settle(intent);
       setServerDrafts((current) => [created, ...current.filter((item) => item.id !== created.id)]);
       draft.clear();
       setSaveState('Saved privately to your space');

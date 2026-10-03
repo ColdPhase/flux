@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, before, describe, test } from 'node:test';
-import { createDatabase } from '@flux/db';
+import { before, describe, test } from 'node:test';
 import type { Conversation, Decision, Doc, Project, ReturnPlace, ReturnPoint, ReturnSummary, Workspace, WorkItem, WorkResult } from '@flux/contracts';
+import { pool } from './support/db.js';
 import type { ClientResponse } from './support/http.js';
 import { addMember, expectStatus, grant, person, project as createProject, workspace, type Person } from './support/people.js';
 
@@ -10,11 +10,6 @@ import { addMember, expectStatus, grant, person, project as createProject, works
 // place, a summary built only from the reader's own event audience after the point (plus the
 // final access check), human-language grouping with source links, one next step with its
 // reason, and nothing about places the reader cannot currently see.
-
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { pool } = createDatabase(connectionString);
-after(() => pool.end());
 
 const post = (someone: Person, path: string, body: unknown, headers?: Record<string, string>) => someone.browser.request('POST', path, { body, headers });
 const patch = (someone: Person, path: string, body: unknown, headers?: Record<string, string>) => someone.browser.request('PATCH', path, { body, headers });
@@ -166,6 +161,9 @@ describe('return view: since you left', () => {
     assert.deepEqual(back.nextStep && [back.nextStep.text, back.nextStep.reason, back.nextStep.item],
       ['Decide on the proposed rule', 'Ari proposed “Warm light after 22:00”. You can accept it.', `decision:${proposal.id}`]);
     assert.equal((await summary(ari, place)).nextStep, null, 'the proposer is not asked');
+    // Decided and seen, so it does not stay on Nia's Home for the tests that follow.
+    json(await post(nia, `/api/v1/decisions/${proposal.id}/accept`, {}, { 'if-match': '"1"' }), 200);
+    await view(nia, place);
   });
 
   test('doc changes (#112) are one item in human language that opens what changed', async () => {

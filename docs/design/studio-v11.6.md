@@ -162,6 +162,9 @@ Accepted 2026-10-03, with amendments, by independent peer review of the proposal
 
 ## Integration and proof
 
+The measured tokens, components and the few deliberate production differences are in
+[the 11.6 design system](studio-v11.6-design-system.md) (2026-10-02).
+
 #136 owns the full appearance/integrated UI; #151 its adaptive layout. No parallel
 shell writer. Carry all five work tabs, three-agent identity, live/helper panels
 and typing affordances into ADAPT-1–ADAPT-5. Large screens can show selected work

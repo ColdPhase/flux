@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
-import { createDatabase } from '@flux/db';
 import {
   DEFAULT_PREFERENCES,
   NOTIFICATION_EMAIL_JOB,
@@ -20,17 +19,14 @@ import { emailUnitOfWork, handleEmailJob, smtpNotificationMailer } from '../../a
 import { PgBoss } from 'pg-boss';
 import { deliverPush } from '../../apps/worker/src/push/index.js';
 import { loadPushSenderConfig } from '@flux/core';
-import { Browser, mailpitUrl, publicOrigin, register, signIn, uniqueEmail } from './support/http.js';
-import { addMember, expectStatus, password, project, removeMember, workspace, type Person } from './support/people.js';
-import { recordedPushes, subscriptionBody, testSubscription, waitFor } from './support/push.js';
+import { connectionString, db, pool } from './support/db.js';
+import { Browser, mailpitUrl, publicOrigin, register, signIn } from './support/http.js';
+import { addMember, expectStatus, password, person, project, removeMember, workspace, type Person } from './support/people.js';
+import { recordedPushes, subscribe, waitFor } from './support/push.js';
 
 // Notifications from committed events, preferences, delivery addresses and email (issue #116)
 // against the running API and worker containers, Mailpit and the push mock. Delivery rechecks
 // run in-process on real rows where timing matters.
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { pool, db } = createDatabase(connectionString);
-after(async () => { await pool.end(); });
 
 const mailConfig = loadNotificationMailConfig();
 if (mailConfig.status !== 'available') throw new Error('The test stack must configure SMTP');
@@ -39,13 +35,6 @@ const smtp = smtpNotificationMailer(mailConfig);
 after(() => smtp.close());
 
 /** A person with a real display name, which mentions match against. */
-async function person(name: string): Promise<Person> {
-  const email = uniqueEmail(name.toLowerCase().replace(/[^a-z]+/g, '.'));
-  const { browser } = await register(email, password, name);
-  const me = expectStatus(await browser.request('GET', '/api/v1/me'), 200) as { user: { id: string } };
-  return { id: me.user.id, email, browser };
-}
-
 async function named(name: string, email: string): Promise<Person> {
   const { browser } = await register(email, password, name);
   const me = expectStatus(await browser.request('GET', '/api/v1/me'), 200) as { user: { id: string } };
@@ -580,7 +569,7 @@ async function oneClick(url: URL) {
 }
 
 describe('review fixes: exact unsubscribe, bounded verification, quiet hours at delivery', () => {
-  const boss = new PgBoss({ connectionString: connectionString!, migrate: false });
+  const boss = new PgBoss({ connectionString, migrate: false });
   before(() => boss.start());
   after(() => boss.stop());
 
@@ -719,10 +708,3 @@ describe('review fixes: exact unsubscribe, bounded verification, quiet hours at 
     assert.equal((await recordedPushes(subscription.mockId)).length, 1);
   });
 });
-
-async function subscribe(browser: Browser) {
-  const subscription = testSubscription('push');
-  const response = await browser.request('POST', '/api/v1/push/subscriptions', { body: subscriptionBody(subscription, 'Test phone') });
-  assert.equal(response.status, 201, response.text);
-  return { subscription, id: (response.json as { id: string }).id };
-}
