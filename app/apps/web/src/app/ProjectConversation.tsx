@@ -171,7 +171,13 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
     void getProject(project.id).then(() => setAccessLost(false)).catch(() => { /* denial keeps previous content hidden */ });
   }, [project.id, revalidator]);
   useEffect(() => {
-    if (referenceWork.state.phase === 'unavailable') hideIfDenied(referenceWork.state.error);
+    if (referenceWork.state.phase !== 'unavailable') return;
+    const cause = referenceWork.state.error;
+    let current = true;
+    // A settled current read may retire the view through router authorization.
+    // Do not carry a queued denial into a newer observation or unmounted owner.
+    queueMicrotask(() => { if (current) hideIfDenied(cause); });
+    return () => { current = false; };
   }, [referenceWork.state, hideIfDenied]);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => {
