@@ -64,7 +64,9 @@ fixture() { # checkout mode [state-json]
 sha256() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
 copy_tree() { # target
   mkdir -p "$1"
-  (cd "$here" && git ls-files -z --cached --others --exclude-standard | xargs -0 tar -cf - 2>/dev/null) | (cd "$1" && tar -xf -)
+  # Read the complete NUL-delimited inventory in one archive. xargs may split a large
+  # checkout into multiple tar invocations; an extractor then stops after the first archive.
+  (cd "$here" && git ls-files -z --cached --others --exclude-standard | tar --null -T - -cf -) | (cd "$1" && tar -xf -)
 }
 schema_of_tree() { ls "$(migration_dir "$1")" | sed -n 's/^\([0-9]\{4\}\)_.*\.sql$/\1/p' | sort | tail -n 1 | sed 's/^0*//'; }
 migrations_of_ref() { git -C "$here" ls-tree --name-only "$1" packages/db/migrations/ app/packages/db/migrations/ | sed -n 's#^.*/\([0-9]\{4\}_.*\.sql\)$#\1#p' | sort; }
