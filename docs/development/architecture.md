@@ -119,7 +119,6 @@ recorded in the allowlist and tracked by [#46](https://github.com/ColdPhase/flux
 | --- | --- | --- |
 | `app/packages/core/src/access/policy.ts` | `drizzle-orm`, `@flux/db` | Split pure policy decisions from the SQL grant lookup and visibility filter, which move to a `@flux/db` adapter behind a core port. |
 | `app/packages/core/src/access/domain.ts` | `drizzle-orm`, `@flux/db` | Split the workspace, project/grant, agent and draft use cases; move queries and row mapping to `@flux/db` repositories. Keep the current locks and transactions. |
-| `app/packages/core/src/index.ts` | `drizzle-orm`, `pg-boss`, `@flux/db` | Move the integration-fixture sample use case behind a transaction/outbox port or out of core; leave `index.ts` as exports only. |
 | `app/packages/core/src/types.ts` | `@flux/db` | Replace the Drizzle-derived `Database`/`Executor` types with a core-owned transaction port. |
 | `app/packages/core/src/events.ts` | `drizzle-orm`, `@flux/db` | Merged in #47 before this rule. Move event recording to a `@flux/db` repository behind an `EventRepository` port. The per-recipient audience reads already sit behind `StreamAudienceRepository` ([#80](https://github.com/ColdPhase/flux/issues/80)). |
 | `app/packages/core/package.json` | `@flux/db`, `drizzle-orm`, `pg-boss` | Remove each dependency when no core file uses it. |
@@ -130,8 +129,8 @@ accepted for now; they must not import `drizzle-orm` or `@flux/db` themselves. T
 refactor happens in small PRs after the active feature branches that touch these
 files have merged, with the existing access, revocation and transaction tests
 locking the behavior. Other structural hotspots (the multi-capability
-`app/apps/server/src/access/routes.ts`, fixture wiring in `app/apps/server/src/index.ts`,
-the growing `app/packages/db/src/schema.ts`) follow the same plan.
+`app/apps/server/src/access/routes.ts`, the growing `app/packages/db/src/schema.ts`) follow
+the same plan.
 
 Resolved outside the allowlist: identity no longer queries session rows itself. The
 session list/revoke queries live in `app/packages/db/src/repositories/sessions.ts` behind
@@ -159,3 +158,10 @@ behind its `DraftResultRepository` port (`app/packages/db/src/repositories/draft
 and the job is sent through the shared core `JobQueue` port, whose pg-boss adapter
 (`pgBossQueue` in `app/apps/server/src/push/adapters.ts`) enqueues in the caller's transaction
 ([#87](https://github.com/ColdPhase/flux/issues/87)).
+
+Resolved from the allowlist: `app/packages/core/src/index.ts` only exports. The integration-fixture
+sample command lives in `app/apps/server/src/fixture/` over the `@flux/db` sample repository, with
+typed errors, and exists only when `FLUX_FIXTURE_TOKEN` is set (with failure injection, so do the
+test-only stream and search routes). The API's composition root is `app/apps/server/src/app.ts`
+(`buildApp(config)` from `config.ts`, read once); `index.ts` only builds and listens, and the health
+check is `health/routes.ts` ([#88](https://github.com/ColdPhase/flux/issues/88)).
