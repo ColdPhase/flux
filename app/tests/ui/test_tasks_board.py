@@ -191,6 +191,9 @@ class TasksBoardJourney(unittest.TestCase):
             for title in titles:
                 expect(self.card(column, title)).to_be_visible()
         expect(open_.locator(".tb-col__n")).to_have_text(re.compile(r"^4"))
+        # Done has no add button, yet its header rule and first card line up with the other columns.
+        rules = [column.locator(".tb-col__head").evaluate("(el) => Math.round(el.getBoundingClientRect().bottom)") for column in (open_, doing, done)]
+        self.assertEqual(len(set(rules)), 1, f"column headers end at one height: {rules}")
         # Blocked work leads its column, says so in words and names what it waits for.
         expect(doing.locator(".tb-col__head")).to_contain_text("1 blocked")
         expect(doing.locator(".tb-card").first).to_contain_text(SOLDER)
@@ -261,6 +264,11 @@ class TasksBoardJourney(unittest.TestCase):
         self.assertEqual(head.evaluate("(el) => [getComputedStyle(el).backgroundColor, getComputedStyle(el.querySelector('h2')).color, getComputedStyle(el.querySelector('.tb-col__n')).color]"), neutral,
                          "the header, title and count stay neutral")
         self.assertEqual(doing.evaluate("(el) => getComputedStyle(el).backgroundColor"), "rgba(0, 0, 0, 0)", "the column itself is not highlighted")
+        # The card under the pointer is not lit as if it were the target: only its card list is.
+        under = doing.locator(".tb-card:hover")
+        if under.count():
+            self.assertEqual(under.first.evaluate("(el) => getComputedStyle(el).borderColor"),
+                             done.locator(".tb-card").first.evaluate("(el) => getComputedStyle(el).borderColor"), "no card hover while dragging")
         shot(page, "tasks-board-1440-drag")
         # The header is still a drop target: over it, the same card list stays lit.
         self.hover(page, head, dy=10)
