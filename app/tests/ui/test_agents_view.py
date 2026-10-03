@@ -244,7 +244,9 @@ class AgentsViewJourney(unittest.TestCase):
         hubert = self.page("hubert")
         grants = self.api(hubert, "GET", f"/api/v1/projects/{self.ids['project']}/grants", status=200)
         grant = next(item for item in grants if item["principal"]["kind"] == "human" and item["principal"]["id"] == MAREK["id"])
-        self.api(hubert, "DELETE", f"/api/v1/projects/{self.ids['project']}/grants/{grant['id']}", status=204)
+        # A DELETE has no body, so it carries no JSON content type.
+        revoked = hubert.request.fetch(f"{ORIGIN}/api/v1/projects/{self.ids['project']}/grants/{grant['id']}", method="DELETE", headers={"origin": ORIGIN})
+        self.assertEqual(revoked.status, 204, revoked.text())
         try:
             # No event reaches someone who lost access; returning to the tab refetches.
             marek.evaluate("() => window.dispatchEvent(new Event('focus'))")
