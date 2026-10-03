@@ -3,19 +3,16 @@ import { projectPeoplePath, workspaceSketchesPath, type DocSummary, type Project
 import { request } from '../api/client';
 import './project.css';
 import { getProject } from '../app/conversation-api';
-import { loadProjectWork, type ProjectWork } from '../work/api';
 import { listProjectDocs } from '../docs/api';
 
 /**
- * What every view of one project shares (#117): the project, its audience, its work,
- * decisions and results (the current-state line and the objects under messages) and the
+ * What every view of one project shares: the project, its audience, and the
  * project's sketches and docs (the tab counts and Details). Loaded once by the parent route, so switching
  * between Conversation · Tasks · Map · Docs never re-fetches it; `revalidate()` refreshes it.
  */
 export interface ProjectShell {
   project: Project;
   people: ProjectPerson[] | null;
-  work: ProjectWork;
   sketches: { items: Sketch[]; total: number } | null;
   /** The project's docs (#112), newest change first; null when they could not be read. */
   docs: DocSummary[] | null;
@@ -30,13 +27,12 @@ export const createProjectSketch = (workspaceId: string, projectId: string, titl
 export async function projectShellLoader({ params, request: req }: LoaderFunctionArgs): Promise<ProjectShell> {
   const project = await getProject(params.projectId!, req.signal);
   // The audience, sketches and docs are context: without them the project still opens.
-  const [people, work, sketches, docs] = await Promise.all([
+  const [people, sketches, docs] = await Promise.all([
     listProjectPeople(project.id, req.signal).catch(() => null),
-    loadProjectWork(project.id, req.signal),
     listProjectSketches(project.workspaceId, project.id, 20, 0, req.signal).then((page) => ({ items: page.items, total: page.total })).catch(() => null),
     listProjectDocs(project.id, req.signal).then((items) => [...items].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))).catch(() => null),
   ]);
-  return { project, people, work, sketches, docs };
+  return { project, people, sketches, docs };
 }
 
 export function useProjectShell(): ProjectShell | undefined {

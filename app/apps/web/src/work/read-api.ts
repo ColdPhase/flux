@@ -1,9 +1,9 @@
 import {
   projectWorkAssociationsPath, projectWorkDetailPath, projectWorkRelationsPath,
-  projectWorkSummaryPath, projectWorkViewPath,
+  projectWorkSummaryPath, projectWorkViewPath, projectWorkReferenceRowsPath,
   type ProjectWorkSummary, type ProjectWorkView, type ProjectWorkViewQuery,
   type WorkAssociationQuery, type WorkAssociations, type WorkDetailProjection,
-  type WorkObjectType, type WorkRelationQuery, type WorkRelations,
+  type WorkObjectType, type WorkRelationQuery, type WorkRelations, type WorkReferenceRows,
 } from '@flux/contracts';
 import { request } from '../api/client.js';
 
@@ -57,6 +57,13 @@ export function workRelationReadUrl(projectId: string, query: WorkRelationQuery)
     limit: query.limit ?? 50, cursor: query.cursor,
   });
 }
+
+export function workReferenceReadUrl(projectId: string, objects: string) {
+  return withQuery(projectWorkReferenceRowsPath(encodeURIComponent(projectId)), { objects: boundedSet(objects, 'Objects') });
+}
+
+export const getWorkReferenceRows = (projectId: string, objects: string, signal?: AbortSignal) =>
+  request<WorkReferenceRows>(workReferenceReadUrl(projectId, objects), { signal });
 
 export const getProjectWorkSummary = (projectId: string, signal?: AbortSignal) =>
   request<ProjectWorkSummary>(projectWorkSummaryPath(encodeURIComponent(projectId)), { signal });

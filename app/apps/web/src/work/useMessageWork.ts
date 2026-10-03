@@ -59,15 +59,15 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
     const pane = ref.current;
     if (!pane || !ready && !readerMoved.current) return;
     const top = pane.getBoundingClientRect().top;
-    const message = [...pane.querySelectorAll<HTMLElement>('[data-message-id]')].find((row) => row.getBoundingClientRect().bottom > top);
-    if (message) anchor.current = { id: message.dataset.messageId!, offset: message.getBoundingClientRect().top - top, top: pane.scrollTop };
+    const message = [...pane.querySelectorAll<HTMLElement>('[data-message-id],[data-answer-run]')].find((row) => row.getBoundingClientRect().bottom > top);
+    if (message) anchor.current = { id: message.id, offset: message.getBoundingClientRect().top - top, top: pane.scrollTop };
   }, [ref, ready]);
   useLayoutEffect(() => {
     const pane = ref.current;
     if (!pane || pane !== node) return;
     const stored = anchor.current;
     if (stored && (ready || !readerMoved.current)) {
-      const message = [...pane.querySelectorAll<HTMLElement>('[data-message-id]')].find((row) => row.dataset.messageId === stored.id);
+      const message = [...pane.querySelectorAll<HTMLElement>('[data-message-id],[data-answer-run]')].find((row) => row.id === stored.id);
       const target = message ? pane.scrollTop + message.getBoundingClientRect().top - pane.getBoundingClientRect().top - stored.offset : stored.top;
       // Even a no-op scrollTop assignment interrupts native smooth key/touch scrolling.
       if (Math.abs(target - pane.scrollTop) > 0.5) pane.scrollTop = target;
@@ -95,7 +95,7 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
 }
 
 /** One batch for the actual message window; object and matched-edge pages stay independent. */
-export function useMessageWork(accountId: string, projectId: string, conversationId: string | null, messageIds: string[], ref: RefObject<HTMLElement | null>, node: HTMLElement | null) {
+export function useMessageWork(accountId: string, projectId: string, conversationId: string | null, messageIds: string[], ref: RefObject<HTMLElement | null>, node: HTMLElement | null, referenceRevision = '') {
   const selected = useMessageBatch(ref, messageIds, node).slice().sort().join(',');
   const base = `flux:message-work:${JSON.stringify([accountId, projectId, conversationId, selected])}`;
   const [stored, setPosition] = useState(() => ({ base, ...remembered(base) }));
@@ -109,7 +109,7 @@ export function useMessageWork(accountId: string, projectId: string, conversatio
   const state = useWorkRead(scope, load, revision, revalidator.state === 'idle');
   const page = state.phase === 'ready' || state.phase === 'refreshing' ? state.value : null;
   const previews = useMemo(() => page ? messageWorkPreviews(page) : null, [page]);
-  const saveReading = useMessageReadingPosition(ref, node, page !== null, page?.observedAt);
+  const saveReading = useMessageReadingPosition(ref, node, page !== null, `${page?.observedAt ?? ''}:${referenceRevision}`);
   useEffect(() => {
     const value = { cursor: position.cursor, edgeCursor: position.edgeCursor };
     positions.set(base, value);

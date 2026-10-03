@@ -4,7 +4,7 @@ import type { ProjectWorkSummary, ProjectWorkView } from '@flux/contracts';
 import { ApiError } from '../../apps/web/src/api/client.js';
 import {
   getProjectWorkSummary, getProjectWorkView, getWorkAssociations, getWorkDetail, getWorkRelations,
-  workAssociationReadUrl, workRelationReadUrl, workViewReadUrl,
+  workAssociationReadUrl, workRelationReadUrl, workViewReadUrl, getWorkReferenceRows, workReferenceReadUrl,
 } from '../../apps/web/src/work/read-api.js';
 import { ProjectWorkFacetStore, readScopeKey, readStateForScope, ScopedReadStore, type ReadScope } from '../../apps/web/src/work/read-state.js';
 import { summaryEmptyCaption, summaryStateParts } from '../../apps/web/src/work/state-summary.js';
@@ -253,9 +253,12 @@ test('canonical query builders preserve typed selectors, literal search, indepen
   assert.equal(relations.searchParams.get('cursor'), 'links');
   assert.throws(() => workAssociationReadUrl('project', { messageIds: Array(101).fill('same').join(',') }), /1–100/);
   assert.throws(() => workRelationReadUrl('project', { objects: '' }), /1–100/);
+  const references = new URL(workReferenceReadUrl('project', 'work:b,work:a,work:b'), 'http://local');
+  assert.deepEqual(Object.fromEntries(references.searchParams), { objects: 'work:a,work:b' });
+  assert.throws(() => workReferenceReadUrl('project', Array(101).fill('work:a').join(',')), /1–100/);
 });
 
-test('five client adapters make one cookie-bearing GET each and preserve failures without collection fallbacks', async (context) => {
+test('six client adapters make one cookie-bearing GET each and preserve failures without collection fallbacks', async (context) => {
   const calls: { path: string; init: RequestInit }[] = [];
   let fail = false;
   const fetchMock = context.mock.method(globalThis, 'fetch', async (input: string | URL | Request, init: RequestInit = {}) => {
@@ -269,8 +272,9 @@ test('five client adapters make one cookie-bearing GET each and preserve failure
     () => getWorkAssociations('project', { messageIds: 'message' }, signal),
     () => getWorkRelations('project', { objects: 'work:object' }, signal),
     () => getWorkDetail('project', 'work', 'object', signal),
+    () => getWorkReferenceRows('project', 'work:object', signal),
   ]) assert.deepEqual(await read(), { observed: 'native response' });
-  assert.equal(calls.length, 5);
+  assert.equal(calls.length, 6);
   for (const call of calls) {
     assert.equal(call.init.method, 'GET'); assert.equal(call.init.credentials, 'same-origin');
     assert.equal(call.init.signal, signal); assert.equal(call.init.body, undefined);
@@ -278,7 +282,9 @@ test('five client adapters make one cookie-bearing GET each and preserve failure
   }
   fail = true;
   await assert.rejects(getProjectWorkView('project'), (error: unknown) => error instanceof ApiError && error.status === 503 && error.code === 'WORK_READ_UNAVAILABLE');
-  assert.equal(calls.length, 6);
+  assert.equal(calls.length, 7);
+  await assert.rejects(getWorkReferenceRows('project', 'work:object'), (error: unknown) => error instanceof ApiError && error.status === 503);
+  assert.equal(calls.length, 8);
   fetchMock.mock.restore();
 });
 
