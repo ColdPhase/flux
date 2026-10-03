@@ -7,33 +7,11 @@ Founder decision, 2026-09-27: **the application and its dependencies run in
 Docker/Compose**. Do not install PostgreSQL, Redis, queues, or application
 toolchains as services on a contributor's host.
 
-## Contract for the selected application stack
-
-The architecture and first application setup task must supply:
-
-- Reviewed Dockerfiles and a Compose configuration for application services,
-  development tooling, and any database/queue actually selected.
-- A documented clean start, dependency installation, migration, fixture/seed,
-  lint/type/test, build, stop, backup, and restore workflow using containers.
-- Locked dependencies, reviewed base images, health checks, and deterministic
-  readiness. Starting a container is not proof that its service is ready.
-- Named persistent volumes, example configuration without real credentials,
-  and documented ownership of data. Never delete volumes or reset a shared
-  database to fix a test without explicit authorization for those data.
-- Separate Compose project names per worker/task, isolated data and test accounts,
-  and nonconflicting published ports. Avoid fixed container names that collide.
-- The same container commands in GitHub Actions; no CI-only hidden host database
-  setup or claim that a host-only test proves the supported installation works.
-- Release builds from the accepted source revision, appropriate container image
-  or other agreed deliverables, and installation/update/restore verification.
-
-The [accepted O-002 architecture](../product/application-architecture-proposal.md)
-selects PostgreSQL. The first application foundation in `docker/compose.source.yaml`
-starts PostgreSQL, a one-shot migration, the API and a separate worker with named
-`pgdata` and `files` volumes. See [application foundation](application-foundation.md)
-for the current clean-start, validation and backup/restore commands. This is an
-application skeleton; #29's identity/session and project policy slices are now
-merged, while collaboration and release verification remain separate tasks.
+The [accepted O-002 architecture](../product/application-architecture.md) selects
+PostgreSQL. `docker/compose.source.yaml` starts PostgreSQL, a one-shot migration, the
+API and a separate worker with named `pgdata` and `files` volumes. The
+[application foundation guide](application-foundation.md) has the clean-start,
+validation and backup/restore commands and what the application includes today.
 
 `docker/compose.yaml` and `docker/.env.example` are the **operator** files for a published
 release (#76 phase 1): pull-only, with `api`, `worker` and `migrate` on the one marker image
@@ -69,7 +47,8 @@ One issue has one assignee and its branch has one writer; see the
 [agent workflow](../agents/workflow.md#4-implement-and-hand-off).
 
 Run concurrent application checks with a distinct Compose project name,
-published port values, volumes and test accounts per task. For example, use
+published port values, volumes and test accounts per task. Never delete volumes or
+reset a shared database to fix a test without explicit authorization for those data. For example, use
 `-p flux54-hubert` with a task-specific `FLUX_TEST_PORT` instead of reusing the
 default test project or another worker's persistent volumes. The
 [application foundation guide](application-foundation.md) has the current

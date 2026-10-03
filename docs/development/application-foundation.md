@@ -1,10 +1,20 @@
 # Application foundation (issue #28)
 
-This is the first technical slice of the Flux application. It starts a built browser
-shell, a versioned API, a separate worker, PostgreSQL 18, a reviewed SQL migration,
-and a durable pg-boss queue. Human login and sessions were added in #29's first
-slice; project access and the messenger follow in later tasks. The integration
-command below is a fixture, not a collaboration UI.
+This guide covers starting, configuring, checking and backing up the application.
+Issue #28 created its first technical slice: a built browser shell, a versioned API, a
+separate worker, PostgreSQL 18, reviewed SQL migrations and a durable pg-boss queue.
+
+## Current state
+
+Flux is pre-release: no version has been published and there is no supported upgrade
+path yet. On this stack the application now provides accounts and sessions, workspace
+and project access, project conversations with tasks, decisions, results, map and wiki,
+direct messages, search, the inbox with Web Push, connected MCP agents and an optional
+in-app assistant, optional live media, and `./flux` operations. The
+[README](../../README.md#project-status) summarizes it for new contributors; the
+[current milestone](https://github.com/ColdPhase/flux/milestone/2) tracks the remaining
+release work. The [integration fixture](#integration-fixture) below is a technical
+check, not part of the product.
 
 ## One-command start: `./flux` (issue #72)
 
@@ -175,6 +185,7 @@ it contains only test data; never do that to a work project.
 
 ```sh
 ./scripts/check_application.sh
+./scripts/check_ui.sh
 ./scripts/check_runtime.sh
 docker compose --env-file docker/.env -p flux28 -f docker/compose.source.yaml down
 ```
