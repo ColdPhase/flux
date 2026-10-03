@@ -10,7 +10,8 @@ or performance result is claimed. [#228](https://github.com/ColdPhase/flux/issue
 two people see map movement during a drag and wiki writing during typing, with
 identified collaborators. Foundation 8.4, 8.7, 8.14 and 8.15 apply.
 Revision 2 addresses the independent 2026-10-03 contract review's C1–C4; it does
-not claim that the revised contract or any calibration gate has been accepted.
+not claim that any calibration gate has passed or that implementation/runtime
+acceptance has been granted.
 
 Choose a native, transactional map with transient movement previews, and a Yjs text
 replica for each existing wiki doc. Both use the current API origin, Fastify runtime,
