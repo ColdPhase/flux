@@ -146,8 +146,9 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
     maxRunMicros: selected.price ? maxRequestMicros(selected.price, PERSONAL_RUN_LIMITS.maxInputTokens, PERSONAL_RUN_LIMITS.maxOutputTokens) : null } } : status;
   const payer = selected ? { organization: selected.payerOrganization, workspace: selected.providerWorkspace } : null;
   const timeZone = browserTimeZone();
-  // Turning it on names one loaded connection; until the list is in, nothing could be shown truthfully.
-  const usable = status.setup.provider === 'on' && status.setup.connection === 'active' && ownedState === 'loaded' && !!selected;
+  // Turning it on waits for the list of the owner's connections and names the chosen one; with none
+  // listed, the server's own connection (shown by the status) is the only one there is.
+  const usable = status.setup.provider === 'on' && status.setup.connection === 'active' && ownedState === 'loaded' && (!owned.length || !!selected);
   const picked = Object.entries(chosen).filter(([, agentId]) => agentId);
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -155,7 +156,7 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
     setBusy(true); setError('');
     try {
       let next = await enableAssistant({ consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId: picked[0]![1], perRunCents: perRun, dailyCapCents: daily, timeZone,
-        connectionId });
+        ...(selected ? { connectionId: selected.id } : {}) });
       for (const [, agentId] of picked.slice(1)) next = await selectAssistantAgent(agentId);
       onEnabled(next);
     } catch (cause) {
