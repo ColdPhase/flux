@@ -624,6 +624,12 @@ class SharedComposerJourney(unittest.TestCase):
         expect(box).to_be_enabled()
         expect(box).to_have_value(before_a['body'])
         self.assertEqual(self.record(page, project, a), before_a)
+        # Complete the cancelled request explicitly. Its late B response must not
+        # reopen B or mutate either private record after the user returned to A.
+        held[0][0].fulfill(response=held[0][1])
+        expect(box).to_have_value(before_a['body'])
+        self.assertEqual(self.record(page, project, a), before_a)
+        self.assertEqual(self.record(page, project, b), edited_b)
         page.unroute_all(behavior="ignoreErrors")
         # A failed B loader shows honest failure rather than an editable A composer under B.
         def fail_loader(route):
