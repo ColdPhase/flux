@@ -766,6 +766,8 @@ cmd_restore() {
   compose_main --profile setup run --rm files-init >/dev/null
   if [ "$from_schema" != "$to_schema" ] || [ "$migrate" = 1 ]; then say "Migrating from ledger {$from_ledger}..."; fi
   compose_main run --rm migrate || die "The migration after restore failed. See the output above; the archive is unchanged."
+  # A restored GitHub token/binding cannot resurrect provider authority or queued work.
+  image_op revoke-github-access || die "Revoking restored GitHub authorization failed; API and worker were not started."
   # Agent connections and OAuth tokens come back as they were at backup time: one revoked
   # after the backup is live again. --revoke-agent-connections ends all of them.
   if [ "$revoke_agents" = 1 ]; then
