@@ -84,6 +84,21 @@ test('empty, oversized, unsafe names, live upload identity and reservation quota
   assert.equal((await upload(f.writer, f.place.id, Buffer.from('x'))).body.code, 'UPLOAD_QUOTA_EXCEEDED');
 });
 
+test('DM HTTP refuses attachments without silently sending text or publishing a project file', async () => {
+  const f = await scene();
+  const staged = (await upload(f.writer, f.place.id, Buffer.from('private project file'))).body;
+  const dm = expectStatus(await f.writer.browser.request('POST', `/api/v1/workspaces/${f.ws.id}/dms`,
+    { body: { participantIds: [f.owner.id] } }), 201) as { id: string };
+  const response = await f.writer.browser.request('POST', `/api/v1/dms/${dm.id}/messages`,
+    { body: { body: 'Do not silently drop my file', clientMessageId: randomUUID(), attachmentIds: [staged.id] } });
+  assert.equal(response.status, 422);
+  assert.equal((response.json as { code: string }).code, 'DM_ATTACHMENTS_UNSUPPORTED');
+  const read = expectStatus(await f.writer.browser.request('GET', `/api/v1/dms/${dm.id}`), 200) as { messages: unknown[] };
+  assert.deepEqual(read.messages, []);
+  assert.equal((await download(f.owner, staged.id)).status, 404);
+  assert.equal((await fileRows(db).findFile(staged.id))!.messageId, null);
+});
+
 test('same-UUID recovery works when ready staged files exactly fill the quota', async () => {
   const f = await scene();
   const bytes = Buffer.alloc(FILE_LIMITS.fileBytes, 7);
