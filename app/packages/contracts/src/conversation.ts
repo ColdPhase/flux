@@ -93,6 +93,11 @@ export interface ConversationRoot {
   /** Messages after the root in its thread. */
   replyCount: number;
   lastReplyAt: string | null;
+  /**
+   * Present when this root opened a task's discussion (UI116-3): the first genuine contribution to that
+   * task, which every later contribution answers. The title is the task's current one.
+   */
+  task?: { workId: string; title: string };
 }
 
 /** Stable, newest-first window of roots returned in ascending display order. */

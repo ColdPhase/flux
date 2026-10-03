@@ -202,12 +202,18 @@ export function conversationStore(db: Database, options: ConversationStoreOption
           // Compared in SQL so the cursor keeps PostgreSQL's microsecond precision.
           before = sql`(${conversations.createdAt}, ${conversations.id}) < (SELECT c.created_at, c.id FROM project_conversations c WHERE c.id = ${window.before})`;
         }
+        const discussions = schema.projectTaskDiscussions;
         const rows = await tx.select({
           root: schema.projectMessages,
           replyCount: sql<number>`(SELECT count(*)::int FROM project_messages r WHERE r.conversation_id = ${conversations.id} AND r.sequence > 1)`,
           lastReplyAt: sql<string | null>`(SELECT max(r.created_at) FROM project_messages r WHERE r.conversation_id = ${conversations.id} AND r.sequence > 1)`,
+          taskId: discussions.workId,
+          taskTitle: schema.projectWorkItems.title,
         }).from(conversations)
           .innerJoin(schema.projectMessages, and(eq(schema.projectMessages.conversationId, conversations.id), eq(schema.projectMessages.sequence, 1)))
+          // A task's discussion is a conversation of the same project, so it shares the audience checked above.
+          .leftJoin(discussions, eq(discussions.conversationId, conversations.id))
+          .leftJoin(schema.projectWorkItems, and(eq(schema.projectWorkItems.id, discussions.workId), eq(schema.projectWorkItems.projectId, projectId)))
           .where(and(eq(conversations.projectId, projectId), before))
           .orderBy(desc(conversations.createdAt), desc(conversations.id))
           .limit(window.limit + 1);
@@ -216,7 +222,8 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         const names = await workRows(tx).names(page.filter((row) => row.root.authorAgentId !== null)
           .map((row) => ({ kind: 'agent' as const, id: row.root.authorAgentId! })));
         const roots = page.map((row) => ({ conversationId: row.root.conversationId, message: message(row.root, names), replyCount: Number(row.replyCount),
-          lastReplyAt: row.lastReplyAt === null ? null : new Date(row.lastReplyAt).toISOString() }));
+          lastReplyAt: row.lastReplyAt === null ? null : new Date(row.lastReplyAt).toISOString(),
+          ...(row.taskId !== null && row.taskTitle !== null ? { task: { workId: row.taskId, title: row.taskTitle } } : {}) }));
         return { projectId, roots, rootPage: { hasMoreBefore, nextBefore: hasMoreBefore ? roots[0]!.conversationId : null, limit: window.limit } };
       });
     },

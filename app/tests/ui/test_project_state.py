@@ -133,6 +133,9 @@ class ProjectStateJourney(unittest.TestCase):
                 page.goto(f"/projects/{project['id']}")
                 # One project conversation (UI116-1): an empty stream says so to a reader, with no composer.
                 expect(page.get_by_role("heading", name="No messages yet", exact=True)).to_be_visible()
+                # The two tasks are announced above it (UI116-3); announcements are not messages.
+                expect(page.locator(".convo-notice")).to_have_count(2)
+                expect(page.locator(".project-convo__message")).to_have_count(0)
                 expect(page.locator(".project-convo__read-only")).to_be_visible()
                 expect(page.locator("#project-composer")).to_have_count(0)
                 expect(page.get_by_role("button", name="Send message", exact=True)).to_have_count(0)
