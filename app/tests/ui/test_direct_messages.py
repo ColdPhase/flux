@@ -115,7 +115,7 @@ class DirectMessageJourney(unittest.TestCase):
         page.get_by_role("navigation", name="Places").get_by_role("link", name="Direct messages").click()
         expect(page.get_by_role("heading", name="No direct messages yet")).to_be_visible()
         expect(page.get_by_text("not workspace owners or admins")).to_be_visible()
-        page.get_by_role("navigation", name="Direct messages").get_by_role("link", name="New message").click()
+        page.get_by_role("navigation", name="Messages").get_by_role("link", name="New message").click()
         expect(page.get_by_role("heading", level=1, name="New message")).to_be_visible()
         people = page.get_by_role("list", name="People")
         expect(people.get_by_text("Kai Tanaka")).to_be_visible()
@@ -136,7 +136,7 @@ class DirectMessageJourney(unittest.TestCase):
         expect(page.locator(".composer__audience")).to_contain_text("Only you and Kai")
         self.send(page, "Morning! I sketched the gesture lamp idea on the train. Wave to dim, hold to switch off?")
         self.send(page, "Camera or a distance sensor? I’d rather not point a camera at people’s desks.")
-        sidebar = page.get_by_role("navigation", name="Direct messages")
+        sidebar = page.get_by_role("navigation", name="Messages")
         expect(sidebar.get_by_role("link", name=re.compile("Kai Tanaka"))).to_have_attribute("aria-current", "page")
 
         status, dm = self.api(page, f"/api/v1/dms/{self.dm_id()}")
@@ -152,7 +152,7 @@ class DirectMessageJourney(unittest.TestCase):
         kai = self.page("kai")
         kai.goto("/")
         kai.get_by_role("navigation", name="Places").get_by_role("link", name="Direct messages").click()
-        kai.get_by_role("navigation", name="Direct messages").get_by_role("link", name=re.compile("Ada Kowalska")).click()
+        kai.get_by_role("navigation", name="Messages").get_by_role("link", name=re.compile("Ada Kowalska")).click()
         expect(kai).to_have_url(f"{ORIGIN}{self.dm_path}")
         expect(kai.locator(".composer__audience")).to_contain_text("Only you and Ada")
         expect(kai.get_by_text("Wave to dim, hold to switch off?")).to_be_visible()
@@ -273,7 +273,7 @@ class DirectMessageJourney(unittest.TestCase):
         expect(lee.get_by_text("You won’t see these messages again")).to_be_visible()
         lee.get_by_role("group", name="Leave this conversation").get_by_role("button", name="Leave", exact=True).click()
         expect(lee).to_have_url(f"{ORIGIN}/dm")
-        expect(lee.get_by_role("navigation", name="Direct messages").get_by_role("link", name=re.compile("Lamp prototype"))).to_have_count(0)
+        expect(lee.get_by_role("navigation", name="Messages").get_by_role("link", name=re.compile("Lamp prototype"))).to_have_count(0)
         lee.goto(group_path)
         expect(lee.get_by_role("heading", name="This conversation isn’t available")).to_be_visible()
         expect(lee.get_by_text("print a test housing")).to_have_count(0)
@@ -310,8 +310,9 @@ class DirectMessageJourney(unittest.TestCase):
         self.assertEqual(post(lee, f"/api/v1/dms/{pair_id}/leave", {}).status, 204)
 
         # Ada clicks Lee's name in the project conversation: a calm notice, no thread for "Only you".
+        # Scoped to the conversation: the sidebar's Messages list also links "Lee Moreno" (the 1:1).
         ada.goto(f"/projects/{self.project_id}")
-        ada.get_by_role("link", name="Lee Moreno").first.click()
+        ada.get_by_role("region", name="Messages").get_by_role("link", name="Lee Moreno").first.click()
         notice = ada.get_by_role("status").filter(has_text="Lee left this conversation. They can reopen it by messaging you.")
         expect(notice).to_be_visible()
         expect(ada.get_by_label(re.compile(r"^Message "))).to_have_count(0)

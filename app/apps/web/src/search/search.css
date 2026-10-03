@@ -31,14 +31,7 @@
 .sr__place { display: inline-flex; align-items: center; gap: 3px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- Jump to… ---------- */
-.side__jump {
-  display: flex; align-items: center; gap: 8px; width: 100%; min-height: var(--ctl); padding: 0 10px; margin-bottom: 14px;
-  border-radius: var(--r); background: var(--bg); color: var(--text-3); font-size: var(--fs-md); text-align: left;
-  box-shadow: inset 0 0 0 1px var(--line); transition: var(--tr);
-}
-.side__jump:hover { box-shadow: inset 0 0 0 1px var(--line-strong); color: var(--text-2); }
-.side__jump:active { transform: scale(.98); }
-.side__jump kbd { margin-left: auto; }
+/* The sidebar entry ("Jump to…") is styled with the sidebar in app/app.css (Studio 11.6 underline row). */
 
 .jump { display: flex; flex-direction: column; }
 .jump__in { display: flex; flex-direction: column; min-height: 0; max-height: inherit; flex: 1; }

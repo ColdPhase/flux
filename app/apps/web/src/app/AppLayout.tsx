@@ -2,19 +2,18 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { flushSync } from 'react-dom';
 import { Outlet, useLocation, useNavigate, useRevalidator } from 'react-router';
 import { useStreamEvents } from '../api/stream';
-import { Avatar, Button, Drawer, Icon, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useSidePanelMode } from '../ui';
+import { Button, Drawer, Icon, IconButton, MEDIA, SidePanel, Tabs, duration, flip, play, useMediaQuery, useSidePanelMode } from '../ui';
 import { useShellData } from './data';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
 import { Details } from './Details';
 import { useInboxDot } from '../notifications/dot';
-import { placeOf } from './Rail';
+import { placeOf } from './place';
 import { ShellContext, type DetailsView } from './shellContext';
 import { Sidebar } from './Sidebar';
 import { VIEWS, viewIndex } from './views';
 import { ProjectStateLine, ProjectStateRow } from '../work/inline';
 import { audienceLine, useProjectShell } from '../project/data';
 import { useDmSketchCount } from '../dm/DmSketches';
-import type { ProjectPerson } from '@flux/contracts';
 import { LiveProvider } from '../live/LiveProvider';
 import { LiveEntry } from '../live/LiveEntry';
 import { LiveBar } from '../live/LiveBar';
@@ -38,10 +37,10 @@ function lastTasksSearch(projectId: string) {
   catch { return ''; }
 }
 
-/** Tab order for the slide direction: Home's views, or a project's Conversation · Tasks · Map · Docs. */
+/** Tab order for the slide direction: Home's views, or a project's Conversation · Map · Tasks · Wiki · Agents. */
 function viewOrder(pathname: string) {
-  const inProject = pathname.match(/^\/projects\/[^/]+(?:\/(tasks|map|docs))?/);
-  if (inProject) return ['conversation', 'tasks', 'map', 'docs'].indexOf(inProject[1] ?? 'conversation');
+  const inProject = pathname.match(/^\/projects\/[^/]+(?:\/(tasks|map|docs|agents))?/);
+  if (inProject) return ['conversation', 'map', 'tasks', 'docs', 'agents'].indexOf(inProject[1] ?? 'conversation');
   // A direct message's Messages · Sketches (#96).
   const inDm = pathname.match(/^\/dm\/(?!new$)[^/]+(\/sketches)?/);
   if (inDm) return inDm[1] ? 1 : 0;
@@ -54,10 +53,10 @@ function isTyping(target: EventTarget | null) {
 }
 
 /**
- * Authenticated frame from direction C with the rail identity: dark rail · light sidebar ·
- * header with the view switcher · work area, and a Details panel that is closed by default.
- * Below 1180px rail and sidebar travel together in a drawer; the panel overlays below 980px
- * and becomes a full-screen sheet on the phone.
+ * Authenticated frame, Studio 11.6 (#136): one sidebar on the chrome and a rounded sheet with
+ * the place's header, its view tabs and the work area, plus a Details panel closed by default.
+ * At 680px and below the sidebar becomes a drawer and the sheet fills the screen; the panel
+ * overlays below 1000px and becomes a full-screen sheet on the phone.
  */
 export function AppLayout() {
   const { me, workspace, projects, directMessages } = useShellData();
@@ -181,14 +180,14 @@ export function AppLayout() {
   const shellProject = useProjectShell();
   const project = shellProject && shellProject.project.id === projectId ? shellProject : undefined;
   const openWork = project?.work.work.filter((item) => !item.parked && (item.status === 'open' || item.status === 'in_progress' || item.status === 'blocked')).length;
-  // Conversation · Tasks · Map · Docs (direction C), each a route of the project (#117).
+  // Conversation · Map · Tasks · Wiki in the Studio 11.6 order (#117, #136); quiet tabs without
+  // counts. The open work count stays readable to assistive technology on the Tasks tab.
   const projectViews = projectId ? [
     { id: 'conversation', label: 'Conversation', to: onOtherView ? lastConversationPath(projectId) : `${location.pathname}${location.search}` },
-    { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks${lastTasksSearch(projectId)}`, ...(openWork ? { count: openWork, countLabel: `, ${openWork} open` } : {}) },
-    { id: 'map', label: 'Map', to: `/projects/${projectId}/map`, end: false, ...(project?.sketches?.total ? { count: project.sketches.total, countLabel: `, ${project.sketches.total} ${project.sketches.total === 1 ? 'sketch' : 'sketches'}` } : {}) },
-    { id: 'docs', label: 'Docs', to: `/projects/${projectId}/docs`, end: false, ...(project?.docs?.length ? { count: project.docs.length, countLabel: `, ${project.docs.length} ${project.docs.length === 1 ? 'doc' : 'docs'}` } : {}) },
+    { id: 'map', label: 'Map', to: `/projects/${projectId}/map`, end: false },
+    { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks${lastTasksSearch(projectId)}`, ...(openWork ? { countLabel: `, ${openWork} open` } : {}) },
+    { id: 'docs', label: 'Wiki', to: `/projects/${projectId}/docs`, end: false },
   ] : null;
-  const projectIndex = projects.findIndex((item) => item.id === projectId);
   const audience = project ? audienceLine(project.people, me.user.id) : 'People with project access';
   const openOverview = () => { setDetailsView('place'); toggleDetails(true); };
   const recapOpen = detailsOpen && typeof detailsView === 'object' && detailsView.kind === 'recap';
@@ -256,15 +255,16 @@ export function AppLayout() {
           {activeProject ? (
             <div className="top__head">
               <div className="top__title top__title--project">
-                <span className={`top__pm rail__pm--${(Math.max(projectIndex, 0) % 4) + 1}`} aria-hidden="true">{activeProject.name.trim().charAt(0).toUpperCase() || '#'}</span>
                 {place.crumb ? <><span className="top__crumb">{place.crumb}</span><span className="top__slash" aria-hidden="true">/</span></> : null}
                 <h1 title={place.title}>{place.title}</h1>
-                {/* The title yields to the audience; Details retains the full names. */}
+              </div>
+              <div className="top__meta">
+                {/* Who can read the project, then its current state; Details retains the full names. */}
                 <button type="button" className="top__audience" onClick={openOverview} aria-haspopup="dialog" title={audience}>
                   <Icon name="lock" size={12} /><span>{audience}</span><span className="ui-vh">, who can see this project</span>
                 </button>
+                {project && !phone ? <ProjectStateLine lists={project.work} canDecide={project.project.access !== 'viewer'} /> : null}
               </div>
-              {project && !phone ? <ProjectStateLine lists={project.work} canDecide={project.project.access !== 'viewer'} /> : null}
             </div>
           ) : (
           <div className="top__title">
@@ -277,7 +277,6 @@ export function AppLayout() {
             {/* A view can put one quiet action here (a DM's Select, #96). */}
             <span className="top__actions" ref={setActionSlot} />
             {activeProject ? <LiveEntry /> : null}
-            {project?.people && !phone ? <Faces people={project.people} meId={me.user.id} /> : null}
             {/* The inbox and its settings have nothing to show in Details. */}
             {'noDetails' in place ? null : <Button ref={detailsButtonRef} variant="quiet" icon="panel" className="top__details" aria-expanded={detailsOpen && !recapOpen}
               aria-controls={detailsOpen ? 'details' : undefined} aria-keyshortcuts="]" data-tip={'Toggle details   ]'}
@@ -309,17 +308,5 @@ export function AppLayout() {
     </div>
     </LiveProvider>
     </ShellContext.Provider>
-  );
-}
-
-/** The project's people as small faces beside Details (direction C); the list is in Details. */
-function Faces({ people, meId }: { people: ProjectPerson[]; meId: string }) {
-  const humans = [...people.filter((person) => person.kind === 'human' && person.id !== meId), ...people.filter((person) => person.id === meId)];
-  const shown = humans.slice(-4);
-  return (
-    <span className="top__faces" aria-hidden="true">
-      {humans.length > shown.length ? <span className="ui-avatar ui-avatar--md top__more">+{humans.length - shown.length}</span> : null}
-      {shown.map((person) => <Avatar key={person.id} name={person.name} size="md" tone={person.id === meId ? 'me' : 'neutral'} />)}
-    </span>
   );
 }
