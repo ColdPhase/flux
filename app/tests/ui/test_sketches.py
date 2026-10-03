@@ -556,6 +556,7 @@ class SketchJourney(unittest.TestCase):
         ):
             with self.subTest(viewport=label):
                 page = self.fit_fixture(viewport=viewport, ratios=ratios, touch=touch)
+                shot(page, f"sketch-fit-{label}")
                 corner = box(page, self.thought(page, "Keep a physical off switch"))
                 controls = box(page, page.get_by_role("group", name="Zoom", exact=True))
                 self.assert_no_overlap(corner, controls, "Fit leaves the far bottom-right thought clear of zoom controls")
@@ -566,7 +567,6 @@ class SketchJourney(unittest.TestCase):
                     self.assertGreaterEqual(bounds["y"], canvas["y"] - 1)
                     self.assertLessEqual(bounds["x"] + bounds["width"], canvas["x"] + canvas["width"] + 1)
                     self.assertLessEqual(bounds["y"] + bounds["height"], canvas["y"] + canvas["height"] + 1)
-                shot(page, f"sketch-fit-{label}")
 
     def test_12_fit_at_the_readable_floor_keeps_a_safe_scroll_view(self) -> None:
         for label, viewport, ratio, touch, minimum in (
@@ -575,6 +575,7 @@ class SketchJourney(unittest.TestCase):
         ):
             with self.subTest(viewport=label):
                 page = self.fit_fixture(viewport=viewport, ratios=(ratio, ratio), touch=touch)
+                shot(page, f"sketch-fit-{label}")
                 expect(page.get_by_role("button", name=re.compile(r"^Zoom \d+%"))).to_have_attribute("aria-label", f"Zoom {minimum}%, reset to 100%")
                 canvas = page.locator(".sk-canvas")
                 controls = box(page, page.get_by_role("group", name="Zoom", exact=True))
@@ -584,7 +585,6 @@ class SketchJourney(unittest.TestCase):
                 self.assertGreaterEqual(first["x"], viewport_box["x"], "Fit preserves the top-left camera")
                 self.assertGreaterEqual(first["y"], viewport_box["y"], "Fit preserves the top-left camera")
                 self.assertGreater(canvas.evaluate("el => el.scrollHeight - el.clientHeight"), 0, "a large graph stays scrollable at its readable minimum")
-                shot(page, f"sketch-fit-{label}")
                 # Scroll to the last thought without changing the zoom. The complete thought can
                 # be read while the controls remain usable beside the protected scroll viewport.
                 canvas.evaluate("el => { el.scrollLeft = el.scrollWidth; el.scrollTop = el.scrollHeight; }")
