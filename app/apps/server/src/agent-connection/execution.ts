@@ -5,6 +5,7 @@ import { agentOutcomeFingerprint, DomainError, enforce, evaluateProject, normali
   type AgentExecutionOutcome, type AgentExecutionPort, type AgentExecutionScope,
   type NormalizedAgentExecutionCommand, type Transaction } from '@flux/core';
 import { agentConnectionInTransaction, type FluxMcpClaims } from './context.js';
+import { agentOperationTarget } from './grants.js';
 
 type StoredRuntime = NonNullable<Awaited<ReturnType<ReturnType<typeof agentExecutionRows>['lockRuntime']>>>;
 type StoredGrant = NonNullable<Awaited<ReturnType<ReturnType<typeof agentExecutionRows>['lockGrant']>>>;
@@ -25,6 +26,8 @@ export interface AgentExecutionDomainChecks {
   coordinationRequestPostcondition?(tx: Transaction, context: AuthenticatedAgentRuntime, command: NormalizedAgentExecutionCommand,
     condition: Extract<AgentPostcondition, { kind: 'cowork.request_state' }>): Promise<boolean>;
 }
+/** Operations whose produced thoughts or messages must live in the exact map or conversation the command targeted. */
+const CONTAINED: readonly AgentOperation[] = ['map.positions.update', 'map.thought.create', 'map.thought.update', 'conversation.reply'];
 function denied(code = 'AGENT_EXECUTION_UNAVAILABLE') {
   return new DomainError(403, code, 'Current runtime, action grant or project authority is unavailable');
 }
@@ -65,7 +68,7 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
     });
     for (const condition of ordered) {
       const target = prepared.command.objectId;
-      if (target && (condition.kind === 'work' || condition.kind === 'map' || condition.kind === 'map_checkpoint') && condition.id !== target
+      if (target && (condition.kind === 'work' || condition.kind === 'doc' || condition.kind === 'map' || condition.kind === 'map_checkpoint') && condition.id !== target
         || target && (condition.kind === 'cowork.claim_state' || condition.kind === 'cowork.request_state') && condition.unitId !== target)
         throw new DomainError(409, 'COMMAND_POSTSTATE_INVALID', 'The produced post-state belongs to another target');
       if (condition.kind === 'cowork.claim_state' && (condition.workspaceId !== prepared.context.workspaceId
@@ -83,8 +86,7 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
         : condition.kind === 'cowork.request_state'
         ? !!domain.coordinationRequestPostcondition && await domain.coordinationRequestPostcondition(tx, prepared.context, prepared.command, condition)
         : await rows.nativePostcondition(prepared.context.workspaceId, prepared.command.projectId, condition,
-          prepared.command.operation === 'map.positions.update' || prepared.command.operation === 'map.thought.create'
-            || prepared.command.operation === 'map.thought.update' ? prepared.command.objectId ?? undefined : undefined);
+          CONTAINED.includes(prepared.command.operation) ? prepared.command.objectId ?? undefined : undefined);
       if (!allowed) throw new DomainError(409, 'COMMAND_POSTSTATE_STALE', 'The produced object changed; recover before continuing');
     }
   };
@@ -128,13 +130,11 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
       const replay: AgentCommandReceipt | null = stored ? { clientCommandId: stored.clientCommandId,
         runtimeSessionId: stored.runtimeSessionId, operation: stored.operation, projectId: stored.projectId,
         value: stored.value, postconditions: stored.postconditions, completedAt: stored.completedAt.toISOString() } : null;
-      if (command.objectId && command.operation === 'work.update'
-        && !await agentProjectObjectRows(tx).scopeOf('work', command.objectId, { workspaceId: context.workspaceId, projectId: command.projectId }, false))
-        throw new DomainError(404, 'OBJECT_NOT_FOUND', 'Project object not found');
-      const mapChanges: AgentOperation[] = ['map.rename', 'map.thought.create', 'map.thought.update', 'map.thought.delete',
-        'map.positions.update', 'map.link.create', 'map.link.delete'];
-      if (command.objectId && mapChanges.includes(command.operation)
-        && !await agentProjectObjectRows(tx).scopeOf('sketch', command.objectId, { workspaceId: context.workspaceId, projectId: command.projectId }, false))
+      // The exact target must be a native object of this project: a guessed, private, direct-message or other
+      // project's ID is reported like a missing one, before any effect.
+      const target = agentOperationTarget(command.operation);
+      if (command.objectId && target
+        && !await agentProjectObjectRows(tx).scopeOf(target, command.objectId, { workspaceId: context.workspaceId, projectId: command.projectId }, false))
         throw new DomainError(404, 'OBJECT_NOT_FOUND', 'Project object not found');
       const prepared: Prepared = { command, fingerprint, runtime, grant, context, replay, closed: false };
       const now = await recheck(prepared, replay === null);

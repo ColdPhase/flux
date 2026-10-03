@@ -13,7 +13,8 @@ export interface DocRecord {
   id: string;
   workspaceId: string;
   projectId: string;
-  createdBy: string;
+  /** A person, or the agent that started the doc under a standing grant (#152). */
+  createdBy: ActorRef;
   currentVersion: number;
   createdAt: Date;
   updatedAt: Date;
@@ -27,7 +28,8 @@ export interface DocVersionRecord {
   body: string;
   state: DocState;
   reason: string;
-  authorId: string;
+  /** The actual author of this version: a person, or an agent writing under a standing grant (#152). */
+  author: ActorRef;
   createdAt: Date;
 }
 
@@ -38,7 +40,7 @@ export interface DocWithCurrent {
   projectName: string;
 }
 
-export type NewDocVersion = Pick<DocVersionRecord, 'title' | 'body' | 'state' | 'reason' | 'authorId'>;
+export type NewDocVersion = Pick<DocVersionRecord, 'title' | 'body' | 'state' | 'reason' | 'author'>;
 
 /** Rows only; the repository makes no access decisions (the use cases ask {@link WorkAccess}). */
 export interface DocRepository {
@@ -55,7 +57,7 @@ export interface DocRepository {
   version(id: string, version: number): Promise<DocVersionRecord | null>;
   /** Versions, newest first. */
   versions(id: string, page: PageWindow): Promise<Paged<DocVersionRecord>>;
-  insert(doc: { id: string; workspaceId: string; projectId: string; createdBy: string }, first: NewDocVersion): Promise<DocWithCurrent>;
+  insert(doc: { id: string; workspaceId: string; projectId: string; createdBy: ActorRef }, first: NewDocVersion): Promise<DocWithCurrent>;
   /** Adds the next immutable version and makes it current; the caller holds the row lock. */
   append(id: string, next: NewDocVersion): Promise<DocWithCurrent>;
   /** Replaces the doc's `mentions` links with links to `targets`; other roles are kept. */
