@@ -11,7 +11,6 @@ import { addMember, expectStatus, grant, person, project as createProject, works
 // final access check), human-language grouping with source links, one next step with its
 // reason, and nothing about places the reader cannot currently see.
 
-
 const post = (someone: Person, path: string, body: unknown, headers?: Record<string, string>) => someone.browser.request('POST', path, { body, headers });
 const patch = (someone: Person, path: string, body: unknown, headers?: Record<string, string>) => someone.browser.request('PATCH', path, { body, headers });
 const json = <T>(response: ClientResponse, status: number, label?: string) => expectStatus(response, status, label) as T;

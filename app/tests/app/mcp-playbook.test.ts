@@ -6,7 +6,6 @@ import { pool } from './support/db.js';
 import { publicOrigin, register, uniqueEmail } from './support/http.js';
 import { beginOauth, expect, mcp, oauthToken, toolValue } from './support/mcp.js';
 
-
 test('the shipped playbook has one stable version/digest that changes with its content and covers every role module', () => {
   const reference = coworkPlaybookReference();
   assert.deepEqual(reference, { bundleId: 'flux.cowork', version: COWORK_PLAYBOOK.version, toolContractVersion: 1,

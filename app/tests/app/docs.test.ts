@@ -14,7 +14,6 @@ import { StreamClient } from './support/stream.js';
 // backlinks to work, decisions, results, messages, sketches and other docs; "Add to docs" from
 // a result or decision; sanitized Markdown; events and the workspace list filter.
 
-
 const post = (someone: Person, path: string, body: unknown, headers?: Record<string, string>) => someone.browser.request('POST', path, { body, headers });
 const patch = (someone: Person, path: string, body: unknown, headers?: Record<string, string>) => someone.browser.request('PATCH', path, { body, headers });
 const get = (someone: Person, path: string) => someone.browser.request('GET', path);

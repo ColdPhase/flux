@@ -13,7 +13,6 @@ import { liveRevocationCoordinator } from '../../apps/server/src/live/revocation
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
 
-
 test('wiki doc is a project-bound live anchor; non-doc, foreign and hidden anchors are refused', async () => {
   const owner = await person('live-doc-owner');
   const viewer = await person('live-doc-viewer');

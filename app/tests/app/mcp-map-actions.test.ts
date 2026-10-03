@@ -5,7 +5,6 @@ import { pool } from './support/db.js';
 import { expect, toolValue } from './support/mcp.js';
 import { actionScene, toolFailure } from './support/mcp-actions.js';
 
-
 interface Detail { title: string; version: number; scope: string; createdBy: { kind: string; id: string };
   thoughts: { id: string; text: string; x: number; y: number; version: number; createdBy: { id: string } }[];
   links: { id: string; fromId: string; toId: string; label: string | null }[] }

@@ -12,7 +12,6 @@ import { addMember, draft as createDraft, expectStatus, grant, person, project a
 // policy is applied in SQL before ranking, limits, counts and snippets, so nothing hidden ever
 // shows, counts, or changes the work the database does.
 
-
 const post = (someone: Person, path: string, body: unknown, headers?: Record<string, string>) => someone.browser.request('POST', path, { body, headers });
 const patch = (someone: Person, path: string, body: unknown, headers?: Record<string, string>) => someone.browser.request('PATCH', path, { body, headers });
 const json = <T>(response: ClientResponse, status: number, label?: string) => expectStatus(response, status, label) as T;

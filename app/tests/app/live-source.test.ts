@@ -7,7 +7,6 @@ import { requireLivePresentationSource } from '../../apps/server/src/live/access
 import { db } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
 
-
 function missing(code: string) {
   return (error: unknown) => error instanceof DomainError && error.code === code;
 }

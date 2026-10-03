@@ -5,7 +5,6 @@ import { pool } from './support/db.js';
 import { expect, toolValue } from './support/mcp.js';
 import { actionScene, toolFailure } from './support/mcp-actions.js';
 
-
 test('a standing work.create grant creates one planned native task through MCP; retries and repeated intents never duplicate it', async () => {
   const f = await actionScene(pool);
   const capabilities = f.bootstrap.capabilities as { name: string; operation: string | null; classes: string[]; available: boolean }[];

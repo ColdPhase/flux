@@ -11,7 +11,6 @@ import { dispatchProactiveComparison } from '../../apps/worker/src/proactive-com
 import { db, pool } from './support/db.js';
 import { addMember, draft, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 
-
 describe('controlled background comparison dispatch (#58)', () => {
   let owner: Person;
   let peer: Person;

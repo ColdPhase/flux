@@ -15,7 +15,6 @@ import { liveRoutes } from '../../apps/server/src/live/routes.js';
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
 
-
 function mediaFixture() {
   const rooms = new Set<string>();
   const retired: string[] = [];

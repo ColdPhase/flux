@@ -7,7 +7,6 @@ import { liveSessionStore } from '../../apps/server/src/live/store.js';
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
 
-
 function failure(code: string) {
   return (error: unknown) => error instanceof DomainError && error.code === code;
 }

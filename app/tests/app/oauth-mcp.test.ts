@@ -7,7 +7,6 @@ import { db, pool } from './support/db.js';
 import { apiUrl, publicOrigin, register, uniqueEmail, type Browser } from './support/http.js';
 import { beginOauth, expect, mcp, oauthToken, toolValue, type Tokens } from './support/mcp.js';
 
-
 test('issued OAuth bearer reads and proposes through MCP, then connection revocation rejects it immediately', async () => {
   const { browser } = await register(uniqueEmail('oauth-mcp'), 'correct horse battery staple');
   const workspace = expect(await browser.request('POST', '/api/v1/workspaces',

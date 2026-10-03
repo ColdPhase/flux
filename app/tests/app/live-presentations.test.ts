@@ -11,7 +11,6 @@ import type { SessionResolver } from '../../apps/server/src/identity/index.js';
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
 
-
 test('recipient pages only current, readable presentation refs after hidden sources and loses replay on revoke',
   { timeout: 120_000 }, async () => {
     const owner = await person('live-feed-owner');

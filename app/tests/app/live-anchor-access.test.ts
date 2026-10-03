@@ -6,7 +6,6 @@ import { liveSessionStore } from '../../apps/server/src/live/store.js';
 import { db, pool } from './support/db.js';
 import { expectStatus, person, project, workspace } from './support/people.js';
 
-
 test('a live sketch anchor stays project-scoped and its read lock covers presence delivery', async () => {
   const owner = await person('live-anchor-owner');
   const ws = await workspace(owner, 'Live anchor');

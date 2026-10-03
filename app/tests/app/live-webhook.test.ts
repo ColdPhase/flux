@@ -8,7 +8,6 @@ import { LIVEKIT_WEBHOOK_PATH, liveWebhookRoutes } from '../../apps/server/src/l
 import { db, pool } from './support/db.js';
 import { expectStatus, person, project, workspace } from './support/people.js';
 
-
 const key = 'flux-webhook-test';
 const secret = 'a-long-private-livekit-test-secret-value';
 

@@ -11,7 +11,6 @@ import { addMember, expectStatus, grant, person, project as createProject, works
 // digest behind "Summarize". Everything is still built from the reader's own audience with the
 // final access check; nothing is shared, posted or notified.
 
-
 const post = (someone: Person, path: string, body: unknown) => someone.browser.request('POST', path, { body });
 const json = <T>(response: ClientResponse, status: number, label?: string) => expectStatus(response, status, label) as T;
 const recap = async (someone: Person, projectId: string, extra = '', status = 200) =>
