@@ -43,6 +43,7 @@ import { personalRunServerComposition } from './personal-runs/composition.js';
 import { exportRoutes } from './export/routes.js';
 import { githubRoutes } from './github/routes.js';
 import { loadGithubConfig } from './github/config.js';
+import { registerUpgradeDispatcher } from './http/upgrades.js';
 
 const connectionString = process.env.DATABASE_URL;
 const fixtureToken = process.env.FLUX_FIXTURE_TOKEN;
@@ -92,10 +93,8 @@ if (liveMedia) await app.register(liveRoutes, {
 // Browsers signal only through this gate; ending an auth session revokes its media admission (#128).
 const liveSignaling = liveMedia ? registerLiveSignaling(app, { db, connectionString, publicOrigin: identityConfig.publicOrigin,
   sessions: identity, ports: livePorts!, media: liveMedia.media, config: liveMedia.config }) : null;
-app.server.on('upgrade', (request, socket, head) => {
-  if (liveSignaling?.gate.handleUpgrade(request, socket, head)) return;
-  streamUpgrades.emit('upgrade', request, socket, head);
-});
+const removeUpgradeDispatcher = registerUpgradeDispatcher(app.server, streamUpgrades, [liveSignaling?.gate]);
+app.addHook('onClose', async () => removeUpgradeDispatcher());
 if (liveMedia) await app.register(liveDiscoveryRoutes, { db, sessions: identity, media: liveMedia.media });
 if (liveMedia) await app.register(liveInvitationRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret });
 if (lifecycle) {
