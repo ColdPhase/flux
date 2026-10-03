@@ -56,7 +56,7 @@ def validate(root: Path) -> list[str]:
     require(bool(skill_files), ".agents/skills: no SKILL.md files found")
     skill_names = {path.parent.name for path in skill_files}
     # Every Markdown file under docs/ (#84 AC-1), plus the root instructions and skills.
-    documents = list(dict.fromkeys([root / "README.md", agents, claude,
+    documents = list(dict.fromkeys([root / "README.md", agents, claude, root / "GOVERNANCE.md", root / "CHANGELOG.md",
                                     *sorted((root / "docs").rglob("*.md")), *skill_files]))
     anchor_cache: dict[Path, set[str]] = {}
     for path in skill_files:
