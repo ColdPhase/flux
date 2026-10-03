@@ -1,13 +1,13 @@
 import {
   WORK_GROUPS, WORK_READ_LIMITS, WORK_LIMITS, type NativeWorkRow, type PrincipalRef, type ProjectWorkSummary,
-  type ProjectWorkView, type WorkAssociations, type WorkDetailProjection, type WorkRelations,
+  type ProjectWorkView, type WorkAssociations, type WorkDetailProjection, type WorkRelations, type WorkReferenceRows,
 } from '@flux/contracts';
 import { DomainError, ServiceUnavailableError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import { decodeWorkReadCursor, presentWorkReadPage, workReadScope } from './cursor.js';
 import type { WorkReadFinalFence, WorkReadPorts, WorkReadRequirements, WorkReadUnitOfWork, WorkSummaryObservation } from './ports.js';
 import {
-  assertEmptyWorkReadQuery, parseWorkAssociationRead, parseWorkRelationRead, parseWorkViewRead,
+  assertEmptyWorkReadQuery, parseWorkAssociationRead, parseWorkRelationRead, parseWorkReferenceRead, parseWorkViewRead,
   workReadId, workReadInvalid, workReadKind,
 } from './query.js';
 
@@ -49,7 +49,8 @@ function rowFacts(rows: readonly NativeWorkRow[], projectId: string, workspaceId
 /** Read orchestration owns validation, global windows, coherent observations and the final fence. */
 export function createBoundedWorkReads(unit: WorkReadUnitOfWork, finalFence: WorkReadFinalFence) {
   async function observe<T>(principal: PrincipalRef, projectId: string,
-    read: (ports: WorkReadPorts, observedAt: string, workspaceId: string) => Promise<T>, required?: WorkReadRequirements) {
+    read: (ports: WorkReadPorts, observedAt: string, workspaceId: string) => Promise<T>, required?: WorkReadRequirements,
+    releaseRequirements?: (value: T) => WorkReadRequirements) {
     const sources = required?.sources;
     let observation: { value: T; sourceVisibility: string };
     try {
@@ -67,7 +68,7 @@ export function createBoundedWorkReads(unit: WorkReadUnitOfWork, finalFence: Wor
     }
     // Deliberately outside the read transaction; the adapter re-resolves the exact session.
     try {
-      const access = await finalFence.check(principal, projectId, observation.sourceVisibility, required);
+      const access = await finalFence.check(principal, projectId, observation.sourceVisibility, releaseRequirements?.(observation.value) ?? required);
       return { value: observation.value, access };
     } catch (error) {
       if (error instanceof DomainError) throw error;
@@ -76,6 +77,23 @@ export function createBoundedWorkReads(unit: WorkReadUnitOfWork, finalFence: Wor
   }
 
   return {
+    async references(principal: Principal, rawProjectId: string, query: URLSearchParams): Promise<WorkReferenceRows> {
+      const actor = caller(principal), projectId = workReadId(rawProjectId);
+      const objects = parseWorkReferenceRead(new URLSearchParams(query));
+      const response = await observe(actor, projectId, async ({ rows }, observedAt, workspaceId) => {
+        const result = await rows.references(projectId, objects);
+        rowFacts(result.items, projectId, workspaceId);
+        const key = (ref: { kind: string; id: string }) => `${ref.kind}:${ref.id}`;
+        const available = result.items.map(key), unavailable = result.unavailable.map(key);
+        const combined = [...available, ...unavailable].sort();
+        requireFact(combined.length === objects.length && combined.every((value, i) => value === key(objects[i]!)));
+        for (const partition of [available, unavailable]) requireFact(partition.every((value, i) => i === 0 || partition[i - 1]! < value));
+        for (const marker of result.unavailable) requireFact(Object.keys(marker).length === 2 && Object.hasOwn(marker, 'kind') && Object.hasOwn(marker, 'id'));
+        return { projectId, observedAt, ...result };
+      }, undefined, (value) => ({ references: { objects, available: value.items.map(({ kind, id }) => ({ kind, id })) } }));
+      return { ...response.value, access: response.access };
+    },
+
     async summary(principal: Principal, rawProjectId: string, query = new URLSearchParams()): Promise<ProjectWorkSummary> {
       const actor = caller(principal), projectId = workReadId(rawProjectId);
       assertEmptyWorkReadQuery(new URLSearchParams(query));

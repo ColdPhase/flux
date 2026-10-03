@@ -6,6 +6,7 @@ export const projectWorkSummaryPath = (projectId: string) => `/api/v1/projects/$
 export const projectWorkViewPath = (projectId: string) => `/api/v1/projects/${projectId}/work-view`;
 export const projectWorkAssociationsPath = (projectId: string) => `/api/v1/projects/${projectId}/work-associations`;
 export const projectWorkRelationsPath = (projectId: string) => `/api/v1/projects/${projectId}/work-relations`;
+export const projectWorkReferenceRowsPath = (projectId: string) => `/api/v1/projects/${projectId}/work-reference-rows`;
 export const projectWorkDetailPath = (projectId: string, kind: WorkObjectType, id: string) =>
   `/api/v1/projects/${projectId}/work-objects/${kind}/${id}`;
 
@@ -100,6 +101,17 @@ export interface ResultRowProjection extends NativeRowBase {
   createdBy: NamedPrincipal;
 }
 export type NativeWorkRow = WorkRowProjection | DecisionRowProjection | ResultRowProjection;
+
+/** One exact selected-identity observation; rows + opaque markers total <=100.
+ * Missing and foreign identities are indistinguishable. This is not a collection API.
+ */
+export interface WorkReferenceRows {
+  projectId: string;
+  observedAt: string;
+  access: ProjectAccess;
+  items: NativeWorkRow[];
+  unavailable: { kind: WorkObjectType; id: string }[];
+}
 
 export interface ProjectWorkSummary {
   projectId: string;

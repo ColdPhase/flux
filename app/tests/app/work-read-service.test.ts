@@ -34,7 +34,7 @@ function harness(overrides: Partial<WorkReadRepository> = {}, fence?: WorkReadFi
     sourceVisibilityFingerprint: async () => { calls.push('visibility'); return fingerprint; },
     summary: async () => { calls.push('summary'); return summary(); },
     view: async () => { calls.push('view'); return slice([row()], 2); },
-    selectedWork: notUsed, detail: notUsed, relations: notUsed, requireSources: notUsed,
+    selectedWork: notUsed, references: notUsed, detail: notUsed, relations: notUsed, requireSources: notUsed,
     associationObjects: notUsed, associationSources: notUsed, associationEdges: notUsed, associationEdgeTotal: notUsed,
     ...overrides,
   };
@@ -178,6 +178,33 @@ test('invalid direct prerequisite counts fail closed before the final fence', as
     const { reads, calls } = harness({ view: async () => slice([{ ...row(), prerequisiteCounts }]) });
     await assert.rejects(reads.view(actor, projectId, new URLSearchParams()),
       (error: unknown) => error instanceof DomainError && error.code === 'WORK_READ_UNAVAILABLE');
+    assert.equal(calls.includes('final-fence'), false);
+  }
+});
+
+test('mixed references release exact canonical row/marker accounting with their bounded final requirement', async () => {
+  let captured: unknown;
+  const { reads } = harness({ references: async (_projectId, objects) => {
+    assert.deepEqual(objects, [{ kind: 'work', id }, { kind: 'work', id: otherId }]);
+    return { items: [row()], unavailable: [{ kind: 'work', id: otherId }] };
+  } }, { check: async (_actor, _projectId, _digest, required) => { captured = required; return 'viewer'; } });
+  const result = await reads.references(actor, projectId, new URLSearchParams(`objects=work:${otherId},work:${id},work:${id}`));
+  assert.equal(result.access, 'viewer'); assert.equal(result.observedAt, at);
+  assert.deepEqual(result.unavailable, [{ kind: 'work', id: otherId }]);
+  assert.deepEqual(captured, { references: { objects: [{ kind: 'work', id }, { kind: 'work', id: otherId }], available: [{ kind: 'work', id }] } });
+});
+
+test('reference omissions, duplicates, opaque marker metadata and failed hydration never become successful partial rows', async () => {
+  for (const references of [
+    async () => ({ items: [row()], unavailable: [] }),
+    async () => ({ items: [row()], unavailable: [{ kind: 'work' as const, id }] }),
+    async () => ({ items: [row()], unavailable: [{ kind: 'work' as const, id: otherId, reason: 'foreign' }] }),
+    async () => ({ items: [row(otherId), row()], unavailable: [] }),
+    async () => { throw new Error('Native SQL failed'); },
+  ]) {
+    const { reads, calls } = harness({ references });
+    await assert.rejects(reads.references(actor, projectId, new URLSearchParams(`objects=work:${id},work:${otherId}`)),
+      (error: unknown) => error instanceof DomainError && error.status === 503 && error.code === 'WORK_READ_UNAVAILABLE');
     assert.equal(calls.includes('final-fence'), false);
   }
 });

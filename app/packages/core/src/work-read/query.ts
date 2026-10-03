@@ -111,6 +111,13 @@ export function parseWorkAssociationRead(query: URLSearchParams): WorkAssociatio
 
 export function parseWorkRelationRead(query: URLSearchParams): WorkRelationRead {
   closed(query, ['limit', 'cursor', 'objects', 'role']);
+  const objects = selectedObjects(query);
+  const role = query.has('role') ? query.get('role') as LinkRole : undefined;
+  if (role !== undefined && !ROLES.includes(role)) return workReadInvalid('Unknown native relation role');
+  return { ...window(query), selection: { objects, ...(role ? { role } : {}) } };
+}
+
+function selectedObjects(query: URLSearchParams): WorkReadObject[] {
   const unique = new Map<string, WorkReadObject>();
   for (const value of list(query, 'objects', WORK_READ_LIMITS.relationObjects)) {
     const parts = value.split(':');
@@ -118,7 +125,10 @@ export function parseWorkRelationRead(query: URLSearchParams): WorkRelationRead 
     const ref = { kind: workReadKind(parts[0]), id: workReadId(parts[1]) };
     unique.set(`${ref.kind}:${ref.id}`, ref);
   }
-  const role = query.has('role') ? query.get('role') as LinkRole : undefined;
-  if (role !== undefined && !ROLES.includes(role)) return workReadInvalid('Unknown native relation role');
-  return { ...window(query), selection: { objects: [...unique.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([, ref]) => ref), ...(role ? { role } : {}) } };
+  return [...unique.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([, ref]) => ref);
+}
+
+export function parseWorkReferenceRead(query: URLSearchParams): WorkReadObject[] {
+  closed(query, ['objects']);
+  return selectedObjects(query);
 }

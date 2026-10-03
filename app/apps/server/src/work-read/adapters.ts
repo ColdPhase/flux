@@ -1,5 +1,5 @@
 import type { IncomingHttpHeaders } from 'node:http';
-import { nativeWorkReadKeys, nativeWorkObjectRows, nativeWorkVisibilityRows, nativeWorkSummaryRows, nativeWorkAssociationRows, type DbExecutor, type NativeReadKeyPage } from '@flux/db';
+import { nativeWorkReadKeys, nativeWorkObjectRows, nativeWorkReferenceRows, nativeWorkVisibilityRows, nativeWorkSummaryRows, nativeWorkAssociationRows, type DbExecutor, type NativeReadKeyPage } from '@flux/db';
 import {
   accessName, createBoundedWorkReads, DomainError, enforce, evaluateProject, NotFoundError,
   type Database, type Principal, type WorkReadAccess, type WorkReadFinalFence,
@@ -44,6 +44,12 @@ export function nativeWorkReadRepository(db: DbExecutor): WorkReadRepository {
       return hydrate(projectId, await keys.view(projectId, principal, selection, limit, cursor));
     },
     async selectedWork(projectId, id) { await requireObjects(projectId, [{ kind: 'work', id }]); return (await objects.rows(projectId, [{ kind: 'work', id }]))[0]!; },
+    async references(projectId, refs) {
+      const requested = refs.map((ref) => ({ ...ref }));
+      const available = await nativeWorkReferenceRows(db).available(projectId, requested);
+      const found = new Set(available.map(({ kind, id }) => `${kind}:${id}`));
+      return { items: await objects.rows(projectId, available), unavailable: requested.filter(({ kind, id }) => !found.has(`${kind}:${id}`)) };
+    },
     async detail(projectId, ref) {
       const object = await objects.detail(projectId, ref);
       if (!object) throw new NotFoundError('Work object', 'WORK_OBJECT_NOT_FOUND');
@@ -88,6 +94,12 @@ export function nativeWorkReadFinalFence(db: Database, sessions: SessionResolver
     if (required?.parkedDecisionId) {
       const decision = await nativeWorkObjectRows(db).decision(projectId, required.parkedDecisionId);
       if (!decision || decision.status === 'proposed') throw new NotFoundError('Decision', 'DECISION_NOT_FOUND');
+    }
+    if (required?.references) {
+      const { objects, available } = required.references;
+      const current = await nativeWorkReferenceRows(db).available(projectId, objects);
+      if (current.length !== available.length || current.some((ref, i) => ref.kind !== available[i]?.kind || ref.id !== available[i]?.id))
+        throw new DomainError(409, 'work_read_changed', 'Work changed; refresh this view');
     }
     const current = await nativeWorkVisibilityRows(db).fingerprint(projectId, sources);
     if (current !== fingerprint) throw new DomainError(409, 'work_read_changed', 'Work sources changed; refresh this view');

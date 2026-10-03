@@ -27,6 +27,7 @@ export * from './repositories/work.js';
 export * from './repositories/work-read-keys.js';
 export * from './repositories/work-read-visibility.js';
 export * from './repositories/work-read-objects.js';
+export * from './repositories/work-read-references.js';
 export * from './repositories/work-read-summary.js';
 export * from './repositories/work-read-associations.js';
 export * from './repositories/task-graph.js';

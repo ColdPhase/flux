@@ -10,6 +10,7 @@ export interface WorkReadAccess {
 }
 export type WorkSummaryObservation = Omit<ProjectWorkSummary, 'access'>;
 export type WorkDetailObservation = Omit<WorkDetailProjection, 'access'>;
+export interface WorkReferenceObservation { items: NativeWorkRow[]; unavailable: WorkReadObject[] }
 export interface WorkAssociationObservation {
   objects: WorkReadSlice<NativeWorkRow>;
   sources: WorkReadSlice<SourceAssociationCounts>;
@@ -24,6 +25,8 @@ export interface WorkReadRepository {
   /** Native selector validation precedes totals, keys and bounded row hydration. No legacy unlimited links. */
   view(projectId: string, caller: PrincipalRef, selection: WorkViewSelection, limit: number, cursor?: WorkReadCursor): Promise<WorkReadSlice<NativeWorkRow>>;
   selectedWork(projectId: string, id: string): Promise<NativeWorkRow>;
+  /** Only selected same-project identities are hydrated; missing/foreign markers are opaque. */
+  references(projectId: string, objects: readonly WorkReadObject[]): Promise<WorkReferenceObservation>;
   detail(projectId: string, object: WorkReadObject): Promise<WorkDetailObservation>;
   relations(projectId: string, selection: WorkRelationRead['selection'], limit: number, cursor?: WorkReadCursor): Promise<{ page: WorkReadSlice<ObjectLink>; observedAt: string }>;
   /** Source policy/existence validation must precede ALL count/page queries, including a zero-link source. */
@@ -43,6 +46,8 @@ export interface WorkReadRequirements {
   sources?: WorkAssociationSelection;
   objects?: readonly WorkReadObject[];
   parkedDecisionId?: string;
+  /** The selected found/marker partition must remain unchanged before release. */
+  references?: { objects: readonly WorkReadObject[]; available: readonly WorkReadObject[] };
 }
 
 /** Outside that observation: require the SAME exact session, current project policy and source digest.

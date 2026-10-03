@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   assertEmptyWorkReadQuery, decodeWorkReadCursor, encodeWorkReadCursor, parseWorkAssociationRead,
-  parseWorkRelationRead, parseWorkViewRead, presentWorkReadPage, workReadScope,
+  parseWorkRelationRead, parseWorkReferenceRead, parseWorkViewRead, presentWorkReadPage, workReadScope,
 } from '@flux/core';
 
 const a = '00000000-0000-0000-0000-000000000001';
@@ -43,6 +43,15 @@ test('relationship batches retain kind identities and reject malformed/oversized
   assert.deepEqual(parseWorkRelationRead(params(`objects=result:${a},work:${a},work:${a}&role=about`)).selection,
     { objects: [{ kind: 'result', id: a }, { kind: 'work', id: a }], role: 'about' });
   for (const input of ['', 'objects=thought:'+a, 'objects=work:'+a+':1', 'objects=work:'+a+'&role=hidden', 'objects='+Array(101).fill('work:'+a).join(',')]) invalid(() => parseWorkRelationRead(params(input)));
+});
+
+test('selected reference rows have no collection/query authority and raw bounds precede normalization', () => {
+  assert.deepEqual(parseWorkReferenceRead(params(`objects=work:${b},result:${a},work:${b.toUpperCase()},decision:${a}`)),
+    [{ kind: 'decision', id: a }, { kind: 'result', id: a }, { kind: 'work', id: b }]);
+  assert.equal(parseWorkReferenceRead(params('objects='+Array(100).fill('work:'+a).join(','))).length, 1);
+  for (const input of ['', 'objects=', 'objects=work:'+a+',', 'objects=message:'+a, 'objects=work:bad', 'objects=work:'+a+':1',
+    ...['limit=1', 'cursor=abc', 'q=private', 'accountId='+b, 'role=source'].map((field) => 'objects=work:'+a+'&'+field),
+    'objects=work:'+a+'&objects=work:'+a, 'objects='+Array(101).fill('work:'+a).join(',')]) invalid(() => parseWorkReferenceRead(params(input)));
 });
 
 test('cursor survives direct reload/previous direction with all PostgreSQL microseconds', () => {
