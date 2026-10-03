@@ -4,8 +4,8 @@ See the [project README](../README.md) for an introduction and quick start.
 
 ## Contributing and security
 
-- [Contributing](CONTRIBUTING.md) — running the prototype, checking changes, and
-  submitting a pull request.
+- [Contributing](CONTRIBUTING.md) — where to raise issues, the Docker checks to run,
+  and how to submit a pull request.
 - [Security policy](SECURITY.md) — supported code and private vulnerability reports.
 
 ## Agent collaboration
@@ -16,9 +16,9 @@ See the [project README](../README.md) for an introduction and quick start.
   checks, packaging, and publication responsibilities.
 
 Each maintainer runs one `/goal` agent session; [startup](agents/startup.md)
-explains how to start, pause and resume it. The first milestone
-prepares product/design/architecture decisions. Application technology is accepted;
-implementation and the first release scope continue in the working application milestone.
+explains how to start, pause and resume it. Current work is tracked in the
+[milestones](https://github.com/ColdPhase/flux/milestones) and their issues; accepted
+direction is in the [decision register](product/decisions.md).
 
 ## Product and environment
 
