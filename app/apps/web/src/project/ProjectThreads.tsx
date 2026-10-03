@@ -12,8 +12,8 @@ function when(iso: string) {
 }
 
 /**
- * The open project's conversations in the sidebar (#117, direction C): the place's contents
- * sit beside the rail, so the centre keeps one reading column. Newest first; the rest load on
+ * The open project's conversations, nested under its row in the sidebar (#117, Studio 11.6 #136),
+ * so the centre keeps one reading column. Newest first; the rest load on
  * request. The list refreshes when the person returns to the page or opens another thread.
  */
 export function ProjectThreads({ projectId, canStart, onNavigate }: { projectId: string; canStart: boolean; onNavigate?: () => void }) {
@@ -64,8 +64,8 @@ export function ProjectThreads({ projectId, canStart, onNavigate }: { projectId:
     ?? (location.pathname === base && !new URLSearchParams(location.search).has('new') ? items[0]?.id : undefined);
   const starting = location.pathname === base && new URLSearchParams(location.search).has('new');
   return (
-    <section className="side__sec" aria-labelledby="side-threads">
-      <h2 className="side__h" id="side-threads">Conversations<span className="side__count">{total || null}</span></h2>
+    <section className="side__threads" aria-labelledby="side-threads">
+      <h3 className="ui-vh" id="side-threads">Conversations in this project{total ? `, ${total}` : ''}</h3>
       {canStart ? <Link to={`${base}?new=1`} className={`side__item side__capture project-convo__thread${starting ? ' is-current' : ''}`} aria-current={starting ? 'page' : undefined} onClick={onNavigate}>
         <Icon name="plus" className="side__ic" />New conversation
       </Link> : null}
