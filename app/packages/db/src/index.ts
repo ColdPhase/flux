@@ -91,6 +91,8 @@ export * from './repositories/search.js';
 export * from './repositories/personal-runs.js';
 export * from './repositories/project-export.js';
 export * from './repositories/operations.js';
+
+export * from './repositories/github.js';
 export * from './repositories/agent-execution.js';
 export * from './repositories/agent-orientation.js';
 export * from './repositories/agent-playbook.js';
