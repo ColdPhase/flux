@@ -169,9 +169,10 @@ export function AppLayout() {
   const where = placeOf(location.pathname);
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const activeProject = projects.find((project) => project.id === projectId);
-  // The Conversation tab returns to the conversation that was open before Tasks, Map or Docs, and the
+  // The Conversation tab returns to the conversation that was open before Tasks, Map, Docs or project
+  // settings (GitHub), and the
   // Map tab to the sketch (or list) that was open there.
-  const onOtherView = /^\/projects\/[^/]+\/(tasks|map|docs|agents)(\/|$)/.test(location.pathname);
+  const onOtherView = /^\/projects\/[^/]+\/(tasks|map|docs|agents|github)(\/|$)/.test(location.pathname);
   const onMap = /^\/projects\/[^/]+\/map(\/|$)/.test(location.pathname);
   useEffect(() => {
     if (!projectId || (onOtherView && !onMap)) return;

@@ -1,5 +1,11 @@
+import assert from 'node:assert/strict';
 import { createDecipheriv, createECDH, createHmac, randomBytes, randomUUID, type ECDH } from 'node:crypto';
+import type { PushSubscriptionSummary } from '@flux/contracts';
+import { register, uniqueEmail, type Browser } from './http.js';
+import { password } from './people.js';
 import type { RecordedPush } from './push-mock.js';
+
+export { waitFor } from './wait.js';
 
 export const pushmockUrl = process.env.FLUX_PUSHMOCK_URL ?? 'http://pushmock:8081';
 
@@ -35,16 +41,6 @@ export async function recordedPushes(mockId: string): Promise<RecordedPush[]> {
   return await response.json() as RecordedPush[];
 }
 
-export async function waitFor<T>(probe: () => Promise<T | null | undefined | false>, what: string, timeoutMs = 20_000): Promise<T> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const value = await probe();
-    if (value) return value;
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  throw new Error(`Timed out after ${timeoutMs} ms waiting for ${what}`);
-}
-
 function hmac(key: Buffer, data: Buffer) {
   return createHmac('sha256', key).update(data).digest();
 }
@@ -68,4 +64,36 @@ export function decryptPush(body: Buffer, subscription: TestSubscription): strin
   while (end >= 0 && padded[end] === 0) end--;
   if (padded[end] !== 2) throw new Error('Missing final-record padding delimiter');
   return padded.subarray(0, end).toString('utf8');
+}
+
+/** A signed-in person with their own workspace and session, as a notification recipient. */
+export interface PushRecipient {
+  browser: Browser;
+  userId: string;
+  email: string;
+  sessionId: string;
+  /** A workspace this person owns, used as the source of their own notifications. */
+  workspaceId: string;
+}
+
+export async function pushRecipient(label: string): Promise<PushRecipient> {
+  const email = uniqueEmail(label);
+  const { browser } = await register(email, password);
+  const me = (await browser.request('GET', '/api/v1/me')).json as { user: { id: string }; session: { id: string } };
+  const workspace = await browser.request('POST', '/api/v1/workspaces', { body: { name: `${label} space` } });
+  assert.equal(workspace.status, 201, workspace.text);
+  return { browser, email, userId: me.user.id, sessionId: me.session.id, workspaceId: (workspace.json as { id: string }).id };
+}
+
+/** A notification about the recipient's own workspace, which they can always read. */
+export function own(recipient: PushRecipient, fields: { title: string; body?: string; url?: string | null }) {
+  return { userId: recipient.userId, source: { type: 'workspace' as const, id: recipient.workspaceId }, ...fields };
+}
+
+/** Subscribes this browser's session to push through the API, as the service worker would. */
+export async function subscribe(browser: Browser, kind: Parameters<typeof testSubscription>[0] = 'push') {
+  const subscription = testSubscription(kind);
+  const response = await browser.request('POST', '/api/v1/push/subscriptions', { body: subscriptionBody(subscription, 'Test phone'), headers: { 'user-agent': 'FluxTest/1.0 (Android)' } });
+  assert.equal(response.status, 201, response.text);
+  return { subscription, id: (response.json as PushSubscriptionSummary).id };
 }

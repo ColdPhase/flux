@@ -2,11 +2,9 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { after, test } from 'node:test';
-import { createDatabase, FLUX_SCHEMA_VERSION, readMigrationManifest } from '@flux/db';
-
-const { pool } = createDatabase(process.env.DATABASE_URL!);
-after(() => pool.end());
+import { test } from 'node:test';
+import { FLUX_SCHEMA_VERSION, readMigrationManifest } from '@flux/db';
+import { pool } from './support/db.js';
 
 test('0034 upgrades the prior schema without changing historic connection, proposal or singleton-selection records', async () => {
   const client = await pool.connect();

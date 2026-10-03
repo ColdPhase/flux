@@ -1,14 +1,11 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
-import { createDatabase } from '@flux/db';
+import { test } from 'node:test';
 import { ConflictError, createWorkUseCases, type Principal } from '@flux/core';
 import type { Agent, Conversation, CreateWorkCommand, Page, TaskCreationNotice, WorkItem } from '@flux/contracts';
 import { workUnitOfWork, workUseCases } from '../../apps/server/src/work/adapters.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
-
-const { db, pool } = createDatabase(process.env.DATABASE_URL!);
-after(() => pool.end());
+import { db, pool } from './support/db.js';
 
 async function scene() {
   const [owner, writer, reader, outsider] = await Promise.all(['notice-owner', 'notice-writer', 'notice-reader', 'notice-outsider'].map(person));
