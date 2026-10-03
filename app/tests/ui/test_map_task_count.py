@@ -264,6 +264,14 @@ class MapTaskCountJourney(unittest.TestCase):
         shot(page, "map-task-count-list-1440-light")
         self.unchanged(page)
 
+    def test_01b_a_link_that_cannot_know_the_project_still_shows_the_counts(self) -> None:
+        # Home's Map list, search, doc links and returns open a sketch at /map/:id; a project sketch
+        # moves into its project's Map, where its thoughts show their tasks (#196 review).
+        page = self.page()
+        page.goto(f"/map/{self.ids['sketch']}")
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map/{self.ids['sketch']}$"))
+        expect(self.badge(page, "dark")).to_have_text("3 tasks")
+
     def test_02_the_chooser_lists_every_task_with_its_exact_id_status_and_people(self) -> None:
         page = self.page()
         self.open(page)
