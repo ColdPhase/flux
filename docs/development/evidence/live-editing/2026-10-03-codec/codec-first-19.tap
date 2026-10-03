@@ -1,0 +1,130 @@
+✔ single compatible stable instance resolves the public CM6 binding (no DOM claim) (4.724054ms)
+✔ two concurrent authors converge in either admission order and own undo preserves peer text (361.517628ms)
+ℹ accepted bytes=18 bodyUnits=1 wallMs=64.30
+ℹ accepted bytes=18 bodyUnits=2 wallMs=52.18
+ℹ accepted bytes=18 bodyUnits=1 wallMs=60.87
+ℹ accepted bytes=18 bodyUnits=2 wallMs=57.11
+ℹ accepted bytes=10 bodyUnits=1 wallMs=59.69
+ℹ accepted bytes=24 bodyUnits=2 wallMs=61.30
+✔ durable enrollment, collisions and reconnect versus a fresh document (161.750223ms)
+ℹ accepted bytes=24 bodyUnits=7 wallMs=54.54
+ℹ accepted bytes=24 bodyUnits=7 wallMs=48.92
+ℹ accepted bytes=18 bodyUnits=8 wallMs=55.88
+✔ immutable retry namespace, bytes and full command parameters (375.442739ms)
+ℹ accepted bytes=20 bodyUnits=3 wallMs=60.21
+✔ current rights, actor ownership and generation reject replay and unseen pending safely (306.833159ms)
+ℹ accepted bytes=24 bodyUnits=7 wallMs=55.09
+✔ forbidden roots, maps, arrays, attributes, embeds and subdocuments never poison confirmed text (303.018527ms)
+✔ unresolved hidden dependency stays refused when reordered or bundled (150.04292ms)
+✔ ordinary clock gaps require a complete bounded bundle; no pending-store shortcut (103.089682ms)
+ℹ accepted bytes=27 bodyUnits=2 wallMs=52.44
+✔ inconsistent duplicate intervals, parent origins and future references are refused (296.332908ms)
+ℹ accepted bytes=20 bodyUnits=3 wallMs=52.24
+✔ future and partial unknown deletion ranges fail before disposable integration (206.409005ms)
+ℹ accepted bytes=20 bodyUnits=3 wallMs=55.33
+ℹ accepted bytes=10 bodyUnits=2 wallMs=56.52
+✔ malformed, truncated, trailing and oversized inputs are finite refusals (250.608364ms)
+✔ 100k JS code units are admitted and 100001 stays private; Unicode is byte bounded (373.846395ms)
+ℹ accepted bytes=100019 bodyUnits=100000 wallMs=55.25
+ℹ accepted bytes=200019 bodyUnits=100000 wallMs=57.63
+ℹ accepted bytes=300019 bodyUnits=100000 wallMs=60.50
+✔ long deletion history, public checkpoints and reconstructed receipts retain meaning (4616.062567ms)
+ℹ accepted bytes=21 bodyUnits=4 wallMs=55.70
+ℹ accepted bytes=19 bodyUnits=6 wallMs=51.27
+ℹ accepted bytes=10 bodyUnits=4 wallMs=56.60
+ℹ accepted bytes=19 bodyUnits=6 wallMs=56.26
+ℹ accepted bytes=10 bodyUnits=4 wallMs=54.18
+ℹ accepted bytes=19 bodyUnits=6 wallMs=53.72
+ℹ accepted bytes=10 bodyUnits=4 wallMs=57.59
+ℹ accepted bytes=19 bodyUnits=6 wallMs=51.53
+ℹ accepted bytes=10 bodyUnits=4 wallMs=54.74
+ℹ accepted bytes=19 bodyUnits=6 wallMs=53.34
+ℹ accepted bytes=10 bodyUnits=4 wallMs=54.61
+ℹ accepted bytes=19 bodyUnits=6 wallMs=50.94
+ℹ accepted bytes=10 bodyUnits=4 wallMs=56.45
+ℹ accepted bytes=19 bodyUnits=6 wallMs=51.28
+ℹ accepted bytes=10 bodyUnits=4 wallMs=54.33
+ℹ accepted bytes=19 bodyUnits=6 wallMs=55.53
+ℹ accepted bytes=10 bodyUnits=4 wallMs=50.82
+ℹ accepted bytes=19 bodyUnits=6 wallMs=55.86
+ℹ accepted bytes=10 bodyUnits=4 wallMs=59.49
+ℹ accepted bytes=19 bodyUnits=6 wallMs=55.53
+ℹ accepted bytes=10 bodyUnits=4 wallMs=49.59
+ℹ accepted bytes=20 bodyUnits=7 wallMs=55.63
+ℹ accepted bytes=10 bodyUnits=4 wallMs=54.50
+ℹ accepted bytes=20 bodyUnits=7 wallMs=56.51
+ℹ accepted bytes=10 bodyUnits=4 wallMs=55.06
+ℹ accepted bytes=20 bodyUnits=7 wallMs=58.50
+ℹ accepted bytes=10 bodyUnits=4 wallMs=54.73
+ℹ accepted bytes=20 bodyUnits=7 wallMs=50.61
+ℹ accepted bytes=10 bodyUnits=4 wallMs=53.28
+ℹ accepted bytes=20 bodyUnits=7 wallMs=52.46
+ℹ accepted bytes=10 bodyUnits=4 wallMs=54.29
+ℹ accepted bytes=20 bodyUnits=7 wallMs=52.94
+ℹ accepted bytes=10 bodyUnits=4 wallMs=54.04
+ℹ accepted bytes=20 bodyUnits=7 wallMs=56.65
+ℹ accepted bytes=10 bodyUnits=4 wallMs=53.60
+ℹ accepted bytes=20 bodyUnits=7 wallMs=56.11
+ℹ accepted bytes=10 bodyUnits=4 wallMs=54.35
+ℹ accepted bytes=20 bodyUnits=7 wallMs=56.89
+ℹ accepted bytes=10 bodyUnits=4 wallMs=57.23
+ℹ accepted bytes=20 bodyUnits=7 wallMs=55.79
+ℹ accepted bytes=10 bodyUnits=4 wallMs=52.54
+ℹ accepted bytes=20 bodyUnits=7 wallMs=55.36
+ℹ accepted bytes=10 bodyUnits=4 wallMs=54.49
+ℹ accepted bytes=20 bodyUnits=7 wallMs=57.89
+ℹ accepted bytes=10 bodyUnits=4 wallMs=56.51
+ℹ accepted bytes=20 bodyUnits=7 wallMs=51.84
+ℹ accepted bytes=10 bodyUnits=4 wallMs=53.38
+ℹ accepted bytes=20 bodyUnits=7 wallMs=50.91
+ℹ accepted bytes=10 bodyUnits=4 wallMs=54.45
+ℹ accepted bytes=20 bodyUnits=7 wallMs=56.66
+ℹ accepted bytes=10 bodyUnits=4 wallMs=54.32
+ℹ accepted bytes=20 bodyUnits=7 wallMs=58.51
+ℹ accepted bytes=10 bodyUnits=4 wallMs=55.49
+ℹ accepted bytes=20 bodyUnits=7 wallMs=55.21
+ℹ accepted bytes=10 bodyUnits=4 wallMs=53.97
+ℹ accepted bytes=20 bodyUnits=7 wallMs=57.84
+ℹ accepted bytes=10 bodyUnits=4 wallMs=53.73
+ℹ accepted bytes=20 bodyUnits=7 wallMs=57.67
+ℹ accepted bytes=10 bodyUnits=4 wallMs=55.65
+ℹ accepted bytes=20 bodyUnits=7 wallMs=55.27
+ℹ accepted bytes=10 bodyUnits=4 wallMs=54.50
+ℹ accepted bytes=20 bodyUnits=7 wallMs=57.22
+ℹ accepted bytes=10 bodyUnits=4 wallMs=58.30
+ℹ accepted bytes=20 bodyUnits=7 wallMs=58.58
+ℹ accepted bytes=10 bodyUnits=4 wallMs=56.80
+ℹ accepted bytes=20 bodyUnits=7 wallMs=59.77
+ℹ accepted bytes=10 bodyUnits=4 wallMs=55.39
+ℹ accepted bytes=20 bodyUnits=7 wallMs=59.50
+ℹ accepted bytes=10 bodyUnits=4 wallMs=57.31
+ℹ accepted bytes=20 bodyUnits=7 wallMs=60.92
+ℹ accepted bytes=10 bodyUnits=4 wallMs=58.85
+ℹ accepted bytes=20 bodyUnits=7 wallMs=57.18
+ℹ accepted bytes=10 bodyUnits=4 wallMs=60.94
+ℹ accepted bytes=20 bodyUnits=7 wallMs=58.30
+ℹ accepted bytes=10 bodyUnits=4 wallMs=60.55
+ℹ accepted bytes=20 bodyUnits=7 wallMs=58.71
+ℹ accepted bytes=10 bodyUnits=4 wallMs=58.74
+ℹ accepted bytes=20 bodyUnits=7 wallMs=54.40
+ℹ accepted bytes=10 bodyUnits=4 wallMs=56.04
+ℹ accepted bytes=20 bodyUnits=7 wallMs=54.25
+ℹ accepted bytes=10 bodyUnits=4 wallMs=55.88
+ℹ accepted bytes=37 bodyUnits=4 wallMs=56.85
+✔ 100ms hard termination, bounded queue and external reservations are recovered (497.081726ms)
+✔ room charge includes retained original text, checkpoint, receipts and object overhead (148.262124ms)
+ℹ accepted bytes=100019 bodyUnits=100000 wallMs=67.48
+ℹ accepted bytes=12 bodyUnits=0 wallMs=61.79
+✔ close rejects reserved waiting tasks and releases every job allocation (0.667042ms)
+✔ room count and replacement accounting are finite without losing confirmed entries (2.294097ms)
+✔ 100k UTF-8 update assembles reordered duplicate chunks and expires cross-scope work (62.149852ms)
+ℹ accepted bytes=300019 bodyUnits=100000 wallMs=58.74
+✔ assembly count, aggregate, altered duplicates and index ceilings have explicit refusal (11.006792ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8355.495137

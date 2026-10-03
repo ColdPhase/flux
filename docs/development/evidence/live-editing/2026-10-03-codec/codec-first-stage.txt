@@ -1,0 +1,363 @@
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from live-editing-calibration.Dockerfile
+#1 transferring dockerfile: 551B done
+#1 DONE 0.3s
+
+#2 [internal] load metadata for docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#2 DONE 0.0s
+
+#3 [internal] load .dockerignore
+#3 transferring context:
+#3 transferring context: 2B done
+#3 DONE 0.8s
+
+#4 [1/6] FROM docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 transferring context: 1.29kB done
+#5 DONE 0.4s
+
+#6 [2/6] WORKDIR /calibration
+#6 CACHED
+
+#7 [3/6] RUN corepack enable && corepack install -g pnpm@12.6.0
+#7 CACHED
+
+#8 [4/6] COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+#8 CACHED
+
+#9 [5/6] RUN pnpm fetch && pnpm install --offline --frozen-lockfile --ignore-scripts
+#9 CACHED
+
+#10 [6/6] COPY . ./
+#10 CACHED
+
+#11 exporting to image
+#11 exporting layers done
+#11 writing image sha256:9876fb601ca6d3dfd0a1c669c7233d88c59900384fbf9c3705b244ceb37cd3fd 0.0s done
+#11 naming to docker.io/library/flux-231-codec:calibration-3293714 0.1s done
+#11 DONE 0.3s
+{
+  "recordedAt": "2026-10-03T21:17:10.599Z",
+  "versions": {
+    "node": "24.21.0",
+    "acorn": "8.18.0",
+    "ada": "4.0.0",
+    "amaro": "1.1.11",
+    "ares": "1.34.8",
+    "brotli": "1.2.0",
+    "cldr": "48.0",
+    "icu": "78.3",
+    "llhttp": "9.4.3",
+    "merve": "1.2.2",
+    "modules": "137",
+    "napi": "10",
+    "nbytes": "0.1.4",
+    "ncrypto": "0.0.1",
+    "nghttp2": "1.70.0",
+    "nghttp3": "",
+    "ngtcp2": "",
+    "openssl": "3.5.8",
+    "simdjson": "4.6.7",
+    "simdutf": "6.4.0",
+    "sqlite": "3.53.4",
+    "tz": "2026c",
+    "undici": "7.29.1",
+    "unicode": "17.0",
+    "uv": "1.52.1",
+    "uvwasi": "0.0.23",
+    "v8": "13.6.233.17-node.53",
+    "zlib": "1.3.2.1-motley-8002e91",
+    "zstd": "1.5.7"
+  },
+  "lockSha256": "84d86b9d2b0d7b9b05965186da23fe12d04cf9456b1b2fc5470b8ea5bfef1ea2",
+  "caps": {
+    "frameBytes": 65536,
+    "chunkBytes": 61440,
+    "assemblyBytes": 8388608,
+    "chunks": 144,
+    "assemblyTimeoutMs": 10000,
+    "outputWindowBytes": 1048576,
+    "assembliesPerConnection": 1,
+    "assembliesPerApi": 4,
+    "assembliesBytesPerApi": 33554432,
+    "workers": 2,
+    "workerHeapMiB": 64,
+    "workerTimeoutMs": 100,
+    "waitingTasks": 8,
+    "workerBootstrapMs": 2000,
+    "caches": 16,
+    "cacheBytes": 134217728,
+    "roomCacheBytes": 8388608,
+    "sockets": 32,
+    "bodyUnits": 100000,
+    "structs": 65536,
+    "deleteRanges": 65536
+  },
+  "dependencies": [
+    {
+      "name": "@codemirror/state",
+      "version": "6.7.6",
+      "license": "MIT",
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "05c6130cda97e7600ca91427a41e8a065efcf82365fc0293e7de80faec494c07"
+        }
+      ]
+    },
+    {
+      "name": "@codemirror/view",
+      "version": "6.43.13",
+      "license": "MIT",
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "05c6130cda97e7600ca91427a41e8a065efcf82365fc0293e7de80faec494c07"
+        }
+      ]
+    },
+    {
+      "name": "@marijn/find-cluster-break",
+      "version": "1.0.4",
+      "license": "MIT",
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "9360b00fdd091f05c783b568bdd46c679c41b72415599252de98949462ea1acb"
+        }
+      ]
+    },
+    {
+      "name": "crelt",
+      "version": "1.0.7",
+      "license": "MIT",
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "23852ebf6aef7fadffc92514b3c5df163a8651f2c3ed0dbb494cb49d93bd5de5"
+        }
+      ]
+    },
+    {
+      "name": "isomorphic.js",
+      "version": "0.2.5",
+      "license": "MIT",
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "dd6488c9c1a4ce2dc978ecee067e5b6a725b52e6057a450b24f1a23bc373b057"
+        }
+      ]
+    },
+    {
+      "name": "lib0",
+      "version": "0.2.119",
+      "license": "MIT",
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "5446db1e43fe52faf3faab7e9959fe3762ac11bdc61c0945934c498affd52d73"
+        }
+      ]
+    },
+    {
+      "name": "style-mod",
+      "version": "4.1.4",
+      "license": "MIT",
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "cb4474e26547397169061d3586c00022cda5330a1b64fa13e872319f3b63aff1"
+        }
+      ]
+    },
+    {
+      "name": "w3c-keyname",
+      "version": "2.2.8",
+      "license": "MIT",
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "869c30f368eb08735e779027b9f4bc9fea2f39624351856aebe42741f0bc0884"
+        }
+      ]
+    },
+    {
+      "name": "ws",
+      "version": "8.22.0",
+      "license": "MIT",
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "2b29dcfe0d6471f7e8c92c5fb38c9f93edee10330937055440192f1832b1ecef"
+        }
+      ]
+    },
+    {
+      "name": "y-codemirror.next",
+      "version": "0.3.6",
+      "license": "MIT",
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "005143d73a1ddc93bfa434bde58f538f49bced8f0cae42daf7d577ca0a504e1f"
+        }
+      ]
+    },
+    {
+      "name": "y-protocols",
+      "version": "1.0.7",
+      "license": "MIT",
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "5446db1e43fe52faf3faab7e9959fe3762ac11bdc61c0945934c498affd52d73"
+        }
+      ]
+    },
+    {
+      "name": "yjs",
+      "version": "13.6.33",
+      "license": "MIT",
+      "licenseFiles": [
+        {
+          "file": "LICENSE",
+          "sha256": "341baa53605ed85d6f95782322854cca56c655ebc7fd4712649b8e7afc6020ff"
+        }
+      ]
+    }
+  ]
+}
+✔ single compatible stable instance resolves the public CM6 binding (no DOM claim) (4.724054ms)
+✔ two concurrent authors converge in either admission order and own undo preserves peer text (361.517628ms)
+ℹ accepted bytes=18 bodyUnits=1 wallMs=64.30
+ℹ accepted bytes=18 bodyUnits=2 wallMs=52.18
+ℹ accepted bytes=18 bodyUnits=1 wallMs=60.87
+ℹ accepted bytes=18 bodyUnits=2 wallMs=57.11
+ℹ accepted bytes=10 bodyUnits=1 wallMs=59.69
+ℹ accepted bytes=24 bodyUnits=2 wallMs=61.30
+✔ durable enrollment, collisions and reconnect versus a fresh document (161.750223ms)
+ℹ accepted bytes=24 bodyUnits=7 wallMs=54.54
+ℹ accepted bytes=24 bodyUnits=7 wallMs=48.92
+ℹ accepted bytes=18 bodyUnits=8 wallMs=55.88
+✔ immutable retry namespace, bytes and full command parameters (375.442739ms)
+ℹ accepted bytes=20 bodyUnits=3 wallMs=60.21
+✔ current rights, actor ownership and generation reject replay and unseen pending safely (306.833159ms)
+ℹ accepted bytes=24 bodyUnits=7 wallMs=55.09
+✔ forbidden roots, maps, arrays, attributes, embeds and subdocuments never poison confirmed text (303.018527ms)
+✔ unresolved hidden dependency stays refused when reordered or bundled (150.04292ms)
+✔ ordinary clock gaps require a complete bounded bundle; no pending-store shortcut (103.089682ms)
+ℹ accepted bytes=27 bodyUnits=2 wallMs=52.44
+✔ inconsistent duplicate intervals, parent origins and future references are refused (296.332908ms)
+ℹ accepted bytes=20 bodyUnits=3 wallMs=52.24
+✔ future and partial unknown deletion ranges fail before disposable integration (206.409005ms)
+ℹ accepted bytes=20 bodyUnits=3 wallMs=55.33
+ℹ accepted bytes=10 bodyUnits=2 wallMs=56.52
+✔ malformed, truncated, trailing and oversized inputs are finite refusals (250.608364ms)
+✔ 100k JS code units are admitted and 100001 stays private; Unicode is byte bounded (373.846395ms)
+ℹ accepted bytes=100019 bodyUnits=100000 wallMs=55.25
+ℹ accepted bytes=200019 bodyUnits=100000 wallMs=57.63
+ℹ accepted bytes=300019 bodyUnits=100000 wallMs=60.50
+✔ long deletion history, public checkpoints and reconstructed receipts retain meaning (4616.062567ms)
+ℹ accepted bytes=21 bodyUnits=4 wallMs=55.70
+ℹ accepted bytes=19 bodyUnits=6 wallMs=51.27
+ℹ accepted bytes=10 bodyUnits=4 wallMs=56.60
+ℹ accepted bytes=19 bodyUnits=6 wallMs=56.26
+ℹ accepted bytes=10 bodyUnits=4 wallMs=54.18
+ℹ accepted bytes=19 bodyUnits=6 wallMs=53.72
+ℹ accepted bytes=10 bodyUnits=4 wallMs=57.59
+ℹ accepted bytes=19 bodyUnits=6 wallMs=51.53
+ℹ accepted bytes=10 bodyUnits=4 wallMs=54.74
+ℹ accepted bytes=19 bodyUnits=6 wallMs=53.34
+ℹ accepted bytes=10 bodyUnits=4 wallMs=54.61
+ℹ accepted bytes=19 bodyUnits=6 wallMs=50.94
+ℹ accepted bytes=10 bodyUnits=4 wallMs=56.45
+ℹ accepted bytes=19 bodyUnits=6 wallMs=51.28
+ℹ accepted bytes=10 bodyUnits=4 wallMs=54.33
+ℹ accepted bytes=19 bodyUnits=6 wallMs=55.53
+ℹ accepted bytes=10 bodyUnits=4 wallMs=50.82
+ℹ accepted bytes=19 bodyUnits=6 wallMs=55.86
+ℹ accepted bytes=10 bodyUnits=4 wallMs=59.49
+ℹ accepted bytes=19 bodyUnits=6 wallMs=55.53
+ℹ accepted bytes=10 bodyUnits=4 wallMs=49.59
+ℹ accepted bytes=20 bodyUnits=7 wallMs=55.63
+ℹ accepted bytes=10 bodyUnits=4 wallMs=54.50
+ℹ accepted bytes=20 bodyUnits=7 wallMs=56.51
+ℹ accepted bytes=10 bodyUnits=4 wallMs=55.06
+ℹ accepted bytes=20 bodyUnits=7 wallMs=58.50
+ℹ accepted bytes=10 bodyUnits=4 wallMs=54.73
+ℹ accepted bytes=20 bodyUnits=7 wallMs=50.61
+ℹ accepted bytes=10 bodyUnits=4 wallMs=53.28
+ℹ accepted bytes=20 bodyUnits=7 wallMs=52.46
+ℹ accepted bytes=10 bodyUnits=4 wallMs=54.29
+ℹ accepted bytes=20 bodyUnits=7 wallMs=52.94
+ℹ accepted bytes=10 bodyUnits=4 wallMs=54.04
+ℹ accepted bytes=20 bodyUnits=7 wallMs=56.65
+ℹ accepted bytes=10 bodyUnits=4 wallMs=53.60
+ℹ accepted bytes=20 bodyUnits=7 wallMs=56.11
+ℹ accepted bytes=10 bodyUnits=4 wallMs=54.35
+ℹ accepted bytes=20 bodyUnits=7 wallMs=56.89
+ℹ accepted bytes=10 bodyUnits=4 wallMs=57.23
+ℹ accepted bytes=20 bodyUnits=7 wallMs=55.79
+ℹ accepted bytes=10 bodyUnits=4 wallMs=52.54
+ℹ accepted bytes=20 bodyUnits=7 wallMs=55.36
+ℹ accepted bytes=10 bodyUnits=4 wallMs=54.49
+ℹ accepted bytes=20 bodyUnits=7 wallMs=57.89
+ℹ accepted bytes=10 bodyUnits=4 wallMs=56.51
+ℹ accepted bytes=20 bodyUnits=7 wallMs=51.84
+ℹ accepted bytes=10 bodyUnits=4 wallMs=53.38
+ℹ accepted bytes=20 bodyUnits=7 wallMs=50.91
+ℹ accepted bytes=10 bodyUnits=4 wallMs=54.45
+ℹ accepted bytes=20 bodyUnits=7 wallMs=56.66
+ℹ accepted bytes=10 bodyUnits=4 wallMs=54.32
+ℹ accepted bytes=20 bodyUnits=7 wallMs=58.51
+ℹ accepted bytes=10 bodyUnits=4 wallMs=55.49
+ℹ accepted bytes=20 bodyUnits=7 wallMs=55.21
+ℹ accepted bytes=10 bodyUnits=4 wallMs=53.97
+ℹ accepted bytes=20 bodyUnits=7 wallMs=57.84
+ℹ accepted bytes=10 bodyUnits=4 wallMs=53.73
+ℹ accepted bytes=20 bodyUnits=7 wallMs=57.67
+ℹ accepted bytes=10 bodyUnits=4 wallMs=55.65
+ℹ accepted bytes=20 bodyUnits=7 wallMs=55.27
+ℹ accepted bytes=10 bodyUnits=4 wallMs=54.50
+ℹ accepted bytes=20 bodyUnits=7 wallMs=57.22
+ℹ accepted bytes=10 bodyUnits=4 wallMs=58.30
+ℹ accepted bytes=20 bodyUnits=7 wallMs=58.58
+ℹ accepted bytes=10 bodyUnits=4 wallMs=56.80
+ℹ accepted bytes=20 bodyUnits=7 wallMs=59.77
+ℹ accepted bytes=10 bodyUnits=4 wallMs=55.39
+ℹ accepted bytes=20 bodyUnits=7 wallMs=59.50
+ℹ accepted bytes=10 bodyUnits=4 wallMs=57.31
+ℹ accepted bytes=20 bodyUnits=7 wallMs=60.92
+ℹ accepted bytes=10 bodyUnits=4 wallMs=58.85
+ℹ accepted bytes=20 bodyUnits=7 wallMs=57.18
+ℹ accepted bytes=10 bodyUnits=4 wallMs=60.94
+ℹ accepted bytes=20 bodyUnits=7 wallMs=58.30
+ℹ accepted bytes=10 bodyUnits=4 wallMs=60.55
+ℹ accepted bytes=20 bodyUnits=7 wallMs=58.71
+ℹ accepted bytes=10 bodyUnits=4 wallMs=58.74
+ℹ accepted bytes=20 bodyUnits=7 wallMs=54.40
+ℹ accepted bytes=10 bodyUnits=4 wallMs=56.04
+ℹ accepted bytes=20 bodyUnits=7 wallMs=54.25
+ℹ accepted bytes=10 bodyUnits=4 wallMs=55.88
+ℹ accepted bytes=37 bodyUnits=4 wallMs=56.85
+✔ 100ms hard termination, bounded queue and external reservations are recovered (497.081726ms)
+✔ room charge includes retained original text, checkpoint, receipts and object overhead (148.262124ms)
+ℹ accepted bytes=100019 bodyUnits=100000 wallMs=67.48
+ℹ accepted bytes=12 bodyUnits=0 wallMs=61.79
+✔ close rejects reserved waiting tasks and releases every job allocation (0.667042ms)
+✔ room count and replacement accounting are finite without losing confirmed entries (2.294097ms)
+✔ 100k UTF-8 update assembles reordered duplicate chunks and expires cross-scope work (62.149852ms)
+ℹ accepted bytes=300019 bodyUnits=100000 wallMs=58.74
+✔ assembly count, aggregate, altered duplicates and index ceilings have explicit refusal (11.006792ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8355.495137

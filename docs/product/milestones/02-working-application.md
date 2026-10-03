@@ -121,6 +121,15 @@ Real two/four-person receiver, revocation, network and supported mobile evidence
 are required; a local HTML preview is not acceptance. Keep optional personal AI
 help within #57; no shared subscription or hidden audio-processing participant.
 
+Deliver [F-021](../decisions.md): an authorized second person sees map movement
+during the drag and wiki characters with named writers/cursors while typing,
+before Save version. [#228](https://github.com/ColdPhase/flux/issues/228) and the
+[live-editing contract](../../development/live-editing-proposal.md) retain all four
+pending runtime gates: bounded transport, stable codec/replica admission, actual
+authority/persistence, and full-path interaction with measured p95 ≤200 ms.
+[#231](https://github.com/ColdPhase/flux/issues/231) prepares the isolated first two
+gates; accepted contract/calibration work is not production or milestone acceptance.
+
 Each task has one owner, a different evaluator, specific dependencies and proof
 of its user-visible outcome. Preserve unfinished work and resume it after a stop.
 Park a blocked task and continue independent implementation or review.
