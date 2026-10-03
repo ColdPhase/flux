@@ -21,16 +21,18 @@ import { LiveStage } from '../live/LiveStage';
 import '../live/live.css';
 import { JumpTo } from '../search/JumpTo';
 import { useNeedsYou } from '../returns/useNeedsYou';
+import { remember, remembered } from './remembered';
 
-function lastConversationPath(projectId: string) {
-  try { return sessionStorage.getItem(`flux.project-conversation.${projectId}`) ?? `/projects/${projectId}`; }
-  catch { return `/projects/${projectId}`; }
-}
-
+const lastConversationPath = (userId: string, projectId: string) => remembered('conversation', userId, projectId) ?? `/projects/${projectId}`;
 /** The Tasks view last chosen in this project (#136), e.g. `?status=blocked&show=mine`. */
-function lastTasksSearch(projectId: string) {
-  try { return sessionStorage.getItem(`flux.project-tasks.${projectId}`) ?? ''; }
-  catch { return ''; }
+const lastTasksSearch = (userId: string, projectId: string) => remembered('tasks', userId, projectId) ?? '';
+/**
+ * The Map's last place in this project (#189): its list or the sketch that was open; before any, a
+ * project's only sketch opens directly.
+ */
+function lastMapPath(userId: string, projectId: string, sketches: { items: { id: string }[]; total: number } | null | undefined) {
+  const only = sketches?.total === 1 ? sketches.items[0] : undefined;
+  return remembered('map', userId, projectId) ?? (only ? `/projects/${projectId}/map/${only.id}` : `/projects/${projectId}/map`);
 }
 
 /** Tab order for the slide direction: Home's views, or a project's Conversation · Map · Tasks · Wiki · Agents. */
@@ -167,21 +169,23 @@ export function AppLayout() {
   const where = placeOf(location.pathname);
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const activeProject = projects.find((project) => project.id === projectId);
-  // The Conversation tab returns to the conversation that was open before Tasks, Map or Docs.
-  const onOtherView = /^\/projects\/[^/]+\/(tasks|map|docs)(\/|$)/.test(location.pathname);
+  // The Conversation tab returns to the conversation that was open before Tasks, Map or Docs, and the
+  // Map tab to the sketch (or list) that was open there.
+  const onOtherView = /^\/projects\/[^/]+\/(tasks|map|docs|agents)(\/|$)/.test(location.pathname);
+  const onMap = /^\/projects\/[^/]+\/map(\/|$)/.test(location.pathname);
   useEffect(() => {
-    if (!projectId || onOtherView) return;
-    try { sessionStorage.setItem(`flux.project-conversation.${projectId}`, `${location.pathname}${location.search}`); } catch { /* private mode */ }
-  }, [projectId, onOtherView, location.pathname, location.search]);
+    if (!projectId || (onOtherView && !onMap)) return;
+    remember(onMap ? 'map' : 'conversation', me.user.id, projectId, `${location.pathname}${location.search}`);
+  }, [me.user.id, projectId, onOtherView, onMap, location.pathname, location.search]);
   const shellProject = useProjectShell();
   const project = shellProject && shellProject.project.id === projectId ? shellProject : undefined;
   const openWork = project?.work.work.filter((item) => !item.parked && (item.status === 'open' || item.status === 'in_progress' || item.status === 'blocked')).length;
   // Conversation · Map · Tasks · Wiki in the Studio 11.6 order (#117, #136); quiet tabs without
   // counts. The open work count stays readable to assistive technology on the Tasks tab.
   const projectViews = projectId ? [
-    { id: 'conversation', label: 'Conversation', to: onOtherView ? lastConversationPath(projectId) : `${location.pathname}${location.search}` },
-    { id: 'map', label: 'Map', to: `/projects/${projectId}/map`, end: false },
-    { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks${lastTasksSearch(projectId)}`, ...(openWork ? { countLabel: `, ${openWork} open` } : {}) },
+    { id: 'conversation', label: 'Conversation', to: onOtherView ? lastConversationPath(me.user.id, projectId) : `${location.pathname}${location.search}` },
+    { id: 'map', label: 'Map', to: onMap ? location.pathname : lastMapPath(me.user.id, projectId, project?.sketches), end: false },
+    { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks${lastTasksSearch(me.user.id, projectId)}`, ...(openWork ? { countLabel: `, ${openWork} open` } : {}) },
     { id: 'docs', label: 'Wiki', to: `/projects/${projectId}/docs`, end: false },
   ] : null;
   const audience = project ? audienceLine(project.people, me.user.id) : 'People with project access';
