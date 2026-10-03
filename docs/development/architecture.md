@@ -128,9 +128,7 @@ from `access/policy.ts` and therefore depend on Drizzle transitively. That is
 accepted for now; they must not import `drizzle-orm` or `@flux/db` themselves. The
 refactor happens in small PRs after the active feature branches that touch these
 files have merged, with the existing access, revocation and transaction tests
-locking the behavior. Other structural hotspots (the multi-capability
-`app/apps/server/src/access/routes.ts`, the growing `app/packages/db/src/schema.ts`) follow
-the same plan.
+locking the behavior. The growing `app/packages/db/src/schema.ts` follows the same plan.
 
 Resolved outside the allowlist: identity no longer queries session rows itself. The
 session list/revoke queries live in `app/packages/db/src/repositories/sessions.ts` behind
@@ -165,3 +163,13 @@ typed errors, and exists only when `FLUX_FIXTURE_TOKEN` is set (with failure inj
 test-only stream and search routes). The API's composition root is `app/apps/server/src/app.ts`
 (`buildApp(config)` from `config.ts`, read once); `index.ts` only builds and listens, and the health
 check is `health/routes.ts` ([#88](https://github.com/ColdPhase/flux/issues/88)).
+
+Resolved outside the allowlist: the access routes are one module per capability in
+`app/apps/server/src/access/` (workspaces, projects and grants, agents, drafts, draft summaries)
+over a shared context, each under about 120 lines. Header helpers and schema fragments are in
+`app/apps/server/src/http/{headers,schemas}.ts`, and `http/errors.ts` maps domain errors and a
+missing session once, on the API's root: access, push, stream and identity answer a missing session
+with the same `UNAUTHENTICATED` body ([#85](https://github.com/ColdPhase/flux/issues/85)); identity's
+401 was Fastify's default body before. Route plugins that tests register alone call `useDomainErrors`,
+the same mapper; agent connection, conversation and proactive comparison still set their own handlers,
+which drop a domain error's details (follow-up with #36).
