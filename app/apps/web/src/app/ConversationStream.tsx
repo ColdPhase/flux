@@ -258,7 +258,23 @@ export function ConversationStream({ project, meId, roots: stream, work, author,
       const element = keep ? document.getElementById(keep.id) : null;
       if (element && keep) feed.scrollTop += element.getBoundingClientRect().top - feed.getBoundingClientRect().top - keep.offset;
       else if (stickRef.current) feed.scrollTop = feed.scrollHeight;
+      // The layout can still shift for a moment after a width change (a panel docking or leaving re-renders
+      // a frame later), so the opened root is held in place until it settles, unless the person scrolls.
+      if (widened && pinRef.current) { settleUntil = performance.now() + 1000; if (!settleFrame) settleFrame = requestAnimationFrame(holdPin); }
     });
+    let settleUntil = 0;
+    let settleFrame = 0;
+    const holdPin = () => {
+      settleFrame = 0;
+      const keep = pinRef.current;
+      if (!keep || performance.now() > settleUntil || performance.now() - personAt < 500) return;
+      const element = document.getElementById(keep.id);
+      if (element) {
+        const drift = element.getBoundingClientRect().top - feed.getBoundingClientRect().top - keep.offset;
+        if (Math.abs(drift) > 1) feed.scrollTop += drift;
+      }
+      settleFrame = requestAnimationFrame(holdPin);
+    };
     record();
     feed.addEventListener('scroll', onScroll, { passive: true });
     for (const name of ['wheel', 'touchmove'] as const) feed.addEventListener(name, person, { passive: true });
@@ -273,6 +289,7 @@ export function ConversationStream({ project, meId, roots: stream, work, author,
       feed.removeEventListener('keydown', key);
       observer.disconnect();
       if (frame) cancelAnimationFrame(frame);
+      if (settleFrame) cancelAnimationFrame(settleFrame);
     };
   }, []);
 
