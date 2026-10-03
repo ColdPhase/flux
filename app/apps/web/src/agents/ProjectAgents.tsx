@@ -30,6 +30,8 @@ const OPERATION_LABEL: Record<AgentOperation, string> = {
   'decision.propose': 'proposed a decision', 'map.create': 'created a map', 'map.rename': 'renamed a map',
   'map.thought.create': 'added a thought', 'map.thought.update': 'edited a thought', 'map.thought.delete': 'removed a thought',
   'map.positions.update': 'arranged the map', 'map.link.create': 'linked thoughts', 'map.link.delete': 'unlinked thoughts',
+  'doc.create': 'created a doc', 'doc.update': 'edited a doc',
+  'conversation.create': 'started a conversation', 'conversation.reply': 'replied in a conversation',
   'cowork.claim': 'took a task', 'cowork.renew': 'is still on a task', 'cowork.release': 'released a task', 'cowork.request': 'asked for help',
 };
 
