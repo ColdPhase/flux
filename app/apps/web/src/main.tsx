@@ -1,7 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RouterProvider } from 'react-router';
-import '@fontsource-variable/inter';
 import './ui/tokens.css';
 import './ui/ui.css';
 import './app/app.css';
