@@ -1,10 +1,14 @@
 import { useRef } from 'react';
 import { filePath, type MessageFile } from '@flux/contracts';
 import { Icon } from '../ui';
-import type { ComposerState } from './draft';
+import type { ComposerState, DraftFile } from './draft';
 import './composer.css';
 
 export const fileSize = (size: number) => size < 1024 ? `${size} B` : size < 1024 * 1024 ? `${(size / 1024).toFixed(1)} KiB` : `${(size / (1024 * 1024)).toFixed(1)} MiB`;
+const fileStatus = (file: DraftFile, unconfirmed: boolean) => file.state === 'uploading' ? 'Uploading…'
+  : file.state === 'failed' ? 'Upload not confirmed'
+    : unconfirmed ? 'Send unconfirmed; retry checks availability'
+      : Date.parse(file.staged!.expiresAt) <= Date.now() ? 'Staging expired; select this file again' : 'Ready, private';
 
 /** Ordered stored-file links shared by roots, replies, Details and Agents. */
 export function MessageFiles({ files }: { files?: MessageFile[] }) {
@@ -29,7 +33,7 @@ export function ComposerFiles({ state, disabled = false }: { state: ComposerStat
     {state.draft.files.length ? <>
       <span className="composer-files__privacy">Private until sent · 5 MiB each · 10 files / 20 MiB per message</span>
       <ol className="composer-files__list" aria-label="Files in your draft">{state.draft.files.map((file) => <li key={file.uploadId}>
-        <span className="composer-files__name">{file.name}<small>{fileSize(file.size)} · {file.state === 'ready' ? 'Ready, private' : file.state === 'uploading' ? 'Uploading…' : 'Upload not confirmed'}</small></span>
+        <span className="composer-files__name">{file.name}<small>{fileSize(file.size)} · {fileStatus(file, state.draft.unconfirmed)}</small></span>
         {file.state === 'failed' ? <button type="button" disabled={blocked} onClick={() => {
           if (!state.retryFile(file.uploadId)) { recoverId.current = file.uploadId; recovery.current?.click(); }
         }}>Retry upload</button> : null}

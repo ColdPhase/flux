@@ -11,6 +11,7 @@ import time
 import unittest
 import uuid
 from pathlib import Path
+from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from playwright.sync_api import expect, sync_playwright
 from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
@@ -92,8 +93,8 @@ class SharedComposerJourney(unittest.TestCase):
     def discussion(self, page, task):
         return self.api(page, "GET", f"/api/v1/work/{task['id']}/discussion")
 
-    def record(self, page, project, task):
-        key = f"flux:composer:{self.people['owner']}:{project['id']}:task:{task['id']}"
+    def record(self, page, project, task, who="owner"):
+        key = f"flux:composer:{self.people[who]}:{project['id']}:task:{task['id']}"
         return page.evaluate("key => JSON.parse(localStorage.getItem(key))", key)
 
     def root(self, page, task, body="Start with actual measurements"):
@@ -261,12 +262,13 @@ class SharedComposerJourney(unittest.TestCase):
         page.get_by_role("button", name="Send to task").click()
         page.get_by_label("Task", exact=True).select_option(b["id"])
         expect(page.get_by_label("Write to this task")).to_have_value("B's distinct draft")
-        pending[0][0].fulfill(response=pending[0][1])
-        page.wait_for_timeout(100)
-        expect(page.get_by_label("Task", exact=True)).to_have_value(b["id"])
-        expect(page.get_by_label("Write to this task")).to_have_value("B's distinct draft")
         page.get_by_label("Task", exact=True).select_option(a["id"])
+        expect(page.get_by_label("Write to this task")).to_have_value("A's held private bytes")
+        pending[0][0].fulfill(response=pending[0][1])
         expect(page.get_by_label("Write to this task")).to_have_value("")
+        expect(page.get_by_label("Task", exact=True)).to_have_value(a["id"])
+        page.get_by_label("Task", exact=True).select_option(b["id"])
+        expect(page.get_by_label("Write to this task")).to_have_value("B's distinct draft")
         self.assertEqual(len([m for m in self.discussion(page, a)["messages"] if m["body"] == "A's held private bytes"]), 1)
 
     def test_05_storage_refusal_retains_the_newest_visit_copy_and_source_across_views(self):
@@ -308,6 +310,15 @@ class SharedComposerJourney(unittest.TestCase):
         before = self.record(page, project, a)
         page.reload()
         expect(page.get_by_label("Write to this task")).to_have_value(before["body"])
+        # A real same-size, different-byte replay conflicts at the server and keeps its upload identity.
+        with page.expect_file_chooser() as chooser:
+            page.get_by_role("button", name="Retry upload").click()
+        chooser.value.set_files(self.file("uncertain.bin", b"x" * len(self.file()["buffer"])))
+        expect(page.get_by_role("alert")).to_contain_text("Upload conflicts")
+        conflicted = self.record(page, project, a)
+        self.assertEqual(conflicted["body"], before["body"])
+        self.assertEqual(conflicted["files"][0]["uploadId"], before["files"][0]["uploadId"])
+        page.reload()
         with page.expect_file_chooser() as chooser:
             page.get_by_role("button", name="Retry upload").click()
         chooser.value.set_files(self.file("uncertain.bin"))
@@ -377,3 +388,163 @@ class SharedComposerJourney(unittest.TestCase):
                 expect(pane).to_have_count(0)
                 self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), width)
                 shot(page, f"shared-published-{width}")
+
+    def test_09_real_revocation_during_upload_and_send_keeps_the_complete_draft(self):
+        owner, writer = self.page(), self.page("writer")
+        project, a, _, _ = self.scene(owner)
+        root = self.root(owner, a)
+        pane = self.cite(writer, project, root["conversationId"])
+        pane.get_by_label("Reply", exact=True).fill("Retain the revoked writer's careful comparison")
+        self.choose(writer, [self.file("retained.bin")], pane)
+        expect(pane.get_by_text("Ready, private", exact=False)).to_have_count(1)
+        before = self.record(writer, project, a, "writer")
+        def access(role):
+            self.api(owner, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": {"kind": "human", "id": self.people['writer']}, "role": role}, 201)
+        def revoke_upload(route):
+            access("denied")
+            response = route.fetch()
+            self.assertEqual(response.status, 404)
+            route.fulfill(response=response)
+        writer.route("**/api/v1/projects/*/files?*", revoke_upload)
+        self.choose(writer, [self.file("revoked.bin")], pane)
+        key = f"flux:composer:{self.people['writer']}:{project['id']}:task:{a['id']}"
+        writer.wait_for_function("key => JSON.parse(localStorage.getItem(key)).files.some(file => file.name === 'revoked.bin' && file.state === 'failed')", arg=key)
+        writer.unroute("**/api/v1/projects/*/files?*", revoke_upload)
+        access("contributor")
+        self.open_agents(writer, project, a)
+        expect(writer.get_by_role("alert")).to_contain_text("Upload unavailable")
+        kept = self.record(writer, project, a, "writer")
+        self.assertEqual(kept["body"], before["body"])
+        self.assertEqual(kept["references"], before["references"])
+        self.assertEqual(kept["files"][0], before["files"][0])
+        writer.get_by_role("button", name="Remove revoked.bin").click()
+        command_before = self.record(writer, project, a, "writer")
+        def revoke_send(route):
+            if route.request.method == "POST":
+                access("denied")
+                response = route.fetch()
+                self.assertEqual(response.status, 404)
+                route.fulfill(response=response)
+            else:
+                route.continue_()
+        writer.route(f"**/api/v1/work/{a['id']}/discussion", revoke_send)
+        with writer.expect_response(lambda response: response.request.method == "POST" and response.url.endswith(f"/work/{a['id']}/discussion")):
+            writer.get_by_role("button", name="Send to task").click()
+        writer.unroute(f"**/api/v1/work/{a['id']}/discussion", revoke_send)
+        access("contributor")
+        self.open_agents(writer, project, a)
+        expect(writer.get_by_role("alert")).to_contain_text("Your draft, files and sources are kept")
+        kept = self.record(writer, project, a, "writer")
+        for field in ("body", "files", "references", "commandId"):
+            self.assertEqual(kept[field], command_before[field])
+        self.assertTrue(kept["unconfirmed"])
+        self.assertEqual(len(self.discussion(owner, a)["messages"]), 1)
+        writer.get_by_role("button", name="Send to task").click()
+        expect(writer.get_by_label("Write to this task")).to_have_value("")
+        self.assertEqual(self.discussion(owner, a)["messages"][-1]["authorId"], self.people["writer"])
+
+    def test_10_map_details_and_unloaded_old_conversation_retry_one_task_command(self):
+        page = self.page()
+        project, _, _, _ = self.scene(page)
+        sketch = self.api(page, "POST", f"/api/v1/workspaces/{self.workspace}/sketches", {"title": "Night measurement plan", "scope": "project", "projectId": project['id']}, 201)
+        thought = self.api(page, "POST", f"/api/v1/sketches/{sketch['id']}/thoughts", {"text": "Measure the negative camera result", "x": 0, "y": 0}, 201)["thought"]
+        page.goto(f"/projects/{project['id']}/map/{sketch['id']}")
+        page.locator(f".sk-node[data-id='{thought['id']}']").click()
+        with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith(f"/projects/{project['id']}/work")) as created:
+            page.get_by_role("button", name="Create work from selected thoughts").click()
+        task = created.value.json()
+        details = page.get_by_role("region", name="Discussion")
+        box = details.get_by_label("First message about this task")
+        expect(box).to_be_enabled()
+        box.fill("The Map-created task keeps this measurement file")
+        self.choose(page, [self.file("map-measurement.bin")], details)
+        expect(details.get_by_text("Ready, private", exact=False)).to_have_count(1)
+        lost = []
+        def lose(route):
+            if route.request.method == "POST" and not lost:
+                response = route.fetch()
+                self.assertEqual(response.status, 201)
+                lost.append(route.request.post_data_json)
+                route.fulfill(status=503, content_type="application/json", body="{}")
+            else:
+                route.continue_()
+        page.route(f"**/api/v1/work/{task['id']}/discussion", lose)
+        details.get_by_role("button", name="Start the discussion").click()
+        expect(details.get_by_role("alert")).to_contain_text("Could not confirm")
+        discussion = self.discussion(page, task)
+        self.api(page, "POST", f"/api/v1/projects/{project['id']}/conversations", {"body": "A newer unrelated root", "clientMessageId": str(uuid.uuid4())}, 201)
+        # Return real bounded root pages, keeping the older seek in flight while its deep link sends.
+        older = []
+        first = []
+        def bounded(route):
+            parts = urlsplit(route.request.url)
+            query = parse_qs(parts.query)
+            if "before" in query:
+                older.append(route)
+            else:
+                query["limit"] = ["1"]
+                response = route.fetch(url=urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query, doseq=True), parts.fragment)))
+                first.append(response.json())
+                route.fulfill(response=response)
+        page.route("**/api/v1/projects/*/conversation-roots?*", bounded)
+        page.goto(f"/projects/{project['id']}/conversations/{discussion['conversationId']}")
+        pane = page.get_by_role("complementary", name="Replies")
+        expect(pane.get_by_label("Reply", exact=True)).to_have_value(lost[0]["body"])
+        self.assertTrue(first)
+        self.assertNotIn(discussion["conversationId"], [root["conversationId"] for root in first[0]["roots"]])
+        replay = []
+        page.on("request", lambda request: replay.append(request.post_data_json) if request.method == "POST" and request.url.endswith(f"/work/{task['id']}/discussion") else None)
+        pane.get_by_role("button", name="Send reply").click()
+        expect(pane.get_by_label("Reply", exact=True)).to_have_value("")
+        self.assertEqual(replay[-1], lost[0])
+        self.assertEqual(len(self.discussion(page, task)["messages"]), 1)
+        page.unroute("**/api/v1/projects/*/conversation-roots?*", bounded)
+        for route in older:
+            route.continue_()
+
+    def test_11_expired_staging_failure_keeps_metadata_until_explicit_reselection(self):
+        # The API regression separately expires a real stored row. Here an expired-response fault
+        # checks the browser's complete recovery record without adding a test-only app endpoint.
+        page = self.page()
+        project, a, _, _ = self.scene(page)
+        root = self.root(page, a)
+        pane = self.cite(page, project, root["conversationId"])
+        pane.get_by_label("Reply", exact=True).fill("Keep this text and version through staging expiry")
+        self.choose(page, [self.file("expired.bin")], pane)
+        expect(pane.get_by_text("Ready, private", exact=False)).to_have_count(1)
+        original = self.record(page, project, a)
+        key = f"flux:composer:{self.people['owner']}:{project['id']}:task:{a['id']}"
+        page.evaluate("key => { const value = JSON.parse(localStorage.getItem(key)); value.files[0].staged.expiresAt = '1970-01-01T00:00:00.000Z'; localStorage.setItem(key, JSON.stringify(value)); }", key)
+        page.reload()
+        pane = page.get_by_role("complementary", name="Replies")
+        expect(pane.get_by_text("Staging expired; select this file again", exact=False)).to_be_visible()
+        def expire(route):
+            if route.request.method == "POST":
+                route.fulfill(status=404, content_type="application/json", body=json.dumps({"code": "NOT_FOUND", "message": "Attachment unavailable"}))
+            else:
+                route.continue_()
+        page.route(f"**/api/v1/work/{a['id']}/discussion", expire)
+        pane.get_by_role("button", name="Send reply").click()
+        expect(pane.get_by_role("alert")).to_contain_text("expired file")
+        kept = self.record(page, project, a)
+        for field in ("body", "references", "commandId"):
+            self.assertEqual(kept[field], original[field])
+        self.assertEqual(kept["files"][0]["staged"]["id"], original["files"][0]["staged"]["id"])
+        page.unroute(f"**/api/v1/work/{a['id']}/discussion", expire)
+        pane.get_by_role("button", name="Remove expired.bin").click()
+        self.choose(page, [self.file("expired.bin")], pane)
+        expect(pane.get_by_text("Ready, private", exact=False)).to_have_count(1)
+        recovered = self.record(page, project, a)
+        self.assertNotEqual(recovered["commandId"], original["commandId"])
+        self.assertNotEqual(recovered["files"][0]["staged"]["id"], original["files"][0]["staged"]["id"])
+        # A real conflicting durable receipt must not silently replace the browser's payload.
+        self.api(page, "POST", f"/api/v1/work/{a['id']}/discussion", {"body": "An earlier command with different intent", "clientMessageId": recovered['commandId'], "kind": "text"}, 201)
+        pane.get_by_role("button", name="Send reply").click()
+        expect(pane.get_by_role("alert")).to_contain_text("conflicts with an earlier command")
+        conflicted = self.record(page, project, a)
+        for field in ("body", "files", "references", "commandId"):
+            self.assertEqual(conflicted[field], recovered[field])
+        pane.get_by_label("Reply", exact=True).fill(recovered['body'] + " · confirmed revised intent")
+        pane.get_by_role("button", name="Send reply").click()
+        expect(pane.get_by_label("Reply", exact=True)).to_have_value("")
+        self.assertEqual(self.discussion(page, a)["messages"][-1]["source"], {"materialId": recovered['references'][0]['materialId'], "version": 1})

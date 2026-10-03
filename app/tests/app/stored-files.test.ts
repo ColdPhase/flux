@@ -172,6 +172,35 @@ test('foreign, revoked, missing and same-size corrupt staged bytes cannot create
   assert.equal(row!.messageId, null);
 });
 
+test('expired staged files leave task roots and replies unchanged; reselecting bytes publishes a new exact file', async () => {
+  const f = await scene();
+  const bytes = Buffer.from([0, 255, 4, 10, 128]);
+  const staged = (await upload(f.writer, f.place.id, bytes, randomUUID(), 'expired.bin')).body;
+  await db.update(schema.projectFiles).set({ expiresAt: new Date(Date.now() - 1000) }).where(eq(schema.projectFiles.id, staged.id));
+  const task = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.place.id}/work`, {
+    body: { title: 'Recover the expired measurement' },
+  }), 201) as WorkItem;
+  const path = `/api/v1/work/${task.id}/discussion`;
+  const command = { body: 'Keep the text until the file is available', attachmentIds: [staged.id], clientMessageId: randomUUID() };
+  assert.equal((await f.writer.browser.request('POST', path, { body: command })).status, 404);
+  const empty = expectStatus(await f.reader.browser.request('GET', path), 200) as TaskDiscussion;
+  assert.equal(empty.root, null);
+  const root = expectStatus(await f.owner.browser.request('POST', path, {
+    body: { body: 'An independently written root', clientMessageId: randomUUID() },
+  }), 201) as ConversationMessage;
+  assert.equal((await f.writer.browser.request('POST', path, { body: command })).status, 404);
+  assert.deepEqual((expectStatus(await f.reader.browser.request('GET', path), 200) as TaskDiscussion).messages, [root]);
+  assert.equal((await fileRows(db).findFile(staged.id))!.messageId, null);
+  const replacement = (await upload(f.writer, f.place.id, bytes, randomUUID(), staged.name)).body;
+  const recovered = expectStatus(await f.writer.browser.request('POST', path, {
+    body: { ...command, attachmentIds: [replacement.id], clientMessageId: randomUUID() },
+  }), 201) as ConversationMessage;
+  assert.equal(recovered.body, command.body);
+  assert.equal(recovered.conversationId, root.conversationId);
+  assert.deepEqual(recovered.files?.map((file) => file.id), [replacement.id]);
+  assert.deepEqual(Buffer.from(await (await download(f.reader, replacement.id)).arrayBuffer()), bytes);
+});
+
 test('upload and upload retry reauthorize after streaming; an in-flight replay returns no revoked file', async () => {
   const f = await scene();
   const storage = await diskFileStorage(filesDir);

@@ -339,7 +339,13 @@ remain authoritative. Unconfirmed uploads retain their upload UUID; bytes stay i
 visit memory, and after reload recovery explicitly asks for the same file. Draft
 storage refusal keeps the current visit's newest copy and visibly describes its
 limit. Ready private files expire under #225's policy and failed publication does
-not silently discard them.
+not silently discard them. An expired staging timestamp is shown truthfully; an
+unconfirmed send keeps its original command because published files survive that
+timestamp. The server resolves a retry against current access and durable receipt.
+If an unpublished file is unavailable, the person explicitly removes and selects
+it again; that payload change receives a new command UUID while text and reference
+remain. A revoked or unavailable file/source response does not falsely imply that
+the person's text was sent or erased.
 
 **Additive wire delta, independently agreed by the coordinator before mapping:**
 `ConversationFields.task?: { workId, title }` has the same shape and current title

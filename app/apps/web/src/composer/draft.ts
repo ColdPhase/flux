@@ -72,7 +72,7 @@ function edit(key: string, change: (draft: ComposerDraft) => ComposerDraft) {
 }
 export function composerError(cause: unknown) {
   if (cause instanceof NetworkError) return 'Flux could not be reached. Could not confirm the send. Your text is kept with its files and sources; retry when Flux is reachable.';
-  if (cause instanceof ApiError && [401, 403, 404].includes(cause.status)) return 'Could not send with your current access. Your draft, files and sources are kept.';
+  if (cause instanceof ApiError && [401, 403, 404].includes(cause.status)) return 'Could not send: your access, a file or a source may be unavailable. Your draft, files and sources are kept. Remove and select an expired file again to recover it.';
   if (cause instanceof ApiError && cause.code === 'IDEMPOTENCY_CONFLICT') return 'This send conflicts with an earlier command. Your draft is kept. Edit it to start a new send.';
   return 'Could not confirm the send. Your text is kept with its files and sources; retry or edit it.';
 }
