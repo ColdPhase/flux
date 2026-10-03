@@ -15,9 +15,9 @@ type Outcome =
   | { status: 'unknown'; reason: string };
 
 /**
- * Explicitly invoked, bounded dispatch slice for a controlled provider. It is not registered
- * as a scheduled worker: production rule activation stays unavailable until the real provider,
- * source set and UI pass the full #58 contract. Provider calls do not hold SQL locks. The request
+ * Bounded dispatch of one ready candidate, called by the comparison worker's tick when the
+ * operator switched background comparisons on (#58), and by tests. Provider calls do not hold SQL
+ * locks. The request
  * goes to the owner's connection, whatever its provider (F-020): `provider` is the adapter registry
  * (`providerComparison` of `@flux/agent-runtime`) or a test double.
  */

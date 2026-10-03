@@ -323,6 +323,7 @@ worker. See [AI providers](ai-providers.md#endpoint-guard-ssrf).
 | Variable | Service | Meaning |
 | --- | --- | --- |
 | `FLUX_AI_PRIVATE_TARGETS` | API, worker | Empty by default: an owner's OpenAI-compatible endpoint must be public HTTPS, and private, loopback, link-local, unique-local, CGNAT and reserved addresses are refused when the connection is saved and again at every request. Comma-separated host names (exact), IP addresses or CIDR ranges, e.g. `ollama,10.0.0.0/8`, allow those private targets, plain HTTP included. Cloud metadata addresses are refused even when listed. A malformed entry stops startup. Set the same value on both services. |
+| `FLUX_BACKGROUND_COMPARISONS` | API, worker | Empty or `off` by default: owners can save comparison rules but not enable them (`BACKGROUND_RUNTIME_UNAVAILABLE`), and the worker unschedules the comparison jobs. `on` lets owners enable rules and registers the comparison tick (every minute: source changes, ready candidates, one dispatch at a time on each owner's own connection) and recovery (every ten minutes) jobs; it needs `FLUX_BACKGROUND_KEY_HOST_FILE`. Any other value stops startup. Set the same value on both services (#58). |
 
 In `check_application.sh` the test overlay sets it to `providermock`, the local stand-in for both
 AI wire formats (`app/tests/app/support/provider-mock.ts`) that the adapter contract suite uses.

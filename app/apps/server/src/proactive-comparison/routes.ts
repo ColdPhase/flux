@@ -1,20 +1,37 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
-import { AI_BASE_URL_MAX_LENGTH, AI_MODEL_LISTS_PATH, AI_PRICE_MAX_MICROS_PER_MTOK, AI_PROVIDER_KINDS, backgroundComputeUsagePath,
+import { AI_BASE_URL_MAX_LENGTH, AI_MODEL_LISTS_PATH, AI_PRICE_MAX_MICROS_PER_MTOK, AI_PROVIDER_KINDS, backgroundComparisonRuntimePath, backgroundComputeUsagePath,
   proactiveComparisonOutcomePath, proactiveComparisonOutcomesPath, proactiveComparisonProposalsPath, WORK_LIMITS, type AiModelListQuery,
-  type ConnectBackgroundComputeCommand, type UpdateBackgroundComputeConnectionCommand, type CreateProactiveComparisonRule } from '@flux/contracts';
+  type BackgroundComparisonRuntime, type ConnectBackgroundComputeCommand, type UpdateBackgroundComputeConnectionCommand, type CreateProactiveComparisonRule } from '@flux/contracts';
 import { backgroundConnectionRepository, comparisonProposalView, proactiveOutboxRows, proactiveRuleRows, sealBackgroundKey } from '@flux/db';
-import { backgroundConnectionUseCases, baseUrlSyntaxProblem, ConflictError, DomainError, enforce, evaluateProject, InvalidInputError,
+import { backgroundComparisonsEnabled, backgroundConnectionUseCases, baseUrlSyntaxProblem, ConflictError, DomainError, enforce, evaluateProject, InvalidInputError,
   isUuid, normalizeBaseUrl, NotFoundError, proactiveRuleUseCases, VersionConflictError, visibleProposal, type Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { workUseCases } from '../work/adapters.js';
 import { comparisonOutcomeAccess, comparisonOutcomes } from './outcome-adapter.js';
 import { aiConnectionServerComposition, type AiConnectionServerComposition } from './ai-composition.js';
 
-interface Options { db: Database; sessions: SessionResolver; backgroundMasterKey: Buffer | null; ai?: AiConnectionServerComposition }
+interface Options {
+  db: Database; sessions: SessionResolver; backgroundMasterKey: Buffer | null; ai?: AiConnectionServerComposition;
+  /** `FLUX_BACKGROUND_COMPARISONS=on`: the worker runs comparisons, so owners may enable their rules (#58). */
+  comparisonsEnabled?: boolean;
+}
+
+/** The comparison rule use cases over the request's transaction, with the operator's switch (#58). */
+export function comparisonRuleUseCases(db: Database, runtimeAvailable: boolean) {
+  return proactiveRuleUseCases({ run: (action) => db.transaction(async (tx) => action({
+    access: { async requireProject(principal, projectId, mode) {
+      const result = enforce(await evaluateProject(principal, mode === 'write' ? 'project.write' : 'project.read', projectId, tx,
+        { lock: mode === 'write' }), 'project');
+      return { workspaceId: result.project!.workspaceId };
+    } },
+    rules: proactiveRuleRows(tx),
+  })) }, { runtimeAvailable });
+}
 
 const microsPerMTok = { type: 'integer', minimum: 0, maximum: AI_PRICE_MAX_MICROS_PER_MTOK };
 
-export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sessions, backgroundMasterKey, ai = aiConnectionServerComposition(process.env) }: Options) {
+export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sessions, backgroundMasterKey, ai = aiConnectionServerComposition(process.env),
+  comparisonsEnabled = backgroundComparisonsEnabled(process.env) }: Options) {
   const outcomes = comparisonOutcomes(db);
   const connections = backgroundConnectionUseCases(backgroundConnectionRepository(db), {
     seal(plainKey, ownerUserId, connectionId) {
@@ -22,14 +39,12 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
       return sealBackgroundKey(plainKey, ownerUserId, connectionId, backgroundMasterKey);
     },
   }, ai.providers);
-  const rules = proactiveRuleUseCases({ run: (action) => db.transaction(async (tx) => action({
-    access: { async requireProject(principal, projectId, mode) {
-      const result = enforce(await evaluateProject(principal, mode === 'write' ? 'project.write' : 'project.read', projectId, tx,
-        { lock: mode === 'write' }), 'project');
-      return { workspaceId: result.project!.workspaceId };
-    } },
-    rules: proactiveRuleRows(tx),
-  })) });
+  const rules = comparisonRuleUseCases(db, comparisonsEnabled);
+  // Lets the settings page offer "Enable rule" only where the worker runs comparisons (#58).
+  app.get(backgroundComparisonRuntimePath, async (request): Promise<BackgroundComparisonRuntime> => {
+    await sessions.requirePrincipal(request);
+    return { status: comparisonsEnabled ? 'available' : 'unavailable' };
+  });
   app.setErrorHandler((error: FastifyError | DomainError, _request, reply) => {
     if (error instanceof DomainError) return reply.code(error.status).send({ error: error.message, code: error.code, ...error.details });
     if ((error as FastifyError).statusCode === 401) return reply.code(401).send({ error: 'Authentication required', code: 'UNAUTHENTICATED' });
