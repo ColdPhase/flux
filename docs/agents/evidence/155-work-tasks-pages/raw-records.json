@@ -1,0 +1,46 @@
+{
+  "browser-initial-failure.log": {
+    "saved_raw_sha256": "16026db4d248a72d616a75296033e6d1fdbe34168b501f8dad24406f5ee2a205",
+    "gzip": "browser-initial-failure.log.gz",
+    "gzip_sha256": "d08ef9912b5b6eba24217660f971a819d6d9a5bcdaa56a9ca52d5525bc5736c8",
+    "authentication_cookie_redactions": 3,
+    "private_original_sha256": "5cef5767d800d91789ae48f5acf1121da739b4e20d612c0f760c752d3259e12e",
+    "raw_semantics": "Saved raw means the credential-redacted terminal output; the unredacted original stays private outside the repository."
+  },
+  "browser-anchor-pass.log": {
+    "saved_raw_sha256": "2bfb896bcd67daea20678aaf232e7804ad51cdf1b70ef7e8df1b365616e33175",
+    "gzip": "browser-anchor-pass.log.gz",
+    "gzip_sha256": "0e139e1bb9a35d21303fa16755e8ba1ca97998c8f147af3327641d1b6657be55",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-focus-failure.log": {
+    "saved_raw_sha256": "290905152e5eafa16cb2bc9640db773a20f4ec1b67fae43ea29b68025432a0ae",
+    "gzip": "browser-focus-failure.log.gz",
+    "gzip_sha256": "8b4b6b32b1a92d4ddae4d54003bb0418fafc36861af4e898a8ca123b04f97fcf",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-padding-failure.log": {
+    "saved_raw_sha256": "a0c5b63741363aa9e88102ccbae2a79804b67adcdfd1197a7a1356b79d124b6c",
+    "gzip": "browser-padding-failure.log.gz",
+    "gzip_sha256": "32ff802d24ad8b56346d81a42b3e439148b9bd8be59d73046e2d5493ba1756a5",
+    "authentication_cookie_redactions": 0
+  },
+  "build-final.log": {
+    "saved_raw_sha256": "a06f7e1fc12a3b7e935788e38fe44f1c147db991acfdd3052117a57748796670",
+    "gzip": "build-final.log.gz",
+    "gzip_sha256": "14e1b6b43897d468e8c9b3697b021106531b4c3dc730db191b2af02409353593",
+    "authentication_cookie_redactions": 0
+  },
+  "client-final.log": {
+    "saved_raw_sha256": "924df53c30e413ad7f0fd4bacbf5f68f275b39ba8f7f45afbc168d1e0ad5e5bc",
+    "gzip": "client-final.log.gz",
+    "gzip_sha256": "4b67bb005920cac85b50b3ec07bfce0300d2f1c035e984f1749cb43b7c0228ba",
+    "authentication_cookie_redactions": 0
+  },
+  "browser-final.log": {
+    "saved_raw_sha256": "30b4ea56bbf29cccb0c156c6822586cd9e9de55553098a06de6686ea5c277a87",
+    "gzip": "browser-final.log.gz",
+    "gzip_sha256": "4506bb694a7ecfc57c81725ba0cc65a114f4a77d96f653cc3be743fb126b8d87",
+    "authentication_cookie_redactions": 0
+  }
+}

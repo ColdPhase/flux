@@ -1,29 +1,21 @@
 import { useCallback, useRef, useState } from 'react';
 import { useRevalidator } from 'react-router';
-import type { ConversationMessage, Decision, Project, WorkItem, WorkResult } from '@flux/contracts';
+import type { ConversationMessage, Project, ProjectWorkSummary } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Icon, useMediaQuery } from '../ui';
-import { useShellActions, type ObjectView } from '../app/shellContext';
+import { useShellActions } from '../app/shellContext';
+import { useShellData } from '../app/data';
 import { createWork, type ProjectWork } from './api';
-import { decisionLine, firstLine, fromMessage, resultLine, workLine } from './format';
+import { decisionLine, firstLine, resultLine, workLine } from './format';
+import type { MessageWorkPreview } from './message-associations';
+import { summaryEmptyCaption, summaryStateParts, type StatePart } from './state-summary';
 import './work.css';
 
 // Work objects inside the conversation (#101, C direction): the calm state line under the
 // header, the quiet actions of a message and the framed objects that were made from it.
 
 /** One part of the project's current state: what it says and the object it opens. */
-export interface StatePart {
-  key: 'rule' | 'work' | 'blocked' | 'open' | 'history' | 'result' | 'proposal';
-  icon: 'rule' | 'result' | 'alert' | 'tasks' | null;
-  dot?: 'progress' | 'need';
-  text: string;
-  /** Shorter wording for the phone's one-line summary. */
-  short: string;
-  /** The object's own title, for lists such as the Details overview. */
-  title: string;
-  tone?: 'warn' | 'need';
-  open: ObjectView;
-}
+export type { StatePart } from './state-summary';
 
 /**
  * The project's current state from real records: the rule in force, work in progress, blocked
@@ -71,36 +63,35 @@ export function stateParts(lists: ProjectWork, canDecide: boolean): StatePart[] 
   return parts;
 }
 
-const EMPTY_STATE = 'No decisions or work yet. Anything said here can become one.';
-
 /**
  * The project's current state in one line. Each part opens its object in Details. The line
  * reads like a sentence: what needs you, the rule, the work and what came out of it.
  */
-export function ProjectStateLine({ lists, canDecide }: { lists: ProjectWork; canDecide: boolean }) {
+export function ProjectStateLine({ summary, phase }: { summary: ProjectWorkSummary | null; phase: string }) {
   const { openDetails } = useShellActions();
   // What needs the reader leads, so a narrow header never truncates it away (#117 review).
-  const parts = stateParts(lists, canDecide).sort((a, b) => Number(b.tone === 'need') - Number(a.tone === 'need'));
-  if (!parts.length) return <p className="ws-state ws-state--empty" aria-label="Current state">{EMPTY_STATE}</p>;
-  return <p className="ws-state" aria-label="Current state">{parts.map((part, index) => <span key={part.key} className="ws-part">{index ? <span className="ws-sep" aria-hidden="true">·</span> : null}<button type="button" className={`ws-seg${part.tone ? ` ws-seg--${part.tone}` : ''}`} data-seg={part.key} title={part.title} onClick={() => openDetails(part.open)}>{part.icon ? <Icon name={part.icon} size={13} /> : <span className={`ws-dot ws-dot--${part.dot}`} aria-hidden="true" />}<span>{part.text}</span></button></span>)}</p>;
+  if (!summary) return <p className="ws-state ws-state--empty" aria-label="Current state">{phase === 'unavailable' ? 'Current work unavailable' : 'Loading current work…'}</p>;
+  const parts = summaryStateParts(summary, summary.access !== 'viewer').sort((a, b) => Number(b.tone === 'need') - Number(a.tone === 'need'));
+  if (!parts.length) return <p className="ws-state ws-state--empty" aria-label="Current state" aria-busy={phase === 'refreshing'}>{summaryEmptyCaption(summary)}. Anything said here can become work.</p>;
+  return <p className="ws-state" aria-label="Current state" aria-busy={phase === 'refreshing'}>{parts.map((part, index) => <span key={part.key} className="ws-part">{index ? <span className="ws-sep" aria-hidden="true">·</span> : null}<button type="button" className={`ws-seg${part.tone ? ` ws-seg--${part.tone}` : ''}`} data-seg={part.key} title={part.title} onClick={() => openDetails(part.open)}>{part.icon ? <Icon name={part.icon} size={13} /> : <span className={`ws-dot ws-dot--${part.dot}`} aria-hidden="true" />}<span>{part.text}</span></button></span>)}</p>;
 }
 
 /**
  * On the phone the state line is one 44 px row that opens the project's overview in Details,
  * where every part opens its object (#117).
  */
-export function ProjectStateRow({ lists, canDecide }: { lists: ProjectWork; canDecide: boolean }) {
+export function ProjectStateRow({ summary, phase }: { summary: ProjectWorkSummary | null; phase: string }) {
   const { openDetails } = useShellActions();
   // What needs the reader leads, since the row truncates.
-  const parts = stateParts(lists, canDecide).sort((a, b) => Number(b.tone === 'need') - Number(a.tone === 'need'));
+  const parts = summary ? summaryStateParts(summary, summary.access !== 'viewer').sort((a, b) => Number(b.tone === 'need') - Number(a.tone === 'need')) : [];
   const need = parts.find((part) => part.tone === 'need');
   // Keep blocking work readable even when the rest of the phone summary is clipped.
   const blocked = parts.length > 1 ? parts.find((part) => part.key === 'blocked') : undefined;
-  const summary = blocked ? parts.filter((part) => part !== blocked) : parts;
+  const compactParts = blocked ? parts.filter((part) => part !== blocked) : parts;
   return (
-    <button type="button" className="ws-state-row" onClick={() => openDetails('place')} aria-haspopup="dialog">
+    <button type="button" className="ws-state-row" onClick={() => openDetails('place')} aria-haspopup="dialog" aria-busy={phase === 'refreshing'}>
       {need ? <span className="ws-dot ws-dot--need" aria-hidden="true" /> : <Icon name={parts[0]?.icon ?? 'tasks'} size={13} />}
-      <span className="ws-state-row__t">{summary.length ? summary.map((part) => part.short).join(' · ') : 'No decisions or work yet'}</span>
+      <span className="ws-state-row__t">{!summary ? phase === 'unavailable' ? 'Current work unavailable' : 'Loading current work…' : compactParts.length ? compactParts.map((part) => part.short).join(' · ') : summaryEmptyCaption(summary)}</span>
       {blocked ? <span className="ws-state-row__blocked">{blocked.short}</span> : null}
       <span className="ui-vh">, open project details</span>
       <Icon name="chevron-right" size={16} />
@@ -109,9 +100,9 @@ export function ProjectStateRow({ lists, canDecide }: { lists: ProjectWork; canD
 }
 
 /** A calm chip under a message for an object made from it: icon, title and a quiet state. */
-function ObjectChip({ icon, kind, title, need, onOpen, label }: { icon: 'tasks' | 'rule' | 'result'; kind: string; title: string; need?: boolean; onOpen: () => void; label: string }) {
+function ObjectChip({ icon, kind, title, need, onOpen, label, objectKind, objectId }: { icon: 'tasks' | 'rule' | 'result'; kind: string; title: string; need?: boolean; onOpen: () => void; label: string; objectKind: string; objectId: string }) {
   return (
-    <button type="button" className={`ws-chip${need ? ' ws-chip--need' : ''}`} onClick={onOpen} aria-label={`${label}: ${title}`}>
+    <button type="button" data-work-kind={objectKind} data-work-id={objectId} className={`ws-chip${need ? ' ws-chip--need' : ''}`} onClick={onOpen} aria-label={`${label}: ${title}`}>
       <Icon name={icon} size={14} />
       <span className="ws-chip__t">{title}</span>
       <span className="ws-chip__k">{kind}</span>
@@ -123,17 +114,17 @@ function ObjectChip({ icon, kind, title, need, onOpen, label }: { icon: 'tasks' 
 const rest = (line: string) => line.replace(/^Work · /, '');
 
 /** Objects made from this message. The message itself is unchanged; these link back to it. */
-export function MessageObjects({ messageId, lists }: { messageId: string; lists: ProjectWork }) {
+export function MessageObjects({ message, projectId, preview }: { message: ConversationMessage; projectId: string; preview: MessageWorkPreview | null }) {
   const { openDetails } = useShellActions();
-  const work: WorkItem[] = fromMessage(lists.work, messageId);
-  const decisions: Decision[] = fromMessage(lists.decisions, messageId);
-  const results: WorkResult[] = fromMessage(lists.results, messageId);
-  if (!work.length && !decisions.length && !results.length) return null;
+  const { me } = useShellData();
+  if (!preview) return null;
+  const { counts, items } = preview;
+  const total = counts.work + counts.decisions + counts.results;
+  if (!total) return null;
   return (
     <div className="ws-attach">
-      {work.map((item) => <ObjectChip key={item.id} icon="tasks" kind={rest(workLine(item))} title={item.title} label="Work" onOpen={() => openDetails({ kind: 'work', id: item.id })} />)}
-      {decisions.map((item) => <ObjectChip key={item.id} icon="rule" kind={decisionLine(item)} title={item.title} need={item.status === 'proposed'} label="Decision" onOpen={() => openDetails({ kind: 'decision', id: item.id })} />)}
-      {results.map((item) => <ObjectChip key={item.id} icon="result" kind={resultLine(item)} title={item.title} label="Result" onOpen={() => openDetails({ kind: 'result', id: item.id })} />)}
+      {items.map((item) => <ObjectChip key={`${item.kind}:${item.id}`} objectKind={item.kind} objectId={item.id} icon={item.kind === 'work' ? 'tasks' : item.kind === 'decision' ? 'rule' : 'result'} kind={item.kind === 'work' ? rest(workLine(item)) : item.kind === 'decision' ? decisionLine(item) : resultLine(item)} title={item.title} need={item.kind === 'decision' && item.status === 'proposed'} label={item.kind === 'work' ? 'Work' : item.kind === 'decision' ? 'Decision' : 'Result'} onOpen={() => openDetails({ kind: item.kind, id: item.id })} />)}
+      {items.length < total ? <button type="button" className="ws-attach__more" onClick={() => openDetails({ kind: 'overview', messageId: message.id, selection: { accountId: me.user.id, projectId, message } })}>{[counts.work ? `${counts.work} work` : null, counts.decisions ? `${counts.decisions} ${counts.decisions === 1 ? 'decision' : 'decisions'}` : null, counts.results ? `${counts.results} ${counts.results === 1 ? 'result' : 'results'}` : null].filter(Boolean).join(' · ')} · view linked objects</button> : null}
     </div>
   );
 }
@@ -175,7 +166,8 @@ export function MessageActions({ projectId, message, onCreateWork, busy, writabl
   const touch = useMediaQuery('(hover: none)');
   const [open, setOpen] = useState(false);
   const source = { messageId: message.id, text: message.body };
-  const details = <button type="button" className="ws-act" onClick={() => openDetails({ kind: 'overview', messageId: message.id })} aria-label="Details of this message"><Icon name="panel" size={14} />Details</button>;
+  const { me } = useShellData();
+  const details = <button type="button" className="ws-act" onClick={() => openDetails({ kind: 'overview', messageId: message.id, selection: { accountId: me.user.id, projectId, message } })} aria-label="Details of this message"><Icon name="panel" size={14} />Details</button>;
   if (!writable) return <div className="ws-acts">{details}</div>;
   if (touch && !open) {
     // One quiet 44 px overflow button in the message's corner instead of a row under every message.

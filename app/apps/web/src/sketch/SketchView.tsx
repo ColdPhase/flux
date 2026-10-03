@@ -331,7 +331,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
       const item = await createWork(sketch.projectId, { title: title.slice(0, 200), sources: thoughts.map((t) => ({ type: 'thought' as const, id: t.id })) }, workAttempt.current.key);
       workAttempt.current = null;
       say(`Created work ${quote(item.title)}; the thoughts stay on the map`);
-      openDetails({ kind: 'work', id: item.id });
+      openDetails({ kind: 'work', id: item.id, projectId: item.projectId });
     } catch { say('Could not create the work yet. Wait for “Saved”, then try again.'); }
   };
 

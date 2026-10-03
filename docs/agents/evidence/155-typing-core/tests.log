@@ -1,0 +1,31 @@
+▶ architecture boundaries
+  ✔ the repository has no dependency violation outside the recorded allowlist (35.234541ms)
+  ✔ every allowlist entry names its tracking issue and a reason (0.355834ms)
+  ✔ the push use cases in core stay free of adapters, including through helpers (2.98925ms)
+  ✔ the sketch use cases in core stay free of adapters, including through helpers (#69) (0.598958ms)
+  ✔ the direct-message use cases in core stay free of adapters, including through helpers (#107) (0.480458ms)
+  ✔ the rules reject each kind of boundary violation (self-test) (0.683833ms)
+  ✔ the allowlist comparison reports new and fixed violations (0.220083ms)
+✔ architecture boundaries (41.811291ms)
+✔ typing closed input rejects forged identity/text recursively, without echoing private values (1.715625ms)
+✔ coalesced newer B withdraws A before unwatched B filtering; late A never resurrects (0.357625ms)
+✔ a stop survives delayed active, different-session substitution and database clock reversal (0.140083ms)
+✔ listener loss/reconnect clears presence and invalidates pending revision; no replay (0.107917ms)
+✔ context saturation is unknown, preserves sequence fences, and bounds moving connections (0.160583ms)
+✔ global saturation cannot silently evict a stop then replay older activity; recovery drains (0.14625ms)
+✔ foreign activity retains bounded anonymous fences only; watchers retain until last leave (1.767959ms)
+✔ expiry, caller mutation and invalid sequence cannot extend a pulse or alter its native scope (0.293542ms)
+✔ a valid stop and scope withdrawal survive database-clock reversal without weakening the fence (0.231708ms)
+✔ negative sequence fences outlive positive monotonic expiry when DB time reverses (0.243625ms)
+✔ global and context quarantine drain through discarded active and stop validity (0.299917ms)
+✔ an unknown unwatched B watermark suppresses delayed older A without retaining private metadata (0.150125ms)
+✔ mutating supplied limits cannot bypass validated context or global capacity (0.184041ms)
+✔ already DB-expired activity cannot resurrect after a later clock reversal or reconnect (0.119792ms)
+ℹ tests 21
+ℹ suites 1
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 895.044417

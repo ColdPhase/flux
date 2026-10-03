@@ -13,8 +13,10 @@ export {
   authorizeEvent,
   eventResource,
   enforce,
+  accessName,
   evaluateProject,
   evaluateDraft,
+  dmClosedFor,
   visibleFilter,
   visibleWorkspaceOf,
   loadActor,
@@ -46,6 +48,7 @@ export * from './agent-connection/reads.js';
 export * from './sketches/index.js';
 export { policySketchAccess } from './access/sketch-access.js';
 export * from './work/index.js';
+export * from './work-read/index.js';
 export { liveUseCases } from './live/service.js';
 export type { LiveAccess, LiveAdmissionRequest, LiveMedia, LivePorts, LiveRepository, LiveSessionRecord } from './live/ports.js';
 export { liveInvitationUseCases } from './live/invitations.js';
@@ -94,6 +97,8 @@ export * from './task-discussions/ports.js';
 export * from './task-discussions/service.js';
 export { derivedUuid, contributionIdentity, messageContribution } from './task-discussions/identity.js';
 export { policyPersonalRunAccess } from './access/personal-run-access.js';
+
+export * from './typing/index.js';
 export * from './github/index.js';
 export * from './agent-connection/execution.js';
 export * from './agent-connection/grants.js';

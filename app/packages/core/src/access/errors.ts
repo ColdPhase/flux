@@ -5,7 +5,7 @@
 export class DomainError extends Error {
   /** Extra safe fields merged into the error body, e.g. the latest authorized version. */
   details?: Record<string, unknown>;
-  constructor(readonly status: 400 | 403 | 404 | 409 | 422 | 428 | 429 | 503, readonly code: string, message: string) {
+  constructor(readonly status: 400 | 401 | 403 | 404 | 409 | 422 | 428 | 429 | 503, readonly code: string, message: string) {
     super(message);
     this.name = new.target.name;
   }

@@ -35,6 +35,11 @@
 .ws-act-error { margin-top: 4px; font-size: var(--fs-xs); color: var(--danger); }
 .ws-act-error button { text-decoration: underline; min-height: 28px; }
 .ws-attach { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.ws-attach__more { min-height: 28px; text-align: left; font-size: var(--fs-xs); color: var(--text-3); text-decoration: underline; text-underline-offset: 3px; }
+.ws-message-pages { padding: 4px 24px; border-top: 1px solid var(--line); font-size: var(--fs-sm); color: var(--text-3); }
+.ws-message-pages .ws-pages { max-width: calc(1000px - 48px); margin: 0 auto; padding: 4px 0; border: 0; }
+@media (max-width: 640px) { .ws-message-pages { padding: 4px 16px; } }
+@media (pointer: coarse) { .ws-attach__more { min-height: 44px; } }
 /* Calm chips under a message (#117): icon, title and a quiet state; the object opens in Details. */
 .ws-chip { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; min-height: 30px; padding: 0 10px; border-radius: var(--r); box-shadow: inset 0 0 0 1px var(--line-strong); font-size: var(--fs-sm); color: var(--text-2); text-align: left; transition: var(--tr); }
 .ws-chip:hover { background: var(--bg-hover); color: var(--text); }
@@ -47,11 +52,13 @@
 
 /* ---------- Tasks tab ---------- */
 .ws-tasks { padding-top: 16px; }
+.ws-task-controls { position: sticky; top: 0; z-index: 3; background: var(--bg); display: flow-root; }
 .ws-audience { display: flex; align-items: center; gap: 6px; margin: 0 0 14px; font-size: var(--fs-xs); font-weight: 500; color: var(--text-2); }
 .ws-audience svg, .wd-audience svg { color: var(--text-3); }
 .ws-add { display: flex; gap: 8px; margin-bottom: 8px; }
 .ws-add .ui-input { flex: 1; min-width: 0; min-height: var(--ctl-lg); }
 .ws-add .ui-btn { min-height: var(--ctl-lg); }
+.ws-draft-state { margin: 0 0 8px; font-size: var(--fs-xs); color: var(--text-3); line-height: 1.5; }
 .ws-group { margin-top: 24px; }
 .ws-group__h { display: flex; gap: 6px; margin-bottom: 4px; font-size: var(--fs-xs); font-weight: 500; color: var(--text-3); }
 .ws-group__h span { font-variant-numeric: tabular-nums; }
@@ -72,6 +79,10 @@
 
 /* ---------- Details panel ---------- */
 .wd .details__title { overflow-wrap: anywhere; }
+.wd-decision-identity { position: sticky; top: -20px; z-index: 2; padding: 8px 0 4px; background: var(--bg); border-bottom: 1px solid var(--line); }
+.ui-sheet .wd-decision-identity { top: -18px; }
+.wd-accept-finish { padding: 10px 0 14px; background: var(--bg); border-top: 1px solid var(--line); }
+.wd-accept-finish .wd-muted { margin: 0 0 8px; }
 .wd-eyebrow { display: flex; align-items: center; gap: 6px; }
 .wd-eyebrow.wd-need { color: var(--attention); }
 .wd-finding--negative svg { color: var(--warning); }
@@ -119,7 +130,7 @@
 .wd-seg__b:has(input:checked) { background: var(--bg-raised); color: var(--text); box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--line); }
 .wd-seg__b:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 1px; }
 .wd-check { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: var(--fs-md); color: var(--text-2); }
-.wd-pivot { margin: 12px 0 0; padding: 0; border: 0; min-width: 0; }
+.wd-pivot { margin: 12px 0 0; padding: 0 8px 0 0; border: 0; min-width: 0; max-height: clamp(200px, 42dvh, 360px); overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; scroll-padding-block: 8px; }
 .wd-pivot legend { margin-bottom: 4px; font-size: var(--fs-sm); font-weight: 500; color: var(--text-2); }
 .wd-pivot__row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 0; border-top: 1px solid var(--line); }
 .wd-pivot__t { flex: 1 1 100%; min-width: 0; font-size: var(--fs-md); color: var(--text); }
@@ -208,12 +219,27 @@
 .ws-none { margin: 20px 0 0; font-size: var(--fs-md); color: var(--text-2); }
 .ws-none__b { padding: 0; font: inherit; font-weight: 500; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
 .ws-group { scroll-margin-top: 12px; }
+.ws-pages { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin: 12px 0; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.ws-pages__range { color: var(--text-3); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.ws-pages__actions { display: flex; gap: 4px; }
+.ws-pages button { min-height: 32px; padding: 0 10px; border-radius: var(--r-sm); color: var(--text-2); font-size: var(--fs-sm); }
+.ws-pages button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
+.ws-pages button:disabled { opacity: .4; cursor: default; }
+.ws-pages button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 @media (max-width: 640px) {
   .ws-views { gap: 8px; }
   .ws-views__row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 2px 16px; scroll-padding-inline: 16px; }
   .ws-views__row::-webkit-scrollbar { display: none; }
 }
 @media (pointer: coarse) {
-  .ws-view, .ws-mine { min-height: 44px; }
+  .ws-view, .ws-mine, .ws-pages button { min-height: 44px; }
   .ws-mine input { width: 20px; height: 20px; }
+}
+
+/* Keep distinguishing task titles visible on narrow conversation surfaces. */
+@media (max-width: 760px) {
+  .project-convo__feed .ws-chip { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 3px 6px; width: 100%; padding: 8px 10px; }
+  .project-convo__feed .ws-chip svg { grid-column: 1; grid-row: 1 / span 2; align-self: start; margin-top: 2px; }
+  .project-convo__feed .ws-chip__t { grid-column: 2; white-space: normal; overflow-wrap: anywhere; }
+  .project-convo__feed .ws-chip__k { grid-column: 2; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
 }

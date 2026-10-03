@@ -1,0 +1,72 @@
+ Container flux155browser-anthropic-mock-1  Running
+ Container flux155browser-mailpit-1  Running
+ Container flux155browser-db-1  Running
+ Container flux155browser-worker-1  Running
+ Container flux155browser-api-1  Running
+ Container flux155browser-db-1  Waiting
+ Container flux155browser-db-1  Healthy
+ Container flux155browser-migrate-1  Starting
+ Container flux155browser-migrate-1  Started
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Waiting
+ Container flux155browser-migrate-1  Exited
+ Container flux155browser-migrate-1  Exited
+test_01_global_object_and_edge_pages_keep_native_ids_counts_and_reply (test_work_associations.MessageWorkJourney.test_01_global_object_and_edge_pages_keep_native_ids_counts_and_reply) ... ok
+test_02_held_next_page_respects_new_wheel_reading_position_and_private_selection (test_work_associations.MessageWorkJourney.test_02_held_next_page_respects_new_wheel_reading_position_and_private_selection) ... ok
+test_03_old_page_and_required_failure_do_not_revive_chips_or_clear_reply (test_work_associations.MessageWorkJourney.test_03_old_page_and_required_failure_do_not_revive_chips_or_clear_reply) ... ok
+test_04_cookie_account_change_retires_held_old_page_and_isolates_reply (test_work_associations.MessageWorkJourney.test_04_cookie_account_change_retires_held_old_page_and_isolates_reply) ... ok
+test_05_older_visible_messages_use_one_bounded_batch_and_native_source (test_work_associations.MessageWorkJourney.test_05_older_visible_messages_use_one_bounded_batch_and_native_source) ... ok
+test_06_paused_router_revalidation_retires_viewport_selector_aba (test_work_associations.MessageWorkJourney.test_06_paused_router_revalidation_retires_viewport_selector_aba) ... ok
+test_07_restored_feed_observes_older_and_newer_native_batches (test_work_associations.MessageWorkJourney.test_07_restored_feed_observes_older_and_newer_native_batches) ... FAIL
+test_08_one_pagedown_gesture_keeps_scrolling_across_a_held_batch (test_work_associations.MessageWorkJourney.test_08_one_pagedown_gesture_keeps_scrolling_across_a_held_batch) ... ok
+
+======================================================================
+FAIL: test_07_restored_feed_observes_older_and_newer_native_batches (test_work_associations.MessageWorkJourney.test_07_restored_feed_observes_older_and_newer_native_batches)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/work/tests/ui/test_work_associations.py", line 262, in test_07_restored_feed_observes_older_and_newer_native_batches
+    self.ready(page)
+  File "/work/tests/ui/test_work_associations.py", line 80, in ready
+    expect(page.locator(".project-convo")).to_have_attribute("data-associations-phase", "ready")
+  File "/usr/local/lib/python3.12/dist-packages/playwright/sync_api/_generated.py", line 22107, in to_have_attribute
+    self._sync(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_sync_base.py", line 115, in _sync
+    return task.result()
+           ^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_assertions.py", line 349, in to_have_attribute
+    await self._expect_impl(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_assertions.py", line 128, in _expect_impl
+    _record_soft_or_raise(
+  File "/usr/local/lib/python3.12/dist-packages/playwright/_impl/_assertions.py", line 60, in _record_soft_or_raise
+    raise error
+AssertionError: Locator expected to have attribute 'ready'
+Actual value: loading
+Call log:
+  - Expect "to_have_attribute" with timeout 10000ms
+  - waiting for locator(".project-convo")
+    23 × locator resolved to <div class="project-convo" data-associations-phase="loading" data-project-id="b1f69a12-a6c5-4344-8f94-10b597feec3e">…</div>
+       - unexpected value "loading"
+
+Aria snapshot:
+- heading "Library installation notes from the first measurement" [level=2]
+- paragraph: 141 messages · started Today
+- region "Messages":
+  - list
+- navigation "Linked object pages":
+  - status: Objects · Loading work…
+  - button "Previous" [disabled]
+  - button "Next" [disabled]
+  - button "Refresh"
+- paragraph: Ada and you · only you two · saved to Lamp measurements
+- button "Sources, 1 saved"
+- button "Ask my assistant"
+- text: Reply
+- textbox "Reply":
+  - /placeholder: Reply to Ada…
+- button "Send reply" [disabled]
+- status
+
+----------------------------------------------------------------------
+Ran 8 tests in 25.933s
+
+FAILED (failures=1)

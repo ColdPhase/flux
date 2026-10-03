@@ -1,0 +1,7 @@
+Agent foundation checks passed: shared instructions, skills, and local document links.
+This does not verify live GitHub gates or application behavior.
+..................................
+----------------------------------------------------------------------
+Ran 34 tests in 2.176s
+
+OK

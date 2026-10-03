@@ -1,3 +1,5 @@
+import { useTyping } from '../typing/useTyping';
+import { TypingNotice } from '../typing/TypingNotice';
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, type LoaderFunctionArgs } from 'react-router';
@@ -31,8 +33,9 @@ export async function dmLoader({ params, request }: LoaderFunctionArgs): Promise
 
 export function DmConversation() {
   const dm = useLoaderData() as Dm | null;
+  const { me } = useShellData();
   if (!dm) return <DmUnavailable />;
-  return <DmContent key={dm.id} initial={dm} />;
+  return <DmContent key={`${me.user.id}:${dm.id}`} initial={dm} />;
 }
 
 function DmUnavailable() {
@@ -189,6 +192,7 @@ function DmContent({ initial }: { initial: Dm }) {
   useLayoutEffect(autosize, []);
 
   function change(value: string) {
+    typing.input(Boolean(value.trim()));
     setDraft(value); store(draftKey, value);
     if (pending && pending.body !== value.trim()) { setPending(null); store(pendingKey, ''); }
     setError('');
@@ -196,6 +200,7 @@ function DmContent({ initial }: { initial: Dm }) {
   }
 
   async function send() {
+    typing.stop();
     const body = draft.trim();
     if (busy || !body) return;
     const command = pending ?? { body, clientMessageId: crypto.randomUUID() };
@@ -266,13 +271,14 @@ function DmContent({ initial }: { initial: Dm }) {
     }
   }
 
-  if (gone) return <DmUnavailable />;
   // A 1:1 whose other person left (or was removed) has nobody to send to: say so, disable sending.
   const counterpart = dm.kind === 'pair' ? dm.counterpart : null;
   const recipientGone = Boolean(counterpart && !dm.participants.some((p) => p.id === counterpart.id));
   const goneNotice = recipientGone
     ? leftNotice || `${counterpart!.name.split(/\s+/)[0]} left this conversation. They can reopen it by messaging you.`
     : '';
+  const typing = useTyping(me.user.id, !gone && !selecting ? { kind: 'dm', id: dm.id } : null, !busy && !recipientGone);
+  if (gone) return <DmUnavailable />;
   const canSend = draft.trim().length > 0 && !busy && !recipientGone;
   const selectButton = actionSlot && messages.length && !recipientGone ? createPortal(
     <Button ref={selectButtonRef} variant="quiet" icon="check" aria-pressed={selecting} className="dm-select-btn" onClick={() => toggleSelecting(!selecting)}>Select</Button>,
@@ -350,10 +356,11 @@ function DmContent({ initial }: { initial: Dm }) {
           {goneNotice ? <p className="dm__notice" role="status"><Icon name="lock" size={13} />{goneNotice}</p> : null}
           <div className="composer__box" aria-disabled={recipientGone || undefined}>
             <label className="ui-vh" htmlFor="dm-composer">Message {title}</label>
-            <textarea id="dm-composer" ref={textareaRef} rows={1} value={draft} onChange={(event) => change(event.target.value)} onKeyDown={onKey}
+            <textarea id="dm-composer" ref={textareaRef} rows={1} value={draft} onChange={(event) => change(event.target.value)} onBlur={typing.stop} onKeyDown={onKey}
               disabled={busy || recipientGone} placeholder={recipientGone ? 'Nobody else is in this conversation' : `Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title}…`} aria-describedby={`${audienceId} ${hintId}`} />
             <button type="button" className="composer__send" aria-label="Send message" aria-disabled={!canSend} onClick={() => void send()}><Icon name="send" /></button>
           </div>
+          <TypingNotice {...typing} />
           {error ? <p className="dm__error" role="alert"><Icon name="alert" size={13} />{error}{pending ? <button type="button" onClick={() => void send()}>Retry</button> : null}</p> : null}
           <p className="composer__hint" id={hintId}><span className="composer__keys">Enter sends · Shift+Enter adds a line · </span>Unsent text stays in this tab</p>
         </div>

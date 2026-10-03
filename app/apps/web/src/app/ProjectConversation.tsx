@@ -7,6 +7,8 @@ import { getConversation, getMaterialVersion, getProject, listConversations, lis
 import { pageBackTo } from './seekMessage';
 import { useShellData } from './data';
 import { MessageActions, MessageObjects, useCreateWorkFromMessage } from '../work/inline';
+import { useMessageWork } from '../work/useMessageWork';
+import { MessageWorkPages } from '../work/MessageWorkPages';
 import { audienceLine, replyTo, useProjectShell } from '../project/data';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { excerpt } from '../live/anchors';
@@ -15,6 +17,8 @@ import { useConversationAssistant } from '../assistant/useConversationAssistant'
 import { AnswerItem, AskBar, ProposalCard, WorkingLine } from '../assistant/ConversationParts';
 import { askError as askErrorText, askState } from '../assistant/format';
 import { grantAgentProject } from '../agent-connection/api';
+import { useTyping } from '../typing/useTyping';
+import { TypingNotice } from '../typing/TypingNotice';
 import './project-conversation.css';
 
 export interface ProjectData { project: Project; conversations: ConversationSummary[]; conversationTotal: number; materials: Material[]; materialTotal: number; members: WorkspaceMember[]; conversation: Conversation | null }
@@ -80,8 +84,9 @@ function mergeMessages(current: Conversation['messages'], incoming: Conversation
 
 export function ProjectConversation() {
   const data = useLoaderData() as ProjectData;
+  const { me } = useShellData();
   return <div className="project-page">
-    <ProjectConversationContent key={`${data.project.id}:${data.conversation?.id ?? 'new'}`} data={data} />
+    <ProjectConversationContent key={`${me.user.id}:${data.project.id}:${data.conversation?.id ?? 'new'}`} data={data} />
   </div>;
 }
 
@@ -129,6 +134,10 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
   const [sourceDraft, setSourceDraft] = useState<Draft | null>(savedMaterial.sourceDraft);
   const [citation, setCitation] = useState<{ title: string; materialId: string; version: number } | null>(restoredPending?.citation ?? null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [feedNode, setFeedNode] = useState<HTMLDivElement | null>(null);
+  const attachFeed = useCallback((node: HTMLDivElement | null) => { scrollRef.current = node; setFeedNode(node); }, []);
+  const sourceIds = useMemo(() => messages.map((message) => message.id), [messages]);
+  const messageWork = useMessageWork(me.user.id, project.id, accessLost ? null : conversation?.id ?? null, sourceIds, scrollRef, feedNode);
   const writable = project.access !== 'viewer';
   const makeWork = useCreateWorkFromMessage(project);
   const conversationId = conversation?.id;
@@ -141,6 +150,7 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
   const assistant = useConversationAssistant({ meId: me.user.id, projectId: project.id, conversationId: conversation?.id ?? null });
   const { openDetails } = useShellActions();
   const [asking, setAsking] = useState(false);
+  const typing = useTyping(me.user.id, conversation && !accessLost ? { kind: 'conversation', id: conversation.id } : null, writable && !asking && !busy);
   const [askBusy, setAskBusy] = useState(false);
   const [askFailure, setAskFailure] = useState('');
   const [askFailureCode, setAskFailureCode] = useState<string | null>(null);
@@ -246,9 +256,10 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
     const timer = window.setTimeout(stop, 2000);
     for (const type of ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const) feed.addEventListener(type, stop, { once: true, passive: true });
     return () => { stop(); window.clearTimeout(timer); for (const type of ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const) feed.removeEventListener(type, stop); };
-  }, [conversation?.id, arrived, arrivedLoaded]);
+  }, [conversation?.id, arrived, arrivedLoaded, feedNode]);
 
   function changeDraft(input: string) {
+    typing.input(Boolean(input.trim()) && !asking && !/^\/ai(\s|$)/.test(input));
     let value = input;
     // `/ai <prompt>` at the start of the box turns on ask mode (#57 design).
     if (!asking && conversation && writable && /^\/ai(\s|$)/.test(value)) { setAsking(true); value = value.replace(/^\/ai\s?/, ''); }
@@ -276,6 +287,7 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
     } finally { setAskBusy(false); }
   }
   async function send() {
+    typing.stop();
     if (asking) { await sendToAssistant(); return; }
     if (!writable || busy || !draft.trim()) return;
     const command = pending ?? { body: draft.trim(), clientMessageId: crypto.randomUUID(), ...(citation ? { source: { materialId: citation.materialId, version: citation.version } } : {}) };
@@ -356,8 +368,8 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
   const trayOpen = sourcesOpen || (writable && showMaterialForm);
   const title = conversation ? conversation.firstMessageBody.split('\n')[0] || 'Conversation' : writable ? 'New conversation' : 'Project conversations';
   let lastDay = '';
-  return <div className="project-convo" data-project-id={project.id}>
-    <div className="project-convo__feed" ref={scrollRef}>
+  return <div className="project-convo" data-project-id={project.id} data-associations-observed-at={messageWork.page?.observedAt} data-associations-phase={messageWork.state.phase}>
+    <div className="project-convo__feed" ref={attachFeed}>
       <div className="project-convo__in" data-shift>
         <div className="project-convo__head">
           <h2 title={title}>{title}</h2>
@@ -386,13 +398,13 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
               }
               const message = entry.message;
               const mine = message.authorId === me.user.id;
-              return [divider, <li key={message.id} id={`message-${message.id}`} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived === message.id ? ' is-arrived' : ''}`}>
+              return [divider, <li key={message.id} id={`message-${message.id}`} data-message-id={message.id} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived === message.id ? ' is-arrived' : ''}`}>
                 <Avatar name={messageAuthor(message)} size="md" tone={mine ? 'me' : 'neutral'} />
                 <div className="project-convo__message-meta"><strong>{mine ? `${messageAuthor(message)} · you` : message.authorId === null ? messageAuthor(message) : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${messageAuthor(message)} directly`}>{messageAuthor(message)}</Link>}</strong><time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time><span>#{message.sequence}</span></div>
                 <p>{message.body}</p>
                 {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} /> : null}
                 {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={hideIfDenied} /> : null}
-                <MessageObjects messageId={message.id} lists={work} />
+                <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} />
                 <MessageActions projectId={project.id} message={message} writable={writable} busy={makeWork.busy === message.id} onCreateWork={() => void makeWork.create(message)} />
                 {makeWork.failed?.messageId === message.id ? <p className="ws-act-error" role="alert">{makeWork.failed.text} <button type="button" onClick={() => void makeWork.create(message)}>Retry</button></p> : null}
               </li>];
@@ -403,6 +415,7 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
         </section>
       </div>
     </div>
+    <MessageWorkPages read={messageWork} />
     <div className="composer project-convo__composer"><div className="composer__in" data-shift>
       {trayOpen ? <section id="project-sources" aria-label="Project materials" className="project-convo__materials">
         <div className="project-convo__section-head"><h3>Sources · saved for {project.name}</h3><span>{materialTotal}</span><button type="button" className="project-convo__tray-close" aria-label="Close sources" onClick={() => { setSourcesOpen(false); setShowMaterialForm(false); }}><Icon name="x" size={14} /></button></div>
@@ -426,7 +439,8 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
       </div>}
       {citation && writable ? <div className="project-convo__citation">Discussing “{citation.title}” v{citation.version}<button type="button" disabled={busy} onClick={() => { setCitation(null); setPending(null); putPending(pendingKey, null); setError(''); }} aria-label="Remove material citation">×</button></div> : null}
       <div className="composer__box"><button type="button" className="composer__ask project-convo__sources-btn" aria-expanded={trayOpen} aria-controls={trayOpen ? 'project-sources' : undefined} aria-label={`Sources${materialTotal ? `, ${materialTotal} saved` : ''}`} data-tip={writable ? 'Sources to cite' : 'Saved sources to read'} data-tip-align="start" onClick={() => { if (trayOpen) { setSourcesOpen(false); if (writable) setShowMaterialForm(false); } else setSourcesOpen(true); }}><Icon name="doc" /><span className="project-convo__sources-t" aria-hidden="true">Sources</span>{materialTotal ? <span className="project-convo__sources-n" aria-hidden="true">{materialTotal > 99 ? '99+' : materialTotal}</span> : null}</button>{conversation && writable ? <button type="button" className="composer__ask" aria-pressed={asking} aria-label="Ask my assistant" aria-controls={asking ? 'project-ask' : undefined} data-tip="Ask my assistant · /ai" data-tip-align="start"
-        onClick={() => { if (asking) exitAsk(); else { setAsking(true); document.getElementById('project-composer')?.focus(); } }}><Icon name="spark" /></button> : null}{writable ? <><label className="ui-vh" htmlFor="project-composer">{asking ? 'Ask your assistant' : conversation ? 'Reply' : 'Start a conversation'}</label><textarea id="project-composer" value={draft} onChange={(event) => changeDraft(event.target.value)} onKeyDown={onComposerKey} disabled={!writable || busy || askBusy} aria-describedby={asking ? 'project-ask' : undefined} placeholder={asking ? 'Ask your assistant…' : conversation ? replyHint : 'Share a thought…'} rows={1} /><button className="composer__send" aria-label={asking ? 'Send to your assistant' : conversation ? 'Send reply' : 'Start conversation'} aria-disabled={!draft.trim() || !writable || busy || askBusy || (asking && ask.kind !== 'ready')} type="button" onClick={() => void send()}><Icon name="send" /></button></> : <p className="project-convo__read-only">Read-only · <span>You have read access to this project.</span></p>}</div>
+        onClick={() => { if (asking) exitAsk(); else { setAsking(true); document.getElementById('project-composer')?.focus(); } }}><Icon name="spark" /></button> : null}{writable ? <><label className="ui-vh" htmlFor="project-composer">{asking ? 'Ask your assistant' : conversation ? 'Reply' : 'Start a conversation'}</label><textarea id="project-composer" value={draft} onChange={(event) => changeDraft(event.target.value)} onBlur={typing.stop} onKeyDown={onComposerKey} disabled={!writable || busy || askBusy} aria-describedby={asking ? 'project-ask' : undefined} placeholder={asking ? 'Ask your assistant…' : conversation ? replyHint : 'Share a thought…'} rows={1} /><button className="composer__send" aria-label={asking ? 'Send to your assistant' : conversation ? 'Send reply' : 'Start conversation'} aria-disabled={!draft.trim() || !writable || busy || askBusy || (asking && ask.kind !== 'ready')} type="button" onClick={() => void send()}><Icon name="send" /></button></> : <p className="project-convo__read-only">Read-only · <span>You have read access to this project.</span></p>}</div>
+      {conversation && !accessLost ? <TypingNotice {...typing} /> : null}
       {readFailure ? <p className="project-convo__error" role="alert">{readFailure.message} <button type="button" onClick={readFailure.retry}>Retry read</button></p> : null}
       {writable && error ? <p className="project-convo__error" role="alert">{error} <button type="button" onClick={() => void send()}>Retry send</button></p> : null}
     </div></div>

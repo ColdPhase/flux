@@ -1,21 +1,24 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
-import type { Decision, Project, ProactiveComparisonOutcome, WorkItem, WorkResult } from '@flux/contracts';
-import { Button, EmptyState, Icon } from '../ui';
+import type { DecisionRowProjection, Project, ProactiveComparisonOutcome, ProjectWorkViewQuery, ResultRowProjection, WorkCounts, WorkObjectType, WorkRowProjection } from '@flux/contracts';
+import { EmptyState, ErrorState, Icon } from '../ui';
 import { getProject } from '../app/conversation-api';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
-import { useReadingPosition } from '../app/drafts';
-import { createWork, type ProjectWork } from './api';
+import { NewWorkComposer } from './NewWorkComposer';
+import { STATUS_LABEL, isFinished, shortDate } from './format';
+import { getProjectWorkView, workViewReadUrl } from './read-api';
+import { useProjectWorkPage } from './WorkReadContext';
+import { WorkPagination } from './WorkPagination';
+import { useWorkReadingPosition } from './useWorkReadingPosition';
 import { useProjectShell } from '../project/data';
 import { ProjectProposals } from '../project/ProjectProposals';
 import { listComparisonOutcomes } from '../project/proposals';
-import { STATUS_LABEL, isFinished, linked, shortDate } from './format';
 import './work.css';
 
 interface TasksData { project: Project; outcomes: ProactiveComparisonOutcome[] }
 
-/** Work, decisions and results come with the project's parent route (#117). */
+/** Object rows use their separate bounded page; this loader supplies the project contract. */
 export async function projectTasksLoader({ params, request }: LoaderFunctionArgs): Promise<TasksData> {
   const [project, outcomes] = await Promise.all([
     getProject(params.projectId!, request.signal), listComparisonOutcomes(params.projectId!, request.signal),
@@ -48,7 +51,7 @@ const isGroup = (value: string | null): value is GroupId => GROUPS.includes(valu
  * from a source or Details comes back to the same view and reading position.
  */
 function TaskViews({ counts, status, mine, writable, onStatus, onMine }: {
-  counts: Record<GroupId, number>; status: GroupId | null; mine: boolean; writable: boolean;
+  counts: WorkCounts | null; status: GroupId | null; mine: boolean; writable: boolean;
   onStatus: (status: GroupId | null) => void; onMine: (mine: boolean) => void;
 }) {
   const row = useRef<HTMLDivElement>(null);
@@ -63,14 +66,14 @@ function TaskViews({ counts, status, mine, writable, onStatus, onMine }: {
     if (start < bar.scrollLeft) bar.scrollLeft = Math.max(0, start - 16);
     else if (end > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = end - bar.clientWidth + 16;
   }, [status]);
-  const shown = GROUPS.filter((id) => counts[id] || id === status);
+  const shown = GROUPS.filter((id) => !counts || counts[id] || id === status);
   return (
     <nav className="ws-views" aria-label="Task views">
       <div className="ws-views__row" ref={row}>
         <button type="button" className="ws-view" aria-pressed={!status} onClick={() => onStatus(null)}>All</button>
         {shown.map((id) => (
-          <button key={id} type="button" className={`ws-view${id === 'needs' && counts.needs ? ' ws-view--need' : ''}`} aria-pressed={status === id} onClick={() => onStatus(id)}>
-            {id === 'needs' && !writable ? 'Waiting for a decision' : GROUP_LABEL[id]} <span className="ws-view__n">{counts[id]}</span>
+          <button key={id} type="button" className={`ws-view${id === 'needs' && counts?.needs ? ' ws-view--need' : ''}`} aria-pressed={status === id} onClick={() => onStatus(id)}>
+            {id === 'needs' && !writable ? 'Waiting for a decision' : GROUP_LABEL[id]} <span className="ws-view__n">{counts ? counts[id] : '…'}</span>
           </button>
         ))}
       </div>
@@ -79,9 +82,9 @@ function TaskViews({ counts, status, mine, writable, onStatus, onMine }: {
   );
 }
 
-function Row({ icon, iconClass, title, sub, right, onOpen, muted }: { icon: ReactNode; iconClass?: string; title: string; sub: ReactNode; right?: ReactNode; onOpen: () => void; muted?: boolean }) {
+function Row({ kind, id, icon, iconClass, title, sub, right, onOpen, muted }: { kind: WorkObjectType; id: string; icon: ReactNode; iconClass?: string; title: string; sub: ReactNode; right?: ReactNode; onOpen: () => void; muted?: boolean }) {
   return (
-    <li>
+    <li data-work-kind={kind} data-work-id={id}>
       <button type="button" className={`ws-item${muted ? ' ws-item--muted' : ''}`} onClick={onOpen}>
         <span className={`ws-item__st ${iconClass ?? ''}`} aria-hidden="true">{icon}</span>
         <span className="ws-item__b"><span className="ws-item__t">{title}</span><span className="ws-item__s">{sub}</span></span>
@@ -91,12 +94,11 @@ function Row({ icon, iconClass, title, sub, right, onOpen, muted }: { icon: Reac
   );
 }
 
-function workSub(item: WorkItem, lists: ProjectWork) {
-  const results = linked(item.links, item.id, 'result').length;
-  const fromMessage = item.links.some((link) => link.from.id === item.id && link.role === 'source' && link.to.type === 'message');
-  const rule = linked(item.links, item.id, 'decision')[0];
-  const parkedBy = item.parked ? lists.decisions.find((decision) => decision.id === item.parked!.decisionId) : null;
-  const waiting = isFinished(item) ? 0 : item.prerequisites.filter((prerequisite) => !prerequisite.met).length;
+function workSub(item: WorkRowProjection) {
+  const { rule, parkedBy } = item;
+  const results = item.relations.results;
+  const fromMessage = item.relations.sourceMessages > 0;
+  const waiting = isFinished(item) ? 0 : item.prerequisiteCounts.unmet;
   return [
     item.owner ? item.owner.name : 'No owner',
     item.status === 'blocked' && item.blocker ? `waiting for ${item.blocker}` : null,
@@ -111,58 +113,118 @@ function workSub(item: WorkItem, lists: ProjectWork) {
 const dot = (kind: string) => <span className={`ws-dot ws-dot--${kind}`} />;
 
 /** The project's Tasks tab: committed work, the rules it follows and what was learned. */
+const cursors = new Map<string, string | null>();
+const taskViewKey = (accountId: string, projectId: string, status: GroupId | null, mine: boolean) =>
+  `flux:task-view:${accountId}:${projectId}:${status ?? 'all'}:${mine ? 'mine' : 'all'}`;
+function storedCursor(key: string): string | null {
+  if (cursors.has(key)) return cursors.get(key)!;
+  try {
+    const cursor = sessionStorage.getItem(key);
+    return cursor && cursor.length <= 512 ? cursor : null;
+  } catch { return null; }
+}
+function keepCursor(key: string, cursor: string | null) {
+  cursors.set(key, cursor);
+  try { if (cursor) sessionStorage.setItem(key, cursor); else sessionStorage.removeItem(key); } catch { /* Keep this visit's page. */ }
+}
+
 export function ProjectTasks() {
   const { project, outcomes } = useLoaderData() as TasksData;
   const shell = useProjectShell();
-  const lists: ProjectWork = shell?.work ?? { work: [], decisions: [], results: [] };
   const { openDetails } = useShellActions();
   const revalidator = useRevalidator();
-  const writable = project.access !== 'viewer';
-  const [title, setTitle] = useState('');
-  const [attempt, setAttempt] = useState(() => crypto.randomUUID());
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
   const [search, setSearch] = useSearchParams();
   const { me } = useShellData();
   const scroller = useRef<HTMLDivElement>(null);
-  const { pathname, search: routerSearch } = useLocation();
-  // The chosen view is local state mirrored into the URL with `replaceState`: switching views is
-  // instant and does not reload the project, and back/forward or a shared link restore it.
-  const fromUrl = () => ({ project: project.id, status: isGroup(search.get('status')) ? search.get('status') as GroupId : null, mine: search.get('show') === 'mine' });
+  const location = useLocation();
+  const routeKey = `${me.user.id}:${project.id}:${location.key}`;
+  const fromUrl = () => ({ routeKey, status: isGroup(search.get('status')) ? search.get('status') as GroupId : null, mine: search.get('show') === 'mine', cursor: search.get('cursor') || null });
   const [stored, setViewState] = useState(fromUrl);
-  const jumpId = useRef<string | null>(null);
-  // The route stays mounted when another project's Tasks opens: that project starts from its URL.
-  const view = stored.project === project.id ? stored : fromUrl();
-  const { status, mine } = view;
-  // Each view keeps its own reading position, so switching and coming back lands where you were.
-  useReadingPosition(scroller, me.user.id, `${pathname}?${status ?? 'all'}${mine ? ':mine' : ''}`);
-  const viewSearch = `${status ? `status=${status}` : ''}${status && mine ? '&' : ''}${mine ? 'show=mine' : ''}`;
+  // A router POP, account switch or project switch selects its actual URL immediately.
+  const view = stored.routeKey === routeKey ? stored : fromUrl();
+  const { status, mine, cursor } = view;
+  const query = useMemo<ProjectWorkViewQuery>(() => ({ purpose: 'tasks', group: status ?? 'all', mine, ...(cursor ? { cursor } : {}) }), [status, mine, cursor]);
+  const selector = workViewReadUrl(project.id, query);
+  const load = useCallback((signal: AbortSignal) => getProjectWorkView(project.id, query, signal), [project.id, query]);
+  const { page: read, refresh: refreshPage } = useProjectWorkPage(project.id, selector, load);
+  const data = read.phase === 'ready' || read.phase === 'refreshing' ? read.value : null;
+  const writable = (data?.summary.access ?? project.access) !== 'viewer';
+  const counts = data ? mine ? data.summary.mine : data.summary.all : null;
+  const viewKey = taskViewKey(me.user.id, project.id, status, mine);
+  const saveReading = useWorkReadingPosition(scroller, `${viewKey}:reading:${cursor ?? 'first'}`, data !== null, data?.summary.observedAt);
+  const jump = useRef<{ routeKey: string; id: string; group: GroupId } | null>(null);
+  const jumpToSection = (id: string) => {
+    const group: GroupId = id === 'g-progress' ? 'in_progress' : id.slice(2) as GroupId;
+    if (!isGroup(group)) return;
+    saveReading();
+    jump.current = { routeKey, id, group };
+    setViewState({ routeKey, status: null, mine: false, cursor: null });
+  };
   useEffect(() => {
-    try { sessionStorage.setItem(`flux.project-tasks.${project.id}`, viewSearch ? `?${viewSearch}` : ''); } catch { /* the tab opens All */ }
+    const target = jump.current;
+    if (!target) return;
+    if (target.routeKey !== routeKey) { jump.current = null; return; }
+    if (read.phase !== 'ready' || mine || cursor) return;
+    if (status !== null && status !== target.group) { jump.current = null; return; }
+    const heading = document.getElementById(target.id);
+    if (!heading && status === null) {
+      // All still has its bounded first page. Select the named group only when
+      // the actual destination lies outside it; never fetch every object to jump.
+      setViewState({ routeKey, status: target.group, mine: false, cursor: null });
+      return;
+    }
+    const pane = scroller.current;
+    if (heading && pane) {
+      const controls = pane.querySelector('.ws-task-controls');
+      const inset = (controls?.getBoundingClientRect().height ?? 0) + 12;
+      pane.scrollTo({ top: Math.max(0, pane.scrollTop + heading.getBoundingClientRect().top - pane.getBoundingClientRect().top - inset), behavior: 'instant' });
+    }
+    jump.current = null;
+  }, [routeKey, read.phase, data, status, mine, cursor, view]);
+
+  useEffect(() => {
+    keepCursor(viewKey, cursor);
     const url = new URL(window.location.href);
-    url.searchParams.delete('status'); url.searchParams.delete('show');
+    url.searchParams.delete('status'); url.searchParams.delete('show'); url.searchParams.delete('cursor');
     if (status) url.searchParams.set('status', status);
     if (mine) url.searchParams.set('show', 'mine');
+    if (cursor) url.searchParams.set('cursor', cursor);
+    const remembered = new URLSearchParams(url.search);
+    remembered.delete('open');
+    try { sessionStorage.setItem(`flux.project-tasks.${me.user.id}.${project.id}`, remembered.toString() ? `?${remembered}` : ''); } catch { /* Visit-local controls still work. */ }
     if (url.href !== window.location.href) window.history.replaceState(window.history.state, '', url);
-    // `routerSearch`: a router navigation on this page (e.g. dropping `?open=`) would drop the view.
-  }, [project.id, viewSearch, status, mine, routerSearch]);
-  const setView = (next: { status?: GroupId | null; mine?: boolean }) => setViewState({ ...view, ...next });
-  // Outcome links refer to the whole project's work/results. Restore All before
-  // scrolling, since a saved status/mine filter can hide their destination.
-  const jumpToSection = (id: string) => { jumpId.current = id; setView({ status: null, mine: false }); };
-  useEffect(() => {
-    if (!jumpId.current) return;
-    document.getElementById(jumpId.current)?.scrollIntoView({ block: 'start' });
-    jumpId.current = null;
-  }, [view]);
+  }, [viewKey, cursor, status, mine, me.user.id, project.id, location.search]);
 
-  // `?open=work:<id>` (a doc reference opened in a new tab, #112) opens that object's details.
+  const setView = (next: { status?: GroupId | null; mine?: boolean }) => {
+    jump.current = null;
+    saveReading();
+    keepCursor(viewKey, cursor);
+    const nextStatus = next.status === undefined ? status : next.status;
+    const nextMine = next.mine ?? mine;
+    setViewState({ routeKey, status: nextStatus, mine: nextMine, cursor: storedCursor(taskViewKey(me.user.id, project.id, nextStatus, nextMine)) });
+  };
+  const movePage = (nextCursor: string) => {
+    jump.current = null;
+    saveReading();
+    keepCursor(viewKey, nextCursor);
+    setViewState({ ...view, cursor: nextCursor });
+  };
+  const refresh = () => {
+    jump.current = null;
+    saveReading();
+    keepCursor(viewKey, null);
+    setViewState({ ...view, cursor: null });
+    refreshPage();
+  };
+
   const open = search.get('open');
   useEffect(() => {
     const match = /^(work|decision|result):([0-9a-f-]{36})$/i.exec(open ?? '');
     if (!match) return;
-    openDetails({ kind: match[1] as 'work' | 'decision' | 'result', id: match[2]! });
-    setSearch((current) => { current.delete('open'); return current; }, { replace: true });
+    openDetails({ kind: match[1] as WorkObjectType, id: match[2]! });
+    const current = new URLSearchParams(window.location.search);
+    current.delete('open');
+    setSearch(current, { replace: true });
   }, [open, openDetails, setSearch]);
 
   useEffect(() => {
@@ -172,88 +234,58 @@ export function ProjectTasks() {
     return () => { window.removeEventListener('focus', refresh); window.clearInterval(interval); };
   }, [revalidator]);
 
-  async function add(event: FormEvent) {
-    event.preventDefault();
-    if (!title.trim() || busy) return;
-    setBusy(true); setError('');
-    try {
-      const item = await createWork(project.id, { title: title.trim() }, attempt);
-      setTitle(''); setAttempt(crypto.randomUUID());
-      revalidator.revalidate();
-      openDetails({ kind: 'work', id: item.id });
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not add the work.'); }
-    finally { setBusy(false); }
-  }
-
-  const own = (item: WorkItem) => !mine || item.owner?.id === me.user.id;
-  const live = lists.work.filter((item) => own(item) && (!item.parked || isFinished(item)));
-  const by = (state: WorkItem['status']) => live.filter((item) => item.status === state);
-  const parked = lists.work.filter((item) => own(item) && item.parked && !isFinished(item));
-  const finished = live.filter(isFinished);
-  const proposed = lists.decisions.filter((item) => item.status === 'proposed');
-  const current = mine ? [] : lists.decisions.filter((item) => item.status === 'accepted');
-  const earlier = mine ? [] : lists.decisions.filter((item) => item.status === 'superseded');
-  const results = lists.results.filter((item) => !mine || item.createdBy.id === me.user.id);
-  const counts: Record<GroupId, number> = {
-    needs: proposed.length, in_progress: by('in_progress').length, blocked: by('blocked').length, open: by('open').length,
-    parked: parked.length, finished: finished.length, rules: current.length + earlier.length, results: results.length,
-  };
-  const visible = (id: GroupId) => !status || status === id;
-  const openWork = (item: WorkItem) => () => openDetails({ kind: 'work', id: item.id });
-  const openDecision = (item: Decision) => () => openDetails({ kind: 'decision', id: item.id });
-  const openResult = (item: WorkResult) => () => openDetails({ kind: 'result', id: item.id });
-  const workRow = (item: WorkItem, muted = false) => <Row key={item.id} icon={dot(item.parked ? 'parked' : item.status)} title={item.title} sub={workSub(item, lists)} right={item.owner ? <span className="ws-av" aria-hidden="true">{item.owner.name.slice(0, 1)}</span> : null} onOpen={openWork(item)} muted={muted} />;
-  const nothing = !lists.work.length && !lists.decisions.length && !lists.results.length
+  const work = data?.items.filter((item): item is WorkRowProjection => item.kind === 'work') ?? [];
+  const decisions = data?.items.filter((item): item is DecisionRowProjection => item.kind === 'decision') ?? [];
+  const results = data?.items.filter((item): item is ResultRowProjection => item.kind === 'result') ?? [];
+  const by = (state: WorkRowProjection['status']) => work.filter((item) => item.status === state && !item.parked);
+  const parked = work.filter((item) => item.parked && !isFinished(item));
+  const finished = work.filter(isFinished);
+  const proposed = decisions.filter((item) => item.status === 'proposed');
+  const current = decisions.filter((item) => item.status === 'accepted');
+  const earlier = decisions.filter((item) => item.status === 'superseded');
+  const groupCount = (id: GroupId, visible: number) => visible ? counts?.[id] ?? 0 : 0;
+  const openObject = (kind: WorkObjectType, id: string) => () => { saveReading(); openDetails({ kind, id }); };
+  const workRow = (item: WorkRowProjection, muted = false) => <Row key={item.id} kind="work" id={item.id} icon={dot(item.parked ? 'parked' : item.status)} title={item.title} sub={workSub(item)} right={item.owner ? <span className="ws-av" aria-hidden="true">{item.owner.name.slice(0, 1)}</span> : null} onOpen={openObject('work', item.id)} muted={muted} />;
+  const nothing = data !== null && cursor === null && !Object.values(data.summary.all).some(Boolean)
     && !outcomes.some((outcome) => outcome.kind === 'comparison' ? outcome.proposal.status === 'proposed' : outcome.status === 'open');
+  const emptyContinuation = data !== null && cursor !== null && !data.items.length;
 
   return (
     <div className="pane-scroll" ref={scroller}>
-      <div className="pane-in ws-tasks" data-shift>
-        {writable ? (
-          <form className="ws-add" onSubmit={(event) => void add(event)}>
-            <label className="ui-vh" htmlFor="ws-add">New work</label>
-            <input id="ws-add" className="ui-input" value={title} maxLength={200} placeholder="Add work, e.g. Order a ToF sensor" onChange={(event) => { setTitle(event.target.value); setAttempt(crypto.randomUUID()); setError(''); }} />
-            <Button type="submit" variant="secondary" icon="plus" busy={busy} disabled={!title.trim()}>Add work</Button>
-          </form>
-        ) : null}
-        {error ? <p className="wd-error" role="alert">{error}</p> : null}
-
-        {nothing ? (
-          <div className="view-empty"><EmptyState icon="tasks" title="No work yet">
-            <p>Work starts when one of you makes it from a message, or adds it here. Not every idea has to become a task.</p>
-          </EmptyState></div>
-        ) : null}
-
+      <div className="pane-in ws-tasks" data-shift data-work-observed-at={data?.summary.observedAt}>
+        {writable ? <NewWorkComposer key={`${me.user.id}:${project.id}`} userId={me.user.id} projectId={project.id} /> : null}
         <ProjectProposals outcomes={outcomes} people={shell?.people ?? null} projectName={project.name}
-          resultTitles={new Map(lists.results.map((result) => [result.id, result.title]))}
-          workCount={lists.work.length} resultCount={lists.results.length}
-          workJumpId={lists.work.some((item) => !item.parked && item.status === 'in_progress') ? 'g-progress' : lists.work.some((item) => !item.parked && item.status === 'blocked') ? 'g-blocked' : lists.work.some((item) => !item.parked && item.status === 'open') ? 'g-open' : lists.work.some((item) => item.parked && !isFinished(item)) ? 'g-parked' : 'g-finished'}
-          jumpToSection={jumpToSection}
-          writable={writable} refresh={() => revalidator.revalidate()}
-          openResult={(id) => openDetails({ kind: 'result', id })}
-          openWork={(item) => openDetails({ kind: 'work', id: item.id })} />
-        {!nothing ? <TaskViews counts={counts} status={status} mine={mine} writable={writable} onStatus={(next) => setView({ status: next })} onMine={(next) => setView({ mine: next })} /> : null}
-        {!nothing && (status ? !counts[status] : !Object.values(counts).some(Boolean)) ? (
-          <p className="ws-none" role="status">
-            {mine ? `Nothing of yours${status ? ` in ${GROUP_LABEL[status].toLowerCase()}` : ''} right now.` : `Nothing in ${GROUP_LABEL[status!].toLowerCase()} right now.`}{' '}
-            <button type="button" className="ws-none__b" onClick={() => setView(mine ? { mine: false } : { status: null })}>{mine ? 'Show everyone’s' : 'Show all'}</button>
-          </p>
-        ) : null}
-
-        <Group id="proposed" title={writable ? 'Needs you' : 'Waiting for a decision'} count={visible('needs') ? proposed.length : 0}>
-          {proposed.map((item) => <Row key={item.id} icon={<Icon name="rule" size={16} />} iconClass="ws-need" title={item.title} sub={<>Proposed by {item.proposedBy.name}{item.proposedBy.kind === 'agent' ? ' (agent)' : ''}{item.supersedes ? ' · would replace the current rule' : ''}{writable ? <> · <span className="ws-need">you can accept it</span></> : null}</>} right={shortDate(item.createdAt)} onOpen={openDecision(item)} />)}
+          resultTitles={new Map(results.map((result) => [result.id, result.title]))}
+          workCount={data?.summary.workTotal ?? 0} resultCount={data?.summary.all.results ?? 0}
+          workJumpId={data?.summary.all.in_progress ? 'g-progress' : data?.summary.all.blocked ? 'g-blocked' : data?.summary.all.open ? 'g-open' : data?.summary.all.parked ? 'g-parked' : 'g-finished'}
+          jumpToSection={jumpToSection} writable={writable} refresh={() => { refresh(); revalidator.revalidate(); }}
+          openResult={(id) => openDetails({ kind: 'result', id, projectId: project.id })}
+          openWork={(item) => openDetails({ kind: 'work', id: item.id, projectId: project.id })} />
+        <div className="ws-task-controls">
+          <TaskViews counts={counts} status={status} mine={mine} writable={writable} onStatus={(next) => setView({ status: next })} onMine={(next) => setView({ mine: next })} />
+          <WorkPagination page={data} busy={read.phase !== 'ready' && read.phase !== 'unavailable'} onCursor={movePage} onRefresh={refresh} />
+        </div>
+        {read.phase === 'unavailable' ? <ErrorState title="Work could not be loaded" actions={<button type="button" className="ws-none__b" onClick={refresh}>Refresh work</button>}><p>Your private draft is kept. Refresh to read the current view.</p></ErrorState> : null}
+        {nothing ? <div className="view-empty"><EmptyState icon="tasks" title="No work yet"><p>Work starts when one of you makes it from a message, or adds it here. Not every idea has to become a task.</p></EmptyState></div> : null}
+        {emptyContinuation ? <p className="ws-none" role="status">This page changed and has no rows. Use Previous or Next if available, or <button type="button" className="ws-none__b" onClick={refresh}>refresh from the start</button>.</p> : null}
+        {data && !nothing && !emptyContinuation && !data.total ? <p className="ws-none" role="status">
+          {mine ? `Nothing of yours${status ? ` in ${GROUP_LABEL[status].toLowerCase()}` : ''} right now.` : `Nothing in ${status ? GROUP_LABEL[status].toLowerCase() : 'this view'} right now.`}{' '}
+          <button type="button" className="ws-none__b" onClick={() => setView(mine ? { mine: false } : { status: null })}>{mine ? 'Show everyone’s' : 'Show all'}</button>
+        </p> : null}
+        <Group id="proposed" title={writable ? 'Needs you' : 'Waiting for a decision'} count={groupCount('needs', proposed.length)}>
+          {proposed.map((item) => <Row key={item.id} kind="decision" id={item.id} icon={<Icon name="rule" size={16} />} iconClass="ws-need" title={item.title} sub={<>Proposed by {item.proposedBy.name}{item.proposedBy.kind === 'agent' ? ' (agent)' : ''}{item.supersedes ? ' · would replace the current rule' : ''}{writable ? <> · <span className="ws-need">you can accept it</span></> : null}</>} right={shortDate(item.createdAt)} onOpen={openObject('decision', item.id)} />)}
         </Group>
-        <Group id="progress" title="In progress" count={visible('in_progress') ? counts.in_progress : 0}>{by('in_progress').map((item) => workRow(item))}</Group>
-        <Group id="blocked" title="Blocked" count={visible('blocked') ? counts.blocked : 0}>{by('blocked').map((item) => workRow(item))}</Group>
-        <Group id="open" title="Open" count={visible('open') ? counts.open : 0}>{by('open').map((item) => workRow(item))}</Group>
-        <Group id="parked" title="Parked by a pivot" count={visible('parked') ? counts.parked : 0}>{parked.map((item) => workRow(item, true))}</Group>
-        <Group id="finished" title="Finished" count={visible('finished') ? counts.finished : 0}>{finished.map((item) => workRow(item, true))}</Group>
-        <Group id="rules" title="Decisions" count={visible('rules') ? counts.rules : 0}>
-          {current.map((item) => <Row key={item.id} icon={<Icon name="rule" size={16} />} title={item.title} sub={`Current rule · ${item.decidedBy?.name ?? ''} · ${shortDate(item.decidedAt!)}`} onOpen={openDecision(item)} />)}
-          {earlier.map((item) => <Row key={item.id} icon={<Icon name="rule" size={16} />} title={item.title} sub={`Earlier rule · replaced ${shortDate(item.supersededAt!)}`} onOpen={openDecision(item)} muted />)}
+        <Group id="progress" title="In progress" count={groupCount('in_progress', by('in_progress').length)}>{by('in_progress').map((item) => workRow(item))}</Group>
+        <Group id="blocked" title="Blocked" count={groupCount('blocked', by('blocked').length)}>{by('blocked').map((item) => workRow(item))}</Group>
+        <Group id="open" title="Open" count={groupCount('open', by('open').length)}>{by('open').map((item) => workRow(item))}</Group>
+        <Group id="parked" title="Parked by a pivot" count={groupCount('parked', parked.length)}>{parked.map((item) => workRow(item, true))}</Group>
+        <Group id="finished" title="Finished" count={groupCount('finished', finished.length)}>{finished.map((item) => workRow(item, true))}</Group>
+        <Group id="rules" title="Decisions" count={groupCount('rules', current.length + earlier.length)}>
+          {current.map((item) => <Row key={item.id} kind="decision" id={item.id} icon={<Icon name="rule" size={16} />} title={item.title} sub={`Current rule · ${item.decidedBy?.name ?? ''} · ${shortDate(item.decidedAt!)}`} onOpen={openObject('decision', item.id)} />)}
+          {earlier.map((item) => <Row key={item.id} kind="decision" id={item.id} icon={<Icon name="rule" size={16} />} title={item.title} sub={`Earlier rule · replaced ${shortDate(item.supersededAt!)}`} onOpen={openObject('decision', item.id)} muted />)}
         </Group>
-        <Group id="results" title="Results" count={visible('results') ? counts.results : 0}>
-          {results.map((item) => <Row key={item.id} icon={<Icon name="result" size={16} />} iconClass={item.finding === 'negative' ? 'ws-neg' : 'ws-pos'} title={item.title} sub={`${item.finding === 'negative' ? 'Negative' : 'Positive'} · ${item.createdBy.name}`} right={shortDate(item.createdAt)} onOpen={openResult(item)} />)}
+        <Group id="results" title="Results" count={groupCount('results', results.length)}>
+          {results.map((item) => <Row key={item.id} kind="result" id={item.id} icon={<Icon name="result" size={16} />} iconClass={item.finding === 'negative' ? 'ws-neg' : 'ws-pos'} title={item.title} sub={`${item.finding === 'negative' ? 'Negative' : 'Positive'} · ${item.createdBy.name}`} right={shortDate(item.createdAt)} onOpen={openObject('result', item.id)} />)}
         </Group>
       </div>
     </div>

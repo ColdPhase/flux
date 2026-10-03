@@ -1,0 +1,164 @@
+{
+  "tested_source": "7c0fba2f5079619021c8b6dcd3a2f8216993f008",
+  "production_build_source": "7c0fba2f5079619021c8b6dcd3a2f8216993f008",
+  "client_test_source": "2a79c7bcfbb91ef16527299f9438b8d90d6c1da9",
+  "client_adapter_store_and_test_bytes_match_final": true,
+  "owner_compose_project": "flux155browser",
+  "owner_api_port": 18581,
+  "owner_mailpit_port": 18585,
+  "docker_version": "29.1.2",
+  "docker_resources": "14 CPUs 8216887296 bytes aarch64",
+  "images": [
+    {
+      "tags": [
+        "flux-foundation:flux155browser"
+      ],
+      "id": "sha256:bc17c3fca6623bcba22f321b12c44b4bffaedd13804b6ad7e78e016551bfabb2"
+    },
+    {
+      "tags": [
+        "flux-test-tools:flux155browser"
+      ],
+      "id": "sha256:0fc1cc781e2350e98b1b06c0c4e45460afeb208a6f051cf2ddc9e027a0a7a2a8"
+    },
+    {
+      "tags": [
+        "flux-ui-tests:flux155browser"
+      ],
+      "id": "sha256:510837a95f7ee74c8177ffd15628e642a70509b851240ad5e715e3f988e4f80a"
+    }
+  ],
+  "tests": {
+    "client": {
+      "pass": 25,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "duration_ms": 271.024792
+    },
+    "browser": {
+      "pass": 70,
+      "fail": 0,
+      "errors": 0,
+      "skipped": 0,
+      "duration_seconds": 117.554,
+      "composition": "10 NativeDetails +8 Overview +17 ProjectSurface +8 MessageWork +10 WorkDecisions +10 PersonalAssistant +7 Docs; desktop/phone are subtests",
+      "destroyed_pending_route_callbacks": 0,
+      "cancelled_route_callbacks": 1,
+      "limitation": "Named native assertions and pageerror checks pass. Recorded callback diagnostics are counted above; fixture handler completion is not certified."
+    }
+  },
+  "screenshots": {
+    "bounded-details-work-desktop.png": {
+      "sha256": "14ccf88884401297a9701e295a89da19e5477585152649a9c0de8693d50c8f9b",
+      "viewport_css": [
+        1500,
+        900
+      ],
+      "device_scale_factor": 1,
+      "zoom": "100%",
+      "state": "full own work on relationship second page"
+    },
+    "bounded-details-work-phone.png": {
+      "sha256": "00929fb0cf5f11b6738f9e5c2590a089fd98eb5efeb29109f287e071f88075c8",
+      "viewport_css": [
+        412,
+        915
+      ],
+      "device_scale_factor": 3,
+      "zoom": "100%",
+      "state": "full own work on relationship second page"
+    },
+    "bounded-details-result-desktop.png": {
+      "sha256": "65fb0a1889d18f3cdbd507bf908649b66067fee1d6f954c14dbe8450fbf0579b",
+      "viewport_css": [
+        1500,
+        900
+      ],
+      "device_scale_factor": 1,
+      "zoom": "100%",
+      "state": "completed off-page chosen work and full private measured finding"
+    },
+    "bounded-details-result-phone.png": {
+      "sha256": "4e8d1337f8ccdb3cb86647d9178df84261c3738a56400a1fcad8e67e91c8db33",
+      "viewport_css": [
+        412,
+        915
+      ],
+      "device_scale_factor": 3,
+      "zoom": "100%",
+      "state": "completed off-page chosen work and full private measured finding"
+    },
+    "bounded-details-pivot-desktop.png": {
+      "sha256": "b2103319bdd7235248c684290a83a91ebc7b97b118404de2eb38ef77d2c93fa3",
+      "viewport_css": [
+        1500,
+        900
+      ],
+      "device_scale_factor": 1,
+      "zoom": "100%",
+      "state": "bounded work-choice scrollport, private choices and acceptance area brought into view"
+    },
+    "bounded-details-pivot-phone.png": {
+      "sha256": "7d9bbb779c261b137fed9eecf3c91db997138b3246e3ae8c340ad3ea9d872b11",
+      "viewport_css": [
+        412,
+        915
+      ],
+      "device_scale_factor": 3,
+      "zoom": "100%",
+      "state": "bounded work-choice scrollport, private choices and acceptance area brought into view"
+    }
+  },
+  "earlier_review_images": {
+    "initial-bounded-details-work-desktop.png": {
+      "sha256": "7c434f15021edd73f256a3abce5f32d9246c36cacd01c1e4f77d3d2d1633e11b",
+      "source": "e23f2f887470baecb2d4de290c46e00261fb2674"
+    },
+    "first-layout-bounded-details-work-desktop.png": {
+      "sha256": "6ac48f05f2f3247748a8759ee47f4993eb7b931546947402dec58a7f027091c6",
+      "source": "60b812647489f745154e955b1dd2fd9d6dc8a2d7"
+    },
+    "initial-bounded-details-work-phone.png": {
+      "sha256": "00929fb0cf5f11b6738f9e5c2590a089fd98eb5efeb29109f287e071f88075c8",
+      "source": "e23f2f887470baecb2d4de290c46e00261fb2674"
+    },
+    "first-layout-bounded-details-work-phone.png": {
+      "sha256": "00929fb0cf5f11b6738f9e5c2590a089fd98eb5efeb29109f287e071f88075c8",
+      "source": "60b812647489f745154e955b1dd2fd9d6dc8a2d7"
+    },
+    "initial-bounded-details-result-desktop.png": {
+      "sha256": "d89e903deb32b92e00fcb75c2a0fb9ac616d60e8bef4d11777a50cc516fa4c98",
+      "source": "e23f2f887470baecb2d4de290c46e00261fb2674"
+    },
+    "first-layout-bounded-details-result-desktop.png": {
+      "sha256": "918397db68c68424277664d16f3ac449ca10dbc68132a5c1697bfd48a35cce17",
+      "source": "60b812647489f745154e955b1dd2fd9d6dc8a2d7"
+    },
+    "initial-bounded-details-result-phone.png": {
+      "sha256": "0bb8fceb3c31109ff60dbf71568b0ddff4e0d8813796f72c10b85301f9db5172",
+      "source": "e23f2f887470baecb2d4de290c46e00261fb2674"
+    },
+    "first-layout-bounded-details-result-phone.png": {
+      "sha256": "4e8d1337f8ccdb3cb86647d9178df84261c3738a56400a1fcad8e67e91c8db33",
+      "source": "60b812647489f745154e955b1dd2fd9d6dc8a2d7"
+    },
+    "initial-bounded-details-pivot-desktop.png": {
+      "sha256": "e300b5ededf98d57148409e66bfe46af060eecd548565582b8a3892a709737c3",
+      "source": "e23f2f887470baecb2d4de290c46e00261fb2674"
+    },
+    "first-layout-bounded-details-pivot-desktop.png": {
+      "sha256": "585dd09ce826a27a3ee51b12207b1e44f548b6c3685b8891227badbf086a58ff",
+      "source": "60b812647489f745154e955b1dd2fd9d6dc8a2d7"
+    },
+    "initial-bounded-details-pivot-phone.png": {
+      "sha256": "b3876e772a42275ee878186831fc86428b0056b608495d44ff3591881245916e",
+      "source": "e23f2f887470baecb2d4de290c46e00261fb2674"
+    },
+    "first-layout-bounded-details-pivot-phone.png": {
+      "sha256": "648760cacb08770f5546c981415022995dcadbb3becb5eedd2ff94e1e9fabf01",
+      "source": "60b812647489f745154e955b1dd2fd9d6dc8a2d7"
+    }
+  },
+  "scope": "Native bounded own work Details and explicit relations/choices, private command lifetimes and truthful doc upsert wording. Parent/assistant/LinkPicker collections, original1000benchmark and whole product/device/release gates remain open."
+}
