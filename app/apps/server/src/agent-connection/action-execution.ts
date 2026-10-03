@@ -3,6 +3,8 @@ import type { AgentExecutionCommand, AgentJsonValue, AgentOperation, AgentPostco
   ObjectRef } from '@flux/contracts';
 import { sketchRows } from '@flux/db';
 import { agentExecutionUseCases, type Database, type Principal } from '@flux/core';
+import { nativeConversationsInEventSession } from '../conversation/store.js';
+import { nativeDocsInEventSession } from '../docs/adapters.js';
 import { nativeSketchInEventSession } from '../sketches/adapters.js';
 import { nativeWorkInEventSession } from '../work/adapters.js';
 import { transactionEventSession } from '../work/transaction-events.js';
@@ -28,6 +30,10 @@ export type ActionInput = { projectId: string; runtimeSessionId: string; grantId
 export interface NativeActions {
   work: ReturnType<typeof nativeWorkInEventSession>;
   maps: ReturnType<typeof nativeSketchInEventSession>;
+  /** The project doc commands with the agent as real author (`agentAuthors`), in this transaction. */
+  docs: ReturnType<typeof nativeDocsInEventSession>;
+  /** The project conversation start/reply commands with the agent as real author, in this transaction. */
+  conversations: ReturnType<typeof nativeConversationsInEventSession>;
   /** The acting agent, from the server-issued runtime, never from tool input. */
   agent: Principal;
   runtime: AuthenticatedAgentRuntime;
@@ -62,6 +68,7 @@ export function nativeActionExecutor(db: Database, claims: FluxMcpClaims) {
           return { value: scope.replay.value, postconditions: scope.replay.postconditions };
         }
         return effect({ work: nativeWorkInEventSession(tx, session), maps: nativeSketchInEventSession(tx, session),
+          docs: nativeDocsInEventSession(tx, session), conversations: nativeConversationsInEventSession(tx, session),
           agent: { kind: 'agent', id: scope.context.agentId }, runtime: scope.context,
           async mapCheckpoint(mapId) {
             const map = await sketchRows(tx).findSketch(mapId);

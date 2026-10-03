@@ -10,6 +10,7 @@ import { audienceLine, useProjectShell } from './data';
 import { ProjectAccess } from '../people/ProjectAccess';
 import { docUrl } from '../docs/api';
 import { docsLinking } from '../docs/AddToDoc';
+import { authorLabel } from '../docs/format';
 
 /** The open conversation's loader data, when the Conversation tab is showing one. */
 function useOpenConversation(): { conversation: Conversation | null; materials: Material[] } | null {
@@ -120,7 +121,7 @@ export function ProjectOverview({ messageId, focusPeople = null, onBack }: { mes
     }
   }
   if (!message) for (const doc of (docs ?? []).slice(0, 3)) {
-    if (!docRows.has(doc.id)) docRows.set(doc.id, { key: doc.id, icon: 'doc', kind: doc.state === 'draft' ? 'Doc · draft' : 'Doc', title: doc.title, sub: `Changed by ${doc.updatedBy.id === me.user.id ? 'you' : doc.updatedBy.name}${doc.reason ? ` · ${doc.reason}` : ''}`, to: docUrl(project.id, doc.id) });
+    if (!docRows.has(doc.id)) docRows.set(doc.id, { key: doc.id, icon: 'doc', kind: doc.state === 'draft' ? 'Doc · draft' : 'Doc', title: doc.title, sub: `Changed by ${doc.updatedBy.kind === 'human' && doc.updatedBy.id === me.user.id ? 'you' : authorLabel(doc.updatedBy)}${doc.reason ? ` · ${doc.reason}` : ''}`, to: docUrl(project.id, doc.id) });
   }
   const moreDocs = !message && docs && docs.length > 3;
 
@@ -149,6 +150,7 @@ export function ProjectOverview({ messageId, focusPeople = null, onBack }: { mes
       <Rows label="Docs" rows={[...docRows.values()]} empty={message ? undefined : <>No docs yet. <Link to={`${base}/docs`}>Open Docs</Link> {project.access === 'viewer' ? 'to read saved documents.' : 'to keep what you learn.'}</>} />
       {moreDocs ? <p className="ov-more"><Link to={`${base}/docs`}>All {docs.length} docs</Link></p> : null}
 
+      {!message && project.access === 'manager' ? <p className="ov-more"><Link to={`${base}/github`}>GitHub repositories</Link></p> : null}
       {/* Exactly who can open it, and for its managers the controls to change that (#188). */}
       <ProjectAccess project={project} people={people} focusToken={focusPeople} />
       <p className="details__keys"><kbd>]</kbd> toggles this panel · <kbd>Esc</kbd> closes it</p>

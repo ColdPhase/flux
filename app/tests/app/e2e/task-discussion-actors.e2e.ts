@@ -6,16 +6,15 @@ import net from 'node:net';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser, type BrowserContext } from 'playwright';
-import { createDatabase } from '@flux/db';
 import type { ConversationMessage, WorkItem } from '@flux/contracts';
 import { taskDiscussionUseCases } from '../../../apps/server/src/work/task-discussions.js';
+import { db, pool } from '../support/db.js';
 import { addMember, expectStatus, grant, password, person, project, workspace, type Person } from '../support/people.js';
 
 // Genuine trusted core agent writes plus real authenticated Chromium rendering/replies.
 // This does not certify an external MCP client or built-in instruction activation.
 const upstream = new URL(process.env.FLUX_API_URL ?? 'http://api:8080');
 const origin = new URL(process.env.FLUX_PUBLIC_ORIGIN!);
-const { db, pool } = createDatabase(process.env.DATABASE_URL!);
 const proxy = http.createServer((request, response) => {
   const forward = http.request({ host: upstream.hostname, port: upstream.port || 80,
     method: request.method, path: request.url, headers: request.headers }, (answer) => {
@@ -48,7 +47,6 @@ after(async () => {
   await browser?.close();
   proxy.closeAllConnections();
   await new Promise<void>((resolve) => proxy.close(() => resolve()));
-  await pool.end();
 });
 
 async function signedIn(who: Person, width: number) {

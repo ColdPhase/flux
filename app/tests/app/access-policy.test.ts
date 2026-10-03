@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, describe, test } from 'node:test';
+import { describe, test } from 'node:test';
 import { count, eq } from 'drizzle-orm';
-import { createDatabase, schema } from '@flux/db';
+import { schema } from '@flux/db';
 import {
   addMember,
   authorize,
@@ -31,21 +31,11 @@ import {
   type Database,
   type Principal,
 } from '@flux/core';
+import { db, insertedHuman, pool } from './support/db.js';
 import { backendPid, settled, waitUntilBlockedBy } from './support/locks.js';
 
 // Policy contract and agent principals exercised directly against PostgreSQL (issue #29).
 // Agent authentication is a later task, so agents are driven through core methods here.
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { db, pool } = createDatabase(connectionString);
-after(() => pool.end());
-
-async function person(label: string): Promise<Principal> {
-  const id = randomUUID();
-  await db.insert(schema.authUsers).values({ id, name: label, email: `${label}-${id}@example.test` });
-  return { id, kind: 'human' };
-}
-
 function agentPrincipal(id: string): Principal {
   return { id, kind: 'agent' };
 }
@@ -62,7 +52,7 @@ function pgCode(error: unknown) {
 
 describe('agent principals', () => {
   test('an agent with a scoped grant reads only its project', async () => {
-    const owner = await person('agent-owner');
+    const owner = await insertedHuman('agent-owner');
     const ws = await createWorkspace(owner, { name: 'Agents' }, db);
     const granted = await createProject(owner, ws.id, { name: 'Granted', visibility: 'restricted' }, db);
     const open = await createProject(owner, ws.id, { name: 'Open', visibility: 'workspace' }, db);
@@ -106,8 +96,8 @@ describe('agent principals', () => {
   });
 
   test('a person-owned agent is capped by its owner and stops when the owner leaves', async () => {
-    const admin = await person('ws-admin');
-    const human = await person('agent-human');
+    const admin = await insertedHuman('ws-admin');
+    const human = await insertedHuman('agent-human');
     const ws = await createWorkspace(admin, { name: 'Delegation' }, db);
     await addMember(admin, ws.id, { userId: human.id, role: 'member' }, db);
     const board = await createProject(admin, ws.id, { name: 'Board', visibility: 'restricted' }, db);
@@ -130,7 +120,7 @@ describe('agent principals', () => {
 
 describe('agents stay inside current project grants', () => {
   test('an agent without a writable grant cannot create drafts', async () => {
-    const owner = await person('zero-owner');
+    const owner = await insertedHuman('zero-owner');
     const ws = await createWorkspace(owner, { name: 'Zero grants' }, db);
     const project = await createProject(owner, ws.id, { name: 'Ungranted', visibility: 'workspace' }, db);
     const viewed = await createProject(owner, ws.id, { name: 'Viewed', visibility: 'restricted' }, db);
@@ -156,7 +146,7 @@ describe('agents stay inside current project grants', () => {
   });
 
   test('revoking or narrowing a grant removes the agent access to its own drafts', async () => {
-    const owner = await person('revoke-owner');
+    const owner = await insertedHuman('revoke-owner');
     const ws = await createWorkspace(owner, { name: 'Revocation' }, db);
     const room = await createProject(owner, ws.id, { name: 'Room', visibility: 'restricted' }, db);
     const agent = await createAgent(owner, ws.id, { name: 'Writer', owner: 'workspace' }, db);
@@ -188,7 +178,7 @@ describe('agents stay inside current project grants', () => {
   });
 
   test('an explicit deny hides the agent own drafts', async () => {
-    const owner = await person('deny-owner');
+    const owner = await insertedHuman('deny-owner');
     const ws = await createWorkspace(owner, { name: 'Deny' }, db);
     const room = await createProject(owner, ws.id, { name: 'Room', visibility: 'restricted' }, db);
     const agent = await createAgent(owner, ws.id, { name: 'Denied', owner: 'workspace' }, db);
@@ -269,7 +259,7 @@ async function changeThenWrite({ writer, draftId, change, refused }: RaceCase) {
 
 describe('access changes are serialized with draft writes (two connections)', () => {
   async function agentCase(label: string) {
-    const owner = await person(`${label}-owner`);
+    const owner = await insertedHuman(`${label}-owner`);
     const ws = await createWorkspace(owner, { name: label }, db);
     const room = await createProject(owner, ws.id, { name: 'Room', visibility: 'restricted' }, db);
     const agent = await createAgent(owner, ws.id, { name: 'Racer', owner: 'workspace' }, db);
@@ -281,8 +271,8 @@ describe('access changes are serialized with draft writes (two connections)', ()
 
   /** A member edits an owner's project draft through implicit contributor access (no grant row). */
   async function memberCase(label: string) {
-    const owner = await person(`${label}-owner`);
-    const member = await person(`${label}-member`);
+    const owner = await insertedHuman(`${label}-owner`);
+    const member = await insertedHuman(`${label}-member`);
     const ws = await createWorkspace(owner, { name: label }, db);
     await addMember(owner, ws.id, { userId: member.id, role: 'member' }, db);
     const open = await createProject(owner, ws.id, { name: 'Open', visibility: 'workspace' }, db);
@@ -327,9 +317,9 @@ describe('access changes are serialized with draft writes (two connections)', ()
 
 describe('policy contract', () => {
   test('authorize distinguishes invisible from forbidden and visibleFilter matches list results', async () => {
-    const owner = await person('contract-owner');
-    const viewer = await person('contract-viewer');
-    const stranger = await person('contract-stranger');
+    const owner = await insertedHuman('contract-owner');
+    const viewer = await insertedHuman('contract-viewer');
+    const stranger = await insertedHuman('contract-stranger');
     const ws = await createWorkspace(owner, { name: 'Contract' }, db);
     await addMember(owner, ws.id, { userId: viewer.id, role: 'member' }, db);
     const room = await createProject(owner, ws.id, { name: 'Room', visibility: 'restricted' }, db);
@@ -359,8 +349,8 @@ describe('policy contract', () => {
 
 describe('database integrity', () => {
   test('composite foreign keys reject cross-workspace links', async () => {
-    const owner = await person('integrity-owner');
-    const stranger = await person('integrity-stranger');
+    const owner = await insertedHuman('integrity-owner');
+    const stranger = await insertedHuman('integrity-stranger');
     const a = await createWorkspace(owner, { name: 'A' }, db);
     const b = await createWorkspace(owner, { name: 'B' }, db);
     const projectB = await createProject(owner, b.id, { name: 'B project' }, db);
