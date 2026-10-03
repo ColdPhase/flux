@@ -108,6 +108,13 @@
 .sk-zoom button:disabled { opacity: .45; cursor: default; }
 .sk-zoom .sk-zoom__level { min-width: 44px; }
 .sk-zoom .sk-zoom__fit { min-width: 36px; padding: 0 8px; font-size: var(--fs-sm); color: var(--text-2); font-weight: 500; }
+/* Every map keeps controls outside its scroll viewport: thoughts remain clear while scrolling,
+   including at the Fit floor and in the phone's unchanged full-size two-column projection.
+   Flex measures the real control height (including larger touch targets) within the same footprint. */
+.sk-canvas-wrap--controls { display: flex; flex-direction: column; gap: 8px; padding-bottom: 8px;
+  height: clamp(360px, calc(100dvh - 300px), 720px); }
+.sk-canvas-wrap--controls .sk-canvas { flex: 1; min-height: 0; height: auto; }
+.sk-canvas-wrap--controls .sk-zoom { position: static; flex: none; align-self: flex-end; margin-right: 8px; }
 
 .sk-first, .sk-empty-list { font-size: var(--fs-sm); color: var(--text-3); }
 .sk-first b, .sk-empty-list b { font-weight: 500; color: var(--text-2); }
@@ -220,6 +227,7 @@
   .sk-status { flex: none; padding: 0 8px 6px; white-space: normal; }
   .sk-status:empty { display: none; }
   .sk-canvas { height: clamp(360px, calc(100dvh - 250px), 620px); }
+  .sk-canvas-wrap--controls { height: clamp(360px, calc(100dvh - 250px), 620px); }
   .sk-el:not(.is-on) { display: none; }
   .sk-edges path:not(.is-on) { stroke-opacity: 1; }
 }
