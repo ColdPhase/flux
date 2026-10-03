@@ -412,8 +412,10 @@ class AppShellJourney(unittest.TestCase):
             views.get_by_role("link", name="Conversation").click()
             expect(page.get_by_role("button", name=re.compile(r"^Move 40 notes"))).to_be_visible()
             page.wait_for_load_state("networkidle")
-            self.assertAlmostEqual(page.locator(".convo .pane-scroll").evaluate("el => el.scrollTop"), 600, delta=2, msg="position restored after a view switch")
-            self.assertEqual(page.evaluate(first_visible), anchor)
+            # Restored by content, not pixels: a block that loads above the notes after the restore (drafts,
+            # the move offer) shifts the offset while the browser keeps the same note in view.
+            self.assertGreater(page.locator(".convo .pane-scroll").evaluate("el => el.scrollTop"), 0, "a position was restored")
+            self.assertEqual(page.evaluate(first_visible), anchor, "the same note is at the top after a view switch")
             page.reload()
             expect(page.get_by_text("note 40:")).to_be_attached()
             # The offer to move these browser notes into the account loads above them (#190 HOME-3).
