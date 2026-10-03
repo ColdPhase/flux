@@ -3,14 +3,7 @@ import { and, eq, lte, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
-/**
- * Drizzle adapter for idempotency keys (issues #46, #86). It satisfies core's `IdempotencyStore`
- * port structurally; core decides expiry, reuse and replay. Bind it to the command's transaction:
- * `lock` takes a transaction-scoped advisory lock, so a concurrent request with the same key waits
- * for the first one's commit before it looks the key up.
- */
 const k = schema.idempotencyKeys;
-const NO_WORKSPACE = '00000000-0000-0000-0000-000000000000';
 
 export interface IdempotencyKeyScope {
   /** The principal's stable key (`kind:id`). */
@@ -29,12 +22,19 @@ export interface StoredIdempotencyKey {
 
 const match = (scope: IdempotencyKeyScope) => and(
   eq(k.principal, scope.principal),
-  // Commands outside a workspace (null) match each other, not every workspace.
-  sql`coalesce(${k.workspaceId}, ${NO_WORKSPACE}::uuid) = coalesce(${scope.workspaceId}::uuid, ${NO_WORKSPACE}::uuid)`,
+  // Commands outside a workspace (null) match each other, not every workspace. The literal is the
+  // expression of the unique index idempotency_keys_scope_idx (0004), written exactly as there.
+  sql`coalesce(${k.workspaceId}, '00000000-0000-0000-0000-000000000000'::uuid) = coalesce(${scope.workspaceId}::uuid, '00000000-0000-0000-0000-000000000000'::uuid)`,
   eq(k.operation, scope.operation),
   eq(k.key, scope.key),
 );
 
+/**
+ * Drizzle adapter for idempotency keys (issues #46, #86). It satisfies core's `IdempotencyStore`
+ * port structurally; core decides expiry, reuse and replay. Bind it to the command's transaction:
+ * `lock` takes a transaction-scoped advisory lock, so a concurrent request with the same key waits
+ * for the first one's commit before it looks the key up.
+ */
 export function idempotencyRepository(db: DbExecutor) {
   return {
     /** Holds the scope's advisory lock until the enclosing transaction ends. */
