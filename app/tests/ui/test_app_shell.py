@@ -389,6 +389,10 @@ class AppShellJourney(unittest.TestCase):
             page.reload()
             scroller = page.locator(".convo .pane-scroll")
             expect(page.get_by_text("note 40:")).to_be_attached()
+            # Home loads blocks above these notes after they render (private drafts, the offer to move
+            # browser notes, #190 HOME-3); the position is a pixel offset, so it is taken once they have.
+            expect(page.get_by_role("button", name=re.compile(r"^Move 40 notes"))).to_be_visible()
+            page.wait_for_load_state("networkidle")
             scroller.evaluate("el => { el.scrollTop = 600; el.dispatchEvent(new Event('scroll')); }")
             page.wait_for_timeout(100)
             # The note at the top of the column: blocks above the notes can load later and change the
@@ -402,13 +406,15 @@ class AppShellJourney(unittest.TestCase):
             views.get_by_role("link", name="Wiki").click()
             expect(page.get_by_role("heading", name="No docs yet")).to_be_visible()
             views.get_by_role("link", name="Conversation").click()
+            expect(page.get_by_role("button", name=re.compile(r"^Move 40 notes"))).to_be_visible()
+            page.wait_for_load_state("networkidle")
             self.assertAlmostEqual(page.locator(".convo .pane-scroll").evaluate("el => el.scrollTop"), 600, delta=2, msg="position restored after a view switch")
             self.assertEqual(page.evaluate(first_visible), anchor)
             page.reload()
             expect(page.get_by_text("note 40:")).to_be_attached()
             # The offer to move these browser notes into the account loads above them (#190 HOME-3).
             expect(page.get_by_role("button", name=re.compile(r"^Move 40 notes"))).to_be_visible()
-            page.wait_for_timeout(300)
+            page.wait_for_load_state("networkidle")
             self.assertEqual(page.evaluate(first_visible), anchor, "the same note is at the top after a reload")
         finally:
             page.evaluate(f"localStorage.setItem('{key}', {json.dumps(saved)}); localStorage.removeItem('flux:scroll:{user_id}:/')" if saved else f"localStorage.removeItem('{key}'); localStorage.removeItem('flux:scroll:{user_id}:/')")
