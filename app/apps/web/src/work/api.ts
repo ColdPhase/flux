@@ -1,5 +1,5 @@
 import {
-  decisionAcceptPath, decisionPath, projectDecisionsPath, projectResultsPath, projectWorkPath, resultPath, workItemPath,
+  decisionAcceptPath, decisionPath, projectDecisionsPath, projectResultsPath, projectWorkPath, resultPath, workItemPath, workspaceAssignedWorkPath,
   type AcceptDecisionCommand, type CreateResultCommand, type CreateWorkCommand, type Decision, type Page, type ProposeDecisionCommand,
   type UpdateWorkCommand, type WorkItem, type WorkResult, type Agent,
 } from '@flux/contracts';
@@ -23,6 +23,22 @@ async function everything<T extends { id: string }>(path: string, signal?: Abort
     if (!page.items.length || offset + page.items.length >= page.total) break;
   }
   return [...byId.values()];
+}
+
+/**
+ * Work the caller owns in one workspace (open, in progress, blocked; not parked), across the
+ * projects they can read now, page by page until `total` or `cap` items (#190 HOME-2).
+ */
+export async function listAssignedWork(workspaceId: string, cap: number, signal?: AbortSignal): Promise<{ items: WorkItem[]; total: number }> {
+  const byId = new Map<string, WorkItem>();
+  let total = 0;
+  for (let offset = 0; offset <= 10_000 && byId.size < cap; offset += LIMIT) {
+    const page = await request<Page<WorkItem>>(`${workspaceAssignedWorkPath(workspaceId)}?limit=${LIMIT}&offset=${offset}`, { signal });
+    total = page.total;
+    for (const item of page.items) if (!byId.has(item.id) && byId.size < cap) byId.set(item.id, item);
+    if (!page.items.length || offset + page.items.length >= page.total) break;
+  }
+  return { items: [...byId.values()], total };
 }
 
 export async function loadProjectWork(projectId: string, signal?: AbortSignal): Promise<ProjectWork> {
