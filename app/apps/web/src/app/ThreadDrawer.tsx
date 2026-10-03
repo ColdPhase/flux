@@ -4,6 +4,7 @@ import { Avatar, Icon, IconButton, useMediaQuery } from '../ui';
 import { DiscussedTask } from '../work/inline';
 import type { ProjectWork } from '../work/api';
 import { SourceCitation, clock, day, when } from './messageParts';
+import { MessageFiles } from '../composer/Files';
 
 export type ThreadMode = 'docked' | 'sheet';
 
@@ -74,7 +75,8 @@ export function ThreadRoot({ message, body, author, meId, writable, replies, tas
             <time dateTime={message.createdAt} title={when(message.createdAt)}>{day(message.createdAt)} · {clock(message.createdAt)}</time>
           </div>
         ) : null}
-        <p>{body}</p>
+        {message?.body || !message ? <p>{body}</p> : null}
+        <MessageFiles files={message?.files} />
         {message?.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
         {task ? <div className="ws-attach"><DiscussedTask task={task} lists={work} /></div> : null}
       </article>

@@ -5,11 +5,13 @@ import type { AgentOperation, ConversationMessage, ProjectAgentConnection, Proje
 import { ApiError, NetworkError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
-import { useDraft } from '../app/drafts';
+import { useComposerDraft, useComposerScope } from '../composer/draft';
+import { ComposerFiles, MessageFiles } from '../composer/Files';
+import { contributeToTask, getTaskDiscussion } from '../composer/api';
 import { useProjectShell } from '../project/data';
 import { Button, EmptyState, Icon } from '../ui';
 import { STATUS_LABEL, isFinished } from '../work/format';
-import { contributeToTask, getProjectAgents, getTaskDiscussion } from './api';
+import { getProjectAgents } from './api';
 import './agents.css';
 
 /**
@@ -80,14 +82,6 @@ function authorName(message: ConversationMessage, names: Map<string, string>) {
   return names.get(message.authorId) ?? 'Someone';
 }
 
-/** A sent-but-unconfirmed contribution: its text and the one client id every retry reuses. */
-function parsePending(raw: string): { body: string; id: string } | null {
-  try {
-    const value = JSON.parse(raw) as { body?: unknown; id?: unknown };
-    return typeof value.body === 'string' && typeof value.id === 'string' ? { body: value.body, id: value.id } : null;
-  } catch { return null; }
-}
-
 /**
  * Scrolls the view's pane to its end, so the newest message sits above the sticky composer
  * (scrollIntoView would ignore the composer and leave the message under it).
@@ -109,13 +103,13 @@ function mergeMessages(current: ConversationMessage[], incoming: ConversationMes
  * leaves no gap), merged into what is shown. Earlier messages already on the page stay.
  */
 async function latestThread(workId: string, shown: TaskDiscussion, signal: AbortSignal): Promise<TaskDiscussion> {
-  const latest = await getTaskDiscussion(workId, signal);
+  const latest = await getTaskDiscussion(workId, { signal });
   const newestSeen = Math.max(shown.root?.sequence ?? 0, ...shown.messages.map((message) => message.sequence));
   let incoming = latest.messages;
   let page = latest;
   while (newestSeen > 0 && page.messagePage.hasMoreBefore && (page.messages[0]?.sequence ?? 0) > newestSeen + 1) {
     const before = page.messages[0]!.sequence;
-    page = await getTaskDiscussion(workId, signal, before);
+    page = await getTaskDiscussion(workId, { signal, beforeSequence: before });
     if (!page.messages.length || page.messages[0]!.sequence >= before) throw new Error('Could not load the replies in between');
     incoming = mergeMessages(page.messages, incoming);
   }
@@ -141,10 +135,9 @@ function TaskThread({ task, projectId, meId, names, canWrite }: { task: WorkItem
   }, []);
   const reload = useRef(() => { /* set while mounted */ });
   // Per account and task, kept across views and reloads like every other composer (#40).
-  const draft = useDraft(meId, `task:${task.id}`);
-  const pendingStore = useDraft(meId, `task:${task.id}:pending`);
-  const [sending, setSending] = useState(false);
-  const [sendError, setSendError] = useState<string | null>(null);
+  const composer = useComposerDraft(meId, projectId, `task:${task.id}`);
+  const captureScope = useComposerScope(composer.key);
+  const sending = composer.sending;
   const box = useRef<HTMLTextAreaElement>(null);
   const end = useRef<HTMLDivElement>(null);
 
@@ -163,7 +156,7 @@ function TaskThread({ task, projectId, meId, names, canWrite }: { task: WorkItem
           again = false;
           const before = shown.current;
           try {
-            const next = before ? await latestThread(task.id, before, controller.signal) : await getTaskDiscussion(task.id, controller.signal);
+            const next = before ? await latestThread(task.id, before, controller.signal) : await getTaskDiscussion(task.id, { signal: controller.signal });
             if (controller.signal.aborted) return;
             // New messages follow a reader who is at the end; anyone reading earlier stays in place.
             const follow = !!before && paneAtEnd(end.current);
@@ -223,18 +216,14 @@ function TaskThread({ task, projectId, meId, names, canWrite }: { task: WorkItem
 
   const send = async (event?: FormEvent) => {
     event?.preventDefault();
-    const body = draft.text.trim();
-    if (!body || sending || !canWrite || accessLost) return;
-    // One client message id per text, persisted before sending: a retry after a lost response or a
-    // reload reuses it, so the server stores the contribution once.
-    const stored = parsePending(pendingStore.text);
-    const pending = stored && stored.body === body ? stored : { body, id: crypto.randomUUID() };
-    pendingStore.setText(JSON.stringify(pending));
-    setSending(true); setSendError(null);
+    if (!canWrite || accessLost || !discussion) return;
+    const command = composer.begin();
+    if (!command) return;
+    const active = captureScope();
     try {
-      const message = await contributeToTask(task.id, { body, clientMessageId: pending.id, kind: 'text' });
-      pendingStore.clear();
-      draft.clear();
+      const message = await contributeToTask(task.id, { ...command, kind: 'text' });
+      composer.finish(command.clientMessageId);
+      if (!active()) return;
       // The sent message is on the page before the pane scrolls to it.
       flushSync(() => show((current) => current && !current.messages.some((item) => item.id === message.id) && current.root?.id !== message.id
         ? { ...current, conversationId: current.conversationId ?? message.conversationId, rootMessageId: current.rootMessageId ?? message.id,
@@ -242,12 +231,7 @@ function TaskThread({ task, projectId, meId, names, canWrite }: { task: WorkItem
         : current));
       scrollPaneToEnd(end.current);
       box.current?.focus({ preventScroll: true });
-    } catch (cause) {
-      setSendError(cause instanceof ApiError && (cause.status === 404 || cause.status === 403) ? 'Not sent: you can no longer write to this task.'
-        : cause instanceof NetworkError ? 'Not sent: Flux is unreachable. Your text is kept; send again.' : 'Not sent. Your text is kept; send again.');
-    } finally {
-      setSending(false);
-    }
+    } catch (cause) { composer.finish(command.clientMessageId, cause); }
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -272,7 +256,8 @@ function TaskThread({ task, projectId, meId, names, canWrite }: { task: WorkItem
                 <time dateTime={message.createdAt}>{when(message.createdAt)}</time>
                 {message.contribution ? <span className="agents-msg__kind"> · {message.contribution.kind}</span> : null}
               </span>
-              <p className="agents-msg__body">{message.body}</p>
+              {message.body ? <p className="agents-msg__body">{message.body}</p> : null}
+              <MessageFiles files={message.files} />
             </li>
           );
         })}
@@ -281,13 +266,13 @@ function TaskThread({ task, projectId, meId, names, canWrite }: { task: WorkItem
       <div ref={end} />
       <form className="agents-composer" onSubmit={(event) => { void send(event); }}>
         <label className="ui-vh" htmlFor="agents-draft">Write to this task</label>
-        <textarea id="agents-draft" ref={box} value={draft.text} rows={2} readOnly={sending} aria-busy={sending}
+        <textarea id="agents-draft" ref={box} value={composer.draft.body} rows={2} readOnly={sending} aria-busy={sending}
           placeholder={canWrite ? 'Add to this work…' : 'You can read this task but not write to it.'} disabled={!discussion || !canWrite || accessLost}
-          onChange={(event) => draft.setText(event.target.value)} onKeyDown={onKeyDown} />
-        {sendError ? <p className="agents-composer__error" role="alert">{sendError}</p> : null}
+          onChange={(event) => composer.setBody(event.target.value)} onKeyDown={onKeyDown} />
+        <ComposerFiles state={composer} disabled={!discussion || !canWrite || accessLost} />
         <div className="agents-composer__row">
           <span className="agents-composer__hint">Goes to the task thread · Enter sends, Shift+Enter new line</span>
-          <Button type="submit" variant="primary" icon="send" busy={sending} disabled={!draft.text.trim() || !discussion || !canWrite || accessLost} aria-label="Send to task">Send</Button>
+          <Button type="submit" variant="primary" icon="send" busy={sending} disabled={!composer.canSend || !discussion || !canWrite || accessLost} aria-label="Send to task">Send</Button>
         </div>
       </form>
     </section>
@@ -335,7 +320,7 @@ export function ProjectAgents() {
             </select>
             {task ? <Link className="ui-link agents__open" to={`/projects/${projectId}/tasks?open=work:${task.id}`}>Open task<Icon name="chevron-right" size={12} /></Link> : null}
           </div>
-          {task ? <TaskThread key={task.id} task={task} projectId={projectId} meId={me.user.id} names={names} canWrite={shell?.project.access !== 'viewer'} /> : null}
+          {task ? <TaskThread key={`${me.user.id}:${projectId}:${task.id}`} task={task} projectId={projectId} meId={me.user.id} names={names} canWrite={shell?.project.access !== 'viewer'} /> : null}
         </>
       ) : (
         <p className="agents__no-tasks">No open tasks. Create one in Tasks; agents and people then work on it here.</p>

@@ -351,7 +351,7 @@ class AgentsViewJourney(unittest.TestCase):
         page.get_by_label("Write to this task").fill("Battery check tonight")
         page.get_by_role("button", name="Send to task").click()
         expect(page.get_by_role("alert")).to_be_visible()
-        expect(page.get_by_role("alert")).to_contain_text("Not sent")
+        expect(page.get_by_role("alert")).to_contain_text("Could not confirm the send")
 
     def test_05_outsiders_cannot_open_the_view(self) -> None:
         outsider = self.page("outsider")

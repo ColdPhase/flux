@@ -229,7 +229,8 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         const page = rows.slice(0, window.limit).reverse();
         const names = await workRows(tx).names(page.filter((row) => row.root.authorAgentId !== null)
           .map((row) => ({ kind: 'agent' as const, id: row.root.authorAgentId! })));
-        const roots = page.map((row) => ({ conversationId: row.root.conversationId, message: message(row.root, names), replyCount: Number(row.replyCount),
+        const files = await fileRows(tx).messageFiles(page.map((row) => row.root.id));
+        const roots = page.map((row) => ({ conversationId: row.root.conversationId, message: message({ ...row.root, files: files.get(row.root.id) }, names), replyCount: Number(row.replyCount),
           lastReplyAt: row.lastReplyAt === null ? null : new Date(row.lastReplyAt).toISOString(),
           ...(row.taskId !== null && row.taskTitle !== null ? { task: { workId: row.taskId, title: row.taskTitle } } : {}) }));
         return { projectId, roots, rootPage: { hasMoreBefore, nextBefore: hasMoreBefore ? roots[0]!.conversationId : null, limit: window.limit } };
@@ -250,8 +251,17 @@ export function conversationStore(db: Database, options: ConversationStoreOption
       const openingInWindow = messages.find((item) => item.sequence === 1);
       const [opening] = openingInWindow ? [] : await db.select({ body: schema.projectMessages.body, attachmentCount: schema.projectMessages.attachmentCount }).from(schema.projectMessages)
         .where(eq(schema.projectMessages.conversationId, row.id)).orderBy(asc(schema.projectMessages.sequence)).limit(1);
+      const [task] = await db.select({ workId: schema.projectTaskDiscussions.workId, title: schema.projectWorkItems.title }).from(schema.projectTaskDiscussions)
+        .innerJoin(schema.projectWorkItems, and(eq(schema.projectWorkItems.id, schema.projectTaskDiscussions.workId),
+          eq(schema.projectWorkItems.projectId, row.projectId), eq(schema.projectWorkItems.workspaceId, row.workspaceId)))
+        .innerJoin(schema.projectMessages, and(eq(schema.projectMessages.id, schema.projectTaskDiscussions.rootMessageId),
+          eq(schema.projectMessages.conversationId, row.id), eq(schema.projectMessages.projectId, row.projectId),
+          eq(schema.projectMessages.workspaceId, row.workspaceId), eq(schema.projectMessages.sequence, 1)))
+        .where(and(eq(schema.projectTaskDiscussions.conversationId, row.id), eq(schema.projectTaskDiscussions.projectId, row.projectId),
+          eq(schema.projectTaskDiscussions.workspaceId, row.workspaceId)));
       return { id: row.id, projectId: row.projectId, workspaceId: row.workspaceId,
         audience: { kind: 'project', projectId: row.projectId }, ...creator(row, names),
+        ...(task ? { task } : {}),
         createdAt: row.createdAt.toISOString(), firstMessageBody: messagePreview(openingInWindow?.body ?? opening?.body ?? '', openingInWindow?.files?.length ?? opening?.attachmentCount ?? 0), messages,
         messagePage: { hasMoreBefore, nextBeforeSequence: hasMoreBefore ? messages[0]!.sequence : null, limit: window.limit } };
     },

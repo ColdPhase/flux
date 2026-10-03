@@ -264,7 +264,7 @@ The one project stream (UI116-1) shows both halves of UI116-3:
   forward until it meets them. Reading never creates an announcement, task or root.
 - **The task's root.** `GET /api/v1/projects/:id/conversation-roots` adds `task: { workId, title }` (the current
   title) to a root that opened a task's discussion. The stream and the thread header show it as the task's chip;
-  replies from the thread drawer are ordinary replies to that conversation, so they are the task's discussion.
+  replies from the thread drawer use the task contribution operation and the shared task draft described below.
 
 - **Details of a task.** A Discussion section reads `GET /api/v1/work/:id/discussion?limit=1`: the root with its
   true author and time and the reply count, linking to the thread in Conversation. Before anyone has written, a
@@ -272,8 +272,8 @@ The one project stream (UI116-1) shows both halves of UI116-3:
   retry id are the task's own, `task:<id>` and `task:<id>:pending` in the browser's draft store: the identity the
   Agents task composer (#183) uses, so a lost answer retried from either stores the message once.
 
-Still open in #154: the thread drawer's reply composer keeps the conversation's own draft rather than the task's
-(to be joined once the Agents composer lands), stored files, unused-AI undo and real #152/#153 clients.
+Still open in #154: unused-AI undo and real #152/#153 clients. The shared composer and stored-file UI slice below
+requires its own commit-specific functional and visual evaluation before delivery.
 
 ## Stored files and attachment-only messages (#154, migration0045)
 
@@ -317,3 +317,43 @@ refuses file or deletion-queue use. Operational recovery uses paired DB/files
 backup. Shared composer drafts and rendered UI acceptance remain the separate
 #136 integration; #152/#153 must compose real grant checks before agent file writes
 can be enabled. Real client and device evidence is still required for release.
+
+## Shared structured composer slice (#154/#136, 2026-10-03)
+
+The accepted Files/drafts contract above applies to one browser record per signed-in
+account, project and task, shared by Conversation, Tasks/Map Details and Agents.
+The record holds body, ordered private upload metadata/staged IDs, exact material
+reference, command UUID and unconfirmed state. Ordinary conversations and new
+project roots retain their own scope. Private helper prompts use a separate scope;
+public body/files/references never become helper input through a view switch.
+Human DMs and authenticated agent file operations retain #225's unavailable status.
+
+A send captures its original scope and immutable command. Every task-bound composer
+uses `POST /api/v1/work/:id/discussion` with `kind: 'text'`, so a lost-response retry
+from another view retains `task.contribute` and the exact work ID in its durable
+fingerprint. Failed or uncertain sends retain the entire draft. Only confirmed
+publication clears the matching command; delayed A results cannot clear B or
+navigate a person away from their new work. Selection order is publication order.
+Local file/count/total checks retain existing text/files/references; server checks
+remain authoritative. Unconfirmed uploads retain their upload UUID; bytes stay in
+visit memory, and after reload recovery explicitly asks for the same file. Draft
+storage refusal keeps the current visit's newest copy and visibly describes its
+limit. Ready private files expire under #225's policy and failed publication does
+not silently discard them.
+
+**Additive wire delta, independently agreed by the coordinator before mapping:**
+`ConversationFields.task?: { workId, title }` has the same shape and current title
+as `ConversationRoot.task`. After ordinary current project authorization, the
+conversation GET reads the exact binding scoped to the same workspace, project,
+conversation and genuine canonical sequence-1 root. Every bounded message window
+carries this identity, even when neither its root nor the stream's old root is
+loaded. Ordinary conversations omit it. This avoids routing a deep-linked task
+reply through a competing generic-operation fingerprint. Reads write no domain
+rows, new endpoint or migration; no legacy relationship is inferred or rewritten.
+
+Validation for this slice includes full/bounded GET binding and non-task absence,
+real authenticated two-person file-only roots/replies and exact downloads, lost
+response replay across views, failed/revoked/conflicting/expired upload retention,
+held async A→B→A and account/project changes, reload/storage refusal, keyboard/focus
+and rendered 320/390-phone and 1440-desktop evidence. These checks and separate
+visual/functional review remain required; this record does not certify them.

@@ -8,7 +8,7 @@ import { gunzipSync } from 'node:zlib';
 import { and, eq, sql } from 'drizzle-orm';
 import { fileRows, schema } from '@flux/db';
 import { createFileUseCases, NotFoundError, type FileUnitOfWork } from '@flux/core';
-import { FILE_LIMITS, type Conversation, type ConversationMessage, type StagedFile, type TaskDiscussion, type WorkItem } from '@flux/contracts';
+import { FILE_LIMITS, type Conversation, type ConversationMessage, type ConversationRootWindow, type StagedFile, type TaskDiscussion, type WorkItem } from '@flux/contracts';
 import { diskFileStorage } from '../../apps/server/src/files/storage.js';
 import { exportUseCases } from '../../apps/server/src/export/adapters.js';
 import { fileUnitOfWork } from '../../apps/server/src/files/adapters.js';
@@ -142,6 +142,9 @@ test('files-only roots, ordinary replies and task replies retain exact order and
   const discussion = expectStatus(await f.reader.browser.request('GET', `/api/v1/work/${task.id}/discussion`), 200) as TaskDiscussion;
   assert.deepEqual(discussion.root, root);
   assert.deepEqual(discussion.messages, [root]);
+  const roots = expectStatus(await f.reader.browser.request('GET', `/api/v1/projects/${f.place.id}/conversation-roots`), 200) as ConversationRootWindow;
+  assert.deepEqual(roots.roots.find((item) => item.message.id === root.id)?.message, root, 'stream root has the same ordered stored files');
+  assert.deepEqual(roots.roots.find((item) => item.message.id === started.messages[0]!.id)?.message.files, started.messages[0]!.files);
   assert.deepEqual(expectStatus(await f.writer.browser.request('POST', `/api/v1/work/${task.id}/discussion`, { body: taskCommand }), 201), root);
   await grant(f.owner, f.place.id, f.writer, 'denied');
   assert.equal((await download(f.writer, staged.body.id)).status, 404);
