@@ -96,7 +96,9 @@ export function ConversationView() {
   }, [selectedWorkspace, me.user.id]);
   // Ask mode targets the signed-in person's own assistant (#57). No compute path exists yet,
   // so it only explains how to connect one and never pretends to answer.
-  const [asking, setAsking] = useState(false);
+  const [askOn, setAsking] = useState(false);
+  // A tap before the status loaded never leaves ask mode on for someone without an assistant.
+  const asking = askOn && !noAssistant;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const firstName = me.user.name.trim().split(/\s+/)[0] || me.user.name;
