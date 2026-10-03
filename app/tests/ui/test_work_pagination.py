@@ -245,13 +245,19 @@ class WorkPaginationJourney(unittest.TestCase):
         owner = self.contexts[0]
         workspace = api(owner, "GET", "/api/v1/workspaces")[0]["id"]
         project = api(owner, "POST", f"/api/v1/workspaces/{workspace}/projects", {"name": "Shelf lamp checklist", "visibility": "restricted"}, 201)["id"]
-        api(owner, "POST", f"/api/v1/projects/{project}/work", {"title": "Check the wall socket before installation"}, 201)
+        task = api(owner, "POST", f"/api/v1/projects/{project}/work", {"title": "Check the wall socket before installation"}, 201)
         for phone in (False, True):
             page = self.page(phone=phone)
             page.goto(f"/projects/{project}/tasks"); self.ready(page)
             state = page.locator(".ws-state-row") if phone else page.get_by_label("Current state", exact=True)
-            expect(state).to_contain_text("1 work item")
+            expect(state).to_contain_text("1 open task")
             expect(state).not_to_contain_text("No decisions or work yet")
+            if phone:
+                state.tap()
+                page.locator("#details").get_by_role("button", name=re.compile(r"Open.*Check the wall socket before installation")).click()
+            else:
+                state.locator('[data-seg="open"]').click()
+            expect(page.locator("#details").get_by_role("heading", name=task["title"], exact=True)).to_be_visible()
 
     def test_06_keyboard_rows_remain_exposed_below_the_scrolled_controls(self):
         for phone in (False, True):

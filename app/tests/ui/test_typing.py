@@ -200,7 +200,8 @@ class TypingJourney(unittest.TestCase):
     def test_04_reader_observes_and_current_access_revocation_clears(self):
         alice = self.open("alice")
         viewer = self.open("viewer")
-        expect(self.composer(viewer)).to_be_disabled()
+        expect(self.composer(viewer)).to_have_count(0)
+        expect(viewer.locator(".project-convo__read-only")).to_be_visible()
         self.composer(alice).fill("PRIVATE-DRAFT current reader test")
         expect(viewer.locator(".typing-notice")).to_contain_text("Alice Rivera", timeout=2000)
         self.assertFalse(any(frame.get("type") == "active" for frame in viewer.typing_sent))
