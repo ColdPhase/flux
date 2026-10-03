@@ -134,6 +134,7 @@
 }
 .me__who { display: flex; flex-direction: column; padding: 8px 10px 10px; line-height: 1.35; }
 .me__who .me__session { margin-top: 4px; white-space: normal; }
+.me__hint { display: block; margin-top: 4px; color: var(--text-3); font-size: var(--fs-xs); line-height: 1.45; }
 .me__label svg { margin-right: 6px; vertical-align: -1px; }
 .me__notify { padding: 0 6px 2px; }
 /* The PWA notification control (#41) and update prompt, drawn with the shell's tokens. */
@@ -337,7 +338,8 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .note.is-arrived { box-shadow: inset 3px 0 0 var(--accent); padding-left: 12px; }
 .note:focus { outline: none; }
 .note:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-/* Phone: the state row shares its line with "What matters" (#133); the state text truncates. */
-.state-row { display: flex; align-items: center; gap: 4px; padding-right: 8px; border-top: 1px solid var(--line); }
+/* Phone: share a line where readable; allow the recap to wrap at narrow/enlarged text sizes. */
+.state-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding-right: 8px; border-top: 1px solid var(--line); }
 .state-row .ws-state-row { flex: 1; min-width: 0; border-top: 0; }
-.state-row .views__recap { flex: none; }
+.state-row .ws-state-row:has(.ws-state-row__blocked) { flex-basis: 18em; min-width: min(18em, 100%); }
+.state-row .views__recap { flex: none; margin-left: auto; }

@@ -3,6 +3,8 @@ import type { DecisionRowProjection, NamedPrincipal, NativeWorkRow, PrincipalRef
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { workRows } from './work.js';
+import { taskGraphRows } from './task-graph.js';
+import { nativePrerequisiteCounts } from './work-read-task-plans.js';
 import { nativeWorkVisibilityRows, type NativeWorkReadObject } from './work-read-visibility.js';
 
 const w = schema.projectWorkItems, d = schema.projectDecisions, r = schema.projectResults;
@@ -30,6 +32,7 @@ export function nativeWorkObjectRows(db: DbExecutor) {
     const works = workIds.length ? await db.select(workFields).from(w).where(and(eq(w.projectId, projectId), inArray(w.id, workIds))) : [];
     const decisions = decisionIds.length ? await db.select(decisionFields).from(d).where(and(eq(d.projectId, projectId), inArray(d.id, decisionIds))) : [];
     const results = resultIds.length ? await db.select(resultFields).from(r).where(and(eq(r.projectId, projectId), inArray(r.id, resultIds))) : [];
+    const prerequisites = await nativePrerequisiteCounts(db, projectId, workIds);
     const actors: PrincipalRef[] = [];
     for (const work of works) {
       if (work.ownerUserId) actors.push({ kind: 'human', id: work.ownerUserId });
@@ -54,6 +57,7 @@ export function nativeWorkObjectRows(db: DbExecutor) {
       const ref = parked.find((decision) => decision.id === work.parkedByDecisionId);
       const projected: WorkRowProjection = { kind: 'work', id: work.id, projectId: work.projectId, workspaceId: work.workspaceId, title: work.title,
         status: work.status, blocker: work.blocker, version: work.version, ...audience(work), relations: counts('work', work.id),
+        prerequisiteCounts: prerequisites.get(work.id)!,
         owner: work.ownerUserId ? named({ kind: 'human', id: work.ownerUserId }) : work.ownerAgentId ? named({ kind: 'agent', id: work.ownerAgentId }) : null,
         parked: work.parkedAt && work.parkedByDecisionId ? { decisionId: work.parkedByDecisionId, at: iso(work.parkedAt) } : null,
         parkedBy: ref ? { kind: 'decision', ...ref } : null, rule: facts.get(`work:${work.id}`)!.rule, updatedAt: iso(work.updatedAt) };
@@ -99,12 +103,18 @@ export function nativeWorkObjectRows(db: DbExecutor) {
       if (!exists.length) return null;
       const row = (await rows(projectId, [requested]))[0]!;
       if (row.kind === 'work') {
-        const [own] = await db.select({ outcome: w.outcome, createdByKind: w.createdByKind, createdById: w.createdById }).from(w).where(and(eq(w.projectId, projectId), eq(w.id, row.id)));
+        const [own] = await db.select({ outcome: w.outcome, criteria: w.criteria, createdByKind: w.createdByKind, createdById: w.createdById }).from(w).where(and(eq(w.projectId, projectId), eq(w.id, row.id)));
         if (!own) throw new Error('Missing native work detail');
         const named = await names([{ kind: own.createdByKind, id: own.createdById }]);
-        const { relations: _relations, parkedBy: _parked, rule: _rule, ...work } = row;
-        void _relations; void _parked; void _rule;
-        return { ...work, kind: 'work', outcome: own.outcome, createdBy: named({ kind: own.createdByKind, id: own.createdById }) };
+        const plan = (await taskGraphRows(db).taskPlans([row.id])).get(row.id) ?? { prerequisites: [], planIntent: null };
+        const prerequisites = plan.prerequisites.map((item) => ({ ...item, met: item.status === 'done' && !item.parked }));
+        if (prerequisites.length !== row.prerequisiteCounts.total || prerequisites.filter((item) => !item.met).length !== row.prerequisiteCounts.unmet)
+          throw new Error('Inconsistent native task detail');
+        const { relations: _relations, parkedBy: _parked, rule: _rule, prerequisiteCounts: _counts, ...work } = row;
+        void _relations; void _parked; void _rule; void _counts;
+        return { ...work, kind: 'work', outcome: own.outcome, criteria: own.criteria,
+          dependencyIds: prerequisites.map(({ id }) => id), prerequisites, planIntent: plan.planIntent,
+          createdBy: named({ kind: own.createdByKind, id: own.createdById }) };
       }
       if (row.kind === 'decision') {
         const [own] = await db.select({ rationale: d.rationale }).from(d).where(and(eq(d.projectId, projectId), eq(d.id, row.id)));

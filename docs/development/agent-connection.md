@@ -132,6 +132,152 @@ transaction with the project/grant rows locked. A later revocation hides the
 proposal through current project policy. Any published material derived from a
 proposal remains a separate human action.
 
+## Native work actions (#152)
+
+With the `flux.action.execute` scope, an owner-created standing grant and the
+runtime from `flux_bootstrap`, a connection can make these native project changes:
+
+| Tool | Operation | Classes | Change |
+| --- | --- | --- | --- |
+| `flux_create_task` | `work.create` | execute, plan | One task with an optional outcome, status, blocker, done-when criteria, same-project prerequisites and plan intent |
+| `flux_update_task` | `work.update` | execute, plan | One task at the exact version last read; same fields, but the plan intent never changes |
+| `flux_record_result` | `result.record` | execute | One positive or negative finding with evidence, linked to tasks and decisions; it can finish one of those tasks at its read version |
+| `flux_propose_decision` | `decision.propose` | execute, plan | One proposed decision with rationale, affected tasks and an optional accepted decision it would replace. An agent never accepts or rejects; a person decides |
+
+The executor is `nativeActionExecutor` in `app/apps/server/src/agent-connection/action-execution.ts`.
+
+Every tool also takes the runtime ID, the grant ID and its class, one UUID
+command ID, and the exact current material revisions the action relies on. Those
+revisions become the new object's sources.
+
+Each call is one transaction composed from existing parts; nothing is
+MCP-specific:
+
+1. The #152 execution port authorizes the exact runtime, grant, operation, project,
+   class, target and source versions.
+2. The canonical native work command makes the change as the agent, with the same
+   validation, graph lock, prerequisite, plan-intent and decision rules as the
+   browser and the HTTP API.
+3. The port checks the produced post-state (task or decision version, result
+   identity), debits the grant once and stores the receipt.
+4. Only then is the single final event batch flushed.
+
+Retries and refusals:
+
+- Retrying with the same command ID returns the stored outcome (`replayed: true`)
+  with no second effect, debit or event. The same ID with a changed payload is
+  `IDEMPOTENCY_CONFLICT`.
+- A new command ID for the same plan intent returns the existing task, and a
+  different task for that intent is `TASK_INTENT_CONFLICT`.
+- These are refused before any effect, and nothing is debited:
+  - a changed source revision (`SOURCE_VERSION_CONFLICT`);
+  - a revoked, expired or exhausted grant, or a grant for another operation or
+    class (`AGENT_EXECUTION_UNAVAILABLE`);
+  - an object of another project (`OBJECT_NOT_FOUND`);
+  - a stale version (`VERSION_CONFLICT`);
+  - an unmet prerequisite (`TASK_PREREQUISITES_UNMET`).
+
+`flux_bootstrap` lists these tools with their operation and whether the current
+bearer's scopes make them available. A connection without the action scope sees
+them as unavailable and gets `MCP_SCOPE_REQUIRED`.
+
+### Shared project maps
+
+The same executor runs the canonical sketch commands for the project's shared
+maps:
+
+| Tool | Operation | Change |
+| --- | --- | --- |
+| `flux_create_map` | `map.create` | One shared project map |
+| `flux_rename_map` | `map.rename` | The title, at the map version |
+| `flux_add_thought` | `map.thought.create` | One thought, optionally linked from another |
+| `flux_update_thought` | `map.thought.update` | Text, position, size or shape, at the thought version |
+| `flux_remove_thought` | `map.thought.delete` | One thought and its links, at the thought version |
+| `flux_move_thoughts` | `map.positions.update` | Up to 200 thoughts, each at its version; a stale one moves none |
+| `flux_link_thoughts` | `map.link.create` | One link with an optional label |
+| `flux_unlink_thoughts` | `map.link.delete` | One link |
+
+Targets and grants:
+
+- Every command targets the map, so a standing grant can name one map or the
+  whole project.
+- Private and direct-message maps are never targets (`OBJECT_NOT_FOUND`).
+- A grant naming another map is refused (`AGENT_EXECUTION_UNAVAILABLE`).
+
+Post-state and replay:
+
+- The produced post-state is the changed thought(s) plus the map checkpoint (its
+  `updatedAt` after the change).
+- A retry right after a lost response returns the stored outcome.
+- A replay after anything else has changed that map is `COMMAND_POSTSTATE_STALE`,
+  never a second effect.
+
+Composition:
+
+- Sketch commands record their events through the same transaction event session
+  as the work commands (`nativeSketchInEventSession`).
+- Each committed command adds exactly one event, after its receipt.
+
+Co-work operations remain registry entries without tools. #153's claim adapter,
+the #160 playbook and real Codex/Claude model-driven activation are still required
+before agent decomposition counts as delivered.
+
+## Built-in co-work playbook (#160)
+
+The server ships one versioned instruction bundle, `COWORK_PLAYBOOK`
+(`flux.cowork` 1.0.0, in `app/packages/core/src/agent-connection/playbook.ts`). It
+has a core part and five role modules: start/resume, orient/plan,
+execute/checkpoint, request/review/fix and block/transfer/stop. Each module
+declares the MCP tools and server providers it needs. The bundle names only tools
+the MCP server registers, and a test pins this. Where a provider does not exist
+yet (coordination, approved policy, verified repository context), the text tells
+the agent to treat that step as unavailable rather than simulate it.
+
+Every authenticated MCP connection delivers it in three ways:
+
+- **Resource:** `flux://playbook/flux.cowork/1.0.0` (Markdown) returns the
+  rendered bundle with its digest.
+- **Prompts:** `start_work` and `resume_work` are the host-invoked Start and
+  Resume actions. Claude Code, for example, lists MCP prompts as slash commands.
+  Each returns the built-in Start or Resume payload, the bound context and the
+  complete bundle.
+  - The project is bound from the verified connection's current selection. An
+    optional `projectId` must be one of the selected, readable projects. Without
+    it, a connection with exactly one such project binds it. A connection with
+    several returns the choices and binds nothing.
+  - Project names are quoted as data next to the trusted text, never as
+    instructions.
+  - A failed binding returns the exact error code and no instructions.
+- **Bootstrap:** `flux_bootstrap` returns `trusted.playbook`
+  (`bundleId`, `version`, `digest` = SHA-256 of the canonical content,
+  `toolContractVersion`, `retrievalReference` = the resource URI) and no longer
+  reports `trusted_playbook_unavailable`.
+
+Revoking the connection or its read scope removes all three surfaces.
+
+Serving a prompt does not prove that a client loaded it or that a model follows
+it.
+
+**Acknowledgment.** The start/resume module tells the agent to record what it
+loaded with `flux_acknowledge_playbook({ clientSessionId, bundleId, version,
+digest })`. The record belongs to that client session's server-issued runtime
+(migration `0041`, `agent_playbook_acknowledgments`).
+
+- Only the bundle the server currently serves is accepted. Anything else is
+  `PLAYBOOK_VERSION_MISMATCH`, and nothing is stored.
+- Acknowledging the same bundle again keeps the first record.
+- Bootstrap then returns `playbookAcknowledgment` with `current`, and reports
+  `coverage.instructionLoading = client_acknowledged` only while it matches the
+  served bundle.
+
+The record grants nothing. It is the client's statement, not an observation by the
+server, and `modelObedience` stays `unverified`. `readiness` stays `pending` while
+the policy, coordination and repository providers are missing. Still required:
+
+- approved project policy;
+- #153 coordination;
+- tested Codex and Claude activation with pinned versions.
+
 ## Verification boundary
 
 Docker integration covers two people, separate restricted projects and private

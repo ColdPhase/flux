@@ -40,6 +40,7 @@ async function loadContext(projectId: string, signal: AbortSignal): Promise<Cont
 
 function readable(error: unknown) {
   if (error instanceof ApiError && error.code === 'VERSION_CONFLICT') return 'Someone changed this a moment ago. The latest version is shown; try again if it still applies.';
+  if (error instanceof ApiError && error.code === 'TASK_PREREQUISITES_UNMET') return 'It can start or finish only when every task it waits for is done and not parked.';
   if (error instanceof ApiError && error.code === 'WORK_NOT_FINISHABLE') return 'That work was parked or set aside meanwhile, so this result cannot finish it. The latest state is shown.';
   if (error instanceof ApiError && error.code === 'SUPERSEDED_DECISION_CHANGED') return 'The rule this would replace has already changed. Review the current rule first.';
   if (error instanceof ApiError && error.status === 404) return 'This is no longer available to you.';
@@ -217,10 +218,15 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   const liveAnchor = { projectId: item.projectId, context: { type: 'work' as const, id: item.id }, label: item.title };
   useRegisterLiveHere(liveAnchor, { ref: { type: 'work', id: item.id, version: item.version }, label: item.title, what: 'task' });
 
+  // The same change of the same version retried after a lost response reuses its command UUID: it never
+  // contributes the saved blocker to the task conversation twice. A different change gets a new one.
+  const attempt = useRef<{ key: string; id: string } | null>(null);
   async function change(command: Parameters<typeof updateWork>[1]) {
+    const key = JSON.stringify([item.id, item.version, command]);
+    if (attempt.current?.key !== key) attempt.current = { key, id: crypto.randomUUID() };
     setBusy(true); setError('');
-    try { await updateWork(item, command); if (isCurrent()) reload(); }
-    catch (cause) { if (!isCurrent()) return; setError(readable(cause)); if (cause instanceof ApiError && cause.status === 409) reload(); }
+    try { await updateWork(item, command, attempt.current.id); attempt.current = null; if (isCurrent()) reload(); }
+    catch (cause) { if (!isCurrent()) return; setError(readable(cause)); if (cause instanceof ApiError && cause.status === 409) { attempt.current = null; reload(); } }
     finally { setBusy(false); }
   }
   const ownerValue = item.owner ? `${item.owner.kind}:${item.owner.id}` : '';
@@ -272,11 +278,25 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
         </section>
       ) : null}
 
+      {item.criteria.length ? (
+        <section className="details__sec" aria-labelledby={`wd-criteria-${item.id}`}>
+          <h4 id={`wd-criteria-${item.id}`}>Done when</h4>
+          <ul className="wd-criteria">{item.criteria.map((criterion) => <li key={criterion}>{criterion}</li>)}</ul>
+          <p className="wd-muted">Written down by whoever planned it. Flux does not check them off.</p>
+        </section>
+      ) : null}
+
+      {item.prerequisites.length ? <Prerequisites item={item} openDetails={openDetails} /> : null}
+
       <RelationPages relations={relations} />
       <section className="details__sec" aria-labelledby="wd-from">
         <h4 id="wd-from">Came from</h4>
         <Sources links={relations.links} id={item.id} project={context.project} />
-        {!relations.links.some((link) => link.from.id === item.id && link.role === 'source') ? <p className="wd-muted">{emptyLinks(relations, 'Added directly on the Tasks tab.')}</p> : null}
+        {!relations.links.some((link) => link.from.id === item.id && link.role === 'source') && !item.planIntent ? <p className="wd-muted">{emptyLinks(relations, 'Added directly on the Tasks tab.')}</p> : null}
+        {item.planIntent ? (
+          <p className="wd-plan">Planned from <Link className="wd-inline" to={`/materials/${item.planIntent.materialId}/versions/${item.planIntent.version}`}>plan revision {item.planIntent.version}</Link>
+            {' '}as <code>{item.planIntent.intentKey}</code>. This task stays tied to that revision.</p>
+        ) : null}
       </section>
 
       <section className="details__sec" aria-labelledby="wd-decisions">
@@ -295,6 +315,33 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
       <Audience project={context.project} />
       <IdsLine>Added by {item.createdBy.name} · {shortDate(item.createdAt)} · version {item.version}</IdsLine>
     </div>
+  );
+}
+
+/** What this task waits for: each direct prerequisite with its state in words, never colour alone. */
+function Prerequisites({ item, openDetails }: { item: OwnWork; openDetails: ReturnType<typeof useShellActions>['openDetails'] }) {
+  const waiting = item.prerequisites.filter((prerequisite) => !prerequisite.met).length;
+  // What still blocks it comes first.
+  const ordered = [...item.prerequisites].sort((a, b) => Number(a.met) - Number(b.met) || a.title.localeCompare(b.title));
+  return (
+    <section className="details__sec" aria-labelledby={`wd-waits-${item.id}`}>
+      <h4 id={`wd-waits-${item.id}`}>Waits for</h4>
+      <p className={waiting ? 'wd-waiting' : 'wd-muted'} role="status">
+        {waiting ? `Waiting on ${waiting} of ${item.prerequisites.length} ${item.prerequisites.length === 1 ? 'prerequisite' : 'prerequisites'}. It can start when every one is done.` : 'Every prerequisite is done.'}
+      </p>
+      <ul className="wd-links">
+        {ordered.map((prerequisite) => (
+          <li key={prerequisite.id}>
+            <button type="button" className="wd-link" onClick={() => openDetails({ kind: 'work', id: prerequisite.id, projectId: item.projectId })}>
+              <span className={`wd-dot wd-dot--${prerequisite.status}`} aria-hidden="true" />
+              <span>{prerequisite.title}</span>
+              <small>{STATUS_LABEL[prerequisite.status]}{prerequisite.parked ? ' · parked' : ''}{prerequisite.met ? '' : ' · waiting'}</small>
+              <Icon name="chevron-right" size={14} />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

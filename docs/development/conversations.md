@@ -15,7 +15,9 @@ with its first message; `POST /api/v1/conversations/:id/messages` replies in it.
 Both take `{ "body": "…", "clientMessageId": "<UUID>" }` and may cite
 `{ "source": { "materialId": "<UUID>", "version": 1 } }`. The UUID must be
 reused for a retry of the same send. Reusing it for different content returns 409.
-Messages carry a sequence, author and the project audience. All reads and writes
+Messages carry a sequence, author and the project audience. A message made by an explicit task
+effect (a saved blocker, a published result or a public handoff, #154) also carries `contribution`
+(`{ kind: 'blocker' | 'handoff' }` or `{ kind: 'result', resultId }`); ordinary text omits it. All reads and writes
 recheck the current project access policy; writes do so under a transaction lock.
 
 `POST /api/v1/projects/:projectId/materials` takes an explicit title, body or

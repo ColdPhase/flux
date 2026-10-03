@@ -19,6 +19,8 @@ function byId<T extends { id: string }>(rows: T[]) {
 }
 
 const actorKey = (kind: string, id: string) => `${kind}:${id}`;
+const actor = (human: string | null, agent: string | null) => human !== null
+  ? { kind: 'human' as const, id: human } : { kind: 'agent' as const, id: agent! };
 
 function excerpt(body: string) {
   const line = body.trim().split('\n', 1)[0] ?? '';
@@ -154,17 +156,18 @@ export function returnRows(db: DbExecutor) {
     async messages(ids: string[]) {
       if (!ids.length) return new Map();
       const m = schema.projectMessages;
-      return byId(await db.select({ id: m.id, projectId: m.projectId, conversationId: m.conversationId, authorId: m.authorId, body: m.body, sequence: m.sequence, createdAt: m.createdAt })
-        .from(m).where(inArray(m.id, ids)));
+      const rows = await db.select({ id: m.id, projectId: m.projectId, conversationId: m.conversationId, authorId: m.authorId, authorAgentId: m.authorAgentId, body: m.body, sequence: m.sequence, createdAt: m.createdAt })
+        .from(m).where(inArray(m.id, ids));
+      return byId(rows.map(({ authorId, authorAgentId, ...row }) => ({ ...row, author: actor(authorId, authorAgentId) })));
     },
 
     async conversations(ids: string[]) {
       if (!ids.length) return new Map();
       const c = schema.projectConversations;
       const m = schema.projectMessages;
-      const rows = await db.select({ id: c.id, projectId: c.projectId, createdBy: c.createdBy, opening: m.body }).from(c)
+      const rows = await db.select({ id: c.id, projectId: c.projectId, createdBy: c.createdBy, createdByAgentId: c.createdByAgentId, opening: m.body }).from(c)
         .leftJoin(m, and(eq(m.conversationId, c.id), eq(m.sequence, 1))).where(inArray(c.id, ids));
-      return byId(rows.map((row) => ({ ...row, opening: excerpt(row.opening ?? '') })));
+      return byId(rows.map(({ createdBy, createdByAgentId, ...row }) => ({ ...row, createdBy: actor(createdBy, createdByAgentId), opening: excerpt(row.opening ?? '') })));
     },
 
     async lastPosts(userId: string, conversationIds: string[]) {

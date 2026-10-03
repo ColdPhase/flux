@@ -3,7 +3,7 @@ import { TypingNotice } from '../typing/TypingNotice';
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, type LoaderFunctionArgs } from 'react-router';
-import type { ConversationMessage, Dm, DmPerson, SendDmMessageCommand } from '@flux/contracts';
+import type { HumanConversationMessage, Dm, DmPerson, SendDmMessageCommand } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { getDm, olderDmMessages, sendDmMessage } from '../api/direct-messages';
 import { createDmSketch } from '../api/sketches';
@@ -56,7 +56,7 @@ function storedPending(key: string, text: string): SendDmMessageCommand | null {
     return saved && saved.body === text.trim() && typeof saved.clientMessageId === 'string' ? saved : null;
   } catch { return null; }
 }
-function merge(current: ConversationMessage[], incoming: ConversationMessage[]) {
+function merge(current: HumanConversationMessage[], incoming: HumanConversationMessage[]) {
   const byId = new Map(current.map((message) => [message.id, message]));
   for (const message of incoming) byId.set(message.id, message);
   return [...byId.values()].sort((a, b) => a.sequence - b.sequence);

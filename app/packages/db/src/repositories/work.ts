@@ -1,6 +1,9 @@
 import { and, asc, desc, eq, inArray, isNull, notInArray, or, sql, type SQL } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
+import type { ObjectRef } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
+import { taskGraphRows } from './task-graph.js';
 
 /**
  * Drizzle rows for work items, decisions, results and their links (issues #101, #46). They
@@ -28,6 +31,7 @@ export function toWorkRecord(row: WorkRow) {
     status: row.status, blocker: row.blocker,
     owner: row.ownerUserId ? { kind: 'human' as const, id: row.ownerUserId } : row.ownerAgentId ? { kind: 'agent' as const, id: row.ownerAgentId } : null,
     parked: row.parkedByDecisionId && row.parkedAt ? { decisionId: row.parkedByDecisionId, at: row.parkedAt } : null,
+    criteria: row.criteria,
     createdBy: { kind: row.createdByKind, id: row.createdById }, version: row.version, createdAt: row.createdAt, updatedAt: row.updatedAt,
   };
 }
@@ -76,6 +80,7 @@ async function paged<Row, T>(db: DbExecutor, table: typeof w | typeof d | typeof
 
 export function workRows(db: DbExecutor) {
   return {
+    ...taskGraphRows(db),
     async locate(type: 'work' | 'decision' | 'result', id: string) {
       const table = type === 'work' ? w : type === 'decision' ? d : r;
       const [row] = await db.select({ projectId: table.projectId }).from(table).where(eq(table.id, id));
@@ -102,17 +107,58 @@ export function workRows(db: DbExecutor) {
       const [row] = options.lock ? await query.for('update') : await query;
       return row ? toWorkRecord(row) : null;
     },
-    async insertWork(work: { id: string; workspaceId: string; projectId: string; title: string; outcome: string; status: WorkRow['status']; blocker: string | null; owner: Actor | null; createdBy: Actor }) {
+    async insertWork(work: { id: string; workspaceId: string; projectId: string; title: string; outcome: string; status: WorkRow['status']; blocker: string | null; owner: Actor | null; createdBy: Actor; criteria?: string[]; clientCommandId?: string; requestFingerprint?: string }) {
       const [row] = await db.insert(w).values({
         id: work.id, workspaceId: work.workspaceId, projectId: work.projectId, title: work.title, outcome: work.outcome,
         status: work.status, blocker: work.blocker, ...ownerColumns(work.owner), createdByKind: work.createdBy.kind, createdById: work.createdBy.id,
+        criteria: work.criteria ?? [], clientCommandId: work.clientCommandId ?? null, requestFingerprint: work.requestFingerprint ?? null,
       }).returning();
       return toWorkRecord(row!);
     },
-    async updateWork(id: string, changes: { title?: string; outcome?: string; status?: WorkRow['status']; blocker?: string | null; owner?: Actor | null; parked?: { decisionId: string; at: Date } | null }) {
+    /** The durable native-command lock, then the earlier receipt of this exact actor, project, operation and command. */
+    async nativeCommand(projectId: string, by: Actor, operation: 'work.update' | 'result.create', commandId: string) {
+      await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`native-command:${projectId}:${by.kind}:${by.id}:${operation}:${commandId}`}))`);
+      const n = schema.nativeCommandReceipts;
+      const [row] = await db.select().from(n).where(and(eq(n.projectId, projectId), eq(n.actorKind, by.kind), eq(n.actorId, by.id),
+        eq(n.operation, operation), eq(n.clientCommandId, commandId)));
+      if (!row) return null;
+      const object = row.operation === 'work.update' ? { type: 'work' as const, id: row.workId!, version: row.workVersion! } : { type: 'result' as const, id: row.resultId! };
+      return { operation: row.operation, commandId: row.clientCommandId, fingerprint: row.requestFingerprint, object, messageIds: row.messageIds };
+    },
+    async recordNativeCommand(scope: { workspaceId: string; projectId: string }, by: Actor,
+      receipt: { operation: 'work.update' | 'result.create'; commandId: string; fingerprint: string;
+        object: { type: 'work'; id: string; version: number } | { type: 'result'; id: string }; messageIds: string[] }) {
+      await db.insert(schema.nativeCommandReceipts).values({ ...scope, actorKind: by.kind, actorId: by.id, operation: receipt.operation,
+        clientCommandId: receipt.commandId, requestFingerprint: receipt.fingerprint,
+        workId: receipt.object.type === 'work' ? receipt.object.id : null, workVersion: receipt.object.type === 'work' ? receipt.object.version : null,
+        resultId: receipt.object.type === 'result' ? receipt.object.id : null, messageIds: receipt.messageIds });
+    },
+    async createdWork(projectId: string, by: Actor, commandId: string) {
+      await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`work-create:${projectId}:${by.kind}:${by.id}:${commandId}`}))`);
+      const [row] = await db.select().from(w).where(and(eq(w.projectId, projectId), eq(w.createdByKind, by.kind),
+        eq(w.createdById, by.id), eq(w.clientCommandId, commandId)));
+      return row ? { work: toWorkRecord(row), fingerprint: row.requestFingerprint! } : null;
+    },
+    async insertCreationNotice(work: ReturnType<typeof toWorkRecord>, sources: ObjectRef[]) {
+      await db.insert(schema.projectTaskNotices).values({ id: randomUUID(), workspaceId: work.workspaceId,
+        projectId: work.projectId, workId: work.id, kind: 'task.created', createdByKind: work.createdBy.kind,
+        createdById: work.createdBy.id, sources, createdAt: work.createdAt });
+    },
+    async listTaskNotices(projectId: string, window: Window) {
+      const n = schema.projectTaskNotices;
+      const [count] = await db.select({ total: sql<number>`count(*)::int` }).from(n).where(eq(n.projectId, projectId));
+      const rows = await db.select({ notice: n, workTitle: w.title }).from(n)
+        .innerJoin(w, and(eq(w.id, n.workId), eq(w.projectId, n.projectId), eq(w.workspaceId, n.workspaceId)))
+        .where(eq(n.projectId, projectId)).orderBy(desc(n.createdAt), desc(n.id)).limit(window.limit).offset(window.offset);
+      return { total: count?.total ?? 0, items: rows.map(({ notice, workTitle }) => ({ id: notice.id,
+        workspaceId: notice.workspaceId, projectId: notice.projectId, workId: notice.workId, workTitle,
+        createdBy: { kind: notice.createdByKind, id: notice.createdById }, sources: notice.sources, createdAt: notice.createdAt })) };
+    },
+    async updateWork(id: string, changes: { title?: string; outcome?: string; status?: WorkRow['status']; blocker?: string | null; owner?: Actor | null; parked?: { decisionId: string; at: Date } | null; criteria?: string[] }) {
       const [row] = await db.update(w).set({
         ...(changes.title !== undefined ? { title: changes.title } : {}),
         ...(changes.outcome !== undefined ? { outcome: changes.outcome } : {}),
+        ...(changes.criteria !== undefined ? { criteria: changes.criteria } : {}),
         ...(changes.status !== undefined ? { status: changes.status } : {}),
         ...(changes.blocker !== undefined ? { blocker: changes.blocker } : {}),
         ...ownerColumns(changes.owner),

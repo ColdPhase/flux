@@ -74,10 +74,13 @@ export function projectExportRows(db: DbExecutor) {
       const conversations = await db.select().from(c).where(eq(c.projectId, projectId)).orderBy(asc(c.createdAt), asc(c.id));
       const messages = groupBy(await db.select().from(msg).where(eq(msg.projectId, projectId)).orderBy(asc(msg.conversationId), asc(msg.sequence)), (row) => row.conversationId);
       return conversations.map((row) => ({
-        id: row.id, createdBy: human(row.createdBy), createdAt: iso(row.createdAt),
+        id: row.id, createdBy: creator(row.createdBy, row.createdByAgentId), createdAt: iso(row.createdAt),
         messages: (messages.get(row.id) ?? []).map((message) => ({
-          id: message.id, sequence: message.sequence, author: human(message.authorId), body: message.body,
+          id: message.id, sequence: message.sequence, author: creator(message.authorId, message.authorAgentId), body: message.body,
           source: message.sourceMaterialId && message.sourceMaterialVersion ? { materialId: message.sourceMaterialId, version: message.sourceMaterialVersion } : null,
+          // Only an explicit native effect carries a marker, so every ordinary message exports exactly as before.
+          ...(message.contributionKind === 'result' ? { contribution: { kind: 'result' as const, resultId: message.resultId! } }
+            : message.contributionKind !== 'text' ? { contribution: { kind: message.contributionKind } } : {}),
           createdAt: iso(message.createdAt),
         })),
       }));

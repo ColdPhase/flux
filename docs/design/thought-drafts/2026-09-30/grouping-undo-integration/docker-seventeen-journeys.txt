@@ -1,0 +1,413 @@
+ Image flux-foundation:flux-ui-1790799954-2833938 Building 
+ Image flux-ui-tests:flux-ui-1790799954-2833938 Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.19kB done
+#1 DONE 0.0s
+
+#2 [migrate internal] load build definition from Dockerfile
+#2 transferring dockerfile: 2.81kB done
+#2 DONE 0.1s
+
+#3 [migrate internal] load metadata for docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#3 DONE 0.0s
+
+#4 [ui-test internal] load build definition from ui-tests.Dockerfile
+#4 transferring dockerfile: 1.00kB done
+#4 DONE 0.1s
+
+#5 [ui-test internal] load metadata for mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#5 DONE 0.0s
+
+#6 [migrate internal] load .dockerignore
+#6 transferring context: 282B done
+#6 DONE 0.1s
+
+#7 [ui-test 1/5] FROM mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:aa81288e738725378becba5b3e06cb0f3a7f012a610e87e8d767a090ea3f740d
+#7 DONE 0.0s
+
+#8 [migrate build 1/6] FROM docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#8 DONE 0.0s
+
+#9 [ui-test internal] load build context
+#9 transferring context: 29.51kB done
+#9 DONE 0.1s
+
+#10 [ui-test 2/5] COPY tests/ui/requirements.txt /tmp/ui-requirements.txt
+#10 CACHED
+
+#11 [ui-test 3/5] RUN pip install --no-cache-dir --break-system-packages --only-binary=:all: --require-hashes -r /tmp/ui-requirements.txt
+#11 CACHED
+
+#12 [ui-test 4/5] WORKDIR /work
+#12 CACHED
+
+#13 [migrate internal] load build context
+#13 transferring context: 13.34MB 0.1s done
+#13 DONE 0.2s
+
+#14 [ui-test 5/5] COPY tests/ui tests/ui
+#14 ...
+
+#15 [migrate build 2/6] WORKDIR /app
+#15 CACHED
+
+#16 [migrate build 3/6] RUN corepack enable && corepack install -g pnpm@12.6.0
+#16 CACHED
+
+#14 [ui-test 5/5] COPY tests/ui tests/ui
+#14 DONE 0.4s
+
+#17 [migrate build 4/6] COPY . .
+#17 ...
+
+#18 [ui-test] exporting to image
+#18 exporting layers 0.1s done
+#18 writing image sha256:1b7eb8dc156b9d73faa734cbe514ddb70d75ec4d59fd444be0c8e3f1d2f234d4 done
+#18 naming to docker.io/library/flux-ui-tests:flux-ui-1790799954-2833938 0.0s done
+#18 DONE 0.2s
+
+#19 [ui-test] resolving provenance for metadata file
+#19 DONE 0.0s
+
+#17 [migrate build 4/6] COPY . .
+#17 DONE 0.9s
+
+#20 [migrate build 5/6] RUN pnpm install --frozen-lockfile
+#20 0.474 Downloading the pnpm 12.6.0 binary for linux-x64...
+#20 3.569 Scope: all 10 workspace projects
+#20 3.590 ? Verifying lockfile against supply-chain policies (482 entries)...
+#20 4.008 Packages are hard linked from the content-addressable store to the virtual store.
+#20 4.008   Content-addressable store is at: /root/.local/share/pnpm/store/v11
+#20 4.008   Virtual store is at:             node_modules/.pnpm
+#20 5.021 Progress: resolved 411, reused 0, downloaded 117, added 96
+#20 5.078 [WARN] Tarball download average speed 12 KiB/s (size 14 KiB) is below 50 KiB/s: https://registry.npmjs.org/@babel/helper-compilation-targets/-/helper-compilation-targets-7.29.7.tgz (GET)
+#20 5.509 [WARN] Tarball download average speed 16 KiB/s (size 22 KiB) is below 50 KiB/s: https://registry.npmjs.org/picomatch/-/picomatch-2.3.2.tgz (GET)
+#20 5.514 [WARN] Tarball download average speed 47 KiB/s (size 64 KiB) is below 50 KiB/s: https://registry.npmjs.org/fast-json-stringify/-/fast-json-stringify-7.0.1.tgz (GET)
+#20 5.536 [WARN] Tarball download average speed 4 KiB/s (size 7 KiB) is below 50 KiB/s: https://registry.npmjs.org/acorn-jsx/-/acorn-jsx-5.3.2.tgz (GET)
+#20 5.720 [WARN] Tarball download average speed 18 KiB/s (size 35 KiB) is below 50 KiB/s: https://registry.npmjs.org/@modelcontextprotocol/node/-/node-2.1.0.tgz (GET)
+#20 5.788 [WARN] Tarball download average speed 16 KiB/s (size 30 KiB) is below 50 KiB/s: https://registry.npmjs.org/esbuild/-/esbuild-0.25.12.tgz (GET)
+#20 6.025 [WARN] Tarball download average speed 31 KiB/s (size 63 KiB) is below 50 KiB/s: https://registry.npmjs.org/fast-json-stringify/-/fast-json-stringify-6.4.0.tgz (GET)
+#20 6.101 [WARN] Tarball download average speed 6 KiB/s (size 9 KiB) is below 50 KiB/s: https://registry.npmjs.org/secure-json-parse/-/secure-json-parse-4.1.0.tgz (GET)
+#20 7.024 [WARN] Tarball download average speed 6 KiB/s (size 17 KiB) is below 50 KiB/s: https://registry.npmjs.org/@jridgewell/gen-mapping/-/gen-mapping-0.3.13.tgz (GET)
+#20 7.134 [WARN] Tarball download average speed 13 KiB/s (size 38 KiB) is below 50 KiB/s: https://registry.npmjs.org/pg-protocol/-/pg-protocol-1.16.0.tgz (GET)
+#20 7.407 Downloading @rolldown/binding-linux-x64-musl@1.2.11: 0.00 B/7.92 MB
+#20 7.891 [WARN] Tarball download average speed 11 KiB/s (size 37 KiB) is below 50 KiB/s: https://registry.npmjs.org/ignore/-/ignore-7.0.10.tgz (GET)
+#20 7.943 [WARN] Tarball download average speed 9 KiB/s (size 16 KiB) is below 50 KiB/s: https://registry.npmjs.org/espree/-/espree-10.4.0.tgz (GET)
+#20 8.952 [WARN] Tarball download average speed 6 KiB/s (size 21 KiB) is below 50 KiB/s: https://registry.npmjs.org/sdp/-/sdp-3.2.2.tgz (GET)
+#20 9.450 Update available! 12.6.0 → 12.8.1.
+#20 9.450 Changelog: https://pnpm.io/v/12.8.1
+#20 9.450 To update, run: curl -fsSL https://get.pnpm.io/install.sh | sh -
+#20 10.55 Downloading @rolldown/binding-linux-x64-musl@1.2.11: 2.41 MB/7.92 MB
+#20 11.60 Progress: resolved 411, reused 0, downloaded 403, added 384
+#20 11.74 [WARN] Tarball download average speed 1 KiB/s (size 13 KiB) is below 50 KiB/s: https://registry.npmjs.org/@babel/helper-validator-identifier/-/helper-validator-identifier-7.29.7.tgz (GET)
+#20 13.19 Progress: resolved 411, reused 0, downloaded 409, added 384
+#20 15.69 [WARN] Tarball download average speed 3 KiB/s (size 22 KiB) is below 50 KiB/s: https://registry.npmjs.org/loglevel/-/loglevel-1.9.2.tgz (GET)
+#20 17.59 [WARN] Request took 13995ms: https://registry.npmjs.org/@esbuild%2Flinux-ppc64
+#20 17.59 ✓ Lockfile passes supply-chain policies (482 entries in 14s)
+#20 17.59 Lockfile is up to date, resolution step is skipped
+#20 17.60 Packages: +411
+#20 17.60 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#20 17.64 Progress: resolved 411, reused 0, downloaded 411, added 411, done
+#20 17.64 .../esbuild@0.18.20/node_modules/esbuild postinstall$ node install.js
+#20 17.64 .../esbuild@0.25.12/node_modules/esbuild postinstall$ node install.js
+#20 17.69 .../esbuild@0.18.20/node_modules/esbuild postinstall: Done
+#20 17.70 .../esbuild@0.25.12/node_modules/esbuild postinstall: Done
+#20 17.83 
+#20 17.83 dependencies:
+#20 17.83 + @flux/contracts link:packages/contracts
+#20 17.83 + @flux/core link:packages/core
+#20 17.83 + @flux/db link:packages/db
+#20 17.83 + pg-boss 12.35.0
+#20 17.83 
+#20 17.83 devDependencies:
+#20 17.83 + @eslint/js 9.37.0
+#20 17.83 + @types/node 24.6.2
+#20 17.83 + @types/nodemailer 8.0.2
+#20 17.83 + @types/pg 8.15.5
+#20 17.83 + @types/sanitize-html 2.16.1
+#20 17.83 + @types/ws 8.18.1
+#20 17.83 + drizzle-orm 0.45.3
+#20 17.83 + eslint 9.37.0
+#20 17.83 + eslint-plugin-react-hooks 7.1.1
+#20 17.83 + fastify 5.6.1
+#20 17.83 + playwright 1.63.0
+#20 17.83 + tsx 4.20.5
+#20 17.83 + typescript 5.9.2
+#20 17.83 + typescript-eslint 8.44.1
+#20 17.83 + ws 8.22.0
+#20 17.83 
+#20 17.84 Done in 14.3s using pnpm v12.6.0
+#20 DONE 18.7s
+
+#21 [migrate build 6/6] RUN pnpm build && pnpm typecheck && pnpm lint
+#21 0.434 $ pnpm -r --if-present build && tsc -p infra/tsconfig.build.json
+#21 0.516 packages/contracts build$ tsc -p tsconfig.build.json
+#21 2.046 packages/contracts build: Done
+#21 2.047 apps/web build$ vite build
+#21 2.047 packages/db build$ tsc -p tsconfig.build.json
+#21 2.047 packages/sdk build$ tsc -p tsconfig.build.json
+#21 2.235 apps/web build: vite v8.3.1 building client environment for production...
+#21 2.242 apps/web build: transforming...
+#21 2.650 apps/web build: ✓ 253 modules transformed.
+#21 2.894 apps/web build: rendering chunks...
+#21 3.100 apps/web build: computing gzip size...
+#21 3.107 apps/web build: dist/index.html                                              1.21 kB │ gzip:   0.53 kB
+#21 3.107 apps/web build: dist/sw.js                                                   6.70 kB
+#21 3.107 apps/web build: dist/assets/inter-vietnamese-wght-normal-CBcvBZtf.woff2     10.25 kB
+#21 3.107 apps/web build: dist/assets/inter-greek-ext-wght-normal-DlzME5K_.woff2      11.23 kB
+#21 3.107 apps/web build: dist/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2       18.74 kB
+#21 3.107 apps/web build: dist/assets/inter-greek-wght-normal-CkhJZR-_.woff2          18.99 kB
+#21 3.107 apps/web build: dist/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2   25.96 kB
+#21 3.107 apps/web build: dist/assets/inter-latin-wght-normal-Dx4kXJAl.woff2          48.25 kB
+#21 3.107 apps/web build: dist/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2      85.06 kB
+#21 3.107 apps/web build: dist/assets/index-uG2xkcdm.css                             158.05 kB │ gzip:  27.94 kB
+#21 3.107 apps/web build: dist/assets/media-Yk6GPgZv.js                              419.65 kB │ gzip: 108.68 kB
+#21 3.107 apps/web build: dist/assets/index-BqIaF-C7.js                              753.75 kB │ gzip: 223.13 kB
+#21 3.107 apps/web build: 
+#21 3.108 apps/web build: [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "use client" in "../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js" may not be preserved when bundling.
+#21 3.108 apps/web build:     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m ../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js:11:1 [38;5;246m][0m
+#21 3.108 apps/web build:     [38;5;246m│[0m
+#21 3.108 apps/web build:  [38;5;246m11 │[0m "use client";
+#21 3.108 apps/web build:  [38;5;240m   │[0m ──────┬──────  
+#21 3.108 apps/web build:  [38;5;240m   │[0m       ╰──────── module level directive may not be preserved
+#21 3.108 apps/web build:  [38;5;240m   │[0m 
+#21 3.108 apps/web build:  [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+#21 3.108 apps/web build: [38;5;246m────╯[0m
+#21 3.108 apps/web build: 
+#21 3.108 apps/web build: [plugin builtin:vite-reporter] 
+#21 3.108 apps/web build: (!) Some chunks are larger than 500 kB after minification. Consider:
+#21 3.108 apps/web build: - Using dynamic import() to code-split the application
+#21 3.108 apps/web build: - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+#21 3.108 apps/web build: - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+#21 3.108 apps/web build: ✓ built in 873ms
+#21 3.137 apps/web build: Done
+#21 3.961 packages/sdk build: Done
+#21 5.035 packages/db build: Done
+#21 5.036 packages/core build$ tsc -p tsconfig.build.json
+#21 7.145 packages/core build: Done
+#21 7.145 apps/server build$ tsc -p tsconfig.build.json
+#21 7.145 packages/agent-runtime build$ tsc -p tsconfig.build.json
+#21 8.098 packages/agent-runtime build: Done
+#21 8.099 apps/worker build$ tsc -p tsconfig.build.json
+#21 9.191 apps/worker build: Done
+#21 10.41 apps/server build: Done
+#21 11.36 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#21 20.19 $ eslint .
+#21 DONE 30.0s
+
+#22 [migrate production-dependencies 1/1] RUN pnpm install --prod --offline --frozen-lockfile
+#22 0.481 Scope: all 10 workspace projects
+#22 0.516 ✓ Lockfile passes supply-chain policies (verified 31s ago)
+#22 0.516 Lockfile is up to date, resolution step is skipped
+#22 0.687 Packages: -199
+#22 0.687 --------------------------------------------------------------------------------
+#22 0.747 
+#22 0.747 devDependencies:
+#22 0.747 - @eslint/js 9.37.0
+#22 0.747 - @types/node 24.6.2
+#22 0.747 - @types/nodemailer 8.0.2
+#22 0.747 - @types/pg 8.15.5
+#22 0.747 - @types/sanitize-html 2.16.1
+#22 0.747 - @types/ws 8.18.1
+#22 0.747 - drizzle-orm 0.45.3
+#22 0.747 - eslint 9.37.0
+#22 0.747 - eslint-plugin-react-hooks 7.1.1
+#22 0.747 - fastify 5.6.1
+#22 0.747 - playwright 1.63.0
+#22 0.747 - tsx 4.20.5
+#22 0.747 - typescript 5.9.2
+#22 0.747 - typescript-eslint 8.44.1
+#22 0.747 - ws 8.22.0
+#22 0.747 
+#22 0.748 Done in 274ms using pnpm v12.6.0
+#22 DONE 0.9s
+
+#15 [migrate build 2/6] WORKDIR /app
+#15 CACHED
+
+#23 [migrate runtime  3/25] COPY --from=production-dependencies /app/node_modules ./node_modules
+#23 DONE 3.1s
+
+#24 [migrate runtime  4/25] COPY --from=production-dependencies /app/apps/server/node_modules ./apps/server/node_modules
+#24 DONE 0.3s
+
+#25 [migrate runtime  5/25] COPY --from=production-dependencies /app/apps/worker/node_modules ./apps/worker/node_modules
+#25 DONE 0.3s
+
+#26 [migrate runtime  6/25] COPY --from=production-dependencies /app/packages/core/node_modules ./packages/core/node_modules
+#26 DONE 0.3s
+
+#27 [migrate runtime  7/25] COPY --from=production-dependencies /app/packages/db/node_modules ./packages/db/node_modules
+#27 DONE 0.3s
+
+#28 [migrate runtime  8/25] COPY --from=production-dependencies /app/packages/agent-runtime/node_modules ./packages/agent-runtime/node_modules
+#28 DONE 0.3s
+
+#29 [migrate runtime  9/25] COPY --from=build /app/package.json ./package.json
+#29 DONE 0.3s
+
+#30 [migrate runtime 10/25] COPY --from=build /app/apps/server/package.json ./apps/server/package.json
+#30 DONE 0.2s
+
+#31 [migrate runtime 11/25] COPY --from=build /app/apps/worker/package.json ./apps/worker/package.json
+#31 DONE 0.3s
+
+#32 [migrate runtime 12/25] COPY --from=build /app/packages/contracts/package.json ./packages/contracts/package.json
+#32 DONE 0.3s
+
+#33 [migrate runtime 13/25] COPY --from=build /app/packages/core/package.json ./packages/core/package.json
+#33 DONE 0.2s
+
+#34 [migrate runtime 14/25] COPY --from=build /app/packages/db/package.json ./packages/db/package.json
+#34 DONE 0.3s
+
+#35 [migrate runtime 15/25] COPY --from=build /app/packages/agent-runtime/package.json ./packages/agent-runtime/package.json
+#35 DONE 0.3s
+
+#36 [migrate runtime 16/25] COPY --from=build /app/apps/server/dist ./apps/server/dist
+#36 DONE 0.3s
+
+#37 [migrate runtime 17/25] COPY --from=build /app/apps/worker/dist ./apps/worker/dist
+#37 DONE 0.3s
+
+#38 [migrate runtime 18/25] COPY --from=build /app/apps/web/dist ./apps/web/dist
+#38 DONE 0.3s
+
+#39 [migrate runtime 19/25] COPY --from=build /app/packages/contracts/dist ./packages/contracts/dist
+#39 DONE 0.3s
+
+#40 [migrate runtime 20/25] COPY --from=build /app/packages/core/dist ./packages/core/dist
+#40 DONE 0.3s
+
+#41 [migrate runtime 21/25] COPY --from=build /app/packages/db/dist ./packages/db/dist
+#41 DONE 0.3s
+
+#42 [migrate runtime 22/25] COPY --from=build /app/packages/agent-runtime/dist ./packages/agent-runtime/dist
+#42 DONE 0.2s
+
+#43 [migrate runtime 23/25] COPY --from=build /app/packages/db/migrations ./packages/db/migrations
+#43 DONE 0.3s
+
+#44 [migrate runtime 24/25] COPY --from=build /app/infra/dist ./infra/dist
+#44 DONE 0.2s
+
+#45 [migrate runtime 25/25] RUN mkdir -p /data/files && chown -R node:node /data
+#45 DONE 0.4s
+
+#46 [migrate] exporting to image
+#46 exporting layers
+#46 exporting layers 4.5s done
+#46 writing image sha256:8cf38bda2f902df4333614386f9a1d7c7ead682e72b9dd84f2aa9df99684ee25 done
+#46 naming to docker.io/library/flux-foundation:flux-ui-1790799954-2833938 0.0s done
+#46 DONE 4.6s
+
+#47 [migrate] resolving provenance for metadata file
+#47 DONE 0.0s
+ Image flux-ui-tests:flux-ui-1790799954-2833938 Built 
+ Image flux-foundation:flux-ui-1790799954-2833938 Built 
+ Network flux-ui-1790799954-2833938_default Creating 
+ Network flux-ui-1790799954-2833938_default Created 
+ Volume flux-ui-1790799954-2833938_pgdata Creating 
+ Volume flux-ui-1790799954-2833938_pgdata Created 
+ Container flux-ui-1790799954-2833938-db-1 Creating 
+ Container flux-ui-1790799954-2833938-db-1 Created 
+ Container flux-ui-1790799954-2833938-migrate-1 Creating 
+ Container flux-ui-1790799954-2833938-migrate-1 Created 
+ Container flux-ui-1790799954-2833938-db-1 Starting 
+ Container flux-ui-1790799954-2833938-db-1 Started 
+ Container flux-ui-1790799954-2833938-db-1 Waiting 
+ Container flux-ui-1790799954-2833938-db-1 Healthy 
+ Container flux-ui-1790799954-2833938-migrate-1 Starting 
+ Container flux-ui-1790799954-2833938-migrate-1 Started 
+ Volume flux-ui-1790799954-2833938_files Creating 
+ Volume flux-ui-1790799954-2833938_files Created 
+ Container flux-ui-1790799954-2833938-files-init-run-d1e8c2f96ff9 Creating 
+time="2026-09-30T22:27:14+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-ui-1790799954-2833938-files-init-run-d1e8c2f96ff9 Created 
+ Container flux-ui-1790799954-2833938-anthropic-mock-1 Creating 
+ Container flux-ui-1790799954-2833938-db-1 Running 
+ Container flux-ui-1790799954-2833938-mailpit-1 Creating 
+ Container flux-ui-1790799954-2833938-migrate-1 Running 
+ Container flux-ui-1790799954-2833938-worker-1 Creating 
+ Container flux-ui-1790799954-2833938-api-1 Creating 
+time="2026-09-30T22:27:15+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+time="2026-09-30T22:27:15+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-ui-1790799954-2833938-mailpit-1 Created 
+ Container flux-ui-1790799954-2833938-anthropic-mock-1 Created 
+ Container flux-ui-1790799954-2833938-api-1 Created 
+ Container flux-ui-1790799954-2833938-worker-1 Created 
+ Container flux-ui-1790799954-2833938-anthropic-mock-1 Starting 
+ Container flux-ui-1790799954-2833938-db-1 Waiting 
+ Container flux-ui-1790799954-2833938-mailpit-1 Starting 
+ Container flux-ui-1790799954-2833938-mailpit-1 Started 
+ Container flux-ui-1790799954-2833938-anthropic-mock-1 Started 
+ Container flux-ui-1790799954-2833938-db-1 Healthy 
+ Container flux-ui-1790799954-2833938-migrate-1 Waiting 
+ Container flux-ui-1790799954-2833938-migrate-1 Waiting 
+ Container flux-ui-1790799954-2833938-migrate-1 Exited 
+ Container flux-ui-1790799954-2833938-api-1 Starting 
+ Container flux-ui-1790799954-2833938-migrate-1 Exited 
+ Container flux-ui-1790799954-2833938-worker-1 Starting 
+ Container flux-ui-1790799954-2833938-api-1 Started 
+ Container flux-ui-1790799954-2833938-worker-1 Started 
+ Container flux-ui-1790799954-2833938-api-1 Waiting 
+ Container flux-ui-1790799954-2833938-mailpit-1 Waiting 
+ Container flux-ui-1790799954-2833938-anthropic-mock-1 Waiting 
+ Container flux-ui-1790799954-2833938-mailpit-1 Healthy 
+ Container flux-ui-1790799954-2833938-anthropic-mock-1 Healthy 
+ Container flux-ui-1790799954-2833938-api-1 Healthy 
+ Container flux-ui-1790799954-2833938-ui-test-run-35f945e63642 Creating 
+ Container flux-ui-1790799954-2833938-ui-test-run-35f945e63642 Created 
+test_01_cancel_empty_blur_and_composition_never_write (test_thought_drafts.ThoughtDraftJourney.test_01_cancel_empty_blur_and_composition_never_write) ... ok
+test_02_draft_survives_projection_map_navigation_and_reload (test_thought_drafts.ThoughtDraftJourney.test_02_draft_survives_projection_map_navigation_and_reload) ... ok
+test_03_uncertain_committed_response_retries_exactly_once_and_undo_removes_link (test_thought_drafts.ThoughtDraftJourney.test_03_uncertain_committed_response_retries_exactly_once_and_undo_removes_link) ... ok
+test_04_deleted_parent_leaves_text_and_no_partial_thought (test_thought_drafts.ThoughtDraftJourney.test_04_deleted_parent_leaves_text_and_no_partial_thought) ... ok
+test_05_lost_permission_and_revocation_recover_private_text_even_after_reload (test_thought_drafts.ThoughtDraftJourney.test_05_lost_permission_and_revocation_recover_private_text_even_after_reload) ... ok
+test_06_f2_cancel_multiline_and_real_concurrent_edit_are_recoverable (test_thought_drafts.ThoughtDraftJourney.test_06_f2_cancel_multiline_and_real_concurrent_edit_are_recoverable) ... ok
+test_07_failed_existing_edit_keeps_text_and_retries (test_thought_drafts.ThoughtDraftJourney.test_07_failed_existing_edit_keeps_text_and_retries) ... ok
+test_08_sign_out_discards_drafts_before_another_account_signs_in (test_thought_drafts.ThoughtDraftJourney.test_08_sign_out_discards_drafts_before_another_account_signs_in) ... ok
+test_09_matched_desktop_phone_tablet_and_touch_save (test_thought_drafts.ThoughtDraftJourney.test_09_matched_desktop_phone_tablet_and_touch_save) ... ok
+test_01_deep_branches_and_ordinary_cross_links_remain_stable_after_reload (test_map_outline.MapOutlineJourney.test_01_deep_branches_and_ordinary_cross_links_remain_stable_after_reload) ... ok
+test_02_collapsed_cross_link_reveals_exact_destination_and_back_restores_place (test_map_outline.MapOutlineJourney.test_02_collapsed_cross_link_reveals_exact_destination_and_back_restores_place) ... ok
+test_03_explicit_linked_only_grouping_and_local_undo_include_collapsed_target (test_map_outline.MapOutlineJourney.test_03_explicit_linked_only_grouping_and_local_undo_include_collapsed_target) ... ok
+test_03b_grouping_undo_preserves_later_child_intent_and_exact_override_history (test_map_outline.MapOutlineJourney.test_03b_grouping_undo_preserves_later_child_intent_and_exact_override_history) ... ok
+test_04_rename_delete_graph_undo_and_search_reveal_preserve_exact_ids (test_map_outline.MapOutlineJourney.test_04_rename_delete_graph_undo_and_search_reveal_preserve_exact_ids) ... ok
+test_05_viewer_local_grouping_is_readonly_and_private_placement_stays_restricted (test_map_outline.MapOutlineJourney.test_05_viewer_local_grouping_is_readonly_and_private_placement_stays_restricted) ... ok
+test_06_render_matched_light_dark_phone_tablet_and_enlarged_text (test_map_outline.MapOutlineJourney.test_06_render_matched_light_dark_phone_tablet_and_enlarged_text) ... ok
+test_07_unavailable_and_corrupt_storage_keep_this_visit_useful_without_claiming_reload_persistence (test_map_outline.MapOutlineJourney.test_07_unavailable_and_corrupt_storage_keep_this_visit_useful_without_claiming_reload_persistence) ... ok
+
+----------------------------------------------------------------------
+Ran 17 tests in 42.297s
+
+OK
+ Container flux-ui-1790799954-2833938-anthropic-mock-1 Stopping 
+ Container flux-ui-1790799954-2833938-mailpit-1 Stopping 
+ Container flux-ui-1790799954-2833938-worker-1 Stopping 
+ Container flux-ui-1790799954-2833938-api-1 Stopping 
+ Container flux-ui-1790799954-2833938-worker-1 Stopped 
+ Container flux-ui-1790799954-2833938-worker-1 Removing 
+ Container flux-ui-1790799954-2833938-worker-1 Removed 
+ Container flux-ui-1790799954-2833938-mailpit-1 Stopped 
+ Container flux-ui-1790799954-2833938-mailpit-1 Removing 
+ Container flux-ui-1790799954-2833938-mailpit-1 Removed 
+ Container flux-ui-1790799954-2833938-anthropic-mock-1 Stopped 
+ Container flux-ui-1790799954-2833938-anthropic-mock-1 Removing 
+ Container flux-ui-1790799954-2833938-anthropic-mock-1 Removed 
+ Container flux-ui-1790799954-2833938-api-1 Stopped 
+ Container flux-ui-1790799954-2833938-api-1 Removing 
+ Container flux-ui-1790799954-2833938-api-1 Removed 
+ Container flux-ui-1790799954-2833938-migrate-1 Stopping 
+ Container flux-ui-1790799954-2833938-migrate-1 Stopped 
+ Container flux-ui-1790799954-2833938-migrate-1 Removing 
+ Container flux-ui-1790799954-2833938-migrate-1 Removed 
+ Container flux-ui-1790799954-2833938-db-1 Stopping 
+ Container flux-ui-1790799954-2833938-db-1 Stopped 
+ Container flux-ui-1790799954-2833938-db-1 Removing 
+ Container flux-ui-1790799954-2833938-db-1 Removed 
+ Volume flux-ui-1790799954-2833938_files Removing 
+ Volume flux-ui-1790799954-2833938_pgdata Removing 
+ Network flux-ui-1790799954-2833938_default Removing 
+ Volume flux-ui-1790799954-2833938_files Removed 
+ Volume flux-ui-1790799954-2833938_pgdata Removed 
+ Network flux-ui-1790799954-2833938_default Removed 
+Removed 2 per-run image(s) tagged :flux-ui-1790799954-2833938

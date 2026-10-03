@@ -1,0 +1,46 @@
+# NON-DEPLOYED CONTRACT FIXTURE. Addresses/DNS/secrets below are placeholders.
+fullnameOverride: livekit
+replicaCount: 1
+podHostNetwork: true
+image:
+  repository: livekit/livekit-server
+  tag: v1.13.7@sha256:6fd3b7088874c4d119160dd688798dfec852bc014786d392caad15f6f63912a3
+  pullPolicy: IfNotPresent
+storeKeysInSecret:
+  enabled: true
+  existingSecret: flux-livekit-api-key
+loadBalancer:
+  type: disable
+  servicePort: 7880
+turnLoadbalancer:
+  enable: false
+nodeSelector:
+  flux.example/media-node: dedicated
+livekit:
+  port: 7880
+  bind_addresses: [10.20.0.10, 127.0.0.1]
+  prometheus_port: 6789
+  key_file: keys.yaml
+  keys: {}
+  webhook:
+    api_key: flux-render-placeholder-key
+    urls: [http://flux-api.flux.svc.cluster.local:8080/api/v1/internal/livekit/webhook]
+  room:
+    auto_create: false
+    max_participants: 16
+    empty_timeout: 420
+    departure_timeout: 180
+  rtc:
+    tcp_port: 7881
+    udp_port: 7882
+    port_range_start: 0
+    port_range_end: 0
+    use_external_ip: false
+    node_ip: 198.51.100.10
+    stun_servers: [turn.flux.example:3478]
+  turn:
+    enabled: true
+    domain: turn.flux.example
+    udp_port: 3478
+    tls_port: 443
+    secretName: flux-turn-tls

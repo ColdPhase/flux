@@ -49,9 +49,14 @@ export * from './agent-proposals.js';
 export * from './returns.js';
 export * from './direct-message.js';
 export * from './docs.js';
+export * from './proactive-comparison.js';
+export * from './background-compute.js';
+export * from './proactive-outcomes.js';
 export * from './notifications.js';
 export * from './search.js';
 export * from './personal-runs.js';
 export * from './export.js';
 
 export * from './typing.js';
+export * from './agent-execution.js';
+export * from './agent-bootstrap.js';

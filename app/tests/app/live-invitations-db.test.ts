@@ -1,17 +1,13 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
-import { createDatabase } from '@flux/db';
+import { test } from 'node:test';
 import { grantProject, liveInvitationUseCases, type LiveInvitationCursor } from '@flux/core';
 import type { Conversation } from '@flux/contracts';
 import { liveInvitationStore } from '../../apps/server/src/live/invitations.js';
 import { liveSessionStore } from '../../apps/server/src/live/store.js';
+import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
 
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { db, pool } = createDatabase(connectionString);
-after(() => pool.end());
 const errorCode = (code: string) => (error: unknown) =>
   typeof error === 'object' && error !== null && 'code' in error && error.code === code;
 

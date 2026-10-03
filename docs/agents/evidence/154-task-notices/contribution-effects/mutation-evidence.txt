@@ -1,0 +1,156 @@
+Mutation evidence for the explicit native contribution effects (#154).
+
+Each mutation was applied to the production source of a scratch build, the same new test files were run, and the
+mutation was reverted. Only test names and counts are published. Pass/fail marks come from the raw runs.
+
+Mutation set 1: generic reply no longer takes the task row first; lockTasks iterates in reverse (unsorted) order; native receipts are not written
+Source mutations: store.ts removed lockBoundTask; task-discussions/service.ts lockTasks iterated reversed; db work.ts recordNativeCommand did nothing.
+
+  ✔ the saved text, trimmed as saved, becomes one authored blocker contribution with the task change
+  ✔ an agent saving a blocker is the genuine author, never a person
+  ✔ the order is access, command identity, message identity, task lock, task change, event, append, receipt
+  ✔ clearing a blocker, changing status/owner/text, or saving nothing contributes nothing
+  ✔ a blocker without a blocked status is rejected before anything is written
+  ✔ a stale version conflicts and contributes nothing, with or without a command UUID
+  ✔ a viewer cannot save a blocker and nothing is contributed
+✔ an explicitly saved nonempty blocker contributes its exact text
+  ✔ the same client command and intent appends no second message, event, receipt or version
+  ✔ a changed intent under the same command conflicts; changed produced task state is stale, never overwritten
+  ✔ a replay is checked against current authorization first and writes nothing when refused
+  ✔ the receipt is scoped to the real actor: another actor with the same UUID executes its own command
+  ✔ without a command UUID nothing deduplicates, but the version fence stops a stale identical retry
+✔ an exact retry of a native command returns its original outcome
+  ✖ one canonical result, one deterministic contribution per task naming that result, in sorted task order
+  ✔ message identities derive from the result and the exact task, so a different result or task never collides
+  ✔ finishing a linked task is locked in the same sorted set and still version-fenced
+  ✔ a result with no linked task creates no task thread, identity lock or task lock
+  ✔ an agent publishing a result is the genuine author of every contribution
+  ✔ an exact retry returns the original result without another result or message; a changed intent conflicts
+  ✔ without a command UUID two identical publications are two results; nothing deduplicates them
+✖ a published result contributes to every linked task
+  ✔ a work adapter cannot be composed without it, and a missing hook never silently skips an effect
+  ✔ the handle enforces prepare, then lockTasks, then append, once each, and rejects a foreign handle
+  ✔ a replayed message identity appends nothing; a reused identity for another intent conflicts
+✔ the contribution hook is mandatory
+  ✔ a handoff becomes the first canonical root with its real author and kind; retries are exact
+  ✔ plain text keeps its exact wire shape and original fingerprint; only handoff may be requested directly
+  ✔ a genuine agent handoff keeps the tagged agent author
+✔ an explicit public handoff uses the common contribution primitive
+  ✔ a result contribution carries its canonical result id; blocker and handoff carry only their kind
+✔ every contribution kind reads back with its marker
+✖ an explicitly saved nonempty blocker contributes its exact text; clearing and status/owner/title changes contribute nothing
+✔ blocker saves obey current access: viewers are forbidden, outsiders see nothing, and nothing is contributed
+✖ a published result contributes one canonical result message to every linked task, bound or not, in sorted order
+✖ a result with no linked task, or only a decision, creates no task thread; a viewer cannot publish
+✔ a genuine agent publishing a result or saving a blocker through the native session keeps its tagged author
+✔ an explicit public handoff is a contribution through the same primitive; ACK-like or invalid kinds are not accepted
+✖ every associated write of a blocker save or a result rolls the whole unit back; the same command then succeeds exactly once
+✔ failure in a caller-owned native transaction before or after the final flush leaves no blocker, result, message, event or receipt
+✖ overlapping results lock the complete sorted task set: a held later task does not stop the earlier from being locked first
+✔ simultaneous first contributions, results, blocker saves and generic replies keep one root and one gapless sequence without deadlock
+✖ a generic reply to a task-bound conversation takes the task row before the conversation sequence
+✖ an agent saving a blocker or publishing a result composes the native effect with the ONE connection-command ledger atomically
+✔ the receipt and message constraints refuse a result reference out of scope and a receipt without its produced object
+✔ blocker and result contributions finish every domain, receipt and response write before one final event batch
+✖ reads of the effects create nothing, and the transport Idempotency-Key cache composes with the native receipt
+✔ creating a task with a blocker keeps only its creation notice; creation fields are not a saved blocker contribution
+✖ concurrent exact duplicates of a keyed save or a keyed publication share one contribution and one outcome
+✖ one canonical result, one deterministic contribution per task naming that result, in sorted task order
+✖ an explicitly saved nonempty blocker contributes its exact text; clearing and status/owner/title changes contribute nothing
+✖ a published result contributes one canonical result message to every linked task, bound or not, in sorted order
+✖ a result with no linked task, or only a decision, creates no task thread; a viewer cannot publish
+✖ every associated write of a blocker save or a result rolls the whole unit back; the same command then succeeds exactly once
+✖ overlapping results lock the complete sorted task set: a held later task does not stop the earlier from being locked first
+✖ a generic reply to a task-bound conversation takes the task row before the conversation sequence
+✖ an agent saving a blocker or publishing a result composes the native effect with the ONE connection-command ledger atomically
+✖ reads of the effects create nothing, and the transport Idempotency-Key cache composes with the native receipt
+✖ concurrent exact duplicates of a keyed save or a keyed publication share one contribution and one outcome
+ℹ tests 43
+ℹ pass 33
+ℹ fail 10
+
+Mutation set 2: the contribution hook exists but appends nothing (a no-op hook)
+Source mutation: createWorkContributions.append iterated an empty list.
+
+  ✖ the saved text, trimmed as saved, becomes one authored blocker contribution with the task change
+  ✖ an agent saving a blocker is the genuine author, never a person
+  ✖ the order is access, command identity, message identity, task lock, task change, event, append, receipt
+  ✖ clearing a blocker, changing status/owner/text, or saving nothing contributes nothing
+  ✔ a blocker without a blocked status is rejected before anything is written
+  ✔ a stale version conflicts and contributes nothing, with or without a command UUID
+  ✔ a viewer cannot save a blocker and nothing is contributed
+✖ an explicitly saved nonempty blocker contributes its exact text
+  ✖ the same client command and intent appends no second message, event, receipt or version
+  ✖ a changed intent under the same command conflicts; changed produced task state is stale, never overwritten
+  ✖ a replay is checked against current authorization first and writes nothing when refused
+  ✖ the receipt is scoped to the real actor: another actor with the same UUID executes its own command
+  ✖ without a command UUID nothing deduplicates, but the version fence stops a stale identical retry
+✖ an exact retry of a native command returns its original outcome
+  ✖ one canonical result, one deterministic contribution per task naming that result, in sorted task order
+  ✔ message identities derive from the result and the exact task, so a different result or task never collides
+  ✖ finishing a linked task is locked in the same sorted set and still version-fenced
+  ✔ a result with no linked task creates no task thread, identity lock or task lock
+  ✖ an agent publishing a result is the genuine author of every contribution
+  ✖ an exact retry returns the original result without another result or message; a changed intent conflicts
+  ✖ without a command UUID two identical publications are two results; nothing deduplicates them
+✖ a published result contributes to every linked task
+  ✔ a work adapter cannot be composed without it, and a missing hook never silently skips an effect
+  ✖ the handle enforces prepare, then lockTasks, then append, once each, and rejects a foreign handle
+  ✖ a replayed message identity appends nothing; a reused identity for another intent conflicts
+✖ the contribution hook is mandatory
+  ✔ a handoff becomes the first canonical root with its real author and kind; retries are exact
+  ✔ plain text keeps its exact wire shape and original fingerprint; only handoff may be requested directly
+  ✔ a genuine agent handoff keeps the tagged agent author
+✔ an explicit public handoff uses the common contribution primitive
+  ✖ a result contribution carries its canonical result id; blocker and handoff carry only their kind
+✖ every contribution kind reads back with its marker
+✖ an explicitly saved nonempty blocker contributes its exact text; clearing and status/owner/title changes contribute nothing
+✔ blocker saves obey current access: viewers are forbidden, outsiders see nothing, and nothing is contributed
+✖ a published result contributes one canonical result message to every linked task, bound or not, in sorted order
+✔ a result with no linked task, or only a decision, creates no task thread; a viewer cannot publish
+✖ a genuine agent publishing a result or saving a blocker through the native session keeps its tagged author
+✔ an explicit public handoff is a contribution through the same primitive; ACK-like or invalid kinds are not accepted
+✖ every associated write of a blocker save or a result rolls the whole unit back; the same command then succeeds exactly once
+✖ failure in a caller-owned native transaction before or after the final flush leaves no blocker, result, message, event or receipt
+✖ overlapping results lock the complete sorted task set: a held later task does not stop the earlier from being locked first
+✖ simultaneous first contributions, results, blocker saves and generic replies keep one root and one gapless sequence without deadlock
+✔ a generic reply to a task-bound conversation takes the task row before the conversation sequence
+✖ an agent saving a blocker or publishing a result composes the native effect with the ONE connection-command ledger atomically
+✖ the receipt and message constraints refuse a result reference out of scope and a receipt without its produced object
+✖ blocker and result contributions finish every domain, receipt and response write before one final event batch
+✖ reads of the effects create nothing, and the transport Idempotency-Key cache composes with the native receipt
+✖ creating a task with a blocker keeps only its creation notice; creation fields are not a saved blocker contribution
+✖ concurrent exact duplicates of a keyed save or a keyed publication share one contribution and one outcome
+✖ the saved text, trimmed as saved, becomes one authored blocker contribution with the task change
+✖ an agent saving a blocker is the genuine author, never a person
+✖ the order is access, command identity, message identity, task lock, task change, event, append, receipt
+✖ clearing a blocker, changing status/owner/text, or saving nothing contributes nothing
+✖ the same client command and intent appends no second message, event, receipt or version
+✖ a changed intent under the same command conflicts; changed produced task state is stale, never overwritten
+✖ a replay is checked against current authorization first and writes nothing when refused
+✖ the receipt is scoped to the real actor: another actor with the same UUID executes its own command
+✖ without a command UUID nothing deduplicates, but the version fence stops a stale identical retry
+✖ one canonical result, one deterministic contribution per task naming that result, in sorted task order
+✖ finishing a linked task is locked in the same sorted set and still version-fenced
+✖ an agent publishing a result is the genuine author of every contribution
+✖ an exact retry returns the original result without another result or message; a changed intent conflicts
+✖ without a command UUID two identical publications are two results; nothing deduplicates them
+✖ the handle enforces prepare, then lockTasks, then append, once each, and rejects a foreign handle
+✖ a replayed message identity appends nothing; a reused identity for another intent conflicts
+✖ a result contribution carries its canonical result id; blocker and handoff carry only their kind
+✖ an explicitly saved nonempty blocker contributes its exact text; clearing and status/owner/title changes contribute nothing
+✖ a published result contributes one canonical result message to every linked task, bound or not, in sorted order
+✖ a genuine agent publishing a result or saving a blocker through the native session keeps its tagged author
+✖ every associated write of a blocker save or a result rolls the whole unit back; the same command then succeeds exactly once
+✖ failure in a caller-owned native transaction before or after the final flush leaves no blocker, result, message, event or receipt
+✖ overlapping results lock the complete sorted task set: a held later task does not stop the earlier from being locked first
+✖ simultaneous first contributions, results, blocker saves and generic replies keep one root and one gapless sequence without deadlock
+✖ an agent saving a blocker or publishing a result composes the native effect with the ONE connection-command ledger atomically
+✖ the receipt and message constraints refuse a result reference out of scope and a receipt without its produced object
+✖ blocker and result contributions finish every domain, receipt and response write before one final event batch
+✖ reads of the effects create nothing, and the transport Idempotency-Key cache composes with the native receipt
+✖ creating a task with a blocker keeps only its creation notice; creation fields are not a saved blocker contribution
+✖ concurrent exact duplicates of a keyed save or a keyed publication share one contribution and one outcome
+ℹ tests 43
+ℹ pass 13
+ℹ fail 30

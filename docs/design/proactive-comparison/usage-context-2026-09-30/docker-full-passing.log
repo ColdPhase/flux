@@ -1,0 +1,1262 @@
+ Image flux-test-tools:flux-test-1790794121-2401185 Building 
+ Image flux-e2e:flux-test-1790794121-2401185 Building 
+ Image flux-foundation:flux-test-1790794121-2401185 Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.79kB done
+#1 DONE 0.0s
+
+#2 [migrate internal] load build definition from Dockerfile
+#2 transferring dockerfile:
+#2 transferring dockerfile: 2.81kB done
+#2 DONE 0.1s
+
+#3 [pushmock internal] load metadata for mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+#3 DONE 0.0s
+
+#4 [pushmock internal] load metadata for docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#4 DONE 0.0s
+
+#5 [test internal] load .dockerignore
+#5 transferring context: 180B done
+#5 DONE 0.1s
+
+#6 [migrate build 1/6] FROM docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#6 DONE 0.0s
+
+#7 [pushmock e2e 1/3] FROM mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+#7 DONE 0.0s
+
+#8 [test internal] load build context
+#8 transferring context: 226.91kB 0.0s done
+#8 DONE 0.1s
+
+#9 [migrate build 2/6] WORKDIR /app
+#9 CACHED
+
+#10 [pushmock build 3/6] RUN corepack enable && corepack install -g pnpm@12.6.0
+#10 CACHED
+
+#11 [pushmock build 4/6] COPY . .
+#11 DONE 0.8s
+
+#12 [migrate build 5/6] RUN pnpm install --frozen-lockfile
+#12 0.484 Downloading the pnpm 12.6.0 binary for linux-x64...
+#12 3.516 Scope: all 10 workspace projects
+#12 3.538 ? Verifying lockfile against supply-chain policies (482 entries)...
+#12 3.948 Packages are hard linked from the content-addressable store to the virtual store.
+#12 3.948   Content-addressable store is at: /root/.local/share/pnpm/store/v11
+#12 3.948   Virtual store is at:             node_modules/.pnpm
+#12 4.477 Update available! 12.6.0 → 12.8.1.
+#12 4.477 Changelog: https://pnpm.io/v/12.8.1
+#12 4.477 To update, run: curl -fsSL https://get.pnpm.io/install.sh | sh -
+#12 5.430 [WARN] Tarball download average speed 18 KiB/s (size 29 KiB) is below 50 KiB/s: https://registry.npmjs.org/eslint-scope/-/eslint-scope-8.4.0.tgz (GET)
+#12 5.832 [WARN] Tarball download average speed 2 KiB/s (size 2 KiB) is below 50 KiB/s: https://registry.npmjs.org/locate-path/-/locate-path-6.0.0.tgz (GET)
+#12 5.887 [WARN] Tarball download average speed 8 KiB/s (size 16 KiB) is below 50 KiB/s: https://registry.npmjs.org/ret/-/ret-0.5.0.tgz (GET)
+#12 6.091 [WARN] Tarball download average speed 9 KiB/s (size 14 KiB) is below 50 KiB/s: https://registry.npmjs.org/@better-auth/kysely-adapter/-/kysely-adapter-1.7.6.tgz (GET)
+#12 6.436 [WARN] Tarball download average speed 6 KiB/s (size 9 KiB) is below 50 KiB/s: https://registry.npmjs.org/@jridgewell/resolve-uri/-/resolve-uri-3.1.2.tgz (GET)
+#12 6.586 [WARN] Tarball download average speed 42 KiB/s (size 114 KiB) is below 50 KiB/s: https://registry.npmjs.org/minimatch/-/minimatch-10.2.6.tgz (GET)
+#12 6.676 [WARN] Tarball download average speed 21 KiB/s (size 64 KiB) is below 50 KiB/s: https://registry.npmjs.org/fast-uri/-/fast-uri-4.2.1.tgz (GET)
+#12 7.302 [WARN] Tarball download average speed 9 KiB/s (size 12 KiB) is below 50 KiB/s: https://registry.npmjs.org/foreground-child/-/foreground-child-3.3.1.tgz (GET)
+#12 7.870 Downloading @rolldown/binding-linux-x64-musl@1.2.11: 0.00 B/7.92 MB
+#12 7.903 [WARN] Tarball download average speed 13 KiB/s (size 24 KiB) is below 50 KiB/s: https://registry.npmjs.org/domutils/-/domutils-4.0.2.tgz (GET)
+#12 8.532 [WARN] Tarball download average speed 3 KiB/s (size 11 KiB) is below 50 KiB/s: https://registry.npmjs.org/safer-buffer/-/safer-buffer-2.1.2.tgz (GET)
+#12 8.854 [WARN] Tarball download average speed 3 KiB/s (size 8 KiB) is below 50 KiB/s: https://registry.npmjs.org/domhandler/-/domhandler-6.0.1.tgz (GET)
+#12 9.771 [WARN] Tarball download average speed 27 KiB/s (size 50 KiB) is below 50 KiB/s: https://registry.npmjs.org/postcss/-/postcss-8.5.28.tgz (GET)
+#12 9.799 [WARN] Tarball download average speed 14 KiB/s (size 21 KiB) is below 50 KiB/s: https://registry.npmjs.org/@eslint/core/-/core-0.17.0.tgz (GET)
+#12 10.22 [WARN] Tarball download average speed 2 KiB/s (size 9 KiB) is below 50 KiB/s: https://registry.npmjs.org/@humanfs/node/-/node-0.16.8.tgz (GET)
+#12 10.39 [WARN] Tarball download average speed 2 KiB/s (size 3 KiB) is below 50 KiB/s: https://registry.npmjs.org/merge2/-/merge2-1.4.1.tgz (GET)
+#12 10.48 [WARN] Tarball download average speed 8 KiB/s (size 19 KiB) is below 50 KiB/s: https://registry.npmjs.org/thread-stream/-/thread-stream-3.2.0.tgz (GET)
+#12 10.64 [WARN] Tarball download average speed 4 KiB/s (size 14 KiB) is below 50 KiB/s: https://registry.npmjs.org/nanostores/-/nanostores-1.5.4.tgz (GET)
+#12 11.16 [WARN] Tarball download average speed 4 KiB/s (size 27 KiB) is below 50 KiB/s: https://registry.npmjs.org/pg/-/pg-8.23.0.tgz (GET)
+#12 11.48 [WARN] Tarball download average speed 1 KiB/s (size 8 KiB) is below 50 KiB/s: https://registry.npmjs.org/deepmerge/-/deepmerge-4.3.1.tgz (GET)
+#12 12.58 Downloading @rolldown/binding-linux-x64-musl@1.2.11: 7.92 MB/7.92 MB, done
+#12 12.83 [WARN] Tarball download average speed 35 KiB/s (size 322 KiB) is below 50 KiB/s: https://registry.npmjs.org/caniuse-lite/-/caniuse-lite-1.0.30001812.tgz (GET)
+#12 18.95 [WARN] Request took 13921ms: https://registry.npmjs.org/@typescript-eslint%2Fvisitor-keys
+#12 19.02 ✓ Lockfile passes supply-chain policies (482 entries in 15.5s)
+#12 19.02 Lockfile is up to date, resolution step is skipped
+#12 19.03 Packages: +411
+#12 19.03 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#12 19.07 Progress: resolved 411, reused 0, downloaded 411, added 411, done
+#12 19.08 .../esbuild@0.18.20/node_modules/esbuild postinstall$ node install.js
+#12 19.08 .../esbuild@0.25.12/node_modules/esbuild postinstall$ node install.js
+#12 19.13 .../esbuild@0.25.12/node_modules/esbuild postinstall: Done
+#12 19.13 .../esbuild@0.18.20/node_modules/esbuild postinstall: Done
+#12 19.29 
+#12 19.29 dependencies:
+#12 19.29 + @flux/contracts link:packages/contracts
+#12 19.29 + @flux/core link:packages/core
+#12 19.29 + @flux/db link:packages/db
+#12 19.29 + pg-boss 12.35.0
+#12 19.29 
+#12 19.29 devDependencies:
+#12 19.29 + @eslint/js 9.37.0
+#12 19.29 + @types/node 24.6.2
+#12 19.29 + @types/nodemailer 8.0.2
+#12 19.29 + @types/pg 8.15.5
+#12 19.29 + @types/sanitize-html 2.16.1
+#12 19.29 + @types/ws 8.18.1
+#12 19.29 + drizzle-orm 0.45.3
+#12 19.29 + eslint 9.37.0
+#12 19.29 + eslint-plugin-react-hooks 7.1.1
+#12 19.29 + fastify 5.6.1
+#12 19.29 + playwright 1.63.0
+#12 19.29 + tsx 4.20.5
+#12 19.29 + typescript 5.9.2
+#12 19.29 + typescript-eslint 8.44.1
+#12 19.29 + ws 8.22.0
+#12 19.29 
+#12 19.31 Done in 15.8s using pnpm v12.6.0
+#12 DONE 20.3s
+
+#13 [pushmock build 6/6] RUN pnpm build && pnpm typecheck && pnpm lint
+#13 1.103 $ pnpm -r --if-present build && tsc -p infra/tsconfig.build.json
+#13 1.228 packages/contracts build$ tsc -p tsconfig.build.json
+#13 2.788 packages/contracts build: Done
+#13 2.788 apps/web build$ vite build
+#13 2.788 packages/sdk build$ tsc -p tsconfig.build.json
+#13 2.789 packages/db build$ tsc -p tsconfig.build.json
+#13 2.995 apps/web build: vite v8.3.1 building client environment for production...
+#13 3.003 apps/web build: transforming...
+#13 3.248 apps/web build: ✓ 260 modules transformed.
+#13 3.501 apps/web build: rendering chunks...
+#13 3.735 apps/web build: computing gzip size...
+#13 3.744 apps/web build: dist/index.html                                              1.21 kB │ gzip:   0.53 kB
+#13 3.744 apps/web build: dist/sw.js                                                   6.70 kB
+#13 3.744 apps/web build: dist/assets/inter-vietnamese-wght-normal-CBcvBZtf.woff2     10.25 kB
+#13 3.744 apps/web build: dist/assets/inter-greek-ext-wght-normal-DlzME5K_.woff2      11.23 kB
+#13 3.744 apps/web build: dist/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2       18.74 kB
+#13 3.744 apps/web build: dist/assets/inter-greek-wght-normal-CkhJZR-_.woff2          18.99 kB
+#13 3.744 apps/web build: dist/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2   25.96 kB
+#13 3.744 apps/web build: dist/assets/inter-latin-wght-normal-Dx4kXJAl.woff2          48.25 kB
+#13 3.744 apps/web build: dist/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2      85.06 kB
+#13 3.744 apps/web build: dist/assets/index-D8tvYOrF.css                             159.00 kB │ gzip:  27.82 kB
+#13 3.744 apps/web build: dist/assets/media-iyUcxtub.js                              419.65 kB │ gzip: 108.68 kB
+#13 3.744 apps/web build: dist/assets/index-DjzL_5Ec.js                              769.91 kB │ gzip: 226.09 kB
+#13 3.744 apps/web build: 
+#13 3.745 apps/web build: [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "use client" in "../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js" may not be preserved when bundling.
+#13 3.745 apps/web build:     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m ../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js:11:1 [38;5;246m][0m
+#13 3.745 apps/web build:     [38;5;246m│[0m
+#13 3.745 apps/web build:  [38;5;246m11 │[0m "use client";
+#13 3.745 apps/web build:  [38;5;240m   │[0m ──────┬──────  
+#13 3.745 apps/web build:  [38;5;240m   │[0m       ╰──────── module level directive may not be preserved
+#13 3.745 apps/web build:  [38;5;240m   │[0m 
+#13 3.745 apps/web build:  [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+#13 3.745 apps/web build: [38;5;246m────╯[0m
+#13 3.745 apps/web build: 
+#13 3.746 apps/web build: ✓ built in 749ms
+#13 3.746 apps/web build: [plugin builtin:vite-reporter] 
+#13 3.746 apps/web build: (!) Some chunks are larger than 500 kB after minification. Consider:
+#13 3.746 apps/web build: - Using dynamic import() to code-split the application
+#13 3.746 apps/web build: - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+#13 3.746 apps/web build: - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+#13 3.780 apps/web build: Done
+#13 4.735 packages/sdk build: Done
+#13 7.017 packages/db build: Done
+#13 7.017 packages/core build$ tsc -p tsconfig.build.json
+#13 9.131 packages/core build: Done
+#13 9.132 packages/agent-runtime build$ tsc -p tsconfig.build.json
+#13 9.132 apps/server build$ tsc -p tsconfig.build.json
+#13 10.18 packages/agent-runtime build: Done
+#13 10.18 apps/worker build$ tsc -p tsconfig.build.json
+#13 11.41 apps/worker build: Done
+#13 12.53 apps/server build: Done
+#13 13.58 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#13 24.24 $ eslint .
+#13 DONE 34.3s
+
+#14 [test] exporting to image
+#14 exporting layers
+#14 ...
+
+#15 [migrate production-dependencies 1/1] RUN pnpm install --prod --offline --frozen-lockfile
+#15 0.531 Scope: all 10 workspace projects
+#15 0.573 ✓ Lockfile passes supply-chain policies (verified 36s ago)
+#15 0.573 Lockfile is up to date, resolution step is skipped
+#15 0.730 Packages: -199
+#15 0.730 --------------------------------------------------------------------------------
+#15 0.809 
+#15 0.809 devDependencies:
+#15 0.809 - @eslint/js 9.37.0
+#15 0.809 - @types/node 24.6.2
+#15 0.809 - @types/nodemailer 8.0.2
+#15 0.809 - @types/pg 8.15.5
+#15 0.809 - @types/sanitize-html 2.16.1
+#15 0.809 - @types/ws 8.18.1
+#15 0.809 - drizzle-orm 0.45.3
+#15 0.809 - eslint 9.37.0
+#15 0.809 - eslint-plugin-react-hooks 7.1.1
+#15 0.809 - fastify 5.6.1
+#15 0.809 - playwright 1.63.0
+#15 0.809 - tsx 4.20.5
+#15 0.809 - typescript 5.9.2
+#15 0.809 - typescript-eslint 8.44.1
+#15 0.809 - ws 8.22.0
+#15 0.809 
+#15 0.809 Done in 281ms using pnpm v12.6.0
+#15 DONE 1.0s
+
+#14 [test] exporting to image
+#14 ...
+
+#16 [pushmock e2e 2/3] WORKDIR /app
+#16 CACHED
+
+#9 [pushmock build 2/6] WORKDIR /app
+#9 CACHED
+
+#17 [migrate runtime  3/25] COPY --from=production-dependencies /app/node_modules ./node_modules
+#17 ...
+
+#14 [test] exporting to image
+#14 exporting layers 5.8s done
+#14 writing image sha256:6b40171af2534f77eb00e46854aac68efd5e36ab24544d6288ff4c8e2e24fc62 done
+#14 naming to docker.io/library/flux-test-tools:flux-test-1790794121-2401185 0.0s done
+#14 DONE 5.9s
+
+#18 [test] resolving provenance for metadata file
+#18 DONE 0.0s
+
+#19 [pushmock e2e 3/3] COPY --from=build /app /app
+#19 ...
+
+#17 [migrate runtime  3/25] COPY --from=production-dependencies /app/node_modules ./node_modules
+#17 DONE 3.3s
+
+#19 [pushmock e2e 3/3] COPY --from=build /app /app
+#19 DONE 3.4s
+
+#20 [pushmock] exporting to image
+#20 ...
+
+#21 [migrate runtime  4/25] COPY --from=production-dependencies /app/apps/server/node_modules ./apps/server/node_modules
+#21 DONE 0.4s
+
+#22 [migrate runtime  5/25] COPY --from=production-dependencies /app/apps/worker/node_modules ./apps/worker/node_modules
+#22 DONE 0.3s
+
+#20 [pushmock] exporting to image
+#20 ...
+
+#23 [migrate runtime  6/25] COPY --from=production-dependencies /app/packages/core/node_modules ./packages/core/node_modules
+#23 DONE 0.5s
+
+#24 [migrate runtime  7/25] COPY --from=production-dependencies /app/packages/db/node_modules ./packages/db/node_modules
+#24 DONE 0.3s
+
+#20 [pushmock] exporting to image
+#20 ...
+
+#25 [migrate runtime  8/25] COPY --from=production-dependencies /app/packages/agent-runtime/node_modules ./packages/agent-runtime/node_modules
+#25 DONE 0.3s
+
+#26 [migrate runtime  9/25] COPY --from=build /app/package.json ./package.json
+#26 DONE 0.3s
+
+#20 [pushmock] exporting to image
+#20 ...
+
+#27 [migrate runtime 10/25] COPY --from=build /app/apps/server/package.json ./apps/server/package.json
+#27 DONE 0.3s
+
+#28 [migrate runtime 11/25] COPY --from=build /app/apps/worker/package.json ./apps/worker/package.json
+#28 DONE 0.3s
+
+#20 [pushmock] exporting to image
+#20 ...
+
+#29 [migrate runtime 12/25] COPY --from=build /app/packages/contracts/package.json ./packages/contracts/package.json
+#29 DONE 0.3s
+
+#30 [migrate runtime 13/25] COPY --from=build /app/packages/core/package.json ./packages/core/package.json
+#30 DONE 0.2s
+
+#20 [pushmock] exporting to image
+#20 ...
+
+#31 [migrate runtime 14/25] COPY --from=build /app/packages/db/package.json ./packages/db/package.json
+#31 DONE 0.3s
+
+#32 [migrate runtime 15/25] COPY --from=build /app/packages/agent-runtime/package.json ./packages/agent-runtime/package.json
+#32 DONE 0.3s
+
+#20 [pushmock] exporting to image
+#20 exporting layers 4.0s done
+#20 writing image sha256:17630f28a1f96ad239f4b8bdec9a3918c4d44dcb1fd5179b8ff535666ef9ff1d 0.0s done
+#20 naming to docker.io/library/flux-e2e:flux-test-1790794121-2401185 0.0s done
+#20 DONE 4.1s
+
+#33 [migrate runtime 16/25] COPY --from=build /app/apps/server/dist ./apps/server/dist
+#33 DONE 0.3s
+
+#34 [migrate runtime 17/25] COPY --from=build /app/apps/worker/dist ./apps/worker/dist
+#34 DONE 0.4s
+
+#35 [pushmock] resolving provenance for metadata file
+#35 DONE 0.0s
+
+#36 [migrate runtime 18/25] COPY --from=build /app/apps/web/dist ./apps/web/dist
+#36 DONE 0.3s
+
+#37 [migrate runtime 19/25] COPY --from=build /app/packages/contracts/dist ./packages/contracts/dist
+#37 DONE 0.2s
+
+#38 [migrate runtime 20/25] COPY --from=build /app/packages/core/dist ./packages/core/dist
+#38 DONE 0.3s
+
+#39 [migrate runtime 21/25] COPY --from=build /app/packages/db/dist ./packages/db/dist
+#39 DONE 0.3s
+
+#40 [migrate runtime 22/25] COPY --from=build /app/packages/agent-runtime/dist ./packages/agent-runtime/dist
+#40 DONE 0.2s
+
+#41 [migrate runtime 23/25] COPY --from=build /app/packages/db/migrations ./packages/db/migrations
+#41 DONE 0.3s
+
+#42 [migrate runtime 24/25] COPY --from=build /app/infra/dist ./infra/dist
+#42 DONE 0.2s
+
+#43 [migrate runtime 25/25] RUN mkdir -p /data/files && chown -R node:node /data
+#43 DONE 0.5s
+
+#44 [migrate] exporting to image
+#44 exporting layers 4.3s done
+#44 writing image sha256:312135f253dea5ce23a67a7fbd5786859e16f4f19fff2adb0dd36893d5e93646 done
+#44 naming to docker.io/library/flux-foundation:flux-test-1790794121-2401185 0.0s done
+#44 DONE 4.4s
+
+#45 [migrate] resolving provenance for metadata file
+#45 DONE 0.0s
+ Image flux-e2e:flux-test-1790794121-2401185 Built 
+ Image flux-foundation:flux-test-1790794121-2401185 Built 
+ Image flux-test-tools:flux-test-1790794121-2401185 Built 
+ Network flux-test-1790794121-2401185_default Creating 
+ Network flux-test-1790794121-2401185_default Created 
+ Volume flux-test-1790794121-2401185_pgdata Creating 
+ Volume flux-test-1790794121-2401185_pgdata Created 
+ Container flux-test-1790794121-2401185-db-1 Creating 
+ Container flux-test-1790794121-2401185-db-1 Created 
+ Container flux-test-1790794121-2401185-migrate-1 Creating 
+ Container flux-test-1790794121-2401185-migrate-1 Created 
+ Container flux-test-1790794121-2401185-db-1 Starting 
+ Container flux-test-1790794121-2401185-db-1 Started 
+ Container flux-test-1790794121-2401185-db-1 Waiting 
+ Container flux-test-1790794121-2401185-db-1 Healthy 
+ Container flux-test-1790794121-2401185-migrate-1 Starting 
+ Container flux-test-1790794121-2401185-migrate-1 Started 
+ Volume flux-test-1790794121-2401185_files Creating 
+ Volume flux-test-1790794121-2401185_files Created 
+ Container flux-test-1790794121-2401185-files-init-run-725083c258aa Creating 
+time="2026-09-30T20:50:07+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-test-1790794121-2401185-files-init-run-725083c258aa Created 
+ Container flux-test-1790794121-2401185-migrate-run-839378362876 Creating 
+ Container flux-test-1790794121-2401185-migrate-run-839378362876 Created 
+ Volume flux-test-1790794121-2401185_pushtls Creating 
+ Volume flux-test-1790794121-2401185_pushtls Created 
+ Volume flux-test-1790794121-2401185_teststate Creating 
+ Volume flux-test-1790794121-2401185_teststate Created 
+ Container flux-test-1790794121-2401185-mailpit-1 Creating 
+ Container flux-test-1790794121-2401185-pushmock-1 Creating 
+ Container flux-test-1790794121-2401185-db-1 Running 
+ Container flux-test-1790794121-2401185-api-1 Creating 
+time="2026-09-30T20:50:09+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-test-1790794121-2401185-mailpit-1 Created 
+ Container flux-test-1790794121-2401185-pushmock-1 Created 
+ Container flux-test-1790794121-2401185-worker-1 Creating 
+ Container flux-test-1790794121-2401185-api-1 Created 
+time="2026-09-30T20:50:09+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-test-1790794121-2401185-mailpit-smtps-1 Creating 
+ Container flux-test-1790794121-2401185-mailpit-starttls-1 Creating 
+ Container flux-test-1790794121-2401185-mailpit-smtps-1 Created 
+ Container flux-test-1790794121-2401185-mailpit-starttls-1 Created 
+ Container flux-test-1790794121-2401185-worker-1 Created 
+ Container flux-test-1790794121-2401185-mailpit-1 Starting 
+ Container flux-test-1790794121-2401185-db-1 Waiting 
+ Container flux-test-1790794121-2401185-pushmock-1 Starting 
+ Container flux-test-1790794121-2401185-pushmock-1 Started 
+ Container flux-test-1790794121-2401185-pushmock-1 Waiting 
+ Container flux-test-1790794121-2401185-pushmock-1 Waiting 
+ Container flux-test-1790794121-2401185-mailpit-1 Started 
+ Container flux-test-1790794121-2401185-db-1 Healthy 
+ Container flux-test-1790794121-2401185-migrate-1 Starting 
+ Container flux-test-1790794121-2401185-migrate-1 Started 
+ Container flux-test-1790794121-2401185-migrate-1 Waiting 
+ Container flux-test-1790794121-2401185-pushmock-1 Waiting 
+ Container flux-test-1790794121-2401185-migrate-1 Waiting 
+ Container flux-test-1790794121-2401185-migrate-1 Exited 
+ Container flux-test-1790794121-2401185-api-1 Starting 
+ Container flux-test-1790794121-2401185-migrate-1 Exited 
+ Container flux-test-1790794121-2401185-api-1 Started 
+ Container flux-test-1790794121-2401185-pushmock-1 Healthy 
+ Container flux-test-1790794121-2401185-worker-1 Starting 
+ Container flux-test-1790794121-2401185-pushmock-1 Healthy 
+ Container flux-test-1790794121-2401185-mailpit-smtps-1 Starting 
+ Container flux-test-1790794121-2401185-pushmock-1 Healthy 
+ Container flux-test-1790794121-2401185-mailpit-starttls-1 Starting 
+ Container flux-test-1790794121-2401185-worker-1 Started 
+ Container flux-test-1790794121-2401185-mailpit-starttls-1 Started 
+ Container flux-test-1790794121-2401185-mailpit-smtps-1 Started 
+ Container flux-test-1790794121-2401185-mailpit-1 Waiting 
+ Container flux-test-1790794121-2401185-pushmock-1 Waiting 
+ Container flux-test-1790794121-2401185-mailpit-starttls-1 Waiting 
+ Container flux-test-1790794121-2401185-mailpit-smtps-1 Waiting 
+ Container flux-test-1790794121-2401185-migrate-1 Waiting 
+ Container flux-test-1790794121-2401185-api-1 Waiting 
+ Container flux-test-1790794121-2401185-mailpit-1 Healthy 
+ Container flux-test-1790794121-2401185-pushmock-1 Healthy 
+ Container flux-test-1790794121-2401185-migrate-1 Exited 
+ Container flux-test-1790794121-2401185-mailpit-starttls-1 Healthy 
+ Container flux-test-1790794121-2401185-mailpit-smtps-1 Healthy 
+ Container flux-test-1790794121-2401185-api-1 Healthy 
+ Container flux-test-1790794121-2401185-test-run-eb199743eae1 Creating 
+ Container flux-test-1790794121-2401185-test-run-eb199743eae1 Created 
+$ tsx --test --test-concurrency=1 tests/app/*.test.ts
+▶ agent principals
+  ✔ an agent with a scoped grant reads only its project (289.02072ms)
+  ✔ a person-owned agent is capped by its owner and stops when the owner leaves (160.778722ms)
+✔ agent principals (450.690784ms)
+▶ agents stay inside current project grants
+  ✔ an agent without a writable grant cannot create drafts (110.682855ms)
+  ✔ revoking or narrowing a grant removes the agent access to its own drafts (162.855728ms)
+  ✔ an explicit deny hides the agent own drafts (88.491526ms)
+✔ agents stay inside current project grants (362.479489ms)
+▶ access changes are serialized with draft writes (two connections)
+  ✔ (a) revoking an agent contributor grant — write first (114.202405ms)
+  ✔ (b) inserting a denied grant for a member without a grant row — write first (130.456276ms)
+  ✔ (b) replacing an agent grant with denied — write first (126.954586ms)
+  ✔ (c) narrowing a member's default access with a viewer grant — write first (130.912018ms)
+  ✔ (c) changing a member to guest removes default project access — write first (152.446295ms)
+  ✔ (c) removing the member — write first (137.288318ms)
+  ✔ (a) revoking an agent contributor grant — change first (96.724482ms)
+  ✔ (b) inserting a denied grant for a member without a grant row — change first (148.728143ms)
+  ✔ (b) replacing an agent grant with denied — change first (124.558398ms)
+  ✔ (c) narrowing a member's default access with a viewer grant — change first (142.157983ms)
+  ✔ (c) changing a member to guest removes default project access — change first (123.906097ms)
+  ✔ (c) removing the member — change first (115.388439ms)
+✔ access changes are serialized with draft writes (two connections) (1544.702805ms)
+▶ policy contract
+  ✔ authorize distinguishes invisible from forbidden and visibleFilter matches list results (129.141463ms)
+✔ policy contract (129.344133ms)
+▶ database integrity
+  ✔ composite foreign keys reject cross-workspace links (111.050526ms)
+✔ database integrity (111.263967ms)
+▶ workspace access policy over HTTP
+  ✔ the creator owns a new workspace and non-members cannot see it (38.49228ms)
+  ✔ a new draft is private: other members, admins and guests cannot see it (147.470409ms)
+  ✔ sharing to a restricted project reveals the draft only to project grantees (158.424763ms)
+  ✔ a restricted project is invisible to a member without a grant in get, list and count (102.77532ms)
+  ✔ a viewer can read but not write; a contributor can write (139.016503ms)
+  ✔ a guest sees only explicitly granted projects and no workspace-wide drafts (159.391627ms)
+  ✔ owners and admins differ in authority over members (169.514868ms)
+  ✔ cross-workspace share, move and link are rejected (140.503328ms)
+  ✔ removing a membership or a grant applies on the very next request (182.340528ms)
+  ✔ list counts and pages exclude rows the caller cannot see (205.865212ms)
+  ✔ an explicit deny wins over membership and admin roles (180.573123ms)
+  ✔ a project names exactly the people who can read it, for everyone who can read it (#117) (206.371043ms)
+✔ workspace access policy over HTTP (2179.101752ms)
+▶ sourced personal agent proposals
+  ✔ source, audience, idempotency and current grant protect a proposal (190.806065ms)
+  ✔ invalid command shapes and source revision range are domain errors (0.308511ms)
+✔ sourced personal agent proposals (473.395045ms)
+▶ architecture boundaries
+  ✔ the repository has no dependency violation outside the recorded allowlist (32.13398ms)
+  ✔ every allowlist entry names its tracking issue and a reason (0.340921ms)
+  ✔ the push use cases in core stay free of adapters, including through helpers (0.956353ms)
+  ✔ the sketch use cases in core stay free of adapters, including through helpers (#69) (0.589502ms)
+  ✔ the direct-message use cases in core stay free of adapters, including through helpers (#107) (0.462912ms)
+  ✔ the rules reject each kind of boundary violation (self-test) (0.479801ms)
+  ✔ the allowlist comparison reports new and fixed violations (0.150011ms)
+✔ architecture boundaries (36.072682ms)
+✔ conversation and material commits reach only current project readers through stream and replay (524.288784ms)
+▶ project capture and inline conversation
+  ✔ private draft remains private; selected redacted text becomes a versioned project material (138.934233ms)
+  ✔ two people send inline, retry safely, and keep a historical material citation (209.497383ms)
+  ✔ material publication retry and access revocation never expose cached project content (77.836652ms)
+✔ project capture and inline conversation (644.229268ms)
+▶ direct messages
+  ✔ one 1:1 DM per pair: repeated and concurrent opens from either side return it (158.370343ms)
+  ✔ only participants see a DM: owners, admins, members and other tenants get 404 and no list entry (131.34451ms)
+  ✔ messages keep #36 ordering, clientMessageId retries, Idempotency-Key replays and paging (263.696272ms)
+  ✔ group DMs: named, renamed with If-Match, readable by exactly their participants (127.456817ms)
+  ✔ leaving removes access on the next request and in the stream; old messages stay hidden (1606.860108ms)
+  ✔ a 1:1 whose other person left is not reopened for them: 409, nothing sent, until they reopen it (128.29609ms)
+  ✔ removal from the workspace ends DM access at once and is not undone by rejoining (1822.236369ms)
+✔ direct messages (4545.491567ms)
+▶ DM sketches
+  ✔ starting a sketch from selected messages binds it to the DM with provenance; outsiders get 404 (1041.038455ms)
+  ✔ leaving or removal ends access on the next request and in the stream (1872.209425ms)
+  ✔ a 1:1 whose other person left is read-only: nothing is started or copied until they reopen it (155.121463ms)
+  ✔ promotion previews the exact audience, copies only the sketch, and never syncs the DM (302.718414ms)
+  ✔ search finds DM sketches and thoughts under the DM, opens them in the DM, and only for participants (185.422248ms)
+(node:281) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+  ✔ promotion locks its audience: a leave waits for the copy, and a leave before it makes the preview stale (1014.461272ms)
+  ✔ promotion into an existing project locks its grants: a grant change waits, or makes the preview stale (1014.496852ms)
+  ✔ a member copies into a project they can change; the preview names who is left out (261.931347ms)
+✔ DM sketches (6240.229879ms)
+▶ project docs with immutable versions, links and backlinks
+  ✔ a doc keeps immutable versions with author, time and reason; old citations stay (133.933117ms)
+(node:307) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+  ✔ access follows the project: viewers read, outsiders see nothing, agents read but do not write (112.856342ms)
+  ✔ concurrent edits: one wins, the other gets 409 with the latest version; retries are idempotent (114.494797ms)
+  ✔ links reach work, decisions, results, messages, sketches and docs; backlinks are visible; other projects never leak (226.319855ms)
+  ✔ Markdown is sanitized on the server: scripts, handlers, javascript: and data: URLs never render (42.438383ms)
+  ✔ Add to docs from a result or decision keeps the source, and a newer version says what changed (194.005315ms)
+  ✔ upsertSection replaces only the cited section and keeps other text byte for byte (0.507451ms)
+  ✔ events carry ids only and reach project readers; the workspace list uses the visibility filter (415.117144ms)
+✔ project docs with immutable versions, links and backlinks (1524.448581ms)
+▶ project export
+  ✔ only a project manager can export; others get 403, an outsider 404 (22.827121ms)
+  ✔ the document holds the project with versions, sketches, work and links, and nothing else (96.463921ms)
+  ✔ the bundle is a tar.gz with project.json, docs as Markdown, the schema and a checked manifest (17.149114ms)
+✔ project export (941.538094ms)
+▶ identity configuration
+  ✔ consent display rejects modified or expired signed OAuth queries (4.659784ms)
+  ✔ requires an explicit public origin, a long secret and valid proxy ranges (4.718285ms)
+  ✔ origin policy accepts only the configured origin for state changes (0.187511ms)
+✔ identity configuration (10.339653ms)
+▶ identity server behaviour
+  ✔ unauthenticated MCP calls advertise the protected resource (95.655788ms)
+  ✔ OAuth token endpoint accepts form encoding and rejects an invalid grant itself (29.332202ms)
+  ✔ publishes OAuth and MCP discovery only at the expected paths (20.344474ms)
+  ✔ password reset reports unavailable when SMTP is not configured (15.766799ms)
+  ✔ an https public origin issues Secure, HttpOnly, SameSite cookies (110.613955ms)
+  ✔ X-Forwarded-For is believed only from a configured trusted proxy (179.271799ms)
+✔ identity server behaviour (451.586537ms)
+▶ human identity
+  ✔ register, sign in, authenticated request and sign out (212.145081ms)
+  ✔ wrong password and unknown account are rejected without a session (194.718177ms)
+  ✔ sessions are listed without tokens and revocation applies on the next request (335.289025ms)
+  ✔ password reset through SMTP uses a single-use expiring token (576.931588ms)
+  ✔ reset request for an unknown email gives the same answer and sends nothing (505.429715ms)
+  ✔ state-changing requests from a foreign origin are rejected (94.883186ms)
+  ✔ spoofed forwarding headers do not set the recorded client address (144.49176ms)
+✔ human identity (2064.987656ms)
+▶ live media admission (#128)
+  ✔ media configuration keeps the SFU private and points browsers at the gate (1.083183ms)
+  ✔ a grant carries only an opaque admission bound to the requesting auth session (403.418877ms)
+  ✔ the gate admits only the same cookie session and forwards nothing else to the SFU (614.842926ms)
+  ✔ ordinary reconnect and an SFU-refreshed token work; lost project access is refused at the gate (409.312646ms)
+  ✔ sign-out revokes that session, closes its sockets and removes only its participant (561.288459ms)
+  ✔ ending one session never removes the same person connected through another session (737.406218ms)
+  ✔ revoking a session from another device and resetting the password end media too (568.145871ms)
+  ✔ reconciliation removes participants without a standing admission and keeps the rest (496.665778ms)
+  ✔ the production adapter: one identity per admission, presence per person, leave removes all of them (11.181795ms)
+  ✔ a held revocation never removes a newer session of the same person that joined the same room meanwhile (462.775923ms)
+  ✔ two sessions of one person in one room: Leave on one ends only that one, presence shows one person (521.054394ms)
+  ✔ reconciliation retires a pre-#128 per-person participant and keeps a standing admission (414.294851ms)
+✔ live media admission (#128) (5293.409168ms)
+✔ a live sketch anchor stays project-scoped and its read lock covers presence delivery (287.549536ms)
+✔ live discovery pages only currently authorized project anchors and reports SFU uncertainty (573.798419ms)
+✔ live discovery does not return presence for a session ended during the SFU read (155.096003ms)
+✔ wiki doc is a project-bound live anchor; non-doc, foreign and hidden anchors are refused (714.923568ms)
+✔ a live invitation reaches only its recipient, once, with who, where and the exact link (378.103209ms)
+✔ an invitation that no longer applies when the worker reaches it notifies nobody; inbox-off is respected (1154.415858ms)
+✔ invitation is unique per live session and recipient, authorized at the current anchor (2.352268ms)
+✔ private or revoked anchor denies invites before write and hides the recipient (0.726532ms)
+✔ later reply is idempotent, and a different reply cannot overwrite it (0.829393ms)
+✔ text reply points to the ordinary project conversation without a message, media grant or copied title (0.226131ms)
+✔ recipient inbox fills a page past hidden pending invitations (5.856688ms)
+✔ a full hidden inbox scan returns a generic failure without exposing its cursor (5.905449ms)
+✔ reply rechecks current access and session state, including retries (0.420271ms)
+✔ only a person can invite or reply, and malformed IDs stop before storage (0.272531ms)
+✔ database invitation is idempotent, constrained to IDs and choice, and rejects a private recipient (530.416733ms)
+✔ invitation transaction blocks revocation until its authorized write commits (458.626779ms)
+✔ recipient inbox cursor keeps PostgreSQL microseconds and walks equal-time rows (469.055712ms)
+✔ concurrent different replies perform one compare-and-set and preserve the winner (375.898791ms)
+✔ the limiter allows 20 per rolling minute per person, says when to retry and stays bounded (0.907703ms)
+✔ the 21st join within the window is 429 LIVE_JOIN_RATE_LIMITED with Retry-After; others are unaffected (626.337022ms)
+✔ project and creator session caps serialize concurrent starts while allowing idempotent replay (512.238507ms)
+✔ authoritative occupancy, reconnect grace, durable ending and crash recovery (227.727279ms)
+✔ never-joined session expires after its longer grace and releases a creator slot (195.247418ms)
+✔ sweep reaches sessions beyond 32 rooms whose SFU presence stays unknown (659.685216ms)
+✔ recipient pages only current, readable presentation refs after hidden sources and loses replay on revoke (1403.358943ms)
+✔ a confirmed lost room rotates only its session and concurrent joins use one new generation (469.978535ms)
+✔ an uncertain SFU result never rotates or grants a room (272.70956ms)
+✔ a failed lost-room retirement stays fenced and crash recovery completes it (301.188629ms)
+✔ lost-room join rechecks policy after repair before issuing a replacement token (310.788399ms)
+✔ grant revocation retires the old room before commit and leaves only a new-generation owner room (316.550536ms)
+✔ an in-flight join finishes before the revocation fence and old-room deletion (357.594675ms)
+✔ workspace membership removal retires all old media while a remaining member rejoins a new generation (438.624767ms)
+✔ failed ending-room deletion blocks a policy change before its mutation commits (297.226287ms)
+✔ API without an SFU rejects revocation while a live room may still exist (256.142358ms)
+✔ an SFU failure after policy commit returns an error and retains the fence for reconciliation (308.26042ms)
+✔ no-media access mutation holds the project guard until commit against concurrent admission (372.857832ms)
+✔ no-media guard rolls back a failed access mutation under the same lock (300.391346ms)
+✔ SFU delete failure leaves a durable admission fence; recovery rotates without applying the change (377.594127ms)
+✔ a standard UUID can start a live session; malformed context and retry ids are rejected (1.363375ms)
+✔ live presentation accepts only current, project-readable source versions inside the write transaction (430.854963ms)
+✔ durable live sessions bind to one project and store only idempotent references (411.019371ms)
+✔ signed webhook is bounded, current-generation-only, and replay-safe; reconciliation remains a hint (247.773003ms)
+▶ exact Flux migration ledger (#118)
+  ✔ the shipped SQL manifest, embedded versions and running database agree (27.261565ms)
+  ✔ duplicate numbers, invalid SQL names and a stale highest-version constant fail before execution (0.380481ms)
+  ✔ a newly landed lower-numbered migration may fill a reserved gap after a higher one (0.226911ms)
+  ✔ phantom rows, missing files and a silently skipped file fail even if max is correct (0.195011ms)
+  ✔ legacy self-recording is allowed; wrong embedded inserts or deletions fail within a transaction (10.932194ms)
+✔ exact Flux migration ledger (#118) (39.912195ms)
+▶ notification generation cursor
+  ✔ a transient failure stops before the event and a retry delivers it once (2.439318ms)
+  ✔ an event that keeps failing is dead-lettered after bounded attempts and the rest continue (0.725503ms)
+✔ notification generation cursor (4.043252ms)
+▶ quiet hours across daylight-saving transitions
+  ✔ Warsaw spring-forward, end after the gap (1.902866ms)
+  ✔ Warsaw spring-forward, end inside the gap → first valid instant after it (0.488702ms)
+  ✔ Warsaw fall-back, end after the repeat (0.412531ms)
+  ✔ Warsaw fall-back, repeated end → first occurrence after now (0.378501ms)
+  ✔ New York spring-forward (0.471762ms)
+  ✔ New York fall-back (0.502371ms)
+  ✔ New York fall-back, repeated end → first occurrence (0.444651ms)
+  ✔ Tokyo, no DST, across midnight (0.429491ms)
+  ✔ Tokyo, after midnight (0.340411ms)
+  ✔ UTC same-day window, last minute (0.313761ms)
+  ✔ UTC, at the end: already outside (0.286831ms)
+  ✔ outside quiet hours: now (0.27422ms)
+  ✔ a one-minute outside gap is not stepped over (2.337637ms)
+✔ quiet hours across daylight-saving transitions (9.117948ms)
+▶ preference rules
+  ✔ quiet hours hold push and email until they end, in the person's own time zone (2.425147ms)
+  ✔ changes are validated and one unsubscribe keeps the other address of "both" (1.005773ms)
+  ✔ the email is generic: a fixed subject, an in-app link and one-click unsubscribe (0.180431ms)
+✔ preference rules (4.224873ms)
+▶ notifications from committed events
+  ✔ mentions, questions and replies reach the right people once, with why and a link to the message (344.228203ms)
+  ✔ a direct message, assigned work and work to review each notify with their own reason (397.89353ms)
+  ✔ each (person, event) is stored once, even when the generator processes events again (1057.205835ms)
+  ✔ a muted place notifies nothing, on any channel; unmuting brings it back (695.393157ms)
+  ✔ a reason turned off for the inbox stays out of it; turned off everywhere, nothing is stored (620.739595ms)
+✔ notifications from committed events (3449.606111ms)
+▶ email and push delivery
+  ✔ a mention emails the sign-in address a generic notice with no private text and a working unsubscribe (2417.088853ms)
+  ✔ access is rechecked before email and push: someone removed meanwhile receives nothing (438.154716ms)
+  ✔ push follows the same preferences: turned off for a reason, the device gets nothing (3614.321155ms)
+  ✔ retries never send an email twice (1024.135672ms)
+  ✔ an extra address is verified by a single-use link, receives email as chosen and can never sign in (3285.148269ms)
+  ✔ read-all quiets the inbox without deleting anything (21.989068ms)
+✔ email and push delivery (11015.363701ms)
+▶ recipient matrix and operator TLS (#113)
+  ✔ two SSO-style people get exactly the mailboxes they chose: sign-in only, extra only, both, in-app only (6185.554368ms)
+  ✔ the operator TLS path works: STARTTLS (required), with the certificate verified (56.682757ms)
+  ✔ the operator TLS path works: implicit TLS (smtps), with the certificate verified (49.794986ms)
+  ✔ a server that requires TLS refuses a plain-text send, and the failure is reported, not dropped (1.594955ms)
+  ✔ a failed send stays queued for retry and settings say email delivery failed (546.297932ms)
+✔ recipient matrix and operator TLS (#113) (6840.389509ms)
+▶ review fixes: exact unsubscribe, bounded verification, quiet hours at delivery
+  ✔ two concurrent partial preference changes both persist (row-locked merge) (408.710074ms)
+  ✔ an old unsubscribe link cannot stop a newer address, or a changed sign-in address (1577.160246ms)
+  ✔ verification sends are bounded across add, replace and resend, also when requests race (1594.57221ms)
+  ✔ quiet hours switched on after a job was queued hold its email and push until they end (373.619645ms)
+✔ review fixes: exact unsubscribe, bounded verification, quiet hours at delivery (3978.925091ms)
+✔ issued OAuth bearer reads and proposes through MCP, then connection revocation rejects it immediately (707.757686ms)
+▶ Anthropic personal compute adapter (#68, local mock server: no provider pass is claimed)
+  ✔ one bounded Messages request: pinned model, max_tokens 1500, low effort, no tools, the owner's key (21.098895ms)
+  ✔ cache tokens are counted conservatively as input and a context-window stop counts as truncated (6.520521ms)
+  ✔ the preflight uses the token-counting endpoint with the same input and key (5.948139ms)
+  ✔ SDK retries are off: every failure is exactly one request; once sent, the charge is unknown (10.089291ms)
+  ✔ Stop aborts the HTTP request; a timeout and a lost connection keep the charge unknown (2024.42016ms)
+  ✔ nothing is sent without a usable key or outside the O-008 limits (0.384101ms)
+  ✔ ANTHROPIC_BASE_URL and ANTHROPIC_API_KEY in the environment never redirect or replace the owner's key (1.504025ms)
+✔ Anthropic personal compute adapter (#68, local mock server: no provider pass is claimed) (2075.79944ms)
+▶ personal-run composition: production fails closed, the mock switch is test only
+  ✔ without the switch both apps compose no connections and the provider off (0.226401ms)
+  ✔ the switch needs the test flag and a plain mock origin, and anything else refuses to start (0.262101ms)
+✔ personal-run composition: production fails closed, the mock switch is test only (0.642192ms)
+▶ personal run output rules
+  ✔ citations count only for supplied sources (0.989963ms)
+  ✔ a proposal may finish only a supplied work item and is dropped when malformed (0.320001ms)
+  ✔ cost uses the O-008 rate and the nominal maximum stays under the default reservation (0.115651ms)
+✔ personal run output rules (2.084547ms)
+▶ personal assistant runs (#68, fake compute: no provider pass is claimed)
+  ✔ AC-4: the production composition fails closed with an explicit state and human work continues (50.712018ms)
+  ✔ AC-1: another person reaches the owner's assistant by no route, and no model call or usage happens for the owner (509.106957ms)
+  ✔ AC-5: DMs, private captures and other projects never reach the input or the output; sources are openable by the audience (197.573226ms)
+  ✔ AC-2: denied, stopped-before-read, paused, capped and revoked runs cost zero; a retry key never charges twice (863.670461ms)
+  ✔ AC-3: once Maurycy connects, his run uses only his connection and cap; Hubert's usage does not change (92.783449ms)
+  ✔ AC-6: revoking the grant or removing the member between read and commit commits nothing (304.068778ms)
+  ✔ AC-6: nothing leaves for preflight counting once the grant, a Stop or a pause arrives after the read (308.500372ms)
+  ✔ AC-7: only a person with authority accepts an assistant proposal; the result records who drafted it (328.015222ms)
+  ✔ progress: every state change of a run reaches only its owner; others learn of it only from the committed answer (127.945278ms)
+  ✔ a failed preflight count ends the run at zero cost with nothing dispatched (50.339677ms)
+✔ personal assistant runs (#68, fake compute: no provider pass is claimed) (3679.784678ms)
+✔ in-flight pause during token counting commits promptly, aborts the request and ignores a late answer (785.263267ms)
+✔ in-flight pause during a message commits promptly, aborts the request and ignores a late answer (677.0812ms)
+✔ in-flight permanent rule revocation commits promptly, aborts the request and ignores a late answer (686.5251ms)
+✔ in-flight key connection revocation commits promptly, aborts the request and ignores a late answer (681.188923ms)
+✔ in-flight agent grant removal commits promptly, aborts the request and ignores a late answer (677.238851ms)
+✔ in-flight owner project access loss commits promptly, aborts the request and ignores a late answer (693.554991ms)
+✔ in-flight source revision commits promptly, aborts the request and ignores a late answer (692.535469ms)
+✔ in-flight unlinked human work revision commits promptly, aborts the request and ignores a late answer (752.845466ms)
+✔ in-flight unlinked human thought revision commits promptly, aborts the request and ignores a late answer (723.572706ms)
+✔ the final locked check rejects a response after a rapid pause and resume (618.339167ms)
+✔ an input-token refusal records not-run with zero usage and releases only its unspent reservation (487.457289ms)
+(node:957) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+✔ bounded current human context preserves explicit references and excludes private, draft, agent and other-project data (1864.918182ms)
+✔ an explicit thought uses its actual version and sketch identity; a text edit invalidates the queued snapshot (324.082291ms)
+✔ unlinked work revisions invalidate queued context, and lost owner access cannot select a new candidate (330.265109ms)
+▶ controlled background comparison dispatch (#58)
+  ✔ invalid citation records quiet insufficient evidence and usage, then a valid sourced proposal stays quiet and project-scoped (1155.737832ms)
+  ✔ provider outage preserves uncertainty; stale source, missing key and lost grant stop before any request (493.327639ms)
+✔ controlled background comparison dispatch (#58) (2030.864591ms)
+▶ negative-result candidate and budget reservation (#58)
+  ✔ a permitted peer’s committed negative result uses the owner’s standing rule; positive and proposal events do not trigger (125.78495ms)
+  ✔ concurrent reservation charges once and never retries an unknown charge (137.177744ms)
+  ✔ changed source, paused rule and revoked agent access prevent reservation (216.633325ms)
+  ✔ an agent-origin result cannot be enqueued even when an agent ID is supplied (12.579028ms)
+  ✔ a fresh rule after revocation cannot reset the owner’s unknown charges or daily use (97.045943ms)
+✔ negative-result candidate and budget reservation (#58) (849.026865ms)
+✔ real HTTP adapter sends a fixed no-tool structured request and parses a text block after thinking (27.596813ms)
+✔ HTTP adapter retains observed usage for insufficient and malformed structured answers without raw output (3.3461ms)
+✔ provider 503 has no automatic retry and does not reveal its error body (1.959197ms)
+✔ a cited project message opens the exact message in its conversation (0.356611ms)
+▶ owner standing comparison rule
+  ✔ owner alone persists a fixed audience, purpose, effect and bounded cost (53.564732ms)
+  ✔ owner-only payer consent stores authenticated ciphertext and safe metadata (58.218506ms)
+  ✔ activation checks owner connection, grant, budget and execution readiness; pause/revoke are versioned (101.634017ms)
+  ✔ revocation preserves its row while concurrent fresh authorizations admit only one paused rule (40.439023ms)
+✔ owner standing comparison rule (502.490498ms)
+✔ outcomes page is project-authorized and omits inaccessible inspected/cited titles with a count (1.369534ms)
+✔ legacy inspected metadata remains unknown even when a cited subset exists (0.155621ms)
+✔ revoked project access denies the page before any outcomes or references are read (0.396031ms)
+✔ dismissal needs current write access and expected version, and returns authorized references (0.374421ms)
+✔ owner usage has no caller-controlled owner selector and agents cannot read it (0.429232ms)
+✔ invalid page bounds never reach storage (0.20326ms)
+✔ usage enriches only current allowed exact pairs, with sorted locks and unchanged owner accounting (0.445122ms)
+✔ unexpected usage policy and metadata failures propagate rather than claim successful redaction (0.289341ms)
+✔ quiet insufficient evidence keeps the full actual inspected vector, pages and dismisses without work or compute (785.154082ms)
+✔ truncated and malformed paid answers retain usage and publish only fixed safe insufficient copy (988.683727ms)
+✔ unopenable inspected and cited references lose their titles; legacy complete vectors remain unknown (728.822172ms)
+✔ terminal pre-paid refusals persist zero usage without retry, while owner accounting survives access loss and disconnection (423.926571ms)
+✔ usage metadata requires the exact project/result pair and follows current names (443.391959ms)
+✔ recovery distinguishes no dispatch intent from possible spending at the accepted inactivity bound (1.083163ms)
+✔ a fresh or terminal row cannot be released through a misconfigured recovery port (0.396181ms)
+✔ failed terminal persistence rejects the unit rather than reporting successful recovery (0.119551ms)
+✔ invalid recovery time never reaches metadata storage (0.10097ms)
+✔ persistent pre-intent recovery is zero cost, post-intent recovery retains uncertainty/history, and fresh rows stay reserved (459.625788ms)
+✔ recovery skips active row locks, serializes replicas, pages beyond 100 and is idempotent (455.985967ms)
+✔ a recovered fingerprint is not scheduled again and an old process cannot publish or release its terminal history (776.548415ms)
+✔ human edit bursts extend quiet time but never exceed the first-change maximum (0.590532ms)
+✔ agent/proposal/private-layout event kinds never request source metadata (0.817292ms)
+✔ both cursor recovery directions page every enabled project once (3.864962ms)
+✔ reconsideration checks current policy before selection and pages beyond 100 results (0.981263ms)
+✔ a committed result is not a grant to bypass quiet time; collection sees no uncommitted event (351.279451ms)
+✔ a human edit burst selects only the latest fingerprint and stops obsolete queued rows at zero cost (272.871984ms)
+✔ continuous edits are reconsidered at fifteen minutes from the first change (643.999835ms)
+✔ an explicit published v1 stays pinned beside current v2; a mid-count v3 edit ends the candidate before any paid call (1013.134311ms)
+✔ unpublishing or deleting a cited historical version refuses at zero cost without silently dropping it (575.577929ms)
+✔ draft save/edit, private sketches, layout and agent events do not dirty project evidence (290.572648ms)
+✔ paused or revoked-access rules are excluded before metadata selection (508.286646ms)
+✔ two consumers, restart and more than 100 negative results create each candidate once (565.963559ms)
+✔ unchanged dismissed/unknown candidates never retry; a new human revision preserves their accounting and permits a new fingerprint (682.560772ms)
+✔ cursor ahead of a rebuilt log recovers and logs every enabled project beyond the first page once (292.795874ms)
+▶ push payload privacy (core)
+  ✔ full text only while the recipient can read the source in its workspace (0.844292ms)
+  ✔ a recipient who lost read access gets the generic payload; one who cannot see the source gets nothing (3.40218ms)
+  ✔ an ended session removes the subscription without sending (0.136501ms)
+  ✔ the inbox answers 404 for an unreadable source and for someone else's id (0.498621ms)
+✔ push payload privacy (core) (5.582406ms)
+▶ push configuration
+  ✔ the sender needs all three VAPID values, a matching pair and an operator contact (1.699645ms)
+  ✔ the VAPID JWT is reused per push service for hours, not signed per request (2.896838ms)
+  ✔ endpoints must be public https push service URLs and links must stay in Flux (0.208521ms)
+✔ push configuration (31.375475ms)
+▶ push subscriptions API
+  ✔ requires a signed-in user (22.946839ms)
+  ✔ publishes the configured VAPID public key (109.23426ms)
+  ✔ subscribe is idempotent per endpoint, stores user, session and device, and never echoes keys (126.601322ms)
+  ✔ rejects unsafe endpoints, invalid keys and cross-origin requests (101.701328ms)
+  ✔ another user cannot delete my subscription; I can (215.465442ms)
+  ✔ a browser that signs in to another account moves its subscription to that account (212.662823ms)
+✔ push subscriptions API (789.312037ms)
+▶ push delivery through the worker
+  ✔ sends a VAPID-signed, encrypted notification to the push service and records success (2139.097286ms)
+  ✔ deletes a subscription whose push service answers 410 Gone (1381.208153ms)
+  ✔ push jobs have bounded retries (2.726508ms)
+✔ push delivery through the worker (3523.307678ms)
+▶ push delivery rechecks (in process)
+  ✔ does not send when the subscription now belongs to someone else (228.56893ms)
+  ✔ account deletion deletes the subscriptions; a queued send is not delivered (240.997618ms)
+  ✔ an expired session stops delivery and removes the subscription (128.194718ms)
+  ✔ 404 removes the subscription, 503 is retried, 400 is recorded without retry (413.69536ms)
+  ✔ refuses endpoints that resolve to private addresses unless explicitly allowed (132.596701ms)
+  ✔ skips quietly when push is unavailable; the inbox row remains (122.857871ms)
+✔ push delivery rechecks (in process) (1267.432229ms)
+▶ in-app inbox
+  ✔ lists my notifications newest first and marks them read; others cannot (255.199981ms)
+✔ in-app inbox (255.368912ms)
+▶ notification audience follows the source (access policy)
+  ✔ a notification needs a source the recipient can read now (324.127779ms)
+  ✔ grant revoked after the push was queued: no push is sent and the inbox hides it (404 by id) (407.645892ms)
+  ✔ a draft source follows draft visibility; a denied grant hides project notifications (428.457244ms)
+  ✔ removal from the workspace hides every notification from that workspace (385.930876ms)
+✔ notification audience follows the source (access policy) (1546.637552ms)
+▶ subscriptions are bound to the signed-in session
+  ✔ sign-out deletes this session's subscription and a queued send is not delivered (140.203233ms)
+  ✔ revoking one session deletes only that session's subscription (221.361059ms)
+  ✔ revoke-others deletes the other sessions' subscriptions (202.523832ms)
+  ✔ a password reset deletes every session's subscriptions (334.915152ms)
+  ✔ re-subscribing after signing in again binds the device to the new session (197.332296ms)
+✔ subscriptions are bound to the signed-in session (1096.796274ms)
+▶ web app manifest and icons
+  ✔ the manifest is valid JSON with installability fields, served as a manifest (39.002518ms)
+  ✔ every manifest icon and the Apple touch icon is a PNG of the declared size (8.686386ms)
+  ✔ the app page links the manifest, icons and iOS standalone metadata (1.368804ms)
+✔ web app manifest and icons (50.089611ms)
+▶ service worker delivery
+  ✔ sw.js is served from the root scope, uncached, with a precache list and version (24.336443ms)
+  ✔ hashed assets are immutable while HTML and the offline page revalidate (8.256215ms)
+✔ service worker delivery (32.830909ms)
+▶ private recap: scope, period, snapshot and digest (#133)
+  ✔ a first visit starts at the beginning of the project and says so (30.659413ms)
+  ✔ whole project or only what concerns me (121.311176ms)
+  ✔ a stable snapshot: `until` keeps what the reader is looking at (49.62809ms)
+  ✔ "Summarize" quotes whole messages per conversation and the recorded results (107.239514ms)
+  ✔ a chosen period ignores the return point; the start is reported (65.507908ms)
+  ✔ it stays private: per person, current access only, nothing shared (37.317563ms)
+  ✔ unknown scope or period is refused (1.827946ms)
+✔ private recap: scope, period, snapshot and digest (#133) (714.250668ms)
+▶ return view: since you left
+  ✔ a place never viewed has no return point; viewing saves one on the server (73.556982ms)
+  ✔ changes are grouped in human language, each links to its source, and one next step has a reason (306.773917ms)
+  ✔ doc changes (#112) are one item in human language that opens what changed (110.833175ms)
+  ✔ saving moves the point forward only; the person may move it back once (87.418894ms)
+  ✔ revoked access removes items; a restricted project leaks nothing to an outsider (129.13526ms)
+✔ return view: since you left (928.832736ms)
+▶ return view: hidden rows never hint at anything
+  ✔ hundreds of now-hidden audience rows give the same summary as never having had them (7486.191515ms)
+✔ return view: hidden rows never hint at anything (7486.437716ms)
+▶ If-Match preconditions
+  ✔ draft responses carry the version as ETag (19.008377ms)
+  ✔ a missing precondition is 428 and a stale one is 409 with the latest version; neither writes (63.625432ms)
+  ✔ share and move need the expected version too (49.68193ms)
+  ✔ authorization is decided before the precondition, so nothing leaks (16.098479ms)
+✔ If-Match preconditions (305.610773ms)
+▶ idempotency keys
+  ✔ a matching retry returns the stored response and creates one row (21.708676ms)
+  ✔ the same key with a different body is rejected with 422 (15.335806ms)
+  ✔ keys are scoped by principal, workspace and operation (58.435837ms)
+  ✔ a retried PATCH is not executed again (41.110644ms)
+  ✔ concurrent duplicates execute once (19.248718ms)
+  ✔ a replay after losing access is denied like any invisible object and reveals nothing (216.417694ms)
+  ✔ draft create and share replays are denied after the grant is replaced by a deny (263.120795ms)
+  ✔ failures are not stored, invalid keys are rejected, and expired keys are cleaned up (141.356587ms)
+✔ idempotency keys (952.218637ms)
+✔ sample command commits a domain row, event, outbox and queued job atomically (66.559391ms)
+✔ forced failure after insert leaves no domain row or related job (36.44318ms)
+✔ test deployment failure header rolls back; the public command body rejects failure flags (48.565577ms)
+▶ search: one query across Flux, only what you may read
+  ✔ a contributor finds every kind she may read, with places, labels and exact targets (18.801467ms)
+  ✔ a member outside the restricted project and the DM finds only the open project, and nothing hints at the rest (33.982862ms)
+  ✔ private drafts and sketches reach only their author; owners do not see other people’s private drafts or DMs they are not in (70.349682ms)
+  ✔ people are found by name by those who may read the members, and a person filters by author (32.88071ms)
+  ✔ type filters narrow results while counts cover every type (31.834466ms)
+  ✔ an edit is searchable at once, and an old material version is still found at the version it was (59.167749ms)
+  ✔ docs are found at the version that matched, as drafts or published, only by project readers (98.971289ms)
+  ✔ revoking access removes results on the very next search, and leaving a DM removes its messages (137.668856ms)
+  ✔ ranking: a title match comes before a mention in a body; typing a prefix already finds it (77.870575ms)
+  ✔ queries are data: operators, quotes and SQL never break or widen the search (137.303615ms)
+  ✔ every word of the query can find a match: long or-lists, a quoted "or", one-letter words (130.086863ms)
+  ✔ pages follow a sealed cursor: no repeats, no gaps, and a cursor works only for its reader and query (436.97806ms)
+✔ search: one query across Flux, only what you may read (1771.725122ms)
+{"search":"saturation","before":{"rows":103,"indexRows":4,"searchBuffers":140,"buffers":158,"indexScans":2,"lookups":22,"nodes":["Nested Loop","Result","Append","Bitmap Heap Scan projects rows=2","Bitmap Index Scan projects_workspace_id_id_key","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Nested Loop","Index Only Scan dms_workspace_id_id_key rows=1","Index Only Scan dm_participants_pkey","Index Scan sketches_workspace_project_id_unique rows=1","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan projects_pkey","Index Only Scan dm_participants_pkey","Index Scan drafts_workspace_id_id_unique","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan projects_pkey","Result","Nested Loop","Append","Bitmap Heap Scan projects rows=2","Bitmap Index Scan projects_workspace_id_id_key","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Nested Loop","Index Only Scan dms_workspace_id_id_key rows=1","Index Only Scan dm_participants_pkey","Index Scan sketches_workspace_project_id_unique rows=1","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan projects_pkey","Index Only Scan dm_participants_pkey","Index Scan drafts_workspace_id_id_unique","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan projects_pkey","Result","Unique","Sort","Function Scan rows=1","Function Scan rows=10","Function Scan rows=2","Function Scan rows=22","CTE Scan rows=1","Nested Loop","Nested Loop","Nested Loop","Nested Loop","Nested Loop","Nested Loop","Limit","Sort","Subquery Scan rows=2","WindowAgg","CTE Scan rows=1","CTE Scan rows=1","Sort","Bitmap Heap Scan search_documents rows=2 buffers=70","Bitmap Index Scan search_documents_keys_idx buffers=69","Index Scan projects_pkey rows=2","Index Scan workspaces_pkey rows=2","Index Scan auth_users_pkey rows=2","Index Scan agents_pkey","Index Scan project_materials_pkey","Index Scan sketches_id_dm_key","Index Scan dms_pkey","Limit","Index Scan auth_users_pkey","Aggregate","Sort","Nested Loop","Index Only Scan dm_participants_pkey","Index Scan auth_users_pkey","|","Aggregate","Result","Append","Bitmap Heap Scan projects rows=2","Bitmap Index Scan projects_workspace_id_id_key","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Nested Loop","Index Only Scan dms_workspace_id_id_key rows=1","Index Only Scan dm_participants_pkey","Index Scan sketches_workspace_project_id_unique rows=1","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan projects_pkey","Index Only Scan dm_participants_pkey","Index Scan drafts_workspace_id_id_unique","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan projects_pkey","Result","Nested Loop","Append","Bitmap Heap Scan projects rows=2","Bitmap Index Scan projects_workspace_id_id_key","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Nested Loop","Index Only Scan dms_workspace_id_id_key rows=1","Index Only Scan dm_participants_pkey","Index Scan sketches_workspace_project_id_unique rows=1","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan projects_pkey","Index Only Scan dm_participants_pkey","Index Scan drafts_workspace_id_id_unique","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan projects_pkey","Result","Unique","Sort","Function Scan rows=1","Function Scan rows=10","Function Scan rows=2","Function Scan rows=22","Sort","Limit","CTE Scan rows=1","CTE Scan rows=1","Bitmap Heap Scan search_documents rows=2 buffers=70","Bitmap Index Scan search_documents_keys_idx buffers=69"]},"after":{"rows":103,"indexRows":4,"searchBuffers":140,"buffers":158,"indexScans":2,"lookups":22,"nodes":["Nested Loop","Result","Append","Bitmap Heap Scan projects rows=2","Bitmap Index Scan projects_workspace_id_id_key","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Nested Loop","Index Only Scan dms_workspace_id_id_key rows=1","Index Only Scan dm_participants_pkey","Index Scan sketches_workspace_project_id_unique rows=1","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan projects_pkey","Index Only Scan dm_participants_pkey","Index Scan drafts_workspace_id_id_unique","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan projects_pkey","Result","Nested Loop","Append","Bitmap Heap Scan projects rows=2","Bitmap Index Scan projects_workspace_id_id_key","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Nested Loop","Index Only Scan dms_workspace_id_id_key rows=1","Index Only Scan dm_participants_pkey","Index Scan sketches_workspace_project_id_unique rows=1","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan projects_pkey","Index Only Scan dm_participants_pkey","Index Scan drafts_workspace_id_id_unique","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan projects_pkey","Result","Unique","Sort","Function Scan rows=1","Function Scan rows=10","Function Scan rows=2","Function Scan rows=22","CTE Scan rows=1","Nested Loop","Nested Loop","Nested Loop","Nested Loop","Nested Loop","Nested Loop","Limit","Sort","Subquery Scan rows=2","WindowAgg","CTE Scan rows=1","CTE Scan rows=1","Sort","Bitmap Heap Scan search_documents rows=2 buffers=70","Bitmap Index Scan search_documents_keys_idx buffers=69","Index Scan projects_pkey rows=2","Index Scan workspaces_pkey rows=2","Index Scan auth_users_pkey rows=2","Index Scan agents_pkey","Index Scan project_materials_pkey","Index Scan sketches_id_dm_key","Index Scan dms_pkey","Limit","Index Scan auth_users_pkey","Aggregate","Sort","Nested Loop","Index Only Scan dm_participants_pkey","Index Scan auth_users_pkey","|","Aggregate","Result","Append","Bitmap Heap Scan projects rows=2","Bitmap Index Scan projects_workspace_id_id_key","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Nested Loop","Index Only Scan dms_workspace_id_id_key rows=1","Index Only Scan dm_participants_pkey","Index Scan sketches_workspace_project_id_unique rows=1","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan projects_pkey","Index Only Scan dm_participants_pkey","Index Scan drafts_workspace_id_id_unique","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan projects_pkey","Result","Nested Loop","Append","Bitmap Heap Scan projects rows=2","Bitmap Index Scan projects_workspace_id_id_key","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Nested Loop","Index Only Scan dms_workspace_id_id_key rows=1","Index Only Scan dm_participants_pkey","Index Scan sketches_workspace_project_id_unique rows=1","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan projects_pkey","Index Only Scan dm_participants_pkey","Index Scan drafts_workspace_id_id_unique","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan project_grants_user_lookup_idx","Index Scan projects_pkey","Result","Unique","Sort","Function Scan rows=1","Function Scan rows=10","Function Scan rows=2","Function Scan rows=22","Sort","Limit","CTE Scan rows=1","CTE Scan rows=1","Bitmap Heap Scan search_documents rows=2 buffers=70","Bitmap Index Scan search_documents_keys_idx buffers=69"]},"insider":{"before":{"rows":167,"searchBuffers":244}}}
+▶ search: hidden matches never change the answer or the work
+  ✔ hundreds of hidden matches give the same results, counts, `more` and rows examined (7947.445408ms)
+✔ search: hidden matches never change the answer or the work (7947.76269ms)
+▶ sketch access
+  ✔ a project sketch follows project access: members change it, viewers read it, outsiders get 404 (96.961183ms)
+  ✔ a private sketch is visible only to its author: never through the project, to admins or to agents (292.223982ms)
+  ✔ cross-workspace references are rejected (148.75601ms)
+  ✔ placements show only what the reader may open, and removing one never deletes the object (183.814706ms)
+  ✔ links are many-to-many, undirected and unique per pair (197.441206ms)
+  ✔ versioned changes: If-Match, concurrent moves conflict or merge (236.101304ms)
+  ✔ an idempotent retry replays the stored answer without a second change (131.792168ms)
+  ✔ input is validated (30.182291ms)
+✔ sketch access (1593.841414ms)
+▶ event stream
+  ✔ replay after a cursor delivers only events the recipient may see (203.834475ms)
+  ✔ restricted activity changes nothing an outsider observes on the stream (299.834736ms)
+{"hiddenEvents":500,"openToReadyMs":{"before":2.638227999999799,"after":2.3025570000008884},"work":{"before":{"queries":2,"rows":1,"authorizations":0},"after":{"queries":2,"rows":1,"authorizations":0}},"resumeWork":{"before":{"queries":1,"rows":0,"authorizations":0},"after":{"queries":1,"rows":0,"authorizations":0}},"rowsExamined":{"before":[1,2],"after":[1,2]},"plans":[["Result","Limit","Index Only Scan event_audience_pkey"],["Limit","Nested Loop","Index Scan event_audience_pkey","Index Scan events_pkey"]]}
+  ✔ opening and replaying do the same work however much hidden activity exists (11403.84355ms)
+  ✔ live delivery follows replay and still filters per recipient (54.091823ms)
+  ✔ after membership removal the next events are not delivered (132.501491ms)
+  ✔ a revoked session closes the stream and cannot reconnect (112.52979ms)
+  ✔ upgrades need the public origin, a live session and a valid cursor (8.819687ms)
+  ✔ the server pings on the heartbeat interval (2003.549962ms)
+  ✔ stored events carry a monotonic seq assigned in commit order (24.201903ms)
+✔ event stream (14450.504793ms)
+▶ work, decisions and results in a project
+  ✔ work is created from a message in one action and the message stays in place (103.098921ms)
+  ✔ one experiment can come from several thoughts of a project sketch; private thoughts are not linkable (135.48371ms)
+  ✔ changes need If-Match; stale and concurrent changes get 409 and retries are idempotent (140.831895ms)
+  ✔ only people accept decisions; superseding keeps history and a pivot parks obsolete work (237.694899ms)
+  ✔ a negative result finishes an experiment and links its evidence (89.921431ms)
+  ✔ a result finishes work only at the version its author saw and never reverses a disposition (228.41616ms)
+  ✔ events reach only project readers; assigned work uses the visibility filter and access loss hides everything (382.241405ms)
+✔ work, decisions and results in a project (1668.831251ms)
+▶ draft.summarize.v1 worker
+  ✔ the Compose worker commits a result for an authorized requester (1552.39816ms)
+  ✔ a requester who lost access before the job ran gets no read and no result (132.300049ms)
+  ✔ revocation between read and commit prevents the commit (race) (114.219905ms)
+  ✔ a draft made private between read and commit also prevents the commit (114.760636ms)
+  ✔ an authorized run commits once and a redelivered job is skipped (107.714086ms)
+  ✔ a grant revoke that starts during the commit waits and the result commits under the checked grant (157.388536ms)
+  ✔ a grant revoke committed between read and commit prevents the commit (two connections) (187.837257ms)
+  ✔ requesting needs read access to the draft (92.597009ms)
+✔ draft.summarize.v1 worker (2479.947891ms)
+ℹ tests 379
+ℹ suites 53
+ℹ pass 379
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 193106.008283
+ Container flux-test-1790794121-2401185-db-1 Running 
+ Container flux-test-1790794121-2401185-api-1 Running 
+ Container flux-test-1790794121-2401185-db-1 Waiting 
+ Container flux-test-1790794121-2401185-db-1 Healthy 
+ Container flux-test-1790794121-2401185-migrate-1 Starting 
+ Container flux-test-1790794121-2401185-migrate-1 Started 
+ Container flux-test-1790794121-2401185-migrate-1 Waiting 
+ Container flux-test-1790794121-2401185-migrate-1 Exited 
+ Container flux-test-1790794121-2401185-api-1 Waiting 
+ Container flux-test-1790794121-2401185-api-1 Healthy 
+ Container flux-test-1790794121-2401185-e2e-run-9a5a70ef26d6 Creating 
+ Container flux-test-1790794121-2401185-e2e-run-9a5a70ef26d6 Created 
+▶ Flux PWA in Chromium over HTTPS
+  ✔ the service worker registers for scope "/" and controls the page (338.644783ms)
+  ✔ offline navigation shows the fallback page and API calls fail instead of using a cache (107.264274ms)
+  ✔ a changed service worker waits, the app offers a reload, and confirming activates it (1987.833476ms)
+✔ Flux PWA in Chromium over HTTPS (2767.140789ms)
+ℹ tests 3
+ℹ suites 1
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3222.959327
+ Container flux-test-1790794121-2401185-db-1 Running 
+ Container flux-test-1790794121-2401185-api-1 Running 
+ Container flux-test-1790794121-2401185-db-1 Waiting 
+ Container flux-test-1790794121-2401185-db-1 Healthy 
+ Container flux-test-1790794121-2401185-migrate-1 Starting 
+ Container flux-test-1790794121-2401185-migrate-1 Started 
+ Container flux-test-1790794121-2401185-migrate-1 Waiting 
+ Container flux-test-1790794121-2401185-migrate-1 Exited 
+ Container flux-test-1790794121-2401185-api-1 Waiting 
+ Container flux-test-1790794121-2401185-api-1 Healthy 
+ Container flux-test-1790794121-2401185-e2e-run-36b79979c026 Creating 
+ Container flux-test-1790794121-2401185-e2e-run-36b79979c026 Created 
+▶ access and stream in Chromium against the running services
+  ✔ share to a granted member, deny a non-member, revoke and stop live events (867.495551ms)
+✔ access and stream in Chromium against the running services (998.872048ms)
+ℹ tests 1
+ℹ suites 1
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1413.29433
+ Container flux-test-1790794121-2401185-pushmock-1 Running 
+ Container flux-test-1790794121-2401185-mailpit-1 Running 
+ Container flux-test-1790794121-2401185-db-1 Running 
+ Container flux-test-1790794121-2401185-mailpit-smtps-1 Running 
+ Container flux-test-1790794121-2401185-mailpit-starttls-1 Running 
+ Container flux-test-1790794121-2401185-api-1 Running 
+ Container flux-test-1790794121-2401185-worker-1 Running 
+ Container flux-test-1790794121-2401185-pushmock-1 Waiting 
+ Container flux-test-1790794121-2401185-pushmock-1 Waiting 
+ Container flux-test-1790794121-2401185-db-1 Waiting 
+ Container flux-test-1790794121-2401185-pushmock-1 Healthy 
+ Container flux-test-1790794121-2401185-pushmock-1 Healthy 
+ Container flux-test-1790794121-2401185-db-1 Healthy 
+ Container flux-test-1790794121-2401185-migrate-1 Starting 
+ Container flux-test-1790794121-2401185-migrate-1 Started 
+ Container flux-test-1790794121-2401185-pushmock-1 Waiting 
+ Container flux-test-1790794121-2401185-migrate-1 Waiting 
+ Container flux-test-1790794121-2401185-migrate-1 Waiting 
+ Container flux-test-1790794121-2401185-pushmock-1 Healthy 
+ Container flux-test-1790794121-2401185-migrate-1 Exited 
+ Container flux-test-1790794121-2401185-migrate-1 Exited 
+ Container flux-test-1790794121-2401185-pushmock-1 Waiting 
+ Container flux-test-1790794121-2401185-migrate-1 Waiting 
+ Container flux-test-1790794121-2401185-api-1 Waiting 
+ Container flux-test-1790794121-2401185-mailpit-1 Waiting 
+ Container flux-test-1790794121-2401185-mailpit-starttls-1 Waiting 
+ Container flux-test-1790794121-2401185-mailpit-smtps-1 Waiting 
+ Container flux-test-1790794121-2401185-mailpit-smtps-1 Healthy 
+ Container flux-test-1790794121-2401185-mailpit-starttls-1 Healthy 
+ Container flux-test-1790794121-2401185-api-1 Healthy 
+ Container flux-test-1790794121-2401185-migrate-1 Exited 
+ Container flux-test-1790794121-2401185-mailpit-1 Healthy 
+ Container flux-test-1790794121-2401185-pushmock-1 Healthy 
+ Container flux-test-1790794121-2401185-test-run-5a69495eec1e Creating 
+ Container flux-test-1790794121-2401185-test-run-5a69495eec1e Created 
+proactive-ui fixture ready
+ Container flux-test-1790794121-2401185-pushmock-1 Running 
+ Container flux-test-1790794121-2401185-db-1 Running 
+ Container flux-test-1790794121-2401185-mailpit-1 Running 
+ Container flux-test-1790794121-2401185-mailpit-starttls-1 Running 
+ Container flux-test-1790794121-2401185-api-1 Running 
+ Container flux-test-1790794121-2401185-mailpit-smtps-1 Running 
+ Container flux-test-1790794121-2401185-worker-1 Running 
+ Container flux-test-1790794121-2401185-pushmock-1 Waiting 
+ Container flux-test-1790794121-2401185-pushmock-1 Waiting 
+ Container flux-test-1790794121-2401185-db-1 Waiting 
+ Container flux-test-1790794121-2401185-pushmock-1 Healthy 
+ Container flux-test-1790794121-2401185-pushmock-1 Healthy 
+ Container flux-test-1790794121-2401185-db-1 Healthy 
+ Container flux-test-1790794121-2401185-migrate-1 Starting 
+ Container flux-test-1790794121-2401185-migrate-1 Started 
+ Container flux-test-1790794121-2401185-migrate-1 Waiting 
+ Container flux-test-1790794121-2401185-pushmock-1 Waiting 
+ Container flux-test-1790794121-2401185-migrate-1 Waiting 
+ Container flux-test-1790794121-2401185-pushmock-1 Healthy 
+ Container flux-test-1790794121-2401185-migrate-1 Exited 
+ Container flux-test-1790794121-2401185-migrate-1 Exited 
+ Container flux-test-1790794121-2401185-migrate-1 Waiting 
+ Container flux-test-1790794121-2401185-api-1 Waiting 
+ Container flux-test-1790794121-2401185-mailpit-1 Waiting 
+ Container flux-test-1790794121-2401185-mailpit-smtps-1 Waiting 
+ Container flux-test-1790794121-2401185-pushmock-1 Waiting 
+ Container flux-test-1790794121-2401185-mailpit-starttls-1 Waiting 
+ Container flux-test-1790794121-2401185-mailpit-1 Healthy 
+ Container flux-test-1790794121-2401185-pushmock-1 Healthy 
+ Container flux-test-1790794121-2401185-mailpit-starttls-1 Healthy 
+ Container flux-test-1790794121-2401185-migrate-1 Exited 
+ Container flux-test-1790794121-2401185-mailpit-smtps-1 Healthy 
+ Container flux-test-1790794121-2401185-api-1 Healthy 
+ Container flux-test-1790794121-2401185-test-run-691f1af0446d Creating 
+ Container flux-test-1790794121-2401185-test-run-691f1af0446d Created 
+Controlled outcome UI fixture ready; no real provider request
+ Container flux-test-1790794121-2401185-db-1 Running 
+ Container flux-test-1790794121-2401185-api-1 Running 
+ Container flux-test-1790794121-2401185-db-1 Waiting 
+ Container flux-test-1790794121-2401185-db-1 Healthy 
+ Container flux-test-1790794121-2401185-migrate-1 Starting 
+ Container flux-test-1790794121-2401185-migrate-1 Started 
+ Container flux-test-1790794121-2401185-migrate-1 Waiting 
+ Container flux-test-1790794121-2401185-migrate-1 Exited 
+ Container flux-test-1790794121-2401185-api-1 Waiting 
+ Container flux-test-1790794121-2401185-api-1 Healthy 
+ Container flux-test-1790794121-2401185-e2e-run-085fd227cbd5 Creating 
+ Container flux-test-1790794121-2401185-e2e-run-085fd227cbd5 Created 
+✔ real project UI presents sourced quiet suggestions, then persists edits, use and dismissal (5853.834364ms)
+✔ owner-only background setup persists consent, clears keys and preserves another person without a connection (4049.687124ms)
+✔ an owner creates a personal project agent and a paused rule, then pauses, revokes and renews an earlier rule without AI (1586.373112ms)
+✔ all pages render quiet comparisons and insufficient evidence with current checked references on desktop, phone and tablet (3541.464478ms)
+✔ a project viewer can inspect outcomes while owner accounting and controls remain private (525.383247ms)
+✔ owner usage distinguishes known, uncertain and no-cost requests and survives disconnect; insufficient dismissal creates no work (3152.182913ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 91441.905417
+ Container flux-test-1790794121-2401185-mailpit-1 Running 
+ Container flux-test-1790794121-2401185-pushmock-1 Running 
+ Container flux-test-1790794121-2401185-mailpit-smtps-1 Running 
+ Container flux-test-1790794121-2401185-db-1 Running 
+ Container flux-test-1790794121-2401185-worker-1 Running 
+ Container flux-test-1790794121-2401185-mailpit-starttls-1 Running 
+ Container flux-test-1790794121-2401185-api-1 Running 
+ Container flux-test-1790794121-2401185-pushmock-1 Waiting 
+ Container flux-test-1790794121-2401185-pushmock-1 Waiting 
+ Container flux-test-1790794121-2401185-db-1 Waiting 
+ Container flux-test-1790794121-2401185-pushmock-1 Healthy 
+ Container flux-test-1790794121-2401185-pushmock-1 Healthy 
+ Container flux-test-1790794121-2401185-db-1 Healthy 
+ Container flux-test-1790794121-2401185-migrate-1 Starting 
+ Container flux-test-1790794121-2401185-migrate-1 Started 
+ Container flux-test-1790794121-2401185-migrate-1 Waiting 
+ Container flux-test-1790794121-2401185-pushmock-1 Waiting 
+ Container flux-test-1790794121-2401185-migrate-1 Waiting 
+ Container flux-test-1790794121-2401185-pushmock-1 Healthy 
+ Container flux-test-1790794121-2401185-migrate-1 Exited 
+ Container flux-test-1790794121-2401185-migrate-1 Exited 
+ Container flux-test-1790794121-2401185-pushmock-1 Waiting 
+ Container flux-test-1790794121-2401185-mailpit-starttls-1 Waiting 
+ Container flux-test-1790794121-2401185-api-1 Waiting 
+ Container flux-test-1790794121-2401185-mailpit-1 Waiting 
+ Container flux-test-1790794121-2401185-migrate-1 Waiting 
+ Container flux-test-1790794121-2401185-mailpit-smtps-1 Waiting 
+ Container flux-test-1790794121-2401185-api-1 Healthy 
+ Container flux-test-1790794121-2401185-mailpit-starttls-1 Healthy 
+ Container flux-test-1790794121-2401185-migrate-1 Exited 
+ Container flux-test-1790794121-2401185-pushmock-1 Healthy 
+ Container flux-test-1790794121-2401185-mailpit-1 Healthy 
+ Container flux-test-1790794121-2401185-mailpit-smtps-1 Healthy 
+ Container flux-test-1790794121-2401185-test-run-7f76e6d9de38 Creating 
+ Container flux-test-1790794121-2401185-test-run-7f76e6d9de38 Created 
+session-restart: session and project content stored before API restart
+ Container flux-test-1790794121-2401185-api-1 Restarting 
+ Container flux-test-1790794121-2401185-api-1 Started 
+ Container flux-test-1790794121-2401185-db-1 Running 
+ Container flux-test-1790794121-2401185-api-1 Running 
+ Container flux-test-1790794121-2401185-db-1 Waiting 
+ Container flux-test-1790794121-2401185-db-1 Healthy 
+ Container flux-test-1790794121-2401185-migrate-1 Starting 
+ Container flux-test-1790794121-2401185-migrate-1 Started 
+ Container flux-test-1790794121-2401185-migrate-1 Waiting 
+ Container flux-test-1790794121-2401185-migrate-1 Exited 
+ Container flux-test-1790794121-2401185-api-1 Waiting 
+ Container flux-test-1790794121-2401185-migrate-1 Waiting 
+ Container flux-test-1790794121-2401185-db-1 Waiting 
+ Container flux-test-1790794121-2401185-migrate-1 Exited 
+ Container flux-test-1790794121-2401185-db-1 Healthy 
+ Container flux-test-1790794121-2401185-api-1 Healthy 
+ Container flux-test-1790794121-2401185-mailpit-1 Running 
+ Container flux-test-1790794121-2401185-pushmock-1 Running 
+ Container flux-test-1790794121-2401185-mailpit-starttls-1 Running 
+ Container flux-test-1790794121-2401185-db-1 Running 
+ Container flux-test-1790794121-2401185-api-1 Running 
+ Container flux-test-1790794121-2401185-worker-1 Running 
+ Container flux-test-1790794121-2401185-mailpit-smtps-1 Running 
+ Container flux-test-1790794121-2401185-db-1 Waiting 
+ Container flux-test-1790794121-2401185-pushmock-1 Waiting 
+ Container flux-test-1790794121-2401185-pushmock-1 Waiting 
+ Container flux-test-1790794121-2401185-pushmock-1 Healthy 
+ Container flux-test-1790794121-2401185-pushmock-1 Healthy 
+ Container flux-test-1790794121-2401185-db-1 Healthy 
+ Container flux-test-1790794121-2401185-migrate-1 Starting 
+ Container flux-test-1790794121-2401185-migrate-1 Started 
+ Container flux-test-1790794121-2401185-pushmock-1 Waiting 
+ Container flux-test-1790794121-2401185-migrate-1 Waiting 
+ Container flux-test-1790794121-2401185-migrate-1 Waiting 
+ Container flux-test-1790794121-2401185-pushmock-1 Healthy 
+ Container flux-test-1790794121-2401185-migrate-1 Exited 
+ Container flux-test-1790794121-2401185-migrate-1 Exited 
+ Container flux-test-1790794121-2401185-migrate-1 Waiting 
+ Container flux-test-1790794121-2401185-api-1 Waiting 
+ Container flux-test-1790794121-2401185-mailpit-1 Waiting 
+ Container flux-test-1790794121-2401185-pushmock-1 Waiting 
+ Container flux-test-1790794121-2401185-mailpit-starttls-1 Waiting 
+ Container flux-test-1790794121-2401185-mailpit-smtps-1 Waiting 
+ Container flux-test-1790794121-2401185-mailpit-starttls-1 Healthy 
+ Container flux-test-1790794121-2401185-pushmock-1 Healthy 
+ Container flux-test-1790794121-2401185-mailpit-smtps-1 Healthy 
+ Container flux-test-1790794121-2401185-api-1 Healthy 
+ Container flux-test-1790794121-2401185-migrate-1 Exited 
+ Container flux-test-1790794121-2401185-mailpit-1 Healthy 
+ Container flux-test-1790794121-2401185-test-run-d480892b8402 Creating 
+ Container flux-test-1790794121-2401185-test-run-d480892b8402 Created 
+session-restart: session, material and linked conversation still valid after API restart
+ Container flux-test-1790794121-2401185-db-1 Running 
+ Container flux-test-1790794121-2401185-api-1 Recreate 
+time="2026-09-30T20:55:47+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-test-1790794121-2401185-api-1 Recreated 
+ Container flux-test-1790794121-2401185-db-1 Waiting 
+ Container flux-test-1790794121-2401185-db-1 Healthy 
+ Container flux-test-1790794121-2401185-migrate-1 Starting 
+ Container flux-test-1790794121-2401185-migrate-1 Started 
+ Container flux-test-1790794121-2401185-migrate-1 Waiting 
+ Container flux-test-1790794121-2401185-migrate-1 Exited 
+ Container flux-test-1790794121-2401185-api-1 Starting 
+ Container flux-test-1790794121-2401185-api-1 Started 
+ Container flux-test-1790794121-2401185-db-1 Waiting 
+ Container flux-test-1790794121-2401185-migrate-1 Waiting 
+ Container flux-test-1790794121-2401185-api-1 Waiting 
+ Container flux-test-1790794121-2401185-migrate-1 Exited 
+ Container flux-test-1790794121-2401185-db-1 Healthy 
+ Container flux-test-1790794121-2401185-api-1 Healthy 
+ Container flux-test-1790794121-2401185-test-run-04e97b4eab3f Creating 
+ Container flux-test-1790794121-2401185-test-run-04e97b4eab3f Created 
+✔ without VAPID keys push is reported unavailable and the inbox still works (175.44947ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 347.272729
+ Container flux-test-1790794121-2401185-db-1 Running 
+ Container flux-test-1790794121-2401185-api-1 Recreate 
+ Container flux-test-1790794121-2401185-pushmock-1 Running 
+ Container flux-test-1790794121-2401185-worker-1 Recreate 
+time="2026-09-30T20:56:05+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+time="2026-09-30T20:56:05+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-test-1790794121-2401185-worker-1 Recreated 
+ Container flux-test-1790794121-2401185-api-1 Recreated 
+ Container flux-test-1790794121-2401185-db-1 Waiting 
+ Container flux-test-1790794121-2401185-db-1 Healthy 
+ Container flux-test-1790794121-2401185-migrate-1 Starting 
+ Container flux-test-1790794121-2401185-migrate-1 Started 
+ Container flux-test-1790794121-2401185-migrate-1 Waiting 
+ Container flux-test-1790794121-2401185-pushmock-1 Waiting 
+ Container flux-test-1790794121-2401185-migrate-1 Waiting 
+ Container flux-test-1790794121-2401185-pushmock-1 Healthy 
+ Container flux-test-1790794121-2401185-migrate-1 Exited 
+ Container flux-test-1790794121-2401185-migrate-1 Exited 
+ Container flux-test-1790794121-2401185-api-1 Starting 
+ Container flux-test-1790794121-2401185-worker-1 Starting 
+ Container flux-test-1790794121-2401185-api-1 Started 
+ Container flux-test-1790794121-2401185-worker-1 Started 
+ Container flux-test-1790794121-2401185-migrate-1 Waiting 
+ Container flux-test-1790794121-2401185-pushmock-1 Waiting 
+ Container flux-test-1790794121-2401185-db-1 Waiting 
+ Container flux-test-1790794121-2401185-api-1 Waiting 
+ Container flux-test-1790794121-2401185-worker-1 Waiting 
+ Container flux-test-1790794121-2401185-worker-1 Healthy 
+ Container flux-test-1790794121-2401185-migrate-1 Exited 
+ Container flux-test-1790794121-2401185-db-1 Healthy 
+ Container flux-test-1790794121-2401185-pushmock-1 Healthy 
+ Container flux-test-1790794121-2401185-api-1 Healthy 
+ Container flux-test-1790794121-2401185-test-run-223a63cefe4a Creating 
+ Container flux-test-1790794121-2401185-test-run-223a63cefe4a Created 
+✔ without SMTP, settings say email delivery is unavailable and the inbox still fills (1615.571801ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2227.330709
+ Container flux-test-1790794121-2401185-mailpit-1 Stopping 
+ Container flux-test-1790794121-2401185-mailpit-starttls-1 Stopping 
+ Container flux-test-1790794121-2401185-mailpit-smtps-1 Stopping 
+ Container flux-test-1790794121-2401185-api-1 Stopping 
+ Container flux-test-1790794121-2401185-worker-1 Stopping 
+ Container flux-test-1790794121-2401185-worker-1 Stopped 
+ Container flux-test-1790794121-2401185-worker-1 Removing 
+ Container flux-test-1790794121-2401185-worker-1 Removed 
+ Container flux-test-1790794121-2401185-mailpit-1 Stopped 
+ Container flux-test-1790794121-2401185-mailpit-1 Removing 
+ Container flux-test-1790794121-2401185-mailpit-1 Removed 
+ Container flux-test-1790794121-2401185-mailpit-starttls-1 Stopped 
+ Container flux-test-1790794121-2401185-mailpit-starttls-1 Removing 
+ Container flux-test-1790794121-2401185-mailpit-starttls-1 Removed 
+ Container flux-test-1790794121-2401185-mailpit-smtps-1 Stopped 
+ Container flux-test-1790794121-2401185-mailpit-smtps-1 Removing 
+ Container flux-test-1790794121-2401185-mailpit-smtps-1 Removed 
+ Container flux-test-1790794121-2401185-pushmock-1 Stopping 
+ Container flux-test-1790794121-2401185-pushmock-1 Stopped 
+ Container flux-test-1790794121-2401185-pushmock-1 Removing 
+ Container flux-test-1790794121-2401185-pushmock-1 Removed 
+ Container flux-test-1790794121-2401185-api-1 Stopped 
+ Container flux-test-1790794121-2401185-api-1 Removing 
+ Container flux-test-1790794121-2401185-api-1 Removed 
+ Container flux-test-1790794121-2401185-migrate-1 Stopping 
+ Container flux-test-1790794121-2401185-migrate-1 Stopped 
+ Container flux-test-1790794121-2401185-migrate-1 Removing 
+ Container flux-test-1790794121-2401185-migrate-1 Removed 
+ Container flux-test-1790794121-2401185-db-1 Stopping 
+ Container flux-test-1790794121-2401185-db-1 Stopped 
+ Container flux-test-1790794121-2401185-db-1 Removing 
+ Container flux-test-1790794121-2401185-db-1 Removed 
+ Volume flux-test-1790794121-2401185_pushtls Removing 
+ Volume flux-test-1790794121-2401185_teststate Removing 
+ Volume flux-test-1790794121-2401185_pgdata Removing 
+ Volume flux-test-1790794121-2401185_files Removing 
+ Network flux-test-1790794121-2401185_default Removing 
+ Volume flux-test-1790794121-2401185_pushtls Removed 
+ Volume flux-test-1790794121-2401185_pgdata Removed 
+ Volume flux-test-1790794121-2401185_teststate Removed 
+ Volume flux-test-1790794121-2401185_files Removed 
+ Network flux-test-1790794121-2401185_default Removed 
+Removed 3 per-run image(s) tagged :flux-test-1790794121-2401185

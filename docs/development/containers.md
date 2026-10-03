@@ -1,5 +1,8 @@
 # Container development
 
+The optional SFU and restrictive-network TURN/TLS profile are covered in
+[live media operation](live-media.md).
+
 Founder decision, 2026-09-27: **the application and its dependencies run in
 Docker/Compose**. Do not install PostgreSQL, Redis, queues, or application
 toolchains as services on a contributor's host.
@@ -166,6 +169,11 @@ against the running API and mail catcher, including a session check across
 `docker compose --env-file docker/.env restart api`. Set `FLUX_TEST_PORT` / `FLUX_TEST_MAILPIT_PORT`
 to avoid port clashes with another concurrent run.
 
+Set `FLUX_E2E_EVIDENCE_DIR` to an absolute host directory to retain the configured
+Chromium screenshots/transcripts. The
+script mounts it at `/evidence` with the SELinux label; other test data stays in
+the isolated Compose project and is removed after the run.
+
 ## PWA and Web Push
 
 Issue #41 adds the installable shell and the Web Push foundation. The API serves
@@ -267,9 +275,11 @@ outside tests.
 
 ## Web app and browser tests
 
-The configured `pnpm test` command runs at most four application test files at
-once (`--test-concurrency=4`). This keeps the shared API/database load independent
-of the host CPU count; the [Node test runner](https://nodejs.org/download/release/v24.8.0/docs/api/cli.html#--test-concurrency)
+The configured `pnpm test` command runs one application test file at a time
+(`--test-concurrency=1`), never more than four. The controlled comparison scheduling
+fixtures (#58) deliberately own the one global comparison cursor of the shared test
+database, so files must not overlap. A fixed bound also keeps the shared API/database
+load independent of the host CPU count; the [Node test runner](https://nodejs.org/download/release/v24.8.0/docs/api/cli.html#--test-concurrency)
 otherwise derives file parallelism from available processors. Explicit concurrent
 requests and race assertions inside each suite remain unchanged. Keep the same
 command in local Docker validation and CI; do not extend API/database deadlines

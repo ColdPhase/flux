@@ -5,7 +5,7 @@ import { messageWorkPreviews, visibleMessageBatch } from '../../apps/web/src/wor
 
 test('a source preview keeps exact counts while object and edge windows are incomplete, deduplicates kind/id and preserves native row order', () => {
   const base = { id: 'shared-id', projectId: 'project', workspaceId: 'workspace', audience: { kind: 'project' as const, projectId: 'project' }, title: 'Check the distance sensor', createdAt: '2026-10-01T00:00:00Z', version: 1, updatedAt: '2026-10-01T00:00:00Z', relations: { edges: 3, sourceMessages: 2, sourceMaterials: 0, decisions: 0, results: 0 } };
-  const work: WorkRowProjection = { ...base, kind: 'work', status: 'open', owner: null, blocker: null, parked: null, parkedBy: null, rule: null };
+  const work: WorkRowProjection = { ...base, kind: 'work', prerequisiteCounts: { total: 0, unmet: 0 }, status: 'open', owner: null, blocker: null, parked: null, parkedBy: null, rule: null };
   const decision: DecisionRowProjection = { ...base, kind: 'decision', status: 'proposed', proposedBy: { kind: 'human', id: 'ada', name: 'Ada Kowalska' }, decidedBy: null, decidedAt: null, supersedes: null, supersededAt: null, supersededBy: null };
   const edge = (id: string, kind: 'work' | 'decision', message: string, role: ObjectLink['role'] = 'source'): ObjectLink => ({ id, projectId: 'project', role, from: { type: kind, id: 'shared-id' }, to: { type: 'message', id: message }, fromTitle: base.title, toTitle: 'Measure the lamp', conversationId: 'conversation', sketchId: null, createdAt: base.createdAt });
   const counts = { messageId: 'one', work: 17, decisions: 5, results: 3, edges: 25 };

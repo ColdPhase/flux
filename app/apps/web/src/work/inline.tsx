@@ -26,6 +26,7 @@ export function stateParts(lists: ProjectWork, canDecide: boolean): StatePart[] 
   const proposal = lists.decisions.find((decision) => decision.status === 'proposed');
   const active = lists.work.filter((item) => item.status === 'in_progress' && !item.parked);
   const blocked = lists.work.filter((item) => item.status === 'blocked' && !item.parked);
+  const open = lists.work.filter((item) => item.status === 'open' && !item.parked);
   const result = [...lists.results].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
   const parts: StatePart[] = [];
   if (rule) parts.push({ key: 'rule', icon: 'rule', text: `Current rule: ${rule.title}`, short: `Rule: ${rule.title}`, title: rule.title, open: { kind: 'decision', id: rule.id } });
@@ -35,8 +36,30 @@ export function stateParts(lists: ProjectWork, canDecide: boolean): StatePart[] 
     parts.push({ key: 'work', icon: null, dot: 'progress', text: `${active.length === 1 ? `In progress: ${active[0]!.title}` : `${active.length} in progress`}${who}`, short: `Work in progress${who}`, title: active.length === 1 ? `${active[0]!.title}${who}` : `${active.length} items in progress${who}`, open: { kind: 'work', id: active[0]!.id } });
   }
   if (blocked.length) parts.push({ key: 'blocked', icon: 'alert', tone: 'warn', text: `${blocked.length} blocked`, short: `${blocked.length} blocked`, title: blocked.length === 1 ? blocked[0]!.title : `${blocked.length} blocked items`, open: { kind: 'work', id: blocked[0]!.id } });
+  if (open.length) {
+    const count = `${open.length} open ${open.length === 1 ? 'task' : 'tasks'}`;
+    parts.push({ key: 'open', icon: 'tasks', text: count, short: count, title: open[0]!.title,
+      open: { kind: 'work', id: open[0]!.id } });
+  }
   if (result) parts.push({ key: 'result', icon: 'result', text: `${result.finding === 'negative' ? 'Negative result' : 'Result'}: ${result.title}`, short: result.finding === 'negative' ? 'Negative result' : 'New result', title: result.title, open: { kind: 'result', id: result.id } });
   if (proposal) parts.push({ key: 'proposal', icon: null, dot: 'need', tone: canDecide ? 'need' : undefined, text: canDecide ? 'Needs you: a proposed decision' : 'A decision is proposed', short: canDecide ? 'Decision needs you' : 'Decision proposed', title: proposal.title, open: { kind: 'decision', id: proposal.id } });
+  // A project with saved history is not an empty project. Keep it quiet when a
+  // current rule/action/result already provides orientation, but retain a real
+  // reachable object when completed, parked or not-pursued work is all it has.
+  if (!parts.length && lists.work.length) {
+    const parked = lists.work.filter((item) => item.parked).length;
+    const done = lists.work.filter((item) => !item.parked && item.status === 'done').length;
+    const notPursued = lists.work.filter((item) => !item.parked && item.status === 'not_pursued').length;
+    const text = [done ? `${done} completed ${done === 1 ? 'task' : 'tasks'}` : null,
+      notPursued ? `${notPursued} not pursued` : null, parked ? `${parked} parked` : null].filter(Boolean).join(' · ');
+    parts.push({ key: 'history', icon: 'tasks', text, short: text, title: lists.work[0]!.title,
+      open: { kind: 'work', id: lists.work[0]!.id } });
+  }
+  if (!parts.length && lists.decisions.length) {
+    const text = `${lists.decisions.length} earlier ${lists.decisions.length === 1 ? 'decision' : 'decisions'}`;
+    parts.push({ key: 'history', icon: 'rule', text, short: text, title: lists.decisions[0]!.title,
+      open: { kind: 'decision', id: lists.decisions[0]!.id } });
+  }
   return parts;
 }
 
@@ -50,7 +73,7 @@ export function ProjectStateLine({ summary, phase }: { summary: ProjectWorkSumma
   if (!summary) return <p className="ws-state ws-state--empty" aria-label="Current state">{phase === 'unavailable' ? 'Current work unavailable' : 'Loading current work…'}</p>;
   const parts = summaryStateParts(summary, summary.access !== 'viewer').sort((a, b) => Number(b.tone === 'need') - Number(a.tone === 'need'));
   if (!parts.length) return <p className="ws-state ws-state--empty" aria-label="Current state" aria-busy={phase === 'refreshing'}>{summaryEmptyCaption(summary)}. Anything said here can become work.</p>;
-  return <p className="ws-state" aria-label="Current state" aria-busy={phase === 'refreshing'}>{parts.map((part, index) => <span key={part.key} className="ws-part">{index ? <span className="ws-sep" aria-hidden="true">·</span> : null}<button type="button" className={`ws-seg${part.tone ? ` ws-seg--${part.tone}` : ''}`} data-seg={part.key} onClick={() => openDetails(part.open)}>{part.icon ? <Icon name={part.icon} size={13} /> : <span className={`ws-dot ws-dot--${part.dot}`} aria-hidden="true" />}<span>{part.text}</span></button></span>)}</p>;
+  return <p className="ws-state" aria-label="Current state" aria-busy={phase === 'refreshing'}>{parts.map((part, index) => <span key={part.key} className="ws-part">{index ? <span className="ws-sep" aria-hidden="true">·</span> : null}<button type="button" className={`ws-seg${part.tone ? ` ws-seg--${part.tone}` : ''}`} data-seg={part.key} title={part.title} onClick={() => openDetails(part.open)}>{part.icon ? <Icon name={part.icon} size={13} /> : <span className={`ws-dot ws-dot--${part.dot}`} aria-hidden="true" />}<span>{part.text}</span></button></span>)}</p>;
 }
 
 /**
@@ -62,10 +85,14 @@ export function ProjectStateRow({ summary, phase }: { summary: ProjectWorkSummar
   // What needs the reader leads, since the row truncates.
   const parts = summary ? summaryStateParts(summary, summary.access !== 'viewer').sort((a, b) => Number(b.tone === 'need') - Number(a.tone === 'need')) : [];
   const need = parts.find((part) => part.tone === 'need');
+  // Keep blocking work readable even when the rest of the phone summary is clipped.
+  const blocked = parts.length > 1 ? parts.find((part) => part.key === 'blocked') : undefined;
+  const compactParts = blocked ? parts.filter((part) => part !== blocked) : parts;
   return (
     <button type="button" className="ws-state-row" onClick={() => openDetails('place')} aria-haspopup="dialog" aria-busy={phase === 'refreshing'}>
       {need ? <span className="ws-dot ws-dot--need" aria-hidden="true" /> : <Icon name={parts[0]?.icon ?? 'tasks'} size={13} />}
-      <span className="ws-state-row__t">{!summary ? phase === 'unavailable' ? 'Current work unavailable' : 'Loading current work…' : parts.length ? parts.map((part) => part.short).join(' · ') : summaryEmptyCaption(summary)}</span>
+      <span className="ws-state-row__t">{!summary ? phase === 'unavailable' ? 'Current work unavailable' : 'Loading current work…' : compactParts.length ? compactParts.map((part) => part.short).join(' · ') : summaryEmptyCaption(summary)}</span>
+      {blocked ? <span className="ws-state-row__blocked">{blocked.short}</span> : null}
       <span className="ui-vh">, open project details</span>
       <Icon name="chevron-right" size={16} />
     </button>

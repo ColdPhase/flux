@@ -1,0 +1,21 @@
+Connecting to 127.0.0.1:17880 (127.0.0.1:17880)
+  HTTP/1.1 200 OK
+  Vary: Origin
+  Date: Wed, 30 Sep 2026 10:04:31 GMT
+  Content-Length: 2
+  Content-Type: text/plain; charset=utf-8
+  Connection: close
+  
+saving to '/dev/null'
+null                 100% |********************************|     2  0:00:00 ETA
+'/dev/null' saved
+Connecting to 127.0.0.1:16789 (127.0.0.1:16789)
+  HTTP/1.1 200 OK
+  Content-Type: text/plain; version=0.0.4; charset=utf-8; escaping=underscores
+  Date: Wed, 30 Sep 2026 10:04:31 GMT
+  Connection: close
+  Transfer-Encoding: chunked
+  
+saving to '/dev/null'
+null                 100% |********************************| 15014  0:00:00 ETA
+'/dev/null' saved

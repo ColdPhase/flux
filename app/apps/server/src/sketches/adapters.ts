@@ -20,7 +20,9 @@ import {
   type SketchPromotion,
   type SketchRepository,
   type SketchUnitOfWork,
+  type Transaction,
 } from '@flux/core';
+import type { TransactionEventSession } from '../work/transaction-events.js';
 
 // Adapters that connect the core sketch use cases to Drizzle, the access policy and the event
 // log (issue #69; #46: core defines the ports, the server assembles them).
@@ -113,3 +115,9 @@ export function sketchUnitOfWork(db: Database): SketchUnitOfWork {
 
 /** The sketch use cases bound to a connection or transaction. */
 export const sketchUseCases = (db: Database) => createSketchUseCases(sketchUnitOfWork(db));
+
+/** Sketch commands sharing a composing caller's transaction and single final event batch (#152 map actions). */
+export function nativeSketchInEventSession(tx: Transaction, session: TransactionEventSession) {
+  const ports: SketchPorts = { ...sketchPorts(tx), events: session };
+  return createSketchUseCases({ run: (action) => session.run(() => action(ports)) });
+}

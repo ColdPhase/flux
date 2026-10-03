@@ -16,6 +16,7 @@ import { createLiveMedia, liveMediaConfig, participantIdentity, type LiveMediaAd
 import { registerLiveSignaling } from '../../apps/server/src/live/signaling.js';
 import { admissionRevocation } from '../../apps/server/src/live/admission-revocation.js';
 import { liveAdmissionStore } from '../../apps/server/src/live/admissions.js';
+import { connectionString } from './support/db.js';
 import { Browser } from './support/http.js';
 import { addMember, expectStatus, grant, password, person, project, workspace, type Person } from './support/people.js';
 
@@ -23,10 +24,9 @@ import { addMember, expectStatus, grant, password, person, project, workspace, t
 // (#128). The Flux side is real: Better Auth sessions and sign-out in process, PostgreSQL with
 // the 0023 trigger and LISTEN, the live use cases and the gate. The SFU is a local WebSocket
 // server that records every signaling connection, plus an in-memory room service.
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
+// Its own pool: the teardown below closes the servers before this pool.
 const { db, pool } = createDatabase(connectionString);
-const publicOrigin = 'http://127.0.0.1:18128';
+const gateOrigin = 'http://127.0.0.1:18128';
 // Shared with the API container, which created the Better Auth JWKS the in-process instance reads.
 const authSecret = process.env.FLUX_AUTH_SECRET;
 if (!authSecret) throw new Error('FLUX_AUTH_SECRET is required');
@@ -114,17 +114,17 @@ function roomMedia(state: Sfu, real: LiveMediaAdapter): LiveMediaAdapter {
 before(async () => {
   sfu = await startSfu();
   const config = liveMediaConfig({ FLUX_LIVEKIT_API_URL: `http://127.0.0.1:${sfu.port}`, FLUX_LIVEKIT_API_KEY: apiKey,
-    FLUX_LIVEKIT_API_SECRET: apiSecret, FLUX_LIVEKIT_ALLOW_INSECURE_LOCAL: 'true' }, publicOrigin);
+    FLUX_LIVEKIT_API_SECRET: apiSecret, FLUX_LIVEKIT_ALLOW_INSECURE_LOCAL: 'true' }, gateOrigin);
   realMedia = createLiveMedia(config);
   const media = roomMedia(sfu, realMedia);
   app = Fastify();
   const identity = registerIdentity(app, {
-    db, config: loadIdentityConfig({ FLUX_PUBLIC_ORIGIN: publicOrigin, FLUX_AUTH_SECRET: authSecret, FLUX_AUTH_RATE_LIMIT: 'false' }),
+    db, config: loadIdentityConfig({ FLUX_PUBLIC_ORIGIN: gateOrigin, FLUX_AUTH_SECRET: authSecret, FLUX_AUTH_RATE_LIMIT: 'false' }),
     mailer: { async send(message) { resetMails.push(message); }, close() {} },
   });
   const ports = { access: liveAccess(db), sessions: liveSessionStore(db), media, mediaUrl: config.mediaUrl };
   await app.register(liveRoutes, { sessions: identity, ports });
-  const signaling = registerLiveSignaling(app, { db, connectionString, publicOrigin, sessions: identity, ports, media, config });
+  const signaling = registerLiveSignaling(app, { db, connectionString, publicOrigin: gateOrigin, sessions: identity, ports, media, config });
   app.server.on('upgrade', (request, socket, head) => {
     if (!signaling.gate.handleUpgrade(request, socket, head)) socket.destroy();
   });
@@ -149,7 +149,7 @@ async function until(check: () => boolean | Promise<boolean>, what: string, time
 
 /** A browser session of `someone` against the in-process Flux API (its own Better Auth). */
 async function signedIn(someone: Person): Promise<{ browser: Browser; sessionId: string }> {
-  const browser = new Browser(gateUrl, publicOrigin);
+  const browser = new Browser(gateUrl, gateOrigin);
   expectStatus(await browser.request('POST', '/api/auth/sign-in/email', { body: { email: someone.email, password } }), 200);
   const me = expectStatus(await browser.request('GET', '/api/v1/me'), 200) as { session: { id: string } };
   return { browser, sessionId: me.session.id };
@@ -180,7 +180,7 @@ type Outcome = { opened: true; socket: WebSocket; first: Promise<string> } | { o
 /** Opens `/media/rtc/v1` the way livekit-client 2.17.2 does; resolves on upgrade or refusal. */
 function signal(token: string, browser: Browser | null, options: { origin?: string; path?: string } = {}): Promise<Outcome> {
   const url = `${gateUrl.replace(/^http/, 'ws')}/media${options.path ?? '/rtc/v1'}?access_token=${encodeURIComponent(token)}&join_request=${encodeURIComponent('AAEC')}`;
-  const headers: Record<string, string> = { origin: options.origin ?? publicOrigin };
+  const headers: Record<string, string> = { origin: options.origin ?? gateOrigin };
   if (browser?.cookies.size) headers.cookie = browser.cookieHeader();
   const socket = new WebSocket(url, { headers });
   return new Promise((resolve, reject) => {
@@ -238,19 +238,19 @@ describe('live media admission (#128)', () => {
     const config = liveMediaConfig({ ...env, FLUX_LIVEKIT_API_URL: 'http://livekit:7880', NODE_ENV: 'production' }, 'https://flux.example.org');
     assert.equal(config.mediaUrl, 'wss://flux.example.org/media');
     assert.equal(config.signalUrl, 'ws://livekit:7880');
-    assert.equal(liveMediaConfig({ ...env, FLUX_LIVEKIT_API_URL: 'https://sfu.internal.example' }, publicOrigin).mediaUrl, 'ws://127.0.0.1:18128/media');
-    assert.throws(() => liveMediaConfig({ ...env, FLUX_LIVEKIT_API_URL: 'http://livekit:7880', FLUX_LIVEKIT_WS_URL: 'wss://sfu.example.org' }, publicOrigin),
+    assert.equal(liveMediaConfig({ ...env, FLUX_LIVEKIT_API_URL: 'https://sfu.internal.example' }, gateOrigin).mediaUrl, 'ws://127.0.0.1:18128/media');
+    assert.throws(() => liveMediaConfig({ ...env, FLUX_LIVEKIT_API_URL: 'http://livekit:7880', FLUX_LIVEKIT_WS_URL: 'wss://sfu.example.org' }, gateOrigin),
       /FLUX_LIVEKIT_WS_URL is no longer used/);
-    assert.throws(() => liveMediaConfig({ ...env, FLUX_LIVEKIT_API_URL: 'http://sfu.example.org' }, publicOrigin), /HTTPS/);
+    assert.throws(() => liveMediaConfig({ ...env, FLUX_LIVEKIT_API_URL: 'http://sfu.example.org' }, gateOrigin), /HTTPS/);
     assert.throws(() => liveMediaConfig({ ...env, FLUX_LIVEKIT_API_URL: 'http://127.0.0.1:7880', NODE_ENV: 'production',
-      FLUX_LIVEKIT_ALLOW_INSECURE_LOCAL: 'true' }, publicOrigin), /HTTPS/);
+      FLUX_LIVEKIT_ALLOW_INSECURE_LOCAL: 'true' }, gateOrigin), /HTTPS/);
   });
 
   test('a grant carries only an opaque admission bound to the requesting auth session', async () => {
     const s = await scene('admission-binding');
     const laptop = await signedIn(s.member);
     const issued = await s.join(laptop.browser);
-    assert.equal(issued.mediaUrl, `${publicOrigin.replace(/^http/, 'ws')}/media`);
+    assert.equal(issued.mediaUrl, `${gateOrigin.replace(/^http/, 'ws')}/media`);
     const payload = claims(issued.token);
     assert.match(payload.metadata ?? '', /^[A-Za-z0-9_-]{22}$/, '128 random bits, base64url');
     assert.equal(payload.video.room, s.session.roomId);
@@ -415,11 +415,11 @@ describe('live media admission (#128)', () => {
     s.connect(s.member.id, laptopGrant.token);
     sfu.calls.length = 0;
     const laptopClosed = new Promise<void>((resolve) => laptopSocket.once('close', () => resolve()));
-    expectStatus(await new Browser(gateUrl, publicOrigin).request('POST', '/api/auth/request-password-reset',
-      { body: { email: s.member.email, redirectTo: `${publicOrigin}/reset-password` } }), 200);
+    expectStatus(await new Browser(gateUrl, gateOrigin).request('POST', '/api/auth/request-password-reset',
+      { body: { email: s.member.email, redirectTo: `${gateOrigin}/reset-password` } }), 200);
     await until(() => resetMails.some((mail) => mail.to === s.member.email), 'the reset mail');
     const token = resetMails.filter((mail) => mail.to === s.member.email).at(-1)!.text.match(/reset-password\/([^?\s]+)/)![1]!;
-    expectStatus(await new Browser(gateUrl, publicOrigin).request('POST', '/api/auth/reset-password',
+    expectStatus(await new Browser(gateUrl, gateOrigin).request('POST', '/api/auth/reset-password',
       { body: { token, newPassword: 'a different long passphrase' } }), 200);
     await laptopClosed;
     await until(() => sfu.calls.includes(`remove:${s.session.roomId}:${claims(laptopGrant.token).sub}`), 'removal after password reset');

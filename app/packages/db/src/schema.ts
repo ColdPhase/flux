@@ -1,4 +1,7 @@
-import { pgTable, text, timestamp, uuid, integer, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { eq, isNull, ne, sql } from 'drizzle-orm';
+import type { InspectedComparisonSource } from '@flux/contracts';
+import { pgTable, text, timestamp, uuid, integer, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, check, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES, type AgentJsonValue, type AgentPostcondition } from '@flux/contracts';
 
 export const samples = pgTable('samples', {
   id: uuid('id').primaryKey(),
@@ -459,12 +462,15 @@ export const projectConversations = pgTable('project_conversations', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),
   projectId: uuid('project_id').notNull(),
-  createdBy: text('created_by').notNull(),
+  createdBy: text('created_by'),
+  createdByAgentId: uuid('created_by_agent_id'),
   nextSequence: integer('next_sequence').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique().on(table.workspaceId, table.projectId, table.id),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.createdByAgentId], foreignColumns: [agents.workspaceId, agents.id] }),
+  check('project_conversation_exact_actor', sql`num_nonnulls(${table.createdBy}, ${table.createdByAgentId}) = 1`),
 ]);
 
 export const projectMaterials = pgTable('project_materials', {
@@ -513,19 +519,30 @@ export const projectMessages = pgTable('project_messages', {
   workspaceId: uuid('workspace_id').notNull(),
   projectId: uuid('project_id').notNull(),
   conversationId: uuid('conversation_id').notNull(),
-  authorId: text('author_id').notNull(),
+  authorId: text('author_id'),
+  authorAgentId: uuid('author_agent_id'),
   clientMessageId: uuid('client_message_id').notNull(),
   requestFingerprint: text('request_fingerprint').notNull(),
   sequence: integer('sequence').notNull(),
   body: text('body').notNull(),
   sourceMaterialId: uuid('source_material_id'),
   sourceMaterialVersion: integer('source_material_version'),
+  /** Plain text unless an explicit native effect (#154, migration 0040) says otherwise. */
+  contributionKind: text('contribution_kind', { enum: ['text', 'blocker', 'result', 'handoff'] }).notNull().default('text'),
+  resultId: uuid('result_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique().on(table.conversationId, table.sequence),
+  unique('project_messages_root_identity').on(table.conversationId, table.id, table.sequence),
   unique().on(table.projectId, table.authorId, table.clientMessageId),
+  unique().on(table.projectId, table.authorAgentId, table.clientMessageId),
+  foreignKey({ columns: [table.workspaceId, table.authorAgentId], foreignColumns: [agents.workspaceId, agents.id] }),
+  check('project_message_exact_actor', sql`num_nonnulls(${table.authorId}, ${table.authorAgentId}) = 1`),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.conversationId], foreignColumns: [projectConversations.workspaceId, projectConversations.projectId, projectConversations.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.sourceMaterialId, table.sourceMaterialVersion], foreignColumns: [projectMaterialVersions.workspaceId, projectMaterialVersions.projectId, projectMaterialVersions.materialId, projectMaterialVersions.version] }),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.resultId], foreignColumns: [projectResults.workspaceId, projectResults.projectId, projectResults.id] }),
+  check('project_message_contribution_kind', sql`${table.contributionKind} IN ('text', 'blocker', 'result', 'handoff')`),
+  check('project_message_result_reference', sql`(${table.contributionKind} = 'result') = (${table.resultId} IS NOT NULL)`),
 ]);
 
 // One person's selected agent, scopes and project ceiling for an external MCP client (#52).
@@ -534,7 +551,10 @@ export const agentConnections = pgTable('agent_connections', {
   workspaceId: uuid('workspace_id').notNull(),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
   agentId: uuid('agent_id').notNull(),
-  scopes: text('scopes', { enum: ['flux.context.read', 'flux.proposal.write'] }).array().notNull(),
+  name: text('name').notNull().default('External connection'),
+  clientDesignation: text('client_designation', { enum: ['claude_code', 'codex', 'other'] }).notNull().default('other'),
+  computeSource: text('compute_source', { enum: ['user_operated_claude_code', 'user_operated_external_client'] }).notNull().default('user_operated_external_client'),
+  scopes: text('scopes', { enum: ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'] }).array().notNull(),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -550,6 +570,7 @@ export const agentConnectionProjects = pgTable('agent_connection_projects', {
   projectId: uuid('project_id').notNull(),
 }, (table) => [
   primaryKey({ columns: [table.connectionId, table.projectId] }),
+  unique().on(table.workspaceId, table.connectionId, table.projectId),
   foreignKey({ columns: [table.workspaceId, table.connectionId], foreignColumns: [agentConnections.workspaceId, agentConnections.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
 ]);
@@ -561,6 +582,101 @@ export const agentOauthSelections = pgTable('agent_oauth_selections', {
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
   connectionId: uuid('connection_id').notNull().references(() => agentConnections.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Provider references persist independently of short-lived browser flow choices. */
+export const agentOauthBindings = pgTable('agent_oauth_bindings', {
+  id: uuid('id').primaryKey(),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
+  connectionId: uuid('connection_id').notNull().references(() => agentConnections.id),
+  clientId: text('client_id').notNull(),
+  generation: integer('generation').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [unique().on(table.ownerUserId, table.connectionId, table.clientId)]);
+
+export const agentOauthFlows = pgTable('agent_oauth_flows', {
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
+  sessionId: text('session_id').notNull().references(() => authSessions.id, { onDelete: 'cascade' }),
+  fingerprint: text('fingerprint').notNull(),
+  bindingId: uuid('binding_id').notNull().references(() => agentOauthBindings.id),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [primaryKey({ columns: [table.ownerUserId, table.sessionId, table.fingerprint] })]);
+
+/** Server-issued runtime identity, bound to one actual OAuth binding/generation. */
+export const agentRuntimeSessions = pgTable('agent_runtime_sessions', {
+  id: uuid('id').primaryKey(),
+  bindingId: uuid('binding_id').notNull().references(() => agentOauthBindings.id),
+  bindingGeneration: integer('binding_generation').notNull(),
+  clientSessionId: uuid('client_session_id').notNull(),
+  workspaceId: uuid('workspace_id').notNull(),
+  connectionId: uuid('connection_id').notNull(),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
+  agentId: uuid('agent_id').notNull(),
+  scopes: text('scopes').array().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, (table) => [
+  unique().on(table.bindingId, table.clientSessionId),
+  unique().on(table.connectionId, table.id),
+  foreignKey({ columns: [table.workspaceId, table.connectionId], foreignColumns: [agentConnections.workspaceId, agentConnections.id] }),
+  foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }),
+]);
+
+/** Explicit owner action ceilings; project contributor rights do not create these grants. */
+export const agentStandingGrants = pgTable('agent_standing_grants', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  connectionId: uuid('connection_id').notNull(),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
+  clientCommandId: uuid('client_command_id').notNull(),
+  requestFingerprint: text('request_fingerprint').notNull(),
+  operation: text('operation', { enum: AGENT_OPERATIONS }).notNull(),
+  peerRequestClass: text('peer_request_class', { enum: AGENT_PEER_REQUEST_CLASSES }).notNull(),
+  objectId: uuid('object_id'),
+  maximumUses: integer('maximum_uses').notNull(),
+  used: integer('used').notNull().default(0),
+  generation: integer('generation').notNull().default(1),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique().on(table.connectionId, table.id),
+  unique().on(table.connectionId, table.clientCommandId),
+  foreignKey({ columns: [table.workspaceId, table.connectionId, table.projectId], foreignColumns: [agentConnectionProjects.workspaceId, agentConnectionProjects.connectionId, agentConnectionProjects.projectId] }),
+]);
+
+/** One canonical durable command ledger, shared with coordination. No TTL replay cache. */
+export const agentCommandReceipts = pgTable('agent_command_receipts', {
+  connectionId: uuid('connection_id').notNull(),
+  clientCommandId: uuid('client_command_id').notNull(),
+  runtimeSessionId: uuid('runtime_session_id').notNull(),
+  grantId: uuid('grant_id').notNull(),
+  grantGeneration: integer('grant_generation').notNull(),
+  bindingId: uuid('binding_id').notNull().references(() => agentOauthBindings.id),
+  bindingGeneration: integer('binding_generation').notNull(),
+  fingerprint: text('fingerprint').notNull(),
+  operation: text('operation', { enum: AGENT_OPERATIONS }).notNull(),
+  projectId: uuid('project_id').notNull(),
+  value: jsonb('value').$type<AgentJsonValue>().notNull(),
+  postconditions: jsonb('postconditions').$type<AgentPostcondition[]>().notNull(),
+  completedAt: timestamp('completed_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.connectionId, table.clientCommandId] }),
+  foreignKey({ columns: [table.connectionId, table.runtimeSessionId], foreignColumns: [agentRuntimeSessions.connectionId, agentRuntimeSessions.id] }),
+  foreignKey({ columns: [table.connectionId, table.grantId], foreignColumns: [agentStandingGrants.connectionId, agentStandingGrants.id] }),
+]);
+
+// The co-work playbook a client reports having loaded for one runtime session (migration 0041, #160).
+// Compatibility evidence only; it authorizes nothing.
+export const agentPlaybookAcknowledgments = pgTable('agent_playbook_acknowledgments', {
+  runtimeSessionId: uuid('runtime_session_id').primaryKey().references(() => agentRuntimeSessions.id, { onDelete: 'cascade' }),
+  bundleId: text('bundle_id').notNull(),
+  version: text('version').notNull(),
+  digest: text('digest').notNull(),
+  acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 // Sketches: thoughts on a map and the links between them (migration 0007, issue #69).
@@ -669,12 +785,86 @@ export const projectWorkItems = pgTable('project_work_items', {
   parkedAt: timestamp('parked_at', { withTimezone: true }),
   createdByKind: text('created_by_kind', { enum: ['human', 'agent'] }).notNull(),
   createdById: text('created_by_id').notNull(),
+  clientCommandId: uuid('client_command_id'),
+  requestFingerprint: text('request_fingerprint'),
+  /** Bounded array of distinct trimmed statements (#152, migration 0039); `[]` for tasks without any. */
+  criteria: jsonb('criteria').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique().on(table.workspaceId, table.projectId, table.id),
+  uniqueIndex('project_work_creation_command_idx').on(table.projectId, table.createdByKind, table.createdById, table.clientCommandId),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+]);
+
+/** Direct same-project prerequisites of a task (#152, migration 0039); the task may start once all are done. */
+export const projectTaskDependencies = pgTable('project_task_dependencies', {
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  taskId: uuid('task_id').notNull(),
+  prerequisiteId: uuid('prerequisite_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.projectId, table.taskId, table.prerequisiteId] }),
+  check('project_task_dependency_not_self', sql`${table.taskId} <> ${table.prerequisiteId}`),
+  index('project_task_dependencies_task_idx').on(table.taskId, table.prerequisiteId),
+  index('project_task_dependencies_prerequisite_idx').on(table.prerequisiteId, table.taskId),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.taskId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.prerequisiteId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+]);
+
+/**
+ * Immutable native plan correlation (#152, migration 0039): one exact plan revision and key produced one task,
+ * with the normalized creation fingerprint and the task's original version. Not an agent receipt or grant.
+ */
+export const projectTaskPlanIntents = pgTable('project_task_plan_intents', {
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  materialId: uuid('material_id').notNull(),
+  materialVersion: integer('material_version').notNull(),
+  intentKey: text('intent_key').notNull(),
+  taskId: uuid('task_id').notNull().unique(),
+  creationFingerprint: text('creation_fingerprint').notNull(),
+  taskVersion: integer('task_version').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.projectId, table.materialId, table.materialVersion, table.intentKey] }),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.materialId, table.materialVersion], foreignColumns: [projectMaterialVersions.workspaceId, projectMaterialVersions.projectId, projectMaterialVersions.materialId, projectMaterialVersions.version] }),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.taskId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }),
+]);
+
+// Durable compact creation notices, never synthetic conversation roots (#154, migration 0033).
+export const projectTaskNotices = pgTable('project_task_notices', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  workId: uuid('work_id').notNull(),
+  kind: text('kind', { enum: ['task.created'] }).notNull(),
+  createdByKind: text('created_by_kind', { enum: ['human', 'agent'] }).notNull(),
+  createdById: text('created_by_id').notNull(),
+  sources: jsonb('sources').$type<import('@flux/contracts').ObjectRef[]>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+}, (table) => [
+  unique().on(table.workId, table.kind),
+  index('project_task_notices_project_idx').on(table.projectId, table.createdAt, table.id),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.workId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+]);
+
+/** A task never manufactures a conversation. Its first genuine message binds the root. */
+export const projectTaskDiscussions = pgTable('project_task_discussions', {
+  workId: uuid('work_id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  conversationId: uuid('conversation_id').notNull().unique(),
+  rootMessageId: uuid('root_message_id').notNull().unique(),
+  rootSequence: integer('root_sequence').notNull().default(1),
+}, (table) => [
+  check('project_task_discussion_root_sequence', sql`${table.rootSequence} = 1`),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.workId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.conversationId], foreignColumns: [projectConversations.workspaceId, projectConversations.projectId, projectConversations.id] }),
+  foreignKey({ columns: [table.conversationId, table.rootMessageId, table.rootSequence], foreignColumns: [projectMessages.conversationId, projectMessages.id, projectMessages.sequence] }),
 ]);
 
 export const projectResults = pgTable('project_results', {
@@ -690,6 +880,31 @@ export const projectResults = pgTable('project_results', {
 }, (table) => [
   unique().on(table.workspaceId, table.projectId, table.id),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+]);
+
+/**
+ * One receipt per real actor, project, operation and client command UUID (#154, migration 0040). It keeps the
+ * produced object, the produced task version and the contribution messages for an exact replay; it is not the
+ * #152 connection-command ledger and never debits a grant.
+ */
+export const nativeCommandReceipts = pgTable('native_command_receipts', {
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  actorKind: text('actor_kind', { enum: ['human', 'agent'] }).notNull(),
+  actorId: text('actor_id').notNull(),
+  operation: text('operation', { enum: ['work.update', 'result.create'] }).notNull(),
+  clientCommandId: uuid('client_command_id').notNull(),
+  requestFingerprint: text('request_fingerprint').notNull(),
+  workId: uuid('work_id'),
+  workVersion: integer('work_version'),
+  resultId: uuid('result_id'),
+  messageIds: uuid('message_ids').array().notNull().default(sql`'{}'`),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.projectId, table.actorKind, table.actorId, table.operation, table.clientCommandId] }),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.workId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.resultId], foreignColumns: [projectResults.workspaceId, projectResults.projectId, projectResults.id] }).onDelete('cascade'),
 ]);
 
 export const projectObjectLinks = pgTable('project_object_links', {
@@ -718,7 +933,7 @@ export const agentProposals = pgTable('agent_proposals', {
   projectId: uuid('project_id').notNull(),
   agentId: uuid('agent_id').notNull(),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
-  computeSource: text('compute_source', { enum: ['user_operated_claude_code'] }).notNull(),
+  computeSource: text('compute_source', { enum: ['user_operated_claude_code', 'user_operated_external_client'] }).notNull(),
   agentGrantId: uuid('agent_grant_id').notNull(),
   agentGrantRole: text('agent_grant_role', { enum: ['contributor'] }).notNull(),
   sourceMaterialId: uuid('source_material_id').notNull(),
@@ -738,6 +953,55 @@ export const agentProposals = pgTable('agent_proposals', {
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.sourceMaterialId, table.sourceMaterialVersion], foreignColumns: [projectMaterialVersions.workspaceId, projectMaterialVersions.projectId, projectMaterialVersions.materialId, projectMaterialVersions.version] }),
+]);
+
+export const backgroundComputeConnections = pgTable('background_compute_connections', {
+  id: uuid('id').primaryKey(),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  provider: text('provider', { enum: ['anthropic'] }).notNull(),
+  model: text('model', { enum: ['claude-sonnet-5'] }).notNull(),
+  payerOrganization: text('payer_organization').notNull(),
+  providerWorkspace: text('provider_workspace').notNull(),
+  encryptedKey: text('encrypted_key'),
+  keyLastFour: text('key_last_four').notNull(),
+  keyFingerprint: text('key_fingerprint').notNull(),
+  maxRunsPerDay: integer('max_runs_per_day').notNull(),
+  periodDays: integer('period_days').notNull(),
+  periodBudgetCents: integer('period_budget_cents').notNull(),
+  perRunCents: integer('per_run_cents').notNull(),
+  consentVersion: text('consent_version', { enum: ['o-007-2026-09-28'] }).notNull(),
+  consentedAt: timestamp('consented_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, (table) => [
+  uniqueIndex('background_compute_connections_active_owner_idx').on(table.ownerUserId).where(isNull(table.revokedAt)),
+  index('background_compute_connections_owner_idx').on(table.ownerUserId, table.createdAt, table.id),
+]);
+
+export const proactiveComparisonRules = pgTable('proactive_comparison_rules', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  agentId: uuid('agent_id').notNull(),
+  triggerKind: text('trigger_kind', { enum: ['human_negative_result'] }).notNull().default('human_negative_result'),
+  purpose: text('purpose', { enum: ['camera_sensor_comparison'] }).notNull().default('camera_sensor_comparison'),
+  dataScope: text('data_scope', { enum: ['current_project_published'] }).notNull().default('current_project_published'),
+  permittedEffect: text('permitted_effect', { enum: ['quiet_project_proposal'] }).notNull().default('quiet_project_proposal'),
+  maxRunsPerDay: integer('max_runs_per_day').notNull(),
+  periodBudgetCents: integer('period_budget_cents').notNull(),
+  perRunCents: integer('per_run_cents').notNull(),
+  status: text('status', { enum: ['enabled', 'paused', 'revoked'] }).notNull().default('paused'),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+}, (table) => [
+  uniqueIndex('proactive_comparison_rules_active_owner_project_idx').on(table.ownerUserId, table.projectId, table.purpose)
+    .where(ne(table.status, 'revoked')),
+  index('proactive_comparison_rules_owner_idx').on(table.ownerUserId, table.projectId),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }),
 ]);
 
 // Durable project-bound live sessions and identifier-only presentation trace (#61).
@@ -894,6 +1158,83 @@ export const notificationCursor = pgTable('notification_cursor', {
   id: text('id').primaryKey(),
   seq: bigint('seq', { mode: 'number' }).notNull(),
 });
+
+// An event candidate and any reserved possible charge remain separate from rule consent (#58).
+export const proactiveComparisonCursor = pgTable('proactive_comparison_cursor', {
+  id: integer('id').primaryKey(),
+  seq: bigint('seq', { mode: 'number' }).notNull(),
+});
+export const proactiveComparisonProjectChanges = pgTable('proactive_comparison_project_changes', {
+  projectId: uuid('project_id').primaryKey().references(() => projects.id, { onDelete: 'cascade' }),
+  firstChangedAt: timestamp('first_changed_at', { withTimezone: true }).notNull(),
+  lastChangedAt: timestamp('last_changed_at', { withTimezone: true }).notNull(),
+  dueAt: timestamp('due_at', { withTimezone: true }).notNull(),
+}, (table) => [index('proactive_comparison_project_changes_due_idx').on(table.dueAt, table.projectId)]);
+
+export const proactiveComparisonOutbox = pgTable('proactive_comparison_outbox', {
+  id: uuid('id').primaryKey(),
+  ruleId: uuid('rule_id').notNull().references(() => proactiveComparisonRules.id),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  projectId: uuid('project_id').notNull(),
+  resultId: uuid('result_id').notNull().references(() => projectResults.id),
+  sourceFingerprint: text('source_fingerprint').notNull(),
+  availableAfter: timestamp('available_after', { withTimezone: true }).notNull().defaultNow(),
+  status: text('status', { enum: ['queued', 'reserved', 'not_run', 'unknown', 'completed'] }).notNull().default('queued'),
+  connectionId: uuid('connection_id').references(() => backgroundComputeConnections.id),
+  reservedCents: integer('reserved_cents').notNull().default(0),
+  reservedAt: timestamp('reserved_at', { withTimezone: true }),
+  dispatchStartedAt: timestamp('dispatch_started_at', { withTimezone: true }),
+  inspectedSources: jsonb('inspected_sources').$type<InspectedComparisonSource[]>(),
+  proposalId: uuid('proposal_id'),
+  insufficientOutcomeId: uuid('insufficient_outcome_id'),
+  usageInputTokens: integer('usage_input_tokens'),
+  usageOutputTokens: integer('usage_output_tokens'),
+  usageEstimatedCents: integer('usage_estimated_cents'),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+  failureCode: text('failure_code'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  unique().on(table.ruleId, table.resultId, table.sourceFingerprint),
+  index('proactive_comparison_outbox_owner_time_idx').on(table.ownerUserId, table.reservedAt),
+  uniqueIndex('proactive_comparison_outbox_owner_inflight_idx').on(table.ownerUserId).where(eq(table.status, 'reserved')),
+  index('proactive_comparison_outbox_queued_idx').on(table.createdAt, table.id).where(eq(table.status, 'queued')),
+  index('proactive_comparison_outbox_ready_idx').on(table.availableAfter, table.id).where(eq(table.status, 'queued')),
+]);
+
+export const proactiveComparisonProposals = pgTable('proactive_comparison_proposals', {
+  id: uuid('id').primaryKey(),
+  outboxId: uuid('outbox_id').notNull().unique().references(() => proactiveComparisonOutbox.id),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
+  agentId: uuid('agent_id').notNull().references(() => agents.id),
+  projectId: uuid('project_id').notNull().references(() => projects.id),
+  resultId: uuid('result_id').notNull().references(() => projectResults.id),
+  sourceFingerprint: text('source_fingerprint').notNull(),
+  sources: jsonb('sources').$type<Array<{ type: 'result' | 'message' | 'material' | 'work' | 'thought'; id: string; version: number; conversationId?: string; sketchId?: string; title?: string }>>().notNull(),
+  fact: text('fact').notNull(),
+  interpretation: text('interpretation').notNull(),
+  suggestedAction: text('suggested_action').notNull(),
+  status: text('status', { enum: ['proposed', 'dismissed', 'used'] }).notNull().default('proposed'),
+  version: integer('version').notNull().default(1),
+  editedByUserId: text('edited_by_user_id').references(() => authUsers.id),
+  usedWorkId: uuid('used_work_id').unique().references(() => projectWorkItems.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [index('proactive_comparison_proposals_project_idx').on(table.projectId, table.createdAt.desc(), table.id.desc())]);
+
+export const proactiveComparisonInsufficientOutcomes = pgTable('proactive_comparison_insufficient_outcomes', {
+  id: uuid('id').primaryKey(),
+  outboxId: uuid('outbox_id').notNull().unique().references(() => proactiveComparisonOutbox.id),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
+  agentId: uuid('agent_id').notNull().references(() => agents.id),
+  projectId: uuid('project_id').notNull().references(() => projects.id),
+  resultId: uuid('result_id').notNull().references(() => projectResults.id),
+  reason: text('reason').notNull(),
+  status: text('status', { enum: ['open', 'dismissed'] }).notNull().default('open'),
+  version: integer('version').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [index('proactive_comparison_insufficient_project_idx').on(table.projectId, table.createdAt.desc(), table.id.desc())]);
 
 export const notificationGenerationFailures = pgTable('notification_generation_failures', {
   eventId: uuid('event_id').primaryKey(),

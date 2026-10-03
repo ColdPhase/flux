@@ -10,7 +10,7 @@ export interface AgentConnectionPort {
   resolve(ownerUserId: string, connectionId: string): Promise<AgentConnection | null>;
 }
 
-const SCOPES: readonly AgentScope[] = ['flux.context.read', 'flux.proposal.write'];
+const SCOPES: readonly AgentScope[] = ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'];
 
 /** Consent selects a ceiling; it cannot create an agent or project grant. */
 export function validateConnectionCommand(input: CreateAgentConnectionCommand): CreateAgentConnectionCommand {
@@ -23,7 +23,12 @@ export function validateConnectionCommand(input: CreateAgentConnectionCommand): 
     || input.scopes.some((scope) => !SCOPES.includes(scope))
     || new Set(input.scopes).size !== input.scopes.length)
     throw new InvalidInputError('Select distinct supported connection scopes');
-  return { agentId: input.agentId, selectedProjectIds: [...input.selectedProjectIds], scopes: [...input.scopes] };
+  const name = input.name === undefined ? 'External connection' : typeof input.name === 'string' ? input.name.trim() : '';
+  if (!name || name.length > 120)
+    throw new InvalidInputError('Connection name must be 1–120 characters');
+  const clientDesignation = input.clientDesignation ?? 'other';
+  if (!['claude_code', 'codex', 'other'].includes(clientDesignation)) throw new InvalidInputError('Select a supported client designation');
+  return { agentId: input.agentId, selectedProjectIds: [...input.selectedProjectIds], scopes: [...input.scopes], name, clientDesignation };
 }
 
 function personId(principal: Principal): string {

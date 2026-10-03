@@ -1,0 +1,100 @@
+# Local-only restrictive-client proof. Never deploy this overlay.
+services:
+  livekit:
+    # Match RTC candidates and TURN allocation to the media interface. The
+    # signaling interface remains private and is not a second media candidate.
+    command:
+      - |
+        signal_ip=$$(getent hosts livekit-signal-bind | awk '{ print $$1; exit }')
+        media_ip=$$(getent hosts turn.flux.test | awk '{ print $$1; exit }')
+        test -n "$$signal_ip" && test -n "$$media_ip"
+        export LIVEKIT_CONFIG=$$(printf '%s' "$$LIVEKIT_CONFIG" | sed "s/FLUX_TEST_MEDIA_IP/$$media_ip/g")
+        exec /livekit-server --bind "$$signal_ip" --bind 127.0.0.1
+    networks:
+      livekit-media:
+        aliases: [turn.flux.test]
+    environment:
+      LIVEKIT_CONFIG: |
+        port: 7880
+        prometheus_port: 6789
+        keys:
+          "${FLUX_LIVEKIT_API_KEY:?Set a disposable test key}": "${FLUX_LIVEKIT_API_SECRET:?Set a disposable test secret}"
+        webhook:
+          api_key: "${FLUX_LIVEKIT_API_KEY:?Set a disposable test key}"
+          urls:
+            - http://api:8080/api/v1/internal/livekit/webhook
+        room:
+          auto_create: false
+          max_participants: 16
+          empty_timeout: 420
+          departure_timeout: 180
+        rtc:
+          tcp_port: 7881
+          udp_port: 7882
+          use_external_ip: false
+          node_ip: FLUX_TEST_MEDIA_IP
+          ips:
+            includes: [FLUX_TEST_MEDIA_IP/32]
+          stun_servers: [turn.flux.test:3478]
+        turn:
+          enabled: true
+          domain: turn.flux.test
+          udp_port: 3478
+          tls_port: 443
+          cert_file: /run/livekit-turn-certs/fullchain.pem
+          key_file: /run/livekit-turn-certs/privkey.pem
+          # Docker bridge SFU is a private TURN peer. Production public media
+          # addresses must retain LiveKit's default deny for private peers.
+          allow_restricted_peer_cidrs:
+            - 172.16.0.0/12
+  live-sfu-test:
+    cap_add: [NET_ADMIN]
+    environment:
+      FLUX_LIVE_TURN_PROFILE: ${FLUX_LIVE_TURN_PROFILE:-legacy}
+    volumes:
+      - ${FLUX_LIVEKIT_TURN_CERT_DIR:?Set a disposable test cert directory}:/run/livekit-turn-certs:ro,z
+      - ${FLUX_LIVE_TURN_ARTIFACT_DIR:?Set a local test evidence directory}:/artifacts:z
+    command:
+      - sh
+      - -ec
+      - |
+        media_ip=$$(getent ahostsv4 livekit | awk 'NR == 1 { print $$1 }')
+        test -n "$$media_ip"
+        # Docker rewrites DNS/53 to a high resolver port before OUTPUT rules.
+        # Permit only its loopback resolver, then deny every direct media UDP path.
+        iptables -A OUTPUT -d 127.0.0.11 -p udp -j ACCEPT
+        iptables -A OUTPUT -s 127.0.0.11 -p udp -j ACCEPT
+        iptables -A OUTPUT -p udp ! --dport 53 -j REJECT
+        iptables -A OUTPUT -p tcp --dport 7881 -j REJECT
+        trap 'iptables -L OUTPUT -n -v' EXIT
+        cp /run/livekit-turn-certs/ca.pem /usr/local/share/ca-certificates/turn-flux-test.crt
+        update-ca-certificates >/dev/null
+        mkdir -p /root/.pki/nssdb
+        certutil -N -d sql:/root/.pki/nssdb --empty-password
+        certutil -A -d sql:/root/.pki/nssdb -n turn-flux-test -t 'C,,' \
+          -i /run/livekit-turn-certs/ca.pem
+        if ! openssl s_client -connect turn.flux.test:443 -servername turn.flux.test \
+          -verify_hostname turn.flux.test -verify_return_error \
+          -CAfile /run/livekit-turn-certs/ca.pem -brief \
+          </dev/null >/tmp/turn-tls.txt 2>&1; then
+          cp /tmp/turn-tls.txt /artifacts/turn-tls.txt
+          cat /tmp/turn-tls.txt
+          exit 1
+        fi
+        cp /tmp/turn-tls.txt /artifacts/turn-tls.txt
+        grep -q 'Verification: OK' /tmp/turn-tls.txt
+        cat /tmp/turn-tls.txt
+        test ! -e /dev/video0 && test ! -e /dev/snd
+        node -e "const net=require('node:net'); const s=net.connect(7881,process.argv[1]); s.on('connect',()=>process.exit(1)); s.on('error',()=>process.exit(0)); setTimeout(()=>process.exit(2),2000)" "$$media_ip"
+        # The separate Xvfb display keeps Chromium's real display-capture picker
+        # and fake camera/mic entirely away from the operator's desktop/devices.
+        case "$$FLUX_LIVE_TURN_PROFILE" in
+          legacy) xvfb-run -a node_modules/.bin/tsx --test tests/app/e2e/live-turn-relay.e2e.ts ;;
+          code-1440p) xvfb-run -a -s "-screen 0 2560x1440x24" node_modules/.bin/tsx --test tests/app/e2e/live-code-quality.e2e.ts ;;
+          *) exit 2 ;;
+        esac
+        node_modules/.bin/tsx --test tests/app/live-receiver-quality.test.ts tests/app/live-diagnostics.test.ts
+        node_modules/.bin/tsx --test --test-concurrency=1 tests/app/e2e/live-sfu-revocation.e2e.ts tests/app/e2e/live-sfu-signout.e2e.ts
+        if [ "$$FLUX_LIVE_TURN_PROFILE" = code-1440p ]; then node tooling/live-sfu-test/summarize_live_code.mjs /artifacts; fi
+        node tooling/live-sfu-test/summarize_live_turn_resources.mjs /artifacts
+        iptables -L OUTPUT -n -v

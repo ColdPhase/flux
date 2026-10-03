@@ -1,0 +1,152 @@
+TURN visual evidence directory: /tmp/flux63-code-a58
+ Network flux-live-turn-1790767115-882767_livekit-media Creating 
+ Network flux-live-turn-1790767115-882767_livekit-media Created 
+ Network flux-live-turn-1790767115-882767_default Creating 
+ Network flux-live-turn-1790767115-882767_default Created 
+ Network flux-live-turn-1790767115-882767_livekit-signal Creating 
+ Network flux-live-turn-1790767115-882767_livekit-signal Created 
+ Volume flux-live-turn-1790767115-882767_files Creating 
+ Volume flux-live-turn-1790767115-882767_files Created 
+ Volume flux-live-turn-1790767115-882767_pgdata Creating 
+ Volume flux-live-turn-1790767115-882767_pgdata Created 
+ Container flux-live-turn-1790767115-882767-db-1 Creating 
+ Container flux-live-turn-1790767115-882767-livekit-1 Creating 
+ Container flux-live-turn-1790767115-882767-livekit-1 Created 
+ Container flux-live-turn-1790767115-882767-db-1 Created 
+ Container flux-live-turn-1790767115-882767-migrate-1 Creating 
+ Container flux-live-turn-1790767115-882767-migrate-1 Created 
+ Container flux-live-turn-1790767115-882767-api-1 Creating 
+time="2026-09-30T13:18:37+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-live-turn-1790767115-882767-api-1 Created 
+ Container flux-live-turn-1790767115-882767-livekit-1 Starting 
+ Container flux-live-turn-1790767115-882767-db-1 Starting 
+ Container flux-live-turn-1790767115-882767-db-1 Started 
+ Container flux-live-turn-1790767115-882767-db-1 Waiting 
+ Container flux-live-turn-1790767115-882767-livekit-1 Started 
+ Container flux-live-turn-1790767115-882767-db-1 Healthy 
+ Container flux-live-turn-1790767115-882767-migrate-1 Starting 
+ Container flux-live-turn-1790767115-882767-migrate-1 Started 
+ Container flux-live-turn-1790767115-882767-livekit-1 Waiting 
+ Container flux-live-turn-1790767115-882767-migrate-1 Waiting 
+ Container flux-live-turn-1790767115-882767-livekit-1 Healthy 
+ Container flux-live-turn-1790767115-882767-migrate-1 Exited 
+ Container flux-live-turn-1790767115-882767-api-1 Starting 
+ Container flux-live-turn-1790767115-882767-api-1 Started 
+ Container flux-live-turn-1790767115-882767-db-1 Waiting 
+ Container flux-live-turn-1790767115-882767-livekit-1 Waiting 
+ Container flux-live-turn-1790767115-882767-api-1 Waiting 
+ Container flux-live-turn-1790767115-882767-migrate-1 Waiting 
+ Container flux-live-turn-1790767115-882767-livekit-1 Healthy 
+ Container flux-live-turn-1790767115-882767-migrate-1 Exited 
+ Container flux-live-turn-1790767115-882767-db-1 Healthy 
+ Container flux-live-turn-1790767115-882767-api-1 Healthy 
+ Container flux-live-turn-1790767115-882767-livekit-1 Running 
+ Container flux-live-turn-1790767115-882767-db-1 Running 
+ Container flux-live-turn-1790767115-882767-api-1 Running 
+ Container flux-live-turn-1790767115-882767-db-1 Waiting 
+ Container flux-live-turn-1790767115-882767-db-1 Healthy 
+ Container flux-live-turn-1790767115-882767-migrate-1 Starting 
+ Container flux-live-turn-1790767115-882767-migrate-1 Started 
+ Container flux-live-turn-1790767115-882767-livekit-1 Waiting 
+ Container flux-live-turn-1790767115-882767-migrate-1 Waiting 
+ Container flux-live-turn-1790767115-882767-livekit-1 Healthy 
+ Container flux-live-turn-1790767115-882767-migrate-1 Exited 
+ Container flux-live-turn-1790767115-882767-api-1 Waiting 
+ Container flux-live-turn-1790767115-882767-livekit-1 Waiting 
+ Container flux-live-turn-1790767115-882767-api-1 Healthy 
+ Container flux-live-turn-1790767115-882767-livekit-1 Healthy 
+ Container flux-live-turn-1790767115-882767-live-sfu-test-run-14eeb7e3efda Creating 
+ Container flux-live-turn-1790767115-882767-live-sfu-test-run-14eeb7e3efda Created 
+rehash: warning: skipping ca-certificates.crt,it does not contain exactly one certificate or CRL
+CONNECTION ESTABLISHED
+Protocol version: TLSv1.3
+Ciphersuite: TLS_AES_128_GCM_SHA256
+Peer certificate: CN = turn.flux.test
+Hash used: SHA256
+Signature type: RSA-PSS
+Verification: OK
+Verified peername: turn.flux.test
+Server Temp Key: X25519, 253 bits
+DONE
+✔ code-1440p: two then four authorized peers receive scrolling 14/16px text over TURN/TLS (38599.41253ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 38963.240272
+✔ on-demand video row uses interval loss and decoded fps, not lifetime loss or configured fps (1.098272ms)
+✔ missing, partial and reset reports cannot display invented zero loss/gaps or negative rates (0.276041ms)
+✔ partial advancing reports and discarded track histories remain unmeasured (0.256021ms)
+✔ actual locked SDK audio raw-report boundary retains RTP counters and stream identity (29.036426ms)
+✔ actual production pending diagnostic read cannot resurrect removed or disconnected tracks (2.013945ms)
+✔ observed idle counters warn for expected flow; intentional pause does not warn (0.195741ms)
+✔ receiver sample derives actual interval bitrate, loss, fps, jitter and selected ICE RTT (0.991803ms)
+✔ fixed delay yields an explicit network warning; high loss and jitter become poor (0.209221ms)
+✔ counter reset or absent receiver stats cannot fabricate healthy throughput (0.13605ms)
+✔ cumulative packets and healthy RTT cannot hide a stalled expected receiver (0.113741ms)
+✔ interval decoded frames override a stale instantaneous browser fps report (0.07302ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 199.178681
+{"oldRoom":"live_EMQmvb_LHlQ80sXXjt_ssJ3rHV-e2KBf","newRoom":"live_5x5SVIMRfIsX1IZZn3PhpPgjgXy0N7-m","generation":2,"oldTokenRejected":"HTTP 401 /media/rtc/v1/validate","refreshedTokenRejected":"HTTP 401 /media/rtc/v1/validate","remainingRejoined":true,"repeatedLeave":204,"signedWebhooks":2,"workSurvived":"6097d577-4cc9-4054-a48b-08f63b67e44f"}
+✔ Flux revocation retires the real SFU room, rejects original and refreshed grants, and rejoins a remaining member (1153.28803ms)
+{"room":"live_32FQf7JhYt1byvLomEumvl0UHf4wszc6","directSfu":"ECONNREFUSED","receiverSawLeaveMs":780,"senderDisconnectedMs":781,"signedOutReconnectSockets":1,"replayedPaths":["/media/rtc/v1","/media/rtc/v1","/media/rtc/v1"],"originalRefused":"HTTP 401 /media/rtc/v1/validate","refreshedRefused":"HTTP 401 /media/rtc/v1/validate","otherSessionAndPersonConnected":true,"sameRoomSessionConnected":true,"leaveEndedOnlyThisDevice":true,"burst":"200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,200,429","retryAfter":"60","workSurvived":"24be57f0-28f5-4a1a-be3e-43fe615bb455"}
+✔ sign-out ends the signed-out session media, refuses its grants at the gate and leaves others connected (8428.84754ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10697.33108
+{"profile":"code-1440p","stages":[{"peers":2,"intervalMs":10026,"clients":[[{"client":1,"id":"0:OT01A2227252211","kind":"audio","direction":"sent","width":null,"height":null,"framesDelta":null,"intervalFps":null,"frameCounter":"framesSent","framesEncodedDelta":null,"encodedIntervalFps":null,"bitrateKbps":98.7408737283064,"packetsDelta":501,"packetLossPercent":null,"jitterMs":null,"qualityLimitationReason":null},{"client":1,"id":"0:OT01V3331465245","kind":"video","direction":"sent","width":2560,"height":1440,"framesDelta":150,"intervalFps":14.961101137043686,"frameCounter":"framesSent","framesEncodedDelta":150,"encodedIntervalFps":14.961101137043686,"bitrateKbps":876.818671454219,"packetsDelta":1017,"packetLossPercent":null,"jitterMs":null,"qualityLimitationReason":"none"}],[{"client":2,"id":"0:IT01A1645131480","kind":"audio","direction":"received","width":null,"height":null,"framesDelta":null,"intervalFps":null,"frameCounter":"framesDecoded","framesEncodedDelta":null,"encodedIntervalFps":null,"bitrateKbps":98.7408737283064,"packetsDelta":501,"packetLossPercent":0,"jitterMs":2,"qualityLimitationReason":null},{"client":2,"id":"0:IT01V3852904480","kind":"video","direction":"received","width":2560,"height":1440,"framesDelta":150,"intervalFps":14.961101137043686,"frameCounter":"framesDecoded","framesEncodedDelta":null,"encodedIntervalFps":null,"bitrateKbps":860.229802513465,"packetsDelta":997,"packetLossPercent":0,"jitterMs":0,"qualityLimitationReason":null}]],"markers":[{"viewer":2,"name":"code-1","auditableCallbacks":180,"distinctSourceFrames":180,"firstSourceFrame":28,"lastSourceFrame":209,"maximumCallbackGapMs":116,"localSourceDrawToCallbackMedianMs":117,"localSourceDrawToCallbackP95Ms":152,"ageMethod":"binary decoded-frame marker matched to source Date.now on the same Docker host; includes capture/encode/relay/decode/compositor/callback scheduling, not physical glass-to-glass"}]},{"peers":4,"intervalMs":10214,"clients":[[{"client":1,"id":"0:IT01V289994231","kind":"video","direction":"received","width":2560,"height":1440,"framesDelta":154,"intervalFps":15.07734482083415,"frameCounter":"framesDecoded","framesEncodedDelta":null,"encodedIntervalFps":null,"bitrateKbps":1318.3230859604464,"packetsDelta":1514,"packetLossPercent":0,"jitterMs":6,"qualityLimitationReason":null},{"client":1,"id":"0:OT01A2227252211","kind":"audio","direction":"sent","width":null,"height":null,"framesDelta":null,"intervalFps":null,"frameCounter":"framesSent","framesEncodedDelta":null,"encodedIntervalFps":null,"bitrateKbps":98.85803798707656,"packetsDelta":511,"packetLossPercent":null,"jitterMs":null,"qualityLimitationReason":null},{"client":1,"id":"0:OT01V3331465245","kind":"video","direction":"sent","width":2560,"height":1440,"framesDelta":153,"intervalFps":14.979439984335226,"frameCounter":"framesSent","framesEncodedDelta":153,"encodedIntervalFps":14.979439984335226,"bitrateKbps":632.6759349911886,"packetsDelta":774,"packetLossPercent":null,"jitterMs":null,"qualityLimitationReason":"none"}],[{"client":2,"id":"0:IT01A1645131480","kind":"audio","direction":"received","width":null,"height":null,"framesDelta":null,"intervalFps":null,"frameCounter":"framesDecoded","framesEncodedDelta":null,"encodedIntervalFps":null,"bitrateKbps":98.66457803015469,"packetsDelta":510,"packetLossPercent":0,"jitterMs":3,"qualityLimitationReason":null},{"client":2,"id":"0:IT01V1770705137","kind":"video","direction":"received","width":2560,"height":1440,"framesDelta":153,"intervalFps":14.979439984335226,"frameCounter":"framesDecoded","framesEncodedDelta":null,"encodedIntervalFps":null,"bitrateKbps":1310.1586058351284,"packetsDelta":1505,"packetLossPercent":0,"jitterMs":6,"qualityLimitationReason":null},{"client":2,"id":"0:IT01V3852904480","kind":"video","direction":"received","width":2560,"height":1440,"framesDelta":153,"intervalFps":14.979439984335226,"frameCounter":"framesDecoded","framesEncodedDelta":null,"encodedIntervalFps":null,"bitrateKbps":620.8310162522029,"packetsDelta":756,"packetLossPercent":0,"jitterMs":4,"qualityLimitationReason":null}],[{"client":3,"id":"0:IT01A2574179461","kind":"audio","direction":"received","width":null,"height":null,"framesDelta":null,"intervalFps":null,"frameCounter":"framesDecoded","framesEncodedDelta":null,"encodedIntervalFps":null,"bitrateKbps":98.85803798707656,"packetsDelta":511,"packetLossPercent":0,"jitterMs":3,"qualityLimitationReason":null},{"client":3,"id":"0:IT01V2666032715","kind":"video","direction":"received","width":2560,"height":1440,"framesDelta":153,"intervalFps":14.979439984335226,"frameCounter":"framesDecoded","framesEncodedDelta":null,"encodedIntervalFps":null,"bitrateKbps":623.5151752496573,"packetsDelta":759,"packetLossPercent":0,"jitterMs":4,"qualityLimitationReason":null},{"client":3,"id":"0:OT01V963004849","kind":"video","direction":"sent","width":2560,"height":1440,"framesDelta":152,"intervalFps":14.881535147836303,"frameCounter":"framesSent","framesEncodedDelta":152,"encodedIntervalFps":14.881535147836303,"bitrateKbps":1311.9490894850205,"packetsDelta":1510,"packetLossPercent":null,"jitterMs":null,"qualityLimitationReason":"none"}],[{"client":4,"id":"0:IT01A4211466849","kind":"audio","direction":"received","width":null,"height":null,"framesDelta":null,"intervalFps":null,"frameCounter":"framesDecoded","framesEncodedDelta":null,"encodedIntervalFps":null,"bitrateKbps":98.66457803015469,"packetsDelta":510,"packetLossPercent":0,"jitterMs":3,"qualityLimitationReason":null},{"client":4,"id":"0:IT01V1258408535","kind":"video","direction":"received","width":2560,"height":1440,"framesDelta":153,"intervalFps":14.979439984335226,"frameCounter":"framesDecoded","framesEncodedDelta":null,"encodedIntervalFps":null,"bitrateKbps":623.545721558645,"packetsDelta":759,"packetLossPercent":0,"jitterMs":4,"qualityLimitationReason":null},{"client":4,"id":"0:IT01V1604440139","kind":"video","direction":"received","width":2560,"height":1440,"framesDelta":153,"intervalFps":14.979439984335226,"frameCounter":"framesDecoded","framesEncodedDelta":null,"encodedIntervalFps":null,"bitrateKbps":1310.1586058351284,"packetsDelta":1505,"packetLossPercent":0,"jitterMs":6,"qualityLimitationReason":null}]],"markers":[{"viewer":2,"name":"code-1","auditableCallbacks":184,"distinctSourceFrames":184,"firstSourceFrame":265,"lastSourceFrame":450,"maximumCallbackGapMs":107,"localSourceDrawToCallbackMedianMs":175,"localSourceDrawToCallbackP95Ms":221,"ageMethod":"binary decoded-frame marker matched to source Date.now on the same Docker host; includes capture/encode/relay/decode/compositor/callback scheduling, not physical glass-to-glass"},{"viewer":2,"name":"code-2","auditableCallbacks":170,"distinctSourceFrames":170,"firstSourceFrame":36,"lastSourceFrame":218,"maximumCallbackGapMs":159,"localSourceDrawToCallbackMedianMs":233,"localSourceDrawToCallbackP95Ms":280,"ageMethod":"binary decoded-frame marker matched to source Date.now on the same Docker host; includes capture/encode/relay/decode/compositor/callback scheduling, not physical glass-to-glass"},{"viewer":4,"name":"code-1","auditableCallbacks":184,"distinctSourceFrames":184,"firstSourceFrame":266,"lastSourceFrame":451,"maximumCallbackGapMs":103,"localSourceDrawToCallbackMedianMs":146,"localSourceDrawToCallbackP95Ms":176,"ageMethod":"binary decoded-frame marker matched to source Date.now on the same Docker host; includes capture/encode/relay/decode/compositor/callback scheduling, not physical glass-to-glass"},{"viewer":4,"name":"code-2","auditableCallbacks":164,"distinctSourceFrames":164,"firstSourceFrame":36,"lastSourceFrame":219,"maximumCallbackGapMs":160,"localSourceDrawToCallbackMedianMs":235,"localSourceDrawToCallbackP95Ms":280,"ageMethod":"binary decoded-frame marker matched to source Date.now on the same Docker host; includes capture/encode/relay/decode/compositor/callback scheduling, not physical glass-to-glass"}]}]}
+{"profile":"code_2_active","phaseStartUtc":"2026-09-30T11:19:01.112Z","phaseEndUtc":"2026-09-30T11:19:13.834Z","durationMs":12722,"sampleCount":6,"cpuMeanPercent":2.2,"cpuPeakPercent":3.93,"memoryPeakMiB":112.1,"networkReceiveBytes":1550000,"networkTransmitBytes":1520000}
+{"profile":"code_4_active","phaseStartUtc":"2026-09-30T11:19:16.861Z","phaseEndUtc":"2026-09-30T11:19:32.822Z","durationMs":15961,"sampleCount":8,"cpuMeanPercent":5.6,"cpuPeakPercent":7.45,"memoryPeakMiB":126.8,"networkReceiveBytes":4440000,"networkTransmitBytes":12260000}
+Chain OUTPUT (policy ACCEPT 25839 packets, 16M bytes)
+ pkts bytes target     prot opt in     out     source               destination         
+  105  6602 ACCEPT     17   --  *      *       0.0.0.0/0            127.0.0.11          
+  105  8726 ACCEPT     17   --  *      *       127.0.0.11           0.0.0.0/0           
+  699 86738 REJECT     17   --  *      *       0.0.0.0/0            0.0.0.0/0            udp dpt:!53 reject-with icmp-port-unreachable
+    4   240 REJECT     6    --  *      *       0.0.0.0/0            0.0.0.0/0            tcp dpt:7881 reject-with icmp-port-unreachable
+Chain OUTPUT (policy ACCEPT 25839 packets, 16M bytes)
+ pkts bytes target     prot opt in     out     source               destination         
+  105  6602 ACCEPT     17   --  *      *       0.0.0.0/0            127.0.0.11          
+  105  8726 ACCEPT     17   --  *      *       127.0.0.11           0.0.0.0/0           
+  699 86738 REJECT     17   --  *      *       0.0.0.0/0            0.0.0.0/0            udp dpt:!53 reject-with icmp-port-unreachable
+    4   240 REJECT     6    --  *      *       0.0.0.0/0            0.0.0.0/0            tcp dpt:7881 reject-with icmp-port-unreachable
+SFU resource samples: /tmp/flux63-code-a58/livekit-container-stats.jsonl
+ Container flux-live-turn-1790767115-882767-api-1 Stopping 
+ Container flux-live-turn-1790767115-882767-api-1 Stopped 
+ Container flux-live-turn-1790767115-882767-api-1 Removing 
+ Container flux-live-turn-1790767115-882767-api-1 Removed 
+ Container flux-live-turn-1790767115-882767-migrate-1 Stopping 
+ Container flux-live-turn-1790767115-882767-livekit-1 Stopping 
+ Container flux-live-turn-1790767115-882767-migrate-1 Stopped 
+ Container flux-live-turn-1790767115-882767-migrate-1 Removing 
+ Container flux-live-turn-1790767115-882767-migrate-1 Removed 
+ Container flux-live-turn-1790767115-882767-db-1 Stopping 
+ Container flux-live-turn-1790767115-882767-db-1 Stopped 
+ Container flux-live-turn-1790767115-882767-db-1 Removing 
+ Container flux-live-turn-1790767115-882767-db-1 Removed 
+ Container flux-live-turn-1790767115-882767-livekit-1 Stopped 
+ Container flux-live-turn-1790767115-882767-livekit-1 Removing 
+ Container flux-live-turn-1790767115-882767-livekit-1 Removed 
+ Volume flux-live-turn-1790767115-882767_pgdata Removing 
+ Volume flux-live-turn-1790767115-882767_files Removing 
+ Network flux-live-turn-1790767115-882767_default Removing 
+ Network flux-live-turn-1790767115-882767_livekit-media Removing 
+ Network flux-live-turn-1790767115-882767_livekit-signal Removing 
+ Volume flux-live-turn-1790767115-882767_files Removed 
+ Volume flux-live-turn-1790767115-882767_pgdata Removed 
+ Network flux-live-turn-1790767115-882767_default Removed 
+ Network flux-live-turn-1790767115-882767_livekit-media Removed 
+ Network flux-live-turn-1790767115-882767_livekit-signal Removed 

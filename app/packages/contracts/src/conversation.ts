@@ -11,23 +11,42 @@ export interface MaterialSource {
   version: number;
 }
 
-export interface ConversationMessage {
+/**
+ * What an explicit native effect contributed to a canonical task thread (#154). Ordinary text carries
+ * no marker, so the JSON of every existing message is unchanged. A result contribution names the one
+ * canonical result; its finding, evidence and sources come from that result's ordinary authorized API.
+ */
+export type MessageContribution =
+  | { kind: 'blocker' | 'handoff' }
+  | { kind: 'result'; resultId: string };
+
+export interface ConversationMessageFields {
   id: string;
   conversationId: string;
-  authorId: string;
   body: string;
   source: MaterialSource | null;
   /** Monotonic per conversation, including concurrent sends. */
   sequence: number;
   createdAt: string;
+  /** Present only for a saved blocker, a published result or an explicit public handoff. */
+  contribution?: MessageContribution;
 }
 
-export interface Conversation {
+export type MessageIdentity =
+  | { authorId: string; author?: never }
+  | { authorId: null; author: { kind: 'agent'; id: string; name?: string } };
+/** Existing human JSON is unchanged; agents never occupy a human account field. */
+export type ConversationMessage = ConversationMessageFields & MessageIdentity;
+export type HumanConversationMessage = ConversationMessageFields & { authorId: string; author?: never };
+export type ConversationIdentity =
+  | { createdBy: string; createdByActor?: never }
+  | { createdBy: null; createdByActor: { kind: 'agent'; id: string; name?: string } };
+
+export interface ConversationFields {
   id: string;
   projectId: string;
   workspaceId: string;
   audience: { kind: 'project'; projectId: string };
-  createdBy: string;
   createdAt: string;
   /** Stable discussion label from the opening message. */
   firstMessageBody: string;
@@ -39,6 +58,7 @@ export interface Conversation {
     limit: number;
   };
 }
+export type Conversation = ConversationFields & ConversationIdentity;
 
 /** Stable, newest-first window returned in ascending display order. */
 export interface ConversationWindowQuery {
@@ -48,16 +68,16 @@ export interface ConversationWindowQuery {
   beforeSequence?: number;
 }
 
-export interface ConversationSummary {
+export interface ConversationSummaryFields {
   id: string;
   projectId: string;
-  createdBy: string;
   createdAt: string;
   /** Stable discussion label: the first message, even as newer replies arrive. */
   firstMessageBody: string;
   lastMessageAt: string;
   lastMessageBody: string;
 }
+export type ConversationSummary = ConversationSummaryFields & ConversationIdentity;
 
 export interface SendMessageCommand {
   body: string;

@@ -7,6 +7,7 @@ import { registerAuthBridge } from './bridge.js';
 import type { IdentityConfig } from './config.js';
 import { createSmtpMailer, type Mailer } from './mailer.js';
 import { originViolation } from './origin.js';
+import { createOauthRequests } from './oauth-flow.js';
 import { registerAgentOauthContext } from './oauth-context.js';
 import { registerIdentityRoutes } from './routes.js';
 import { createSessionResolver, type SessionResolver } from './session.js';
@@ -34,7 +35,8 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
   const { db, config } = options;
   const mailer = options.mailer === undefined ? (config.smtp ? createSmtpMailer(config.smtp) : null) : options.mailer;
   if (mailer) app.addHook('onClose', async () => mailer.close());
-  const auth = createAuth({ db, config, mailer, onMailError: (error) => app.log.error({ error }, 'Password reset mail failed') });
+  const oauthRequests = createOauthRequests();
+  const auth = createAuth({ db, config, mailer, oauthRequests, onMailError: (error) => app.log.error({ error }, 'Password reset mail failed') });
   // OAuth resource seeding runs during Better Auth initialization. Complete it before
   // accepting requests or allowing an in-process server to close its database pool.
   app.addHook('onReady', async () => { await auth.$context; });
@@ -49,9 +51,9 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
     }
   });
 
-  registerAuthBridge(app, { auth, publicOrigin: config.publicOrigin, passwordReset });
+  registerAuthBridge(app, { auth, publicOrigin: config.publicOrigin, passwordReset, oauthRequests });
   registerIdentityRoutes(app, { sessions, store: createSessionRepository(db), passwordReset });
-  registerAgentOauthContext(app, db, sessions, auth);
+  registerAgentOauthContext(app, db, sessions, auth, config.publicOrigin);
 
   return { ...sessions, passwordReset, auth };
 }

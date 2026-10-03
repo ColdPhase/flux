@@ -165,10 +165,10 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
 
   // The project's current state, without repeating what is already linked here.
   const state = messageMode || !current.summary ? [] : summaryStateParts(current.summary, current.summary.access !== 'viewer').filter((part) => !linkedIds.has(`${part.open.kind}:${part.open.id}`)).map((part): Row => ({
-    key: part.key, icon: part.icon ?? (part.key === 'work' ? 'tasks' : 'rule'), kind: part.key === 'rule' ? 'Current rule' : part.key === 'result' ? 'Latest result' : part.key === 'proposal' ? 'Proposed decision' : part.key === 'blocked' ? 'Blocked' : part.key === 'open' ? 'Open task' : part.key === 'history' ? 'Earlier work or decision' : 'In progress',
+    key: part.key, icon: part.icon ?? (part.key === 'work' ? 'tasks' : 'rule'), kind: part.key === 'rule' ? 'Current rule' : part.key === 'result' ? 'Latest result' : part.key === 'proposal' ? 'Proposed decision' : part.key === 'blocked' ? 'Blocked' : part.key === 'open' ? 'Open task' : part.key === 'history' ? (part.open.kind === 'work' ? 'Earlier work' : 'Earlier decision') : 'In progress',
     title: part.title, need: part.tone === 'need', sub: part.tone === 'need' ? 'Needs you' : undefined, open: part.open,
   }));
-  const author = message ? (message.authorId === me.user.id ? 'you' : people?.find((person) => person.id === message.authorId)?.name ?? 'a member') : null;
+  const author = message ? (message.authorId === null ? `${message.author.name ?? 'Agent'} · agent` : message.authorId === me.user.id ? 'you' : people?.find((person) => person.id === message.authorId)?.name ?? 'a member') : null;
   const title = messageMode ? message ? `Message from ${author}` : 'Message' : conversation ? conversation.firstMessageBody.split('\n')[0] || 'Conversation' : project.name;
   const others = (people ?? []).filter((person) => !(person.kind === 'human' && person.id === me.user.id));
 
@@ -194,9 +194,9 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
         <WorkPagination page={read.links} busy={read.relationBusy} label="Overview relation pages" noun="links" onCursor={read.moveRelations} onRefresh={read.refreshRelations} />
       </div> : null}
       <Rows label="Sources" rows={[...sources.values()]} />
-      <Rows label={messageMode ? 'On a sketch' : 'Sketches'} rows={sketchRows} empty={!messageMode && noLinkedContext && sketches?.total === 0 ? <>No sketches yet. <Link to={`${base}/map`}>Open the Map</Link> to think out loud together.</> : undefined} />
+      <Rows label={messageMode ? 'On a sketch' : 'Sketches'} rows={sketchRows} empty={!messageMode && noLinkedContext && sketches?.total === 0 ? <>No sketches yet. <Link to={`${base}/map`}>Open the Map</Link> {project.access === 'viewer' ? 'to browse saved sketches.' : 'to think out loud together.'}</> : undefined} />
       {moreSketches ? <p className="ov-more"><Link to={`${base}/map`}>All {sketches.total} sketches</Link></p> : null}
-      <Rows label="Docs" rows={[...docRows.values()]} empty={!messageMode && noLinkedContext && docs?.length === 0 ? <>No docs yet. <Link to={`${base}/docs`}>Open Docs</Link> to keep what you learn.</> : undefined} />
+      <Rows label="Docs" rows={[...docRows.values()]} empty={!messageMode && noLinkedContext && docs?.length === 0 ? <>No docs yet. <Link to={`${base}/docs`}>Open Docs</Link> {project.access === 'viewer' ? 'to read saved documents.' : 'to keep what you learn.'}</> : undefined} />
       {moreDocs ? <p className="ov-more"><Link to={`${base}/docs`}>All {docs.length} docs</Link></p> : null}
 
       <section className="details__sec" aria-labelledby="ov-people">

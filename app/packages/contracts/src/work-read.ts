@@ -69,6 +69,8 @@ interface NativeRowBase {
 
 export interface WorkRowProjection extends NativeRowBase {
   kind: 'work';
+  /** Direct native task prerequisites only; page rows never hydrate the graph. */
+  prerequisiteCounts: { total: number; unmet: number };
   status: WorkStatus;
   owner: NamedPrincipal | null;
   blocker: string | null;

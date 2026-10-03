@@ -1,0 +1,19 @@
+✔ on-demand video row uses interval loss and decoded fps, not lifetime loss or configured fps (1.032432ms)
+✔ missing, partial and reset reports cannot display invented zero loss/gaps or negative rates (0.266871ms)
+✔ partial advancing reports and discarded track histories remain unmeasured (0.23624ms)
+✔ actual locked SDK audio raw-report boundary retains RTP counters and stream identity (29.05414ms)
+✔ actual production pending diagnostic read cannot resurrect removed or disconnected tracks (1.887995ms)
+✔ observed idle counters warn for expected flow; intentional pause does not warn (0.14289ms)
+✔ receiver sample derives actual interval bitrate, loss, fps, jitter and selected ICE RTT (0.982792ms)
+✔ fixed delay yields an explicit network warning; high loss and jitter become poor (0.21857ms)
+✔ counter reset or absent receiver stats cannot fabricate healthy throughput (0.12612ms)
+✔ cumulative packets and healthy RTT cannot hide a stalled expected receiver (0.10801ms)
+✔ interval decoded frames override a stale instantaneous browser fps report (0.07053ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 202.682088

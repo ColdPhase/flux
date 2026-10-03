@@ -1,0 +1,84 @@
+{
+  "captureSource": "7f9a4e4b6c79931060c639d6bc98f50fe73ac727 plus scheduling work in progress; product frontend bc8e7e1",
+  "observedDate": "2026-09-30",
+  "captures": [
+    {
+      "file": "images/comparison-outcomes-1440-dark.png",
+      "sha256": "8a8644bc8ff55490283085a18a4375378cc58b2a6589bd7b22486bfaa73ed358",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "images/comparison-outcomes-1440-collapsed.png",
+      "sha256": "80f3ca10865f6bf9a05b68859bd437018c73477cdebe500a00c03b60697de635",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "images/comparison-outcomes-1440-checked.png",
+      "sha256": "50b10605d1f737d492125c1e4a1b15b68ae39cd440f578ca86d0a92bb6b5c876",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "images/comparison-outcomes-1440-insufficient-footer.png",
+      "sha256": "501c2dad2257f52d85dcbf6b32475f3c44fa99836acd5ebb1c324c5eea7cb1b7",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "images/comparison-outcomes-390-collapsed.png",
+      "sha256": "aeb5b5e546fe346fa136daf36a0f56b1e26ef4ee8c40ac37e389ba2af1caa876",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "file": "images/comparison-outcomes-390-checked.png",
+      "sha256": "a0f7af32f96d4293333f0809f57b42555070edf6710105d5edb8cd12c525e719",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "file": "images/comparison-outcomes-390-insufficient-footer.png",
+      "sha256": "67396554b2a317363718a6e3d086e4b07d0b2bef88e389c4341331c6d664ebbd",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "file": "images/comparison-outcomes-1024-collapsed.png",
+      "sha256": "d866d11728d06ab8fa8e2ff0ca373500a78f02e32c43237171067e71eb15762a",
+      "width": 1024,
+      "height": 768
+    },
+    {
+      "file": "images/comparison-outcomes-1024-checked.png",
+      "sha256": "db30c21adf8d43fbd920f902442fcb609162f2d5dd9192e460ebacfbe76d6181",
+      "width": 1024,
+      "height": 768
+    },
+    {
+      "file": "images/comparison-outcomes-1024-insufficient-footer.png",
+      "sha256": "baa0d1cd5b83256b83ebc8064280991c52077b367fa30f6d8433679923215f19",
+      "width": 1024,
+      "height": 768
+    },
+    {
+      "file": "images/comparison-usage-1440-owner.png",
+      "sha256": "56de5073ffe95a2c452bb64219b58f7bc56f61ea25769ebd8b58f2b8e002b7da",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "images/comparison-usage-390-owner.png",
+      "sha256": "05b8a274047170a9210feb1a315efc3196fb3244bfbc91db7f3572c0a854ee24",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "file": "images/comparison-usage-1024-owner.png",
+      "sha256": "0d5b12961dbf1861c938a5314b36ccf71b58b72afc83afc6b3f0281ba068e9a7",
+      "width": 1024,
+      "height": 768
+    }
+  ]
+}

@@ -23,6 +23,7 @@ export interface SketchMapProps {
   onToggle(id: string): void;
   onClear(): void;
   onEdit(id: string): void;
+  onEditText(text: string): void;
   onFinishEdit(text: string | null): void;
   onAdd(parentId: string | null): void;
   onMove(moves: { id: string; x: number; y: number }[], how: 'drag' | 'keyboard'): void;
@@ -253,7 +254,7 @@ export function SketchMap(props: SketchMapProps) {
 
   const onNodeKeyDown = (event: KeyboardEvent<HTMLButtonElement>, thought: Thought) => {
     const { key } = event;
-    if (key === 'Enter') { event.preventDefault(); if (connectFrom) props.onPick(thought.id, false); else if (canWrite) props.onEdit(thought.id); return; }
+    if (key === 'Enter' || key === 'F2') { event.preventDefault(); if (connectFrom) props.onPick(thought.id, false); else if (canWrite) props.onEdit(thought.id); return; }
     if (key === ' ') { event.preventDefault(); if (connectFrom) props.onPick(thought.id, false); else props.onToggle(thought.id); return; }
     if (key === 'Escape') { if (props.onEscape()) { event.preventDefault(); event.stopPropagation(); } return; }
     if (!canWrite) return;
@@ -277,11 +278,6 @@ export function SketchMap(props: SketchMapProps) {
     }), 'keyboard');
     requestAnimationFrame(() => nodes.current.get(thought.id)?.scrollIntoView({ block: 'nearest', inline: 'nearest' }));
   };
-
-  // Keep a newly added thought in view.
-  useEffect(() => {
-    if (editing?.isNew) nodes.current.get(editing.id)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }, [editing]);
 
   const editingRect = editing ? rects.get(editing.id) : undefined;
   const editingThought = editing ? byId.get(editing.id) : undefined;
@@ -361,8 +357,8 @@ export function SketchMap(props: SketchMapProps) {
               <div className="sk-actions" style={{ transform: `translate(${plus.x + last.w + 8}px, ${plus.y + last.h / 2}px) ${keep} translateY(-50%)` }}>{add}</div>
             );
           })() : null}
-          {editing && editingRect && editingThought ? (
-            <ThoughtEditor key={editing.id} className="sk-edit" initial={editing.initial ?? editingThought.text}
+          {editing && editingRect && editingThought && canWrite ? (
+            <ThoughtEditor key={`${editing.id}:${editing.attempt}`} className="sk-edit" initial={editing.initial} disabled={editing.saving} onChange={props.onEditText}
               style={{ transform: `translate(${place(editingRect).x + 6}px, ${place(editingRect).y + 6}px)`, width: editingRect.w - 12 }}
               onDone={props.onFinishEdit} />
           ) : null}

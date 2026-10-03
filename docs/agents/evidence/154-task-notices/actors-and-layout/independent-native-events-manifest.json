@@ -1,0 +1,171 @@
+{
+  "reviewed_head": "d1d03f70f1ddb7c78d05216ac570c9359cb5290c",
+  "runtime_head": "daa66f06ef81a31e42357adde5555f0318bbfb84",
+  "runtime_source_delta_after_daa": [],
+  "verdict": "bounded native event composition PASS; no complete154 approval",
+  "independent_repository_cases": 84,
+  "independent_extra_cases": 6,
+  "independent_browser_cases": 2,
+  "artifacts": [
+    {
+      "path": "/tmp/flux154-independent-native-events-review.md",
+      "bytes": 9354,
+      "sha256": "3fedf102a8deb6bdced58ddbe16a27469377472547e73d5001677a2ea4a43413"
+    },
+    {
+      "path": "/tmp/flux154-independent-native-events-run.sh",
+      "bytes": 2977,
+      "sha256": "0c4e46023b2ce94d3c7dddc514aad09423e712fe002ec56ea0e71070cbc5c950"
+    },
+    {
+      "path": "/tmp/flux154-independent-native-outbox-run.sh",
+      "bytes": 2731,
+      "sha256": "2faf6b09a4c2811916911030bee450c54c6af8f90cab8cc54011d90aea2a3b67"
+    },
+    {
+      "path": "/tmp/flux154-independent-native-outbox-invalid-run.sh",
+      "bytes": 2675,
+      "sha256": "55c17ee97555ddafcaa13dbe5ed97be25366ea3a2a94b272ba0a06ce93a0caca"
+    },
+    {
+      "path": "/tmp/flux154-independent-native-events-check.ts",
+      "bytes": 14510,
+      "sha256": "c5491b572e6da9207168d34b26dbc95bfb6dd9366a2713c41f010f73d1a60cf1"
+    },
+    {
+      "path": "/tmp/flux154-independent-native-events-five-passing.ts",
+      "bytes": 13226,
+      "sha256": "57fe6fc8e03cb20a63edfb28f530174925c1a70f317f0916b7235aa3340a3cdd"
+    },
+    {
+      "path": "/tmp/flux154-independent-native-events-fixture-invalid.ts",
+      "bytes": 13226,
+      "sha256": "9dc0a7420880498ce386d8aafecb3ae489a592917fd67d823039fd7ff0ac3b59"
+    },
+    {
+      "path": "/tmp/flux154-independent-native-events-d1d03f7.log",
+      "bytes": 1004745,
+      "sha256": "d5d9920e8445b993445e111b59e22ed82e3c98419333acbac37b4e8778d94bd7"
+    },
+    {
+      "path": "/tmp/flux154-independent-native-events-fixture-d1d03f7.log",
+      "bytes": 62588,
+      "sha256": "930ea4526aee0a51ae7973b5c301609884ea14fc18df6d6ae399ef6318d763ec"
+    },
+    {
+      "path": "/tmp/flux154-independent-native-events-corrected-d1d03f7.log",
+      "bytes": 19299,
+      "sha256": "e5f99ab17e6a23191e9db68ce1e696475d854ad32f5f7b1ba82c9ab21dd1a1be"
+    },
+    {
+      "path": "/tmp/flux154-independent-native-outbox-d1d03f7.log",
+      "bytes": 24078,
+      "sha256": "915a0b75a00ddeebc569396637045d06f94ba3dc97bc7fd1213b2b4e27f0f950"
+    },
+    {
+      "path": "/tmp/flux154-independent-native-outbox-corrected-d1d03f7.log",
+      "bytes": 15963,
+      "sha256": "7c296f75097e7bbf6265e0f3f5d7dac72b70a48d5cb2b26a46fb65da38b715e7"
+    },
+    {
+      "path": "/tmp/flux154-native-events-source-equivalence.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/tmp/flux154-independent-native-ui/mixed-authors-reader-390.png",
+      "bytes": 40950,
+      "sha256": "e25c02ceb0ad1718eedd4ee4db31fd838691c16776819cf5f5052fa0fe734d25"
+    },
+    {
+      "path": "/tmp/flux154-independent-native-ui/mixed-authors-reader-1280.png",
+      "bytes": 70905,
+      "sha256": "aae3dd4adfab7bf66257a06dbc4fe7378c099a19837fe616e97f92a86d235309"
+    },
+    {
+      "path": "/tmp/flux154-independent-native-ui/agent-root-desktop.png",
+      "bytes": 74488,
+      "sha256": "32b1eee2d985dfd447abd9381bb29f7a177e9d44118f28b018a9e15e7743d0d5"
+    },
+    {
+      "path": "/tmp/flux154-independent-native-ui/transcript.json",
+      "bytes": 2017,
+      "sha256": "16d355ed8cf115d80f84edd00b66a02d4dac24366061435e9c952b556f15cadd"
+    },
+    {
+      "path": "/tmp/flux154-independent-native-ui/03-bob-after-revocation.png",
+      "bytes": 60767,
+      "sha256": "2cc1f803e8330534272ba5ef26ebff679e027d9bded41249482b093d0316d753"
+    },
+    {
+      "path": "/tmp/flux154-independent-native-ui/02-carol-non-member-404.png",
+      "bytes": 38007,
+      "sha256": "81842c05ce3be2848deec72c5c1e196d54961eed9b184bf242f61b60d55b7086"
+    },
+    {
+      "path": "/tmp/flux154-independent-native-ui/01-bob-granted-sees-shared-draft.png",
+      "bytes": 46792,
+      "sha256": "bfa822b4ca52a7cdb1edb1a14f151f49667d8647b160d33c69feba2bd85c6358"
+    },
+    {
+      "path": "/tmp/flux-review-154-native-events/app/apps/server/src/work/transaction-events.ts",
+      "bytes": 1634,
+      "sha256": "2454198217525e507450fa7b48e02306f3320f1519fe5f8c9c11c248c76b1412"
+    },
+    {
+      "path": "/tmp/flux-review-154-native-events/app/apps/server/src/work/access.ts",
+      "bytes": 887,
+      "sha256": "91e087ebfb9be9dd65f08d495399c059c9bf2516a75c08ad62799e8e94da9c70"
+    },
+    {
+      "path": "/tmp/flux-review-154-native-events/app/apps/server/src/work/adapters.ts",
+      "bytes": 2539,
+      "sha256": "157ae465a6c346d63d655b6704debe37dc91d52f7e990687d597a5f5ca0fa71f"
+    },
+    {
+      "path": "/tmp/flux-review-154-native-events/app/apps/server/src/work/task-discussions.ts",
+      "bytes": 1889,
+      "sha256": "e83033a4aa608509bef82c40036906b43fe2b548a0714b89aefe762efa3da9ad"
+    },
+    {
+      "path": "/tmp/flux-review-154-native-events/app/apps/server/src/personal-runs/adapters.ts",
+      "bytes": 3918,
+      "sha256": "f63feceb10e5c99dcc5400f097821e13ced0e9613e46cc66d6b7bf583257b7c7"
+    },
+    {
+      "path": "/tmp/flux-review-154-native-events/app/packages/core/src/events.ts",
+      "bytes": 3473,
+      "sha256": "a98b4ce829d70dd25b2780ecd0a1d87d6ef2223fb3431b93120d879afcc731f5"
+    },
+    {
+      "path": "/tmp/flux-review-154-native-events/app/tests/app/support/final-events.ts",
+      "bytes": 1330,
+      "sha256": "f3c2b599938efdf48987b3e4be85e4531f95fb5f1b3ec52a112edf21dfb1cf2f"
+    },
+    {
+      "path": "/tmp/flux-review-154-native-events/app/tests/app/task-discussions.test.ts",
+      "bytes": 35349,
+      "sha256": "f0b0e9a8e8c0ab00e7704556cf446f3bbfb580b5fb613c8539a9368a39b43d70"
+    },
+    {
+      "path": "/tmp/flux-review-154-native-events/app/tests/app/personal-runs.test.ts",
+      "bytes": 44402,
+      "sha256": "e3ecfbb42476627a22722ce29503ab62711810d2bd3ced5da76afbfa141f2cd7"
+    },
+    {
+      "path": "/tmp/flux-review-154-native-events/docs/development/task-discussions/2026-10-01-native-event-composition.md",
+      "bytes": 4917,
+      "sha256": "633ad72c6851037fc0f01f4d86ac31e7547c1d3d75ee2ec1c35b57980a435b4e"
+    },
+    {
+      "path": "/tmp/flux-review-154-native-events/docs/development/task-discussions/2026-10-01-native-event-composition-review.md",
+      "bytes": 5487,
+      "sha256": "619950369c9f1c1d706b1cf3a8d8777bb9edd193524a15019d1f0d9ebdfb0020"
+    },
+    {
+      "path": "/tmp/flux-review-154-native-events/docs/agents/evidence/154-task-notices/actors-and-layout/docker-native-full-daa66f0-summary.txt",
+      "bytes": 41629,
+      "sha256": "471d30fa7a736711f85123c161a483500a015e41e7b1da68370239df05c3bda6"
+    }
+  ]
+}

@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, lt, sql } from 'drizzle-orm';
-import { schema } from '@flux/db';
+import { schema, taskDiscussionRows, workRows } from '@flux/db';
 import type {
   Conversation, ConversationMessage, ConversationSummary, Material,
   MaterialVersion, Page, PageQuery,
 } from '@flux/contracts';
 import {
   ConflictError, enforce, evaluateDraft, evaluateProject, InvalidInputError, NotFoundError,
-  positiveVersion, uuid,
+  messageContribution, positiveVersion, uuid,
   parsePage, recordEvent, type Database, type Principal,
 } from '@flux/core';
 import type { ConversationPort } from '@flux/core';
@@ -24,10 +24,16 @@ function human(principal: Principal): string {
   return principal.id;
 }
 
-function message(row: MessageRow): ConversationMessage {
-  return { id: row.id, conversationId: row.conversationId, authorId: row.authorId, body: row.body,
+function creator(row: ConversationRow, names: Map<string, string>) {
+  return row.createdBy !== null ? { createdBy: row.createdBy } : { createdBy: null,
+    createdByActor: { kind: 'agent' as const, id: row.createdByAgentId!, name: names.get(`agent:${row.createdByAgentId}`) ?? 'Agent' } };
+}
+function message(row: MessageRow, names: Map<string, string> = new Map()): ConversationMessage {
+  const contribution = messageContribution(row.contributionKind, row.resultId);
+  return { id: row.id, conversationId: row.conversationId, ...(row.authorId !== null ? { authorId: row.authorId } : { authorId: null,
+    author: { kind: 'agent' as const, id: row.authorAgentId!, name: names.get(`agent:${row.authorAgentId}`) ?? 'Agent' } }), body: row.body,
     source: row.sourceMaterialId && row.sourceMaterialVersion ? { materialId: row.sourceMaterialId, version: row.sourceMaterialVersion } : null,
-    sequence: row.sequence, createdAt: row.createdAt.toISOString() };
+    sequence: row.sequence, createdAt: row.createdAt.toISOString(), ...(contribution ? { contribution } : {}) };
 }
 
 function version(row: VersionRow, principal: Principal): MaterialVersion {
@@ -91,7 +97,7 @@ async function existingMessage(projectId: string, authorId: string, clientMessag
 async function lockIdempotency(tx: Tx, projectId: string, authorId: string, clientId: string) {
   // Serializes same-key first sends before a thread is created. The uniqueness constraint
   // remains the final guard; hash collisions only serialize unrelated sends.
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`${projectId}:${authorId}:${clientId}`}))`);
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`${projectId.toLowerCase()}:human:${authorId}:${clientId.toLowerCase()}`}))`);
 }
 
 async function sendInTransaction(tx: Tx, conversation: ConversationRow, authorId: string, input: Parameters<ConversationPort['sendMessage']>[2]): Promise<{ message: ConversationMessage; inserted: boolean }> {
@@ -102,21 +108,8 @@ async function sendInTransaction(tx: Tx, conversation: ConversationRow, authorId
     return { message: message(existing), inserted: false };
   }
   await sourceExists(conversation.projectId, input.source, tx);
-  const [updated] = await tx.update(schema.projectConversations)
-    .set({ nextSequence: sql`${schema.projectConversations.nextSequence} + 1` })
-    .where(eq(schema.projectConversations.id, conversation.id)).returning({ nextSequence: schema.projectConversations.nextSequence });
-  const sequence = updated!.nextSequence - 1;
-  const [inserted] = await tx.insert(schema.projectMessages).values({
-    id: randomUUID(), workspaceId: conversation.workspaceId, projectId: conversation.projectId,
-    conversationId: conversation.id, authorId, clientMessageId: input.clientMessageId,
-    requestFingerprint: input.fingerprint, sequence, body: input.body,
-    sourceMaterialId: input.source?.materialId ?? null, sourceMaterialVersion: input.source?.version ?? null,
-  }).onConflictDoNothing().returning();
-  if (inserted) return { message: message(inserted), inserted: true };
-  const raced = await existingMessage(conversation.projectId, authorId, input.clientMessageId, tx);
-  if (!raced || raced.requestFingerprint !== input.fingerprint || raced.conversationId !== conversation.id)
-    throw new ConflictError('This clientMessageId was used for another message', 'IDEMPOTENCY_CONFLICT');
-  return { message: message(raced), inserted: false };
+  const inserted = await taskDiscussionRows(tx).append(conversation, { kind: 'human', id: authorId }, input);
+  return { message: message(inserted), inserted: true };
 }
 
 export function conversationStore(db: Database) {
@@ -129,6 +122,8 @@ export function conversationStore(db: Database) {
       const rows = await db.select().from(schema.projectConversations).where(eq(schema.projectConversations.projectId, projectId))
         .orderBy(desc(schema.projectConversations.createdAt), desc(schema.projectConversations.id))
         .limit(page.limit).offset(page.offset);
+      const names = await workRows(db).names(rows.filter((row) => row.createdByAgentId !== null)
+        .map((row) => ({ kind: 'agent' as const, id: row.createdByAgentId! })));
       const items = await Promise.all(rows.map(async (row) => {
         const [[first], [last]] = await Promise.all([
           db.select().from(schema.projectMessages).where(eq(schema.projectMessages.conversationId, row.id))
@@ -136,7 +131,7 @@ export function conversationStore(db: Database) {
           db.select().from(schema.projectMessages).where(eq(schema.projectMessages.conversationId, row.id))
             .orderBy(desc(schema.projectMessages.sequence)).limit(1),
         ]);
-        return { id: row.id, projectId: row.projectId, createdBy: row.createdBy, createdAt: row.createdAt.toISOString(),
+        return { id: row.id, projectId: row.projectId, ...creator(row, names), createdAt: row.createdAt.toISOString(),
           firstMessageBody: first?.body ?? '', lastMessageAt: last?.createdAt.toISOString() ?? row.createdAt.toISOString(),
           lastMessageBody: last?.body ?? '' };
       }));
@@ -150,12 +145,14 @@ export function conversationStore(db: Database) {
           window.beforeSequence === null ? undefined : lt(schema.projectMessages.sequence, window.beforeSequence)))
         .orderBy(desc(schema.projectMessages.sequence)).limit(window.limit + 1);
       const hasMoreBefore = rows.length > window.limit;
-      const messages = rows.slice(0, window.limit).reverse().map(message);
+      const names = await workRows(db).names([row.createdByAgentId, ...rows.map((item) => item.authorAgentId)]
+        .filter((actorId): actorId is string => actorId !== null).map((actorId) => ({ kind: 'agent' as const, id: actorId })));
+      const messages = rows.slice(0, window.limit).reverse().map((item) => message(item, names));
       const openingInWindow = messages.find((item) => item.sequence === 1);
       const [opening] = openingInWindow ? [] : await db.select({ body: schema.projectMessages.body }).from(schema.projectMessages)
         .where(eq(schema.projectMessages.conversationId, row.id)).orderBy(asc(schema.projectMessages.sequence)).limit(1);
       return { id: row.id, projectId: row.projectId, workspaceId: row.workspaceId,
-        audience: { kind: 'project', projectId: row.projectId }, createdBy: row.createdBy,
+        audience: { kind: 'project', projectId: row.projectId }, ...creator(row, names),
         createdAt: row.createdAt.toISOString(), firstMessageBody: openingInWindow?.body ?? opening?.body ?? '', messages,
         messagePage: { hasMoreBefore, nextBeforeSequence: hasMoreBefore ? messages[0]!.sequence : null, limit: window.limit } };
     },
@@ -171,7 +168,7 @@ export function conversationStore(db: Database) {
             throw new ConflictError('This clientMessageId was used for another message', 'IDEMPOTENCY_CONFLICT');
           const row = await locateConversation(principal, existing.conversationId, tx);
           return { id: row.id, projectId: row.projectId, workspaceId: row.workspaceId,
-            audience: { kind: 'project' as const, projectId: row.projectId }, createdBy: row.createdBy,
+            audience: { kind: 'project' as const, projectId: row.projectId }, ...creator(row, new Map()),
             createdAt: row.createdAt.toISOString(), firstMessageBody: existing.body, messages: [message(existing)],
             messagePage: { hasMoreBefore: false, nextBeforeSequence: null, limit: 50 } };
         }
@@ -193,6 +190,9 @@ export function conversationStore(db: Database) {
       return db.transaction(async (tx) => {
         const row = await locateConversation(principal, conversationId, tx, true, true);
         await lockIdempotency(tx, row.projectId, authorId, input.clientMessageId);
+        // A reply to a task's bound conversation enters the task order (access, command identity, task row,
+        // conversation sequence), exactly like a contribution; it never takes the conversation first.
+        await taskDiscussionRows(tx).lockBoundTask(row.id);
         const sent = await sendInTransaction(tx, row, authorId, input);
         if (sent.message.sequence === 1)
           throw new ConflictError('This clientMessageId was used to start the conversation', 'IDEMPOTENCY_CONFLICT');

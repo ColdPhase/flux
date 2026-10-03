@@ -6,6 +6,7 @@ import { createBoundedWorkReads, DomainError, type Transaction, type WorkReadUni
 import type { Agent, Conversation, Decision, Material, ProjectWorkSummary, ProjectWorkView, WorkAssociations, WorkDetailProjection, WorkItem, WorkRelations, WorkResult, WorkRowProjection } from '@flux/contracts';
 import { nativeWorkReadFinalFence, nativeWorkReadUnitOfWork } from '../../apps/server/src/work-read/adapters.js';
 import { createAuth } from '../../apps/server/src/identity/auth.js';
+import { createOauthRequests } from '../../apps/server/src/identity/oauth-flow.js';
 import { loadIdentityConfig } from '../../apps/server/src/identity/config.js';
 import { createSessionResolver } from '../../apps/server/src/identity/session.js';
 import { Browser } from './support/http.js';
@@ -16,7 +17,7 @@ import { addMember, expectStatus, grant, person, project, secondSession, workspa
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
 const { db, pool } = createDatabase(process.env.DATABASE_URL);
 after(() => pool.end());
-const sessions = createSessionResolver(createAuth({ db, config: loadIdentityConfig(), mailer: null }));
+const sessions = createSessionResolver(createAuth({ db, config: loadIdentityConfig(), mailer: null, oauthRequests: createOauthRequests() }));
 const post = async <T>(who: Person, path: string, body: unknown, headers?: Record<string, string>) => expectStatus(await who.browser.request('POST', path, { body, headers }), 201) as T;
 const code = (status: number, expected: string) => (error: unknown) => error instanceof DomainError && error.status === status && error.code === expected;
 
@@ -128,6 +129,72 @@ describe('bounded native work reads through HTTP and current native fences', () 
     expectStatus(await outsider.browser.request('GET', `${path}/work-summary`), 404);
     const mixed = await get<ProjectWorkSummary>(`${base()}/work-summary`);
     assert.equal(mixed.state.history.decisionCount, 2, 'accepted plus genuine superseded history are both counted');
+  });
+
+  test('bounded task plan counts preserve canonical own criteria, prerequisites and plan intent', async () => {
+    const isolated = await project(owner, workspaceId, 'Bounded native task plans', 'restricted');
+    const path = `/api/v1/projects/${isolated.id}`;
+    const create = (title: string, fields: Record<string, unknown> = {}) => post<WorkItem>(owner, `${path}/work`, { title, ...fields });
+    const ready = await create('Ready prerequisite', { status: 'done' });
+    const pending = await create('Pending prerequisite');
+    const parked = await create('Parked prerequisite');
+    const earlier = await post<Decision>(owner, `${path}/decisions`, { title: 'Initial plan direction' });
+    expectStatus(await owner.browser.request('POST', `/api/v1/decisions/${earlier.id}/accept`, { body: {}, headers: { 'if-match': '"1"' } }), 200);
+    const pivot = await post<Decision>(owner, `${path}/decisions`, { title: 'Changed plan direction', supersedes: earlier.id });
+    expectStatus(await owner.browser.request('POST', `/api/v1/decisions/${pivot.id}/accept`, { body: { park: [parked.id] }, headers: { 'if-match': '"1"' } }), 200);
+    const plan = await post<Material>(owner, `${path}/materials`, { title: 'Exact plan source', body: 'The bounded task plan', clientMutationId: randomUUID() });
+    const planIntent = { materialId: plan.materialId, version: 1, intentKey: 'bounded-task-read' };
+    const planned = await create('Planned task with mixed prerequisites', { criteria: ['First native criterion', 'Second native criterion'],
+      dependencyIds: [parked.id, ready.id, pending.id], planIntent });
+    const observe = async (total: number, unmet: number) => {
+      const page = await get<ProjectWorkView>(`${path}/work-view?group=open&limit=100`);
+      const row = page.items.find(({ id }) => id === planned.id) as WorkRowProjection;
+      assert.deepEqual(row.prerequisiteCounts, { total, unmet });
+      for (const key of ['criteria', 'dependencyIds', 'prerequisites', 'planIntent', 'links']) assert.equal(key in row, false);
+      const canonical = expectStatus(await owner.browser.request('GET', `/api/v1/work/${planned.id}`), 200) as WorkItem;
+      const detail = await get<WorkDetailProjection>(`${path}/work-objects/work/${planned.id}`);
+      assert.equal(detail.object.kind, 'work');
+      if (detail.object.kind !== 'work') throw new Error('Wrong native detail kind');
+      for (const field of ['criteria', 'dependencyIds', 'prerequisites', 'planIntent'] as const) assert.deepEqual(detail.object[field], canonical[field]);
+      assert.deepEqual(detail.object.dependencyIds, [parked.id, ready.id, pending.id].sort());
+      assert.equal(detail.object.prerequisites.filter(({ met }) => !met).length, unmet);
+      assert.deepEqual(detail.object.planIntent, planIntent);
+      assert.equal('prerequisiteCounts' in detail.object, false);
+      expectStatus(await outsider.browser.request('GET', `${path}/work-objects/work/${planned.id}`), 404);
+      return page;
+    };
+    const initial = await observe(3, 2);
+    const plain = initial.items.find(({ id }) => id === pending.id) as WorkRowProjection;
+    assert.deepEqual(plain.prerequisiteCounts, { total: 0, unmet: 0 });
+    const change = async (id: string, command: Record<string, unknown>) => {
+      const task = expectStatus(await owner.browser.request('GET', `/api/v1/work/${id}`), 200) as WorkItem;
+      return expectStatus(await owner.browser.request('PATCH', `/api/v1/work/${id}`, { body: { ...command, clientCommandId: randomUUID() }, headers: { 'if-match': `"${task.version}"` } }), 200) as WorkItem;
+    };
+    await change(pending.id, { status: 'done' }); await observe(3, 1);
+    const unparked = await change(parked.id, { status: 'done' }); assert.equal(unparked.parked, null); await observe(3, 0);
+    await change(ready.id, { status: 'open' }); await observe(3, 1);
+    await assert.rejects(pool.query('INSERT INTO project_task_dependencies (workspace_id, project_id, task_id, prerequisite_id) VALUES ($1,$2,$3,$4)',
+      [workspaceId, isolated.id, planned.id, main.id]), (error: unknown) => (error as { code?: string }).code === '23503');
+    await observe(3, 1);
+  });
+
+  test('native task plan detail keeps the 50 prerequisite and 20 criterion boundaries while pages stay compact', async () => {
+    const isolated = await project(owner, workspaceId, 'Native plan bounds', 'restricted');
+    const path = `/api/v1/projects/${isolated.id}`;
+    const prerequisites: WorkItem[] = [];
+    for (let i = 0; i < 50; i++) prerequisites.push(await post<WorkItem>(owner, `${path}/work`, { title: `Bound prerequisite ${i}`, status: i % 2 ? 'done' : 'open' }));
+    const criteria = Array.from({ length: 20 }, (_, i) => `${i}:` + 'x'.repeat(997 - String(i).length));
+    const task = await post<WorkItem>(owner, `${path}/work`, { title: 'Task at native boundaries', criteria, dependencyIds: prerequisites.map(({ id }) => id) });
+    const page = await get<ProjectWorkView>(`${path}/work-view?limit=1`);
+    assert.equal(page.items.length, 1); assert.equal(page.total, 51); assert.equal(page.items[0]?.id, task.id);
+    assert.deepEqual((page.items[0] as WorkRowProjection).prerequisiteCounts, { total: 50, unmet: 25 });
+    const detail = await get<WorkDetailProjection>(`${path}/work-objects/work/${task.id}`);
+    if (detail.object.kind !== 'work') throw new Error('Wrong native detail kind');
+    assert.deepEqual(detail.object.criteria, criteria); assert.equal(detail.object.prerequisites.length, 50);
+    assert.deepEqual(detail.object.dependencyIds, prerequisites.map(({ id }) => id).sort());
+    assert.equal(detail.object.planIntent, null);
+    const canonical = expectStatus(await owner.browser.request('GET', `/api/v1/work/${task.id}`), 200) as WorkItem;
+    assert.deepEqual(detail.object.prerequisites, canonical.prerequisites);
   });
 
   test('own details preserve full fields and native history without implicit links; finished selection stays separate', async () => {

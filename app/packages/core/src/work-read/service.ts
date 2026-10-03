@@ -1,5 +1,5 @@
 import {
-  WORK_GROUPS, WORK_READ_LIMITS, type NativeWorkRow, type PrincipalRef, type ProjectWorkSummary,
+  WORK_GROUPS, WORK_READ_LIMITS, WORK_LIMITS, type NativeWorkRow, type PrincipalRef, type ProjectWorkSummary,
   type ProjectWorkView, type WorkAssociations, type WorkDetailProjection, type WorkRelations,
 } from '@flux/contracts';
 import { DomainError, ServiceUnavailableError } from '../access/errors.js';
@@ -40,6 +40,10 @@ function summaryFacts(value: WorkSummaryObservation, projectId: string, observed
 function rowFacts(rows: readonly NativeWorkRow[], projectId: string, workspaceId: string) {
   requireFact(new Set(rows.map((row) => `${row.kind}:${row.id}`)).size === rows.length);
   for (const row of rows) requireFact(row.projectId === projectId && row.workspaceId === workspaceId && row.audience.kind === 'project' && row.audience.projectId === projectId && !('links' in row));
+  for (const row of rows) if (row.kind === 'work') {
+    const { total, unmet } = row.prerequisiteCounts;
+    requireFact(count(total) && count(unmet) && unmet <= total && total <= WORK_LIMITS.dependencies);
+  }
 }
 
 /** Read orchestration owns validation, global windows, coherent observations and the final fence. */

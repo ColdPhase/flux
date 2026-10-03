@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
-import type { DecisionRowProjection, Project, ProjectWorkViewQuery, ResultRowProjection, WorkCounts, WorkObjectType, WorkRowProjection } from '@flux/contracts';
+import type { DecisionRowProjection, Project, ProactiveComparisonOutcome, ProjectWorkViewQuery, ResultRowProjection, WorkCounts, WorkObjectType, WorkRowProjection } from '@flux/contracts';
 import { EmptyState, ErrorState, Icon } from '../ui';
 import { getProject } from '../app/conversation-api';
 import { useShellActions } from '../app/shellContext';
@@ -11,13 +11,19 @@ import { getProjectWorkView, workViewReadUrl } from './read-api';
 import { useProjectWorkPage } from './WorkReadContext';
 import { WorkPagination } from './WorkPagination';
 import { useWorkReadingPosition } from './useWorkReadingPosition';
+import { useProjectShell } from '../project/data';
+import { ProjectProposals } from '../project/ProjectProposals';
+import { listComparisonOutcomes } from '../project/proposals';
 import './work.css';
 
-interface TasksData { project: Project }
+interface TasksData { project: Project; outcomes: ProactiveComparisonOutcome[] }
 
 /** Object rows use their separate bounded page; this loader supplies the project contract. */
 export async function projectTasksLoader({ params, request }: LoaderFunctionArgs): Promise<TasksData> {
-  return { project: await getProject(params.projectId!, request.signal) };
+  const [project, outcomes] = await Promise.all([
+    getProject(params.projectId!, request.signal), listComparisonOutcomes(params.projectId!, request.signal),
+  ]);
+  return { project, outcomes };
 }
 
 function Group({ id, title, count, children }: { id: string; title: string; count: number; children: ReactNode }) {
@@ -92,9 +98,11 @@ function workSub(item: WorkRowProjection) {
   const { rule, parkedBy } = item;
   const results = item.relations.results;
   const fromMessage = item.relations.sourceMessages > 0;
+  const waiting = isFinished(item) ? 0 : item.prerequisiteCounts.unmet;
   return [
     item.owner ? item.owner.name : 'No owner',
     item.status === 'blocked' && item.blocker ? `waiting for ${item.blocker}` : null,
+    waiting ? `waits for ${waiting} ${waiting === 1 ? 'task' : 'tasks'}` : null,
     parkedBy ? `Parked · was ${STATUS_LABEL[item.status].toLowerCase()}` : null,
     rule && !parkedBy ? `follows “${rule.title}”` : null,
     fromMessage ? 'from a message' : null,
@@ -121,7 +129,8 @@ function keepCursor(key: string, cursor: string | null) {
 }
 
 export function ProjectTasks() {
-  const { project } = useLoaderData() as TasksData;
+  const { project, outcomes } = useLoaderData() as TasksData;
+  const shell = useProjectShell();
   const { openDetails } = useShellActions();
   const revalidator = useRevalidator();
   const [search, setSearch] = useSearchParams();
@@ -143,6 +152,30 @@ export function ProjectTasks() {
   const counts = data ? mine ? data.summary.mine : data.summary.all : null;
   const viewKey = taskViewKey(me.user.id, project.id, status, mine);
   const saveReading = useWorkReadingPosition(scroller, `${viewKey}:reading:${cursor ?? 'first'}`, data !== null, data?.summary.observedAt);
+  const jump = useRef<{ routeKey: string; id: string; group: GroupId } | null>(null);
+  const jumpToSection = (id: string) => {
+    const group: GroupId = id === 'g-progress' ? 'in_progress' : id.slice(2) as GroupId;
+    if (!isGroup(group)) return;
+    saveReading();
+    jump.current = { routeKey, id, group };
+    setViewState({ routeKey, status: null, mine: false, cursor: null });
+  };
+  useEffect(() => {
+    const target = jump.current;
+    if (!target) return;
+    if (target.routeKey !== routeKey) { jump.current = null; return; }
+    if (read.phase !== 'ready' || mine || cursor) return;
+    if (status !== null && status !== target.group) { jump.current = null; return; }
+    const heading = document.getElementById(target.id);
+    if (!heading && status === null) {
+      // All still has its bounded first page. Select the named group only when
+      // the actual destination lies outside it; never fetch every object to jump.
+      setViewState({ routeKey, status: target.group, mine: false, cursor: null });
+      return;
+    }
+    if (heading) heading.scrollIntoView({ block: 'start' });
+    jump.current = null;
+  }, [routeKey, read.phase, data, status, mine, cursor, view]);
 
   useEffect(() => {
     keepCursor(viewKey, cursor);
@@ -158,6 +191,7 @@ export function ProjectTasks() {
   }, [viewKey, cursor, status, mine, me.user.id, project.id, location.search]);
 
   const setView = (next: { status?: GroupId | null; mine?: boolean }) => {
+    jump.current = null;
     saveReading();
     keepCursor(viewKey, cursor);
     const nextStatus = next.status === undefined ? status : next.status;
@@ -165,11 +199,13 @@ export function ProjectTasks() {
     setViewState({ routeKey, status: nextStatus, mine: nextMine, cursor: storedCursor(taskViewKey(me.user.id, project.id, nextStatus, nextMine)) });
   };
   const movePage = (nextCursor: string) => {
+    jump.current = null;
     saveReading();
     keepCursor(viewKey, nextCursor);
     setViewState({ ...view, cursor: nextCursor });
   };
   const refresh = () => {
+    jump.current = null;
     saveReading();
     keepCursor(viewKey, null);
     setViewState({ ...view, cursor: null });
@@ -205,13 +241,21 @@ export function ProjectTasks() {
   const groupCount = (id: GroupId, visible: number) => visible ? counts?.[id] ?? 0 : 0;
   const openObject = (kind: WorkObjectType, id: string) => () => { saveReading(); openDetails({ kind, id }); };
   const workRow = (item: WorkRowProjection, muted = false) => <Row key={item.id} kind="work" id={item.id} icon={dot(item.parked ? 'parked' : item.status)} title={item.title} sub={workSub(item)} right={item.owner ? <span className="ws-av" aria-hidden="true">{item.owner.name.slice(0, 1)}</span> : null} onOpen={openObject('work', item.id)} muted={muted} />;
-  const nothing = data !== null && cursor === null && !Object.values(data.summary.all).some(Boolean);
+  const nothing = data !== null && cursor === null && !Object.values(data.summary.all).some(Boolean)
+    && !outcomes.some((outcome) => outcome.kind === 'comparison' ? outcome.proposal.status === 'proposed' : outcome.status === 'open');
   const emptyContinuation = data !== null && cursor !== null && !data.items.length;
 
   return (
     <div className="pane-scroll" ref={scroller}>
       <div className="pane-in ws-tasks" data-shift data-work-observed-at={data?.summary.observedAt}>
         {writable ? <NewWorkComposer key={`${me.user.id}:${project.id}`} userId={me.user.id} projectId={project.id} /> : null}
+        <ProjectProposals outcomes={outcomes} people={shell?.people ?? null} projectName={project.name}
+          resultTitles={new Map(results.map((result) => [result.id, result.title]))}
+          workCount={data?.summary.workTotal ?? 0} resultCount={data?.summary.all.results ?? 0}
+          workJumpId={data?.summary.all.in_progress ? 'g-progress' : data?.summary.all.blocked ? 'g-blocked' : data?.summary.all.open ? 'g-open' : data?.summary.all.parked ? 'g-parked' : 'g-finished'}
+          jumpToSection={jumpToSection} writable={writable} refresh={() => { refresh(); revalidator.revalidate(); }}
+          openResult={(id) => openDetails({ kind: 'result', id, projectId: project.id })}
+          openWork={(item) => openDetails({ kind: 'work', id: item.id, projectId: project.id })} />
         <div className="ws-task-controls">
           <TaskViews counts={counts} status={status} mine={mine} writable={writable} onStatus={(next) => setView({ status: next })} onMine={(next) => setView({ mine: next })} />
           <WorkPagination page={data} busy={read.phase !== 'ready' && read.phase !== 'unavailable'} onCursor={movePage} onRefresh={refresh} />

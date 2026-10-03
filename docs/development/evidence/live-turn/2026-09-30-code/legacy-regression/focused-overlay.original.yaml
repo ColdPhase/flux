@@ -1,0 +1,5 @@
+services:
+  live-sfu-test:
+    volumes:
+      - /home/hubert/Develop/flux/.worktrees/63-live-quality/tests/app/e2e/live-code-quality.e2e.ts:/app/tests/app/e2e/live-code-quality.e2e.ts:ro,z
+      - /home/hubert/Develop/flux/.worktrees/63-live-quality/tests/app/e2e/live-turn-relay.e2e.ts:/app/tests/app/e2e/live-turn-relay.e2e.ts:ro,z
