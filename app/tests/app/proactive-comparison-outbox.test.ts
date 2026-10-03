@@ -1,18 +1,15 @@
 import { comparisonDispatchFixtureDue } from './support/comparison-dispatch-fixture.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, before, describe, test } from 'node:test';
-import { createDatabase, proactiveOutboxRows } from '@flux/db';
+import { before, describe, test } from 'node:test';
+import { proactiveOutboxRows } from '@flux/db';
 import { recordEvent } from '@flux/core';
 import type { WorkResult } from '@flux/contracts';
 import { proactiveReservation } from '../../apps/worker/src/proactive-comparison/reservation-adapter.js';
+import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { db, pool } = createDatabase(connectionString);
 const reservations = proactiveReservation(db);
-after(() => pool.end());
 const fakeKey = `sk-ant-api03-${'outbox-owner-only-'.repeat(4)}END7`;
 
 describe('negative-result candidate and budget reservation (#58)', () => {

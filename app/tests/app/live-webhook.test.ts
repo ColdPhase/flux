@@ -1,17 +1,12 @@
 import assert from 'node:assert/strict';
 import { createHash, createHmac, randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import Fastify from 'fastify';
-import { createDatabase } from '@flux/db';
 import type { Conversation } from '@flux/contracts';
 import { liveSessionStore } from '../../apps/server/src/live/store.js';
 import { LIVEKIT_WEBHOOK_PATH, liveWebhookRoutes } from '../../apps/server/src/live/webhook.js';
+import { db, pool } from './support/db.js';
 import { expectStatus, person, project, workspace } from './support/people.js';
-
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { db, pool } = createDatabase(connectionString);
-after(() => pool.end());
 
 const key = 'flux-webhook-test';
 const secret = 'a-long-private-livekit-test-secret-value';
