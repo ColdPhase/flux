@@ -93,6 +93,14 @@ class FoundationValidationTests(unittest.TestCase):
         self.write("docs/agents/README.md", "[GitHub](https://github.com/ColdPhase/flux)\n")
         self.assertEqual(self.check(), [])
 
+    def test_link_anchor_must_name_an_existing_heading(self):
+        self.write("docs/agents/guide.md", "# Guide\n\n## Working rules\n\n## Working rules\n\n```\n## Not a heading\n```\n")
+        self.write("docs/agents/README.md", "# Agent design\n\n[Rules](guide.md#working-rules) [Second](guide.md#working-rules-1) [Own](#agent-design)\n")
+        self.assertEqual(self.check(), [])
+        self.write("docs/agents/README.md", "[Old](guide.md#identity) [Fenced](guide.md#not-a-heading)\n")
+        errors = self.check()
+        self.assertTrue(any("guide.md#identity" in error and "missing heading anchor" in error for error in errors))
+        self.assertTrue(any("guide.md#not-a-heading" in error for error in errors))
 
 if __name__ == "__main__":
     unittest.main()
