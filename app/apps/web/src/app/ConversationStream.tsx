@@ -429,7 +429,9 @@ export function ConversationStream({ project, meId, roots: stream, notices, work
                   onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} onDenied={onDenied} />];
               })}
             </ol>
-          ) : stream.hasOlder ? null : writable
+          ) : null}
+          {/* Until someone writes, the stream says so, below any task announcements: they are not messages. */}
+          {roots.length || stream.hasOlder ? null : writable
             ? <EmptyState icon="chat" title="Where do we start?"><p>Write a thought. You don’t need a topic or a ready plan. {audience === 'Only you' ? 'Only you see it for now; people you add to the project will see it too.' : `Everyone in ${project.name} sees it.`} Anything said here can later become work, a decision or a sketch.</p></EmptyState>
             : <EmptyState icon="chat" title="No messages yet"><p>You have read access to {project.name}. Messages appear here when someone writes. You can browse saved tasks, maps, docs and sources.</p></EmptyState>}
         </section>
