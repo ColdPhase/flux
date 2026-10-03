@@ -296,6 +296,10 @@ anything; only this publish writes it, never message, PR, wiki or tool text.
   `retrievalReference` `flux://policy/<projectId>/<revision>`, and drops
   `approved_policy_unavailable` from `gaps`. That MCP resource returns any stored revision as
   Markdown through the connection's current project read access, so a resumed agent can compare.
+  A connection reads only projects it selected and can still read; it lists no policies.
+- The narrowing is guidance the agent follows, not a server rule: every command is still decided by
+  the owner's grants and current project access alone, whatever the policy says. Policy text is
+  counted in characters (code points); the publisher's name in the resource is quoted as data.
 
 ## Verification boundary
 

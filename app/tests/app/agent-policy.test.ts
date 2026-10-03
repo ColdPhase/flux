@@ -74,6 +74,36 @@ describe('approved project policy', () => {
     const retried = [await owner.request('PUT', path(), { body: body(2, 'Third'), headers: { 'idempotency-key': key } }),
       await owner.request('PUT', path(), { body: body(2, 'Third'), headers: { 'idempotency-key': key } })];
     assert.deepEqual(retried.map((response) => [response.status, (response.json as { revision: number }).revision]), [[201, 3], [201, 3]]);
+    assert.deepEqual(retried.map((response) => response.headers.get('idempotent-replayed')), [null, 'true']);
+    // Length is counted in characters: 4,000 emoji fit, 4,001 do not.
+    assert.equal((await owner.request('PUT', path(), { body: { ...body(3), scope: '🪔'.repeat(4000) } })).status, 201);
+    assert.equal((await owner.request('PUT', path(), { body: { ...body(4), scope: '🪔'.repeat(4001) } })).status, 400);
+  });
+
+  test('a publish with an Idempotency-Key commits with its key or not at all (#214 review B1)', async () => {
+    const before = expect(await viewer.request('GET', path()), 200) as { policy: AgentProjectPolicy };
+    const key = randomUUID();
+    // Only this test's key is refused when the key is stored: the publish must roll back with it.
+    const constraint = `policy_key_${randomUUID().replaceAll('-', '')}`;
+    await pool.query(`ALTER TABLE idempotency_keys ADD CONSTRAINT ${constraint} CHECK (key <> '${key}') NOT VALID`);
+    try {
+      const failed = await owner.request('PUT', path(), { body: body(before.policy!.revision, 'Never committed'), headers: { 'idempotency-key': key } });
+      assert.equal(failed.status, 500);
+    } finally {
+      await pool.query(`ALTER TABLE idempotency_keys DROP CONSTRAINT ${constraint}`);
+    }
+    const after = expect(await viewer.request('GET', path()), 200) as { policy: AgentProjectPolicy };
+    assert.deepEqual(after, before, 'no revision was committed without its key');
+    const retried = await owner.request('PUT', path(), { body: body(before.policy!.revision, 'Never committed'), headers: { 'idempotency-key': key } });
+    assert.deepEqual([retried.status, (retried.json as { revision: number }).revision], [201, before.policy!.revision + 1], 'the retry publishes once');
+  });
+
+  test('two managers publishing the same revision at once: one wins, the other gets the current revision', async () => {
+    const { policy: seen } = expect(await viewer.request('GET', path()), 200) as { policy: AgentProjectPolicy };
+    const race = await Promise.all(['First manager', 'Second manager'].map((scope) => owner.request('PUT', path(), { body: body(seen.revision, scope) })));
+    assert.deepEqual(race.map((response) => response.status).sort(), [201, 409]);
+    const lost = race.find((response) => response.status === 409)!.json as { code: string; currentVersion: number };
+    assert.deepEqual([lost.code, lost.currentVersion], ['VERSION_CONFLICT', seen.revision + 1]);
   });
 
   test('bootstrap names the approved revision and a connected agent reads it as a resource', async () => {
@@ -104,5 +134,31 @@ describe('approved project policy', () => {
     assert.ok(((earlier.message!.result as { contents: { text: string }[] }).contents[0]!.text).includes('revision 1'));
     const missing = await mcp(tokens.access_token, 404, 'resources/read', { uri: agentProjectPolicyUri(projectId, 99) });
     assert.ok(missing.message?.error, 'no such revision');
+    for (const [id, revision] of [[405, '01'], [406, '1e0'], [407, '1.0'], [408, '99999999999'], [409, '0']] as const) {
+      const odd = await mcp(tokens.access_token, id, 'resources/read', { uri: `flux://policy/${projectId}/${revision}` });
+      assert.ok(odd.message?.error, `revision "${revision}" names nothing`);
+    }
+
+    // Another project of the same workspace, with its own policy and the same agent granted, is not
+    // readable through a connection that did not select it.
+    const other = String(expect(await owner.request('POST', `/api/v1/workspaces/${workspaceId}/projects`, { body: { name: 'Bike light', visibility: 'restricted' } }), 201).id);
+    expect(await owner.request('POST', `/api/v1/projects/${other}/grants`, { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201);
+    expect(await owner.request('PUT', `/api/v1/projects/${other}/agent-policy`, { body: body(0, 'Bike light only') }), 201);
+    const unselected = await mcp(tokens.access_token, 410, 'resources/read', { uri: agentProjectPolicyUri(other, 1) });
+    assert.ok(unselected.message?.error && !JSON.stringify(unselected.message).includes('Bike light only'), 'an unselected project is refused');
+
+    // A viewer agent reads project context, so it reads the policy; a denied agent reads nothing.
+    expect(await owner.request('POST', `/api/v1/projects/${projectId}/grants`, { body: { principal: { kind: 'agent', id: agentId }, role: 'viewer' } }), 201);
+    const asViewer = await mcp(tokens.access_token, 411, 'resources/read', { uri: agentProjectPolicyUri(projectId, current.revision) });
+    assert.equal((asViewer.message!.result as { contents: { text: string }[] }).contents[0]!.text, renderAgentPolicy(current));
+    expect(await owner.request('POST', `/api/v1/projects/${projectId}/grants`, { body: { principal: { kind: 'agent', id: agentId }, role: 'denied' } }), 201);
+    const denied = await mcp(tokens.access_token, 412, 'resources/read', { uri: agentProjectPolicyUri(projectId, current.revision) });
+    assert.ok(denied.status !== 200 || denied.message?.error, 'a denied agent reads no policy');
+    assert.ok(!JSON.stringify(denied.message ?? {}).includes(current.scope));
+    expect(await owner.request('POST', `/api/v1/projects/${projectId}/grants`, { body: { principal: { kind: 'agent', id: agentId }, role: 'contributor' } }), 201);
+
+    // Revoking the connection removes the resource with every other MCP surface.
+    expect(await owner.request('DELETE', `/api/v1/agent-connections/${connection.id}`), 204);
+    assert.equal((await mcp(tokens.access_token, 413, 'resources/read', { uri: agentProjectPolicyUri(projectId, current.revision) })).status, 403);
   });
 });

@@ -8,7 +8,10 @@ import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, requires, useDomainErrors } from '../http/commands.js';
 import { withAgentConnection, type FluxMcpClaims } from './context.js';
 
-/** The policy use cases over one transaction: the access policy, the policy rows and project events. */
+/**
+ * The policy use cases over one transaction: the access policy, the policy rows and project events. A
+ * command passes its own connection, so an idempotent publish commits with its key (nested savepoint).
+ */
 export function agentPolicyUnitOfWork(db: Database): AgentPolicyUnitOfWork {
   return { run: (work) => db.transaction((tx) => work(policyPorts(tx))) };
 }
@@ -43,7 +46,7 @@ export async function agentPolicyRoutes(app: FastifyInstance, { db, sessions }: 
       properties: { scope: text, priorities: text, reviewCriteria: text, allowedWork: text, expectedRevision: { type: 'integer', minimum: 0 } } } },
   }, async (request, reply) => command(request, reply, {
     operation: `PUT ${agentProjectPolicyPath(':projectId')}`, scope: { type: 'project', id: request.params.projectId }, status: 201,
-    run: (actor) => policy.publish(actor, request.params.projectId, request.body),
+    run: (actor, conn) => agentPolicyUseCases(agentPolicyUnitOfWork(conn)).publish(actor, request.params.projectId, request.body),
     replay: requires('project', 'project.read', () => request.params.projectId),
   }));
 }
@@ -59,7 +62,9 @@ export function registerAgentPolicyResource(server: McpServer, db: Database, cla
     mimeType: 'text/markdown',
   }, async (uri, variables) => {
     const projectId = String(variables.projectId ?? '');
-    const revision = Number(variables.revision);
+    // Only the canonical decimal form names a revision; anything else is simply not one.
+    const raw = String(variables.revision ?? '');
+    const revision = /^[1-9]\d{0,9}$/.test(raw) ? Number(raw) : 0;
     const value = await withAgentConnection(db, claims, 'flux.context.read', projectId, async ({ tx, principal }) =>
       agentPolicyUseCases({ run: (work) => work(policyPorts(tx)) }).revision(principal, projectId, revision));
     return { contents: [{ uri: uri.href, mimeType: 'text/markdown', text: renderAgentPolicy(value) }] };
