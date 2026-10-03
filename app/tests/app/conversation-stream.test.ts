@@ -1,23 +1,12 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
-import { createDatabase } from '@flux/db';
+import { test } from 'node:test';
 import type { Conversation, Material, Project, Workspace } from '@flux/contracts';
-import { Browser, register, uniqueEmail } from './support/http.js';
+import { pool } from './support/db.js';
+import { Browser } from './support/http.js';
+import { person } from './support/people.js';
 import { StreamClient } from './support/stream.js';
 
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { pool } = createDatabase(connectionString);
-after(() => pool.end());
-const password = 'correct horse battery staple';
-
-async function person(label: string) {
-  const { browser } = await register(uniqueEmail(label), password, label);
-  const me = await browser.request('GET', '/api/v1/me');
-  assert.equal(me.status, 200, me.text);
-  return { browser, id: (me.json as { user: { id: string } }).user.id };
-}
 async function post<T>(browser: Browser, path: string, body: unknown): Promise<T> {
   const response = await browser.request('POST', path, { body });
   assert.equal(response.status, 201, response.text);

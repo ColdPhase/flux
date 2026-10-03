@@ -139,6 +139,8 @@ test('every operation has a registered postcondition entry; an incomplete sample
     'map.thought.delete': [{ kind: 'map_checkpoint', id: uuid(), updatedAt: at }],
     'map.positions.update': [{ kind: 'thought', id: uuid(), version: 2 }, { kind: 'map_checkpoint', id: uuid(), updatedAt: at }],
     'map.link.create': [{ kind: 'map_checkpoint', id: uuid(), updatedAt: at }], 'map.link.delete': [{ kind: 'map_checkpoint', id: uuid(), updatedAt: at }],
+    'doc.create': [{ kind: 'doc', id: uuid(), version: 1 }], 'doc.update': [{ kind: 'doc', id: uuid(), version: 2 }],
+    'conversation.create': [{ kind: 'message', id: uuid() }], 'conversation.reply': [{ kind: 'message', id: uuid() }],
     'cowork.claim': [claim()], 'cowork.renew': [claim()], 'cowork.release': [claim()],
     'cowork.request': [{ kind: 'cowork.request_state', workspaceId: uuid(), projectId: uuid(), connectionId: uuid(), unitId: uuid(),
       requestId: uuid(), role: 'review', version: 1, state: 'queued' }],
@@ -147,4 +149,30 @@ test('every operation has a registered postcondition entry; an incomplete sample
   // @ts-expect-error a table without its cowork.request entry must not satisfy the exhaustive operation record
   const incomplete: Record<AgentOperation, AgentPostcondition[]> = {} as Omit<typeof samples, 'cowork.request'>;
   assert.equal(incomplete['cowork.request'], undefined);
+});
+
+test('doc and conversation commands: creates have no target, changes name their doc or conversation, post-state is exact', () => {
+  const projectId = randomUUID();
+  const base = { runtimeSessionId: randomUUID(), grantId: randomUUID(), clientCommandId: randomUUID(), projectId,
+    peerRequestClass: 'plan' as const, audience: { kind: 'project' as const, projectId }, sources: [], payload: { body: 'Text' } };
+  for (const operation of ['doc.create', 'conversation.create'] as const) {
+    assert.deepEqual(AGENT_OPERATION_CLASSES[operation], ['execute', 'plan']);
+    assert.equal(normalizeAgentExecution({ ...base, operation, objectId: null }).objectId, null);
+    assert.throws(() => normalizeAgentExecution({ ...base, operation, objectId: randomUUID() }), invalidInput);
+  }
+  for (const operation of ['doc.update', 'conversation.reply'] as const) {
+    const target = randomUUID();
+    assert.equal(normalizeAgentExecution({ ...base, operation, objectId: target }).objectId, target);
+    assert.throws(() => normalizeAgentExecution({ ...base, operation, objectId: null }), invalidInput);
+    assert.throws(() => normalizeAgentExecution({ ...base, operation, objectId: target, peerRequestClass: 'review' }), invalidInput,
+      'review authority never writes docs or messages');
+  }
+  const id = randomUUID();
+  validateAgentPostconditions('doc.update', [{ kind: 'doc', id, version: 3 }]);
+  validateAgentPostconditions('conversation.reply', [{ kind: 'message', id }]);
+  for (const [operation, value] of [
+    ['doc.update', [{ kind: 'doc', id }]], ['doc.update', [{ kind: 'material', id, version: 3 }]], ['doc.create', [{ kind: 'message', id }]],
+    ['conversation.reply', [{ kind: 'message', id, version: 1 }]], ['conversation.create', [{ kind: 'message', id, body: 'text' }]],
+    ['conversation.create', [{ kind: 'message', id }, { kind: 'message', id: randomUUID() }]], ['conversation.reply', [{ kind: 'doc', id, version: 1 }]],
+  ] as const) assert.throws(() => validateAgentPostconditions(operation, value), { code: 'COMMAND_POSTSTATE_INVALID' });
 });
