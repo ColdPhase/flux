@@ -486,7 +486,7 @@ class SharedComposerJourney(unittest.TestCase):
                 response = route.fetch(url=urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query, doseq=True), parts.fragment)))
                 first.append(response.json())
                 route.fulfill(response=response)
-        page.route("**/api/v1/projects/*/conversation-roots?*", bounded)
+        page.route("**/api/v1/projects/*/conversation-roots*", bounded)
         page.goto(f"/projects/{project['id']}/conversations/{discussion['conversationId']}")
         pane = page.get_by_role("complementary", name="Replies")
         expect(pane.get_by_label("Reply", exact=True)).to_have_value(lost[0]["body"])
@@ -498,7 +498,7 @@ class SharedComposerJourney(unittest.TestCase):
         expect(pane.get_by_label("Reply", exact=True)).to_have_value("")
         self.assertEqual(replay[-1], lost[0])
         self.assertEqual(len(self.discussion(page, task)["messages"]), 1)
-        page.unroute("**/api/v1/projects/*/conversation-roots?*", bounded)
+        page.unroute("**/api/v1/projects/*/conversation-roots*", bounded)
         for route in older:
             route.continue_()
 

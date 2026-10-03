@@ -345,7 +345,9 @@ timestamp. The server resolves a retry against current access and durable receip
 If an unpublished file is unavailable, the person explicitly removes and selects
 it again; that payload change receives a new command UUID while text and reference
 remain. A revoked or unavailable file/source response does not falsely imply that
-the person's text was sent or erased.
+the person's text was sent or erased. Because send `404` deliberately also hides
+unavailable file/source identity, the composer confirms actual project access
+through the existing authorized project read before hiding the conversation UI.
 
 **Additive wire delta, independently agreed by the coordinator before mapping:**
 `ConversationFields.task?: { workId, title }` has the same shape and current title

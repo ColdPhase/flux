@@ -270,7 +270,11 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       void refresh();
     } catch (cause) {
       publicComposer.finish(command.clientMessageId, cause);
-      if (active()) hideIfDenied(cause);
+      // A send's 404 also protects an unavailable file/source. Confirm scope loss through
+      // the ordinary project read before hiding the composer needed to recover that draft.
+      if (active() && cause instanceof ApiError && [401, 403, 404].includes(cause.status)) {
+        void getProject(project.id).catch((accessCause: unknown) => { if (active()) hideIfDenied(accessCause); });
+      }
     }
   }
   function onComposerKey(event: KeyboardEvent<HTMLTextAreaElement>) {
