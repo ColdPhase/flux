@@ -95,8 +95,11 @@ export function agentExecutionRows(tx: DbExecutor) {
         .where(and(eq(grants.id, id), eq(grants.connectionId, connectionId), eq(grants.ownerUserId, ownerUserId), isNull(grants.revokedAt)))
         .returning({ id: grants.id })).length === 1;
     },
-    /** Native post-state readers are operation-specific, same-project and content-free. */
-    async nativePostcondition(workspaceId: string, projectId: string, condition: AgentPostcondition, mapId?: string): Promise<boolean> {
+    /**
+     * Native post-state readers are operation-specific, same-project and content-free. `containerId` pins a
+     * produced thought to its map or a produced message to the conversation the command targeted.
+     */
+    async nativePostcondition(workspaceId: string, projectId: string, condition: AgentPostcondition, containerId?: string): Promise<boolean> {
       if (condition.kind === 'cowork.claim_state' || condition.kind === 'cowork.request_state') return false; // #153 supplies its canonical unit/request adapter.
       if (condition.kind === 'map_checkpoint') {
         const table = schema.sketches;
@@ -114,11 +117,25 @@ export function agentExecutionRows(tx: DbExecutor) {
         const table = schema.sketchThoughts;
         const [row] = await tx.select({ version: table.version }).from(table).innerJoin(schema.sketches,
           eq(schema.sketches.id, table.sketchId)).where(and(eq(table.id, condition.id), eq(table.workspaceId, workspaceId),
-          eq(schema.sketches.projectId, projectId), eq(schema.sketches.scope, 'project'), mapId ? eq(table.sketchId, mapId) : undefined)).for('share');
+          eq(schema.sketches.projectId, projectId), eq(schema.sketches.scope, 'project'), containerId ? eq(table.sketchId, containerId) : undefined)).for('share');
         return row?.version === condition.version;
       }
       if (condition.kind === 'material') {
         return await this.sourceVersion(workspaceId, projectId, condition.id) === condition.version;
+      }
+      if (condition.kind === 'doc') {
+        // Still this project's doc, at exactly the version the command produced (a later edit is stale).
+        const table = schema.projectMaterials;
+        const [row] = await tx.select({ version: table.currentVersion }).from(table).where(and(eq(table.id, condition.id),
+          eq(table.workspaceId, workspaceId), eq(table.projectId, projectId), eq(table.kind, 'doc'))).for('share');
+        return row?.version === condition.version;
+      }
+      if (condition.kind === 'message') {
+        // A project message is immutable; it must still exist in this project (and the targeted conversation).
+        const table = schema.projectMessages;
+        const [row] = await tx.select({ id: table.id }).from(table).where(and(eq(table.id, condition.id), eq(table.workspaceId, workspaceId),
+          eq(table.projectId, projectId), containerId ? eq(table.conversationId, containerId) : undefined)).for('share');
+        return !!row;
       }
       const table = condition.kind === 'work' ? schema.projectWorkItems : condition.kind === 'decision' ? schema.projectDecisions : schema.sketches;
       const [row] = await tx.select({ version: table.version }).from(table).where(and(eq(table.id, condition.id),
