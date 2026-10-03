@@ -1,119 +1,11 @@
 import assert from 'node:assert/strict';
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
-import { createDatabase } from '@flux/db';
-import { DomainError } from '@flux/core';
+import { randomUUID } from 'node:crypto';
+import { test } from 'node:test';
+import { coworkPlaybookReference, DomainError } from '@flux/core';
 import { withAgentConnection } from '../../apps/server/src/agent-connection/context.js';
-import { apiUrl, publicOrigin, register, uniqueEmail, type Browser, type ClientResponse } from './support/http.js';
-
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { db, pool } = createDatabase(connectionString);
-after(() => pool.end());
-
-function expect(response: ClientResponse, status: number) {
-  assert.equal(response.status, status, `${response.status} from application endpoint`);
-  return response.json as Record<string, unknown>;
-}
-
-function route(location: string) {
-  const parsed = new URL(location, publicOrigin);
-  return `${parsed.pathname}${parsed.search}`;
-}
-
-interface Tokens { access_token: string; refresh_token: string; token_type: string }
-
-async function beginOauth(browser: Browser, clientId: string, redirectUri: string, extra: Record<string, string> = {}) {
-  const verifier = randomBytes(32).toString('base64url');
-  const challenge = createHash('sha256').update(verifier).digest('base64url');
-  const authorize = new URL('/api/auth/oauth2/authorize', publicOrigin);
-  authorize.search = new URLSearchParams({
-    client_id: clientId, redirect_uri: redirectUri, response_type: 'code',
-    code_challenge: challenge, code_challenge_method: 'S256', state: randomUUID(),
-    scope: 'flux.context.read flux.proposal.write offline_access', resource: `${publicOrigin}/mcp`, ...extra,
-  }).toString();
-  const start = await browser.request('GET', route(authorize.toString()),
-    { headers: { accept: 'text/html' } });
-  assert.ok(start.status === 200 || start.status === 302, `OAuth authorize returned ${start.status}`);
-  const redirect = start.status === 302 ? start.headers.get('location')
-    : (start.json as { url?: string } | null)?.url;
-  const choice = new URL(redirect ?? '', publicOrigin);
-  assert.equal(choice.pathname, '/connect-agent');
-  return { verifier, oauthQuery: choice.search.slice(1) };
-}
-
-async function oauthToken(browser: Browser, connectionId: string, clientId: string, redirectUri: string,
-  started?: Awaited<ReturnType<typeof beginOauth>>): Promise<Tokens> {
-  const { verifier, oauthQuery: selectedQuery } = started ?? await beginOauth(browser, clientId, redirectUri);
-  expect(await browser.request('POST', `/api/v1/agent-connections/${connectionId}/select-for-oauth`,
-    { body: { oauth_query: selectedQuery } }), 204);
-  const continued = expect(await browser.request('POST', '/api/auth/oauth2/continue',
-    { body: { postLogin: true, oauth_query: selectedQuery } }), 200);
-  const destination = new URL(String(continued.url ?? continued.redirect_uri), publicOrigin);
-  let callback = destination;
-  if (destination.pathname === '/consent') {
-    const oauthQuery = destination.search.slice(1);
-    const display = expect(await browser.request('GET',
-      `/api/v1/agent-oauth/consent-context?oauth_query=${encodeURIComponent(oauthQuery)}`), 200);
-    assert.equal(display.clientName, 'Flux HTTP test client');
-    assert.equal((display.connection as { id: string }).id, connectionId);
-    const consent = expect(await browser.request('POST', '/api/auth/oauth2/consent',
-      { body: { accept: true, oauth_query: oauthQuery } }), 200);
-    callback = new URL(String(consent.url ?? consent.redirect_uri));
-  }
-  assert.equal(callback.origin, new URL(redirectUri).origin);
-  assert.equal(callback.pathname, new URL(redirectUri).pathname);
-  assert.equal(callback.searchParams.get('state'), new URLSearchParams(selectedQuery).get('state'),
-    'the callback retains the original requesting client state');
-  assert.equal(callback.searchParams.get('iss'), `${publicOrigin}/api/auth`,
-    'the advertised issuer response is present before the client exchanges the code');
-  const code = callback.searchParams.get('code');
-  assert.ok(code, 'consent returned an authorization code');
-  const token = await fetch(new URL('/api/auth/oauth2/token', apiUrl), {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ grant_type: 'authorization_code', code,
-      redirect_uri: redirectUri, client_id: clientId, code_verifier: verifier }),
-  });
-  assert.equal(token.status, 200, `OAuth token endpoint returned ${token.status}`);
-  const payload = await token.json() as Tokens;
-  assert.equal(payload.token_type?.toLowerCase(), 'bearer');
-  assert.ok(payload.access_token, 'OAuth access token was issued');
-  assert.ok(payload.refresh_token, 'OAuth refresh token was issued');
-  return payload;
-}
-
-async function mcp(accessToken: string, id: number, method: string, params: Record<string, unknown> = {}) {
-  const toolName = typeof params.name === 'string' ? params.name : null;
-  const response = await fetch(new URL('/mcp', apiUrl), {
-    method: 'POST',
-    headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json',
-      accept: 'application/json', 'mcp-protocol-version': '2026-07-28', 'mcp-method': method,
-      ...(toolName ? { 'mcp-name': toolName } : {}) },
-    body: JSON.stringify({ jsonrpc: '2.0', id, method, params: { ...params, _meta: {
-      'io.modelcontextprotocol/protocolVersion': '2026-07-28',
-      'io.modelcontextprotocol/clientInfo': { name: 'flux-http-test', version: '1' },
-      'io.modelcontextprotocol/clientCapabilities': {},
-    } } }),
-  });
-  const body = await response.text();
-  let message: Record<string, unknown> | null = null;
-  if (response.headers.get('content-type')?.includes('text/event-stream')) {
-    const data = body.split('\n').find((line) => line.startsWith('data: '));
-    if (data) message = JSON.parse(data.slice(6)) as Record<string, unknown>;
-  } else if (body) {
-    message = JSON.parse(body) as Record<string, unknown>;
-  }
-  return { status: response.status, message };
-}
-
-function toolValue(message: Record<string, unknown> | null) {
-  assert.ok(message && !message.error, 'MCP returned a tool result');
-  const result = message.result as { isError?: boolean; content?: { type: string; text?: string }[] };
-  assert.equal(result?.isError, undefined);
-  assert.equal(result?.content?.[0]?.type, 'text');
-  return JSON.parse(result.content[0].text ?? '') as Record<string, unknown>;
-}
+import { db, pool } from './support/db.js';
+import { apiUrl, publicOrigin, register, uniqueEmail, type Browser } from './support/http.js';
+import { beginOauth, expect, mcp, oauthToken, toolValue, type Tokens } from './support/mcp.js';
 
 test('issued OAuth bearer reads and proposes through MCP, then connection revocation rejects it immediately', async () => {
   const { browser } = await register(uniqueEmail('oauth-mcp'), 'correct horse battery staple');
@@ -247,19 +139,44 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
     const denied = await mcp(bearer, 45, 'tools/call', { name, arguments: arguments_ });
     assert.ok(denied.message?.error || (denied.message?.result as { isError?: boolean })?.isError, name);
   }
+  // Native task plans (#152): the agent reads the same canonical task, with criteria, prerequisite state and plan revision.
+  const charged = expect(await browser.request('POST', `/api/v1/projects/${projectId}/work`, { body: { title: 'Charge the pack', status: 'done' } }), 201);
+  const planned = expect(await browser.request('POST', `/api/v1/projects/${projectId}/work`, { body: { title: 'Run the battery comparison',
+    criteria: ['Four hours observed'], dependencyIds: [charged.id], planIntent: { materialId, version: 1, intentKey: 'battery-plan' } } }), 201);
+  const plannedRead = toolValue((await mcp(bearer, 60, 'tools/call', { name: 'flux_get_work', arguments: { projectId, id: planned.id } })).message);
+  assert.deepEqual([plannedRead.criteria, plannedRead.dependencyIds, plannedRead.planIntent], [['Four hours observed'], [charged.id], { materialId, version: 1, intentKey: 'battery-plan' }]);
+  assert.deepEqual((plannedRead.prerequisites as { id: string; met: boolean }[]).map((item) => [item.id, item.met]), [[charged.id, true]]);
+  const plannedList = toolValue((await mcp(bearer, 61, 'tools/call', { name: 'flux_list_work', arguments: { projectId, limit: 50 } })).message);
+  assert.deepEqual((plannedList.items as { id: string; criteria: string[] }[]).find((item) => item.id === planned.id)?.criteria, ['Four hours observed']);
+  assert.deepEqual((plannedList.items as { id: string; planIntent: unknown }[]).find((item) => item.id === work.id)?.planIntent, null, 'earlier tasks present no guessed plan');
   const clientSessionId = randomUUID();
   const bootstrap = toolValue((await mcp(bearer, 46, 'tools/call', { name: 'flux_bootstrap', arguments: { projectId, clientSessionId } })).message);
   const repeatedBootstrap = toolValue((await mcp(bearer, 47, 'tools/call', { name: 'flux_bootstrap', arguments: { projectId, clientSessionId } })).message);
   assert.deepEqual(repeatedBootstrap.runtime, bootstrap.runtime, 'runtime retry preserves original identity and expiry');
   assert.equal((bootstrap.readiness as { state: string }).state, 'pending');
-  assert.deepEqual(bootstrap.trusted, { playbook: null, approvedPolicy: null, coordination: null, repositoryReferences: null });
-  assert.ok((bootstrap.gaps as string[]).includes('trusted_playbook_unavailable'));
+  assert.deepEqual(bootstrap.trusted, { playbook: coworkPlaybookReference(), approvedPolicy: null, coordination: null, repositoryReferences: null });
+  assert.ok(!(bootstrap.gaps as string[]).includes('trusted_playbook_unavailable'));
+  assert.ok((bootstrap.gaps as string[]).includes('coordination_unavailable'));
   assert.equal((bootstrap.runtime as { clientId: string }).clientId, clientId);
   const discovery = await mcp(bearer, 48, 'tools/list');
   const tools = (discovery.message?.result as { tools: { name: string }[] }).tools;
   assert.deepEqual(new Set((bootstrap.capabilities as { name: string }[]).map((row) => row.name)), new Set(tools.map((row) => row.name)),
     'bootstrap capability names come from actual registered MCP tools');
-  assert.ok((bootstrap.capabilities as { operation: string | null }[]).every((row) => row.operation === null), 'pending native writes are not advertised');
+  const writes = (bootstrap.capabilities as { name: string; operation: string | null; available: boolean }[]).filter((row) => row.operation !== null);
+  assert.deepEqual(writes.map(({ name, operation, available }) => ({ name, operation, available })),
+    [{ name: 'flux_create_task', operation: 'work.create', available: false }, { name: 'flux_update_task', operation: 'work.update', available: false },
+      { name: 'flux_record_result', operation: 'result.record', available: false }, { name: 'flux_propose_decision', operation: 'decision.propose', available: false },
+      ...['flux_create_map:map.create', 'flux_rename_map:map.rename', 'flux_add_thought:map.thought.create', 'flux_update_thought:map.thought.update',
+        'flux_remove_thought:map.thought.delete', 'flux_move_thoughts:map.positions.update', 'flux_link_thoughts:map.link.create',
+        'flux_unlink_thoughts:map.link.delete', 'flux_create_doc:doc.create', 'flux_update_doc:doc.update',
+        'flux_start_conversation:conversation.create', 'flux_reply_in_conversation:conversation.reply']
+        .map((entry) => ({ name: entry.split(':')[0], operation: entry.split(':')[1], available: false }))],
+    'only the verified native work, map, doc and conversation actions are advertised, unavailable without the action scope');
+  const unscoped = await mcp(bearer, 147, 'tools/call', { name: 'flux_create_task', arguments: { projectId,
+    runtimeSessionId: (bootstrap.runtime as { id: string }).id, grantId: randomUUID(), clientCommandId: randomUUID(),
+    peerRequestClass: 'plan', sources: [], task: { title: 'Not without the action scope' } } });
+  assert.equal((unscoped.message?.result as { isError?: boolean })?.isError, true);
+  assert.ok(JSON.stringify(unscoped.message).includes('MCP_SCOPE_REQUIRED'));
   await pool.query("UPDATE agent_runtime_sessions SET expires_at=now()-interval '1 second' WHERE id=$1", [(bootstrap.runtime as { id: string }).id]);
   const expiredRuntime = await mcp(bearer, 49, 'tools/call', { name: 'flux_bootstrap', arguments: { projectId, clientSessionId } });
   assert.ok(JSON.stringify(expiredRuntime.message).includes('RUNTIME_UNAVAILABLE'));

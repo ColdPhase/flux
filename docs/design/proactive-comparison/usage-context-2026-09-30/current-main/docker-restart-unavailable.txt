@@ -1,0 +1,409 @@
+ Image flux-test-tools:flux-test-1790799046-2778365 Building 
+ Image flux-foundation:flux-test-1790799046-2778365 Building 
+ Image flux-e2e:flux-test-1790799046-2778365 Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.79kB done
+#1 DONE 0.0s
+
+#2 [test internal] load build definition from Dockerfile
+#2 transferring dockerfile:
+#2 transferring dockerfile: 2.81kB done
+#2 DONE 0.1s
+
+#3 [migrate internal] load metadata for docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#3 DONE 0.0s
+
+#4 [pushmock internal] load metadata for mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+#4 DONE 0.0s
+
+#5 [migrate internal] load .dockerignore
+#5 transferring context: 282B done
+#5 DONE 0.1s
+
+#6 [migrate build 1/6] FROM docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#6 DONE 0.0s
+
+#7 [pushmock e2e 1/3] FROM mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+#7 DONE 0.0s
+
+#8 [pushmock internal] load build context
+#8 transferring context: 217.57kB 0.0s done
+#8 DONE 0.1s
+
+#9 [pushmock build 2/6] WORKDIR /app
+#9 CACHED
+
+#10 [pushmock build 4/6] COPY . .
+#10 CACHED
+
+#11 [pushmock build 5/6] RUN pnpm install --frozen-lockfile
+#11 CACHED
+
+#12 [pushmock build 3/6] RUN corepack enable && corepack install -g pnpm@12.6.0
+#12 CACHED
+
+#13 [pushmock e2e 2/3] WORKDIR /app
+#13 CACHED
+
+#14 [pushmock build 6/6] RUN pnpm build && pnpm typecheck && pnpm lint
+#14 CACHED
+
+#15 [pushmock e2e 3/3] COPY --from=build /app /app
+#15 CACHED
+
+#16 [migrate runtime  6/25] COPY --from=production-dependencies /app/packages/core/node_modules ./packages/core/node_modules
+#16 CACHED
+
+#17 [migrate runtime 16/25] COPY --from=build /app/apps/server/dist ./apps/server/dist
+#17 CACHED
+
+#18 [migrate runtime 12/25] COPY --from=build /app/packages/contracts/package.json ./packages/contracts/package.json
+#18 CACHED
+
+#19 [migrate runtime 24/25] COPY --from=build /app/infra/dist ./infra/dist
+#19 CACHED
+
+#20 [migrate runtime  5/25] COPY --from=production-dependencies /app/apps/worker/node_modules ./apps/worker/node_modules
+#20 CACHED
+
+#21 [migrate runtime  9/25] COPY --from=build /app/package.json ./package.json
+#21 CACHED
+
+#22 [migrate runtime  8/25] COPY --from=production-dependencies /app/packages/agent-runtime/node_modules ./packages/agent-runtime/node_modules
+#22 CACHED
+
+#23 [migrate runtime 15/25] COPY --from=build /app/packages/agent-runtime/package.json ./packages/agent-runtime/package.json
+#23 CACHED
+
+#24 [migrate runtime  3/25] COPY --from=production-dependencies /app/node_modules ./node_modules
+#24 CACHED
+
+#25 [migrate runtime 19/25] COPY --from=build /app/packages/contracts/dist ./packages/contracts/dist
+#25 CACHED
+
+#26 [migrate runtime 23/25] COPY --from=build /app/packages/db/migrations ./packages/db/migrations
+#26 CACHED
+
+#27 [migrate production-dependencies 1/1] RUN pnpm install --prod --offline --frozen-lockfile
+#27 CACHED
+
+#28 [migrate runtime 10/25] COPY --from=build /app/apps/server/package.json ./apps/server/package.json
+#28 CACHED
+
+#29 [migrate runtime 21/25] COPY --from=build /app/packages/db/dist ./packages/db/dist
+#29 CACHED
+
+#30 [migrate runtime 13/25] COPY --from=build /app/packages/core/package.json ./packages/core/package.json
+#30 CACHED
+
+#31 [migrate runtime 14/25] COPY --from=build /app/packages/db/package.json ./packages/db/package.json
+#31 CACHED
+
+#32 [migrate runtime 11/25] COPY --from=build /app/apps/worker/package.json ./apps/worker/package.json
+#32 CACHED
+
+#33 [migrate runtime 20/25] COPY --from=build /app/packages/core/dist ./packages/core/dist
+#33 CACHED
+
+#34 [migrate runtime 17/25] COPY --from=build /app/apps/worker/dist ./apps/worker/dist
+#34 CACHED
+
+#35 [migrate runtime  4/25] COPY --from=production-dependencies /app/apps/server/node_modules ./apps/server/node_modules
+#35 CACHED
+
+#36 [migrate runtime 18/25] COPY --from=build /app/apps/web/dist ./apps/web/dist
+#36 CACHED
+
+#37 [migrate runtime  7/25] COPY --from=production-dependencies /app/packages/db/node_modules ./packages/db/node_modules
+#37 CACHED
+
+#38 [migrate runtime 22/25] COPY --from=build /app/packages/agent-runtime/dist ./packages/agent-runtime/dist
+#38 CACHED
+
+#39 [migrate runtime 25/25] RUN mkdir -p /data/files && chown -R node:node /data
+#39 CACHED
+
+#40 [migrate] exporting to image
+#40 exporting layers done
+#40 writing image sha256:a47f619187b8cdaa9121d2446bc3ecc29b08ca39cc1bf39aa274be1742161e42 0.0s done
+#40 naming to docker.io/library/flux-foundation:flux-test-1790799046-2778365 0.0s done
+#40 ...
+
+#41 [pushmock] exporting to image
+#41 exporting layers done
+#41 writing image sha256:3134d068ae5c4a6166dd0d2bfe9ede7036a7075abc1ee96a6fb8b1c7e898af7f 0.0s done
+#41 naming to docker.io/library/flux-e2e:flux-test-1790799046-2778365 0.0s done
+#41 DONE 0.2s
+
+#42 [test] exporting to image
+#42 exporting layers done
+#42 writing image sha256:1d3cc16da51f34cc4d345e4095d0850adcf45b19a7aa06d4ba8c743172f706b2 0.0s done
+#42 naming to docker.io/library/flux-test-tools:flux-test-1790799046-2778365 0.0s done
+#42 DONE 0.2s
+
+#40 [migrate] exporting to image
+#40 DONE 0.2s
+
+#43 [pushmock] resolving provenance for metadata file
+#43 ...
+
+#44 [test] resolving provenance for metadata file
+#44 DONE 0.1s
+
+#43 [pushmock] resolving provenance for metadata file
+#43 DONE 0.2s
+
+#45 [migrate] resolving provenance for metadata file
+#45 DONE 0.0s
+ Image flux-e2e:flux-test-1790799046-2778365 Built 
+ Image flux-test-tools:flux-test-1790799046-2778365 Built 
+ Image flux-foundation:flux-test-1790799046-2778365 Built 
+ Network flux-test-1790799046-2778365_default Creating 
+ Network flux-test-1790799046-2778365_default Created 
+ Volume flux-test-1790799046-2778365_pgdata Creating 
+ Volume flux-test-1790799046-2778365_pgdata Created 
+ Container flux-test-1790799046-2778365-db-1 Creating 
+ Container flux-test-1790799046-2778365-db-1 Created 
+ Container flux-test-1790799046-2778365-migrate-1 Creating 
+ Container flux-test-1790799046-2778365-migrate-1 Created 
+ Container flux-test-1790799046-2778365-db-1 Starting 
+ Container flux-test-1790799046-2778365-db-1 Started 
+ Container flux-test-1790799046-2778365-db-1 Waiting 
+ Container flux-test-1790799046-2778365-db-1 Healthy 
+ Container flux-test-1790799046-2778365-migrate-1 Starting 
+ Container flux-test-1790799046-2778365-migrate-1 Started 
+ Volume flux-test-1790799046-2778365_files Creating 
+ Volume flux-test-1790799046-2778365_files Created 
+ Container flux-test-1790799046-2778365-files-init-run-3f75a73bf706 Creating 
+time="2026-09-30T22:11:00+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-test-1790799046-2778365-files-init-run-3f75a73bf706 Created 
+ Container flux-test-1790799046-2778365-migrate-run-b2817a68f2c1 Creating 
+ Container flux-test-1790799046-2778365-migrate-run-b2817a68f2c1 Created 
+ Volume flux-test-1790799046-2778365_teststate Creating 
+ Volume flux-test-1790799046-2778365_teststate Created 
+ Volume flux-test-1790799046-2778365_pushtls Creating 
+ Volume flux-test-1790799046-2778365_pushtls Created 
+ Container flux-test-1790799046-2778365-pushmock-1 Creating 
+ Container flux-test-1790799046-2778365-mailpit-1 Creating 
+ Container flux-test-1790799046-2778365-db-1 Running 
+ Container flux-test-1790799046-2778365-migrate-1 Running 
+ Container flux-test-1790799046-2778365-api-1 Creating 
+time="2026-09-30T22:11:01+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-test-1790799046-2778365-api-1 Created 
+ Container flux-test-1790799046-2778365-pushmock-1 Created 
+ Container flux-test-1790799046-2778365-mailpit-1 Created 
+ Container flux-test-1790799046-2778365-mailpit-smtps-1 Creating 
+ Container flux-test-1790799046-2778365-mailpit-starttls-1 Creating 
+ Container flux-test-1790799046-2778365-worker-1 Creating 
+time="2026-09-30T22:11:02+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-test-1790799046-2778365-mailpit-starttls-1 Created 
+ Container flux-test-1790799046-2778365-mailpit-smtps-1 Created 
+ Container flux-test-1790799046-2778365-worker-1 Created 
+ Container flux-test-1790799046-2778365-pushmock-1 Starting 
+ Container flux-test-1790799046-2778365-mailpit-1 Starting 
+ Container flux-test-1790799046-2778365-db-1 Waiting 
+ Container flux-test-1790799046-2778365-pushmock-1 Started 
+ Container flux-test-1790799046-2778365-pushmock-1 Waiting 
+ Container flux-test-1790799046-2778365-pushmock-1 Waiting 
+ Container flux-test-1790799046-2778365-mailpit-1 Started 
+ Container flux-test-1790799046-2778365-db-1 Healthy 
+ Container flux-test-1790799046-2778365-migrate-1 Starting 
+ Container flux-test-1790799046-2778365-migrate-1 Started 
+ Container flux-test-1790799046-2778365-migrate-1 Waiting 
+ Container flux-test-1790799046-2778365-pushmock-1 Waiting 
+ Container flux-test-1790799046-2778365-migrate-1 Waiting 
+ Container flux-test-1790799046-2778365-migrate-1 Exited 
+ Container flux-test-1790799046-2778365-migrate-1 Exited 
+ Container flux-test-1790799046-2778365-api-1 Starting 
+ Container flux-test-1790799046-2778365-api-1 Started 
+ Container flux-test-1790799046-2778365-pushmock-1 Healthy 
+ Container flux-test-1790799046-2778365-worker-1 Starting 
+ Container flux-test-1790799046-2778365-pushmock-1 Healthy 
+ Container flux-test-1790799046-2778365-mailpit-smtps-1 Starting 
+ Container flux-test-1790799046-2778365-pushmock-1 Healthy 
+ Container flux-test-1790799046-2778365-mailpit-starttls-1 Starting 
+ Container flux-test-1790799046-2778365-worker-1 Started 
+ Container flux-test-1790799046-2778365-mailpit-smtps-1 Started 
+ Container flux-test-1790799046-2778365-mailpit-starttls-1 Started 
+ Container flux-test-1790799046-2778365-migrate-1 Waiting 
+ Container flux-test-1790799046-2778365-api-1 Waiting 
+ Container flux-test-1790799046-2778365-mailpit-1 Waiting 
+ Container flux-test-1790799046-2778365-mailpit-smtps-1 Waiting 
+ Container flux-test-1790799046-2778365-pushmock-1 Waiting 
+ Container flux-test-1790799046-2778365-mailpit-starttls-1 Waiting 
+ Container flux-test-1790799046-2778365-pushmock-1 Healthy 
+ Container flux-test-1790799046-2778365-migrate-1 Exited 
+ Container flux-test-1790799046-2778365-mailpit-1 Healthy 
+ Container flux-test-1790799046-2778365-mailpit-smtps-1 Healthy 
+ Container flux-test-1790799046-2778365-mailpit-starttls-1 Healthy 
+ Container flux-test-1790799046-2778365-api-1 Healthy 
+ Container flux-test-1790799046-2778365-test-run-d6b15205f92a Creating 
+ Container flux-test-1790799046-2778365-test-run-d6b15205f92a Created 
+session-restart: session and project content stored before API restart
+ Container flux-test-1790799046-2778365-api-1 Restarting 
+ Container flux-test-1790799046-2778365-api-1 Started 
+ Container flux-test-1790799046-2778365-db-1 Running 
+ Container flux-test-1790799046-2778365-api-1 Running 
+ Container flux-test-1790799046-2778365-db-1 Waiting 
+ Container flux-test-1790799046-2778365-db-1 Healthy 
+ Container flux-test-1790799046-2778365-migrate-1 Starting 
+ Container flux-test-1790799046-2778365-migrate-1 Started 
+ Container flux-test-1790799046-2778365-migrate-1 Waiting 
+ Container flux-test-1790799046-2778365-migrate-1 Exited 
+ Container flux-test-1790799046-2778365-migrate-1 Waiting 
+ Container flux-test-1790799046-2778365-api-1 Waiting 
+ Container flux-test-1790799046-2778365-db-1 Waiting 
+ Container flux-test-1790799046-2778365-migrate-1 Exited 
+ Container flux-test-1790799046-2778365-db-1 Healthy 
+ Container flux-test-1790799046-2778365-api-1 Healthy 
+ Container flux-test-1790799046-2778365-pushmock-1 Running 
+ Container flux-test-1790799046-2778365-db-1 Running 
+ Container flux-test-1790799046-2778365-mailpit-1 Running 
+ Container flux-test-1790799046-2778365-mailpit-starttls-1 Running 
+ Container flux-test-1790799046-2778365-mailpit-smtps-1 Running 
+ Container flux-test-1790799046-2778365-api-1 Running 
+ Container flux-test-1790799046-2778365-worker-1 Running 
+ Container flux-test-1790799046-2778365-db-1 Waiting 
+ Container flux-test-1790799046-2778365-pushmock-1 Waiting 
+ Container flux-test-1790799046-2778365-pushmock-1 Waiting 
+ Container flux-test-1790799046-2778365-pushmock-1 Healthy 
+ Container flux-test-1790799046-2778365-pushmock-1 Healthy 
+ Container flux-test-1790799046-2778365-db-1 Healthy 
+ Container flux-test-1790799046-2778365-migrate-1 Starting 
+ Container flux-test-1790799046-2778365-migrate-1 Started 
+ Container flux-test-1790799046-2778365-migrate-1 Waiting 
+ Container flux-test-1790799046-2778365-pushmock-1 Waiting 
+ Container flux-test-1790799046-2778365-migrate-1 Waiting 
+ Container flux-test-1790799046-2778365-pushmock-1 Healthy 
+ Container flux-test-1790799046-2778365-migrate-1 Exited 
+ Container flux-test-1790799046-2778365-migrate-1 Exited 
+ Container flux-test-1790799046-2778365-api-1 Waiting 
+ Container flux-test-1790799046-2778365-mailpit-1 Waiting 
+ Container flux-test-1790799046-2778365-pushmock-1 Waiting 
+ Container flux-test-1790799046-2778365-mailpit-starttls-1 Waiting 
+ Container flux-test-1790799046-2778365-mailpit-smtps-1 Waiting 
+ Container flux-test-1790799046-2778365-migrate-1 Waiting 
+ Container flux-test-1790799046-2778365-mailpit-1 Healthy 
+ Container flux-test-1790799046-2778365-migrate-1 Exited 
+ Container flux-test-1790799046-2778365-mailpit-starttls-1 Healthy 
+ Container flux-test-1790799046-2778365-mailpit-smtps-1 Healthy 
+ Container flux-test-1790799046-2778365-api-1 Healthy 
+ Container flux-test-1790799046-2778365-pushmock-1 Healthy 
+ Container flux-test-1790799046-2778365-test-run-f0d4135a496b Creating 
+ Container flux-test-1790799046-2778365-test-run-f0d4135a496b Created 
+session-restart: session, material and linked conversation still valid after API restart
+ Container flux-test-1790799046-2778365-db-1 Running 
+ Container flux-test-1790799046-2778365-api-1 Recreate 
+time="2026-09-30T22:11:26+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-test-1790799046-2778365-api-1 Recreated 
+ Container flux-test-1790799046-2778365-db-1 Waiting 
+ Container flux-test-1790799046-2778365-db-1 Healthy 
+ Container flux-test-1790799046-2778365-migrate-1 Starting 
+ Container flux-test-1790799046-2778365-migrate-1 Started 
+ Container flux-test-1790799046-2778365-migrate-1 Waiting 
+ Container flux-test-1790799046-2778365-migrate-1 Exited 
+ Container flux-test-1790799046-2778365-api-1 Starting 
+ Container flux-test-1790799046-2778365-api-1 Started 
+ Container flux-test-1790799046-2778365-api-1 Waiting 
+ Container flux-test-1790799046-2778365-db-1 Waiting 
+ Container flux-test-1790799046-2778365-migrate-1 Waiting 
+ Container flux-test-1790799046-2778365-db-1 Healthy 
+ Container flux-test-1790799046-2778365-migrate-1 Exited 
+ Container flux-test-1790799046-2778365-api-1 Healthy 
+ Container flux-test-1790799046-2778365-test-run-f6af7539451d Creating 
+ Container flux-test-1790799046-2778365-test-run-f6af7539451d Created 
+✔ without VAPID keys push is reported unavailable and the inbox still works (166.52325ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 350.265479
+ Container flux-test-1790799046-2778365-pushmock-1 Running 
+ Container flux-test-1790799046-2778365-db-1 Running 
+ Container flux-test-1790799046-2778365-worker-1 Recreate 
+ Container flux-test-1790799046-2778365-api-1 Recreate 
+time="2026-09-30T22:11:44+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+time="2026-09-30T22:11:44+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-test-1790799046-2778365-worker-1 Recreated 
+ Container flux-test-1790799046-2778365-api-1 Recreated 
+ Container flux-test-1790799046-2778365-db-1 Waiting 
+ Container flux-test-1790799046-2778365-db-1 Healthy 
+ Container flux-test-1790799046-2778365-migrate-1 Starting 
+ Container flux-test-1790799046-2778365-migrate-1 Started 
+ Container flux-test-1790799046-2778365-migrate-1 Waiting 
+ Container flux-test-1790799046-2778365-pushmock-1 Waiting 
+ Container flux-test-1790799046-2778365-migrate-1 Waiting 
+ Container flux-test-1790799046-2778365-pushmock-1 Healthy 
+ Container flux-test-1790799046-2778365-migrate-1 Exited 
+ Container flux-test-1790799046-2778365-worker-1 Starting 
+ Container flux-test-1790799046-2778365-migrate-1 Exited 
+ Container flux-test-1790799046-2778365-api-1 Starting 
+ Container flux-test-1790799046-2778365-api-1 Started 
+ Container flux-test-1790799046-2778365-worker-1 Started 
+ Container flux-test-1790799046-2778365-worker-1 Waiting 
+ Container flux-test-1790799046-2778365-db-1 Waiting 
+ Container flux-test-1790799046-2778365-api-1 Waiting 
+ Container flux-test-1790799046-2778365-pushmock-1 Waiting 
+ Container flux-test-1790799046-2778365-migrate-1 Waiting 
+ Container flux-test-1790799046-2778365-pushmock-1 Healthy 
+ Container flux-test-1790799046-2778365-migrate-1 Exited 
+ Container flux-test-1790799046-2778365-db-1 Healthy 
+ Container flux-test-1790799046-2778365-worker-1 Healthy 
+ Container flux-test-1790799046-2778365-api-1 Healthy 
+ Container flux-test-1790799046-2778365-test-run-8556d27ab58b Creating 
+ Container flux-test-1790799046-2778365-test-run-8556d27ab58b Created 
+✔ without SMTP, settings say email delivery is unavailable and the inbox still fills (1615.311283ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2192.555734
+ Container flux-test-1790799046-2778365-api-1 Stopping 
+ Container flux-test-1790799046-2778365-mailpit-1 Stopping 
+ Container flux-test-1790799046-2778365-mailpit-smtps-1 Stopping 
+ Container flux-test-1790799046-2778365-mailpit-starttls-1 Stopping 
+ Container flux-test-1790799046-2778365-worker-1 Stopping 
+ Container flux-test-1790799046-2778365-worker-1 Stopped 
+ Container flux-test-1790799046-2778365-worker-1 Removing 
+ Container flux-test-1790799046-2778365-worker-1 Removed 
+ Container flux-test-1790799046-2778365-mailpit-1 Stopped 
+ Container flux-test-1790799046-2778365-mailpit-1 Removing 
+ Container flux-test-1790799046-2778365-mailpit-smtps-1 Stopped 
+ Container flux-test-1790799046-2778365-mailpit-smtps-1 Removing 
+ Container flux-test-1790799046-2778365-mailpit-1 Removed 
+ Container flux-test-1790799046-2778365-mailpit-smtps-1 Removed 
+ Container flux-test-1790799046-2778365-mailpit-starttls-1 Stopped 
+ Container flux-test-1790799046-2778365-mailpit-starttls-1 Removing 
+ Container flux-test-1790799046-2778365-mailpit-starttls-1 Removed 
+ Container flux-test-1790799046-2778365-pushmock-1 Stopping 
+ Container flux-test-1790799046-2778365-pushmock-1 Stopped 
+ Container flux-test-1790799046-2778365-pushmock-1 Removing 
+ Container flux-test-1790799046-2778365-pushmock-1 Removed 
+ Container flux-test-1790799046-2778365-api-1 Stopped 
+ Container flux-test-1790799046-2778365-api-1 Removing 
+ Container flux-test-1790799046-2778365-api-1 Removed 
+ Container flux-test-1790799046-2778365-migrate-1 Stopping 
+ Container flux-test-1790799046-2778365-migrate-1 Stopped 
+ Container flux-test-1790799046-2778365-migrate-1 Removing 
+ Container flux-test-1790799046-2778365-migrate-1 Removed 
+ Container flux-test-1790799046-2778365-db-1 Stopping 
+ Container flux-test-1790799046-2778365-db-1 Stopped 
+ Container flux-test-1790799046-2778365-db-1 Removing 
+ Container flux-test-1790799046-2778365-db-1 Removed 
+ Volume flux-test-1790799046-2778365_files Removing 
+ Volume flux-test-1790799046-2778365_teststate Removing 
+ Volume flux-test-1790799046-2778365_pgdata Removing 
+ Network flux-test-1790799046-2778365_default Removing 
+ Volume flux-test-1790799046-2778365_files Removed 
+ Volume flux-test-1790799046-2778365_teststate Removed 
+ Volume flux-test-1790799046-2778365_pushtls Removing 
+ Volume flux-test-1790799046-2778365_pgdata Removed 
+ Volume flux-test-1790799046-2778365_pushtls Removed 
+ Network flux-test-1790799046-2778365_default Removed 
+Removed 3 per-run image(s) tagged :flux-test-1790799046-2778365

@@ -1,0 +1,16 @@
+{
+  "productionSourceCommit": "7cfa12b60f1eec5a6eb5410b55b9894c095ac920",
+  "testedLegacyHarnessCommit": "bc02d25434d3fa8e8e5ef1580f3d73bd96de34e8",
+  "testFileSha256": "489d1f0db94826040d861fd47ac0276157e8ab299364e4417e938d9d036689e0",
+  "productionImage": "sha256:caaedf142713e4446a1696387bf5beee021f21772f6b22f8641ef9fb5707f698",
+  "runtimeHarnessImage": "sha256:5c3febb525a2c1f455a0ca8b6a79fb4a03d9975538a0930d3fa7499a616d0c34",
+  "profile": "legacy",
+  "icePolicy": "automatic/unmodified",
+  "composeProject": "flux-live-turn-1790766575-848624",
+  "scopes": [
+    "3real local media cases including existing netem delay/loss/recovery",
+    "11receiver/diagnostic units",
+    "2actual gate revocation/signout regressions"
+  ],
+  "exitCode": 0
+}

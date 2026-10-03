@@ -1,17 +1,14 @@
 import assert from 'node:assert/strict';
-import { after, before, describe, test } from 'node:test';
+import { before, describe, test } from 'node:test';
 import type { Draft, Workspace } from '@flux/contracts';
-import { audiencePageQuery, createDatabase, lastAudienceSeqQuery } from '@flux/db';
+import { audiencePageQuery, lastAudienceSeqQuery } from '@flux/db';
 import { audienceKey, type Principal } from '@flux/core';
+import { db, pool } from './support/db.js';
 import { Browser } from './support/http.js';
 import { addMember, draft, expectStatus, grant, person, project, removeMember, secondSession, share, workspace, type Person } from './support/people.js';
 import { StreamClient, upgradeStatus } from './support/stream.js';
 
 // WebSocket stream: replay, live delivery and per-recipient policy (issue #29, AC-3).
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { pool, db } = createDatabase(connectionString);
-after(() => pool.end());
 const heartbeatMs = Number(process.env.FLUX_STREAM_HEARTBEAT_MS ?? 25_000);
 
 async function head(someone: Person) {
@@ -244,11 +241,16 @@ describe('event stream', () => {
     const plansAfter = [await examined(lastAudienceSeqQuery(db, audienceKey(erinKey))), await examined(audiencePageQuery(db, audienceKey(erinKey), 0, 200))];
     console.log(JSON.stringify({ hiddenEvents: n - eventsAtBaseline, openToReadyMs: { before: erinBefore.median, after: erinAfter.median }, work: { before: erinBefore.works[0], after: erinAfter.works[0] }, resumeWork: { before: resumeBefore.works[0], after: resumeAfter.works[0] }, rowsExamined: { before: plansBefore.map((p) => p.rows), after: plansAfter.map((p) => p.rows) }, plans: plansAfter.map((p) => p.nodes) }));
 
-    // Deterministic: identical stream work and identical rows examined by PostgreSQL.
+    // Deterministic stream work, with no growth in table rows read by PostgreSQL. On a tiny
+    // baseline PostgreSQL may scan the table, then choose an index after the hidden inserts;
+    // the cheaper after-plan is valid and must not make this privacy check fail.
     for (const work of [...erinBefore.works, ...erinAfter.works]) assert.deepEqual(work, erinBefore.works[0], 'fresh open→ready work is constant');
     for (const work of [...resumeBefore.works, ...resumeAfter.works]) assert.deepEqual(work, resumeBefore.works[0], 'replay work is constant');
     assert.equal(erinBefore.works[0]!.authorizations, 0, 'no authorization of events she cannot see');
-    assert.deepEqual(plansAfter.map((p) => p.rows), plansBefore.map((p) => p.rows), 'rows examined do not grow with hidden events');
+    for (let i = 0; i < plansAfter.length; i += 1) {
+      assert.ok(plansAfter[i]!.rows <= plansBefore[i]!.rows,
+        `rows examined must not grow with hidden events (query ${i}: ${plansBefore[i]!.rows} → ${plansAfter[i]!.rows})`);
+    }
     // Coarse wall-clock bound with a generous margin (the leak was 4 ms → 331 ms for 300 events).
     assert.ok(erinAfter.median <= erinBefore.median * 3 + 50, `open→ready ${erinBefore.median.toFixed(1)} ms → ${erinAfter.median.toFixed(1)} ms`);
     assert.equal(await head(erin), baseline, 'and the cursor is unchanged');

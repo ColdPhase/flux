@@ -1,0 +1,1158 @@
+{
+  "profile": "code-1440p",
+  "browserVersion": "153.0.8010.12",
+  "firstAuditableFrameMs": 928,
+  "firstFrameMethod": "from initiating isolated capture/publication to first attached receiver callback with decoded binary marker; clarity requires original-pixel peer inspection",
+  "sources": [
+    {
+      "sourceKind": "getDisplayMedia/Xvfb",
+      "share": 1,
+      "settings": {
+        "aspectRatio": 1.7777777777777777,
+        "cursor": "always",
+        "deviceId": "screen:400:0",
+        "displaySurface": "monitor",
+        "frameRate": 15,
+        "height": 1440,
+        "logicalSurface": true,
+        "resizeMode": "crop-and-scale",
+        "width": 2560
+      },
+      "contentHint": "detail",
+      "readyState": "live",
+      "fontFamily": "Liberation Mono",
+      "glyphProbe": "0O1lI {} [] => !==",
+      "glyphAdvance14": 151.224609375,
+      "glyphAdvance16": 172.828125
+    },
+    {
+      "sourceKind": "canvas.captureStream",
+      "share": 2,
+      "settings": {
+        "aspectRatio": 1.7777777777777777,
+        "deviceId": "fYFHIVH1wRgwnRTvhDBak9+LstlfEoImg+VkeeLg9Av21VECznth1Q1301NRQIx0NZMyAqDZnmQHtdC+WaW6kg==",
+        "frameRate": 15,
+        "height": 1440,
+        "resizeMode": "none",
+        "width": 2560
+      },
+      "contentHint": "detail",
+      "readyState": "live",
+      "fontFamily": "Liberation Mono",
+      "glyphProbe": "0O1lI {} [] => !==",
+      "glyphAdvance14": 151.224609375,
+      "glyphAdvance16": 172.828125
+    }
+  ],
+  "stages": [
+    {
+      "peers": 2,
+      "intervalMs": 10026,
+      "clients": [
+        [
+          {
+            "client": 1,
+            "id": "0:OT01A2227252211",
+            "kind": "audio",
+            "direction": "sent",
+            "width": null,
+            "height": null,
+            "framesDelta": null,
+            "intervalFps": null,
+            "frameCounter": "framesSent",
+            "framesEncodedDelta": null,
+            "encodedIntervalFps": null,
+            "bitrateKbps": 98.7408737283064,
+            "packetsDelta": 501,
+            "packetLossPercent": null,
+            "jitterMs": null,
+            "qualityLimitationReason": null
+          },
+          {
+            "client": 1,
+            "id": "0:OT01V3331465245",
+            "kind": "video",
+            "direction": "sent",
+            "width": 2560,
+            "height": 1440,
+            "framesDelta": 150,
+            "intervalFps": 14.961101137043686,
+            "frameCounter": "framesSent",
+            "framesEncodedDelta": 150,
+            "encodedIntervalFps": 14.961101137043686,
+            "bitrateKbps": 876.818671454219,
+            "packetsDelta": 1017,
+            "packetLossPercent": null,
+            "jitterMs": null,
+            "qualityLimitationReason": "none"
+          }
+        ],
+        [
+          {
+            "client": 2,
+            "id": "0:IT01A1645131480",
+            "kind": "audio",
+            "direction": "received",
+            "width": null,
+            "height": null,
+            "framesDelta": null,
+            "intervalFps": null,
+            "frameCounter": "framesDecoded",
+            "framesEncodedDelta": null,
+            "encodedIntervalFps": null,
+            "bitrateKbps": 98.7408737283064,
+            "packetsDelta": 501,
+            "packetLossPercent": 0,
+            "jitterMs": 2,
+            "qualityLimitationReason": null
+          },
+          {
+            "client": 2,
+            "id": "0:IT01V3852904480",
+            "kind": "video",
+            "direction": "received",
+            "width": 2560,
+            "height": 1440,
+            "framesDelta": 150,
+            "intervalFps": 14.961101137043686,
+            "frameCounter": "framesDecoded",
+            "framesEncodedDelta": null,
+            "encodedIntervalFps": null,
+            "bitrateKbps": 860.229802513465,
+            "packetsDelta": 997,
+            "packetLossPercent": 0,
+            "jitterMs": 0,
+            "qualityLimitationReason": null
+          }
+        ]
+      ],
+      "markers": [
+        {
+          "viewer": 2,
+          "name": "code-1",
+          "auditableCallbacks": 180,
+          "distinctSourceFrames": 180,
+          "firstSourceFrame": 28,
+          "lastSourceFrame": 209,
+          "maximumCallbackGapMs": 116,
+          "localSourceDrawToCallbackMedianMs": 117,
+          "localSourceDrawToCallbackP95Ms": 152,
+          "ageMethod": "binary decoded-frame marker matched to source Date.now on the same Docker host; includes capture/encode/relay/decode/compositor/callback scheduling, not physical glass-to-glass"
+        }
+      ],
+      "images": [
+        {
+          "viewer": 2,
+          "name": "code-1",
+          "width": 2560,
+          "height": 1440,
+          "frame": 209,
+          "glyphAdvance14": 151.224609375,
+          "glyphAdvance16": 172.828125,
+          "crops": [
+            {
+              "x": 64,
+              "y": 110,
+              "width": 1000,
+              "height": 220,
+              "textPx": 14,
+              "psnrDb": 38.81164197110526
+            },
+            {
+              "x": 1344,
+              "y": 110,
+              "width": 1000,
+              "height": 220,
+              "textPx": 16,
+              "psnrDb": 34.910817161994025
+            }
+          ]
+        }
+      ],
+      "receiverSamples": [
+        {
+          "intervalMs": 12033,
+          "rttMs": 0,
+          "tracks": []
+        },
+        {
+          "intervalMs": 12033,
+          "rttMs": 0,
+          "tracks": [
+            {
+              "id": "0:IT01A1645131480",
+              "kind": "audio",
+              "packetsReceived": 679,
+              "packetsDelta": 602,
+              "lossPercent": 0,
+              "bitrateKbps": 98.85747527632344,
+              "jitterMs": 2
+            },
+            {
+              "id": "0:IT01V3852904480",
+              "kind": "video",
+              "packetsReceived": 1755,
+              "packetsDelta": 1567,
+              "lossPercent": 0,
+              "bitrateKbps": 1149.1950469542091,
+              "fps": 14.875758331255714,
+              "framesDelta": 179,
+              "width": 2560,
+              "height": 1440
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        [
+          {
+            "candidateType": "relay",
+            "protocol": "udp",
+            "relayProtocol": "tls",
+            "pairState": "succeeded",
+            "bytesSent": 2329099,
+            "bytesReceived": 7845
+          }
+        ],
+        [
+          {
+            "candidateType": "relay",
+            "protocol": "udp",
+            "relayProtocol": "tls",
+            "pairState": "succeeded",
+            "bytesSent": 4169,
+            "bytesReceived": 2179945
+          }
+        ]
+      ]
+    },
+    {
+      "peers": 4,
+      "intervalMs": 10214,
+      "clients": [
+        [
+          {
+            "client": 1,
+            "id": "0:IT01V289994231",
+            "kind": "video",
+            "direction": "received",
+            "width": 2560,
+            "height": 1440,
+            "framesDelta": 154,
+            "intervalFps": 15.07734482083415,
+            "frameCounter": "framesDecoded",
+            "framesEncodedDelta": null,
+            "encodedIntervalFps": null,
+            "bitrateKbps": 1318.3230859604464,
+            "packetsDelta": 1514,
+            "packetLossPercent": 0,
+            "jitterMs": 6,
+            "qualityLimitationReason": null
+          },
+          {
+            "client": 1,
+            "id": "0:OT01A2227252211",
+            "kind": "audio",
+            "direction": "sent",
+            "width": null,
+            "height": null,
+            "framesDelta": null,
+            "intervalFps": null,
+            "frameCounter": "framesSent",
+            "framesEncodedDelta": null,
+            "encodedIntervalFps": null,
+            "bitrateKbps": 98.85803798707656,
+            "packetsDelta": 511,
+            "packetLossPercent": null,
+            "jitterMs": null,
+            "qualityLimitationReason": null
+          },
+          {
+            "client": 1,
+            "id": "0:OT01V3331465245",
+            "kind": "video",
+            "direction": "sent",
+            "width": 2560,
+            "height": 1440,
+            "framesDelta": 153,
+            "intervalFps": 14.979439984335226,
+            "frameCounter": "framesSent",
+            "framesEncodedDelta": 153,
+            "encodedIntervalFps": 14.979439984335226,
+            "bitrateKbps": 632.6759349911886,
+            "packetsDelta": 774,
+            "packetLossPercent": null,
+            "jitterMs": null,
+            "qualityLimitationReason": "none"
+          }
+        ],
+        [
+          {
+            "client": 2,
+            "id": "0:IT01A1645131480",
+            "kind": "audio",
+            "direction": "received",
+            "width": null,
+            "height": null,
+            "framesDelta": null,
+            "intervalFps": null,
+            "frameCounter": "framesDecoded",
+            "framesEncodedDelta": null,
+            "encodedIntervalFps": null,
+            "bitrateKbps": 98.66457803015469,
+            "packetsDelta": 510,
+            "packetLossPercent": 0,
+            "jitterMs": 3,
+            "qualityLimitationReason": null
+          },
+          {
+            "client": 2,
+            "id": "0:IT01V1770705137",
+            "kind": "video",
+            "direction": "received",
+            "width": 2560,
+            "height": 1440,
+            "framesDelta": 153,
+            "intervalFps": 14.979439984335226,
+            "frameCounter": "framesDecoded",
+            "framesEncodedDelta": null,
+            "encodedIntervalFps": null,
+            "bitrateKbps": 1310.1586058351284,
+            "packetsDelta": 1505,
+            "packetLossPercent": 0,
+            "jitterMs": 6,
+            "qualityLimitationReason": null
+          },
+          {
+            "client": 2,
+            "id": "0:IT01V3852904480",
+            "kind": "video",
+            "direction": "received",
+            "width": 2560,
+            "height": 1440,
+            "framesDelta": 153,
+            "intervalFps": 14.979439984335226,
+            "frameCounter": "framesDecoded",
+            "framesEncodedDelta": null,
+            "encodedIntervalFps": null,
+            "bitrateKbps": 620.8310162522029,
+            "packetsDelta": 756,
+            "packetLossPercent": 0,
+            "jitterMs": 4,
+            "qualityLimitationReason": null
+          }
+        ],
+        [
+          {
+            "client": 3,
+            "id": "0:IT01A2574179461",
+            "kind": "audio",
+            "direction": "received",
+            "width": null,
+            "height": null,
+            "framesDelta": null,
+            "intervalFps": null,
+            "frameCounter": "framesDecoded",
+            "framesEncodedDelta": null,
+            "encodedIntervalFps": null,
+            "bitrateKbps": 98.85803798707656,
+            "packetsDelta": 511,
+            "packetLossPercent": 0,
+            "jitterMs": 3,
+            "qualityLimitationReason": null
+          },
+          {
+            "client": 3,
+            "id": "0:IT01V2666032715",
+            "kind": "video",
+            "direction": "received",
+            "width": 2560,
+            "height": 1440,
+            "framesDelta": 153,
+            "intervalFps": 14.979439984335226,
+            "frameCounter": "framesDecoded",
+            "framesEncodedDelta": null,
+            "encodedIntervalFps": null,
+            "bitrateKbps": 623.5151752496573,
+            "packetsDelta": 759,
+            "packetLossPercent": 0,
+            "jitterMs": 4,
+            "qualityLimitationReason": null
+          },
+          {
+            "client": 3,
+            "id": "0:OT01V963004849",
+            "kind": "video",
+            "direction": "sent",
+            "width": 2560,
+            "height": 1440,
+            "framesDelta": 152,
+            "intervalFps": 14.881535147836303,
+            "frameCounter": "framesSent",
+            "framesEncodedDelta": 152,
+            "encodedIntervalFps": 14.881535147836303,
+            "bitrateKbps": 1311.9490894850205,
+            "packetsDelta": 1510,
+            "packetLossPercent": null,
+            "jitterMs": null,
+            "qualityLimitationReason": "none"
+          }
+        ],
+        [
+          {
+            "client": 4,
+            "id": "0:IT01A4211466849",
+            "kind": "audio",
+            "direction": "received",
+            "width": null,
+            "height": null,
+            "framesDelta": null,
+            "intervalFps": null,
+            "frameCounter": "framesDecoded",
+            "framesEncodedDelta": null,
+            "encodedIntervalFps": null,
+            "bitrateKbps": 98.66457803015469,
+            "packetsDelta": 510,
+            "packetLossPercent": 0,
+            "jitterMs": 3,
+            "qualityLimitationReason": null
+          },
+          {
+            "client": 4,
+            "id": "0:IT01V1258408535",
+            "kind": "video",
+            "direction": "received",
+            "width": 2560,
+            "height": 1440,
+            "framesDelta": 153,
+            "intervalFps": 14.979439984335226,
+            "frameCounter": "framesDecoded",
+            "framesEncodedDelta": null,
+            "encodedIntervalFps": null,
+            "bitrateKbps": 623.545721558645,
+            "packetsDelta": 759,
+            "packetLossPercent": 0,
+            "jitterMs": 4,
+            "qualityLimitationReason": null
+          },
+          {
+            "client": 4,
+            "id": "0:IT01V1604440139",
+            "kind": "video",
+            "direction": "received",
+            "width": 2560,
+            "height": 1440,
+            "framesDelta": 153,
+            "intervalFps": 14.979439984335226,
+            "frameCounter": "framesDecoded",
+            "framesEncodedDelta": null,
+            "encodedIntervalFps": null,
+            "bitrateKbps": 1310.1586058351284,
+            "packetsDelta": 1505,
+            "packetLossPercent": 0,
+            "jitterMs": 6,
+            "qualityLimitationReason": null
+          }
+        ]
+      ],
+      "markers": [
+        {
+          "viewer": 2,
+          "name": "code-1",
+          "auditableCallbacks": 184,
+          "distinctSourceFrames": 184,
+          "firstSourceFrame": 265,
+          "lastSourceFrame": 450,
+          "maximumCallbackGapMs": 107,
+          "localSourceDrawToCallbackMedianMs": 175,
+          "localSourceDrawToCallbackP95Ms": 221,
+          "ageMethod": "binary decoded-frame marker matched to source Date.now on the same Docker host; includes capture/encode/relay/decode/compositor/callback scheduling, not physical glass-to-glass"
+        },
+        {
+          "viewer": 2,
+          "name": "code-2",
+          "auditableCallbacks": 170,
+          "distinctSourceFrames": 170,
+          "firstSourceFrame": 36,
+          "lastSourceFrame": 218,
+          "maximumCallbackGapMs": 159,
+          "localSourceDrawToCallbackMedianMs": 233,
+          "localSourceDrawToCallbackP95Ms": 280,
+          "ageMethod": "binary decoded-frame marker matched to source Date.now on the same Docker host; includes capture/encode/relay/decode/compositor/callback scheduling, not physical glass-to-glass"
+        },
+        {
+          "viewer": 4,
+          "name": "code-1",
+          "auditableCallbacks": 184,
+          "distinctSourceFrames": 184,
+          "firstSourceFrame": 266,
+          "lastSourceFrame": 451,
+          "maximumCallbackGapMs": 103,
+          "localSourceDrawToCallbackMedianMs": 146,
+          "localSourceDrawToCallbackP95Ms": 176,
+          "ageMethod": "binary decoded-frame marker matched to source Date.now on the same Docker host; includes capture/encode/relay/decode/compositor/callback scheduling, not physical glass-to-glass"
+        },
+        {
+          "viewer": 4,
+          "name": "code-2",
+          "auditableCallbacks": 164,
+          "distinctSourceFrames": 164,
+          "firstSourceFrame": 36,
+          "lastSourceFrame": 219,
+          "maximumCallbackGapMs": 160,
+          "localSourceDrawToCallbackMedianMs": 235,
+          "localSourceDrawToCallbackP95Ms": 280,
+          "ageMethod": "binary decoded-frame marker matched to source Date.now on the same Docker host; includes capture/encode/relay/decode/compositor/callback scheduling, not physical glass-to-glass"
+        }
+      ],
+      "images": [
+        {
+          "viewer": 2,
+          "name": "code-1",
+          "width": 2560,
+          "height": 1440,
+          "frame": 455,
+          "glyphAdvance14": 151.224609375,
+          "glyphAdvance16": 172.828125,
+          "crops": [
+            {
+              "x": 64,
+              "y": 110,
+              "width": 1000,
+              "height": 220,
+              "textPx": 14,
+              "psnrDb": 39.14266870413309
+            },
+            {
+              "x": 1344,
+              "y": 110,
+              "width": 1000,
+              "height": 220,
+              "textPx": 16,
+              "psnrDb": 35.11001692505532
+            }
+          ]
+        },
+        {
+          "viewer": 2,
+          "name": "code-2",
+          "width": 2560,
+          "height": 1440,
+          "frame": 227,
+          "glyphAdvance14": 151.224609375,
+          "glyphAdvance16": 172.828125,
+          "crops": [
+            {
+              "x": 64,
+              "y": 110,
+              "width": 1000,
+              "height": 220,
+              "textPx": 14,
+              "psnrDb": 24.74743984951184
+            },
+            {
+              "x": 1344,
+              "y": 110,
+              "width": 1000,
+              "height": 220,
+              "textPx": 16,
+              "psnrDb": 24.10938551595958
+            }
+          ]
+        },
+        {
+          "viewer": 4,
+          "name": "code-1",
+          "width": 2560,
+          "height": 1440,
+          "frame": 482,
+          "glyphAdvance14": 151.224609375,
+          "glyphAdvance16": 172.828125,
+          "crops": [
+            {
+              "x": 64,
+              "y": 110,
+              "width": 1000,
+              "height": 220,
+              "textPx": 14,
+              "psnrDb": 39.072063423152564
+            },
+            {
+              "x": 1344,
+              "y": 110,
+              "width": 1000,
+              "height": 220,
+              "textPx": 16,
+              "psnrDb": 35.09191837562453
+            }
+          ]
+        },
+        {
+          "viewer": 4,
+          "name": "code-2",
+          "width": 2560,
+          "height": 1440,
+          "frame": 254,
+          "glyphAdvance14": 151.224609375,
+          "glyphAdvance16": 172.828125,
+          "crops": [
+            {
+              "x": 64,
+              "y": 110,
+              "width": 1000,
+              "height": 220,
+              "textPx": 14,
+              "psnrDb": 24.744711756673745
+            },
+            {
+              "x": 1344,
+              "y": 110,
+              "width": 1000,
+              "height": 220,
+              "textPx": 16,
+              "psnrDb": 24.123802876199086
+            }
+          ]
+        }
+      ],
+      "receiverSamples": [
+        {
+          "intervalMs": 12284,
+          "rttMs": 0,
+          "tracks": [
+            {
+              "id": "0:IT01V289994231",
+              "kind": "video",
+              "packetsReceived": 1993,
+              "packetsDelta": 1823,
+              "lossPercent": 0,
+              "bitrateKbps": 1320.0358189514816,
+              "fps": 14.816020840117226,
+              "framesDelta": 182,
+              "width": 2560,
+              "height": 1440
+            }
+          ]
+        },
+        {
+          "intervalMs": 12284,
+          "rttMs": 0,
+          "tracks": [
+            {
+              "id": "0:IT01A1645131480",
+              "kind": "audio",
+              "packetsReceived": 1483,
+              "packetsDelta": 617,
+              "lossPercent": 0,
+              "bitrateKbps": 99.25040703353956,
+              "jitterMs": 2
+            },
+            {
+              "id": "0:IT01V1770705137",
+              "kind": "video",
+              "packetsReceived": 2004,
+              "packetsDelta": 1830,
+              "lossPercent": 0,
+              "bitrateKbps": 1325.275154672745,
+              "fps": 14.734614132204493,
+              "framesDelta": 181,
+              "width": 2560,
+              "height": 1440
+            },
+            {
+              "id": "0:IT01V3852904480",
+              "kind": "video",
+              "packetsReceived": 4052,
+              "packetsDelta": 1030,
+              "lossPercent": 0,
+              "bitrateKbps": 714.3594920221426,
+              "fps": 15.060240963855422,
+              "framesDelta": 185,
+              "width": 2560,
+              "height": 1440
+            }
+          ]
+        },
+        {
+          "intervalMs": 12284,
+          "rttMs": 0,
+          "tracks": [
+            {
+              "id": "0:IT01A2574179461",
+              "kind": "audio",
+              "packetsReceived": 753,
+              "packetsDelta": 618,
+              "lossPercent": 0,
+              "bitrateKbps": 99.41126668837512,
+              "jitterMs": 2
+            },
+            {
+              "id": "0:IT01V2666032715",
+              "kind": "video",
+              "packetsReceived": 2159,
+              "packetsDelta": 1030,
+              "lossPercent": 0,
+              "bitrateKbps": 714.3594920221426,
+              "fps": 15.060240963855422,
+              "framesDelta": 185,
+              "width": 2560,
+              "height": 1440
+            }
+          ]
+        },
+        {
+          "intervalMs": 12284,
+          "rttMs": 0,
+          "tracks": [
+            {
+              "id": "0:IT01A4211466849",
+              "kind": "audio",
+              "packetsReceived": 738,
+              "packetsDelta": 620,
+              "lossPercent": 0,
+              "bitrateKbps": 99.73298599804625,
+              "jitterMs": 3
+            },
+            {
+              "id": "0:IT01V1258408535",
+              "kind": "video",
+              "packetsReceived": 1793,
+              "packetsDelta": 1030,
+              "lossPercent": 0,
+              "bitrateKbps": 714.3594920221426,
+              "fps": 15.141647671768153,
+              "framesDelta": 186,
+              "width": 2560,
+              "height": 1440
+            },
+            {
+              "id": "0:IT01V1604440139",
+              "kind": "video",
+              "packetsReceived": 2004,
+              "packetsDelta": 1830,
+              "lossPercent": 0,
+              "bitrateKbps": 1325.275154672745,
+              "fps": 14.816020840117226,
+              "framesDelta": 182,
+              "width": 2560,
+              "height": 1440
+            }
+          ]
+        }
+      ],
+      "candidates": [
+        [
+          {
+            "candidateType": "relay",
+            "protocol": "udp",
+            "relayProtocol": "tls",
+            "pairState": "succeeded",
+            "bytesSent": 5203383,
+            "bytesReceived": 2320045
+          }
+        ],
+        [
+          {
+            "candidateType": "relay",
+            "protocol": "udp",
+            "relayProtocol": "tls",
+            "pairState": "succeeded",
+            "bytesSent": 10331,
+            "bytesReceived": 7322058
+          }
+        ],
+        [
+          {
+            "candidateType": "relay",
+            "protocol": "udp",
+            "relayProtocol": "tls",
+            "pairState": "succeeded",
+            "bytesSent": 2444771,
+            "bytesReceived": 2676906
+          }
+        ],
+        [
+          {
+            "candidateType": "relay",
+            "protocol": "udp",
+            "relayProtocol": "tls",
+            "pairState": "succeeded",
+            "bytesSent": 5481,
+            "bytesReceived": 4532808
+          }
+        ]
+      ]
+    }
+  ],
+  "productDiagnosticPath": {
+    "actualSize": {
+      "naturalWidth": 2560,
+      "renderedWidth": 2560,
+      "naturalHeight": 1440,
+      "renderedHeight": 1440,
+      "ratio": 1
+    },
+    "detailsOpenedAfterBackToWork": true,
+    "screenMayBeIntentionallyPausedWhenHidden": true,
+    "rows": [
+      "ConnectionConnected4 people in the room",
+      "code-publisherScreen2560×1440 · 3.0 fps · 51 kbit/s · 0.0 % lost · VP8Video receiving 3.0 fps",
+      "code-publisherVoice99 kbit/s · 3 ms jitter · 0.0 % lost · 0 gaps total",
+      "code-publisherLink qualityexcellent",
+      "code-secondScreen2560×1440 · 14.5 fps · 2834 kbit/s · 0.0 % lost · VP8",
+      "code-secondLink qualityexcellent",
+      "code-observerLink qualityunknown"
+    ],
+    "rawStats": [
+      {
+        "id": "0:CIT01_111_minptime=10;stereo=1;useinbandfec=1",
+        "timestamp": 1790767176079.855,
+        "type": "codec",
+        "channels": 2,
+        "clockRate": 48000,
+        "mimeType": "audio/opus",
+        "payloadType": 111,
+        "sdpFmtpLine": "minptime=10;stereo=1;useinbandfec=1",
+        "transportId": "T01"
+      },
+      {
+        "id": "0:CIT01_96",
+        "timestamp": 1790767176079.855,
+        "type": "codec",
+        "clockRate": 90000,
+        "mimeType": "video/VP8",
+        "payloadType": 96,
+        "transportId": "T01"
+      },
+      {
+        "id": "0:CP2smmTO4S_CsKbaG0c",
+        "timestamp": 1790767176079.855,
+        "type": "candidate-pair",
+        "bytesDiscardedOnSend": 0,
+        "bytesReceived": 0,
+        "bytesSent": 0,
+        "consentRequestsSent": 0,
+        "localCandidateId": "I2smmTO4S",
+        "nominated": false,
+        "packetsDiscardedOnSend": 0,
+        "packetsReceived": 0,
+        "packetsSent": 0,
+        "priority": 9079290933605827000,
+        "remoteCandidateId": "ICsKbaG0c",
+        "requestsReceived": 0,
+        "requestsSent": 5,
+        "responsesReceived": 0,
+        "responsesSent": 0,
+        "state": "in-progress",
+        "totalRoundTripTime": 0,
+        "transportId": "T01",
+        "writable": false
+      },
+      {
+        "id": "0:CPd6API/Ho_CsKbaG0c",
+        "timestamp": 1790767176079.855,
+        "type": "candidate-pair",
+        "availableOutgoingBitrate": 300000,
+        "bytesDiscardedOnSend": 0,
+        "bytesReceived": 1573441,
+        "bytesSent": 1633,
+        "consentRequestsSent": 4,
+        "currentRoundTripTime": 0,
+        "lastPacketReceivedTimestamp": 1790767176077,
+        "lastPacketSentTimestamp": 1790767175860,
+        "localCandidateId": "Id6API/Ho",
+        "nominated": true,
+        "packetsDiscardedOnSend": 0,
+        "packetsReceived": 1449,
+        "packetsSent": 16,
+        "priority": 35184338534398,
+        "remoteCandidateId": "ICsKbaG0c",
+        "requestsReceived": 3,
+        "requestsSent": 5,
+        "responsesReceived": 5,
+        "responsesSent": 3,
+        "state": "succeeded",
+        "totalRoundTripTime": 0.001,
+        "transportId": "T01",
+        "writable": true
+      },
+      {
+        "id": "0:CPygs45+eS_CsKbaG0c",
+        "timestamp": 1790767176079.855,
+        "type": "candidate-pair",
+        "bytesDiscardedOnSend": 0,
+        "bytesReceived": 0,
+        "bytesSent": 0,
+        "consentRequestsSent": 0,
+        "localCandidateId": "Iygs45+eS",
+        "nominated": false,
+        "packetsDiscardedOnSend": 0,
+        "packetsReceived": 0,
+        "packetsSent": 0,
+        "priority": 35184338534398,
+        "remoteCandidateId": "ICsKbaG0c",
+        "requestsReceived": 0,
+        "requestsSent": 0,
+        "responsesReceived": 0,
+        "responsesSent": 0,
+        "state": "waiting",
+        "totalRoundTripTime": 0,
+        "transportId": "T01",
+        "writable": false
+      },
+      {
+        "id": "0:I2smmTO4S",
+        "timestamp": 1790767176079.855,
+        "type": "local-candidate",
+        "address": "",
+        "candidateType": "host",
+        "foundation": "1218841770",
+        "ip": "",
+        "isRemote": false,
+        "networkType": "unknown",
+        "port": 52652,
+        "priority": 2113937151,
+        "protocol": "udp",
+        "transportId": "T01",
+        "usernameFragment": "x2mh"
+      },
+      {
+        "id": "0:ICsKbaG0c",
+        "timestamp": 1790767176079.855,
+        "type": "remote-candidate",
+        "address": "172.24.0.2",
+        "candidateType": "host",
+        "foundation": "2566131789",
+        "ip": "172.24.0.2",
+        "isRemote": true,
+        "port": 7882,
+        "priority": 2130706431,
+        "protocol": "udp",
+        "transportId": "T01",
+        "usernameFragment": "JhOinofMNHggpsuc"
+      },
+      {
+        "id": "0:IT01A455856515",
+        "timestamp": 1790767176079.855,
+        "type": "inbound-rtp",
+        "codecId": "CIT01_111_minptime=10;stereo=1;useinbandfec=1",
+        "kind": "audio",
+        "mediaType": "audio",
+        "ssrc": 455856515,
+        "transportId": "T01",
+        "jitter": 0.003,
+        "packetsLost": 0,
+        "packetsReceived": 134,
+        "packetsReceivedWithCe": 0,
+        "packetsReceivedWithEct1": 0,
+        "audioLevel": 1,
+        "bytesReceived": 33098,
+        "concealedSamples": 0,
+        "concealmentEvents": 0,
+        "fecPacketsDiscarded": 0,
+        "fecPacketsReceived": 0,
+        "headerBytesReceived": 1608,
+        "insertedSamplesForDeceleration": 1962,
+        "jitterBufferDelay": 4838.4,
+        "jitterBufferEmittedCount": 128640,
+        "jitterBufferMinimumDelay": 4128,
+        "jitterBufferTargetDelay": 4128,
+        "lastPacketReceivedTimestamp": 1790767176061.9631,
+        "mid": "1",
+        "packetsDiscarded": 133,
+        "playoutId": "AP",
+        "removedSamplesForAcceleration": 654,
+        "silentConcealedSamples": 0,
+        "totalAudioEnergy": 2.5726660651346362,
+        "totalProcessingDelay": 4132.75008,
+        "totalSamplesDuration": 2.6899999999999866,
+        "totalSamplesReceived": 129120,
+        "trackIdentifier": "ec283d91-c16d-4a44-92c9-c5e2594e091c"
+      },
+      {
+        "id": "0:IT01V3255446051",
+        "timestamp": 1790767176079.855,
+        "type": "inbound-rtp",
+        "codecId": "CIT01_96",
+        "kind": "video",
+        "mediaType": "video",
+        "ssrc": 3255446051,
+        "transportId": "T01",
+        "jitter": 0.012,
+        "packetsLost": 0,
+        "packetsReceived": 923,
+        "packetsReceivedWithCe": 0,
+        "packetsReceivedWithEct1": 0,
+        "bytesReceived": 1053442,
+        "firCount": 0,
+        "frameHeight": 1440,
+        "frameWidth": 2560,
+        "framesAssembledFromMultiplePackets": 38,
+        "framesDecoded": 38,
+        "framesDropped": 0,
+        "framesPerSecond": 15,
+        "framesReceived": 39,
+        "freezeCount": 0,
+        "headerBytesReceived": 18460,
+        "jitterBufferDelay": 1.745795,
+        "jitterBufferEmittedCount": 38,
+        "jitterBufferMinimumDelay": 4.386912,
+        "jitterBufferTargetDelay": 4.386912,
+        "keyFramesDecoded": 1,
+        "lastPacketReceivedTimestamp": 1790767176076.999,
+        "mid": "3",
+        "nackCount": 0,
+        "pauseCount": 0,
+        "pliCount": 0,
+        "qpSum": 1524,
+        "rtxSsrc": 2320544736,
+        "totalAssemblyTime": 0.693873,
+        "totalDecodeTime": 0.26703499999999997,
+        "totalFreezesDuration": 0,
+        "totalInterFrameDelay": 2.443,
+        "totalPausesDuration": 0,
+        "totalProcessingDelay": 2.014069,
+        "totalSquaredInterFrameDelay": 0.191509,
+        "trackIdentifier": "51e7a015-3611-4de1-b7d8-56a9236e55b0"
+      },
+      {
+        "id": "0:IT01V651432599",
+        "timestamp": 1790767176079.855,
+        "type": "inbound-rtp",
+        "codecId": "CIT01_96",
+        "kind": "video",
+        "mediaType": "video",
+        "ssrc": 651432599,
+        "transportId": "T01",
+        "jitter": 0.023,
+        "packetsLost": 0,
+        "packetsReceived": 384,
+        "packetsReceivedWithCe": 0,
+        "packetsReceivedWithEct1": 0,
+        "bytesReceived": 443524,
+        "firCount": 0,
+        "frameHeight": 1440,
+        "frameWidth": 2560,
+        "framesAssembledFromMultiplePackets": 7,
+        "framesDecoded": 7,
+        "framesDropped": 0,
+        "framesReceived": 7,
+        "freezeCount": 0,
+        "headerBytesReceived": 7680,
+        "jitterBufferDelay": 1.279445,
+        "jitterBufferEmittedCount": 7,
+        "jitterBufferMinimumDelay": 0.302401,
+        "jitterBufferTargetDelay": 0.302401,
+        "keyFramesDecoded": 1,
+        "lastPacketReceivedTimestamp": 1790767174084.476,
+        "mid": "2",
+        "nackCount": 0,
+        "pauseCount": 0,
+        "pliCount": 0,
+        "qpSum": 448,
+        "rtxSsrc": 784048504,
+        "totalAssemblyTime": 0.641911,
+        "totalDecodeTime": 0.07331,
+        "totalFreezesDuration": 0,
+        "totalInterFrameDelay": 0.745,
+        "totalPausesDuration": 0,
+        "totalProcessingDelay": 1.3529959999999999,
+        "totalSquaredInterFrameDelay": 0.221145,
+        "trackIdentifier": "93b69646-57f0-4e7d-8aa7-67cf3c57f9a6"
+      },
+      {
+        "id": "0:IX5aMXlYC",
+        "timestamp": 1790767176079.855,
+        "type": "local-candidate",
+        "address": "",
+        "candidateType": "host",
+        "foundation": "2781602557",
+        "ip": "",
+        "isRemote": false,
+        "networkType": "unknown",
+        "port": 50303,
+        "priority": 2113939711,
+        "protocol": "udp",
+        "transportId": "T01",
+        "usernameFragment": "x2mh"
+      },
+      {
+        "id": "0:Id6API/Ho",
+        "timestamp": 1790767176079.855,
+        "type": "local-candidate",
+        "address": "172.24.0.2",
+        "candidateType": "relay",
+        "foundation": "813556874",
+        "ip": "172.24.0.2",
+        "isRemote": false,
+        "networkType": "unknown",
+        "port": 34575,
+        "priority": 8191,
+        "protocol": "udp",
+        "relatedAddress": "172.24.0.3",
+        "relatedPort": 39088,
+        "relayProtocol": "tls",
+        "transportId": "T01",
+        "url": "turns:turn.flux.test:443?transport=tcp",
+        "usernameFragment": "x2mh"
+      },
+      {
+        "id": "0:Iygs45+eS",
+        "timestamp": 1790767176079.855,
+        "type": "local-candidate",
+        "address": "172.24.0.2",
+        "candidateType": "relay",
+        "foundation": "813556874",
+        "ip": "172.24.0.2",
+        "isRemote": false,
+        "networkType": "unknown",
+        "port": 31210,
+        "priority": 8191,
+        "protocol": "udp",
+        "relatedAddress": "172.24.0.3",
+        "relatedPort": 39100,
+        "relayProtocol": "tls",
+        "transportId": "T01",
+        "url": "turns:turn.flux.test:443?transport=tcp",
+        "usernameFragment": "x2mh"
+      },
+      {
+        "id": "0:T01",
+        "timestamp": 1790767176079.855,
+        "type": "transport",
+        "bytesReceived": 1573441,
+        "bytesSent": 1633,
+        "dtlsCipher": "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+        "dtlsRole": "server",
+        "dtlsState": "connected",
+        "iceLocalUsernameFragment": "x2mh",
+        "iceRole": "controlling",
+        "iceState": "connected",
+        "localCertificateId": "CFDD:40:74:FF:34:AC:8C:0A:BF:51:13:AE:F9:5B:A9:4C:60:0A:BD:61:77:0C:9B:2F:16:CC:EE:B8:17:19:65:C3",
+        "packetsReceived": 1449,
+        "packetsSent": 16,
+        "remoteCertificateId": "CFC7:39:C1:94:9D:77:0D:A2:4F:57:4C:BB:25:AB:60:77:3F:A5:B0:45:EF:D1:43:BF:AF:87:2D:52:9A:4D:A7:72",
+        "selectedCandidatePairChanges": 1,
+        "selectedCandidatePairId": "CPd6API/Ho_CsKbaG0c",
+        "srtpCipher": "SRTP_AES128_CM_HMAC_SHA1_80",
+        "tlsVersion": "FEFD"
+      }
+    ],
+    "candidates": [
+      {
+        "candidateType": "relay",
+        "protocol": "udp",
+        "relayProtocol": "tls",
+        "pairState": "succeeded",
+        "bytesSent": 1633,
+        "bytesReceived": 1573441
+      }
+    ]
+  },
+  "limits": [
+    "local Docker/Xvfb Chromium calibration",
+    "second share synthetic",
+    "no physical device/speech/motion/public network/k3s certification",
+    "quality thresholds remain provisional"
+  ]
+}

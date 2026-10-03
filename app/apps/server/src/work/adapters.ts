@@ -1,14 +1,17 @@
-import { workRows, type DbExecutor } from '@flux/db';
+import { proactiveOutboxRows, workRows, type DbExecutor } from '@flux/db';
 import {
+  evaluateProject,
   visibleFilter,
+  createWorkContributions,
   createWorkUseCases,
+  COMPARISON_QUIET_WINDOW_MS,
   type Database,
   type WorkPorts,
   type WorkRepository,
   type WorkUnitOfWork,
   type Transaction,
 } from '@flux/core';
-import { taskDiscussionInEventSession } from './task-discussions.js';
+import { taskDiscussionInEventSession, taskDiscussionPorts } from './task-discussions.js';
 import { transactionEventSession, type TransactionEventSession } from './transaction-events.js';
 import { policyWorkAccess } from './access.js';
 export { policyWorkAccess } from './access.js';
@@ -27,11 +30,27 @@ export function workRepository(tx: DbExecutor): WorkRepository {
   };
 }
 
-function workPorts(tx: DbExecutor, events: WorkPorts['events']): WorkPorts {
+/**
+ * Every work adapter composes the mandatory contribution hook over the SAME transaction and event session
+ * as the work use cases (#154), so a saved blocker or a published result contributes to its canonical
+ * task thread atomically and its events join the one final batch. There is no adapter without the hook.
+ */
+function workPorts(tx: Transaction, events: TransactionEventSession): WorkPorts {
   return {
     access: policyWorkAccess(tx),
     work: workRepository(tx),
     events,
+    contributions: createWorkContributions(taskDiscussionPorts(tx, events)),
+    backgroundComparison: { async enqueueHumanNegative(resultId, projectId, authorId) {
+      const rows = proactiveOutboxRows(tx);
+      const eligible: string[] = [];
+      for (const rule of await rows.enabledRules(projectId)) {
+        const owner = await evaluateProject({ kind: 'human', id: rule.ownerUserId }, 'project.write', projectId, tx, { lock: true });
+        const agent = await evaluateProject({ kind: 'agent', id: rule.agentId }, 'project.write', projectId, tx, { lock: true });
+        if (owner.allowed && agent.allowed && agent.actor?.agent?.ownerUserId === rule.ownerUserId) eligible.push(rule.id);
+      }
+      return rows.enqueueHumanNegative(resultId, projectId, authorId, eligible, new Date(Date.now() + COMPARISON_QUIET_WINDOW_MS));
+    } },
   };
 }
 

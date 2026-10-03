@@ -125,6 +125,9 @@ export function UserMenu({ name, email, sessionExpiresAt }: { name: string; emai
           </div>
           <div className="me__sec">
             <Link to="/settings/assistant" className="me__item" onClick={() => close(false)}><Icon name="spark" />Your assistant</Link>
+            <Link className="me__item" style={{ textDecoration: 'none' }} to="/settings/background-compute" onClick={() => close(false)}>
+              <Icon name="spark" />Your background suggestions
+            </Link>
           </div>
           <fetcher.Form method="post" action="/sign-out" className="me__sec me__sec--end">
             <button type="submit" className="me__item" aria-disabled={signingOut || undefined}>

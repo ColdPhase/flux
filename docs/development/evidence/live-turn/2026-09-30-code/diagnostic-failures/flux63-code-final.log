@@ -1,0 +1,729 @@
+TURN visual evidence directory: /tmp/flux63-code-final
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 2.81kB done
+#1 DONE 0.1s
+
+#2 [internal] load metadata for docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#2 DONE 0.0s
+
+#3 [internal] load metadata for mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+#3 DONE 0.0s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 181B done
+#4 DONE 0.1s
+
+#5 [build 1/6] FROM docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#5 DONE 0.0s
+
+#6 [e2e 1/3] FROM mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+#6 DONE 0.0s
+
+#7 [internal] load build context
+#7 transferring context: 58.05MB 0.1s done
+#7 DONE 0.2s
+
+#8 [build 2/6] WORKDIR /app
+#8 CACHED
+
+#9 [build 3/6] RUN corepack enable && corepack install -g pnpm@12.6.0
+#9 CACHED
+
+#10 [build 4/6] COPY . .
+#10 DONE 0.5s
+
+#11 [build 5/6] RUN pnpm install --frozen-lockfile
+#11 0.447 Downloading the pnpm 12.6.0 binary for linux-x64...
+#11 3.345 Scope: all 10 workspace projects
+#11 3.367 ? Verifying lockfile against supply-chain policies (482 entries)...
+#11 3.604 Update available! 12.6.0 → 12.8.1.
+#11 3.604 Changelog: https://pnpm.io/v/12.8.1
+#11 3.604 To update, run: curl -fsSL https://get.pnpm.io/install.sh | sh -
+#11 3.900 Packages are hard linked from the content-addressable store to the virtual store.
+#11 3.900   Content-addressable store is at: /root/.local/share/pnpm/store/v11
+#11 3.900   Virtual store is at:             node_modules/.pnpm
+#11 4.914 Progress: resolved 411, reused 0, downloaded 128, added 96
+#11 5.039 [WARN] Tarball download average speed 10 KiB/s (size 16 KiB) is below 50 KiB/s: https://registry.npmjs.org/ret/-/ret-0.5.0.tgz (GET)
+#11 5.359 [WARN] Tarball download average speed 38 KiB/s (size 63 KiB) is below 50 KiB/s: https://registry.npmjs.org/fast-json-stringify/-/fast-json-stringify-6.4.0.tgz (GET)
+#11 5.538 [WARN] Tarball download average speed 23 KiB/s (size 43 KiB) is below 50 KiB/s: https://registry.npmjs.org/fast-uri/-/fast-uri-3.1.8.tgz (GET)
+#11 5.715 [WARN] Tarball download average speed 5 KiB/s (size 10 KiB) is below 50 KiB/s: https://registry.npmjs.org/@babel/code-frame/-/code-frame-7.29.7.tgz (GET)
+#11 5.780 [WARN] Tarball download average speed 4 KiB/s (size 6 KiB) is below 50 KiB/s: https://registry.npmjs.org/@rolldown/pluginutils/-/pluginutils-1.0.1.tgz (GET)
+#11 6.081 [WARN] Tarball download average speed 32 KiB/s (size 41 KiB) is below 50 KiB/s: https://registry.npmjs.org/hermes-estree/-/hermes-estree-0.25.1.tgz (GET)
+#11 6.242 [WARN] Tarball download average speed 36 KiB/s (size 49 KiB) is below 50 KiB/s: https://registry.npmjs.org/ts-api-utils/-/ts-api-utils-2.5.0.tgz (GET)
+#11 6.289 Downloading @rolldown/binding-linux-x64-musl@1.2.11: 0.00 B/7.92 MB
+#11 7.282 [WARN] Tarball download average speed 21 KiB/s (size 47 KiB) is below 50 KiB/s: https://registry.npmjs.org/jose/-/jose-6.2.12.tgz (GET)
+#11 8.291 Progress: resolved 411, reused 0, downloaded 333, added 320
+#11 8.414 [WARN] Tarball download average speed 7 KiB/s (size 30 KiB) is below 50 KiB/s: https://registry.npmjs.org/@jridgewell/trace-mapping/-/trace-mapping-0.3.31.tgz (GET)
+#11 8.510 [WARN] Tarball download average speed 5 KiB/s (size 17 KiB) is below 50 KiB/s: https://registry.npmjs.org/@better-auth/utils/-/utils-0.5.0.tgz (GET)
+#11 9.348 [WARN] Tarball download average speed 14 KiB/s (size 50 KiB) is below 50 KiB/s: https://registry.npmjs.org/@better-fetch/fetch/-/fetch-1.3.2.tgz (GET)
+#11 10.42 Progress: resolved 411, reused 0, downloaded 399, added 384
+#11 10.99 [WARN] Tarball download average speed 10 KiB/s (size 24 KiB) is below 50 KiB/s: https://registry.npmjs.org/rou3/-/rou3-0.9.2.tgz (GET)
+#11 12.16 Downloading @rolldown/binding-linux-x64-musl@1.2.11: 6.58 MB/7.92 MB
+#11 12.45 [WARN] Tarball download average speed 11 KiB/s (size 78 KiB) is below 50 KiB/s: https://registry.npmjs.org/@eslint-community/eslint-utils/-/eslint-utils-4.10.1.tgz (GET)
+#11 29.58 [WARN] Request took 21594ms: https://registry.npmjs.org/eslint-plugin-react-hooks
+#11 29.58 ✓ Lockfile passes supply-chain policies (482 entries in 26.2s)
+#11 29.58 Lockfile is up to date, resolution step is skipped
+#11 29.59 Packages: +411
+#11 29.59 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#11 29.62 Progress: resolved 411, reused 0, downloaded 411, added 411, done
+#11 29.62 .../esbuild@0.25.12/node_modules/esbuild postinstall$ node install.js
+#11 29.62 .../esbuild@0.18.20/node_modules/esbuild postinstall$ node install.js
+#11 29.67 .../esbuild@0.25.12/node_modules/esbuild postinstall: Done
+#11 29.68 .../esbuild@0.18.20/node_modules/esbuild postinstall: Done
+#11 29.81 
+#11 29.81 dependencies:
+#11 29.81 + @flux/contracts link:packages/contracts
+#11 29.81 + @flux/core link:packages/core
+#11 29.81 + @flux/db link:packages/db
+#11 29.81 + pg-boss 12.35.0
+#11 29.81 
+#11 29.81 devDependencies:
+#11 29.81 + @eslint/js 9.37.0
+#11 29.81 + @types/node 24.6.2
+#11 29.81 + @types/nodemailer 8.0.2
+#11 29.81 + @types/pg 8.15.5
+#11 29.81 + @types/sanitize-html 2.16.1
+#11 29.81 + @types/ws 8.18.1
+#11 29.81 + drizzle-orm 0.45.3
+#11 29.81 + eslint 9.37.0
+#11 29.81 + eslint-plugin-react-hooks 7.1.1
+#11 29.81 + fastify 5.6.1
+#11 29.81 + playwright 1.63.0
+#11 29.81 + tsx 4.20.5
+#11 29.81 + typescript 5.9.2
+#11 29.81 + typescript-eslint 8.44.1
+#11 29.81 + ws 8.22.0
+#11 29.81 
+#11 29.82 Done in 26.5s using pnpm v12.6.0
+#11 DONE 30.7s
+
+#12 [build 6/6] RUN pnpm build && pnpm typecheck && pnpm lint
+#12 0.433 $ pnpm -r --if-present build && tsc -p infra/tsconfig.build.json
+#12 0.516 packages/contracts build$ tsc -p tsconfig.build.json
+#12 1.898 packages/contracts build: Done
+#12 1.899 packages/db build$ tsc -p tsconfig.build.json
+#12 1.899 apps/web build$ vite build
+#12 1.899 packages/sdk build$ tsc -p tsconfig.build.json
+#12 2.077 apps/web build: vite v8.3.1 building client environment for production...
+#12 2.195 apps/web build: transforming...
+#12 2.467 apps/web build: ✓ 250 modules transformed.
+#12 2.637 apps/web build: rendering chunks...
+#12 2.766 apps/web build: computing gzip size...
+#12 2.773 apps/web build: dist/index.html                                              1.21 kB │ gzip:   0.53 kB
+#12 2.773 apps/web build: dist/sw.js                                                   6.70 kB
+#12 2.773 apps/web build: dist/assets/inter-vietnamese-wght-normal-CBcvBZtf.woff2     10.25 kB
+#12 2.773 apps/web build: dist/assets/inter-greek-ext-wght-normal-DlzME5K_.woff2      11.23 kB
+#12 2.773 apps/web build: dist/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2       18.74 kB
+#12 2.773 apps/web build: dist/assets/inter-greek-wght-normal-CkhJZR-_.woff2          18.99 kB
+#12 2.773 apps/web build: dist/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2   25.96 kB
+#12 2.773 apps/web build: dist/assets/inter-latin-wght-normal-Dx4kXJAl.woff2          48.25 kB
+#12 2.773 apps/web build: dist/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2      85.06 kB
+#12 2.773 apps/web build: dist/assets/index-BHattIdx.css                             150.11 kB │ gzip:  26.62 kB
+#12 2.773 apps/web build: dist/assets/media-X-8V5LQ-.js                              423.64 kB │ gzip: 109.92 kB
+#12 2.773 apps/web build: dist/assets/index-mVhY6EGw.js                              732.95 kB │ gzip: 217.21 kB
+#12 2.773 apps/web build: 
+#12 2.774 apps/web build: [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "use client" in "../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js" may not be preserved when bundling.
+#12 2.774 apps/web build:     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m ../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js:11:1 [38;5;246m][0m
+#12 2.774 apps/web build:     [38;5;246m│[0m
+#12 2.774 apps/web build:  [38;5;246m11 │[0m "use client";
+#12 2.774 apps/web build:  [38;5;240m   │[0m ──────┬──────  
+#12 2.774 apps/web build:  [38;5;240m   │[0m       ╰──────── module level directive may not be preserved
+#12 2.774 apps/web build:  [38;5;240m   │[0m 
+#12 2.774 apps/web build:  [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+#12 2.774 apps/web build: [38;5;246m────╯[0m
+#12 2.774 apps/web build: 
+#12 2.774 apps/web build: [plugin builtin:vite-reporter] 
+#12 2.774 apps/web build: (!) Some chunks are larger than 500 kB after minification. Consider:
+#12 2.774 apps/web build: - Using dynamic import() to code-split the application
+#12 2.774 apps/web build: - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+#12 2.774 apps/web build: - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+#12 2.774 apps/web build: ✓ built in 697ms
+#12 2.803 apps/web build: Done
+#12 3.475 packages/sdk build: Done
+#12 4.396 packages/db build: Done
+#12 4.396 packages/core build$ tsc -p tsconfig.build.json
+#12 6.156 packages/core build: Done
+#12 6.157 packages/agent-runtime build$ tsc -p tsconfig.build.json
+#12 6.157 apps/server build$ tsc -p tsconfig.build.json
+#12 7.123 packages/agent-runtime build: Done
+#12 7.123 apps/worker build$ tsc -p tsconfig.build.json
+#12 8.106 apps/worker build: Done
+#12 8.954 apps/server build: Done
+#12 9.819 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#12 17.54 $ eslint .
+#12 DONE 25.6s
+
+#13 [e2e 2/3] WORKDIR /app
+#13 CACHED
+
+#14 [e2e 3/3] COPY --from=build /app /app
+#14 DONE 2.9s
+
+#15 exporting to image
+#15 exporting layers
+#15 exporting layers 3.1s done
+#15 writing image sha256:82fa1240faef9c4e908ad2b0d496b3a3e3a96ab0310fdda16c8940f06e819b9f done
+#15 naming to docker.io/library/flux-e2e:flux-live-turn-1790763993-691814 0.0s done
+#15 DONE 3.2s
+ Image flux-live-sfu-test:flux-live-turn-1790763993-691814 Building 
+ Image flux-foundation:flux-live-turn-1790763993-691814 Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.32kB done
+#1 DONE 0.0s
+
+#2 [migrate internal] load build definition from Dockerfile
+#2 transferring dockerfile: 2.81kB done
+#2 DONE 0.1s
+
+#3 [migrate internal] load metadata for docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#3 DONE 0.0s
+
+#4 [live-sfu-test internal] load build definition from live-sfu-tests.Dockerfile
+#4 transferring dockerfile: 687B done
+#4 DONE 0.1s
+
+#5 [migrate internal] load .dockerignore
+#5 ...
+
+#6 [live-sfu-test internal] load metadata for docker.io/library/flux-e2e:flux-live-turn-1790763993-691814
+#6 DONE 0.0s
+
+#5 [migrate internal] load .dockerignore
+#5 transferring context: 181B done
+#5 DONE 0.2s
+
+#7 [migrate build 1/6] FROM docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#7 DONE 0.0s
+
+#8 [live-sfu-test internal] load build context
+#8 transferring context: 415B 0.0s done
+#8 DONE 0.1s
+
+#9 [live-sfu-test 1/4] FROM docker.io/library/flux-e2e:flux-live-turn-1790763993-691814
+#9 ...
+
+#10 [migrate internal] load build context
+#10 transferring context: 157.60kB 0.0s done
+#10 DONE 0.2s
+
+#9 [live-sfu-test 1/4] FROM docker.io/library/flux-e2e:flux-live-turn-1790763993-691814
+#9 DONE 0.5s
+
+#11 [migrate build 5/6] RUN pnpm install --frozen-lockfile
+#11 CACHED
+
+#12 [migrate build 2/6] WORKDIR /app
+#12 CACHED
+
+#13 [migrate build 3/6] RUN corepack enable && corepack install -g pnpm@12.6.0
+#13 CACHED
+
+#14 [migrate build 4/6] COPY . .
+#14 CACHED
+
+#15 [migrate build 6/6] RUN pnpm build && pnpm typecheck && pnpm lint
+#15 CACHED
+
+#16 [migrate production-dependencies 1/1] RUN pnpm install --prod --offline --frozen-lockfile
+#16 0.656 Scope: all 10 workspace projects
+#16 0.689 ✓ Lockfile passes supply-chain policies (verified 38s ago)
+#16 0.689 Lockfile is up to date, resolution step is skipped
+#16 0.821 Packages: -199
+#16 0.821 --------------------------------------------------------------------------------
+#16 0.879 
+#16 0.879 devDependencies:
+#16 0.879 - @eslint/js 9.37.0
+#16 0.879 - @types/node 24.6.2
+#16 0.879 - @types/nodemailer 8.0.2
+#16 0.879 - @types/pg 8.15.5
+#16 0.879 - @types/sanitize-html 2.16.1
+#16 0.879 - @types/ws 8.18.1
+#16 0.879 - drizzle-orm 0.45.3
+#16 0.879 - eslint 9.37.0
+#16 0.879 - eslint-plugin-react-hooks 7.1.1
+#16 0.879 - fastify 5.6.1
+#16 0.879 - playwright 1.63.0
+#16 0.879 - tsx 4.20.5
+#16 0.879 - typescript 5.9.2
+#16 0.879 - typescript-eslint 8.44.1
+#16 0.879 - ws 8.22.0
+#16 0.879 
+#16 0.879 Done in 228ms using pnpm v12.6.0
+#16 DONE 1.1s
+
+#17 [live-sfu-test 2/4] RUN apt-get update && apt-get install -y --no-install-recommends iptables iproute2 libnss3-tools && rm -rf /var/lib/apt/lists/*
+#17 0.553 Get:1 http://azure.archive.ubuntu.com/ubuntu noble InRelease [256 kB]
+#17 0.597 Get:2 http://azure.archive.ubuntu.com/ubuntu noble-updates InRelease [126 kB]
+#17 0.617 Get:3 https://deb.nodesource.com/node_24.x nodistro InRelease [12.1 kB]
+#17 0.627 Get:4 http://azure.archive.ubuntu.com/ubuntu noble-backports InRelease [126 kB]
+#17 0.658 Get:5 http://azure.archive.ubuntu.com/ubuntu noble/restricted amd64 Packages [117 kB]
+#17 0.686 Get:6 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 Packages [1808 kB]
+#17 0.690 Get:7 https://deb.nodesource.com/node_24.x nodistro/main amd64 Packages [9115 B]
+#17 0.939 Get:8 http://security.ubuntu.com/ubuntu noble-security InRelease [126 kB]
+#17 0.991 Get:9 http://azure.archive.ubuntu.com/ubuntu noble/universe amd64 Packages [19.3 MB]
+#17 2.273 Get:10 http://security.ubuntu.com/ubuntu noble-security/multiverse amd64 Packages [50.0 kB]
+#17 2.575 Get:11 http://security.ubuntu.com/ubuntu noble-security/restricted amd64 Packages [1943 kB]
+#17 2.793 Get:12 http://azure.archive.ubuntu.com/ubuntu noble/multiverse amd64 Packages [331 kB]
+#17 2.844 Get:13 http://azure.archive.ubuntu.com/ubuntu noble-updates/universe amd64 Packages [2162 kB]
+#17 ...
+
+#12 [migrate build 2/6] WORKDIR /app
+#12 CACHED
+
+#17 [live-sfu-test 2/4] RUN apt-get update && apt-get install -y --no-install-recommends iptables iproute2 libnss3-tools && rm -rf /var/lib/apt/lists/*
+#17 3.112 Get:14 http://azure.archive.ubuntu.com/ubuntu noble-updates/multiverse amd64 Packages [56.2 kB]
+#17 3.118 Get:15 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages [1637 kB]
+#17 3.299 Get:16 http://azure.archive.ubuntu.com/ubuntu noble-updates/restricted amd64 Packages [2057 kB]
+#17 3.497 Get:17 http://azure.archive.ubuntu.com/ubuntu noble-backports/multiverse amd64 Packages [671 B]
+#17 3.497 Get:18 http://azure.archive.ubuntu.com/ubuntu noble-backports/universe amd64 Packages [36.0 kB]
+#17 3.501 Get:19 http://azure.archive.ubuntu.com/ubuntu noble-backports/main amd64 Packages [49.0 kB]
+#17 5.667 Get:20 http://security.ubuntu.com/ubuntu noble-security/universe amd64 Packages [1542 kB]
+#17 ...
+
+#18 [migrate runtime  3/25] COPY --from=production-dependencies /app/node_modules ./node_modules
+#18 DONE 3.0s
+
+#19 [migrate runtime  4/25] COPY --from=production-dependencies /app/apps/server/node_modules ./apps/server/node_modules
+#19 DONE 0.3s
+
+#17 [live-sfu-test 2/4] RUN apt-get update && apt-get install -y --no-install-recommends iptables iproute2 libnss3-tools && rm -rf /var/lib/apt/lists/*
+#17 ...
+
+#20 [migrate runtime  5/25] COPY --from=production-dependencies /app/apps/worker/node_modules ./apps/worker/node_modules
+#20 DONE 0.3s
+
+#21 [migrate runtime  6/25] COPY --from=production-dependencies /app/packages/core/node_modules ./packages/core/node_modules
+#21 DONE 0.3s
+
+#17 [live-sfu-test 2/4] RUN apt-get update && apt-get install -y --no-install-recommends iptables iproute2 libnss3-tools && rm -rf /var/lib/apt/lists/*
+#17 ...
+
+#22 [migrate runtime  7/25] COPY --from=production-dependencies /app/packages/db/node_modules ./packages/db/node_modules
+#22 DONE 0.3s
+
+#23 [migrate runtime  8/25] COPY --from=production-dependencies /app/packages/agent-runtime/node_modules ./packages/agent-runtime/node_modules
+#23 DONE 0.3s
+
+#17 [live-sfu-test 2/4] RUN apt-get update && apt-get install -y --no-install-recommends iptables iproute2 libnss3-tools && rm -rf /var/lib/apt/lists/*
+#17 ...
+
+#24 [migrate runtime  9/25] COPY --from=build /app/package.json ./package.json
+#24 DONE 0.3s
+
+#17 [live-sfu-test 2/4] RUN apt-get update && apt-get install -y --no-install-recommends iptables iproute2 libnss3-tools && rm -rf /var/lib/apt/lists/*
+#17 7.789 Get:21 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages [1314 kB]
+#17 ...
+
+#25 [migrate runtime 10/25] COPY --from=build /app/apps/server/package.json ./apps/server/package.json
+#25 DONE 0.2s
+
+#26 [migrate runtime 11/25] COPY --from=build /app/apps/worker/package.json ./apps/worker/package.json
+#26 DONE 0.2s
+
+#17 [live-sfu-test 2/4] RUN apt-get update && apt-get install -y --no-install-recommends iptables iproute2 libnss3-tools && rm -rf /var/lib/apt/lists/*
+#17 ...
+
+#27 [migrate runtime 12/25] COPY --from=build /app/packages/contracts/package.json ./packages/contracts/package.json
+#27 DONE 0.2s
+
+#28 [migrate runtime 13/25] COPY --from=build /app/packages/core/package.json ./packages/core/package.json
+#28 DONE 0.2s
+
+#17 [live-sfu-test 2/4] RUN apt-get update && apt-get install -y --no-install-recommends iptables iproute2 libnss3-tools && rm -rf /var/lib/apt/lists/*
+#17 ...
+
+#29 [migrate runtime 14/25] COPY --from=build /app/packages/db/package.json ./packages/db/package.json
+#29 DONE 0.2s
+
+#30 [migrate runtime 15/25] COPY --from=build /app/packages/agent-runtime/package.json ./packages/agent-runtime/package.json
+#30 DONE 0.3s
+
+#17 [live-sfu-test 2/4] RUN apt-get update && apt-get install -y --no-install-recommends iptables iproute2 libnss3-tools && rm -rf /var/lib/apt/lists/*
+#17 ...
+
+#31 [migrate runtime 16/25] COPY --from=build /app/apps/server/dist ./apps/server/dist
+#31 DONE 0.2s
+
+#32 [migrate runtime 17/25] COPY --from=build /app/apps/worker/dist ./apps/worker/dist
+#32 DONE 0.3s
+
+#17 [live-sfu-test 2/4] RUN apt-get update && apt-get install -y --no-install-recommends iptables iproute2 libnss3-tools && rm -rf /var/lib/apt/lists/*
+#17 9.833 Fetched 33.1 MB in 9s (3555 kB/s)
+#17 9.833 Reading package lists...
+#17 ...
+
+#33 [migrate runtime 18/25] COPY --from=build /app/apps/web/dist ./apps/web/dist
+#33 DONE 0.3s
+
+#34 [migrate runtime 19/25] COPY --from=build /app/packages/contracts/dist ./packages/contracts/dist
+#34 DONE 0.3s
+
+#17 [live-sfu-test 2/4] RUN apt-get update && apt-get install -y --no-install-recommends iptables iproute2 libnss3-tools && rm -rf /var/lib/apt/lists/*
+#17 9.833 Reading package lists...
+#17 10.27 Reading package lists...
+#17 ...
+
+#35 [migrate runtime 20/25] COPY --from=build /app/packages/core/dist ./packages/core/dist
+#35 DONE 0.3s
+
+#17 [live-sfu-test 2/4] RUN apt-get update && apt-get install -y --no-install-recommends iptables iproute2 libnss3-tools && rm -rf /var/lib/apt/lists/*
+#17 10.27 Reading package lists...
+#17 10.72 Building dependency tree...
+#17 10.83 Reading state information...#17 ...
+
+#36 [migrate runtime 21/25] COPY --from=build /app/packages/db/dist ./packages/db/dist
+#36 DONE 0.2s
+
+#17 [live-sfu-test 2/4] RUN apt-get update && apt-get install -y --no-install-recommends iptables iproute2 libnss3-tools && rm -rf /var/lib/apt/lists/*
+#17 10.83 Reading state information...
+#17 10.92 The following additional packages will be installed:
+#17 10.92   libbpf1 libip4tc2 libip6tc2 libmnl0 libnetfilter-conntrack3 libnfnetlink0
+#17 10.92   libnftnl11 libxtables12
+#17 10.92 Suggested packages:
+#17 10.92   iproute2-doc firewalld kmod
+#17 10.92 Recommended packages:
+#17 10.92   libatm1t64 nftables
+#17 10.94 The following NEW packages will be installed:
+#17 ...
+
+#37 [migrate runtime 22/25] COPY --from=build /app/packages/agent-runtime/dist ./packages/agent-runtime/dist
+#37 DONE 0.3s
+
+#17 [live-sfu-test 2/4] RUN apt-get update && apt-get install -y --no-install-recommends iptables iproute2 libnss3-tools && rm -rf /var/lib/apt/lists/*
+#17 10.94   iproute2 iptables libbpf1 libip4tc2 libip6tc2 libmnl0
+#17 10.94   libnetfilter-conntrack3 libnfnetlink0 libnftnl11 libnss3-tools libxtables12
+#17 10.97 0 upgraded, 11 newly installed, 0 to remove and 59 not upgraded.
+#17 10.97 Need to get 2503 kB of archives.
+#17 10.97 After this operation, 8927 kB of additional disk space will be used.
+#17 10.97 Get:1 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 libbpf1 amd64 1:1.3.0-2build2 [166 kB]
+#17 11.24 Get:2 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 libmnl0 amd64 1.0.5-2build1 [12.3 kB]
+#17 ...
+
+#38 [migrate runtime 23/25] COPY --from=build /app/packages/db/migrations ./packages/db/migrations
+#38 DONE 0.3s
+
+#17 [live-sfu-test 2/4] RUN apt-get update && apt-get install -y --no-install-recommends iptables iproute2 libnss3-tools && rm -rf /var/lib/apt/lists/*
+#17 11.25 Get:3 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 libxtables12 amd64 1.8.10-3ubuntu2 [35.7 kB]
+#17 11.26 Get:4 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 iproute2 amd64 6.1.0-1ubuntu6.4 [1120 kB]
+#17 11.41 Get:5 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 libip4tc2 amd64 1.8.10-3ubuntu2 [23.3 kB]
+#17 11.41 Get:6 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 libip6tc2 amd64 1.8.10-3ubuntu2 [23.7 kB]
+#17 11.41 Get:7 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 libnfnetlink0 amd64 1.0.2-2build1 [14.8 kB]
+#17 11.42 Get:8 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 libnetfilter-conntrack3 amd64 1.0.9-6build1 [45.2 kB]
+#17 11.42 Get:9 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 libnftnl11 amd64 1.2.6-2build1 [66.0 kB]
+#17 11.43 Get:10 http://azure.archive.ubuntu.com/ubuntu noble/main amd64 iptables amd64 1.8.10-3ubuntu2 [381 kB]
+#17 11.47 Get:11 http://azure.archive.ubuntu.com/ubuntu noble-updates/main amd64 libnss3-tools amd64 2:3.98-1ubuntu0.2 [615 kB]
+#17 11.63 debconf: delaying package configuration, since apt-utils is not installed
+
+#17 ...
+
+#39 [migrate runtime 24/25] COPY --from=build /app/infra/dist ./infra/dist
+#39 DONE 0.2s
+
+#17 [live-sfu-test 2/4] RUN apt-get update && apt-get install -y --no-install-recommends iptables iproute2 libnss3-tools && rm -rf /var/lib/apt/lists/*
+#17 11.65 Fetched 2503 kB in 1s (4260 kB/s)
+#17 11.74 Selecting previously unselected package libbpf1:amd64.
+#17 11.74 (Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 34933 files and directories currently installed.)
+#17 11.76 Preparing to unpack .../00-libbpf1_1%3a1.3.0-2build2_amd64.deb ...
+#17 11.82 Unpacking libbpf1:amd64 (1:1.3.0-2build2) ...
+#17 11.96 Selecting previously unselected package libmnl0:amd64.
+#17 11.97 Preparing to unpack .../01-libmnl0_1.0.5-2build1_amd64.deb ...
+#17 11.99 Unpacking libmnl0:amd64 (1.0.5-2build1) ...
+#17 12.32 Selecting previously unselected package libxtables12:amd64.
+#17 ...
+
+#40 [migrate runtime 25/25] RUN mkdir -p /data/files && chown -R node:node /data
+#40 DONE 0.8s
+
+#17 [live-sfu-test 2/4] RUN apt-get update && apt-get install -y --no-install-recommends iptables iproute2 libnss3-tools && rm -rf /var/lib/apt/lists/*
+#17 12.33 Preparing to unpack .../02-libxtables12_1.8.10-3ubuntu2_amd64.deb ...
+#17 12.40 Unpacking libxtables12:amd64 (1.8.10-3ubuntu2) ...
+#17 12.96 Selecting previously unselected package iproute2.
+#17 12.97 Preparing to unpack .../03-iproute2_6.1.0-1ubuntu6.4_amd64.deb ...
+#17 13.05 Unpacking iproute2 (6.1.0-1ubuntu6.4) ...
+#17 13.36 Selecting previously unselected package libip4tc2:amd64.
+#17 13.37 Preparing to unpack .../04-libip4tc2_1.8.10-3ubuntu2_amd64.deb ...
+#17 13.41 Unpacking libip4tc2:amd64 (1.8.10-3ubuntu2) ...
+#17 13.51 Selecting previously unselected package libip6tc2:amd64.
+#17 13.51 Preparing to unpack .../05-libip6tc2_1.8.10-3ubuntu2_amd64.deb ...
+#17 13.53 Unpacking libip6tc2:amd64 (1.8.10-3ubuntu2) ...
+#17 13.62 Selecting previously unselected package libnfnetlink0:amd64.
+#17 13.62 Preparing to unpack .../06-libnfnetlink0_1.0.2-2build1_amd64.deb ...
+#17 13.64 Unpacking libnfnetlink0:amd64 (1.0.2-2build1) ...
+#17 13.73 Selecting previously unselected package libnetfilter-conntrack3:amd64.
+#17 13.73 Preparing to unpack .../07-libnetfilter-conntrack3_1.0.9-6build1_amd64.deb ...
+#17 13.75 Unpacking libnetfilter-conntrack3:amd64 (1.0.9-6build1) ...
+#17 13.84 Selecting previously unselected package libnftnl11:amd64.
+#17 13.84 Preparing to unpack .../08-libnftnl11_1.2.6-2build1_amd64.deb ...
+#17 13.86 Unpacking libnftnl11:amd64 (1.2.6-2build1) ...
+#17 13.94 Selecting previously unselected package iptables.
+#17 13.95 Preparing to unpack .../09-iptables_1.8.10-3ubuntu2_amd64.deb ...
+#17 13.96 Unpacking iptables (1.8.10-3ubuntu2) ...
+#17 14.06 Selecting previously unselected package libnss3-tools.
+#17 14.06 Preparing to unpack .../10-libnss3-tools_2%3a3.98-1ubuntu0.2_amd64.deb ...
+#17 14.08 Unpacking libnss3-tools (2:3.98-1ubuntu0.2) ...
+#17 14.16 Setting up libip4tc2:amd64 (1.8.10-3ubuntu2) ...
+#17 14.20 Setting up libip6tc2:amd64 (1.8.10-3ubuntu2) ...
+#17 14.24 Setting up libmnl0:amd64 (1.0.5-2build1) ...
+#17 14.28 Setting up libxtables12:amd64 (1.8.10-3ubuntu2) ...
+#17 14.31 Setting up libnfnetlink0:amd64 (1.0.2-2build1) ...
+#17 14.35 Setting up libbpf1:amd64 (1:1.3.0-2build2) ...
+#17 14.39 Setting up libnss3-tools (2:3.98-1ubuntu0.2) ...
+#17 14.43 Setting up iproute2 (6.1.0-1ubuntu6.4) ...
+#17 14.63 debconf: unable to initialize frontend: Dialog
+#17 14.63 debconf: (TERM is not set, so the dialog frontend is not usable.)
+#17 14.63 debconf: falling back to frontend: Readline
+#17 14.64 debconf: unable to initialize frontend: Readline
+#17 14.64 debconf: (This frontend requires a controlling tty.)
+#17 14.64 debconf: falling back to frontend: Teletype
+#17 14.68 Setting up libnftnl11:amd64 (1.2.6-2build1) ...
+#17 14.72 Setting up libnetfilter-conntrack3:amd64 (1.0.9-6build1) ...
+#17 14.76 Setting up iptables (1.8.10-3ubuntu2) ...
+#17 14.78 update-alternatives: using /usr/sbin/iptables-legacy to provide /usr/sbin/iptables (iptables) in auto mode
+#17 14.79 update-alternatives: using /usr/sbin/ip6tables-legacy to provide /usr/sbin/ip6tables (ip6tables) in auto mode
+#17 14.80 update-alternatives: using /usr/sbin/iptables-nft to provide /usr/sbin/iptables (iptables) in auto mode
+#17 14.80 update-alternatives: using /usr/sbin/ip6tables-nft to provide /usr/sbin/ip6tables (ip6tables) in auto mode
+#17 14.81 update-alternatives: using /usr/sbin/arptables-nft to provide /usr/sbin/arptables (arptables) in auto mode
+#17 14.82 update-alternatives: using /usr/sbin/ebtables-nft to provide /usr/sbin/ebtables (ebtables) in auto mode
+#17 14.84 Processing triggers for libc-bin (2.39-0ubuntu8.8) ...
+#17 DONE 15.1s
+
+#41 [migrate] exporting to image
+#41 exporting layers
+#41 ...
+
+#42 [live-sfu-test 3/4] COPY infra/live-sfu-test/package*.json /opt/live-sfu/
+#42 DONE 0.3s
+
+#43 [live-sfu-test 4/4] RUN npm ci --prefix /opt/live-sfu --ignore-scripts --no-audit --no-fund
+#43 1.353 
+#43 1.353 added 15 packages in 935ms
+#43 1.354 npm notice
+#43 1.354 npm notice New major version of npm available! 11.19.0 -> 12.1.0
+#43 1.354 npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.1.0
+#43 1.354 npm notice To update run: npm install -g npm@12.1.0
+#43 1.354 npm notice
+#43 DONE 1.6s
+
+#41 [migrate] exporting to image
+#41 exporting layers 4.5s done
+#41 writing image sha256:c3e1488fde7e70a50a5d2f022085b3f1a816f9f196a889ddd965a9361678d370 0.0s done
+#41 naming to docker.io/library/flux-foundation:flux-live-turn-1790763993-691814
+#41 naming to docker.io/library/flux-foundation:flux-live-turn-1790763993-691814 0.0s done
+#41 DONE 4.6s
+
+#44 [live-sfu-test] exporting to image
+#44 exporting layers 0.5s done
+#44 writing image sha256:94ac2f048c8c02432e3b379d7540a2a9921de5b519772f83885623400fa3ca12 0.0s done
+#44 naming to docker.io/library/flux-live-sfu-test:flux-live-turn-1790763993-691814 0.0s done
+#44 DONE 0.6s
+
+#45 [migrate] resolving provenance for metadata file
+#45 DONE 0.0s
+
+#46 [live-sfu-test] resolving provenance for metadata file
+#46 DONE 0.0s
+ Image flux-live-sfu-test:flux-live-turn-1790763993-691814 Built 
+ Image flux-foundation:flux-live-turn-1790763993-691814 Built 
+ Network flux-live-turn-1790763993-691814_default Creating 
+ Network flux-live-turn-1790763993-691814_default Created 
+ Network flux-live-turn-1790763993-691814_livekit-signal Creating 
+ Network flux-live-turn-1790763993-691814_livekit-signal Created 
+ Network flux-live-turn-1790763993-691814_livekit-media Creating 
+ Network flux-live-turn-1790763993-691814_livekit-media Created 
+ Volume flux-live-turn-1790763993-691814_pgdata Creating 
+ Volume flux-live-turn-1790763993-691814_pgdata Created 
+ Volume flux-live-turn-1790763993-691814_files Creating 
+ Volume flux-live-turn-1790763993-691814_files Created 
+ Container flux-live-turn-1790763993-691814-db-1 Creating 
+ Container flux-live-turn-1790763993-691814-livekit-1 Creating 
+ Container flux-live-turn-1790763993-691814-livekit-1 Created 
+ Container flux-live-turn-1790763993-691814-db-1 Created 
+ Container flux-live-turn-1790763993-691814-migrate-1 Creating 
+ Container flux-live-turn-1790763993-691814-migrate-1 Created 
+ Container flux-live-turn-1790763993-691814-api-1 Creating 
+time="2026-09-30T12:28:01+02:00" level=warning msg="mount of type `volume` should not define `bind` option"
+ Container flux-live-turn-1790763993-691814-api-1 Created 
+ Container flux-live-turn-1790763993-691814-livekit-1 Starting 
+ Container flux-live-turn-1790763993-691814-db-1 Starting 
+ Container flux-live-turn-1790763993-691814-db-1 Started 
+ Container flux-live-turn-1790763993-691814-db-1 Waiting 
+ Container flux-live-turn-1790763993-691814-livekit-1 Started 
+ Container flux-live-turn-1790763993-691814-db-1 Healthy 
+ Container flux-live-turn-1790763993-691814-migrate-1 Starting 
+ Container flux-live-turn-1790763993-691814-migrate-1 Started 
+ Container flux-live-turn-1790763993-691814-migrate-1 Waiting 
+ Container flux-live-turn-1790763993-691814-livekit-1 Waiting 
+ Container flux-live-turn-1790763993-691814-livekit-1 Healthy 
+ Container flux-live-turn-1790763993-691814-migrate-1 Exited 
+ Container flux-live-turn-1790763993-691814-api-1 Starting 
+ Container flux-live-turn-1790763993-691814-api-1 Started 
+ Container flux-live-turn-1790763993-691814-api-1 Waiting 
+ Container flux-live-turn-1790763993-691814-livekit-1 Waiting 
+ Container flux-live-turn-1790763993-691814-migrate-1 Waiting 
+ Container flux-live-turn-1790763993-691814-db-1 Waiting 
+ Container flux-live-turn-1790763993-691814-livekit-1 Healthy 
+ Container flux-live-turn-1790763993-691814-db-1 Healthy 
+ Container flux-live-turn-1790763993-691814-migrate-1 Exited 
+ Container flux-live-turn-1790763993-691814-api-1 Healthy 
+ Container flux-live-turn-1790763993-691814-db-1 Running 
+ Container flux-live-turn-1790763993-691814-livekit-1 Running 
+ Container flux-live-turn-1790763993-691814-api-1 Running 
+ Container flux-live-turn-1790763993-691814-db-1 Waiting 
+ Container flux-live-turn-1790763993-691814-db-1 Healthy 
+ Container flux-live-turn-1790763993-691814-migrate-1 Starting 
+ Container flux-live-turn-1790763993-691814-migrate-1 Started 
+ Container flux-live-turn-1790763993-691814-livekit-1 Waiting 
+ Container flux-live-turn-1790763993-691814-migrate-1 Waiting 
+ Container flux-live-turn-1790763993-691814-livekit-1 Healthy 
+ Container flux-live-turn-1790763993-691814-migrate-1 Exited 
+ Container flux-live-turn-1790763993-691814-livekit-1 Waiting 
+ Container flux-live-turn-1790763993-691814-api-1 Waiting 
+ Container flux-live-turn-1790763993-691814-livekit-1 Healthy 
+ Container flux-live-turn-1790763993-691814-api-1 Healthy 
+ Container flux-live-turn-1790763993-691814-live-sfu-test-run-5105965594d4 Creating 
+ Container flux-live-turn-1790763993-691814-live-sfu-test-run-5105965594d4 Created 
+rehash: warning: skipping ca-certificates.crt,it does not contain exactly one certificate or CRL
+Chain OUTPUT (policy ACCEPT 8 packets, 824 bytes)
+ pkts bytes target     prot opt in     out     source               destination         
+    4   284 ACCEPT     17   --  *      *       0.0.0.0/0            127.0.0.11          
+    8   600 REJECT     17   --  *      *       0.0.0.0/0            0.0.0.0/0            udp dpt:!53 reject-with icmp-port-unreachable
+    0     0 REJECT     6    --  *      *       0.0.0.0/0            0.0.0.0/0            tcp dpt:7881 reject-with icmp-port-unreachable
+
+migrate-1  | Applied migration 0001_foundation.sql
+migrate-1  | Applied migration 0002_identity.sql
+api-1      | {"level":40,"time":1790764095821,"pid":1,"hostname":"51699430ae9a","msg":"Web Push is not configured: set FLUX_VAPID_PUBLIC_KEY, FLUX_VAPID_PRIVATE_KEY and FLUX_VAPID_SUBJECT"}
+migrate-1  | Applied migration 0003_access.sql
+api-1      | {"level":30,"time":1790764095935,"pid":1,"hostname":"51699430ae9a","msg":"Server listening at http://127.0.0.1:8080"}
+migrate-1  | Applied migration 0004_stream_safe_writes.sql
+migrate-1  | Applied migration 0005_push.sql
+migrate-1  | Applied migration 0006_conversation.sql
+api-1      | {"level":30,"time":1790764095935,"pid":1,"hostname":"51699430ae9a","msg":"Server listening at http://172.25.0.3:8080"}
+api-1      | {"level":30,"time":1790764095935,"pid":1,"hostname":"51699430ae9a","msg":"Server listening at http://172.24.0.3:8080"}
+api-1      | {"level":30,"time":1790764095935,"pid":1,"hostname":"51699430ae9a","queue":"sample.process","msg":"Flux API ready"}
+api-1      | {"level":30,"time":1790764097896,"pid":1,"hostname":"51699430ae9a","reqId":"req-1","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:8080","remoteAddress":"127.0.0.1","remotePort":58636},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790764097901,"pid":1,"hostname":"51699430ae9a","reqId":"req-1","res":{"statusCode":200},"responseTime":4.012018918991089,"msg":"request completed"}
+api-1      | {"level":30,"time":1790764100975,"pid":1,"hostname":"51699430ae9a","reqId":"req-2","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:8080","remoteAddress":"127.0.0.1","remotePort":58662},"msg":"incoming request"}
+db-1       | The files belonging to this database system will be owned by user "postgres".
+api-1      | {"level":30,"time":1790764100977,"pid":1,"hostname":"51699430ae9a","reqId":"req-2","res":{"statusCode":200},"responseTime":1.6403230428695679,"msg":"request completed"}
+db-1       | This user must also own the server process.
+db-1       | 
+api-1      | {"level":30,"time":1790764104056,"pid":1,"hostname":"51699430ae9a","reqId":"req-3","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:8080","remoteAddress":"127.0.0.1","remotePort":58674},"msg":"incoming request"}
+db-1       | The database cluster will be initialized with locale "en_US.utf8".
+api-1      | {"level":30,"time":1790764104058,"pid":1,"hostname":"51699430ae9a","reqId":"req-3","res":{"statusCode":200},"responseTime":1.4155030250549316,"msg":"request completed"}
+migrate-1  | Applied migration 0007_sketches.sql
+api-1      | {"level":30,"time":1790764107136,"pid":1,"hostname":"51699430ae9a","reqId":"req-4","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:8080","remoteAddress":"127.0.0.1","remotePort":58690},"msg":"incoming request"}
+api-1      | {"level":30,"time":1790764107137,"pid":1,"hostname":"51699430ae9a","reqId":"req-4","res":{"statusCode":200},"responseTime":1.195341944694519,"msg":"request completed"}
+api-1      | {"level":30,"time":1790764110213,"pid":1,"hostname":"51699430ae9a","reqId":"req-5","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:8080","remoteAddress":"127.0.0.1","remotePort":54978},"msg":"incoming request"}
+migrate-1  | Applied migration 0008_work.sql
+db-1       | The default database encoding has accordingly been set to "UTF8".
+migrate-1  | Applied migration 0009_return_points.sql
+db-1       | The default text search configuration will be set to "english".
+db-1       | 
+db-1       | Data page checksums are enabled.
+db-1       | 
+db-1       | fixing permissions on existing directory /var/lib/postgresql/18/docker ... ok
+api-1      | {"level":30,"time":1790764110214,"pid":1,"hostname":"51699430ae9a","reqId":"req-5","res":{"statusCode":200},"responseTime":1.1891520023345947,"msg":"request completed"}
+migrate-1  | Applied migration 0010_direct_messages.sql
+api-1      | {"level":30,"time":1790764113292,"pid":1,"hostname":"51699430ae9a","reqId":"req-6","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:8080","remoteAddress":"127.0.0.1","remotePort":55020},"msg":"incoming request"}
+db-1       | creating subdirectories ... ok
+db-1       | selecting dynamic shared memory implementation ... posix
+db-1       | selecting default "max_connections" ... 100
+db-1       | selecting default "shared_buffers" ... 128MB
+db-1       | selecting default time zone ... UTC
+db-1       | creating configuration files ... ok
+db-1       | running bootstrap script ... ok
+livekit-1  | 2026-09-30T10:28:02.358Z	INFO	livekit	routing/interfaces.go:181	using single-node routing
+livekit-1  | 2026-09-30T10:28:02.360Z	INFO	livekit	service/turn.go:204	Starting TURN server	{"turn.relay_range_start": 30000, "turn.relay_range_end": 40000, "turn.per_user_relay_allocation_limit": 12, "turn.portTLS": 443, "turn.externalTLS": false, "turn.proxyProtocol": false, "turn.portUDP": 3478}
+livekit-1  | 2026-09-30T10:28:02.360Z	WARN	livekit	service/server.go:160	prometheus_port is deprecated, please switch to prometheus.port instead
+livekit-1  | 2026-09-30T10:28:02.360Z	INFO	livekit	service/server.go:298	starting LiveKit server	{"portHttp": 7880, "nodeID": "ND_YfXNPu5Rurve", "nodeIP": "172.26.0.2", "version": "1.13.7", "bindAddresses": ["172.25.0.2", "127.0.0.1"], "rtc.portTCP": 7881, "rtc.portUDP": {"Start":7882,"End":0}, "portPrometheus": 6789}
+api-1      | {"level":30,"time":1790764113293,"pid":1,"hostname":"51699430ae9a","reqId":"req-6","res":{"statusCode":200},"responseTime":1.1642329692840576,"msg":"request completed"}
+api-1      | {"level":30,"time":1790764116367,"pid":1,"hostname":"51699430ae9a","reqId":"req-7","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:8080","remoteAddress":"127.0.0.1","remotePort":55082},"msg":"incoming request"}
+db-1       | sh: locale: not found
+api-1      | {"level":30,"time":1790764116368,"pid":1,"hostname":"51699430ae9a","reqId":"req-7","res":{"statusCode":200},"responseTime":1.3694130182266235,"msg":"request completed"}
+db-1       | 2026-09-30 10:28:02.538 UTC [40] WARNING:  no usable system locales were found
+db-1       | performing post-bootstrap initialization ... ok
+db-1       | syncing data to disk ... ok
+db-1       | 
+db-1       | 
+db-1       | initdb: warning: enabling "trust" authentication for local connections
+db-1       | initdb: hint: You can change this by editing pg_hba.conf or using the option -A, or --auth-local and --auth-host, the next time you run initdb.
+db-1       | Success. You can now start the database server using:
+db-1       | 
+db-1       |     pg_ctl -D /var/lib/postgresql/18/docker -l logfile start
+db-1       | 
+db-1       | waiting for server to start....2026-09-30 10:28:09.355 UTC [64] LOG:  starting PostgreSQL 18.6 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+db-1       | 2026-09-30 10:28:09.362 UTC [64] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+db-1       | 2026-09-30 10:28:09.382 UTC [70] LOG:  database system was shut down at 2026-09-30 10:28:02 UTC
+db-1       | 2026-09-30 10:28:09.390 UTC [64] LOG:  database system is ready to accept connections
+db-1       |  done
+db-1       | server started
+db-1       | CREATE DATABASE
+db-1       | 
+db-1       | 
+db-1       | /usr/local/bin/docker-entrypoint.sh: ignoring /docker-entrypoint-initdb.d/*
+db-1       | 
+db-1       | waiting for server to shut down....2026-09-30 10:28:09.521 UTC [64] LOG:  received fast shutdown request
+migrate-1  | Applied migration 0011_agent_connection.sql
+migrate-1  | Applied migration 0012_agent_oauth.sql
+migrate-1  | Applied migration 0013_docs.sql
+migrate-1  | Applied migration 0014_search.sql
+migrate-1  | Applied migration 0015_notifications.sql
+migrate-1  | Applied migration 0016_live_sessions.sql
+migrate-1  | Applied migration 0017_live_access_fences.sql
+migrate-1  | Applied migration 0018_live_lifecycle.sql
+api-1      | {"level":30,"time":1790764119446,"pid":1,"hostname":"51699430ae9a","reqId":"req-8","req":{"method":"GET","url":"/api/v1/health","host":"127.0.0.1:8080","remoteAddress":"127.0.0.1","remotePort":60184},"msg":"incoming request"}
+migrate-1  | Applied migration 0019_live_webhook_events.sql
+migrate-1  | Applied migration 0020_live_invitations.sql
+migrate-1  | Applied migration 0021_live_invitation_notifications.sql
+migrate-1  | Applied migration 0022_search_restore_path.sql
+migrate-1  | Applied migration 0023_live_admissions.sql
+migrate-1  | Applied migration 0024_personal_runs.sql
+migrate-1  | Applied migration 0025_dm_sketches.sql
+migrate-1  | Flux schema 25 and pg-boss ready
+migrate-1  | Flux schema 25 and pg-boss ready
+db-1       | 2026-09-30 10:28:09.527 UTC [64] LOG:  aborting any active transactions
+db-1       | 2026-09-30 10:28:09.529 UTC [64] LOG:  background worker "logical replication launcher" (PID 73) exited with exit code 1
+db-1       | 2026-09-30 10:28:09.529 UTC [68] LOG:  shutting down
+db-1       | 2026-09-30 10:28:09.535 UTC [68] LOG:  checkpoint starting: shutdown immediate
+db-1       | .2026-09-30 10:28:11.482 UTC [68] LOG:  checkpoint complete: wrote 943 buffers (5.8%), wrote 3 SLRU buffers; 0 WAL file(s) added, 0 removed, 0 recycled; write=0.028 s, sync=1.884 s, total=1.954 s; sync files=303, longest=0.019 s, average=0.007 s; distance=4362 kB, estimate=4362 kB; lsn=0/1BA8858, redo lsn=0/1BA8858
+db-1       | 2026-09-30 10:28:11.511 UTC [64] LOG:  database system is shut down
+db-1       |  done
+db-1       | server stopped
+db-1       | 
+db-1       | PostgreSQL init process complete; ready for start up.
+db-1       | 
+db-1       | 2026-09-30 10:28:11.551 UTC [1] LOG:  starting PostgreSQL 18.6 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+db-1       | 2026-09-30 10:28:11.551 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+db-1       | 2026-09-30 10:28:11.551 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+db-1       | 2026-09-30 10:28:11.563 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+api-1      | {"level":30,"time":1790764119447,"pid":1,"hostname":"51699430ae9a","reqId":"req-8","res":{"statusCode":200},"responseTime":1.0719020366668701,"msg":"request completed"}
+db-1       | 2026-09-30 10:28:11.577 UTC [92] LOG:  database system was shut down at 2026-09-30 10:28:11 UTC
+db-1       | 2026-09-30 10:28:11.586 UTC [1] LOG:  database system is ready to accept connections
+ Container flux-live-turn-1790763993-691814-api-1 Stopping 
+ Container flux-live-turn-1790763993-691814-api-1 Stopped 
+ Container flux-live-turn-1790763993-691814-api-1 Removing 
+ Container flux-live-turn-1790763993-691814-api-1 Removed 
+ Container flux-live-turn-1790763993-691814-migrate-1 Stopping 
+ Container flux-live-turn-1790763993-691814-livekit-1 Stopping 
+ Container flux-live-turn-1790763993-691814-migrate-1 Stopped 
+ Container flux-live-turn-1790763993-691814-migrate-1 Removing 
+ Container flux-live-turn-1790763993-691814-migrate-1 Removed 
+ Container flux-live-turn-1790763993-691814-db-1 Stopping 
+ Container flux-live-turn-1790763993-691814-livekit-1 Stopped 
+ Container flux-live-turn-1790763993-691814-livekit-1 Removing 
+ Container flux-live-turn-1790763993-691814-livekit-1 Removed 
+ Container flux-live-turn-1790763993-691814-db-1 Stopped 
+ Container flux-live-turn-1790763993-691814-db-1 Removing 
+ Container flux-live-turn-1790763993-691814-db-1 Removed 
+ Volume flux-live-turn-1790763993-691814_pgdata Removing 
+ Volume flux-live-turn-1790763993-691814_files Removing 
+ Network flux-live-turn-1790763993-691814_default Removing 
+ Network flux-live-turn-1790763993-691814_livekit-media Removing 
+ Network flux-live-turn-1790763993-691814_livekit-signal Removing 
+ Volume flux-live-turn-1790763993-691814_pgdata Removed 
+ Volume flux-live-turn-1790763993-691814_files Removed 
+ Network flux-live-turn-1790763993-691814_livekit-signal Removed 
+ Network flux-live-turn-1790763993-691814_livekit-media Removed 
+ Network flux-live-turn-1790763993-691814_default Removed 

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import { and, eq, sql } from 'drizzle-orm';
-import { createDatabase, notificationFactRows, personalRunRows, projectExportRows, schema } from '@flux/db';
+import { notificationFactRows, personalRunRows, projectExportRows, schema } from '@flux/db';
 import { candidatesFor, ConflictError, createTaskDiscussionUseCases, InvalidInputError, NotFoundError } from '@flux/core';
 import type { GeneratorEvent } from '@flux/core';
 import { projectExportPath, type Conversation, type ConversationMessage, type Material, type Page,
@@ -13,9 +13,7 @@ import { backendPid, settled, waitUntilBlockedBy } from './support/locks.js';
 import { nativeWorkInTransaction } from '../../apps/server/src/work/adapters.js';
 import { transactionEventSession } from '../../apps/server/src/work/transaction-events.js';
 import { guardFinalEventPhase } from './support/final-events.js';
-
-const { db, pool } = createDatabase(process.env.DATABASE_URL!);
-after(() => pool.end());
+import { db, pool } from './support/db.js';
 
 async function scene() {
   const [owner, writer, reader, outsider] = await Promise.all(['root-owner', 'root-writer', 'root-reader', 'root-outsider'].map(person));
@@ -428,8 +426,9 @@ test('native work, canonical result and a genuine agent root share the caller tr
     await session.updateWork(owner, work.id, { outcome: 'Final state before receipt and events' }, work.version);
     assert.equal((await session.getWork(owner, work.id)).outcome, 'Final state before receipt and events');
     assert.equal((await session.getDiscussion(owner, work.id)).rootMessageId, root.id);
+    // The result reports on the task, so it also contributes one message to the task's existing thread.
     assert.deepEqual(session.eventIntents.map((item) => item.kind), ['project.work_created.v1',
-      'project.conversation_created.v1', 'project.result_recorded.v1', 'project.work_updated.v1']);
+      'project.conversation_created.v1', 'project.result_recorded.v1', 'project.message_sent.v1', 'project.work_updated.v1']);
     const state = await tx.execute(sql`SELECT EXISTS(SELECT 1 FROM pg_locks
       WHERE locktype='advisory' AND pid=pg_backend_pid()
         AND classid=((hashtext('flux.events.seq')::bigint >> 32) & 4294967295)::oid
@@ -445,7 +444,7 @@ test('native work, canonical result and a genuine agent root share the caller tr
     await assert.rejects(session.contribute(principal, work.id, { body: 'Too late', clientMessageId: randomUUID() }), /session is closed/);
     return { work, root, result, events };
   });
-  assert.equal(committed.events.length, 4);
+  assert.equal(committed.events.length, 5);
   const rows = (await pool.query('SELECT event_id,recipient FROM event_audience WHERE event_id=ANY($1::uuid[])', [committed.events])).rows;
   for (const event of committed.events) {
     assert.ok(rows.some((row) => row.event_id === event && row.recipient === `human:${f.owner.id}`));

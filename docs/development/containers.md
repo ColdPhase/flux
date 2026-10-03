@@ -1,5 +1,10 @@
 # Container development
 
+Optional project GitHub App configuration and current integration limits are
+documented in [GitHub integration](github-integration/README.md).
+The optional SFU and restrictive-network TURN/TLS profile are covered in
+[live media operation](live-media.md).
+
 Founder decision, 2026-09-27: **the application and its dependencies run in
 Docker/Compose**. Do not install PostgreSQL, Redis, queues, or application
 toolchains as services on a contributor's host.
@@ -272,9 +277,11 @@ outside tests.
 
 ## Web app and browser tests
 
-The configured `pnpm test` command runs at most four application test files at
-once (`--test-concurrency=4`). This keeps the shared API/database load independent
-of the host CPU count; the [Node test runner](https://nodejs.org/download/release/v24.8.0/docs/api/cli.html#--test-concurrency)
+The configured `pnpm test` command runs one application test file at a time
+(`--test-concurrency=1`), never more than four. The controlled comparison scheduling
+fixtures (#58) deliberately own the one global comparison cursor of the shared test
+database, so files must not overlap. A fixed bound also keeps the shared API/database
+load independent of the host CPU count; the [Node test runner](https://nodejs.org/download/release/v24.8.0/docs/api/cli.html#--test-concurrency)
 otherwise derives file parallelism from available processors. Explicit concurrent
 requests and race assertions inside each suite remain unchanged. Keep the same
 command in local Docker validation and CI; do not extend API/database deadlines

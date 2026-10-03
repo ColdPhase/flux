@@ -18,10 +18,11 @@ export function agentStandingGrants(db: Database, domain: AgentGrantDomainChecks
         enforce(await evaluateProject({ kind: 'human', id: ownerUserId }, 'project.manage', command.projectId, tx, { lock: true }), 'project');
         if (command.objectId) {
           const within = { workspaceId: connection.workspaceId, projectId: command.projectId, connectionId };
-          const kind = objectKind(command.operation);
+          const kind = agentOperationTarget(command.operation);
           const allowed = command.operation.startsWith('cowork.')
             ? !!domain.coordinationTarget && await domain.coordinationTarget(tx, within, command)
-            : !!kind && !!await agentProjectObjectRows(tx).scopeOf(kind, command.objectId, within);
+            : !!kind && !!await agentProjectObjectRows(tx).scopeOf(kind, command.objectId,
+              { workspaceId: connection.workspaceId, projectId: command.projectId });
           if (!allowed)
             throw new DomainError(404, 'OBJECT_NOT_FOUND', 'Project object not found');
         }
@@ -51,10 +52,18 @@ export function agentStandingGrants(db: Database, domain: AgentGrantDomainChecks
   return agentStandingGrantUseCases(port);
 }
 
-function objectKind(operation: AgentOperation): 'work' | 'sketch' | null {
-  // Optional exact objects refer to native task/map containers, including thought/link commands.
-  const maps: AgentOperation[] = ['map.rename', 'map.thought.create', 'map.thought.update', 'map.thought.delete', 'map.positions.update', 'map.link.create', 'map.link.delete'];
-  return operation === 'work.update' ? 'work' : maps.includes(operation) ? 'sketch' : null;
+const MAP_CHANGES: readonly AgentOperation[] = ['map.rename', 'map.thought.create', 'map.thought.update', 'map.thought.delete',
+  'map.positions.update', 'map.link.create', 'map.link.delete'];
+/**
+ * The kind of the exact project object a change targets, or null for a create. Optional grant objects and command
+ * targets name native containers: the task, the project map (also for thought/link commands), the doc, or the
+ * project conversation a reply joins. Private and direct-message objects are never project objects.
+ */
+export function agentOperationTarget(operation: AgentOperation): 'work' | 'sketch' | 'doc' | 'conversation' | null {
+  if (operation === 'work.update') return 'work';
+  if (operation === 'doc.update') return 'doc';
+  if (operation === 'conversation.reply') return 'conversation';
+  return MAP_CHANGES.includes(operation) ? 'sketch' : null;
 }
 
 export type AgentGrantInput = CreateAgentStandingGrantCommand;

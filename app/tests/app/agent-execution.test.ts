@@ -1,20 +1,16 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import type { Agent, AgentConnection, AgentExecutionCommand, AgentJsonValue, AgentPeerRequestClass, AgentPostcondition, AgentStandingGrant, WorkItem } from '@flux/contracts';
-import { createDatabase } from '@flux/db';
-import { agentExecutionUseCases, createWorkUseCases, DomainError, normalizeAgentExecution, recordEvent } from '@flux/core';
+import { agentExecutionUseCases, DomainError, normalizeAgentExecution } from '@flux/core';
 import { agentRuntimeInTransaction } from '../../apps/server/src/agent-connection/runtime.js';
 import { agentStandingGrants } from '../../apps/server/src/agent-connection/grants.js';
 import { agentExecutionInTransaction } from '../../apps/server/src/agent-connection/execution.js';
-import { policyWorkAccess, workRepository } from '../../apps/server/src/work/adapters.js';
+import { nativeWorkInTransaction } from '../../apps/server/src/work/adapters.js';
+import { db, pool } from './support/db.js';
 import { expectStatus, person, project, workspace } from './support/people.js';
 import { waitUntilBlockedBy } from './support/locks.js';
 
-const url = process.env.DATABASE_URL;
-if (!url) throw new Error('DATABASE_URL is required');
-const { db, pool } = createDatabase(url);
-after(() => pool.end());
 async function fixture(maximumUses = 1) {
   const owner = await person('execution-owner'); const ws = await workspace(owner, "Execution workspace"); const p = await project(owner, ws.id, 'Execution target', 'restricted');
   const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
@@ -45,9 +41,9 @@ async function fixture(maximumUses = 1) {
   let effects = 0;
   async function run(input = command, fail = false, failAfterCompletion = false) {
     return db.transaction(async (tx) => {
-      const events: Parameters<typeof recordEvent>[] = [];
-      const cases = createWorkUseCases({ run: (work) => work({ access: policyWorkAccess(tx), work: workRepository(tx),
-        events: { record: async (...event) => { events.push([tx, ...event]); } } }) });
+      // The production composition: native work and the mandatory contribution hook share this transaction
+      // and one final event batch, awaited only after the domain, debit and receipt writes.
+      const cases = nativeWorkInTransaction(tx);
       const result = await agentExecutionUseCases(agentExecutionInTransaction(tx, claims)).run(input, async (scope) => {
         if (scope.replay) return { value: scope.replay.value, postconditions: scope.replay.postconditions };
         effects++;
@@ -57,9 +53,7 @@ async function fixture(maximumUses = 1) {
         return { value: { workId: work.id, version: work.version } as AgentJsonValue, postconditions: [{ kind: 'work', id: work.id, version: work.version }] };
       });
       if (failAfterCompletion) throw new Error('Injected failure after debit and durable receipt');
-      // This fixture has exactly one canonical event. It follows the domain/debit/receipt SQL.
-      // Production multi-domain writes await the independently verified final batch adapter.
-      for (const event of events) await recordEvent(...event);
+      await cases.flushEvents();
       return result as { workId: string; version: number };
     });
   }

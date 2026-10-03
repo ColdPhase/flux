@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, before, describe, test } from 'node:test';
-import { createDatabase } from '@flux/db';
+import { before, describe, test } from 'node:test';
 import type { Conversation, Decision, Doc, Project, ReturnPlace, ReturnPoint, ReturnSummary, Workspace, WorkItem, WorkResult } from '@flux/contracts';
+import { pool } from './support/db.js';
 import type { ClientResponse } from './support/http.js';
 import { addMember, expectStatus, grant, person, project as createProject, workspace, type Person } from './support/people.js';
 
@@ -10,11 +10,6 @@ import { addMember, expectStatus, grant, person, project as createProject, works
 // place, a summary built only from the reader's own event audience after the point (plus the
 // final access check), human-language grouping with source links, one next step with its
 // reason, and nothing about places the reader cannot currently see.
-
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { pool } = createDatabase(connectionString);
-after(() => pool.end());
 
 const post = (someone: Person, path: string, body: unknown, headers?: Record<string, string>) => someone.browser.request('POST', path, { body, headers });
 const patch = (someone: Person, path: string, body: unknown, headers?: Record<string, string>) => someone.browser.request('PATCH', path, { body, headers });
@@ -114,7 +109,9 @@ describe('return view: since you left', () => {
     assert.ok(list.includes('Ari started a sketch: Sensing options'));
     assert.equal(JSON.stringify(back).includes(secret.id), false, 'a private sketch of someone else never appears');
     assert.equal(JSON.stringify(back).includes('Ari private ideas'), false);
-    assert.equal(list.length, 8, list.join('\n'));
+    // The result, linked to Nia's task, also opened that task's own thread with its title as the first contribution (#154).
+    assert.ok(list.includes('Ari started “Camera misses gestures at 5 lux”'), list.join('\n'));
+    assert.equal(list.length, 9, list.join('\n'));
 
     // Every item links to its source.
     const sources = new Map(back.items.map((item) => [item.text, item.source]));

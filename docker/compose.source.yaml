@@ -69,9 +69,18 @@ services:
       # Web Push (issue #41). The API only needs the public key; empty reports push unavailable.
       FLUX_VAPID_PUBLIC_KEY: ${FLUX_VAPID_PUBLIC_KEY:-}
       FLUX_STREAM_HEARTBEAT_MS: ${FLUX_STREAM_HEARTBEAT_MS:-25000}
+      # GitHub App read-only integration (#74). Empty reports unavailable; configure all together.
+      FLUX_GITHUB_CLIENT_ID: ${FLUX_GITHUB_CLIENT_ID:-}
+      FLUX_GITHUB_CLIENT_SECRET: ${FLUX_GITHUB_CLIENT_SECRET:-}
+      FLUX_GITHUB_APP_ID: ${FLUX_GITHUB_APP_ID:-}
+      FLUX_GITHUB_APP_SLUG: ${FLUX_GITHUB_APP_SLUG:-}
+      FLUX_GITHUB_WEBHOOK_SECRET: ${FLUX_GITHUB_WEBHOOK_SECRET:-}
+      FLUX_GITHUB_ENCRYPTION_KEY: ${FLUX_GITHUB_ENCRYPTION_KEY:-}
       PORT: 8080
     volumes:
       - files:/data/files:z
+      # Optional 32-byte operator secret; empty tracked placeholder means unavailable.
+      - ${FLUX_BACKGROUND_KEY_HOST_FILE:-./background-key-unavailable}:/run/secrets/flux_background_key:ro,z
     ports:
       - 127.0.0.1:${FLUX_PORT:-8081}:8080
     depends_on:
@@ -103,6 +112,7 @@ services:
       FLUX_TEST_ANTHROPIC_URL: ${FLUX_TEST_ANTHROPIC_URL:-}
     volumes:
       - files:/data/files:z
+      - ${FLUX_BACKGROUND_KEY_HOST_FILE:-./background-key-unavailable}:/run/secrets/flux_background_key:ro,z
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -144,6 +154,7 @@ services:
       FLUX_STREAM_HEARTBEAT_MS: ${FLUX_STREAM_HEARTBEAT_MS:-25000}
     volumes:
       - teststate:/state
+      - ${FLUX_BACKGROUND_KEY_HOST_FILE:-./background-key-unavailable}:/run/secrets/flux_background_key:ro,z
     depends_on:
       migrate:
         condition: service_completed_successfully

@@ -354,9 +354,110 @@ export function useSketchDoc(sketchId: string, me: Me) {
     return entry.label;
   }, [commit, enqueue, flushMoves]);
 
+  /** Explicit draft save: no optimistic shared thought or undo step before confirmation. */
+  const saveThought = useCallback(async (thought: NewThought, parent: { id: string; linkId: string } | null, key: string): Promise<boolean> => {
+    flushMoves();
+    inFlight.current += 1;
+    setSaving(true);
+    setProblem(null);
+    const operation = queue.current.then(async () => {
+      let created: { thought: Thought; link: ThoughtLink | null };
+      try {
+        created = await withRetry(() => api.addThought(sketchId, {
+          id: thought.id, text: thought.text, x: thought.x, y: thought.y,
+          ...(parent ? { linkFrom: { thoughtId: parent.id, linkId: parent.linkId } } : {}),
+        }, key));
+      } catch (error) {
+        // The draft's stable ID already exists: an earlier save of this draft committed although every response was
+        // lost, and its text may predate edits made since. Finish that save instead of failing forever: the newer
+        // text becomes an ordinary edit at the version just read, so another author's change still conflicts.
+        if (!(error instanceof ApiError && error.status === 409 && error.code === 'THOUGHT_EXISTS')) throw error;
+        const saved = await api.getSketch(sketchId);
+        const existing = saved.thoughts.find((item) => item.id === thought.id);
+        if (!existing) throw error;
+        const text = existing.text === thought.text ? existing
+          : await withRetry(() => api.updateThought(sketchId, existing.id, { text: thought.text }, existing.version, `${key}-text`));
+        created = { thought: text, link: parent ? saved.links.find((item) => item.id === parent.linkId) ?? null : null };
+      }
+      const current = ref.current;
+      if (!current) return false;
+      versions.current.set(created.thought.id, created.thought.version);
+      commit({ ...current,
+        thoughts: [...current.thoughts.filter((item) => item.id !== created.thought.id), created.thought],
+        links: created.link ? [...current.links.filter((item) => item.id !== created.link!.id), created.link] : current.links,
+      });
+      undoStack.current.push({ label: 'added a thought', ops: [{ kind: 'remove', id: created.thought.id }], at: Date.now() });
+      if (undoStack.current.length > 50) undoStack.current.shift();
+      setUndoLabel('added a thought');
+      return true;
+    }).catch(() => {
+      setProblem('The thought could not be saved. Your draft is kept; check access and its parent, then try again.');
+      staleRef.current = true;
+      return false;
+    }).finally(() => {
+      inFlight.current -= 1;
+      if (inFlight.current) return;
+      setSaving(false);
+      if (staleRef.current) { staleRef.current = false; void reload(); }
+    });
+    queue.current = operation.then(() => undefined);
+    return operation;
+  }, [commit, flushMoves, reload, sketchId]);
+
+  /**
+   * Text belongs to the version opened by the editor, even if the stream learns a newer one.
+   * A newer version that still has the opened text (a move, resize or shape change, such as this
+   * person's own nudge just before editing) holds nothing this edit would overwrite: the edit is
+   * sent once on that version, which then stays with its request key for an explicit retry.
+   */
+  const rebased = useRef(new Map<string, number>());
+  const saveText = useCallback(async (id: string, text: string, opened: { text: string; version: number }, key: string): Promise<boolean> => {
+    flushMoves();
+    inFlight.current += 1;
+    setSaving(true);
+    setProblem(null);
+    const operation = queue.current.then(async () => {
+      const before = ref.current;
+      const send = (version: number) => withRetry(() => api.updateThought(sketchId, id, { text }, version, key));
+      let updated: Thought;
+      try {
+        updated = await send(rebased.current.get(key) ?? opened.version);
+      } catch (error) {
+        const current = error instanceof ApiError && error.status === 409 ? (error.body as { current?: Thought } | null)?.current : undefined;
+        if (!current || current.text !== opened.text) throw error;
+        rebased.current.set(key, current.version);
+        updated = await send(current.version);
+      }
+      patchThought(updated, true);
+      if (before) {
+        undoStack.current.push({ label: 'edited a thought', ops: inverse(before, { kind: 'update', id, changes: { text } }), at: Date.now() });
+        if (undoStack.current.length > 50) undoStack.current.shift();
+        setUndoLabel('edited a thought');
+      }
+      return true;
+    }).catch((error: unknown) => {
+      const body = error instanceof ApiError && error.status === 409 ? (error.body as { current?: Thought } | null) : null;
+      if (body?.current) {
+        patchThought(body.current, true);
+        setProblem('Someone else changed this thought. Your edit is kept; cancel to inspect their version before editing again.');
+      } else {
+        setProblem('The edit could not be saved. Your text is kept; check access, then try again.');
+      }
+      staleRef.current = true;
+      return false;
+    }).finally(() => {
+      inFlight.current -= 1;
+      if (inFlight.current) return;
+      setSaving(false);
+      if (staleRef.current) { staleRef.current = false; void reload(); }
+    });
+    queue.current = operation.then(() => undefined);
+    return operation;
+  }, [flushMoves, patchThought, reload, sketchId]);
+
   useEffect(() => () => flushMoves(), [flushMoves]);
 
-  return { sketch, load, saving, problem, clearProblem: () => setProblem(null), canUndo: undoLabel !== null, perform, undo, reload, newId: uuid };
+  return { sketch, load, saving, problem, clearProblem: () => setProblem(null), canUndo: undoLabel !== null, perform, saveThought, saveText, undo, reload, newId: uuid };
 }
 
 export type SketchDoc = ReturnType<typeof useSketchDoc>;

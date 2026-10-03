@@ -22,6 +22,7 @@ import { projectShellLoader } from './project/data';
 import { ProjectMap } from './project/ProjectViews';
 import { LiveOpen } from './live/LiveOpen';
 import { SearchPage } from './search/SearchPage';
+import { GithubSettings } from './github/GithubSettings';
 import { AssistantSettings } from './assistant/AssistantSettings';
 import {
   forgotPasswordAction,
@@ -35,6 +36,7 @@ import {
 } from './auth/logic';
 import { AuthLayout, ForgotPasswordPage, ResetPasswordPage, SignInPage, SignOutPage, SignUpPage } from './auth/pages';
 import { AgentConnectionPage, AgentConsentPage, agentConnectionLoader, agentConsentLoader } from './agent-connection/pages';
+import { BackgroundComputeSettings, backgroundComputeLoader } from './proactive-comparison/BackgroundComputeSettings';
 
 function Root() {
   // The update prompt is shown on every page, signed in or not; reloading is the person's choice.
@@ -80,6 +82,7 @@ export const router = createBrowserRouter([
             children: [
               { index: true, loader: projectConversationLoader, Component: ProjectConversation },
               { path: 'conversations/:conversationId', loader: projectConversationLoader, Component: ProjectConversation },
+              { path: 'github', Component: GithubSettings },
               { path: 'tasks', loader: projectTasksLoader, Component: ProjectTasks },
               { path: 'map', Component: ProjectMap },
               { path: 'map/:sketchId', Component: SketchRoute },
@@ -108,6 +111,7 @@ export const router = createBrowserRouter([
           { path: 'inbox', Component: InboxView },
           { path: 'inbox/:id', Component: InboxOpen },
           { path: 'settings/notifications', Component: NotificationSettings },
+          { path: 'settings/background-compute', loader: backgroundComputeLoader, Component: BackgroundComputeSettings },
           { path: 'settings/notifications/verify', Component: VerifyAddress },
           { path: 'settings/assistant', Component: AssistantSettings },
           { path: '*', Component: NotFoundView },

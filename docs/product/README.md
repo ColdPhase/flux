@@ -44,6 +44,14 @@ Flux remains the project planning/knowledge home: agents first analyze current
 plans, wiki, relevant conversations/decisions and existing tasks, then create and
 manage native tasks within their grants, linking PRs without a second backlog.
 
+**Later F-021 requirement, 2026-10-03:** maps and wiki must support immediate
+shared editing. A peer sees movement during a map drag and wiki characters with
+named writers/cursors during typing, before the final move or Save version.
+[#228](https://github.com/ColdPhase/flux/issues/228) owns the outcome. The
+[native-map/shared-text contract](../development/live-editing-proposal.md) has
+independent acceptance for bounded disabled calibration; no runtime gate has passed.
+Saved-event refresh and a typing indicator do not deliver this requirement.
+
 The [later founder delegation](autonomy.md) authorizes agents to choose and accept
 product, stack, architecture, UX, scope and delivery decisions. No human acceptance
 is required. Open decisions below are decisions for the agents to resolve and
@@ -134,7 +142,7 @@ The foundation does not authorize deleting existing code or changing the license
 | Problem, segment, personas, USP | 1–7, 14, 17 B/C; [research](research.md) |
 | Product areas and integrated journeys | 8, 18–19 |
 | Mobile/tablet UX, installability, offline recovery and push | [Mobile PWA requirements](mobile-pwa.md), including MOB-1 through MOB-7 |
-| Own agents, subscriptions, APIs, local models | 9, 11.3, 17 E; dated primary-source research |
+| Own agents, subscriptions, APIs, local models | 9, 11.3, 17 E; [provider-neutral Flux agent F-020](model-providers.md); [feasibility](own-ai-feasibility.md); dated primary-source research |
 | Visual direction, density, accessible interactions | 10, 17 D1–D4, 21; [design workflow](../design/README.md) |
 | Architecture and operations | 11, 13, 18; [accepted O-002 architecture](application-architecture-proposal.md), [decision register](decisions.md) |
 | OSS and commercial direction | 3, 6, 12–13; existing [LICENSE](../../LICENSE) |

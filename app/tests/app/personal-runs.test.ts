@@ -1,18 +1,19 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, before, describe, test } from 'node:test';
-import { createDatabase } from '@flux/db';
+import { before, describe, test } from 'node:test';
 import { createAssistantProposalUseCases, createPersonalRunProcessor, recoverPersonalRuns, type PersonalRunHooks, type Principal, type Transaction } from '@flux/core';
 import {
   PERSONAL_RUN_CONSENT_VERSION,
   type AssistantAnswer, type AssistantProposal, type AssistantRun, type Conversation, type Page, type PersonalAssistantStatus,
-  type Project, type WorkItem, type WorkResult, type Workspace,
+  type Project, type TaskDiscussion, type WorkItem, type WorkResult, type Workspace,
 } from '@flux/contracts';
 import { assistantProposalUseCases, personalRunUseCases, proposalUnitOfWork } from '../../apps/server/src/personal-runs/adapters.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
+import { db, pool } from './support/db.js';
 import { addMember, expectStatus, person, project as createProject, removeMember, workspace as createWorkspace, type Person } from './support/people.js';
 import { echo, FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
 import { StreamClient } from './support/stream.js';
+import { waitFor } from './support/wait.js';
 import { guardFinalEventPhase } from './support/final-events.js';
 
 // Owner-invoked personal assistant runs (#68, decision O-008), first slice. HTTP routes run
@@ -21,11 +22,6 @@ import { guardFinalEventPhase } from './support/final-events.js';
 // driven in this process through the same core use cases and worker processor with the test-only
 // fakes of `support/personal-runs.ts`: a fake connection lookup, a fake queue and a FAKE COMPUTE.
 // No model is called; none of these tests is a provider, billing or compatibility pass.
-
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { pool, db } = createDatabase(connectionString);
-after(() => pool.end());
 
 const connections = new FakeConnections();
 const compute = new FakeCompute();
@@ -55,16 +51,6 @@ async function row(runId: string) {
 
 async function runCount(ownerId: string) {
   return (await pool.query('SELECT count(*)::int AS n FROM personal_runs WHERE owner_user_id = $1', [ownerId])).rows[0].n as number;
-}
-
-async function waitFor<T>(check: () => Promise<T | null | undefined | false>, label: string, timeoutMs = 8000): Promise<T> {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    const value = await check();
-    if (value) return value;
-    if (Date.now() > deadline) throw new Error(`Timed out waiting for ${label}`);
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
 }
 
 describe('personal assistant runs (#68, fake compute: no provider pass is claimed)', () => {
@@ -349,7 +335,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
       resolve({ kind: 'completed', stopReason: 'end_turn', text: 'Late answer [S1]', usage: { inputTokens: 900, outputTokens: 40 } })));
     const long = await ask(hubert);
     const processing = processor.process(long.run.id);
-    await waitFor(async () => (await row(long.run.id)).status === 'dispatching', 'dispatch');
+    await waitFor(async () => (await row(long.run.id)).status === 'dispatching', 'dispatch', 8000);
     expectStatus(await hubert.browser.request('POST', `/api/v1/assistant-runs/${long.run.id}/stop`), 200);
     assert.equal(await processing, 'stopped');
     compute.respond = echo;
@@ -497,6 +483,8 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_results WHERE project_id=$1', [lamp.id])).rows[0]!.n, 0);
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM events WHERE object_id=$1', [lamp.id])).rows[0]!.n, eventCount);
     assert.equal((await proposals.get(human(kai), proposalId)).status, 'proposed');
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_task_discussions WHERE work_id=$1', [work.id])).rows[0]!.n, 0,
+      'the rolled back acceptance left no task thread or contribution');
 
     // Instrument real SQL: no nested native transaction or domain read/write after first event.
     let eventPhaseStarted = false;
@@ -516,6 +504,11 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     const result = expectStatus(await viewer.browser.request('GET', `/api/v1/results/${accepted.resultId}`), 200) as WorkResult;
     assert.deepEqual([result.title, result.createdBy.id], ['Camera fails in low light', kai.id]);
     assert.equal((expectStatus(await kai.browser.request('GET', `/api/v1/work/${work.id}`), 200) as WorkItem).status, 'done');
+    // The accepted result also contributes to the finished task's canonical thread, authored by the accepting
+    // person with the exact result id (#154); the helper owner and the helper agent never author it.
+    const contributed = expectStatus(await viewer.browser.request('GET', `/api/v1/work/${work.id}/discussion`), 200) as TaskDiscussion;
+    assert.deepEqual([contributed.root?.body, contributed.root?.contribution, contributed.root?.authorId, contributed.messages.length],
+      ['Camera fails in low light', { kind: 'result', resultId: accepted.resultId }, kai.id, 1]);
     assert.equal((await accept(kai)).status, 409, 'a decided proposal cannot be accepted again');
 
     // A truncated answer is shown as truncated and never becomes a proposal.

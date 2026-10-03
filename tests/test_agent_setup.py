@@ -21,6 +21,8 @@ class FoundationValidationTests(unittest.TestCase):
         self.root = Path(temporary.name)
         files = {
             "README.md": "# Fixture\n",
+            "GOVERNANCE.md": "# Governance\n",
+            "CHANGELOG.md": "# Changelog\n",
             "AGENTS.md": "# Shared instructions\n",
             "CLAUDE.md": "@AGENTS.md\n",
             "docs/README.md": "# Docs\n",
@@ -49,6 +51,16 @@ class FoundationValidationTests(unittest.TestCase):
 
     def test_repository_foundation_is_valid(self):
         self.assertEqual(CHECKER.validate(REPOSITORY), [])
+
+    def test_links_are_checked_in_every_docs_folder(self):
+        self.write("docs/operations/README.md", "[gone](missing.md)\n")
+        self.assertTrue(any("docs/operations/README.md" in error for error in self.check()))
+
+    def test_prototype_storage_keys_are_not_skill_references(self):
+        self.write("docs/prototype/README.md", "Key `flux-ux-v8-local`.\n")
+        self.assertEqual(self.check(), [])
+        self.write("docs/operations/README.md", "Use `flux-missing-skill`.\n")
+        self.assertTrue(any("missing skill flux-missing-skill" in error for error in self.check()))
 
     def test_claude_must_import_shared_instructions(self):
         self.write("CLAUDE.md", "# Separate instructions\n")
@@ -81,6 +93,14 @@ class FoundationValidationTests(unittest.TestCase):
         self.write("docs/agents/README.md", "[GitHub](https://github.com/ColdPhase/flux)\n")
         self.assertEqual(self.check(), [])
 
+    def test_link_anchor_must_name_an_existing_heading(self):
+        self.write("docs/agents/guide.md", "# Guide\n\n## Working rules\n\n## Working rules\n\n```\n## Not a heading\n```\n")
+        self.write("docs/agents/README.md", "# Agent design\n\n[Rules](guide.md#working-rules) [Second](guide.md#working-rules-1) [Own](#agent-design)\n")
+        self.assertEqual(self.check(), [])
+        self.write("docs/agents/README.md", "[Old](guide.md#identity) [Fenced](guide.md#not-a-heading)\n")
+        errors = self.check()
+        self.assertTrue(any("guide.md#identity" in error and "missing heading anchor" in error for error in errors))
+        self.assertTrue(any("guide.md#not-a-heading" in error for error in errors))
 
 if __name__ == "__main__":
     unittest.main()

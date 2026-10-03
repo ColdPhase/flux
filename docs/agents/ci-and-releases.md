@@ -30,8 +30,8 @@ application functionality.
 
 The `Application validation` contract ([#143](https://github.com/ColdPhase/flux/issues/143))
 uses the pinned application's Docker `test` target: its build performs compilation,
-type checks and lint, then a disposable container runs `tests/app/architecture.test.ts`
-and every `tests/app/*-core.test.ts`. These portable tests run without networking,
+type checks and lint, then a disposable container runs `app/tests/app/architecture.test.ts`
+and every `app/tests/app/*-core.test.ts`. These portable tests run without networking,
 database, worker or browser services. Every main-targeted PR receives the same
 check, obsolete runs are cancelled, and an explicit dispatch can check the base.
 The workflow does not automatically duplicate a successful merge on a main push.
@@ -179,6 +179,16 @@ perform any deployment only for the named, authorized target, then verify it.
 provides versioned release notes and downloadable assets. A runnable backend needs
 a hosting/deployment target; [GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages)
 serves static sites. Choose hosting with the application's architecture.
+
+Flux implements this as two explicit `workflow_dispatch` workflows on `main`, neither run
+by a PR or a push ([#77](https://github.com/ColdPhase/flux/issues/77)):
+[`final-release.yml`](../../.github/workflows/final-release.yml) checks the exact candidate
+SHA and both agents' acceptance, builds the amd64/arm64 image by digest, packages the
+digest-pinned operator assets, smoke-tests their install and paired backup/restore, and creates
+a draft Release; [`publish-release.yml`](../../.github/workflows/publish-release.yml) publishes
+only after an independent exact artifact review. Their assets, flow, design notes and the gates
+that remain open (credential, package visibility, candidate acceptance, platform evidence)
+are in the [release pipeline](../development/release-pipeline.md).
 
 ## Evidence for completion
 

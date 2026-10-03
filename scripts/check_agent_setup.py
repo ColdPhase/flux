@@ -12,6 +12,27 @@ import sys
 from urllib.parse import unquote, urlsplit
 
 
+def heading_anchors(content: str) -> set[str]:
+    """GitHub's anchors for a Markdown file: heading slugs (with -1, -2 for repeats) and explicit ids."""
+    anchors: set[str] = set(re.findall(r'<a\s+(?:id|name)="([^"]+)"', content))
+    seen: dict[str, int] = {}
+    in_fence = False
+    for line in content.splitlines():
+        if line.lstrip().startswith(("```", "~~~")):
+            in_fence = not in_fence
+            continue
+        match = None if in_fence else re.match(r"^#{1,6}\s+(.*?)\s*#*\s*$", line)
+        if not match:
+            continue
+        text = re.sub(r"`([^`]*)`", r"\1", match[1])
+        text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
+        slug = re.sub(r"[^\w\- ]", "", text.lower()).replace(" ", "-")
+        count = seen.get(slug, 0)
+        seen[slug] = count + 1
+        anchors.add(slug if count == 0 else f"{slug}-{count}")
+    return anchors
+
+
 def validate(root: Path) -> list[str]:
     root = root.resolve()
     errors: list[str] = []
@@ -34,12 +55,10 @@ def validate(root: Path) -> list[str]:
     skill_files = sorted(shared.glob("*/SKILL.md"))
     require(bool(skill_files), ".agents/skills: no SKILL.md files found")
     skill_names = {path.parent.name for path in skill_files}
-    documents = [root / "README.md", agents, claude, root / "docs/README.md",
-                 root / "docs/CONTRIBUTING.md", *sorted((root / "docs/agents").rglob("*.md")),
-                 *sorted((root / "docs/product").rglob("*.md")),
-                 *sorted((root / "docs/design").rglob("*.md")),
-                 *sorted((root / "docs/development").rglob("*.md")),
-                 *skill_files]
+    # Every Markdown file under docs/ (#84 AC-1), plus the root instructions and skills.
+    documents = list(dict.fromkeys([root / "README.md", agents, claude, root / "GOVERNANCE.md", root / "CHANGELOG.md",
+                                    *sorted((root / "docs").rglob("*.md")), *skill_files]))
+    anchor_cache: dict[Path, set[str]] = {}
     for path in skill_files:
         body = path.read_text(encoding="utf-8")
         parts = body.split("---", 2)
@@ -58,16 +77,25 @@ def validate(root: Path) -> list[str]:
             errors.append(f"missing document: {path.relative_to(root)}")
             continue
         content = path.read_text(encoding="utf-8")
-        for skill in re.findall(r"`(flux-[a-z0-9-]+)`", content):
+        # The v8 prototype notes (Polish, historical) use `flux-*` for browser storage keys.
+        skills = [] if path.is_relative_to(root / "docs/prototype") else re.findall(r"`(flux-[a-z0-9-]+)`", content)
+        for skill in skills:
             require(skill in skill_names,
                     f"{path.relative_to(root)}: references missing skill {skill}")
         for link in re.findall(r"\[[^\]\n]*\]\(([^)\n]+)\)", content):
             url = urlsplit(link.strip().strip("<>"))
-            if url.scheme or url.netloc or not url.path:
+            if url.scheme or url.netloc or (not url.path and not url.fragment):
                 continue
-            destination = (path.parent / unquote(url.path)).resolve()
-            require(destination.is_relative_to(root) and destination.exists(),
-                    f"{path.relative_to(root)}: broken/local-external link {link}")
+            destination = (path.parent / unquote(url.path)).resolve() if url.path else path.resolve()
+            if not (destination.is_relative_to(root) and destination.exists()):
+                errors.append(f"{path.relative_to(root)}: broken/local-external link {link}")
+                continue
+            # A fragment into a Markdown file must name one of its headings or explicit anchors.
+            if url.fragment and destination.suffix == ".md" and destination.is_file():
+                if destination not in anchor_cache:
+                    anchor_cache[destination] = heading_anchors(destination.read_text(encoding="utf-8"))
+                require(unquote(url.fragment).lower() in anchor_cache[destination],
+                        f"{path.relative_to(root)}: link {link} names a missing heading anchor")
     return errors
 
 

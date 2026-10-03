@@ -94,6 +94,13 @@
 .wd-link:hover { background: var(--bg-hover); }
 .wd-inline { display: inline; padding: 0; color: var(--text); font-weight: 500; text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
 .wd-muted { font-size: var(--fs-sm) !important; color: var(--text-3) !important; }
+/* Criteria and prerequisites of a planned task (#152): plain list, state in words, no checkbox that implies a check. */
+.wd-criteria { margin: 0 0 6px; padding-left: 18px; font-size: var(--fs-md); line-height: 1.5; }
+.wd-criteria li { padding: 2px 0; overflow-wrap: anywhere; }
+.wd-waiting { margin: 0 0 4px; font-size: var(--fs-sm) !important; color: var(--text-2) !important; }
+.wd-link .wd-dot { flex: none; margin-right: 2px; }
+.wd-plan { margin-top: 8px; font-size: var(--fs-sm) !important; color: var(--text-2) !important; overflow-wrap: anywhere; }
+.wd-plan code { padding: 1px 4px; border-radius: var(--r-sm); background: var(--bg-hover); font-size: .92em; }
 .wd-quote { margin-top: 6px; padding-left: 12px; border-left: 2px solid var(--line-strong); font-size: var(--fs-sm) !important; }
 .wd-audience { display: flex; align-items: center; gap: 6px; }
 .wd-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
@@ -138,6 +145,53 @@
 .project-convo__message .ws-acts--more { position: absolute; top: 0; right: -10px; margin: 0; }
 .ws-more { justify-content: center; width: 44px; height: 44px; padding: 0; color: var(--text-3); }
 .project-convo__message:has(.ws-acts--more) .project-convo__message-meta { padding-right: 36px; }
+/* Quiet, project-scoped comparison proposals on the Tasks return surface. */
+.ws-proposals__intro { margin: 0 0 8px; color: var(--text-2); font-size: var(--fs-sm); }
+.ws-proposals__jumps { display: flex; gap: 12px; margin: -4px 0 6px; }
+.ws-proposals__jumps button { min-height: 28px; font-size: var(--fs-sm); color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.ws-proposals__jumps button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ws-proposal { padding: 8px 0; border-top: 1px solid var(--line); }
+.ws-proposal__toggle { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 10px; width: 100%; min-height: 36px; padding: 0; text-align: left; }
+.ws-proposal__toggle:hover .ws-proposal__action, .ws-proposal__toggle:focus-visible .ws-proposal__action { color: var(--accent); }
+.ws-proposal__toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-sm); }
+.ws-proposal__action { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-md); font-weight: 600; line-height: 1.35; }
+.ws-proposal__expand { color: var(--accent); font-size: var(--fs-sm); font-weight: 500; }
+.ws-proposal__source { grid-column: 1 / -1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); font-size: var(--fs-sm); }
+.ws-proposal__origin { margin: 2px 0 0; color: var(--text-3); font-size: var(--fs-xs); }
+.ws-proposal__body { margin: 10px 0 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r); }
+.ws-proposal p { line-height: 1.4; overflow-wrap: anywhere; }
+.ws-proposal__detail { display: grid; grid-template-columns: 108px minmax(0, 1fr); gap: 8px; margin: 3px 0; }
+.ws-proposal__detail strong { color: var(--text-2); font-size: var(--fs-sm); font-weight: 600; }
+.ws-proposal__sources { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 7px; padding-top: 6px; border-top: 1px solid var(--line); font-size: var(--fs-sm); }
+.ws-proposal__sources ul { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; padding: 0; list-style: none; }
+.ws-proposal__sources a, .ws-proposal__sources button { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.ws-proposal__sources li { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.ws-proposal__sources small { color: var(--text-2); font-size: inherit; }
+.ws-proposal__evidence { display: block; }
+.ws-proposal__evidence summary { min-height: 28px; color: var(--accent); cursor: pointer; }
+.ws-proposal__evidence summary span { color: var(--text-2); }
+.ws-proposal__evidence ul { display: grid; gap: 4px; margin-top: 6px; }
+.ws-proposal__evidence > p { margin-top: 4px; }
+.ws-proposal__evidence summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ws-proposal__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.ws-proposal label { display: block; margin: 8px 0; color: var(--text-2); font-size: var(--fs-sm); font-weight: 600; }
+.ws-proposal textarea { display: block; width: 100%; min-height: 66px; margin-top: 4px; padding: 8px 10px; resize: vertical; color: var(--text); background: var(--bg); border: 1px solid var(--line-strong); border-radius: var(--r); font: inherit; font-weight: 400; }
+.ws-proposal textarea:focus-visible, .ws-proposal__sources a:focus-visible, .ws-proposal__sources button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 640px) {
+  .ws-proposal__detail { display: block; }
+  .ws-proposal__detail strong { display: block; }
+  .ws-proposal { padding: 10px 0; }
+  .ws-proposal__toggle { min-height: 44px; }
+  .ws-proposal__action, .ws-proposal__fact { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; white-space: normal; }
+  .ws-proposal__source { white-space: normal; }
+  .ws-proposal__trigger { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ws-proposal__separator { display: none; }
+}
+@media (pointer: coarse) {
+  .ws-proposal__sources a, .ws-proposal__sources button, .ws-proposals__jumps button { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 44px; min-height: 44px; }
+  .ws-proposal__evidence summary { min-height: 44px; }
+  .ws-proposal textarea { font-size: 16px; }
+}
 
 /* Task views (#136 AC-2): one row of whole labels with an unmistakable current view. On a phone
    the row scrolls sideways as a unit and the chosen view is scrolled into sight; no clipped column. */

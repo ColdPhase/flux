@@ -21,7 +21,7 @@ import {
   type ProposeDecisionCommand,
   type UpdateWorkCommand,
   type ConversationWindowQuery,
-  type SendMessageCommand,
+  type TaskContributionCommand,
 } from '@flux/contracts';
 import { assertAuthorized, InvalidInputError, type Database, type ResourceRef } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
@@ -41,14 +41,22 @@ const refs = { type: 'array', maxItems: WORK_LIMITS.links, items: objectRef } as
 const ids = { type: 'array', maxItems: WORK_LIMITS.links, items: { type: 'string' } } as const;
 const status = { type: 'string', enum: [...WORK_STATUSES] } as const;
 const version = { type: 'integer', minimum: 1 } as const;
+// Plan fields (#152). Core trims and bounds them exactly; the schema only fixes their shape and size.
+const criteria = { type: 'array', maxItems: WORK_LIMITS.criteria, items: { type: 'string' } } as const;
+const dependencyIds = { type: 'array', maxItems: WORK_LIMITS.dependencies, items: { type: 'string' } } as const;
+const planIntent = { type: ['object', 'null'], required: ['materialId', 'version', 'intentKey'], additionalProperties: false,
+  properties: { materialId: { type: 'string' }, version: { type: 'integer' }, intentKey: { type: 'string' } } } as const;
 
 const createWork = { type: 'object', required: ['title'], additionalProperties: false, properties: {
   title, outcome: { type: 'string', maxLength: WORK_LIMITS.outcome }, owner: principalRef, status,
   blocker: { type: 'string', maxLength: WORK_LIMITS.blocker }, sources: refs, related: refs, clientCommandId: { type: 'string', format: 'uuid' },
+  criteria, dependencyIds, planIntent,
 } } as const;
 const updateWork = { type: 'object', additionalProperties: false, minProperties: 1, properties: {
   title, outcome: { type: 'string', maxLength: WORK_LIMITS.outcome }, owner: principalRef, status,
   blocker: { type: ['string', 'null'], maxLength: WORK_LIMITS.blocker }, parked: { type: 'boolean', enum: [false] }, expectedVersion: version,
+  clientCommandId: { type: 'string', format: 'uuid' },
+  criteria, dependencyIds,
 } } as const;
 const proposeDecision = { type: 'object', required: ['title'], additionalProperties: false, properties: {
   title, rationale: { type: 'string', maxLength: WORK_LIMITS.rationale }, supersedes: { type: 'string' }, sources: refs, affects: ids,
@@ -57,6 +65,7 @@ const acceptDecision = { type: 'object', additionalProperties: false, properties
 const createResult = { type: 'object', required: ['title', 'finding'], additionalProperties: false, properties: {
   title, finding: { type: 'string', enum: ['positive', 'negative'] }, evidence: { type: 'string', maxLength: WORK_LIMITS.evidence },
   sources: refs, work: ids, decisions: ids, finishes: { type: 'object', required: ['id', 'expectedVersion'], additionalProperties: false, properties: { id: { type: 'string' }, expectedVersion: version } },
+  clientCommandId: { type: 'string', format: 'uuid' },
 } } as const;
 const createLink = { type: 'object', required: ['from', 'to'], additionalProperties: false, properties: {
   from: { type: 'object', required: ['type', 'id'], additionalProperties: false, properties: { type: { type: 'string', enum: ['work', 'decision', 'result'] }, id: { type: 'string' } } },
@@ -83,13 +92,14 @@ export async function workRoutes(app: FastifyInstance, { db, sessions }: Options
     { schema: { querystring: { type: 'object', additionalProperties: false,
       properties: { limit: { type: 'integer' }, beforeSequence: { type: 'integer' } } } } },
     async (request) => discussion.getDiscussion(await principal(request), request.params.workId, request.query));
-  app.post<{ Params: { workId: string }; Body: SendMessageCommand }>(taskDiscussionPath(':workId'),
+  app.post<{ Params: { workId: string }; Body: TaskContributionCommand }>(taskDiscussionPath(':workId'),
     { preValidation: async (request) => {
       // Reject attempted authorship before AJV can strip additional fields.
       if (request.body && (Object.hasOwn(request.body, 'author') || Object.hasOwn(request.body, 'authorId')))
         throw new InvalidInputError('The authenticated actor supplies message authorship');
     }, schema: { body: { type: 'object', required: ['body', 'clientMessageId'], additionalProperties: false,
       properties: { body: { type: 'string', minLength: 1, maxLength: 100_000 }, clientMessageId: { type: 'string' },
+        kind: { type: 'string', enum: ['text', 'handoff'] },
         source: { type: 'object', required: ['materialId', 'version'], additionalProperties: false,
           properties: { materialId: { type: 'string' }, version: { type: 'integer' } } } } } } },
     async (request, reply) => reply.code(201).send(await discussion.contribute(await principal(request), request.params.workId, request.body)));
@@ -109,7 +119,12 @@ export async function workRoutes(app: FastifyInstance, { db, sessions }: Options
     const item = await work.getWork(await principal(request), request.params.workId);
     return reply.header('etag', versionEtag(item)).send(item);
   });
-  app.patch<{ Params: { workId: string }; Body: UpdateWorkCommand }>(workItemPath(':workId'), { schema: { body: updateWork } },
+  app.patch<{ Params: { workId: string }; Body: UpdateWorkCommand }>(workItemPath(':workId'), { schema: { body: updateWork },
+    // A plan intent is immutable: say so instead of letting the schema silently drop the field.
+    preValidation: async (request) => {
+      if (request.body && typeof request.body === 'object' && Object.hasOwn(request.body, 'planIntent'))
+        throw new InvalidInputError('A task keeps the plan intent it was created with', 'PLAN_INTENT_IMMUTABLE');
+    } },
     async (request, reply) => command(request, reply, {
       operation: `PATCH ${workItemPath(':workId')}`, scope: null, etag: true,
       run: (actor, conn) => workUseCases(conn).updateWork(actor, request.params.workId, request.body, expectedVersion(request)),

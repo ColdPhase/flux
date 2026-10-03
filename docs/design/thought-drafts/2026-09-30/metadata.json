@@ -1,0 +1,36 @@
+{
+  "source": "0739dc1968f3e7fff6f91bee7bdbd3351a43c267",
+  "date": "2026-09-30",
+  "focused_tests": 9,
+  "seconds": 21.428,
+  "browser_measurements": 30,
+  "screenshots": 20,
+  "viewports": {
+    "desktop": [
+      1440,
+      900
+    ],
+    "phone": [
+      390,
+      844
+    ],
+    "tablet": [
+      820,
+      1180
+    ]
+  },
+  "browser_zoom": 100,
+  "source_sha256": {
+    "apps/web/src/sketch/createdDraft.ts": "34ed3d0d9018a7dcd765e3c8b9865e2f7d283a544a912987b35aa6433913a6bc",
+    "apps/web/src/sketch/DraftCapture.tsx": "feea7a01d97a9e7f26a13c99e21ec63f2961f81fd9dc42c9de07bbb216ddaf0e",
+    "apps/web/src/sketch/SketchView.tsx": "6a60c3abcc9f4b1fa5856e83d91aeac8517ba530f6f1f0fad4789edbfff90093",
+    "apps/web/src/sketch/SketchList.tsx": "acdd93432c634fc162bafd7b02d3b3a6a88a215e38ae11bf7ca23aee741c0396",
+    "apps/web/src/sketch/ThoughtEditor.tsx": "c530bff811b8d31395e6dfd3a352078b3057e79b65bb9dc77fcfd49986d4eed2",
+    "apps/web/src/sketch/sketch.css": "d40bfef57ee439dc6be99e8ac0a9ae1679b97c9fcb93ec6bf91ee29a1a1d7da4",
+    "apps/web/src/app/errors.tsx": "0659117deefa0ee8298cca441d6be8dd2e2437eb5e1c22c77f28d0439b6e9804",
+    "apps/web/src/auth/logic.ts": "1d7bab3d95348e0e66f9f5890d58518d9299e91e17044dcdefd002235d65968f",
+    "tests/ui/test_thought_drafts.py": "0065d2848deebcb974d2f55c929c25b3774e5113a5ea4b49b4140ffba2790f31",
+    "apps/web/src/sketch/doc.ts": "8abc0239d0f69f36fd9ee97a4cd72494ac33cf6d5b8e4f736ad55b38bbbd918e"
+  },
+  "limits": "Browser emulation is not physical-device/PWA or complete screen-reader acceptance; the #136 four-view shell integration remains required. Full current regression and independent screenshot review are tracked separately."
+}

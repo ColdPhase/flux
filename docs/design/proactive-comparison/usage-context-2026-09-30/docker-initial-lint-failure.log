@@ -1,0 +1,208 @@
+ Image flux-e2e:flux-test-1790793879-2388500 Building 
+ Image flux-test-tools:flux-test-1790793879-2388500 Building 
+ Image flux-foundation:flux-test-1790793879-2388500 Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.79kB done
+#1 DONE 0.0s
+
+#2 [migrate internal] load build definition from Dockerfile
+#2 transferring dockerfile: 2.81kB done
+#2 DONE 0.1s
+
+#3 [migrate internal] load metadata for docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#3 DONE 0.0s
+
+#4 [pushmock internal] load metadata for mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+#4 DONE 0.0s
+
+#5 [test internal] load .dockerignore
+#5 transferring context: 180B done
+#5 DONE 0.1s
+
+#6 [migrate build 1/6] FROM docker.io/library/node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#6 DONE 0.0s
+
+#7 [pushmock e2e 1/3] FROM mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
+#7 DONE 0.0s
+
+#8 [migrate internal] load build context
+#8 transferring context: 2.34MB 0.1s done
+#8 DONE 0.1s
+
+#9 [pushmock build 2/6] WORKDIR /app
+#9 CACHED
+
+#10 [pushmock build 3/6] RUN corepack enable && corepack install -g pnpm@12.6.0
+#10 CACHED
+
+#11 [migrate build 4/6] COPY . .
+#11 DONE 0.7s
+
+#12 [pushmock build 5/6] RUN pnpm install --frozen-lockfile
+#12 0.722 Downloading the pnpm 12.6.0 binary for linux-x64...
+#12 3.905 Scope: all 10 workspace projects
+#12 3.929 ? Verifying lockfile against supply-chain policies (482 entries)...
+#12 4.317 Packages are hard linked from the content-addressable store to the virtual store.
+#12 4.317   Content-addressable store is at: /root/.local/share/pnpm/store/v11
+#12 4.317   Virtual store is at:             node_modules/.pnpm
+#12 4.873 Update available! 12.6.0 → 12.8.1.
+#12 4.873 Changelog: https://pnpm.io/v/12.8.1
+#12 4.873 To update, run: curl -fsSL https://get.pnpm.io/install.sh | sh -
+#12 5.463 [WARN] Tarball download average speed 47 KiB/s (size 63 KiB) is below 50 KiB/s: https://registry.npmjs.org/find-my-way/-/find-my-way-9.9.0.tgz (GET)
+#12 5.792 [WARN] Tarball download average speed 26 KiB/s (size 30 KiB) is below 50 KiB/s: https://registry.npmjs.org/esbuild/-/esbuild-0.25.12.tgz (GET)
+#12 5.969 [WARN] Tarball download average speed 7 KiB/s (size 11 KiB) is below 50 KiB/s: https://registry.npmjs.org/safer-buffer/-/safer-buffer-2.1.2.tgz (GET)
+#12 6.607 [WARN] Tarball download average speed 25 KiB/s (size 57 KiB) is below 50 KiB/s: https://registry.npmjs.org/graphemer/-/graphemer-1.4.0.tgz (GET)
+#12 6.730 [WARN] Tarball download average speed 28 KiB/s (size 38 KiB) is below 50 KiB/s: https://registry.npmjs.org/argparse/-/argparse-2.0.1.tgz (GET)
+#12 6.849 [WARN] Tarball download average speed 17 KiB/s (size 24 KiB) is below 50 KiB/s: https://registry.npmjs.org/domutils/-/domutils-4.0.2.tgz (GET)
+#12 7.236 [WARN] Tarball download average speed 45 KiB/s (size 63 KiB) is below 50 KiB/s: https://registry.npmjs.org/fast-json-stringify/-/fast-json-stringify-6.4.0.tgz (GET)
+#12 7.476 [WARN] Tarball download average speed 19 KiB/s (size 30 KiB) is below 50 KiB/s: https://registry.npmjs.org/@jridgewell/trace-mapping/-/trace-mapping-0.3.31.tgz (GET)
+#12 8.336 [WARN] Tarball download average speed 6 KiB/s (size 13 KiB) is below 50 KiB/s: https://registry.npmjs.org/sdp-transform/-/sdp-transform-2.15.0.tgz (GET)
+#12 8.411 Downloading @rolldown/binding-linux-x64-musl@1.2.11: 0.00 B/7.92 MB
+#12 8.440 [WARN] Tarball download average speed 1 KiB/s (size 6 KiB) is below 50 KiB/s: https://registry.npmjs.org/fast-json-stable-stringify/-/fast-json-stable-stringify-2.1.0.tgz (GET)
+#12 8.494 [WARN] Tarball download average speed 5 KiB/s (size 8 KiB) is below 50 KiB/s: https://registry.npmjs.org/mdurl/-/mdurl-2.1.0.tgz (GET)
+#12 8.893 [WARN] Tarball download average speed 7 KiB/s (size 8 KiB) is below 50 KiB/s: https://registry.npmjs.org/fast-sha256/-/fast-sha256-1.3.0.tgz (GET)
+#12 9.879 [WARN] Tarball download average speed 48 KiB/s (size 111 KiB) is below 50 KiB/s: https://registry.npmjs.org/@babel/generator/-/generator-7.29.8.tgz (GET)
+#12 10.01 [WARN] Tarball download average speed 36 KiB/s (size 85 KiB) is below 50 KiB/s: https://registry.npmjs.org/webrtc-adapter/-/webrtc-adapter-9.0.6.tgz (GET)
+#12 10.24 [WARN] Tarball download average speed 30 KiB/s (size 151 KiB) is below 50 KiB/s: https://registry.npmjs.org/@modelcontextprotocol/core/-/core-2.1.0.tgz (GET)
+#12 10.44 [WARN] Tarball download average speed 29 KiB/s (size 71 KiB) is below 50 KiB/s: https://registry.npmjs.org/jose/-/jose-5.10.0.tgz (GET)
+#12 11.32 [WARN] Tarball download average speed 20 KiB/s (size 99 KiB) is below 50 KiB/s: https://registry.npmjs.org/minimatch/-/minimatch-9.0.9.tgz (GET)
+#12 11.51 [WARN] Tarball download average speed 18 KiB/s (size 73 KiB) is below 50 KiB/s: https://registry.npmjs.org/@eslint/config-array/-/config-array-0.21.2.tgz (GET)
+#12 11.80 [WARN] Tarball download average speed 1 KiB/s (size 13 KiB) is below 50 KiB/s: https://registry.npmjs.org/debug/-/debug-4.4.3.tgz (GET)
+#12 12.39 ✓ Lockfile passes supply-chain policies (482 entries in 8.5s)
+#12 12.39 Lockfile is up to date, resolution step is skipped
+#12 19.92 [WARN] Tarball download average speed 1 KiB/s (size 20 KiB) is below 50 KiB/s: https://registry.npmjs.org/@types/nodemailer/-/nodemailer-8.0.2.tgz (GET)
+#12 19.99 Packages: +411
+#12 19.99 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#12 20.03 Progress: resolved 411, reused 0, downloaded 411, added 411, done
+#12 20.03 .../esbuild@0.18.20/node_modules/esbuild postinstall$ node install.js
+#12 20.03 .../esbuild@0.25.12/node_modules/esbuild postinstall$ node install.js
+#12 20.08 .../esbuild@0.25.12/node_modules/esbuild postinstall: Done
+#12 20.09 .../esbuild@0.18.20/node_modules/esbuild postinstall: Done
+#12 20.22 
+#12 20.22 dependencies:
+#12 20.22 + @flux/contracts link:packages/contracts
+#12 20.22 + @flux/core link:packages/core
+#12 20.22 + @flux/db link:packages/db
+#12 20.22 + pg-boss 12.35.0
+#12 20.22 
+#12 20.22 devDependencies:
+#12 20.22 + @eslint/js 9.37.0
+#12 20.22 + @types/node 24.6.2
+#12 20.22 + @types/nodemailer 8.0.2
+#12 20.22 + @types/pg 8.15.5
+#12 20.22 + @types/sanitize-html 2.16.1
+#12 20.22 + @types/ws 8.18.1
+#12 20.22 + drizzle-orm 0.45.3
+#12 20.22 + eslint 9.37.0
+#12 20.22 + eslint-plugin-react-hooks 7.1.1
+#12 20.22 + fastify 5.6.1
+#12 20.22 + playwright 1.63.0
+#12 20.22 + tsx 4.20.5
+#12 20.22 + typescript 5.9.2
+#12 20.22 + typescript-eslint 8.44.1
+#12 20.22 + ws 8.22.0
+#12 20.22 
+#12 20.24 Done in 16.3s using pnpm v12.6.0
+#12 DONE 21.0s
+
+#13 [migrate build 6/6] RUN pnpm build && pnpm typecheck && pnpm lint
+#13 0.466 $ pnpm -r --if-present build && tsc -p infra/tsconfig.build.json
+#13 0.547 packages/contracts build$ tsc -p tsconfig.build.json
+#13 2.152 packages/contracts build: Done
+#13 2.153 packages/db build$ tsc -p tsconfig.build.json
+#13 2.153 packages/sdk build$ tsc -p tsconfig.build.json
+#13 2.153 apps/web build$ vite build
+#13 2.369 apps/web build: vite v8.3.1 building client environment for production...
+#13 2.383 apps/web build: transforming...
+#13 2.833 apps/web build: ✓ 260 modules transformed.
+#13 3.096 apps/web build: rendering chunks...
+#13 3.291 apps/web build: computing gzip size...
+#13 3.298 apps/web build: dist/index.html                                              1.21 kB │ gzip:   0.53 kB
+#13 3.298 apps/web build: dist/sw.js                                                   6.70 kB
+#13 3.298 apps/web build: dist/assets/inter-vietnamese-wght-normal-CBcvBZtf.woff2     10.25 kB
+#13 3.298 apps/web build: dist/assets/inter-greek-ext-wght-normal-DlzME5K_.woff2      11.23 kB
+#13 3.298 apps/web build: dist/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2       18.74 kB
+#13 3.298 apps/web build: dist/assets/inter-greek-wght-normal-CkhJZR-_.woff2          18.99 kB
+#13 3.298 apps/web build: dist/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2   25.96 kB
+#13 3.298 apps/web build: dist/assets/inter-latin-wght-normal-Dx4kXJAl.woff2          48.25 kB
+#13 3.298 apps/web build: dist/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2      85.06 kB
+#13 3.298 apps/web build: dist/assets/index-D8tvYOrF.css                             159.00 kB │ gzip:  27.82 kB
+#13 3.298 apps/web build: dist/assets/media-iyUcxtub.js                              419.65 kB │ gzip: 108.68 kB
+#13 3.298 apps/web build: dist/assets/index-DjzL_5Ec.js                              769.91 kB │ gzip: 226.09 kB
+#13 3.298 apps/web build: 
+#13 3.299 apps/web build: [33m[MODULE_LEVEL_DIRECTIVE] [0mThe semantics of the module level directive "use client" in "../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js" may not be preserved when bundling.
+#13 3.299 apps/web build:     [38;5;246m╭[0m[38;5;246m─[0m[38;5;246m[[0m ../../node_modules/.pnpm/react-router@8.4.0_react-dom@19.3.0_react@19.3.0__react@19.3.0/node_modules/react-router/dist/production/index.js:11:1 [38;5;246m][0m
+#13 3.299 apps/web build:     [38;5;246m│[0m
+#13 3.299 apps/web build:  [38;5;246m11 │[0m "use client";
+#13 3.299 apps/web build:  [38;5;240m   │[0m ──────┬──────  
+#13 3.299 apps/web build:  [38;5;240m   │[0m       ╰──────── module level directive may not be preserved
+#13 3.299 apps/web build:  [38;5;240m   │[0m 
+#13 3.299 apps/web build:  [38;5;240m   │[0m [38;5;115mHelp[0m: For more information, see https://rolldown.rs/in-depth/directives#other-directives
+#13 3.299 apps/web build: [38;5;246m────╯[0m
+#13 3.299 apps/web build: 
+#13 3.299 apps/web build: [plugin builtin:vite-reporter] 
+#13 3.299 apps/web build: (!) Some chunks are larger than 500 kB after minification. Consider:
+#13 3.299 apps/web build: - Using dynamic import() to code-split the application
+#13 3.299 apps/web build: - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+#13 3.299 apps/web build: - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+#13 3.299 apps/web build: ✓ built in 929ms
+#13 3.332 apps/web build: Done
+#13 4.089 packages/sdk build: Done
+#13 6.304 packages/db build: Done
+#13 6.304 packages/core build$ tsc -p tsconfig.build.json
+#13 8.344 packages/core build: Done
+#13 8.344 packages/agent-runtime build$ tsc -p tsconfig.build.json
+#13 8.344 apps/server build$ tsc -p tsconfig.build.json
+#13 9.354 packages/agent-runtime build: Done
+#13 9.354 apps/worker build$ tsc -p tsconfig.build.json
+#13 10.62 apps/worker build: Done
+#13 11.62 apps/server build: Done
+#13 12.60 $ tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json
+#13 22.76 $ eslint .
+#13 32.29 
+#13 32.29 /app/tests/app/e2e/proactive-outcomes.e2e.ts
+#13 32.29   206:99  error  '_context' is defined but never used  @typescript-eslint/no-unused-vars
+#13 32.29 
+#13 32.29 /app/tests/app/proactive-outcomes-core.test.ts
+#13 32.29   148:119  error  '_context' is defined but never used  @typescript-eslint/no-unused-vars
+#13 32.29 
+#13 32.29 /app/tests/app/proactive-outcomes.test.ts
+#13 32.29   162:57   error  '_context' is defined but never used  @typescript-eslint/no-unused-vars
+#13 32.29   162:121  error  '_context' is defined but never used  @typescript-eslint/no-unused-vars
+#13 32.29 
+#13 32.29 ✖ 4 problems (4 errors, 0 warnings)
+#13 32.29 
+#13 32.47 [ELIFECYCLE] Command failed with exit code 1.
+#13 ERROR: process "/bin/sh -c pnpm build && pnpm typecheck && pnpm lint" did not complete successfully: exit code: 1
+------
+ > [test build 6/6] RUN pnpm build && pnpm typecheck && pnpm lint:
+32.29 /app/tests/app/proactive-outcomes-core.test.ts
+32.29   148:119  error  '_context' is defined but never used  @typescript-eslint/no-unused-vars
+32.29 
+32.29 /app/tests/app/proactive-outcomes.test.ts
+32.29   162:57   error  '_context' is defined but never used  @typescript-eslint/no-unused-vars
+32.29   162:121  error  '_context' is defined but never used  @typescript-eslint/no-unused-vars
+32.29 
+32.29 ✖ 4 problems (4 errors, 0 warnings)
+32.29 
+32.47 [ELIFECYCLE] Command failed with exit code 1.
+------
+Dockerfile:6
+
+--------------------
+
+   4 |     COPY . .
+
+   5 |     RUN pnpm install --frozen-lockfile
+
+   6 | >>> RUN pnpm build && pnpm typecheck && pnpm lint
+
+   7 |     
+
+   8 |     FROM build AS test
+
+--------------------
+
+target pushmock: failed to solve: process "/bin/sh -c pnpm build && pnpm typecheck && pnpm lint" did not complete successfully: exit code: 1
+
+Removed 0 per-run image(s) tagged :flux-test-1790793879-2388500
