@@ -26,7 +26,11 @@ export async function projectConversationLoader({ params, request }: LoaderFunct
   // Work, decisions and results come with the project (#117 parent route).
   const [roots, notices, materials, members] = await Promise.all([
     listConversationRoots(projectId, {}, request.signal),
-    listTaskNotices(projectId, {}, request.signal),
+    // Announcements add to the stream; a failure that is not about access leaves the stream readable without them.
+    listTaskNotices(projectId, {}, request.signal).catch((error: unknown) => {
+      if (error instanceof ApiError && [401, 403, 404].includes(error.status)) throw error;
+      return { items: [], total: 0, limit: 100, offset: 0 };
+    }),
     listMaterials(projectId, request.signal),
     listWorkspaceMembers(project.workspaceId, request.signal).catch((error: unknown) => {
       if (error instanceof ApiError && error.status === 403) return [];

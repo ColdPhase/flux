@@ -92,8 +92,9 @@ export function TaskDiscussionSection({ workId, project, members, me }: {
             </Link>
           ) : writable ? (
             <form className="wd-discussion-form" onSubmit={(event) => void send(event)}>
-              <label htmlFor={fieldId}>Nobody has written about this task yet. The first message starts its discussion in the project conversation.</label>
-              <textarea id={fieldId} value={draft.text} rows={3} maxLength={20000} readOnly={sending} aria-busy={sending || undefined}
+              <p id={`${fieldId}-hint`} className="wd-discussion-form__hint">Nobody has written about this task yet. The first message starts its discussion in the project conversation.</p>
+              <label className="ui-vh" htmlFor={fieldId}>First message about this task</label>
+              <textarea id={fieldId} aria-describedby={`${fieldId}-hint`} value={draft.text} rows={3} maxLength={20000} readOnly={sending} aria-busy={sending || undefined}
                 placeholder="Write about this task…" onChange={(event) => { draft.setText(event.target.value); setSendError(''); }} onKeyDown={onKeyDown} />
               {draft.storage === 'visit' ? <p className="wd-muted">This browser does not keep drafts; it stays only while this page is open.</p> : null}
               {sendError ? <p className="wd-error" role="alert">{sendError}</p> : null}

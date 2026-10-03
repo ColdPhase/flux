@@ -36,6 +36,10 @@ FIRST_WORD = "I will measure it tonight in the dark room and post the numbers he
 FIRST_REPLY = "Use the black cloth so the shelf does not reflect."
 LATER = "Which shop has the boards in stock this week?"
 LIVE_TASK = "Write the shop a question about delivery"
+LINKED = "The message a link points to: does the base need a heavier foot?"
+EARLY_CHORES = 10
+CHORES = 100
+LATER_NOTES = 48
 
 
 class TaskAnnouncements(unittest.TestCase):
@@ -88,10 +92,25 @@ class TaskAnnouncements(unittest.TestCase):
         first = post("jonas", f"/api/v1/work/{measure['id']}/discussion", {"body": FIRST_WORD, "clientMessageId": str(uuid.uuid4())})
         post("ada", f"/api/v1/conversations/{first['conversationId']}/messages", {"body": FIRST_REPLY, "clientMessageId": str(uuid.uuid4())})
         later = start("ada", LATER)
+        # A busy board: more announcements than one page (100), all roots in one window (50). The ten
+        # oldest announcements arrive after the stream is shown and sit between roots already on screen.
+        busy = post("ada", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Busy board", "visibility": "restricted"})
+        bid = busy["id"]
+        start_in = lambda body: post("ada", f"/api/v1/projects/{bid}/conversations", {"body": body, "clientMessageId": str(uuid.uuid4())})  # noqa: E731
+        chore = lambda title: post("ada", f"/api/v1/projects/{bid}/work", {"title": title, "clientCommandId": str(uuid.uuid4())})  # noqa: E731
+        start_in("The board's first idea: a list of every small job.")
+        for index in range(EARLY_CHORES):
+            chore(f"Early chore {index:02}")
+        linked = start_in(LINKED)
+        for index in range(CHORES):
+            chore(f"Chore {index:03}")
+        for index in range(LATER_NOTES):
+            start_in(f"Later note {index:02} on the board.")
         for context in contexts.values():
             context.close()
         cls.ids.update(project=pid, early=early["id"], question=question["messages"][0]["id"], from_message=from_message["id"],
-                       measure=measure["id"], first=first["id"], thread=first["conversationId"], later=later["messages"][0]["id"])
+                       measure=measure["id"], first=first["id"], thread=first["conversationId"], later=later["messages"][0]["id"],
+                       busy=bid, linked=linked["id"], linked_root=linked["messages"][0]["id"])
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -303,7 +322,8 @@ class TaskAnnouncements(unittest.TestCase):
         page.goto(f"/projects/{pid}")
         before = self.counts(page)
         section = self.open_task_from_stream(page, self.ids["from_message"], FROM_MESSAGE)
-        box = section.get_by_label(re.compile("^Nobody has written about this task yet"))
+        expect(section).to_contain_text("Nobody has written about this task yet.")
+        box = section.get_by_label("First message about this task")
         text = "I can pick the boards up on Friday; the shop keeps two for us."
         box.fill(text)
         # The draft is the task's own, kept across a reload under the key every view of the task uses.
@@ -311,7 +331,7 @@ class TaskAnnouncements(unittest.TestCase):
         self.assertEqual(page.evaluate("key => localStorage.getItem(key)", key), text)
         page.reload()
         section = self.open_task_from_stream(page, self.ids["from_message"], FROM_MESSAGE)
-        box = section.get_by_label(re.compile("^Nobody has written about this task yet"))
+        box = section.get_by_label("First message about this task")
         expect(box).to_have_value(text)
         # The server stores the first message but its answer is lost: the text stays and nothing claims success.
         path = f"**/api/v1/work/{self.ids['from_message']}/discussion"
@@ -352,6 +372,79 @@ class TaskAnnouncements(unittest.TestCase):
         expect(section).to_contain_text("Nobody has written about this task yet.")
         expect(section.get_by_role("textbox")).to_have_count(0)
         expect(section.get_by_role("button", name="Start the discussion")).to_have_count(0)
+
+
+    def hold_earlier_announcements(self, page: Page) -> list:
+        """Holds the read of the second announcement page until the test lets it through."""
+        held: list = []
+        page.route(re.compile(r"/task-notices\?limit=100&offset=100$"), lambda route: held.append(route))
+        return held
+
+    def wait_for(self, page: Page, condition, label: str) -> None:
+        for _ in range(100):
+            if condition():
+                return
+            page.wait_for_timeout(100)
+        self.fail(label)
+
+    def test_12_late_announcements_keep_a_linked_root_in_place(self) -> None:
+        page = self.page("ada")
+        held = self.hold_earlier_announcements(page)
+        page.goto(f"/projects/{self.ids['busy']}/conversations/{self.ids['linked']}")
+        root = page.locator(f"#message-{self.ids['linked_root']}")
+        expect(root).to_be_in_viewport()
+        expect(page.locator("#thread")).to_be_visible()
+        self.wait_for(page, lambda: bool(held), "the stream reads the earlier announcements")
+        page.wait_for_timeout(1500)
+        expect(page.locator(".convo-notice")).to_have_count(CHORES)
+        before = root.bounding_box()
+        assert before
+        held[0].continue_()
+        expect(page.locator(".convo-notice")).to_have_count(CHORES + EARLY_CHORES)
+        page.wait_for_timeout(300)
+        after = root.bounding_box()
+        assert after
+        self.assertAlmostEqual(after["y"], before["y"], delta=2, msg="announcements arriving above the linked root do not move it")
+        order = self.stream_order(page)
+        early = [index for index, key in enumerate(order) if key.startswith("task:")][:EARLY_CHORES]
+        self.assertTrue(all(index < order.index(f"message-{self.ids['linked_root']}") for index in early), "they sit above it, in time order")
+
+    def test_13_late_announcements_keep_a_reader_at_the_end(self) -> None:
+        page = self.page("ada")
+        held = self.hold_earlier_announcements(page)
+        page.goto(f"/projects/{self.ids['busy']}")
+        feed = page.locator(".project-convo__feed")
+        at_end = "feed => feed.scrollHeight - feed.scrollTop - feed.clientHeight < 48"
+        last = page.locator(".project-convo__message-list > li").last
+        expect(last).to_be_in_viewport()
+        self.wait_for(page, lambda: bool(held), "the stream reads the earlier announcements")
+        page.wait_for_timeout(500)
+        self.assertTrue(feed.evaluate(at_end))
+        held[0].continue_()
+        expect(page.locator(".convo-notice")).to_have_count(CHORES + EARLY_CHORES)
+        page.wait_for_timeout(300)
+        self.assertTrue(feed.evaluate(at_end), "the reader stays at the end")
+        expect(page.get_by_text(f"Later note {LATER_NOTES - 1:02} on the board.")).to_be_in_viewport()
+
+    def test_14_lost_write_access_keeps_the_text_and_stores_nothing(self) -> None:
+        page = self.page("jonas")
+        pid = self.ids["project"]
+        page.goto(f"/projects/{pid}")
+        section = self.open_task_from_stream(page, self.ids["live"], LIVE_TASK)
+        box = section.get_by_label("First message about this task")
+        text = "I will write to the shop tomorrow morning."
+        box.fill(text)
+        before = self.counts(page)
+        ada = self.page("ada")
+        self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": self.ids["jonas"]}, "role": "viewer"}, status=201)
+        self.addCleanup(lambda: self.api(ada, "POST", f"/api/v1/projects/{pid}/grants",
+                                         {"principal": {"kind": "human", "id": self.ids["jonas"]}, "role": "contributor"}, status=201))
+        section.get_by_role("button", name="Start the discussion").click()
+        expect(section.get_by_role("alert")).to_have_text("Not sent: you can no longer write to this task.")
+        expect(box).to_have_value(text)
+        self.assertEqual(self.counts(page), before, "no root, announcement or task")
+        discussion = self.api(page, "GET", f"/api/v1/work/{self.ids['live']}/discussion", status=200)
+        self.assertIsNone(discussion["root"])
 
 
 if __name__ == "__main__":

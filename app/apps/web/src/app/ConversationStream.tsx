@@ -89,11 +89,14 @@ export function useTaskNotices(projectId: string, page: Page<TaskCreationNotice>
   // How far back the stream shows: the first loaded root while earlier roots remain, otherwise everything.
   const reach = hasOlderRoots ? roots[0]?.message.createdAt ?? null : '';
   const more = notices.length < total;
+  // A failed read of earlier announcements is tried again a little later, not left missing.
+  const [retry, setRetry] = useState(0);
   useEffect(() => {
     if (!more || reach === null) return;
     const covered = () => !!noticesRef.current.length && reach !== '' && noticesRef.current[0]!.createdAt < reach;
     if (covered()) return;
     let cancelled = false;
+    let timer = 0;
     void (async () => {
       let loaded = noticesRef.current;
       let latestTotal = total;
@@ -108,11 +111,14 @@ export function useTaskNotices(projectId: string, page: Page<TaskCreationNotice>
       if (cancelled) return;
       setNotices((current) => mergeNotices(current, loaded));
       setTotal(latestTotal);
-    })().catch((cause: unknown) => deniedRef.current(cause));
-    return () => { cancelled = true; };
+    })().catch((cause: unknown) => {
+      deniedRef.current(cause);
+      if (!cancelled) timer = window.setTimeout(() => setRetry((value) => value + 1), 15000);
+    });
+    return () => { cancelled = true; window.clearTimeout(timer); };
     // `total` is read when more is needed, not followed: a refresh that only grows it never reads back.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, reach, more]);
+  }, [projectId, reach, more, retry]);
 
   return notices;
 }
@@ -241,6 +247,8 @@ export function ConversationStream({ project, meId, roots: stream, notices, work
   const columnRef = useRef<HTMLDivElement>(null);
   const restoreRef = useRef<number | null>(null);
   const pinRef = useRef<{ id: string; offset: number } | null>(null);
+  /** The first entry in view and its offset from the top, as the reader last left it. */
+  const anchorRef = useRef<{ id: string; offset: number } | null>(null);
   const openRef = useRef(openId);
   useEffect(() => { openRef.current = openId; }, [openId]);
   // The root a person opens keeps its place while the thread docks beside the stream and leaves again.
@@ -278,26 +286,26 @@ export function ConversationStream({ project, meId, roots: stream, notices, work
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reveal?.key, !!revealRoot]);
 
-  // Earlier roots keep the reader's place; new roots and announcements follow the reader only while they
-  // are at the end. A changed reply count or edit (the same last entry) never moves the stream: a reply
-  // sent in an open thread must leave the root the person opened where it was.
-  // Earlier announcements can arrive on their own, after the roots they sit between: the reader's place
-  // stays where it was then too.
+  // New entries follow the reader only while they are at the end. Anything else that joins the stream
+  // (earlier roots, or announcements that arrive on their own between roots already shown) keeps the
+  // entry the reader was looking at where it was. A changed reply count or edit (the same entries) never
+  // moves the stream: a reply sent in an open thread must leave the root the person opened where it was.
   const lastKey = entries.at(-1)?.key ?? null;
   const firstKey = entries[0]?.key ?? null;
-  const edgeRef = useRef({ first: firstKey, last: lastKey, height: 0 });
+  const edgeRef = useRef({ first: firstKey, last: lastKey, count: entries.length });
   useLayoutEffect(() => {
     const feed = feedRef.current;
     const edge = edgeRef.current;
-    const appended = lastKey !== edge.last;
-    const prepended = firstKey !== edge.first && !appended;
-    edgeRef.current = { first: firstKey, last: lastKey, height: feed?.scrollHeight ?? 0 };
+    const changed = lastKey !== edge.last || firstKey !== edge.first || entries.length !== edge.count;
+    edgeRef.current = { first: firstKey, last: lastKey, count: entries.length };
     if (!feed) return;
-    if (restoreRef.current !== null) { feed.scrollTop = feed.scrollHeight - restoreRef.current; restoreRef.current = null; }
-    else if (stickRef.current && appended) feed.scrollTop = feed.scrollHeight;
-    else if (prepended && edge.height) feed.scrollTop += feed.scrollHeight - edge.height;
-    edgeRef.current.height = feed.scrollHeight;
-  }, [roots, firstKey, lastKey]);
+    if (restoreRef.current !== null) { feed.scrollTop = feed.scrollHeight - restoreRef.current; restoreRef.current = null; return; }
+    if (!changed) return;
+    if (stickRef.current) { feed.scrollTop = feed.scrollHeight; return; }
+    const anchor = anchorRef.current;
+    const element = anchor ? document.getElementById(anchor.id) : null;
+    if (anchor && element) feed.scrollTop += element.getBoundingClientRect().top - feed.getBoundingClientRect().top - anchor.offset;
+  }, [roots, firstKey, lastKey, entries.length]);
   useLayoutEffect(() => {
     const feed = feedRef.current;
     if (!feed || !endToken) return;
@@ -310,7 +318,6 @@ export function ConversationStream({ project, meId, roots: stream, notices, work
   useEffect(() => {
     const feed = feedRef.current;
     if (!feed) return;
-    let anchor: { id: string; offset: number } | null = null;
     let width = feed.clientWidth;
     let frame = 0;
     // Only the person's own scrolling moves the opened root's place. A width change (the thread or Details
@@ -332,10 +339,10 @@ export function ConversationStream({ project, meId, roots: stream, notices, work
         const pinned = pinRef.current ? document.getElementById(pinRef.current.id)?.getBoundingClientRect() : null;
         pinRef.current = pinned && pinned.bottom > top && pinned.top < bottom ? { id: pinRef.current!.id, offset: pinned.top - top } : null;
       }
-      anchor = null;
-      for (const item of feed.querySelectorAll<HTMLElement>('.project-convo__message')) {
+      anchorRef.current = null;
+      for (const item of feed.querySelectorAll<HTMLElement>('.project-convo__message, .convo-notice')) {
         const box = item.getBoundingClientRect();
-        if (box.bottom > top + 1) { anchor = { id: item.id, offset: box.top - top }; break; }
+        if (box.bottom > top + 1) { anchorRef.current = { id: item.id, offset: box.top - top }; break; }
       }
     };
     const onScroll = () => { if (!frame) frame = requestAnimationFrame(record); };
@@ -349,7 +356,7 @@ export function ConversationStream({ project, meId, roots: stream, notices, work
       if (!widened && !grown) return;
       width = feed.clientWidth;
       height = column?.offsetHeight ?? 0;
-      const keep = widened ? pinRef.current ?? (stickRef.current ? null : anchor) : openRef.current ? pinRef.current : null;
+      const keep = widened ? pinRef.current ?? (stickRef.current ? null : anchorRef.current) : openRef.current ? pinRef.current : null;
       if (!widened && !keep) return;
       const element = keep ? document.getElementById(keep.id) : null;
       if (element && keep) feed.scrollTop += element.getBoundingClientRect().top - feed.getBoundingClientRect().top - keep.offset;
