@@ -12,7 +12,7 @@ import {
 } from '@flux/core';
 import type { PushPayload, PushSubscriptionSummary } from '@flux/contracts';
 import { deliverPush, RetryableDeliveryError } from '../../apps/worker/src/push/index.js';
-import { vapidAuthorization } from '../../apps/worker/src/push/deliver.js';
+import { createVapidAuthorizer } from '../../apps/worker/src/push/deliver.js';
 import { createNotifier } from '../../apps/server/src/push/adapters.js';
 import { connectionString, db, pool } from './support/db.js';
 import { Browser, publicOrigin, register, signIn, uniqueEmail, waitForMail } from './support/http.js';
@@ -52,11 +52,13 @@ describe('push configuration', () => {
     assert.equal(sender.status, 'available');
     if (sender.status !== 'available') return;
     const start = Date.now();
+    const vapidAuthorization = createVapidAuthorizer();
     const first = vapidAuthorization(sender, 'https://web.push.apple.com/abc', start);
     assert.match(first, /^vapid t=[\w-]+\.[\w-]+\.[\w-]+, k=[\w-]+$/);
     assert.equal(vapidAuthorization(sender, 'https://web.push.apple.com/other-device', start + 3600_000), first, 'same origin within the hour');
     assert.notEqual(vapidAuthorization(sender, 'https://fcm.googleapis.com/fcm/send/x', start), first, 'audience is per push service');
     assert.notEqual(vapidAuthorization(sender, 'https://web.push.apple.com/abc', start + 11.5 * 3600_000), first, 'renewed before the 12 h expiry');
+    assert.notEqual(createVapidAuthorizer()(sender, 'https://web.push.apple.com/abc', start + 1000), first, 'each authorizer keeps its own cache, no module state');
   });
 
   test('endpoints must be public https push service URLs and links must stay in Flux', () => {

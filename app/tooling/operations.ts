@@ -1,5 +1,6 @@
 import {
   agentAccessOperations,
+  githubRows,
   createDatabase,
   FLUX_SCHEMA_VERSION,
   readAppliedMigrationVersions,
@@ -68,8 +69,11 @@ if (command === 'migration-files') {
     } else if (command === 'revoke-agent-access') {
       const revoked = await db.transaction((tx) => agentAccessOperations(tx).revokeAll());
       console.log(`Revoked ${revoked.connections} agent connection(s), ${revoked.refreshTokens} refresh token(s) and ${revoked.accessTokens} access token(s).`);
+    } else if (command === 'revoke-github-access') {
+      const revoked = await db.transaction((tx) => githubRows(tx).revokeRestored());
+      console.log(`Revoked ${revoked.credentials} GitHub authorization(s) and ${revoked.bindings} GitHub binding(s); retained history is unavailable until reconnected.`);
     } else {
-      throw new Error(`unknown operation ${command ?? ''} (use migration-files, migration-ledger, migration-gate, agent-access or revoke-agent-access)`);
+      throw new Error(`unknown operation ${command ?? ''} (use migration-files, migration-ledger, migration-gate, agent-access, revoke-agent-access or revoke-github-access)`);
     }
   } finally {
     await pool.end();

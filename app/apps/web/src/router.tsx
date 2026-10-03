@@ -23,6 +23,7 @@ import { projectShellLoader } from './project/data';
 import { ProjectMap } from './project/ProjectViews';
 import { LiveOpen } from './live/LiveOpen';
 import { SearchPage } from './search/SearchPage';
+import { GithubSettings } from './github/GithubSettings';
 import { AssistantSettings } from './assistant/AssistantSettings';
 import {
   forgotPasswordAction,
@@ -82,6 +83,7 @@ export const router = createBrowserRouter([
             children: [
               { index: true, loader: projectConversationLoader, Component: ProjectConversation },
               { path: 'conversations/:conversationId', loader: projectConversationLoader, Component: ProjectConversation },
+              { path: 'github', Component: GithubSettings },
               { path: 'tasks', loader: projectTasksLoader, Component: ProjectTasks },
               { path: 'map', Component: ProjectMap },
               { path: 'map/:sketchId', Component: SketchRoute },

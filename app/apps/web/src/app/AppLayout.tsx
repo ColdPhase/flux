@@ -24,7 +24,11 @@ import { JumpTo } from '../search/JumpTo';
 import { useNeedsYou } from '../returns/useNeedsYou';
 
 function lastConversationPath(projectId: string) {
-  try { return sessionStorage.getItem(`flux.project-conversation.${projectId}`) ?? `/projects/${projectId}`; }
+  try {
+    const saved = sessionStorage.getItem(`flux.project-conversation.${projectId}`);
+    // Discard a non-conversation destination remembered by an older shell.
+    return saved && !/^\/projects\/[^/]+\/(tasks|map|docs|github)(\/|\?|$)/.test(saved) ? saved : `/projects/${projectId}`;
+  }
   catch { return `/projects/${projectId}`; }
 }
 
@@ -168,8 +172,9 @@ export function AppLayout() {
   const where = placeOf(location.pathname);
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const activeProject = projects.find((project) => project.id === projectId);
-  // The Conversation tab returns to the conversation that was open before Tasks, Map or Docs.
-  const onOtherView = /^\/projects\/[^/]+\/(tasks|map|docs|agents)(\/|$)/.test(location.pathname);
+  // The Conversation tab returns to the conversation that was open before Tasks, Map, Docs or
+  // Agents; project settings (GitHub) also keep it without selecting the tab.
+  const onOtherView = /^\/projects\/[^/]+\/(tasks|map|docs|agents|github)(\/|$)/.test(location.pathname);
   useEffect(() => {
     if (!projectId || onOtherView) return;
     try { sessionStorage.setItem(`flux.project-conversation.${projectId}`, `${location.pathname}${location.search}`); } catch { /* private mode */ }

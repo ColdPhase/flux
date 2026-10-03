@@ -8,7 +8,7 @@ import { actionScene, toolFailure } from './support/mcp-actions.js';
 test('a standing work.create grant creates one planned native task through MCP; retries and repeated intents never duplicate it', async () => {
   const f = await actionScene(pool);
   const capabilities = f.bootstrap.capabilities as { name: string; operation: string | null; classes: string[]; available: boolean }[];
-  assert.deepEqual(capabilities.filter((item) => item.operation !== null && !item.operation.startsWith('map.')).map(({ name, operation, available }) => ({ name, operation, available })),
+  assert.deepEqual(capabilities.filter((item) => item.operation !== null && /^(work|result|decision)\./.test(item.operation)).map(({ name, operation, available }) => ({ name, operation, available })),
     [{ name: 'flux_create_task', operation: 'work.create', available: true }, { name: 'flux_update_task', operation: 'work.update', available: true },
       { name: 'flux_record_result', operation: 'result.record', available: true }, { name: 'flux_propose_decision', operation: 'decision.propose', available: true }]);
   const create = await f.grant('work.create', 'plan');
