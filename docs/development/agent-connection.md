@@ -69,10 +69,16 @@ TLS at the operator's reverse proxy and route `/mcp`, `/.well-known/*`,
 rewriting their paths. Keep the Compose API port reachable only by the trusted
 proxy, configure `FLUX_TRUSTED_PROXIES` for its actual address, and keep the
 origin stable across restart: OAuth issuer, resource identifier, redirect and
-cookie security are derived from it. The CLI adds the remote server with
+cookie security are derived from it. Claude Code adds the remote server with
 `claude mcp add --transport http --scope user flux https://flux.example.org/mcp`
-and then runs `claude mcp login flux`. The operator must supply a trusted TLS
-certificate and reachable DNS name before this can work from another machine.
+and then runs `claude mcp login flux`. Codex adds it with
+`codex mcp add flux --url https://flux.example.org/mcp`, which starts the OAuth
+flow itself when it detects support, and `codex mcp login flux` signs in later
+(usage of `codex-rs/cli/src/mcp_cmd.rs` on openai/codex `main`, read 2026-10-02;
+not yet exercised against Flux). Any other MCP client adds the same streamable
+HTTP URL and needs OAuth support. The Connect page shows all three equally
+(#179 PROV-5). The operator must supply a trusted TLS certificate and reachable
+DNS name before this can work from another machine.
 
 In an isolated Compose test on 2026-09-28, the API container listened on port
 8080 and mapped to host loopback `127.0.0.1:18562`; Claude Code 2.1.281 on

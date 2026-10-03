@@ -234,7 +234,8 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(page.get_by_text("of your $1.00 daily cap", exact=False)).to_be_visible()
         status = self.status(page)
         self.assertEqual((status["state"], status["enablement"]["perRunCents"], status["enablement"]["dailyCapCents"]), ("ready", 6, 100))
-        self.assertEqual(status["enablement"]["consent"]["version"], "o-008-2026-09-28")
+        self.assertEqual(status["enablement"]["consent"]["version"], "o-008-2026-10-02")
+        self.assertEqual((status["enablement"]["consent"]["provider"], status["enablement"]["consent"]["model"]), ("anthropic", "claude-sonnet-5"))
         type(self).ids["agent"] = status["enablement"]["agents"][0]["agentId"]
         shot(page, "assistant-1440-settings-ready")
         # Kai sees his own, not-set-up state: Jo's assistant is never offered to him.
@@ -277,7 +278,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(answer.locator(".assistant-tag")).to_have_text("Assistant")
         expect(answer).to_contain_text("asked by you")
         expect(answer).to_contain_text("“Summarize where we are”")
-        expect(answer).to_contain_text("Anthropic claude-sonnet-5")
+        expect(answer).to_contain_text("Anthropic · claude-sonnet-5")
         expect(answer.get_by_role("button", name="Retry")).to_be_visible()
         shot(jo, "assistant-1440-answer-owner")
         for peer in (kai, lee):
@@ -355,6 +356,9 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(lee_card.get_by_role("button", name="Accept")).to_have_count(0)
         kai = self.conversation("kai")
         kai_card = kai.locator(".assistant-proposal").last
+        # The proposal itself, before anyone decides it (the shot used to be taken before it rendered).
+        expect(kai_card).to_contain_text("Proposal · not saved yet")
+        kai_card.scroll_into_view_if_needed()
         shot(kai, "assistant-1440-proposal")
         kai_card.get_by_role("button", name="Accept").click()
         expect(kai_card).to_contain_text(f"Recorded by you · drafted by {JO['name']}'s assistant")

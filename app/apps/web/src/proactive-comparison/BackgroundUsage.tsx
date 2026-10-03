@@ -10,6 +10,9 @@ const statuses: Record<BackgroundComputeCandidateUsage['status'], string> = {
 };
 const reasons: Record<string, string> = {
   KEY_UNAVAILABLE: 'The background key was unavailable.', CONNECTION_REQUIRED: 'No usable connection was available.',
+  CONNECTION_PRICE_UNKNOWN: 'The connection has no known price, so nothing could be reserved.',
+  ENDPOINT_REFUSED: 'The connection’s endpoint is not allowed on this server. Nothing was sent.',
+  MODEL_INVALID: 'The connection’s model id is not allowed. Nothing was sent.',
   RULE_STOPPED: 'The project rule was paused or revoked.', OWNER_OR_AGENT_ACCESS: 'Your or your agent’s project access changed.',
   AUTHORIZATION_CHANGED: 'The connection, rule or project access changed.', SOURCE_CHANGED: 'The project evidence changed.',
   ACCESS_CHANGED: 'Your or your agent’s project access changed.', AUTHORIZATION_CHECK_FAILED: 'Current authorization could not be confirmed.',

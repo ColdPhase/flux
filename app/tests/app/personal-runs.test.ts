@@ -233,7 +233,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     const privateRun = await runs.invoke(human(hubert), thread.id, { clientRunId: randomUUID(), kind: 'map_thought', prompt: 'Expand this', target: { type: 'thought', sketchId: privateSketch.id, thoughtId: privateSketch.thoughtId } });
     const before = compute.dispatched.length;
     assert.equal(await processor.process(privateRun.run.id), 'denied');
-    assert.deepEqual(await row(privateRun.run.id), { status: 'denied', cost_state: 'released', charged_micros: 0, reserved_micros: 60_000, answer_body: null, stopped_at_stage: 'before_read' });
+    assert.deepEqual(await row(privateRun.run.id), { status: 'denied', cost_state: 'released', charged_micros: 0, reserved_micros: 47_000, answer_body: null, stopped_at_stage: 'before_read' });
     assert.equal(compute.dispatched.length, before);
     assert.equal(compute.counted.some((request) => request.input.includes(TOKENS.sketch)), false);
     await assert.rejects(runs.invoke(human(maurycy), thread.id, { clientRunId: randomUUID(), kind: 'map_thought', prompt: 'x', target: { type: 'thought', sketchId: privateSketch.id, thoughtId: privateSketch.thoughtId } }), { code: 'THOUGHT_NOT_FOUND' });
@@ -305,16 +305,24 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     assert.deepEqual([(await row(paused.run.id)).status, (await row(revoked.run.id)).status], ['paused', 'revoked']);
     assert.equal(compute.dispatched.length, dispatchedBefore + 1, 'none of them reached the provider');
 
-    // Capped at invoke and at dispatch; the cap counts reservations as well as observed usage.
+    // A run reserves its largest possible cost at the connection's price (F-020 PROV-3): at the
+    // table price of the fake connection's model that is the nominal maximum of O-008 §3.
+    compute.respond = async () => ({ kind: 'completed', stopReason: 'end_turn', text: 'Fact: long answer [S1]', usage: { inputTokens: 16_000, outputTokens: 1_500 } });
+    const nominal = await ask(hubert);
+    assert.equal(await processor.process(nominal.run.id), 'completed');
+    assert.deepEqual([(await row(nominal.run.id)).reserved_micros, (await row(nominal.run.id)).charged_micros], [47_000, 47_000],
+      'the nominal maximum of O-008 §3 is both the reservation and the largest charge');
+
+    // Capped at invoke and at dispatch; the cap counts reservations as well as observed usage. The
+    // spend so far includes the nominal run, so the cap below is above the 10-cent minimum.
     const spend = (await runs.status(human(hubert))).today!;
     const used = spend.chargedMicros + spend.reservedMicros;
-    const cap = Math.max(10, Math.ceil((used + 60_000) / 10_000));
+    const cap = Math.ceil((used + 47_000) / 10_000);
     let status = await runs.status(human(hubert));
     await runs.update(human(hubert), { dailyCapCents: cap }, status.enablement!.version);
-    compute.respond = async () => ({ kind: 'completed', stopReason: 'end_turn', text: 'Fact: long answer [S1]', usage: { inputTokens: 16_000, outputTokens: 1_500 } });
     const heavy = await ask(hubert);
     assert.equal(await processor.process(heavy.run.id), 'completed');
-    assert.equal((await row(heavy.run.id)).charged_micros, 47_000, 'the nominal maximum of O-008 §3');
+    assert.equal((await row(heavy.run.id)).charged_micros, 47_000);
     compute.respond = echo;
     const rowsBefore = await runCount(hubert.id);
     await assert.rejects(ask(hubert), { code: 'PERSONAL_RUN_CAPPED' });
@@ -372,7 +380,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     const mine = await ask(maurycy, 'What did the ToF test show?');
     assert.equal(await processor.process(mine.run.id), 'completed');
     const request = compute.dispatched.at(-1)!;
-    assert.deepEqual(request.connection, { id: maurycyConnection, keyRef: `test-key-ref-${maurycyConnection}` });
+    assert.deepEqual(request.connection, { id: maurycyConnection, keyRef: `test-key-ref-${maurycyConnection}`, provider: 'anthropic', baseUrl: null });
     const stored = await pool.query('SELECT owner_user_id, agent_id, connection_id FROM personal_runs WHERE id = $1', [mine.run.id]);
     assert.deepEqual(stored.rows[0], { owner_user_id: maurycy.id, agent_id: agents.maurycy, connection_id: maurycyConnection });
     assert.deepEqual((await runs.status(human(hubert))).today, hubertBefore);
@@ -558,7 +566,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     try {
       const run = await ask(hubert, 'Count fails');
       assert.equal(await processor.process(run.run.id), 'provider_failed');
-      assert.deepEqual(await row(run.run.id), { status: 'provider_failed', cost_state: 'released', charged_micros: 0, reserved_micros: 60_000, answer_body: null, stopped_at_stage: 'before_dispatch' });
+      assert.deepEqual(await row(run.run.id), { status: 'provider_failed', cost_state: 'released', charged_micros: 0, reserved_micros: 47_000, answer_body: null, stopped_at_stage: 'before_dispatch' });
       assert.equal(compute.dispatched.length, dispatched);
     } finally { compute.count = count; }
   });
@@ -571,11 +579,47 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     try {
       const pending = await ask(hubert);
       assert.equal(await processor.process(pending.run.id), 'skipped', 'late completed provider result cannot commit');
-      assert.deepEqual(await row(pending.run.id), { status: 'provider_failed', cost_state: 'unknown', charged_micros: 0, reserved_micros: 60_000, answer_body: null, stopped_at_stage: null });
+      assert.deepEqual(await row(pending.run.id), { status: 'provider_failed', cost_state: 'unknown', charged_micros: 0, reserved_micros: 47_000, answer_body: null, stopped_at_stage: null });
       const dispatched = compute.dispatched.length;
       assert.equal(await processor.process(pending.run.id), 'skipped');
       assert.equal(compute.dispatched.length, dispatched, 'queue redelivery cannot call the provider again');
     } finally { hooks.afterDispatch = previous; }
+  });
+
+  test('PROV-1: runs use the connection the assistant was enabled on, never the owner\'s newer one', async () => {
+    // Hubert's assistant is enabled on `hubertConnection`. He adds a newer connection, and while a
+    // run is out at the provider, another: neither takes the run over or withholds its answer.
+    const newer = randomUUID();
+    connections.connect(hubert.id, newer, { provider: 'openrouter', model: 'vendor/newer-model' });
+    const latest = randomUUID();
+    const previous = hooks.afterDispatch;
+    try {
+      assert.equal((await runs.status(human(hubert))).state, 'ready', 'a newer connection changes nothing for the assistant');
+      const run = await ask(hubert, `On the consented connection ${randomUUID()}`);
+      const dispatched = compute.dispatched.length;
+      hooks.afterDispatch = async () => { connections.connect(hubert.id, latest, { provider: 'openai', model: 'gpt-latest' }); };
+      assert.equal(await processor.process(run.run.id), 'completed', 'a connection added mid-run does not withhold the paid answer');
+      assert.equal(compute.dispatched.length, dispatched + 1);
+      const sent = compute.dispatched.at(-1)!;
+      assert.deepEqual([sent.connection.id, sent.connection.provider, sent.model], [hubertConnection, 'anthropic', 'claude-sonnet-5']);
+      assert.ok((await row(run.run.id)).answer_body, 'the answer was posted');
+      // Removing the consented one stops the assistant, and says that another one needs its own consent.
+      connections.disconnect(hubert.id, hubertConnection);
+      assert.equal((await runs.status(human(hubert))).unavailableReason, 'connection_changed');
+      await assert.rejects(ask(hubert), { code: 'PERSONAL_RUN_UNAVAILABLE' });
+      // Enabling again names the chosen connection, here the older of two (the web app always names one):
+      // the consent stores that connection's provider, model and id, not the newest's.
+      expectStatus(await hubert.browser.request('DELETE', '/api/v1/personal-assistant'), 204);
+      await runs.enable(human(hubert), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId: agents.hubert!, dailyCapCents: 1000, connectionId: newer });
+      const stored = await pool.query('SELECT connection_id, consent_provider, consent_model FROM personal_run_enablements WHERE owner_user_id = $1', [hubert.id]);
+      assert.deepEqual(stored.rows, [{ connection_id: newer, consent_provider: 'openrouter', consent_model: 'vendor/newer-model' }]);
+    } finally {
+      hooks.afterDispatch = previous;
+      await hubert.browser.request('DELETE', '/api/v1/personal-assistant');
+      connections.disconnect(hubert.id, newer);
+      connections.disconnect(hubert.id, latest);
+      await enable(hubert, 'hubert', hubertConnection);
+    }
   });
 
 });

@@ -309,3 +309,20 @@ worker sends runs through the real Anthropic adapter to the `anthropic-mock` Com
 (`app/tests/ui/anthropic_mock.py`, `FLUX_TEST_ANTHROPIC_URL`). The API and worker refuse to start
 with the switch unless the test flag is set. Never set it in a deployment; see
 [personal runs](personal-runs.md#test-only-switch).
+
+`check_ui.sh` also gives that stack a throwaway background key-custody secret
+(`FLUX_BACKGROUND_KEY_HOST_FILE`, removed on exit) and `FLUX_AI_PRIVATE_TARGETS=openai-mock`, so the
+AI connection settings tests (#179) can save connections and list the models of the
+`openai-mock` service (`app/tests/ui/openai_mock.py`).
+
+## Owner AI connection endpoints
+
+Owner AI connections (#179, [F-020](../product/model-providers.md)) are read by the API and the
+worker. See [AI providers](ai-providers.md#endpoint-guard-ssrf).
+
+| Variable | Service | Meaning |
+| --- | --- | --- |
+| `FLUX_AI_PRIVATE_TARGETS` | API, worker | Empty by default: an owner's OpenAI-compatible endpoint must be public HTTPS, and private, loopback, link-local, unique-local, CGNAT and reserved addresses are refused when the connection is saved and again at every request. Comma-separated host names (exact), IP addresses or CIDR ranges, e.g. `ollama,10.0.0.0/8`, allow those private targets, plain HTTP included. Cloud metadata addresses are refused even when listed. A malformed entry stops startup. Set the same value on both services. |
+
+In `check_application.sh` the test overlay sets it to `providermock`, the local stand-in for both
+AI wire formats (`app/tests/app/support/provider-mock.ts`) that the adapter contract suite uses.

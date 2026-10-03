@@ -12,6 +12,7 @@ import {
   revokeAgentConnection, selectAgentConnection,
   type ConsentContext,
 } from './api';
+import { ClientGuide } from './ClientGuide';
 import './connection.css';
 
 const ALL_SCOPES: AgentScope[] = ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'];
@@ -230,6 +231,7 @@ export function AgentConnectionPage() {
     </fieldset> : null}
     {creatingAgent ? <form className="connection__create" onSubmit={(event) => { void addPersonalAgent(event); }}>
       <h2>Create your personal agent</h2><p>This identity belongs only to you. A project manager must explicitly grant it project access.</p>
+      {!workspaces.length ? <p className="connection__help" role="note">Your agent belongs to a workspace, and you are not in one yet. <Link to="/projects/new">Create a project</Link> to start one, or ask someone to add you to theirs.</p> : <>
       <label className="connection__label" htmlFor="agent-workspace">Workspace</label>
       <select id="agent-workspace" value={workspaceId} onChange={(event) => setWorkspaceId(event.target.value)} disabled={busy} required>
         {workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
@@ -238,13 +240,9 @@ export function AgentConnectionPage() {
       <input id="agent-name" value={agentName} onChange={(event) => setAgentName(event.target.value)} maxLength={160} disabled={busy} required placeholder="My research agent" />
       <div className="connection__actions"><Button type="submit" variant="secondary" busy={busy} disabled={!workspaceId || !agentName.trim()}>Create personal agent</Button>
         {personalAgents.length ? <Button onClick={() => setCreatingAgent(false)}>Cancel</Button> : null}</div>
+      </>}
     </form> : <Button variant="link" onClick={() => setCreatingAgent(true)}>Create personal agent</Button>}
-    {!oauthQuery ? <div className="connection__guide"><h2>Connect Claude Code</h2>
-      <p>Use your self-hosted Flux HTTPS address in Claude Code. The client opens this page to ask for your consent.</p>
-      <code>claude mcp add --transport http flux {window.location.origin}/mcp</code>
-      <code>claude mcp login flux</code>
-      <p>Use your own Claude Code account for compute. Flux receives no provider credentials. This connection only lets your client read selected projects and submit proposals for review.</p>
-    </div> : null}
+    {!oauthQuery ? <ClientGuide origin={window.location.origin} /> : null}
     {personalAgents.length > 0 && adding ? <form className="connection__create" onSubmit={(event) => { void addConnection(event); }}>
       <h2>New connection</h2>
       <label className="connection__label" htmlFor="connection-name">Connection name</label>

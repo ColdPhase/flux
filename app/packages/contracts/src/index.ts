@@ -49,6 +49,7 @@ export * from './returns.js';
 export * from './direct-message.js';
 export * from './docs.js';
 export * from './proactive-comparison.js';
+export * from './ai-providers.js';
 export * from './background-compute.js';
 export * from './proactive-outcomes.js';
 export * from './notifications.js';

@@ -76,26 +76,26 @@ export function Details({ view, workspace, placeTitle, dm = null, onBack, onClos
   );
 }
 
-/** Personal connection setup (#57, #68): the Claude Code path and your own in-app assistant. */
+/** Personal connection setup (#57, #68, F-020): your own MCP client and your own in-app assistant, on any provider. */
 function ConnectAi({ onBack }: { onBack: () => void }) {
   return (
     <div className="details">
       <button type="button" className="details__back" aria-label="Back to Details" onClick={onBack}><Icon name="chevron-left" size={14} />Details</button>
       <p className="details__eyebrow">Optional</p>
       <h3 className="details__title">Connect your AI</h3>
-      <p className="details__lead">Flux works fully without AI. Your own Claude Code client can connect to selected projects, read context and suggest proposals for human review.</p>
+      <p className="details__lead">Flux works fully without AI. Your own MCP client can connect to selected projects, read context and suggest proposals for human review.</p>
       <section className="details__sec" aria-labelledby="details-ai-ways">
         <h4 id="details-ai-ways">Ways to connect</h4>
         <ul className="details__rows">
-          <li><b>Claude Code on your computer</b><span>Uses your account for compute and your personal Flux grant. Flux never receives your provider credentials.</span></li>
-          <li><b>Your assistant in Flux</b><span>Answers here when you ask, with your own Anthropic API key, your consent and your daily cap. Only you can use it.</span></li>
+          <li><b>Your MCP client on your computer</b><span>Claude Code, Codex or another MCP client, with your own account for compute and your personal Flux grant. Flux never receives your provider credentials.</span></li>
+          <li><b>Your assistant in Flux</b><span>Answers here when you ask, with your own API key from the provider and model you choose, your consent and your daily cap. Only you can use it.</span></li>
         </ul>
-        <p><Link className="ui-link" to="/connect-agent">Set up or revoke a Claude Code connection</Link></p>
+        <p><Link className="ui-link" to="/connect-agent">Set up or revoke an MCP client connection</Link></p>
         <p><Link className="ui-link" to="/settings/assistant">Set up your assistant in Flux</Link></p>
       </section>
       <section className="details__sec" aria-labelledby="details-ai-now">
         <h4 id="details-ai-now">Nobody else’s assistant</h4>
-        <p>The ✦ button always means your own assistant. It never starts Claude Code, and it never uses another person’s assistant or payer. Without yours, human work goes on exactly as before.</p>
+        <p>The ✦ button always means your own assistant. It never starts your MCP client, and it never uses another person’s assistant or payer. Without yours, human work goes on exactly as before.</p>
       </section>
     </div>
   );
