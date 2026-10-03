@@ -128,27 +128,26 @@ function Chooser({ anchor, labelledBy, onClose, children }: { anchor: RefObject<
   const onCloseRef = useRef(onClose);
   useEffect(() => { onCloseRef.current = onClose; });
 
-  const place = useCallback((event?: Event) => {
-    const pop = ref.current;
-    const at = anchor.current?.getBoundingClientRect();
-    // Scrolling the chooser's own list keeps it where it is.
-    if (!pop || !at || (event?.target instanceof Node && pop.contains(event.target))) return;
-    const margin = 8;
-    const width = document.documentElement.clientWidth;
-    const height = window.innerHeight;
-    const below = height - at.bottom - 6 - margin;
-    const above = at.top - 6 - margin;
-    // The full content height, also while a smaller maximum makes the chooser scroll.
-    const natural = pop.scrollHeight;
-    const down = below >= Math.min(natural, 280) || below >= above;
-    const room = Math.max(160, down ? below : above);
-    pop.style.maxHeight = `${room}px`;
-    pop.style.left = `${Math.max(margin, Math.min(at.left, width - pop.offsetWidth - margin))}px`;
-    pop.style.top = `${down ? at.bottom + 6 : Math.max(margin, at.top - 6 - Math.min(natural, room))}px`;
-  }, [anchor]);
-
   useLayoutEffect(() => {
     const pop = ref.current;
+    // Placed beside the count, again on every resize and scroll outside the chooser.
+    const place = (event?: Event) => {
+      const at = anchor.current?.getBoundingClientRect();
+      // Scrolling the chooser's own list keeps it where it is.
+      if (!pop || !at || (event?.target instanceof Node && pop.contains(event.target))) return;
+      const margin = 8;
+      const width = document.documentElement.clientWidth;
+      const height = window.innerHeight;
+      const below = height - at.bottom - 6 - margin;
+      const above = at.top - 6 - margin;
+      // The full content height, also while a smaller maximum makes the chooser scroll.
+      const natural = pop.scrollHeight;
+      const down = below >= Math.min(natural, 280) || below >= above;
+      const room = Math.max(160, down ? below : above);
+      pop.style.maxHeight = `${room}px`;
+      pop.style.left = `${Math.max(margin, Math.min(at.left, width - pop.offsetWidth - margin))}px`;
+      pop.style.top = `${down ? at.bottom + 6 : Math.max(margin, at.top - 6 - Math.min(natural, room))}px`;
+    };
     place();
     void play(pop, [{ opacity: 0, transform: 'translateY(-4px) scale(.98)' }, { opacity: 1, transform: 'none' }], duration('--dur-2'), '--ease-out', { fill: 'backwards' });
     pop?.focus({ preventScroll: true });
@@ -170,7 +169,7 @@ function Chooser({ anchor, labelledBy, onClose, children }: { anchor: RefObject<
       window.removeEventListener('resize', place);
       window.removeEventListener('scroll', place, true);
     };
-  }, [anchor, place]);
+  }, [anchor]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onCloseRef.current(true); return; }
