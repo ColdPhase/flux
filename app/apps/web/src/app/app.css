@@ -273,6 +273,11 @@ body:has(.app) { background: var(--bg-chrome); }
 /* Private notes on Home */
 .notes { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); }
 .notes__h { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); font-weight: 500; color: var(--text-3); }
+/* Notes kept only in this browser: an explicit offer to move them into the account (#190 HOME-3). */
+.notes__move { display: grid; gap: 8px; margin: 10px 0 6px; padding: 12px 14px; border-radius: var(--r); background: var(--accent-soft); color: var(--text-2); font-size: var(--fs-sm); }
+.notes__move-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.notes__move-state:empty { display: none; }
+.notes__moved { margin-top: 18px; color: var(--text-2); font-size: var(--fs-sm); }
 .notes__list { list-style: none; margin: 8px 0 0; padding: 0; }
 .note { padding: 10px 0; animation: rise var(--dur-3) var(--ease-out) both; }
 .note + .note { border-top: 1px solid var(--line); }

@@ -1,9 +1,10 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { Link, useLocation, type NavigateFunction } from 'react-router';
+import { Link, useLocation, useRevalidator, type NavigateFunction } from 'react-router';
 import type { Draft } from '@flux/contracts';
-import { EmptyState, Icon, IconButton, MEDIA, duration, sendsOnEnter, useMediaQuery, type IconName } from '../ui';
+import { Button, EmptyState, Icon, IconButton, MEDIA, duration, sendsOnEnter, useMediaQuery, type IconName } from '../ui';
 import { createPrivateDraft, listDrafts } from './conversation-api';
-import { useCaptures } from './captures';
+import { captureExists, clearMoveTarget, moveKey, moveTarget, noteTitle, removeCapture, useCaptures } from './captures';
+import { ensurePersonalSpace } from './personalSpace';
 import { useShellData } from './data';
 import { useDraft, useReadingPosition } from './drafts';
 import { useShellActions } from './shellContext';
@@ -43,6 +44,9 @@ function ViewEmpty({ icon, title, level = 2, children }: { icon: IconName; title
 const timeFormat = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
 const dayFormat = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 
+/** Your own private drafts: the only drafts Home lists. */
+const ownPrivate = (userId: string) => (item: Draft) => item.visibility === 'private' && item.owner.kind === 'human' && item.owner.id === userId;
+
 function when(iso: string) {
   const date = new Date(iso);
   const today = new Date().toDateString() === date.toDateString();
@@ -57,9 +61,11 @@ export function startCapture(navigate: NavigateFunction) {
 }
 
 /**
- * Home: the personal return view. Its conversation is your private notes: the composer
- * always shows the audience ("Only you"), and nothing leaves this device until sharing exists.
- * Project conversations and direct messages (#36) open from the sidebar.
+ * Home: the personal return view. Its conversation is your private notes, saved as private
+ * drafts in your space (HOME-3, #190); the first note creates that space. The composer always
+ * shows the audience ("Only you"). Notes an account once kept only in this browser are offered,
+ * explicitly, to move into the account. Project conversations and direct messages (#36) open from
+ * the sidebar.
  */
 export function ConversationView() {
   // Touch devices add a line with Enter and send with the button (#189).
@@ -69,11 +75,29 @@ export function ConversationView() {
   const askId = useId();
   const { me, workspaces } = useShellData();
   const { openDetails } = useShellActions();
-  const { items, add, remove } = useCaptures(me.user.id);
+  const { items, remove } = useCaptures(me.user.id);
+  const revalidator = useRevalidator();
   // Unsent text is kept per account and context, so a view switch or reload never loses it.
   const draft = useDraft(me.user.id, 'home');
   const [selectedWorkspace, setSelectedWorkspace] = useState(workspaces.length === 1 ? workspaces[0]!.id : '');
+  // A space created by the first note (or a sketch) arrives with the shell's next answer.
+  const [spacesSeen, setSpacesSeen] = useState(workspaces);
+  if (spacesSeen !== workspaces) {
+    setSpacesSeen(workspaces);
+    if (!selectedWorkspace && workspaces.length === 1) setSelectedWorkspace(workspaces[0]!.id);
+  }
   const [serverDrafts, setServerDrafts] = useState<Draft[]>([]);
+  const [draftsTotal, setDraftsTotal] = useState(0);
+  const [draftsReload, setDraftsReload] = useState(0);
+  // Saving and moving belong to the account that started them: a sign-out stops them (HOME-3).
+  const work = useRef<AbortController>(new AbortController());
+  useEffect(() => {
+    const controller = new AbortController();
+    work.current = controller;
+    return () => controller.abort();
+  }, [me.user.id]);
+  const [move, setMove] = useState<{ state: 'idle' | 'busy' | 'done' | 'partial'; moved: number; of: number }>({ state: 'idle', moved: 0, of: 0 });
+  const [notNow, setNotNow] = useState(false);
   const [saveState, setSaveState] = useState('');
   const [saving, setSaving] = useState(false);
   // Without an assistant of your own, its button leads to "Connect your AI" (#189); it stays owner-only.
@@ -89,10 +113,20 @@ export function ConversationView() {
     if (!selectedWorkspace) return;
     const controller = new AbortController();
     listDrafts(selectedWorkspace, controller.signal)
-      .then((page) => setServerDrafts(page.items.filter((item) => item.visibility === 'private' && item.owner.kind === 'human' && item.owner.id === me.user.id)))
+      .then((page) => { setServerDrafts(page.items.filter(ownPrivate(me.user.id))); setDraftsTotal(page.total); })
       .catch(() => { if (!controller.signal.aborted) setSaveState('Could not load private drafts.'); });
     return () => controller.abort();
-  }, [selectedWorkspace, me.user.id]);
+  }, [selectedWorkspace, me.user.id, draftsReload]);
+  const [moreBusy, setMoreBusy] = useState(false);
+  const loadMoreDrafts = async () => {
+    if (!selectedWorkspace || moreBusy) return;
+    setMoreBusy(true);
+    try {
+      const page = await listDrafts(selectedWorkspace, work.current.signal, serverDrafts.length);
+      setServerDrafts((current) => [...current, ...page.items.filter(ownPrivate(me.user.id)).filter((item) => !current.some((had) => had.id === item.id))]);
+      setDraftsTotal(page.total);
+    } catch { /* the button stays for another try */ } finally { setMoreBusy(false); }
+  };
   // Ask mode targets the signed-in person's own assistant (#57). No compute path exists yet,
   // so it only explains how to connect one and never pretends to answer.
   const [asking, setAsking] = useState(false);
@@ -118,22 +152,74 @@ export function ConversationView() {
   };
   // A restored draft gets its full height on the first paint.
   useLayoutEffect(autosize, []);
+  /** The space a note goes to: the chosen one, or the personal space (created on the first note). */
+  const spaceForNotes = async (signal: AbortSignal) => {
+    if (selectedWorkspace) return selectedWorkspace;
+    if (workspaces.length > 1) return null;
+    const space = await ensurePersonalSpace(me.user.id, signal);
+    if (space) { setSelectedWorkspace(space); revalidator.revalidate(); }
+    return space;
+  };
   const send = async () => {
     if (!canSend) return;
     if (workspaces.length > 1 && !selectedWorkspace) { setSaveState('Choose a space for this private draft.'); return; }
+    const { signal } = work.current;
     setSaving(true); setSaveState('Saving…');
     try {
       const body = draft.text.trim();
-      if (selectedWorkspace) {
-        const created = await createPrivateDraft(selectedWorkspace, body.slice(0, 80).split('\n')[0] || 'Private note', body);
-        setServerDrafts((current) => [created, ...current]);
-      } else add(body);
+      const space = await spaceForNotes(signal);
+      if (signal.aborted) return;
+      if (!space) { setSaveState('Choose a space for this private draft.'); return; }
+      const created = await createPrivateDraft(space, noteTitle(body), body, undefined, signal);
+      if (signal.aborted) return;
+      setServerDrafts((current) => [created, ...current.filter((item) => item.id !== created.id)]);
       draft.clear();
-      setSaveState(selectedWorkspace ? 'Saved privately to your space' : 'Saved in this browser');
+      setSaveState('Saved privately to your space');
       requestAnimationFrame(() => { autosize(); endRef.current?.scrollIntoView({ block: 'end', behavior: duration('--dur-1') ? 'smooth' : 'auto' }); });
-    } catch { setSaveState('Save failed. Your text is still here; retry when ready.'); }
-    finally { setSaving(false); }
+    } catch {
+      // The text stays in the composer: nothing falls back to this browser.
+      if (!signal.aborted) setSaveState('Save failed. Your text is still here; retry when ready.');
+    } finally { setSaving(false); }
   };
+  // Notes this account once kept only in this browser move into the account only on request: one
+  // private draft per note, in order, each removed here once the server confirmed it.
+  const moveNotes = async () => {
+    if (move.state === 'busy' || !items.length) return;
+    const { signal } = work.current;
+    const userId = me.user.id;
+    const notes = [...items];
+    setMove({ state: 'busy', moved: 0, of: notes.length });
+    let moved = 0;
+    let failed = 0;
+    try {
+      const space = await spaceForNotes(signal);
+      if (!space) { setMove({ state: 'idle', moved: 0, of: 0 }); setSaveState('Choose a space for these notes first.'); return; }
+      for (const note of notes) {
+        if (signal.aborted) return;
+        // Another tab may have moved or deleted it meanwhile.
+        if (!captureExists(userId, note.id)) continue;
+        const target = moveTarget(userId, note.id, space);
+        try {
+          await createPrivateDraft(target, noteTitle(note.text), note.text, moveKey(note), signal);
+          if (signal.aborted) return;
+          removeCapture(userId, note.id);
+          clearMoveTarget(userId, note.id);
+          moved += 1;
+          setMove({ state: 'busy', moved, of: notes.length });
+        } catch {
+          if (signal.aborted) return;
+          failed += 1;
+        }
+      }
+    } catch {
+      if (signal.aborted) return;
+      failed = notes.length - moved;
+    }
+    setMove({ state: failed ? 'partial' : 'done', moved, of: notes.length });
+    setDraftsReload((n) => n + 1);
+  };
+  const targetName = selectedWorkspace ? workspaces.find((space) => space.id === selectedWorkspace)?.name ?? 'your space'
+    : workspaces.length === 0 ? 'Personal' : null;
   const stopAsking = () => { setAsking(false); textareaRef.current?.focus(); };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Escape' && asking) { event.preventDefault(); event.stopPropagation(); stopAsking(); return; }
@@ -149,11 +235,32 @@ export function ConversationView() {
           <p>Jot down a note, a link or a half-formed idea. It stays with you until you choose to share it.</p>
         </div>
         <SinceYouLeftHome onShown={setReturning} />
-        {serverDrafts.length ? <section className="notes" aria-label="Private drafts"><p className="notes__h"><Icon name="lock" size={13} />Private drafts · saved in your space</p><ol className="notes__list">{serverDrafts.map((item) => <li className={`note${arrivedDraft === item.id ? ' is-arrived' : ''}`} key={item.id} id={`draft-${item.id}`} tabIndex={-1}><p className="note__text">{item.body}</p><div className="note__meta">You · v{item.version} · <time dateTime={item.updatedAt}>{when(item.updatedAt)}</time></div></li>)}</ol></section> : null}
+        {serverDrafts.length ? (
+          <section className="notes" aria-label="Private drafts">
+            <p className="notes__h"><Icon name="lock" size={13} />Private drafts · saved in your space</p>
+            <ol className="notes__list">{serverDrafts.map((item) => <li className={`note${arrivedDraft === item.id ? ' is-arrived' : ''}`} key={item.id} id={`draft-${item.id}`} tabIndex={-1}><p className="note__text">{item.body}</p><div className="note__meta">You · v{item.version} · <time dateTime={item.updatedAt}>{when(item.updatedAt)}</time></div></li>)}</ol>
+            {serverDrafts.length < draftsTotal ? <Button variant="quiet" busy={moreBusy} onClick={() => void loadMoreDrafts()}>Show more drafts</Button> : null}
+          </section>
+        ) : null}
+        {move.state === 'done' && !items.length ? <p className="notes__moved" role="status">Moved {move.moved} {move.moved === 1 ? 'note' : 'notes'} into {targetName ?? 'your space'}.</p> : null}
         {items.length ? (
-          <section className="notes" aria-label="Your private notes">
-            <p className="notes__h"><Icon name="lock" size={13} />Only you can see these</p>
-            <ol className="notes__list" role="log" aria-live="polite">
+          <section className="notes" aria-label="Notes in this browser">
+            <p className="notes__h"><Icon name="lock" size={13} />Only in this browser · only you can see these</p>
+            {!notNow || move.state !== 'idle' ? (
+              <div className="notes__move">
+                <p>{targetName
+                  ? <>Move {items.length} {items.length === 1 ? 'note' : 'notes'} from this browser into {targetName}. They become private drafts only you can open: not readable by other members, workspace owners or admins, or agents.</>
+                  : <>Choose a space below, then move these notes from this browser into your account as private drafts only you can open.</>}</p>
+                <div className="notes__move-actions">
+                  <Button variant="secondary" icon="send" busy={move.state === 'busy'} disabled={!targetName} onClick={() => void moveNotes()}>
+                    {`Move ${items.length} ${items.length === 1 ? 'note' : 'notes'} into ${targetName ?? 'a space'}`}</Button>
+                  {move.state === 'idle' ? <Button variant="quiet" onClick={() => setNotNow(true)}>Not now</Button> : null}
+                </div>
+                <p className="notes__move-state" role="status">{move.state === 'busy' ? `Moving ${move.moved + 1} of ${move.of}…`
+                  : move.state === 'partial' ? `Moved ${move.moved} of ${move.of}. The rest stay in this browser; try again.` : ''}</p>
+              </div>
+            ) : null}
+            <ol className="notes__list">
               {items.map((item) => (
                 <li key={item.id} className="note">
                   <p className="note__text">{item.text}</p>
@@ -183,7 +290,7 @@ export function ConversationView() {
               <button type="button" className="ui-link ask__connect" onClick={() => openDetails('connect-ai')}>Connect your AI</button>
             </div>
           ) : (
-            <p className="composer__audience" id={audienceId}><Icon name="lock" size={13} />Only you<span aria-hidden="true"> · </span><span className="composer__where">{selectedWorkspace ? 'private draft in your space' : 'private note in this browser'}</span></p>
+            <p className="composer__audience" id={audienceId}><Icon name="lock" size={13} />Only you<span aria-hidden="true"> · </span><span className="composer__where">private draft in {selectedWorkspace ? 'your space' : workspaces.length ? 'a space you choose' : 'your personal space'}</span></p>
           )}
           {workspaces.length > 1 ? <label className="composer__space">Save in <select value={selectedWorkspace} onChange={(event) => { setSelectedWorkspace(event.target.value); setServerDrafts([]); setSaveState(''); }}><option value="">Choose a space</option>{workspaces.map((space) => <option key={space.id} value={space.id}>{space.name}</option>)}</select></label> : null}
           <div className="composer__box">
@@ -202,7 +309,7 @@ export function ConversationView() {
             <span className="composer__state" aria-live="polite">
               {hasDraft
                 ? (draft.storage === 'device' ? 'Draft kept on this device' : 'Draft kept until you close this tab')
-                : selectedWorkspace ? 'Private until you explicitly publish a selected version' : 'Notes stay in this browser until sharing arrives'}
+                : 'Private until you explicitly publish a selected version'}
             </span>
           </p>
           {saveState ? <p className="composer__hint" role="status">{saveState}</p> : null}
