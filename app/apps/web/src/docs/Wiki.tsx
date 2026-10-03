@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { Link, Outlet, redirect, useLoaderData, useMatch, useNavigate, useParams, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
+import { Link, Outlet, redirect, useLoaderData, useLocation, useMatch, useNavigate, useParams, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
 import type { DocSummary, Project } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Icon, Spinner, useToast } from '../ui';
@@ -47,6 +47,8 @@ export function wikiShouldRevalidate({ currentUrl, nextUrl, defaultShouldRevalid
 export function WikiLayout() {
   const { project, docs } = useLoaderData() as WikiData;
   const { docId } = useParams();
+  // Writing gets the whole column on a phone: the page strip steps aside while a page is edited.
+  const editing = /\/docs\/(new|[^/]+\/edit)$/.test(useLocation().pathname);
   const [focus, setFocusState] = useState(() => readKey(FOCUS_KEY) === '1');
   useEffect(() => { if (docId) writeKey(pageKey(project.id), docId); }, [project.id, docId]);
   const value = useMemo<WikiState>(() => ({
@@ -56,7 +58,7 @@ export function WikiLayout() {
   return (
     <WikiContext.Provider value={value}>
       <div className="wiki-frame">
-        <div className={`wiki${focus ? ' wiki--focus' : ''}`}>
+        <div className={`wiki${focus ? ' wiki--focus' : ''}${editing ? ' wiki--editing' : ''}`}>
           <WikiIndex activeId={docId ?? null} hidden={focus} />
           <div className="wiki-main pane-scroll"><Outlet /></div>
         </div>

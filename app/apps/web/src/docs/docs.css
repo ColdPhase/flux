@@ -337,8 +337,14 @@
   .doc-edit__acts .ui-btn { flex: 1; justify-content: center; }
   .doc-edit__save .doc-seg { width: 100%; }
   .doc-edit__save .doc-seg button { flex: 1; }
-  /* Save stays in reach while writing, above the safe area. */
-  .doc-edit__save { position: sticky; bottom: 0; z-index: 5; margin: 16px -20px 0; padding: 10px 20px max(10px, env(safe-area-inset-bottom)); background: var(--bg); }
+  /* Writing keeps the column: the page strip steps aside and the bar scrolls away with the page,
+     and only Cancel / Save stay in reach at the bottom, above the safe area. The reason and state
+     fields stay in the flow, so the text field and its caret are never covered. */
+  .wiki--editing .wiki-index { display: none; }
+  .wiki--editing .wiki-bar { position: static; }
+  .doc-edit__save { display: contents; }
+  .doc-edit__reason, .doc-edit__save .doc-seg { margin-top: 14px; }
+  .doc-edit__acts { position: sticky; bottom: 0; z-index: 5; margin: 14px -20px 0; padding: 10px 20px max(10px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--bg); }
 }
 /* The smallest phones keep New page and Import .md as named icons beside the search. */
 @container wiki (max-width: 379px) {

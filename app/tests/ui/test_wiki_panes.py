@@ -608,11 +608,23 @@ class WikiPanesJourney(unittest.TestCase):
             box = control.bounding_box()
             self.assertLessEqual(box["x"] + box["width"], SMALL_PHONE["width"])
         shot(page, "wiki-phone-320-light")
-        # Phone editing keeps its Save within reach.
+        # Phone editing keeps its Save within reach, and the text field itself stays uncovered (it is
+        # what the caret is in): the page strip steps aside and only Cancel / Save stay sticky.
         page.locator(".wiki-bar").get_by_role("link", name="Edit").tap()
-        expect(page.get_by_label("Text (Markdown)")).to_be_visible()
+        text = page.get_by_label("Text (Markdown)")
+        expect(text).to_be_visible()
         self.no_horizontal_overflow(page, SMALL_PHONE["width"])
         expect(page.get_by_role("button", name="Save version")).to_be_in_viewport()
+        expect(page.get_by_role("navigation", name="Wiki pages")).to_be_hidden()
+        uncovered = text.evaluate("""el => {
+          const r = el.getBoundingClientRect();
+          const y = Math.min(r.top + 40, window.innerHeight - 120);
+          return document.elementFromPoint(r.left + r.width / 2, y) === el;
+        }""")
+        self.assertTrue(uncovered, "the writing area is not covered by the bar or the save block")
+        save = page.get_by_role("button", name="Save version").bounding_box()
+        assert save
+        self.assertLessEqual(SMALL_PHONE["height"] - save["y"], 90, "only the actions stay at the bottom")
         shot(page, "wiki-phone-320-editor")
 
     def test_12_phone_dark(self) -> None:
