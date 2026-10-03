@@ -68,6 +68,13 @@ class DocReferenceJourney(unittest.TestCase):
         ctx = self.browser.new_context(base_url=ORIGIN, storage_state=self.state, viewport={"width": 390 if phone else 1440, "height": 844 if phone else 900}, is_mobile=phone, has_touch=phone)
         self.addCleanup(ctx.close)
         page = ctx.new_page()
+        page.choice_observations = []
+        def observe_choices(response):
+            q = parse_qs(urlsplit(response.url).query)
+            if response.status == 200 and "/work-view?" in response.url and q.get("choice") == ["doc_refs"]:
+                page.choice_observations.append({"kind": q["kind"][0], "limit": q.get("limit"), "rows": len(response.json()["items"])})
+        page.on("response", observe_choices)
+        self.addCleanup(lambda: self.assertTrue(all(read["limit"] == ["50"] and read["rows"] <= 50 for read in page.choice_observations), "actual native response windows stay at most50 rows"))
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught browser errors"))
@@ -121,6 +128,8 @@ class DocReferenceJourney(unittest.TestCase):
                     query.press("ArrowDown")
                 selected = picker.locator('[role="option"][aria-selected="true"]')
                 self.assertTrue(selected.evaluate("el => { const row=el.getBoundingClientRect(), list=el.parentElement.getBoundingClientRect(); return row.top>=list.top-1 && row.bottom<=list.bottom+1; }"), "the keyboard-selected option stays exposed inside its own list")
+                self.assertEqual({read["kind"] for read in page.choice_observations}, {"work", "decision", "result"})
+                if phone: expect(picker.get_by_text("Tap a match to insert its link.", exact=True)).to_be_visible()
                 shot(page, f"155-doc-reference-work-{'phone' if phone else 'desktop'}")
                 query.press("Enter")
                 expect(text).to_have_value(re.compile("PRIVATE-DRAFT"))
@@ -136,7 +145,8 @@ class DocReferenceJourney(unittest.TestCase):
                 query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
                 query.fill(item["title"])
                 expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(1)
-                query.press("Enter")
+                if phone: picker.get_by_role("listbox", name="Matches").get_by_role("option").tap()
+                else: query.press("Enter")
                 expect(text).to_have_value(re.compile(re.escape(f"flux:{kind}/{item['id']}")))
             page.get_by_label("Title", exact=True).fill(f"Native references saved {'phone' if phone else 'desktop'}")
             text.press("Control+s")
@@ -175,6 +185,11 @@ class DocReferenceJourney(unittest.TestCase):
                 expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(1)
                 expect(query).to_have_value("Native work reference 000")
                 expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")
+
+    def assert_account(self, page, name, phone):
+        if phone: page.get_by_role("button", name="Open navigation", exact=True).click()
+        expect(page.get_by_role("button", name=re.compile(f"^{name} .*account and sign out"))).to_be_visible()
+        if phone: page.get_by_role("button", name="Close navigation", exact=True).click()
 
     def navigate_editor(self, page, project, suffix="new"):
         # Actual browser history navigation observed by React Router, preserving the
@@ -219,12 +234,12 @@ class DocReferenceJourney(unittest.TestCase):
                         held.append((route, response)); page.evaluate("window.oldReferenceHeld = true")
                     else: route.continue_()
                 page.route("**/work-view?**", hold_old_account)
-                self.addCleanup(lambda: page.unroute_all(behavior="ignoreErrors"))
+                self.addCleanup(lambda page=page: page.unroute_all(behavior="ignoreErrors"))
                 picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True).fill(self.native["work"][1]["title"])
                 page.wait_for_function("window.oldReferenceHeld === true")
                 page.context.clear_cookies(); page.context.add_cookies(self.other_state["cookies"])
                 self.navigate_editor(page, self.project)
-                expect(page.get_by_role("button", name=re.compile("^Jonas Reference .*account and sign out"))).to_be_visible()
+                self.assert_account(page, "Jonas Reference", phone)
                 expect(text).to_have_value("")
                 expect(picker).to_have_count(0)
                 other_key = f"flux:doc-edit:{self.other_user}:new:{self.project}"
@@ -244,7 +259,7 @@ class DocReferenceJourney(unittest.TestCase):
                 expect(text).not_to_have_value(re.compile("PRIVATE-DRAFT of native reference notes"))
                 page.context.clear_cookies(); page.context.add_cookies(self.state["cookies"])
                 self.navigate_editor(page, self.project)
-                expect(page.get_by_role("button", name=re.compile("^Ada Reference .*account and sign out"))).to_be_visible()
+                self.assert_account(page, "Ada Reference", phone)
                 expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")
 
     def test_06_delayed_query_does_not_revive_stale_native_results_after_aba(self):
@@ -263,7 +278,7 @@ class DocReferenceJourney(unittest.TestCase):
                         held.append((route, response)); page.evaluate("window.oldQueryHeld = true")
                     else: route.continue_()
                 page.route("**/work-view?**", hold)
-                self.addCleanup(lambda: page.unroute_all(behavior="ignoreErrors"))
+                self.addCleanup(lambda page=page: page.unroute_all(behavior="ignoreErrors"))
                 query.fill(item["title"]); page.wait_for_function("window.oldQueryHeld === true")
                 api(self.ctx, "PATCH", f"/api/v1/work/{item['id']}", {"title": "Current shield measurement", "expectedVersion": item["version"]})
                 query.fill(self.native["work"][1]["title"])
@@ -331,7 +346,7 @@ class DocReferenceJourney(unittest.TestCase):
                     projects.append((route, response)); page.evaluate("count => window.destinationLoadersHeld = count", len(projects))
                 page.route(f"**/api/v1/projects/{self.project}/docs", hold_save)
                 page.route(f"**/api/v1/projects/{self.foreign}", hold_project)
-                self.addCleanup(lambda: page.unroute_all(behavior="ignoreErrors"))
+                self.addCleanup(lambda page=page: page.unroute_all(behavior="ignoreErrors"))
                 text.press("Control+s"); page.wait_for_function("window.saveBeforeNavigationHeld === true")
                 key = f"flux:doc-edit:{self.user}:new:{self.project}"
                 attempt = page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).attempt", key)
@@ -348,3 +363,40 @@ class DocReferenceJourney(unittest.TestCase):
                 expect(text).to_have_value("")
                 self.assertEqual(urlsplit(page.url).path, f"/projects/{self.foreign}/docs/new")
                 self.assertEqual(page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).attempt", key), attempt)
+
+    def test_09_same_editor_revalidation_finishes_the_queued_save_once(self):
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page, text = self.scene(phone)
+                title = f"Same editor settles and saves once {phone}"
+                page.get_by_label("Title", exact=True).fill(title)
+                saves, loaders = [], []
+                def hold_save(route):
+                    if route.request.method == "POST":
+                        response = route.fetch(); self.assertEqual(response.status, 201)
+                        saves.append((route, response)); page.evaluate("window.sameEditorSaveHeld = true")
+                    else: route.continue_()
+                def hold_loader(route):
+                    response = route.fetch(); self.assertEqual(response.status, 200)
+                    loaders.append((route, response)); page.evaluate("count => window.sameEditorLoadersHeld = count", len(loaders))
+                page.route(f"**/api/v1/projects/{self.project}/docs", hold_save)
+                self.addCleanup(lambda page=page: page.unroute_all(behavior="ignoreErrors"))
+                text.press("Control+s"); page.wait_for_function("window.sameEditorSaveHeld === true")
+                key = f"flux:doc-edit:{self.user}:new:{self.project}"
+                attempt = page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).attempt", key)
+                page.route(f"**/api/v1/projects/{self.project}", hold_loader)
+                self.navigate_editor(page, self.project)
+                page.wait_for_function("window.sameEditorLoadersHeld === 2")
+                route, response = saves.pop()
+                with page.expect_request_finished(lambda request: request.method == "POST" and request.url.endswith(f"/{self.project}/docs")):
+                    route.fulfill(response=response)
+                page.wait_for_function("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))")
+                self.assertEqual(page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).attempt", key), attempt)
+                expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")
+                # Subsequent reader navigation uses the real loader normally.
+                page.unroute(f"**/api/v1/projects/{self.project}", hold_loader)
+                for route, response in loaders: route.fulfill(response=response)
+                expect(page.get_by_role("heading", level=2, name=title)).to_be_visible()
+                self.assertIsNone(page.evaluate("key => sessionStorage.getItem(key)", key))
+                docs = api(self.ctx, "GET", f"/api/v1/projects/{self.project}/docs?limit=100")["items"]
+                self.assertEqual(sum(doc["title"] == title for doc in docs), 1)

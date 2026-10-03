@@ -103,7 +103,7 @@ export function LinkPicker({ projectId, workspaceId, selfId, onPick, onClose }: 
       <div className="doc-picker__search">
         <Icon name="search" size={14} />
         <input ref={inputRef} role="combobox" aria-expanded="true" aria-controls={listId} aria-activedescendant={shown[active] ? `${listId}-${active}` : undefined}
-          maxLength={200} aria-label="Find a doc, decision, result, work, sketch or message" placeholder="Find a doc, decision, result…" value={query}
+          maxLength={200} aria-label="Find a doc, decision, result, work, sketch or message" placeholder={type === 'all' ? 'Find project objects…' : `Find ${kindLabel(type).toLowerCase()}…`} value={query}
           onChange={(event) => { setQuery(event.target.value); setActive(0); }} onKeyDown={onKey} />
       </div>
       <div className="doc-picker__type"><label htmlFor={`${listId}-type`}>Type</label><select id={`${listId}-type`} aria-label="Reference type" value={type} onChange={(event) => setType(event.target.value as ReferenceType)}>
@@ -122,6 +122,7 @@ export function LinkPicker({ projectId, workspaceId, selfId, onPick, onClose }: 
           </li>
         ))}
       </ul>
+      <p className="doc-picker__keys doc-picker__touch">Tap a match to insert its link.</p>
       <p className="doc-picker__keys"><kbd>↑</kbd><kbd>↓</kbd> choose · <kbd>Enter</kbd> insert · <kbd>Esc</kbd> close</p>
     </div>
   );
