@@ -609,13 +609,13 @@ class SketchJourney(unittest.TestCase):
                 shot(page, f"sketch-fit-phone-{width}")
                 expect(page.get_by_role("button", name=re.compile(r"^Zoom \d+%"))).to_have_attribute("aria-label", "Zoom 100%, reset to 100%")
                 expect(controls).to_be_in_viewport(ratio=1)
-                self.assert_no_overlap(box(page, canvas), box(page, controls), "phone controls have a protected strip outside the scroll view")
                 self.assertLessEqual(canvas.evaluate("el => el.scrollWidth - el.clientWidth"), 1, "Fit retains the phone projection without sideways scrolling")
                 # The long corner thought wraps at the same full-size phone width. Its complete
-                # text and provenance remain readable after scrolling to the final projected row.
+                # text and provenance remain readable even at the bottom of the scroll view,
+                # where the previous controls overlay covered both. Avoid centering it, which
+                # would hide that failure behind the blank space below the final projected row.
                 corner = self.thought(page, "Keep a physical off switch")
-                canvas.evaluate("el => { el.scrollTop = el.scrollHeight; }")
-                corner.scroll_into_view_if_needed()
+                corner.evaluate("node => { const canvas = node.closest('.sk-canvas'); canvas.scrollTop += node.getBoundingClientRect().bottom - canvas.getBoundingClientRect().bottom; }")
                 shot(page, f"sketch-fit-phone-{width}-corner")
                 viewport_box = box(page, canvas)
                 control_box = box(page, controls)
@@ -626,6 +626,7 @@ class SketchJourney(unittest.TestCase):
                     self.assertLessEqual(bounds["x"] + bounds["width"], viewport_box["x"] + viewport_box["width"] + 1)
                     self.assertLessEqual(bounds["y"] + bounds["height"], viewport_box["y"] + viewport_box["height"] + 1)
                     self.assert_no_overlap(bounds, control_box, "the complete last thought and author stay clear of Fit and zoom")
+                self.assert_no_overlap(viewport_box, control_box, "phone controls have a protected strip outside the scroll view")
                 expect(corner.locator(".sk-p")).to_contain_text("From you")
                 self.assertGreaterEqual(corner.locator(".sk-t").evaluate("el => parseFloat(getComputedStyle(el).fontSize)"), 12)
                 self.assertGreaterEqual(corner.locator(".sk-p").evaluate("el => parseFloat(getComputedStyle(el).fontSize)"), 10)
