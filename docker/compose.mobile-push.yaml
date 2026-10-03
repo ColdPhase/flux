@@ -28,7 +28,7 @@ services:
       POSTGRES_USER: flux
       POSTGRES_PASSWORD: ${MOBILE_DB_PASSWORD:?}
       POSTGRES_DB: flux
-    volumes: ["pgdata:/var/lib/postgresql/data"]
+    volumes: ["pgdata:/var/lib/postgresql"]
     mem_limit: 512m
     cpus: 1.0
     pids_limit: 128
