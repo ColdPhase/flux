@@ -271,5 +271,10 @@ describe('several connections per owner and the assistant\'s own one (#179 PROV-
     assert.equal(await resolveKey(first.id), null);
     assert.equal((await lookup.resolve(owner.id))?.id, second.id);
     assert.equal(expectStatus(await owner.browser.request('GET', `${path}/current`), 200), null, 'and background comparisons stop');
+    // "None" stays none: a connection added without the choice never takes over by itself (#192 review B3).
+    const third = await add(owner, { name: 'Spare Gemini', provider: 'gemini', model: 'gemini-flux-test',
+      price: { inputMicrosPerMTok: 1_000_000, outputMicrosPerMTok: 2_000_000 }, apiKey: keys.gemini, useForBackground: false });
+    assert.equal(third.usedForBackground, false);
+    assert.equal(expectStatus(await owner.browser.request('GET', `${path}/current`), 200), null, 'still none until the owner chooses');
   });
 });

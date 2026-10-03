@@ -67,7 +67,7 @@ export function askState(status: PersonalAssistantStatus | null, audience: strin
 export function unavailableText(status: PersonalAssistantStatus) {
   switch (status.unavailableReason) {
     case 'provider_off': return 'In-app AI is turned off on this Flux server, so nothing is sent.';
-    case 'connection_changed': return 'Your AI key changed. Review your assistant’s consent before it runs again.';
+    case 'connection_changed': return 'The AI connection your assistant used was removed. Another one needs its own consent: remove your assistant, then turn it on with that connection.';
     case 'price_unknown': return 'Your AI connection has no known price, so nothing is sent.';
     case 'run_cost_over_limit': return 'One request to your model can cost more than your per-request limit, so nothing is sent. Raise the limit or choose a cheaper model.';
     default: return 'Your AI key isn’t connected, so nothing is sent.';

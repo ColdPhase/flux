@@ -39,8 +39,11 @@ export function backgroundConnectionRepository(db: Database) {
           .where(eq(schema.authUsers.id, input.ownerUserId)).for('update');
         const [background] = await tx.select({ id: c.id }).from(c)
           .where(and(eq(c.ownerUserId, input.ownerUserId), eq(c.usedForBackground, true)));
-        // PROV-1: a new connection never replaces another. The first one serves background comparisons.
-        const useForBackground = input.useForBackground || !background;
+        // PROV-1: a new connection never replaces another. Only the owner's very first connection serves
+        // background comparisons by itself; after that the owner chooses, and a chosen "none" stays none.
+        const [existing] = await tx.select({ id: c.id }).from(c)
+          .where(and(eq(c.ownerUserId, input.ownerUserId), isNull(c.revokedAt))).limit(1);
+        const useForBackground = input.useForBackground || !existing;
         if (useForBackground && background) await tx.update(c).set({ usedForBackground: false }).where(eq(c.id, background.id));
         const [row] = await tx.insert(c).values({
           id: input.id, ownerUserId: input.ownerUserId, name: input.name, usedForBackground: useForBackground,

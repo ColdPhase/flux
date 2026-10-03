@@ -27,7 +27,9 @@ const dns = resolver({
 describe('endpoint policy (PROV-4)', () => {
   test('address classes: private, loopback, link-local, ULA, CGNAT, mapped and metadata are not public', () => {
     for (const address of ['10.0.0.1', '172.16.5.5', '192.168.1.1', '127.0.0.1', '0.0.0.0', '169.254.1.1', '100.64.0.1', '198.18.0.1',
-      '224.0.0.1', '::1', '::', 'fd00::1', 'fc00::1', 'fe80::1', '::ffff:10.0.0.1', '::ffff:7f00:1', '64:ff9b::a00:1'])
+      '224.0.0.1', '::1', '::', 'fd00::1', 'fc00::1', 'fe80::1', '::ffff:10.0.0.1', '::ffff:7f00:1', '64:ff9b::a00:1',
+      // IPv4-compatible and IPv4-translated forms (#192 review), even of a public IPv4 address.
+      '::8.8.8.8', '::ffff:0:808:808'])
       assert.equal(classifyAddress(address), 'private', address);
     for (const address of ['169.254.169.254', '169.254.170.2', '100.100.100.200', 'fd00:ec2::254', '::ffff:169.254.169.254'])
       assert.equal(classifyAddress(address), 'metadata', address);

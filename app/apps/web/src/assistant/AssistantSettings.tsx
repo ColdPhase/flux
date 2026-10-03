@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
-import { AI_PROVIDERS, aiConnectionLabel, PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUN_LIMITS, type Agent, type BackgroundComputeConnection, type PersonalAssistantStatus } from '@flux/contracts';
+import { AI_PROVIDERS, aiConnectionLabel, maxRequestMicros, PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUN_LIMITS, type Agent, type BackgroundComputeConnection, type PersonalAssistantStatus } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useShellData } from '../app/data';
 import { createPersonalAgent } from '../agent-connection/api';
@@ -97,9 +97,11 @@ function AgentPicker({ workspace, agents, value, onChange, onAgent, name, disabl
 const providerName = (status: PersonalAssistantStatus) =>
   status.disclosure.provider ? (status.disclosure.provider === 'openai_compatible' ? 'your own endpoint' : AI_PROVIDERS[status.disclosure.provider].label) : 'your connection’s AI provider';
 
-function Disclosure({ status, perRun, daily, timeZone }: { status: PersonalAssistantStatus; perRun: number; daily: number; timeZone: string }) {
+function Disclosure({ status, perRun, daily, timeZone, payer: chosenPayer }: {
+  status: PersonalAssistantStatus; perRun: number; daily: number; timeZone: string; payer?: { organization: string; workspace: string } | null;
+}) {
   const { disclosure } = status;
-  const payer = status.enablement?.consent.payer;
+  const payer = chosenPayer ?? status.enablement?.consent.payer;
   const price = disclosure.price;
   return (
     <ul className="aset__facts">
@@ -131,6 +133,13 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
     listBackgroundConnections(controller.signal).then((items) => { setOwned(items); setConnectionId(items[0]?.id ?? ''); }).catch(() => setOwned([]));
     return () => controller.abort();
   }, []);
+  // The disclosure and the consent describe exactly the connection being enabled: its provider, model,
+  // price, largest request and payer, never the server's default choice (#192 review B2).
+  const selected = owned.find((item) => item.id === connectionId) ?? null;
+  const shown: PersonalAssistantStatus = selected ? { ...status, disclosure: { ...status.disclosure, provider: selected.provider, model: selected.model,
+    price: selected.price ? { ...selected.price } : null,
+    maxRunMicros: selected.price ? maxRequestMicros(selected.price, PERSONAL_RUN_LIMITS.maxInputTokens, PERSONAL_RUN_LIMITS.maxOutputTokens) : null } } : status;
+  const payer = selected ? { organization: selected.payerOrganization, workspace: selected.providerWorkspace } : null;
   const timeZone = browserTimeZone();
   const usable = status.setup.provider === 'on' && status.setup.connection === 'active';
   const picked = Object.entries(chosen).filter(([, agentId]) => agentId);
@@ -140,7 +149,7 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
     setBusy(true); setError('');
     try {
       let next = await enableAssistant({ consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId: picked[0]![1], perRunCents: perRun, dailyCapCents: daily, timeZone,
-        ...(owned.length > 1 && connectionId ? { connectionId } : {}) });
+        ...(connectionId ? { connectionId } : {}) });
       for (const [, agentId] of picked.slice(1)) next = await selectAssistantAgent(agentId);
       onEnabled(next);
     } catch (cause) {
@@ -159,7 +168,7 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
       </section>
       <form className="nset__sec" aria-labelledby="aset-consent" onSubmit={(event) => void submit(event)}>
         <h3 id="aset-consent">Before you turn it on</h3>
-        <Disclosure status={status} perRun={perRun} daily={daily} timeZone={timeZone} />
+        <Disclosure status={shown} perRun={perRun} daily={daily} timeZone={timeZone} payer={payer} />
         <fieldset className="aset__fields" disabled={!usable || busy}>
           <legend className="ui-vh">Limits and assistant</legend>
           {owned.length > 1 ? <label className="aset__field">AI connection
@@ -181,7 +190,7 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
           </div>
           <label className="aset__consent">
             <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
-            <span>I agree that excerpts from the project conversations I ask in are sent to {providerName(status)} under my key’s organization, which pays for them.</span>
+            <span>I agree that excerpts from the project conversations I ask in are sent to {providerName(shown)} under my key’s organization, which pays for them.</span>
           </label>
         </fieldset>
         {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}

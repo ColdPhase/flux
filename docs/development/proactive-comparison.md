@@ -26,10 +26,11 @@ allowed. `GET` returns only the caller's rules and requires current project read
 access; `PATCH /api/v1/proactive-comparison-rules/:ruleId` changes status with an
 expected version and current project write access. Revocation is permanent.
 
-The rule starts paused. The owner alone may create or replace a background compute
-connection through `POST /api/v1/background-compute-connections`, inspect safe
-metadata through `GET /api/v1/background-compute-connections/current`, and revoke
-it through `DELETE /api/v1/background-compute-connections/:connectionId`. This is
+The rule starts paused. The owner alone may add AI connections through
+`POST /api/v1/background-compute-connections` (a new one never replaces another; only the
+owner's first one is chosen for background comparisons by itself), inspect the one in use
+through `GET /api/v1/background-compute-connections/current`, and revoke one through
+`DELETE /api/v1/background-compute-connections/:connectionId`; then none takes over. This is
 separate from the external MCP/OAuth connection. The request names the provider
 kind and model (any of [F-020](../product/model-providers.md); see
 [AI providers](ai-providers.md)), the base URL for an OpenAI-compatible endpoint,
