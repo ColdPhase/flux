@@ -53,7 +53,7 @@ candidate_check() {
   [[ "$candidate" =~ ^[a-f0-9]{40}$ && $(git -C "$repo" rev-parse HEAD) == "$candidate" && -z $(git -C "$repo" status --porcelain) ]] || { echo 'Candidate must be the exact clean worktree HEAD' >&2; exit 1; }
 }
 state_candidate() { candidate=$(sed -n 's/^[[:space:]]*"candidate": "\([a-f0-9]*\)",$/\1/p' "$state/state.json"); candidate_check; }
-helper() { dc --profile tools run --rm -T --no-deps helper node /fixture/helper.mjs "$@"; }
+helper() { dc --profile tools run --rm -T --interactive=false --no-deps helper node /fixture/helper.mjs "$@"; }
 case "$action" in
   init) candidate_check; node_tool init "$candidate" "$port" ;;
   build)
@@ -94,11 +94,11 @@ case "$action" in
   desktop-subscribe)
     state_candidate; node_tool browser-image "${3:?Digest-pinned official Selenium Chrome image required}"
     dc --profile desktop-provider up -d desktop-browser >"$state/browser-start.log" 2>&1
-    dc --profile tools run --rm -T --no-deps helper node /fixture/desktop-provider.mjs subscribe
+    dc --profile tools run --rm -T --interactive=false --no-deps helper node /fixture/desktop-provider.mjs subscribe
     ;;
   desktop-notifications|desktop-stop)
     state_candidate; operation=${action#desktop-}
-    dc --profile tools run --rm -T --no-deps helper node /fixture/desktop-provider.mjs "$operation"
+    dc --profile tools run --rm -T --interactive=false --no-deps helper node /fixture/desktop-provider.mjs "$operation"
     if [[ "$action" == desktop-stop ]]; then dc --profile desktop-provider stop desktop-browser >/dev/null; fi
     ;;
   tunnel)

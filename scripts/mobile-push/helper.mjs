@@ -199,7 +199,7 @@ if (process.argv[1]?.endsWith('/helper.mjs')) {
   try { output = JSON.stringify(await main(process.argv.slice(2)), null, 2); }
   catch (error) { output = `Fixture operation failed: ${error.message}`; code = 1; stream = process.stderr; }
   // A finite helper has finished every awaited API/state/DB operation at this point.
-  // Flush its result before exiting; idle fetch sockets must not retain the tools job.
+  // Flush its result before explicitly completing this finite tools job.
   await new Promise((resolve) => stream.write(`${output}\n`, resolve));
   process.exit(code);
 }
