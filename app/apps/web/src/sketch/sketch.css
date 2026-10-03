@@ -95,7 +95,7 @@
    Details. Keep controls, drafts and the complete wrapped hint outside its flexible canvas.
    Very short panes can still scroll instead of crushing the map or losing a draft. */
 .sk-page--map { display: flex; flex-direction: column; }
-.sk--map { flex: 1; min-height: 0; width: 100%; padding-bottom: 16px; }
+.sk--map { flex: 1; min-height: min-content; width: 100%; padding-bottom: 16px; }
 .sk--map > * { flex-shrink: 0; }
 .sk--map .sk-canvas-wrap { flex: 1 0 240px; min-height: 240px; height: auto; }
 .sk--map .sk-canvas { height: 100%; }
