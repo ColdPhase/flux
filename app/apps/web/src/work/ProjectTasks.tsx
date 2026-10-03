@@ -173,7 +173,12 @@ export function ProjectTasks() {
       setViewState({ routeKey, status: target.group, mine: false, cursor: null });
       return;
     }
-    if (heading) heading.scrollIntoView({ block: 'start' });
+    const pane = scroller.current;
+    if (heading && pane) {
+      const controls = pane.querySelector('.ws-task-controls');
+      const inset = (controls?.getBoundingClientRect().height ?? 0) + 12;
+      pane.scrollTo({ top: Math.max(0, pane.scrollTop + heading.getBoundingClientRect().top - pane.getBoundingClientRect().top - inset), behavior: 'instant' });
+    }
     jump.current = null;
   }, [routeKey, read.phase, data, status, mine, cursor, view]);
 

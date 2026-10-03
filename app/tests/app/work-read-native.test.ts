@@ -183,7 +183,7 @@ describe('bounded native work reads through HTTP and current native fences', () 
     const path = `/api/v1/projects/${isolated.id}`;
     const prerequisites: WorkItem[] = [];
     for (let i = 0; i < 50; i++) prerequisites.push(await post<WorkItem>(owner, `${path}/work`, { title: `Bound prerequisite ${i}`, status: i % 2 ? 'done' : 'open' }));
-    const criteria = Array.from({ length: 20 }, (_, i) => `${i}:` + 'x'.repeat(997 - String(i).length));
+    const criteria = Array.from({ length: 20 }, (_, i) => `${i}:` + 'x'.repeat(999 - String(i).length));
     const task = await post<WorkItem>(owner, `${path}/work`, { title: 'Task at native boundaries', criteria, dependencyIds: prerequisites.map(({ id }) => id) });
     const page = await get<ProjectWorkView>(`${path}/work-view?limit=1`);
     assert.equal(page.items.length, 1); assert.equal(page.total, 51); assert.equal(page.items[0]?.id, task.id);
