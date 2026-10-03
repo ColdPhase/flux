@@ -17,7 +17,11 @@ marked producer replies. No production volume/configuration is imported.
 
 Initialization generates new database/auth secrets, two passwords and P-256
 VAPID keys inside a digest-pinned Node container. State is a private, owned,
-nonsymlinked `/tmp/flux-mobile-push-NAME` directory (0700; files 0600). Never
+nonsymlinked `/tmp/flux-mobile-push-NAME` directory (0700; files 0600). Bind mounts
+use shared SELinux labels because the gateway and finite helper containers read
+the same fixture state; a helper must not relabel it with a different private
+container label while the gateway is running. Directory/file permissions remain
+private. Never
 attach `secrets.json`, `fixture.env`, `operator.md`, raw build/container/tunnel
 logs, cookies, full push endpoints or keys to GitHub. Inspect only the allowlisted
 `inspection.json`, `provider-results.jsonl`, HTTPS checks and reviewed evidence.

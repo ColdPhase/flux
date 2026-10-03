@@ -40,7 +40,7 @@ for variable in ${!MOBILE_@}; do unset "$variable"; done
 node_tool() {
   docker run --rm --user "$(id -u):$(id -g)" --read-only --cap-drop ALL --security-opt no-new-privileges \
     --pids-limit 64 --memory 256m --cpus 0.5 --network none --tmpfs /tmp:rw,noexec,nosuid,size=16m \
-    -e MOBILE_STATE=/state -e "MOBILE_HOST_STATE=$state" -v "$repo/scripts/mobile-push:/fixture:ro" -v "$state:/state" \
+    -e MOBILE_STATE=/state -e "MOBILE_HOST_STATE=$state" -v "$repo/scripts/mobile-push:/fixture:ro,z" -v "$state:/state:z" \
     "$node_image" node /fixture/helper.mjs "$@"
 }
 dc() {
@@ -66,7 +66,7 @@ case "$action" in
   up) state_candidate; [[ -f "$state/image-id" ]]; dc up -d --wait --wait-timeout 120 db files-init migrate api worker gateway >"$state/start.log" 2>&1 ;;
   check)
     docker run --rm --user "$(id -u):$(id -g)" --read-only --cap-drop ALL --security-opt no-new-privileges --pids-limit 64 --memory 256m --cpus 0.5 --network none \
-      --tmpfs /tmp:rw,noexec,nosuid,size=16m -v "$repo/scripts/mobile-push:/fixture:ro" "$node_image" node --test /fixture/fixture.test.mjs
+      --tmpfs /tmp:rw,noexec,nosuid,size=16m -v "$repo/scripts/mobile-push:/fixture:ro,z" "$node_image" node --test /fixture/fixture.test.mjs
     ;;
   seed|probe|inspect|reply|mute|unmute|deny|restore|unsubscribe|revoke|record|matrix)
     state_candidate
@@ -88,7 +88,7 @@ case "$action" in
     ;;
   worker-results)
     dc logs --no-color --no-log-prefix --tail 10000 worker 2>/dev/null | docker run --rm -i --read-only --cap-drop ALL --security-opt no-new-privileges \
-      --pids-limit 64 --memory 128m --cpus 0.5 --network none -v "$repo/scripts/mobile-push:/fixture:ro" "$node_image" node /fixture/sanitize-worker.mjs >"$state/provider-results.jsonl"
+      --pids-limit 64 --memory 128m --cpus 0.5 --network none -v "$repo/scripts/mobile-push:/fixture:ro,z" "$node_image" node /fixture/sanitize-worker.mjs >"$state/provider-results.jsonl"
     echo "Sanitized provider results saved in $state/provider-results.jsonl"
     ;;
   desktop-subscribe)

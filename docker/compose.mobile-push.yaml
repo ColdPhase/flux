@@ -92,8 +92,8 @@ services:
       MOBILE_STATE: /state
     read_only: true
     volumes:
-      - ../scripts/mobile-push:/fixture:ro
-      - ${MOBILE_STATE:?}:/state:ro
+      - ../scripts/mobile-push:/fixture:ro,z
+      - ${MOBILE_STATE:?}:/state:ro,z
     ports: ["127.0.0.1:${MOBILE_PORT:?}:8080"]
     depends_on:
       api: { condition: service_healthy }
@@ -108,8 +108,8 @@ services:
       MOBILE_API: http://api:8080
       DATABASE_URL: postgres://flux:${MOBILE_DB_PASSWORD:?}@db:5432/flux
     volumes:
-      - ../scripts/mobile-push:/fixture:ro
-      - ${MOBILE_STATE:?}:/state
+      - ../scripts/mobile-push:/fixture:ro,z
+      - ${MOBILE_STATE:?}:/state:z
     depends_on:
       api: { condition: service_healthy }
   desktop-browser:
