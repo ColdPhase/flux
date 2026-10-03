@@ -630,6 +630,7 @@ class SharedComposerJourney(unittest.TestCase):
         expect(box).to_have_value(before_a['body'])
         self.assertEqual(self.record(page, project, a), before_a)
         self.assertEqual(self.record(page, project, b), edited_b)
+
         page.unroute_all(behavior="ignoreErrors")
         # A failed B loader shows honest failure rather than an editable A composer under B.
         def fail_loader(route):
@@ -646,3 +647,70 @@ class SharedComposerJourney(unittest.TestCase):
         expect(page.get_by_label("Write to this task")).to_have_value(edited_b['body'])
         self.assertEqual(self.record(page, project, a), before_a)
         self.assertEqual(self.record(page, project, b), edited_b)
+
+    def test_13_signout_clears_device_visit_and_legacy_drafts_before_a_late_upload(self):
+        for refused_write in (False, True):
+            with self.subTest(storage_refused=refused_write):
+                page = self.page()
+                self.addCleanup(lambda page=page: page.unroute_all(behavior="ignoreErrors"))
+                project, task, _, _ = self.scene(page)
+                root = self.root(page, task)
+                pane = self.cite(page, project, root['conversationId'])
+                pane.get_by_label("Reply", exact=True).fill("Private text with a saved source before signing out")
+                self.choose(page, [self.file("private-before-signout.bin")], pane)
+                expect(pane.get_by_text("Ready, private", exact=False)).to_have_count(1)
+                persisted = self.record(page, project, task)
+                legacy = f"flux:draft:{self.people['owner']}:task:{task['id']}"
+                old_conversation = f"flux.project-composer.{self.people['owner']}.{project['id']}.{root['conversationId']}"
+                page.evaluate("""keys => {
+                  localStorage.setItem(keys[0], 'Retired task text');
+                  localStorage.setItem(keys[0]+':pending', JSON.stringify({body:'Retired task text',id:crypto.randomUUID()}));
+                  sessionStorage.setItem(keys[1], 'Retired conversation text');
+                  sessionStorage.setItem(keys[1]+'.pending', JSON.stringify({body:'Retired conversation text',id:crypto.randomUUID()}));
+                }""", [legacy, old_conversation])
+                if refused_write:
+                    page.evaluate("Storage.prototype.setItem = function() { throw new DOMException('Refused', 'QuotaExceededError'); }")
+                    pane.get_by_label("Reply", exact=True).fill("Newest private visit copy after storage refused writes")
+                newest = pane.get_by_label("Reply", exact=True).input_value()
+                def fail(route):
+                    route.fulfill(status=503, content_type="application/json", body="{}")
+                page.route("**/api/auth/sign-out", fail)
+                page.get_by_role("button", name=re.compile("account and sign out")).click()
+                with page.expect_response(lambda response: response.url.endswith("/api/auth/sign-out")) as response:
+                    page.get_by_role("button", name="Sign out", exact=True).click()
+                self.assertEqual(response.value.status, 503)
+                expect(pane.get_by_label("Reply", exact=True)).to_have_value(newest)
+                self.assertEqual(self.record(page, project, task), persisted)
+                page.unroute("**/api/auth/sign-out", fail)
+                if page.get_by_role("dialog", name="Account").count():
+                    page.get_by_role("button", name=re.compile("account and sign out")).click()
+                held = []
+                def hold_upload(route):
+                    result = route.fetch()
+                    self.assertEqual(result.status, 201)
+                    held.append((route, result))
+                    page.evaluate("window.__fluxSignoutUploadReady = true")
+                page.route(f"**/api/v1/projects/{project['id']}/files?*", hold_upload)
+                self.choose(page, [self.file("private-late-signout.bin")], pane)
+                page.wait_for_function("() => window.__fluxSignoutUploadReady === true")
+                page.get_by_role("button", name=re.compile("account and sign out")).click()
+                with page.expect_response(lambda response: response.url.endswith("/api/auth/sign-out")) as response:
+                    page.get_by_role("button", name="Sign out", exact=True).click()
+                self.assertEqual(response.value.status, 200)
+                expect(page.get_by_role("heading", name="Sign in to Flux", exact=True)).to_be_visible()
+                self.assertIsNone(self.record(page, project, task))
+                self.assertEqual(page.evaluate("keys => [localStorage.getItem(keys[0]),localStorage.getItem(keys[0]+':pending'),sessionStorage.getItem(keys[1]),sessionStorage.getItem(keys[1]+'.pending')]", [legacy, old_conversation]), [None] * 4)
+                held[0][0].fulfill(response=held[0][1])
+                page.unroute_all(behavior="ignoreErrors")
+                self.assertIsNone(self.record(page, project, task), "a late upload cannot repersist a retired record")
+                page.get_by_label("Email", exact=True).fill(PEOPLE['owner'][1])
+                page.get_by_label("Password", exact=True).fill(PASSWORD)
+                page.get_by_role("button", name="Sign in", exact=True).click()
+                expect(page.get_by_role("heading", name="Sign in to Flux", exact=True)).to_have_count(0)
+                # Use the app's project link so the visit-local store survives the login round trip.
+                page.locator(f'a[href^="/projects/{project["id"]}"]').first.click()
+                page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Agents")).click()
+                page.get_by_label("Task", exact=True).select_option(task['id'])
+                expect(page.get_by_label("Write to this task", exact=True)).to_have_value("")
+                expect(page.get_by_role("list", name="Files in your draft")).to_have_count(0)
+                self.assertEqual(len(self.discussion(page, task)['messages']), 1)

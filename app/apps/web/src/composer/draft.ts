@@ -18,16 +18,37 @@ const snapshots = new Map<string, Snapshot>();
 const listeners = new Map<string, Set<() => void>>();
 // The selected bytes live only in this visit. After reload, failed uploads ask for the same file.
 const selected = new Map<string, Map<string, File>>();
-export const composerKey = (accountId: string, projectId: string, context: string) => `flux:composer:${accountId}:${projectId}:${context}`;
+const PREFIX = 'flux:composer:';
+let sessionGeneration = 0;
+let retiredStorage = false;
+export const composerKey = (accountId: string, projectId: string, context: string) => `${PREFIX}${accountId}:${projectId}:${context}`;
 const empty = (): ComposerDraft => ({ version: 1, body: '', files: [], references: [], commandId: crypto.randomUUID(), unconfirmed: false });
 const uuid = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
+/** Called only after confirmed sign-out. Old acknowledgements belong to a retired session. */
+export function forgetComposerDrafts() {
+  sessionGeneration++;
+  retiredStorage = true;
+  for (const storage of [() => localStorage, () => sessionStorage]) {
+    try {
+      const target = storage();
+      for (const key of Object.keys(target)) {
+        if (key.startsWith(PREFIX) || key.startsWith('flux:draft:') || key.startsWith('flux.project-composer.')) target.removeItem(key);
+      }
+    } catch { /* Memory still clears; this visit never reimports a retired session's records. */ }
+  }
+  snapshots.clear();
+  selected.clear();
+  // Keep subscriptions valid until the signed-in tree unmounts; any remaining view reads empty.
+  listeners.forEach((set) => set.forEach((listener) => listener()));
+}
 
 function load(key: string, accountId: string, projectId: string, context: string): Snapshot {
   if (snapshots.has(key)) return snapshots.get(key)!;
   let draft = empty();
   let storage: Snapshot['storage'] = 'device';
   try {
-    const stored = localStorage.getItem(key);
+    const stored = retiredStorage ? null : localStorage.getItem(key);
     if (stored) {
       const value = JSON.parse(stored) as ComposerDraft;
       if (value.version === 1 && typeof value.body === 'string' && value.body.length <= 100000 && uuid(value.commandId)
@@ -38,7 +59,7 @@ function load(key: string, accountId: string, projectId: string, context: string
         draft = { ...value, files: value.files.map((file) => file.state === 'uploading'
           ? { ...file, state: 'failed', error: 'Upload was interrupted. Select the same file to retry.' } : file) };
       }
-    } else {
+    } else if (!retiredStorage) {
       // Preserve existing text/retry identities while moving the three old composers into one record.
       const oldKey = context.startsWith('task:') ? `flux:draft:${accountId}:${context}` : `flux.project-composer.${accountId}.${projectId}.${context === 'new' ? 'new' : context.replace(/^conversation:/, '')}`;
       const body = context.startsWith('task:') ? localStorage.getItem(oldKey) : sessionStorage.getItem(oldKey);
@@ -86,6 +107,8 @@ function uploadError(cause: unknown) {
 /** A scope-captured store: late A completions can never write to B, even after A → B → A. */
 export function useComposerDraft(accountId: string, projectId: string, context: string) {
   const key = composerKey(accountId, projectId, context);
+  const generation = sessionGeneration;
+  const active = () => generation === sessionGeneration && snapshots.has(key);
   const read = useCallback(() => load(key, accountId, projectId, context), [key, accountId, projectId, context]);
   const subscribe = useCallback((listener: () => void) => {
     const set = listeners.get(key) ?? new Set(); set.add(listener); listeners.set(key, set);
@@ -95,7 +118,9 @@ export function useComposerDraft(accountId: string, projectId: string, context: 
   const { draft } = snapshot;
 
   async function upload(uploadId: string, file: File) {
+    if (!active() || !snapshots.get(key)!.draft.files.some((item) => item.uploadId === uploadId)) return;
     const changeFile = (change: (item: DraftFile) => DraftFile) => {
+      if (!active()) return;
       const current = snapshots.get(key)!;
       if (!current.draft.files.some((item) => item.uploadId === uploadId)) return;
       put(key, { ...current, draft: { ...current.draft, files: current.draft.files.map((item) => item.uploadId === uploadId ? change(item) : item) } });
@@ -107,6 +132,7 @@ export function useComposerDraft(accountId: string, projectId: string, context: 
     } catch (cause) { changeFile((item) => ({ ...item, state: 'failed', error: uploadError(cause) })); }
   }
   function addFiles(files: File[]) {
+    if (!active()) return;
     const current = snapshots.get(key)!;
     if (current.sending) return;
     if (current.draft.files.length + files.length > FILE_LIMITS.messageFiles) {
@@ -125,9 +151,15 @@ export function useComposerDraft(accountId: string, projectId: string, context: 
     });
     edit(key, (value) => ({ ...value, files: [...value.files, ...additions] }));
     // Sequential admission keeps quota and ordered selection deterministic.
-    void (async () => { for (const item of additions) if (item.state === 'uploading') await upload(item.uploadId, bytes.get(item.uploadId)!); })();
+    void (async () => {
+      for (const item of additions) {
+        if (!active()) return;
+        if (item.state === 'uploading') await upload(item.uploadId, bytes.get(item.uploadId)!);
+      }
+    })();
   }
   function retryFile(uploadId: string, replacement?: File) {
+    if (!active()) return false;
     const item = snapshots.get(key)!.draft.files.find((file) => file.uploadId === uploadId);
     if (!item || snapshots.get(key)!.sending) return;
     const file = replacement ?? selected.get(key)?.get(uploadId);
@@ -140,6 +172,7 @@ export function useComposerDraft(accountId: string, projectId: string, context: 
     void upload(uploadId, file); return true;
   }
   function begin(): SendMessageCommand | null {
+    if (!active()) return null;
     const current = snapshots.get(key)!;
     const value = current.draft;
     if (current.sending || value.files.some((file) => file.state !== 'ready') || (!value.body.trim() && !value.files.length)) return null;
@@ -151,15 +184,16 @@ export function useComposerDraft(accountId: string, projectId: string, context: 
     return command;
   }
   function finish(commandId: string, cause?: unknown) {
+    if (!active()) return;
     const current = snapshots.get(key)!;
     const confirmed = cause === undefined && current.draft.commandId === commandId;
     if (confirmed) selected.delete(key);
     put(key, { ...current, sending: false, error: cause === undefined ? '' : composerError(cause), draft: confirmed ? empty() : current.draft });
   }
   return { ...snapshot, key, canSend: !snapshot.sending && draft.files.every((file) => file.state === 'ready') && (!!draft.body.trim() || !!draft.files.length),
-    setBody: (body: string) => edit(key, (value) => ({ ...value, body })),
-    setReference: (reference: DraftReference | null) => edit(key, (value) => ({ ...value, references: reference ? [reference] : [] })),
-    removeFile: (uploadId: string) => { if (snapshots.get(key)!.sending) return; selected.get(key)?.delete(uploadId); edit(key, (value) => ({ ...value, files: value.files.filter((file) => file.uploadId !== uploadId) })); },
+    setBody: (body: string) => { if (active()) edit(key, (value) => ({ ...value, body })); },
+    setReference: (reference: DraftReference | null) => { if (active()) edit(key, (value) => ({ ...value, references: reference ? [reference] : [] })); },
+    removeFile: (uploadId: string) => { if (!active() || snapshots.get(key)!.sending) return; selected.get(key)?.delete(uploadId); edit(key, (value) => ({ ...value, files: value.files.filter((file) => file.uploadId !== uploadId) })); },
     addFiles, retryFile, begin, finish,
   };
 }
