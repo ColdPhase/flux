@@ -27,7 +27,7 @@ function lastConversationPath(projectId: string) {
   try {
     const saved = sessionStorage.getItem(`flux.project-conversation.${projectId}`);
     // Discard a non-conversation destination remembered by an older shell.
-    return saved && !/^\/projects\/[^/]+\/(tasks|map|docs|github)(\/|\?|$)/.test(saved) ? saved : `/projects/${projectId}`;
+    return saved && !/^\/projects\/[^/]+\/(tasks|map|docs|agents|github)(\/|\?|$)/.test(saved) ? saved : `/projects/${projectId}`;
   }
   catch { return `/projects/${projectId}`; }
 }
