@@ -200,7 +200,7 @@ export function BackgroundComputeSettings() {
           <p className="background-settings__help">The key-owning organization pays {payee(item.provider)}. Flux limits new requests; this allowance does not guarantee the provider invoice. Interrupted requests can still be charged.</p>
           <div className="background-settings__actions">
             {!item.usedForBackground ? <Button disabled={busy} onClick={() => void chooseForBackground(item)} aria-describedby={`connection-${item.id}`}>Use for background suggestions</Button> : null}
-            <Button disabled={busy} onClick={() => void disconnect(item)} aria-label={`Disconnect ${item.name}`}>Disconnect</Button>
+            <Button disabled={busy} onClick={() => void disconnect(item)} aria-label={`Disconnect ${item.name}, key ending ${item.keyLastFour}`}>Disconnect</Button>
           </div>
           <p className="background-settings__help">Disconnecting removes this key from Flux. Revoke it at {item.provider === 'openai_compatible' ? 'your endpoint' : AI_PROVIDERS[item.provider].label} too if it should stop working outside Flux.</p>
         </li>)}

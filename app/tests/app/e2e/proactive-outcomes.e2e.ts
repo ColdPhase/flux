@@ -227,8 +227,8 @@ test('owner usage distinguishes known, uncertain and no-cost requests and surviv
     assert.match(await page.locator('.background-usage [role="alert"]').innerText(), /last|previous|showing|fetched/i);
     assert.ok(await history.getByText('Bedside gesture lamp', { exact: true }).count() > 0, 'failed refresh retains the explicit stale snapshot');
     await page.unroute('**/api/v1/background-compute-usage');
-    const marked = (await api(page, 'GET', '/api/v1/background-compute-connections/current')).data as { name: string };
-    await page.getByRole('button', { name: `Disconnect ${marked.name}`, exact: true }).click();
+    const marked = (await api(page, 'GET', '/api/v1/background-compute-connections/current')).data as { name: string; keyLastFour: string };
+    await page.getByRole('button', { name: `Disconnect ${marked.name}, key ending ${marked.keyLastFour}`, exact: true }).click();
     await page.getByRole('heading', { name: 'Connect your background source', exact: true }).waitFor();
     await page.getByRole('button', { name: 'Refresh usage', exact: true }).click();
     const accounting = (await api(page, 'GET', '/api/v1/background-compute-usage')).data as BackgroundComputeUsage;

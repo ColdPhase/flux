@@ -396,12 +396,12 @@ test('owner-only background setup persists consent, clears keys and preserves an
   await page.getByRole('heading', { name: 'Add a connection', exact: true }).waitFor({ state: 'hidden' });
   const replacement = (await api('GET', '/api/v1/background-compute-connections/current')).data as { id: string; keyLastFour: string; name: string };
   assert.notEqual(replacement.id, first.id, 'the chosen new connection is now used'); assert.equal(replacement.keyLastFour, 'WXYZ');
-  // Each connection's button names it (F-020: several connections can be listed).
-  await page.getByRole('button', { name: `Disconnect ${replacement.name}`, exact: true }).click();
+  // Each connection's button names it and its key (F-020): two connections can share a provider and model.
+  await page.getByRole('button', { name: `Disconnect ${replacement.name}, key ending ${replacement.keyLastFour}`, exact: true }).click();
   await page.locator('.background-settings__saved', { hasText: 'none takes over by itself' }).waitFor();
   assert.equal((await api('GET', '/api/v1/background-compute-connections/current')).data, null,
     'the remaining connection does not take over');
-  await page.getByRole('button', { name: `Disconnect ${first.name}`, exact: true }).click();
+  await page.getByRole('button', { name: `Disconnect ${first.name}, key ending ${first.keyLastFour}`, exact: true }).click();
   await page.getByRole('heading', { name: 'Connect your background source', exact: true }).waitFor();
   assert.equal((await api('GET', '/api/v1/background-compute-connections/current')).data, null);
   await page.reload();
