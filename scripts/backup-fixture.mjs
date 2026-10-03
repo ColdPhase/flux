@@ -64,6 +64,16 @@ class Session {
     return response.json;
   }
 
+  async bytes(path, body) {
+    const response = await fetch(new URL(path, api), {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: { origin, cookie: [...this.cookies].map(([k, v]) => `${k}=${v}`).join('; '),
+        ...(body === undefined ? {} : { 'content-type': 'application/octet-stream' }) }, body,
+    });
+    assert.equal(response.status, body === undefined ? 200 : 201, `${path}: ${response.status}`);
+    return body === undefined ? Buffer.from(await response.arrayBuffer()) : response.json();
+  }
+
   jar() { return Object.fromEntries(this.cookies); }
 }
 
@@ -163,7 +173,9 @@ async function snapshot(ada, jonas, state) {
     adaPreferences: await ada.expect('GET', '/api/v1/notification-preferences'),
     jonasPreferences: await jonas.expect('GET', '/api/v1/notification-preferences'),
   };
-  return { exported, threads, docVersions, dmMessages, adaDrafts, jonasDrafts, push, members, connections, notifications };
+  const fileHex = (await ada.bytes(`/api/v1/files/${state.fileId}`)).toString('hex');
+  assert.equal(fileHex, state.fileHex, 'exact stored attachment bytes');
+  return { exported, threads, docVersions, dmMessages, adaDrafts, jonasDrafts, push, members, connections, notifications, fileHex };
 }
 
 async function seed() {
@@ -175,7 +187,9 @@ async function seed() {
   const adaId = (await ada.expect('GET', '/api/v1/me')).user.id;
   const jonasId = (await jonas.expect('GET', '/api/v1/me')).user.id;
 
-  const thread = await ada.expect('POST', `/api/v1/projects/${projectId}/conversations`, { body: token('BACKUP-message'), clientMessageId: ids() });
+  const fileBytes = Buffer.from([0, 255, 128, 1, 10, 42, 0]);
+  const file = await ada.bytes(`/api/v1/projects/${projectId}/files?uploadId=${ids()}&name=paired-backup.bin`, fileBytes);
+  const thread = await ada.expect('POST', `/api/v1/projects/${projectId}/conversations`, { body: token('BACKUP-message'), attachmentIds: [file.id], clientMessageId: ids() });
   await jonas.expect('POST', `/api/v1/conversations/${thread.id}/messages`, { body: token('BACKUP-reply'), clientMessageId: ids() });
   const sketch = await ada.expect('POST', `/api/v1/workspaces/${workspaceId}/sketches`, { title: token('BACKUP-sketch'), scope: 'project', projectId });
   const root = await ada.expect('POST', `/api/v1/sketches/${sketch.id}/thoughts`, { text: token('BACKUP-thought'), x: 0, y: 0 });
@@ -234,7 +248,7 @@ async function seed() {
   const outsider = { email: `outsider-${tag}@example.test`, password: `outsider-${tag}-password` };
   await new Session().expect('POST', '/api/auth/sign-up/email', { ...outsider, name: 'Olga Outsider' }, [200]);
 
-  const state = { tag, workspaceId, projectId, adaId, jonasId, dmId: dm.id, noteId: note.id, docId: doc.id, outsider, liveConnection, bearers };
+  const state = { tag, workspaceId, projectId, fileId: file.id, fileHex: fileBytes.toString('hex'), adaId, jonasId, dmId: dm.id, noteId: note.id, docId: doc.id, outsider, liveConnection, bearers };
   const expected = await snapshot(ada, jonas, state);
   assert.ok(expected.adaDrafts.some(([id]) => id === note.id), 'Ada sees her private note');
   assert.ok(!expected.jonasDrafts.includes(note.id), 'Jonas cannot see Ada\'s private note');

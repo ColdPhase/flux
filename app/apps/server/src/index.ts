@@ -41,6 +41,8 @@ import { notificationRoutes } from './notifications/routes.js';
 import { searchRoutes } from './search/routes.js';
 import { personalRunRoutes } from './personal-runs/routes.js';
 import { personalRunServerComposition } from './personal-runs/composition.js';
+import { diskFileStorage } from './files/storage.js';
+import { fileRoutes } from './files/routes.js';
 import { exportRoutes } from './export/routes.js';
 import { githubRoutes } from './github/routes.js';
 import { loadGithubConfig } from './github/config.js';
@@ -76,8 +78,10 @@ await app.register(websocket, { options: { maxPayload: 1024, server: streamUpgra
 const heartbeatMs = Number(process.env.FLUX_STREAM_HEARTBEAT_MS ?? 25_000);
 if (!Number.isInteger(heartbeatMs) || heartbeatMs < 100) throw new Error('FLUX_STREAM_HEARTBEAT_MS must be an integer of at least 100');
 await app.register(streamRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, connectionString, heartbeatMs, cursorSecret: identityConfig.secret, exposeWork: testFailureInjection });
-await app.register(conversationRoutes, { db, sessions: identity });
-await app.register(workRoutes, { db, sessions: identity });
+const fileStorage = await diskFileStorage(filesDir);
+await app.register(fileRoutes, { db, sessions: identity, storage: fileStorage });
+await app.register(conversationRoutes, { db, sessions: identity, storage: fileStorage });
+await app.register(workRoutes, { db, sessions: identity, storage: fileStorage });
 await app.register(githubRoutes, { db, sessions: identity, config: loadGithubConfig(process.env, identityConfig.publicOrigin) });
 // Configuration alone does not prove the SFU, DNS/TLS or receiver path is healthy.
 app.get('/api/v1/live-sessions/capabilities', async () => ({ status: liveMedia ? 'configured' : 'unavailable' }));
@@ -156,7 +160,7 @@ const personalRuns = personalRunServerComposition(process.env);
 if (personalRuns.mode !== 'production') app.log.warn({ mode: personalRuns.mode }, 'TEST ONLY: personal runs use fixture connections and a mock provider');
 await app.register(personalRunRoutes, { db, sessions: identity, boss, connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled });
 await app.register(searchRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret, exposeWork: testFailureInjection });
-await app.register(exportRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin });
+await app.register(exportRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, storage: fileStorage });
 
 app.get('/api/v1/health', async (_request, reply) => {
   try {

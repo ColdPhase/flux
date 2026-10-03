@@ -274,3 +274,46 @@ The one project stream (UI116-1) shows both halves of UI116-3:
 
 Still open in #154: the thread drawer's reply composer keeps the conversation's own draft rather than the task's
 (to be joined once the Agents composer lands), stored files, unused-AI undo and real #152/#153 clients.
+
+## Stored files and attachment-only messages (#154, migration0045)
+
+The file slice follows the [accepted contract and independent corrections](task-discussions/2026-10-01-contribution-effects-and-files.md).
+Human HTTP uploads stage private files through `POST /api/v1/projects/:id/files`
+with `application/octet-stream`, stable `uploadId` and display `name` query fields.
+Responses expose measured size and SHA-256. `attachmentIds` on conversation start,
+ordinary reply and task discussion append publish the uploader's ready files in
+one transaction with the authored message. Raw `body` remains empty for files-only
+messages; optional message `files` carries ordered id/name/size metadata. Empty
+body without files is rejected. Bound task replies use command → sorted file →
+sorted task → conversation locks. Exact command replay retains the original
+relationship after current policy checks.
+
+`FileStorage` uses private `attachments/tmp` and immutable
+`attachments/objects/<first two UUID characters>/<UUID>` under `FLUX_FILES_DIR`.
+File bytes are synced outside SQL; the short uploader-locked finalization checks
+the live reservation, renames and syncs directories before ready SQL; paths never use client
+names or follow symlinks. Limits are5MiB per file,10files/20MiB per message and
+100MiB staged per uploader/project. Receiving reservations expire in15minutes;
+ready unpublished files in7days. Ready-UUID replay uses a bounded digest-only
+stream and a zero-byte serialization marker, so an uncertain response can be
+recovered at the full quota. A10-minute bounded cleaner retires at most50expired
+rows, and durable `file_garbage` tombstones retry unlink and directory sync. It
+never deletes published files. An uncertain finalization first reads the actual
+row under the admission lock and retains possibly committed bytes.
+
+Download rechecks current project access, uploader ownership for private staging,
+expiry and actual byte integrity. Responses are generic attachment octet streams
+with encoded display names, `nosniff`, private `no-store` and sandbox CSP.
+Notifications, Return and conversation labels use a system attachment-count
+preview without inventing authored text. Helper context includes filename/size/id
+and actual contribution/result identity; it does not feed file bytes to a model.
+Search preserves the actor and raw body. [Portable export](../operations/export.md)
+includes exact bytes and manifests through both HTTP and the operator CLI.
+
+Migration0045 adds scoped file/message identity, optional relationship metadata
+and the body-or-attachments invariant without backfilling old messages. Its
+[guarded pre-use reversal](../../app/packages/db/migrations/reverse/0045_stored_files.down.sql)
+refuses file or deletion-queue use. Operational recovery uses paired DB/files
+backup. Shared composer drafts and rendered UI acceptance remain the separate
+#136 integration; #152/#153 must compose real grant checks before agent file writes
+can be enabled. Real client and device evidence is still required for release.

@@ -9,7 +9,7 @@ import { Browser, register, uniqueEmail } from './support/http.js';
 const stateFile = join(process.env.FLUX_TEST_STATE_DIR ?? '/state', 'session-restart.json');
 const phase = process.argv[2];
 
-interface State { cookie: string; userId: string; conversationId: string; materialId: string }
+interface State { cookie: string; userId: string; conversationId: string; materialId: string; fileId: string; fileHex: string }
 
 if (phase === 'prepare') {
   const { browser } = await register(uniqueEmail('restart'), 'correct horse battery staple');
@@ -26,13 +26,19 @@ if (phase === 'prepare') {
   const published = await browser.request('POST', `/api/v1/projects/${projectId}/materials`,
     { body: { clientMutationId: randomUUID(), title: 'Persistence', body: 'Stored material' } });
   assert.equal(published.status, 201, published.text);
-  const materialId = (published.json as { materialId: string }).materialId;
+  const materialId = (published.json as { materialId: string; fileId: string; fileHex: string }).materialId;
+  const fileBytes = Buffer.from([0, 255, 3, 128, 10, 42]);
+  const uploaded = await fetch(new URL(`/api/v1/projects/${projectId}/files?uploadId=${randomUUID()}&name=restart.bin`, browser.base), {
+    method: 'POST', headers: { 'content-type': 'application/octet-stream', cookie: browser.cookieHeader(), origin: browser.defaultOrigin }, body: fileBytes,
+  });
+  assert.equal(uploaded.status, 201);
+  const fileId = (await uploaded.json() as { id: string }).id;
   const conversation = await browser.request('POST', `/api/v1/projects/${projectId}/conversations`,
-    { body: { body: 'Stored message', clientMessageId: randomUUID(), source: { materialId, version: 1 } } });
+    { body: { body: 'Stored message', attachmentIds: [fileId], clientMessageId: randomUUID(), source: { materialId, version: 1 } } });
   assert.equal(conversation.status, 201, conversation.text);
   const conversationId = (conversation.json as { id: string }).id;
   await writeFile(stateFile, JSON.stringify({ cookie, userId: (me.json as { user: { id: string } }).user.id,
-    conversationId, materialId } satisfies State));
+    conversationId, materialId, fileId, fileHex: fileBytes.toString('hex') } satisfies State));
   console.log('session-restart: session and project content stored before API restart');
 } else if (phase === 'verify') {
   const state = JSON.parse(await readFile(stateFile, 'utf8')) as State;
@@ -49,7 +55,12 @@ if (phase === 'prepare') {
   assert.equal((conversation.json as { messages: { body: string; source: { materialId: string; version: number } }[] }).messages[0]?.body, 'Stored message');
   assert.deepEqual((conversation.json as { messages: { source: { materialId: string; version: number } }[] }).messages[0]?.source,
     { materialId: state.materialId, version: 1 });
-  console.log('session-restart: session, material and linked conversation still valid after API restart');
+  const message = (conversation.json as { messages: { files?: { id: string; name: string; size: number }[] }[] }).messages[0]!;
+  assert.deepEqual(message.files, [{ id: state.fileId, name: 'restart.bin', size: state.fileHex.length / 2 }]);
+  const downloaded = await fetch(new URL(`/api/v1/files/${state.fileId}`, browser.base), { headers: { cookie: browser.cookieHeader() } });
+  assert.equal(downloaded.status, 200);
+  assert.equal(Buffer.from(await downloaded.arrayBuffer()).toString('hex'), state.fileHex);
+  console.log('session-restart: session, material, linked conversation and exact attachment bytes survive API restart');
 } else {
   throw new Error('Usage: session-restart.ts prepare|verify');
 }

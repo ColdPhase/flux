@@ -277,7 +277,7 @@ outside tests.
 
 ## Web app and browser tests
 
-The configured `pnpm test` command runs one application test file at a time
+The configured test command runs one application test file at a time
 (`--test-concurrency=1`), never more than four. The controlled comparison scheduling
 fixtures (#58) deliberately own the one global comparison cursor of the shared test
 database, so files must not overlap. A fixed bound also keeps the shared API/database
@@ -286,6 +286,14 @@ otherwise derives file parallelism from available processors. Explicit concurren
 requests and race assertions inside each suite remain unchanged. Keep the same
 command in local Docker validation and CI; do not extend API/database deadlines
 or remove assertions to make an overloaded run pass.
+
+The Docker test stage runs as `node` (UID/GID 1000), matching the API. Storage
+fixtures share its files volume and create private `0700` object directories; a
+root test runner would make a later API upload fail whenever its UUID selected
+one of those directories. The test-only setup also assigns the session/browser
+state volume to that user. Local validation and CI invoke the installed `tsx`
+binary directly, with the same arguments as `app/package.json`'s `test` script,
+so execution cannot bootstrap a different package manager or rewrite dependencies.
 
 The web app (`app/apps/web`, React 19 + React Router 8 Data Mode, built by Vite into the API
 image) is served by the API on the same origin. Its design tokens and components are

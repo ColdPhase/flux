@@ -33,4 +33,4 @@ jobs:
           trap 'exit 143' TERM
           docker build --file docker/Dockerfile --target test --tag "$image" app
           docker run --rm --name "$container" --network none "$image" \
-            pnpm exec tsx --test tests/app/architecture.test.ts tests/app/*-core.test.ts
+            node_modules/.bin/tsx --test tests/app/architecture.test.ts tests/app/*-core.test.ts
