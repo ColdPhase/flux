@@ -189,6 +189,10 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_role("button", name="Create account").click()
         expect(page.get_by_text("Use at least 8 characters.")).to_be_visible()
         page.get_by_label("Password").fill(PASSWORD)
+        # A long enough password clears the last attempt's error and the length hint (#189).
+        expect(page.get_by_text("Use at least 8 characters.")).to_have_count(0)
+        expect(page.get_by_text("At least 8 characters. A short sentence works well.")).to_have_count(0)
+        expect(page.get_by_label("Password")).not_to_have_attribute("aria-invalid", "true")
         shot(page, "sign-up-desktop-light")
         page.get_by_role("button", name="Create account").click()
         expect(page).to_have_url(f"{ORIGIN}/")
