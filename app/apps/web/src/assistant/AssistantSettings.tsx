@@ -127,10 +127,15 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
   // F-020 PROV-1: with more than one of the owner's own connections, they choose which one the
   // assistant uses; with one, that one is used. Never another person's.
   const [owned, setOwned] = useState<BackgroundComputeConnection[]>([]);
+  const [ownedState, setOwnedState] = useState<'loading' | 'loaded' | 'failed'>('loading');
   const [connectionId, setConnectionId] = useState('');
+  // A consent given while one connection was shown never carries over to another.
+  const choose = (id: string) => { setConnectionId(id); setConsent(false); };
   useEffect(() => {
     const controller = new AbortController();
-    listBackgroundConnections(controller.signal).then((items) => { setOwned(items); setConnectionId(items[0]?.id ?? ''); }).catch(() => setOwned([]));
+    listBackgroundConnections(controller.signal)
+      .then((items) => { setOwned(items); setConnectionId(items[0]?.id ?? ''); setConsent(false); setOwnedState('loaded'); })
+      .catch(() => { if (!controller.signal.aborted) { setOwned([]); setOwnedState('failed'); } });
     return () => controller.abort();
   }, []);
   // The disclosure and the consent describe exactly the connection being enabled: its provider, model,
@@ -141,7 +146,8 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
     maxRunMicros: selected.price ? maxRequestMicros(selected.price, PERSONAL_RUN_LIMITS.maxInputTokens, PERSONAL_RUN_LIMITS.maxOutputTokens) : null } } : status;
   const payer = selected ? { organization: selected.payerOrganization, workspace: selected.providerWorkspace } : null;
   const timeZone = browserTimeZone();
-  const usable = status.setup.provider === 'on' && status.setup.connection === 'active';
+  // Turning it on names one loaded connection; until the list is in, nothing could be shown truthfully.
+  const usable = status.setup.provider === 'on' && status.setup.connection === 'active' && ownedState === 'loaded' && !!selected;
   const picked = Object.entries(chosen).filter(([, agentId]) => agentId);
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -149,7 +155,7 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
     setBusy(true); setError('');
     try {
       let next = await enableAssistant({ consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId: picked[0]![1], perRunCents: perRun, dailyCapCents: daily, timeZone,
-        ...(connectionId ? { connectionId } : {}) });
+        connectionId });
       for (const [, agentId] of picked.slice(1)) next = await selectAssistantAgent(agentId);
       onEnabled(next);
     } catch (cause) {
@@ -172,7 +178,7 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
         <fieldset className="aset__fields" disabled={!usable || busy}>
           <legend className="ui-vh">Limits and assistant</legend>
           {owned.length > 1 ? <label className="aset__field">AI connection
-            <select aria-label="AI connection" value={connectionId} onChange={(event) => setConnectionId(event.target.value)}>
+            <select aria-label="AI connection" value={connectionId} onChange={(event) => choose(event.target.value)}>
               {owned.map((item) => <option key={item.id} value={item.id}>{item.name} · {aiConnectionLabel(item.provider, item.model)}</option>)}
             </select>
           </label> : null}
@@ -196,7 +202,10 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
         {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
         <div className="aset__actions">
           <Button type="submit" variant="primary" busy={busy} disabled={!usable || !consent || !picked.length}>Turn on my assistant</Button>
-          {!usable ? <span className="nset__note">Not available on this server yet.</span> : null}
+          {usable ? null
+            : ownedState === 'failed' ? <span className="nset__note" role="alert">Your AI connections could not be loaded. Reload the page to try again.</span>
+              : ownedState === 'loading' ? <span className="nset__note">Loading your AI connections…</span>
+                : <span className="nset__note">Not available on this server yet.</span>}
         </div>
       </form>
     </>

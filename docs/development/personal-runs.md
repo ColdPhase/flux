@@ -206,8 +206,9 @@ tokens:
   The consent provider is any F-020 provider kind (`0042`).
   `connection_id` is a nullable uuid **without a foreign key**. It will reference
   #124's connection table when that table lands. Until then, every step compares
-  it with the connection the lookup returns. A replaced key shows as
-  `connection_changed` and needs a new consent.
+  it with the connection the lookup returns, and every run uses exactly that connection.
+  When it is removed, the status is `connection_changed` if the owner still has another
+  connection (which needs its own consent) and `no_connection` otherwise.
 - `personal_run_agents` maps each workspace to the owner's assistant agent in it.
   The agent's project grants, capped by the owner's own access, bound what a run
   may read.

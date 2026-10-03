@@ -607,11 +607,18 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
       connections.disconnect(hubert.id, hubertConnection);
       assert.equal((await runs.status(human(hubert))).unavailableReason, 'connection_changed');
       await assert.rejects(ask(hubert), { code: 'PERSONAL_RUN_UNAVAILABLE' });
+      // Enabling again names the chosen connection, here the older of two (the web app always names one):
+      // the consent stores that connection's provider, model and id, not the newest's.
+      expectStatus(await hubert.browser.request('DELETE', '/api/v1/personal-assistant'), 204);
+      await runs.enable(human(hubert), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId: agents.hubert!, dailyCapCents: 1000, connectionId: newer });
+      const stored = await pool.query('SELECT connection_id, consent_provider, consent_model FROM personal_run_enablements WHERE owner_user_id = $1', [hubert.id]);
+      assert.deepEqual(stored.rows, [{ connection_id: newer, consent_provider: 'openrouter', consent_model: 'vendor/newer-model' }]);
     } finally {
       hooks.afterDispatch = previous;
+      await hubert.browser.request('DELETE', '/api/v1/personal-assistant');
       connections.disconnect(hubert.id, newer);
       connections.disconnect(hubert.id, latest);
-      connections.connect(hubert.id, hubertConnection);
+      await enable(hubert, 'hubert', hubertConnection);
     }
   });
 
