@@ -433,7 +433,7 @@ class SharedComposerJourney(unittest.TestCase):
         writer.unroute(f"**/api/v1/work/{a['id']}/discussion", revoke_send)
         access("contributor")
         self.open_agents(writer, project, a)
-        expect(writer.get_by_role("alert")).to_contain_text("Your draft, files and sources are kept")
+        expect(writer.get_by_text("This send is unconfirmed. Retry sends the same command once.", exact=True)).to_be_visible()
         kept = self.record(writer, project, a, "writer")
         for field in ("body", "files", "references", "commandId"):
             self.assertEqual(kept[field], command_before[field])
