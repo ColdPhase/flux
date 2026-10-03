@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { flushSync } from 'react-dom';
-import { Link, useLoaderData, useSearchParams, type LoaderFunctionArgs } from 'react-router';
+import { Link, useLoaderData, useLocation, useNavigation, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { AgentOperation, ConversationMessage, ProjectAgentConnection, ProjectAgents as ProjectAgentsData, TaskDiscussion, WorkItem } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
@@ -123,7 +123,7 @@ function paneAtEnd(marker: HTMLElement | null) {
 }
 
 /** The task's one thread: the real first contribution as root, then its replies. */
-function TaskThread({ task, projectId, meId, names, canWrite }: { task: WorkItem; projectId: string; meId: string; names: Map<string, string>; canWrite: boolean }) {
+function TaskThread({ task, projectId, meId, names, canWrite, changingScope }: { task: WorkItem; projectId: string; meId: string; names: Map<string, string>; canWrite: boolean; changingScope: boolean }) {
   const [discussion, setDiscussion] = useState<TaskDiscussion | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [accessLost, setAccessLost] = useState(false);
@@ -138,6 +138,7 @@ function TaskThread({ task, projectId, meId, names, canWrite }: { task: WorkItem
   const composer = useComposerDraft(meId, projectId, `task:${task.id}`);
   const captureScope = useComposerScope(composer.key);
   const sending = composer.sending;
+  const blocked = changingScope || !discussion || !canWrite || accessLost;
   const box = useRef<HTMLTextAreaElement>(null);
   const end = useRef<HTMLDivElement>(null);
 
@@ -216,7 +217,7 @@ function TaskThread({ task, projectId, meId, names, canWrite }: { task: WorkItem
 
   const send = async (event?: FormEvent) => {
     event?.preventDefault();
-    if (!canWrite || accessLost || !discussion) return;
+    if (blocked) return;
     const command = composer.begin();
     if (!command) return;
     const active = captureScope();
@@ -266,13 +267,14 @@ function TaskThread({ task, projectId, meId, names, canWrite }: { task: WorkItem
       <div ref={end} />
       <form className="agents-composer" onSubmit={(event) => { void send(event); }}>
         <label className="ui-vh" htmlFor="agents-draft">Write to this task</label>
-        <textarea id="agents-draft" ref={box} value={composer.draft.body} rows={2} readOnly={sending} aria-busy={sending}
-          placeholder={canWrite ? 'Add to this work…' : 'You can read this task but not write to it.'} disabled={!discussion || !canWrite || accessLost}
-          onChange={(event) => composer.setBody(event.target.value)} onKeyDown={onKeyDown} />
-        <ComposerFiles state={composer} disabled={!discussion || !canWrite || accessLost} />
+        <textarea id="agents-draft" ref={box} value={composer.draft.body} rows={2} readOnly={sending || changingScope} aria-busy={sending || changingScope}
+          placeholder={canWrite ? 'Add to this work…' : 'You can read this task but not write to it.'} disabled={blocked}
+          onChange={(event) => { if (!blocked) composer.setBody(event.target.value); }} onKeyDown={onKeyDown} />
+        <ComposerFiles state={composer} disabled={blocked} />
+        {changingScope ? <p className="agents-composer__hint" role="status">Opening your selection… Your current draft is kept.</p> : null}
         <div className="agents-composer__row">
           <span className="agents-composer__hint">Goes to the task thread · Enter sends, Shift+Enter new line</span>
-          <Button type="submit" variant="primary" icon="send" busy={sending} disabled={!composer.canSend || !discussion || !canWrite || accessLost} aria-label="Send to task">Send</Button>
+          <Button type="submit" variant="primary" icon="send" busy={sending} disabled={!composer.canSend || blocked} aria-label="Send to task">Send</Button>
         </div>
       </form>
     </section>
@@ -283,13 +285,20 @@ export function ProjectAgents() {
   const data = useLoaderData() as ProjectAgentsData;
   const shell = useProjectShell();
   const { me } = useShellData();
+  const location = useLocation();
+  const navigation = useNavigation();
   const [search, setSearch] = useSearchParams();
   const tasks = useMemo(() => (shell?.work.work ?? []).filter((item) => !item.parked && !isFinished(item)), [shell]);
   // A `?task=` that is not one of this project's tasks falls back to the first open one.
   const requested = (shell?.work.work ?? []).find((item) => item.id === search.get('task'));
   const task = requested ?? tasks[0] ?? null;
   const names = useMemo(() => new Map((shell?.people ?? []).map((person) => [person.id, person.name])), [shell]);
-  const select = (id: string) => setSearch((current) => { const next = new URLSearchParams(current); next.set('task', id); return next; }, { replace: true });
+  const changingScope = navigation.state !== 'idle' && !!navigation.location
+    && (navigation.location.pathname !== location.pathname || navigation.location.search !== location.search);
+  const pendingTask = changingScope && navigation.location?.pathname === location.pathname
+    ? (shell?.work.work ?? []).find((item) => item.id === new URLSearchParams(navigation.location!.search).get('task')) : null;
+  // Flush the pending navigation guard before a fast next input can reach the old keyed thread.
+  const select = (id: string) => setSearch((current) => { const next = new URLSearchParams(current); next.set('task', id); return next; }, { replace: true, flushSync: true });
   const projectId = shell?.project.id ?? data.projectId;
 
   // The view scrolls in its own pane like every other view, so a long thread stays reachable
@@ -314,13 +323,13 @@ export function ProjectAgents() {
         <>
           <div className="agents__task">
             <label className="agents__task-label" htmlFor="agents-task">Task</label>
-            <select id="agents-task" value={task?.id ?? ''} onChange={(event) => select(event.target.value)}>
+            <select id="agents-task" value={pendingTask?.id ?? task?.id ?? ''} onChange={(event) => select(event.target.value)}>
               {task && !tasks.some((item) => item.id === task.id) ? <option value={task.id}>{task.title}</option> : null}
               {tasks.map((item) => <option key={item.id} value={item.id}>{item.title} · {STATUS_LABEL[item.status]}</option>)}
             </select>
             {task ? <Link className="ui-link agents__open" to={`/projects/${projectId}/tasks?open=work:${task.id}`}>Open task<Icon name="chevron-right" size={12} /></Link> : null}
           </div>
-          {task ? <TaskThread key={`${me.user.id}:${projectId}:${task.id}`} task={task} projectId={projectId} meId={me.user.id} names={names} canWrite={shell?.project.access !== 'viewer'} /> : null}
+          {task ? <TaskThread key={`${me.user.id}:${projectId}:${task.id}`} task={task} projectId={projectId} meId={me.user.id} names={names} canWrite={shell?.project.access !== 'viewer'} changingScope={changingScope} /> : null}
         </>
       ) : (
         <p className="agents__no-tasks">No open tasks. Create one in Tasks; agents and people then work on it here.</p>

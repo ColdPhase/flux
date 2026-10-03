@@ -553,3 +553,90 @@ class SharedComposerJourney(unittest.TestCase):
         pane.get_by_role("button", name="Send reply").click()
         expect(pane.get_by_label("Reply", exact=True)).to_have_value("")
         self.assertEqual(self.discussion(page, a)["messages"][-1]["source"], {"materialId": recovered['references'][0]['materialId'], "version": 1})
+
+    def test_12_delayed_task_selection_blocks_the_old_composer_and_preserves_scope_on_cancel_or_failure(self):
+        page = self.page()
+        self.addCleanup(lambda: page.unroute_all(behavior="ignoreErrors"))
+        project, a, b, _ = self.scene(page)
+        roots = [self.root(page, task) for task in (a, b)]
+        for task, root in zip((a, b), roots):
+            pane = self.cite(page, project, root['conversationId'])
+            pane.get_by_label("Reply", exact=True).fill(f"The complete private draft for {task['id']}")
+            self.choose(page, [self.file(f"{task['id']}.bin")], pane)
+            expect(pane.get_by_text("Ready, private", exact=False)).to_have_count(1)
+        before_a, before_b = self.record(page, project, a), self.record(page, project, b)
+        self.open_agents(page, project, a)
+        held = []
+        path = f"**/api/v1/projects/{project['id']}/agents"
+        def hold_loader(route):
+            if not held:
+                held.append((route, route.fetch()))
+                page.evaluate("window.__fluxHeldAgentsReady = true")
+            else:
+                route.continue_()
+        page.route(path, hold_loader)
+        writes = []
+        page.on("request", lambda request: writes.append(request.url) if request.method == "POST" and ("/files?" in request.url or request.url.endswith("/discussion")) else None)
+        page.get_by_label("Task", exact=True).select_option(b['id'])
+        page.wait_for_function("() => window.__fluxHeldAgentsReady === true", timeout=10000)
+        box = page.get_by_label("Write to this task")
+        expect(box).to_be_disabled()
+        self.assertEqual(box.get_attribute("readonly"), "")
+        expect(page.get_by_role("button", name="Attach files", exact=True)).to_be_disabled()
+        expect(page.get_by_role("button", name="Send to task")).to_be_disabled()
+        expect(page.get_by_text("Opening your selection… Your current draft is kept.", exact=True)).to_be_visible()
+        shot(page, "shared-task-switch-pending-1440")
+        # Even stale DOM callbacks cannot mutate or send A after B was selected.
+        page.evaluate("""() => {
+          const form = document.querySelector('.agents-composer');
+          const box = form.querySelector('textarea');
+          Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(box, 'Must never enter A');
+          box.dispatchEvent(new Event('input', {bubbles: true}));
+          const input = form.querySelector('input[type=file][multiple]');
+          const transfer = new DataTransfer(); transfer.items.add(new File(['private'], 'must-not-upload.bin'));
+          input.files = transfer.files; input.dispatchEvent(new Event('change', {bubbles: true}));
+          form.dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));
+        }""")
+        self.assertEqual(self.record(page, project, a), before_a)
+        self.assertEqual(self.record(page, project, b), before_b)
+        self.assertEqual(writes, [])
+        self.assertEqual(len(self.discussion(page, a)['messages']), 1)
+        self.assertEqual(len(self.discussion(page, b)['messages']), 1)
+        held[0][0].fulfill(response=held[0][1])
+        expect(box).to_be_enabled()
+        expect(box).to_have_value(before_b['body'])
+        self.assertEqual(self.record(page, project, b), before_b)
+        box.fill("B can be edited only in B's mounted composer")
+        edited_b = self.record(page, project, b)
+        self.assertNotEqual(edited_b['commandId'], before_b['commandId'])
+        self.assertEqual(edited_b['files'], before_b['files'])
+        self.assertEqual(edited_b['references'], before_b['references'])
+        page.get_by_label("Task", exact=True).select_option(a['id'])
+        expect(box).to_have_value(before_a['body'])
+        self.assertEqual(self.record(page, project, a), before_a)
+        # Cancelling a held B navigation back to A leaves the same A record editable.
+        held.clear()
+        page.evaluate("window.__fluxHeldAgentsReady = false")
+        page.get_by_label("Task", exact=True).select_option(b['id'])
+        page.wait_for_function("() => window.__fluxHeldAgentsReady === true", timeout=10000)
+        expect(box).to_be_disabled()
+        page.get_by_label("Task", exact=True).select_option(a['id'])
+        expect(box).to_be_enabled()
+        expect(box).to_have_value(before_a['body'])
+        self.assertEqual(self.record(page, project, a), before_a)
+        page.unroute_all(behavior="ignoreErrors")
+        # A failed B loader shows honest failure rather than an editable A composer under B.
+        def fail_loader(route):
+            route.fulfill(status=503, content_type="application/json", body=json.dumps({"code": "UNAVAILABLE", "message": "Controlled unavailable Agents read"}))
+        page.route(path, fail_loader)
+        page.get_by_label("Task", exact=True).select_option(b['id'])
+        expect(page.get_by_role("heading", level=1, name="Something went wrong")).to_be_visible()
+        expect(box).to_have_count(0)
+        self.assertEqual(self.record(page, project, a), before_a)
+        self.assertEqual(self.record(page, project, b), edited_b)
+        self.assertEqual(writes, [])
+        page.unroute(path, fail_loader)
+        self.open_agents(page, project, b)
+        expect(page.get_by_label("Write to this task")).to_have_value(edited_b['body'])
+        self.assertEqual(self.record(page, project, a), before_a)
+        self.assertEqual(self.record(page, project, b), edited_b)

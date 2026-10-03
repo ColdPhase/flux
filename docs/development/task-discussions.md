@@ -349,6 +349,16 @@ the person's text was sent or erased. Because send `404` deliberately also hides
 unavailable file/source identity, the composer confirms actual project access
 through the existing authorized project read before hiding the conversation UI.
 
+Agents task selection freezes the previous composer at navigation start, before
+another input can reach it. While the next task/project route is loading, its
+textarea, file controls and send are disabled, with a visible opening status.
+The selected destination is shown, but only the committed, authorized task's
+mounted composer can edit or send. Cancellation restores the original scope;
+loader failure shows the route error and preserves both complete records. The
+navigation requests the documented [synchronous DOM update](https://reactrouter.com/api/hooks/useNavigate)
+and uses the [DOM RouterProvider](https://reactrouter.com/api/data-routers/RouterProvider)
+that supplies it (React Router 8.4, checked 2026-10-03).
+
 **Additive wire delta, independently agreed by the coordinator before mapping:**
 `ConversationFields.task?: { workId, title }` has the same shape and current title
 as `ConversationRoot.task`. After ordinary current project authorization, the

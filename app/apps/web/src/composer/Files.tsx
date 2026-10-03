@@ -26,9 +26,9 @@ export function ComposerFiles({ state, disabled = false }: { state: ComposerStat
   const blocked = disabled || state.sending;
   return <div className="composer-files">
     <input ref={input} className="ui-vh" type="file" multiple tabIndex={-1} aria-hidden="true" disabled={blocked}
-      onChange={(event) => { state.addFiles([...event.currentTarget.files ?? []]); event.currentTarget.value = ''; }} />
+      onChange={(event) => { if (!blocked) state.addFiles([...event.currentTarget.files ?? []]); event.currentTarget.value = ''; }} />
     <input ref={recovery} className="ui-vh" type="file" tabIndex={-1} aria-hidden="true" disabled={blocked}
-      onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file && recoverId.current) state.retryFile(recoverId.current, file); event.currentTarget.value = ''; }} />
+      onChange={(event) => { const file = event.currentTarget.files?.[0]; if (!blocked && file && recoverId.current) state.retryFile(recoverId.current, file); event.currentTarget.value = ''; }} />
     <button type="button" className="composer-files__add" disabled={blocked} onClick={() => input.current?.click()} aria-label="Attach files"><Icon name="plus" size={14} />Attach files</button>
     {state.draft.files.length ? <>
       <span className="composer-files__privacy">Private until sent · 5 MiB each · 10 files / 20 MiB per message</span>
