@@ -669,7 +669,7 @@ class SharedComposerJourney(unittest.TestCase):
                   sessionStorage.setItem(keys[1]+'.pending', JSON.stringify({body:'Retired conversation text',id:crypto.randomUUID()}));
                 }""", [legacy, old_conversation])
                 if refused_write:
-                    page.evaluate("Storage.prototype.setItem = function() { throw new DOMException('Refused', 'QuotaExceededError'); }")
+                    page.evaluate("() => { Storage.prototype.setItem = function() { throw new DOMException('Refused', 'QuotaExceededError'); }; }")
                     pane.get_by_label("Reply", exact=True).fill("Newest private visit copy after storage refused writes")
                 newest = pane.get_by_label("Reply", exact=True).input_value()
                 def fail(route):
