@@ -362,6 +362,29 @@ class WikiPanesJourney(unittest.TestCase):
         self.assertEqual(self.doc(page, power["id"])["body"], "Idle: 0.2 W\nRunning: 1.4 W\n")
         self.assertEqual(len(self.docs(page)), before + 2)
         shot(page, "wiki-import-desktop-1440")
+        # The server saves the import but the answer is lost; choosing the same file again makes no
+        # second page: the retry reuses the first attempt's Idempotency-Key (#197 review B3).
+        page.goto(self.url("lamp"))
+        lost: list[str] = []
+
+        def lose_first(route) -> None:
+            if route.request.method != "POST" or lost:
+                route.continue_()
+                return
+            response = route.fetch()
+            lost.append(route.request.headers.get("idempotency-key", ""))
+            self.assertEqual(response.status, 201)
+            route.abort("failed")
+
+        page.route(f"**/api/v1/projects/{self.project_id}/docs", lose_first)
+        retry = "# Retried import\n\nSaved once even when the answer was lost.\n"
+        self.choose_file(page, "retried.md", retry.encode(), "text/markdown")
+        expect(index.get_by_role("alert")).to_contain_text("Check the connection and try again")
+        self.choose_file(page, "retried.md", retry.encode(), "text/markdown")
+        expect(page.get_by_role("heading", level=2, name="Retried import")).to_be_visible()
+        page.unroute(f"**/api/v1/projects/{self.project_id}/docs", lose_first)
+        self.assertEqual(sum(item["title"] == "Retried import" for item in self.docs(page)), 1, "one page, not two")
+        self.assertEqual(len(lost), 1)
 
     # ---------------------------------------------------------------- history and drafts
 

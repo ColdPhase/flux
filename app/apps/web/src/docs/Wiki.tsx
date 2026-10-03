@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent } from 'r
 import { Link, Outlet, redirect, useLoaderData, useLocation, useMatch, useNavigate, useParams, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
 import type { DocSummary, Project } from '@flux/contracts';
 import { ApiError } from '../api/client';
+import { useIntentKeys } from '../api/intent-keys';
 import { Icon, Spinner, useToast } from '../ui';
 import { getProject } from '../app/conversation-api';
 import { createDoc, docUrl, listProjectDocs } from './api';
@@ -77,6 +78,7 @@ function WikiIndex({ activeId, hidden }: { activeId: string | null; hidden: bool
   const creating = !!useMatch('/projects/:projectId/docs/new');
   const [query, setQuery] = useState('');
   const [importing, setImporting] = useState(false);
+  const intents = useIntentKeys();
   const [error, setError] = useState('');
   // A refused import is about that attempt: opening another page clears it.
   const [errorFor, setErrorFor] = useState(activeId);
@@ -118,12 +120,15 @@ function WikiIndex({ activeId, hidden }: { activeId: string | null; hidden: bool
     try {
       const read = await readMarkdownFile(file);
       if (!read.ok) { setError(read.error); return; }
-      const doc = await createDoc(project.id, { title: read.title, body: read.body, state: 'draft', reason: `Imported from ${file.name}` }, crypto.randomUUID());
+      // The same file chosen again after a lost answer reuses its key (#178): one page, never two.
+      const intent = `import:${project.id}:${file.name}:${read.title}\n${read.body}`;
+      const doc = await createDoc(project.id, { title: read.title, body: read.body, state: 'draft', reason: `Imported from ${file.name}` }, intents.keyFor(intent));
+      intents.settle(intent);
       toast({ message: `Imported “${doc.title}” as a draft page.`, tone: 'success' });
       navigate(docUrl(project.id, doc.id));
     } catch (cause) {
       setError(cause instanceof ApiError && cause.status === 403 ? 'You can read this project but not add pages to it.'
-        : cause instanceof ApiError ? `“${file.name}” was not imported: ${cause.message}.`
+        : cause instanceof ApiError ? `“${file.name}” was not imported: ${cause.message.replace(/\.$/, '')}.`
           : `“${file.name}” was not imported. Check the connection and try again.`);
     } finally { setImporting(false); }
   }
@@ -161,7 +166,7 @@ function WikiIndex({ activeId, hidden }: { activeId: string | null; hidden: bool
             <Icon name="plus" size={14} /><span className="wiki-index__act-t">New page</span>
           </Link>
           <button type="button" className="ui-btn ui-btn--quiet wiki-index__act" onClick={() => fileRef.current?.click()}
-            aria-busy={importing || undefined} aria-describedby={error ? errorId : undefined}>
+            disabled={importing} aria-busy={importing || undefined} aria-describedby={error ? errorId : undefined}>
             {importing ? <Spinner /> : <WikiIcon name="upload" size={14} />}<span className="wiki-index__act-t">Import .md</span>
           </button>
           <input ref={fileRef} type="file" accept=".md,.markdown,text/markdown,text/x-markdown" hidden tabIndex={-1}
