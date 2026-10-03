@@ -409,7 +409,8 @@ exists so the worker authorization contract is real and tested:
   read the draft.
 
 `processDraftSummary(resultId, db, results, hooks)` reads and writes result rows through
-its `DraftResultRepository` port (`results`, bound to each step's transaction), and the
+its `DraftResultRepository` port (`results`, bound to each step's connection or transaction: the
+claim and the draft read use the pool, the commit its transaction), and the
 request sends its job through the core `JobQueue` port in the same transaction. It accepts
 two hooks. `afterRead` runs between the read and the commit transaction. `beforeCommit(tx)`
 runs inside the commit transaction after the recheck, while its locks are held. Only tests
