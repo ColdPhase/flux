@@ -6,6 +6,7 @@ import net from 'node:net';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+import { password } from '../support/people.js';
 
 /**
  * Login, sharing, denied access and stream revocation in real Chromium sessions against the
@@ -48,7 +49,6 @@ proxy.on('upgrade', (request, socket, head) => {
 interface Call { status: number; json: unknown }
 interface Transcript { step: string; who: string; observed: unknown }
 const transcript: Transcript[] = [];
-const password = 'correct horse battery staple';
 
 let browser: Browser;
 const contexts: BrowserContext[] = [];
