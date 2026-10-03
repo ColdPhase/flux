@@ -74,6 +74,8 @@ repository was created on 2026-09-26.
   left ([#138](https://github.com/ColdPhase/flux/pull/138)).
 - Mint, Sky and Copper accents, remembered separately for light and dark themes
   ([#145](https://github.com/ColdPhase/flux/pull/145), [#157](https://github.com/ColdPhase/flux/pull/157)).
+- A project can connect a read-only GitHub App repository and link tasks to verified
+  pull requests, from signed, deduplicated webhook deliveries ([#168](https://github.com/ColdPhase/flux/pull/168)).
 
 #### AI that stays yours
 
@@ -82,6 +84,8 @@ repository was created on 2026-09-26.
     ([#167](https://github.com/ColdPhase/flux/pull/167)).
   - Standing-grant actions for tasks, results and decisions ([#174](https://github.com/ColdPhase/flux/pull/174)),
     and for the shared map ([#176](https://github.com/ColdPhase/flux/pull/176)).
+  - Standing-grant actions for project docs and the project conversation, with the
+    agent named as the author ([#193](https://github.com/ColdPhase/flux/pull/193)).
   - A versioned co-work playbook delivered through Start/Resume prompts
     ([#175](https://github.com/ColdPhase/flux/pull/175)).
 - Owner-only personal assistant runs. Only the owner can ask, stop or pay
@@ -92,6 +96,9 @@ repository was created on 2026-09-26.
 
 ### Changed
 
+- The Studio 11.6 interface: a sidebar with workspace and project names, a calmer
+  header, Conversation · Map · Tasks · Wiki tabs and a reworked conversation
+  ([#184](https://github.com/ColdPhase/flux/pull/184)).
 - The application lives under `app/` and the Docker inputs under `docker/`.
   `./flux` moves an old root `.env` to `docker/.env` once ([#165](https://github.com/ColdPhase/flux/pull/165)).
 - The compiled, non-root runtime image no longer ships TypeScript tooling ([#43](https://github.com/ColdPhase/flux/pull/43)).
@@ -104,3 +111,5 @@ repository was created on 2026-09-26.
 - Project status and conversation navigation are correct for readers
   ([#169](https://github.com/ColdPhase/flux/pull/169)).
 - Blocked project work stays visible on narrow phones ([#172](https://github.com/ColdPhase/flux/pull/172)).
+- Retrying a first space, project or private draft after a lost response no longer
+  creates a second one ([#178](https://github.com/ColdPhase/flux/pull/178)).
