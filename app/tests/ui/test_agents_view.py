@@ -294,6 +294,11 @@ class AgentsViewJourney(unittest.TestCase):
         expect(box).to_have_value("Draft kept through the outage")
         hubert.wait_for_function(STREAM_OPEN)
         box.fill("")
+        # Done, so the later tests still open on the original task (the view opens the first open one).
+        current = self.api(hubert, "GET", f"/api/v1/work/{task['id']}", status=200)
+        closed = hubert.request.fetch(f"{ORIGIN}/api/v1/work/{task['id']}", method="PATCH", data=json.dumps({"status": "done"}),
+                                      headers={"origin": ORIGIN, "content-type": "application/json", "if-match": f'"{current["version"]}"'})
+        self.assertEqual(closed.status, 200, closed.text())
 
     def test_04_a_draft_survives_leaving_the_view(self) -> None:
         page = self.open_agents("hubert")
