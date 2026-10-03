@@ -1,18 +1,14 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, before, describe, test } from 'node:test';
-import { createDatabase } from '@flux/db';
+import { before, describe, test } from 'node:test';
 import { agentPolicyDigest, renderAgentPolicy } from '@flux/core';
 import { agentProjectPolicyUri, type AgentProjectPolicy } from '@flux/contracts';
+import { pool } from './support/db.js';
 import { publicOrigin, register, uniqueEmail, type Browser } from './support/http.js';
 import { beginOauth, expect, mcp, oauthToken, toolValue } from './support/mcp.js';
 
 // The approved project policy for connected agents (#160 AC-1, F-018 CW-1): only a project manager publishes
 // a revision; readers and connected agents read it; bootstrap names the newest revision and its digest.
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { pool } = createDatabase(connectionString);
-after(() => pool.end());
 
 const password = 'correct horse battery staple';
 const body = (expectedRevision: number, scope = 'Firmware for the night lamp only.') =>
