@@ -115,7 +115,7 @@ describe('approved project policy', () => {
       response_types, scopes, require_pkce, created_at, updated_at) VALUES ($1, $2, 'Flux HTTP test client', $3, 'none', $4, $5, $6, true, now(), now())`,
     [randomUUID(), clientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'], ['flux.context.read', 'offline_access']]);
     await pool.query('INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at) VALUES ($1, $2, $3, now())', [randomUUID(), clientId, `${publicOrigin}/mcp`]);
-    const tokens = await oauthToken(owner, String(connection.id), clientId, redirectUri, await beginOauth(owner, clientId, redirectUri));
+    const tokens = await oauthToken(owner, String(connection.id), clientId, redirectUri, await beginOauth(owner, clientId, redirectUri, { scope: 'flux.context.read offline_access' }));
     const current = (expect(await viewer.request('GET', path()), 200) as { policy: AgentProjectPolicy }).policy;
     const bootstrap = toolValue((await mcp(tokens.access_token, 401, 'tools/call', { name: 'flux_bootstrap',
       arguments: { projectId, clientSessionId: randomUUID() } })).message);
