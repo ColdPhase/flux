@@ -234,16 +234,19 @@ class SharedComposerJourney(unittest.TestCase):
         self.root(page, a)
         self.root(page, b)
         self.open_agents(page, project, a)
+        self.addCleanup(lambda: page.unroute_all(behavior="ignoreErrors"))
         held = []
         def hold(route):
             if not held:
                 held.append((route, route.fetch()))
+                page.evaluate("window.__fluxHeldUploadReady = true")
             else:
                 route.continue_()
         page.route("**/api/v1/projects/*/files?*", hold)
         page.get_by_label("Write to this task").fill("A's held private bytes")
         self.choose(page, [self.file("held-a.bin")])
         expect(page.get_by_text("Uploading…", exact=False)).to_have_count(1)
+        page.wait_for_function("() => window.__fluxHeldUploadReady === true", timeout=10000)
         page.get_by_label("Task", exact=True).select_option(b["id"])
         page.get_by_label("Write to this task").fill("B's distinct draft")
         held[0][0].fulfill(response=held[0][1])
@@ -256,10 +259,12 @@ class SharedComposerJourney(unittest.TestCase):
         def hold_send(route):
             if route.request.method == "POST" and not pending:
                 pending.append((route, route.fetch()))
+                page.evaluate("window.__fluxHeldSendReady = true")
             else:
                 route.continue_()
         page.route(f"**/api/v1/work/{a['id']}/discussion", hold_send)
         page.get_by_role("button", name="Send to task").click()
+        page.wait_for_function("() => window.__fluxHeldSendReady === true", timeout=10000)
         page.get_by_label("Task", exact=True).select_option(b["id"])
         expect(page.get_by_label("Write to this task")).to_have_value("B's distinct draft")
         page.get_by_label("Task", exact=True).select_option(a["id"])
