@@ -144,9 +144,11 @@ test('a doc action refuses when its agent is only a viewer of the project now, w
   // The owner narrows the agent to read-only: the standing grant no longer carries write authority.
   expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/grants`,
     { body: { principal: { kind: 'agent', id: f.agentId }, role: 'viewer' } }), 201);
-  const refused = toolFailure(await f.tool('flux_update_doc', { ...base(f, update.id, 'execute'), docId, expectedVersion: 1,
-    changes: { body: 'Second pass.' } }));
-  assert.ok(refused.code, 'a coded refusal, not a silent no-op');
+  // A connection with write scopes needs write access to every selected project, so the MCP request
+  // itself is refused before any tool runs, as for a revoked connection.
+  const refused = await f.raw('flux_update_doc', { ...base(f, update.id, 'execute'), docId, expectedVersion: 1,
+    changes: { body: 'Second pass.' } });
+  assert.equal(refused.status, 403);
   assert.deepEqual([await versions(docId), await docEvents(docId), await f.used(update.id)], [1, 1, 0]);
   assert.equal((await getDoc(f, docId)).version, 1);
 });
