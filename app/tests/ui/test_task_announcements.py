@@ -418,7 +418,8 @@ class TaskAnnouncements(unittest.TestCase):
         last = page.locator(".project-convo__message-list > li").last
         expect(last).to_be_in_viewport()
         self.wait_for(page, lambda: bool(held), "the stream reads the earlier announcements")
-        page.wait_for_timeout(500)
+        # Past the first two seconds, when opening the stream stops holding its end by itself.
+        page.wait_for_timeout(2500)
         self.assertTrue(feed.evaluate(at_end))
         held[0].continue_()
         expect(page.locator(".convo-notice")).to_have_count(CHORES + EARLY_CHORES)
