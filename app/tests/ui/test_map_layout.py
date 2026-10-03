@@ -103,6 +103,14 @@ class MapLayoutJourney(unittest.TestCase):
                 page = self.page(width, height, has_touch=touch, is_mobile=width <= 640)
                 self.scene(page)
                 self.assert_hint_inside_pane(page)
+                toolbar = page.get_by_role('toolbar', name='Sketch tools')
+                pane = page.locator('.sk-page').bounding_box()
+                for button in toolbar.get_by_role('button').all():
+                    expect(button).to_be_in_viewport(ratio=1)
+                    bounds = button.bounding_box()
+                    self.assertGreaterEqual(bounds['x'], pane['x'], 'every map tool stays inside the pane')
+                    self.assertLessEqual(bounds['x'] + bounds['width'], pane['x'] + pane['width'] + 1,
+                        'the complete Undo button remains reachable at tablet width')
                 shot(page, f'map-layout-{width}-{height}-light')
 
     def test_03_resizing_with_details_retains_camera_selection_and_private_draft(self):
