@@ -2,15 +2,14 @@ import { comparisonDispatchFixtureDue } from './support/comparison-dispatch-fixt
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
-import { comparisonOutcomeRows, createDatabase } from '@flux/db';
+import { test } from 'node:test';
+import { comparisonOutcomeRows } from '@flux/db';
 import type { ComparisonProvider, ComparisonSource } from '@flux/core';
 import type { BackgroundComputeUsage, Page, ProactiveComparisonOutcome, ProactiveComparisonProposal } from '@flux/contracts';
 import { dispatchProactiveComparison } from '../../apps/worker/src/proactive-comparison/dispatch.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
+import { db, pool } from './support/db.js';
 
-const { db, pool } = createDatabase(process.env.DATABASE_URL!);
-after(() => pool.end());
 const masterKey = readFileSync('/run/secrets/flux_background_key');
 const thoughtText = 'Compare the sensor under the same 5 lux trial.';
 /** A fixture answer that cites the triggering result and every thought it was given. */

@@ -478,7 +478,9 @@ export const projectMaterials = pgTable('project_materials', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),
   projectId: uuid('project_id').notNull(),
-  createdBy: text('created_by').notNull(),
+  /** Exactly one actor (migration 0043, #152): a person, or the agent that started a doc under a standing grant. */
+  createdBy: text('created_by'),
+  createdByAgentId: uuid('created_by_agent_id'),
   /** 'doc' for project docs (#112, migration 0013); docs have no client mutation id. */
   kind: text('kind', { enum: ['material', 'doc'] }).notNull().default('material'),
   clientMutationId: uuid('client_mutation_id'),
@@ -490,6 +492,9 @@ export const projectMaterials = pgTable('project_materials', {
   unique().on(table.workspaceId, table.projectId, table.id),
   unique().on(table.projectId, table.createdBy, table.clientMutationId),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.createdByAgentId], foreignColumns: [agents.workspaceId, agents.id] }),
+  check('project_material_exact_actor', sql`num_nonnulls(${table.createdBy}, ${table.createdByAgentId}) = 1`),
+  check('project_material_agent_doc', sql`${table.createdByAgentId} IS NULL OR ${table.kind} = 'doc'`),
 ]);
 
 export const projectMaterialVersions = pgTable('project_material_versions', {
@@ -500,7 +505,9 @@ export const projectMaterialVersions = pgTable('project_material_versions', {
   title: text('title').notNull(),
   body: text('body').notNull(),
   url: text('url'),
-  authorId: text('author_id').notNull(),
+  /** Exactly one actor (migration 0043, #152): a person, or the agent that wrote a doc version under a standing grant. */
+  authorId: text('author_id'),
+  authorAgentId: uuid('author_agent_id'),
   clientMutationId: uuid('client_mutation_id'),
   requestFingerprint: text('request_fingerprint'),
   sourceDraftId: uuid('source_draft_id'),
@@ -513,6 +520,10 @@ export const projectMaterialVersions = pgTable('project_material_versions', {
   primaryKey({ columns: [table.materialId, table.version] }),
   unique().on(table.workspaceId, table.projectId, table.materialId, table.version),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.materialId], foreignColumns: [projectMaterials.workspaceId, projectMaterials.projectId, projectMaterials.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.authorAgentId], foreignColumns: [agents.workspaceId, agents.id] }),
+  check('project_material_version_exact_actor', sql`num_nonnulls(${table.authorId}, ${table.authorAgentId}) = 1`),
+  // Only doc versions carry a state; a plain #36 material version stays person-written.
+  check('project_material_version_agent_doc', sql`${table.authorAgentId} IS NULL OR ${table.state} IS NOT NULL`),
 ]);
 
 export const projectMessages = pgTable('project_messages', {
@@ -1414,3 +1425,65 @@ export const assistantProposals = pgTable('assistant_proposals', {
   index('assistant_proposals_project_idx').on(table.projectId, table.createdAt, table.id),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.runId], foreignColumns: [personalRuns.workspaceId, personalRuns.projectId, personalRuns.id] }).onDelete('cascade'),
 ]);
+
+// Project GitHub App integration (#74). Credentials/inbox are internal; public
+// facts require current Flux + GitHub repository proof, including history reads.
+export const githubCredentials = pgTable('github_credentials', {
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  host: text('host').notNull().default('github.com'), generation: uuid('generation').notNull(),
+  githubUserId: text('github_user_id').notNull(), appId: text('app_id').notNull(),
+  encryptedTokens: text('encrypted_tokens'), expiresAt: timestamp('expires_at', { withTimezone: true }),
+  refreshExpiresAt: timestamp('refresh_expires_at', { withTimezone: true }),
+  state: text('state', { enum: ['active', 'refreshing', 'uncertain', 'revoked'] }).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.userId, t.host] })]);
+export const githubOauthFlows = pgTable('github_oauth_flows', {
+  stateHash: text('state_hash').primaryKey(), id: uuid('id').notNull(),
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  sessionId: text('session_id').notNull().references(() => authSessions.id, { onDelete: 'cascade' }),
+  workspaceId: uuid('workspace_id').notNull(), projectId: uuid('project_id').notNull(),
+  purpose: text('purpose', { enum: ['authorize', 'install'] }).notNull(),
+  encryptedVerifier: text('encrypted_verifier'), expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+}, (t) => [foreignKey({ columns: [t.workspaceId, t.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade')]);
+export const githubBindings = pgTable('github_bindings', {
+  id: uuid('id').primaryKey(), workspaceId: uuid('workspace_id').notNull(), projectId: uuid('project_id').notNull(),
+  host: text('host').notNull().default('github.com'), installationId: text('installation_id').notNull(), repositoryId: text('repository_id').notNull(),
+  owner: text('owner').notNull(), name: text('name').notNull(), private: boolean('private').notNull(), url: text('url').notNull(),
+  authorUserId: text('author_user_id').references(() => authUsers.id, { onDelete: 'set null' }),
+  authorGithubUserId: text('author_github_user_id').notNull(), appId: text('app_id').notNull(), authorizationGeneration: uuid('authorization_generation').notNull(),
+  state: text('state', { enum: ['active', 'disconnected', 'revoked'] }).notNull().default('active'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [unique().on(t.workspaceId, t.projectId, t.id), unique().on(t.projectId, t.host, t.repositoryId),
+  foreignKey({ columns: [t.workspaceId, t.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade')]);
+export const githubTaskLinks = pgTable('github_task_links', {
+  id: uuid('id').primaryKey(), workspaceId: uuid('workspace_id').notNull(), projectId: uuid('project_id').notNull(),
+  taskId: uuid('task_id').notNull(), bindingId: uuid('binding_id').notNull(), pullId: text('pull_id').notNull(),
+  role: text('role', { enum: ['required_output', 'related'] }).notNull(),
+  facts: jsonb('facts').$type<import('@flux/contracts').GithubPullFacts>().notNull(),
+  verifiedAt: timestamp('verified_at', { withTimezone: true }).notNull().defaultNow(),
+  state: text('state', { enum: ['current', 'stale', 'unavailable'] }).notNull().default('current'),
+}, (t) => [unique().on(t.taskId, t.bindingId, t.pullId, t.role),
+  foreignKey({ columns: [t.workspaceId, t.projectId, t.taskId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+  foreignKey({ columns: [t.workspaceId, t.projectId, t.bindingId], foreignColumns: [githubBindings.workspaceId, githubBindings.projectId, githubBindings.id] }).onDelete('cascade')]);
+export const githubDeliveries = pgTable('github_deliveries', {
+  id: text('id').primaryKey(), appId: text('app_id').notNull(), digest: text('digest').notNull(), event: text('event').notNull(),
+  payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
+  installationId: text('installation_id'), repositoryId: text('repository_id'), providerObjectId: text('provider_object_id'),
+  targetBindingId: uuid('target_binding_id').references(() => githubBindings.id, { onDelete: 'set null' }),
+  origin: text('origin', { enum: ['webhook', 'reconcile'] }).notNull(), receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
+});
+export const githubProcessing = pgTable('github_processing', {
+  deliveryId: text('delivery_id').notNull().references(() => githubDeliveries.id, { onDelete: 'cascade' }),
+  bindingId: uuid('binding_id').notNull().references(() => githubBindings.id, { onDelete: 'cascade' }),
+  state: text('state', { enum: ['pending', 'completed'] }).notNull().default('pending'),
+  attempts: integer('attempts').notNull().default(0), nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+  errorCode: text('error_code'),
+}, (t) => [primaryKey({ columns: [t.deliveryId, t.bindingId] }), index('github_processing_due_idx').on(t.state, t.nextAttemptAt)]);
+export const githubBridgeOutbox = pgTable('github_bridge_outbox', {
+  id: uuid('id').primaryKey(), deliveryId: text('delivery_id').notNull(), bindingId: uuid('binding_id').notNull(),
+  linkId: uuid('link_id').notNull().references(() => githubTaskLinks.id, { onDelete: 'cascade' }),
+  taskId: uuid('task_id').notNull(), workspaceId: uuid('workspace_id').notNull(), projectId: uuid('project_id').notNull(),
+  headSha: text('head_sha').notNull(), event: text('event').notNull(), providerObjectId: text('provider_object_id'), correlationKey: text('correlation_key').notNull(),
+  state: text('state').notNull().default('pending_audience_adapter'), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [unique().on(t.deliveryId, t.bindingId, t.linkId), unique().on(t.bindingId, t.linkId, t.correlationKey)]);

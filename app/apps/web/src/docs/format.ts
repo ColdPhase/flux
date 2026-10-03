@@ -1,4 +1,4 @@
-import type { Doc, DocState, ObjectLink } from '@flux/contracts';
+import type { Doc, DocState, NamedPrincipal, ObjectLink } from '@flux/contracts';
 
 const day = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
 const stamp = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -6,6 +6,8 @@ export const shortDate = (iso: string) => day.format(new Date(iso));
 export const longDate = (iso: string) => stamp.format(new Date(iso));
 
 export const STATE_LABEL: Record<DocState, string> = { draft: 'Draft', published: 'Published' };
+/** Who made a version: an agent writing under its owner's standing grant (#152) is named "name · agent", as in the conversation. */
+export const authorLabel = (who: NamedPrincipal) => (who.kind === 'agent' ? `${who.name} · agent` : who.name);
 
 const KIND: Record<string, string> = {
   doc: 'Doc', work: 'Work', decision: 'Decision', result: 'Result', message: 'Message', thought: 'Thought', sketch: 'Sketch', material: 'Material',

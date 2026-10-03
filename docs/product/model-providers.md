@@ -9,8 +9,10 @@ support inside the Flux agent. Implementation is tracked in
 **Owner:** @PelikanFix16. **Evaluator:** @Zamojski5.
 
 This decision **supersedes the Anthropic-only provider scope** of
-[O-007](background-compute.md) and [O-008](personal-runs-compute.md), and O-008's
-deferral of local models. Everything else in those decisions stays in force:
+[O-007](background-compute.md) and [O-008](personal-runs-compute.md), O-008's
+deferral of local models, and the Anthropic preflight count as the input bound
+([PROV-3](#prov-3--cost-caps-and-token-bounds)). Everything else in those decisions
+stays in force:
 
 - owner custody of the key and payer attestation
 - [F-019](decisions.md) owner-only use

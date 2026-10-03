@@ -2,7 +2,7 @@
 
 The project page brought up to the accepted O-003 direction C ([direction.md](../direction.md)),
 with `flux-ux-v8.html` as the discoverability baseline. Screenshots come from the Compose
-Playwright journey `tests/ui/test_project_surface.py` on realistic seeded content (three people,
+Playwright journey `app/tests/ui/test_project_surface.py` on realistic seeded content (three people,
 one restricted project, a cited source, work, a current rule, a negative result, a proposed
 decision, a project sketch and a doc), 100% zoom, light theme.
 
