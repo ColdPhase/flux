@@ -262,7 +262,8 @@ body:has(.app) { background: var(--bg-chrome); }
 .note__del:hover { background: var(--bg-hover); color: var(--danger); }
 @media (hover: none) { .note__del { opacity: 1; } }
 .composer__hint { margin: 6px 2px 0; font-size: var(--fs-xs); color: var(--text-3); }
-@media (pointer: coarse) { .composer__keys { display: none; } }
+/* The key hints describe a keyboard; on touch devices Enter adds a line and the button sends (#189). */
+@media (pointer: coarse), (hover: none) { .composer__keys { display: none; } }
 
 /* ---------- Details panel ---------- */
 .details__eyebrow { font-size: var(--fs-xs); font-weight: 500; color: var(--text-3); }

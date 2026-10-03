@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Link, useLocation, type NavigateFunction } from 'react-router';
 import type { Draft } from '@flux/contracts';
-import { EmptyState, Icon, IconButton, duration, type IconName } from '../ui';
+import { EmptyState, Icon, IconButton, MEDIA, duration, sendsOnEnter, useMediaQuery, type IconName } from '../ui';
 import { createPrivateDraft, listDrafts } from './conversation-api';
 import { useCaptures } from './captures';
 import { useShellData } from './data';
@@ -60,6 +60,8 @@ export function startCapture(navigate: NavigateFunction) {
  * Project conversations and direct messages (#36) open from the sidebar.
  */
 export function ConversationView() {
+  // Touch devices add a line with Enter and send with the button (#189).
+  const touch = useMediaQuery(MEDIA.touch);
   const hintId = useId();
   const audienceId = useId();
   const askId = useId();
@@ -126,7 +128,7 @@ export function ConversationView() {
   const stopAsking = () => { setAsking(false); textareaRef.current?.focus(); };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Escape' && asking) { event.preventDefault(); event.stopPropagation(); stopAsking(); return; }
-    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); }
+    if (sendsOnEnter(event, touch)) { event.preventDefault(); void send(); }
   };
   const hasDraft = draft.text.length > 0;
 
