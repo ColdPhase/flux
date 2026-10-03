@@ -12,6 +12,7 @@ import { useShellActions, type ObjectView, type WorkFormView } from '../app/shel
 import { acceptDecision, createResult, getDecision, getResult, getWork, listAgents, loadProjectWork, proposeDecision, updateWork, type ProjectWork } from './api';
 import { STATUS_LABEL, decisionLine, firstLine, isFinished, linked, resultLine, shortDate } from './format';
 import { docsLinking } from '../docs/AddToDoc';
+import { TaskDiscussionSection } from './TaskDiscussion';
 
 // The Details panel for work items, decisions and results, and the two forms that start from a
 // message (#101). Everything shown here is visible to the people with access to the project;
@@ -229,6 +230,8 @@ function WorkPanel({ item, context, reload }: { item: WorkItem; context: Context
             {' '}as <code>{item.planIntent.intentKey}</code>. This task stays tied to that revision.</p>
         ) : null}
       </section>
+
+      <TaskDiscussionSection workId={item.id} project={context.project} members={context.members} me={{ id: me.user.id, name: me.user.name }} />
 
       <section className="details__sec" aria-labelledby="wd-decisions">
         <h4 id="wd-decisions">Decisions</h4>

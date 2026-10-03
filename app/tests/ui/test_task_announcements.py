@@ -278,5 +278,81 @@ class TaskAnnouncements(unittest.TestCase):
                 shot(page, f"task-announcements-phone-{viewport['width']}{'-dark' if dark else ''}")
 
 
+    def open_task_from_stream(self, page: Page, work_id: str, title: str):
+        self.notice(page, work_id).get_by_role("button", name=f"Open task: {title}").click()
+        details = page.locator("#details")
+        expect(details.get_by_role("heading", name=title)).to_be_visible()
+        return details.get_by_role("region", name="Discussion")
+
+    def test_09_details_shows_the_tasks_root_and_opens_its_thread(self) -> None:
+        page = self.page("ada")
+        page.goto(f"/projects/{self.ids['project']}")
+        section = self.open_task_from_stream(page, self.ids["measure"], MEASURE)
+        link = section.get_by_role("link")
+        expect(link).to_contain_text("Jonas Berg")
+        expect(link).to_contain_text(FIRST_WORD)
+        expect(link).to_contain_text("2 replies · Open in Conversation")
+        shot(page, "task-announcements-details-discussion")
+        link.click()
+        expect(page).to_have_url(re.compile(f"/conversations/{self.ids['thread']}"))
+        expect(page.locator("#thread").locator(".project-convo__message", has_text=FIRST_REPLY)).to_be_visible()
+
+    def test_10_details_starts_the_discussion_once_even_after_a_lost_answer(self) -> None:
+        page = self.page("ada")
+        pid = self.ids["project"]
+        page.goto(f"/projects/{pid}")
+        before = self.counts(page)
+        section = self.open_task_from_stream(page, self.ids["from_message"], FROM_MESSAGE)
+        box = section.get_by_label(re.compile("^Nobody has written about this task yet"))
+        text = "I can pick the boards up on Friday; the shop keeps two for us."
+        box.fill(text)
+        # The draft is the task's own, kept across a reload under the key every view of the task uses.
+        key = f"flux:draft:{self.ids['ada']}:task:{self.ids['from_message']}"
+        self.assertEqual(page.evaluate("key => localStorage.getItem(key)", key), text)
+        page.reload()
+        section = self.open_task_from_stream(page, self.ids["from_message"], FROM_MESSAGE)
+        box = section.get_by_label(re.compile("^Nobody has written about this task yet"))
+        expect(box).to_have_value(text)
+        # The server stores the first message but its answer is lost: the text stays and nothing claims success.
+        path = f"**/api/v1/work/{self.ids['from_message']}/discussion"
+        sent: list[str] = []
+
+        def lose(route) -> None:
+            sent.append(json.loads(route.request.post_data or "{}").get("clientMessageId", ""))
+            route.fetch()
+            route.abort("connectionreset")
+
+        page.route(path, lose)
+        section.get_by_role("button", name="Start the discussion").click()
+        expect(section.get_by_role("alert")).to_contain_text("Not sent")
+        expect(box).to_have_value(text)
+        page.unroute(path)
+        retried: list[str] = []
+        page.on("request", lambda request: retried.append(json.loads(request.post_data or "{}").get("clientMessageId", ""))
+                if request.method == "POST" and request.url.endswith(f"/work/{self.ids['from_message']}/discussion") else None)
+        section.get_by_role("button", name="Start the discussion").click()
+        expect(page).to_have_url(re.compile(r"/conversations/[0-9a-f-]+#message-"))
+        self.assertEqual(retried, sent, "the retry reuses the first attempt's client message id")
+        discussion = self.api(page, "GET", f"/api/v1/work/{self.ids['from_message']}/discussion", status=200)
+        self.assertEqual([message["body"] for message in discussion["messages"]], [text], "stored exactly once")
+        self.assertEqual(discussion["root"]["authorId"], self.ids["ada"])
+        root = page.locator(f"#message-{discussion['rootMessageId']}")
+        expect(root.get_by_role("button", name=f"Discussion of task: {FROM_MESSAGE}")).to_be_visible()
+        expect(page.locator("#thread")).to_be_visible()
+        self.assertEqual(self.counts(page), (before[0], before[1], before[2] + 1), "one new root; no announcement or task")
+        self.assertIsNone(page.evaluate("key => localStorage.getItem(key)", key), "the sent draft is cleared")
+
+    def test_11_a_reader_sees_the_discussion_but_cannot_start_one(self) -> None:
+        page = self.page("lee")
+        page.goto(f"/projects/{self.ids['project']}")
+        section = self.open_task_from_stream(page, self.ids["measure"], MEASURE)
+        expect(section.get_by_role("link")).to_contain_text(FIRST_WORD)
+        page.locator("#details").get_by_role("button", name="Close details").click()
+        section = self.open_task_from_stream(page, self.ids["live"], LIVE_TASK)
+        expect(section).to_contain_text("Nobody has written about this task yet.")
+        expect(section.get_by_role("textbox")).to_have_count(0)
+        expect(section.get_by_role("button", name="Start the discussion")).to_have_count(0)
+
+
 if __name__ == "__main__":
     unittest.main()
