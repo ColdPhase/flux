@@ -1,5 +1,5 @@
 import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm';
-import type { PersonalConnection, PersonalConnectionLookup } from '@flux/core';
+import type { AiPrice, AiProviderKind } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { createDatabase } from '../index.js';
 import { openBackgroundKey } from '../background-key-crypto.js';
@@ -8,21 +8,34 @@ import { connectionPrice } from './background-connections.js';
 const c = schema.backgroundComputeConnections;
 type Database = Pick<ReturnType<typeof createDatabase>['db'], 'select'>;
 
+/** One owner's connection as the assistant uses it; core's `PersonalConnection` port, structurally. */
+export interface PersonalConnectionRow {
+  id: string;
+  ownerUserId: string;
+  status: 'active';
+  keyRef: string;
+  payer: { organization: string; workspace: string };
+  provider: AiProviderKind;
+  model: string;
+  baseUrl: string | null;
+  price: AiPrice | null;
+}
+
 /**
  * The production lookup of the assistant's connection (#68 "Switching production on" step 1, F-020
  * PROV-1): only `ownerUserId`'s own active connections with a stored key. A `connectionId` returns
  * exactly that one, never another; without one, the owner's newest (used only to describe enabling).
  * The key reference is the connection id; the key itself stays sealed here.
  */
-export function personalConnectionLookup(db: Database): PersonalConnectionLookup {
+export function personalConnectionLookup(db: Database) {
   return {
-    async resolve(ownerUserId, connectionId) {
+    async resolve(ownerUserId: string, connectionId?: string): Promise<PersonalConnectionRow | null> {
       const [row] = await db.select().from(c)
         .where(and(eq(c.ownerUserId, ownerUserId), isNull(c.revokedAt), isNotNull(c.encryptedKey),
           ...(connectionId !== undefined ? [eq(c.id, connectionId)] : [])))
         .orderBy(desc(c.createdAt), desc(c.id)).limit(1);
       if (!row) return null;
-      const connection: PersonalConnection = {
+      const connection: PersonalConnectionRow = {
         id: row.id, ownerUserId: row.ownerUserId, status: 'active', keyRef: row.id,
         payer: { organization: row.payerOrganization, workspace: row.providerWorkspace },
         provider: row.provider, model: row.model, baseUrl: row.baseUrl, price: connectionPrice(row),
