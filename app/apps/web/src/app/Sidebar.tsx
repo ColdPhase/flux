@@ -103,7 +103,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
               })}
             </ul>
           ) : (
-            <p className="side__empty">No projects yet. When someone adds you to one, it appears here.</p>
+            <p className="side__empty">No projects yet. <Link to="/projects/new" onClick={navigate}>Create a project</Link>, or it appears here when someone adds you to one.</p>
           )}
         </nav>
 

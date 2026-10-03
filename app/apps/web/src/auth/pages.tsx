@@ -1,14 +1,15 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Form, Link, Outlet, useActionData, useLoaderData, useLocation, useNavigate, useNavigation, useSearchParams } from 'react-router';
 import { PASSWORD_MIN_LENGTH } from '../api/auth';
-import { Button, ErrorState, Icon, Input, useToast } from '../ui';
+import { Button, ErrorState, FluxMark, Icon, Input, useToast } from '../ui';
 import type { FormResult, forgotPasswordLoader } from './logic';
 
+/** The app's own mark and wordmark, as in the sidebar (#189). */
 function Brand() {
   return (
     <Link to="/" className="brand" aria-label="Flux home">
-      <span className="brand__mark" aria-hidden="true">F</span>
-      <span className="brand__name">Flux</span>
+      <FluxMark size={21} />
+      <span className="brand__name" aria-hidden="true">flux<span>.</span></span>
     </Link>
   );
 }
@@ -120,6 +121,8 @@ export function SignUpPage() {
   const [params] = useSearchParams();
   const next = params.get('next');
   const suffix = next ? `?next=${encodeURIComponent(next)}` : '';
+  // The length hint goes away once the password is long enough (#189).
+  const [passwordLength, setPasswordLength] = useState(0);
   return (
     <>
       <Heading title="Create your Flux account">One account for your conversations, work and handoffs.</Heading>
@@ -132,7 +135,8 @@ export function SignUpPage() {
         <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
           defaultValue={result?.values?.email} error={result?.fieldErrors?.email} />
         <Input label="Password" name="password" type="password" autoComplete="new-password" error={result?.fieldErrors?.password}
-          hint={`At least ${PASSWORD_MIN_LENGTH} characters. A short sentence works well.`} />
+          onChange={(event) => setPasswordLength(event.target.value.length)}
+          hint={passwordLength >= PASSWORD_MIN_LENGTH ? undefined : `At least ${PASSWORD_MIN_LENGTH} characters. A short sentence works well.`} />
         <Button type="submit" variant="primary" size="lg" block busy={submitting}>{submitting ? 'Creating account…' : 'Create account'}</Button>
       </Form>
       <p className="auth__alt">Already have an account? <Link className="ui-link" to={`/sign-in${suffix}`}>Sign in</Link></p>

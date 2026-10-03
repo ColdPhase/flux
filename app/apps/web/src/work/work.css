@@ -145,6 +145,9 @@
 .project-convo__message .ws-acts--more { position: absolute; top: 0; right: -10px; margin: 0; }
 .ws-more { justify-content: center; width: 44px; height: 44px; padding: 0; color: var(--text-3); }
 .project-convo__message:has(.ws-acts--more) .project-convo__message-meta { padding-right: 36px; }
+/* The message is only as wide as its own author line and bubble, so the button sits at the bubble's
+   corner instead of floating at a fixed 260px measure beside a short message (#189). */
+.project-convo__message:has(.ws-acts--more) { min-width: 0; }
 /* Quiet, project-scoped comparison proposals on the Tasks return surface. */
 .ws-proposals__intro { margin: 0 0 8px; color: var(--text-2); font-size: var(--fs-sm); }
 .ws-proposals__jumps { display: flex; gap: 12px; margin: -4px 0 6px; }

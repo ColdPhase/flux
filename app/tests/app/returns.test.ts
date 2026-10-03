@@ -156,6 +156,18 @@ describe('return view: since you left', () => {
     assert.deepEqual([proposed.text, proposed.detail, proposed.needsYou], ['Proposed rule: Dim the lamp at night', 'Ari proposed it', true]);
   });
 
+  test('the next step for a proposed rule tells the person who can accept it (#189)', async () => {
+    const shade = await createProject(ari, ws.id, 'Night shade', 'restricted');
+    await grant(ari, shade.id, nia, 'contributor');
+    const place = { type: 'project' as const, id: shade.id };
+    await view(nia, place);
+    const proposal = json<Decision>(await post(ari, `/api/v1/projects/${shade.id}/decisions`, { title: 'Warm light after 22:00', rationale: 'Sleep' }), 201);
+    const back = await summary(nia, place);
+    assert.deepEqual(back.nextStep && [back.nextStep.text, back.nextStep.reason, back.nextStep.item],
+      ['Decide on the proposed rule', 'Ari proposed “Warm light after 22:00”. You can accept it.', `decision:${proposal.id}`]);
+    assert.equal((await summary(ari, place)).nextStep, null, 'the proposer is not asked');
+  });
+
   test('doc changes (#112) are one item in human language that opens what changed', async () => {
     const place = { type: 'project' as const, id: lamp.id };
     await view(nia, place);

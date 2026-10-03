@@ -8,6 +8,7 @@ import { useShellData } from './data';
 import { useDraft, useReadingPosition } from './drafts';
 import { useShellActions } from './shellContext';
 import { SinceYouLeftHome } from '../returns/SinceYouLeft';
+import { getAssistantStatus } from '../assistant/api';
 
 /** Home's views in the same order and words as a project's (Studio 11.6, #136). */
 export const VIEWS = [
@@ -74,6 +75,13 @@ export function ConversationView() {
   const [serverDrafts, setServerDrafts] = useState<Draft[]>([]);
   const [saveState, setSaveState] = useState('');
   const [saving, setSaving] = useState(false);
+  // Without an assistant of your own, its button leads to "Connect your AI" (#189); it stays owner-only.
+  const [noAssistant, setNoAssistant] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    getAssistantStatus(controller.signal).then((status) => setNoAssistant(status.state === 'not_enabled'), () => undefined);
+    return () => controller.abort();
+  }, [me.user.id]);
   // With changes to return to, the "nothing here yet" empty state would contradict them.
   const [returning, setReturning] = useState(false);
   useEffect(() => {
@@ -179,8 +187,9 @@ export function ConversationView() {
           {workspaces.length > 1 ? <label className="composer__space">Save in <select value={selectedWorkspace} onChange={(event) => { setSelectedWorkspace(event.target.value); setServerDrafts([]); setSaveState(''); }}><option value="">Choose a space</option>{workspaces.map((space) => <option key={space.id} value={space.id}>{space.name}</option>)}</select></label> : null}
           <div className="composer__box">
             <label className="ui-vh" htmlFor="composer">Private note</label>
-            <button type="button" className="composer__ask" aria-pressed={asking} aria-label="Ask my assistant" data-tip="Ask my assistant" data-tip-align="start"
-              onClick={() => { setAsking(!asking); textareaRef.current?.focus(); }}>
+            <button type="button" className="composer__ask" aria-pressed={noAssistant ? undefined : asking} aria-label={noAssistant ? 'Connect your AI' : 'Ask my assistant'}
+              data-tip={noAssistant ? 'Connect your AI' : 'Ask my assistant'} data-tip-align="start"
+              onClick={() => { if (noAssistant) { openDetails('connect-ai'); return; } setAsking(!asking); textareaRef.current?.focus(); }}>
               <Icon name="spark" />
             </button>
             <textarea id="composer" ref={textareaRef} rows={1} value={draft.text} disabled={saving} placeholder={asking ? 'Ask your assistant…' : 'Write a note…'}

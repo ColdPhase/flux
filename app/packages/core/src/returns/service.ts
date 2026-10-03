@@ -365,7 +365,7 @@ export function createReturnUseCases(ports: ReturnPorts) {
           detail = reason;
         }
         const step = needsYou ? { priority: 4, text: 'Decide on the proposed rule',
-          reason: `${nameOf(item.proposedByKey)} proposed ${quote(item.title)}. Only a person with write access can accept it.` } : undefined;
+          reason: `${nameOf(item.proposedByKey)} proposed ${quote(item.title)}. You can accept it.` } : undefined;
         items.push({ ...base, kind: 'decision', text, detail, needsYou, source, step, relevant: needsYou || item.proposedByKey === me });
         continue;
       }
