@@ -2,16 +2,15 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { after, test } from 'node:test';
-import { assertExactMigrationLedger, assertMigrationSqlLedgerChange, assertMigrationStepLedger, createDatabase,
+import { test } from 'node:test';
+import { assertExactMigrationLedger, assertMigrationSqlLedgerChange, assertMigrationStepLedger,
   FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
+import { pool } from './support/db.js';
 
 // 0039 (#152): criteria, prerequisite edges and plan intent. The previous ledger upgrades in place, every existing
 // task survives byte for byte with empty plan fields, and the SQL is re-runnable. Numbers: 0039 is the lowest free
 // number at or above 0039 on origin/main and every pushed origin/* head on 2026-10-01 (highest present: 0038).
 const migrationsDir = 'packages/db/migrations';
-const { pool } = createDatabase(process.env.DATABASE_URL!);
-after(() => pool.end());
 
 test('0039 upgrades the previous ledger in place: tasks are preserved exactly, plan fields describe absence, and re-running changes nothing', async () => {
   const client = await pool.connect();

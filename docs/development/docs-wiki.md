@@ -21,9 +21,12 @@ There is no second version table.
   a material) is ever rewritten, even outside the API.
 - `GET /api/v1/projects/:id/materials` lists only `kind = 'material'`; `PATCH /api/v1/materials/:id`
   on a doc is `409 USE_DOC_API`. Docs change only through the doc API below.
-- Docs are written by people in this slice (`403 DOC_NEEDS_PERSON` for an agent); agents with a
-  project grant read them. Agent authorship needs an author kind on material versions and is a
-  follow-up.
+- People write docs through this API (`403 DOC_NEEDS_PERSON` for an agent principal); agents with
+  a project grant read them. Since #152 (migration `0043`), an agent can also start and edit docs,
+  but only under its owner's standing grant over MCP
+  ([agent connection](agent-connection.md#project-wiki-docs-and-conversations)). The doc and each
+  version then name that agent as their real author (`created_by_agent_id`, `author_agent_id`);
+  only docs can be agent-written.
 
 ## API
 
@@ -125,5 +128,5 @@ result, phone read/edit/compare, hostile text). Screenshots: `docs/design/docs-w
 
 ## Not yet
 
-File uploads and images (a separate slice), real-time co-editing (#61), agent-authored docs,
-search across docs, and moving a doc between projects.
+File uploads and images (a separate slice), real-time co-editing (#61), agent doc writes outside
+a standing grant, search across docs, and moving a doc between projects.

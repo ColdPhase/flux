@@ -8,7 +8,7 @@ import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { docUrl, getDoc, getVersion, listProjectDocs, listVersions, listWorkspaceDocs } from './api';
 import { diffDocs, diffStats, readableRefs, type DiffRow } from './diff';
-import { STATE_LABEL, docLinks, kindLabel, longDate, pathOfLink, shortDate } from './format';
+import { STATE_LABEL, authorLabel, docLinks, kindLabel, longDate, pathOfLink, shortDate } from './format';
 import './docs.css';
 
 // The Docs tab of a project (#112): a calm list with the last change, a reader with links and
@@ -38,7 +38,7 @@ function DocRow({ doc, showProject }: { doc: DocSummary; showProject?: boolean }
           <span className="doc-item__t">{doc.title}{doc.state === 'draft' ? <span className="doc-pill">Draft</span> : null}</span>
           <span className="doc-item__s">
             {showProject ? <>{doc.projectName} · </> : null}
-            {doc.updatedBy.name} · {doc.reason}
+            {authorLabel(doc.updatedBy)} · {doc.reason}
           </span>
           {doc.excerpt ? <span className="doc-item__x">{doc.excerpt}</span> : null}
         </span>
@@ -196,7 +196,7 @@ export function DocReader() {
         <header className="doc-head">
           <p className="doc-head__k">{STATE_LABEL[shown.state]} · version {shown.version}{current ? '' : ` of ${doc.version}`}</p>
           <h2 id="doc-title" className="doc-head__t">{shown.title}</h2>
-          <p className="doc-head__change"><span>{shown.author.name}</span> · <time dateTime={shown.createdAt}>{longDate(shown.createdAt)}</time> · <span className="doc-head__why">{shown.reason}</span></p>
+          <p className="doc-head__change"><span>{authorLabel(shown.author)}</span> · <time dateTime={shown.createdAt}>{longDate(shown.createdAt)}</time> · <span className="doc-head__why">{shown.reason}</span></p>
           <div className="doc-head__acts">
             {writable && current ? <Link className="ui-btn ui-btn--secondary" to={`${base}/edit`} aria-keyshortcuts="e"><Icon name="edit" />Edit</Link> : null}
             <Link className="ui-btn ui-btn--quiet" to={`${base}/history${current ? '' : `?to=${shown.version}`}`}>History · {doc.version} {doc.version === 1 ? 'version' : 'versions'}</Link>
@@ -215,7 +215,7 @@ export function DocReader() {
           {current ? <LinkList title="Links in this doc" links={mentions} end="to" projectId={project.id} /> : null}
           <LinkList title="Linked from" links={backlinks} end="from" projectId={project.id} empty="Nothing links here yet. Other docs and work can link to this doc." />
           <Audience project={project} />
-          <p className="doc-ids">Started by {doc.createdBy.name} · {shortDate(doc.startedAt)}</p>
+          <p className="doc-ids">Started by {authorLabel(doc.createdBy)} · {shortDate(doc.startedAt)}</p>
         </div>
       </article>
     </div>
@@ -273,7 +273,7 @@ function Changes({ from, to }: { from: DocVersion | null; to: DocVersion }) {
   return (
     <section className="doc-changes" aria-labelledby="doc-changes-h">
       <h3 id="doc-changes-h">{from ? <>Version {from.version} → {to.version}</> : <>Version {to.version}, the first</>}</h3>
-      <p className="doc-changes__why">{from ? <>From {from.author.name}’s version of {longDate(from.createdAt)} to </> : null}{to.author.name}’s of {longDate(to.createdAt)} · {to.reason}</p>
+      <p className="doc-changes__why">{from ? <>From {authorLabel(from.author)}’s version of {longDate(from.createdAt)} to </> : null}{authorLabel(to.author)}’s of {longDate(to.createdAt)} · {to.reason}</p>
       {facts.length ? <ul className="doc-changes__facts">{facts}</ul> : null}
       <p className="doc-muted">{stats.added} {stats.added === 1 ? 'line' : 'lines'} added · {stats.removed} removed</p>
       <DiffView rows={rows} />
@@ -308,7 +308,7 @@ export function DocHistory() {
                 <li key={item.version}>
                   <button type="button" className="doc-version" aria-current={item.version === to.version ? 'true' : undefined} onClick={() => compare({ to: item.version })}>
                     <span className="doc-version__n">v{item.version}</span>
-                    <span className="doc-version__b"><span className="doc-version__t">{item.reason}</span><span className="doc-version__s">{item.author.name} · {shortDate(item.createdAt)}{item.state === 'draft' ? ' · draft' : ''}</span></span>
+                    <span className="doc-version__b"><span className="doc-version__t">{item.reason}</span><span className="doc-version__s">{authorLabel(item.author)} · {shortDate(item.createdAt)}{item.state === 'draft' ? ' · draft' : ''}</span></span>
                   </button>
                   <Link className="doc-version__open" to={item.version === doc.version ? base : `${base}/versions/${item.version}`} aria-label={`Read version ${item.version}`}>Read</Link>
                 </li>

@@ -1,19 +1,14 @@
 import assert from 'node:assert/strict';
 import { createHmac, randomBytes, randomUUID } from 'node:crypto';
-import { after, describe, test } from 'node:test';
+import { describe, test } from 'node:test';
 import Fastify from 'fastify';
-import { createDatabase } from '@flux/db';
 import { loadIdentityConfig, registerIdentity, type IdentityConfig } from '../../apps/server/src/identity/index.js';
 import { originViolation } from '../../apps/server/src/identity/origin.js';
 import { verifiedOauthQuery } from '../../apps/server/src/identity/oauth-query.js';
 import { registerMcpRoute } from '../../apps/server/src/agent-connection/mcp-route.js';
+import { database } from './support/db.js';
 
 // In-process identity configuration checks with Fastify inject and the Compose database.
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const database = createDatabase(connectionString);
-after(() => database.pool.end());
-
 const base = { FLUX_PUBLIC_ORIGIN: 'https://flux.example.org', FLUX_AUTH_SECRET: randomBytes(32).toString('hex') };
 
 function config(overrides: Partial<IdentityConfig> = {}): IdentityConfig {

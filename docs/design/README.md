@@ -1,7 +1,8 @@
 # Design work in Flux
 
 **Current reference: Studio 11.6 (F-017, 2026-09-30).** Start with
-[the current contract](studio-v11.6.md) and
+[the current contract](studio-v11.6.md), its
+[measured design system and production token mapping](studio-v11.6-design-system.md) and
 [the unchanged seven-file package and 11.6 screenshots](references/studio-v11.6/README.md).
 This is the full appearance direction. Apply it with
 [F-016 local MCP co-work](../product/mcp-cowork.md) and

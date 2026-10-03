@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, before, describe, test } from 'node:test';
-import { createDatabase } from '@flux/db';
+import { before, describe, test } from 'node:test';
 import { DomainError, type Principal } from '@flux/core';
 import type { Agent, Conversation, Decision, Material, Page, Project, Workspace, WorkItem, WorkResult } from '@flux/contracts';
 import { workUseCases } from '../../apps/server/src/work/adapters.js';
+import { db, pool } from './support/db.js';
 import type { ClientResponse } from './support/http.js';
 import { addMember, expectStatus, grant, person, project as createProject, workspace, type Person } from './support/people.js';
 import { StreamClient } from './support/stream.js';
@@ -12,11 +12,6 @@ import { StreamClient } from './support/stream.js';
 // Work items, decisions and results linked to conversations (issue #101): access for two
 // people and outsiders, supersede history, pivot parking, If-Match conflicts, idempotent
 // retries, events for the stream, and the agent rule (propose, never accept).
-
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { pool, db } = createDatabase(connectionString);
-after(() => pool.end());
 
 const KINDS = ['project.work_created.v1', 'project.work_updated.v1', 'project.decision_proposed.v1', 'project.decision_accepted.v1', 'project.result_recorded.v1', 'project.link_created.v1'];
 const post = (someone: Person, path: string, body: unknown, headers?: Record<string, string>) => someone.browser.request('POST', path, { body, headers });
