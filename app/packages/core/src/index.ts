@@ -1,4 +1,3 @@
-
 export type { Database, DatabaseHandle, Executor, Principal, Transaction } from './types.js';
 export * from './access/errors.js';
 export {

@@ -11,7 +11,8 @@ test('without FLUX_FIXTURE_TOKEN the sample command and the test-only routes ans
     ...process.env,
     FLUX_FIXTURE_TOKEN: '',
     FLUX_TEST_FAILURE_INJECTION: 'true',
-    FLUX_AUTH_SECRET: `fixture-routes-${'x'.repeat(40)}`,
+    // In-process instances share the API container's secret (compose.source.yaml); no token is created here anyway.
+    FLUX_AUTH_SECRET: process.env.FLUX_AUTH_SECRET ?? `fixture-routes-${'x'.repeat(40)}`,
     FLUX_PUBLIC_ORIGIN: process.env.FLUX_PUBLIC_ORIGIN ?? 'http://127.0.0.1:8080',
   };
   const config = loadServerConfig(env, '/nonexistent/flux_background_key');
