@@ -256,7 +256,7 @@ class MapTaskCountJourney(unittest.TestCase):
         for key, count in counts.items():
             if count:
                 expect(self.row_badge(page, key)).to_have_accessible_name(tasks_label(count, texts[key]))
-                expect(self.row_badge(page, key)).to_have_text(str(count))
+                expect(self.row_badge(page, key)).to_have_text(f"{count} {'task' if count == 1 else 'tasks'}")
             else:
                 expect(self.row_badge(page, key)).to_have_count(0)
         for title in (ORDER, CALIBRATE, PROTOCOL, DIFFUSER):
