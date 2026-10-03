@@ -40,7 +40,15 @@ class DocReferenceJourney(unittest.TestCase):
         cls.sketch = api(cls.ctx, "POST", f"/api/v1/workspaces/{cls.workspace}/sketches", {"title": "Sensor wiring map", "scope": "project", "projectId": cls.project}, 201)
         cls.thread = api(cls.ctx, "POST", f"/api/v1/projects/{cls.project}/conversations", {"body": "Compare the distance sensor beside the window", "clientMessageId": str(uuid.uuid4())}, 201)
         cls.message = api(cls.ctx, "GET", f"/api/v1/conversations/{cls.thread['id']}")["messages"][0]
+        cls.user = api(cls.ctx, "GET", "/api/v1/me")["user"]["id"]
         cls.state = cls.ctx.storage_state()
+        cls.other = cls.browser.new_context(base_url=ORIGIN)
+        email = f"reference-peer-{uuid.uuid4()}@example.test"
+        api(cls.other, "POST", "/api/auth/sign-up/email", {"name": "Jonas Reference", "email": email, "password": "Private reference drafts belong to one person"})
+        cls.other_user = api(cls.other, "GET", "/api/v1/me")["user"]["id"]
+        api(cls.ctx, "POST", f"/api/v1/workspaces/{cls.workspace}/members", {"email": email, "role": "member"}, 201)
+        api(cls.ctx, "POST", f"/api/v1/projects/{cls.project}/grants", {"principal": {"kind": "human", "id": cls.other_user}, "role": "contributor"}, 201)
+        cls.other_state = cls.other.storage_state()
 
     @classmethod
     def create_doc(cls, title):
@@ -51,6 +59,7 @@ class DocReferenceJourney(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        cls.other.close()
         cls.ctx.close()
         cls.browser.close()
         cls.pw.stop()
@@ -73,7 +82,7 @@ class DocReferenceJourney(unittest.TestCase):
         text.press("Control+End")
         text.press("Control+k")
         picker = page.get_by_role("dialog", name="Link to something in this project")
-        expect(picker.get_by_role("combobox")).to_be_visible()
+        expect(picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)).to_be_visible()
         return picker
 
     def test_01_all_native_pages_remain_reachable_and_search_finds_off_page_identity(self):
@@ -81,7 +90,7 @@ class DocReferenceJourney(unittest.TestCase):
             with self.subTest(phone=phone):
                 page, text = self.scene(phone)
                 picker = self.picker(page, text)
-                query = picker.get_by_role("combobox")
+                query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
                 for kind in ("work", "decision", "result"):
                     picker.get_by_label("Reference type").select_option(kind)
                     query.fill("")
@@ -124,7 +133,7 @@ class DocReferenceJourney(unittest.TestCase):
             for kind, item in expected:
                 picker = self.picker(page, text)
                 picker.get_by_label("Reference type").select_option(kind)
-                query = picker.get_by_role("combobox")
+                query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
                 query.fill(item["title"])
                 expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(1)
                 query.press("Enter")
@@ -140,7 +149,7 @@ class DocReferenceJourney(unittest.TestCase):
         page, text = self.scene(self_doc=True)
         picker = self.picker(page, text)
         picker.get_by_label("Reference type").select_option("doc")
-        picker.get_by_role("combobox").fill(self.self_doc["title"])
+        picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True).fill(self.self_doc["title"])
         expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(0)
 
     def test_03_required_failure_retries_without_publishing_partial_matches_or_erasing_editor(self):
@@ -156,11 +165,63 @@ class DocReferenceJourney(unittest.TestCase):
         picker = self.picker(page, text)
         expect(picker.get_by_role("alert")).to_contain_text("Could not load")
         expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(0)
-        query = picker.get_by_role("combobox")
+        query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
         query.fill("Native work reference 000")
         expect(picker.get_by_role("alert")).to_be_visible()
         fault["on"] = False
         picker.get_by_role("button", name="Retry objects").click()
         expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(1)
         expect(query).to_have_value("Native work reference 000")
+        expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")
+
+    def navigate_editor(self, page, project, suffix="new"):
+        # Actual browser history navigation observed by React Router, preserving the
+        # document and component position rather than reloading away the regression.
+        page.evaluate("path => { history.pushState({...history.state, key: crypto.randomUUID(), idx: (history.state?.idx ?? 0)+1}, '', path); dispatchEvent(new PopStateEvent('popstate')); }", f"/projects/{project}/docs/{suffix}")
+        expect(page.get_by_label("Text (Markdown)")).to_be_visible()
+
+    def test_04_private_draft_follows_project_and_document_scope_without_document_reload(self):
+        page, text = self.scene()
+        page.evaluate("window.privateDraftDocument = crypto.randomUUID()")
+        marker = page.evaluate("window.privateDraftDocument")
+        self.navigate_editor(page, self.foreign)
+        expect(page.get_by_text("New doc · everyone in Other library can read it", exact=True)).to_be_visible()
+        expect(text).to_have_value("")
+        text.fill("PRIVATE-DRAFT in another project")
+        self.navigate_editor(page, self.project)
+        expect(page.get_by_text("New doc · everyone in Library lighting can read it", exact=True)).to_be_visible()
+        expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")
+        self.navigate_editor(page, self.project, f"{self.self_doc['id']}/edit")
+        expect(page.get_by_label("Title", exact=True)).to_have_value(self.self_doc["title"])
+        expect(text).to_have_value("A native document")
+        text.fill("PRIVATE-DRAFT of an existing document")
+        self.navigate_editor(page, self.project)
+        expect(page.get_by_text("New doc · everyone in Library lighting can read it", exact=True)).to_be_visible()
+        expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")
+        self.assertEqual(page.evaluate("window.privateDraftDocument"), marker)
+
+    def test_05_account_revalidation_does_not_copy_or_insert_into_another_private_draft(self):
+        page, text = self.scene()
+        picker = self.picker(page, text)
+        picker.get_by_label("Reference type").select_option("work")
+        expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(50)
+        page.context.clear_cookies(); page.context.add_cookies(self.other_state["cookies"])
+        self.navigate_editor(page, self.project)
+        expect(page.get_by_role("button", name=re.compile("^Jonas Reference .*account and sign out"))).to_be_visible()
+        expect(text).to_have_value("")
+        expect(picker).to_have_count(0)
+        other_key = f"flux:doc-edit:{self.other_user}:new:{self.project}"
+        self.assertIsNone(page.evaluate("key => sessionStorage.getItem(key)", other_key))
+        text.fill("PRIVATE-DRAFT belonging only to Jonas")
+        picker = self.picker(page, text)
+        picker.get_by_label("Reference type").select_option("work")
+        query = picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True)
+        query.fill(self.native["work"][0]["title"])
+        expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(1)
+        query.press("Enter")
+        expect(text).to_have_value(re.compile("PRIVATE-DRAFT belonging only to Jonas"))
+        expect(text).not_to_have_value(re.compile("PRIVATE-DRAFT of native reference notes"))
+        page.context.clear_cookies(); page.context.add_cookies(self.state["cookies"])
+        self.navigate_editor(page, self.project)
+        expect(page.get_by_role("button", name=re.compile("^Ada Reference .*account and sign out"))).to_be_visible()
         expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")

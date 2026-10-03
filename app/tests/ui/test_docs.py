@@ -154,9 +154,9 @@ class DocsJourney(unittest.TestCase):
         # The link picker: keyboard only, filtered to objects of this project.
         text.press("Control+k")
         picker = page.get_by_role("dialog", name="Link to something in this project")
-        picker.get_by_role("combobox").fill("ToF distance")
+        picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True).fill("ToF distance")
         expect(picker.get_by_role("listbox", name="Matches").get_by_role("option").first).to_contain_text(RULE)
-        picker.get_by_role("combobox").press("Enter")
+        picker.get_by_role("combobox", name="Find a doc, decision, result, work, sketch or message", exact=True).press("Enter")
         expect(text).to_have_value(re.compile(re.escape(f"[{RULE}](flux:decision/{self.decision_id})")))
         # Both panes on a wide screen; the preview is rendered by the server.
         preview = page.get_by_label("Preview")
