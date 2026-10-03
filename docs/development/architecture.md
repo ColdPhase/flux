@@ -168,6 +168,8 @@ Resolved outside the allowlist: the access routes are one module per capability 
 `app/apps/server/src/access/` (workspaces, projects and grants, agents, drafts, draft summaries)
 over a shared context, each under about 120 lines. Header helpers and schema fragments are in
 `app/apps/server/src/http/{headers,schemas}.ts`, and `http/errors.ts` maps domain errors and a
-missing session once, on the API's root: access, push and stream answer a missing session with the
-same `UNAUTHENTICATED` body ([#85](https://github.com/ColdPhase/flux/issues/85)). Other route plugins
-still call `useDomainErrors`, the same mapper, so they keep working when tests register them alone.
+missing session once, on the API's root: access, push, stream and identity answer a missing session
+with the same `UNAUTHENTICATED` body ([#85](https://github.com/ColdPhase/flux/issues/85)); identity's
+401 was Fastify's default body before. Route plugins that tests register alone call `useDomainErrors`,
+the same mapper; agent connection, conversation and proactive comparison still set their own handlers,
+which drop a domain error's details (follow-up with #36).
