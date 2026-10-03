@@ -5,7 +5,8 @@ import http from 'node:http';
 import net from 'node:net';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
-import { chromium, expect, type Browser, type BrowserContext, type Page, type Route } from 'playwright';
+import { chromium, type Browser, type BrowserContext, type Page, type Route } from 'playwright';
+import { expect } from 'playwright/test';
 import type { AssistantAnswer, AssistantProposal, AssistantRun, Conversation, Page as NativePage, Project, WorkItem } from '@flux/contracts';
 import { pool } from '../support/db.js';
 import { addMember, expectStatus, grant, password, person, project, workspace, type Person } from '../support/people.js';
@@ -89,7 +90,7 @@ const conversationPath = () => `/projects/${place.id}/conversations/${thread.id}
 async function open(who: Person, width = 1440, height = 900) {
   const page = await signedIn(who, width, height);
   await page.goto(conversationPath());
-  await expect(page.locator('#project-composer')).toBeVisible();
+  await expect(page.locator('.project-convo')).toBeVisible();
   return page;
 }
 async function capture(page: Page, name: string) {

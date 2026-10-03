@@ -4,12 +4,16 @@ import type { GithubBinding, GithubCapabilities, GithubRepository, GithubTaskLin
 import { ApiError, request } from '../api/client';
 import { useProjectShell, type ProjectShell } from '../project/data';
 import { Button, Spinner } from '../ui';
+import { useShellData } from '../app/data';
+import { useWorkChoices } from '../work/useDetailReads';
+import { WorkPagination } from '../work/WorkPagination';
 import './github.css';
 const failure = (cause: unknown) => cause instanceof ApiError && cause.status < 500 ? cause.message : 'GitHub is unavailable. Your work is saved; try again when the connection returns.';
 export function GithubSettings() {
   const shell = useProjectShell();
+  const { me } = useShellData();
   // A different project gets a fresh private projection, including its pending requests.
-  return shell ? <GithubProjectSettings key={shell.project.id} shell={shell} /> : null;
+  return shell ? <GithubProjectSettings key={`${me.user.id}:${shell.project.id}`} shell={shell} /> : null;
 }
 function GithubProjectSettings({ shell }: { shell: ProjectShell }) {
   const projectId = shell.project.id; const prefix = `/api/v1/projects/${projectId}/github`;
@@ -57,7 +61,7 @@ function GithubProjectSettings({ shell }: { shell: ProjectShell }) {
             <a href={binding.url} target="_blank" rel="noreferrer">{binding.owner}/{binding.name}</a><span>{binding.private ? 'Private' : 'Public'}</span>
             {shell.project.access === 'manager' ? <Button variant="secondary" disabled={busy} onClick={() => void disconnect(binding.id)}>Disconnect</Button> : null}</li>)}</ul> : <p>{error ? 'Repository access could not be verified. Refresh access or reconnect your account.' : 'No repositories connected to this project yet.'}</p>}</section>
           {shell.project.access === 'manager' ? <RepositoryPicker prefix={prefix} onBound={refresh} /> : null}
-          {bindings.length ? <PullReferences bindings={bindings} tasks={shell.work.work} canLink={shell.project.access !== 'viewer'} /> : null}
+          {bindings.length ? <PullReferences projectId={projectId} bindings={bindings} canLink={shell.project.access !== 'viewer'} /> : null}
         </>}
     <p className="github-settings__note">Task automation and agent event delivery are not available yet. Merge, checks and reviews stay visible on GitHub; they do not complete your task’s acceptance criteria.</p>
   </div></div>;
@@ -85,15 +89,24 @@ function RepositoryPicker({ prefix, onBound }: { prefix: string; onBound: () => 
     </form> : null}{error ? <p role="alert" className="github-settings__error">{error}</p> : null}
   </section>;
 }
-function PullReferences({ bindings, tasks, canLink }: { bindings: GithubBinding[]; tasks: { id: string; title: string }[]; canLink: boolean }) {
+function PullReferences({ projectId, bindings, canLink }: { projectId: string; bindings: GithubBinding[]; canLink: boolean }) {
+  const { me } = useShellData();
+  const [search, setSearch] = useState('');
+  const choices = useWorkChoices(me.user.id, projectId, { purpose: 'choices', choice: 'doc_refs', kind: 'work', q: search.trim() || undefined });
+  const tasks = choices.page?.items ?? [];
+  // One explicitly chosen identity is private form state, never a growing page cache.
+  const [chosen, setChosen] = useState<{ id: string; title: string } | null>(null);
   const id = useId(); const [task, setTask] = useState(''); const [binding, setBinding] = useState(''); const [number, setNumber] = useState('');
   const [role, setRole] = useState<'required_output' | 'related'>('required_output'); const [links, setLinks] = useState<GithubTaskLink[]>([]); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
-  async function openTask(value: string) { setTask(value); setLinks([]); setError(''); if (!value) return; setBusy(true);
+  async function openTask(value: string) { setTask(value); setChosen(tasks.find((row) => row.id === value) ?? (chosen?.id === value ? chosen : null)); setLinks([]); setError(''); if (!value) return; setBusy(true);
     try { setLinks(await request(`/api/v1/work/${value}/github-links`)); } catch (cause) { setError(failure(cause)); } finally { setBusy(false); } }
   async function link(event: FormEvent) { event.preventDefault(); setError(''); setBusy(true); try {
     await request(`/api/v1/work/${task}/github-links`, { method: 'POST', body: { bindingId: binding, number: Number(number), role } }); setLinks(await request(`/api/v1/work/${task}/github-links`));
   } catch (cause) { setError(failure(cause)); } finally { setBusy(false); } }
-  const taskPicker = <><label htmlFor={`${id}-task`}>Task</label><select id={`${id}-task`} value={task} disabled={busy} onChange={(event) => void openTask(event.target.value)}><option value="">Choose task…</option>{tasks.map((row) => <option key={row.id} value={row.id}>{row.title}</option>)}</select></>;
+  const taskPicker = <><label htmlFor={`${id}-search`}>Find task</label><input id={`${id}-search`} type="search" value={search} onChange={(event) => setSearch(event.target.value)} />
+    <label htmlFor={`${id}-task`}>Task</label><select id={`${id}-task`} value={task} disabled={busy || choices.busy || !choices.page} onChange={(event) => void openTask(event.target.value)}><option value="">Choose task…</option>{chosen && !tasks.some((row) => row.id === chosen.id) ? <option value={chosen.id}>{chosen.title}</option> : null}{tasks.map((row) => <option key={row.id} value={row.id}>{row.title}</option>)}</select>
+    <WorkPagination {...choices} label="GitHub task choices" noun="tasks" />
+    {choices.read.phase === 'unavailable' ? <p role="alert">Tasks could not be loaded. Your selection is kept. <button type="button" className="ui-link" onClick={choices.onRefresh}>Refresh task choices</button></p> : null}</>;
   return <section><h3>{canLink ? 'Link an existing pull request' : 'Linked pull requests'}</h3><p>{canLink ? 'Select the task, repository and exact PR number. Flux verifies the original PR; your existing tasks remain authoritative.' : 'Choose an existing task to read its verified pull requests under your own current repository access.'}</p>
     {canLink ?
     <form onSubmit={(event) => void link(event)} className="github-settings__form">
