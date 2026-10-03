@@ -119,7 +119,8 @@ export function useComposerDraft(accountId: string, projectId: string, context: 
     const additions = files.map((file): DraftFile => {
       const uploadId = crypto.randomUUID(); bytes.set(uploadId, file);
       const error = file.size === 0 ? 'Empty files cannot be attached.' : file.size > FILE_LIMITS.fileBytes ? 'A file can be at most 5 MiB.'
-        : file.name.length > FILE_LIMITS.nameChars || /[\x00-\x1f\x7f/\\]/.test(file.name) || ['.', '..'].includes(file.name) ? 'Choose a file with a shorter name without path characters.' : undefined;
+        : file.name.length > FILE_LIMITS.nameChars || [...file.name].some((character) => character.codePointAt(0)! < 32 || character.codePointAt(0) === 127 || character === '/' || character === '\\')
+          || ['.', '..'].includes(file.name) ? 'Choose a file with a shorter name without path characters.' : undefined;
       return { uploadId, name: file.name, size: file.size, state: error ? 'failed' : 'uploading', ...(error ? { error } : {}) };
     });
     edit(key, (value) => ({ ...value, files: [...value.files, ...additions] }));
