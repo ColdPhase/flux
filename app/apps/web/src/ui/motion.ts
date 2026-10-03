@@ -52,7 +52,7 @@ export function useMediaQuery(query: string): boolean {
 
 /** Layout breakpoints from direction C. */
 export const MEDIA = {
-  navDrawer: '(max-width: 1180px)',
-  panelOverlay: '(max-width: 980px)',
+  navDrawer: '(max-width: 680px)',
+  panelOverlay: '(max-width: 1000px)',
   phone: '(max-width: 640px)',
 } as const;

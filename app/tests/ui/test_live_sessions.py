@@ -592,7 +592,7 @@ class LiveJourney(LiveBase):
         # Typing with the session open keeps the draft through navigation.
         composer_box = phone.get_by_role("textbox").last
         composer_box.fill("Filter out gives 18 of 20 at 5 lux, writing it up now")
-        phone.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Docs")).click()
+        phone.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Wiki")).click()
         phone.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Conversation")).click()
         expect(phone.get_by_role("textbox").last).to_have_value("Filter out gives 18 of 20 at 5 lux, writing it up now")
         expect(self.bar(phone)).to_be_visible()

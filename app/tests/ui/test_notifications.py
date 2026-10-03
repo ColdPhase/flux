@@ -153,7 +153,7 @@ class NotificationJourney(unittest.TestCase):
         rail = page.get_by_role("navigation", name="Places")
         inbox_link = rail.get_by_role("link", name="Inbox, something new")
         expect(inbox_link).to_be_visible()
-        expect(inbox_link.locator(".rail__dot")).to_be_visible()
+        expect(inbox_link.locator(".side__dot")).to_be_visible()
         self.assertIsNone(re.search(r"\d", inbox_link.inner_text()), "no count on the rail, only a dot")
         inbox_link.click()
         expect(page).to_have_url(re.compile(r"/inbox$"))
