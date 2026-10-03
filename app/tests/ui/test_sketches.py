@@ -512,6 +512,93 @@ class SketchJourney(unittest.TestCase):
         self.assertLessEqual(len(after), 2, f"no reconnect loop: {after}")
         self.assertTrue(any(s["frames"] for s in after), "the second account's stream delivers")
 
+    # ---------------------------------------------------------------- Fit and its controls (#222)
+
+    def fit_fixture(self, *, viewport: dict, ratios: tuple[float, float], touch: bool = False) -> Page:
+        """A persisted project sketch whose last thought reaches the old Fit corner."""
+        context = self.browser.new_context(base_url=ORIGIN, viewport=viewport, has_touch=touch,
+                                           color_scheme="dark" if viewport["height"] < 800 else "light")
+        self.addCleanup(context.close)
+        page = self.page(context)
+        self.api(page, "POST", "/api/auth/sign-up/email", {"name": "Rae Morgan", "email": f"fit+{time.time_ns()}@example.test", "password": PASSWORD})
+        workspace = self.api(page, "POST", "/api/v1/workspaces", {"name": "Lighting workshop"})
+        project = self.api(page, "POST", f"/api/v1/workspaces/{workspace['id']}/projects", {"name": "Gesture-controlled desk lamp", "visibility": "restricted"})
+        sketch = self.api(page, "POST", f"/api/v1/workspaces/{workspace['id']}/sketches", {"title": "Gesture sensing and manual controls", "scope": "project", "projectId": project["id"]})
+        page.goto(f"/projects/{project['id']}/map/{sketch['id']}")
+        canvas = page.locator(".sk-canvas")
+        expect(canvas).to_be_visible()
+        # Use the whole map footprint so these fixtures also reproduce on the old overlapping
+        # controls. The new control strip keeps that footprint and reduces only the scroll view.
+        width = canvas.evaluate("el => el.clientWidth")
+        height = page.locator(".sk-canvas-wrap").evaluate("el => el.clientHeight")
+        far_x = round(width / ratios[0] - 240 - 24)
+        far_y = round(height / ratios[1] - 100 - 24)
+        first = self.api(page, "POST", f"/api/v1/sketches/{sketch['id']}/thoughts", {"text": "Explore gesture sensing in low light", "x": 24, "y": 24, "width": 240, "height": 100, "shape": "card"})
+        self.api(page, "POST", f"/api/v1/sketches/{sketch['id']}/thoughts", {"text": "Keep a physical off switch on the lamp base", "x": far_x, "y": far_y, "width": 240, "height": 100, "shape": "card", "linkFrom": {"thoughtId": first["thought"]["id"]}})
+        self.api(page, "POST", f"/api/v1/sketches/{sketch['id']}/thoughts", {"text": "Test the ToF sensor through the shade", "x": round(far_x / 2), "y": round(far_y / 2), "width": 240, "height": 100, "shape": "card", "linkFrom": {"thoughtId": first["thought"]["id"]}})
+        page.reload()
+        expect(page.locator(".sk-node")).to_have_count(3)
+        page.get_by_role("button", name=re.compile(r"^Zoom \d+%")).click()  # reset before the explicit Fit
+        canvas.evaluate("el => { el.scrollLeft = 100; el.scrollTop = 100; }")
+        page.get_by_role("button", name="Fit the sketch to the view").click()
+        page.wait_for_function("() => { const el = document.querySelector('.sk-canvas'); return el.scrollLeft === 0 && el.scrollTop === 0; }")
+        return page
+
+    def assert_no_overlap(self, a: dict, b: dict, message: str) -> None:
+        overlap = a["x"] < b["x"] + b["width"] and b["x"] < a["x"] + a["width"] and a["y"] < b["y"] + b["height"] and b["y"] < a["y"] + a["height"]
+        self.assertFalse(overlap, message)
+
+    def test_11_fit_keeps_the_far_corner_thought_clear_of_controls(self) -> None:
+        for label, viewport, ratios, touch in (
+            ("desktop", DESKTOP, (0.8, 0.8), False),
+            ("short-desktop", {"width": 1440, "height": 720}, (0.8, 0.7), False),
+            ("touch-tablet", {"width": 1024, "height": 768}, (0.9, 0.9), True),
+        ):
+            with self.subTest(viewport=label):
+                page = self.fit_fixture(viewport=viewport, ratios=ratios, touch=touch)
+                corner = box(page, self.thought(page, "Keep a physical off switch"))
+                controls = box(page, page.get_by_role("group", name="Zoom", exact=True))
+                self.assert_no_overlap(corner, controls, "Fit leaves the far bottom-right thought clear of zoom controls")
+                canvas = box(page, page.locator(".sk-canvas"))
+                for node in page.locator(".sk-node").all():
+                    bounds = box(page, node)
+                    self.assertGreaterEqual(bounds["x"], canvas["x"] - 1)
+                    self.assertGreaterEqual(bounds["y"], canvas["y"] - 1)
+                    self.assertLessEqual(bounds["x"] + bounds["width"], canvas["x"] + canvas["width"] + 1)
+                    self.assertLessEqual(bounds["y"] + bounds["height"], canvas["y"] + canvas["height"] + 1)
+                shot(page, f"sketch-fit-{label}")
+
+    def test_12_fit_at_the_readable_floor_keeps_a_safe_scroll_view(self) -> None:
+        for label, viewport, ratio, touch, minimum in (
+            ("desktop-floor", DESKTOP, 0.61, False, 60),
+            ("touch-floor", {"width": 1024, "height": 768}, 0.76, True, 75),
+        ):
+            with self.subTest(viewport=label):
+                page = self.fit_fixture(viewport=viewport, ratios=(ratio, ratio), touch=touch)
+                expect(page.get_by_role("button", name=re.compile(r"^Zoom \d+%"))).to_have_attribute("aria-label", f"Zoom {minimum}%, reset to 100%")
+                canvas = page.locator(".sk-canvas")
+                controls = box(page, page.get_by_role("group", name="Zoom", exact=True))
+                viewport_box = box(page, canvas)
+                self.assert_no_overlap(viewport_box, controls, "the readable minimum clips excess content at the scroll viewport, before controls")
+                first = box(page, self.thought(page, "Explore gesture sensing"))
+                self.assertGreaterEqual(first["x"], viewport_box["x"], "Fit preserves the top-left camera")
+                self.assertGreaterEqual(first["y"], viewport_box["y"], "Fit preserves the top-left camera")
+                self.assertGreater(canvas.evaluate("el => el.scrollHeight - el.clientHeight"), 0, "a large graph stays scrollable at its readable minimum")
+                shot(page, f"sketch-fit-{label}")
+                # Scroll to the last thought without changing the zoom. The complete thought can
+                # be read while the controls remain usable beside the protected scroll viewport.
+                canvas.evaluate("el => { el.scrollLeft = el.scrollWidth; el.scrollTop = el.scrollHeight; }")
+                corner = self.thought(page, "Keep a physical off switch")
+                corner.scroll_into_view_if_needed()
+                bounds = box(page, corner)
+                viewport_box = box(page, canvas)
+                self.assertGreaterEqual(bounds["x"], viewport_box["x"] - 1)
+                self.assertGreaterEqual(bounds["y"], viewport_box["y"] - 1)
+                self.assertLessEqual(bounds["x"] + bounds["width"], viewport_box["x"] + viewport_box["width"] + 1)
+                self.assertLessEqual(bounds["y"] + bounds["height"], viewport_box["y"] + viewport_box["height"] + 1)
+                self.assert_no_overlap(bounds, box(page, page.get_by_role("group", name="Zoom", exact=True)), "the scrolled corner thought is clear of controls at the readable floor")
+                shot(page, f"sketch-fit-{label}-corner")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
