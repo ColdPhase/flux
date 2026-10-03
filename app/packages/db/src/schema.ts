@@ -1,4 +1,4 @@
-import { eq, isNull, ne, sql } from 'drizzle-orm';
+import { eq, ne, sql } from 'drizzle-orm';
 import type { InspectedComparisonSource } from '@flux/contracts';
 import { pgTable, text, timestamp, date, uuid, integer, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, check, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES, type AgentJsonValue, type AgentPostcondition } from '@flux/contracts';
