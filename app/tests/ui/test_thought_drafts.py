@@ -473,7 +473,8 @@ class ThoughtDraftJourney(unittest.TestCase):
         expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
         # The same person in the same page visit, reaching the map through the app's own links: a project
         # sketch lives in its project's Map, not in the private sketchbook (#189).
-        page.get_by_role("navigation", name="Projects").get_by_role("link", name="Quiet gesture lamp").click()
+        # Each test makes its own "Quiet gesture lamp", so this one is chosen by its address.
+        page.get_by_role("navigation", name="Projects").locator(f'a[href="/projects/{self.project}"]').click()
         page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
         # The Map tab returns to its last place (#189): the sketch itself, or the list it is in.
         page.wait_for_url(re.compile(rf"/projects/{self.project}/map(/{self.sketch})?$"))
