@@ -250,3 +250,21 @@ effects, atomicity, hooks and lock order apply; the file corrections remain for 
   additively.
 - **Not in this part.** Stored files and attachment-only messages, shared drafts, unused-AI undo, #152/#153 tools
   and import.
+
+## In the project stream (web, 2026-10-03)
+
+The one project stream (UI116-1) shows both halves of UI116-3:
+
+- **Announcements.** The conversation route reads `GET /api/v1/projects/:id/task-notices` (newest first) beside
+  the newest roots. Each announcement is one compact line, merged with the roots by time (an announcement first at
+  the same instant): "New task · creator", then the task's current title, which opens exactly that task in Details.
+  It has no replies, actions or avatar. While earlier roots are not loaded, announcements older than the first
+  loaded root stay hidden with them; loading those roots shows them in their place, and older announcement pages
+  are read as far back as the loaded roots reach. A refresh that skipped past the loaded announcements reads
+  forward until it meets them. Reading never creates an announcement, task or root.
+- **The task's root.** `GET /api/v1/projects/:id/conversation-roots` adds `task: { workId, title }` (the current
+  title) to a root that opened a task's discussion. The stream and the thread header show it as the task's chip;
+  replies from the thread drawer are ordinary replies to that conversation, so they are the task's discussion.
+
+Still open in #154: Details/Tasks entry to the discussion, one draft identity shared by the thread drawer and the
+Agents task composer, stored files, unused-AI undo and real #152/#153 clients.

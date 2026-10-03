@@ -50,7 +50,11 @@ starts a root with the existing start command; the thread drawer (a side panel o
 desktop, a full-screen sheet on the phone) replies with the existing reply
 command. Existing conversation URLs and message anchors open the stream at that
 root with its thread open. The personal assistant is asked from a thread and
-answers there. UI116-3 task notices join this stream when that slice lands.
+answers there. UI116-3 task announcements are part of this stream (2026-10-03,
+#154): each is one compact line between the roots, in time order, that opens its
+task. A task's first genuine contribution is an ordinary root that names its task
+(`ConversationRoot.task`), in the stream and in its thread. Announcements older
+than the first loaded root stay hidden until those earlier roots are loaded.
 
 Reconsider if people cannot find or follow earlier discussions in one stream in
 observed use, if root volume makes the stream unreadable without filtering, or if
