@@ -25,6 +25,8 @@
 .sk-bar { display: flex; align-items: center; gap: 2px; min-height: 40px; padding: 4px; border-radius: var(--r-lg);
   box-shadow: inset 0 0 0 1px var(--line); background: var(--bg); }
 .sk-tools { display: flex; align-items: center; gap: 2px; flex: none; }
+.sk--map .sk-bar { flex-wrap: wrap; }
+.sk--map .sk-tools { flex: 0 1 auto; min-width: 0; flex-wrap: wrap; }
 .sk-bar .ui-btn { min-height: 32px; padding: 0 10px; gap: 6px; }
 .sk-bar .ui-btn svg { color: var(--text-3); }
 .sk-bar .sk-add { color: var(--text); }
@@ -91,6 +93,14 @@
   box-shadow: inset 0 0 0 1.5px var(--accent), 0 0 0 3px var(--accent-soft); outline: none; }
 
 .sk-canvas-wrap { position: relative; }
+/* The map uses the height actually left by the shell, including wrapped project state and
+   Details. Keep controls, drafts and the complete wrapped hint outside its flexible canvas.
+   Very short panes can still scroll instead of crushing the map or losing a draft. */
+.sk-page--map { display: flex; flex-direction: column; }
+.sk--map { flex: 1; min-height: min-content; width: 100%; padding-bottom: 16px; }
+.sk--map > * { flex-shrink: 0; }
+.sk--map .sk-canvas-wrap { flex: 1 0 240px; min-height: 240px; height: auto; }
+.sk--map .sk-canvas { height: 100%; }
 .sk-zoom { position: absolute; right: 8px; bottom: 8px; z-index: 6; display: flex; align-items: center; gap: 0;
   padding: 2px; border-radius: var(--r); background: var(--bg-raised); box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--line); }
 .sk-zoom button { display: grid; place-items: center; min-width: 28px; height: 28px; border-radius: 6px; color: var(--text-3); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; transition: var(--tr); }
