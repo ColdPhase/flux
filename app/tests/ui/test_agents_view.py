@@ -193,32 +193,30 @@ class AgentsViewJourney(unittest.TestCase):
 
     def test_03c_a_dropped_stream_recovers_what_was_missed(self) -> None:
         hubert = self.page("hubert")
-        sockets: list = []
-        down = {"value": False}
-
-        def stream(ws) -> None:
-            if down["value"]:
-                ws.close()
-                return
-            ws.connect_to_server()
-            sockets.append(ws)
-
-        hubert.route_web_socket(re.compile(r"/api/v1/stream"), stream)
+        # The page's sockets are recorded; while the network is "down" every new one fails before it opens.
+        hubert.add_init_script("""(() => {
+          const Native = window.WebSocket;
+          window.__fluxSockets = [];
+          window.__fluxDown = false;
+          window.WebSocket = class extends Native {
+            constructor(...args) {
+              super(...args);
+              window.__fluxSockets.push(this);
+              if (window.__fluxDown) this.close();
+            }
+          };
+        })()""")
         hubert.goto(f"/projects/{self.ids['project']}/agents")
         expect(self.thread(hubert).get_by_text("Then I'll flash it tonight.")).to_be_visible()
-        for _ in range(50):
-            if sockets:
-                break
-            hubert.wait_for_timeout(100)
-        self.assertEqual(len(sockets), 1, "the view listens to the event stream")
-        # The connection drops and stays down while Marek writes; it comes back on its own.
-        down["value"] = True
-        sockets[0].close()
+        hubert.wait_for_function("() => window.__fluxSockets.some((ws) => ws.url.includes('/api/v1/stream') && ws.readyState === 1)")
+        # The connection drops and stays down while Marek writes; then the network returns.
+        hubert.evaluate("() => { window.__fluxDown = true; window.__fluxSockets.forEach((ws) => ws.close()); }")
         self.contribute("marek", "Cable ordered while your link was down")
         hubert.wait_for_timeout(1500)
-        down["value"] = False
+        hubert.evaluate("() => { window.__fluxDown = false; }")
         expect(self.thread(hubert).get_by_text("Cable ordered while your link was down")).to_have_count(1, timeout=12000)
-        self.assertGreaterEqual(len(sockets), 2, "the stream reconnected")
+        hubert.wait_for_function("() => window.__fluxSockets.some((ws) => ws.url.includes('/api/v1/stream') && ws.readyState === 1)")
+        self.assertGreaterEqual(hubert.evaluate("() => window.__fluxSockets.length"), 2, "the stream reconnected")
 
     def test_03d_new_messages_keep_an_earlier_reader_in_place_and_follow_one_at_the_end(self) -> None:
         page = self.open_agents("hubert", phone=True)
