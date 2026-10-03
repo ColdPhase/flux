@@ -97,11 +97,11 @@ body:has(.app) { background: var(--bg-chrome); }
 .side__hint { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; font-size: var(--fs-xs); color: var(--text-2); }
 .side__empty { padding: 2px 8px 6px; font-size: var(--fs-sm); line-height: 1.5; color: var(--text-2); }
 .side__person { display: flex; align-items: center; gap: 10px; min-height: 30px; padding: 0 8px; font-size: var(--fs-md); color: var(--text-2); }
-/* Two projects with one name show their workspace. The label only takes the room the name leaves
-   (basis 0, up to 42%), so it truncates first; the name gives way only when it alone does not fit,
-   and the label keeps a few letters. The full text is the row's title. */
-.side__sub { margin-left: auto; flex: 1 1 0; min-width: 2.5em; max-width: 42%; overflow: hidden; text-overflow: ellipsis; text-align: right; font-size: var(--fs-xs); color: var(--text-2); white-space: nowrap; }
-.side__project .side__label { flex: 0 1 auto; }
+/* Two projects with one name show their workspace on a compact second line with the row's full
+   width, so even two long, identical names stay distinguishable. The full text is the row's title. */
+.side__names { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; line-height: 1.25; }
+.side__project:has(.side__names) { padding-block: 5px; }
+.side__sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-xs); color: var(--text-2); white-space: nowrap; }
 .side__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .side__dm .ui-avatar { flex: none; }
 /* The open project's conversations, indented under its row. */

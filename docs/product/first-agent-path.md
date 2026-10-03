@@ -6,6 +6,10 @@ tested Codex support, scoped domain tools and local task handoffs/review. Preser
 O-005 evidence and the separate embedded-helper contracts #57/#68. The required
 future capability does not change which clients/operations have been verified.
 
+**Later requirement, 2026-10-02:** [F-020](model-providers.md) (PROV-5) makes Claude Code,
+Codex and any other MCP client equal: the same consent, grants and presentation, with
+each client's own setup commands. Verified clients are still only those with recorded evidence.
+
 **Proposal:** 2026-09-27, `codex-hubert` for [#37](https://github.com/ColdPhase/flux/issues/37).
 **Status:** accepted after [independent peer review](https://github.com/ColdPhase/flux/pull/53#pullrequestreview-5331573326).
 This is the product/architecture decision for the [#52 implementation](https://github.com/ColdPhase/flux/issues/52).

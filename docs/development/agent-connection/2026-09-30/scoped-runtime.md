@@ -23,7 +23,9 @@ result record and decision propose. Conversation contributions consume #154's
 transaction-bound genuine-agent command; no synthetic human actor. Project map
 commands reuse the canonical sketch commands. Wiki writes require a compatible
 real-agent author extension to material/doc storage and all its existing readers,
-search/export/helper consumers before they are advertised. Human-only decision
+search/export/helper consumers before they are advertised (2026-10-02: migration
+0043 and the updated readers provide it; see
+[the agent connection page](../../agent-connection.md#project-wiki-docs-and-conversations)). Human-only decision
 acceptance remains unavailable to an agent. Execution and review grants remain
 different types; a review must use an independent actual actor and current source
 versions. Self-reported application/model names never establish that independence.

@@ -1,5 +1,6 @@
-"""Sidebar project rows (Studio 11.6, #136): two projects with one name show their workspace, and
-that label gives way before the project name does (independent delta review of #184, B3).
+"""Sidebar project rows (Studio 11.6, #136): two projects with one name show their workspace on a
+compact second line, so the name stays readable and even identical long names stay distinguishable
+(independent delta reviews of #184, B3 and B2).
 
 Runs with the other tests/ui journeys through scripts/check_ui.sh against the running Compose app.
 """
@@ -20,8 +21,11 @@ SHORT = "Gesture lamp"
 LONG = "Gesture lamp for the reading corner upstairs"
 ROWS = """(name) => [...document.querySelectorAll('.side__project')].filter((row) => row.querySelector('.side__label').textContent === name).map((row) => {
   const label = row.querySelector('.side__label'), sub = row.querySelector('.side__sub');
-  return { truncated: label.scrollWidth > label.clientWidth + 0.5, sub: sub ? sub.getBoundingClientRect().width : 0, title: row.title };
+  const l = label.getBoundingClientRect(), w = sub.getBoundingClientRect(), r = row.getBoundingClientRect();
+  return { truncated: label.scrollWidth > label.clientWidth + 0.5, workspace: sub.textContent, workspaceCut: sub.scrollWidth > sub.clientWidth + 0.5,
+    belowName: w.top >= l.bottom - 1, height: r.height, fontSize: parseFloat(getComputedStyle(sub).fontSize), title: row.title };
 })"""
+WORKSPACES = ("Northern design cooperative", "Lamp studio", "Lamp studio Berlin")
 
 
 class SidebarNames(unittest.TestCase):
@@ -41,8 +45,8 @@ class SidebarNames(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def page(self, *, phone: bool = False) -> Page:
-        options: dict = {"base_url": ORIGIN, "color_scheme": "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw"}
+    def page(self, *, phone: bool = False, dark: bool = False) -> Page:
+        options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw"}
         options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True) if phone else options.update(viewport=DESKTOP, device_scale_factor=1)
         if self.state:
             options["storage_state"] = self.state
@@ -55,7 +59,7 @@ class SidebarNames(unittest.TestCase):
         self.assertEqual(response.status, 201, response.text())
         return json.loads(response.text())
 
-    def test_01_the_project_name_stays_whole_and_the_workspace_label_gives_way(self) -> None:
+    def test_01_the_name_stays_whole_and_the_workspace_line_tells_identical_names_apart(self) -> None:
         page = self.page()
         page.goto("/sign-up")
         page.get_by_label("Name").fill("Ada Names")
@@ -64,25 +68,44 @@ class SidebarNames(unittest.TestCase):
         page.get_by_role("button", name="Create account").click()
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         type(self).state = page.context.storage_state()
-        for workspace in ("Northern design cooperative", "Lamp studio"):
+        for workspace in WORKSPACES:
             ws = self.api(page, "POST", "/api/v1/workspaces", {"name": workspace})
             for name in (SHORT, LONG):
                 self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": name, "visibility": "restricted"})
-        for phone in (False, True):
-            view = self.page(phone=phone)
+        for phone, dark in ((False, False), (True, False), (False, True), (True, True)):
+            view = self.page(phone=phone, dark=dark)
             view.goto("/")
             if phone:
                 view.get_by_role("button", name="Open navigation").tap()
             expect(view.locator(".side__project .side__sub").first).to_be_visible()
-            short = view.evaluate(ROWS, SHORT)
-            self.assertEqual(len(short), 2, "both projects are listed")
+            short, long = view.evaluate(ROWS, SHORT), view.evaluate(ROWS, LONG)
+            self.assertEqual([len(short), len(long)], [3, 3], "every project is listed")
+            for row in short + long:
+                self.assertTrue(row["belowName"], f"the workspace is its own line under the name: {row}")
+                self.assertFalse(row["workspaceCut"], f"the whole workspace name is visible: {row}")
+                self.assertGreaterEqual(row["fontSize"], 10, "the workspace line keeps the metadata text size (--fs-xs)")
+                self.assertGreaterEqual(row["height"], 44 if phone else 40, f"one comfortable row: {row}")
+                self.assertIn(row["workspace"], row["title"], "the full name and workspace are the row's title")
             for row in short:
-                self.assertFalse(row["truncated"], f"a short name is never cut for its workspace label: {row}")
-                self.assertGreaterEqual(row["sub"], 20, f"the workspace label keeps a few letters: {row}")
-                self.assertIn(SHORT, row["title"], "the full name and workspace are the row's title")
-            for row in view.evaluate(ROWS, LONG):
-                self.assertGreaterEqual(row["sub"], 20, f"a long name leaves the workspace label a few letters: {row}")
-            shot(view, f"sidebar-same-names-{'phone' if phone else 'desktop'}")
+                self.assertFalse(row["truncated"], f"a short name is never cut: {row}")
+            # Identical long names differ by what is visible, not only by a hover title.
+            self.assertEqual(sorted(row["workspace"] for row in long), sorted(WORKSPACES))
+            shot(view, f"sidebar-same-names-{'phone' if phone else 'desktop'}{'-dark' if dark else ''}")
+            if phone and not dark:
+                # The longer list still scrolls inside the drawer: Messages below it stays reachable.
+                drawer = view.get_by_role("dialog")
+                messages = drawer.get_by_text("Messages", exact=True)
+                messages.scroll_into_view_if_needed()
+                expect(messages).to_be_in_viewport()
+        # A two-line row as the current project keeps its marker and its workspace line.
+        current = self.page()
+        current.goto("/")
+        current.locator('.side__project[title="Gesture lamp · Lamp studio Berlin"]').click()
+        row = current.locator(".side__project.is-open")
+        expect(row).to_contain_text("Lamp studio Berlin")
+        marker = row.evaluate("el => { const r = el.getBoundingClientRect(), b = getComputedStyle(el, '::before'); return { top: parseFloat(b.top), height: parseFloat(b.height), row: r.height }; }")
+        self.assertLessEqual(marker["top"] + marker["height"], marker["row"], f"the marker sits within the row: {marker}")
+        shot(current, "sidebar-same-names-current-desktop")
 
 
 if __name__ == "__main__":

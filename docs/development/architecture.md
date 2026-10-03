@@ -132,12 +132,18 @@ accepted for now; they must not import `drizzle-orm` or `@flux/db` themselves. T
 refactor happens in small PRs after the active feature branches that touch these
 files have merged, with the existing access, revocation and transaction tests
 locking the behavior. Other structural hotspots (the multi-capability
-`app/apps/server/src/access/routes.ts`, fixture wiring in `app/apps/server/src/index.ts`
-and `app/apps/worker/src/index.ts`, the growing `app/packages/db/src/schema.ts`) follow the
-same plan.
+`app/apps/server/src/access/routes.ts`, fixture wiring in `app/apps/server/src/index.ts`,
+the growing `app/packages/db/src/schema.ts`) follow the same plan.
 
 Resolved outside the allowlist: identity no longer queries session rows itself. The
 session list/revoke queries live in `app/packages/db/src/repositories/sessions.ts` behind
 the `SessionStore` port in `app/apps/server/src/identity/routes.ts`, identity takes a
 `@flux/db` `DbExecutor` instead of core's `Database`, and only `identity/auth.ts` wires
 Drizzle, for Better Auth's adapter ([#81](https://github.com/ColdPhase/flux/issues/81)).
+
+Resolved outside the allowlist: `app/apps/worker/src/index.ts` is the worker's composition root
+only (environment, pool, pg-boss, signals). Each job registers itself from
+`app/apps/worker/src/jobs/` or its feature folder, like `registerPushWorker`; the sample job's
+queries live in `app/packages/db/src/repositories/sample.ts`, and the VAPID JWT cache is an
+authorizer the composition root creates and passes in, not module state
+([#82](https://github.com/ColdPhase/flux/issues/82)).
