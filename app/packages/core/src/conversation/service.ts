@@ -1,6 +1,6 @@
 import type {
   Conversation, ConversationMessage, ConversationRootQuery, ConversationRootWindow, ConversationSummary, ConversationWindowQuery,
-  CreateMaterialCommand, Material, MaterialVersion, Page, PageQuery, SendMessageCommand, UpdateMaterialCommand,
+  CreateMaterialCommand, Material, MaterialOrDoc, MaterialVersion, Page, PageQuery, SendMessageCommand, UpdateMaterialCommand,
 } from '@flux/contracts';
 import type { Principal } from '../types.js';
 import { normalizeConversationWindow, normalizeMaterial, normalizeMaterialUpdate, normalizeMessage, normalizeRootWindow } from './commands.js';
@@ -15,7 +15,8 @@ export interface ConversationPort {
   createConversation(principal: Principal, projectId: string, input: ReturnType<typeof normalizeMessage>): Promise<Conversation>;
   sendMessage(principal: Principal, conversationId: string, input: ReturnType<typeof normalizeMessage>): Promise<ConversationMessage>;
   listMaterials(principal: Principal, projectId: string, query?: PageQuery): Promise<Page<Material>>;
-  getMaterial(principal: Principal, materialId: string): Promise<Material>;
+  /** Any material or doc by ID; a doc's current version may be agent-written (#152). */
+  getMaterial(principal: Principal, materialId: string): Promise<MaterialOrDoc>;
   getMaterialVersion(principal: Principal, materialId: string, version: number): Promise<MaterialVersion>;
   createMaterial(principal: Principal, projectId: string, input: ReturnType<typeof normalizeMaterial>): Promise<Material>;
   updateMaterial(principal: Principal, materialId: string, input: ReturnType<typeof normalizeMaterialUpdate>): Promise<Material>;

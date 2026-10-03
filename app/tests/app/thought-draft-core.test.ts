@@ -8,7 +8,7 @@ const ada = uuid(1);
 const jonas = uuid(2);
 const map = uuid(900);
 const keyOf = (person: string, sketch = map) => `flux:thought-draft:${person}:${uuid(10)}:project:${uuid(20)}:${sketch}`;
-const draft = (text: string) => ({ id: uuid(100), linkId: uuid(101), key: uuid(102), parentId: null, text, x: 0, y: 0 });
+const thoughtDraft = (text: string) => ({ id: uuid(100), linkId: uuid(101), key: uuid(102), parentId: null, text, x: 0, y: 0 });
 const EARLIER = 'Earlier persisted draft';
 const LATEST = 'Latest recoverable draft after quota exhaustion';
 
@@ -41,9 +41,9 @@ test('a refused storage write keeps this visit’s newest draft ahead of the old
   const { items, quota } = installStorage();
   const drafts = await visit();
   const key = keyOf(ada);
-  drafts.writeThoughtDraft(key, draft(EARLIER));
+  drafts.writeThoughtDraft(key, thoughtDraft(EARLIER));
   quota.full = true;
-  drafts.writeThoughtDraft(key, draft(LATEST));
+  drafts.writeThoughtDraft(key, thoughtDraft(LATEST));
   assert.equal(JSON.parse(items[key]!).text, EARLIER, 'the browser kept only the older text');
   assert.equal(drafts.readThoughtDraft(key)?.text, LATEST);
 });
@@ -52,11 +52,11 @@ test('storage that accepts writes again catches up, and a reload then restores t
   const { quota } = installStorage();
   const drafts = await visit();
   const key = keyOf(ada);
-  drafts.writeThoughtDraft(key, draft(EARLIER));
+  drafts.writeThoughtDraft(key, thoughtDraft(EARLIER));
   quota.full = true;
-  drafts.writeThoughtDraft(key, draft(LATEST));
+  drafts.writeThoughtDraft(key, thoughtDraft(LATEST));
   quota.full = false;
-  drafts.writeThoughtDraft(key, draft('Newest draft once storage accepts writes again'));
+  drafts.writeThoughtDraft(key, thoughtDraft('Newest draft once storage accepts writes again'));
   assert.equal(drafts.readThoughtDraft(key)?.text, 'Newest draft once storage accepts writes again');
   assert.equal((await visit()).readThoughtDraft(key)?.text, 'Newest draft once storage accepts writes again');
 });
@@ -65,14 +65,14 @@ test('a reload restores only what storage accepted, and never a malformed entry'
   const { items, quota } = installStorage();
   const drafts = await visit();
   const key = keyOf(ada);
-  drafts.writeThoughtDraft(key, draft(EARLIER));
+  drafts.writeThoughtDraft(key, thoughtDraft(EARLIER));
   quota.full = true;
-  drafts.writeThoughtDraft(key, draft(LATEST));
+  drafts.writeThoughtDraft(key, thoughtDraft(LATEST));
   const reloaded = await visit();
   assert.equal(reloaded.readThoughtDraft(key)?.text, EARLIER);
   items[key] = '{bad';
   assert.equal(reloaded.readThoughtDraft(key), null);
-  items[key] = JSON.stringify({ ...draft(EARLIER), id: 'not-an-id' });
+  items[key] = JSON.stringify({ ...thoughtDraft(EARLIER), id: 'not-an-id' });
   assert.equal(reloaded.readThoughtDraft(key), null);
 });
 
@@ -80,9 +80,9 @@ test('cancel and save clear this visit’s copy and the persisted one, so a refu
   const { items, quota } = installStorage();
   const drafts = await visit();
   const key = keyOf(ada);
-  drafts.writeThoughtDraft(key, draft(EARLIER));
+  drafts.writeThoughtDraft(key, thoughtDraft(EARLIER));
   quota.full = true;
-  drafts.writeThoughtDraft(key, draft(LATEST));
+  drafts.writeThoughtDraft(key, thoughtDraft(LATEST));
   drafts.writeThoughtDraft(key, null);
   assert.equal(drafts.readThoughtDraft(key), null);
   assert.deepEqual(Object.keys(items), []);
@@ -92,9 +92,9 @@ test('cancel and save clear this visit’s copy and the persisted one, so a refu
 test('sign-out forgets every draft of this tab, in memory and in storage, and leaves other storage alone', async () => {
   const { items, quota } = installStorage();
   const drafts = await visit();
-  drafts.writeThoughtDraft(keyOf(ada), draft('Ada stored'));
+  drafts.writeThoughtDraft(keyOf(ada), thoughtDraft('Ada stored'));
   quota.full = true;
-  drafts.writeThoughtDraft(keyOf(jonas), draft('Jonas in memory only'));
+  drafts.writeThoughtDraft(keyOf(jonas), thoughtDraft('Jonas in memory only'));
   quota.full = false;
   items['flux.sketch.mode'] = 'list';
   drafts.forgetThoughtDrafts();
@@ -106,9 +106,9 @@ test('sign-out forgets every draft of this tab, in memory and in storage, and le
 test('a draft is recoverable only by its own account and map, in its own tab', async () => {
   const { quota } = installStorage();
   const drafts = await visit();
-  drafts.writeThoughtDraft(keyOf(ada), draft('Ada stored'));
+  drafts.writeThoughtDraft(keyOf(ada), thoughtDraft('Ada stored'));
   quota.full = true;
-  drafts.writeThoughtDraft(keyOf(ada, uuid(901)), draft('Ada on another map, in memory only'));
+  drafts.writeThoughtDraft(keyOf(ada, uuid(901)), thoughtDraft('Ada on another map, in memory only'));
   assert.equal(drafts.recoverableThoughtDraftKey(ada, map), keyOf(ada));
   assert.equal(drafts.recoverableThoughtDraftKey(ada, uuid(901)), keyOf(ada, uuid(901)));
   assert.equal(drafts.recoverableThoughtDraftKey(jonas, map), null);
@@ -124,7 +124,7 @@ test('blocked session storage still keeps this visit’s drafts, without throwin
   Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, get() { throw new DOMException('Access is denied.', 'SecurityError'); } });
   const drafts = await visit();
   const key = keyOf(ada);
-  drafts.writeThoughtDraft(key, draft(LATEST));
+  drafts.writeThoughtDraft(key, thoughtDraft(LATEST));
   assert.equal(drafts.readThoughtDraft(key)?.text, LATEST);
   assert.equal(drafts.recoverableThoughtDraftKey(ada, map), key);
   drafts.writeThoughtDraft(key, null);

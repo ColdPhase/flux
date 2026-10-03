@@ -9,6 +9,7 @@ import { stateParts } from '../work/inline';
 import { ACCESS_LABEL, audienceLine, useProjectShell } from './data';
 import { docUrl } from '../docs/api';
 import { docsLinking } from '../docs/AddToDoc';
+import { authorLabel } from '../docs/format';
 
 /** The Conversation tab's loader data: the open thread, if any, and the stream's newest roots (UI116-1). */
 function useOpenConversation(): { conversation: Conversation | null; materials: Material[]; roots?: ConversationRootWindow } | null {
@@ -121,7 +122,7 @@ export function ProjectOverview({ messageId, onBack }: { messageId?: string; onB
     }
   }
   if (!message) for (const doc of (docs ?? []).slice(0, 3)) {
-    if (!docRows.has(doc.id)) docRows.set(doc.id, { key: doc.id, icon: 'doc', kind: doc.state === 'draft' ? 'Doc · draft' : 'Doc', title: doc.title, sub: `Changed by ${doc.updatedBy.id === me.user.id ? 'you' : doc.updatedBy.name}${doc.reason ? ` · ${doc.reason}` : ''}`, to: docUrl(project.id, doc.id) });
+    if (!docRows.has(doc.id)) docRows.set(doc.id, { key: doc.id, icon: 'doc', kind: doc.state === 'draft' ? 'Doc · draft' : 'Doc', title: doc.title, sub: `Changed by ${doc.updatedBy.kind === 'human' && doc.updatedBy.id === me.user.id ? 'you' : authorLabel(doc.updatedBy)}${doc.reason ? ` · ${doc.reason}` : ''}`, to: docUrl(project.id, doc.id) });
   }
   const moreDocs = !message && docs && docs.length > 3;
 
@@ -151,6 +152,7 @@ export function ProjectOverview({ messageId, onBack }: { messageId?: string; onB
       <Rows label="Docs" rows={[...docRows.values()]} empty={message ? undefined : <>No docs yet. <Link to={`${base}/docs`}>Open Docs</Link> {project.access === 'viewer' ? 'to read saved documents.' : 'to keep what you learn.'}</>} />
       {moreDocs ? <p className="ov-more"><Link to={`${base}/docs`}>All {docs.length} docs</Link></p> : null}
 
+      {!message && project.access === 'manager' ? <p className="ov-more"><Link to={`${base}/github`}>GitHub repositories</Link></p> : null}
       <section className="details__sec" aria-labelledby="ov-people">
         <h4 id="ov-people">Who can see this</h4>
         {people ? (

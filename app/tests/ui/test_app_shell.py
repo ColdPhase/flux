@@ -247,6 +247,13 @@ class AppShellJourney(unittest.TestCase):
         expect(places.get_by_role("link", name="Home")).to_have_attribute("aria-current", "page")
         expect(places.get_by_role("link", name="Direct messages")).not_to_have_attribute("aria-current", "page")
         self.assertEqual(places.get_by_role("link").all_inner_texts(), ["Home", "Inbox", "Direct messages", "My sketchbook"])
+        # Search and personal settings have their own header; Home is not current there (#184 delta review S1).
+        for path, title in (("/search", "Search"), ("/settings/assistant", "Your assistant"), ("/settings/background-compute", "Background suggestions")):
+            page.goto(path)
+            expect(page.locator("header.top").get_by_role("heading", level=1, name=title)).to_be_visible()
+            expect(places.get_by_role("link", name="Home")).not_to_have_attribute("aria-current", "page")
+        page.goto("/")
+        expect(places.get_by_role("link", name="Home")).to_have_attribute("aria-current", "page")
         side_box = box(page, sidebar)
         self.assertEqual((round(side_box["x"]), round(side_box["width"])), (0, 220), "a 220px sidebar at the far left")
         self.assertEqual(page.evaluate("getComputedStyle(document.querySelector('.app')).backgroundColor"), "rgb(242, 243, 245)", "the chrome")
@@ -660,32 +667,52 @@ class AppShellJourney(unittest.TestCase):
         owner.get_by_role("link", name="New project").click()
         owner.get_by_label("Your space").fill("Lamp lab")
         owner.get_by_label("Project name").fill("Gesture lamp")
-        project_attempts = {"count": 0}
-        def fail_first_project(route) -> None:
-            if route.request.method != "POST":
-                route.continue_()
-                return
-            project_attempts["count"] += 1
-            if project_attempts["count"] == 1:
-                route.abort("failed")
-            else:
-                route.continue_()
-        owner.route("**/api/v1/workspaces/*/projects", fail_first_project)
+
+        def lose_first_committed(path: str):
+            # The server commits the first POST but its 201 never arrives (#29 AC-4): Retry must not duplicate it.
+            state = {"count": 0}
+            def handler(route) -> None:
+                if route.request.method != "POST":
+                    route.continue_()
+                    return
+                state["count"] += 1
+                if state["count"] == 1:
+                    actual = route.fetch()
+                    self.assertEqual(actual.status, 201, actual.text())
+                    route.fulfill(status=503, json={"error": "test: committed response lost", "code": "TEST_LOST"})
+                else:
+                    route.continue_()
+            owner.route(path, handler)
+            return handler
+
+        lost_space = lose_first_committed("**/api/v1/workspaces")
         owner.get_by_role("button", name="Create project").click()
-        expect(owner.get_by_role("alert")).to_contain_text("Could not create this project")
+        expect(owner.get_by_role("alert")).to_be_visible()
+        owner.unroute("**/api/v1/workspaces", lost_space)
+        lost_project = lose_first_committed("**/api/v1/workspaces/*/projects")
+        owner.get_by_role("button", name="Create project").click()
+        expect(owner.get_by_role("alert")).to_be_visible()
         expect(owner.get_by_text("In Lamp lab")).to_be_visible()
         owner.get_by_role("button", name="Create project").click()
         expect(owner.get_by_role("heading", level=1, name="Gesture lamp")).to_be_visible()
-        owner.unroute("**/api/v1/workspaces/*/projects", fail_first_project)
+        owner.unroute("**/api/v1/workspaces/*/projects", lost_project)
         project_id = owner.locator(".project-convo").get_attribute("data-project-id")
         self.assertTrue(project_id)
         spaces = owner.context.request.get(f"{ORIGIN}/api/v1/workspaces").json()
-        self.assertEqual(len(spaces), 1, "project retry must reuse the newly created space")
+        self.assertEqual(len(spaces), 1, "a retried space whose first response was lost is not created twice")
         ws = spaces[0]
+        projects = owner.context.request.get(f"{ORIGIN}/api/v1/workspaces/{ws['id']}/projects?limit=100").json()
+        self.assertEqual([p["id"] for p in projects["items"]], [project_id], "a retried project whose first response was lost is not created twice")
         owner.get_by_role("link", name="Home").click()
         owner.get_by_label("Private note", exact=True).fill("home address 123; PIR avoids storing images")
+        lost_draft = lose_first_committed(f"**/api/v1/workspaces/{ws['id']}/drafts")
+        owner.get_by_role("button", name="Save note").click()
+        expect(owner.get_by_text("Save failed")).to_be_visible()
         owner.get_by_role("button", name="Save note").click()
         expect(owner.get_by_role("region", name="Private drafts").get_by_text("home address 123; PIR avoids storing images")).to_be_visible()
+        owner.unroute(f"**/api/v1/workspaces/{ws['id']}/drafts", lost_draft)
+        drafts = owner.context.request.get(f"{ORIGIN}/api/v1/workspaces/{ws['id']}/drafts").json()["items"]
+        self.assertEqual(len(drafts), 1, "a retried private draft whose first response was lost is saved once")
         owner.reload()
         expect(owner.get_by_role("region", name="Private drafts").get_by_text("home address 123; PIR avoids storing images")).to_be_visible()
         draft_id = owner.context.request.get(f"{ORIGIN}/api/v1/workspaces/{ws['id']}/drafts").json()["items"][0]["id"]

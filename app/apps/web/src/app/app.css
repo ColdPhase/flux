@@ -97,9 +97,11 @@ body:has(.app) { background: var(--bg-chrome); }
 .side__hint { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; font-size: var(--fs-xs); color: var(--text-2); }
 .side__empty { padding: 2px 8px 6px; font-size: var(--fs-sm); line-height: 1.5; color: var(--text-2); }
 .side__person { display: flex; align-items: center; gap: 10px; min-height: 30px; padding: 0 8px; font-size: var(--fs-md); color: var(--text-2); }
-/* A long workspace label truncates before the project name does; the full text is the row's title. */
-.side__sub { margin-left: auto; flex: 0 1 auto; min-width: 0; max-width: 42%; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-xs); color: var(--text-2); white-space: nowrap; }
-.side__project .side__label { flex: 1 1 auto; }
+/* Two projects with one name show their workspace on a compact second line with the row's full
+   width, so even two long, identical names stay distinguishable. The full text is the row's title. */
+.side__names { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; line-height: 1.25; }
+.side__project:has(.side__names) { padding-block: 5px; }
+.side__sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-xs); color: var(--text-2); white-space: nowrap; }
 .side__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .side__dm .ui-avatar { flex: none; }
 /* Sub-places indented under their row (Inbox → Notification settings). */
@@ -179,11 +181,14 @@ body:has(.app) { background: var(--bg-chrome); }
 .top__details { gap: 7px; padding: 0 9px; font-size: var(--fs-sm); }
 .top__details[aria-expanded="true"] { background: var(--bg-active); color: var(--text); }
 .views { flex: none; border-bottom: 1px solid var(--line); }
-.views .ui-tabs__bar { gap: 27px; padding: 0 var(--space-page); }
-.views .ui-tabs__tab { min-height: 40px; padding: 9px 0 13px; border-radius: 0; font-size: var(--fs-md); font-weight: 450; color: var(--text-2); }
+.views .ui-tabs__bar { gap: 15px; padding: 0 calc(var(--space-page) - 6px); }
+/* 6px inline padding keeps labels 27px apart and gives the focus ring room inside the tab: the bar
+   scrolls sideways, so a ring outside the tab would be clipped at its top and bottom. */
+.views .ui-tabs__tab { min-height: 40px; padding: 9px 6px 13px; border-radius: 0; font-size: var(--fs-md); font-weight: 450; color: var(--text-2); }
 .views .ui-tabs__tab[aria-current="page"] { color: var(--text); font-weight: 550; }
 .views .ui-tabs__tab:hover { color: var(--text); }
-.views .ui-tabs__tab:focus-visible { outline-offset: 3px; }
+/* The ring is drawn in place (no offset transition from the global 4px), so no frame of it is clipped. */
+.views .ui-tabs__tab, .views .ui-tabs__tab:focus-visible { outline-offset: -2px; }
 /* "What matters" (#133): one quiet entry at the end of the project's tabs, its count as plain text. */
 .views--project { display: flex; align-items: center; gap: 18px; padding-right: var(--space-page); }
 .views--project .views__tabs { flex: 1; min-width: 0; }
@@ -191,9 +196,9 @@ body:has(.app) { background: var(--bg-chrome); }
 .views__recap:hover { background: transparent; color: var(--text); }
 .views__recap[aria-expanded="true"] { color: var(--text); box-shadow: inset 0 -2px 0 var(--accent); }
 .views__recap-n { font-size: var(--fs-xs); font-weight: 500; color: var(--text-2); font-variant-numeric: tabular-nums; }
-@media (max-width: 1200px) { .views .ui-tabs__bar { gap: 23px; } }
-@media (max-width: 1000px) { .views .ui-tabs__bar { gap: 20px; } }
-@media (max-width: 760px) { .views .ui-tabs__bar { gap: 16px; } }
+@media (max-width: 1200px) { .views .ui-tabs__bar { gap: 11px; } }
+@media (max-width: 1000px) { .views .ui-tabs__bar { gap: 8px; } }
+@media (max-width: 760px) { .views .ui-tabs__bar { gap: 4px; } }
 @media (max-width: 640px) { .views--project { padding-right: 8px; gap: 4px; } .views__recap { padding: 0 8px; gap: 4px; } }
 @media (pointer: coarse) { .views__recap { min-height: 44px; } .views .ui-tabs__tab { min-height: 44px; min-width: 44px; padding-inline: 6px; justify-content: center; } .views .ui-tabs__bar { gap: 12px; } }
 .views--none { height: 0; border-bottom: 0; }

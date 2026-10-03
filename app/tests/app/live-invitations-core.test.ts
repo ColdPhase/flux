@@ -8,14 +8,14 @@ import {
   type LiveInvitationPorts, type LiveInvitationTarget,
 } from '../../packages/core/src/live/invitations.js';
 
-const person = (id: string = randomUUID()): Principal => ({ kind: 'human', id });
+const humanPrincipal = (id: string = randomUUID()): Principal => ({ kind: 'human', id });
 const code = (expected: string) => (error: unknown) =>
   typeof error === 'object' && error !== null && 'code' in error && error.code === expected;
 
 function fixture() {
-  const inviter = person();
-  const recipient = person('auth-user_opaque-abc');
-  const stranger = person();
+  const inviter = humanPrincipal();
+  const recipient = humanPrincipal('auth-user_opaque-abc');
+  const stranger = humanPrincipal();
   const target: LiveInvitationTarget = {
     id: randomUUID(), projectId: randomUUID(),
     context: { type: 'conversation', id: randomUUID() }, state: 'available',

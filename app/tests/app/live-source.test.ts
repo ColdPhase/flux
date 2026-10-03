@@ -1,16 +1,11 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
-import { createDatabase } from '@flux/db';
+import { test } from 'node:test';
 import { DomainError } from '@flux/core';
 import type { Conversation, Material, WorkItem } from '@flux/contracts';
 import { requireLivePresentationSource } from '../../apps/server/src/live/access.js';
+import { db } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
-
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { db, pool } = createDatabase(connectionString);
-after(() => pool.end());
 
 function missing(code: string) {
   return (error: unknown) => error instanceof DomainError && error.code === code;

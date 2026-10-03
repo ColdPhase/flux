@@ -22,6 +22,7 @@ import { projectShellLoader } from './project/data';
 import { ProjectMap } from './project/ProjectViews';
 import { LiveOpen } from './live/LiveOpen';
 import { SearchPage } from './search/SearchPage';
+import { GithubSettings } from './github/GithubSettings';
 import { AssistantSettings } from './assistant/AssistantSettings';
 import {
   forgotPasswordAction,
@@ -82,6 +83,7 @@ export const router = createBrowserRouter([
               // One conversation (UI116-1): the stream stays mounted while a root's thread opens beside it.
               { loader: projectConversationLoader, shouldRevalidate: shouldRevalidateProjectConversation, Component: ProjectConversation,
                 children: [{ index: true }, { path: 'conversations/:conversationId' }] },
+              { path: 'github', Component: GithubSettings },
               { path: 'tasks', loader: projectTasksLoader, Component: ProjectTasks },
               { path: 'map', Component: ProjectMap },
               { path: 'map/:sketchId', Component: SketchRoute },

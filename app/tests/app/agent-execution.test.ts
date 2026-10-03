@@ -1,20 +1,16 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import type { Agent, AgentConnection, AgentExecutionCommand, AgentJsonValue, AgentPeerRequestClass, AgentPostcondition, AgentStandingGrant, WorkItem } from '@flux/contracts';
-import { createDatabase } from '@flux/db';
 import { agentExecutionUseCases, DomainError, normalizeAgentExecution } from '@flux/core';
 import { agentRuntimeInTransaction } from '../../apps/server/src/agent-connection/runtime.js';
 import { agentStandingGrants } from '../../apps/server/src/agent-connection/grants.js';
 import { agentExecutionInTransaction } from '../../apps/server/src/agent-connection/execution.js';
 import { nativeWorkInTransaction } from '../../apps/server/src/work/adapters.js';
+import { db, pool } from './support/db.js';
 import { expectStatus, person, project, workspace } from './support/people.js';
 import { waitUntilBlockedBy } from './support/locks.js';
 
-const url = process.env.DATABASE_URL;
-if (!url) throw new Error('DATABASE_URL is required');
-const { db, pool } = createDatabase(url);
-after(() => pool.end());
 async function fixture(maximumUses = 1) {
   const owner = await person('execution-owner'); const ws = await workspace(owner, "Execution workspace"); const p = await project(owner, ws.id, 'Execution target', 'restricted');
   const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,

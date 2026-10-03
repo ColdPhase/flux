@@ -21,7 +21,9 @@ with its first message; `POST /api/v1/conversations/:id/messages` replies in it.
 Both take `{ "body": "…", "clientMessageId": "<UUID>" }` and may cite
 `{ "source": { "materialId": "<UUID>", "version": 1 } }`. The UUID must be
 reused for a retry of the same send. Reusing it for different content returns 409.
-Messages carry a sequence, author and the project audience. A message made by an explicit task
+Messages carry a sequence, author and the project audience. An agent starts or replies only under
+its owner's standing grant over MCP (#152, [agent connection](agent-connection.md#project-wiki-docs-and-conversations));
+its messages carry `authorId: null` and `author: { kind: 'agent', … }`. A message made by an explicit task
 effect (a saved blocker, a published result or a public handoff, #154) also carries `contribution`
 (`{ kind: 'blocker' | 'handoff' }` or `{ kind: 'result', resultId }`); ordinary text omits it. All reads and writes
 recheck the current project access policy; writes do so under a transaction lock.

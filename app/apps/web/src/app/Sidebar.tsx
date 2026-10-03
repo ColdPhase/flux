@@ -33,6 +33,8 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const navigate = onClose ? () => onClose() : undefined;
   const sketchbook = place === 'home' && /^\/map(\/|$)/.test(location.pathname);
+  // Home is current where the header says Home: not in My sketchbook, Search or personal settings.
+  const home = place === 'home' && !sketchbook && !/^\/(search|settings)(\/|$)/.test(location.pathname);
   return (
     <div className="side">
       <div className="side__brand">
@@ -49,7 +51,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
       <div className="side__scroll">
         <nav className="side__places" aria-label="Places">
           {/* Plain links with an explicit current place: NavLink would also mark a parent path current. */}
-          <Link to="/" className="side__item" aria-current={place === 'home' && !sketchbook ? 'page' : undefined} onClick={navigate}>
+          <Link to="/" className="side__item" aria-current={home ? 'page' : undefined} onClick={navigate}>
             <Icon name="home" className="side__ic" /><span className="side__label">Home</span>
           </Link>
           <Link to="/inbox" className="side__item" aria-label={inboxUnread ? 'Inbox, something new' : 'Inbox'} aria-current={/^\/inbox(\/|$)/.test(location.pathname) ? 'page' : undefined} onClick={navigate}>
@@ -90,8 +92,12 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
                       title={project.workspaceName ? `${project.name} · ${project.workspaceName}` : project.name}
                       aria-label={project.hasNew ? `${project.name}, new activity` : undefined}>
                       <span className="side__pi" aria-hidden="true"><Icon name="spark" size={15} /></span>
-                      <span className="side__label">{project.name}</span>
-                      {project.workspaceName ? <span className="side__sub">{project.workspaceName}</span> : null}
+                      {project.workspaceName ? (
+                        <span className="side__names">
+                          <span className="side__label">{project.name}</span>
+                          <span className="side__sub">{project.workspaceName}</span>
+                        </span>
+                      ) : <span className="side__label">{project.name}</span>}
                       {project.hasNew ? <span className="side__dot" aria-hidden="true" /> : null}
                     </NavLink>
                   </li>

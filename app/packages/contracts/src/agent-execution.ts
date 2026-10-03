@@ -3,7 +3,8 @@ import type { AgentScope } from './agent-proposals.js';
 /** Exact operations; an adapter advertises only the ones it actually implements. */
 export const AGENT_OPERATIONS = ['work.create', 'work.update', 'result.record', 'decision.propose',
   'map.create', 'map.rename', 'map.thought.create', 'map.thought.update', 'map.thought.delete',
-  'map.positions.update', 'map.link.create', 'map.link.delete', 'cowork.claim', 'cowork.renew', 'cowork.release', 'cowork.request'] as const;
+  'map.positions.update', 'map.link.create', 'map.link.delete', 'doc.create', 'doc.update', 'conversation.create', 'conversation.reply',
+  'cowork.claim', 'cowork.renew', 'cowork.release', 'cowork.request'] as const;
 export type AgentOperation = typeof AGENT_OPERATIONS[number];
 export const AGENT_PEER_REQUEST_CLASSES = ['execute', 'review', 'plan'] as const;
 export type AgentPeerRequestClass = typeof AGENT_PEER_REQUEST_CLASSES[number];
@@ -17,6 +18,8 @@ export const AGENT_OPERATION_CLASSES: Record<AgentOperation, readonly AgentPeerR
   'map.thought.create': ['execute', 'plan'], 'map.thought.update': ['execute', 'plan'],
   'map.thought.delete': ['execute', 'plan'], 'map.positions.update': ['execute', 'plan'],
   'map.link.create': ['execute', 'plan'], 'map.link.delete': ['execute', 'plan'],
+  'doc.create': ['execute', 'plan'], 'doc.update': ['execute', 'plan'],
+  'conversation.create': ['execute', 'plan'], 'conversation.reply': ['execute', 'plan'],
   'cowork.claim': ['execute', 'review', 'plan'], 'cowork.renew': ['execute', 'review', 'plan'], 'cowork.release': ['execute', 'review', 'plan'],
   'cowork.request': ['execute', 'review', 'plan'],
 };
@@ -67,8 +70,10 @@ export interface AuthenticatedAgentRuntime {
 
 /** Postconditions are read from canonical rows, never from MCP-reported metadata. */
 export type AgentPostcondition =
-  | { kind: 'work' | 'decision' | 'material' | 'map' | 'thought'; id: string; version: number }
+  | { kind: 'work' | 'decision' | 'material' | 'doc' | 'map' | 'thought'; id: string; version: number }
   | { kind: 'result'; id: string }
+  /** A project message is immutable: its identity is its whole produced post-state. */
+  | { kind: 'message'; id: string }
   | { kind: 'map_checkpoint'; id: string; updatedAt: string }
   | { kind: 'cowork.claim_state'; workspaceId: string; projectId: string; connectionId: string;
       unitId: string; role: AgentPeerRequestClass; version: number; generation: number;
