@@ -35,6 +35,7 @@ export function WorkspacePeople({ workspaceId, onBack }: { workspaceId: string; 
   const [failed, setFailed] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
   const [done, setDone] = useState('');
+  const rosterRef = useRef<HTMLHeadingElement>(null);
   const [reload, setReload] = useState(0);
   const revalidator = useRevalidator();
 
@@ -51,6 +52,8 @@ export function WorkspacePeople({ workspaceId, onBack }: { workspaceId: string; 
   const changed = (message: string) => {
     setDone(message); setEditing(null);
     load();
+    // The editor that had focus is gone: focus the roster, whose status line says what changed.
+    requestAnimationFrame(() => rosterRef.current?.focus({ preventScroll: true }));
     // Roles change what the sidebar may list for the caller.
     revalidator.revalidate();
   };
@@ -84,7 +87,7 @@ export function WorkspacePeople({ workspaceId, onBack }: { workspaceId: string; 
       {manager && members ? <AddPerson workspace={workspace} members={members} myRole={myRole} onAdded={(member) => changed(`${member.name} joined ${workspace.name} as ${ROLE_LABEL[member.role].toLowerCase()}.`)} /> : null}
 
       <section className="details__sec" aria-labelledby="people-here">
-        <h4 id="people-here">{ordered ? `In ${workspace.name} · ${ordered.length}` : `You in ${workspace.name}`}</h4>
+        <h4 id="people-here" ref={rosterRef} tabIndex={-1}>{ordered ? `In ${workspace.name} · ${ordered.length}` : `You in ${workspace.name}`}</h4>
         {ordered ? (
           <ul className="people__list" aria-label={`People in ${workspace.name}`}>
             {ordered.map((member) => (

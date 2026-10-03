@@ -62,3 +62,5 @@
   .access__seg-b { min-height: 44px; }
   .promote__grant { min-height: 44px; }
 }
+/* "Try again" in a notice is a full touch target on phones and tablets. */
+@media (pointer: coarse) { .people__notice button { min-height: 44px; padding-inline: 6px; } }

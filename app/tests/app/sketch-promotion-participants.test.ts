@@ -99,5 +99,10 @@ describe('DM sketch promotion with an explicit participant choice', () => {
     expectStatus(await preview(jo, sketch.id, { target: 'new', participants: 'everyone' }), 400, 'unknown query value');
     const seen = expectStatus(await preview(jo, sketch.id, { target: 'new' }), 200) as SketchPromotionPreview;
     expectStatus(await promote(jo, sketch.id, { target: { kind: 'new', name: 'Bench notes' }, token: seen.token, participants: 'all' }), 400, 'unknown body value');
+    // Even asked to, a promotion into an existing project grants nobody: a grant there could lift a deny.
+    const copied = expectStatus(await promote(jo, sketch.id, { target: { kind: 'existing', projectId: bench.id }, token: grant.token, participants: 'grant' }), 201) as PromotedSketch;
+    assert.equal(copied.project.id, bench.id);
+    const benchGrants = expectStatus(await olga.browser.request('GET', `/api/v1/projects/${bench.id}/grants`), 200) as ProjectGrant[];
+    assert.ok(!benchGrants.some((g) => g.principal.id === kai.id), 'no grant for Kai');
   });
 });

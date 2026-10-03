@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { ApiError } from '../api/client';
 import { useRevalidator } from 'react-router';
 import type { Project, ProjectAccess as Access, ProjectGrant, ProjectGrantRole, ProjectPerson, WorkspaceMember } from '@flux/contracts';
 import { useShellData } from '../app/data';
@@ -64,6 +65,8 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
     setDone(message); setEditing(null);
     load();
     revalidator.revalidate();
+    // The editor that had focus is gone: focus the section, whose status line says what changed.
+    requestAnimationFrame(() => headingRef.current?.focus({ preventScroll: true }));
   };
 
   const myRole = roster?.members.find((member) => member.userId === me.user.id)?.role ?? null;
@@ -112,15 +115,22 @@ export function ProjectAccess({ project, people, focusToken }: { project: Projec
     } else {
       options.push({ id: 'denied', label: 'Keep out of this project', change: { kind: 'grant', role: 'denied' }, confirm: `Keep ${first} out`, danger: true, preview: `${name} is kept out of ${project.name} at once, whatever their role in ${workspaceName}.${isManagerRole(member.role) ? ' Only another owner or admin can let them back in.' : ''}` });
     }
-    return options;
+    // For someone kept out, the safe first choice is letting them back in, not granting write access.
+    return current === 'denied' ? [options[options.length - 1]!, ...options.slice(0, -1)] : options;
   };
 
   const apply = async (member: WorkspaceMember, option: Option, key: string) => {
     const grant = grantOf(member.userId);
-    if (option.change.kind === 'revoke') {
-      if (grant) await revokeGrant(project.id, grant.id);
-    } else {
-      await grantPerson(project.id, member.userId, option.change.role, key);
+    try {
+      if (option.change.kind === 'revoke') {
+        if (grant) await revokeGrant(project.id, grant.id);
+      } else {
+        await grantPerson(project.id, member.userId, option.change.role, key);
+      }
+    } catch (error) {
+      // Someone changed this access meanwhile: the list shows it as it is now, as the message says.
+      if (error instanceof ApiError && (error.code === 'GRANT_NOT_FOUND' || error.code === 'GRANT_CONFLICT')) load();
+      throw error;
     }
     const first = firstName(member.name);
     changed(option.id === 'denied' ? `${first} is kept out of ${project.name}.`

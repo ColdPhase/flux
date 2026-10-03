@@ -54,6 +54,7 @@ export function PromoteSketch({ view, dmTitle, onBack }: { view: PromoteSketchVi
   const [reload, setReload] = useState(0);
   // Off by default: nobody joins the project unless the person chooses it (#188).
   const [alsoGrant, setAlsoGrant] = useState(false);
+  const [grantList, setGrantList] = useState<SketchPromotionPreview['leftOut']>([]);
   const mode: PromotionParticipants = alsoGrant ? 'grant' : 'none';
   const choose = (next: Choice) => { setChoice(next); setAlsoGrant(false); };
 
@@ -114,8 +115,11 @@ export function PromoteSketch({ view, dmTitle, onBack }: { view: PromoteSketchVi
   // The DM's other people a new project could also be given to: exactly who the checkbox names.
   // Unticked they are left out; ticked they are readers. Either preview names the same people, so
   // the checkbox stays put while the other one loads.
+  // Ticked, the checkbox keeps naming the people it named unticked: a workspace admin in the DM is
+  // a reader either way and is not "added" by it.
   const invited = preview?.target?.kind !== 'new' ? []
-    : preview.leftOut.length ? preview.leftOut : people.filter((p) => p.reason === 'participant' && p.id !== me.user.id);
+    : preview.leftOut.length ? preview.leftOut
+      : alsoGrant && grantList.length ? grantList : people.filter((p) => p.reason === 'participant' && p.id !== me.user.id);
   const shown = [...people.filter((p) => p.id === me.user.id), ...people.filter((p) => p.id !== me.user.id)].slice(0, 4);
 
   return (
@@ -176,7 +180,7 @@ export function PromoteSketch({ view, dmTitle, onBack }: { view: PromoteSketchVi
                 {people.length > 4 ? <p className="promote__all">{people.map((p) => (p.id === me.user.id ? 'You' : p.name)).join(', ')}</p> : null}
                 {invited.length ? (
                   <label className="promote__grant">
-                    <input type="checkbox" checked={alsoGrant} onChange={(event) => setAlsoGrant(event.target.checked)} aria-labelledby={`${audienceId}-grant-l`} aria-describedby={`${audienceId}-grant`} />
+                    <input type="checkbox" checked={alsoGrant} onChange={(event) => { if (event.target.checked) setGrantList(invited); setAlsoGrant(event.target.checked); }} aria-labelledby={`${audienceId}-grant-l`} aria-describedby={`${audienceId}-grant`} />
                     <span>
                       <b id={`${audienceId}-grant-l`}>Also give {joinNames(invited.map((p) => firstName(p.name)))} access</b>
                       <span id={`${audienceId}-grant`}>{joinNames(invited.map((p) => p.name))} can then read and write in the new project. Nobody else is added.</span>
