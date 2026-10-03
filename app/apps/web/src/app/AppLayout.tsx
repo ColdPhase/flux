@@ -26,7 +26,11 @@ import { WorkReadProvider, useProjectWorkSummary } from '../work/WorkReadContext
 import { OverviewContext } from '../project/ProjectOverview';
 
 function lastConversationPath(projectId: string) {
-  try { return sessionStorage.getItem(`flux.project-conversation.${projectId}`) ?? `/projects/${projectId}`; }
+  try {
+    const saved = sessionStorage.getItem(`flux.project-conversation.${projectId}`);
+    // Discard a non-conversation destination remembered by an older shell.
+    return saved && !/^\/projects\/[^/]+\/(tasks|map|docs|github)(\/|\?|$)/.test(saved) ? saved : `/projects/${projectId}`;
+  }
   catch { return `/projects/${projectId}`; }
 }
 
@@ -182,8 +186,8 @@ function AppLayoutContent() {
   const sidebarProps = { workspace, projects, directMessages, user: me.user, session: me.session, inboxUnread };
   const where = placeOf(location.pathname);
   const activeProject = projects.find((project) => project.id === projectId);
-  // The Conversation tab returns to the conversation that was open before Tasks, Map or Docs.
-  const onOtherView = /^\/projects\/[^/]+\/(tasks|map|docs)(\/|$)/.test(location.pathname);
+  // Project settings also preserve the last conversation without selecting its tab.
+  const onOtherView = /^\/projects\/[^/]+\/(tasks|map|docs|github)(\/|$)/.test(location.pathname);
   useEffect(() => {
     if (!projectId || onOtherView) return;
     try { sessionStorage.setItem(`flux.project-conversation.${projectId}`, `${location.pathname}${location.search}`); } catch { /* private mode */ }

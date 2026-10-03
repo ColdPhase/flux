@@ -43,6 +43,8 @@ import { personalRunRoutes } from './personal-runs/routes.js';
 import { personalRunServerComposition } from './personal-runs/composition.js';
 import { exportRoutes } from './export/routes.js';
 import { typingRoutes } from './typing/routes.js';
+import { githubRoutes } from './github/routes.js';
+import { loadGithubConfig } from './github/config.js';
 
 const connectionString = process.env.DATABASE_URL;
 const fixtureToken = process.env.FLUX_FIXTURE_TOKEN;
@@ -79,6 +81,7 @@ await app.register(typingRoutes, { db, sessions: identity, publicOrigin: identit
 await app.register(conversationRoutes, { db, sessions: identity });
 await app.register(workRoutes, { db, sessions: identity });
 await app.register(workReadRoutes, { db, sessions: identity });
+await app.register(githubRoutes, { db, sessions: identity, config: loadGithubConfig(process.env, identityConfig.publicOrigin) });
 // Configuration alone does not prove the SFU, DNS/TLS or receiver path is healthy.
 app.get('/api/v1/live-sessions/capabilities', async () => ({ status: liveMedia ? 'configured' : 'unavailable' }));
 const livePorts = liveMedia ? { access: liveAccess(db), sessions: liveSessionStore(db), media: liveMedia.media, mediaUrl: liveMedia.mediaUrl } : null;

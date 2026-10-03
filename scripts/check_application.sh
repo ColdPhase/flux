@@ -85,6 +85,10 @@ run_browser -e DATABASE_URL="postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@db:5
 # A saved blocker, a published result and a public handoff reach the task conversation (#154).
 run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/task-contribution-effects.e2e.ts
 
+# Project GitHub settings use real Flux sessions/SQL and an injected external transport fixture.
+# This is browser integration coverage, not the required real GitHub App installation evidence.
+$compose run --rm e2e node_modules/.bin/tsx --test tests/app/e2e/github.e2e.ts
+
 # A seeded project proposal must remain editable, dismissible and usable through the actual UI.
 # The fixture bypasses rule activation, which stays unavailable until #58 runtime gates pass.
 $compose run --rm test pnpm exec tsx tests/app/seed-proactive-ui.ts
