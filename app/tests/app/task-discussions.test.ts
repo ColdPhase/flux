@@ -115,11 +115,12 @@ test('conversation task binding is current, absent on ordinary threads, read-onl
   assert.equal(Object.hasOwn(nonTask, 'task'), false);
   assert.deepEqual(await f.counts(), before);
   await grant(f.owner, f.place.id, f.reader, 'denied');
+  const afterRevocation = await f.counts();
   const revoked = await f.reader.browser.request('GET', `/api/v1/conversations/${root.conversationId}`);
   const unknown = await f.reader.browser.request('GET', `/api/v1/conversations/${randomUUID()}`);
   assert.equal(revoked.status, 404);
   assert.equal(unknown.status, 404);
-  assert.deepEqual(await f.counts(), before);
+  assert.deepEqual(await f.counts(), afterRevocation);
 });
 
 test('durable task retries recheck access and conflict on changed payload, task or generic thread operation', async () => {
