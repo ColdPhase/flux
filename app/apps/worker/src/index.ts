@@ -1,10 +1,12 @@
 import { PgBoss } from 'pg-boss';
 import { eq } from 'drizzle-orm';
-import { assertExactMigrationLedger, createDatabase, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest, schema } from '@flux/db';
-import { deleteExpiredIdempotencyKeys, DRAFT_SUMMARY_JOB, IDEMPOTENCY_CLEANUP_JOB, processDraftSummary, SAMPLE_JOB } from '@flux/core';
+import { assertExactMigrationLedger, createDatabase, FLUX_SCHEMA_VERSION, loadBackgroundMasterKey, readAppliedMigrationVersions, readMigrationManifest, schema } from '@flux/db';
+import { backgroundComparisonsEnabled, deleteExpiredIdempotencyKeys, DRAFT_SUMMARY_JOB, IDEMPOTENCY_CLEANUP_JOB, processDraftSummary, SAMPLE_JOB } from '@flux/core';
 import { registerPushWorker } from './push/index.js';
 import { registerNotificationEmailWorker, startNotificationGenerator } from './notifications/index.js';
 import { personalRunWorkerComposition, registerPersonalRunWorker } from './personal-runs/index.js';
+import { registerComparisonWorker } from './proactive-comparison/index.js';
+import { comparisonProviders } from './proactive-comparison/providers.js';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
@@ -37,6 +39,9 @@ await boss.work<{ resultId: string }>(DRAFT_SUMMARY_JOB, async (jobs) => {
 const personalRuns = personalRunWorkerComposition(process.env, db);
 if (personalRuns.mode !== 'production') console.warn(JSON.stringify({ warning: 'TEST ONLY: personal runs use fixture connections and a mock provider', mode: personalRuns.mode }));
 const personalRunRecovery = await registerPersonalRunWorker(boss, db, personalRuns);
+// Background comparisons (#58): only when the operator switched them on; otherwise unscheduled.
+const comparisonsOn = backgroundComparisonsEnabled(process.env);
+await registerComparisonWorker(boss, db, { enabled: comparisonsOn, masterKey: comparisonsOn ? loadBackgroundMasterKey() : null, provider: comparisonProviders(process.env) });
 await boss.work(IDEMPOTENCY_CLEANUP_JOB, async () => {
   const deleted = await deleteExpiredIdempotencyKeys(db);
   console.log(JSON.stringify({ job: IDEMPOTENCY_CLEANUP_JOB, deleted }));

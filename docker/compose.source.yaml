@@ -73,6 +73,7 @@ services:
       # Empty allows public HTTPS endpoints only. See docs/development/containers.md.
       FLUX_AI_PRIVATE_TARGETS: ${FLUX_AI_PRIVATE_TARGETS:-}
       FLUX_PERSONAL_RUNS: ${FLUX_PERSONAL_RUNS:-}
+      FLUX_BACKGROUND_COMPARISONS: ${FLUX_BACKGROUND_COMPARISONS:-}
       PORT: 8080
     volumes:
       - files:/data/files:z
@@ -110,6 +111,7 @@ services:
       # The same operator allowlist as the API: the worker checks it again at every request.
       FLUX_AI_PRIVATE_TARGETS: ${FLUX_AI_PRIVATE_TARGETS:-}
       FLUX_PERSONAL_RUNS: ${FLUX_PERSONAL_RUNS:-}
+      FLUX_BACKGROUND_COMPARISONS: ${FLUX_BACKGROUND_COMPARISONS:-}
     volumes:
       - files:/data/files:z
       - ${FLUX_BACKGROUND_KEY_HOST_FILE:-./background-key-unavailable}:/run/secrets/flux_background_key:ro,z

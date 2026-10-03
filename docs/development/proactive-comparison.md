@@ -242,9 +242,10 @@ cursor-recovery fixtures deliberately own its global cursor. Existing dispatch
 fixtures make only their own candidate due and explicitly advance that fixture
 cursor; they do not prove scheduling.
 
-The scheduler selects candidate ids without a provider/key port. It and the
-provider adapter remain unregistered in production; rule activation still fails
-closed. The real-provider acceptance gates remain verification work.
+The scheduler selects candidate ids without a provider/key port. It, the dispatch and the
+provider registry run in the worker only when the operator switches background comparisons on
+(see "Runtime switch" below); otherwise rule activation still fails closed. The real-provider
+acceptance gates remain verification work.
 
 ## Controlled interrupted-reservation recovery
 
@@ -255,7 +256,7 @@ private `not_run` with zero usage; after intent it records private `unknown` and
 retains the reservation, observed usage and connection history. No source, key,
 provider, output or notification port is available. Late dispatch cannot overwrite
 the terminal row, publish an outcome or release uncertain spending. Unchanged
-fingerprints remain suppressed. The tick is not registered in production.
+fingerprints remain suppressed. The tick runs every ten minutes when the runtime switch is on.
 
 Docker build/typecheck/lint and 56 targeted tests passed on 2026-09-30 for the
 recovery, scheduler, context, dispatch and outcome sources. Recovery covers a
@@ -288,6 +289,28 @@ subsequent usage wording passed Docker build/typecheck/lint and three outcome/ow
 browser journeys in independent desktop/phone/tablet contexts. Those touch flags
 do not establish physical-device operation. Independent full-head functional
 acceptance remains a separate check.
+
+## Runtime switch (#58)
+
+`FLUX_BACKGROUND_COMPARISONS` (API and worker, the same value on both; see
+[containers](containers.md)) is the operator's switch, like `FLUX_PERSONAL_RUNS`:
+
+- **Empty or `off` (the default).** Owners can save paused rules and connections; enabling answers
+  `BACKGROUND_RUNTIME_UNAVAILABLE`. The worker registers nothing and removes schedules an earlier
+  run left in the queue.
+- **`on`.** Enabling runs every check above and then enables the rule (a new version). The worker
+  works two pg-boss queues, created by the migration step with a `singleton` policy (one job active
+  at a time across workers) and no retries:
+  - `proactive.comparison.tick.v1`, every minute: `comparisonSchedulingTick` collects source
+    changes and reconsiders enabled projects, then each ready candidate is dispatched one at a time
+    through the provider registry of `@flux/agent-runtime` (F-020) with the owner's sealed key. Each
+    dispatch reserves before any provider call, so a candidate never runs twice, even across workers.
+  - `proactive.comparison.recovery.v1`, every ten minutes: `comparisonRecoveryTick`.
+- **Anything else** stops both apps at startup.
+
+Still required before an instance should switch it on: an authorized real-provider test call with
+an observed bill, live cancellation, an independent full-context quality evaluation and real crash
+reconciliation (the remaining #58 gates below).
 
 ## Key file, restore and rotation
 
@@ -425,8 +448,9 @@ continues to hold at least the original reservation in the local budget.
 
 Remaining #58 work: an authorized real-provider test call and actual billing
 observation including live-provider cancellation, independent full-context quality
-evaluation, real crash/provider reconciliation, registered production scheduling and activation,
-plus independent/current integrated migration and release acceptance. Controlled
+evaluation, real crash/provider reconciliation, plus independent/current integrated migration and
+release acceptance. Production scheduling and activation are registered behind the runtime switch
+(off by default). Controlled
 changed-evidence reopening, insufficient-evidence outcomes and private usage
 accounting now have the separate fixture evidence above. This file describes a
 controlled integration slice, not completion of #58.
