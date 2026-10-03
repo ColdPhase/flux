@@ -6,7 +6,7 @@ import { DomainError } from '@flux/core';
 // instance (app.ts), so every route plugin that does not set its own handler answers the same way.
 
 /** The answer to a request without a valid session. */
-export const UNAUTHENTICATED: ApiError = { error: 'Authentication required', code: 'UNAUTHENTICATED' };
+export const UNAUTHENTICATED: Readonly<ApiError> = Object.freeze({ error: 'Authentication required', code: 'UNAUTHENTICATED' });
 
 /** The answer to a refused request: `Forbidden` with the reason's code. */
 export const forbidden = (code: string): ApiError => ({ error: 'Forbidden', code });
