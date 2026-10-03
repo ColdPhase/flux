@@ -29,6 +29,7 @@ export * from './repositories/task-discussions.js';
 export * from './repositories/direct-messages.js';
 export * from './repositories/docs.js';
 export * from './repositories/sample.js';
+export * from './repositories/idempotency.js';
 
 /** PostgreSQL channel notified (payload: seq) after an event with a workspace commits; wakes stream connections. */
 export const EVENTS_CHANNEL = 'flux_events';
