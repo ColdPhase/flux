@@ -1,0 +1,137 @@
+# Disposable synthetic verification only. Do not merge with compose.test.yaml.
+name: ${MOBILE_PROJECT:?Initialize a private fixture first}
+x-runtime: &runtime
+  image: ${MOBILE_IMAGE:?Build the pinned candidate first}
+  restart: "no"
+  init: true
+  mem_limit: 768m
+  cpus: 1.0
+  pids_limit: 128
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+  logging:
+    driver: json-file
+    options: { max-size: "5m", max-file: "2" }
+x-app-env: &app-env
+  NODE_ENV: production
+  FLUX_PUBLIC_ORIGIN: ${MOBILE_ORIGIN:?}
+  FLUX_FILES_DIR: /data/files
+  FLUX_TEST_FAILURE_INJECTION: "false"
+  FLUX_TEST_PERSONAL_RUNS: ""
+  FLUX_PUSH_ALLOW_PRIVATE_NETWORK: "false"
+  FLUX_VAPID_PUBLIC_KEY: ${MOBILE_VAPID_PUBLIC:?}
+services:
+  db:
+    image: postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    restart: "no"
+    environment:
+      POSTGRES_USER: flux
+      POSTGRES_PASSWORD: ${MOBILE_DB_PASSWORD:?}
+      POSTGRES_DB: flux
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flux -d flux"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "2" }
+  migrate:
+    <<: *runtime
+    command: ["node", "tooling/dist/migrate.js"]
+    environment:
+      DATABASE_URL: postgres://flux:${MOBILE_DB_PASSWORD:?}@db:5432/flux
+    depends_on:
+      db: { condition: service_healthy }
+  files-init:
+    <<: *runtime
+    user: root
+    cap_drop: []
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
+    command: ["chown", "-R", "1000:1000", "/data/files"]
+    volumes: ["files:/data/files"]
+  api:
+    <<: *runtime
+    environment:
+      <<: *app-env
+      DATABASE_URL: postgres://flux:${MOBILE_DB_PASSWORD:?}@db:5432/flux
+      FLUX_AUTH_SECRET: ${MOBILE_AUTH_SECRET:?}
+      FLUX_AUTH_RATE_LIMIT: "true"
+      FLUX_TRUSTED_PROXIES: ""
+      FLUX_FIXTURE_TOKEN: ""
+    volumes: ["files:/data/files"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      files-init: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+  worker:
+    <<: *runtime
+    command: ["node", "apps/worker/dist/index.js"]
+    environment:
+      <<: *app-env
+      DATABASE_URL: postgres://flux:${MOBILE_DB_PASSWORD:?}@db:5432/flux
+      FLUX_VAPID_PRIVATE_KEY: ${MOBILE_VAPID_PRIVATE:?}
+      FLUX_VAPID_SUBJECT: ${MOBILE_VAPID_SUBJECT:?}
+    volumes: ["files:/data/files"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      files-init: { condition: service_completed_successfully }
+  gateway:
+    <<: *runtime
+    user: ${MOBILE_UID:?}:${MOBILE_GID:?}
+    command: ["node", "/fixture/gateway.mjs"]
+    environment:
+      MOBILE_STATE: /state
+    read_only: true
+    volumes:
+      - ../scripts/mobile-push:/fixture:ro
+      - ${MOBILE_STATE:?}:/state:ro
+    ports: ["127.0.0.1:${MOBILE_PORT:?}:8080"]
+    depends_on:
+      api: { condition: service_healthy }
+  helper:
+    <<: *runtime
+    user: ${MOBILE_UID:?}:${MOBILE_GID:?}
+    profiles: [tools]
+    command: ["node", "/fixture/helper.mjs"]
+    environment:
+      MOBILE_STATE: /state
+      MOBILE_HOST_STATE: ${MOBILE_STATE:?}
+      MOBILE_API: http://api:8080
+      DATABASE_URL: postgres://flux:${MOBILE_DB_PASSWORD:?}@db:5432/flux
+    volumes:
+      - ../scripts/mobile-push:/fixture:ro
+      - ${MOBILE_STATE:?}:/state
+    depends_on:
+      api: { condition: service_healthy }
+  desktop-browser:
+    image: ${MOBILE_BROWSER_IMAGE:-selenium-unconfigured}
+    profiles: [desktop-provider]
+    restart: "no"
+    shm_size: 512m
+    mem_limit: 1536m
+    cpus: 1.0
+    pids_limit: 256
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    environment:
+      SE_NODE_MAX_SESSIONS: "1"
+      SE_NODE_SESSION_TIMEOUT: "300"
+      SE_SESSION_REQUEST_TIMEOUT: "60"
+      SE_ENABLE_TRACING: "false"
+      SE_LOG_LEVEL: WARNING
+      SE_UPDATE_CHROME_COMPONENTS: "false"
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "2" }
+volumes:
+  pgdata:
+  files:
