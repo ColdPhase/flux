@@ -33,7 +33,7 @@ WorkReadContext useMemo warning and zero errors (the preceding0cdf run had a
 second cleanup-ref warning, subsequently removed by capturing the same Set).
 `run-ui.sh` derives the trusted repo UI runner and only selects `test_docs` and
 `test_doc_references`; its original absolute worktree path/ports are recorded.
-Compose project `flux-ui-1791000347-81737` must be checked against the raw log;
+Compose project flux-ui-1791000347-81737 must be checked against the raw log;
 project names are generated per run. Only the disposable run resources are removed.
 
 The native/browser fixtures and assertions exercised:
@@ -62,6 +62,9 @@ The native/browser fixtures and assertions exercised:
  hostile Markdown assertions remain unchanged and pass.
 
 Setup/local links and all63 foundation tests pass; owned delta whitespace passes.
+The evidence README initially triggered the setup checker’s inline skill-name
+matcher with a Compose project tag; using plain text for that tag preserves the
+exact run identity and resolves the documentation-only setup failure.
 These host Python checks are repo setup checks, not application verification.
 App dependencies, services, native persistence and browser tests ran in Docker.
 The raw API logs contain native request evidence; screenshots cannot certify it.
