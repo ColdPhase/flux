@@ -442,6 +442,8 @@ class MapTaskCountJourney(unittest.TestCase):
             expect(sheet).to_be_visible()
             expect(sheet).to_have_attribute("aria-modal", "true")
             expect(sheet.get_by_role("link")).to_have_count(3)
+            # The sheet slides up (shell overlay motion): measure where it comes to rest.
+            page.evaluate("() => Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished))")
             sheet_box = sheet.bounding_box()
             self.assertGreaterEqual(sheet_box["x"], 0)
             self.assertLessEqual(sheet_box["x"] + sheet_box["width"], PHONE["width"], "the sheet fits the phone width")
