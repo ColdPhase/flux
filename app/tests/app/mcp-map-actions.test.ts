@@ -1,14 +1,9 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
-import { createDatabase } from '@flux/db';
+import { test } from 'node:test';
+import { pool } from './support/db.js';
 import { expect, toolValue } from './support/mcp.js';
 import { actionScene, toolFailure } from './support/mcp-actions.js';
-
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { pool } = createDatabase(connectionString);
-after(() => pool.end());
 
 interface Detail { title: string; version: number; scope: string; createdBy: { kind: string; id: string };
   thoughts: { id: string; text: string; x: number; y: number; version: number; createdBy: { id: string } }[];
