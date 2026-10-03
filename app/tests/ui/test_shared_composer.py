@@ -717,3 +717,45 @@ class SharedComposerJourney(unittest.TestCase):
                 # The next storage variant needs this real replacement session;
                 # successful logout revoked the original shared fixture cookie.
                 self.states['owner'] = page.context.storage_state()
+
+    def test_14_device_signout_retires_the_same_private_composer_in_another_tab(self):
+        page = self.page()
+        project, task, _, _ = self.scene(page)
+        root = self.root(page, task)
+        pane = self.cite(page, project, root['conversationId'])
+        text = 'Private source and bytes must leave every signed-out tab'
+        pane.get_by_label('Reply', exact=True).fill(text)
+        self.choose(page, [self.file('other-tab-private.bin')], pane)
+        expect(pane.get_by_text('Ready, private', exact=False)).to_have_count(1)
+        other = page.context.new_page()
+        self.open_agents(other, project, task)
+        expect(other.get_by_label('Write to this task', exact=True)).to_have_value(text)
+        before = self.record(other, project, task)
+        def fail(route):
+            route.fulfill(status=503, content_type='application/json', body='{}')
+        page.route('**/api/auth/sign-out', fail)
+        page.get_by_role('button', name=re.compile('account and sign out')).click()
+        with page.expect_response(lambda response: response.url.endswith('/api/auth/sign-out')) as response:
+            page.get_by_role('button', name='Sign out', exact=True).click()
+        self.assertEqual(response.value.status, 503)
+        expect(other.get_by_label('Write to this task', exact=True)).to_have_value(text)
+        self.assertEqual(self.record(other, project, task), before)
+        page.unroute('**/api/auth/sign-out', fail)
+        if page.get_by_role('dialog', name='Account').count():
+            page.get_by_role('button', name=re.compile('account and sign out')).click()
+        page.get_by_role('button', name=re.compile('account and sign out')).click()
+        with page.expect_response(lambda response: response.url.endswith('/api/auth/sign-out')) as response:
+            page.get_by_role('button', name='Sign out', exact=True).click()
+        self.assertEqual(response.value.status, 200)
+        expect(page.get_by_role('heading', name='Sign in to Flux', exact=True)).to_be_visible()
+        expect(other.get_by_role('heading', name='Sign in to Flux', exact=True)).to_be_visible()
+        self.assertIsNone(self.record(other, project, task))
+        expect(other.get_by_label('Write to this task', exact=True)).to_have_count(0)
+        page.get_by_label('Email', exact=True).fill(PEOPLE['writer'][1])
+        page.get_by_label('Password', exact=True).fill(PASSWORD)
+        page.get_by_role('button', name='Sign in', exact=True).click()
+        expect(page.get_by_role('heading', name='Sign in to Flux', exact=True)).to_have_count(0)
+        self.open_agents(other, project, task)
+        expect(other.get_by_label('Write to this task', exact=True)).to_have_value('')
+        expect(other.get_by_role('list', name='Files in your draft')).to_have_count(0)
+        self.assertIsNone(self.record(other, project, task))

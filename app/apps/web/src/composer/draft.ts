@@ -19,14 +19,20 @@ const listeners = new Map<string, Set<() => void>>();
 // The selected bytes live only in this visit. After reload, failed uploads ask for the same file.
 const selected = new Map<string, Map<string, File>>();
 const PREFIX = 'flux:composer:';
+const RETIREMENT_KEY = 'flux:session:composer-retirement';
 let sessionGeneration = 0;
 let retiredStorage = false;
 export const composerKey = (accountId: string, projectId: string, context: string) => `${PREFIX}${accountId}:${projectId}:${context}`;
 const empty = (): ComposerDraft => ({ version: 1, body: '', files: [], references: [], commandId: crypto.randomUUID(), unconfirmed: false });
 const uuid = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
-/** Called only after confirmed sign-out. Old acknowledgements belong to a retired session. */
-export function forgetComposerDrafts() {
+const readRetirement = () => { try { return localStorage.getItem(RETIREMENT_KEY) ?? ''; } catch { return ''; } };
+let storageRetirement = readRetirement();
+let retirement = storageRetirement;
+let retirementChannel: BroadcastChannel | null = null;
+let externallyRetired = false;
+
+function retireDrafts() {
   sessionGeneration++;
   retiredStorage = true;
   for (const storage of [() => localStorage, () => sessionStorage]) {
@@ -41,6 +47,36 @@ export function forgetComposerDrafts() {
   selected.clear();
   // Keep subscriptions valid until the signed-in tree unmounts; any remaining view reads empty.
   listeners.forEach((set) => set.forEach((listener) => listener()));
+}
+
+function receiveRetirement(id: unknown) {
+  if (!uuid(id) || id === retirement) return;
+  retirement = id;
+  storageRetirement = readRetirement();
+  externallyRetired = true;
+  retireDrafts();
+  // The shared cookie has ended: retire the old account's mounted tree as well.
+  window.location.replace('/sign-in?notice=signed-out');
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => { if (event.key === RETIREMENT_KEY) receiveRetirement(event.newValue); });
+  try {
+    retirementChannel = new BroadcastChannel('flux:composer:device-session');
+    retirementChannel.onmessage = (event: MessageEvent<unknown>) => {
+      const value = event.data as { type?: unknown; id?: unknown } | null;
+      if (value?.type === 'retire') receiveRetirement(value.id);
+    };
+  } catch { /* The storage event remains available when browser channels are refused. */ }
+}
+
+/** Called only after confirmed sign-out. Old acknowledgements belong to a retired session. */
+export function forgetComposerDrafts() {
+  retirement = crypto.randomUUID();
+  retireDrafts();
+  try { localStorage.setItem(RETIREMENT_KEY, retirement); } catch { /* Visit-only storage uses the browser channel. */ }
+  // A refused marker write leaves an older durable value; it is not a new remote logout.
+  storageRetirement = readRetirement();
+  try { retirementChannel?.postMessage({ type: 'retire', id: retirement }); } catch { /* Durable marker still fences old writers. */ }
 }
 
 function load(key: string, accountId: string, projectId: string, context: string): Snapshot {
@@ -108,7 +144,12 @@ function uploadError(cause: unknown) {
 export function useComposerDraft(accountId: string, projectId: string, context: string) {
   const key = composerKey(accountId, projectId, context);
   const generation = sessionGeneration;
-  const active = () => generation === sessionGeneration && snapshots.has(key);
+  const active = () => {
+    // Fence a late writer even if its tab has not processed the retirement signal yet.
+    const observed = readRetirement();
+    if (observed && observed !== storageRetirement) receiveRetirement(observed);
+    return !externallyRetired && generation === sessionGeneration && snapshots.has(key);
+  };
   const read = useCallback(() => load(key, accountId, projectId, context), [key, accountId, projectId, context]);
   const subscribe = useCallback((listener: () => void) => {
     const set = listeners.get(key) ?? new Set(); set.add(listener); listeners.set(key, set);

@@ -337,7 +337,10 @@ navigate a person away from their new work. Selection order is publication order
 Successful sign-out clears current and legacy private composer records and selected
 bytes from this browser visit. It retires outstanding upload/send callbacks before
 clearing storage, so their late results cannot restore a signed-out draft or affect
-a later session. Failed sign-out preserves the complete record.
+a later session. Confirmed device sign-out also retires the other same-origin tabs:
+they clear their visit-local stores and return to sign-in, so another account cannot
+inherit an editable old-account composer. A storage marker and a content-free browser
+channel carry only the retirement identity. Failed sign-out preserves the complete record.
 Local file/count/total checks retain existing text/files/references; server checks
 remain authoritative. Unconfirmed uploads retain their upload UUID; bytes stay in
 visit memory, and after reload recovery explicitly asks for the same file. Draft
