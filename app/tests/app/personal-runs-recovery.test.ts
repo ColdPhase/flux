@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
-import { createDatabase, schema } from '@flux/db';
+import { schema } from '@flux/db';
 import { recoverPersonalRuns, type PersonalRunUnitOfWork } from '@flux/core';
 import { PERSONAL_RUN_LIMITS, type Conversation, type Project, type Workspace } from '@flux/contracts';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
+import { db, pool } from './support/db.js';
 import { addMember, expectStatus, person, project, workspace, type Person } from './support/people.js';
 
 // Real SQL/transaction/recovery checks, with synthetic persisted crash states. No provider pass.
-const { pool, db } = createDatabase(process.env.DATABASE_URL!);
 const uow = personalRunWorkerUnitOfWork(db);
 const ownIds: string[] = [];
 let first: Person; let second: Person; let third: Person; let fourth: Person; let ws: Workspace; let place: Project; let conversation: Conversation;
@@ -34,12 +34,11 @@ async function seed(owner: Person, status: 'queued' | 'reading' | 'dispatching' 
 async function row(id: string) {
   return (await pool.query('SELECT status, cost_state, charged_micros, reserved_micros, answer_body FROM personal_runs WHERE id=$1', [id])).rows[0];
 }
-after(async () => {
-  try { if (ownIds.length) await pool.query('DELETE FROM personal_runs WHERE id=ANY($1::uuid[])', [ownIds]); }
-  finally { await pool.end(); }
-});
-
 describe('personal-run crash recovery (real SQL, no provider)', () => {
+  // Inside the suite, so the cleanup runs before support/db.ts closes the shared pool.
+  after(async () => {
+    if (ownIds.length) await pool.query('DELETE FROM personal_runs WHERE id=ANY($1::uuid[])', [ownIds]);
+  });
   before(async () => {
     [first, second, third, fourth] = await Promise.all(['recovery-first', 'recovery-second', 'recovery-third', 'recovery-fourth'].map(person));
     ws = await workspace(first, 'Recovery fixture');

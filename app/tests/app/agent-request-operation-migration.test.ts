@@ -2,18 +2,17 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import { AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES, type AgentOperation } from '@flux/contracts';
-import { assertExactMigrationLedger, assertMigrationSqlLedgerChange, assertMigrationStepLedger, createDatabase,
+import { assertExactMigrationLedger, assertMigrationSqlLedgerChange, assertMigrationStepLedger,
   FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
+import { pool } from './support/db.js';
 
 const migrationsDir = 'packages/db/migrations';
 /** Exactly the list 0038 writes. Later migrations (0043) widen it; 0038 itself stays frozen. */
 const OPERATIONS_AT_0038: readonly AgentOperation[] = ['work.create', 'work.update', 'result.record', 'decision.propose',
   'map.create', 'map.rename', 'map.thought.create', 'map.thought.update', 'map.thought.delete', 'map.positions.update',
   'map.link.create', 'map.link.delete', 'cowork.claim', 'cowork.renew', 'cowork.release', 'cowork.request'];
-const { pool } = createDatabase(process.env.DATABASE_URL!);
-after(() => pool.end());
 
 test('0038 widens only the closed grant operation CHECK: the prior ledger upgrades in place, rows survive and it is idempotent', async () => {
   const client = await pool.connect();

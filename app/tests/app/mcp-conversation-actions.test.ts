@@ -1,18 +1,13 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import type { Conversation, ConversationMessage, Doc, TaskDiscussion } from '@flux/contracts';
 import { conversationUseCases, InvalidInputError } from '@flux/core';
-import { createDatabase } from '@flux/db';
 import { conversationStore } from '../../apps/server/src/conversation/store.js';
+import { db, pool } from './support/db.js';
 import { register, uniqueEmail } from './support/http.js';
 import { expect, toolValue } from './support/mcp.js';
 import { actionScene, agentConnection, toolFailure } from './support/mcp-actions.js';
-
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { pool, db } = createDatabase(connectionString);
-after(() => pool.end());
 
 type Scene = Awaited<ReturnType<typeof actionScene>>;
 type Connection = Pick<Scene, 'runtimeSessionId' | 'tool'>;

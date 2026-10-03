@@ -2,17 +2,16 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import { AGENT_OPERATIONS } from '@flux/contracts';
-import { assertExactMigrationLedger, assertMigrationSqlLedgerChange, assertMigrationStepLedger, createDatabase,
+import { assertExactMigrationLedger, assertMigrationSqlLedgerChange, assertMigrationStepLedger,
   FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
+import { pool } from './support/db.js';
 
 // 0043 (#152): agent-written docs and the doc/conversation standing-grant operations. The previous ledger (last file
 // 0041; 0042 is left to an open branch) upgrades in place, every material, doc, version, search row and grant survives
 // byte for byte, only docs can name an agent author, and the SQL is re-runnable.
 const migrationsDir = 'packages/db/migrations';
-const { pool } = createDatabase(process.env.DATABASE_URL!);
-after(() => pool.end());
 
 test('0043 lets only docs name a genuine agent author, keeps every historical row exact, widens only the operation list and re-runs cleanly', async () => {
   const client = await pool.connect();

@@ -1,15 +1,10 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import type { Doc, DocVersionSummary, MaterialVersion, Page, ProjectExport } from '@flux/contracts';
-import { createDatabase } from '@flux/db';
+import { pool } from './support/db.js';
 import { expect, toolValue } from './support/mcp.js';
 import { actionScene, toolFailure } from './support/mcp-actions.js';
-
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { pool } = createDatabase(connectionString);
-after(() => pool.end());
 
 type Scene = Awaited<ReturnType<typeof actionScene>>;
 const versions = async (docId: string) => (await pool.query('SELECT count(*)::int AS n FROM project_material_versions WHERE material_id=$1', [docId])).rows[0].n as number;
