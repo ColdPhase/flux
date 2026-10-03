@@ -9,11 +9,12 @@ import { useDraft, useReadingPosition } from './drafts';
 import { useShellActions } from './shellContext';
 import { SinceYouLeftHome } from '../returns/SinceYouLeft';
 
+/** Home's views in the same order and words as a project's (Studio 11.6, #136). */
 export const VIEWS = [
   { id: 'conversation', label: 'Conversation', path: '/' },
-  { id: 'tasks', label: 'Tasks', path: '/tasks' },
   { id: 'map', label: 'Map', path: '/map' },
-  { id: 'docs', label: 'Docs', path: '/docs' },
+  { id: 'tasks', label: 'Tasks', path: '/tasks' },
+  { id: 'docs', label: 'Wiki', path: '/docs' },
 ] as const;
 
 export function viewIndex(pathname: string): number {
