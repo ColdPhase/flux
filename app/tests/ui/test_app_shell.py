@@ -238,6 +238,13 @@ class AppShellJourney(unittest.TestCase):
         expect(places.get_by_role("link", name="Home")).to_have_attribute("aria-current", "page")
         expect(places.get_by_role("link", name="Direct messages")).not_to_have_attribute("aria-current", "page")
         self.assertEqual(places.get_by_role("link").all_inner_texts(), ["Home", "Inbox", "Direct messages", "My sketchbook"])
+        # Search and personal settings have their own header; Home is not current there (#184 delta review S1).
+        for path, title in (("/search", "Search"), ("/settings/assistant", "Your assistant"), ("/settings/background-compute", "Background suggestions")):
+            page.goto(path)
+            expect(page.locator("header.top").get_by_role("heading", level=1, name=title)).to_be_visible()
+            expect(places.get_by_role("link", name="Home")).not_to_have_attribute("aria-current", "page")
+        page.goto("/")
+        expect(places.get_by_role("link", name="Home")).to_have_attribute("aria-current", "page")
         side_box = box(page, sidebar)
         self.assertEqual((round(side_box["x"]), round(side_box["width"])), (0, 220), "a 220px sidebar at the far left")
         self.assertEqual(page.evaluate("getComputedStyle(document.querySelector('.app')).backgroundColor"), "rgb(242, 243, 245)", "the chrome")
