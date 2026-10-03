@@ -281,16 +281,23 @@ export function ConversationStream({ project, meId, roots: stream, notices, work
   // Earlier roots keep the reader's place; new roots and announcements follow the reader only while they
   // are at the end. A changed reply count or edit (the same last entry) never moves the stream: a reply
   // sent in an open thread must leave the root the person opened where it was.
+  // Earlier announcements can arrive on their own, after the roots they sit between: the reader's place
+  // stays where it was then too.
   const lastKey = entries.at(-1)?.key ?? null;
-  const lastEntryRef = useRef<string | null>(lastKey);
+  const firstKey = entries[0]?.key ?? null;
+  const edgeRef = useRef({ first: firstKey, last: lastKey, height: 0 });
   useLayoutEffect(() => {
     const feed = feedRef.current;
-    const appended = lastKey !== lastEntryRef.current;
-    lastEntryRef.current = lastKey;
+    const edge = edgeRef.current;
+    const appended = lastKey !== edge.last;
+    const prepended = firstKey !== edge.first && !appended;
+    edgeRef.current = { first: firstKey, last: lastKey, height: feed?.scrollHeight ?? 0 };
     if (!feed) return;
-    if (restoreRef.current !== null) { feed.scrollTop = feed.scrollHeight - restoreRef.current; restoreRef.current = null; return; }
-    if (stickRef.current && appended) feed.scrollTop = feed.scrollHeight;
-  }, [roots, lastKey]);
+    if (restoreRef.current !== null) { feed.scrollTop = feed.scrollHeight - restoreRef.current; restoreRef.current = null; }
+    else if (stickRef.current && appended) feed.scrollTop = feed.scrollHeight;
+    else if (prepended && edge.height) feed.scrollTop += feed.scrollHeight - edge.height;
+    edgeRef.current.height = feed.scrollHeight;
+  }, [roots, firstKey, lastKey]);
   useLayoutEffect(() => {
     const feed = feedRef.current;
     if (!feed || !endToken) return;
