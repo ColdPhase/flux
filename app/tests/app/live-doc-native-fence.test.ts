@@ -23,10 +23,10 @@ async function scene() {
   return { owner, partner, ws, place, create, doc };
 }
 async function installHead(doc: Doc, body: string, sequence = 0) {
-  const generation = randomUUID(); const state = { fixture: 'native-fence-only', checkpoint: 'retained-checkpoint' };
+  const generation = randomUUID(); const codecState = { fixture: 'native-fence-only', checkpoint: 'retained-checkpoint' };
   await pool.query(`INSERT INTO doc_live_heads (doc_id,workspace_id,project_id,generation,sequence,body,hash,saved_version,saved_sequence,codec_state)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,0,$9)`, [doc.id, doc.workspaceId, doc.projectId, generation, sequence, body, hash(body), doc.version, state]);
-  return { generation, headSequence: sequence, headHash: hash(body), state };
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,0,$9)`, [doc.id, doc.workspaceId, doc.projectId, generation, sequence, body, hash(body), doc.version, codecState]);
+  return { generation, headSequence: sequence, headHash: hash(body), codecState };
 }
 async function unchangedState(docId: string) {
   return {
@@ -76,7 +76,7 @@ test('shared Save snapshots exactly the locked head, names contributors and pres
   assert.ok(saved.contributors?.every((by) => by.kind === 'human' && by.name));
   assert.deepEqual(saved.liveSnapshot, { generation: h.generation, fromSequence: 0, toSequence: 3 });
   const [head] = (await pool.query('SELECT * FROM doc_live_heads WHERE doc_id=$1', [f.doc.id])).rows;
-  assert.deepEqual([head.generation, Number(head.sequence), head.body, head.codec_state, head.saved_version, Number(head.saved_sequence)], [h.generation, 3, body, h.state, 2, 3]);
+  assert.deepEqual([head.generation, Number(head.sequence), head.body, head.codec_state, head.saved_version, Number(head.saved_sequence)], [h.generation, 3, body, h.codecState, 2, 3]);
   const old = await docs.getVersion(actor, f.doc.id, 1); assert.equal(old.body, f.doc.body); assert.equal(old.contributors, undefined);
   const history = expectStatus(await f.partner.browser.request('GET', `/api/v1/docs/${f.doc.id}/versions`), 200) as Page<DocVersionSummary>;
   assert.deepEqual(history.items[0]?.contributors, saved.contributors);
@@ -113,7 +113,7 @@ test('a clean legacy CAS change atomically retires its live generation and retai
   const [head] = (await pool.query('SELECT * FROM doc_live_heads WHERE doc_id=$1', [f.doc.id])).rows;
   assert.notEqual(head.generation, h.generation); assert.deepEqual([head.body, Number(head.sequence), head.saved_version, Number(head.saved_sequence), head.codec_state], [saved.body, 0, 2, 0, null]);
   const [archive] = (await pool.query('SELECT * FROM doc_live_archives WHERE doc_id=$1', [f.doc.id])).rows;
-  assert.deepEqual([archive.generation, archive.body, Number(archive.sequence), archive.codec_state], [h.generation, f.doc.body, 4, h.state]);
+  assert.deepEqual([archive.generation, archive.body, Number(archive.sequence), archive.codec_state], [h.generation, f.doc.body, 4, h.codecState]);
   assert.deepEqual((await pool.query('SELECT * FROM doc_live_replicas WHERE doc_id=$1', [f.doc.id])).rows, ownership);
   assert.deepEqual((await pool.query('SELECT * FROM live_editing_intents WHERE actor_id=$1 AND command_id=$2', [f.partner.id, command])).rows, receipts);
 });

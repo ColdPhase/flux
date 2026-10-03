@@ -10,6 +10,7 @@ export const liveDocSavePath = (id: string) => `${liveDocPath(id)}/save`;
 export const liveDocReceiptPath = (id: string, commandId: string) => `${liveDocPath(id)}/receipts/${commandId}`;
 export const liveMapPath = (id: string) => `/api/v1/sketches/${id}/live`;
 export const liveMapGesturePath = (id: string) => `${liveMapPath(id)}/gestures`;
+export const liveMapUndoPath = (id: string) => `${liveMapPath(id)}/undo`;
 
 export const EDITING_LIMITS = {
   frameBytes: 65_536, chunkBytes: 61_440, assemblyBytes: 8 * 1024 * 1024,
@@ -93,6 +94,9 @@ export interface LiveMapGesture {
   thoughts: { id: string; expectedVersion: number }[];
 }
 export interface LiveMapLease { gestureId: string; leaseId: string; generation: string; expiresAt: string }
+/** One user step, reversed atomically in original reverse order with current poststate/dependency guards. */
+export interface UndoLiveMap { clientCommandId: string; originalCommandIds: string[] }
+export interface UndoneLiveMap { commandId: string; delta: LiveMapDelta }
 export interface LiveMapPosition { id: string; x: number; y: number; width?: number; height?: number }
 /** Server-built postimages/tombstones of one committed native operation, never a client-supplied patch. */
 export interface LiveMapDelta {

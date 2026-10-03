@@ -1,1 +1,20 @@
-{"compilerOptions":{"target":"ES2022","module":"NodeNext","moduleResolution":"NodeNext","outDir":"dist","rootDir":"src","strict":true,"skipLibCheck":true,"esModuleInterop":true,"types":["node"]},"include":["src/**/*.ts"]}
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "types": [
+      "node"
+    ],
+    "allowJs": true
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/editing/codec/*.mjs"
+  ]
+}
