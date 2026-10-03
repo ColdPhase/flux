@@ -218,7 +218,7 @@ and is then refused with `404` or `403` without writing.
 
 ## HTTP API
 
-The routes live in `app/apps/server/src/access/routes.ts`. Paths and wire types are in
+The routes live in `app/apps/server/src/access/`, one module per capability (`workspaces.ts`, `projects.ts`, `agents.ts`, `drafts.ts`, `draft-summaries.ts`) registered by `routes.ts`; domain errors and a missing session are mapped once, on the API's root, by `app/apps/server/src/http/errors.ts` (#85). Paths and wire types are in
 `app/packages/contracts/src/access.ts`. Every route needs a live session
 (`401 UNAUTHENTICATED` otherwise), and state changes pass the origin check from
 [identity](containers.md#identity-services-and-variables). An object the caller

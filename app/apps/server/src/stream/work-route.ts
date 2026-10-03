@@ -1,8 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { audienceKey } from '@flux/core';
-import { STREAM_PATH, type ApiError } from '@flux/contracts';
+import { STREAM_PATH } from '@flux/contracts';
 import type { SessionResolver } from '../identity/index.js';
 import type { StreamWork } from './delivery.js';
+import { UNAUTHENTICATED } from '../http/errors.js';
 
 /**
  * Test only (`exposeWork`, enabled with FLUX_TEST_FAILURE_INJECTION): `GET /api/v1/stream/work`
@@ -12,7 +13,7 @@ import type { StreamWork } from './delivery.js';
 export function workRoute(app: FastifyInstance, sessions: SessionResolver, lastWork: ReadonlyMap<string, StreamWork>) {
   app.get(`${STREAM_PATH}/work`, async (request, reply) => {
     const context = await sessions.resolveSession(request.headers);
-    if (!context) return reply.code(401).send({ error: 'Authentication required', code: 'UNAUTHENTICATED' } satisfies ApiError);
+    if (!context) return reply.code(401).send(UNAUTHENTICATED);
     return { work: lastWork.get(audienceKey(context.principal)) ?? null };
   });
 }
