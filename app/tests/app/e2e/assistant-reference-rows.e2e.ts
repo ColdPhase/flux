@@ -173,9 +173,20 @@ test('genuinely missing historical citation is isolated from valid rows; phone l
   await validLink.focus();await expect(validLink).toHaveAttribute('aria-label',new RegExp(valid.title));
   const selected=expectStatus(await owner.browser.request('GET',`/api/v1/projects/${place.id}/work-reference-rows?objects=work:${missing.id},work:${valid.id}`),200) as {items:{id:string}[],unavailable:{id:string}[]};
   assert.deepEqual(selected.items.map((row)=>row.id),[valid.id]);assert.deepEqual(selected.unavailable.map((row)=>row.id),[missing.id]);
-  await validLink.click();await expect(page.getByRole('complementary',{name:'Details'})).toContainText(valid.title);
+  await validLink.click();await expect(page.getByRole('dialog',{name:'Details'})).toContainText(valid.title);
   await page.getByRole('button',{name:'Close details'}).click();
   await expect(page.locator('#project-composer')).toHaveValue('Private draft beside native citations');
+  // Every part of a >100-source history stays reachable at the real phone layout.
+  for (const index of [0,60,119]) {
+    const current=expectStatus(await owner.browser.request('GET',`/api/v1/work/${tasks[index]!.id}`),200) as WorkItem;
+    const link=page.locator(`.assistant-cite[data-native-ref="work:${current.id}"]`);
+    await link.scrollIntoViewIfNeeded();await link.focus();
+    await expect(link).toHaveAttribute('aria-label',new RegExp(current.title));
+    await link.click();await expect(page.getByRole('dialog',{name:'Details'})).toContainText(current.title);
+    await page.getByRole('button',{name:'Close details'}).click();
+    await expect(page.locator('#project-composer')).toHaveValue('Private draft beside native citations');
+  }
+
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await capture(page,'references-phone-native-mixed');
 });
@@ -245,6 +256,7 @@ test('required metadata retry preserves lost-response command UUID, native reply
   const pending=await page.evaluate((key)=>JSON.parse(sessionStorage.getItem(key)!),storageKey);
   assert.equal(pending.command.clientMessageId,sends[0]);
   await page.route(referencePattern,(route)=>route.fulfill({status:503,contentType:'application/json',body:'{"code":"WORK_READ_UNAVAILABLE","error":"Injected required read failure"}'}));
+  await card.scrollIntoViewIfNeeded();
   await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
   await expect(page.getByRole('button',{name:'Refresh task references',exact:true})).toBeVisible();
   const anchor=page.locator(`[data-answer-run="${answers[2]!.runId}"]`);await anchor.scrollIntoViewIfNeeded();
@@ -300,4 +312,31 @@ test('late authorized metadata cannot resurrect manager actions across real acco
   await expect(card.getByRole('button',{name:'Accept',exact:true})).toBeVisible();
   await capture(page,'references-account-aba-recovered');
   assert.equal(collectionReads.length,0);assert.deepEqual(pageErrors,[]);
+});
+
+
+test('a held old metadata selector cannot refill a newer failed focused-reference window',{timeout:45_000},async()=>{
+  const page=await open(owner,390,844);
+  const first=page.locator(`.assistant-cite[data-native-ref="work:${tasks[0]!.id}"]`);
+  await first.scrollIntoViewIfNeeded();await first.focus();await expect(first).toHaveAttribute('aria-label',/Native citation001 refreshed/);
+  await page.locator('#project-composer').fill('Private owner draft during selector replacement');
+  const held:{route:Route,response:Awaited<ReturnType<Route['fetch']>>}[]=[];
+  let captureNext=true;
+  await page.route(referencePattern,async(route)=>{
+    if(captureNext){captureNext=false;const response=await route.fetch();held.push({route,response});return;}
+    await route.fulfill({status:503,contentType:'application/json',body:'{"code":"WORK_READ_UNAVAILABLE","error":"New focused reference read unavailable"}'});
+  });
+  await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await expect.poll(()=>held.length).toBe(1);
+  const last=page.locator(`.assistant-cite[data-native-ref="work:${tasks[119]!.id}"]`);
+  await last.scrollIntoViewIfNeeded();await last.focus();
+  await expect(page.getByRole('button',{name:'Refresh task references',exact:true})).toBeVisible();
+  const old=await held[0]!.response.json() as {items:{id:string}[]};assert.ok(old.items.some((row)=>row.id===tasks[0]!.id));
+  await held[0]!.route.fulfill({response:held[0]!.response});await page.waitForTimeout(250);
+  await expect(page.locator('.project-convo')).toHaveAttribute('data-references-phase','unavailable');
+  await expect(first).toHaveAttribute('aria-label',/in this project/);
+  await expect(page.locator('#project-composer')).toHaveValue('Private owner draft during selector replacement');
+  await page.unroute(referencePattern);await page.getByRole('button',{name:'Refresh task references',exact:true}).click();
+  await expect(last).toHaveAttribute('aria-label',/Native citation 120/);
+  await capture(page,'references-phone-held-selector-recovered');
+  assert.equal(collectionReads.length,0);assert.ok(referenceReads.every((batch)=>batch.length<=100));assert.deepEqual(pageErrors,[]);
 });
