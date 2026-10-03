@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { eq } from 'drizzle-orm';
 import { PgBoss } from 'pg-boss';
-import { createSample } from '@flux/core';
+import { createSample } from '../../apps/server/src/fixture/sample.js';
 import { createDatabase, schema } from '@flux/db';
 import { SAMPLE_COMMAND_PATH } from '@flux/contracts';
 import { Browser } from './support/http.js';
