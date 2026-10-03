@@ -1,27 +1,40 @@
-/* Flux theme tokens: F-017 Studio 11.6, Mint (default), Sky and Copper (#148).
-   Neutrals and semantic statuses stay stable; appearance controls action/selection/link/focus.
-   See docs/design/theme-accents.md. scripts/check_contrast.py checks all six palettes. */
+/* Flux theme tokens: Studio 11.6 (F-017), measured from the supplied prototype (#136), with
+   Mint (default), Sky and Copper accent families (#148). See docs/design/studio-v11.6-design-system.md.
+   Accent marks selection, links, focus and unread only; primary actions use the neutral --action.
+   scripts/check_contrast.py checks all six palettes. */
 :root {
   color-scheme: light;
 
-  /* Surfaces */
+  /* Surfaces: the chrome behind the sheet and sidebar, the sheet itself, and quiet fills */
+  --bg-chrome: #f2f3f5;
   --bg: #ffffff;
-  --bg-side: #f7f7f8;
-  --bg-hover: #f1f1f3;
-  --bg-active: #ebebee;
   --bg-raised: #ffffff;
-  --tint-danger: #fdf4f3;
+  --bg-side: #f4f5f7;   /* quiet fill inside the sheet (was the sidebar) */
+  --bg-hover: #eceef2;
+  --bg-active: #f4f5f7;
+  --sheet-edge: #dde2e9;
+  --bubble: #f4f5f7;
+  --bubble-own: var(--bubble-own-light);
+  --tint-danger: #fbece8;
+  --tint-ok: #eaf4ee;
+  --tint-warning: #faf1df;
+  --canvas: #f7f8fa;
+  --canvas-dot: #dde2e9;
   /* Text */
-  --text: #1b1c1f;   /* 17.0:1 on --bg */
-  --text-2: #3c3f45; /* 10.6:1 on --bg */
-  --text-3: #62666d; /* 5.8:1 on --bg, 4.9:1 on --bg-active */
+  --text: #272e38;   /* 13.7:1 on --bg */
+  --text-2: #596577; /* 5.9:1 on --bg, also small sidebar labels on the chrome */
+  --text-3: #5e6a7d; /* 5.5:1 on --bg; 11.6 dim #657185 darkened to keep 4.5:1 on hover, own and selected fills */
   /* Lines */
-  --line: #e7e7ea;
-  --line-strong: #d5d6da;
-  --line-input: #8b8f97; /* 3.2:1 on --bg: input borders are a non-text UI boundary (WCAG 1.4.11) */
+  --line: #dde2e9;
+  --line-strong: #cfd6df;
+  --line-input: #8a93a1; /* ≥3:1 on --bg: input borders are a non-text UI boundary (WCAG 1.4.11) */
+  /* The neutral primary action: primary buttons, send and toasts */
+  --action: #2e3743;
+  --on-action: #ffffff;
   /* Theme-specific family primitives; every component consumes the semantic roles below. */
-  --accent-light: #247358; --accent-light-hover: #1c6049; --accent-light-pressed: #174f3d; --accent-light-soft: #e7f4ed;
-  --accent-dark: #8ed8b8; --accent-dark-hover: #a6e3ca; --accent-dark-pressed: #78c5a5; --accent-dark-soft: #1c3028;
+  --accent-light: #28664f; --accent-light-hover: #215643; --accent-light-pressed: #1b4737; --accent-light-soft: #e8f1ec;
+  --accent-dark: #91c9b3; --accent-dark-hover: #a6d5c2; --accent-dark-pressed: #7fb9a2; --accent-dark-soft: #293b34;
+  --on-accent-dark: #242d20; --bubble-own-light: #e5eee5;
   --accent: var(--accent-light);
   --accent-hover: var(--accent-light-hover);
   --accent-pressed: var(--accent-light-pressed);
@@ -33,67 +46,58 @@
   --link: var(--accent);
   --focus: var(--accent);
   --map-guide: var(--text-3);
-  --attention: #5159c8;
+  --attention: #4b53be;
   --resolution: var(--ok);
   /* Status */
-  --danger: #b42318;  /* 6.6:1 on --bg */
-  --warning: #8a5300; /* 6.3:1 on --bg */
-  --ok: #1a7f4b;      /* 5.0:1 on --bg */
-  /* Identity rail (founder decision on #40: variant C "rail"): v8's dark rail beside the light
-     sidebar, with a lime mark and current-place marker. Dark in both themes. */
-  --rail-bg: #111310;
-  --rail-line: #2a2f25;
-  --rail-fg: #a9afa0;     /* 8.3:1 on --rail-bg */
-  --rail-hover: #1f241a;
-  --rail-active: #252c1d;
-  --rail-on: #e9eddf;     /* 12.1:1 on --rail-active */
-  --lime: #d3ea8a;        /* mark, marker bar and focus ring on the rail */
-  /* Project monograms on the rail: letter on its tint, one of four shapes */
-  --pm-1: #2a331f; --pm-1-t: #d3ea8a; --pm-2: #272630; --pm-2-t: #c5c1d6;
-  --pm-3: #1d2e2b; --pm-3-t: #a8d5cf; --pm-4: #33291e; --pm-4-t: #e6c9a0;
-  --shadow: 0 1px 2px rgba(16, 17, 20, .04), 0 8px 28px rgba(16, 17, 20, .10);
-  --shadow-sm: 0 1px 2px rgba(16, 17, 20, .06), 0 2px 8px rgba(16, 17, 20, .06);
-  --scrim: rgba(16, 17, 20, .28);
+  --danger: #a1443c;  /* 6.1:1 on --bg */
+  --warning: #855c20; /* 6.2:1 on --bg */
+  --ok: #31664d;      /* 6.6:1 on --bg */
+  --shadow: 0 16px 48px #26344716;
+  --shadow-sm: 0 1px 2px rgba(38, 52, 71, .06), 0 2px 8px rgba(38, 52, 71, .05);
+  --scrim: rgba(14, 21, 19, .35);
 
-  /* Type */
-  --font: "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
-  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
-  --fs-xs: 12px;   /* metadata, section labels */
-  --fs-sm: 13px;   /* secondary lines */
-  --fs-md: 14px;   /* controls, lists */
-  --fs-base: 15px; /* reading text */
-  --fs-lg: 17px;
+  /* Type: the system UI stack, no web font */
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --fs-xs: 10px;   /* timestamps, metadata */
+  --fs-sm: 11px;   /* names, chips, small buttons, section labels */
+  --fs-md: 12px;   /* navigation, tabs, controls */
+  --fs-base: 14px; /* reading text, bubbles, inputs */
+  --fs-lg: 16px;
   --fs-xl: 20px;
   --fs-2xl: 24px;
-  --lh: 1.6;
+  --fs-title: 21px;     /* project title */
+  --fs-doc-title: 30px; /* wiki document title */
+  --lh: 1.55;
   --lh-tight: 1.35;
-  --tracking: -0.006em;
+  --tracking: 0;
 
   /* Space (4px grid) */
   --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-10: 40px; --s-12: 48px;
+  --space-page: 36px;  /* the sheet's horizontal padding */
+  --sheet-inset: 12px; /* chrome around the sheet: top, right and bottom */
 
   /* Radii */
-  --r-sm: 6px; --r: 8px; --r-lg: 12px; --r-pill: 999px;
+  --r-sm: 6px; --r: 7px; --r-lg: 12px; --r-pill: 999px;
+  --r-card: 8px; --r-composer: 10px; --r-sheet: 13px; --r-tag: 4px;
 
   /* Sizes */
-  --ctl: 32px;       /* desktop control height; 44px on coarse pointers */
+  --ctl: 32px;       /* small and toolbar controls; 44px on coarse pointers */
   --ctl-lg: 40px;    /* form fields and form buttons */
-  --header-h: 52px;
-  --rail-w: 60px;
-  --side-w: 232px;
-  --panel-w: 384px;
-  --col: 700px;      /* reading column */
+  --header-h: 52px;  /* non-project places */
+  --side-w: 220px;
+  --panel-w: 408px;
+  --col: 790px;      /* reading column */
 
-  /* Motion. Only transform and opacity animate. Every duration is 0ms under reduced motion.
-     --dur-1 small feedback, --dur-2 content changes, --dur-3 panels, sheets and drawers. */
-  --dur-1: 120ms; --dur-2: 180ms; --dur-3: 260ms;
+  /* Motion. Only colour, opacity and transform animate. Every duration is 0ms under reduced motion.
+     --dur-1 colour and small feedback, --dur-2 content changes, --dur-3 panels, sheets and drawers. */
+  --dur-1: 130ms; --dur-2: 160ms; --dur-3: 200ms;
   --ease-out: cubic-bezier(.2, .8, .2, 1);
   --ease-in: cubic-bezier(.4, 0, 1, 1);
   --ease-sheet: cubic-bezier(.32, .72, 0, 1);
-  --tr: background-color var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out),
-        box-shadow var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out),
-        opacity var(--dur-1) var(--ease-out), outline-color var(--dur-1) var(--ease-out),
-        outline-offset var(--dur-1) var(--ease-out);
+  --tr: background-color var(--dur-1) ease, color var(--dur-1) ease, border-color var(--dur-1) ease,
+        box-shadow var(--dur-1) ease, opacity var(--dur-1) ease, outline-color var(--dur-1) ease,
+        outline-offset var(--dur-1) ease;
 
   /* Layers */
   --z-panel: 20; --z-scrim: 30; --z-overlay: 40; --z-menu: 50; --z-toast: 60;
@@ -101,49 +105,60 @@
 
 /* The default-family sample owns its primitives even when the root uses another family. */
 .me-accent__option[data-accent-option="mint"] {
-  --accent-light: #247358; --accent-light-hover: #1c6049; --accent-light-pressed: #174f3d; --accent-light-soft: #e7f4ed;
-  --accent-dark: #8ed8b8; --accent-dark-hover: #a6e3ca; --accent-dark-pressed: #78c5a5; --accent-dark-soft: #1c3028;
+  --accent-light: #28664f; --accent-light-hover: #215643; --accent-light-pressed: #1b4737; --accent-light-soft: #e8f1ec;
+  --accent-dark: #91c9b3; --accent-dark-hover: #a6d5c2; --accent-dark-pressed: #7fb9a2; --accent-dark-soft: #293b34;
+  --on-accent-dark: #242d20; --bubble-own-light: #e5eee5;
 }
 :root[data-accent="copper"], .me-accent__option[data-accent-option="copper"] {
   --accent-light: #985035; --accent-light-hover: #853f2a; --accent-light-pressed: #703521; --accent-light-soft: #f6ede7;
-  --accent-dark: #dba88c; --accent-dark-hover: #e6baa2; --accent-dark-pressed: #c69478; --accent-dark-soft: #3b2e25;
+  --accent-dark: #dba88c; --accent-dark-hover: #e6baa2; --accent-dark-pressed: #c69478; --accent-dark-soft: #42342d;
+  --on-accent-dark: #302820; --bubble-own-light: #f3e8de;
 }
 :root[data-accent="sky"], .me-accent__option[data-accent-option="sky"] {
-  --accent-light: #2c609b; --accent-light-hover: #245184; --accent-light-pressed: #1d426d; --accent-light-soft: #e9f0f8;
-  --accent-dark: #94bcf3; --accent-dark-hover: #acccf8; --accent-dark-pressed: #80aae3; --accent-dark-soft: #202c3d;
+  --accent-light: #345f93; --accent-light-hover: #2b507d; --accent-light-pressed: #234268; --accent-light-soft: #eaf0f8;
+  --accent-dark: #9bb7e1; --accent-dark-hover: #b0c7e8; --accent-dark-pressed: #88a6d4; --accent-dark-soft: #2b384b;
+  --on-accent-dark: #212b32; --bubble-own-light: #e7edf4;
 }
 
 /* Dark: follows the system unless the person chose a theme (data-theme on <html>). */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --bg: #141517; --bg-side: #101113; --bg-hover: #1d1e21; --bg-active: #25262a; --bg-raised: #1a1b1e;
-    --tint-danger: #231716;
-    --text: #ededef; --text-2: #c9cace; --text-3: #9a9ca3;
-    --line: #26272b; --line-strong: #34353a; --line-input: #6b6e76;
-    --accent: var(--accent-dark); --accent-hover: var(--accent-dark-hover); --accent-pressed: var(--accent-dark-pressed); --accent-soft: var(--accent-dark-soft); --on-accent: #101113;
+    --bg-chrome: #191c21; --bg: #21252b; --bg-raised: #21252b; --bg-side: #282d35; --bg-hover: #303741; --bg-active: #282d35;
+    --sheet-edge: #363f49; --bubble: #2a3038; --bubble-own: #2e3742;
+    --tint-danger: #402f2f; --tint-ok: #273b31; --tint-warning: #3a3328; --canvas: #1c2026; --canvas-dot: #3c4551;
+    --text: #e8ecf2; --text-2: #adb7c6; --text-3: #a0abba;
+    --line: #3b424e; --line-strong: #46505d; --line-input: #6b7583;
+    --action: #e0e7ef; --on-action: #242c36;
+    --accent: var(--accent-dark); --accent-hover: var(--accent-dark-hover); --accent-pressed: var(--accent-dark-pressed); --accent-soft: var(--accent-dark-soft); --on-accent: var(--on-accent-dark);
     --accent-selected-bg: var(--accent-soft); --accent-selected-text: var(--accent); --accent-selected-border: var(--accent); --link: var(--accent); --focus: var(--accent);
-    --danger: #f08a80; --warning: #e0a650; --ok: #5fc08a; --attention: #8b90f0;
-    --rail-bg: #0b0c0a; --rail-line: #22261e;
-    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 10px 32px rgba(0, 0, 0, .45);
+    --danger: #efb0a7; --warning: #e0c38d; --ok: #9fceb1; --attention: #a6abf5;
+    --shadow: 0 20px 65px #00000055;
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, .3), 0 2px 8px rgba(0, 0, 0, .3);
-    --scrim: rgba(0, 0, 0, .5);
+    --scrim: rgba(14, 21, 19, .35);
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #141517; --bg-side: #101113; --bg-hover: #1d1e21; --bg-active: #25262a; --bg-raised: #1a1b1e;
-  --tint-danger: #231716;
-  --text: #ededef; --text-2: #c9cace; --text-3: #9a9ca3;
-  --line: #26272b; --line-strong: #34353a; --line-input: #6b6e76;
-  --accent: var(--accent-dark); --accent-hover: var(--accent-dark-hover); --accent-pressed: var(--accent-dark-pressed); --accent-soft: var(--accent-dark-soft); --on-accent: #101113;
+  --bg-chrome: #191c21; --bg: #21252b; --bg-raised: #21252b; --bg-side: #282d35; --bg-hover: #303741; --bg-active: #282d35;
+  --sheet-edge: #363f49; --bubble: #2a3038; --bubble-own: #2e3742;
+  --tint-danger: #402f2f; --tint-ok: #273b31; --tint-warning: #3a3328; --canvas: #1c2026; --canvas-dot: #3c4551;
+  --text: #e8ecf2; --text-2: #adb7c6; --text-3: #a0abba;
+  --line: #3b424e; --line-strong: #46505d; --line-input: #6b7583;
+  --action: #e0e7ef; --on-action: #242c36;
+  --accent: var(--accent-dark); --accent-hover: var(--accent-dark-hover); --accent-pressed: var(--accent-dark-pressed); --accent-soft: var(--accent-dark-soft); --on-accent: var(--on-accent-dark);
   --accent-selected-bg: var(--accent-soft); --accent-selected-text: var(--accent); --accent-selected-border: var(--accent); --link: var(--accent); --focus: var(--accent);
-  --danger: #f08a80; --warning: #e0a650; --ok: #5fc08a; --attention: #8b90f0;
-  --rail-bg: #0b0c0a; --rail-line: #22261e;
-  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 10px 32px rgba(0, 0, 0, .45);
+  --danger: #efb0a7; --warning: #e0c38d; --ok: #9fceb1; --attention: #a6abf5;
+  --shadow: 0 20px 65px #00000055;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, .3), 0 2px 8px rgba(0, 0, 0, .3);
-  --scrim: rgba(0, 0, 0, .5);
+  --scrim: rgba(14, 21, 19, .35);
 }
+
+@media (max-width: 1200px) { :root { --space-page: 26px; --panel-w: 375px; } }
+@media (max-width: 1000px) { :root { --space-page: 22px; } }
+@media (max-width: 760px) { :root { --space-page: 18px; --sheet-inset: 8px; } }
+@media (max-width: 680px) { :root { --sheet-inset: 0px; } }
+@media (min-width: 1600px) { :root { --space-page: 44px; --panel-w: 430px; } }
 
 @media (pointer: coarse) {
   :root { --ctl: 44px; --ctl-lg: 44px; }
