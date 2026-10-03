@@ -256,10 +256,13 @@ test('required metadata retry preserves lost-response command UUID, native reply
   const pending=await page.evaluate((key)=>JSON.parse(sessionStorage.getItem(key)!),storageKey);
   assert.equal(pending.command.clientMessageId,sends[0]);
   await page.route(referencePattern,(route)=>route.fulfill({status:503,contentType:'application/json',body:'{"code":"WORK_READ_UNAVAILABLE","error":"Injected required read failure"}'}));
-  await card.scrollIntoViewIfNeeded();
+  // The committed reply may arrive over WS after its response was lost. Keep a
+  // real citation focused so that arrival/viewport movement cannot retire the
+  // required metadata selector before the injected failure is observed.
+  const anchor=page.locator(`[data-answer-run="${answers[2]!.runId}"]`);
+  await anchor.scrollIntoViewIfNeeded();await anchor.locator('[data-native-ref]').first().focus();
   await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
   await expect(page.getByRole('button',{name:'Refresh task references',exact:true})).toBeVisible();
-  const anchor=page.locator(`[data-answer-run="${answers[2]!.runId}"]`);await anchor.scrollIntoViewIfNeeded();
   await page.waitForTimeout(250);
   const before=await anchor.evaluate((row)=>row.getBoundingClientRect().top);
   await page.unroute(referencePattern);await page.getByRole('button',{name:'Refresh task references',exact:true}).click();

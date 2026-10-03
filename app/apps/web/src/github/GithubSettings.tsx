@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigation, useRevalidator } from 'react-router';
 import type { GithubBinding, GithubCapabilities, GithubRepository, GithubTaskLink } from '@flux/contracts';
 import { ApiError, request } from '../api/client';
 import { useProjectShell, type ProjectShell } from '../project/data';
@@ -92,7 +92,11 @@ function RepositoryPicker({ prefix, onBound }: { prefix: string; onBound: () => 
 function PullReferences({ projectId, bindings, canLink }: { projectId: string; bindings: GithubBinding[]; canLink: boolean }) {
   const { me } = useShellData();
   const [search, setSearch] = useState('');
-  const choices = useWorkChoices(me.user.id, projectId, { purpose: 'choices', choice: 'doc_refs', kind: 'work', q: search.trim() || undefined });
+  const navigation = useNavigation();
+  const revalidator = useRevalidator();
+  const identityReady = navigation.state === 'idle' && revalidator.state === 'idle';
+  const choices = useWorkChoices(me.user.id, projectId, identityReady ? { purpose: 'choices', choice: 'doc_refs', kind: 'work', q: search.trim() || undefined } : null);
+  const canCommit = identityReady && choices.read.phase === 'ready' && choices.page?.summary.access !== 'viewer';
   const tasks = choices.page?.items ?? [];
   // One explicitly chosen identity is private form state, never a growing page cache.
   const [chosen, setChosen] = useState<{ id: string; title: string } | null>(null);
@@ -114,7 +118,7 @@ function PullReferences({ projectId, bindings, canLink }: { projectId: string; b
       <label htmlFor={`${id}-binding`}>Repository</label><select id={`${id}-binding`} value={binding} disabled={busy} onChange={(event) => setBinding(event.target.value)}><option value="">Choose repository…</option>{bindings.map((row) => <option key={row.id} value={row.id}>{row.owner}/{row.name}</option>)}</select>
       <label htmlFor={`${id}-number`}>Pull request number</label><input id={`${id}-number`} type="number" min="1" required disabled={busy} value={number} onChange={(event) => setNumber(event.target.value)} />
       <label htmlFor={`${id}-role`}>Relationship</label><select id={`${id}-role`} value={role} disabled={busy} onChange={(event) => setRole(event.target.value as typeof role)}><option value="required_output">Required output</option><option value="related">Related context</option></select>
-      <Button type="submit" busy={busy} disabled={!task || !binding || !number}>Verify and link PR</Button>
+      <Button type="submit" busy={busy} disabled={!task || !binding || !number || !canCommit}>Verify and link PR</Button>
     </form> : <div className="github-settings__form">{taskPicker}</div>}{error ? <p role="alert" className="github-settings__error">{error}</p> : null}
     {links.length ? <ul className="github-settings__pulls">{links.map((row) => <li key={row.id}><a href={row.facts.url} target="_blank" rel="noreferrer">#{row.facts.number} · {row.facts.title}</a>
       <span>{row.role === 'required_output' ? 'Required output' : 'Related'} · {row.facts.execution.replaceAll('_', ' ')} · {row.state}</span>
