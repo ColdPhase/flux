@@ -121,8 +121,11 @@ export function SignUpPage() {
   const [params] = useSearchParams();
   const next = params.get('next');
   const suffix = next ? `?next=${encodeURIComponent(next)}` : '';
-  // The length hint goes away once the password is long enough (#189).
+  // The length hint goes away once the password is long enough (#189), and so does the last
+  // attempt's error once the password has been changed to a long enough one.
   const [passwordLength, setPasswordLength] = useState(0);
+  const [editedAfter, setEditedAfter] = useState<typeof result>(undefined);
+  const passwordError = editedAfter === result && passwordLength >= PASSWORD_MIN_LENGTH ? undefined : result?.fieldErrors?.password;
   return (
     <>
       <Heading title="Create your Flux account">One account for your conversations, work and handoffs.</Heading>
@@ -134,8 +137,8 @@ export function SignUpPage() {
           hint="Shown to people you work with." autoFocus />
         <Input label="Email" name="email" type="email" autoComplete="email" inputMode="email" autoCapitalize="none" spellCheck={false}
           defaultValue={result?.values?.email} error={result?.fieldErrors?.email} />
-        <Input label="Password" name="password" type="password" autoComplete="new-password" error={result?.fieldErrors?.password}
-          onChange={(event) => setPasswordLength(event.target.value.length)}
+        <Input label="Password" name="password" type="password" autoComplete="new-password" error={passwordError}
+          onChange={(event) => { setPasswordLength(event.target.value.length); setEditedAfter(result); }}
           hint={passwordLength >= PASSWORD_MIN_LENGTH ? undefined : `At least ${PASSWORD_MIN_LENGTH} characters. A short sentence works well.`} />
         <Button type="submit" variant="primary" size="lg" block busy={submitting}>{submitting ? 'Creating account…' : 'Create account'}</Button>
       </Form>
