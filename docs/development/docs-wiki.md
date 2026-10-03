@@ -104,17 +104,39 @@ refused changes record none.
 
 ## Web
 
-`app/apps/web/src/docs/`: the **Docs** tab of a project (`/projects/:id/docs`: published docs and
-drafts with the last change, its author and reason), the reader (`…/docs/:docId`, earlier
-versions at `…/versions/:n` with a calm "earlier version" line), the editor (`…/new`, `…/edit`:
-Write · Preview · Both on wide screens, the server-rendered preview, the link picker, ⌘/Ctrl S
-saves, ⌘/Ctrl ⇧ P toggles the preview, unsaved text kept in the tab's session storage) and the
-history (`…/history?from=&to=`: every version with its reason and a line diff with changed words
-marked, jsdiff 9.0.0, folded context, `+`/`−` marks and screen-reader words so colour is never
-alone). A concurrent save shows who saved which version, "Show their changes" as a diff, and the
-explicit choices "Keep my text on top of version N" or "Discard mine, use theirs"; nothing is
-overwritten silently. Home › Docs lists the docs of every readable project. On the phone the list,
-reader, editor and history are one column with 44 px targets.
+`app/apps/web/src/docs/` is a project's **Wiki** tab (UI116-4, #136), two panes at the Studio 11.6
+measure:
+
+- **Page index** (`Wiki.tsx`, 212 px): the project's pages with drafts marked, a search box that
+  filters by title and excerpt (with a count and an empty state; Escape clears), **New page** and
+  **Import .md** for people who can write. The selection is quiet: a 4% tint, weight 600, a 3 px
+  dot and one `aria-current`. `/projects/:id/docs` opens the page last open in this tab, else the
+  latest change.
+- **Top bar** (57 px, sticky): what is open, "Unsaved changes in this tab" when a draft of an edit
+  is kept, quiet icon actions (Share, Download, History, Focus) and one primary (Edit for writers).
+- **Reader** (`…/docs/:docId`, earlier versions at `…/versions/:n` with a calm "earlier version"
+  line), **editor** (`…/new`, `…/edit`: Write · Preview · Both on wide screens, the server-rendered
+  preview, the link picker, ⌘/Ctrl S saves, ⌘/Ctrl ⇧ P toggles the preview, unsaved text kept in the
+  tab's session storage) and **history** (`…/history?from=&to=`: every version with its reason and
+  a line diff with changed words marked, jsdiff 9.0.0, folded context, `+`/`−` marks and
+  screen-reader words so colour is never alone). A concurrent save shows who saved which version,
+  "Show their changes" as a diff, and the explicit choices "Keep my text on top of version N" or
+  "Discard mine, use theirs"; nothing is overwritten silently.
+- **Import .md** (`markdown-file.ts`): one `.md`/`.markdown` file of at most 400 KB and 100,000
+  characters, valid UTF-8 without NUL; anything else is refused with its reason and nothing is
+  created. It always creates a draft; the title comes from a leading `# Title`, else the file name;
+  line endings become `\n`. The body goes through the server's renderer like any edit
+  (`markdown-it` with `html: false`, then `sanitize-html`).
+- **Download**: the open page or version as Markdown. Managers also get the whole project as a
+  bundle, from the server's export route, which requires `project.manage`.
+- **Share**: copies the page link (with a selectable fallback when the clipboard is refused) and
+  names the page's audience, with "See who has access".
+- **Focus**: hides the index and keeps that choice in the tab.
+
+Home › Wiki lists the docs of every readable project. On a phone or a narrow pane the index becomes
+a search row with a horizontal strip of pages above the document; while a page is edited the strip
+steps aside, the bar scrolls with the page and only Cancel / Save stay at the bottom, so the text
+field is never covered. Targets are 44 px on touch.
 
 ## Tests and evidence
 
@@ -124,9 +146,13 @@ retries, links and backlinks across all target types without cross-project leaks
 Add to docs with section rewrite, events and the workspace list filter), `app/tests/app/returns.test.ts`
 (doc items in the return view) and `app/tests/ui/test_docs.py` (Playwright: write with preview and a
 link, publish, concurrent edit and conflict, history and diff at 1440 and 1280, add from a
-result, phone read/edit/compare, hostile text). Screenshots: `docs/design/docs-wiki/`.
+result, phone read/edit/compare, hostile text) and `app/tests/ui/test_wiki_panes.py` (the two panes,
+quiet selection and focus ring in every theme, search and its count, New page, Import .md with its
+refusals, downloads compared byte for byte, the managers-only bundle, share, focus mode, phone 390
+and 320 with the editor's text field uncovered, tablet 820). Screenshots: `docs/design/docs-wiki/`.
 
 ## Not yet
 
 File uploads and images (a separate slice), real-time co-editing (#61), agent doc writes outside
-a standing grant, search across docs, and moving a doc between projects.
+a standing grant, full-text search inside the wiki index (the index filters by title and excerpt;
+Search and Jump to already find doc text), and moving a doc between projects.
