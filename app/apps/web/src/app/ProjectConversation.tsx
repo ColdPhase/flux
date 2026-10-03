@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
-import type { AssistantAnswer, ConversationMessage, Conversation, ConversationRootWindow, Draft, Material, Project, SendMessageCommand, WorkspaceMember } from '@flux/contracts';
+import type { AssistantAnswer, ConversationMessage, Conversation, ConversationRootWindow, Draft, Material, Page, Project, SendMessageCommand, TaskCreationNotice, WorkspaceMember } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Avatar, Button, Icon, Input } from '../ui';
-import { getConversation, getMaterialVersion, getProject, listConversationRoots, listDrafts, listMaterials, listWorkspaceMembers, olderMessages, publishMaterial, reply, startConversation } from './conversation-api';
+import { getConversation, getMaterialVersion, getProject, listConversationRoots, listDrafts, listMaterials, listTaskNotices, listWorkspaceMembers, olderMessages, publishMaterial, reply, startConversation } from './conversation-api';
 import { pageBackTo } from './seekMessage';
 import { useShellData } from './data';
 import { MessageActions, MessageObjects, useCreateWorkFromMessage } from '../work/inline';
@@ -18,14 +18,15 @@ import { OneConversation, type PaneProps } from './OneConversation';
 import { ThreadMessageActions } from './ThreadDrawer';
 import './project-conversation.css';
 
-/** The project's one conversation (UI116-1): the newest roots, and the thread a URL opens. */
-export interface ProjectData { project: Project; roots: ConversationRootWindow; materials: Material[]; materialTotal: number; members: WorkspaceMember[]; conversation: Conversation | null }
+/** The project's one conversation (UI116-1): the newest roots and task announcements (UI116-3), and the thread a URL opens. */
+export interface ProjectData { project: Project; roots: ConversationRootWindow; notices: Page<TaskCreationNotice>; materials: Material[]; materialTotal: number; members: WorkspaceMember[]; conversation: Conversation | null }
 export async function projectConversationLoader({ params, request }: LoaderFunctionArgs): Promise<ProjectData> {
   const projectId = params.projectId!;
   const project = await getProject(projectId, request.signal);
   // Work, decisions and results come with the project (#117 parent route).
-  const [roots, materials, members] = await Promise.all([
+  const [roots, notices, materials, members] = await Promise.all([
     listConversationRoots(projectId, {}, request.signal),
+    listTaskNotices(projectId, {}, request.signal),
     listMaterials(projectId, request.signal),
     listWorkspaceMembers(project.workspaceId, request.signal).catch((error: unknown) => {
       if (error instanceof ApiError && error.status === 403) return [];
@@ -34,7 +35,7 @@ export async function projectConversationLoader({ params, request }: LoaderFunct
   ]);
   const conversation = params.conversationId ? await getConversation(params.conversationId, request.signal) : null;
   if (conversation && conversation.projectId !== projectId) throw new Response('Not found', { status: 404 });
-  return { project, roots, materials: materials.items, materialTotal: materials.total, members, conversation };
+  return { project, roots, notices, materials: materials.items, materialTotal: materials.total, members, conversation };
 }
 /** The stream stays mounted while a thread opens or closes; its loader refreshes the open thread then. */
 export function shouldRevalidateProjectConversation({ currentParams, nextParams, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {

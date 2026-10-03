@@ -1,8 +1,8 @@
 import {
   WORKSPACES_PATH, conversationMessagesPath, conversationPath, materialPath,
-  materialVersionPath, projectConversationRootsPath, projectConversationsPath, projectMaterialsPath, projectPath, workspaceProjectsPath,
+  materialVersionPath, projectConversationRootsPath, projectConversationsPath, projectMaterialsPath, projectPath, projectTaskNoticesPath, workspaceProjectsPath,
   type Conversation, type ConversationMessage, type ConversationRootWindow, type ConversationSummary, type CreateMaterialCommand,
-  type Draft, type WorkspaceMember, type Material, type MaterialOrDoc, type MaterialVersion, type Page, type Project, type SendMessageCommand, type Workspace, workspaceDraftsPath,
+  type Draft, type WorkspaceMember, type Material, type MaterialOrDoc, type MaterialVersion, type Page, type Project, type SendMessageCommand, type TaskCreationNotice, type Workspace, workspaceDraftsPath,
   IDEMPOTENCY_KEY_HEADER,
 } from '@flux/contracts';
 import { request } from '../api/client';
@@ -35,6 +35,9 @@ export const listConversationRoots = (projectId: string, options: { before?: str
   const search = query.toString();
   return request<ConversationRootWindow>(`${projectConversationRootsPath(projectId)}${search ? `?${search}` : ''}`, { signal });
 };
+/** The project's task announcements (UI116-3), newest first. */
+export const listTaskNotices = (projectId: string, options: { offset?: number; limit?: number } = {}, signal?: AbortSignal) =>
+  request<Page<TaskCreationNotice>>(`${projectTaskNoticesPath(projectId)}?limit=${options.limit ?? 100}&offset=${options.offset ?? 0}`, { signal });
 export const getConversation = (id: string, signal?: AbortSignal) => request<Conversation>(conversationPath(id), { signal });
 export const olderMessages = (id: string, beforeSequence: number, signal?: AbortSignal, limit?: number) =>
   request<Conversation>(`${conversationPath(id)}?beforeSequence=${beforeSequence}${limit ? `&limit=${limit}` : ''}`, { signal });

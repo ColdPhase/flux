@@ -108,6 +108,14 @@ export function ProjectStateRow({ lists, canDecide }: { lists: ProjectWork; canD
   );
 }
 
+/** The task a thread discusses (UI116-3), with its current title and state; it opens the task in Details. */
+export function DiscussedTask({ task, lists }: { task: { workId: string; title: string }; lists: ProjectWork }) {
+  const { openDetails } = useShellActions();
+  const item = lists.work.find((candidate) => candidate.id === task.workId);
+  return <ObjectChip icon="tasks" kind={item ? rest(workLine(item)) : 'Task'} title={item?.title ?? task.title} label="Discussion of task"
+    onOpen={() => openDetails({ kind: 'work', id: task.workId })} />;
+}
+
 /** A calm chip under a message for an object made from it: icon, title and a quiet state. */
 function ObjectChip({ icon, kind, title, need, onOpen, label }: { icon: 'tasks' | 'rule' | 'result'; kind: string; title: string; need?: boolean; onOpen: () => void; label: string }) {
   return (
@@ -123,14 +131,17 @@ function ObjectChip({ icon, kind, title, need, onOpen, label }: { icon: 'tasks' 
 const rest = (line: string) => line.replace(/^Work · /, '');
 
 /** Objects made from this message. The message itself is unchanged; these link back to it. */
-export function MessageObjects({ messageId, lists }: { messageId: string; lists: ProjectWork }) {
+export function MessageObjects({ messageId, lists, thread = null }: { messageId: string; lists: ProjectWork; thread?: { workId: string; title: string } | null }) {
   const { openDetails } = useShellActions();
   const work: WorkItem[] = fromMessage(lists.work, messageId);
   const decisions: Decision[] = fromMessage(lists.decisions, messageId);
   const results: WorkResult[] = fromMessage(lists.results, messageId);
-  if (!work.length && !decisions.length && !results.length) return null;
+  // The task whose discussion this message opened (UI116-3), unless the task was also made from it.
+  const discussed = thread && !work.some((item) => item.id === thread.workId) ? thread : null;
+  if (!discussed && !work.length && !decisions.length && !results.length) return null;
   return (
     <div className="ws-attach">
+      {discussed ? <DiscussedTask task={discussed} lists={lists} /> : null}
       {work.map((item) => <ObjectChip key={item.id} icon="tasks" kind={rest(workLine(item))} title={item.title} label="Work" onOpen={() => openDetails({ kind: 'work', id: item.id })} />)}
       {decisions.map((item) => <ObjectChip key={item.id} icon="rule" kind={decisionLine(item)} title={item.title} need={item.status === 'proposed'} label="Decision" onOpen={() => openDetails({ kind: 'decision', id: item.id })} />)}
       {results.map((item) => <ObjectChip key={item.id} icon="result" kind={resultLine(item)} title={item.title} label="Result" onOpen={() => openDetails({ kind: 'result', id: item.id })} />)}

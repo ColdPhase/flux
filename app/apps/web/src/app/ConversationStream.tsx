@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import type { Conversation, ConversationMessage, ConversationRoot, ConversationRootWindow, Project } from '@flux/contracts';
+import type { Conversation, ConversationMessage, ConversationRoot, ConversationRootWindow, NamedPrincipal, Page, Project, TaskCreationNotice } from '@flux/contracts';
 import { Avatar, Button, EmptyState, Icon } from '../ui';
 import { MessageActions, MessageObjects, useCreateWorkFromMessage } from '../work/inline';
 import type { ProjectWork } from '../work/api';
 import { useShellActions } from './shellContext';
-import { listConversationRoots } from './conversation-api';
+import { listConversationRoots, listTaskNotices } from './conversation-api';
 import { ContributionMark, SourceCitation, clock, day, openOnWholeMessages, when } from './messageParts';
 
 // One project conversation (UI116-1, 2026-10-02): a chronological stream of roots. Each root is the
@@ -21,14 +21,100 @@ function mergeRoots(current: ConversationRoot[], incoming: ConversationRoot[]) {
   return [...byId.values()].sort((a, b) => a.message.createdAt.localeCompare(b.message.createdAt) || a.conversationId.localeCompare(b.conversationId));
 }
 
-/**
- * One entry of the stream, in time order. UI116-3 adds a `notice` kind here (one compact task-created
- * event linking its task); it is merged by `at` and rendered beside roots, never as a root itself.
- */
-export type StreamEntry = { kind: 'root'; key: string; at: string; root: ConversationRoot };
+function mergeNotices(current: TaskCreationNotice[], incoming: TaskCreationNotice[]) {
+  const byId = new Map(current.map((notice) => [notice.id, notice]));
+  for (const notice of incoming) byId.set(notice.id, notice);
+  return [...byId.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+}
 
-export function streamEntries(roots: ConversationRoot[]): StreamEntry[] {
-  return roots.map((root) => ({ kind: 'root' as const, key: root.conversationId, at: root.message.createdAt, root }));
+/**
+ * One entry of the stream, in time order: a root, or one compact task-created announcement (UI116-3)
+ * linking its task. An announcement is never a root and has no thread; the task's first genuine
+ * contribution is the root its discussion grows under.
+ */
+export type StreamEntry =
+  | { kind: 'root'; key: string; at: string; root: ConversationRoot }
+  | { kind: 'notice'; key: string; at: string; notice: TaskCreationNotice };
+
+/**
+ * Roots and announcements by time; at the same instant the announcement comes first. While earlier
+ * roots are still unloaded, announcements older than the first loaded root wait with them, so the
+ * stream never shows an announcement out of its place.
+ */
+export function streamEntries(roots: ConversationRoot[], notices: TaskCreationNotice[] = [], hasOlder = false): StreamEntry[] {
+  const from = hasOlder ? roots[0]?.message.createdAt ?? null : null;
+  const entries: StreamEntry[] = [
+    ...roots.map((root) => ({ kind: 'root' as const, key: root.conversationId, at: root.message.createdAt, root })),
+    ...notices.filter((notice) => from === null || notice.createdAt >= from)
+      .map((notice) => ({ kind: 'notice' as const, key: `notice-${notice.id}`, at: notice.createdAt, notice })),
+  ];
+  return entries.sort((a, b) => a.at.localeCompare(b.at) || (a.kind === b.kind ? 0 : a.kind === 'notice' ? -1 : 1));
+}
+
+/**
+ * The project's task announcements: the newest page from the route, merged on each refresh, and older
+ * pages as far back as the loaded roots reach (all of them once every root is loaded). Announcements
+ * are never removed, so the loaded ones are always the newest; a refresh that skipped past them reads
+ * forward until it meets them, so no announcement between is missed.
+ */
+export function useTaskNotices(projectId: string, page: Page<TaskCreationNotice>, roots: ConversationRoot[], hasOlderRoots: boolean, onDenied: (cause: unknown) => void) {
+  const [notices, setNotices] = useState(() => mergeNotices([], page.items));
+  const [total, setTotal] = useState(page.total);
+  const noticesRef = useRef(notices);
+  const deniedRef = useRef(onDenied);
+  const seen = useRef(page);
+  useEffect(() => { noticesRef.current = notices; deniedRef.current = onDenied; });
+
+  useEffect(() => {
+    if (seen.current === page) return;
+    seen.current = page;
+    let cancelled = false;
+    void (async () => {
+      const known = new Set(noticesRef.current.map((notice) => notice.id));
+      let incoming = page.items;
+      let latestTotal = page.total;
+      for (let index = 1; index < MAX_PAGES && known.size && incoming.length < latestTotal && !incoming.some((notice) => known.has(notice.id)); index += 1) {
+        const next = await listTaskNotices(projectId, { offset: incoming.length, limit: PAGE });
+        if (!next.items.length) break;
+        incoming = [...incoming, ...next.items];
+        latestTotal = next.total;
+      }
+      if (cancelled) return;
+      setNotices((current) => mergeNotices(current, incoming));
+      setTotal(latestTotal);
+    })().catch((cause: unknown) => deniedRef.current(cause));
+    return () => { cancelled = true; };
+  }, [projectId, page]);
+
+  // How far back the stream shows: the first loaded root while earlier roots remain, otherwise everything.
+  const reach = hasOlderRoots ? roots[0]?.message.createdAt ?? null : '';
+  const more = notices.length < total;
+  useEffect(() => {
+    if (!more || reach === null) return;
+    const covered = () => !!noticesRef.current.length && reach !== '' && noticesRef.current[0]!.createdAt < reach;
+    if (covered()) return;
+    let cancelled = false;
+    void (async () => {
+      let loaded = noticesRef.current;
+      let latestTotal = total;
+      for (let index = 0; index < MAX_PAGES && loaded.length < latestTotal; index += 1) {
+        const next = await listTaskNotices(projectId, { offset: loaded.length, limit: PAGE });
+        const merged = mergeNotices(loaded, next.items);
+        latestTotal = next.total;
+        if (merged.length === loaded.length) { latestTotal = loaded.length; break; }
+        loaded = merged;
+        if (reach !== '' && loaded[0]!.createdAt < reach) break;
+      }
+      if (cancelled) return;
+      setNotices((current) => mergeNotices(current, loaded));
+      setTotal(latestTotal);
+    })().catch((cause: unknown) => deniedRef.current(cause));
+    return () => { cancelled = true; };
+    // `total` is read when more is needed, not followed: a refresh that only grows it never reads back.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, reach, more]);
+
+  return notices;
 }
 
 export interface ConversationRoots {
@@ -129,6 +215,8 @@ export interface StreamProps {
   project: Project;
   meId: string;
   roots: ConversationRoots;
+  /** The loaded task announcements (UI116-3), oldest first. */
+  notices: TaskCreationNotice[];
   work: ProjectWork;
   author: (message: ConversationMessage) => string;
   audience: string;
@@ -145,8 +233,9 @@ export interface StreamProps {
 }
 
 /** The project's stream of roots, oldest first, with day dividers, each root's thread size and reply action. */
-export function ConversationStream({ project, meId, roots: stream, work, author, audience, openId, reveal, arrived, endToken, onOpen, onDenied }: StreamProps) {
+export function ConversationStream({ project, meId, roots: stream, notices, work, author, audience, openId, reveal, arrived, endToken, onOpen, onDenied }: StreamProps) {
   const { roots } = stream;
+  const entries = streamEntries(roots, notices, stream.hasOlder);
   const writable = project.access !== 'viewer';
   const feedRef = useRef<HTMLDivElement>(null);
   const columnRef = useRef<HTMLDivElement>(null);
@@ -189,19 +278,19 @@ export function ConversationStream({ project, meId, roots: stream, work, author,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reveal?.key, !!revealRoot]);
 
-  // Earlier roots keep the reader's place; new roots follow the reader only while they are at the end.
-  // A changed reply count or edit (the same last root) never moves the stream: a reply sent in an open
-  // thread must leave the root the person opened where it was.
-  const lastRootRef = useRef<string | null>(roots.at(-1)?.message.id ?? null);
+  // Earlier roots keep the reader's place; new roots and announcements follow the reader only while they
+  // are at the end. A changed reply count or edit (the same last entry) never moves the stream: a reply
+  // sent in an open thread must leave the root the person opened where it was.
+  const lastKey = entries.at(-1)?.key ?? null;
+  const lastEntryRef = useRef<string | null>(lastKey);
   useLayoutEffect(() => {
     const feed = feedRef.current;
-    const last = roots.at(-1)?.message.id ?? null;
-    const appended = last !== lastRootRef.current;
-    lastRootRef.current = last;
+    const appended = lastKey !== lastEntryRef.current;
+    lastEntryRef.current = lastKey;
     if (!feed) return;
     if (restoreRef.current !== null) { feed.scrollTop = feed.scrollHeight - restoreRef.current; restoreRef.current = null; return; }
     if (stickRef.current && appended) feed.scrollTop = feed.scrollHeight;
-  }, [roots]);
+  }, [roots, lastKey]);
   useLayoutEffect(() => {
     const feed = feedRef.current;
     if (!feed || !endToken) return;
@@ -301,7 +390,6 @@ export function ConversationStream({ project, meId, roots: stream, work, author,
     catch (cause) { restoreRef.current = null; onDenied(cause); setFailure('Earlier messages could not be loaded.'); }
   }
 
-  const entries = streamEntries(roots);
   const dayOf = entries.map((entry) => day(entry.at));
   return (
     <div className="project-convo__feed is-stream" ref={feedRef}>
@@ -314,6 +402,7 @@ export function ConversationStream({ project, meId, roots: stream, work, author,
               {entries.map((entry, index) => {
                 const label = dayOf[index]!;
                 const divider = index === 0 || dayOf[index - 1] !== label ? <li className="project-convo__day" key={`day-${entry.key}`}><span>{label}</span></li> : null;
+                if (entry.kind === 'notice') return [divider, <NoticeItem key={entry.key} notice={entry.notice} meId={meId} work={work} onOpenTask={(id) => openDetails({ kind: 'work', id })} />];
                 const { root } = entry;
                 return [divider, <RootItem key={entry.key} root={root} project={project} meId={meId} author={author} work={work}
                   open={root.conversationId === openId} arrived={arrived === root.message.id} makeWork={makeWork} onOpen={openRoot}
@@ -326,6 +415,33 @@ export function ConversationStream({ project, meId, roots: stream, work, author,
         </section>
       </div>
     </div>
+  );
+}
+
+/** Who created a task, as the stream names people: "Ada · you", "Ada", "Scout · agent". */
+function creatorName(creator: NamedPrincipal, meId: string) {
+  if (creator.kind === 'agent') return `${creator.name ?? 'Agent'} · agent`;
+  const name = creator.name ?? 'Member';
+  return creator.id === meId ? `${name} · you` : name;
+}
+
+/**
+ * One compact announcement that a task was created (UI116-3): who created it, its current title and a
+ * link that opens exactly that task. It is not a message, so it has no replies or actions of its own.
+ */
+function NoticeItem({ notice, meId, work, onOpenTask }: { notice: TaskCreationNotice; meId: string; work: ProjectWork; onOpenTask: (workId: string) => void }) {
+  const title = work.work.find((item) => item.id === notice.workId)?.title ?? notice.workTitle;
+  return (
+    <li className="convo-notice" id={`notice-${notice.id}`} data-work-id={notice.workId}>
+      <span className="convo-notice__icon" aria-hidden="true"><Icon name="tasks" size={14} /></span>
+      <span className="convo-notice__body">
+        <span className="convo-notice__meta">New task · {creatorName(notice.createdBy, meId)}</span>
+        <button type="button" className="convo-notice__task" onClick={() => onOpenTask(notice.workId)} aria-label={`Open task: ${title}`}>
+          <span className="convo-notice__title">{title}</span><Icon name="chevron-right" size={14} />
+        </button>
+      </span>
+      <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
+    </li>
   );
 }
 
@@ -349,7 +465,7 @@ function RootItem({ root, project, meId, author, work, open, arrived, makeWork, 
       <p>{message.body}</p>
       {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={onOpenResult} /> : null}
       {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
-      <MessageObjects messageId={message.id} lists={work} />
+      <MessageObjects messageId={message.id} lists={work} thread={root.task ?? null} />
       <Replies root={root} open={open} writable={writable} onOpen={(reply) => onOpen(root, reply)} />
       <MessageActions projectId={project.id} message={message} writable={writable} busy={makeWork.busy === message.id} onCreateWork={() => void makeWork.create(message)} />
       {makeWork.failed?.messageId === message.id ? <p className="ws-act-error" role="alert">{makeWork.failed.text} <button type="button" onClick={() => void makeWork.create(message)}>Retry</button></p> : null}

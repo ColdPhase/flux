@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { createDatabase } from '@flux/db';
-import type { Conversation, ConversationMessage, ConversationRootWindow, Material, Project, Workspace } from '@flux/contracts';
+import type { Conversation, ConversationMessage, ConversationRootWindow, Material, Project, WorkItem, Workspace } from '@flux/contracts';
 import { Browser, register, uniqueEmail, type ClientResponse } from './support/http.js';
 
 // One project conversation (UI116-1, 2026-10-02): the stream of roots, their reply counts and the
@@ -113,6 +113,34 @@ describe('project conversation roots', () => {
     assert.deepEqual(seen, all, 'every root exactly once, in order');
     const stored = await pool.query('SELECT count(*)::int AS count FROM project_conversations WHERE project_id = $1', [project.id]);
     assert.equal(seen.length, stored.rows[0].count - 1, 'all but the root that arrived after the first read');
+  });
+
+  test('a task thread root names its task; ordinary roots and undiscussed tasks do not (UI116-3)', async () => {
+    const createTask = async (who: Person, title: string) => expect(await who.browser.request('POST', `/api/v1/projects/${project.id}/work`,
+      { body: { title, clientCommandId: randomUUID() } }), 201) as WorkItem;
+    const task = await createTask(partner, 'Measure the ToF sensor');
+    await createTask(owner, 'Not discussed yet');
+    const ordinary = await start(owner, 'An ordinary root next to the task thread');
+    // The task's first genuine contribution comes from someone other than its creator.
+    const first = expect(await owner.browser.request('POST', `/api/v1/work/${task.id}/discussion`,
+      { body: { body: 'I will measure it tonight', clientMessageId: randomUUID() } }), 201) as ConversationMessage;
+    await reply(partner, first.conversationId, 'Use the dark room');
+    expect(await partner.browser.request('PATCH', `/api/v1/work/${task.id}`,
+      { body: { title: 'Measure the ToF sensor at 5 lux', expectedVersion: task.version } }), 200);
+    for (const who of [owner, partner, reader]) {
+      const window = expect(await roots(who, '?limit=100'), 200) as ConversationRootWindow;
+      const thread = window.roots.find((root) => root.conversationId === first.conversationId);
+      assert.ok(thread, 'the first contribution is a root of the stream');
+      assert.equal(thread.message.id, first.id);
+      assert.equal(thread.message.authorId, owner.id, 'its true author, not the task creator');
+      assert.equal(thread.replyCount, 1);
+      assert.deepEqual(thread.task, { workId: task.id, title: 'Measure the ToF sensor at 5 lux' }, 'the current title');
+      const plain = window.roots.find((root) => root.conversationId === ordinary.id);
+      assert.ok(plain);
+      assert.equal('task' in plain, false);
+      assert.deepEqual(window.roots.filter((root) => root.task).map((root) => root.conversationId), [first.conversationId],
+        'a task without a contribution has no root');
+    }
   });
 
   test('bad windows are refused and another project never leaks through the cursor', async () => {

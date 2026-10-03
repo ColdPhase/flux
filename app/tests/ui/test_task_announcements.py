@@ -1,0 +1,282 @@
+"""Browser tests for task announcements in the project conversation (UI116-3, #154).
+
+Creating a task shows one compact "New task" line in the project's stream; the task's first genuine
+contribution is a root of the stream that names its task, and replies grow under it. Runs with the
+other tests/ui modules through scripts/check_ui.sh against the running Compose application. Ada
+manages the project, Jonas writes and Lee only reads. Every count is checked against the API, so
+opening, rendering and reloading are shown to create nothing. Screenshots (task-announcements-*.png)
+go to FLUX_UI_SCREENSHOTS.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import time
+import unittest
+import uuid
+
+from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
+
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+
+PASSWORD = "one announcement then the discussion"
+STAMP = int(time.time() * 1000)
+PEOPLE = {
+    "ada": ("Ada Kowalska", f"ada.notice+{STAMP}@example.test"),
+    "jonas": ("Jonas Berg", f"jonas.notice+{STAMP}@example.test"),
+    "lee": ("Lee Park", f"lee.notice+{STAMP}@example.test"),
+}
+EARLY_TASK = "Sketch the lamp base in cardboard first"
+FILLERS = 52
+QUESTION = "Should the lamp react to gestures in the dark, or only when someone is close?"
+FROM_MESSAGE = "Order two ToF boards for the dark-room test"
+MEASURE = "Measure the ToF board at 5 lux"
+FIRST_WORD = "I will measure it tonight in the dark room and post the numbers here."
+FIRST_REPLY = "Use the black cloth so the shelf does not reflect."
+LATER = "Which shop has the boards in stock this week?"
+LIVE_TASK = "Write the shop a question about delivery"
+
+
+class TaskAnnouncements(unittest.TestCase):
+    """Tests run in name order and share three accounts and one project."""
+
+    pw = None
+    browser: Browser
+    states: dict[str, dict] = {}
+    ids: dict[str, str] = {}
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        if UPSTREAM:
+            start_forwarder(ORIGIN, UPSTREAM)
+        cls.pw = sync_playwright().start()
+        cls.browser = cls.pw.chromium.launch()
+        expect.set_options(timeout=10000)
+        contexts: dict[str, BrowserContext] = {}
+        for key, (name, email) in PEOPLE.items():
+            context = cls.browser.new_context(base_url=ORIGIN)
+            response = context.request.post("/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": name}, headers={"origin": ORIGIN})
+            assert response.status == 200, response.text()
+            cls.ids[key] = context.request.get("/api/v1/me").json()["user"]["id"]
+            cls.states[key] = context.storage_state()
+            contexts[key] = context
+
+        def post(who: str, path: str, body: dict, method: str = "POST") -> dict:
+            response = contexts[who].request.fetch(path, method=method, data=body, headers={"origin": ORIGIN})
+            assert response.status in (200, 201), f"{path}: {response.status} {response.text()}"
+            return response.json()
+
+        ws = post("ada", "/api/v1/workspaces", {"name": "Riverside Makers"})
+        for key in ("jonas", "lee"):
+            post("ada", f"/api/v1/workspaces/{ws['id']}/members", {"email": PEOPLE[key][1], "role": "member"})
+        project = post("ada", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Night lamp", "visibility": "restricted"})
+        pid = project["id"]
+        post("ada", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": cls.ids["jonas"]}, "role": "contributor"})
+        post("ada", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": cls.ids["lee"]}, "role": "viewer"})
+        start = lambda who, body: post(who, f"/api/v1/projects/{pid}/conversations", {"body": body, "clientMessageId": str(uuid.uuid4())})  # noqa: E731
+        task = lambda who, body: post(who, f"/api/v1/projects/{pid}/work", {**body, "clientCommandId": str(uuid.uuid4())})  # noqa: E731
+        # An early task, then more roots than the newest window (50): its announcement waits with them.
+        start("ada", "Kick-off: a night lamp that wakes up when you wave at it.")
+        early = task("ada", {"title": EARLY_TASK})
+        for index in range(1, FILLERS + 1):
+            start("ada" if index % 2 else "jonas", f"Earlier note {index:02}: a short idea about the lamp shade, the base or the sensor.")
+        question = start("ada", QUESTION)
+        from_message = task("jonas", {"title": FROM_MESSAGE, "sources": [{"type": "message", "id": question["messages"][0]["id"]}]})
+        measure = task("ada", {"title": MEASURE})
+        # The task's first genuine contribution comes from Jonas, not from Ada who created it.
+        first = post("jonas", f"/api/v1/work/{measure['id']}/discussion", {"body": FIRST_WORD, "clientMessageId": str(uuid.uuid4())})
+        post("ada", f"/api/v1/conversations/{first['conversationId']}/messages", {"body": FIRST_REPLY, "clientMessageId": str(uuid.uuid4())})
+        later = start("ada", LATER)
+        for context in contexts.values():
+            context.close()
+        cls.ids.update(project=pid, early=early["id"], question=question["messages"][0]["id"], from_message=from_message["id"],
+                       measure=measure["id"], first=first["id"], thread=first["conversationId"], later=later["messages"][0]["id"])
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.browser.close()
+        cls.pw.stop()
+
+    def page(self, who: str, *, phone: bool = False, dark: bool = False, viewport: dict | None = None) -> Page:
+        options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw",
+                         "storage_state": self.states[who]}
+        if phone:
+            options.update(viewport=viewport or PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
+        else:
+            options.update(viewport=viewport or DESKTOP, device_scale_factor=1)
+        context = self.browser.new_context(**options)
+        self.addCleanup(context.close)
+        page = context.new_page()
+        errors: list[str] = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
+        return page
+
+    def api(self, page: Page, method: str, path: str, body: dict | None = None, status: int | None = None) -> dict:
+        response = page.request.fetch(f"{ORIGIN}{path}", method=method, headers={"origin": ORIGIN, "content-type": "application/json"},
+                                      data=json.dumps(body) if body is not None else None)
+        if status is not None:
+            self.assertEqual(response.status, status, response.text())
+        return json.loads(response.text()) if response.text() else {}
+
+    def counts(self, page: Page) -> tuple[int, int, int]:
+        """Announcements, tasks and roots of the project, as the API reports them."""
+        pid = self.ids["project"]
+        notices = self.api(page, "GET", f"/api/v1/projects/{pid}/task-notices?limit=100", status=200)
+        work = self.api(page, "GET", f"/api/v1/projects/{pid}/work?limit=100", status=200)
+        roots = self.api(page, "GET", f"/api/v1/projects/{pid}/conversation-roots?limit=100", status=200)
+        return notices["total"], work["total"], len(roots["roots"])
+
+    def notice(self, page: Page, work_id: str):
+        return page.locator(f'.convo-notice[data-work-id="{work_id}"]')
+
+    def stream_order(self, page: Page) -> list[str]:
+        """The stream's entries from the question onwards: roots by message id, announcements by task id."""
+        return page.locator(".project-convo__message-list > li:not(.project-convo__day)").evaluate_all(
+            "items => items.map(item => item.dataset.workId ? `task:${item.dataset.workId}` : item.id)")
+
+    def test_01_one_announcement_per_task_in_its_place(self) -> None:
+        page = self.page("ada")
+        page.goto(f"/projects/{self.ids['project']}")
+        stream = page.get_by_role("region", name="Messages")
+        expect(stream.locator(f"#message-{self.ids['later']}")).to_be_visible()
+        order = self.stream_order(page)
+        question = order.index(f"message-{self.ids['question']}")
+        self.assertEqual(order[question:], [f"message-{self.ids['question']}", f"task:{self.ids['from_message']}", f"task:{self.ids['measure']}",
+                                            f"message-{self.ids['first']}", f"message-{self.ids['later']}"],
+                         "announcements sit in time order between the roots, and the first contribution is the task's root")
+        made = self.notice(page, self.ids["from_message"])
+        expect(made).to_have_count(1)
+        expect(made.locator(".convo-notice__meta")).to_have_text("New task · Jonas Berg")
+        expect(made.get_by_role("button", name=f"Open task: {FROM_MESSAGE}")).to_be_visible()
+        expect(self.notice(page, self.ids["measure"]).locator(".convo-notice__meta")).to_have_text("New task · Ada Kowalska · you")
+        # An announcement is not a message: no replies, no actions, no avatar.
+        for work_id in (self.ids["from_message"], self.ids["measure"]):
+            item = self.notice(page, work_id)
+            expect(item.get_by_role("button", name=re.compile("Reply|Create work|Details"))).to_have_count(0)
+            expect(item.locator(".ui-avatar")).to_have_count(0)
+        # The early task's announcement waits with the earlier roots, then appears in its place.
+        expect(self.notice(page, self.ids["early"])).to_have_count(0)
+        stream.get_by_role("button", name="Load earlier messages").click()
+        expect(self.notice(page, self.ids["early"])).to_have_count(1)
+        order = self.stream_order(page)
+        self.assertLess(order.index(f"task:{self.ids['early']}"), order.index(f"message-{self.ids['question']}"))
+        self.assertEqual(self.counts(page)[0], 3, "exactly one announcement per task")
+        self.assertEqual(page.locator(".convo-notice").count(), 3)
+        page.locator(f"#message-{self.ids['first']}").scroll_into_view_if_needed()
+        shot(page, "task-announcements-desktop")
+
+    def test_02_the_announcement_opens_that_task(self) -> None:
+        page = self.page("ada")
+        page.goto(f"/projects/{self.ids['project']}")
+        made = self.notice(page, self.ids["from_message"])
+        made.get_by_role("button", name=f"Open task: {FROM_MESSAGE}").click()
+        details = page.locator("#details")
+        expect(details.get_by_role("heading", name=FROM_MESSAGE)).to_be_visible()
+        # The task made from the question also shows under the question itself, as before.
+        question = page.locator(f"#message-{self.ids['question']}")
+        expect(question.get_by_role("button", name=f"Work: {FROM_MESSAGE}")).to_be_visible()
+
+    def test_03_the_first_contribution_is_the_tasks_root(self) -> None:
+        page = self.page("ada")
+        page.goto(f"/projects/{self.ids['project']}")
+        root = page.locator(f"#message-{self.ids['first']}")
+        expect(root.locator(".project-convo__message-meta strong")).to_have_text("Jonas Berg")
+        expect(root.locator("p").first).to_have_text(FIRST_WORD)
+        chip = root.get_by_role("button", name=f"Discussion of task: {MEASURE}")
+        expect(chip).to_be_visible()
+        expect(chip).to_contain_text("Open")
+        root.get_by_role("button", name=re.compile("^1 reply")).click()
+        thread = page.locator("#thread")
+        expect(thread.locator(".project-convo__message", has_text=FIRST_REPLY)).to_be_visible()
+        header_chip = thread.get_by_role("button", name=f"Discussion of task: {MEASURE}")
+        expect(header_chip).to_be_visible()
+        shot(page, "task-announcements-thread")
+        # A reply here is the task's discussion: the API's task thread has it under the same root.
+        composer = thread.get_by_label("Reply", exact=True)
+        composer.fill("Numbers at 5 lux: 97% of waves caught.")
+        thread.get_by_role("button", name="Send reply").click()
+        expect(thread.locator(".project-convo__message", has_text="Numbers at 5 lux")).to_be_visible()
+        discussion = self.api(page, "GET", f"/api/v1/work/{self.ids['measure']}/discussion", status=200)
+        self.assertEqual(discussion["rootMessageId"], self.ids["first"])
+        self.assertEqual([message["body"] for message in discussion["messages"]][-1], "Numbers at 5 lux: 97% of waves caught.")
+        header_chip.click()
+        expect(page.locator("#details").get_by_role("heading", name=MEASURE)).to_be_visible()
+
+    def test_04_opening_rendering_and_reloading_create_nothing(self) -> None:
+        page = self.page("jonas")
+        before = self.counts(page)
+        page.goto(f"/projects/{self.ids['project']}")
+        expect(self.notice(page, self.ids["measure"])).to_be_visible()
+        self.notice(page, self.ids["measure"]).get_by_role("button", name=f"Open task: {MEASURE}").click()
+        expect(page.locator("#details").get_by_role("heading", name=MEASURE)).to_be_visible()
+        for _ in range(2):
+            page.reload()
+            expect(self.notice(page, self.ids["measure"])).to_be_visible()
+        page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['thread']}")
+        expect(page.locator("#thread")).to_be_visible()
+        self.assertEqual(self.counts(page), before, "no announcement, task or root comes from reading")
+        expect(page.locator(".convo-notice")).to_have_count(2)
+
+    def test_05_a_new_task_appears_at_the_end_for_someone_reading_it(self) -> None:
+        page = self.page("ada")
+        page.goto(f"/projects/{self.ids['project']}")
+        last = page.locator(f"#message-{self.ids['later']}")
+        expect(last).to_be_in_viewport()
+        jonas = self.page("jonas")
+        created = self.api(jonas, "POST", f"/api/v1/projects/{self.ids['project']}/work",
+                           {"title": LIVE_TASK, "clientCommandId": str(uuid.uuid4())}, status=201)
+        arrived = self.notice(page, created["id"])
+        expect(arrived).to_have_count(1, timeout=25000)
+        expect(arrived.locator(".convo-notice__meta")).to_have_text("New task · Jonas Berg")
+        expect(arrived, "a reader at the end follows the new announcement").to_be_in_viewport()
+        self.assertEqual(self.stream_order(page)[-1], f"task:{created['id']}")
+        self.ids["live"] = created["id"]
+
+    def test_06_create_work_from_a_message_announces_it_once(self) -> None:
+        page = self.page("ada")
+        page.goto(f"/projects/{self.ids['project']}")
+        before = self.counts(page)
+        later = page.locator(f"#message-{self.ids['later']}")
+        later.hover()
+        later.get_by_role("button", name="Create work").click()
+        details = page.locator("#details")
+        expect(details.get_by_role("heading", name=LATER)).to_be_visible()
+        work = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100", status=200)
+        made = next(item for item in work["items"] if item["title"] == LATER)
+        expect(self.notice(page, made["id"])).to_have_count(1)
+        expect(self.notice(page, made["id"]).locator(".convo-notice__meta")).to_have_text("New task · Ada Kowalska · you")
+        self.assertEqual(self.counts(page), (before[0] + 1, before[1] + 1, before[2]), "one task and one announcement; no root")
+
+    def test_07_a_reader_sees_announcements_and_opens_the_task(self) -> None:
+        page = self.page("lee")
+        page.goto(f"/projects/{self.ids['project']}")
+        made = self.notice(page, self.ids["measure"])
+        expect(made.locator(".convo-notice__meta")).to_have_text("New task · Ada Kowalska")
+        made.get_by_role("button", name=f"Open task: {MEASURE}").click()
+        expect(page.locator("#details").get_by_role("heading", name=MEASURE)).to_be_visible()
+        expect(page.get_by_role("button", name="Create work")).to_have_count(0)
+
+    def test_08_phone_keeps_the_announcement_one_line_and_readable(self) -> None:
+        for viewport, dark in (({"width": 390, "height": 844}, True), ({"width": 320, "height": 640}, False)):
+            with self.subTest(width=viewport["width"]):
+                page = self.page("ada", phone=True, dark=dark, viewport=viewport)
+                page.goto(f"/projects/{self.ids['project']}")
+                made = self.notice(page, self.ids["from_message"])
+                made.scroll_into_view_if_needed()
+                button = made.get_by_role("button", name=f"Open task: {FROM_MESSAGE}")
+                box, row = button.bounding_box(), made.bounding_box()
+                assert box and row
+                self.assertGreaterEqual(box["height"], 44, "the link is a full touch target")
+                self.assertLessEqual(row["x"] + row["width"], viewport["width"], "no sideways overflow")
+                title = made.locator(".convo-notice__title")
+                height = title.evaluate("node => node.getBoundingClientRect().height")
+                line = title.evaluate("node => parseFloat(getComputedStyle(node).lineHeight) || node.getBoundingClientRect().height")
+                self.assertLessEqual(height, line + 1, "a long title stays on one line")
+                self.assertEqual(page.evaluate("document.documentElement.scrollWidth <= innerWidth"), True)
+                shot(page, f"task-announcements-phone-{viewport['width']}{'-dark' if dark else ''}")
+
+
+if __name__ == "__main__":
+    unittest.main()
