@@ -27,6 +27,9 @@ ALTER TABLE personal_run_enablements
   DROP CONSTRAINT personal_run_enablements_legacy_consent_check,
   DROP CONSTRAINT personal_run_enablements_consent_provider_check,
   DROP CONSTRAINT personal_run_enablements_consent_version_check,
+  DROP CONSTRAINT personal_run_enablements_consent_model_check,
+  -- The guard above leaves only legacy Anthropic consents, whose model is claude-sonnet-5.
+  ADD CONSTRAINT personal_run_enablements_consent_model_check CHECK (length(consent_model) BETWEEN 1 AND 100),
   ADD CONSTRAINT personal_run_enablements_consent_provider_check CHECK (consent_provider = 'anthropic'),
   ADD CONSTRAINT personal_run_enablements_consent_version_check CHECK (consent_version = 'o-008-2026-09-28');
 DROP INDEX background_compute_connections_background_owner_idx;

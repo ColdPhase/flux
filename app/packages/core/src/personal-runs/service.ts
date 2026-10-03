@@ -107,9 +107,12 @@ export async function usableConnection(connections: PersonalConnectionLookup, pr
   if (!providerEnabled) return { problem: 'provider_off' };
   // The connection the consent names, and no other (PROV-1): removing it stops the assistant.
   const connection = enablement.connectionId ? await connections.resolve(enablement.ownerUserId, enablement.connectionId) : null;
-  if (!connection || connection.status !== 'active' || connection.ownerUserId !== enablement.ownerUserId) return { problem: 'no_connection' };
-  // The consent was given for one connection; a replaced key needs a new consent.
-  if (connection.id !== enablement.connectionId) return { problem: 'connection_changed' };
+  if (!connection || connection.status !== 'active' || connection.ownerUserId !== enablement.ownerUserId || connection.id !== enablement.connectionId) {
+    // The consent was given for one connection. When it is gone but the owner has another, say so:
+    // that one needs its own consent, so the assistant is enabled again on it.
+    const other = await connections.resolve(enablement.ownerUserId);
+    return { problem: other && other.status === 'active' && other.ownerUserId === enablement.ownerUserId ? 'connection_changed' : 'no_connection' };
+  }
   const reservedMicros = runReservationMicros(connection.price);
   if (reservedMicros === null) return { problem: 'price_unknown' };
   if (reservedMicros > centsToMicros(enablement.perRunCents)) return { problem: 'run_cost_over_limit' };

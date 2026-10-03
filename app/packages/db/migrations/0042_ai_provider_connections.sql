@@ -54,9 +54,12 @@ UPDATE background_compute_connections
   SET input_price_micros_per_mtok = 2000000, output_price_micros_per_mtok = 10000000,
     price_source = 'table', price_checked_on = DATE '2026-09-28';
 
+-- A consent names the connection's model, which may now be any id up to 200 characters.
 ALTER TABLE personal_run_enablements
   DROP CONSTRAINT personal_run_enablements_consent_version_check,
   DROP CONSTRAINT personal_run_enablements_consent_provider_check,
+  DROP CONSTRAINT personal_run_enablements_consent_model_check,
+  ADD CONSTRAINT personal_run_enablements_consent_model_check CHECK (length(consent_model) BETWEEN 1 AND 200),
   ADD CONSTRAINT personal_run_enablements_consent_version_check
     CHECK (consent_version IN ('o-008-2026-09-28', 'o-008-2026-10-02')),
   ADD CONSTRAINT personal_run_enablements_consent_provider_check

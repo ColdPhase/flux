@@ -70,7 +70,8 @@ async function recheck(ports: PersonalRunPorts, connections: PersonalConnectionL
   const agent: Principal = { kind: 'agent', id: run.agentId };
   if (!(await ports.access.canInvoke(owner, run.agentId, { lock }))) return { refusal: 'revoked' };
   if (!compute.enabled) return { refusal: 'unavailable' };
-  const connection = await connections.resolve(run.ownerUserId);
+  // Exactly the connection the run was started on (PROV-1), never the owner's newest or another.
+  const connection = run.connectionId ? await connections.resolve(run.ownerUserId, run.connectionId) : null;
   if (!connection || connection.status !== 'active' || connection.ownerUserId !== run.ownerUserId
     || connection.id !== run.connectionId || connection.id !== enablement.connectionId) return { refusal: 'unavailable' };
   // The sources are the intersection of the owner's rights and the agent grant in this project;
@@ -245,7 +246,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       // Preflight counting is a provider call that sends the input: it runs outside any
       // transaction, on the owner's own connection, and only after the same recheck as a dispatch
       // (stop, enablement, agent, owner and agent access, cap, connection) before every request.
-      const connection = await connections.resolve(run.ownerUserId);
+      const connection = run.connectionId ? await connections.resolve(run.ownerUserId, run.connectionId) : null;
       const beforeSend = (): Promise<PersonalRunOutcome | null> => uow.run(async (ports) => {
         const current = await ports.runs.findRun(run.id, { lock: true });
         if (!current || current.status !== 'reading') return current?.status ?? 'skipped';

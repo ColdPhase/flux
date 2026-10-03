@@ -223,6 +223,51 @@ class AiConnectionSettings(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Your assistant")).to_be_visible()
         self.assertNotIn("Anthropic API key", page.locator("body").inner_text())
 
+    def test_08_the_assistant_consent_names_exactly_the_connection_chosen(self) -> None:
+        """#192 review B2: with several connections, the disclosure, the consent sentence and the request all
+        follow the connection selected, never the server's default. The UI suite runs personal runs on a test
+        fixture, so the status is stubbed as "ready to enable" and the enable request is answered with a refusal."""
+        page = self.page()
+        headers = {"origin": ORIGIN}
+        ws = page.request.post(f"{ORIGIN}/api/v1/workspaces", data={"name": "Sensor lab"}, headers=headers)
+        self.assertEqual(ws.status, 201, ws.text())
+        agent = page.request.post(f"{ORIGIN}/api/v1/workspaces/{ws.json()['id']}/agents", data={"name": "Ada's assistant", "owner": "self"}, headers=headers)
+        self.assertEqual(agent.status, 201, agent.text())
+        owned = page.request.get(f"{ORIGIN}/api/v1/background-compute-connections").json()
+        self.assertEqual(len(owned), 2, "the endpoint and the Anthropic connection from the earlier tests")
+        real = page.request.get(f"{ORIGIN}/api/v1/personal-assistant").json()
+        stub = {**real, "state": "not_enabled", "unavailableReason": None, "enablement": None, "setup": {"provider": "on", "connection": "active"}}
+        sent: list[dict] = []
+
+        def fulfil(route) -> None:
+            if route.request.method == "GET":
+                route.fulfill(status=200, content_type="application/json", body=json.dumps(stub))
+            elif route.request.method == "POST":
+                sent.append(json.loads(route.request.post_data or "{}"))
+                route.fulfill(status=409, content_type="application/json", body=json.dumps({"code": "PERSONAL_RUN_CONNECTION_REQUIRED", "message": "Stubbed refusal"}))
+            else:
+                route.continue_()
+
+        page.route("**/api/v1/personal-assistant", fulfil)
+        page.goto("/settings/assistant")
+        select = page.get_by_label("AI connection")
+        facts = page.locator(".aset__facts")
+        consent = page.locator(".aset__consent")
+        for item in owned:
+            select.select_option(value=item["id"])
+            provider = "your own endpoint" if item["provider"] == "openai_compatible" else {"anthropic": "Anthropic"}[item["provider"]]
+            expect(consent).to_contain_text(f"are sent to {provider} under")
+            expect(facts).to_contain_text(item["model"])
+            expect(facts).to_contain_text(f"{item['payerOrganization']} · {item['providerWorkspace']}")
+        shot(page, "ai-connections-1440-assistant-consent-chosen")
+        chosen = owned[-1]
+        select.select_option(value=chosen["id"])
+        page.get_by_role("checkbox", name=re.compile("^I agree that excerpts")).check()
+        page.get_by_role("button", name="Turn on my assistant").click()
+        expect(page.get_by_role("alert")).to_contain_text("Nothing was turned on")
+        self.assertEqual(len(sent), 1)
+        self.assertEqual(sent[0].get("connectionId"), chosen["id"], "the request names the connection the consent described")
+
 
 if __name__ == "__main__":
     unittest.main()

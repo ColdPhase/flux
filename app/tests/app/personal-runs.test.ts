@@ -586,4 +586,33 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     } finally { hooks.afterDispatch = previous; }
   });
 
+  test('PROV-1: runs use the connection the assistant was enabled on, never the owner\'s newer one', async () => {
+    // Hubert's assistant is enabled on `hubertConnection`. He adds a newer connection, and while a
+    // run is out at the provider, another: neither takes the run over or withholds its answer.
+    const newer = randomUUID();
+    connections.connect(hubert.id, newer, { provider: 'openrouter', model: 'vendor/newer-model' });
+    const latest = randomUUID();
+    const previous = hooks.afterDispatch;
+    try {
+      assert.equal((await runs.status(human(hubert))).state, 'ready', 'a newer connection changes nothing for the assistant');
+      const run = await ask(hubert, `On the consented connection ${randomUUID()}`);
+      const dispatched = compute.dispatched.length;
+      hooks.afterDispatch = async () => { connections.connect(hubert.id, latest, { provider: 'openai', model: 'gpt-latest' }); };
+      assert.equal(await processor.process(run.run.id), 'completed', 'a connection added mid-run does not withhold the paid answer');
+      assert.equal(compute.dispatched.length, dispatched + 1);
+      const sent = compute.dispatched.at(-1)!;
+      assert.deepEqual([sent.connection.id, sent.connection.provider, sent.model], [hubertConnection, 'anthropic', 'claude-sonnet-5']);
+      assert.ok((await row(run.run.id)).answer_body, 'the answer was posted');
+      // Removing the consented one stops the assistant, and says that another one needs its own consent.
+      connections.disconnect(hubert.id, hubertConnection);
+      assert.equal((await runs.status(human(hubert))).unavailableReason, 'connection_changed');
+      await assert.rejects(ask(hubert), { code: 'PERSONAL_RUN_UNAVAILABLE' });
+    } finally {
+      hooks.afterDispatch = previous;
+      connections.disconnect(hubert.id, newer);
+      connections.disconnect(hubert.id, latest);
+      connections.connect(hubert.id, hubertConnection);
+    }
+  });
+
 });
