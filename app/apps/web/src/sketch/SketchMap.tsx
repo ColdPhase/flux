@@ -141,7 +141,7 @@ export function SketchMap(props: SketchMapProps) {
     const minY = Math.min(...boxes.map((r) => r.y)) - PAD;
     const maxX = Math.max(...boxes.map((r) => r.x + r.w)) + PAD;
     const maxY = Math.max(...boxes.map((r) => r.y + r.h)) + PAD;
-    // The noncompact canvas excludes the controls strip, including at the readable zoom floor.
+    // The canvas excludes the controls strip, including at the existing Fit zoom floor.
     // Round down so a fitted graph never grows beyond that measured viewport.
     const z = Math.max(coarseRef.current ? FIT_MIN_COARSE : FIT_MIN, Math.floor(Math.min(1, canvas.clientWidth / (maxX - minX), canvas.clientHeight / (maxY - minY)) * 100) / 100);
     setZoom(z);
@@ -286,7 +286,7 @@ export function SketchMap(props: SketchMapProps) {
   const plus = last && lastThought && !editing && !connectFrom && canWrite && !offset ? place(last) : null;
 
   return (
-    <div className={`sk-canvas-wrap${compact ? '' : ' sk-canvas-wrap--controls'}`}>
+    <div className="sk-canvas-wrap sk-canvas-wrap--controls">
     <div className={`sk-canvas${panning ? ' is-panning' : ''}${connectFrom ? ' is-connecting' : ''}`} ref={canvasRef} role="group"
       aria-label={`Sketch: ${sketch.title}`} aria-describedby={helpId} onWheel={onWheel}>
       <div className="sk-zoomed" style={{ width: width * zoom, height: height * zoom }}
