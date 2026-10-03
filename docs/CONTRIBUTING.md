@@ -71,8 +71,9 @@ issue.
    git switch -c fix/short-description upstream/main
    ```
 
-3. Start the application with `./flux up` (or `./flux dev` for hot reload), as described
-   in the [application foundation guide](development/application-foundation.md#one-command-start-flux-issue-72).
+3. Start the application with `./flux up` (or `./flux dev` for hot reload) and, for
+   sample data with two logins, `./flux demo`, as described in the
+   [application foundation guide](development/application-foundation.md#one-command-start-flux-issue-72).
    To work on the historical prototype instead, serve it with Python 3:
 
    ```sh
@@ -96,11 +97,19 @@ contribute through a fork.
 ## Verify your change
 
 Application changes: run the Docker suite, which builds, type checks, lints and
-runs the application, architecture and browser tests against a disposable stack:
+runs the API, architecture and end-to-end tests against a disposable stack. Changes
+to the web app also need the browser suite:
 
 ```sh
 ./scripts/check_application.sh
+./scripts/check_ui.sh
 ```
+
+Each script uses its own Compose project; set `FLUX_TEST_PORT`/`FLUX_TEST_MAILPIT_PORT`
+or `FLUX_UI_PORT`/`FLUX_UI_MAILPIT_PORT` when the default ports are taken. Run one suite
+at a time on a small machine.
+[Architecture § Tests](development/architecture.md#tests) says which check runs which tests
+and where a new test goes.
 
 Repository and documentation checks:
 
@@ -110,8 +119,10 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 git diff --check
 ```
 
-GitHub Actions runs these checks on pull requests. For UI and prototype changes,
-also verify the behavior in a browser and describe your checks:
+GitHub Actions runs the repository checks and a fast application check (build, type
+check, lint, architecture and core tests) on pull requests; it does not run the Docker
+suites above, so mention which ones you ran. For UI and prototype changes, also verify
+the behavior in a browser and describe your checks:
 
 - Reproduce the issue before the fix and check the same steps afterward.
 - Check the browser console for new errors.

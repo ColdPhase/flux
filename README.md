@@ -3,18 +3,37 @@
 An open source, self-hostable workspace where people and AI agents work on the same
 projects: conversations, and the tasks, documents and decisions that come out of them.
 
+<p align="center">
+  <img src="docs/assets/readme/conversation-desktop.png" width="74%" alt="A Flux project conversation on a desktop: the sidebar lists projects and conversations; messages show the task and decisions made from them; the project's current decision, rule, work and results sit under its name.">
+  <img src="docs/assets/readme/conversation-phone.png" width="21%" alt="The same project conversation on a phone, with one line for the project's state and the reply box at the bottom.">
+</p>
+
+<p align="center"><sub>A project conversation on a 1440&nbsp;px desktop and a 390&nbsp;px phone, captured from the running
+application with fictional test data (<a href="docs/assets/readme/README.md">how these were made</a>).</sub></p>
+
 The [product foundation](docs/product/README.md) describes the direction: human and
 agent collaboration, continuity of project knowledge, self-hosting and extensibility.
 
 ## Project status
 
-**Early development, not released.** There is no stable version, upgrade path or
-supported deployment yet; do not use it for sensitive data or production teams.
+**Pre-release.** No version has been published yet, so there is no upgrade promise or
+supported deployment; do not use it for sensitive data or production teams.
 
-What exists on `main` today is a Docker Compose stack (API, worker, PostgreSQL,
-queue and a browser/PWA shell) with email/password accounts and sessions in the API,
-the workspace/project access policy, and notification/Web Push plumbing. The collaborative workspace itself is
-being built in the [current milestone](https://github.com/ColdPhase/flux/milestones).
+The application runs as a Docker Compose stack (API, worker, PostgreSQL and a browser/PWA
+client) and covers the core loop of working together:
+
+- accounts with email sign-in and password reset, and workspace and project access;
+- project conversations whose messages become tasks, decisions and results, with each
+  project's map, tasks and wiki;
+- direct messages, a private sketchbook, search, an inbox with Web Push notifications and
+  a summary of what changed since you left;
+- connecting your own MCP-capable AI agent to the projects you choose, and an optional
+  in-app assistant that uses a model provider key you connect;
+- optional self-hosted live audio/video, and backups, restore, project export and upgrades
+  through `./flux`.
+
+The [current milestone](https://github.com/ColdPhase/flux/milestone/2) tracks the rest of
+the first release, including installation and notifications on real phones and tablets.
 
 `flux-ux-v8.html` is an earlier single-file UX prototype (Polish interface, browser
 storage only). It is design inspiration, not the application; see the
@@ -41,14 +60,20 @@ upgrades (`./flux backup`, `restore`, `export`, `upgrade`) are described in
 launcher, configuration, backups and the integration fixture;
 [containers](docs/development/containers.md) describes every service and variable.
 
-Run the checks (build, type check, lint, tests and browser checks, all in Docker):
+Run the checks, all in Docker. Each run uses its own Compose project and removes only its
+own test data:
 
 ```sh
-./scripts/check_application.sh
-./scripts/check_flux_cli.sh
-./scripts/check_backup.sh
+./scripts/check_application.sh   # build, type check, lint, API, architecture and end-to-end tests
+./scripts/check_ui.sh            # browser tests of the web app (Playwright)
+./scripts/check_runtime.sh       # production-mode stack: worker jobs, migration and restart keep data
 python3 scripts/check_agent_setup.py
+python3 -m unittest discover -s tests -p 'test_*.py'
 ```
+
+Changes to the launcher or operations also have `./scripts/check_flux_cli.sh` and
+`./scripts/check_backup.sh`. [Contributing](docs/CONTRIBUTING.md) says which checks fit
+which change.
 
 ## Repository layout
 
