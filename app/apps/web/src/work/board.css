@@ -54,7 +54,8 @@
 
 .tb-board { flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 26px; padding: 24px var(--space-page) 32px; }
 .tb-col { display: flex; flex-direction: column; min-width: 0; }
-.tb-col__head { display: flex; align-items: center; gap: 8px; min-height: 25px; padding-bottom: 14px; margin-bottom: 15px; border-bottom: 1px solid var(--line); }
+/* Every column header is as tall as the ones with a "+" button, so the three line up. */
+.tb-col__head { display: flex; align-items: center; gap: 8px; min-height: 33px; padding-bottom: 14px; margin-bottom: 15px; border-bottom: 1px solid var(--line); }
 .tb-col__h { font-size: var(--fs-md); font-weight: 500; line-height: 1.4; color: var(--text); }
 .tb-col__n { font-size: var(--fs-sm); color: var(--text-3); font-variant-numeric: tabular-nums; }
 .tb-col__b { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-sm); font-weight: 500; color: var(--warning); }
@@ -64,7 +65,10 @@
   flex: 1; display: flex; flex-direction: column; min-height: 140px; margin: -6px; padding: 6px; border-radius: 10px;
   transition: background-color var(--dur-2) ease, box-shadow var(--dur-2) ease;
 }
-.tb-col__cards.is-over { background: color-mix(in srgb, var(--accent) 5%, var(--bg)); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 42%, transparent); }
+/* The drop or keyboard target: a solid accent outline (at least 3:1) and a light tint. */
+.tb-col__cards.is-over { background: color-mix(in srgb, var(--accent) 8%, var(--bg)); box-shadow: 0 0 0 2px var(--accent); }
+.tb-note--moving { background: color-mix(in srgb, var(--accent) 8%, var(--bg)); }
+.tb-note--moving svg { color: var(--accent); }
 .tb-col__list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 12px; align-content: start; margin: 0; padding: 0; list-style: none; }
 .tb-col__empty { padding: 14px 1px 18px; font-size: var(--fs-md); color: var(--text-3); }
 

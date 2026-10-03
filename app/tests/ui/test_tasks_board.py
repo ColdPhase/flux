@@ -349,10 +349,14 @@ class TasksBoardJourney(unittest.TestCase):
         expect(page.locator(".is-over")).to_have_count(1)
         page.keyboard.press("ArrowLeft")
         expect(doing.locator(".tb-col__cards")).to_have_class(re.compile("is-over"))
+        # The destination and the keys are on screen too, not only announced (visual review of #194).
+        expect(page.locator(".tb-note--moving")).to_contain_text(f"Moving “{MOUNT}” to In progress")
+        expect(page.locator(".tb-note--moving")).to_contain_text("Enter or Space drops it")
         shot(page, "tasks-board-1440-keyboard")
         # Escape cancels without a change.
         page.keyboard.press("Escape")
         expect(page.locator(".is-over")).to_have_count(0)
+        expect(page.locator(".tb-note--moving")).to_have_count(0)
         expect(mount).not_to_have_class(re.compile("is-lifted"))
         expect(spoken).to_contain_text("Cancelled.")
         self.assertEqual(self.task(page, "mount")["status"], "open")

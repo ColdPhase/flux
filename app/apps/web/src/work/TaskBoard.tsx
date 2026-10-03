@@ -493,6 +493,14 @@ export function TaskBoard({ project, lists, meId, mine, query, writable, adding,
     <div className="tb-wrap">
       <p id={hintId} className="ui-vh">Space picks the task up to move it between columns. “Move to…” offers the same choices.</p>
       <p className="ui-vh" aria-live="polite">{spoken}</p>
+      {/* While a card is picked up by keyboard, say where it goes and how, on screen too (the live
+          region above already speaks it, so this copy is hidden from assistive technology). */}
+      {lifted ? (
+        <p className="tb-note tb-note--moving" aria-hidden="true">
+          <Icon name="tasks" size={14} />
+          <span>Moving “{items.find((item) => item.id === lifted.id)?.title ?? 'task'}” to <b>{LABEL[lifted.to]}</b>. ← → choose a column · Enter or Space drops it · Esc cancels.</span>
+        </p>
+      ) : null}
       {/* A narrow board shows one column at a time; this overview names every status and what is blocked. */}
       <nav className="tb-overview" aria-label="Task status">
         {COLUMNS.map((column) => (
