@@ -155,7 +155,7 @@ class DocsJourney(unittest.TestCase):
         text.press("Control+k")
         picker = page.get_by_role("dialog", name="Link to something in this project")
         picker.get_by_role("combobox").fill("ToF distance")
-        expect(picker.get_by_role("option").first).to_contain_text(RULE)
+        expect(picker.get_by_role("listbox", name="Matches").get_by_role("option").first).to_contain_text(RULE)
         picker.get_by_role("combobox").press("Enter")
         expect(text).to_have_value(re.compile(re.escape(f"[{RULE}](flux:decision/{self.decision_id})")))
         # Both panes on a wide screen; the preview is rendered by the server.

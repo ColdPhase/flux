@@ -49,7 +49,7 @@ export function LinkPicker({ projectId, workspaceId, selfId, onPick, onClose }: 
   const revalidator = useRevalidator();
   const [query, setQuery] = useState('');
   const [type, setType] = useState<ReferenceType>('all');
-  const [active, setActive] = useState(0);
+  const [position, setPosition] = useState({ key: '', index: 0 });
   const [refresh, setRefresh] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
@@ -76,9 +76,11 @@ export function LinkPicker({ projectId, workspaceId, selfId, onPick, onClose }: 
     return type === 'all' ? found.slice(0, 40) : found;
   }, [failed, busy, other, type, decisions.page, results.page, work.page, needle]);
   const native = type === 'decision' ? decisions : type === 'result' ? results : type === 'work' ? work : null;
-  const pageIdentity = native?.page?.summary.observedAt;
+  const activeKey = JSON.stringify([me.user.id, projectId, workspaceId, selfId, type, query, ...nativeReads.map(({ page }) => page?.summary.observedAt)]);
+  const active = position.key === activeKey ? Math.max(0, Math.min(position.index, shown.length - 1)) : 0;
+  const setActive = (next: number | ((index: number) => number)) => setPosition((previous) => ({ key: activeKey,
+    index: typeof next === 'function' ? next(previous.key === activeKey ? previous.index : 0) : next }));
   useEffect(() => { inputRef.current?.focus(); }, []);
-  useEffect(() => { setActive(0); }, [me.user.id, projectId, type, query, pageIdentity]);
   useEffect(() => {
     const list = listRef.current, option = document.getElementById(`${listId}-${active}`);
     if (!list || !option) return;
