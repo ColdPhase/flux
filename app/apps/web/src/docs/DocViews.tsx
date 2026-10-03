@@ -200,6 +200,8 @@ export function DocReader() {
       if (event.key.toLowerCase() !== 'e' || event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented || isTyping(event.target)) return;
       const target = event.target as HTMLElement | null;
       if (document.getElementById('root')?.inert || (target && target !== document.body && !target.closest('.wiki-frame, #content'))) return;
+      // Not while Share or Download is open, even with focus on one of its buttons.
+      if (target?.closest('[role="dialog"]')) return;
       event.preventDefault();
       navigate(edit);
     };

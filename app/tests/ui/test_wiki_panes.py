@@ -289,7 +289,8 @@ class WikiPanesJourney(unittest.TestCase):
         search.press("Escape")
         expect(search).to_have_value("")
         expect(index.locator(".wiki-page")).to_have_count(3)
-        expect(index.get_by_role("status")).to_have_count(0)
+        # The count stays mounted (so changes are announced) and says nothing without a search.
+        expect(index.get_by_role("status")).to_have_text("")
 
     # ---------------------------------------------------------------- new page and import
 

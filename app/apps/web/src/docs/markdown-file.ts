@@ -35,9 +35,15 @@ export function splitTitle(text: string, fileName: string): { title: string; bod
   return { title: titleFromName(fileName), body: text };
 }
 
+/** Shortens to the server's limit, counted as it counts (UTF-16 units), never splitting a character. */
 function clip(value: string, limit: number) {
-  const chars = [...value];
-  return chars.length > limit ? chars.slice(0, limit).join('').trimEnd() : value;
+  if (value.length <= limit) return value;
+  let out = '';
+  for (const char of value) {
+    if (out.length + char.length > limit) break;
+    out += char;
+  }
+  return out.trimEnd();
 }
 
 /**

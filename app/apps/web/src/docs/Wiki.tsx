@@ -78,6 +78,9 @@ function WikiIndex({ activeId, hidden }: { activeId: string | null; hidden: bool
   const [query, setQuery] = useState('');
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState('');
+  // A refused import is about that attempt: opening another page clears it.
+  const [errorFor, setErrorFor] = useState(activeId);
+  if (errorFor !== activeId) { setErrorFor(activeId); if (error) setError(''); }
   const fileRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const searchId = useId();
@@ -137,7 +140,8 @@ function WikiIndex({ activeId, hidden }: { activeId: string | null; hidden: bool
             onKeyDown={(event) => { if (event.key === 'Escape' && query) { event.stopPropagation(); setQuery(''); } }} />
         </div>
       ) : null}
-      {needle ? <p className="wiki-index__count" role="status">{shown.length ? `${shown.length} ${shown.length === 1 ? 'page' : 'pages'}` : `No pages match “${query.trim()}”.`}</p> : null}
+      {/* Mounted while the index is shown, so a changed count is announced. */}
+      <p className="wiki-index__count" role="status">{needle ? (shown.length ? `${shown.length} ${shown.length === 1 ? 'page' : 'pages'}` : `No pages match “${query.trim()}”.`) : ''}</p>
       {shown.length ? (
         <ul ref={listRef} className="wiki-pages">
           {shown.map((doc) => (
