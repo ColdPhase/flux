@@ -70,4 +70,3 @@ export function registerAgentPolicyResource(server: McpServer, db: Database, cla
     return { contents: [{ uri: uri.href, mimeType: 'text/markdown', text: renderAgentPolicy(value) }] };
   });
 }
-

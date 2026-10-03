@@ -86,19 +86,29 @@ function field(value: unknown, name: string): string {
   return value;
 }
 
+/**
+ * A project id as PostgreSQL returns it (lowercase), so the digest, the stored row and every reader
+ * name the same identity whatever case the request used; anything else is not a project.
+ */
+function canonicalProject(projectId: string, missing: () => Error): string {
+  if (!isUuid(projectId)) throw missing();
+  return projectId.toLowerCase();
+}
+
 export function agentPolicyUseCases(uow: AgentPolicyUnitOfWork) {
   return {
     /** The approved policy, readable by whoever can read the project now; null before the first publish. */
-    current: (principal: Principal, projectId: string) => uow.run(async (ports) => {
-      if (!isUuid(projectId)) throw new NotFoundError('Project', 'PROJECT_NOT_FOUND');
+    current: (principal: Principal, requestedProject: string) => uow.run(async (ports) => {
+      const projectId = canonicalProject(requestedProject, () => new NotFoundError('Project', 'PROJECT_NOT_FOUND'));
       await ports.requireProject(principal, projectId, 'project.read');
       const record = await ports.rows.current(projectId);
       return record ? agentPolicyView(record) : null;
     }),
 
     /** One stored revision, for a resumed agent comparing what it loaded. */
-    revision: (principal: Principal, projectId: string, revision: number) => uow.run(async (ports) => {
-      if (!isUuid(projectId) || !Number.isInteger(revision) || revision < 1 || revision > MAX_REVISION) throw new NotFoundError('Policy', 'POLICY_NOT_FOUND');
+    revision: (principal: Principal, requestedProject: string, revision: number) => uow.run(async (ports) => {
+      const projectId = canonicalProject(requestedProject, () => new NotFoundError('Policy', 'POLICY_NOT_FOUND'));
+      if (!Number.isInteger(revision) || revision < 1 || revision > MAX_REVISION) throw new NotFoundError('Policy', 'POLICY_NOT_FOUND');
       await ports.requireProject(principal, projectId, 'project.read');
       const record = await ports.rows.revision(projectId, revision);
       if (!record) throw new NotFoundError('Policy', 'POLICY_NOT_FOUND');
@@ -106,8 +116,8 @@ export function agentPolicyUseCases(uow: AgentPolicyUnitOfWork) {
     }),
 
     /** A project manager publishes the next revision, from the revision they saw. */
-    publish: (principal: Principal, projectId: string, command: PublishAgentProjectPolicyCommand) => uow.run(async (ports) => {
-      if (!isUuid(projectId)) throw new NotFoundError('Project', 'PROJECT_NOT_FOUND');
+    publish: (principal: Principal, requestedProject: string, command: PublishAgentProjectPolicyCommand) => uow.run(async (ports) => {
+      const projectId = canonicalProject(requestedProject, () => new NotFoundError('Project', 'PROJECT_NOT_FOUND'));
       const content = { scope: field(command?.scope, 'scope'), priorities: field(command?.priorities, 'priorities'),
         reviewCriteria: field(command?.reviewCriteria, 'reviewCriteria'), allowedWork: field(command?.allowedWork, 'allowedWork') };
       const expected = command?.expectedRevision;

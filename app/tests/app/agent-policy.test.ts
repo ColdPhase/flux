@@ -102,6 +102,17 @@ describe('approved project policy', () => {
     assert.deepEqual([lost.code, lost.currentVersion], ['VERSION_CONFLICT', seen.revision + 1]);
   });
 
+  test('a project id written in upper case names the same canonical policy and digest (#214 review B1)', async () => {
+    const { policy: seen } = expect(await viewer.request('GET', path()), 200) as { policy: AgentProjectPolicy };
+    const upper = `/api/v1/projects/${projectId.toUpperCase()}/agent-policy`;
+    const published = expect(await owner.request('PUT', upper, { body: body(seen.revision, 'Published through an upper-case address') }), 201) as unknown as AgentProjectPolicy;
+    assert.equal(published.projectId, projectId, 'the canonical lowercase id');
+    assert.equal(published.digest, agentPolicyDigest(published), 'the digest binds the identity readers get back');
+    assert.deepEqual(expect(await viewer.request('GET', upper), 200), { policy: published });
+    assert.deepEqual(expect(await viewer.request('GET', path()), 200), { policy: published });
+    // The next test's bootstrap reference and resource read this same newest revision.
+  });
+
   test('bootstrap names the approved revision and a connected agent reads it as a resource', async () => {
     const connection = expect(await owner.request('POST', '/api/v1/agent-connections',
       { body: { agentId, selectedProjectIds: [projectId], scopes: ['flux.context.read'] } }), 201);
@@ -113,6 +124,7 @@ describe('approved project policy', () => {
     await pool.query('INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at) VALUES ($1, $2, $3, now())', [randomUUID(), clientId, `${publicOrigin}/mcp`]);
     const tokens = await oauthToken(owner, String(connection.id), clientId, redirectUri, await beginOauth(owner, clientId, redirectUri, { scope: 'flux.context.read offline_access' }));
     const current = (expect(await viewer.request('GET', path()), 200) as { policy: AgentProjectPolicy }).policy;
+    assert.equal(current.digest, agentPolicyDigest(current), 'the newest revision (published through an upper-case address) is self-consistent');
     const bootstrap = toolValue((await mcp(tokens.access_token, 401, 'tools/call', { name: 'flux_bootstrap',
       arguments: { projectId, clientSessionId: randomUUID() } })).message);
     const trusted = bootstrap.trusted as { approvedPolicy: unknown };
