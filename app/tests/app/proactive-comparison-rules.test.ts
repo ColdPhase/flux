@@ -131,14 +131,15 @@ describe('owner standing comparison rule', () => {
       'no owner-supplied background key means the rule cannot be activated');
     const tooSmall = expectStatus(await owner.browser.request('POST', connectionPath, { body: connectionBody(5) }), 201) as BackgroundComputeConnection;
     assert.equal(codeOf(await change(owner, 1, 'enabled')), 'BACKGROUND_BUDGET_TOO_LOW');
-    const enough = expectStatus(await owner.browser.request('POST', connectionPath, { body: connectionBody(50) }), 201) as BackgroundComputeConnection;
+    // A second connection is used for background work only when chosen (F-020 PROV-1).
+    const enough = expectStatus(await owner.browser.request('POST', connectionPath, { body: { ...connectionBody(50), useForBackground: true } }), 201) as BackgroundComputeConnection;
     assert.equal(codeOf(await change(owner, 1, 'enabled')), 'BACKGROUND_RUNTIME_UNAVAILABLE',
       'a configured key alone cannot activate a rule before the budgeted worker exists');
     assert.equal((expectStatus(await owner.browser.request('GET', path(project.id)), 200) as ProactiveComparisonRule[])[0]?.status, 'paused');
     assert.equal((await peer.browser.request('DELETE', `${connectionPath}/${enough.id}`)).status, 404);
     expectStatus(await owner.browser.request('DELETE', `${connectionPath}/${enough.id}`), 204);
-    assert.equal(codeOf(await change(owner, 1, 'enabled')), 'BACKGROUND_CONNECTION_REQUIRED');
-    assert.equal((await owner.browser.request('DELETE', `${connectionPath}/${tooSmall.id}`)).status, 404);
+    assert.equal(codeOf(await change(owner, 1, 'enabled')), 'BACKGROUND_CONNECTION_REQUIRED', 'the kept, unchosen connection does not take over');
+    expectStatus(await owner.browser.request('DELETE', `${connectionPath}/${tooSmall.id}`), 204);
     rule = expectStatus(await change(owner, 1, 'paused'), 200) as ProactiveComparisonRule;
     assert.equal(rule.status, 'paused');
     expectStatus(await owner.browser.request('DELETE', `/api/v1/projects/${project.id}/grants/${agentGrantId}`), 204);
