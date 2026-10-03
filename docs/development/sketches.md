@@ -60,7 +60,7 @@ concurrent revocation is either seen or waits.
 
 | Route | Notes |
 | --- | --- |
-| `GET /api/v1/workspaces/:id/sketches?projectId=` | Returns a page of visible sketches, newest change first. The filter is applied before the limit and the total. |
+| `GET /api/v1/workspaces/:id/sketches?projectId=` | Returns a page of visible sketches, newest change first. The filter is applied before the limit and the total. `?scope=private` returns only private sketches (the sketchbook, #189); no other scope value is accepted. |
 | `POST /api/v1/workspaces/:id/sketches` | Takes `{ title, scope: 'project' \| 'private', projectId? }`. |
 | `GET /api/v1/sketches/:id` | Returns the sketch with its thoughts and links. The ETag is the sketch version. |
 | `PATCH /api/v1/sketches/:id` | Renames the sketch. Needs `If-Match`. |
@@ -86,9 +86,14 @@ author receives the events of a private sketch. The stream's `objectType` is `sk
 
 ## Web
 
-- `/map` is the Map tab. It lists the sketches you can see and has **New sketch**,
-  which creates a private sketch. If you have no workspace yet, it first creates a
-  personal one.
+- `/map` is Home's Map tab, the private sketchbook. It lists your private sketches
+  (`?scope=private`) and has **New sketch**, which creates a private sketch. If you have
+  no workspace yet, it first creates a personal one. Project sketches live in their
+  project's Map tab and DM sketches in their DM (#189).
+- A sketch opens only where it lives: `/projects/:projectId/map/:sketchId` for a project
+  sketch, `/dm/:dmId/sketches/:sketchId` for a DM's sketch and `/map/:sketchId` for a private
+  one. A link that cannot know the place (search, doc links) opens `/map/:sketchId`, and the
+  view moves it, keeping the `#thought-…` fragment.
 - `/map/:sketchId` is the sketch (direction C `#lamp-map`, `-select`, `-edit`,
   `-list`). The toolbar has Thought, Connect, Shape, Remove and Undo, plus a status line.
   - The map is a canvas with a visible **+** beside the selected thought.

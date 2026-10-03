@@ -231,7 +231,8 @@ class LiveUnavailable(LiveBase):
         page.goto(self.task_url())
         panel = page.locator("#details")
         expect(panel.get_by_role("heading", name=TASK)).to_be_visible()
-        expect(panel).to_contain_text("Live sessions are not set up on this Flux server")
+        # Explained once, behind the header's Together; the task itself does not repeat it (#189).
+        expect(panel).not_to_contain_text("Live sessions")
         header = page.locator("header.top")
         header.get_by_role("button", name="Together").click()
         dialog = page.get_by_role("dialog", name="Live sessions")

@@ -6,6 +6,7 @@ import { getProject } from '../app/conversation-api';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
 import { useReadingPosition } from '../app/drafts';
+import { remember } from '../app/remembered';
 import { createWork, type ProjectWork } from './api';
 import { useProjectShell } from '../project/data';
 import { ProjectProposals } from '../project/ProjectProposals';
@@ -138,7 +139,7 @@ export function ProjectTasks() {
   useReadingPosition(scroller, me.user.id, `${pathname}?${status ?? 'all'}${mine ? ':mine' : ''}`);
   const viewSearch = `${status ? `status=${status}` : ''}${status && mine ? '&' : ''}${mine ? 'show=mine' : ''}`;
   useEffect(() => {
-    try { sessionStorage.setItem(`flux.project-tasks.${project.id}`, viewSearch ? `?${viewSearch}` : ''); } catch { /* the tab opens All */ }
+    remember('tasks', me.user.id, project.id, viewSearch ? `?${viewSearch}` : '');
     const url = new URL(window.location.href);
     url.searchParams.delete('status'); url.searchParams.delete('show');
     if (status) url.searchParams.set('status', status);

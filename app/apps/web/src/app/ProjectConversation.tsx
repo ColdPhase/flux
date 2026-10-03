@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, type LoaderFunctionArgs } from 'react-router';
 import type { AssistantAnswer, ConversationMessage, Conversation, ConversationSummary, Draft, Material, Project, SendMessageCommand, WorkspaceMember } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { Avatar, Button, EmptyState, Icon, Input } from '../ui';
+import { Avatar, Button, EmptyState, Icon, Input, MEDIA, sendsOnEnter, useMediaQuery } from '../ui';
 import { getConversation, getMaterialVersion, getProject, listConversations, listDrafts, listMaterials, listWorkspaceMembers, olderMessages, publishMaterial, reply, startConversation } from './conversation-api';
 import { pageBackTo } from './seekMessage';
 import { useShellData } from './data';
@@ -86,6 +86,8 @@ export function ProjectConversation() {
 }
 
 function ProjectConversationContent({ data }: { data: ProjectData }) {
+  // Touch devices add a line with Enter and send with the button (#189).
+  const touch = useMediaQuery(MEDIA.touch);
   const { project, materials, members, conversation } = data;
   // The open conversation is where "Work on this together" starts; nothing is shown by itself.
   useRegisterLiveHere(conversation ? { projectId: project.id, context: { type: 'conversation', id: conversation.id }, label: excerpt(conversation.firstMessageBody) } : null, null);
@@ -292,7 +294,7 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
   }
   function onComposerKey(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (asking && (event.key === 'Escape' || (event.key === 'Backspace' && !draft))) { event.preventDefault(); event.stopPropagation(); exitAsk(); return; }
-    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); }
+    if (sendsOnEnter(event, touch)) { event.preventDefault(); void send(); }
   }
   async function loadOlder() {
     if (!conversation || !olderCursor || olderBusy) return;
@@ -399,7 +401,7 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
             })}
             {assistant.run ? <WorkingLine key={assistant.run.id} run={assistant.run} onStop={assistant.stop} onRetry={() => assistant.retry(assistant.run!.id)} onDismiss={assistant.dismissRun} /> : null}
             </ol>
-          </> : <EmptyState icon="chat" title={writable ? "Start a conversation" : data.conversationTotal ? "Choose a conversation" : "No conversations yet"}>{writable ? <p>Share a thought with {audience === 'Only you' ? 'yourself for now; people you add to the project will see it' : `everyone in ${project.name}`}. No form is needed: anything said here can later become work, a decision or a sketch.</p> : <p>You have read access to {project.name}. {data.conversationTotal ? "Open a saved conversation from navigation." : "Conversations will appear here when someone shares them."} You can browse saved tasks, maps, docs and sources.</p>}</EmptyState>}
+          </> : <EmptyState icon="chat" title={writable ? "Start a conversation" : data.conversationTotal ? "Choose a conversation" : "No conversations yet"}>{writable ? <p>Write to {audience === 'Only you' ? 'yourself for now; people you add to the project will see it' : `everyone in ${project.name}`}. No form is needed: anything said here can later become work, a decision or a sketch.</p> : <p>You have read access to {project.name}. {data.conversationTotal ? "Open a saved conversation from navigation." : "Conversations will appear here when someone shares them."} You can browse saved tasks, maps, docs and sources.</p>}</EmptyState>}
         </section>
       </div>
     </div>
@@ -426,7 +428,7 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
       </div>}
       {citation && writable ? <div className="project-convo__citation">Discussing “{citation.title}” v{citation.version}<button type="button" disabled={busy} onClick={() => { setCitation(null); setPending(null); putPending(pendingKey, null); setError(''); }} aria-label="Remove material citation">×</button></div> : null}
       <div className="composer__box"><button type="button" className="composer__ask project-convo__sources-btn" aria-expanded={trayOpen} aria-controls={trayOpen ? 'project-sources' : undefined} aria-label={`Sources${materialTotal ? `, ${materialTotal} saved` : ''}`} data-tip={writable ? 'Sources to cite' : 'Saved sources to read'} data-tip-align="start" onClick={() => { if (trayOpen) { setSourcesOpen(false); if (writable) setShowMaterialForm(false); } else setSourcesOpen(true); }}><Icon name="doc" /><span className="project-convo__sources-t" aria-hidden="true">Sources</span>{materialTotal ? <span className="project-convo__sources-n" aria-hidden="true">{materialTotal > 99 ? '99+' : materialTotal}</span> : null}</button>{conversation && writable ? <button type="button" className="composer__ask" aria-pressed={asking} aria-label="Ask my assistant" aria-controls={asking ? 'project-ask' : undefined} data-tip="Ask my assistant · /ai" data-tip-align="start"
-        onClick={() => { if (asking) exitAsk(); else { setAsking(true); document.getElementById('project-composer')?.focus(); } }}><Icon name="spark" /></button> : null}{writable ? <><label className="ui-vh" htmlFor="project-composer">{asking ? 'Ask your assistant' : conversation ? 'Reply' : 'Start a conversation'}</label><textarea id="project-composer" value={draft} onChange={(event) => changeDraft(event.target.value)} onKeyDown={onComposerKey} disabled={!writable || busy || askBusy} aria-describedby={asking ? 'project-ask' : undefined} placeholder={asking ? 'Ask your assistant…' : conversation ? replyHint : 'Share a thought…'} rows={1} /><button className="composer__send" aria-label={asking ? 'Send to your assistant' : conversation ? 'Send reply' : 'Start conversation'} aria-disabled={!draft.trim() || !writable || busy || askBusy || (asking && ask.kind !== 'ready')} type="button" onClick={() => void send()}><Icon name="send" /></button></> : <p className="project-convo__read-only">Read-only · <span>You have read access to this project.</span></p>}</div>
+        onClick={() => { if (asking) exitAsk(); else { setAsking(true); document.getElementById('project-composer')?.focus(); } }}><Icon name="spark" /></button> : null}{writable ? <><label className="ui-vh" htmlFor="project-composer">{asking ? 'Ask your assistant' : conversation ? 'Reply' : 'Start a conversation'}</label><textarea id="project-composer" value={draft} onChange={(event) => changeDraft(event.target.value)} onKeyDown={onComposerKey} disabled={!writable || busy || askBusy} aria-describedby={asking ? 'project-ask' : undefined} placeholder={asking ? 'Ask your assistant…' : conversation ? replyHint : 'Write a message…'} rows={1} /><button className="composer__send" aria-label={asking ? 'Send to your assistant' : conversation ? 'Send reply' : 'Start conversation'} aria-disabled={!draft.trim() || !writable || busy || askBusy || (asking && ask.kind !== 'ready')} type="button" onClick={() => void send()}><Icon name="send" /></button></> : <p className="project-convo__read-only">Read-only · <span>You have read access to this project.</span></p>}</div>
       {readFailure ? <p className="project-convo__error" role="alert">{readFailure.message} <button type="button" onClick={readFailure.retry}>Retry read</button></p> : null}
       {writable && error ? <p className="project-convo__error" role="alert">{error} <button type="button" onClick={() => void send()}>Retry send</button></p> : null}
     </div></div>

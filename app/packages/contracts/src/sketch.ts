@@ -144,6 +144,8 @@ export interface SketchListQuery extends PageQuery {
   projectId?: string;
   /** Only the sketches of this direct message (#96). */
   dmId?: string;
+  /** Only private sketches: the person's own sketchbook (#189). */
+  scope?: 'private';
 }
 export type SketchPage = Page<Sketch>;
 

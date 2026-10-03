@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Link, useLocation, type NavigateFunction } from 'react-router';
 import type { Draft } from '@flux/contracts';
-import { EmptyState, Icon, IconButton, duration, type IconName } from '../ui';
+import { EmptyState, Icon, IconButton, MEDIA, duration, sendsOnEnter, useMediaQuery, type IconName } from '../ui';
 import { createPrivateDraft, listDrafts } from './conversation-api';
 import { useIntentKeys } from '../api/intent-keys';
 import { useCaptures } from './captures';
@@ -9,6 +9,7 @@ import { useShellData } from './data';
 import { useDraft, useReadingPosition } from './drafts';
 import { useShellActions } from './shellContext';
 import { SinceYouLeftHome } from '../returns/SinceYouLeft';
+import { getAssistantStatus } from '../assistant/api';
 
 /** Home's views in the same order and words as a project's (Studio 11.6, #136). */
 export const VIEWS = [
@@ -48,7 +49,7 @@ function when(iso: string) {
   return today ? timeFormat.format(date) : `${dayFormat.format(date)}, ${timeFormat.format(date)}`;
 }
 
-/** Focus the Home composer, e.g. from "+ New thought". */
+/** Focus the Home composer, e.g. from "+ New note". */
 export function startCapture(navigate: NavigateFunction) {
   const composer = document.getElementById('composer');
   if (composer && window.location.pathname === '/') { composer.focus(); return; }
@@ -61,6 +62,8 @@ export function startCapture(navigate: NavigateFunction) {
  * Project conversations and direct messages (#36) open from the sidebar.
  */
 export function ConversationView() {
+  // Touch devices add a line with Enter and send with the button (#189).
+  const touch = useMediaQuery(MEDIA.touch);
   const hintId = useId();
   const audienceId = useId();
   const askId = useId();
@@ -73,6 +76,13 @@ export function ConversationView() {
   const [serverDrafts, setServerDrafts] = useState<Draft[]>([]);
   const [saveState, setSaveState] = useState('');
   const [saving, setSaving] = useState(false);
+  // Without an assistant of your own, its button leads to "Connect your AI" (#189); it stays owner-only.
+  const [noAssistant, setNoAssistant] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    getAssistantStatus(controller.signal).then((status) => setNoAssistant(status.state === 'not_enabled'), () => undefined);
+    return () => controller.abort();
+  }, [me.user.id]);
   const intents = useIntentKeys();
   // With changes to return to, the "nothing here yet" empty state would contradict them.
   const [returning, setReturning] = useState(false);
@@ -86,7 +96,9 @@ export function ConversationView() {
   }, [selectedWorkspace, me.user.id]);
   // Ask mode targets the signed-in person's own assistant (#57). No compute path exists yet,
   // so it only explains how to connect one and never pretends to answer.
-  const [asking, setAsking] = useState(false);
+  const [askOn, setAsking] = useState(false);
+  // A tap before the status loaded never leaves ask mode on for someone without an assistant.
+  const asking = askOn && !noAssistant;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const firstName = me.user.name.trim().split(/\s+/)[0] || me.user.name;
@@ -117,7 +129,7 @@ export function ConversationView() {
       const body = draft.text.trim();
       if (selectedWorkspace) {
         const intent = `draft:${selectedWorkspace}:${body}`;
-        const created = await createPrivateDraft(selectedWorkspace, body.slice(0, 80).split('\n')[0] || 'Private thought', body, intents.keyFor(intent));
+        const created = await createPrivateDraft(selectedWorkspace, body.slice(0, 80).split('\n')[0] || 'Private note', body, intents.keyFor(intent));
         intents.settle(intent);
         setServerDrafts((current) => [created, ...current.filter((item) => item.id !== created.id)]);
       } else add(body);
@@ -130,7 +142,7 @@ export function ConversationView() {
   const stopAsking = () => { setAsking(false); textareaRef.current?.focus(); };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Escape' && asking) { event.preventDefault(); event.stopPropagation(); stopAsking(); return; }
-    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); }
+    if (sendsOnEnter(event, touch)) { event.preventDefault(); void send(); }
   };
   const hasDraft = draft.text.length > 0;
 
@@ -139,7 +151,7 @@ export function ConversationView() {
       <Pane>
         <div className="intro">
           <h2>Welcome, {firstName}</h2>
-          <p>Jot down a thought, a link or a half-formed idea. It stays with you until you choose to share it.</p>
+          <p>Jot down a note, a link or a half-formed idea. It stays with you until you choose to share it.</p>
         </div>
         <SinceYouLeftHome onShown={setReturning} />
         {serverDrafts.length ? <section className="notes" aria-label="Private drafts"><p className="notes__h"><Icon name="lock" size={13} />Private drafts · saved in your space</p><ol className="notes__list">{serverDrafts.map((item) => <li className={`note${arrivedDraft === item.id ? ' is-arrived' : ''}`} key={item.id} id={`draft-${item.id}`} tabIndex={-1}><p className="note__text">{item.body}</p><div className="note__meta">You · v{item.version} · <time dateTime={item.updatedAt}>{when(item.updatedAt)}</time></div></li>)}</ol></section> : null}
@@ -160,7 +172,7 @@ export function ConversationView() {
           </section>
         ) : !serverDrafts.length && !returning ? (
           <ViewEmpty icon="chat" title="Nothing here yet" level={3}>
-            <p>Write your first thought below. When you’re added to a project or someone messages you, those conversations open from the sidebar.</p>
+            <p>Write your first note below. When you’re added to a project or someone messages you, those conversations open from the sidebar.</p>
           </ViewEmpty>
         ) : null}
         <div ref={endRef} />
@@ -181,11 +193,12 @@ export function ConversationView() {
           {workspaces.length > 1 ? <label className="composer__space">Save in <select value={selectedWorkspace} onChange={(event) => { setSelectedWorkspace(event.target.value); setServerDrafts([]); setSaveState(''); }}><option value="">Choose a space</option>{workspaces.map((space) => <option key={space.id} value={space.id}>{space.name}</option>)}</select></label> : null}
           <div className="composer__box">
             <label className="ui-vh" htmlFor="composer">Private note</label>
-            <button type="button" className="composer__ask" aria-pressed={asking} aria-label="Ask my assistant" data-tip="Ask my assistant" data-tip-align="start"
-              onClick={() => { setAsking(!asking); textareaRef.current?.focus(); }}>
+            <button type="button" className="composer__ask" aria-pressed={noAssistant ? undefined : asking} aria-label={noAssistant ? 'Connect your AI' : 'Ask my assistant'}
+              data-tip={noAssistant ? 'Connect your AI' : 'Ask my assistant'} data-tip-align="start"
+              onClick={() => { if (noAssistant) { openDetails('connect-ai'); return; } setAsking(!asking); textareaRef.current?.focus(); }}>
               <Icon name="spark" />
             </button>
-            <textarea id="composer" ref={textareaRef} rows={1} value={draft.text} disabled={saving} placeholder={asking ? 'Ask your assistant…' : 'Capture a thought…'}
+            <textarea id="composer" ref={textareaRef} rows={1} value={draft.text} disabled={saving} placeholder={asking ? 'Ask your assistant…' : 'Write a note…'}
               aria-describedby={`${asking ? askId : audienceId} ${hintId}`} onChange={(event) => { draft.setText(event.target.value); autosize(); }} onKeyDown={onKeyDown} />
             <button type="button" className="composer__send" aria-label={asking ? 'Send to your assistant' : 'Save note'} aria-disabled={!canSend} onClick={() => void send()}><Icon name="send" /></button>
           </div>
@@ -208,7 +221,7 @@ export function TasksView() {
   return (
     <Pane>
       <ViewEmpty icon="tasks" title="No tasks yet">
-        <p>When a thought turns into something to do, its task shows up here, linked to where it came from. Nothing is due, and nothing needs clearing.</p>
+        <p>When a note or message turns into something to do, its task shows up here, linked to where it came from. Nothing is due, and nothing needs clearing.</p>
       </ViewEmpty>
     </Pane>
   );
