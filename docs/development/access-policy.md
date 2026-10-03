@@ -500,7 +500,7 @@ Auth and session endpoints do not take keys.
   revoked, the member's open socket receives a later visible event but nothing for
   the draft, and the read is `404`. The web app is still the placeholder shell, so
   the pages use same-origin `fetch` and `WebSocket` rather than UI screens. Evidence
-  from one run is in `docs/development/evidence/29-browser/`.
+  from one run is in [`evidence/29-browser/`](evidence/29-browser/).
 - `app/tests/app/worker.test.ts` covers the Compose worker committing a result. Using the
   `afterRead` hook, it also covers denial before read and the race of a revocation
   between read and commit. It covers grant revocation on two connections in both orders:

@@ -393,13 +393,46 @@ class ProjectSurfaceJourney(unittest.TestCase):
         targets = [drawer.get_by_role("link", name="New project"), drawer.get_by_role("link", name="New message"),
                    drawer.locator(".side__jump"), drawer.get_by_role("link", name="Home"), drawer.locator(".side__project.is-open")]
         threads = drawer.locator(".side__threads .side__item, .side__threads .ui-btn")
-        expect(threads.first).to_be_visible()
+        # "New conversation" comes first; wait for the conversations themselves before counting.
+        expect(drawer.locator(".side__threads .side__thread").first).to_be_visible()
         targets += [threads.nth(index) for index in range(threads.count())]
         self.assertGreater(threads.count(), 0, "the open project's threads are listed")
         for target in targets:
             box = target.bounding_box()
             assert box
             self.assertGreaterEqual(box["height"], 44, f"touch target: {target}")
+
+    def test_07c_a_keyboard_focus_ring_on_a_view_tab_is_whole(self) -> None:
+        """#184 delta review S4: the tab strip scrolls sideways and clips anything outside it."""
+        page = self.open_project("ada", viewport={"width": 1100, "height": 800})
+        tabs = page.get_by_role("navigation", name="Project views")
+        tabs.get_by_role("link", name="Conversation").focus()
+        page.keyboard.press("Tab")
+        # The first frame counts as much as the settled one: read the ring at once and after transitions.
+        for _ in range(2):
+            ring = self.focus_ring(page)
+            self.assert_ring_inside(ring)
+            page.wait_for_timeout(400)
+
+    def focus_ring(self, page: Page) -> dict | None:
+        return page.evaluate("""() => {
+          const tab = document.activeElement;
+          if (!tab || !tab.matches('.views .ui-tabs__tab:focus-visible')) return null;
+          const style = getComputedStyle(tab);
+          const out = parseFloat(style.outlineOffset) + parseFloat(style.outlineWidth);
+          const r = tab.getBoundingClientRect(), bar = tab.closest('.ui-tabs__bar').getBoundingClientRect();
+          const label = tab.firstChild && tab.firstChild.nodeType === 3 ? (() => { const range = document.createRange(); range.selectNodeContents(tab.firstChild); return range.getBoundingClientRect(); })() : null;
+          return { style: style.outlineStyle, top: r.top - out, bottom: r.bottom + out, left: r.left - out, right: r.right + out,
+            barTop: bar.top, barBottom: bar.bottom, inner: r.left + Math.max(0, -parseFloat(style.outlineOffset)), labelLeft: label ? label.left : null };
+        }""")
+
+    def assert_ring_inside(self, ring: dict | None) -> None:
+        self.assertIsNotNone(ring, "a view tab has keyboard focus")
+        self.assertEqual(ring["style"], "solid")
+        self.assertGreaterEqual(ring["top"], ring["barTop"] - 0.5, f"the ring's top edge is inside the strip: {ring}")
+        self.assertLessEqual(ring["bottom"], ring["barBottom"] + 0.5, f"the ring's bottom edge is inside the strip: {ring}")
+        if ring["labelLeft"] is not None:
+            self.assertLessEqual(ring["inner"], ring["labelLeft"] - 2, f"the ring does not touch the label: {ring}")
 
     # ---------------------------------------------------------------- the Map route is bound to its project
 

@@ -179,28 +179,28 @@ not expose this endpoint as a human or agent authorization scheme.
 The multi-stage Dockerfile runs locked dependency installation, build, type check
 and lint. The production image contains compiled API, worker and migration JavaScript,
 production dependencies, web assets and SQL migrations. API and worker run as UID 1000;
-the separate `test` target retains TypeScript tooling for Docker checks. Run focused integration tests against a fresh PostgreSQL volume using a
-distinct Compose project. The test project may be removed with `down -v` because
-it contains only test data; never do that to a work project.
+the separate `test` target retains TypeScript tooling for Docker checks. Run application
+tooling through that `test` target, not the production runtime image.
+
+Which check covers which tests, and where new tests go, is in
+[architecture § Tests](architecture.md#tests); the Docker isolation rules (one Compose
+project, port and volume set per run) are in [container development](containers.md).
+Each check script uses its own Compose project and removes only its disposable test
+volumes. To stop a work project without losing data, leave out `-v`:
 
 ```sh
-./scripts/check_application.sh
-./scripts/check_ui.sh
-./scripts/check_runtime.sh
 docker compose --env-file docker/.env -p flux28 -f docker/compose.source.yaml down
 ```
 
-Each script uses its own Compose project and removes only its disposable test
-volumes after the run. `down` without `-v` preserves the work project's `pgdata`
-and `files` named volumes. Run the manual start commands (or `./flux up`) again with the same
-project name to reuse them; `files-init` is safe to repeat. Run application tooling
-through the `test` build target, not the production runtime image.
+`down` without `-v` keeps the work project's `pgdata` and `files` named volumes. Run the
+manual start commands (or `./flux up`) again with the same project name to reuse them;
+`files-init` is safe to repeat.
 
-On the local Docker platform on 2026-09-27, the #29 image before this change was
-385,027,688 bytes and the compiled non-root runtime image was 322,443,116 bytes
-(about 16% smaller). Inspection of the new image found UID 1000, compiled API,
-worker and migration entry points, no `tsx` binary and no API TypeScript source.
-Actual image size varies by platform and later dependency changes.
+Recorded once, on the local Docker platform on 2026-09-27 (not re-measured since): the #29
+image before the compiled runtime was 385,027,688 bytes and the compiled non-root runtime
+image was 322,443,116 bytes (about 16% smaller). That image had UID 1000, compiled API,
+worker and migration entry points, no `tsx` binary and no API TypeScript source. Image size
+varies by platform and later dependency changes.
 
 ## Initial backup and restore
 

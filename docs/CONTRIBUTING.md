@@ -108,6 +108,8 @@ to the web app also need the browser suite:
 Each script uses its own Compose project; set `FLUX_TEST_PORT`/`FLUX_TEST_MAILPIT_PORT`
 or `FLUX_UI_PORT`/`FLUX_UI_MAILPIT_PORT` when the default ports are taken. Run one suite
 at a time on a small machine.
+[Architecture § Tests](development/architecture.md#tests) says which check runs which tests
+and where a new test goes.
 
 Repository and documentation checks:
 
