@@ -141,7 +141,7 @@ Accepted 2026-10-03, with amendments, by independent peer review of the proposal
 [review with amendments](https://github.com/ColdPhase/flux/issues/190#issuecomment-5963558501)).
 
 - **HOME-1, visiting acknowledges nothing** (amends #106 AC-1). Home's "Since you left" never moves
-  its return point on a visit. It ends with "Caught up to …" and **I have the context**, which saves
+  its return point on a visit. It ends with "Last caught up …" (the previous acknowledgement) and **I have the context**, which saves
   the visit's mark; the list then closes to "You're caught up. New changes will show here."
   A failure keeps the list ("Could not save. Try again; nothing was changed."). The only automatic
   save is a first visit with no point, which sets a starting point. "Keep these for next time" goes

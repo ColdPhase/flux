@@ -105,7 +105,8 @@ export function NextStep({ step }: { step: ReturnNextStep }) {
 function Foot({ summary, ack, onAcknowledge }: { summary: ReturnSummary; ack: Ack; onAcknowledge: () => void }) {
   return (
     <div className="since__foot">
-      <span>{summary.point.savedAt ? `Caught up to ${dayTime.format(new Date(summary.point.savedAt))}` : ''}</span>
+      {/* When the person last said "I have the context": the changes above came after it (#190 A1.2). */}
+      <span>{summary.point.savedAt ? `Last caught up ${dayTime.format(new Date(summary.point.savedAt))}` : ''}</span>
       {ack === 'failed' ? <span className="since__failed" role="alert">Could not save. Try again; nothing was changed.</span> : null}
       <Button variant="secondary" icon="check" className="since__ack" busy={ack === 'busy'} onClick={onAcknowledge}>I have the context</Button>
     </div>

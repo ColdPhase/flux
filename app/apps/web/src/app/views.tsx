@@ -333,7 +333,7 @@ function HomeNotes() {
               <button type="button" className="ui-link ask__connect" onClick={() => openDetails('connect-ai')}>Connect your AI</button>
             </div>
           ) : (
-            <p className="composer__audience" id={audienceId}><Icon name="lock" size={13} />Only you<span aria-hidden="true"> · </span><span className="composer__where">private draft in {selectedWorkspace ? 'your space' : workspaces.length ? 'a space you choose' : 'your personal space'}</span></p>
+            <p className="composer__audience" id={audienceId}><Icon name="lock" size={13} />Only you<span aria-hidden="true"> · </span><span className="composer__where">private draft in {selectedWorkspace ? `${workspaces.find((space) => space.id === selectedWorkspace)?.name ?? 'your space'}, which only you can open` : workspaces.length ? 'a space you choose' : 'your personal space'}</span></p>
           )}
           {workspaces.length > 1 ? <label className="composer__space">Save in <select value={selectedWorkspace} onChange={(event) => { setSelectedWorkspace(event.target.value); setServerDrafts([]); setSaveState(''); }}><option value="">Choose a space</option>{workspaces.map((space) => <option key={space.id} value={space.id}>{space.name}</option>)}</select></label> : null}
           <div className="composer__box">

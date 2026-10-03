@@ -111,12 +111,16 @@ class HomeNotesJourney(unittest.TestCase):
         spaces = self.spaces(page)
         self.assertEqual([space["name"] for space in spaces], ["Personal"])
         self.assertEqual(self.drafts(page, spaces[0]["id"]), ["From the other tab", "The first note"], "each note saved once")
+        expect(page.locator(".composer__where")).to_have_text("private draft in Personal, which only you can open")
+        shot(page, "home-notes-first-desktop-1440")
         # A sketch afterwards uses the same space.
         page.get_by_role("navigation", name="Views").get_by_role("link", name="Map").click()
         page.get_by_role("button", name="New sketch").click()
         expect(page).to_have_url(re.compile(r"/map/[0-9a-f-]{36}$"))
         self.assertEqual(len(self.spaces(page)), 1, "a sketch reuses the personal space")
-        shot(page, "home-notes-first-desktop-1440")
+        # The open private sketch is Home's Map view.
+        expect(page.get_by_role("navigation", name="Views").get_by_role("link", name="Map")).to_have_attribute("aria-current", "page")
+        shot(page, "home-notes-first-sketch-desktop-1440")
 
     def test_02_a_first_save_that_fails_keeps_the_text(self) -> None:
         context = self.context()

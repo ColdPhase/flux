@@ -207,7 +207,7 @@ class ReturnViewJourney(unittest.TestCase):
         page.reload()
         expect(region).to_contain_text("9 updates since today")
         self.assertTrue(self.summary(page, "home")["items"], "the visit saved nothing")
-        expect(region).to_contain_text("Caught up to")
+        expect(region).to_contain_text("Last caught up")
         region.get_by_role("button", name="I have the context").click()
         done = page.get_by_role("status").filter(has_text="You’re caught up. New changes will show here.")
         expect(done).to_be_visible()

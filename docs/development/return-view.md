@@ -114,7 +114,7 @@ Details (a quiet count of `needsYou`), which opens a private view of the Details
 - `app/packages/db/src/repositories/returns.ts`: rows only, no access decisions.
 - `app/apps/server/src/returns/`: the policy adapter (`authorizeEvent`, `evaluateProject`,
   `authorize`, `visibleFilter`) and the routes. No architecture allowlist entries were added.
-- `app/apps/web/src/returns/`: `SinceYouLeftHome` (on Home, grouped by place, with "Caught up to …"
+- `app/apps/web/src/returns/`: `SinceYouLeftHome` (on Home, grouped by place, with "Last caught up …"
   and "I have the context"; afterwards one status line says "You're caught up. New changes will
   show here." and focus moves to the Home heading, #190 A1.3) and `WhatMatters` (a project's recap, #133). A source link to a message opens on that whole
   message (`#message-<id>`). Only the current request's authorized answer is ever shown: the
