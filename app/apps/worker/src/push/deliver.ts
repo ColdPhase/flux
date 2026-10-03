@@ -52,27 +52,37 @@ export function createPushAgent(config: Extract<PushSenderConfig, { status: 'ava
 
 const JWT_LIFETIME_SECONDS = 12 * 3600;
 const JWT_RENEW_BEFORE_SECONDS = 3600;
-const vapidHeaders = new Map<string, { authorization: string; expiresAt: number }>();
+
+/** The VAPID Authorization header for a push endpoint at a time (default now). */
+export type VapidAuthorizer = (config: Extract<PushSenderConfig, { status: 'available' }>, endpoint: string, now?: number) => string;
 
 /**
  * VAPID Authorization per push service origin, reused until an hour before it expires. Apple's
  * push service asks senders not to refresh the JWT more than once per hour; web-push's default
- * would sign a new one for every request.
+ * would sign a new one for every request. The cache lives in the authorizer, which the worker's
+ * composition root creates once (#82).
  */
-export function vapidAuthorization(config: Extract<PushSenderConfig, { status: 'available' }>, endpoint: string, now = Date.now()) {
-  const audience = new URL(endpoint).origin;
-  const key = `${config.publicKey}|${audience}`;
-  const cached = vapidHeaders.get(key);
-  const nowSeconds = Math.floor(now / 1000);
-  if (cached && cached.expiresAt - JWT_RENEW_BEFORE_SECONDS > nowSeconds) return cached.authorization;
-  const expiresAt = nowSeconds + JWT_LIFETIME_SECONDS;
-  const { Authorization } = webpush.getVapidHeaders(audience, config.subject, config.publicKey, config.privateKey, 'aes128gcm', expiresAt);
-  vapidHeaders.set(key, { authorization: Authorization, expiresAt });
-  return Authorization;
+export function createVapidAuthorizer(): VapidAuthorizer {
+  const headers = new Map<string, { authorization: string; expiresAt: number }>();
+  return (config, endpoint, now = Date.now()) => {
+    const audience = new URL(endpoint).origin;
+    const key = `${config.publicKey}|${audience}`;
+    const cached = headers.get(key);
+    const nowSeconds = Math.floor(now / 1000);
+    if (cached && cached.expiresAt - JWT_RENEW_BEFORE_SECONDS > nowSeconds) return cached.authorization;
+    const expiresAt = nowSeconds + JWT_LIFETIME_SECONDS;
+    const { Authorization } = webpush.getVapidHeaders(audience, config.subject, config.publicKey, config.privateKey, 'aes128gcm', expiresAt);
+    headers.set(key, { authorization: Authorization, expiresAt });
+    return Authorization;
+  };
 }
 
-/** The web-push adapter: encrypts, signs with the cached VAPID JWT and POSTs to the push service. */
-export function webPushSender(config: Extract<PushSenderConfig, { status: 'available' }>, agent = createPushAgent(config)): PushSender {
+/** The web-push adapter: encrypts, signs with the authorizer's cached VAPID JWT and POSTs to the push service. */
+export function webPushSender(
+  config: Extract<PushSenderConfig, { status: 'available' }>,
+  agent = createPushAgent(config),
+  vapidAuthorization: VapidAuthorizer = createVapidAuthorizer(),
+): PushSender {
   return {
     async send(subscription, payload) {
       try {
@@ -102,6 +112,8 @@ export interface DeliveryDependencies {
   db: Database;
   config: PushSenderConfig;
   agent?: https.Agent;
+  /** The worker's VAPID authorizer; without one, each delivery signs its own JWT. */
+  vapid?: VapidAuthorizer;
   log?: (message: string, details?: Record<string, unknown>) => void;
 }
 
@@ -113,7 +125,7 @@ export async function deliverPush(deps: DeliveryDependencies, job: PushSendJob):
     available: config.status === 'available',
     targets: pushDeliveryRepository(db),
     authorizer: policySourceReader(db),
-    sender: config.status === 'available' ? webPushSender(config, deps.agent) : unavailable,
+    sender: config.status === 'available' ? webPushSender(config, deps.agent, deps.vapid) : unavailable,
     stillWanted: pushPreferenceCheck(db),
     quietUntil: pushQuietCheck(db),
     log: deps.log,
