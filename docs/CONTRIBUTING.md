@@ -138,7 +138,10 @@ may require another review. Approved changes are merged
 with squash merging.
 
 Please keep each PR focused on one problem. Updating documentation alongside a
-behavior change helps other contributors understand and maintain it.
+behavior change helps other contributors understand and maintain it. If people or
+operators will notice the change, add one line under `[Unreleased]` in
+[CHANGELOG.md](../CHANGELOG.md) with your PR number. [GOVERNANCE.md](../GOVERNANCE.md)
+explains who decides what and how to become a maintainer.
 
 ## Working with coding agents
 
