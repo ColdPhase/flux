@@ -11,7 +11,7 @@ running application, not of the prototype or a mockup.
 The content is the browser suite's fictional *Gesture lamp* project (Ada, Jonas and Nia),
 created through the public API by the test itself.
 
-**Captured at:** commit `924f5fd8` (#184 Studio shell, full `check_ui.sh` run, 2026-10-03), by:
+**Captured at:** `main` `085214c6` (the merged #184 Studio shell; this branch changes no file under `app/`), 2026-10-03, by `test_project_surface` (10 tests OK). The same captures come from a full run:
 
 ```sh
 shots="$(mktemp -d)"
