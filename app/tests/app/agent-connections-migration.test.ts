@@ -6,7 +6,6 @@ import { test } from 'node:test';
 import { FLUX_SCHEMA_VERSION, readMigrationManifest } from '@flux/db';
 import { pool } from './support/db.js';
 
-
 test('0034 upgrades the prior schema without changing historic connection, proposal or singleton-selection records', async () => {
   const client = await pool.connect();
   const schema = `flux152_upgrade_${randomUUID().replaceAll('-', '')}`;

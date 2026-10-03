@@ -7,7 +7,6 @@ import { workUnitOfWork, workUseCases } from '../../apps/server/src/work/adapter
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
 import { db, pool } from './support/db.js';
 
-
 async function scene() {
   const [owner, writer, reader, outsider] = await Promise.all(['notice-owner', 'notice-writer', 'notice-reader', 'notice-outsider'].map(person));
   const ws = await workspace(owner, 'Task notice checks');

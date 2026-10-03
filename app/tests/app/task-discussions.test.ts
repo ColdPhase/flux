@@ -15,7 +15,6 @@ import { transactionEventSession } from '../../apps/server/src/work/transaction-
 import { guardFinalEventPhase } from './support/final-events.js';
 import { db, pool } from './support/db.js';
 
-
 async function scene() {
   const [owner, writer, reader, outsider] = await Promise.all(['root-owner', 'root-writer', 'root-reader', 'root-outsider'].map(person));
   const ws = await workspace(owner, 'Genuine task roots');

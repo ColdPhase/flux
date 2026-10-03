@@ -5,7 +5,6 @@ import type { Conversation, ConversationMessage, Material, MaterialVersion, Page
 import { pool } from './support/db.js';
 import { expectStatus, person, type Person } from './support/people.js';
 
-
 describe('project capture and inline conversation', () => {
   let owner: Person;
   let partner: Person;

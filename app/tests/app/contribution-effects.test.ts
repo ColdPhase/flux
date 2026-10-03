@@ -22,7 +22,6 @@ import { db, pool } from './support/db.js';
 // Explicit native contribution effects on the canonical task thread (#154): a saved blocker, a published result
 // and an explicit public handoff, each through the one canonical append, over real PostgreSQL and HTTP.
 
-
 async function scene() {
   const [owner, writer, reader, outsider] = await Promise.all(['fx-owner', 'fx-writer', 'fx-reader', 'fx-outsider'].map(person));
   const ws = await workspace(owner, 'Contribution effects');
