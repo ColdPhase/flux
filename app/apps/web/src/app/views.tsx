@@ -305,7 +305,7 @@ function HomeNotes() {
             ) : null}
             <ol className="notes__list">
               {items.map((item) => (
-                <li key={item.id} className="note">
+                <li key={item.id} className="note" id={`capture-${item.id}`}>
                   <p className="note__text">{item.text}</p>
                   <div className="note__meta">
                     <time dateTime={item.createdAt}>{when(item.createdAt)}</time>
