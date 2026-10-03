@@ -377,6 +377,8 @@ class ThemeAccentsJourney(unittest.TestCase):
                     self.assertGreaterEqual(end["y"], rect["y"])
                     self.assertLessEqual(end["y"] + end["height"], rect["y"] + rect["height"])
                     page.keyboard.press("Shift+Tab")
+                    expect(pop.get_by_role("link", name="Your background suggestions", exact=True)).to_be_focused()
+                    page.keyboard.press("Shift+Tab")
                     expect(pop.get_by_role("link", name="Your assistant", exact=True)).to_be_focused()
 
     def test_05_error_text_all_six(self):
