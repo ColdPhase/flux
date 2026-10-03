@@ -311,6 +311,8 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   .side__item, .side__person, .side__threads .side__item { min-height: 44px; }
   .side__jump { min-height: 44px; }
   .side__add { width: 44px; height: 44px; margin: -10px -10px -10px 0; }
+  /* The 44px "+" reaches 10px below its heading row: an empty state there starts below it. */
+  .side__head + .side__empty { padding-top: 12px; }
   .side__threads .ui-btn { min-height: 44px; }
   .me__item { min-height: 44px; }
   .seg__b { min-height: 44px; }
