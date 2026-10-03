@@ -231,6 +231,7 @@ export function AgentConnectionPage() {
     </fieldset> : null}
     {creatingAgent ? <form className="connection__create" onSubmit={(event) => { void addPersonalAgent(event); }}>
       <h2>Create your personal agent</h2><p>This identity belongs only to you. A project manager must explicitly grant it project access.</p>
+      {!workspaces.length ? <p className="connection__help" role="note">Your agent belongs to a workspace, and you are not in one yet. <Link to="/projects/new">Create a project</Link> to start one, or ask someone to add you to theirs.</p> : <>
       <label className="connection__label" htmlFor="agent-workspace">Workspace</label>
       <select id="agent-workspace" value={workspaceId} onChange={(event) => setWorkspaceId(event.target.value)} disabled={busy} required>
         {workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
@@ -239,6 +240,7 @@ export function AgentConnectionPage() {
       <input id="agent-name" value={agentName} onChange={(event) => setAgentName(event.target.value)} maxLength={160} disabled={busy} required placeholder="My research agent" />
       <div className="connection__actions"><Button type="submit" variant="secondary" busy={busy} disabled={!workspaceId || !agentName.trim()}>Create personal agent</Button>
         {personalAgents.length ? <Button onClick={() => setCreatingAgent(false)}>Cancel</Button> : null}</div>
+      </>}
     </form> : <Button variant="link" onClick={() => setCreatingAgent(true)}>Create personal agent</Button>}
     {!oauthQuery ? <ClientGuide origin={window.location.origin} /> : null}
     {personalAgents.length > 0 && adding ? <form className="connection__create" onSubmit={(event) => { void addConnection(event); }}>

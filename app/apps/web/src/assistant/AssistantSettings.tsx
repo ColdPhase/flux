@@ -97,14 +97,17 @@ function AgentPicker({ workspace, agents, value, onChange, onAgent, name, disabl
 const providerName = (status: PersonalAssistantStatus) =>
   status.disclosure.provider ? (status.disclosure.provider === 'openai_compatible' ? 'your own endpoint' : AI_PROVIDERS[status.disclosure.provider].label) : 'your connection’s AI provider';
 
-function Disclosure({ status, perRun, daily, timeZone, payer: chosenPayer }: {
+function Disclosure({ status, perRun, daily, timeZone, payer: chosenPayer, connection }: {
   status: PersonalAssistantStatus; perRun: number; daily: number; timeZone: string; payer?: { organization: string; workspace: string } | null;
+  /** The chosen connection, named in full when the person has several. */
+  connection?: BackgroundComputeConnection | null;
 }) {
   const { disclosure } = status;
   const payer = chosenPayer ?? status.enablement?.consent.payer;
   const price = disclosure.price;
   return (
     <ul className="aset__facts">
+      {connection ? <li><b>Connection</b><span>{connection.name} · key ending {connection.keyLastFour}</span></li> : null}
       <li><b>Provider</b><span>{disclosure.provider && disclosure.model ? aiConnectionLabel(disclosure.provider, disclosure.model) : 'The provider and model of your own AI connection'}. Your request is sent from the Flux server, never from your browser.</span></li>
       <li><b>Who pays</b><span>{payer ? `${payer.organization} · ${payer.workspace}, through your own API key.` : 'The organization of your own API key. Never another person or the workspace.'}</span></li>
       <li><b>What leaves Flux</b><span>Excerpts from the one project conversation you ask in: its latest messages, its open work and a map thought you select. Never your direct messages, private notes, private maps or other projects.</span></li>
@@ -175,10 +178,10 @@ function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
       </section>
       <form className="nset__sec" aria-labelledby="aset-consent" onSubmit={(event) => void submit(event)}>
         <h3 id="aset-consent">Before you turn it on</h3>
-        <Disclosure status={shown} perRun={perRun} daily={daily} timeZone={timeZone} payer={payer} />
+        <Disclosure status={shown} perRun={perRun} daily={daily} timeZone={timeZone} payer={payer} connection={owned.length > 1 ? selected : null} />
         <fieldset className="aset__fields" disabled={!usable || busy}>
           <legend className="ui-vh">Limits and assistant</legend>
-          {owned.length > 1 ? <label className="aset__field">AI connection
+          {owned.length > 1 ? <label className="aset__field aset__field--connection">AI connection
             <select aria-label="AI connection" value={connectionId} onChange={(event) => choose(event.target.value)}>
               {owned.map((item) => <option key={item.id} value={item.id}>{item.name} · {aiConnectionLabel(item.provider, item.model)}</option>)}
             </select>

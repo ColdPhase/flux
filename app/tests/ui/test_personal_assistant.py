@@ -356,6 +356,9 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(lee_card.get_by_role("button", name="Accept")).to_have_count(0)
         kai = self.conversation("kai")
         kai_card = kai.locator(".assistant-proposal").last
+        # The proposal itself, before anyone decides it (the shot used to be taken before it rendered).
+        expect(kai_card).to_contain_text("Proposal · not saved yet")
+        kai_card.scroll_into_view_if_needed()
         shot(kai, "assistant-1440-proposal")
         kai_card.get_by_role("button", name="Accept").click()
         expect(kai_card).to_contain_text(f"Recorded by you · drafted by {JO['name']}'s assistant")
