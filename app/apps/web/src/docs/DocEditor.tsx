@@ -7,7 +7,7 @@ import { useShellData } from '../app/data';
 import { createDoc, docUrl, getDoc, previewDoc, updateDoc } from './api';
 import { diffDocs, readableRefs, type DiffRow } from './diff';
 import { draftKey, keep, readKept, type Fields, type Kept } from './drafts';
-import { STATE_LABEL, longDate } from './format';
+import { STATE_LABEL, authorLabel, longDate } from './format';
 import { LinkPicker, type PickedRef } from './LinkPicker';
 import { WikiBar } from './WikiParts';
 import { useWiki } from './wiki-context';
@@ -161,7 +161,7 @@ export function DocEditor() {
 
         {conflict ? (
           <div className="doc-conflict" role="alert">
-            <p><Icon name="alert" size={14} /><b>{conflict.author.name} saved version {conflict.version}</b> while you were editing ({conflict.reason}, {longDate(conflict.createdAt)}). Nothing was overwritten, and your text is still here.</p>
+            <p><Icon name="alert" size={14} /><b>{authorLabel(conflict.author)} saved version {conflict.version}</b> while you were editing ({conflict.reason}, {longDate(conflict.createdAt)}). Nothing was overwritten, and your text is still here.</p>
             <div className="doc-conflict__acts">
               <Button variant="secondary" onClick={() => setShowTheirs((value) => !value)} aria-expanded={showTheirs}>{showTheirs ? 'Hide the changes' : 'Show their changes and yours'}</Button>
               <Button variant="primary" onClick={keepMine}>Keep my text on top of version {conflict.version}</Button>

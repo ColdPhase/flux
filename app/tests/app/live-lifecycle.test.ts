@@ -1,18 +1,15 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import { eq, sql } from 'drizzle-orm';
-import { createDatabase, schema } from '@flux/db';
+import { schema } from '@flux/db';
 import { DomainError } from '@flux/core';
 import type { Conversation } from '@flux/contracts';
 import { liveSessionStore } from '../../apps/server/src/live/store.js';
 import { liveLifecycle } from '../../apps/server/src/live/lifecycle.js';
+import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
 
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { db, pool } = createDatabase(connectionString);
-after(() => pool.end());
 const noRoom = async () => undefined;
 const failure = (code: string) => (error: unknown) => error instanceof DomainError && error.code === code;
 

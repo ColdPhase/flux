@@ -1,0 +1,219 @@
+{
+  "tested_source": "b30da68816b15b0c2f1a9ff99993d34e6eca4b05",
+  "production_identical_observed_current_pr": "db156227655fd4d33af9feb92a88b299dfd2e26a",
+  "date": "2026-10-01",
+  "verdict": "bounded three-findings PASS; whole74 open; publication proposal needs recorded clarifications",
+  "artifacts": [
+    {
+      "path": "/tmp/flux74-independent-fixed-functional-review.md",
+      "bytes": 6963,
+      "sha256": "9e68488920e5c1ba81559db7361e16143f55cd4410e1da2f21318ca1904fa73e"
+    },
+    {
+      "path": "/tmp/flux74-private-source-publication-independent-design.md",
+      "bytes": 6896,
+      "sha256": "403b82488828477cfb66104217a3b527701c8decf20da3f5692098cf15131694"
+    },
+    {
+      "path": "/tmp/flux74-independent-fixed-b30da68.log",
+      "bytes": 29182,
+      "sha256": "1a68949e2a44545712cf490396ebf06239e51f187979deb2b3035d085aee041f"
+    },
+    {
+      "path": "/tmp/flux74-independent-distinct-reader-b30da68.log",
+      "bytes": 10202,
+      "sha256": "af2ada44b0646b4dea1c799e76b3d2af6a49f12371d62aa81d5456fc56e84e3c"
+    },
+    {
+      "path": "/tmp/flux74-independent-refresh-generation-b30da68.log",
+      "bytes": 14724,
+      "sha256": "3aa58533d761e239d898c65e820e56a77c0a9df214a91bd5d650b649113747a8"
+    },
+    {
+      "path": "/tmp/flux74-independent-fixed-run.sh",
+      "bytes": 3378,
+      "sha256": "da6d5d662d1b8079658ccb9fcb2517a27e1167161f1e8f2cb94e6505982f0dc2"
+    },
+    {
+      "path": "/tmp/flux74-independent-distinct-reader-run.sh",
+      "bytes": 2818,
+      "sha256": "b5e5fe5ce4555686bca0fa7a12a1c4234b2912804b5d88052f0737253accd964"
+    },
+    {
+      "path": "/tmp/flux74-independent-refresh-generation-run.sh",
+      "bytes": 2694,
+      "sha256": "04dbe8d1d04219d14eab339aedfc4234b5bd072ed07f3011ddcac2a1860378fd"
+    },
+    {
+      "path": "/tmp/flux74-independent-fixed-repros.ts",
+      "bytes": 11559,
+      "sha256": "33eac3aafaa2cbe72522ccb2b7e6b2bd56907df4c2efc77fb1d8d61fdc60f9b5"
+    },
+    {
+      "path": "/tmp/flux74-independent-extra.ts",
+      "bytes": 10356,
+      "sha256": "69d6d8ac448ff838c287eb2d4ba956e28960a112accc45b431a80772c9392afb"
+    },
+    {
+      "path": "/tmp/flux74-independent-distinct-reader.e2e.ts",
+      "bytes": 18135,
+      "sha256": "e32a0c4988d8dae41ee0d33a6e0a004f2d84fbf3baaf120e8ff2ba82425ca677"
+    },
+    {
+      "path": "/tmp/flux74-independent-refresh-generation.ts",
+      "bytes": 14600,
+      "sha256": "39967ea076b4ee85ba732f195621e8cc2175efa36a9fc6ced9b12dfb1b342769"
+    },
+    {
+      "path": "/tmp/flux74-independent-fixed-source-delta.txt",
+      "bytes": 1648,
+      "sha256": "21ab567de2564620c778fa62414e61261202a29408064d8c59936d762c64e102"
+    },
+    {
+      "path": "/tmp/flux74-independent-fixed-pr168.json",
+      "bytes": 720,
+      "sha256": "7536d894bce256f1e8a17b54dd64ae626869e1ca07e93037862c4492bd280324"
+    },
+    {
+      "path": "/tmp/flux74-independent-fixed-review-threads.json",
+      "bytes": 176,
+      "sha256": "9a8bbf69ca7741c38ecea73f9f8f43ccfc323d4d56c1ae74148669e8df980a75"
+    },
+    {
+      "path": "/tmp/flux-review-74/docs/development/github-integration/2026-09-30-design.md",
+      "bytes": 17801,
+      "sha256": "c29a9f9dd1a3eeaa5302d1fe5d06a3191f44fb1bfdc40d25d81ea52fcf9140e7"
+    },
+    {
+      "path": "/home/hubert/Develop/flux/.worktrees/74-github-integration/docs/development/github-integration/2026-10-01-private-source-publication-proposal.md",
+      "bytes": 10429,
+      "sha256": "d0f35247d56b33cd22bf52d2e0173b57528bc4eafcf4bf5d00e960f6cb584cb7"
+    },
+    {
+      "path": "/tmp/flux74-independent-fixed-ui/github-settings-desktop-linked.png",
+      "bytes": 107766,
+      "sha256": "700e985f1278754292b775600ae30820f024aaedc166850ac46319048c5609c2",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "path": "/tmp/flux74-independent-fixed-ui/github-settings-desktop-reader.png",
+      "bytes": 95426,
+      "sha256": "4d797335e11a1306530dd6be4a208273f5497f05662421e3e25b33fc0c54b910",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "path": "/tmp/flux74-independent-fixed-ui/github-settings-desktop.png",
+      "bytes": 105660,
+      "sha256": "1e118369d382ed99aba8dcde4ecf286d2de9c6d9c9b00e2221b6b6e7c1acccbd",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "path": "/tmp/flux74-independent-fixed-ui/github-settings-phone-linked.png",
+      "bytes": 48930,
+      "sha256": "24d16091c36e64e762115c73c4fbaa2bae953126b5c888e33342a71bab538947",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "path": "/tmp/flux74-independent-fixed-ui/github-settings-phone-reader.png",
+      "bytes": 55191,
+      "sha256": "f99e3cb47c220a992f70b9d4986848c9bb34a5df5d6b07b64d5bc81f1a962ec0",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "path": "/tmp/flux74-independent-fixed-ui/github-settings-phone.png",
+      "bytes": 51090,
+      "sha256": "eb480f36f1c580b922b332a3d51f3c63f6e79539cfd2b64509291004bceddfc6",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "path": "/tmp/flux74-independent-fixed-ui/github-settings-tablet-linked.png",
+      "bytes": 100622,
+      "sha256": "732f65b1111992fe41e6b4b12b89e96c4c0e8e9c4b023e5fcb6fa2d1caf51c07",
+      "width": 820,
+      "height": 1180
+    },
+    {
+      "path": "/tmp/flux74-independent-fixed-ui/github-settings-tablet-reader.png",
+      "bytes": 74855,
+      "sha256": "44f178385acefaedfa6b829e274d30c27a2b737ebf351779e42010ca0e5d82f7",
+      "width": 820,
+      "height": 1180
+    },
+    {
+      "path": "/tmp/flux74-independent-fixed-ui/github-settings-tablet.png",
+      "bytes": 100622,
+      "sha256": "732f65b1111992fe41e6b4b12b89e96c4c0e8e9c4b023e5fcb6fa2d1caf51c07",
+      "width": 820,
+      "height": 1180
+    },
+    {
+      "path": "/tmp/flux74-independent-distinct-reader-ui/github-settings-desktop-linked.png",
+      "bytes": 108069,
+      "sha256": "ad356e8472d4ff28ed6c660dec698c0788402b353b7d931648b10304dc0d8ce5",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "path": "/tmp/flux74-independent-distinct-reader-ui/github-settings-desktop-reader.png",
+      "bytes": 95495,
+      "sha256": "e6fda24ee0fa647a01d12148200774be424588032b9064c68c1cdcd267675262",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "path": "/tmp/flux74-independent-distinct-reader-ui/github-settings-desktop.png",
+      "bytes": 105822,
+      "sha256": "958dc513882a96695f79e1bfee4b0c14181a1f09fcef3e65f42a0e8633f9d553",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "path": "/tmp/flux74-independent-distinct-reader-ui/github-settings-phone-linked.png",
+      "bytes": 49138,
+      "sha256": "691842d8e88b1efb2ac3e9c53225916764ec289a71bea813ea16616be9b8377b",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "path": "/tmp/flux74-independent-distinct-reader-ui/github-settings-phone-reader.png",
+      "bytes": 55191,
+      "sha256": "f99e3cb47c220a992f70b9d4986848c9bb34a5df5d6b07b64d5bc81f1a962ec0",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "path": "/tmp/flux74-independent-distinct-reader-ui/github-settings-phone.png",
+      "bytes": 51090,
+      "sha256": "eb480f36f1c580b922b332a3d51f3c63f6e79539cfd2b64509291004bceddfc6",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "path": "/tmp/flux74-independent-distinct-reader-ui/github-settings-tablet-linked.png",
+      "bytes": 100864,
+      "sha256": "d571118214370f4825344cf9f4e6eb67f38d3fe58b3a726e9c9ab5da29c136d4",
+      "width": 820,
+      "height": 1180
+    },
+    {
+      "path": "/tmp/flux74-independent-distinct-reader-ui/github-settings-tablet-reader.png",
+      "bytes": 75103,
+      "sha256": "8f436debb1919b576b85ee2eb5d13af4c25856bcf286337b2bbb82882fc06b28",
+      "width": 820,
+      "height": 1180
+    },
+    {
+      "path": "/tmp/flux74-independent-distinct-reader-ui/github-settings-tablet.png",
+      "bytes": 100864,
+      "sha256": "d571118214370f4825344cf9f4e6eb67f38d3fe58b3a726e9c9ab5da29c136d4",
+      "width": 820,
+      "height": 1180
+    }
+  ]
+}

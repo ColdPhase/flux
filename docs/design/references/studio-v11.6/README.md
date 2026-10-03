@@ -34,7 +34,8 @@ Preserve useful production behavior, current permissions and protected reviews.
 [Script](tools/inspect_reference.py), [report](inspection/report.json),
 [independent visual review](inspection/visual-review.md), and
 [independent contract review](inspection/contract-review.md), and
-[request audit and corrections](inspection/request-audit.md).
+[request audit and corrections](inspection/request-audit.md). Computed-style [design-system measurement](inspection/measured-design-system.md)
+(2026-10-02) with its [scripts](tools/measure/README.md).
 
 We served the unchanged HTML on loopback inside a network-isolated Docker
 container with native localStorage, a fresh browser context and fixed clock.
