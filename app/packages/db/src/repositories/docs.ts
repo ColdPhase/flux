@@ -15,12 +15,14 @@ type Ref = { type: 'message' | 'thought' | 'work' | 'decision' | 'result' | 'doc
 type Window = { limit: number; offset: number };
 type MaterialRow = typeof schema.projectMaterials.$inferSelect;
 type VersionRow = typeof schema.projectMaterialVersions.$inferSelect;
+type SnapshotRow = typeof schema.docLiveSnapshots.$inferSelect;
 type NewVersion = { title: string; body: string; state: 'draft' | 'published'; reason: string; author: Actor };
 
 const m = schema.projectMaterials;
 const v = schema.projectMaterialVersions;
 const p = schema.projects;
 const l = schema.projectObjectLinks;
+const s = schema.docLiveSnapshots;
 
 /** Exactly one stored actor (migration 0043): a person, or the agent that wrote under a standing grant (#152). */
 function actor(human: string | null, agent: string | null): Actor {
@@ -34,10 +36,12 @@ function toDoc(row: MaterialRow) {
     currentVersion: row.currentVersion, createdAt: row.createdAt, updatedAt: row.updatedAt };
 }
 
-function toVersion(row: VersionRow) {
+function toVersion(row: VersionRow, snapshot: SnapshotRow | null = null) {
   return {
     docId: row.materialId, projectId: row.projectId, version: row.version, title: row.title, body: row.body,
     state: row.state ?? 'published', reason: row.reason, author: actor(row.authorId, row.authorAgentId), createdAt: row.createdAt,
+    ...(snapshot ? { contributors: snapshot.contributors, liveSnapshot: { generation: snapshot.generation,
+      fromSequence: snapshot.fromSequence, toSequence: snapshot.toSequence } } : {}),
   };
 }
 
@@ -48,9 +52,11 @@ function versionValues({ author, ...version }: NewVersion) {
 
 export function docRows(db: DbExecutor) {
   const current = and(eq(v.materialId, m.id), eq(v.version, m.currentVersion));
-  const joined = () => db.select({ doc: m, current: v, projectName: p.name }).from(m).innerJoin(v, current).innerJoin(p, eq(p.id, m.projectId));
-  const map = (rows: { doc: MaterialRow; current: VersionRow; projectName: string }[]) =>
-    rows.map((row) => ({ doc: toDoc(row.doc), current: toVersion(row.current), projectName: row.projectName }));
+  const savedSnapshot = and(eq(s.docId, v.materialId), eq(s.version, v.version));
+  const joined = () => db.select({ doc: m, current: v, snapshot: s, projectName: p.name }).from(m).innerJoin(v, current)
+    .innerJoin(p, eq(p.id, m.projectId)).leftJoin(s, savedSnapshot);
+  const map = (rows: { doc: MaterialRow; current: VersionRow; snapshot: SnapshotRow | null; projectName: string }[]) =>
+    rows.map((row) => ({ doc: toDoc(row.doc), current: toVersion(row.current, row.snapshot), projectName: row.projectName }));
 
   async function paged(where: SQL, window: Window) {
     const [counted] = await db.select({ total: sql<number>`count(*)::int` }).from(m).where(where);
@@ -81,15 +87,16 @@ export function docRows(db: DbExecutor) {
     find,
 
     async version(id: string, version: number) {
-      const [row] = await db.select({ version: v }).from(v).innerJoin(m, eq(m.id, v.materialId))
+      const [row] = await db.select({ version: v, snapshot: s }).from(v).innerJoin(m, eq(m.id, v.materialId)).leftJoin(s, savedSnapshot)
         .where(and(eq(v.materialId, id), eq(v.version, version), eq(m.kind, 'doc')));
-      return row ? toVersion(row.version) : null;
+      return row ? toVersion(row.version, row.snapshot) : null;
     },
 
     async versions(id: string, window: Window) {
       const [counted] = await db.select({ total: sql<number>`count(*)::int` }).from(v).where(eq(v.materialId, id));
-      const rows = await db.select().from(v).where(eq(v.materialId, id)).orderBy(desc(v.version)).limit(window.limit).offset(window.offset);
-      return { items: rows.map(toVersion), total: counted?.total ?? 0 };
+      const rows = await db.select({ version: v, snapshot: s }).from(v).leftJoin(s, savedSnapshot)
+        .where(eq(v.materialId, id)).orderBy(desc(v.version)).limit(window.limit).offset(window.offset);
+      return { items: rows.map((row) => toVersion(row.version, row.snapshot)), total: counted?.total ?? 0 };
     },
 
     async insert(doc: { id: string; workspaceId: string; projectId: string; createdBy: Actor }, first: NewVersion) {

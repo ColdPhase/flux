@@ -1469,3 +1469,81 @@ export const githubBridgeOutbox = pgTable('github_bridge_outbox', {
   headSha: text('head_sha').notNull(), event: text('event').notNull(), providerObjectId: text('provider_object_id'), correlationKey: text('correlation_key').notNull(),
   state: text('state').notNull().default('pending_audience_adapter'), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [unique().on(t.deliveryId, t.bindingId, t.linkId), unique().on(t.bindingId, t.linkId, t.correlationKey)]);
+
+// #228: committed shared wiki heads, retired generations and immutable author/update history.
+// Authorization remains in core; each writer locks the native material before this head.
+export const docLiveHeads = pgTable('doc_live_heads', {
+  docId: uuid('doc_id').primaryKey(), workspaceId: uuid('workspace_id').notNull(), projectId: uuid('project_id').notNull(),
+  generation: uuid('generation').notNull(), sequence: bigint('sequence', { mode: 'number' }).notNull().default(0),
+  body: text('body').notNull(), hash: text('hash').notNull(), savedVersion: integer('saved_version').notNull(),
+  savedSequence: bigint('saved_sequence', { mode: 'number' }).notNull().default(0),
+  codecState: jsonb('codec_state').$type<Record<string, unknown>>(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  foreignKey({ columns: [t.workspaceId, t.projectId, t.docId], foreignColumns: [projectMaterials.workspaceId, projectMaterials.projectId, projectMaterials.id] }).onDelete('cascade'),
+  foreignKey({ columns: [t.workspaceId, t.projectId, t.docId, t.savedVersion], foreignColumns: [projectMaterialVersions.workspaceId, projectMaterialVersions.projectId, projectMaterialVersions.materialId, projectMaterialVersions.version] }),
+  check('doc_live_head_sequence', sql`${t.sequence} BETWEEN 0 AND 9007199254740991 AND ${t.savedSequence} BETWEEN 0 AND ${t.sequence}`),
+  check('doc_live_head_hash', sql`${t.hash} ~ '^[a-f0-9]{64}$'`),
+  check('doc_live_head_body', sql`char_length(${t.body}) <= 100000`),
+  check('doc_live_head_codec_bytes', sql`${t.codecState} IS NULL OR octet_length(${t.codecState}::text) <= 8388608`),
+]);
+
+/** A native clean write changes generation, preserving the old ledger/receipts rather than rewriting them. */
+export const docLiveArchives = pgTable('doc_live_archives', {
+  docId: uuid('doc_id').notNull().references(() => projectMaterials.id, { onDelete: 'cascade' }),
+  generation: uuid('generation').notNull(), sequence: bigint('sequence', { mode: 'number' }).notNull(),
+  body: text('body').notNull(), hash: text('hash').notNull(), savedVersion: integer('saved_version').notNull(),
+  savedSequence: bigint('saved_sequence', { mode: 'number' }).notNull(), codecState: jsonb('codec_state').$type<Record<string, unknown>>(),
+  retiredAt: timestamp('retired_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.docId, t.generation] }),
+  check('doc_live_archive_sequence', sql`${t.sequence} BETWEEN 0 AND 9007199254740991 AND ${t.savedSequence} BETWEEN 0 AND ${t.sequence}`),
+  check('doc_live_archive_hash', sql`${t.hash} ~ '^[a-f0-9]{64}$'`),
+  check('doc_live_archive_body', sql`char_length(${t.body}) <= 100000`),
+  check('doc_live_archive_codec_bytes', sql`${t.codecState} IS NULL OR octet_length(${t.codecState}::text) <= 8388608`)]);
+
+/** A semantic no-op has an immutable receipt but no contributing journal sequence. */
+export const docLiveUpdates = pgTable('doc_live_updates', {
+  docId: uuid('doc_id').notNull().references(() => projectMaterials.id, { onDelete: 'cascade' }), generation: uuid('generation').notNull(),
+  sequence: bigint('sequence', { mode: 'number' }).notNull(), actorId: text('actor_id').notNull().references(() => authUsers.id),
+  commandId: uuid('command_id').notNull(), fingerprint: text('fingerprint').notNull(), bytes: text('bytes').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.docId, t.generation, t.sequence] }), unique().on(t.actorId, t.commandId),
+  check('doc_live_update_sequence', sql`${t.sequence} BETWEEN 1 AND 9007199254740991`),
+  check('doc_live_update_fingerprint', sql`${t.fingerprint} ~ '^[a-f0-9]{64}$'`),
+  check('doc_live_update_bytes', sql`octet_length(${t.bytes}) <= 11184812`)]);
+
+/** Ownership never expires or changes; only the active instance lease is renewable. */
+export const docLiveReplicas = pgTable('doc_live_replicas', {
+  docId: uuid('doc_id').notNull().references(() => projectMaterials.id, { onDelete: 'cascade' }), generation: uuid('generation').notNull(),
+  replicaId: bigint('replica_id', { mode: 'number' }).notNull(),
+  ownerKind: text('owner_kind', { enum: ['human', 'server'] }).notNull().default('human'),
+  actorId: text('actor_id').references(() => authUsers.id),
+  instanceId: uuid('instance_id').notNull(), connectionId: uuid('connection_id'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+}, (t) => [primaryKey({ columns: [t.docId, t.generation, t.replicaId] }),
+  check('doc_live_replica_owner', sql`(${t.ownerKind} = 'human' AND ${t.actorId} IS NOT NULL) OR (${t.ownerKind} = 'server' AND ${t.actorId} IS NULL)`),
+  check('doc_live_replica_id', sql`${t.replicaId} BETWEEN 0 AND 9007199254740991`)]);
+
+export const docLiveSnapshots = pgTable('doc_live_snapshots', {
+  docId: uuid('doc_id').notNull(), version: integer('version').notNull(), workspaceId: uuid('workspace_id').notNull(), projectId: uuid('project_id').notNull(),
+  generation: uuid('generation').notNull(), fromSequence: bigint('from_sequence', { mode: 'number' }).notNull(),
+  toSequence: bigint('to_sequence', { mode: 'number' }).notNull(), hash: text('hash').notNull(),
+  contributors: jsonb('contributors').$type<{ kind: 'human'; id: string }[]>().notNull(),
+}, (t) => [primaryKey({ columns: [t.docId, t.version] }),
+  foreignKey({ columns: [t.workspaceId, t.projectId, t.docId, t.version], foreignColumns: [projectMaterialVersions.workspaceId, projectMaterialVersions.projectId, projectMaterialVersions.materialId, projectMaterialVersions.version] }).onDelete('cascade'),
+  check('doc_live_snapshot_interval', sql`${t.fromSequence} BETWEEN 0 AND ${t.toSequence} AND ${t.toSequence} <= 9007199254740991`),
+  check('doc_live_snapshot_hash', sql`${t.hash} ~ '^[a-f0-9]{64}$'`),
+  check('doc_live_snapshot_contributors', sql`jsonb_typeof(${t.contributors}) = 'array' AND octet_length(${t.contributors}::text) <= 8388608`)]);
+
+/** Shared across all rooms/operations: an actor's UUID cannot change namespace or payload. */
+export const liveEditingIntents = pgTable('live_editing_intents', {
+  actorId: text('actor_id').notNull().references(() => authUsers.id), commandId: uuid('command_id').notNull(),
+  workspaceId: uuid('workspace_id').notNull(), kind: text('kind', { enum: ['wiki', 'map'] }).notNull(),
+  resourceId: uuid('resource_id').notNull(), generation: uuid('generation').notNull(), operation: text('operation').notNull(),
+  fingerprint: text('fingerprint').notNull(), byteLength: integer('byte_length').notNull(),
+  receipt: jsonb('receipt').$type<Record<string, unknown>>().notNull(), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.actorId, t.commandId] }),
+  check('live_editing_intent_kind', sql`${t.kind} IN ('wiki','map')`),
+  check('live_editing_intent_fingerprint', sql`${t.fingerprint} ~ '^[a-f0-9]{64}$'`),
+  check('live_editing_intent_bytes', sql`${t.byteLength} BETWEEN 0 AND 8388608`),
+  check('live_editing_intent_receipt', sql`jsonb_typeof(${t.receipt}) = 'object' AND octet_length(${t.receipt}::text) <= 8388608`)]);

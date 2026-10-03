@@ -1,6 +1,7 @@
 import type { DocMention, DocRefType, DocState, ObjectRef } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 import type { ActorRef, Paged, PageWindow, WorkAccess, WorkRepository } from '../work/ports.js';
+import type { DocLiveVersions } from '../editing/doc-ports.js';
 
 /**
  * Ports of the project doc use cases (issue #112). Docs reuse the #36 material rows and their
@@ -30,6 +31,9 @@ export interface DocVersionRecord {
   reason: string;
   /** The actual author of this version: a person, or an agent writing under a standing grant (#152). */
   author: ActorRef;
+  /** Immutable contributing humans of an explicit shared snapshot; the saver remains author. */
+  contributors?: ActorRef[];
+  liveSnapshot?: { generation: string; fromSequence: number; toSequence: number };
   createdAt: Date;
 }
 
@@ -90,6 +94,7 @@ export interface DocEventLog {
 export interface DocPorts {
   access: WorkAccess;
   docs: DocRepository;
+  live: DocLiveVersions;
   /** The #101 rows: typed links, titles, names, and the results and decisions added to docs. */
   work: WorkRepository;
   events: DocEventLog;

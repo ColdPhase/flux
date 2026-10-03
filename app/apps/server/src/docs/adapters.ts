@@ -1,4 +1,4 @@
-import { docRows, type DbExecutor } from '@flux/db';
+import { docLiveVersions, docRows, type DbExecutor } from '@flux/db';
 import { createDocUseCases, recordEvent, visibleFilter, type Database, type DocPorts, type DocRepository, type DocUnitOfWork, type Transaction } from '@flux/core';
 import { policyWorkAccess, workRepository } from '../work/adapters.js';
 import type { TransactionEventSession } from '../work/transaction-events.js';
@@ -22,6 +22,7 @@ function docPorts(tx: DbExecutor, events?: DocPorts['events']): DocPorts {
   return {
     access: policyWorkAccess(tx),
     docs: docRepository(tx),
+    live: docLiveVersions(tx),
     work: workRepository(tx),
     events: events ?? { record: async (principal, workspaceId, kind, projectId, data) => { await recordEvent(tx, principal, workspaceId, kind, projectId, data); } },
     renderer: markdownRenderer,

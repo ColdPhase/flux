@@ -201,6 +201,8 @@ export interface UpdateThoughtCommand {
   height?: number;
   shape?: ThoughtShape;
   expectedVersion?: number;
+  /** #228: resize uses the same server-issued transient lease as movement. */
+  leaseId?: string;
 }
 
 /**
@@ -210,6 +212,8 @@ export interface UpdateThoughtCommand {
  */
 export interface MoveThoughtsCommand {
   moves: { id: string; x: number; y: number; expectedVersion: number }[];
+  /** #228: server-issued drag lease, checked in the same native CAS transaction. */
+  leaseId?: string;
 }
 export interface MovedThoughts {
   thoughts: Thought[];
