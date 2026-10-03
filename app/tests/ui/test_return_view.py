@@ -570,7 +570,7 @@ class ReturnViewJourney(unittest.TestCase):
         self.assertEqual(fresh["items"], [], "the server's fresh answer is empty")
         # Navigating within the app, then reloading: the item is gone both times.
         views = page.get_by_role("navigation", name="Views")
-        views.get_by_role("link", name="Docs").click()
+        views.get_by_role("link", name="Wiki").click()
         expect(page.get_by_role("heading", name="No docs yet")).to_be_visible()
         views.get_by_role("link", name="Conversation").click()
         expect(page.get_by_role("heading", name="Welcome, Nia")).to_be_visible()
