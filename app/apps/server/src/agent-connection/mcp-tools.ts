@@ -9,6 +9,8 @@ import { registerAgentBootstrap } from './bootstrap.js';
 import { registerAgentDomainReads } from './domain-reads.js';
 import { registerAgentWorkActions } from './work-actions.js';
 import { registerAgentMapActions } from './map-actions.js';
+import { registerAgentDocActions } from './doc-actions.js';
+import { registerAgentConversationActions } from './conversation-actions.js';
 import { withAgentConnection, type FluxMcpClaims } from './context.js';
 import { toolError, toolResult } from './tool-results.js';
 
@@ -24,6 +26,8 @@ export function createFluxMcpServer(db: Database, claims: FluxMcpClaims, cursorS
   registerAgentBootstrap(tools, db, claims);
   registerAgentWorkActions(tools, db, claims);
   registerAgentMapActions(tools, db, claims);
+  registerAgentDocActions(tools, db, claims);
+  registerAgentConversationActions(tools, db, claims);
   tools.forScope('flux.proposal.write').registerTool('flux_create_proposal', {
     title: 'Propose a sourced project action',
     description: 'Submit a human-reviewable suggestion based on the current version of a selected project material.',

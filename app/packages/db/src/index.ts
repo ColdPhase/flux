@@ -28,6 +28,7 @@ export * from './repositories/task-graph.js';
 export * from './repositories/task-discussions.js';
 export * from './repositories/direct-messages.js';
 export * from './repositories/docs.js';
+export * from './repositories/sample.js';
 
 /** PostgreSQL channel notified (payload: seq) after an event with a workspace commits; wakes stream connections. */
 export const EVENTS_CHANNEL = 'flux_events';
@@ -90,6 +91,8 @@ export * from './repositories/search.js';
 export * from './repositories/personal-runs.js';
 export * from './repositories/project-export.js';
 export * from './repositories/operations.js';
+
+export * from './repositories/github.js';
 export * from './repositories/agent-execution.js';
 export * from './repositories/agent-orientation.js';
 export * from './repositories/agent-playbook.js';
