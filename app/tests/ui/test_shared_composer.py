@@ -714,3 +714,6 @@ class SharedComposerJourney(unittest.TestCase):
                 expect(page.get_by_label("Write to this task", exact=True)).to_have_value("")
                 expect(page.get_by_role("list", name="Files in your draft")).to_have_count(0)
                 self.assertEqual(len(self.discussion(page, task)['messages']), 1)
+                # The next storage variant needs this real replacement session;
+                # successful logout revoked the original shared fixture cookie.
+                self.states['owner'] = page.context.storage_state()
