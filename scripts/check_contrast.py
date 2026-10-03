@@ -47,7 +47,7 @@ PAIRS = [
     ("--line-input", "--bg", 3.0, "input boundary"),
     ("--focus", "--bg", 3.0, "focus ring"),
     ("--focus", "--bg-side", 3.0, "focus ring in the sidebar"),
-    ("--text", "--bg", 3.0, "view switcher indicator"),
+    ("--accent", "--bg", 3.0, "view switcher indicator (the short accent mark)"),
     ("--text", "--bg-chrome", 4.5, "sidebar item text"),
     ("--text-2", "--bg-chrome", 4.5, "small sidebar labels and section headings"),
     ("--text-2", "--bg-hover", 4.5, "sidebar item on hover"),
