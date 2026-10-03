@@ -91,6 +91,21 @@ class SidebarNames(unittest.TestCase):
             # Identical long names differ by what is visible, not only by a hover title.
             self.assertEqual(sorted(row["workspace"] for row in long), sorted(WORKSPACES))
             shot(view, f"sidebar-same-names-{'phone' if phone else 'desktop'}{'-dark' if dark else ''}")
+            if phone and not dark:
+                # The longer list still scrolls inside the drawer: Messages below it stays reachable.
+                drawer = view.get_by_role("dialog")
+                messages = drawer.get_by_text("Messages", exact=True)
+                messages.scroll_into_view_if_needed()
+                expect(messages).to_be_in_viewport()
+        # A two-line row as the current project keeps its marker and its workspace line.
+        current = self.page()
+        current.goto("/")
+        current.locator('.side__project[title="Gesture lamp · Lamp studio Berlin"]').click()
+        row = current.locator(".side__project.is-open")
+        expect(row).to_contain_text("Lamp studio Berlin")
+        marker = row.evaluate("el => { const r = el.getBoundingClientRect(), b = getComputedStyle(el, '::before'); return { top: parseFloat(b.top), height: parseFloat(b.height), row: r.height }; }")
+        self.assertLessEqual(marker["top"] + marker["height"], marker["row"], f"the marker sits within the row: {marker}")
+        shot(current, "sidebar-same-names-current-desktop")
 
 
 if __name__ == "__main__":
