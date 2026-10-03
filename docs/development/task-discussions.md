@@ -266,5 +266,11 @@ The one project stream (UI116-1) shows both halves of UI116-3:
   title) to a root that opened a task's discussion. The stream and the thread header show it as the task's chip;
   replies from the thread drawer are ordinary replies to that conversation, so they are the task's discussion.
 
-Still open in #154: Details/Tasks entry to the discussion, one draft identity shared by the thread drawer and the
-Agents task composer, stored files, unused-AI undo and real #152/#153 clients.
+- **Details of a task.** A Discussion section reads `GET /api/v1/work/:id/discussion?limit=1`: the root with its
+  true author and time and the reply count, linking to the thread in Conversation. Before anyone has written, a
+  person who can write starts it there with `POST /api/v1/work/:id/discussion` (`kind: 'text'`). Its draft and
+  retry id are the task's own, `task:<id>` and `task:<id>:pending` in the browser's draft store: the identity the
+  Agents task composer (#183) uses, so a lost answer retried from either stores the message once.
+
+Still open in #154: the thread drawer's reply composer keeps the conversation's own draft rather than the task's
+(to be joined once the Agents composer lands), stored files, unused-AI undo and real #152/#153 clients.
