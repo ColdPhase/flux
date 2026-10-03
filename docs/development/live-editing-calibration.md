@@ -21,10 +21,28 @@ the finite codec proof; all four gates and independent assessment remain require
 passed on Node 24.21.0. The first author matrix passed 19/19 in 8.355 seconds; a
 strengthened matrix passed 21/21 in 10.197 seconds, with no failed/skipped/cancelled
 cases. Raw results and exact fixture/runner hashes are retained in the evidence
-directory below. The later no-op/intent-registry changes and two added cases are
-**unverified**, awaiting the root's frozen commit and independent nine-case probe.
+directory below. On frozen `b439b29c306d997c72ee9b8a45c0f9d940329986`, the author
+matrix subsequently passed 23/23 in 10.374 seconds. The independent ten-case probe
+passed six cases and demonstrated four failures: a legitimate public surrogate-split
+checkpoint, unbounded intent-registry retention before worker admission, stranded
+exact assembly retry after copy pressure, and incomplete chunk intent binding.
+Those failures stop production enablement. The original failing source remains
+unchanged as a negative control in the #231 worktree.
 Shell syntax, tracked whitespace and foundation link/setup checks passed; none of
 these substitutes for current-source codec, application or independent acceptance.
+
+The 2026-10-04 correction source is in the separate #228 worktree,
+`codex-hubert/228-live-map-wiki`, based on
+`6a387d0e60147a9f78bb15180c2126b87dca035d`. Its thirty-case author matrix is
+**unverified** until a frozen source run. It retains original UTF-16 ledger text and
+allows replacement halves only at graph cuts established by admitted novel edits;
+negative controls still refuse unproved replacements and altered neighbouring text.
+Registry waiters and actual worker jobs now share a reservation before hashing or
+awaiting, with cancellation, close and finite waiting controls. Complete assemblies
+retry an equal final chunk when copy capacity returns, and retain a deep-frozen
+closed persistent envelope containing operation, replica and semantic parameters.
+The independent pressure reproduction needs the newly mandatory valid operation
+and replica fields only; its original pressure and completion assertion stay intact.
 
 1. Prepare the standalone lock inside Docker. Record its exact resolved dependency
    versions/integrities and source license hashes before the first codec test.
@@ -113,7 +131,11 @@ provenance change), tracks only newly deleted subranges, and a shared actor/UUID
 intent-registry model. Its serialized in-memory boundary is **not** a proof that
 room/intent writes commit atomically, survive restart, use the prescribed access/
 intent/material/live locks, or reconcile uncertain SQL COMMIT. Those remain gate 3.
-The new model/cases await execution; its queue/copy accounting also needs review.
+The original frozen model failed the independent pre-worker retention control. The
+correction reserves input, transferable copy, charged state and maximum result in
+the same budget used by the actual pool before immutable intent hashing/queueing.
+Borrowed byte mutation is checked before dispatch and before result publication.
+The correction and its refusal/recovery cases await execution and fresh review.
 
 | Candidate limit | Value / accounting |
 | --- | --- |
@@ -122,6 +144,7 @@ The new model/cases await execution; its queue/copy accounting also needs review
 | Assembly completion | charge original chunks plus contiguous result before allocation; refuse if that copy would exceed the shared 32 MiB assembly budget |
 | Workers | two; 64 MiB JS heap candidate partitioned 48 MiB old + 16 MiB young; explicit 16 MiB code range / 2 MiB stack; verify public worker-reported values; terminate after 100 ms task deadline; separate **2,000 ms finite bootstrap** deadline |
 | Jobs | ≤8 waiting; reserve retry bytes + transferable input + charged checkpoint/ledger + full 8 MiB result copy **before queueing**; 32 MiB aggregate; the external limit can refuse before the count limit |
+| Serialized intent admission | shares that job budget; proposed 3,000 ms finite waiting deadline, current cancellation and close rejection; no per-room promise tail outside the reservation |
 | Graph decode | ≤65,536 decoded/retained structs and ≤65,536 delete ranges; larger headers remain constrained by worker heap/deadline |
 | Confirmed room cache | ≤8 MiB charged state, including original deleted text, body/checkpoint strings, receipts, enrollment and explicit object headroom; 16 rooms / 128 MiB aggregate |
 | Body and runner | ≤100,000 JS code units; test container 512 MiB RAM/swap ceiling, two CPUs, 64 PIDs, read-only filesystem, no network; 90-second node / 120-second outer test deadline |
@@ -173,18 +196,21 @@ source license hash. The first lock run exposed ignored package.json overrides:
 testing. First inventory stopped on generated lock mode0600; mode0644 fixed the
 unprivileged image read. Both failed preparations and successful raw runs are recorded.
 
-Current source remains a draft with these independent preflight findings pending:
+The corrected #228 source remains a draft with these independent findings pending:
 
 - Prove semantic no-op receipts and shared valid-room intent binding on the frozen
   corrected source, including absence of new provenance and namespace-changing retry.
-- Complete assembly backpressure/retry: a COPY_LIMIT completion refusal must be
-  retryable after capacity returns; bind operation, replica and parameters as well
-  as room/actor/UUID. The current exact-duplicate shortcut can strand a full assembly.
+- Re-execute the exact assembly backpressure/retry negative control and semantic
+  header controls against the correction; preserve the original failing raw result.
 - Prove the public Yjs UTF-16 surrogate-split checkpoint behavior without weakening
   original duplicate content/ownership checks or using private fields.
 - Independently assess job/registry/assembly allocation and bounded wait accounting.
 - #231 AC-2 actual application upgrade dispatcher and all #228 SQL/UI gates remain.
 
-The author now freezes source for the root's partial commit/push and independent
-probe. Earlier 21-case PASS applies to its recorded source hashes, **not** the
-subsequent untested changes. No readiness, merge or complete-live-feature claim follows.
+The correction checkpoint is handed to the root for commit/push and independent
+probe. Earlier passes apply to their recorded source hashes, **not** the subsequent
+untested changes. The next finite codec run uses a separate evidence directory,
+`/tmp/flux-228-codec-corrections`; it preserves all historical negative observations.
+No readiness, merge or complete-live-feature claim follows. The same implementation
+owner continues the actual application dispatcher, SQL authority, editor/live-reader
+and map integration; calibration alone cannot complete #228.

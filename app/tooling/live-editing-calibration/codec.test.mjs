@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
+import { setImmediate } from 'node:timers/promises';
 import { test } from 'node:test';
 import * as Y from 'yjs';
 import { EditorState } from '@codemirror/state';
@@ -26,7 +27,7 @@ function capture(doc, change) {
 function harness(t) {
   const pool = new CodecPool(); const clients = []; let counter = 0;
   const h = { state: emptyRoom(), pool, intents: new IntentRegistry() };
-  t.after(async () => { for (const client of clients) client.doc.destroy(); await pool.close(); });
+  t.after(async () => { for (const client of clients) client.doc.destroy(); await h.intents.close(); await pool.close(); });
   h.client = (actor = 'actor-a', { text = true } = {}) => {
     // Public clientID is read once. Enrollment precedes getText, editor, and all local structs.
     const doc = new Y.Doc();
@@ -219,6 +220,35 @@ test('unknown GC snapshots refuse; exact captured first-admission insert/delete 
   await h.accept(a, Y.encodeStateAsUpdate(a.doc)); assert.equal(h.state.body, '');
 });
 
+test('confirmed surrogate splits retain original provenance and accept public checkpoints only at proved cuts', async (t) => {
+  const h = harness(t); const a = h.client();
+  const original = capture(a.doc, () => a.text.insert(0, '🙂z'));
+  await h.accept(a, original);
+  await h.reject(a, wire([item(a.replica, 0, '\ufffd\ufffdz')]), 'ALTERED_DUPLICATE_CONTENT');
+  await h.accept(a, capture(a.doc, () => a.text.delete(0, 1)));
+  const immutable = digest(h.state.nodes); const journal = digest(h.state.journal);
+  const checkpoint = await h.accept(a, Y.encodeStateAsUpdate(a.doc));
+  assert.equal(checkpoint.receiptOnly, true); assert.equal(h.state.sequence, 2);
+  assert.equal(h.state.body, '\ufffdz'); assert.equal(h.state.nodes[0].text, '🙂z');
+  assert.equal(digest(h.state.nodes), immutable); assert.equal(digest(h.state.journal), journal);
+  assert.deepEqual(h.state.splits, [{ client: a.replica, clock: 1 }]);
+  await h.reject(a, wire([item(a.replica, 1, '\ufffdQ', { origin: { client: a.replica, clock: 0 }, parent: null })]), 'ALTERED_DUPLICATE_CONTENT');
+  await h.reject(a, wire([item(a.replica, 0, '\ufffd\ufffdQ')]), 'ALTERED_DUPLICATE_CONTENT');
+  const forwarded = await h.accept(a, original); assert.equal(forwarded.receiptOnly, true);
+  assert.equal(digest(h.state.nodes), immutable); assert.equal(h.state.sequence, 2);
+});
+
+test('a peer insertion inside a surrogate establishes only that public split transformation', async (t) => {
+  const h = harness(t); const a = h.client('actor-a');
+  await h.accept(a, capture(a.doc, () => a.text.insert(0, '🙂')));
+  const b = h.client('actor-b');
+  await h.accept(b, capture(b.doc, () => b.text.insert(1, 'X')));
+  assert.equal(h.state.body, '\ufffdX\ufffd'); assert.equal(h.state.nodes[0].text, '🙂');
+  const before = digest(h.state.journal);
+  const checkpoint = await h.accept(b, Y.encodeStateAsUpdate(b.doc));
+  assert.equal(checkpoint.receiptOnly, true); assert.equal(digest(h.state.journal), before);
+});
+
 test('inconsistent duplicate intervals, parent origins and future references are refused', async (t) => {
   const h = harness(t); const a = h.client(); const b = h.client('actor-b');
   await h.accept(a, capture(a.doc, () => a.text.insert(0, 'abc')));
@@ -327,6 +357,57 @@ test('missing bootstrap readiness and early clean exit are finite non-poisoning 
   assert.equal(digest(h.state), before); assert.equal(h.pool.active, 0); assert.equal(h.pool.externalBytes, 0);
 });
 
+test('registry reserves before a blocked first admission and releases retained inputs after refusal', async (t) => {
+  const h = harness(t); const a = h.client();
+  let entered; let release;
+  const started = new Promise((resolve) => { entered = resolve; });
+  const blocked = new Promise((resolve) => { release = resolve; });
+  let calls = 0;
+  const stub = { run: async () => {
+    if (++calls === 1) { entered(); await blocked; }
+    return { ok: false, code: 'CONTROLLED_DRAIN' };
+  } };
+  const jobs = Array.from({ length: CAPS.workers + CAPS.waitingTasks + 1 }, () =>
+    h.intents.run(stub, h.state, h.envelope(a), new Uint8Array(CAPS.assemblyBytes)));
+  const settled = Promise.allSettled(jobs); await started;
+  assert.ok(h.intents.budget.bytes <= CAPS.assembliesBytesPerApi);
+  assert.equal(h.intents.waiting.length, 0, '8MiB jobs must hit bytes before waiting');
+  release(); const results = await settled;
+  assert.ok(results.some((result) => result.status === 'rejected' && result.reason.code === 'EXTERNAL_BUFFER_LIMIT'));
+  assert.equal(h.intents.budget.bytes, 0); assert.equal(h.intents.budget.leases.size, 0);
+});
+
+test('actual registry and pool share one reservation and cancel active plus waiting jobs on close', async (t) => {
+  const h = harness(t); const a = h.client(); const before = digest(h.state);
+  const jobs = Array.from({ length: 3 }, () => h.intents.run(h.pool, h.state, h.envelope(a), wire(), { stall: true }));
+  const settled = Promise.allSettled(jobs); const until = performance.now() + 500;
+  while (h.pool.running.size === 0 && performance.now() < until) await setImmediate();
+  assert.equal(h.pool.running.size, 1); assert.equal(h.pool.budget.leases.size, 3);
+  assert.ok(h.pool.externalBytes <= CAPS.assembliesBytesPerApi);
+  assert.equal(h.intents.budget.bytes, 0, 'no second independent reservation for real pool');
+  await h.intents.close(); const results = await settled;
+  assert.ok(results.every((result) => result.status === 'rejected'));
+  assert.equal(h.pool.externalBytes, 0); assert.equal(h.pool.budget.leases.size, 0);
+  assert.equal(h.pool.active, 0); assert.equal(h.intents.waiting.length, 0);
+  assert.equal(digest(h.state), before);
+});
+
+test('registry waiting deadline releases reservations while a blocked boundary remains active', async (t) => {
+  const h = harness(t); const a = h.client(); let entered; let release;
+  const started = new Promise((resolve) => { entered = resolve; });
+  const blocked = new Promise((resolve) => { release = resolve; });
+  let calls = 0;
+  const stub = { run: async () => {
+    if (++calls === 1) { entered(); await blocked; }
+    return { ok: false, code: 'CONTROLLED_DRAIN' };
+  } };
+  const first = h.intents.run(stub, h.state, h.envelope(a), wire()); await started;
+  const waiting = h.intents.run(stub, h.state, h.envelope(a), wire());
+  await assert.rejects(waiting, { code: 'INTENT_REGISTRY_WAIT_TIMEOUT' });
+  assert.equal(h.intents.waiting.length, 0); assert.equal(h.intents.budget.leases.size, 1);
+  release(); await first; assert.equal(h.intents.budget.bytes, 0);
+});
+
 test('room count and replacement accounting are finite without losing confirmed entries', () => {
   const cache = new RoomCache();
   for (let index = 0; index < CAPS.caches; index++) cache.put(`room-${index}`, emptyRoom(`room-${index}`));
@@ -359,7 +440,7 @@ test('100k UTF-8 update assembles reordered duplicate chunks and expires cross-s
 });
 
 test('assembly count, aggregate, altered duplicates and index ceilings have explicit refusal', () => {
-  const context = { workspace: 'w', kind: 'wiki', room: 'r', generation: 'g', actor: 'a', uuid: 'id' };
+  const context = { workspace: 'w', kind: 'wiki', room: 'r', generation: 'g', actor: 'a', uuid: 'id', operation: 'text', replica: 1, parameters: null };
   const assemblies = new Assemblies(); const header = { ...context, index: 0, count: 2 };
   const first = packet(header, Buffer.from('a'));
   for (let index = 0; index < CAPS.assembliesPerApi; index++) assemblies.receive(`c${index}`, first, context, 0);
@@ -376,4 +457,41 @@ test('assembly count, aggregate, altered duplicates and index ceilings have expl
     assemblies.receive('big', frame, context, 0);
   }
   assert.ok(assemblies.bytes <= CAPS.assembliesBytesPerApi);
+});
+
+test('a complete assembly retries after copy capacity returns with its immutable intent', () => {
+  const assemblies = new Assemblies();
+  const context = { workspace: 'w', kind: 'wiki', room: 'r', generation: 'g', actor: 'a' };
+  const intent = { ...context, operation: 'text', replica: 1, parameters: { stable: true } };
+  const count = Math.ceil(CAPS.assemblyBytes / CAPS.chunkBytes);
+  const tail = CAPS.assemblyBytes - (count - 1) * CAPS.chunkBytes;
+  const full = Buffer.alloc(CAPS.chunkBytes);
+  for (let connection = 0; connection < 4; connection++) {
+    for (let index = 0; index < count - 1; index++) {
+      assert.equal(assemblies.receive(`c${connection}`, packet({ ...intent, uuid: `u${connection}`, index, count }, full), context, 0), null);
+    }
+  }
+  const final = packet({ ...intent, uuid: 'u0', index: count - 1, count }, Buffer.alloc(tail));
+  assert.throws(() => assemblies.receive('c0', final, context, 1), { code: 'ASSEMBLY_COPY_LIMIT' });
+  assemblies.remove('c1'); const completed = assemblies.receive('c0', final, context, 2);
+  assert.ok(completed instanceof Uint8Array); assert.equal(completed.length, CAPS.assemblyBytes);
+  assert.equal(assemblies.pending.has('c0'), false);
+  assert.deepEqual(completed.intent, { ...intent, uuid: 'u0' });
+  assert.equal(Object.isFrozen(completed.intent.parameters), true);
+});
+
+test('assemblies refuse changed semantic intent, duplicate headers and unknown schema fields', () => {
+  const context = { workspace: 'w', kind: 'wiki', room: 'r', generation: 'g', actor: 'a' };
+  const intent = { ...context, uuid: 'u', operation: 'text', replica: 1, parameters: { stable: true } };
+  for (const change of [{ operation: 'save' }, { replica: 2 }, { parameters: { stable: false } }]) {
+    const assemblies = new Assemblies();
+    assemblies.receive('c', packet({ ...intent, index: 0, count: 2 }, Buffer.from('a')), context, 0);
+    assert.throws(() => assemblies.receive('c', packet({ ...intent, ...change, index: 1, count: 2 }, Buffer.from('b')), context, 1), { code: 'ASSEMBLY_CONNECTION_LIMIT' });
+    assert.throws(() => assemblies.receive('c', packet({ ...intent, ...change, index: 0, count: 2 }, Buffer.from('a')), context, 1), { code: 'ASSEMBLY_CONNECTION_LIMIT' });
+    assert.equal(assemblies.bytes, 1);
+  }
+  const assemblies = new Assemblies();
+  assert.throws(() => assemblies.receive('c', packet({ ...intent, extra: true, index: 0, count: 1 }, Buffer.from('a')), context, 0), { code: 'UNKNOWN_ENVELOPE_FIELD' });
+  assert.throws(() => assemblies.receive('c', packet({ ...context, uuid: 'u', index: 0, count: 1 }, Buffer.from('a')), context, 0), { code: 'INVALID_ENVELOPE' });
+  assert.equal(assemblies.bytes, 0);
 });

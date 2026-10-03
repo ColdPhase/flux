@@ -30,7 +30,26 @@ export function fingerprint(envelope, bytes) {
 export function stateCharge(state) {
   return 2 * JSON.stringify(state).length + 512 * state.nodes.length
     + 128 * state.deleted.length + 256 * Object.keys(state.receipts).length
-    + 128 * Object.keys(state.enrollments).length;
+    + 128 * Object.keys(state.enrollments).length + 128 * (state.splits?.length ?? 0);
+}
+
+// Public ContentString.splice canonicalizes the two halves when a confirmed edit
+// cuts a surrogate pair. Original interval text stays immutable for provenance.
+function sameOriginalContent(actual, known, offset, cuts) {
+  if (actual === known.text.slice(offset, offset + actual.length)) return true;
+  for (let index = 0; index < actual.length; index++) {
+    const at = offset + index;
+    if (actual.charCodeAt(index) === known.text.charCodeAt(at)) continue;
+    if (actual.charCodeAt(index) !== 0xfffd) return false;
+    const cut = cuts.find((entry) => entry.client === known.client
+      && (entry.clock === known.clock + at || entry.clock === known.clock + at + 1));
+    if (!cut) return false;
+    const relative = cut.clock - known.clock;
+    if (relative <= 0 || relative >= known.text.length
+      || known.text.charCodeAt(relative - 1) < 0xd800 || known.text.charCodeAt(relative - 1) > 0xdbff
+      || known.text.charCodeAt(relative) < 0xdc00 || known.text.charCodeAt(relative) > 0xdfff) return false;
+  }
+  return true;
 }
 
 function rangeLookup(nodes, client, clock) {
@@ -129,7 +148,7 @@ function graph(state, decoded, envelope) {
     node.root = 'body'; visiting.delete(node); return node.root;
   }
   for (const node of incoming) root(node);
-  const next = [...state.nodes];
+  const next = [...state.nodes]; const duplicates = [];
   for (const node of incoming) {
     let position = node.clock;
     const end = node.clock + node.length;
@@ -142,8 +161,8 @@ function graph(state, decoded, envelope) {
       const originB = b ? { client: known.client, clock: position - 1 } : known.origin;
       if (!sameId(originA, originB) || !sameId(node.rightOrigin, known.rightOrigin) || known.root !== node.root) refuse('ALTERED_DUPLICATE_GRAPH');
       if (node.tombstone) {
-        if (!deleted(state, node.client, position, count)) refuse('UNPROVEN_TOMBSTONE');
-      } else if (node.text.slice(a, a + count) !== known.text.slice(b, b + count)) refuse('ALTERED_DUPLICATE_CONTENT');
+        duplicates.push({ tombstone: true, client: node.client, clock: position, length: count });
+      } else duplicates.push({ text: node.text.slice(a, a + count), known, offset: b });
       position += count;
     }
     if (position === end) continue;
@@ -170,7 +189,30 @@ function graph(state, decoded, envelope) {
     }
   }
   if (deletions.length > CAPS.deleteRanges) refuse('DELETE_LIMIT_OR_RANGE');
-  return { nodes: next, deleted: deletions,
+  const splits = [...(state.splits ?? [])];
+  function split(client, clock) {
+    const known = rangeLookup(next, client, clock);
+    if (!known || clock === known.clock) return;
+    const offset = clock - known.clock;
+    if (known.text.charCodeAt(offset - 1) >= 0xd800 && known.text.charCodeAt(offset - 1) <= 0xdbff
+      && known.text.charCodeAt(offset) >= 0xdc00 && known.text.charCodeAt(offset) <= 0xdfff
+      && !splits.some((entry) => entry.client === client && entry.clock === clock)) splits.push({ client, clock });
+  }
+  for (const node of next.filter((entry) => entry.admittedSequence === state.sequence + 1)) {
+    if (node.origin) split(node.origin.client, node.origin.clock + 1);
+    if (node.rightOrigin) split(node.rightOrigin.client, node.rightOrigin.clock);
+  }
+  for (const deletion of deletions.filter((entry) => entry.admittedSequence === state.sequence + 1)) {
+    split(deletion.client, deletion.clock); split(deletion.client, deletion.clock + deletion.length);
+  }
+  for (const duplicate of duplicates) {
+    if (duplicate.tombstone) {
+      if (!deleted({ deleted: deletions }, duplicate.client, duplicate.clock, duplicate.length)) refuse('UNPROVEN_TOMBSTONE');
+      continue;
+    }
+    if (!sameOriginalContent(duplicate.text, duplicate.known, duplicate.offset, splits)) refuse('ALTERED_DUPLICATE_CONTENT');
+  }
+  return { nodes: next, deleted: deletions, splits,
     changed: next.length !== state.nodes.length || deletions.length !== state.deleted.length };
 }
 
@@ -231,7 +273,7 @@ export function admit(state, envelope, bytes, canWrite) {
     if (canonical([...actual].sort()) !== canonical([...expected].sort())) refuse('UNINTEGRATED_CANDIDATE');
     const checkpoint = Y.encodeStateAsUpdate(doc);
     if (checkpoint.byteLength > CAPS.assemblyBytes) refuse('CHECKPOINT_LIMIT');
-    const next = { ...state, nodes: candidate.nodes, deleted: candidate.deleted, sequence,
+    const next = { ...state, nodes: candidate.nodes, deleted: candidate.deleted, splits: candidate.splits, sequence,
       checkpoint: Buffer.from(checkpoint).toString('base64'), body: body.toString(),
       receipts: { ...state.receipts, [key]: admitted },
       journal: [...state.journal, { sequence, actor: envelope.actor, fingerprint: digest }] };
@@ -243,7 +285,7 @@ export function admit(state, envelope, bytes, canWrite) {
 export function emptyRoom(room = 'wiki-a', generation = 'generation-a', workspace = 'workspace-a') {
   const doc = new Y.Doc();
   try { return { workspace, kind: 'wiki', room, generation, body: '', sequence: 0, nodes: [], deleted: [], enrollments: {},
-    receipts: {}, journal: [], checkpoint: Buffer.from(Y.encodeStateAsUpdate(doc)).toString('base64') }; }
+    receipts: {}, journal: [], splits: [], checkpoint: Buffer.from(Y.encodeStateAsUpdate(doc)).toString('base64') }; }
   finally { doc.destroy(); }
 }
 export function enroll(state, actor, clientId, canWrite) {
