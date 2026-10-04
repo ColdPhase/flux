@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { LiveMapPosition, SketchDetail, Thought } from '@flux/contracts';
-import { applyLivePreviews, applyLocal } from '../../apps/web/src/sketch/doc.js';
+import { applyLivePreviews, applyLocal } from '../../apps/web/src/sketch/projection.js';
 
 const me = { id: 'person', name: 'Projection Person' };
 function native(count = 500): SketchDetail {
