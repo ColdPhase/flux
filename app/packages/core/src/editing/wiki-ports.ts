@@ -9,6 +9,8 @@ export interface WikiCodecState extends Record<string, unknown> {
 }
 export interface WikiHead<State extends WikiCodecState> extends LiveDocHead {
   workspaceId: string; projectId: string; resourceId: string; codecState: State | null;
+  /** Fixed SQL SHA256 token for the entire stored codec, including enrollment-only changes. */
+  codecFingerprint: string;
 }
 export interface WikiIdentity { sessionId: string; actorId: string }
 export interface WikiSession {
@@ -33,7 +35,7 @@ export interface WikiRows<State extends WikiCodecState> {
   peekHead(docId: string): Promise<WikiHead<State> | null>;
   lockHead(docId: string): Promise<WikiHead<State> | null>;
   /** Closed SQL projection, retains FOR UPDATE and compares every prepared head field without decoding state again. */
-  lockHeadFence(docId: string, expected: LiveDocHead): Promise<boolean>;
+  lockHeadFence(docId: string, expected: LiveDocHead & { codecFingerprint: string }): Promise<boolean>;
   insertHead(doc: DocWithCurrent, generation: string, state: State): Promise<WikiHead<State>>;
   replaceState(head: WikiHead<State>, state: State, hash: string): Promise<void>;
   replica(docId: string, generation: string, replicaId: number): Promise<WikiReplica | null>;

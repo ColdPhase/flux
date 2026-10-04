@@ -43,7 +43,7 @@ test('actual sparse0048 upgrade preserves old history; atomic reversal and guard
     };
     const reverse = async () => {
       const client = await history!.connect();
-      try { await reverseUnusedTaskCreation(client, manifest, { quiesced: true }); } finally { client.release(); }
+      await reverseUnusedTaskCreation(client, manifest, { quiesced: true });
     };
     const state = async () => ({ ledger: await readAppliedMigrationVersions(history!), old: await old(),
       columns: (await history!.query(`SELECT table_name,column_name,data_type,column_default,is_nullable FROM information_schema.columns

@@ -10,6 +10,9 @@ export class TaskUseRefusal extends Error {
   }
 }
 
+/** Caller reserves additions before allocation and retains them through transaction settlement. */
+export interface TaskUseMemory { reserve(bytes: number): void }
+
 export interface TaskUseFence {
   /** Complete ascending task set retained by this transaction. */
   readonly ids: readonly string[];
@@ -22,10 +25,11 @@ export interface TaskUseFence {
  * Caller-owned transaction only. Authority/command/material/connection locks precede this seam.
  * No transaction, authorization, event, receipt or commit occurs here. Observations never call mark.
  */
-export function taskUseRows(tx: DbExecutor) {
+export function taskUseRows(tx: DbExecutor, memory?: TaskUseMemory) {
   const w = schema.projectWorkItems;
   const sorted = (ids: readonly string[]) => [...new Set(ids)].sort();
   async function lockPrepared(ids: readonly string[]): Promise<TaskUseFence> {
+    memory?.reserve(4096 + ids.length * 2048);
     const wanted = sorted(ids);
     const rows = wanted.length ? await tx.select({ id: w.id, projectId: w.projectId, revertedAt: w.creationRevertedAt })
       .from(w).where(inArray(w.id, wanted)).orderBy(asc(w.id)).for('update') : [];
@@ -33,6 +37,7 @@ export function taskUseRows(tx: DbExecutor) {
     if (rows.some((row) => row.revertedAt !== null)) throw new TaskUseRefusal('TASK_CREATION_REVERTED');
     const held = new Set(wanted);
     return { ids: wanted, projectIds: sorted(rows.map((row) => row.projectId)), async mark(ids = wanted) {
+      memory?.reserve(2048 + ids.length * 1024);
       const used = sorted(ids);
       if (used.some((id) => !held.has(id))) throw new Error('Task use must be inside the complete retained task fence');
       if (used.length) await tx.update(w).set({ firstPersistedUseAt: sql`COALESCE(${w.firstPersistedUseAt}, clock_timestamp())` })

@@ -28,19 +28,23 @@ export async function readTaskCreationReversalManifest(directory: string): Promi
   return { ...pin, downSql };
 }
 
-/** The caller owns this dedicated SQL client and has stopped all application feature writers. */
-export async function reverseUnusedTaskCreation(client: Pick<PoolClient, 'query'>, manifest: TaskCreationReversalManifest,
+/** Consumes and releases this dedicated client; the caller has stopped application feature writers. */
+export async function reverseUnusedTaskCreation(client: Pick<PoolClient, 'query' | 'release'>, manifest: TaskCreationReversalManifest,
   options: { quiesced: boolean }): Promise<void> {
-  if (!options.quiesced) throw new Error('Stop API/worker feature writers and explicitly acknowledge quiescence before reversal');
-  if (manifest.current.at(-1)?.version !== 48 || manifest.current.at(-1)?.name !== '0048_unused_ai_task_creation_undo.sql'
-    || !same(manifest.current.filter(file => file.version !== 48), manifest.prior)
-    || sha256(JSON.stringify(manifest.current)) !== manifest.currentSha256 || sha256(JSON.stringify(manifest.prior)) !== manifest.priorSha256
-    || manifest.down.name !== '0048_unused_ai_task_creation_undo.down.sql' || sha256(manifest.downSql) !== manifest.down.sha256)
-    throw new Error('Exact reviewed reversal manifests and down SQL are required');
-  let serialized = false; let began = false; let committing = false;
+  let serialized = false; let began = false; let committing = false; let discard = false;
   try {
-    await client.query('SELECT pg_advisory_lock(hashtext($1))', ['flux-migrate']); serialized = true;
-    began = true; await client.query('BEGIN');
+    if (!options.quiesced) throw new Error('Stop API/worker feature writers and explicitly acknowledge quiescence before reversal');
+    if (manifest.current.at(-1)?.version !== 48 || manifest.current.at(-1)?.name !== '0048_unused_ai_task_creation_undo.sql'
+      || !same(manifest.current.filter(file => file.version !== 48), manifest.prior)
+      || sha256(JSON.stringify(manifest.current)) !== manifest.currentSha256 || sha256(JSON.stringify(manifest.prior)) !== manifest.priorSha256
+      || manifest.down.name !== '0048_unused_ai_task_creation_undo.down.sql' || sha256(manifest.downSql) !== manifest.down.sha256)
+      throw new Error('Exact reviewed reversal manifests and down SQL are required');
+    // query_timeout need not cancel the server query. A failed control await can
+    // still acquire a session lock or begin a transaction after the API rejects.
+    try { await client.query('SELECT pg_advisory_lock(hashtext($1))', ['flux-migrate']); serialized = true; }
+    catch (cause) { discard = true; throw cause; }
+    began = true;
+    try { await client.query('BEGIN'); } catch (cause) { discard = true; throw cause; }
     // NOWAIT refuses an existing holder instead of waiting in an order that could
     // deadlock a writer. Exclusion is retained before every history guard and DDL.
     await client.query(`LOCK TABLE proactive_comparison_proposals, agent_standing_grants,
@@ -53,10 +57,25 @@ export async function reverseUnusedTaskCreation(client: Pick<PoolClient, 'query'
     assertExactMigrationLedger(manifest.prior, await readAppliedMigrationVersions(client));
     committing = true; await client.query('COMMIT'); began = false;
   } catch (cause) {
-    if (began) await client.query('ROLLBACK').catch(() => undefined);
-    if (committing) throw new Error('Reversal COMMIT outcome is unknown; inspect schema and exact ledger before any retry', { cause });
+    // PostgreSQL SQLSTATE refusal is a known query outcome; an unclassified
+    // transport rejection must never return a potentially live query to a pool.
+    if (serialized && (!(cause instanceof Error) || !('code' in cause)
+      || typeof cause.code !== 'string' || !/^[0-9A-Z]{5}$/.test(cause.code) || cause.code.startsWith('08'))) discard = true;
+    if (began && !discard) {
+      try { await client.query('ROLLBACK'); began = false; } catch { discard = true; }
+    }
+    if (committing) {
+      discard = true;
+      throw new Error('Reversal COMMIT outcome is unknown; inspect schema and exact ledger before any retry', { cause });
+    }
     throw cause;
   } finally {
-    if (serialized) await client.query('SELECT pg_advisory_unlock(hashtext($1))', ['flux-migrate']).catch(() => undefined);
+    if (serialized && !discard) {
+      try { await client.query('SELECT pg_advisory_unlock(hashtext($1))', ['flux-migrate']); }
+      catch { discard = true; }
+    }
+    // Destruction also releases a lock/transaction whose failed control query
+    // completed later. Never query or release this client again after this call.
+    client.release(discard);
   }
 }

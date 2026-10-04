@@ -23,7 +23,16 @@ test('every wiki authority continuation uses common context BEFORE SQL and submi
     const bytes=new Uint8Array(16);const admission=authority.reserve(bytes);assert.ok(authority.runtime.externalInputBytes>0);
     await assert.rejects(authority.submit(session,docId,{workspace:randomUUID(),kind:'wiki',room:docId,generation,actor:session.principal.id,operation:'text',uuid:randomUUID(),replica:1,parameters:null},bytes,admission),capacity);
     assert.equal(authority.runtime.externalInputBytes,0);assert.equal(authority.runtime.codecLeases,0);assert.equal(sql,0);
-    occupy();await assert.rejects(authority.receipt(session,docId,randomUUID()),error=>error===failure);
+    occupy();
+    // Enough for old metadata alone, insufficient for the new complete preparation
+    // base: refusal must still precede SQL and release the passed codec lease.
+    const almostFull=budget.reserve(31*1024*1024);
+    try {
+      const candidate=new Uint8Array(16);const lease=authority.reserve(candidate);
+      await assert.rejects(authority.submit(session,docId,{workspace:randomUUID(),kind:'wiki',room:docId,generation,actor:session.principal.id,operation:'text',uuid:randomUUID(),replica:1,parameters:null},candidate,lease),capacity);
+      assert.equal(sql,0);assert.equal(authority.runtime.externalInputBytes,0);assert.equal(budget.bytes,31*1024*1024);
+    } finally {almostFull();}
+    await assert.rejects(authority.receipt(session,docId,randomUUID()),error=>error===failure);
     assert.equal(sql,1);assert.equal(budget.bytes,0,'Common metadata survives its SQL continuation then releases on failure');
     assert.equal(authority.runtime.externalInputBytes,0);
   } finally {occupy();await authority.close();assert.equal(budget.bytes,0);}

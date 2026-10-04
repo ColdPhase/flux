@@ -1,6 +1,6 @@
 import { withTaskUseErrors } from '../work/task-use-errors.js';
 import { docLiveVersions, docRows, type DbExecutor } from '@flux/db';
-import { createDocUseCases, recordEvent, visibleFilter, type Database, type DocPorts, type DocRepository, type DocUnitOfWork, type Transaction } from '@flux/core';
+import { createDocUseCases, recordEvent, visibleFilter, type Database, type DocPorts, type DocTaskUseMemory, type DocRepository, type DocUnitOfWork, type Transaction } from '@flux/core';
 import { policyWorkAccess, workRepository } from '../work/adapters.js';
 import type { TransactionEventSession } from '../work/transaction-events.js';
 import { markdownRenderer } from './markdown.js';
@@ -8,8 +8,8 @@ import { markdownRenderer } from './markdown.js';
 // Adapters that connect the core doc use cases (#112) to the access policy, the Drizzle rows,
 // the #101 link rows, the event log and the Markdown renderer. Core defines the ports (#46).
 
-export function docRepository(tx: DbExecutor): DocRepository {
-  const rows = docRows(tx);
+export function docRepository(tx: DbExecutor, memory?: DocTaskUseMemory): DocRepository {
+  const rows = docRows(tx, memory);
   return {
     ...rows,
     /** The policy's own list condition (`visibleFilter`) is applied before the limit and in the total. */
@@ -19,14 +19,15 @@ export function docRepository(tx: DbExecutor): DocRepository {
   };
 }
 
-export function docPorts(tx: DbExecutor, events?: DocPorts['events']): DocPorts {
+export function docPorts(tx: DbExecutor, events?: DocPorts['events'], taskUseMemory?: DocTaskUseMemory): DocPorts {
   return {
     access: policyWorkAccess(tx),
-    docs: docRepository(tx),
+    docs: docRepository(tx, taskUseMemory),
     live: docLiveVersions(tx),
     work: workRepository(tx),
     events: events ?? { record: async (principal, workspaceId, kind, projectId, data) => { await recordEvent(tx, principal, workspaceId, kind, projectId, data); } },
     renderer: markdownRenderer,
+    taskUseMemory,
   };
 }
 

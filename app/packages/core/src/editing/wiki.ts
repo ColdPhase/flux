@@ -109,6 +109,7 @@ export function liveWiki<State extends WikiCodecState, Lease>(ports: WikiPorts<S
       await ports.session.assertCurrent(identity); return enrolled;
     },
     async submit(identity: WikiIdentity, docId: string, envelope: WikiTextEnvelope, bytes: Uint8Array, lease: Lease): Promise<LiveReceipt> {
+      if (!ports.native.taskUseMemory) throw new Error('Wiki submit requires its common preparation memory owner before SQL');
       if (envelope.kind !== 'wiki' || envelope.operation !== 'text' || envelope.parameters !== null
         || envelope.room !== docId || envelope.actor !== identity.actorId || !isId(envelope.generation)) throw new InvalidInputError('The text intent has another scope', 'EDITING_SCOPE_MISMATCH');
       const { doc } = await authorized(identity, docId, 'write', envelope.uuid);

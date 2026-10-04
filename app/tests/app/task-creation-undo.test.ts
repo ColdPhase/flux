@@ -10,6 +10,13 @@ import { expect, toolValue } from './support/mcp.js';
 import { addMember, expectStatus, grant, person, type Person } from './support/people.js';
 import { backendPid, barrier, waitUntilBlockedBy } from './support/locks.js';
 
+async function bounded<T>(pending: Promise<T>, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try { return await Promise.race([pending, new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(`Timed out waiting for ${label}`)), 10_000);
+  })]); } finally { if (timer) clearTimeout(timer); }
+}
+
 async function scene() {
   const f = await actionScene(pool);
   const createGrant = await f.grant('work.create', 'execute');
@@ -97,31 +104,42 @@ test('old incomplete history stays unknown, human origin stays human, removed ta
   assert.equal((await f.read(other.item.id) as unknown as WorkItem).creationUndo?.reason, 'task_used');
 });
 
-test('first use wins under one real task fence; Undo waits and refuses without partial history', async () => {
+test('first use wins under one real task fence; Undo waits and refuses without partial history', { timeout: 30_000 }, async () => {
   const f = await scene(); const { item } = await f.create(); const held = barrier<number>(); const release = barrier();
+  let undo: ReturnType<typeof f.undo> | undefined;
   const firstUse = db.transaction(async (tx) => {
     const native = nativeWorkInTransaction(tx);
     await native.contribute({ kind: 'human', id: f.ownerId }, item.id, { body: 'A real first persisted contribution', clientMessageId: randomUUID() });
-    held.resolve(await backendPid(tx)); await release.promise; await native.flushEvents();
-  });
-  const pid = await held.promise; const undo = f.undo(item); await waitUntilBlockedBy(pool, pid); release.resolve(); await firstUse;
-  assert.equal((await undo).status, 409);
-  assert.equal((await pool.query("SELECT count(*)::int AS n FROM project_task_notices WHERE work_id=$1 AND kind='task.creation_reverted'", [item.id])).rows[0].n, 0);
+    held.resolve(await backendPid(tx)); await bounded(release.promise, 'first-use release'); await native.flushEvents();
+  }); void firstUse.catch(() => undefined);
+  try {
+    const pid = await bounded(held.promise, 'persisted first use'); undo = f.undo(item); void undo.catch(() => undefined);
+    await waitUntilBlockedBy(pool, pid); release.resolve(); await bounded(firstUse, 'first-use COMMIT');
+    assert.equal((await bounded(undo, 'waiting Undo refusal')).status, 409);
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM project_task_notices WHERE work_id=$1 AND kind='task.creation_reverted'", [item.id])).rows[0].n, 0);
+  } finally {
+    release.resolve(); await bounded(Promise.all([firstUse.catch(() => undefined), undo?.catch(() => undefined)]), 'first-use race cleanup');
+  }
 });
 
-test('Undo wins; a blocked first contribution loses with no message, binding or use latch', async () => {
+test('Undo wins; a blocked first contribution loses with no message, binding or use latch', { timeout: 30_000 }, async () => {
   const f = await scene(); const { item } = await f.create(); const held = barrier<number>(); const release = barrier();
+  let contribution: ReturnType<typeof f.owner.request> | undefined;
   const undo = db.transaction(async (tx) => {
     const native = nativeWorkInTransaction(tx);
     const result = await native.undoTaskCreation({ kind: 'human', id: f.ownerId }, item.id, { clientCommandId: randomUUID(), expectedVersion: item.version });
-    held.resolve(await backendPid(tx)); await release.promise; await native.flushEvents(); return result;
-  });
-  const pid = await held.promise;
-  const contribution = f.owner.request('POST', `/api/v1/work/${item.id}/discussion`, { body: { body: 'Late first use', clientMessageId: randomUUID() } });
-  await waitUntilBlockedBy(pool, pid); release.resolve(); await undo; assert.equal((await contribution).status, 409);
-  const stored = (await pool.query('SELECT first_persisted_use_at FROM project_work_items WHERE id=$1', [item.id])).rows[0];
-  assert.equal(stored.first_persisted_use_at, null);
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_task_discussions WHERE work_id=$1', [item.id])).rows[0].n, 0);
+    held.resolve(await backendPid(tx)); await bounded(release.promise, 'Undo release'); await native.flushEvents(); return result;
+  }); void undo.catch(() => undefined);
+  try {
+    const pid = await bounded(held.promise, 'persisted Undo');
+    contribution = f.owner.request('POST', `/api/v1/work/${item.id}/discussion`, { body: { body: 'Late first use', clientMessageId: randomUUID() } }); void contribution.catch(() => undefined);
+    await waitUntilBlockedBy(pool, pid); release.resolve(); await bounded(undo, 'Undo COMMIT'); assert.equal((await bounded(contribution, 'late contribution refusal')).status, 409);
+    const stored = (await pool.query('SELECT first_persisted_use_at FROM project_work_items WHERE id=$1', [item.id])).rows[0];
+    assert.equal(stored.first_persisted_use_at, null);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_task_discussions WHERE work_id=$1', [item.id])).rows[0].n, 0);
+  } finally {
+    release.resolve(); await bounded(Promise.all([undo.catch(() => undefined), contribution?.catch(() => undefined)]), 'Undo race cleanup');
+  }
 });
 
 test('rollback removes lifecycle, notices, receipts and first-use latch together', async () => {

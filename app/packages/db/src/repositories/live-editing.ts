@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { and, asc, eq, gt, sql } from 'drizzle-orm';
+import { and, asc, eq, getTableColumns, gt, sql } from 'drizzle-orm';
 import type { LiveCursor, LiveReceipt } from '@flux/contracts';
 import * as schema from '../schema.js';
 import { docRows } from './docs.js';
@@ -21,21 +21,24 @@ function receipt(value: Record<string, unknown>): LiveReceipt {
 }
 /** Rows only. Current session/resource policy and the input lease precede every call in the composition. */
 export function liveEditingRows<Codec extends State>(db: DbExecutor, decodeState: (value: Record<string, unknown>) => Codec) {
-  const present = (row: typeof h.$inferSelect) => ({ resourceId: row.docId, workspaceId: row.workspaceId, projectId: row.projectId,
+  // Built-in PostgreSQL SHA256 stays in SQL; no second JSON text/state is retained by the API.
+  const codecFingerprint = sql<string>`encode(sha256(convert_to(COALESCE(${h.codecState}::text, 'null'), 'UTF8')), 'hex')`;
+  const headColumns = { ...getTableColumns(h), codecFingerprint };
+  const present = (row: typeof h.$inferSelect & { codecFingerprint: string }) => ({ resourceId: row.docId, workspaceId: row.workspaceId, projectId: row.projectId,
     generation: row.generation, sequence: row.sequence, body: row.body, hash: row.hash,
-    savedVersion: row.savedVersion, savedSequence: row.savedSequence, codecState: row.codecState ? decodeState(row.codecState) : null });
+    savedVersion: row.savedVersion, savedSequence: row.savedSequence, codecFingerprint: row.codecFingerprint, codecState: row.codecState ? decodeState(row.codecState) : null });
   return {
-    async peekHead(docId: string) { const [row] = await db.select().from(h).where(eq(h.docId, docId)); return row ? present(row) : null; },
-    async lockHead(docId: string) { const [row] = await db.select().from(h).where(eq(h.docId, docId)).for('update'); return row ? present(row) : null; },
-    async lockHeadFence(docId: string, expected: { generation: string; sequence: number; hash: string; body: string; savedVersion: number; savedSequence: number }) {
+    async peekHead(docId: string) { const [row] = await db.select(headColumns).from(h).where(eq(h.docId, docId)); return row ? present(row) : null; },
+    async lockHead(docId: string) { const [row] = await db.select(headColumns).from(h).where(eq(h.docId, docId)).for('update'); return row ? present(row) : null; },
+    async lockHeadFence(docId: string, expected: { generation: string; sequence: number; hash: string; body: string; savedVersion: number; savedSequence: number; codecFingerprint: string }) {
       const [row] = await db.select({ matches: sql<boolean>`${h.generation} = ${expected.generation} AND ${h.sequence} = ${expected.sequence}
-        AND ${h.hash} = ${expected.hash} AND ${h.body} = ${expected.body} AND ${h.savedVersion} = ${expected.savedVersion} AND ${h.savedSequence} = ${expected.savedSequence}` })
+        AND ${h.hash} = ${expected.hash} AND ${h.body} = ${expected.body} AND ${h.savedVersion} = ${expected.savedVersion} AND ${h.savedSequence} = ${expected.savedSequence} AND ${codecFingerprint} = ${expected.codecFingerprint}` })
         .from(h).where(eq(h.docId, docId)).for('update');
       return row?.matches === true;
     },
     async insertHead(doc: SavedDoc, generation: string, state: Codec) {
       const [row] = await db.insert(h).values({ docId: doc.doc.id, workspaceId: doc.doc.workspaceId, projectId: doc.doc.projectId,
-        generation, sequence: 0, body: state.body, hash: hash(state.body), savedVersion: doc.current.version, savedSequence: 0, codecState: state }).returning();
+        generation, sequence: 0, body: state.body, hash: hash(state.body), savedVersion: doc.current.version, savedSequence: 0, codecState: state }).returning(headColumns);
       return present(row!);
     },
     async replaceState(head: { resourceId: string; generation: string }, state: Codec, bodyHash: string) {

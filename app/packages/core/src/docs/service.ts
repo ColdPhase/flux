@@ -85,9 +85,26 @@ async function resolve(ports: DocPorts, projectId: string, markdown: string, sel
 
 /** Native material/authority is retained; no live-head or replica row may be held yet. */
 export async function prepareDocBodyTaskUse(ports: DocPorts, row: DocWithCurrent, bodies: readonly string[], extra: readonly ObjectRef[] = []): Promise<DocTaskUseFence> {
+  // Parse once before graph waits. The same immutable raw target identities are
+  // re-resolved afterwards, so a dangling target becoming valid is still detected.
+  const parsedBodies = bodies.map(body => {
+    const release = ports.taskUseMemory?.temporary(24 * 1024 * 1024);
+    try {
+      const parsed = ports.renderer.references(body, DOC_LIMITS.mentions + 1);
+      const unique = [...new Map(parsed.map(ref => [`${ref.type}:${ref.id}`, ref])).values()];
+      if (unique.length > DOC_LIMITS.mentions) throw new InvalidInputError(`A doc can refer to at most ${DOC_LIMITS.mentions} objects`, 'TOO_MANY_MENTIONS');
+      return unique;
+    } finally { release?.(); }
+  });
   const targets = async () => {
     const refs: ObjectRef[] = [...extra];
-    for (const body of bodies) refs.push(...(await resolve(ports, row.doc.projectId, body, row.doc.id)).targets);
+    for (const unique of parsedBodies) {
+      // Task preparation needs existence, never titles or message body allocations.
+      for (const ref of unique) {
+        if (ref.type === 'doc' && ref.id === row.doc.id) continue;
+        if (await ports.work.targetExists(row.doc.projectId, ref as ObjectRef)) refs.push(ref as ObjectRef);
+      }
+    }
     return refs;
   };
   const fence = await ports.docs.prepareTaskUse({ workspaceId: row.doc.workspaceId, projectId: row.doc.projectId }, row.doc.id, await targets());

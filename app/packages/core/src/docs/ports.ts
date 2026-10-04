@@ -47,6 +47,12 @@ export interface DocWithCurrent {
 export type NewDocVersion = Pick<DocVersionRecord, 'title' | 'body' | 'state' | 'reason' | 'author'>;
 
 /** Rows only; the repository makes no access decisions (the use cases ask {@link WorkAccess}). */
+/** One command owns every addition until its caller transaction has actually settled. */
+export interface DocTaskUseMemory {
+  reserve(bytes: number): void;
+  /** Synchronous parse ownership; release before awaiting SQL, retain parsed refs in the command base. */
+  temporary(bytes: number): () => void;
+}
 export interface DocTaskUseFence { readonly ids: readonly string[]; mark(ids?: readonly string[]): Promise<void> }
 export interface DocRepository {
   prepareTaskUse(scope: { workspaceId: string; projectId: string }, docId: string, refs: readonly ObjectRef[]): Promise<DocTaskUseFence>;
@@ -84,7 +90,8 @@ export interface DocReference {
  * and sanitize the result.
  */
 export interface DocRenderer {
-  references(markdown: string): DocReference[];
+  /** Optional task preparation bound returns at most maxUnique distinct references. */
+  references(markdown: string, maxUnique?: number): DocReference[];
   render(markdown: string, mentions: Map<string, DocMention>): string;
 }
 
@@ -103,6 +110,7 @@ export interface DocPorts {
   work: WorkRepository;
   events: DocEventLog;
   renderer: DocRenderer;
+  taskUseMemory?: DocTaskUseMemory;
 }
 
 /** Runs `work` in one transaction; on an open transaction (an idempotency scope) it nests. */

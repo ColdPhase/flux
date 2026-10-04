@@ -72,19 +72,23 @@ function rewriteReferences(tokens: Token[], mentions: Map<string, DocMention>) {
   }
 }
 
-function collect(tokens: Token[], found: DocReference[]) {
+function collect(tokens: Token[], found: DocReference[], maximum?: number, seen = new Set<string>()) {
   for (const token of tokens) {
-    if (token.children) collect(token.children, found);
+    if (maximum !== undefined && found.length >= maximum) return found;
+    if (token.children) collect(token.children, found, maximum, seen);
     if (token.type === 'link_open') {
       const ref = parseRef(String(token.attrGet('href') ?? ''));
-      if (ref) found.push(ref);
+      if (ref && (maximum === undefined || !seen.has(`${ref.type}:${ref.id}`))) {
+        if (maximum !== undefined && found.length >= maximum) return found;
+        seen.add(`${ref.type}:${ref.id}`); found.push(ref);
+      }
     }
   }
   return found;
 }
 
 export const markdownRenderer: DocRenderer = {
-  references: (markdown) => collect(md.parse(markdown, {}), []),
+  references: (markdown, maximum) => collect(md.parse(markdown, {}), [], maximum),
   render(markdown, mentions) {
     const tokens = md.parse(markdown, {});
     rewriteReferences(tokens, mentions);

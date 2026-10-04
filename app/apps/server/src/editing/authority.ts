@@ -1,4 +1,4 @@
-import { liveWiki, ServiceUnavailableError, type WikiIdentity, type WikiPorts } from '@flux/core';
+import { liveWiki, ServiceUnavailableError, type WikiIdentity, type WikiPorts, type DocTaskUseMemory } from '@flux/core';
 import { editingSessionRows, editingTransactions, liveEditingRows, type createDatabase, type DbExecutor } from '@flux/db';
 import type { LiveCursor, LiveReceipt, SaveSharedDoc, WikiTextEnvelope } from '@flux/contracts';
 import { docPorts } from '../docs/adapters.js';
@@ -27,16 +27,16 @@ export function wikiAuthority(database: { pool: Pick<ReturnType<typeof createDat
     if (runtime.stateCharge(state) > 8 * 1024 * 1024) throw new ServiceUnavailableError('This room reached its bounded codec capacity', 'EDITING_ROOM_CAPACITY');
     return state;
   }
-  function ports(db: DbExecutor): WikiPorts<CodecState, AdmissionLease> {
+  function ports(db: DbExecutor, taskUseMemory?: DocTaskUseMemory): WikiPorts<CodecState, AdmissionLease> {
     const sessions = editingSessionRows(db);
-    return { native: docPorts(db), rows: liveEditingRows(db, stored), codec: runtime,
+    return { native: docPorts(db, undefined, taskUseMemory), rows: liveEditingRows(db, stored), codec: runtime,
       session: { async lock(who) { const actor = await sessions.lock(who); if (!actor) throw new UnauthenticatedError(); return actor; },
         async assertCurrent(who) { if (!await sessions.current(who)) throw new UnauthenticatedError(); } } };
   }
-  async function run<T>(session: SessionContext, admission: AdmissionLease, action: (wiki: ReturnType<typeof liveWiki<CodecState, AdmissionLease>>, finalFence: () => Promise<void>,admission:AdmissionLease) => Promise<T>) {
+  async function run<T>(session: SessionContext, admission: AdmissionLease, action: (wiki: ReturnType<typeof liveWiki<CodecState, AdmissionLease>>, finalFence: () => Promise<void>,admission:AdmissionLease) => Promise<T>, taskUseMemory?: DocTaskUseMemory) {
     try {
       const work = withTaskUseErrors(() => transactions.run(async (db) => {
-        const adapters = ports(db); const result = await action(liveWiki(adapters), () => adapters.session.assertCurrent(identity(session)),admission);
+        const adapters = ports(db, taskUseMemory); const result = await action(liveWiki(adapters), () => adapters.session.assertCurrent(identity(session)),admission);
         await adapters.session.assertCurrent(identity(session));
         return result;
       }));
@@ -64,8 +64,18 @@ export function wikiAuthority(database: { pool: Pick<ReturnType<typeof createDat
     /** Completed bytes remain charged in assembly until this synchronous reservation succeeds. */
     reserve: runtime.reserve,
     async submit(session: SessionContext, docId: string, envelope: WikiTextEnvelope, bytes: Uint8Array, admission: AdmissionLease) {
-      let release=()=>{};try {release=outputBudget.reserve(editingContextCharge({session,docId,envelope}));return await run(session,admission,wiki=>wiki.submit(identity(session),docId,envelope,bytes,admission));}
-      finally {release();runtime.release(admission);}
+      // Reserve the bounded doc/reference continuation before the first SQL await.
+      // Expanded canonical associations reserve their counted complete set before
+      // allocation; all additions share common32MiB and survive actual TX settlement.
+      const releases: Array<() => void> = [];
+      const memory: DocTaskUseMemory = {
+        reserve: bytes => { releases.push(outputBudget.reserve(bytes)); },
+        temporary: bytes => outputBudget.reserve(bytes),
+      };
+      try {
+        memory.reserve(editingContextCharge({session,docId,envelope}) + 2 * 1024 * 1024);
+        return await run(session,admission,wiki=>wiki.submit(identity(session),docId,envelope,bytes,admission),memory);
+      } finally { for (const release of releases) release(); runtime.release(admission); }
     },
     async cursor(session: SessionContext, docId: string, generation: string, connectionId: string, cursor: LiveCursor | null) {
       return admitted(session,{session,docId,generation,connectionId,cursor},wiki=>wiki.cursor(identity(session),docId,generation,connectionId,cursor));

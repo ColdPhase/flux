@@ -3,6 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import * as Y from 'yjs';
 import type { Doc, WorkItem } from '@flux/contracts';
+import { liveEditingRows } from '@flux/db';
+import type { CodecState } from '../../apps/server/src/editing/codec/types.js';
+import { EditingOutputBudget } from '../../apps/server/src/editing/output.js';
 import { wikiAuthority } from '../../apps/server/src/editing/authority.js';
 import { nativeWorkInTransaction } from '../../apps/server/src/work/adapters.js';
 import type { SessionContext } from '../../apps/server/src/identity/session.js';
@@ -59,13 +62,17 @@ test('actual shared-text first use commits before waiting Undo; later removal ca
       return typeof member === 'function' ? member.bind(target) : member;
     } });
   } };
-  const authority = wikiAuthority({ pool: controlledPool }); let submit: Promise<unknown> | undefined; let undo: ReturnType<typeof f.undo> | undefined;
+  const outputBudget = new EditingOutputBudget();
+  const authority = wikiAuthority({ pool: controlledPool }, undefined, { outputBudget }); let submit: Promise<unknown> | undefined; let undo: ReturnType<typeof f.undo> | undefined;
   try {
     const pending = await prepare(authority, f);
     assert.equal((await f.read(f.item.id) as unknown as WorkItem).creationUndo?.eligible, true, 'bootstrap/enrollment/read do not mark use');
     arm = true; submit = pending.submit(); void submit.catch(() => undefined);
-    const pid = await bounded(held.promise, 'persisted live text'); undo = f.undo(); void undo.catch(() => undefined);
+    const pid = await bounded(held.promise, 'persisted live text');
+    assert.ok(outputBudget.bytes >= 2 * 1024 * 1024, 'Complete task-reference context stays charged through withheld actual COMMIT');
+    undo = f.undo(); void undo.catch(() => undefined);
     await waitUntilBlockedBy(pool, pid); release.resolve(); await bounded(submit, 'live COMMIT');
+    assert.equal(outputBudget.bytes, 0, 'Common preparation ownership releases only after actual transaction settlement');
     assert.equal((await bounded(undo, 'Undo refusal')).status, 409);
     const stored = (await pool.query('SELECT first_persisted_use_at FROM project_work_items WHERE id=$1', [f.item.id])).rows[0].first_persisted_use_at;
     assert.ok(stored); const body = f.document.getText('body'); body.delete(pending.head.body.length, body.length - pending.head.body.length);
@@ -100,4 +107,45 @@ test('Undo commits before blocked actual shared-text use; no head/update/intent 
     release.resolve(); try { await bounded(Promise.all([submit?.catch(() => undefined), undo?.catch(() => undefined)]), 'live refusal cleanup'); }
     finally { f.document.destroy(); await authority.close(); }
   }
+});
+
+
+test('actual enrollment-only codec change refuses the closed retained head fence without a second decoded state', { timeout: 30_000 }, async () => {
+  const f = await fixture(); const authority = wikiAuthority({ pool }); const extra = new Y.Doc();
+  try {
+    const head = await authority.bootstrap(f.who, f.doc.id);
+    let decodes = 0;
+    const prepared = await liveEditingRows(db, state => { decodes++; return state as CodecState; }).peekHead(f.doc.id);
+    assert.ok(prepared); assert.equal(decodes, 1);
+    await authority.enroll(f.who, f.doc.id, { generation: head.generation, replicaId: extra.clientID });
+    await db.transaction(async tx => {
+      const rows = liveEditingRows(tx, state => { decodes++; return state as CodecState; });
+      assert.equal(await rows.lockHeadFence(f.doc.id, prepared), false);
+    });
+    assert.equal(decodes, 1, 'Revalidation does not read/decode another codec state');
+    const current = await liveEditingRows(db, state => state as CodecState).peekHead(f.doc.id); assert.ok(current);
+    assert.deepEqual([current.generation,current.sequence,current.hash,current.savedVersion,current.savedSequence,current.body],
+      [prepared.generation,prepared.sequence,prepared.hash,prepared.savedVersion,prepared.savedSequence,prepared.body]);
+    assert.notEqual(current.codecFingerprint, prepared.codecFingerprint);
+    assert.equal((await f.read(f.item.id) as unknown as WorkItem).creationUndo?.eligible, true);
+  } finally {extra.destroy();f.document.destroy();await authority.close();}
+});
+
+test('actual shared-text parser capacity refusal rolls back all domain state and releases common context; retry persists complete use', { timeout: 30_000 }, async () => {
+  const f = await fixture(); const outputBudget = new EditingOutputBudget();
+  const authority = wikiAuthority({ pool }, undefined, { outputBudget }); let occupying = () => {};
+  try {
+    const pending = await prepare(authority, f);
+    const before = (await pool.query('SELECT generation,sequence,body,hash FROM doc_live_heads WHERE doc_id=$1', [f.doc.id])).rows[0];
+    // Base2MiB fits; the24MiB synchronous parser ownership cannot fit together
+    // with this pressure. SQL has begun but no task/domain effect may survive.
+    occupying = outputBudget.reserve(8 * 1024 * 1024);
+    await assert.rejects(pending.submit(), (error: unknown) => error instanceof Error && 'code' in error && error.code === 'EDITING_OUTPUT_CAPACITY');
+    assert.equal(outputBudget.bytes, 8 * 1024 * 1024); assert.equal(authority.runtime.externalInputBytes, 0);
+    assert.deepEqual((await pool.query('SELECT generation,sequence,body,hash FROM doc_live_heads WHERE doc_id=$1', [f.doc.id])).rows[0], before);
+    assert.equal((await f.read(f.item.id) as unknown as WorkItem).creationUndo?.eligible, true);
+    occupying(); occupying = () => {};
+    const result = await pending.submit(); assert.equal(result.changed, true); assert.equal(outputBudget.bytes, 0);
+    assert.equal((await f.read(f.item.id) as unknown as WorkItem).creationUndo?.reason, 'task_used');
+  } finally {occupying();f.document.destroy();await authority.close();assert.equal(outputBudget.bytes, 0);}
 });

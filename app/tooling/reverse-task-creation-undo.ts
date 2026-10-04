@@ -12,8 +12,7 @@ if (!process.argv.includes('--execute')) {
   const { pool } = createDatabase(connection);
   try {
     const client = await pool.connect();
-    try { await reverseUnusedTaskCreation(client, manifest, { quiesced: true }); }
-    finally { client.release(); }
+    await reverseUnusedTaskCreation(client, manifest, { quiesced: true });
     console.log(`Reversed exactly0048; prior ledger ${manifest.priorSha256}. Start only its matching prior image.`);
   } finally { await pool.end(); }
 }
