@@ -1,5 +1,5 @@
 {
-  "commit": "0dd0d5cbcb0ee7ec6a17d0679965ad234e588b20",
+  "commit": "725ee9001e28e4a5d1f9cf168de19bc756f5025e",
   "files": {
     "app/apps/server/src/co-work/grants.ts": "148caa48a1af34f3d7ba907f9c8c87d026b8b2827db3c67a0c5d945f88421fc1",
     "app/apps/server/src/co-work/requests.ts": "a1f86d8251890b18a156cfdaf6ea50d5d4b4ca34557b8f3932f9e2b099bc4aa7",
@@ -13,7 +13,8 @@
     "app/packages/db/src/repositories/cowork-responses.ts": "dd145876ec3366c0afa1c9fe8b4e0c87b2b061991b2c97bc55578da6a4707c54",
     "app/tests/app/agent-doc-authors-migration.test.ts": "77cfaa935949ce743bc3c1da5adc34cf3e60e2b850153ec4c60ea52280a2be0c",
     "app/tests/app/agent-execution-core.test.ts": "aee15ca61329042f6c5cd7f8b83107dc9befc57e23599cd7bf4fcc69f3cc6f67",
+    "app/tests/app/agent-request-response-migration.test.ts": "de85ad1736483241abb051b7b9bfcdf20b6adcd481460286f979d1c14482a4ec",
     "app/tests/app/cowork-admission.test.ts": "564d27ff7b1da3d872eb759bfee283b5408f503cde9aa63e8cd070a1e66dc97d",
-    "app/tests/app/cowork-request-responses.test.ts": "813b02dfafb712bfd6e1a5d870e8638bdca552901eb741fede0f46fcf0946b86"
+    "app/tests/app/cowork-request-responses.test.ts": "a299250f4064b56290a5c9e968b860d2242dc35df83da8ac8dcfe79c47f5f97d"
   }
 }

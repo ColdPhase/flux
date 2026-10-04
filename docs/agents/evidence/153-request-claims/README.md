@@ -1,8 +1,10 @@
 # Request claim, resolution and supersession (#153)
 
-Tested runtime: `0dd0d5cb` (tree `bdb758376719bf48325a7b840740a27e8c45b6c5`), branch
+Tested head: `725ee900` (tree `6cf8a2ff3266756351c51ebf0e94f3d77ecd8cb2`), branch
 `claude-maurycy/153-request-claims`. It is stacked on `claude-maurycy/153-request-admission`
-(PR #246, `387d0d06`, not yet merged). Later commits change only documentation.
+(PR #246, `387d0d06`, not yet merged). Its application source is identical to
+`0dd0d5cb`, where the affected set and the mutation proof ran. `725ee900` adds
+only test files. Later commits change only documentation.
 Owner: Zamojski5. Independent evaluation by PelikanFix16 is still required.
 Original AC1–AC5 stay open. No public MCP action, client scheduling or UI is
 enabled. See the [plan](PLAN.md) and the
@@ -63,9 +65,15 @@ Source hashes at the tested commit are in [source-sha256.json](source-sha256.jso
   operation CHECK only.
 - Tests:
   - `tests/app/cowork-request-responses.test.ts` is new (9 tests).
+  - `tests/app/agent-request-response-migration.test.ts` is new: the 0049
+    in-place upgrade. It covers the ledger and the refusals before 0049, then
+    asserts that the live operation list equals `AGENT_OPERATIONS` exactly
+    (the prior list plus the two operations). Historic rows stay
+    byte-identical, unknown operations stay refused, and a re-run is
+    idempotent.
   - `agent-doc-authors-migration.test.ts` now compares 0043 against a frozen
-    0043 list, as the 0038 test already does, instead of the moving contract
-    list. The assertion is still exact.
+    0043 list instead of the moving contract list, as the 0038 test already
+    does. The exact head-list equality moved to the 0049 test, not away.
   - `agent-execution-core.test.ts` gains the two exhaustive sample entries.
   - In `cowork-admission.test.ts`, the F2 test's pre-existing "old" request is
     now a `help` request. A later review to the same unit would otherwise
@@ -77,6 +85,10 @@ Source hashes at the tested commit are in [source-sha256.json](source-sha256.jso
   `pnpm build && pnpm typecheck && pnpm lint`) pass. The pre-existing
   `react-hooks/exhaustive-deps` warning remains; it is not an error.
 - **New file** `cowork-request-responses.test.ts` at `0dd0d5cb`: **9/9**.
+- **Targeted set at `725ee900`**: `agent-request-response-migration`,
+  `cowork-request-responses`, `agent-doc-authors-migration`,
+  `agent-request-operation-migration` and `migration-ledger`, **17/17**, with
+  0 skipped.
 - **Affected set** at `0dd0d5cb`: 17 files, **118/118**, with 0 skipped,
   cancelled or todo. The files are `agent-doc-authors-migration`,
   `agent-execution-core`, `agent-execution`, `agent-request-operation-migration`,
@@ -84,14 +96,17 @@ Source hashes at the tested commit are in [source-sha256.json](source-sha256.jso
   `cowork-migration-arrival`, `cowork-recovery`, `cowork-request-responses`,
   `cowork-requests-storage`, `cowork-storage`, `mcp-work-actions`,
   `migration-ledger`, `oauth-mcp` and `task-graph-core`.
-- **Full `./scripts/check_application.sh`** at `0dd0d5cb`
+- **Full `./scripts/check_application.sh`** at `725ee900`
   (`FLUX_TEST_PORT=19060 FLUX_TEST_MAILPIT_PORT=19061`): **EXIT 0**.
-  - API: **670/670**, 0 skipped. That is the previous 661 plus the 9 new tests.
+  - API: **671/671**, 0 skipped. That is the previous 661 plus the 9
+    request-response tests and the 0049 migration test.
   - Every later browser/service phase passed: 3+1+1+1+1+6+1+1+1+1 = 17 tests.
+  - An earlier full run at `0dd0d5cb` also exited 0, with 670/670 and the same
+    17 browser/service tests.
 - **Foundation:** `check_agent_setup.py` passed. The host Python suite ran 67 tests,
   all OK. `git diff --check` is clean.
-- Raw logs stay local (`w153c-t1`…`t4`, `w153c-full`, `w153c-mut-*`) and are
-  not published. The first two targeted runs failed in the test fixtures, not
+- Raw logs stay local (`w153c-t1`…`t5`, `w153c-full`, `w153c-full2`,
+  `w153c-mut-*`) and are not published. The first two targeted runs failed in the test fixtures, not
   in the product:
   - Marek lacked project management, so he could not create his own grants.
   - The refusal helper started the attempt before its snapshot.
@@ -109,8 +124,9 @@ before the attempt starts and asserted unchanged afterwards.
 - **Request claim:**
   - no unit claim, a wrong lease, a wrong generation, another runtime session,
     an expired unit lease: `COWORK_CLAIM_LOST`;
-  - an unknown request, another unit of the same connection, or another
-    connection's live claim: `COWORK_REQUEST_UNAVAILABLE`;
+  - an unknown request, another unit of the same connection, another
+    connection's live claim, or a request of another project addressed to
+    this connection: `COWORK_REQUEST_UNAVAILABLE`;
   - a changed version: `COWORK_VERSION_CONFLICT`;
   - the wrong class: `COWORK_UNIT_NOT_FOUND`; an exact grant for the wrong
     role is refused at creation with 404;
@@ -118,7 +134,7 @@ before the attempt starts and asserted unchanged afterwards.
   - a changed source: `COWORK_SOURCE_UNAVAILABLE`;
   - an expired request: `COWORK_REQUEST_EXPIRED`;
   - already claimed: `COWORK_REQUEST_CLAIMED`;
-  - declined: `COWORK_REQUEST_CLOSED`;
+  - declined or resolved: `COWORK_REQUEST_CLOSED`;
   - superseded: `COWORK_REQUEST_CLOSED`;
   - a `cowork.claim` or `cowork.request.respond` grant used for a claim:
     `AGENT_EXECUTION_UNAVAILABLE`.
@@ -176,8 +192,12 @@ result and the cleanup lines.
 
 The single-layer core mutations (M1–M4) still have the conditional SQL fence
 as a second layer. The tests fail because they assert the specific domain
-code, not a generic change. M1+M11 removes both layers of the unit fence, and
-the refused claim then succeeds.
+code, not a generic change. M1+M11 removes both layers of the unit fence.
+
+The table CHECK only stops a claim on a *never-claimed* unit (generation 0).
+It is not a general third layer: with both layers removed, a wrong lease on a
+claimed unit would write. The mutation runs used `0dd0d5cb`; `725ee900` adds
+only tests.
 
 ## Remaining for #153
 

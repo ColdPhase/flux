@@ -89,6 +89,9 @@ does not comment on GitHub.
     claim.
 - **C8:** a mutation proof: removing each named guard in a scratch copy makes
   the intended test fail.
+- **C9:** an in-place `0049` upgrade test asserts that the live grant
+  operation list equals the contract list exactly, that existing rows
+  survive, and that a re-run is idempotent.
 - Docker image build, typecheck and lint pass. The affected co-work, agent
   execution, grant and migration tests pass, and the full
   `./scripts/check_application.sh` passes.
