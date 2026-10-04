@@ -35,6 +35,7 @@ const label = { type: ['string', 'null'], maxLength: 200 } as const;
 const shape = { type: 'string', enum: [...THOUGHT_SHAPES] } as const;
 const WORKSPACE_SKETCHES = '/api/v1/workspaces/:workspaceId/sketches';
 const SKETCH = `${SKETCHES_PATH}/:sketchId`;
+const routeUrl=(request:FastifyRequest)=>{const url=request.routeOptions.url;if(typeof url!=='string'||!url)throw new ServiceUnavailableError('The native command route is unavailable','EDITING_MAP_CAPACITY');return url;};
 
 /**
  * `/api/v1` sketch routes (issue #69). Handlers resolve the session on every request and call
@@ -57,7 +58,7 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions,developm
       const session=await sessions.requirePrincipal(request);const backend=liveBackend?.();
       if(!backend)throw new ServiceUnavailableError('The live map adapter is closing','EDITING_MAP_CAPACITY');
       const params=request.params as {sketchId?:string};const body=response.body as {id?:string;sketch?:{id?:string}}|null;
-      const target=request.routeOptions.url.endsWith('/promotion')?body?.sketch?.id:params.sketchId??body?.id;
+      const target=routeUrl(request).endsWith('/promotion')?body?.sketch?.id:params.sketchId??body?.id;
       if(!target)throw new ServiceUnavailableError('The native map receipt has no target','EDITING_MAP_CAPACITY');
       await backend.deliverNative({sessionId:session.sessionId,actorId:session.principal.id},target,response.body,current=>{
         const size=response.status===204?0:editingJSONSize(current).bytes;const text=response.status===204?'':JSON.stringify(current);
@@ -68,15 +69,21 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions,developm
         if(response.etag)headers.etag=response.etag;if(response.replayed)headers['idempotent-replayed']='true';
         reply.hijack();reply.raw.once('finish',release);reply.raw.once('close',release);handed=true;reply.raw.writeHead(response.status,headers);reply.raw.end(owned);
       });
-    } catch(error) {if(error instanceof DomainError)error.details={};throw error;}
+    } catch(error) {
+      if(error instanceof Error&&'code' in error&&['EDITING_MAP_CAPACITY','EDITING_OUTPUT_CAPACITY'].includes(String(error.code))) {
+        const refusal=new ServiceUnavailableError('The finite native map capacity is busy',String(error.code));refusal.details={outcome:'refused',retryable:true};throw refusal;
+      }
+      if(error instanceof DomainError)error.details={};throw error;
+    }
     finally {if(!handed)release();}
   }
   const sketches = sketchUseCases(db);
   function native(conn:Database,actor:Principal,request:FastifyRequest,session:SessionContext,reply:import('fastify').FastifyReply) {
     const key=request.headers['idempotency-key'];const original=typeof key==='string'?key:null;
-    const uuid=original&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(original)?original.toLowerCase():original?derivedUuid('flux.map.legacy-key.v1',actor.kind,actor.id,request.method,request.routeOptions.url,original):undefined;
+    const url=routeUrl(request);
+    const uuid=original&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(original)?original.toLowerCase():original?derivedUuid('flux.map.legacy-key.v1',actor.kind,actor.id,request.method,url,original):undefined;
     return sketchUseCases(conn,{context:{params:request.params,body:request.body,query:request.query,headers:request.headers,session},prepared:developmentEditing,resourceId:(request.params as {sketchId?:string}).sketchId,principal:actor,sessionId:session.sessionId,commandId:uuid,retainUntil:(release)=>{reply.raw.once('finish',release);reply.raw.once('close',release);},
-      operation:`native:${request.method} ${request.routeOptions.url}`,fingerprint:requestHash({params:request.params,body:request.body??null,query:request.query,ifMatch:request.headers['if-match']??null})});
+      operation:`native:${request.method} ${url}`,fingerprint:requestHash({params:request.params,body:request.body??null,query:request.query,ifMatch:request.headers['if-match']??null})});
   }
   const sketchScope = (sketchId: string): ResourceRef => ({ type: 'sketch', id: sketchId });
   const readSketch = (sketchId: string) => requires('sketch', 'sketch.read', () => sketchId);

@@ -14,6 +14,7 @@ import {
   policySketchAccess,
   recordEvent,
   RuleViolationError,
+  ServiceUnavailableError,
   visibleFilter,
   type Database,
   type Principal,
@@ -49,7 +50,11 @@ export function sketchRepository(db: DbExecutor): SketchRepository {
       if(previous&&previous.sketchId!==thought.sketchId)throw new ConflictError('This retained ID belongs to another map','EDITING_IDEMPOTENCY_CONFLICT');
       return rows.insertThought({...thought,version:(previous?.version??0)+1,createdBy:author(thought.createdBy)});
     },
-    insertLink: (link) => rows.insertLink({ ...link, createdBy: author(link.createdBy) }),
+    insertLink: async (link) => {
+      const previous=await liveMapRows(db,decodeMapChange).version('link',link.id);
+      if(previous&&previous.sketchId!==link.sketchId)throw new ConflictError('This retained link ID belongs to another map','EDITING_IDEMPOTENCY_CONFLICT');
+      return rows.insertLink({ ...link, createdBy: author(link.createdBy) });
+    },
   };
 }
 
@@ -127,7 +132,12 @@ export function sketchUnitOfWork(db: Database,options:NativeMapOptions={}): Sket
       const ports=sketchPorts(tx);const events=transactionEventSession(tx);ports.events=events;const journal=nativeMapJournal(tx,ports.sketches,{...options,prepared});ports.live=journal.journal;release=()=>journal.release();
       const replay=await journal.replay();if(replay.found)return replay.value as T;
       const result=await events.run(()=>work(ports));await journal.finish(result);await events.flushEvents();return result;
-    });} finally {release();if(options.retainUntil)options.retainUntil(releasePreparation);else releasePreparation();}
+    });} catch(error) {
+      if(error instanceof Error&&'code' in error&&error.code==='EDITING_MAP_CAPACITY') {
+        const refusal=new ServiceUnavailableError('The finite native map capacity is busy','EDITING_MAP_CAPACITY');refusal.details={outcome:'refused',retryable:true};throw refusal;
+      }
+      throw error;
+    } finally {release();if(options.retainUntil)options.retainUntil(releasePreparation);else releasePreparation();}
   } };
 }
 
@@ -137,5 +147,7 @@ export const sketchUseCases = (db: Database,options:NativeMapOptions={}) => crea
 /** Sketch commands sharing a composing caller's transaction and single final event batch (#152 map actions). */
 export function nativeSketchInEventSession(tx: Transaction, session: TransactionEventSession,options:NativeMapOptions={}) {
   const ports:SketchPorts={...sketchPorts(tx),events:session};const journal=nativeMapJournal(tx,ports.sketches,options);ports.live=journal.journal;
-  return createSketchUseCases({run:(action)=>session.run(async()=>{try {const result=await action(ports);await journal.finish(result);return result;}finally{journal.release();}})});
+  return createSketchUseCases({run:(action)=>session.run(async()=>{try {const result=await action(ports);await journal.finish(result);return result;}
+    catch(error){if(error instanceof Error&&'code' in error&&error.code==='EDITING_MAP_CAPACITY'){const refusal=new ServiceUnavailableError('The finite native map capacity is busy','EDITING_MAP_CAPACITY');refusal.details={outcome:'refused',retryable:true};throw refusal;}throw error;}
+    finally{journal.release();}})});
 }

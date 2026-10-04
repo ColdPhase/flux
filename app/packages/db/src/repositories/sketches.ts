@@ -187,7 +187,9 @@ export function sketchRows(db: DbExecutor) {
     async relatedLinks(sketchId:string,filter:{thoughtId?:string;linkId?:string}) {
       const where=and(eq(l.sketchId,sketchId),filter.thoughtId?or(eq(l.fromId,filter.thoughtId),eq(l.toId,filter.thoughtId)):undefined,filter.linkId?eq(l.id,filter.linkId):undefined);
       const [size]=await db.select({n:sql<number>`count(*)::int`,bytes:sql<number>`COALESCE(sum(octet_length(to_jsonb(${l})::text)),0)::bigint`}).from(l).where(where);
-      if(size!.n>20_000||Number(size!.bytes)>2*1024*1024)throw Object.assign(new Error('The affected links reached their finite capacity'),{code:'EDITING_MAP_CAPACITY'});
+      // The native service retains both raw and normalized link rows before its journal hook.
+      // Bound those parsed objects as well as SQL bytes before allocating either representation.
+      if(size!.n*32+1024>60_000||Number(size!.bytes)>2*1024*1024)throw Object.assign(new Error('The affected links reached their finite capacity'),{code:'EDITING_MAP_CAPACITY'});
       return (await db.select().from(l).where(where).orderBy(asc(l.id))).map(toLinkRecord);
     },
     async linkExists(id: string) {

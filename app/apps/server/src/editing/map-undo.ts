@@ -42,6 +42,7 @@ export async function undoMap(db:DbExecutor,principal:{kind:'human';id:string},r
   const thoughtIds=[...new Set(ordered.flatMap(row=>row.change.thoughts.map(item=>item.id)))];
   const linkIds=[...new Set(ordered.flatMap(row=>row.change.links.map(item=>item.id)))];
   if(thoughtIds.length>2000||linkIds.length>20_000)throw new ConflictError('The bounded undo dependency preparation is full','EDITING_MAP_CAPACITY');
+  await rows.journalCapacity(room.sketchId,thoughtIds,linkIds,'undo');
   const repository=sketchRepository(db);const currentThoughts=new Map((await repository.lockThoughts(room.sketchId,thoughtIds)).map(thought=>[thought.id,thought]));
   const currentLinks=await rows.dependencyLinks(room.sketchId,thoughtIds,linkIds);
   const thoughts=new Map<string,ThoughtRecord|null>(thoughtIds.map(id=>[id,currentThoughts.get(id)??null]));

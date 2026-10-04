@@ -36,6 +36,7 @@ export function nativeMapJournal(db:DbExecutor,repository:SketchRepository,optio
       if(!room){retained.delete(releaseInput);releaseInput();if(affected.leaseId)throw new ConflictError('No active drag lease exists','EDITING_LEASE_CHANGED');return;}
       if(!options.prepared)releaseResponse??=await admissions.admit(0);
       await rows.snapshotCapacity(sketch.id);
+      await rows.journalCapacity(sketch.id,affected.thoughtIds,affected.linkIds);
       if(options.sessionId&&principal.kind==='human'&&!await editingSessionRows(db).lock({actorId:principal.id,sessionId:options.sessionId}))throw new ConflictError('The current session ended','UNAUTHENTICATED');
       if(pending.has(sketch.id))throw new Error('Await each native map command before composing another');
       const commandId=options.commandId?(subcommand++===0?options.commandId:derivedUuid('flux.map.native-subcommand.v1',options.commandId,String(subcommand))):randomUUID();
@@ -108,7 +109,14 @@ export function nativeMapJournal(db:DbExecutor,repository:SketchRepository,optio
         ||old.operation!==options.operation||receipt.requestFingerprint!==options.fingerprint||!('nativeResult' in receipt))throw conflict();
       return {found:true as const,value:receipt.nativeResult};
     },
-    release() {const response=releaseResponse;releaseResponse=null;const release=()=>{response?.();for(const input of retained)input();retained.clear();};if(options.retainUntil&&response)options.retainUntil(release);else release();},
+    release() {
+      const response=releaseResponse;releaseResponse=null;
+      const release=()=>{response?.();for(const input of retained)input();retained.clear();};
+      // A prepared MCP/HTTP caller keeps its shared24MiB source reservation through outer SQL settlement.
+      // Retain these additional exact metadata leases for that same lifetime as well, even when this
+      // journal reused the caller reservation and therefore has no private response lease.
+      if(options.retainUntil)options.retainUntil(release);else release();
+    },
     async finish(result:unknown) {
       if(pending.size)throw new Error('Native map changes lack their commit preparation');
       for(const preparation of completed.splice(0)) {

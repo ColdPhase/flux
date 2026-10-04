@@ -135,8 +135,12 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
         try{if(!await editingSessionRows(c.db).lock({sessionId:current.sessionId,actorId:current.actorId}))continue;await access.requireSketch({kind:'human',id:current.actorId},'sketch.write',sketchId,{lock:true});}catch(error){if(error instanceof ForbiddenError||error instanceof NotFoundError)continue;throw error;}
         transient.push({type:'map-presence',generation,connectionId:current.connectionId,actor:{kind:'human',id:current.actorId,name},selected:current.selected,cursor:current.cursor,expiresAt:current.expiresAt.toISOString()});
       }
-      const next=record?await delta(c.db,c.principal,c.room,record,c.access):null;await boundary.beforeHandoff?.();await c.finalFence();
-      handoff({generation,sequence:c.room.sequence,hash:mapHash(generation,c.room.sequence),workspaceId:c.room.workspaceId,resourceId:sketchId,actor:c.actor,canWrite:c.access==='write',delta:next,transient});
+      const next=record?await delta(c.db,c.principal,c.room,record,c.access):null;await boundary.beforeHandoff?.();
+      const clock=await rows.currentTransientFence(who,sketchId,generation);if(!clock.recipientAlive)throw new UnauthenticatedError();
+      const gestures=new Set(clock.gestureIds),people=new Set(clock.presenceIds);
+      // No further await between this recipient+producer clock observation and the synchronous callback.
+      const currentTransient=transient.filter(item=>item.type==='map-move'?gestures.has(item.leaseId):people.has(item.connectionId));
+      handoff({generation,sequence:c.room.sequence,hash:mapHash(generation,c.room.sequence),workspaceId:c.room.workspaceId,resourceId:sketchId,actor:c.actor,canWrite:c.access==='write',delta:next,transient:currentTransient});
     });},
     disconnect(who,sketchId,connectionId){return run(who,sketchId,false,async c=>{const rows=liveMapRows(c.db,decodeMapChange);await rows.disconnect(sketchId,who,id(connectionId));await rows.notify(sketchId);});},
     async close(){closing=true;await Promise.allSettled([...active]);},
