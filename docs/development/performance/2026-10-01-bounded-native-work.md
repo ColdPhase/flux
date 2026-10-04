@@ -212,6 +212,22 @@ window is read on its own when its chooser opens (at most 100 tasks, the rest na
 count). Counts refresh on `project.work_*`, `project.link_*`, `project.result_*` stream events,
 on window focus and after Create work.
 
+Conversation reading position (2026-10-04, #170): message previews and reference rows arrive
+after the messages, so the feed keeps growing after it opens. Only genuine reader input moves
+the reader's position: wheel, touch, scroll keys outside editable fields, a pointer moved or
+pressed in the feed, or focus moved into it. The opening settle (open on whole messages, latest
+in view, at most 2 s) ends on that input, or on a scroll it did not write within 500 ms of it;
+layout growth and scroll anchoring never end it. The message reading position treats a scroll
+it did not write as the reader's only after such input (within 500 ms, or since the position
+was last recorded, which keeps a reader scroll whose event has not arrived yet); otherwise it
+is layout and the saved position is restored. Input away from the end stops following the end,
+so growth never moves what a reader is reading or pointing at.
+
+Agents view (2026-10-04, #170 integration of #183): open, unparked tasks come from the bounded
+`pivot_work` choice page (50 per page, paged with Previous/Next only when there is more); a
+`?task=` outside that page is read by itself through the native own-object read, and nothing is
+chosen until those reads settle.
+
 ## Required evidence before claiming the correction
 
 Run actual native policy/collection regression coverage for all group/mine/source,
