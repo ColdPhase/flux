@@ -330,7 +330,7 @@ def run_profile(browser,data,label,viewport,cpu,report):
         "distributions":{},"memorySamples":[],"initialNavigationSamples":[],
         "mutatingRequests":{},"continuity":{}}
     report["profiles"].append(item)
-    url = f"/projects/{data['project']}/tasks"
+    url = f"/projects/{data['project']}/tasks?view=list"
     try:
         # Probe one initial load before numeric distributions, retaining its actual bytes/counts.
         traffic.begin("initial"); page.goto(url,wait_until="domcontentloaded"); usable(page)
@@ -487,7 +487,7 @@ def main():
             # Same native content at 3840px; one observation, never a latency distribution/device claim.
             context = browser.new_context(base_url=ORIGIN,storage_state=data["states"][0],viewport={"width":3840,"height":2160},device_scale_factor=1)
             context.add_init_script(PROBE); page = context.new_page()
-            page.goto(f"/projects/{data['project']}/tasks",wait_until="domcontentloaded"); usable(page)
+            page.goto(f"/projects/{data['project']}/tasks?view=list",wait_until="domcontentloaded"); usable(page)
             cdp = context.new_cdp_session(page); cdp.send("Performance.enable")
             report["wideObservation"] = snapshot(page,cdp)
             page.screenshot(path=str(OUT/"native-work-wide.png")); context.close(); browser.close()

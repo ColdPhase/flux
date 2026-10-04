@@ -1,16 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { DecisionRowProjection, Project, ProactiveComparisonOutcome, ProjectWorkViewQuery, ResultRowProjection, WorkCounts, WorkObjectType, WorkRowProjection } from '@flux/contracts';
-import { EmptyState, ErrorState, Icon } from '../ui';
+import { Button, EmptyState, ErrorState, Icon } from '../ui';
 import { getProject } from '../app/conversation-api';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
+import { remember } from '../app/remembered';
 import { NewWorkComposer } from './NewWorkComposer';
 import { STATUS_LABEL, isFinished, shortDate } from './format';
 import { getProjectWorkView, workViewReadUrl } from './read-api';
 import { useProjectWorkPage } from './WorkReadContext';
 import { WorkPagination } from './WorkPagination';
 import { useWorkReadingPosition } from './useWorkReadingPosition';
+import { TaskBoard, type ColumnId } from './TaskBoard';
 import { useProjectShell } from '../project/data';
 import { ProjectProposals } from '../project/ProjectProposals';
 import { listComparisonOutcomes } from '../project/proposals';
@@ -112,7 +114,75 @@ function workSub(item: WorkRowProjection) {
 
 const dot = (kind: string) => <span className={`ws-dot ws-dot--${kind}`} />;
 
-/** The project's Tasks tab: committed work, the rules it follows and what was learned. */
+type Mode = 'board' | 'list';
+const MODE_KEY = 'flux.tasks.mode.';
+
+/** Kanban or List, as this person last chose on this device (#136). Kanban is the default. */
+function preferredMode(userId: string): Mode {
+  try { return localStorage.getItem(MODE_KEY + userId) === 'list' ? 'list' : 'board'; } catch { return 'board'; }
+}
+
+function rememberMode(userId: string, mode: Mode) {
+  try { localStorage.setItem(MODE_KEY + userId, mode); } catch { /* remembered for this visit only */ }
+}
+
+/**
+ * The Tasks toolbar (Studio 11.6): an underline search, the way to the project's decisions and
+ * results, Kanban | List, Mine on the board and the one primary action, "+ Task". The List keeps
+ * its own "Only mine" among its views. The search filters the board's loaded cards; the List is
+ * read in bounded pages from the server, so it has no search that could only see one page.
+ */
+function Toolbar({ mode, onMode, query, onQuery, mine, onMine, writable, onNew, onDecisions }: {
+  mode: Mode; onMode: (mode: Mode) => void; query: string; onQuery: (query: string) => void;
+  mine: boolean; onMine: (mine: boolean) => void; writable: boolean; onNew: () => void; onDecisions: () => void;
+}) {
+  const searchId = useId();
+  const radios = useRef<HTMLDivElement>(null);
+  // One radio group: arrows choose and focus the other view, as the Map's Map | List does.
+  const onRadioKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+    event.preventDefault();
+    const next: Mode = mode === 'board' ? 'list' : 'board';
+    onMode(next);
+    requestAnimationFrame(() => radios.current?.querySelector<HTMLElement>(`[data-mode="${next}"]`)?.focus());
+  };
+  return (
+    <div className="tb-bar">
+      {mode === 'board' ? (
+        <div className="tb-search">
+          <Icon name="search" size={14} />
+          <label className="ui-vh" htmlFor={searchId}>Search tasks</label>
+          <input id={searchId} type="search" value={query} placeholder="Search tasks" autoComplete="off" maxLength={200}
+            onChange={(event) => onQuery(event.target.value)}
+            onKeyDown={(event) => { if (event.key === 'Escape' && query) { event.preventDefault(); event.stopPropagation(); onQuery(''); } }} />
+        </div>
+      ) : null}
+      {/* The current rule and what was learned stay one step away from the board (Journey A). */}
+      <button type="button" className="tb-dr" onClick={onDecisions}><Icon name="rule" size={14} /><span>Decisions &amp; results</span></button>
+      <div className="tb-bar__end">
+        <div className="tb-mode" role="radiogroup" aria-label="Show tasks as" ref={radios} onKeyDown={onRadioKey}>
+          {(['board', 'list'] as const).map((value) => (
+            <button key={value} type="button" role="radio" className="tb-mode__b" data-mode={value} aria-checked={mode === value}
+              tabIndex={mode === value ? 0 : -1} onClick={() => onMode(value)}>
+              <Icon name={value === 'board' ? 'board' : 'list'} size={13} /><span className="tb-mode__l">{value === 'board' ? 'Kanban' : 'List'}</span>
+            </button>
+          ))}
+        </div>
+        {mode === 'board' ? (
+          <button type="button" className="tb-mine" aria-pressed={mine} onClick={() => onMine(!mine)}><Icon name="person" size={15} /><span>Mine</span></button>
+        ) : null}
+        {writable ? <Button variant="primary" icon="plus" className="tb-add" onClick={onNew}><span className="ui-vh">New </span>Task</Button> : null}
+      </div>
+    </div>
+  );
+}
+
+/** List section anchors (`g-…`) and the List view that holds each of them. */
+const SECTION_GROUP: Record<string, GroupId> = {
+  'g-proposed': 'needs', 'g-progress': 'in_progress', 'g-blocked': 'blocked', 'g-open': 'open',
+  'g-parked': 'parked', 'g-finished': 'finished', 'g-rules': 'rules', 'g-results': 'results',
+};
+
 const cursors = new Map<string, string | null>();
 const taskViewKey = (accountId: string, projectId: string, status: GroupId | null, mine: boolean) =>
   `flux:task-view:${accountId}:${projectId}:${status ?? 'all'}:${mine ? 'mine' : 'all'}`;
@@ -128,6 +198,7 @@ function keepCursor(key: string, cursor: string | null) {
   try { if (cursor) sessionStorage.setItem(key, cursor); else sessionStorage.removeItem(key); } catch { /* Keep this visit's page. */ }
 }
 
+/** The project's Tasks tab: committed work as a board or a grouped list, the rules it follows and what was learned. */
 export function ProjectTasks() {
   const { project, outcomes } = useLoaderData() as TasksData;
   const shell = useProjectShell();
@@ -138,12 +209,30 @@ export function ProjectTasks() {
   const scroller = useRef<HTMLDivElement>(null);
   const location = useLocation();
   const routeKey = `${me.user.id}:${project.id}:${location.key}`;
-  const fromUrl = () => ({ routeKey, status: isGroup(search.get('status')) ? search.get('status') as GroupId : null, mine: search.get('show') === 'mine', cursor: search.get('cursor') || null });
+  const [chosen, setChosen] = useState(() => ({ userId: me.user.id, mode: preferredMode(me.user.id) }));
+  const preference = chosen.userId === me.user.id ? chosen.mode : preferredMode(me.user.id);
+  // A List view (`status`, or a page `cursor`) opens the List; otherwise Kanban or List follows
+  // the person's own choice unless the URL names one (`view`).
+  const fromUrl = () => {
+    const status = isGroup(search.get('status')) ? search.get('status') as GroupId : null;
+    const cursor = search.get('cursor') || null;
+    const asked = search.get('view');
+    const mode: Mode = asked === 'board' || asked === 'list' ? asked : status || cursor ? 'list' : preferredMode(me.user.id);
+    return { routeKey, status, mine: search.get('show') === 'mine', cursor: mode === 'list' ? cursor : null, mode };
+  };
   const [stored, setViewState] = useState(fromUrl);
+  const [searched, setSearched] = useState({ routeKey: `${me.user.id}:${project.id}`, text: '' });
+  const [adding, setAdding] = useState<ColumnId | null>(null);
   // A router POP, account switch or project switch selects its actual URL immediately.
   const view = stored.routeKey === routeKey ? stored : fromUrl();
-  const { status, mine, cursor } = view;
-  const query = useMemo<ProjectWorkViewQuery>(() => ({ purpose: 'tasks', group: status ?? 'all', mine, ...(cursor ? { cursor } : {}) }), [status, mine, cursor]);
+  const { status, mine, cursor, mode } = view;
+  const boardSearch = searched.routeKey === `${me.user.id}:${project.id}` ? searched.text : '';
+  const setBoardSearch = (text: string) => setSearched({ routeKey: `${me.user.id}:${project.id}`, text });
+  // The List reads its chosen view page by page. The board's Open column is the same bounded read
+  // of the open group; its other columns are read by the board (see TaskBoard).
+  const query = useMemo<ProjectWorkViewQuery>(() => mode === 'list'
+    ? { purpose: 'tasks', group: status ?? 'all', mine, ...(cursor ? { cursor } : {}) }
+    : { purpose: 'tasks', group: 'open', mine }, [mode, status, mine, cursor]);
   const selector = workViewReadUrl(project.id, query);
   const load = useCallback((signal: AbortSignal) => getProjectWorkView(project.id, query, signal), [project.id, query]);
   const { page: read, refresh: refreshPage } = useProjectWorkPage(project.id, selector, load);
@@ -151,14 +240,19 @@ export function ProjectTasks() {
   const writable = (data?.summary.access ?? project.access) !== 'viewer';
   const counts = data ? mine ? data.summary.mine : data.summary.all : null;
   const viewKey = taskViewKey(me.user.id, project.id, status, mine);
-  const saveReading = useWorkReadingPosition(scroller, `${viewKey}:reading:${cursor ?? 'first'}`, data !== null, data?.summary.observedAt);
+  const readingKey = mode === 'list' ? `${viewKey}:reading:${cursor ?? 'first'}` : `${taskViewKey(me.user.id, project.id, null, mine)}:board:reading`;
+  const saveReading = useWorkReadingPosition(scroller, readingKey, data !== null, data?.summary.observedAt);
   const jump = useRef<{ routeKey: string; id: string; group: GroupId } | null>(null);
+  // Outcome links refer to the whole project's work/results in the List. Restore All before
+  // scrolling, since a saved status/mine filter or a search can hide their destination.
   const jumpToSection = (id: string) => {
-    const group: GroupId = id === 'g-progress' ? 'in_progress' : id.slice(2) as GroupId;
-    if (!isGroup(group)) return;
+    const group = SECTION_GROUP[id];
+    if (!group) return;
     saveReading();
+    if (mode === 'list') keepCursor(viewKey, cursor);
     jump.current = { routeKey, id, group };
-    setViewState({ routeKey, status: null, mine: false, cursor: null });
+    setBoardSearch('');
+    setViewState({ routeKey, status: null, mine: false, cursor: null, mode: 'list' });
   };
   useEffect(() => {
     const target = jump.current;
@@ -170,7 +264,7 @@ export function ProjectTasks() {
     if (!heading && status === null) {
       // All still has its bounded first page. Select the named group only when
       // the actual destination lies outside it; never fetch every object to jump.
-      setViewState({ routeKey, status: target.group, mine: false, cursor: null });
+      setViewState({ routeKey, status: target.group, mine: false, cursor: null, mode: 'list' });
       return;
     }
     const pane = scroller.current;
@@ -182,27 +276,35 @@ export function ProjectTasks() {
     jump.current = null;
   }, [routeKey, read.phase, data, status, mine, cursor, view]);
 
+  // The chosen view is local state mirrored into the URL with `replaceState`: switching views is
+  // instant, and back/forward or a shared link restore it. Kanban or List is a personal choice:
+  // the URL names it only when it differs from that choice.
+  const params = new URLSearchParams();
+  if (mode === 'list' && status) params.set('status', status);
+  if (mine) params.set('show', 'mine');
+  if (mode === 'list' && cursor) params.set('cursor', cursor);
+  if (mode !== (mode === 'list' && (status || cursor) ? 'list' : preference)) params.set('view', mode);
+  const viewSearch = params.toString();
   useEffect(() => {
-    keepCursor(viewKey, cursor);
+    if (mode === 'list') keepCursor(viewKey, cursor);
+    remember('tasks', me.user.id, project.id, viewSearch ? `?${viewSearch}` : '');
     const url = new URL(window.location.href);
-    url.searchParams.delete('status'); url.searchParams.delete('show'); url.searchParams.delete('cursor');
-    if (status) url.searchParams.set('status', status);
-    if (mine) url.searchParams.set('show', 'mine');
-    if (cursor) url.searchParams.set('cursor', cursor);
-    const remembered = new URLSearchParams(url.search);
-    remembered.delete('open');
-    try { sessionStorage.setItem(`flux.project-tasks.${me.user.id}.${project.id}`, remembered.toString() ? `?${remembered}` : ''); } catch { /* Visit-local controls still work. */ }
+    for (const key of ['status', 'show', 'cursor', 'view']) url.searchParams.delete(key);
+    for (const [key, value] of new URLSearchParams(viewSearch)) url.searchParams.set(key, value);
     if (url.href !== window.location.href) window.history.replaceState(window.history.state, '', url);
-  }, [viewKey, cursor, status, mine, me.user.id, project.id, location.search]);
+  }, [viewKey, cursor, mode, viewSearch, me.user.id, project.id, location.search]);
 
-  const setView = (next: { status?: GroupId | null; mine?: boolean }) => {
+  const setView = (next: { status?: GroupId | null; mine?: boolean; mode?: Mode }) => {
     jump.current = null;
     saveReading();
-    keepCursor(viewKey, cursor);
+    if (mode === 'list') keepCursor(viewKey, cursor);
     const nextStatus = next.status === undefined ? status : next.status;
     const nextMine = next.mine ?? mine;
-    setViewState({ routeKey, status: nextStatus, mine: nextMine, cursor: storedCursor(taskViewKey(me.user.id, project.id, nextStatus, nextMine)) });
+    const nextMode = next.mode ?? mode;
+    setViewState({ routeKey, status: nextStatus, mine: nextMine, mode: nextMode,
+      cursor: nextMode === 'list' ? storedCursor(taskViewKey(me.user.id, project.id, nextStatus, nextMine)) : null });
   };
+  const chooseMode = (next: Mode) => { setChosen({ userId: me.user.id, mode: next }); rememberMode(me.user.id, next); setView({ mode: next }); };
   const movePage = (nextCursor: string) => {
     jump.current = null;
     saveReading();
@@ -212,9 +314,17 @@ export function ProjectTasks() {
   const refresh = () => {
     jump.current = null;
     saveReading();
-    keepCursor(viewKey, null);
+    if (mode === 'list') keepCursor(viewKey, null);
     setViewState({ ...view, cursor: null });
     refreshPage();
+  };
+  // The board's own column reads follow this revision as well as the router's revalidation.
+  const [boardRevision, setBoardRevision] = useState(0);
+  const refreshBoard = () => { refreshPage(); setBoardRevision((current) => current + 1); };
+  // "+ Task" starts the same creation: the List's field, or a field at the top of the board's Open column.
+  const startNew = () => {
+    if (mode === 'list') document.getElementById('ws-add')?.focus();
+    else setAdding('open');
   };
 
   const open = search.get('open');
@@ -246,27 +356,58 @@ export function ProjectTasks() {
   const groupCount = (id: GroupId, visible: number) => visible ? counts?.[id] ?? 0 : 0;
   const openObject = (kind: WorkObjectType, id: string) => () => { saveReading(); openDetails({ kind, id }); };
   const workRow = (item: WorkRowProjection, muted = false) => <Row key={item.id} kind="work" id={item.id} icon={dot(item.parked ? 'parked' : item.status)} title={item.title} sub={workSub(item)} right={item.owner ? <span className="ws-av" aria-hidden="true">{item.owner.name.slice(0, 1)}</span> : null} onOpen={openObject('work', item.id)} muted={muted} />;
+  const summaryCounts = data ? mine ? data.summary.mine : data.summary.all : null;
+  // What the board leaves to the List, one step away: a decision waiting for someone and work a pivot set aside.
+  const elsewhere: { id: GroupId; text: string; need?: boolean }[] = [];
+  if (summaryCounts?.needs) elsewhere.push({ id: 'needs', text: writable ? `${summaryCounts.needs} ${summaryCounts.needs === 1 ? 'decision needs' : 'decisions need'} you` : `${summaryCounts.needs} waiting for a decision`, need: true });
+  if (summaryCounts?.parked) elsewhere.push({ id: 'parked', text: `${summaryCounts.parked} parked by a pivot` });
+  // "Decisions & results" opens the whole List at the first of them: proposals, then rules, then results.
+  const toDecisions = () => jumpToSection(data?.summary.all.needs ? 'g-proposed' : data?.summary.all.rules ? 'g-rules' : 'g-results');
   const nothing = data !== null && cursor === null && !Object.values(data.summary.all).some(Boolean)
     && !outcomes.some((outcome) => outcome.kind === 'comparison' ? outcome.proposal.status === 'proposed' : outcome.status === 'open');
   const emptyContinuation = data !== null && cursor !== null && !data.items.length;
 
+  const proposals = (
+    <ProjectProposals outcomes={outcomes} people={shell?.people ?? null} projectName={project.name}
+      resultTitles={new Map(results.map((result) => [result.id, result.title]))}
+      workCount={data?.summary.workTotal ?? 0} resultCount={data?.summary.all.results ?? 0}
+      workJumpId={data?.summary.all.in_progress ? 'g-progress' : data?.summary.all.blocked ? 'g-blocked' : data?.summary.all.open ? 'g-open' : data?.summary.all.parked ? 'g-parked' : 'g-finished'}
+      jumpToSection={jumpToSection} writable={writable} refresh={() => { if (mode === 'list') refresh(); else refreshBoard(); revalidator.revalidate(); }}
+      openResult={(id) => openDetails({ kind: 'result', id, projectId: project.id })}
+      openWork={(item) => openDetails({ kind: 'work', id: item.id, projectId: project.id })} />
+  );
+
   return (
-    <div className="pane-scroll" ref={scroller}>
+    <div className="tb-root">
+      <Toolbar mode={mode} onMode={chooseMode} query={boardSearch} onQuery={setBoardSearch} mine={mine} onMine={(next) => setView({ mine: next })} writable={writable} onNew={startNew} onDecisions={toDecisions} />
+      <div className="pane-scroll" ref={scroller}>
+      {mode === 'board' ? (
+        <div className="tb" data-work-observed-at={data?.summary.observedAt}>
+          {elsewhere.length ? (
+            <nav className="tb-also" aria-label="Also in the List">
+              <span className="tb-also__k">In the List:</span>
+              {elsewhere.map((entry) => (
+                <button key={entry.id} type="button" className={`tb-also__b${entry.need ? ' tb-also__b--need' : ''}`} onClick={() => setView({ mode: 'list', status: entry.id })}>{entry.text}</button>
+              ))}
+            </nav>
+          ) : null}
+          <div className="tb-aside">{proposals}</div>
+          <TaskBoard project={project} openRead={read} meId={me.user.id} mine={mine} query={boardSearch.trim().toLowerCase()} writable={writable}
+            revision={boardRevision} adding={adding} onAdding={setAdding}
+            openWork={(id) => { saveReading(); openDetails({ kind: 'work', id }); }} refresh={refreshBoard}
+            showInList={(group) => setView({ mode: 'list', status: group })}
+            clearFilters={() => { setBoardSearch(''); setView({ mine: false }); }} />
+        </div>
+      ) : (
       <div className="pane-in ws-tasks" data-shift data-work-observed-at={data?.summary.observedAt}>
         {writable ? <NewWorkComposer key={`${me.user.id}:${project.id}`} userId={me.user.id} projectId={project.id} /> : null}
-        <ProjectProposals outcomes={outcomes} people={shell?.people ?? null} projectName={project.name}
-          resultTitles={new Map(results.map((result) => [result.id, result.title]))}
-          workCount={data?.summary.workTotal ?? 0} resultCount={data?.summary.all.results ?? 0}
-          workJumpId={data?.summary.all.in_progress ? 'g-progress' : data?.summary.all.blocked ? 'g-blocked' : data?.summary.all.open ? 'g-open' : data?.summary.all.parked ? 'g-parked' : 'g-finished'}
-          jumpToSection={jumpToSection} writable={writable} refresh={() => { refresh(); revalidator.revalidate(); }}
-          openResult={(id) => openDetails({ kind: 'result', id, projectId: project.id })}
-          openWork={(item) => openDetails({ kind: 'work', id: item.id, projectId: project.id })} />
+        {proposals}
         <div className="ws-task-controls">
           <TaskViews counts={counts} status={status} mine={mine} writable={writable} onStatus={(next) => setView({ status: next })} onMine={(next) => setView({ mine: next })} />
           <WorkPagination page={data} busy={read.phase !== 'ready' && read.phase !== 'unavailable'} onCursor={movePage} onRefresh={refresh} />
         </div>
         {read.phase === 'unavailable' ? <ErrorState title="Work could not be loaded" actions={<button type="button" className="ws-none__b" onClick={refresh}>Refresh work</button>}><p>Your private draft is kept. Refresh to read the current view.</p></ErrorState> : null}
-        {nothing ? <div className="view-empty"><EmptyState icon="tasks" title="No work yet"><p>Work starts when one of you makes it from a message, or adds it here. Not every idea has to become a task.</p></EmptyState></div> : null}
+        {nothing ? <div className="view-empty"><EmptyState icon="tasks" title="No tasks yet"><p>A task starts when one of you makes it from a message, or adds it here. Not every idea has to become a task.</p></EmptyState></div> : null}
         {emptyContinuation ? <p className="ws-none" role="status">This page changed and has no rows. Use Previous or Next if available, or <button type="button" className="ws-none__b" onClick={refresh}>refresh from the start</button>.</p> : null}
         {data && !nothing && !emptyContinuation && !data.total ? <p className="ws-none" role="status">
           {mine ? `Nothing of yours${status ? ` in ${GROUP_LABEL[status].toLowerCase()}` : ''} right now.` : `Nothing in ${status ? GROUP_LABEL[status].toLowerCase() : 'this view'} right now.`}{' '}
@@ -287,6 +428,8 @@ export function ProjectTasks() {
         <Group id="results" title="Results" count={groupCount('results', results.length)}>
           {results.map((item) => <Row key={item.id} kind="result" id={item.id} icon={<Icon name="result" size={16} />} iconClass={item.finding === 'negative' ? 'ws-neg' : 'ws-pos'} title={item.title} sub={`${item.finding === 'negative' ? 'Negative' : 'Positive'} · ${item.createdBy.name}`} right={shortDate(item.createdAt)} onOpen={openObject('result', item.id)} />)}
         </Group>
+      </div>
+      )}
       </div>
     </div>
   );

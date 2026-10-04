@@ -140,7 +140,7 @@ class NativeDetailsJourney(unittest.TestCase):
 
     def test_04_all_current_rules_reachable_and_selected_rule_persists_on_another_page(self):
         page=self.page();page.goto(f"/projects/{self.project}/conversations/{self.conversation}")
-        message=page.locator(f"#message-{self.message}");message.hover();message.get_by_role("button",name="Propose decision",exact=True).click()
+        message=page.locator(f"#message-{self.message}");message.hover();message.get_by_role("button",name="Decision",exact=True).click()
         panel=page.locator("#details .wd");self.choices_ready(panel,"Current rule choices")
         panel.get_by_label("Decision",exact=True).fill("Keep a manual off switch after measuring both shields")
         why=panel.get_by_label("Why",exact=True);why.fill("Retain the complete earlier measurements before changing the cable")

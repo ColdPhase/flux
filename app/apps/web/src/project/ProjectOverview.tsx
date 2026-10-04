@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link, useMatches } from 'react-router';
 import type { Conversation, DecisionRowProjection, Material, NativeWorkRow, WorkRowProjection, ResultRowProjection } from '@flux/contracts';
-import { Avatar, Icon, type IconName } from '../ui';
+import { Icon, type IconName } from '../ui';
 import { useShellData } from '../app/data';
 import { useShellActions, type DetailsView, type OverviewView } from '../app/shellContext';
 import { STATUS_LABEL, decisionLine, resultLine } from '../work/format';
@@ -9,7 +9,8 @@ import { summaryStateParts } from '../work/state-summary';
 import { useProjectWorkSummary } from '../work/WorkReadContext';
 import { useOverviewWork } from '../work/useOverviewWork';
 import { WorkPagination } from '../work/WorkPagination';
-import { ACCESS_LABEL, audienceLine, useProjectShell } from './data';
+import { audienceLine, useProjectShell } from './data';
+import { ProjectAccess } from '../people/ProjectAccess';
 import { docUrl } from '../docs/api';
 import { authorLabel } from '../docs/format';
 
@@ -29,7 +30,7 @@ export function OverviewContext() {
   return <div className="ov-panel-context" aria-label="Overview context">
     <strong>{shell.project.name}</strong>
     {title ? <span title={title}>{title}</span> : null}
-    <small><Icon name="lock" size={11} />{audienceLine(shell.people, me.user.id)}</small>
+    <small><Icon name={shell.project.visibility === 'workspace' ? 'people' : 'lock'} size={11} />{audienceLine(shell.people, me.user.id, shell.project.visibility === 'workspace')}</small>
   </div>;
 }
 
@@ -94,7 +95,7 @@ function Rows({ label, rows, empty, controls }: { label: string; rows: Row[]; em
  * and results, sources, sketches and docs, and exactly who can see it. Nothing here is a
  * permanent panel; it opens with Details, the state line or a message's Details action.
  */
-export function ProjectOverview({ messageId, selection, onBack }: { messageId?: string; selection?: OverviewView['selection']; onBack: () => void }) {
+export function ProjectOverview({ messageId, selection, focusPeople = null, onBack }: { messageId?: string; selection?: OverviewView['selection']; focusPeople?: object | null; onBack: () => void }) {
   const shell = useProjectShell();
   const open = useOpenConversation();
   const { me } = useShellData();
@@ -171,7 +172,6 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
   }));
   const author = message ? (message.authorId === null ? `${message.author.name ?? 'Agent'} · agent` : message.authorId === me.user.id ? 'you' : people?.find((person) => person.id === message.authorId)?.name ?? 'a member') : null;
   const title = messageMode ? message ? `Message from ${author}` : 'Message' : conversation ? conversation.firstMessageBody.split('\n')[0] || 'Conversation' : project.name;
-  const others = (people ?? []).filter((person) => !(person.kind === 'human' && person.id === me.user.id));
 
   return (
     <div className="details ov" data-overview-phase={read.objects.phase} data-overview-observed-at={read.page?.observedAt} data-overview-relations-phase={read.relations.phase} data-overview-relations-observed-at={read.links?.observedAt}>
@@ -179,7 +179,7 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
       <p className="details__eyebrow">{project.name}{conversation && !messageMode ? ' · Conversation' : ''}</p>
       <h3 className="details__title">{title}</h3>
       {message ? <p className="details__lead ov-quote">{message.body.length > 280 ? `${message.body.slice(0, 279)}…` : message.body}</p> : null}
-      <p className="ov-audience"><Icon name="lock" size={13} />{audienceLine(people, me.user.id)}</p>
+      <p className="ov-audience"><Icon name={project.visibility === 'workspace' ? 'people' : 'lock'} size={13} />{audienceLine(people, me.user.id, project.visibility === 'workspace')}</p>
 
       <Rows label={messageMode ? 'Made from this message' : 'Linked in this conversation'} rows={linked}
         controls={read.objects.phase !== 'idle' ? <>
@@ -201,16 +201,8 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
       {moreDocs ? <p className="ov-more"><Link to={`${base}/docs`}>All {docs.length} docs</Link></p> : null}
 
       {!message && project.access === 'manager' ? <p className="ov-more"><Link to={`${base}/github`}>GitHub repositories</Link></p> : null}
-      <section className="details__sec" aria-labelledby="ov-people">
-        <h4 id="ov-people">Who can see this</h4>
-        {people ? (
-          <ul className="details__rows">
-            <li className="details__person"><Avatar name={me.user.name} size="md" tone="me" /><b>{me.user.name} (you)</b></li>
-            {others.map((person) => <li key={`${person.kind}:${person.id}`} className="details__person"><Avatar name={person.name} size="md" /><span className="ov-person"><b>{person.name}{person.kind === 'agent' ? ' (agent)' : ''}</b><span>{ACCESS_LABEL[person.access]}</span></span></li>)}
-          </ul>
-        ) : <p>Everyone with access to {project.name}.</p>}
-        <p className="ov-note">Direct messages with these people stay private; nothing in them is shared with this project.</p>
-      </section>
+      {/* Exactly who can open it, and for its managers the controls to change that (#188). */}
+      <ProjectAccess project={project} people={people} focusToken={focusPeople} />
       <p className="details__keys"><kbd>]</kbd> toggles this panel · <kbd>Esc</kbd> closes it</p>
     </div>
   );

@@ -44,7 +44,7 @@ test('comparison jumps expose headings below sticky controls on a bounded page a
       const context = await browser.newContext({ storageState: await setup.storageState(), viewport: { width, height: width === 390 ? 844 : 900 }, hasTouch: width < 1440, isMobile: width === 390 });
       const page = await context.newPage(); const errors: string[] = []; page.on('pageerror', (error) => errors.push(error.message));
       try {
-        await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks`);
+        await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks?view=list`);
         const views = page.getByRole('navigation', { name: 'Task views' });
         const jumps = page.getByRole('navigation', { name: 'Project work sections' });
         await jumps.waitFor();

@@ -94,12 +94,13 @@ test('real settings UI binds, verifies PR links and removes private projections 
   page.on('request',(request)=>{if(request.method()==='GET'&&/\/api\/v1\/projects\/[^/]+\/(work|decisions|results)(?:\?|$)/.test(request.url()))collections.push(request.url());});
   page.on('response',async(response)=>{if(new URL(response.url()).pathname.endsWith('/work-view')&&response.ok()){void response.json().then((value:{items:unknown[]})=>choiceWindows.push(value.items.length)).catch(()=>{/* a retired read publishes no observation */});}});
   const errors: string[] = []; page.on('pageerror', (error) => errors.push(error.message));
+  // An older shell remembered the last place per project only, including settings; that key is retired (#189) and ignored.
   await page.addInitScript(({ projectId }) => sessionStorage.setItem(`flux.project-conversation.${projectId}`, `/projects/${projectId}/github`), { projectId: place.id });
   await page.goto(`/projects/${place.id}/github`);
   await page.getByRole('heading', { name: 'GitHub is not configured on this server' }).waitFor();
   const views = page.getByRole('navigation', { name: 'Project views', exact: true });
   assert.equal(await views.locator('[aria-current="page"]').count(), 0, 'settings do not select a conversation tab');
-  assert.equal(await views.getByRole('link', { name: 'Conversation', exact: true }).getAttribute('href'), `/projects/${place.id}`, 'old settings destination is not a conversation');
+  assert.equal(await views.getByRole('link', { name: 'Conversation', exact: true }).getAttribute('href'), `/projects/${place.id}`, 'a destination remembered under the retired key is ignored');
   await views.getByRole('link', { name: 'Conversation', exact: true }).click();
   await page.waitForURL(`**/projects/${place.id}`);
   const details = page.getByRole('button', { name: 'Details', exact: true });

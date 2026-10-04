@@ -100,7 +100,7 @@ class WorkPaginationJourney(unittest.TestCase):
                 page = self.page(phone=phone)
                 native_reads = []
                 page.on("request", lambda request: native_reads.append(urlsplit(request.url).path) if request.method == "GET" and "/work-" in request.url else None)
-                page.goto(f"/projects/{self.project}/tasks")
+                page.goto(f"/projects/{self.project}/tasks?view=list")
                 self.ready(page)
                 self.assertEqual(native_reads.count(self.root + "/work-view"), 1)
                 self.assertEqual(native_reads.count(self.root + "/work-summary"), 0)
@@ -150,7 +150,7 @@ class WorkPaginationJourney(unittest.TestCase):
 
     def test_02_passive_refresh_keeps_keyboard_row_focus_and_private_selection(self):
         page = self.page()
-        page.goto(f"/projects/{self.project}/tasks"); self.ready(page)
+        page.goto(f"/projects/{self.project}/tasks?view=list"); self.ready(page)
         held = []
         def hold(route):
             response = route.fetch()
@@ -169,7 +169,7 @@ class WorkPaginationJourney(unittest.TestCase):
         self.assertEqual(self.rows(page), original)
         route, response = held.pop(); route.fulfill(response=response)
         self.ready(page); expect(row).to_be_focused()
-        field = page.get_by_label("New work", exact=True)
+        field = page.get_by_label("New task", exact=True)
         field.fill("Check the spare boards before ordering")
         field.evaluate("el => { el.focus(); el.setSelectionRange(6, 18); }")
         page.evaluate("window.dispatchEvent(new Event('focus'))")
@@ -184,7 +184,7 @@ class WorkPaginationJourney(unittest.TestCase):
 
     def test_03_late_read_and_required_failure_never_become_empty_work(self):
         page = self.page()
-        page.goto(f"/projects/{self.project}/tasks"); self.ready(page)
+        page.goto(f"/projects/{self.project}/tasks?view=list"); self.ready(page)
         held = []
         def hold_all(route):
             if parse_qs(urlsplit(route.request.url).query).get("group") == ["all"]:
@@ -201,11 +201,11 @@ class WorkPaginationJourney(unittest.TestCase):
         expect(page.get_by_role("navigation", name="Work pages")).to_contain_text("1–6 of 6")
         self.assertEqual(len(self.rows(page)), 6)
         page.unroute("**/work-view**", hold_all)
-        field = page.get_by_label("New work", exact=True); field.fill("Private text survives a failed read")
+        field = page.get_by_label("New task", exact=True); field.fill("Private text survives a failed read")
         page.route("**/work-view**", lambda route: route.fulfill(status=503, json={"code": "WORK_READ_UNAVAILABLE", "error": "Fixture required read unavailable"}))
         page.get_by_role("navigation", name="Work pages").get_by_role("button", name="Refresh", exact=True).click()
         expect(page.get_by_role("heading", name="Work could not be loaded")).to_be_visible()
-        expect(page.get_by_role("heading", name="No work yet")).to_have_count(0)
+        expect(page.get_by_role("heading", name="No tasks yet")).to_have_count(0)
         expect(field).to_have_value("Private text survives a failed read")
         self.assertEqual(self.rows(page), [])
         page.unroute("**/work-view**")
@@ -214,9 +214,9 @@ class WorkPaginationJourney(unittest.TestCase):
 
     def test_04_cookie_account_change_fences_held_page_and_private_draft(self):
         page = self.page()
-        page.goto(f"/projects/{self.project}/tasks?show=mine"); self.ready(page)
+        page.goto(f"/projects/{self.project}/tasks?view=list&show=mine"); self.ready(page)
         expect(page.get_by_role("navigation", name="Work pages")).to_contain_text("1–50 of 64")
-        field = page.get_by_label("New work", exact=True); field.fill("Ada Kowalska's private draft")
+        field = page.get_by_label("New task", exact=True); field.fill("Ada Kowalska's private draft")
         held = []
         def hold_once(route):
             if not held:
@@ -248,7 +248,7 @@ class WorkPaginationJourney(unittest.TestCase):
         task = api(owner, "POST", f"/api/v1/projects/{project}/work", {"title": "Check the wall socket before installation"}, 201)
         for phone in (False, True):
             page = self.page(phone=phone)
-            page.goto(f"/projects/{project}/tasks"); self.ready(page)
+            page.goto(f"/projects/{project}/tasks?view=list"); self.ready(page)
             state = page.locator(".ws-state-row") if phone else page.get_by_label("Current state", exact=True)
             expect(state).to_contain_text("1 open task")
             expect(state).not_to_contain_text("No decisions or work yet")
@@ -263,7 +263,7 @@ class WorkPaginationJourney(unittest.TestCase):
         for phone in (False, True):
             with self.subTest(phone=phone):
                 page = self.page(phone=phone)
-                page.goto(f"/projects/{self.project}/tasks"); self.ready(page)
+                page.goto(f"/projects/{self.project}/tasks?view=list"); self.ready(page)
                 page.locator("[data-work-id]").nth(25).get_by_role("button").focus()
                 for _ in range(20):
                     page.keyboard.press("Shift+Tab")

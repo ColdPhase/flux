@@ -232,7 +232,11 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(page.get_by_role("region", name=re.compile("^In progress"))).to_contain_text("Test the camera in low light")
         expect(tabs.get_by_role("link", name=re.compile("^Tasks"))).to_have_attribute("aria-current", "page")
         shot(page, "project-tasks-desktop-1440")
+        # The project's only sketch opens directly (#189); its Sketches link shows the list.
         tabs.get_by_role("link", name=re.compile("^Map")).click()
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map/{self.ids['sketch']}$"))
+        expect(tabs.get_by_role("link", name=re.compile("^Map"))).to_have_attribute("aria-current", "page")
+        page.get_by_role("link", name="Sketches", exact=True).click()
         expect(page).to_have_url(re.compile(r"/map$"))
         expect(page.get_by_role("list", name="Sketches in Gesture lamp").get_by_role("link", name=re.compile("Sensing options"))).to_be_visible()
         tabs.get_by_role("link", name=re.compile("^Wiki")).click()
@@ -241,8 +245,9 @@ class ProjectSurfaceJourney(unittest.TestCase):
         tabs.get_by_role("link", name=re.compile("^Conversation")).click()
         expect(page, "Conversation returns to the open conversation").to_have_url(conversation_url)
         expect(page.locator(f"#message-{self.ids['m_camera']}")).to_be_visible()
-        # The state line stays with the project on every tab.
+        # The state line stays with the project on every tab, and Map returns to the list chosen last.
         tabs.get_by_role("link", name=re.compile("^Map")).click()
+        expect(page).to_have_url(re.compile(r"/map$"))
         expect(page.locator("header.top").get_by_label("Current state")).to_contain_text("Current rule")
         # At 320px the tab strip scrolls sideways; the current tab is brought into view.
         page.set_viewport_size({"width": 320, "height": 640})
@@ -459,7 +464,9 @@ class ProjectSurfaceJourney(unittest.TestCase):
         if project:
             expect(link).to_have_attribute("href", re.compile(rf"^/projects/{project}/tasks"))
         link.click()
-        expect(page.get_by_label("New work", exact=True)).to_be_visible()
+        # The List holds the private "New task" draft field; Kanban is the default view (#136).
+        page.get_by_role("radio", name="List", exact=True).click()
+        expect(page.get_by_label("New task", exact=True)).to_be_visible()
         if project:
             expect(page).to_have_url(re.compile(rf"/projects/{project}/tasks"))
 
@@ -470,7 +477,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
                 self.tasks(page)
                 mutations = []
                 page.on("request", lambda request: mutations.append(request.url) if request.method in ("POST", "PATCH", "DELETE") else None)
-                field = page.get_by_label("New work", exact=True)
+                field = page.get_by_label("New task", exact=True)
                 draft = "Order another ToF board after checking the shelf"
                 field.fill(draft)
                 field.evaluate("el => el.setSelectionRange(6, 18)")
@@ -499,7 +506,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
     def test_10_newest_failed_storage_write_and_clear_win_on_spa_remount(self) -> None:
         page = self.open_project("ada")
         self.tasks(page)
-        field = page.get_by_label("New work", exact=True)
+        field = page.get_by_label("New task", exact=True)
         key = f"flux:draft:{ADA['id']}:project-work:{self.ids['project']}"
         field.fill("Older saved text")
         page.evaluate("""key => {
@@ -515,7 +522,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(page.locator("#ws-draft-state")).to_contain_text("Draft kept for this visit")
         self.assertEqual(page.evaluate("key => localStorage.getItem(key)", key), "Older saved text")
         before = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100", status=200)["total"]
-        page.get_by_role("button", name="Add work", exact=True).click()
+        page.get_by_role("button", name="Add task", exact=True).click()
         expect(self.details(page).get_by_role("heading", name=newest)).to_be_visible()
         expect(field).to_have_value("")
         page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
@@ -528,7 +535,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         page = self.open_project("ada")
         self.tasks(page)
         draft = "One board despite an uncertain native response"
-        field = page.get_by_label("New work", exact=True)
+        field = page.get_by_label("New task", exact=True)
         field.fill(draft)
         keys = []
         def uncertain(route):
@@ -543,13 +550,13 @@ class ProjectSurfaceJourney(unittest.TestCase):
                 route.fulfill(response=response)
         page.route(f"**/api/v1/projects/{self.ids['project']}/work", uncertain)
         before = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100", status=200)["total"]
-        page.get_by_role("button", name="Add work", exact=True).click()
+        page.get_by_role("button", name="Add task", exact=True).click()
         expect(page.get_by_role("alert")).to_have_text("The native response was lost")
         expect(field).to_have_value(draft)
         page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
         self.tasks(page)
         expect(field).to_have_value(draft)
-        page.get_by_role("button", name="Add work", exact=True).click()
+        page.get_by_role("button", name="Add task", exact=True).click()
         expect(self.details(page).get_by_role("heading", name=draft)).to_be_visible()
         expect(field).to_have_value("")
         self.assertEqual(len(keys), 2)
@@ -561,7 +568,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
     def test_12_late_native_success_does_not_clear_a_new_draft_or_open_old_details(self) -> None:
         page = self.open_project("ada")
         self.tasks(page)
-        field = page.get_by_label("New work", exact=True)
+        field = page.get_by_label("New task", exact=True)
         field.fill("Submitted before following a source")
         held = []
         def hold(route):
@@ -571,7 +578,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
             self.assertEqual(response.status, 201, response.text())
             held.append((route, response))
         page.route(f"**/api/v1/projects/{self.ids['project']}/work", hold)
-        page.get_by_role("button", name="Add work", exact=True).click()
+        page.get_by_role("button", name="Add task", exact=True).click()
         expect(field).to_be_disabled()
         page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
         self.tasks(page)
@@ -593,7 +600,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
     def test_13_private_work_drafts_are_isolated_by_account_and_project(self) -> None:
         page = self.open_project("ada")
         self.tasks(page)
-        field = page.get_by_label("New work", exact=True)
+        field = page.get_by_label("New task", exact=True)
         field.fill("Ada's gesture lamp draft")
         page.get_by_role("link", name="Bike light", exact=True).click()
         self.tasks(page, self.ids["bike"])
@@ -604,7 +611,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(field).to_have_value("Ada's gesture lamp draft")
         page.context.clear_cookies()
         page.context.add_cookies(self.states["jonas"]["cookies"])
-        page.goto(f"/projects/{self.ids['project']}/tasks")
+        page.goto(f"/projects/{self.ids['project']}/tasks?view=list")
         expect(field).to_have_value("")
         field.fill("Jonas's own draft")
         page.context.clear_cookies()
@@ -615,7 +622,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
     def test_14_denied_clear_keeps_disclosure_and_native_replay_key_across_reload(self) -> None:
         page = self.open_project("ada")
         self.tasks(page)
-        field = page.get_by_label("New work", exact=True)
+        field = page.get_by_label("New task", exact=True)
         title = "Saved once even when browser removal is refused"
         field.fill(title)
         key = f"flux:draft:{ADA['id']}:project-work:{self.ids['project']}"
@@ -633,7 +640,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         keys = []
         page.on("request", lambda request: keys.append(request.headers["idempotency-key"]) if request.method == "POST" and request.url.endswith("/work") else None)
         before = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100", status=200)["total"]
-        page.get_by_role("button", name="Add work", exact=True).click()
+        page.get_by_role("button", name="Add task", exact=True).click()
         expect(self.details(page).get_by_role("heading", name=title)).to_be_visible()
         expect(field).to_have_value("")
         expect(page.locator("#ws-draft-state")).to_contain_text("Reloading may restore older text")
@@ -641,7 +648,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         self.assertEqual((pending["title"], pending["key"]), (title, keys[0]))
         page.reload()
         expect(field).to_have_value(title)
-        page.get_by_role("button", name="Add work", exact=True).click()
+        page.get_by_role("button", name="Add task", exact=True).click()
         expect(field).to_have_value("")
         self.assertEqual(len(keys), 2)
         self.assertEqual(keys[0], keys[1], "stale stored submitted text retains its native replay identity")
@@ -650,7 +657,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
     def test_15_untouched_remount_observes_a_confirmed_native_clear(self) -> None:
         page = self.open_project("ada")
         self.tasks(page)
-        field = page.get_by_label("New work", exact=True)
+        field = page.get_by_label("New task", exact=True)
         title = "A confirmed command clears its untouched remounted draft"
         field.fill(title)
         held = []
@@ -661,7 +668,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
             self.assertEqual(response.status, 201, response.text())
             held.append((route, response))
         page.route(f"**/api/v1/projects/{self.ids['project']}/work", hold)
-        page.get_by_role("button", name="Add work", exact=True).click()
+        page.get_by_role("button", name="Add task", exact=True).click()
         page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
         self.tasks(page)
         expect(field).to_have_value(title)
@@ -679,7 +686,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
             with self.subTest(unmounted=unmounted):
                 page = self.open_project("ada")
                 self.tasks(page)
-                field = page.get_by_label("New work", exact=True)
+                field = page.get_by_label("New task", exact=True)
                 title = f"Another tab's newer edit is preserved {unmounted}"
                 field.fill(title)
                 key = f"flux:draft:{ADA['id']}:project-work:{self.ids['project']}"
@@ -691,15 +698,15 @@ class ProjectSurfaceJourney(unittest.TestCase):
                     self.assertEqual(response.status, 201, response.text())
                     held.append((route, response))
                 page.route(f"**/api/v1/projects/{self.ids['project']}/work", hold)
-                page.get_by_role("button", name="Add work", exact=True).click()
+                page.get_by_role("button", name="Add task", exact=True).click()
                 if unmounted:
                     page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
                 page.evaluate("""key => { window.observedDraftWrites = 0;
                   window.addEventListener('storage', event => { if(event.key === key) window.observedDraftWrites++; });
                 }""", key)
                 other = page.context.new_page()
-                other.goto(f"/projects/{self.ids['project']}/tasks")
-                expect(other.get_by_label("New work", exact=True)).to_be_visible()
+                other.goto(f"/projects/{self.ids['project']}/tasks?view=list")
+                expect(other.get_by_label("New task", exact=True)).to_be_visible()
                 # Two real, synchronous browser writes; queued events both see the final A.
                 # This is a storage-fence regression, not a typing/performance measurement.
                 other.evaluate("""arg => { localStorage.setItem(arg.key, 'Different draft B'); localStorage.setItem(arg.key, arg.title); }""", {"key": key, "title": title})

@@ -42,18 +42,18 @@ export function NewWorkComposer({ userId, projectId }: { userId: string; project
         openDetails({ kind: 'work', id: item.id });
       }
     } catch (cause) {
-      if (mounted.current) setError(cause instanceof Error ? cause.message : 'Could not add the work.');
+      if (mounted.current) setError(cause instanceof Error ? cause.message : 'Could not add the task.');
     } finally { if (mounted.current) setBusy(false); }
   }
 
   return <>
     <form className="ws-add" onSubmit={(event) => void add(event)}>
-      <label className="ui-vh" htmlFor="ws-add">New work</label>
+      <label className="ui-vh" htmlFor="ws-add">New task</label>
       <input id="ws-add" className="ui-input" value={draft.text} maxLength={200} disabled={busy}
         aria-describedby={draft.text || draft.storage === 'visit' ? 'ws-draft-state' : undefined}
-        placeholder="Add work, e.g. Order a ToF sensor"
+        placeholder="Add a task, e.g. Order a ToF sensor"
         onChange={(event) => { draft.setText(event.target.value); pending.clear(); setError(''); }} />
-      <Button type="submit" variant="secondary" icon="plus" busy={busy} disabled={!draft.text.trim()}>Add work</Button>
+      <Button type="submit" variant="secondary" icon="plus" busy={busy} disabled={!draft.text.trim()}>Add task</Button>
     </form>
     {draft.text || draft.storage === 'visit' ? <p id="ws-draft-state" className="ws-draft-state" role="status">
       {draft.storage === 'visit' || (pending.text && pending.storage === 'visit')

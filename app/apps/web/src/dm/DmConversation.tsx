@@ -11,7 +11,7 @@ import { sketchHref } from '../sketch/format';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
-import { Avatar, Button, Icon, useToast } from '../ui';
+import { Avatar, Button, Icon, MEDIA, sendsOnEnter, useMediaQuery, useToast } from '../ui';
 import { audienceLine, dmTitle, othersIn } from './names';
 import { pageBackTo } from '../app/seekMessage';
 import './dm.css';
@@ -74,6 +74,8 @@ function dayLabel(iso: string) {
 }
 
 function DmContent({ initial }: { initial: Dm }) {
+  // Touch devices add a line with Enter and send with the button (#189).
+  const touch = useMediaQuery(MEDIA.touch);
   const { me } = useShellData();
   const revalidator = useRevalidator();
   const audienceId = useId();
@@ -222,7 +224,7 @@ function DmContent({ initial }: { initial: Dm }) {
   }
 
   function onKey(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); }
+    if (sendsOnEnter(event, touch)) { event.preventDefault(); void send(); }
   }
 
   async function loadOlder() {

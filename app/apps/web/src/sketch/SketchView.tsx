@@ -351,15 +351,11 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     }
   };
 
-  // Under a project (#117) only that project's sketches are shown, so the header's audience is
-  // never wrong: another project's sketch moves to its own project, a private one to Home's Map.
-  if (sketch && projectId && (sketch.scope !== 'project' || sketch.projectId !== projectId)) {
-    return <Navigate replace to={`${sketch.scope === 'project' && sketch.projectId ? `/projects/${sketch.projectId}/map/${sketch.id}` : sketchHref(sketch)}${hash}`} />;
-  }
-  // A DM's sketch always opens inside its DM (#96), and only a DM sketch opens there.
-  if (sketch && !projectId && (sketch.scope === 'dm' ? dmId !== sketch.dmId : !!dmId)) {
-    return <Navigate replace to={`${sketch.scope === 'project' && sketch.projectId ? `/projects/${sketch.projectId}/map/${sketch.id}` : sketchHref(sketch)}${hash}`} />;
-  }
+  // A sketch opens only where it lives, so the tabs and the header's audience are never wrong: a project
+  // sketch inside its project (#117, #189), a DM's sketch inside its DM (#96), a private one in Home's Map.
+  // Links that cannot know the place (search, doc links) arrive at `/map/:id` and move here.
+  const here = projectId ? `/projects/${projectId}/map/${sketchId}` : dmId ? `/dm/${dmId}/sketches/${sketchId}` : `/map/${sketchId}`;
+  if (sketch && sketchHref(sketch) !== here) return <Navigate replace to={`${sketchHref(sketch)}${hash}`} state={location.state} />;
   if (doc.load === 'loading' && !sketch) return <div className="sk-page sk-page--center"><Spinner label="Opening the sketch" /></div>;
   if (doc.load === 'not-found' || (!sketch && doc.load === 'failed')) {
     return (
