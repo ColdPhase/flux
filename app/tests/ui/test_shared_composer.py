@@ -55,7 +55,7 @@ class SharedComposerJourney(unittest.TestCase):
 
     def page(self, who="owner", *, width=1440, storage_refused=False):
         context = self.browser.new_context(base_url=ORIGIN, storage_state=self.states[who], viewport={"width": width, "height": 900 if width == 1440 else 844},
-                                           is_mobile=width < 681, has_touch=width < 681, locale="en-GB", reduced_motion="reduce")
+                                           is_mobile=width < 681, has_touch=width <= 1024, locale="en-GB", reduced_motion="reduce")
         self.addCleanup(context.close)
         if storage_refused:
             context.add_init_script("Storage.prototype.setItem = function() { throw new DOMException('Refused', 'QuotaExceededError'); }")
@@ -362,7 +362,7 @@ class SharedComposerJourney(unittest.TestCase):
         self.assertEqual(len(self.discussion(page, a)["messages"]), 1, "private prompt and draft navigation write no contribution")
 
     def test_08_phone_keyboard_touch_and_reduced_motion_keep_files_and_focus_usable(self):
-        for width in (320, 390, 1440):
+        for width in (320, 390, 834, 1440):
             with self.subTest(width=width):
                 page = self.page(width=width)
                 project, a, _, _ = self.scene(page)
@@ -393,6 +393,19 @@ class SharedComposerJourney(unittest.TestCase):
                 expect(pane).to_have_count(0)
                 self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), width)
                 shot(page, f"shared-published-{width}")
+                sources = page.locator('.project-convo__sources-t')
+                expect(sources).to_be_visible()
+                expect(sources).to_have_text('Sources')
+                pane = self.cite(page, project, discussion['conversationId'])
+                pane.get_by_label('Reply', exact=True).fill('Compare these two files with the saved measurements')
+                self.choose(page, [self.file('01-negative-measurement.bin'), self.file('02-sensor-wiring.bin')], pane)
+                expect(pane.get_by_text('Ready, private', exact=False)).to_have_count(2)
+                expect(pane.locator('.composer-files__ref')).to_contain_text('Source: Verified measurements · v1')
+                self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), width)
+                shot(page, f'shared-reply-draft-{width}')
+                pane.get_by_role('button', name=re.compile('^Sources')).click()
+                expect(page.get_by_role('heading', name=f"Sources · saved for {project['name']}", exact=True)).to_be_visible()
+                shot(page, f'shared-sources-{width}')
 
     def test_09_real_revocation_during_upload_and_send_keeps_the_complete_draft(self):
         owner, writer = self.page(), self.page("writer")

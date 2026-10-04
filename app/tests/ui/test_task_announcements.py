@@ -333,25 +333,36 @@ class TaskAnnouncements(unittest.TestCase):
         text = "I can pick the boards up on Friday; the shop keeps two for us."
         box.fill(text)
         # The draft is the task's own, kept across a reload under the key every view of the task uses.
-        key = f"flux:draft:{self.ids['ada']}:task:{self.ids['from_message']}"
-        self.assertEqual(page.evaluate("key => localStorage.getItem(key)", key), text)
+        key = f"flux:composer:{self.ids['ada']}:{pid}:task:{self.ids['from_message']}"
+        record = page.evaluate("key => JSON.parse(localStorage.getItem(key))", key)
+        self.assertEqual(record['version'], 1)
+        self.assertEqual(record['body'], text)
+        self.assertEqual(record['files'], [])
+        self.assertEqual(record['references'], [])
+        self.assertFalse(record['unconfirmed'])
+        uuid.UUID(record['commandId'])
         page.reload()
         section = self.open_task_from_stream(page, self.ids["from_message"], FROM_MESSAGE)
         box = section.get_by_label("First message about this task")
         expect(box).to_have_value(text)
+        self.assertEqual(page.evaluate("key => JSON.parse(localStorage.getItem(key))", key), record)
         # The server stores the first message but its answer is lost: the text stays and nothing claims success.
         path = f"**/api/v1/work/{self.ids['from_message']}/discussion"
         sent: list[str] = []
 
         def lose(route) -> None:
             sent.append(json.loads(route.request.post_data or "{}").get("clientMessageId", ""))
-            route.fetch()
+            response = route.fetch()
+            self.assertEqual(response.status, 201, response.text())
             route.abort("connectionreset")
 
         page.route(path, lose)
         section.get_by_role("button", name="Start the discussion").click()
-        expect(section.get_by_role("alert")).to_contain_text("Not sent")
+        expect(section.get_by_role("alert")).to_contain_text("Could not confirm the send")
         expect(box).to_have_value(text)
+        kept = page.evaluate("key => JSON.parse(localStorage.getItem(key))", key)
+        self.assertEqual(kept, {**record, 'unconfirmed': True})
+        self.assertEqual(sent, [record['commandId']])
         page.unroute(path)
         retried: list[str] = []
         page.on("request", lambda request: retried.append(json.loads(request.post_data or "{}").get("clientMessageId", ""))
@@ -366,7 +377,11 @@ class TaskAnnouncements(unittest.TestCase):
         expect(root.get_by_role("button", name=f"Discussion of task: {FROM_MESSAGE}")).to_be_visible()
         expect(page.locator("#thread")).to_be_visible()
         self.assertEqual(self.counts(page), (before[0], before[1], before[2] + 1), "one new root; no announcement or task")
-        self.assertIsNone(page.evaluate("key => localStorage.getItem(key)", key), "the sent draft is cleared")
+        cleared = page.evaluate("key => JSON.parse(localStorage.getItem(key))", key)
+        self.assertEqual({field: cleared[field] for field in ('version', 'body', 'files', 'references', 'unconfirmed')},
+                         {'version': 1, 'body': '', 'files': [], 'references': [], 'unconfirmed': False}, "the confirmed draft is cleared")
+        uuid.UUID(cleared['commandId'])
+        self.assertNotEqual(cleared['commandId'], record['commandId'])
 
     def test_11_a_reader_sees_the_discussion_but_cannot_start_one(self) -> None:
         page = self.page("lee")
@@ -484,14 +499,22 @@ class TaskAnnouncements(unittest.TestCase):
         box = section.get_by_label("First message about this task")
         text = "I will write to the shop tomorrow morning."
         box.fill(text)
+        key = f"flux:composer:{self.ids['jonas']}:{pid}:task:{self.ids['live']}"
+        original = page.evaluate("key => JSON.parse(localStorage.getItem(key))", key)
         before = self.counts(page)
         ada = self.page("ada")
         self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": self.ids["jonas"]}, "role": "viewer"}, status=201)
         self.addCleanup(lambda: self.api(ada, "POST", f"/api/v1/projects/{pid}/grants",
                                          {"principal": {"kind": "human", "id": self.ids["jonas"]}, "role": "contributor"}, status=201))
-        section.get_by_role("button", name="Start the discussion").click()
-        expect(section.get_by_role("alert")).to_have_text("Not sent: you can no longer write to this task.")
+        with page.expect_response(lambda response: response.request.method == 'POST'
+                                  and response.url.endswith(f"/work/{self.ids['live']}/discussion")) as refused:
+            section.get_by_role("button", name="Start the discussion").click()
+        self.assertEqual(refused.value.status, 403)
+        expect(section.get_by_role("alert")).to_contain_text("Could not send: your access, a file or a source may be unavailable.")
+        expect(section.get_by_role("alert")).to_contain_text("Your draft, files and sources are kept.")
         expect(box).to_have_value(text)
+        self.assertEqual(page.evaluate("key => JSON.parse(localStorage.getItem(key))", key),
+                         {**original, 'unconfirmed': True})
         self.assertEqual(self.counts(page), before, "no root, announcement or task")
         discussion = self.api(page, "GET", f"/api/v1/work/{self.ids['live']}/discussion", status=200)
         self.assertIsNone(discussion["root"])

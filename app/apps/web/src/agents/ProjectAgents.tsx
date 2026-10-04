@@ -9,7 +9,7 @@ import { useComposerDraft, useComposerScope } from '../composer/draft';
 import { ComposerFiles, MessageFiles } from '../composer/Files';
 import { contributeToTask, getTaskDiscussion } from '../composer/api';
 import { useProjectShell } from '../project/data';
-import { Button, EmptyState, Icon } from '../ui';
+import { Button, Icon } from '../ui';
 import { STATUS_LABEL, isFinished } from '../work/format';
 import { getProjectAgents } from './api';
 import './agents.css';
@@ -315,9 +315,7 @@ export function ProjectAgents() {
           {data.connections.map((connection) => <Connection key={connection.id} connection={connection} />)}
         </ul>
       ) : (
-        <EmptyState icon="terminal" title="No agents connected to this project">
-          Each person can connect their own clients, such as Codex or Claude Code, and choose this project. They work on the same tasks and threads you see here.
-        </EmptyState>
+        <p className="agents__no-connections">No agents connected. You can still discuss tasks here.</p>
       )}
       {tasks.length ? (
         <>
