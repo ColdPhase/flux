@@ -237,7 +237,8 @@ class ThemeAccentsJourney(unittest.TestCase):
     def test_02b_installed_title_bar_follows_the_chosen_theme(self):
         """#203: choosing Dark or Light updates every theme-color tag to the page background."""
         page = self.page()
-        page.goto("/")
+        # Not Home: visiting Home records a return point that later tests compare against.
+        page.goto("/search")
         read = """() => ({ metas: [...document.querySelectorAll('meta[name="theme-color"]')].map((m) => m.content),
           body: getComputedStyle(document.body).backgroundColor })"""
         for theme in ("Dark", "Light", "Dark"):
