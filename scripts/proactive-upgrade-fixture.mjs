@@ -28,7 +28,8 @@ const same = (actual, expected, context) => {
 const legacyConnection = { apiKey: `sk-ant-api03-${'upgrade-baseline-fixture-'.repeat(3)}OLD4`,
   payerOrganization: 'Baseline migration fixture', providerWorkspace: 'Baseline migration fixture', workspaceScopedKeyConfirmed: true,
   payerAuthorityConfirmed: true, providerBillingAcknowledged: true, projectDataDisclosureAcknowledged: true,
-  maxRunsPerDay: 2, periodDays: 30, periodBudgetCents: 20, perRunCents: 5 };
+  // At least the bounds of the rule created after the upgrade, so its activation reaches the runtime gate.
+  maxRunsPerDay: 3, periodDays: 30, periodBudgetCents: 20, perRunCents: 5 };
 
 if (phase === 'prepare') {
   await request('POST', '/api/auth/sign-in/email', { email: 'ada@demo.flux.test', password: process.env.FLUX_DEMO_OWNER_PASSWORD });
@@ -86,7 +87,7 @@ if (phase === 'prepare') {
     { provider: 'anthropic', model: 'claude-sonnet-5', name: 'Anthropic · claude-sonnet-5', usedForBackground: true, baseUrl: null,
       price: { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, source: 'table', checkedOn: '2026-09-28' },
       consentVersion: 'o-007-2026-09-28', keyLastFour: 'OLD4', payerOrganization: legacyConnection.payerOrganization,
-      maxRunsPerDay: 2, periodBudgetCents: 20, perRunCents: 5 }, 'Baseline AI connection');
+      maxRunsPerDay: 3, periodBudgetCents: 20, perRunCents: 5 }, 'Baseline AI connection');
   }
   const rule = await request('POST', `/api/v1/projects/${state.projectId}/proactive-comparison-rules`, {
     agentId: state.agentId, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
