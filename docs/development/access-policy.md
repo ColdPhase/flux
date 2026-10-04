@@ -4,7 +4,7 @@ This document describes the workspace, project and draft access model that the c
 enforces today. It covers AC-2 of [#29](https://github.com/ColdPhase/flux/issues/29),
 AC-3 (one policy for HTTP, the WebSocket stream and worker jobs) and the safe-write
 part of AC-4 (`If-Match` and idempotency keys). It implements the "Data, identity and access
-contract" in the [architecture proposal](../product/application-architecture-proposal.md#data-identity-and-access-contract).
+contract" in the [architecture proposal](../product/application-architecture.md#data-identity-and-access-contract).
 
 ## One choke point
 

@@ -99,6 +99,7 @@ export { derivedUuid, contributionIdentity, messageContribution } from './task-d
 export { policyPersonalRunAccess } from './access/personal-run-access.js';
 
 export * from './typing/index.js';
+export * from './co-work/index.js';
 export * from './github/index.js';
 export * from './agent-connection/execution.js';
 export * from './agent-connection/grants.js';
