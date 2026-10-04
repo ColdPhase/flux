@@ -185,13 +185,14 @@ export function AppLayout() {
   const shellProject = useProjectShell();
   const project = shellProject && shellProject.project.id === projectId ? shellProject : undefined;
   const openWork = project?.work.work.filter((item) => !item.parked && (item.status === 'open' || item.status === 'in_progress' || item.status === 'blocked')).length;
-  // Conversation · Map · Tasks · Wiki in the Studio 11.6 order (#117, #136); quiet tabs without
+  // Conversation · Map · Tasks · Wiki · Agents in the Studio 11.6 order (#117, #136); quiet tabs without
   // counts. The open work count stays readable to assistive technology on the Tasks tab.
   const projectViews = projectId ? [
     { id: 'conversation', label: 'Conversation', to: onOtherView ? lastConversationPath(me.user.id, projectId) : `${location.pathname}${location.search}` },
     { id: 'map', label: 'Map', to: onMap ? location.pathname : lastMapPath(me.user.id, projectId, project?.sketches), end: false },
     { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks${lastTasksSearch(me.user.id, projectId)}`, ...(openWork ? { countLabel: `, ${openWork} open` } : {}) },
     { id: 'docs', label: 'Wiki', to: `/projects/${projectId}/docs`, end: false },
+    { id: 'agents', label: 'Agents', to: `/projects/${projectId}/agents` },
   ] : null;
   const audienceOpen = project?.project.visibility === 'workspace';
   const audience = project ? audienceLine(project.people, me.user.id, audienceOpen) : 'People with project access';

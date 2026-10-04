@@ -20,7 +20,7 @@ const insufficient: InsufficientComparisonOutcome = { kind: 'insufficient_eviden
   createdAt: now.toISOString(), updatedAt: now.toISOString() };
 const proposal: ProactiveComparisonProposal = { id: randomUUID(), projectId, resultId: sources[0]!.id,
   ownerUserId: owner.id, agentId: insufficient.agentId, audience: { kind: 'project', projectId },
-  computeSource: 'owner_background_claude_platform', model: 'claude-sonnet-5', sources,
+  computeSource: 'owner_background_connection', provider: 'anthropic', model: 'claude-sonnet-5', sources,
   fact: 'Camera missed gestures in low light.', interpretation: 'A sensor needs a comparable test.',
   suggestedAction: 'Repeat the same measurements with the sensor.', status: 'proposed', version: 1,
   editedByUserId: null, usedWorkId: null, createdAt: now.toISOString(), updatedAt: now.toISOString() };
