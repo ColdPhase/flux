@@ -162,7 +162,7 @@ export type ThoughtChanges = Partial<Pick<ThoughtRecord, 'text' | 'x' | 'y' | 'w
 /** Rows only; the repository makes no access decisions (the use cases ask {@link SketchAccess}). */
 export interface SketchRepository {
   /** The sketches of `workspaceId` that pass the policy's list filter for `principal`, newest change first. */
-  listVisible(principal: Principal, workspaceId: string, filter: { projectId?: string; dmId?: string }, page: Required<PageQuery>): Promise<{ items: SketchRecord[]; total: number }>;
+  listVisible(principal: Principal, workspaceId: string, filter: { projectId?: string; dmId?: string; scope?: 'private' }, page: Required<PageQuery>): Promise<{ items: SketchRecord[]; total: number }>;
   /** One sketch by id; call only after the access port allowed it. */
   findSketch(id: string): Promise<SketchRecord | null>;
   insertSketch(sketch: NewSketch): Promise<SketchRecord>;

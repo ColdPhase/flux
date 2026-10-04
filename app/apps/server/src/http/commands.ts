@@ -15,6 +15,7 @@ import {
   type ResourceRef,
   type ResourceType,
 } from '@flux/core';
+import { idempotencyRepository } from '@flux/db';
 import type { SessionContext, SessionResolver } from '../identity/index.js';
 
 // Shared HTTP plumbing for `/api/v1` command routes (issue #29 AC-4, reused by #69 and #107): the
@@ -110,7 +111,7 @@ export function commandRunner(db: Database, sessions: SessionResolver) {
     } else {
       const workspaceId = spec.scope ? await visibleWorkspaceOf(actor, spec.scope, connection) : null;
       const hash = requestHash({ params: request.params, query: request.query, body: request.body ?? null, ifMatch: request.headers[IF_MATCH_HEADER] ?? null });
-      response = await runIdempotent(connection, { principal: actor, workspaceId, operation: spec.operation, key, requestHash: hash }, execute,
+      response = await runIdempotent(connection, idempotencyRepository, { principal: actor, workspaceId, operation: spec.operation, key, requestHash: hash }, execute,
         (stored, conn) => spec.replay(actor, stored.body, conn));
     }
     return response;

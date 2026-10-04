@@ -90,7 +90,7 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions,developm
   const thoughtEtag = (body: unknown) => versionEtag((body as CreatedThought | null)?.thought ?? null);
 
   app.get<{ Params: { workspaceId: string }; Querystring: SketchListQuery }>(WORKSPACE_SKETCHES, {
-    schema: { querystring: { type: 'object', additionalProperties: false, properties: { limit: { type: 'integer' }, offset: { type: 'integer' }, projectId: { type: 'string' }, dmId: { type: 'string' } } } },
+    schema: { querystring: { type: 'object', additionalProperties: false, properties: { limit: { type: 'integer' }, offset: { type: 'integer' }, projectId: { type: 'string' }, dmId: { type: 'string' }, scope: { type: 'string', enum: ['private'] } } } },
   }, async (request) => sketches.list(await principal(request), request.params.workspaceId, request.query));
 
   app.post<{ Params: { workspaceId: string }; Body: CreateSketchCommand }>(WORKSPACE_SKETCHES, {
@@ -186,9 +186,11 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions,developm
   }));
 
   // #96: copying a DM sketch into a project. GET previews exactly who could open the copy and
-  // what goes in; POST makes the copy when the preview's token still matches.
-  app.get<{ Params: { sketchId: string }; Querystring: { target?: string; projectId?: string } }>(`${SKETCH}/promotion`, {
-    schema: { querystring: { type: 'object', additionalProperties: false, properties: { target: { type: 'string', enum: ['new'] }, projectId: { type: 'string' } } } },
+  // what goes in; POST makes the copy when the preview's token still matches. `participants`
+  // (#188) says whether a new project is granted to the DM's other participants.
+  const participantsSchema = { type: 'string', enum: ['grant', 'none'] } as const;
+  app.get<{ Params: { sketchId: string }; Querystring: { target?: string; projectId?: string; participants?: string } }>(`${SKETCH}/promotion`, {
+    schema: { querystring: { type: 'object', additionalProperties: false, properties: { target: { type: 'string', enum: ['new'] }, projectId: { type: 'string' }, participants: participantsSchema } } },
   }, async (request) => sketches.previewPromotion(await principal(request), request.params.sketchId, request.query));
 
   app.post<{ Params: { sketchId: string }; Body: PromoteSketchCommand }>(`${SKETCH}/promotion`, {
@@ -197,6 +199,7 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions,developm
         type: 'object', required: ['target', 'token'], additionalProperties: false,
         properties: {
           token: { type: 'string', minLength: 1, maxLength: 200 },
+          participants: participantsSchema,
           target: {
             type: 'object', required: ['kind'], additionalProperties: false,
             properties: { kind: { type: 'string', enum: ['new', 'existing'] }, name: { type: 'string', maxLength: 400 }, projectId: id },

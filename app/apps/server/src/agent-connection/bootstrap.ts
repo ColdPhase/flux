@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { AGENT_SOURCE_KINDS, type AgentBootstrap, type AgentSourceCheckpoint } from '@flux/contracts';
-import { agentOrientationUseCases, agentSourcePage, coworkPlaybookReference, getProject, type Database } from '@flux/core';
-import { agentExecutionRows, agentOrientationRows, agentPlaybookRows } from '@flux/db';
+import { agentOrientationUseCases, agentPolicyReference, agentSourcePage, coworkPlaybookReference, getProject, type Database } from '@flux/core';
+import { agentExecutionRows, agentOrientationRows, agentPlaybookRows, agentPolicyRows } from '@flux/db';
 import { withAgentConnection, type FluxMcpClaims } from './context.js';
 import { agentRuntimeInTransaction } from './runtime.js';
 import type { AgentToolRegistry } from './tool-registry.js';
@@ -30,18 +30,19 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
         const observedAt = await rows.now();
         const grants = await rows.liveProjectGrants(runtime.ownerUserId, runtime.connectionId, projectId, observedAt,
           agentSourcePage({ limit: grantLimit, offset: grantOffset }));
-        // The playbook is #160's server-owned bundle; #153/#74 and policy providers are not yet handed off.
-        // No client input or wiki prose fills these fields.
+        // The playbook and the approved project policy are #160's; #153/#74 providers are not yet handed off.
+        // No client input or wiki prose fills these fields: only a manager's publish writes policy.
         const playbook = coworkPlaybookReference();
+        const policy = await agentPolicyRows(tx).current(projectId);
         const acknowledged = await agentPlaybookRows(tx).acknowledgment(runtime.id);
         const current = !!acknowledged && acknowledged.bundleId === playbook.bundleId && acknowledged.version === playbook.version
           && acknowledged.digest === playbook.digest;
         const result: AgentBootstrap = { contractVersion: 1, observedAt: observedAt.toISOString(), runtime,
           project: { id: project.id, workspaceId: project.workspaceId, name: project.name }, grants,
           capabilities: tools.capabilities(runtime.scopes),
-          trusted: { playbook, approvedPolicy: null, coordination: null, repositoryReferences: null },
+          trusted: { playbook, approvedPolicy: policy ? agentPolicyReference(policy) : null, coordination: null, repositoryReferences: null },
           playbookAcknowledgment: acknowledged ? { ...acknowledged, current } : null,
-          gaps: ['approved_policy_unavailable', 'coordination_unavailable',
+          gaps: [...(policy ? [] : ['approved_policy_unavailable' as const]), 'coordination_unavailable',
             'verified_repository_context_unavailable', 'goal_plan_classification_unavailable', 'dependency_index_unavailable'],
           readiness: { state: 'pending', meaning: 'server_context_available_only' },
           coverage: { projectIndex: 'bounded_canonical_metadata', changesSince: 'supplied_references_only', instructionLoading: current ? 'client_acknowledged' : 'unverified', modelObedience: 'unverified' } };

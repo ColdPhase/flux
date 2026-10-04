@@ -15,8 +15,14 @@ export const FLUX_SCHEMA_VERSION = 47;
 // pg-boss 12.35.0 declares schema 43. Update this with the pinned package.
 export const PG_BOSS_SCHEMA_VERSION = 43;
 
+// A session left idle inside a transaction for this long is ended by PostgreSQL (#234). Flux never
+// waits on anything outside the database inside a transaction, so only an abandoned client hits it.
+export const IDLE_IN_TRANSACTION_TIMEOUT_MS = 60_000;
+
 export function createDatabase(connectionString: string) {
-  const pool = new pg.Pool({ connectionString, connectionTimeoutMillis: 1500, query_timeout: 2000 });
+  // A client whose BEGIN or ROLLBACK fails is destroyed by the drizzle-orm patch in app/patches (#234).
+  const pool = new pg.Pool({ connectionString, connectionTimeoutMillis: 1500, query_timeout: 2000,
+    options: `-c idle_in_transaction_session_timeout=${IDLE_IN_TRANSACTION_TIMEOUT_MS}` });
   const db = drizzle({ client: pool, schema });
   return { pool, db };
 }
@@ -30,6 +36,7 @@ export * from './repositories/direct-messages.js';
 export * from './repositories/docs.js';
 export * from './repositories/doc-live.js';
 export * from './repositories/sample.js';
+export * from './repositories/idempotency.js';
 
 /** PostgreSQL channel notified (payload: seq) after an event with a workspace commits; wakes stream connections. */
 export const EVENTS_CHANNEL = 'flux_events';
@@ -102,3 +109,4 @@ export * from './repositories/live-editing.js';
 export * from './editing-transactions.js';
 
 export * from './repositories/live-map.js';
+export * from './repositories/agent-policies.js';

@@ -80,18 +80,6 @@
       "reason": "recordEvent writes events and fan-out audience rows with Drizzle (merged in #47 before this rule); move to an EventRepository port with a @flux/db adapter."
     },
     {
-      "file": "packages/core/src/idempotency.ts",
-      "import": "drizzle-orm",
-      "issue": "https://github.com/ColdPhase/flux/issues/46",
-      "reason": "runIdempotent stores keys and replays with Drizzle (merged in #47); move storage behind an IdempotencyStore port."
-    },
-    {
-      "file": "packages/core/src/idempotency.ts",
-      "import": "@flux/db",
-      "issue": "https://github.com/ColdPhase/flux/issues/46",
-      "reason": "runIdempotent stores keys and replays with Drizzle (merged in #47); move storage behind an IdempotencyStore port."
-    },
-    {
       "file": "packages/core/src/jobs/draft-summary.ts",
       "import": "drizzle-orm",
       "issue": "https://github.com/ColdPhase/flux/issues/46",

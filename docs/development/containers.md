@@ -101,8 +101,21 @@ Node/pnpm pins, allowed dependency build scripts and build/type/lint/test
 commands are unchanged. This follows the [pnpm Docker fetch pattern](https://pnpm.io/cli/fetch).
 Changing either lock/config file invalidates the download layer; source edits
 reuse it while still rebuilding and checking the application. There are no
-local `file:` dependencies or package patches in the current lockfile; if
-introduced, their fetch inputs must be supplied before the fetch step.
+local `file:` dependencies. Reviewed package patches live in `app/patches` and are
+listed under `patchedDependencies` in `app/pnpm-workspace.yaml`; pnpm applies them
+during the offline install, after the source copy.
+
+### Database connections
+
+The API and worker share `createDatabase` (`app/packages/db/src/index.ts`): a
+`pg` pool with a 1.5 s connection timeout and a 2 s client read timeout. On a slow
+or stalled database a read timeout can fire while PostgreSQL still runs the
+statement, so `patches/drizzle-orm-0.45.3-flux-pool-release.patch` destroys a
+pooled client whose `BEGIN` or `ROLLBACK` failed instead of leaking it or returning
+it to the pool with an open transaction ([#234](https://github.com/ColdPhase/flux/issues/234)).
+Each connection also sets `idle_in_transaction_session_timeout` to 60 s, so PostgreSQL
+ends any session abandoned inside a transaction. Flux code does not wait on
+anything outside the database inside a transaction. pg-boss keeps its own pool.
 
 ### Disk hygiene
 
