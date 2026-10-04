@@ -5,7 +5,7 @@ import { editingContextCharge } from './context-charge.js';
 
 export const EDITING_QUEUE_PREFIX='FLUX_LIVE_QUEUE ';
 export const EDITING_RESOURCE_GAUGES=[
-  'gatePending','gateConnected','wikiConnections','wikiReading','wikiWriting','wikiCursorActive',
+  'gatePending','gateConnected','wikiConnections','wikiReading','wikiWriting','wikiCursorActive','wikiCursorPending',
   'assemblyCount','assemblyBytes','httpQueued','nativeQueued','wikiOutputQueued','admissionQueued',
   'codecLeases','codecWaiting','codecActive','wikiSqlActive','mapQueued','mapActive','mapSqlActive',
   'mapConnections','mapOperations','mapPendingMovement','mapPendingPresence','externalInputBytes','externalOutputBytes',

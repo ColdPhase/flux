@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import WebSocket, { type RawData } from 'ws';
 import { DomainError, ServiceUnavailableError } from '@flux/core';
 import { EditingTransactionError } from '@flux/db';
-import type { EditingClientMessage } from '@flux/contracts';
+import type { EditingClientMessage, LiveCursor } from '@flux/contracts';
 import type { EditingContext } from './gate.js';
 import { editingContextCharge,editingWikiResultCharge } from './context-charge.js';
 import { Assemblies, type CompletedAssembly } from './codec/assembly.mjs';
@@ -16,20 +16,36 @@ import type { EditingQueueTelemetry } from './telemetry.js';
 interface Connection {
   socket: WebSocket; context: EditingContext; output: EditingOutput; generation: string | null;
   sequence: number; previewSequence: number; assemblyCommand: string | null; assembly: CompletedAssembly | null; running: boolean; reading: boolean;
-  pendingRead: boolean; closed: boolean; subscribed: boolean; lastHead: string; lastSaved: string; presence: Map<string, { hash: string; release: () => void }>; cursorBusy: boolean; releaseBase: () => void;
+  pendingRead: boolean; closed: boolean; subscribed: boolean; lastHead: string; lastSaved: string; presence: Map<string, { hash: string; release: () => void }>; cursorBusy: boolean; cursor: RetainedCursor | null; releaseBase: () => void;
 }
+interface RetainedCursor { generation: string; cursor: LiveCursor | null; release: () => void; expiresAt: number }
+type ControllerAuthority = Pick<WikiAuthority, 'reserve' | 'submit' | 'deliverReceipt' | 'deliver' | 'handoff' | 'cursor' | 'close'> & {
+  runtime: Pick<WikiAuthority['runtime'], 'onCapacity'>;
+};
 const signature = (text: string) => createHash('sha256').update(text).digest('hex');
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Error identity comes from this bounded text frame, never an unrelated waiting assembly. */
+function textCommand(frame: Buffer): string | undefined {
+  if (frame.byteLength < 4 || frame.byteLength > 65_536) return;
+  const length = frame.readUInt32BE(0);
+  if (length > 4092 || length + 4 > frame.byteLength) return;
+  try {
+    const header: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(frame.subarray(4, 4 + length)));
+    if (header && typeof header === 'object' && 'operation' in header && header.operation === 'text'
+      && 'uuid' in header && typeof header.uuid === 'string' && UUID.test(header.uuid)) return header.uuid;
+  } catch { /* A malformed frame has no admitted durable command identity. */ }
+}
 const errorCode = (error: unknown) => error instanceof DomainError ? error.code
   : error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : 'EDITING_UNAVAILABLE';
 const busy = (error: unknown) => ['EXTERNAL_BUFFER_LIMIT', 'WORK_QUEUE_LIMIT', 'POOL_CLOSED', 'EDITING_OUTPUT_CAPACITY', 'EDITING_PRESENCE_CAPACITY'].includes(errorCode(error));
 /** Message listeners are installed synchronously by the one upgrade dispatcher; all protected send paths use SQL authority. */
-export function wikiController(authority: WikiAuthority, outputBudget: EditingOutputBudget,telemetry?:()=>EditingQueueTelemetry|null) {
+export function wikiController(authority: ControllerAuthority, outputBudget: EditingOutputBudget,telemetry?:()=>EditingQueueTelemetry|null) {
   const connections = new Map<string, Connection>(); const assemblies = new Assemblies(editingResourcesChanged);
   const preparation=new EditingHTTPAdmission(outputBudget,10_000,'wiki');
   const operations=new Set<Promise<void>>();let reading=0,writing=0,cursorActive=0;
   function operation(){let finish=()=>{};const done=new Promise<void>(resolve=>{finish=resolve;});operations.add(done);return()=>{operations.delete(done);finish();};}
   let closing = false;
-  function close(c: Connection) { if (c.closed) return; c.closed = true; c.releaseBase(); for (const entry of c.presence.values()) entry.release(); c.presence.clear(); c.output.close(); assemblies.remove(c.context.connectionId); c.assembly = null; connections.delete(c.context.connectionId);editingResourcesChanged(); }
+  function close(c: Connection) { if (c.closed) return; c.closed = true; c.releaseBase(); c.cursor?.release(); c.cursor = null; for (const entry of c.presence.values()) entry.release(); c.presence.clear(); c.output.close(); assemblies.remove(c.context.connectionId); c.assembly = null; connections.delete(c.context.connectionId);editingResourcesChanged(); }
   function fail(c: Connection, error: unknown, commandId?: string) {
     if (c.closed) return;
     if (errorCode(error) === 'UNAUTHENTICATED' || error instanceof DomainError && (error.status === 403 || error.status === 404)) {
@@ -123,10 +139,36 @@ export function wikiController(authority: WikiAuthority, outputBudget: EditingOu
       finally { bytes=null;c.running = false;writing--;editingResourcesChanged();completed(); pump(c); }
     })();
   }
+  function cursor(c: Connection) {
+    if (c.closed || c.cursorBusy || !c.cursor) return;
+    const retained = c.cursor; c.cursor = null;
+    if (retained.expiresAt <= Date.now()) {
+      retained.release(); fail(c, new ServiceUnavailableError('The latest cursor expired before admission', 'EDITING_PRESENCE_CAPACITY')); return;
+    }
+    c.cursorBusy = true; cursorActive++; editingResourcesChanged(); const completed = operation();
+    // This cursor owns its complete parsed continuation until the actual authority
+    // operation settles. The one replaceable waiting slot is independently charged.
+    void authority.cursor(c.context.session, c.context.target.id, retained.generation, c.context.connectionId, retained.cursor)
+      .then(() => { for (const other of connections.values()) if (other.context.target.id === c.context.target.id) void catchup(other); })
+      .catch((error) => fail(c, error))
+      .finally(() => { retained.release(); c.cursorBusy = false; cursorActive--; editingResourcesChanged(); completed(); cursor(c); });
+  }
+  function retainCursor(c: Connection, generation: string, value: LiveCursor | null, rawBytes: number) {
+    if (rawBytes > 2048 || value !== null && (!value || typeof value !== 'object' || Array.isArray(value)
+      || Object.keys(value).some((key) => key !== 'anchor' && key !== 'head')
+      || typeof value.anchor !== 'string' || value.anchor.length > 344 || typeof value.head !== 'string' || value.head.length > 344)) {
+      throw new DomainError(400, 'INVALID_CURSOR', 'A bounded closed cursor is required');
+    }
+    const release = outputBudget.reserve(rawBytes + editingContextCharge({ context: c.context, generation, cursor: value }));
+    const old = c.cursor;
+    c.cursor = { generation, cursor: value, release, expiresAt: Date.now() + 5000 };
+    old?.release(); editingResourcesChanged(); cursor(c);
+  }
   const unsubscribeCapacity = authority.runtime.onCapacity(() => { if (!closing) for (const c of connections.values()) pump(c); });
   const timer = setInterval(() => {
     assemblies.expire(Date.now());
     for (const c of connections.values()) {
+      if (c.cursor && c.cursor.expiresAt <= Date.now()) { c.cursor.release(); c.cursor = null; editingResourcesChanged(); fail(c, new ServiceUnavailableError('The latest cursor expired before admission', 'EDITING_PRESENCE_CAPACITY')); }
       if (c.assemblyCommand && !assemblies.pending.has(c.context.connectionId)) { const uuid = c.assemblyCommand; c.assembly = null; c.assemblyCommand = null; fail(c, new ServiceUnavailableError('The finite assembly deadline ended', 'EDITING_ASSEMBLY_EXPIRED'), uuid); }
       void catchup(c);
     }
@@ -135,15 +177,19 @@ export function wikiController(authority: WikiAuthority, outputBudget: EditingOu
     accept(socket: WebSocket, context: EditingContext) {
       if (closing || context.target.kind !== 'wiki') { socket.close(1008, 'Unavailable'); return; }
       const c: Connection = { socket, context, output: new EditingOutput(socket, outputBudget), generation: null,
-        sequence: 0, previewSequence: -1, assemblyCommand: null, assembly: null, running: false, reading: false, pendingRead: false, closed: false, subscribed: false, lastHead: '', lastSaved: '', presence: new Map(), cursorBusy: false, releaseBase: outputBudget.reserve(2048 + editingContextCharge(context)) };
+        sequence: 0, previewSequence: -1, assemblyCommand: null, assembly: null, running: false, reading: false, pendingRead: false, closed: false, subscribed: false, lastHead: '', lastSaved: '', presence: new Map(), cursorBusy: false, cursor: null, releaseBase: outputBudget.reserve(2048 + editingContextCharge(context)) };
       connections.set(context.connectionId, c);editingResourcesChanged();
       socket.once('close', () => close(c));
       socket.on('message', (data: RawData, binary) => {
         if (c.closed) return;
+        // Only the binary text branch owns an assembly command. A cursor or
+        // delivery-ACK refusal must never manufacture a durable text retry.
+        let commandId: string | undefined;
         try {
           if (binary) {
             if (!c.subscribed || !c.generation) throw new DomainError(400, 'EDITING_SUBSCRIBE_REQUIRED', 'Subscribe before sharing text');
             if (!Buffer.isBuffer(data)) throw new DomainError(400, 'EDITING_FRAME_INVALID', 'An exact binary frame is required');
+            commandId = textCommand(data);
             const complete = assemblies.receive(context.connectionId, data, { actor: context.session.principal.id, kind: 'wiki', room: context.target.id, operation: 'text', parameters: null }, Date.now());
             c.assemblyCommand = assemblies.intent(context.connectionId)?.uuid ?? null;
             if (complete) { c.assembly = complete; pump(c); }
@@ -160,19 +206,15 @@ export function wikiController(authority: WikiAuthority, outputBudget: EditingOu
             c.output.received(message.deliveryId, message.index); void catchup(c);
           } else if (message.type === 'cursor') {
             if (!c.subscribed || message.generation !== c.generation || Object.keys(message).some((key) => !['type','generation','cursor'].includes(key))) throw new DomainError(400, 'INVALID_CURSOR', 'Invalid cursor');
-            if (c.cursorBusy) throw new ServiceUnavailableError('The bounded cursor admission is busy', 'EDITING_PRESENCE_CAPACITY');
-            c.cursorBusy = true;cursorActive++;editingResourcesChanged();const completed=operation();
-            void authority.cursor(context.session, context.target.id, message.generation, context.connectionId, message.cursor)
-              .then(() => { for (const other of connections.values()) if (other.context.target.id === context.target.id) void catchup(other); })
-              .catch((error) => fail(c, error)).finally(() => { c.cursorBusy = false;cursorActive--;editingResourcesChanged();completed(); });
+            retainCursor(c, message.generation, message.cursor, Buffer.byteLength(raw));
           } else throw new DomainError(400, 'EDITING_MESSAGE_INVALID', 'Invalid wiki message');
-        } catch (error) { fail(c, error, assemblies.intent(context.connectionId)?.uuid); }
+        } catch (error) { fail(c, error, commandId); }
       });
     },
     notifyAll() { for (const c of connections.values()) void catchup(c); },
     notify(docId: string) { for (const c of connections.values()) if (c.context.target.id === docId) void catchup(c); },
     async close() { closing = true; clearInterval(timer); unsubscribeCapacity(); preparation.close(); for (const c of [...connections.values()]) { c.socket.terminate(); close(c); } await authority.close();await Promise.allSettled([...operations]); },
     get externalOutputBytes() { return outputBudget.bytes; }, get assemblyBytes() { return assemblies.bytes; },
-    get resources(){return{wikiConnections:connections.size,wikiReading:reading,wikiWriting:writing,wikiCursorActive:cursorActive,assemblyCount:assemblies.pending.size,assemblyBytes:assemblies.bytes};},
+    get resources(){let wikiCursorPending=0;for(const c of connections.values())if(c.cursor)wikiCursorPending++;return{wikiConnections:connections.size,wikiReading:reading,wikiWriting:writing,wikiCursorActive:cursorActive,wikiCursorPending,assemblyCount:assemblies.pending.size,assemblyBytes:assemblies.bytes};},
   };
 }

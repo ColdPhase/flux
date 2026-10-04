@@ -42,7 +42,7 @@ QUEUE_LINE_BYTES = 4096
 HANDOFF_BYTES = 4096
 SEAL_WAIT_SECONDS = 15
 QUEUE_GAUGES = (
-    'gatePending','gateConnected','wikiConnections','wikiReading','wikiWriting','wikiCursorActive',
+    'gatePending','gateConnected','wikiConnections','wikiReading','wikiWriting','wikiCursorActive','wikiCursorPending',
     'assemblyCount','assemblyBytes','httpQueued','nativeQueued','wikiOutputQueued','admissionQueued',
     'codecLeases','codecWaiting','codecActive','wikiSqlActive','mapQueued','mapActive','mapSqlActive',
     'mapConnections','mapOperations','mapPendingMovement','mapPendingPresence','externalInputBytes','externalOutputBytes',

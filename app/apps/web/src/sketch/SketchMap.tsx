@@ -55,6 +55,8 @@ interface Drag {
   sx: number;
   sy: number;
   moved: boolean;
+  /** Selection-only pointer clicks own no live lease. */
+  started: boolean;
   scrollLeft?: number;
   scrollTop?: number;
   base: Thought[];
@@ -79,7 +81,7 @@ export function SketchMap(props: SketchMapProps) {
   const [, remeasure] = useState(0);
   const observer = useRef<ResizeObserver | null>(null);
   useEffect(() => {
-    if (!props.liveEnabled || props.ownGesture || !drag.current || drag.current.kind === 'pan') return;
+    if (!props.liveEnabled || props.ownGesture || !drag.current?.started || drag.current.kind === 'pan') return;
     props.onGestureCancel(); drag.current = null; setOffset(null); setSize(null);
   }, [props.liveEnabled, props.ownGesture, props.onGestureCancel]);
 
@@ -185,9 +187,8 @@ export function SketchMap(props: SketchMapProps) {
     return () => el.removeEventListener('wheel', block);
   }, []);
 
-  const begin = (event: ReactPointerEvent, next: Omit<Drag, 'pointerId' | 'sx' | 'sy' | 'moved' | 'base'>) => {
-    if (next.kind !== 'pan' && !props.onGestureStart(next.ids)) return;
-    drag.current = { ...next, base: sketch.thoughts.filter((thought) => next.ids.includes(thought.id)).map((thought) => ({ ...thought })), pointerId: event.pointerId, sx: event.clientX, sy: event.clientY, moved: false };
+  const begin = (event: ReactPointerEvent, next: Omit<Drag, 'pointerId' | 'sx' | 'sy' | 'moved' | 'started' | 'base'>) => {
+    drag.current = { ...next, base: sketch.thoughts.filter((thought) => next.ids.includes(thought.id)).map((thought) => ({ ...thought })), pointerId: event.pointerId, sx: event.clientX, sy: event.clientY, moved: false, started: false };
     (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
   };
 
@@ -219,6 +220,13 @@ export function SketchMap(props: SketchMapProps) {
     const dy = (event.clientY - d.sy) / zoom;
     if (!d.moved && Math.hypot(event.clientX - d.sx, event.clientY - d.sy) < 4) return;
     if (!d.moved) {
+      // Keep the same trusted-input threshold as local movement. A Shift-click
+      // changes selection without allocating a lease or racing a late cancellation
+      // against the next selected group's actual drag.
+      if (d.kind !== 'pan') {
+        if (!props.onGestureStart(d.ids)) { drag.current = null; return; }
+        d.started = true;
+      }
       d.moved = true;
       if (d.kind === 'move' && !selection.includes(d.id!)) props.onPick(d.id!, false);
       if (d.kind === 'pan') setPanning(true);
@@ -250,7 +258,7 @@ export function SketchMap(props: SketchMapProps) {
       if (!d.moved) props.onClear();
       return;
     }
-    if (!d.moved) { props.onGestureCancel(); return; }
+    if (!d.moved) return;
     suppressClick.current = true;
     window.setTimeout(() => { suppressClick.current = false; }, 0);
     if (d.kind === 'move' && offset) {
@@ -265,7 +273,7 @@ export function SketchMap(props: SketchMapProps) {
   };
 
   const onPointerCancel = () => {
-    props.onGestureCancel();
+    if (drag.current?.started) props.onGestureCancel();
     drag.current = null;
     setPanning(false);
     setOffset(null);
