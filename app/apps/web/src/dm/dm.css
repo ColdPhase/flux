@@ -56,8 +56,7 @@
 
 /* List of conversations */
 .dm-index__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 16px 0 14px; border-bottom: 1px solid var(--line); }
-.dm-index__head h2 { font-size: var(--fs-xl); letter-spacing: -0.015em; }
-.dm-index__head p { margin-top: 2px; font-size: var(--fs-sm); color: var(--text-3); }
+.dm-index__head p { font-size: var(--fs-sm); color: var(--text-3); }
 .dm-index { list-style: none; margin: 0; padding: 6px 0; }
 .dm-index__item { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 10px; margin: 0 -10px; border-radius: var(--r); color: var(--text); text-decoration: none; transition: var(--tr); }
 .dm-index__item:hover { background: var(--bg-hover); }

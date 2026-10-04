@@ -21,6 +21,8 @@ class FoundationValidationTests(unittest.TestCase):
         self.root = Path(temporary.name)
         files = {
             "README.md": "# Fixture\n",
+            "GOVERNANCE.md": "# Governance\n",
+            "CHANGELOG.md": "# Changelog\n",
             "AGENTS.md": "# Shared instructions\n",
             "CLAUDE.md": "@AGENTS.md\n",
             "docs/README.md": "# Docs\n",

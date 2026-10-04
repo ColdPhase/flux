@@ -1,6 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
-import { and, eq, lte, sql } from 'drizzle-orm';
-import { schema } from '@flux/db';
+import { createHash } from 'node:crypto';
 import { InvalidInputError, RuleViolationError } from './access/errors.js';
 import { principalKey } from './events.js';
 import type { Database, Principal } from './types.js';
@@ -30,6 +28,37 @@ export interface CommandResponse {
 export interface IdempotentResponse extends CommandResponse {
   replayed: boolean;
 }
+
+/** Where a key is stored: the principal's stable key (`kind:id`), workspace, operation and key. */
+export interface IdempotencyKeyScope {
+  principal: string;
+  workspaceId: string | null;
+  operation: string;
+  key: string;
+}
+
+export interface StoredIdempotencyKey {
+  id: string;
+  requestHash: string;
+  expiresAt: Date;
+  response: { status: number; body: unknown; etag: string | null };
+}
+
+/**
+ * Key storage for one command transaction (#86). `lock` serializes requests with the same scope
+ * until the transaction ends, so the lookup that follows sees the first request's commit.
+ */
+export interface IdempotencyStore {
+  lock(scope: IdempotencyKeyScope): Promise<void>;
+  find(scope: IdempotencyKeyScope): Promise<StoredIdempotencyKey | null>;
+  delete(id: string): Promise<void>;
+  /** Stores a successful response for `retentionHours` from the transaction's time. */
+  save(scope: IdempotencyKeyScope, requestHash: string, response: { status: number; body: unknown; etag: string | null }, retentionHours: number): Promise<void>;
+  deleteExpired(): Promise<number>;
+}
+
+/** The store bound to a command's transaction. */
+export type IdempotencyStores = (tx: Database) => IdempotencyStore;
 
 /**
  * Re-authorizes a stored response before it is replayed: it must throw the normal
@@ -68,41 +97,29 @@ export function requestHash(request: unknown): string {
  * still read what it describes; otherwise the caller gets the same 404/403 as any request
  * for an object it cannot see, and the stored body is never returned.
  */
-export async function runIdempotent(db: Database, scope: IdempotencyScope, run: (tx: Database) => Promise<CommandResponse>, authorizeReplay: ReplayAuthorization): Promise<IdempotentResponse> {
-  const principal = principalKey(scope.principal);
-  const k = schema.idempotencyKeys;
-  const match = and(
-    eq(k.principal, principal),
-    sql`coalesce(${k.workspaceId}, '00000000-0000-0000-0000-000000000000'::uuid) = coalesce(${scope.workspaceId}::uuid, '00000000-0000-0000-0000-000000000000'::uuid)`,
-    eq(k.operation, scope.operation),
-    eq(k.key, scope.key),
-  );
+export async function runIdempotent(db: Database, stores: IdempotencyStores, scope: IdempotencyScope, run: (tx: Database) => Promise<CommandResponse>, authorizeReplay: ReplayAuthorization): Promise<IdempotentResponse> {
+  const keyScope: IdempotencyKeyScope = { principal: principalKey(scope.principal), workspaceId: scope.workspaceId, operation: scope.operation, key: scope.key };
   return db.transaction(async (tx) => {
-    const lockKey = JSON.stringify([principal, scope.workspaceId, scope.operation, scope.key]);
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
-    const [existing] = await tx.select().from(k).where(match);
+    const store = stores(tx);
+    await store.lock(keyScope);
+    const existing = await store.find(keyScope);
     if (existing && existing.expiresAt.getTime() <= Date.now()) {
-      await tx.delete(k).where(eq(k.id, existing.id));
+      await store.delete(existing.id);
     } else if (existing) {
       if (existing.requestHash !== scope.requestHash) throw new RuleViolationError('This Idempotency-Key was already used for a different request', 'IDEMPOTENCY_KEY_REUSED');
-      const stored: CommandResponse = { status: existing.responseStatus, body: existing.responseBody, etag: existing.responseEtag };
+      const stored: CommandResponse = existing.response;
       await authorizeReplay(stored, tx as unknown as Database);
       return { ...stored, replayed: true };
     }
     const response = await run(tx);
     if (response.status >= 200 && response.status < 300) {
-      await tx.insert(k).values({
-        id: randomUUID(), principal, workspaceId: scope.workspaceId, operation: scope.operation, key: scope.key,
-        requestHash: scope.requestHash, responseStatus: response.status, responseBody: response.body ?? null,
-        responseEtag: response.etag ?? null, expiresAt: sql`now() + make_interval(hours => ${IDEMPOTENCY_RETENTION_HOURS})`,
-      });
+      await store.save(keyScope, scope.requestHash, { status: response.status, body: response.body ?? null, etag: response.etag ?? null }, IDEMPOTENCY_RETENTION_HOURS);
     }
     return { ...response, replayed: false };
   });
 }
 
 /** Deletes expired idempotency keys; run hourly by the worker. Returns the number deleted. */
-export async function deleteExpiredIdempotencyKeys(db: Database): Promise<number> {
-  const deleted = await db.delete(schema.idempotencyKeys).where(lte(schema.idempotencyKeys.expiresAt, sql`now()`)).returning({ id: schema.idempotencyKeys.id });
-  return deleted.length;
+export async function deleteExpiredIdempotencyKeys(store: Pick<IdempotencyStore, 'deleteExpired'>): Promise<number> {
+  return store.deleteExpired();
 }

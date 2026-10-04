@@ -8,8 +8,9 @@ import { ProjectOverview } from '../project/ProjectOverview';
 import { PromoteSketch } from '../sketch/PromoteSketch';
 import { WhatMatters } from '../returns/WhatMatters';
 import { useProjectShell } from '../project/data';
-import type { WorkspaceSummary } from './data';
-import type { DetailsView } from './shellContext';
+import { WorkspacePeople } from '../people/WorkspacePeople';
+import { useShellData, type WorkspaceSummary } from './data';
+import { useShellActions, type DetailsView } from './shellContext';
 
 /**
  * Details for the current place. With nothing selected it says so briefly; the context of a
@@ -30,7 +31,8 @@ export function Details({ view, workspace, placeTitle, dm = null, onBack, onClos
   if (view === 'connect-ai') return <ConnectAi onBack={onBack} />;
   if (typeof view === 'object' && view.kind === 'add-to-doc') return <AddToDoc key={`${view.from.type}:${view.from.id}`} view={view} />;
   if (typeof view === 'object' && view.kind === 'promote-sketch') return <PromoteSketch key={view.sketchId} view={view} dmTitle={dm?.title ?? null} onBack={onBack} />;
-  if (typeof view === 'object' && view.kind === 'overview') return <ProjectOverview key={view.messageId ?? 'all'} messageId={view.messageId} onBack={onBack} />;
+  if (typeof view === 'object' && view.kind === 'overview') return <ProjectOverview key={view.messageId ?? 'all'} messageId={view.messageId} focusPeople={view.focus === 'people' ? view : null} onBack={onBack} />;
+  if (typeof view === 'object' && view.kind === 'people') return <WorkspacePeople key={view.workspaceId} workspaceId={view.workspaceId} onBack={onBack} />;
   if (typeof view === 'object') return <WorkDetails view={view} />;
   // A project's Details start with its overview (#117).
   if (inProject) return <ProjectOverview onBack={onBack} />;
@@ -71,8 +73,44 @@ export function Details({ view, workspace, placeTitle, dm = null, onBack, onClos
           : <p>Only the people in each conversation.</p>}
       </section>
 
+      <PeopleEntries />
+
       <p className="details__keys"><kbd>]</kbd> toggles this panel · <kbd>Esc</kbd> closes it</p>
     </div>
+  );
+}
+
+const ROLE_LINE = {
+  owner: 'You’re an owner · add and manage people',
+  admin: 'You’re an admin · add and manage people',
+  member: 'You’re a member · see who’s here',
+  guest: 'You’re a guest · you see only projects given to you',
+} as const;
+
+/** Each workspace's people (#188, AC-1), one step away from Home's Details. */
+function PeopleEntries() {
+  const { workspaces } = useShellData();
+  const { openDetails } = useShellActions();
+  return (
+    <section className="details__sec ov-sec" aria-labelledby="details-people">
+      <h4 id="details-people">People</h4>
+      {workspaces.length ? (
+        <ul className="ov-rows">
+          {workspaces.map((space) => (
+            <li key={space.id}>
+              <button type="button" className="ov-row" onClick={() => openDetails({ kind: 'people', workspaceId: space.id })}>
+                <Icon name="people" size={16} className="ov-row__ic" />
+                <span className="ov-row__b">
+                  <span className="ov-row__t">{space.name}</span>
+                  {space.role ? <span className="ov-row__s">{ROLE_LINE[space.role]}</span> : null}
+                </span>
+                <Icon name="chevron-right" size={16} className="ov-row__go" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : <p className="ov-empty">Start a project to create your own space; then you can add people to it.</p>}
+    </section>
   );
 }
 
