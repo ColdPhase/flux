@@ -74,8 +74,12 @@ async function subscribe(state) {
 async function notifications(state) {
   const browser = await readJson(directory, 'browser-state.json');
   if (browser.candidate !== state.candidate || browser.origin !== state.origin) throw new Error('Browser source/origin changed');
-  await sessionCommand(browser.webdriverSession, 'POST', '/url', { url: state.origin });
-  const shown = await script(browser.webdriverSession, `const done=arguments[arguments.length-1]; navigator.serviceWorker.ready.then(async r=>done((await r.getNotifications()).map(n=>n.tag))).catch(()=>done(null));`);
+  try { await sessionCommand(browser.webdriverSession, 'POST', '/url', { url: state.origin }); }
+  catch { throw new Error('Browser notification inspection could not navigate to the verified origin within its deadline'); }
+  let shown;
+  try {
+    shown = await script(browser.webdriverSession, `const done=arguments[arguments.length-1]; navigator.serviceWorker.getRegistration('/').then(async r=>done(r?(await r.getNotifications()).map(n=>n.tag):null)).catch(()=>done(null));`);
+  } catch { throw new Error('Browser notification registration/records inspection exceeded its deadline'); }
   if (!Array.isArray(shown)) throw new Error('Browser service-worker notification inspection unavailable');
   const result = { candidate: state.candidate, at: new Date().toISOString(), notificationAliases: shown.map(hash),
     limitation: 'Browser notification records only; never a physical lock-screen/OS display claim' };

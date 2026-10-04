@@ -217,8 +217,22 @@ removes the optional container along with the stack.
 
 ## Current checkpoint
 
-Prepared from main `085214c6c58e265d1d19b2c56a12368a370ed24f` on the #232
-owner branch. No accessible attached Android/Apple phone, configured remote-device
-session or approved phone-reachable origin was found in the 2026-10-03 audit.
-The human device clarification and serialized Docker grant are pending. These
-are remaining inputs; no fixture/application/device check is claimed here.
+The fixture started from main `085214c6c58e265d1d19b2c56a12368a370ed24f`.
+At clean `73ee0a18d044a2858908d8ab95d950df6d7a9286`, the serialized local Docker
+run passed all nine fixture cases and the normal reply/event/inbox path, with
+complete cleanup. The trusted HTTPS checks and genuine Chrome153 FCM
+subscription also ran successfully. This uses automated Chrome consent and is
+desktop software evidence; it is not physical phone installation or OS display.
+
+The actual worker then rejected the provider before sending because its blanket
+mapped-address rule also blocked public IPv4. The later notification-record
+inspection timed out. Both failures remain recorded; no provider-delivery pass
+is claimed. The [bounded lookup correction](public-push-lookup.md) preserves
+private-address, DNS-rebinding and TLS protections and requires fresh current-code
+tests and an actual provider rerun. The new source correction and finite browser
+inspection are unverified until those checks run.
+
+No accessible attached Android/iPhone/iPad or configured real-device session was
+found. Physical installation, background/lock-screen display and taps remain
+unverified. The private matrix retains every missing case and its next action;
+#20/#63/#151 and integrated release acceptance stay open.
