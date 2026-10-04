@@ -67,7 +67,7 @@ T11 issue text updates (#179)                after T0
 ### T2 — One *Connect AI* entry for both modes (new issue)
 
 - **Owner:** @PelikanFix16 (owns the #136/#183 Agents view). **Depends on:** T0;
-  coordinate with #183 and #192.
+  extends the merged #183 Agents view; coordinate with #192.
 - **Acceptance (running app, desktop and phone width):**
   - `/settings/ai` shows two sections: *Your agent app (MCP)*, which lists mode-1
     connections and the client guide, and *Agent in Flux*, which lists AI
