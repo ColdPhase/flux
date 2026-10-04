@@ -139,7 +139,7 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
       const clock=await rows.currentTransientFence(who,sketchId,generation);if(!clock.recipientAlive)throw new UnauthenticatedError();
       const gestures=new Set(clock.gestureIds),people=new Set(clock.presenceIds);
       // No further await between this recipient+producer clock observation and the synchronous callback.
-      const currentTransient=transient.filter(item=>item.type==='map-move'?gestures.has(item.leaseId):people.has(item.connectionId));
+      const currentTransient=transient.filter(item=>item.type==='map-move'?gestures.has(item.leaseId):item.type==='map-presence'&&people.has(item.connectionId));
       handoff({generation,sequence:c.room.sequence,hash:mapHash(generation,c.room.sequence),workspaceId:c.room.workspaceId,resourceId:sketchId,actor:c.actor,canWrite:c.access==='write',delta:next,transient:currentTransient});
     });},
     disconnect(who,sketchId,connectionId){return run(who,sketchId,false,async c=>{const rows=liveMapRows(c.db,decodeMapChange);await rows.disconnect(sketchId,who,id(connectionId));await rows.notify(sketchId);});},
