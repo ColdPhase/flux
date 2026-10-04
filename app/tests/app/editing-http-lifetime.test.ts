@@ -107,7 +107,9 @@ async function fixture(developmentEditing = true) {
     };
   });
   const origin = 'http://127.0.0.1';
-  const config = loadIdentityConfig({ FLUX_PUBLIC_ORIGIN: origin, FLUX_AUTH_SECRET: randomBytes(32).toString('hex'), FLUX_AUTH_RATE_LIMIT: 'false' });
+  // In-process instances share the API container's secret: the database's JWKS private key is
+  // encrypted with it, so a fresh random secret cannot sign up (compose.test.yaml).
+  const config = loadIdentityConfig({ FLUX_PUBLIC_ORIGIN: origin, FLUX_AUTH_SECRET: process.env.FLUX_AUTH_SECRET ?? randomBytes(32).toString('hex'), FLUX_AUTH_RATE_LIMIT: 'false' });
   const identity = registerIdentity(app, { db: database.db, config, mailer: null });
   const backend = mapBackend(database, { beforeHandoff: () => beforeHandoff('map') }); const maps = mapAuthority(backend, apiEditingOutputBudget);
   const wiki = wikiAuthority(database, undefined, { beforeHandoff: () => beforeHandoff('wiki'), outputBudget: apiEditingOutputBudget });
@@ -115,25 +117,31 @@ async function fixture(developmentEditing = true) {
   await app.register(docRoutes, { db: database.db, sessions: identity });
   await app.register(editingRoutes, { sessions: identity, authority: wiki, maps, outputBudget: apiEditingOutputBudget });
   const base = await app.listen({ host: '127.0.0.1', port: 0 }); const browser = new Browser(base, origin);
-  expectStatus(await browser.request('POST', '/api/auth/sign-up/email', { body: { name: 'Actual HTTP lifetime', email: `http-lifetime-${randomUUID()}@example.test`, password: 'actual public lifetime fixture password' } }), 200);
-  const me = expectStatus(await browser.request('GET', '/api/v1/me'), 200) as { user: { id: string } };
-  // Setup uses the actual authorized core/domain transaction; the tested map creation,
-  // subsequent commands and all sessions/origin checks use real public HTTP routes.
-  const principal = { kind: 'human' as const, id: me.user.id };
-  const workspace = await createWorkspace(principal, { name: 'HTTP lifetime workspace' }, database.db);
-  const project = await createProject(principal, workspace.id, { name: 'Current lifetime policy', visibility: 'restricted' }, database.db);
-  const sketch = expectStatus(await browser.request('POST', `/api/v1/workspaces/${workspace.id}/sketches`, { body: { title: 'Actual retained source', scope: 'project', projectId: project.id } }), 201) as Sketch;
-  const thought = (expectStatus(await browser.request('POST', `/api/v1/sketches/${sketch.id}/thoughts`, { body: { text: 'Original thought', x: 0, y: 0 } }), 201) as { thought: Thought }).thought;
-  const head = expectStatus(await browser.request('GET', `/api/v1/sketches/${sketch.id}/live`), 200) as LiveMapBootstrap;
-  const doc = expectStatus(await browser.request('POST', `/api/v1/projects/${project.id}/docs`, { body: { title: 'Protected wiki response', body: 'Actual saved original' } }), 201) as Doc;
-  await observed(() => apiEditingOutputBudget.bytes === 0 && backend.sqlActive === 0 && wiki.sqlActive === 0, 'Setup response and actual SQL continuations must settle');
-  return {
-    database, app, backend, maps, wiki, browser, base, origin, sketch, thought, head, doc, actorId: me.user.id,
-    watch(id = randomUUID()) { assert.ok(captures.size < 16); const value = capture(); captures.set(id, value); return { id, value }; },
-    arm(commits: number, lose = false) { assert.equal(remaining, 0); remaining = commits; lost = lose; reached = signal(); release = signal(); return { reached: reached.promise, release: release.resolve, failure }; },
-    pauseHandoff(kind: 'map' | 'wiki') { handoffKind = kind;handoffReached = signal();handoffRelease = signal();return { reached: handoffReached.promise,release: handoffRelease.resolve }; },
-    async close() { release.resolve();handoffRelease.resolve(); await wiki.close(); await maps.close(); await app.close(); await database.pool.end(); },
-  };
+  // A failed setup releases what it opened, so the file's process can still exit and report.
+  try {
+    expectStatus(await browser.request('POST', '/api/auth/sign-up/email', { body: { name: 'Actual HTTP lifetime', email: `http-lifetime-${randomUUID()}@example.test`, password: 'actual public lifetime fixture password' } }), 200);
+    const me = expectStatus(await browser.request('GET', '/api/v1/me'), 200) as { user: { id: string } };
+    // Setup uses the actual authorized core/domain transaction; the tested map creation,
+    // subsequent commands and all sessions/origin checks use real public HTTP routes.
+    const principal = { kind: 'human' as const, id: me.user.id };
+    const workspace = await createWorkspace(principal, { name: 'HTTP lifetime workspace' }, database.db);
+    const project = await createProject(principal, workspace.id, { name: 'Current lifetime policy', visibility: 'restricted' }, database.db);
+    const sketch = expectStatus(await browser.request('POST', `/api/v1/workspaces/${workspace.id}/sketches`, { body: { title: 'Actual retained source', scope: 'project', projectId: project.id } }), 201) as Sketch;
+    const thought = (expectStatus(await browser.request('POST', `/api/v1/sketches/${sketch.id}/thoughts`, { body: { text: 'Original thought', x: 0, y: 0 } }), 201) as { thought: Thought }).thought;
+    const head = expectStatus(await browser.request('GET', `/api/v1/sketches/${sketch.id}/live`), 200) as LiveMapBootstrap;
+    const doc = expectStatus(await browser.request('POST', `/api/v1/projects/${project.id}/docs`, { body: { title: 'Protected wiki response', body: 'Actual saved original' } }), 201) as Doc;
+    await observed(() => apiEditingOutputBudget.bytes === 0 && backend.sqlActive === 0 && wiki.sqlActive === 0, 'Setup response and actual SQL continuations must settle');
+    return {
+      database, app, backend, maps, wiki, browser, base, origin, sketch, thought, head, doc, actorId: me.user.id,
+      watch(id = randomUUID()) { assert.ok(captures.size < 16); const value = capture(); captures.set(id, value); return { id, value }; },
+      arm(commits: number, lose = false) { assert.equal(remaining, 0); remaining = commits; lost = lose; reached = signal(); release = signal(); return { reached: reached.promise, release: release.resolve, failure }; },
+      pauseHandoff(kind: 'map' | 'wiki') { handoffKind = kind;handoffReached = signal();handoffRelease = signal();return { reached: handoffReached.promise,release: handoffRelease.resolve }; },
+      async close() { release.resolve();handoffRelease.resolve(); await wiki.close(); await maps.close(); await app.close(); await database.pool.end(); },
+    };
+  } catch (error) {
+    await wiki.close(); await maps.close(); await app.close(); await database.pool.end();
+    throw error;
+  }
 }
 function client(f: Awaited<ReturnType<typeof fixture>>, method: string, path: string, marker: string, body?: unknown, extra: Record<string, string> = {}) {
   const text = body === undefined ? undefined : JSON.stringify(body);
