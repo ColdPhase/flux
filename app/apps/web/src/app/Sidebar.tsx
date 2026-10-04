@@ -74,7 +74,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
           </Link>
         </nav>
         <button type="button" className="side__item side__capture" onClick={() => { onClose?.(); startCapture(go); }}>
-          <Icon name="plus" className="side__ic" />New thought<span className="side__hint"><Icon name="lock" size={12} />Private</span>
+          <Icon name="plus" className="side__ic" />New note<span className="side__hint"><Icon name="lock" size={12} />Private</span>
         </button>
 
         <nav className="side__sec" aria-labelledby="side-projects">
@@ -105,7 +105,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
               })}
             </ul>
           ) : (
-            <p className="side__empty">No projects yet. When someone adds you to one, it appears here.</p>
+            <p className="side__empty">No projects yet. <Link to="/projects/new" onClick={navigate}>Create a project</Link>, or it appears here when someone adds you to one.</p>
           )}
         </nav>
 

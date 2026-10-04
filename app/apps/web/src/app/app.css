@@ -6,10 +6,8 @@
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } }
 
 .brand { display: inline-flex; align-items: center; gap: 10px; min-height: var(--ctl); padding: 0 6px; margin-left: -6px; border-radius: var(--r); text-decoration: none; font-weight: 600; font-size: var(--fs-md); color: var(--text); }
-.brand__mark {
-  display: grid; place-items: center; width: 22px; height: 22px; flex: none; border-radius: 6px;
-  background: var(--text); color: var(--bg); font-size: 12px; font-weight: 600; letter-spacing: 0;
-}
+.brand__name { font-size: 24px; font-weight: 650; letter-spacing: -1px; line-height: 1; }
+.brand__name span { color: var(--accent); }
 
 /* ---------- Sign-in and recovery ---------- */
 .auth { min-height: 100%; display: flex; flex-direction: column; background: var(--bg); }
@@ -265,7 +263,8 @@ body:has(.app) { background: var(--bg-chrome); }
 .note__del:hover { background: var(--bg-hover); color: var(--danger); }
 @media (hover: none) { .note__del { opacity: 1; } }
 .composer__hint { margin: 6px 2px 0; font-size: var(--fs-xs); color: var(--text-3); }
-@media (pointer: coarse) { .composer__keys { display: none; } }
+/* The key hints describe a keyboard; on touch devices Enter adds a line and the button sends (#189). */
+@media (pointer: coarse), (hover: none) { .composer__keys { display: none; } }
 
 /* ---------- Details panel ---------- */
 .details__eyebrow { font-size: var(--fs-xs); font-weight: 500; color: var(--text-3); }

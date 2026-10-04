@@ -44,6 +44,14 @@ Flux remains the project planning/knowledge home: agents first analyze current
 plans, wiki, relevant conversations/decisions and existing tasks, then create and
 manage native tasks within their grants, linking PRs without a second backlog.
 
+**Later F-021 requirement, 2026-10-03:** maps and wiki must support immediate
+shared editing. A peer sees movement during a map drag and wiki characters with
+named writers/cursors during typing, before the final move or Save version.
+[#228](https://github.com/ColdPhase/flux/issues/228) owns the outcome. The
+[native-map/shared-text contract](../development/live-editing-proposal.md) has
+independent acceptance for bounded disabled calibration; no runtime gate has passed.
+Saved-event refresh and a typing indicator do not deliver this requirement.
+
 The [later founder delegation](autonomy.md) authorizes agents to choose and accept
 product, stack, architecture, UX, scope and delivery decisions. No human acceptance
 is required. Open decisions below are decisions for the agents to resolve and

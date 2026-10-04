@@ -1,8 +1,7 @@
 /* Inbox and notification settings (#116), direction C: a calm reading column, 1 px lines, one
    accent for "new", no counts. */
 .inbox__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 16px 0 14px; border-bottom: 1px solid var(--line); }
-.inbox__head h2 { font-size: var(--fs-xl); letter-spacing: -0.015em; }
-.inbox__head p { margin-top: 2px; max-width: 460px; font-size: var(--fs-sm); line-height: 1.45; color: var(--text-3); }
+.inbox__head p { max-width: 460px; font-size: var(--fs-sm); line-height: 1.45; color: var(--text-3); }
 .inbox__head > div:first-child { flex: 1 1 320px; min-width: 0; }
 .inbox__tools { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 .inbox__loading { display: flex; justify-content: center; padding: 48px 0; }
@@ -124,7 +123,7 @@
 @media (max-width: 640px) {
   /* The top bar already names the page: keep the first screen for items. */
   .inbox__head { align-items: center; padding-top: 4px; }
-  .inbox__head h2, .inbox__head p { display: none; }
+  .inbox__head p { display: none; }
   .inbox__head > div:first-child { display: none; }
   .inbox__tools { margin-left: 0; width: 100%; justify-content: space-between; }
   .inbox__item { padding-right: 44px; }

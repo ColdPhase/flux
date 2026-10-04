@@ -26,9 +26,11 @@ export function ProjectSetup() {
       const projectIntent = `project:${space.id}:${projectName.trim()}`;
       const project = await createProject(space.id, projectName.trim(), intents.keyFor(projectIntent));
       intents.settle(projectIntent);
-      revalidator.revalidate(); navigate(`/projects/${project.id}`);
+      revalidator.revalidate();
+      // A new project is restricted; its "Who can see this" opens next, to add people (#188).
+      navigate(`/projects/${project.id}?new=1&open=people`);
     } catch (cause) { setError(cause instanceof ApiError ? cause.message : 'Could not create this project. Try again.'); }
     finally { setBusy(false); }
   }
-  return <div className="pane-scroll"><div className="pane-in project-setup"><p className="project-convo__eyebrow">Start together</p><h2>New project</h2><p>A project has its own audience. Its conversation and materials stay with the people you give access to.</p><form onSubmit={(event) => void submit(event)}>{!workspace && !createdSpace ? <Input label="Your space" hint="A private starting place for your projects. You can invite people later." value={spaceName} onChange={(event) => setSpaceName(event.target.value)} required maxLength={200} /> : <p className="project-convo__muted">In {(workspace ?? createdSpace)?.name}</p>}<Input label="Project name" value={projectName} onChange={(event) => setProjectName(event.target.value)} required maxLength={200} />{error ? <p role="alert" className="project-convo__error">{error}</p> : null}<Button type="submit" variant="primary" busy={busy}>Create project</Button></form></div></div>;
+  return <div className="pane-scroll"><div className="pane-in project-setup"><p className="project-convo__eyebrow">Start together</p><h2>New project</h2><p>A new project is restricted: only you and the workspace’s owners and admins can see it. Next, choose who else can in its <b>Who can see this</b>.</p><form onSubmit={(event) => void submit(event)}>{!workspace && !createdSpace ? <Input label="Your space" hint="A private starting place for your projects. You can invite people once your project exists." value={spaceName} onChange={(event) => setSpaceName(event.target.value)} required maxLength={200} /> : <p className="project-convo__muted">In {(workspace ?? createdSpace)?.name}</p>}<Input label="Project name" value={projectName} onChange={(event) => setProjectName(event.target.value)} required maxLength={200} />{error ? <p role="alert" className="project-convo__error">{error}</p> : null}<Button type="submit" variant="primary" busy={busy}>Create project</Button></form></div></div>;
 }

@@ -96,9 +96,9 @@ export function sketchRows(db: DbExecutor) {
 
   return {
     /** Rows of `workspaceId` matching `audience` (the policy's list condition), newest change first. */
-    async list(workspaceId: string, audience: SQL, filter: { projectId?: string; dmId?: string }, page: { limit: number; offset: number }) {
+    async list(workspaceId: string, audience: SQL, filter: { projectId?: string; dmId?: string; scope?: 'private' }, page: { limit: number; offset: number }) {
       const where = and(eq(s.workspaceId, workspaceId), audience, filter.projectId ? eq(s.projectId, filter.projectId) : undefined,
-        filter.dmId ? eq(s.dmId, filter.dmId) : undefined);
+        filter.dmId ? eq(s.dmId, filter.dmId) : undefined, filter.scope ? eq(s.scope, filter.scope) : undefined);
       const rows = await selectSketches().where(where).orderBy(desc(s.updatedAt), asc(s.id)).limit(page.limit).offset(page.offset);
       const [total] = await db.select({ total: count() }).from(s).where(where);
       return { items: rows.map(toSketchRecord), total: total?.total ?? 0 };

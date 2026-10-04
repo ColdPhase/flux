@@ -41,7 +41,7 @@ test('all pages render quiet comparisons and insufficient evidence with current 
     page.on('pageerror', (error) => errors.push(error.message));
     page.on('request', (request) => { const url = new URL(request.url()); if (url.pathname.endsWith('/proactive-comparison-outcomes')) offsets.push(Number(url.searchParams.get('offset'))); });
     try {
-      await login(page); await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks`);
+      await login(page); await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks?view=list`);
       const comparison = page.getByRole('article', { name: 'Comparison suggestion for Bedside gesture lamp' });
       const insufficient = page.getByRole('article', { name: 'Insufficient evidence for Bedside gesture lamp' });
       await comparison.waitFor(); await insufficient.waitFor();

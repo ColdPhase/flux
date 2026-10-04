@@ -5,7 +5,7 @@ import { ApiError } from '../api/client';
 import { useComposerDraft, useComposerScope } from '../composer/draft';
 import { ComposerFiles, MessageFiles } from '../composer/Files';
 import { contributeToTask } from '../composer/api';
-import { Avatar, Button, Icon, Input } from '../ui';
+import { Avatar, Button, Icon, Input, MEDIA, sendsOnEnter, useMediaQuery } from '../ui';
 import { getConversation, getMaterialVersion, getProject, listConversationRoots, listDrafts, listMaterials, listTaskNotices, listWorkspaceMembers, olderMessages, publishMaterial, reply, startConversation } from './conversation-api';
 import { pageBackTo } from './seekMessage';
 import { useShellData } from './data';
@@ -79,6 +79,8 @@ export function ProjectConversation() {
  * beside it, the replies with their own composer, assistant and sources.
  */
 function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessageId = null, onPosted, onThreadSize, focusComposer = false }: PaneProps) {
+  // Touch Enter adds a line; the explicit button sends (#189).
+  const touch = useMediaQuery(MEDIA.touch);
   const { project, materials, members } = data;
   const conversation = variant === 'thread' ? data.conversation : null;
   const shell = useProjectShell();
@@ -87,7 +89,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const { me } = useShellData();
   const navigate = useNavigate();
   const revalidator = useRevalidator();
-  const audience = audienceLine(people, me.user.id);
+  const audience = audienceLine(people, me.user.id, project.visibility === 'workspace');
   const audienceShort = audience.replace(/ · only you two$/, '');
   // The stream's composer keeps the former new-conversation draft; each thread keeps its own reply draft.
   const materialFormKey = `flux.project-material.${me.user.id}.${project.id}${conversation ? '.thread' : ''}`;
@@ -279,7 +281,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   }
   function onComposerKey(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (asking && (event.key === 'Escape' || (event.key === 'Backspace' && !draft))) { event.preventDefault(); event.stopPropagation(); exitAsk(); return; }
-    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); }
+    if (sendsOnEnter(event, touch)) { event.preventDefault(); void send(); }
   }
   async function loadOlder() {
     if (!conversation || !olderCursor || olderBusy) return;

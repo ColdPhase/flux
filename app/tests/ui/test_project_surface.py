@@ -237,7 +237,11 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(page.get_by_role("region", name=re.compile("^In progress"))).to_contain_text("Test the camera in low light")
         expect(tabs.get_by_role("link", name=re.compile("^Tasks"))).to_have_attribute("aria-current", "page")
         shot(page, "project-tasks-desktop-1440")
+        # The project's only sketch opens directly (#189); its Sketches link shows the list.
         tabs.get_by_role("link", name=re.compile("^Map")).click()
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map/{self.ids['sketch']}$"))
+        expect(tabs.get_by_role("link", name=re.compile("^Map"))).to_have_attribute("aria-current", "page")
+        page.get_by_role("link", name="Sketches", exact=True).click()
         expect(page).to_have_url(re.compile(r"/map$"))
         expect(page.get_by_role("list", name="Sketches in Gesture lamp").get_by_role("link", name=re.compile("Sensing options"))).to_be_visible()
         tabs.get_by_role("link", name=re.compile("^Wiki")).click()
@@ -246,8 +250,9 @@ class ProjectSurfaceJourney(unittest.TestCase):
         tabs.get_by_role("link", name=re.compile("^Conversation")).click()
         expect(page, "Conversation returns to the open conversation").to_have_url(conversation_url)
         expect(page.locator(f"#message-{self.ids['m_camera']}")).to_be_visible()
-        # The state line stays with the project on every tab.
+        # The state line stays with the project on every tab, and Map returns to the list chosen last.
         tabs.get_by_role("link", name=re.compile("^Map")).click()
+        expect(page).to_have_url(re.compile(r"/map$"))
         expect(page.locator("header.top").get_by_label("Current state")).to_contain_text("Current rule")
         # At 320px the tab strip scrolls sideways; the current tab is brought into view.
         page.set_viewport_size({"width": 320, "height": 640})

@@ -26,7 +26,7 @@ export function DmIndex() {
   return (
     <div className="pane-scroll"><div className="pane-in">
       <div className="dm-index__head">
-        <div><h2>Direct messages</h2><p>Only the people in each conversation can read it.</p></div>
+        <div><p>Only the people in each conversation can read it.</p></div>
         <Link className="ui-btn ui-btn--secondary" to="/dm/new"><Icon name="plus" size={14} />New message</Link>
       </div>
       <ul className="dm-index" aria-label="Conversations">

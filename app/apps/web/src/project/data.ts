@@ -54,14 +54,15 @@ function join(names: string[]) {
 /**
  * The project's audience in words, from the people who can read it now: "Only you",
  * "Kai and you · only you two", "Ari, Nia and you", "Ari, Nia, you and 4 others". Agents with
- * access are named as a count so they are never hidden.
+ * access are named as a count so they are never hidden. A project open to its workspace is never
+ * "only" anyone's: whoever joins the workspace later can read it too (#188).
  */
-export function audienceLine(people: ProjectPerson[] | null, meId: string): string {
+export function audienceLine(people: ProjectPerson[] | null, meId: string, open = false): string {
   if (!people) return 'People with project access';
   const others = people.filter((person) => person.kind === 'human' && person.id !== meId).map((person) => firstName(person.name));
   const agents = people.filter((person) => person.kind === 'agent').length;
-  const humans = !others.length ? (agents ? 'You' : 'Only you')
-    : others.length === 1 ? `${others[0]} and you${agents ? '' : ' · only you two'}`
+  const humans = !others.length ? (agents || open ? 'You' : 'Only you')
+    : others.length === 1 ? `${others[0]} and you${agents || open ? '' : ' · only you two'}`
       : others.length <= 3 ? join([...others, 'you'])
         : `${others.slice(0, 2).join(', ')}, you and ${others.length - 2} others`;
   return agents ? `${humans} · ${agents} ${agents === 1 ? 'agent' : 'agents'}` : humans;

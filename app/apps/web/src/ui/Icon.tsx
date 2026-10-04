@@ -62,6 +62,11 @@ const paths = {
   show: <><rect x="2" y="2.75" width="12" height="8.5" rx="1.5" /><path d="M5.5 13.5h5M6.5 5.5l3 1.5-3 1.5z" /></>,
   follow: <><path d="M3 3l4.25 10 1.5-4.25L13 7.25z" /></>,
   pulse: <path d="M1.75 8h2.5l1.5-3.5 2.5 7 1.75-5 1 1.5h3.25" />,
+  /** Tasks (#136): the Kanban and List views, "Mine" and an agent that owns a task. */
+  board: <><rect x="2.25" y="2.5" width="3" height="11" rx="1" /><rect x="6.5" y="2.5" width="3" height="7" rx="1" /><rect x="10.75" y="2.5" width="3" height="9" rx="1" /></>,
+  list: <><path d="M6 4.5h7.5M6 8h7.5M6 11.5h7.5" /><circle cx="3" cy="4.5" r=".8" fill="currentColor" stroke="none" /><circle cx="3" cy="8" r=".8" fill="currentColor" stroke="none" /><circle cx="3" cy="11.5" r=".8" fill="currentColor" stroke="none" /></>,
+  person: <><circle cx="8" cy="5.25" r="2.5" /><path d="M3.25 13.5c.55-2.5 2.4-3.9 4.75-3.9s4.2 1.4 4.75 3.9" /></>,
+  agent: <><rect x="2.75" y="4.5" width="10.5" height="8.5" rx="2" /><path d="M8 4.5V2.5" /><circle cx="6" cy="8.5" r=".8" fill="currentColor" stroke="none" /><circle cx="10" cy="8.5" r=".8" fill="currentColor" stroke="none" /></>,
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof paths;

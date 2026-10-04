@@ -30,6 +30,7 @@ export const PROJECT_EXPORT_EXCLUDED = [
   'private sketches and placements of notes on a sketch',
   'accounts, e-mail addresses, sessions, push subscriptions and notifications',
   'agent connections, OAuth clients and tokens, and pending agent proposals',
+  'approved project policies for agents (kept in full backups)',
   'events, idempotency records and other internal rows',
 ] as const;
 
