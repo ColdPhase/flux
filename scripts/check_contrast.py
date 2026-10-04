@@ -3,9 +3,11 @@
 
 Reads app/apps/web/src/ui/tokens.css (light/dark roles and each family override) and
 fails when a text pair is below 4.5:1 or a UI boundary/indicator pair is below 3:1.
+`--failures-only` prints only failing pairs and a one-line summary; the exit code is the same.
 """
 from __future__ import annotations
 
+import argparse
 import re
 import sys
 from pathlib import Path
@@ -87,8 +89,13 @@ def ratio(a: str, b: str) -> float:
     return (la + 0.05) / (lb + 0.05)
 
 
-def main() -> int:
-    css = TOKENS.read_text()
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Check WCAG contrast of the web app's colour tokens.")
+    parser.add_argument("--failures-only", action="store_true", help="print only failing pairs and a summary")
+    parser.add_argument("--tokens", type=Path, default=TOKENS, help=argparse.SUPPRESS)
+    args = parser.parse_args(argv)
+    quiet = args.failures_only
+    css = args.tokens.read_text()
     light = parse(css[css.index(":root {"):css.index("}", css.index(":root {"))])
     dark_start = css.index(':root[data-theme="dark"] {')
     dark = {**light, **parse(css[dark_start:css.index("}", dark_start)])}
@@ -105,18 +112,23 @@ def main() -> int:
     if any(light.get(k) != v for k, v in mint_sample.items()):
         print("FAIL Mint sample differs from the default family primitives")
         failures += 1
+    checked = 0
     for theme, tokens in palettes:
         for fg, bg, minimum, purpose in PAIRS:
             value = ratio(resolve(tokens, fg), resolve(tokens, bg))
             ok = value >= minimum
             failures += not ok
-            print(f"{'ok  ' if ok else 'FAIL'} {theme:10} {value:5.2f}:1 (min {minimum}) {fg} on {bg}: {purpose}")
+            checked += 1
+            if not (quiet and ok):
+                print(f"{'ok  ' if ok else 'FAIL'} {theme:10} {value:5.2f}:1 (min {minimum}) {fg} on {bg}: {purpose}")
     # The dark tokens are duplicated for prefers-color-scheme; they must match the toggle block.
     media_start = css.index("@media (prefers-color-scheme: dark)")
     media = parse(css[media_start:css.index("}", css.index("{", css.index("{", media_start) + 1))])
     if {k: v.lower() for k, v in media.items()} != {k: v.lower() for k, v in parse(css[dark_start:css.index("}", dark_start)]).items()}:
         print("FAIL dark tokens differ between the media query and [data-theme=dark]")
         failures += 1
+    if quiet:
+        print(f"{checked} pairs checked, {failures} failed")
     return 1 if failures else 0
 
 
