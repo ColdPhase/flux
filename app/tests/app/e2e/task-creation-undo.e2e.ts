@@ -148,10 +148,12 @@ async function reverted(page: Page, item: WorkItem) {
   assert.equal(await panel(page).locator('.lv-inline').count(), 0);
 }
 async function withContexts(contexts: BrowserContext[], run: () => Promise<void>) {
-  try { await run(); } finally {
-    const closed = await Promise.allSettled(contexts.map((context) => finite(context.close(), 'context close')));
-    const failed = closed.find((result) => result.status === 'rejected'); if (failed?.status === 'rejected') throw failed.reason;
-  }
+  const failures: unknown[] = [];
+  try { await run(); } catch (error) { failures.push(error); }
+  const closed = await Promise.allSettled(contexts.map((context) => finite(context.close(), 'context close')));
+  for (const result of closed) if (result.status === 'rejected') failures.push(result.reason);
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new AggregateError(failures, 'Browser control and context cleanup failed');
 }
 async function notices(f: Scene, item: WorkItem) {
   const value = expectStatus(await f.author.browser.request('GET', `/api/v1/projects/${f.place.id}/task-notices?limit=100`), 200) as { items: TaskCreationNotice[] };
