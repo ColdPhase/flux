@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { PERSONAL_RUN_LIMITS } from '@flux/contracts';
+import { PERSONAL_RUN_LIMITS, type AiPrice } from '@flux/contracts';
+import { boundedInputTokens, conservativeTokenEstimate } from '../ai/estimate.js';
 import { ForbiddenError, NotFoundError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import type { JobRetryPolicy } from '../push/config.js';
@@ -9,7 +10,7 @@ import type {
   PersonalRunPorts, PersonalRunUnitOfWork, RunChanges, RunRecord,
 } from './ports.js';
 import { updateAndAnnounce } from './progress.js';
-import { centsToMicros, costMicros, parseOutput, requestInput, SYSTEM_PROMPT, type SuppliedSource } from './validation.js';
+import { centsToMicros, parseOutput, requestInput, runChargeMicros, runTokensWithinLimits, SYSTEM_PROMPT, type SuppliedSource } from './validation.js';
 
 // The worker side of a personal run (`personal-run.dispatch.v1`, O-008 §3–§5). The job payload
 // is the run id only. Before reading, before dispatch and inside the commit transaction the run
@@ -69,7 +70,8 @@ async function recheck(ports: PersonalRunPorts, connections: PersonalConnectionL
   const agent: Principal = { kind: 'agent', id: run.agentId };
   if (!(await ports.access.canInvoke(owner, run.agentId, { lock }))) return { refusal: 'revoked' };
   if (!compute.enabled) return { refusal: 'unavailable' };
-  const connection = await connections.resolve(run.ownerUserId);
+  // Exactly the connection the run was started on (PROV-1), never the owner's newest or another.
+  const connection = run.connectionId ? await connections.resolve(run.ownerUserId, run.connectionId) : null;
   if (!connection || connection.status !== 'active' || connection.ownerUserId !== run.ownerUserId
     || connection.id !== run.connectionId || connection.id !== enablement.connectionId) return { refusal: 'unavailable' };
   // The sources are the intersection of the owner's rights and the agent grant in this project;
@@ -114,18 +116,24 @@ async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<{ s
 }
 
 /**
- * Drops the oldest conversation messages until the preflight count fits the input limit. Each
- * count sends the input to the provider, so `beforeCount` rechecks the run's standing before every
- * request and ends the fit with its outcome when the run may no longer send anything.
+ * Drops the oldest conversation messages until the input fits the limit. Every provider is bounded
+ * by the same conservative Flux estimate (F-020 PROV-3); a provider with a token-count endpoint may
+ * raise that estimate, never lower it. A count sends the input to the provider, so `beforeCount`
+ * rechecks the run's standing before every count request and ends the fit with its outcome when the
+ * run may no longer send anything.
  */
 async function fit(compute: PersonalCompute, base: Omit<PersonalComputeRequest, 'input'>, run: RunRecord,
   read: { sources: SuppliedSource[]; earlier: string | null }, beforeCount: () => Promise<PersonalRunOutcome | null>) {
   let sources = read.sources;
   for (;;) {
     const request = { ...base, input: requestInput(run, sources, read.earlier) };
-    const refused = await beforeCount();
-    if (refused) return { refused: true as const, outcome: refused };
-    if ((await compute.countInputTokens(request)) <= PERSONAL_RUN_LIMITS.maxInputTokens) return { refused: false as const, request, sources };
+    let tokens = conservativeTokenEstimate([request.system, request.input]);
+    if (tokens <= PERSONAL_RUN_LIMITS.maxInputTokens && compute.countInputTokens) {
+      const refused = await beforeCount();
+      if (refused) return { refused: true as const, outcome: refused };
+      tokens = boundedInputTokens(tokens, await compute.countInputTokens(request));
+    }
+    if (tokens <= PERSONAL_RUN_LIMITS.maxInputTokens) return { refused: false as const, request, sources };
     const oldest = sources.findIndex((source) => source.ref.type === 'message');
     if (oldest === -1) return null;
     sources = sources.filter((_, index) => index !== oldest);
@@ -133,12 +141,11 @@ async function fit(compute: PersonalCompute, base: Omit<PersonalComputeRequest, 
 }
 
 /**
- * The production provider until the Anthropic adapter lands (a later #68 slice, after the O-008
- * price and model recheck): switched off, so every queued run ends `unavailable` at zero cost.
+ * The production provider until the operator switch and a real connection lookup exist (see
+ * docs/development/personal-runs.md): switched off, so every queued run ends `unavailable` at zero cost.
  */
 export const unavailablePersonalCompute: PersonalCompute = {
   enabled: false,
-  countInputTokens: async () => { throw new Error('No personal-run provider is configured'); },
   dispatch: async () => ({ kind: 'failed', reason: 'provider_error', billed: 'none' }),
 };
 
@@ -162,15 +169,24 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
     return () => { active = false; };
   }
 
-  async function commit(runId: string, result: PersonalComputeResult, sources: SuppliedSource[]): Promise<PersonalRunOutcome> {
+  async function commit(runId: string, result: PersonalComputeResult, sources: SuppliedSource[], price: AiPrice | null): Promise<PersonalRunOutcome> {
     return uow.run(async (ports) => {
       const run = await ports.runs.findRun(runId, { lock: true });
       if (!run || run.status !== 'dispatching') return 'skipped';
-      const charge: RunChanges = result.kind === 'completed'
-        ? { costState: 'observed', chargedMicros: costMicros(result.usage), inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens }
-        : result.billed === 'none' ? { ...free } : { costState: 'unknown', chargedMicros: 0 };
+      // The usage is charged at the price of the connection the run was reserved on, or as the
+      // provider reported it (PROV-3), never above the run's reservation. Usage beyond the run's
+      // token limits, or a cost above its reservation, is treated as a lost response: the cost is
+      // unknown, the whole reservation stays counted against the daily cap, the reported numbers
+      // are not stored, and the answer is withheld. Without a price the charge stays unknown too.
+      const usage = result.kind === 'completed' ? result.usage : null;
+      const tokens: RunChanges = usage && runTokensWithinLimits(usage) ? { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens } : {};
+      const chargedMicros = usage && price ? runChargeMicros(usage, price, run.reservedMicros) : null;
+      const outOfBounds = usage !== null && price !== null && chargedMicros === null;
+      const charge: RunChanges = chargedMicros !== null ? { costState: 'observed', chargedMicros, ...tokens }
+        : result.kind === 'completed' && !outOfBounds ? { costState: 'unknown', chargedMicros: 0, ...tokens }
+          : result.kind === 'failed' && result.billed === 'none' ? { ...free } : { costState: 'unknown', chargedMicros: 0 };
       if (run.stopRequestedAt) return (await updateAndAnnounce(ports, run.id, ended('stopped', 'before_commit', charge))).status;
-      if (result.kind === 'failed') return (await updateAndAnnounce(ports, run.id, ended('provider_failed', null, charge))).status;
+      if (result.kind === 'failed' || outOfBounds) return (await updateAndAnnounce(ports, run.id, ended('provider_failed', null, charge))).status;
       let checked: Awaited<ReturnType<typeof recheck>>;
       try {
         checked = await recheck(ports, connections, compute, run, 'before_commit', true);
@@ -236,7 +252,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       // Preflight counting is a provider call that sends the input: it runs outside any
       // transaction, on the owner's own connection, and only after the same recheck as a dispatch
       // (stop, enablement, agent, owner and agent access, cap, connection) before every request.
-      const connection = await connections.resolve(run.ownerUserId);
+      const connection = run.connectionId ? await connections.resolve(run.ownerUserId, run.connectionId) : null;
       const beforeSend = (): Promise<PersonalRunOutcome | null> => uow.run(async (ports) => {
         const current = await ports.runs.findRun(run.id, { lock: true });
         if (!current || current.status !== 'reading') return current?.status ?? 'skipped';
@@ -257,7 +273,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       let fitted: Awaited<ReturnType<typeof fit>>;
       try {
         fitted = await fit(compute, {
-          connection: { id: connection.id, keyRef: connection.keyRef }, model: run.model,
+          connection: { id: connection.id, keyRef: connection.keyRef, provider: connection.provider, baseUrl: connection.baseUrl }, model: run.model,
           maxTokens: PERSONAL_RUN_LIMITS.maxOutputTokens, effort: PERSONAL_RUN_LIMITS.effort, system: SYSTEM_PROMPT,
         }, run, read, beforeSend);
       } catch {
@@ -300,7 +316,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
         stopWatching();
       }
       await hooks.afterDispatch?.(run);
-      return commit(run.id, result, ready.fitted.sources);
+      return commit(run.id, result, ready.fitted.sources, connection.price);
     },
   };
 }

@@ -112,7 +112,7 @@ export function SearchPage() {
           </div>
         </div>
 
-        <p className="ui-vh" role="status">{state.status === 'ready' ? (items.length ? `${total} results` : 'No results') : ''}</p>
+        <p className="ui-vh" role="status">{state.status === 'ready' ? (items.length ? `${total}${state.answer.countsCapped ? '+' : ''} ${total === 1 ? 'result' : 'results'}` : 'No results') : ''}</p>
 
         {!draft.trim() ? (
           recent.items.length ? (

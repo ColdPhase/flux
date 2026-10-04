@@ -115,11 +115,14 @@ test('real settings UI binds, verifies PR links and removes private projections 
   await page.getByRole('button', { name: 'Connect repository', exact: true }).click();
   await page.getByRole('heading', { name: 'Link an existing pull request', exact: true }).waitFor();
   await page.getByLabel('Task', { exact: true }).selectOption(task.id);
+  const noPulls = page.getByText('No pull requests are linked to this task yet.', { exact: true });
+  await noPulls.waitFor(); // #218: a chosen task without links says so instead of staying blank.
   const linker = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Link an existing pull request', exact: true }) });
   await linker.getByLabel('Repository', { exact: true }).selectOption({ label: 'lamp-team/gesture-lamp-firmware' });
   await page.getByLabel('Pull request number', { exact: true }).fill('42');
   await page.getByRole('button', { name: 'Verify and link PR', exact: true }).click();
   const privatePull = page.getByRole('link', { name: '#42 · Keep a manual off switch when gesture sensing loses calibration', exact: true }); await privatePull.waitFor();
+  assert.equal(await noPulls.count(), 0, 'the empty line is gone once a pull request is linked');
   assert.match(await linker.innerText(), /nia-firmware.*head aaaaaaaaaaaa/);
   for (const [label, width, height] of [['desktop', 1440, 900], ['tablet', 820, 1180], ['phone', 390, 844]] as const) {
     const target = label === 'desktop' ? page : await (await context(owner, { viewport: { width, height }, hasTouch: true, isMobile: label === 'phone' })).newPage();

@@ -32,6 +32,7 @@ import { liveWebhookRoutes } from './live/webhook.js';
 import { liveInvitationRoutes } from './live/invitation-routes.js';
 import { joinRateLimiter } from './live/rate-limit.js';
 import { agentProposalRoutes } from './agent-connection/routes.js';
+import { projectAgentRoutes } from './agent-connection/project-agents.js';
 import { agentPolicyRoutes } from './agent-connection/project-policy.js';
 import { proactiveComparisonRoutes } from './proactive-comparison/routes.js';
 import { registerMcpRoute } from './agent-connection/mcp-route.js';
@@ -149,6 +150,7 @@ if (liveRevocation) {
   void recover();
 }
 await app.register(agentProposalRoutes, { db, sessions: identity, oauthSecret: identityConfig.secret, publicOrigin: identityConfig.publicOrigin });
+await app.register(projectAgentRoutes, { db, sessions: identity });
 await app.register(agentPolicyRoutes, { db, sessions: identity });
 await app.register(proactiveComparisonRoutes, { db, sessions: identity, backgroundMasterKey: loadBackgroundMasterKey() });
 registerMcpRoute(app, db, identity.auth, identityConfig.publicOrigin);
@@ -156,7 +158,7 @@ await app.register(returnRoutes, { db, sessions: identity });
 await app.register(docRoutes, { db, sessions: identity });
 await app.register(notificationRoutes, { db, sessions: identity, smtp: identityConfig.smtp, publicOrigin: identityConfig.publicOrigin });
 // Personal assistant runs (#68): the server queues; the worker dispatches.
-const personalRuns = personalRunServerComposition(process.env);
+const personalRuns = personalRunServerComposition(process.env, db);
 if (personalRuns.mode !== 'production') app.log.warn({ mode: personalRuns.mode }, 'TEST ONLY: personal runs use fixture connections and a mock provider');
 await app.register(personalRunRoutes, { db, sessions: identity, boss, connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled });
 await app.register(searchRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret, exposeWork: testFailureInjection });
