@@ -11,10 +11,11 @@ const PASSWORD_RESET_REQUEST_PATHS = new Set([`${AUTH_BASE_PATH}/request-passwor
 const SOCIAL_SIGN_IN_PATH = `${AUTH_BASE_PATH}/sign-in/social`;
 
 /** Whether a sign-in body carries a raw ID token (Better Auth's direct ID-token sign-in branch). */
-function carriesIdToken(body: unknown) {
-  let value = body;
-  if (typeof value === 'string') { try { value = JSON.parse(value); } catch { return value.includes('idToken'); } }
-  return !!value && typeof value === 'object' && 'idToken' in value;
+function carriesIdToken(body: unknown): boolean {
+  if (typeof body === 'string') {
+    try { return carriesIdToken(JSON.parse(body)); } catch { return body.includes('idToken'); }
+  }
+  return !!body && typeof body === 'object' && 'idToken' in body;
 }
 
 /**
