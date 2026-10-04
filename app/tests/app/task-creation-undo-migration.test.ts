@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { assertExactMigrationLedger, createDatabase, readAppliedMigrationVersions, readTaskCreationReversalManifest, reverseUnusedTaskCreation } from '@flux/db';
+import { administrativePool } from './support/administrative-db.js';
 
 const directory = 'packages/db/migrations';
 const newColumns = ['creation_origin', 'creation_baseline', 'creation_baseline_version', 'creation_proposal_id', 'first_persisted_use_at',
@@ -14,9 +15,9 @@ test('actual sparse0048 upgrade preserves old history; atomic reversal and guard
   assert.equal(manifest.prior.at(-1)?.version, 47); assert.ok(manifest.prior.some(file => file.version === 46));
   assert.ok(!manifest.prior.some(file => file.version === 42), 'reserved gap is preserved rather than invented');
   const name = `flux_undo_history_${randomUUID().replaceAll('-', '')}`;
-  // Use the admitted workspace DB dependency. Its public factory gives both
-  // administrative and feature queries the production two-second deadline.
-  const admin = createDatabase(process.env.DATABASE_URL!).pool;
+  // CREATE/DROP can wait for a real checkpoint. Only this dedicated admin pool
+  // has a finite60s deadline; every feature/reversal query stays at the real2s.
+  const admin = administrativePool();
   const url = new URL(process.env.DATABASE_URL!); url.pathname = `/${name}`;
   let history: ReturnType<typeof createDatabase>['pool'] | undefined;
   const [user, workspace, project, work, notice, agent, connection, grant] = Array.from({ length: 8 }, () => randomUUID());

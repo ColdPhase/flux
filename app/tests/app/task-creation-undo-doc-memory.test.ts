@@ -23,8 +23,11 @@ test('native snapshot Save counts full canonical fan-out before UUID loading; ca
   const result=expect(await f.owner.request('POST',`/api/v1/projects/${f.projectId}/results`,{body:{title:'Large canonical association fixture',finding:'positive'}}),201);
   await pool.query(`INSERT INTO project_work_items(id,workspace_id,project_id,title,created_by_kind,created_by_id)
     SELECT gen_random_uuid(),$1::uuid,$2::uuid,'Historical fan-out '||n,'human',$3::text FROM generate_series(1,10000) n`,[f.workspaceId,f.projectId,owner]);
-  await pool.query(`INSERT INTO project_object_links(id,workspace_id,project_id,role,from_type,from_id,to_type,to_id,created_by_kind,created_by_id)
-    SELECT gen_random_uuid(),$1::uuid,$2::uuid,'about','result',$3::uuid,'work',id,'human',$4::text FROM project_work_items WHERE project_id=$2 AND title LIKE 'Historical fan-out %'`,[f.workspaceId,f.projectId,result.id,owner]);
+  // Retain the complete10k fixture while every setup query keeps the real2s
+  // deadline. A single10k link INSERT can exceed it through actual link triggers.
+  for (let offset=0;offset<10000;offset+=100) await pool.query(`INSERT INTO project_object_links(id,workspace_id,project_id,role,from_type,from_id,to_type,to_id,created_by_kind,created_by_id)
+    SELECT gen_random_uuid(),$1::uuid,$2::uuid,'about','result',$3::uuid,'work',id,'human',$4::text FROM project_work_items WHERE project_id=$2 AND title LIKE 'Historical fan-out %'
+    ORDER BY id LIMIT 100 OFFSET $5`,[f.workspaceId,f.projectId,result.id,owner,offset]);
   const doc=expect(await f.owner.request('POST',`/api/v1/projects/${f.projectId}/docs`,{body:{title:'Counted Save owner',body:'Saved.'}}),201) as unknown as Doc;
   const body=`Shared [result](flux:result/${result.id})`;const generation=randomUUID();const hash=createHash('sha256').update(body).digest('hex');
   await pool.query(`INSERT INTO doc_live_heads(doc_id,workspace_id,project_id,generation,sequence,body,hash,saved_version,saved_sequence,codec_state)

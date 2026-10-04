@@ -219,6 +219,9 @@ importers:
       fastify:
         specifier: 5.6.1
         version: 5.6.1
+      pg:
+        specifier: 8.23.0
+        version: 8.23.0
       playwright:
         specifier: 1.63.0
         version: 1.63.0

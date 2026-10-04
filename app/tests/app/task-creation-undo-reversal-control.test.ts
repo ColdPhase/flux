@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { assertExactMigrationLedger, createDatabase, readAppliedMigrationVersions, readTaskCreationReversalManifest, reverseUnusedTaskCreation } from '@flux/db';
+import { administrativePool } from './support/administrative-db.js';
 const directory='packages/db/migrations';
 async function replacement(pool: ReturnType<typeof createDatabase>['pool'], old: number) {
   assert.equal(pool.totalCount,0,'The ambiguous dedicated client is destroyed rather than returned idle');
@@ -35,7 +36,7 @@ test('actual pg advisory query_timeout preserves the original rejection and dest
 
 test('actual pg COMMIT response timeout reports unknown reversal with original cause; replacement inspects the committed exact prior ledger', {timeout:120_000},async()=>{
   const manifest=await readTaskCreationReversalManifest(directory);const name=`flux_undo_control_${randomUUID().replaceAll('-','')}`;
-  const admin=createDatabase(process.env.DATABASE_URL!).pool;
+  const admin=administrativePool();
   const url=new URL(process.env.DATABASE_URL!);url.pathname=`/${name}`;let history:ReturnType<typeof createDatabase>['pool']|undefined;
   let original:unknown;let backend=0;
   try {
