@@ -1,0 +1,452 @@
+"""#228 real two-account/browser/socket Gate 4. Run only against an enabled isolated candidate.
+
+FLUX_LIVE_EDITING_TEST=1 selects this cohort. Capability-off is not a Gate 4 pass.
+No injected collaboration transport, fake actors, DOM editor mutation, or mocked markdown.
+The latency driver in live_editing_latency.py retains every scheduled observation.
+"""
+from __future__ import annotations
+
+import asyncio
+import base64
+import json
+import os
+import re
+import time
+import unittest
+import uuid
+
+from playwright.async_api import async_playwright, expect
+from test_app_shell import ORIGIN, UPSTREAM, start_forwarder
+
+
+class LiveFixture(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        if UPSTREAM:
+            start_forwarder(ORIGIN, UPSTREAM)
+        self.pw = await async_playwright().start()
+        self.browser = await self.pw.chromium.launch()
+        self.contexts = []
+        self.errors = []
+        self.frames = {"ada": [], "kai": []}
+        self.acks = {"ada": {}, "kai": {}}
+        self.pages = {}
+        stamp = uuid.uuid4().hex
+        for key, name in (("ada", "Ada North"), ("kai", "Kai South")):
+            context = await self.browser.new_context(base_url=ORIGIN, viewport={"width": 1440, "height": 900}, reduced_motion="reduce")
+            self.contexts.append(context)
+            page = await context.new_page()
+            page.on("pageerror", lambda error: self.errors.append(str(error)))
+            self.record_socket(page, key)
+            await page.goto("/sign-up")
+            await page.get_by_label("Name", exact=True).fill(name)
+            await page.get_by_label("Email", exact=True).fill(f"{key}.live.{stamp}@example.test")
+            await page.get_by_label("Password", exact=True).fill("live copies retain exact history")
+            await page.get_by_role("button", name="Create account", exact=True).click()
+            await expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
+            self.pages[key] = page
+            me = await self.api(page, "GET", "/api/v1/me")
+            setattr(self, f"{key}_id", me["user"]["id"])
+            setattr(self, f"{key}_email", f"{key}.live.{stamp}@example.test")
+        ada = self.pages["ada"]
+        ws = await self.api(ada, "POST", "/api/v1/workspaces", {"name": "Live verification studio"}, 201)
+        self.workspace = ws["id"]
+        await self.api(ada, "POST", f"/api/v1/workspaces/{self.workspace}/members", {"email": self.kai_email, "role": "member"}, 201)
+        project = await self.api(ada, "POST", f"/api/v1/workspaces/{self.workspace}/projects", {"name": "Two people writing", "visibility": "restricted"}, 201)
+        self.project = project["id"]
+        await self.api(ada, "POST", f"/api/v1/projects/{self.project}/grants", {"principal": {"kind": "human", "id": self.kai_id}, "role": "contributor"}, 201)
+
+    async def asyncTearDown(self):
+        for context in self.contexts:
+            await context.close()
+        await self.browser.close()
+        await self.pw.stop()
+        self.assertEqual(self.errors, [], "No uncaught browser errors")
+
+    def record_socket(self, page, key):
+        def opened(socket):
+            if "/api/v1/editing?" not in socket.url:
+                return
+            def frame(direction, payload):
+                try:
+                    if isinstance(payload, bytes):
+                        length = int.from_bytes(payload[:4], "big")
+                        value = json.loads(payload[4:4 + length])
+                    else:
+                        value = json.loads(payload)
+                    # Fixture actors only; cookies, passwords, and update bodies are not recorded.
+                    recorded = {name: item for name, item in value.items() if name not in ("html", "savedDoc")}
+                    self.frames[key].append({"at": time.perf_counter(), "direction": direction, "header": recorded})
+                    if direction == "received" and value.get("type") == "ack":
+                        self.acks[key][value["commandId"]] = value
+                except (ValueError, KeyError):
+                    pass
+            socket.on("framesent", lambda payload: frame("sent", payload))
+            socket.on("framereceived", lambda payload: frame("received", payload))
+        page.on("websocket", opened)
+
+    async def api(self, page, method, path, body=None, status=200, headers=None):
+        response = await page.request.fetch(path, method=method,
+            headers={"origin": ORIGIN, "content-type": "application/json", **(headers or {})},
+            data=json.dumps(body) if body is not None else None)
+        self.assertEqual(response.status, status, await response.text())
+        text = await response.text()
+        return json.loads(text) if text else None
+
+    async def create_doc(self, body="A saved starting paragraph."):
+        doc = await self.api(self.pages["ada"], "POST", f"/api/v1/projects/{self.project}/docs",
+            {"title": "Live field notes", "body": body, "state": "published"}, 201, {"idempotency-key": str(uuid.uuid4())})
+        self.doc_id = doc["id"]
+        self.doc_url = f"/projects/{self.project}/docs/{self.doc_id}"
+        return doc
+
+    async def editor(self, key):
+        page = self.pages[key]
+        await page.goto(self.doc_url + "/edit")
+        await expect(page.locator('[data-live-status="live"]')).to_be_visible()
+        field = page.locator('.cm-content[aria-label="Shared Markdown"]')
+        await expect(field).to_have_attribute("contenteditable", "true")
+        return field
+
+    async def type_text(self, page, field, text):
+        await field.click()
+        await page.keyboard.press("Control+End")
+        await page.keyboard.type(text)
+        await expect(page.get_by_role("status").filter(has_text="All changes shared")).to_be_visible()
+
+    async def create_map(self, count=3):
+        sketch = await self.api(self.pages["ada"], "POST", f"/api/v1/workspaces/{self.workspace}/sketches",
+            {"title": "A practical shared map", "scope": "project", "projectId": self.project}, 201,
+            {"idempotency-key": str(uuid.uuid4())})
+        self.map_id = sketch["id"]
+        self.thoughts = []
+        for index in range(count):
+            created = await self.api(self.pages["ada"], "POST", f"/api/v1/sketches/{self.map_id}/thoughts",
+                {"text": f"Thought {index}: Keep the long field observation readable", "x": 40 + (index % 8) * 245, "y": 40 + (index // 8) * 145},
+                201, {"idempotency-key": str(uuid.uuid4())})
+            self.thoughts.append(created["thought"])
+        for page in self.pages.values():
+            await page.goto(f"/map/{self.map_id}")
+            await expect(page.locator(f'.sk-node[data-id="{self.thoughts[-1]["id"]}"]')).to_be_visible()
+            await expect(page.locator('[data-live-map-status="live"]')).to_be_visible()
+        return sketch
+
+    async def map_saved(self, page):
+        await expect(page.locator(".sk-status")).to_contain_text("Saved")
+
+
+@unittest.skipUnless(os.environ.get("FLUX_LIVE_EDITING_TEST") == "1", "#228 Gate 4 needs explicitly enabled isolated candidate; not verified by capability-off")
+class LiveEditingJourney(LiveFixture):
+    async def test_00_trusted_input_reload_before_batch_deadline_seals_exact_recovery(self):
+        await self.create_doc()
+        ada, kai = self.pages['ada'], self.pages['kai']
+        # Pause the real page's 40ms timer, not its HTTP/WS transport or native input.
+        # This makes the before-batch boundary deterministic; never used by latency.
+        await ada.clock.install(time=time.time())
+        field = await self.editor('ada')
+        await field.click()
+        await ada.keyboard.press('Control+End')
+        await ada.clock.pause_at(time.time() + 1)
+        recovery_key = f'flux:wiki-live:{self.ada_id}:{self.doc_id}'
+        capture_key = recovery_key + ':test-pagehide-capture'
+        await ada.evaluate("([key,capture]) => window.addEventListener('pagehide', () => sessionStorage.setItem(capture,sessionStorage.getItem(key)||''), {once:true})", [recovery_key, capture_key])
+        sent = []
+        def socket_opened(socket):
+            if '/api/v1/editing?' in socket.url:
+                def frame(payload):
+                    if isinstance(payload, bytes):
+                        length = int.from_bytes(payload[:4], 'big')
+                        header = json.loads(payload[4:4 + length])
+                        if header.get('operation') == 'text':
+                            sent.append((header, payload[4 + length:]))
+                socket.on('framesent', frame)
+        ada.on('websocket', socket_opened)
+        await ada.keyboard.insert_text(' Reloaded before forty milliseconds 🚀.')
+        self.assertEqual(await ada.locator('[data-live-wiki-editor]').get_attribute('data-live-command-revision'), '0', 'The fresh transaction is still unsealed')
+        await ada.reload(wait_until='domcontentloaded')
+        captured = json.loads(await ada.evaluate('key => sessionStorage.getItem(key)', capture_key))
+        self.assertIn('Reloaded before forty milliseconds 🚀.', captured['body'])
+        self.assertEqual(len(captured['pending']), 1)
+        original = captured['pending'][0]
+        await ada.clock.resume()
+        field = ada.locator('.cm-content[aria-label="Shared Markdown"]')
+        await expect(field).to_have_attribute('contenteditable', 'true')
+        await expect(field).to_contain_text('Reloaded before forty milliseconds 🚀.')
+        await expect(ada.get_by_role('status').filter(has_text='All changes shared')).to_be_visible()
+        actual = [(header, chunk) for header, chunk in sent if header.get('uuid') == original['envelope']['uuid']]
+        self.assertTrue(actual, 'Reload retransmitted the sealed original UUID')
+        for header, _chunk in actual:
+            self.assertEqual({key: header[key] for key in original['envelope']}, original['envelope'])
+        self.assertEqual(b''.join(chunk for _header, chunk in actual), base64.b64decode(original['bytes']))
+        live = await self.api(kai, 'GET', f'/api/v1/docs/{self.doc_id}/live')
+        self.assertEqual(live['body'].count('Reloaded before forty milliseconds 🚀.'), 1)
+        self.assertEqual((await self.api(kai, 'GET', f'/api/v1/docs/{self.doc_id}'))['version'], 1, 'Reload shares working text but creates no saved version')
+
+    async def test_01_live_characters_named_cursors_own_undo_and_immutable_save(self):
+        original = await self.create_doc()
+        ada, kai = self.pages["ada"], self.pages["kai"]
+        ada_field, kai_field = await self.editor("ada"), await self.editor("kai")
+        await self.type_text(ada, ada_field, " Ada’s shared 🚀 notes.")
+        await expect(kai_field).to_contain_text("Ada’s shared 🚀 notes.")
+        await expect(kai.locator(".editing-people")).to_contain_text("Ada North")
+        before_save = await self.api(kai, "GET", f"/api/v1/docs/{self.doc_id}")
+        self.assertEqual(before_save["body"], original["body"], "Typing alone does not rewrite saved citations")
+        await self.type_text(kai, kai_field, " Kai’s independent observation.")
+        await expect(ada_field).to_contain_text("Kai’s independent observation.")
+        await ada_field.click()
+        await ada.keyboard.press("Control+z")
+        await expect(kai_field).not_to_contain_text("Ada’s shared 🚀 notes.")
+        await expect(kai_field).to_contain_text("Kai’s independent observation.")
+        await ada.get_by_label("Reason for this version").fill("Both people reviewed the field notes")
+        await ada.get_by_role("button", name="Save version", exact=True).click()
+        await expect(ada.get_by_role("status").filter(has_text="Version 2 saved")).to_be_visible()
+        saved = await self.api(kai, "GET", f"/api/v1/docs/{self.doc_id}")
+        self.assertEqual(saved["version"], 2)
+        self.assertIn("Kai’s independent observation.", saved["body"])
+        immutable = await self.api(kai, "GET", f"/api/v1/docs/{self.doc_id}/versions/1")
+        self.assertEqual(immutable["body"], original["body"])
+        await kai.goto(self.doc_url + "/versions/2")
+        await expect(kai.locator("[data-live-reader]")).to_have_count(0)
+        self.assertTrue(any(row["header"].get("operation") == "text" for row in self.frames["ada"]), "Real Yjs transport used")
+
+    async def test_02_ordinary_reader_tracks_working_text_and_history_stays_saved(self):
+        original = await self.create_doc()
+        ada, kai = self.pages["ada"], self.pages["kai"]
+        field = await self.editor("ada")
+        await kai.goto(self.doc_url)
+        await expect(kai.locator("[data-live-reader]")).to_be_visible()
+        await self.type_text(ada, field, " Reader sees this **before Save**.")
+        await expect(kai.locator(".doc-prose")).to_contain_text("Reader sees this before Save.")
+        await expect(kai.locator(".editing-people")).to_contain_text("Ada North")
+        self.assertEqual((await self.api(kai, "GET", f"/api/v1/docs/{self.doc_id}"))["body"], original["body"])
+        await kai.goto(self.doc_url + "/versions/1")
+        await expect(kai.locator(".doc-prose")).not_to_contain_text("Reader sees this")
+        self.assertFalse(any(row["direction"] == "sent" and row["header"].get("type") == "cursor" for row in self.frames["kai"]), "Reader never publishes writer presence")
+
+    async def test_03_old_private_draft_never_initializes_shared_replica(self):
+        await self.create_doc()
+        ada = self.pages["ada"]
+        await ada.goto(self.doc_url)
+        await ada.evaluate("([key, body]) => sessionStorage.setItem(key, JSON.stringify({title:'Private old title',body,state:'draft',reason:'',base:1}))", [f"flux:doc-edit:{self.ada_id}:{self.doc_id}", "Never automatically shared private text"])
+        field = await self.editor("ada")
+        await expect(field).not_to_contain_text("Never automatically")
+        await ada.get_by_role("button", name="Compare private text").click()
+        await expect(ada.get_by_label("Earlier private text")).to_have_value("Never automatically shared private text")
+        live = await self.api(self.pages["kai"], "GET", f"/api/v1/docs/{self.doc_id}/live")
+        self.assertNotIn("Never automatically", live["body"])
+
+    async def test_04_reconnect_same_replica_reload_fresh_replica(self):
+        await self.create_doc()
+        ada = self.pages["ada"]
+        field = await self.editor("ada")
+        await self.type_text(ada, field, " First editor instance.")
+        first = next(row["header"]["replica"] for row in self.frames["ada"] if row["header"].get("operation") == "text")
+        await ada.context.set_offline(True)
+        await asyncio.sleep(0.15)
+        await ada.context.set_offline(False)
+        await expect(ada.locator('[data-live-status="live"]')).to_be_visible()
+        await self.type_text(ada, field, " Same surviving replica.")
+        second = [row["header"]["replica"] for row in self.frames["ada"] if row["header"].get("operation") == "text"][-1]
+        self.assertEqual(first, second)
+        await ada.reload()
+        field = ada.locator('.cm-content[aria-label="Shared Markdown"]')
+        await expect(field).to_have_attribute("contenteditable", "true")
+        await self.type_text(ada, field, " Fresh reloaded replica.")
+        third = [row["header"]["replica"] for row in self.frames["ada"] if row["header"].get("operation") == "text"][-1]
+        self.assertNotEqual(first, third)
+
+    async def test_05_map_preview_before_pointerup_unrelated_delta_during_drag(self):
+        await self.create_map()
+        ada, kai = self.pages["ada"], self.pages["kai"]
+        first, second = self.thoughts[:2]
+        node = ada.locator(f'.sk-node[data-id="{first["id"]}"]')
+        peer = kai.locator(f'.sk-node[data-id="{first["id"]}"]')
+        bounds = await node.bounding_box()
+        await ada.mouse.move(bounds["x"] + 20, bounds["y"] + 20)
+        await ada.mouse.down()
+        await ada.mouse.move(bounds["x"] + 70, bounds["y"] + 55, steps=4)
+        await expect(peer).to_have_attribute("data-live-mover", "Ada North")
+        await expect(peer).not_to_have_attribute("data-thought-x", str(first["x"]))
+        unchanged = await self.api(kai, "GET", f"/api/v1/sketches/{self.map_id}")
+        self.assertEqual(next(item for item in unchanged["thoughts"] if item["id"] == first["id"])["x"], first["x"], "Preview precedes durable pointerup")
+        other = kai.locator(f'.sk-node[data-id="{second["id"]}"]')
+        await other.focus()
+        await kai.keyboard.press("ArrowRight")
+        await expect(ada.locator(f'.sk-node[data-id="{second["id"]}"]')).to_have_attribute("data-thought-x", str(second["x"] + 12))
+        await ada.mouse.up()
+        await self.map_saved(ada)
+        await expect(peer).not_to_have_attribute("data-live-mover", "Ada North")
+        saved = await self.api(ada, "GET", f"/api/v1/sketches/{self.map_id}")
+        self.assertGreater(next(item for item in saved["thoughts"] if item["id"] == first["id"])["x"], first["x"])
+
+    async def test_06_map_own_undo_refuses_peer_change(self):
+        await self.create_map(1)
+        ada, kai = self.pages["ada"], self.pages["kai"]
+        id = self.thoughts[0]["id"]
+        await ada.locator(f'.sk-node[data-id="{id}"]').focus()
+        await ada.keyboard.press("ArrowRight")
+        await self.map_saved(ada)
+        await expect(kai.locator(f'.sk-node[data-id="{id}"]')).to_have_attribute("data-thought-x", "52")
+        await kai.locator(f'.sk-node[data-id="{id}"]').focus()
+        await kai.keyboard.press("ArrowRight")
+        await self.map_saved(kai)
+        await expect(ada.locator(f'.sk-node[data-id="{id}"]')).to_have_attribute("data-thought-x", "64")
+        async with ada.expect_response(lambda response: response.url.endswith(f'/api/v1/sketches/{self.map_id}/live/undo') and response.request.method == 'POST') as response:
+            await ada.get_by_role("button", name="Undo", exact=True).click()
+        refusal = await response.value
+        self.assertEqual(refusal.status, 409)
+        self.assertEqual((await refusal.json())['code'], 'MAP_UNDO_CONFLICT')
+        await expect(ada.locator(".sk-status .sk-warn")).to_be_visible()
+        await expect(kai.locator(f'.sk-node[data-id="{id}"]')).to_have_attribute("data-thought-x", "64")
+        self.assertEqual((await self.api(ada, "GET", f"/api/v1/sketches/{self.map_id}"))["thoughts"][0]["x"], 64)
+
+    async def test_07_phone_tablet_and_private_capture_are_real_browser_journeys(self):
+        await self.create_map(3)
+        ada, kai = self.pages["ada"], self.pages["kai"]
+        for width, height in ((390, 844), (768, 1024)):
+            await ada.set_viewport_size({"width": width, "height": height})
+            await expect(ada.get_by_role("button", name="Thought", exact=True)).to_be_visible()
+            self.assertLessEqual(await ada.evaluate("document.documentElement.scrollWidth"), width)
+        await ada.get_by_role("button", name="Thought", exact=True).click()
+        await ada.get_by_role("textbox", name=re.compile("thought", re.I)).fill("Private capture remains private until Save")
+        await expect(kai.locator(".sk-node")).to_have_count(3)
+        self.assertEqual(len((await self.api(kai, "GET", f"/api/v1/sketches/{self.map_id}"))["thoughts"]), 3)
+        # This is desktop browser emulation, never physical Android/iPhone/iPad evidence.
+
+    async def test_08_known_replay_after_reload_keeps_recovered_text_before_editable(self):
+        await self.create_doc()
+        ada, kai = self.pages["ada"], self.pages["kai"]
+        dropped = {"active": True, "uuid": None}
+        async def intercept(socket):
+            server = socket.connect_to_server()
+            async def received(message):
+                if isinstance(message, str):
+                    data = json.loads(message)
+                    if dropped["active"] and data.get("type") == "ack" and data.get("operation") == "text":
+                        dropped["uuid"] = data["commandId"]
+                        return  # Real server committed; only this network ACK is discarded.
+                socket.send(message)
+            server.on_message(received)
+        await ada.route_web_socket(re.compile(r".*/api/v1/editing\?kind=wiki.*"), intercept)
+        field = await self.editor("ada")
+        await kai.goto(self.doc_url)
+        await field.click()
+        await ada.keyboard.press("Control+End")
+        await ada.keyboard.insert_text(" Exact recovered text 🚀.")
+        await expect(kai.locator(".doc-prose")).to_contain_text("Exact recovered text 🚀.")
+        await expect(ada.get_by_role("status").filter(has_text="waiting to be shared")).to_be_visible()
+        self.assertIsNotNone(dropped["uuid"], "Real committed update ACK was dropped")
+        dropped["active"] = False
+        await ada.reload()
+        field = ada.locator('.cm-content[aria-label="Shared Markdown"]')
+        await expect(field).to_have_attribute("contenteditable", "true")
+        await expect(field).to_contain_text("Exact recovered text 🚀.")
+        await expect(ada.get_by_role("status").filter(has_text="All changes shared")).to_be_visible()
+        self.assertIsNone(await ada.evaluate("key => sessionStorage.getItem(key)", f"flux:wiki-live:{self.ada_id}:{self.doc_id}"))
+        live = await self.api(kai, "GET", f"/api/v1/docs/{self.doc_id}/live")
+        self.assertEqual(live["body"].count("Exact recovered text 🚀."), 1)
+
+    async def test_09_postcommit_save_response_loss_replays_exact_save(self):
+        await self.create_doc()
+        ada = self.pages["ada"]
+        field = await self.editor("ada")
+        await self.type_text(ada, field, " Shared before uncertain Save.")
+        commands = []
+        async def lose_response(route):
+            commands.append(route.request.post_data_json)
+            if len(commands) == 1:
+                response = await route.fetch()  # Actual HTTP/core/SQL Save, no fake response.
+                self.assertEqual(response.status, 200)
+                await route.abort("failed")
+            else:
+                await route.continue_()
+        await ada.route(f"**/api/v1/docs/{self.doc_id}/live/save", lose_response)
+        await ada.get_by_label("Reason for this version").fill("Exact uncertain snapshot")
+        await ada.get_by_role("button", name="Save version", exact=True).click()
+        await expect(ada.get_by_role("alert")).to_contain_text("reached")
+        await expect(ada.get_by_label("Reason for this version")).to_be_disabled()
+        await ada.get_by_role("button", name="Save version", exact=True).click()
+        await expect(ada.get_by_role("status").filter(has_text="Version 2 saved")).to_be_visible()
+        self.assertEqual(commands[0], commands[1], "Original snapshot, metadata, UUID and versions survive uncertain commit")
+        doc = await self.api(ada, "GET", f"/api/v1/docs/{self.doc_id}")
+        self.assertEqual(doc["version"], 2)
+        versions = await self.api(ada, "GET", f"/api/v1/docs/{self.doc_id}/versions")
+        self.assertEqual(len(versions["items"]), 2)
+
+    async def test_10_definite_save_conflict_releases_attempt_for_explicit_fresh_save(self):
+        await self.create_doc()
+        ada, kai = self.pages["ada"], self.pages["kai"]
+        ada_field, kai_field = await self.editor("ada"), await self.editor("kai")
+        await self.type_text(ada, ada_field, " Ada before the snapshot.")
+        release = asyncio.Event()
+        intercepted = asyncio.Event()
+        commands = []
+        async def hold_first(route):
+            commands.append(route.request.post_data_json)
+            if len(commands) == 1:
+                intercepted.set()
+                await asyncio.wait_for(release.wait(), 5)
+            await route.continue_()
+        await ada.route(f"**/api/v1/docs/{self.doc_id}/live/save", hold_first)
+        await ada.get_by_role("button", name="Save version", exact=True).click()
+        await asyncio.wait_for(intercepted.wait(), 5)
+        try:
+            await self.type_text(kai, kai_field, " Kai after that snapshot.")
+        finally:
+            release.set()
+        await expect(ada.get_by_role("alert")).to_be_visible()
+        await expect(ada.get_by_label("Reason for this version")).to_be_enabled()
+        await expect(ada.locator('[data-live-status="live"]')).to_be_visible()
+        await ada.get_by_role("button", name="Save version", exact=True).click()
+        await expect(ada.get_by_role("status").filter(has_text="Version 2 saved")).to_be_visible()
+        self.assertNotEqual(commands[0]["clientCommandId"], commands[1]["clientCommandId"])
+        self.assertGreater(commands[1]["headSequence"], commands[0]["headSequence"])
+        saved = await self.api(ada, "GET", f"/api/v1/docs/{self.doc_id}")
+        self.assertIn("Ada before the snapshot.", saved["body"])
+        self.assertIn("Kai after that snapshot.", saved["body"])
+
+    async def test_11_quota_and_concurrent_own_undo_keep_100k_body(self):
+        await self.create_doc('A' * 99_999 + 'B')
+        ada, kai = self.pages['ada'], self.pages['kai']
+        field, peer = await self.editor('ada'), await self.editor('kai')
+        await field.click()
+        await ada.keyboard.press('Control+Home')
+        await ada.keyboard.press('Delete')
+        await expect(ada.get_by_role('status').filter(has_text='All changes shared')).to_be_visible()
+        await expect(peer).to_have_text('A' * 99_998 + 'B')
+        await self.type_text(kai, peer, 'K')
+        before = (await self.api(kai, 'GET', f'/api/v1/docs/{self.doc_id}/live'))['body']
+        self.assertEqual(len(before), 100_000)
+        await field.click()
+        await ada.keyboard.press('Control+z')
+        await expect(ada.get_by_role('alert')).to_contain_text('This inverse would exceed')
+        await expect(field).to_have_text(before)
+        await expect(peer).to_have_text(before)
+        await expect(ada.get_by_role('status').filter(has_text='All changes shared')).to_be_visible()
+        await ada.keyboard.insert_text('N')
+        await expect(ada.get_by_role('alert')).to_contain_text('shared text limit')
+        await expect(field).to_have_text(before)
+        self.assertEqual((await self.api(kai, 'GET', f'/api/v1/docs/{self.doc_id}/live'))['body'], before)
+
+    async def test_12_cancelled_preview_keeps_private_movement_without_native_commit(self):
+        await self.create_map(1)
+        ada, kai = self.pages['ada'], self.pages['kai']
+        thought = self.thoughts[0]
+        node = ada.locator(f'.sk-node[data-id="{thought["id"]}"]')
+        peer = kai.locator(f'.sk-node[data-id="{thought["id"]}"]')
+        await node.focus()
+        box = await node.bounding_box()
+        await ada.mouse.move(box['x'] + 20, box['y'] + 20)
+        await ada.mouse.down()
+        await ada.mouse.move(box['x'] + 70, box['y'] + 55)
+        await expect(peer).to_have_attribute('data-live-mover', 'Ada North')
+        await ada.keyboard.press('Escape')
+        await ada.mouse.up()
+        await expect(peer).not_to_have_attribute('data-live-mover', 'Ada North')
+        await expect(peer).to_have_attribute('data-thought-x', str(thought['x']))
+        await expect(ada.locator('.editing-map-recovery')).to_be_visible()
+        copy = json.loads(await ada.evaluate('key => sessionStorage.getItem(key)', f'flux:map-gesture:{self.ada_id}:{self.map_id}'))
+        self.assertGreater(copy['positions'][0]['x'], thought['x'])
+        self.assertEqual((await self.api(kai, 'GET', f'/api/v1/sketches/{self.map_id}'))['thoughts'][0]['version'], thought['version'])
+        await ada.reload()
+        await expect(ada.locator('.editing-map-recovery')).to_be_visible()
+        await expect(ada.locator(f'.sk-node[data-id="{thought["id"]}"]')).to_have_attribute('data-thought-x', str(thought['x']))

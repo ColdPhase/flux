@@ -10,6 +10,7 @@ import { diffDocs, readableRefs, type DiffRow } from './diff';
 import { STATE_LABEL, authorLabel, longDate } from './format';
 import { LinkPicker, type PickedRef } from './LinkPicker';
 import './docs.css';
+import { LiveDocEditor } from '../editing/WikiEditor';
 
 // The doc editor (#112): Markdown with a server-rendered preview, a link picker for objects of
 // the project and keyboard shortcuts. A save sends If-Match with the version the editor started
@@ -55,6 +56,13 @@ function ChangeList({ title, rows }: { title: string; rows: DiffRow[] }) {
 }
 
 export function DocEditor() {
+  const { project, doc } = useLoaderData() as EditData;
+  const { me } = useShellData();
+  const scope = `${me.user.id}:${doc?.id ?? `new:${project.id}`}`;
+  return doc ? <LiveDocEditor key={scope} doc={doc} project={project} userId={me.user.id} fallback={<PrivateDocEditor key={scope} />} /> : <PrivateDocEditor key={scope} />;
+}
+
+function PrivateDocEditor() {
   const { project, doc } = useLoaderData() as EditData;
   const { me } = useShellData();
   const navigate = useNavigate();

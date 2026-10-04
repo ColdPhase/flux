@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type WheelEvent } from 'react';
-import { SKETCH_LIMITS, type SketchDetail, type Thought } from '@flux/contracts';
+import { SKETCH_LIMITS, type LiveMapPosition, type SketchDetail, type Thought } from '@flux/contracts';
 import { Icon } from '../ui';
 import { linkPath, PAD, project, rectOf, type Rect } from './geometry';
 import { provenance, quote } from './format';
@@ -30,6 +30,13 @@ export interface SketchMapProps {
   onResize(id: string, width: number, height: number, how: 'drag' | 'keyboard'): void;
   onRemove(ids: string[]): void;
   onEscape(): boolean;
+  onGestureStart(ids: string[]): boolean;
+  onGesturePreview(positions: LiveMapPosition[]): void;
+  onGestureCancel(): void;
+  movers: Map<string, string>;
+  livePreviews: Map<string, { generation: string; gestureId: string; leaseId: string; sequence: number }>;
+  ownGesture: { id: string; sequence: number; generation: string } | null | undefined;
+  liveEnabled: boolean;
 }
 
 const ZOOMS = [0.5, 0.67, 0.8, 0.9, 1, 1.1, 1.25, 1.5];
@@ -50,6 +57,7 @@ interface Drag {
   moved: boolean;
   scrollLeft?: number;
   scrollTop?: number;
+  base: Thought[];
 }
 
 /**
@@ -64,12 +72,16 @@ export function SketchMap(props: SketchMapProps) {
   const nodes = useRef(new Map<string, HTMLButtonElement>());
   const drag = useRef<Drag | null>(null);
   const suppressClick = useRef(false);
-  const [offset, setOffset] = useState<{ ids: string[]; dx: number; dy: number } | null>(null);
+  const [offset, setOffset] = useState<{ ids: string[]; base: Thought[]; dx: number; dy: number } | null>(null);
   const [size, setSize] = useState<{ id: string; w: number; h: number } | null>(null);
   const [panning, setPanning] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [, remeasure] = useState(0);
   const observer = useRef<ResizeObserver | null>(null);
+  useEffect(() => {
+    if (!props.liveEnabled || props.ownGesture || !drag.current || drag.current.kind === 'pan') return;
+    props.onGestureCancel(); drag.current = null; setOffset(null); setSize(null);
+  }, [props.liveEnabled, props.ownGesture, props.onGestureCancel]);
 
   // Measure rendered heights so links attach to the real edges of each thought.
   useEffect(() => {
@@ -91,7 +103,7 @@ export function SketchMap(props: SketchMapProps) {
 
   const shown = useMemo(() => sketch.thoughts.map((t): Thought => {
     let next = t;
-    if (offset?.ids.includes(t.id)) next = { ...next, x: Math.max(0, t.x + offset.dx), y: Math.max(0, t.y + offset.dy) };
+    if (offset?.ids.includes(t.id)) { const base = offset.base.find((thought) => thought.id === t.id) ?? t; next = { ...next, x: clamp(base.x + offset.dx, 0, SKETCH_LIMITS.coordinate), y: clamp(base.y + offset.dy, 0, SKETCH_LIMITS.coordinate) }; }
     if (size?.id === t.id) next = { ...next, width: size.w, height: size.h };
     return next;
   }), [sketch.thoughts, offset, size]);
@@ -173,8 +185,9 @@ export function SketchMap(props: SketchMapProps) {
     return () => el.removeEventListener('wheel', block);
   }, []);
 
-  const begin = (event: ReactPointerEvent, next: Omit<Drag, 'pointerId' | 'sx' | 'sy' | 'moved'>) => {
-    drag.current = { ...next, pointerId: event.pointerId, sx: event.clientX, sy: event.clientY, moved: false };
+  const begin = (event: ReactPointerEvent, next: Omit<Drag, 'pointerId' | 'sx' | 'sy' | 'moved' | 'base'>) => {
+    if (next.kind !== 'pan' && !props.onGestureStart(next.ids)) return;
+    drag.current = { ...next, base: sketch.thoughts.filter((thought) => next.ids.includes(thought.id)).map((thought) => ({ ...thought })), pointerId: event.pointerId, sx: event.clientX, sy: event.clientY, moved: false };
     (event.currentTarget as Element).setPointerCapture?.(event.pointerId);
   };
 
@@ -216,11 +229,15 @@ export function SketchMap(props: SketchMapProps) {
       canvas.scrollTop = d.scrollTop! - (event.clientY - d.sy);
     } else if (d.kind === 'move') {
       // Offsets are in stored plane units; the phone projection compresses x.
-      setOffset({ ids: d.ids, dx: Math.round(dx * scaleX), dy: Math.round(dy) });
+      setOffset({ ids: d.ids, base: d.base, dx: Math.round(dx * scaleX), dy: Math.round(dy) });
+      props.onGesturePreview(d.base.map((thought) => ({ id: thought.id, x: clamp(Math.round(thought.x + dx * scaleX), 0, SKETCH_LIMITS.coordinate), y: clamp(Math.round(thought.y + dy), 0, SKETCH_LIMITS.coordinate) })));
     } else {
       const t = byId.get(d.id!) ?? sketch.thoughts.find((x) => x.id === d.id);
-      const base = sketch.thoughts.find((x) => x.id === d.id) ?? t!;
-      setSize({ id: d.id!, w: clamp(Math.round(base.width + dx), SKETCH_LIMITS.minWidth, SKETCH_LIMITS.maxWidth), h: clamp(Math.round(Math.max(base.height, heights.get(base.id) ?? 0) + dy), SKETCH_LIMITS.minHeight, SKETCH_LIMITS.maxHeight) });
+      const base = d.base.find((x) => x.id === d.id) ?? t!;
+      const width = clamp(Math.round(base.width + dx), SKETCH_LIMITS.minWidth, SKETCH_LIMITS.maxWidth);
+      const height = clamp(Math.round(Math.max(base.height, heights.get(base.id) ?? 0) + dy), SKETCH_LIMITS.minHeight, SKETCH_LIMITS.maxHeight);
+      setSize({ id: d.id!, w: width, h: height });
+      props.onGesturePreview([{ id: base.id, x: base.x, y: base.y, width, height }]);
     }
   };
 
@@ -233,13 +250,13 @@ export function SketchMap(props: SketchMapProps) {
       if (!d.moved) props.onClear();
       return;
     }
-    if (!d.moved) return;
+    if (!d.moved) { props.onGestureCancel(); return; }
     suppressClick.current = true;
     window.setTimeout(() => { suppressClick.current = false; }, 0);
     if (d.kind === 'move' && offset) {
       props.onMove(d.ids.flatMap((id) => {
-        const t = sketch.thoughts.find((x) => x.id === id);
-        return t ? [{ id, x: Math.max(0, t.x + offset.dx), y: Math.max(0, t.y + offset.dy) }] : [];
+        const t = d.base.find((x) => x.id === id);
+        return t ? [{ id, x: clamp(t.x + offset.dx, 0, SKETCH_LIMITS.coordinate), y: clamp(t.y + offset.dy, 0, SKETCH_LIMITS.coordinate) }] : [];
       }), 'drag');
     }
     if (d.kind === 'resize' && size) props.onResize(size.id, size.w, size.h, 'drag');
@@ -248,6 +265,7 @@ export function SketchMap(props: SketchMapProps) {
   };
 
   const onPointerCancel = () => {
+    props.onGestureCancel();
     drag.current = null;
     setPanning(false);
     setOffset(null);
@@ -258,7 +276,7 @@ export function SketchMap(props: SketchMapProps) {
     const { key } = event;
     if (key === 'Enter' || key === 'F2') { event.preventDefault(); if (connectFrom) props.onPick(thought.id, false); else if (canWrite) props.onEdit(thought.id); return; }
     if (key === ' ') { event.preventDefault(); if (connectFrom) props.onPick(thought.id, false); else props.onToggle(thought.id); return; }
-    if (key === 'Escape') { if (props.onEscape()) { event.preventDefault(); event.stopPropagation(); } return; }
+    if (key === 'Escape') { if (drag.current && drag.current.kind !== 'pan') { onPointerCancel(); event.preventDefault(); event.stopPropagation(); } else if (props.onEscape()) { event.preventDefault(); event.stopPropagation(); } return; }
     if (!canWrite) return;
     if (key === '+' || key === '=') { event.preventDefault(); props.onAdd(thought.id); return; }
     if (key === 'Delete' || key === 'Backspace') { event.preventDefault(); props.onRemove(selection.includes(thought.id) ? selection : [thought.id]); return; }
@@ -288,6 +306,7 @@ export function SketchMap(props: SketchMapProps) {
   return (
     <div className="sk-canvas-wrap sk-canvas-wrap--controls">
     <div className={`sk-canvas${panning ? ' is-panning' : ''}${connectFrom ? ' is-connecting' : ''}`} ref={canvasRef} role="group"
+      data-live-own-gesture={props.ownGesture?.id} data-live-own-sequence={props.ownGesture?.sequence} data-live-generation={props.ownGesture?.generation}
       aria-label={`Sketch: ${sketch.title}`} aria-describedby={helpId} onWheel={onWheel}>
       <div className="sk-zoomed" style={{ width: width * zoom, height: height * zoom }}
         onPointerDown={onPlanePointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}>
@@ -321,7 +340,8 @@ export function SketchMap(props: SketchMapProps) {
               ? (thought.placement.title ? `Draft · ${thought.placement.title}` : 'Draft you can’t open')
               : null;
             return (
-              <button key={thought.id} type="button" data-id={thought.id}
+              <button key={thought.id} type="button" data-id={thought.id} data-thought-x={thought.x} data-thought-y={thought.y} data-thought-version={thought.version}
+                data-live-generation={props.livePreviews.get(thought.id)?.generation} data-live-mover={props.movers.get(thought.id)} data-live-gesture={props.livePreviews.get(thought.id)?.gestureId} data-live-lease={props.livePreviews.get(thought.id)?.leaseId} data-live-preview-sequence={props.livePreviews.get(thought.id)?.sequence}
                 ref={(el) => {
                   if (el) { nodes.current.set(thought.id, el); observer.current?.observe(el); return () => { nodes.current.delete(thought.id); observer.current?.unobserve(el); }; }
                 }}
@@ -335,6 +355,7 @@ export function SketchMap(props: SketchMapProps) {
                 {meta ? <span className="sk-k"><Icon name="doc" size={12} />{meta}</span> : null}
                 <span className="sk-t">{thought.text}</span>
                 <span className="sk-p">{provenance(thought, meId)}</span>
+                {props.movers.get(thought.id) ? <span className="sk-live-mover">{props.movers.get(thought.id)} is moving</span> : null}
                 {selected && selection.length === 1 && canWrite && !coarse && !editing ? (
                   <span className="sk-resize" aria-hidden="true" onPointerDown={(event) => onResizePointerDown(event, thought)} />
                 ) : null}
