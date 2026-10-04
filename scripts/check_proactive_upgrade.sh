@@ -4,6 +4,7 @@
 # After the upgrade, #118 faults are injected on that volume: a phantom ledger row, a recorded
 # file left out of the ledger, and images with a duplicate prefix, a misnamed file, a missing
 # applied file or SQL that writes another ledger version. Each must fail closed and keep the data.
+# The upgraded schema must also equal a fresh install of the candidate (same server, new database).
 set -eu
 here=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)
 from=${FLUX_UPGRADE_FROM:-$(git -C "$here" rev-parse origin/main)}
@@ -105,6 +106,22 @@ compose up -d --wait api worker >/dev/null
 [ "$(ledger)" = "$new_files" ] || { echo 'Rerun changed the ledger'; exit 1; }
 snapshot > "$work/upgraded.snapshot"
 
+# A fresh install of the candidate, migrated in order, must give the schema the upgrade produced
+# with its late lower-numbered files. pg-boss keeps its own schema; Flux owns public.
+password=$(sed -n 's/^POSTGRES_PASSWORD=//p' "$(env_path)")
+sql 'DROP DATABASE IF EXISTS flux_fresh_install' >/dev/null
+sql 'CREATE DATABASE flux_fresh_install' >/dev/null
+compose run --rm -T -e DATABASE_URL="postgres://flux:$password@db:5432/flux_fresh_install" migrate > "$work/fresh-migrate.log" 2>&1 ||
+  { cat "$work/fresh-migrate.log"; echo 'Fresh install migration failed'; exit 1; }
+schema() { compose exec -T db pg_dump -U flux -d "$1" --schema-only --schema=public --no-owner --no-privileges </dev/null | sed -e '/^--/d' -e '/^$/d' -e '/^\\restrict /d' -e '/^\\unrestrict /d'; }
+schema flux > "$work/upgraded.schema"
+schema flux_fresh_install > "$work/fresh.schema"
+diff -u "$work/fresh.schema" "$work/upgraded.schema" || { echo 'FAIL: the upgraded schema differs from a fresh install'; exit 1; }
+[ "$(compose exec -T db psql -X -tA -U flux -d flux_fresh_install -c "SELECT string_agg(version::text, ',' ORDER BY version) FROM flux_schema_version" </dev/null)" = "$new_files" ] ||
+  { echo 'FAIL: the fresh install ledger is not exact'; exit 1; }
+sql 'DROP DATABASE flux_fresh_install' >/dev/null
+echo "Fresh install and upgraded volume have the same public schema ($(wc -l < "$work/fresh.schema" | tr -d ' ') DDL lines) and ledger {$new_files}"
+
 echo '#118 fault injection on the upgraded volume'
 health() { curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$FLUX_PORT/api/v1/health"; }
 # expect_refusal <label> <pattern> <command...>: the command must fail and print the operator error.
@@ -170,4 +187,4 @@ compose up -d --wait api worker >/dev/null
 [ "$(ledger)" = "$new_files" ] || { echo 'FAIL: ledger is not exact after fault injection'; exit 1; }
 snapshot > "$work/faults.snapshot"
 diff -u "$work/upgraded.snapshot" "$work/faults.snapshot" || { echo 'FAIL: fault injection changed retained rows'; exit 1; }
-echo "PASS: same PostgreSQL volume, exact ledger {$old_ledger} -> {$new_files}, immutable content/session retention, usable new schema, idempotent migration, and fail-closed phantom/unrecorded/duplicate/misnamed/missing-file/foreign-insert faults with the data kept."
+echo "PASS: same PostgreSQL volume, exact ledger {$old_ledger} -> {$new_files}, immutable content/session retention, usable new schema, idempotent migration, a schema equal to a fresh install, and fail-closed phantom/unrecorded/duplicate/misnamed/missing-file/foreign-insert faults with the data kept."
