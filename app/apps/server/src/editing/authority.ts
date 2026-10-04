@@ -8,6 +8,8 @@ import type { CodecState } from './codec/types.js';
 import { editingContextCharge } from './context-charge.js';
 import { editingRuntime, NATIVE_CHECKPOINT_BYTES } from './runtime.js';
 import { apiEditingOutputBudget,type EditingOutputBudget } from './output.js';
+import { apiNativeEditingAdmission, EditingHTTPAdmission } from './http-admission.js';
+import { prepareDocWrite } from '../docs/preparation.js';
 import { editingResourcesChanged } from './resource-observation.js';
 import { withTaskUseErrors } from '../work/task-use-errors.js';
 
@@ -16,6 +18,8 @@ const EMPTY = new Uint8Array(0);
 export function wikiAuthority(database: { pool: Pick<ReturnType<typeof createDatabase>['pool'], 'connect'> }, runtime = editingRuntime(),
   boundary: { beforeHandoff?: () => Promise<void>;outputBudget?:EditingOutputBudget } = {}) {
   const outputBudget=boundary.outputBudget??apiEditingOutputBudget;
+  const ownPreparations = outputBudget !== apiEditingOutputBudget;
+  const preparations = ownPreparations ? new EditingHTTPAdmission(outputBudget, 10_000, 'wiki') : apiNativeEditingAdmission;
   const transactions = editingTransactions(database.pool); const active = new Set<Promise<unknown>>();
   const identity = (session: SessionContext): WikiIdentity => ({ sessionId: session.sessionId, actorId: session.principal.id });
   function stored(value: Record<string, unknown>): CodecState {
@@ -44,11 +48,11 @@ export function wikiAuthority(database: { pool: Pick<ReturnType<typeof createDat
       try { return await work; } finally { active.delete(work);editingResourcesChanged(); }
     } finally { runtime.release(admission); }
   }
-  async function admitted<T>(session:SessionContext,context:unknown,action:Parameters<typeof run<T>>[2],maximumInputBytes?:number) {
+  async function admitted<T>(session:SessionContext,context:unknown,action:Parameters<typeof run<T>>[2],maximumInputBytes?:number,taskUseMemory?:DocTaskUseMemory) {
     // Full immutable continuation metadata belongs to the ONE output/context budget.
     // Codec32MiB still owns raw input/state/result; it does not hide a second metadata budget.
     const release=outputBudget.reserve(editingContextCharge(context));
-    try {const admission=await runtime.admit(EMPTY,0,maximumInputBytes);return await run(session,admission,action);}
+    try {const admission=await runtime.admit(EMPTY,0,maximumInputBytes);return await run(session,admission,action,taskUseMemory);}
     finally {release();}
   }
   return {
@@ -80,8 +84,13 @@ export function wikiAuthority(database: { pool: Pick<ReturnType<typeof createDat
     async cursor(session: SessionContext, docId: string, generation: string, connectionId: string, cursor: LiveCursor | null) {
       return admitted(session,{session,docId,generation,connectionId,cursor},wiki=>wiki.cursor(identity(session),docId,generation,connectionId,cursor));
     },
-    async save(session: SessionContext, docId: string, command: SaveSharedDoc) {
-      return admitted(session,{session,docId,command},wiki=>wiki.save(identity(session),docId,command));
+    async save(session: SessionContext, docId: string, command: SaveSharedDoc, borrowed?: DocTaskUseMemory) {
+      const owned = borrowed ? null : await prepareDocWrite({session,docId,command}, outputBudget, preparations);
+      const memory = borrowed ?? owned!.memory;
+      try {
+        if (borrowed) memory.reserve(editingContextCharge({session,docId,command}) + 2 * 1024 * 1024);
+        return await admitted(session,{session,docId,command},wiki=>wiki.save(identity(session),docId,command),undefined,memory);
+      } finally { owned?.release(); }
     },
     async receipt(session: SessionContext, docId: string, commandId: string) {
       return admitted(session,{session,docId,commandId},wiki=>wiki.receipt(identity(session),docId,commandId));
@@ -101,7 +110,7 @@ export function wikiAuthority(database: { pool: Pick<ReturnType<typeof createDat
     async deliverReceipt(session: SessionContext, docId: string, commandId: string, handoff: (receipt: LiveReceipt | null) => void) {
       return admitted(session,{session,docId,commandId},async (wiki,finalFence)=> { const receipt = await wiki.receipt(identity(session), docId, commandId); await boundary.beforeHandoff?.(); await finalFence(); handoff(receipt); });
     },
-    close: async () => { await runtime.close(); await Promise.allSettled([...active]); },
+    close: async () => { if (ownPreparations) preparations.close(); await runtime.close(); await Promise.allSettled([...active]); },
   };
 }
 export type WikiAuthority = ReturnType<typeof wikiAuthority>;

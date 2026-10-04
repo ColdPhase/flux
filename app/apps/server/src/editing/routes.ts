@@ -8,7 +8,7 @@ import { expectedVersion } from '../http/commands.js';
 import type { WikiAuthority } from './authority.js';
 import type { MapAuthority } from './map-authority.js';
 import { editingJSONSize } from './json-size.js';
-import { EditingHTTPAdmission } from './http-admission.js';
+import { EditingHTTPAdmission, type EditingPreparation } from './http-admission.js';
 import { editingContextCharge } from './context-charge.js';
 import { EditingOutputBudget, EditingOutputError } from './output.js';
 
@@ -48,10 +48,15 @@ export async function editingRoutes(app: FastifyInstance, { sessions, authority,
   const wiki=()=>{if(!authority)throw new ServiceUnavailableError('Live wiki is disabled','LIVE_EDITING_DISABLED');return authority;};
   const admission = new EditingHTTPAdmission(outputBudget);
   app.addHook('onClose', async () => admission.close());
-  async function response(reply: FastifyReply, context: unknown, action: (release: () => void) => Promise<void>) {
+  async function response(reply: FastifyReply, context: unknown, action: (release: () => void, preparation: EditingPreparation) => Promise<void>) {
     // Covers the exact bounded native/live response, its serialization and owned wire copy before the first SQL await.
-    const release = await admission.admit(editingContextCharge(context));
-    try { await action(release); } catch (error) { release(); throw error; }
+    const preparation = await admission.admitOwned(editingContextCharge(context));
+    let actionSettled = false; let responseSettled = reply.raw.destroyed || reply.raw.writableFinished;
+    const release = () => { responseSettled = true; if (actionSettled) preparation.release(); };
+    reply.raw.once('finish', release); reply.raw.once('close', release);
+    try { await action(release, preparation); }
+    catch (error) { responseSettled = true; throw error; }
+    finally { actionSettled = true; if (responseSettled) preparation.release(); }
   }
   app.get<{ Params: { docId: string } }>(liveDocPath(':docId'), async (request, reply) => response(reply, { params: request.params, headers: request.headers, body: request.body }, async (release) => {
     const session = await sessions.requirePrincipal(request);
@@ -62,10 +67,10 @@ export async function editingRoutes(app: FastifyInstance, { sessions, authority,
     const session = await sessions.requirePrincipal(request); const result = await wiki().enroll(session, request.params.docId, request.body);
     await wiki().handoff(session, request.params.docId, () => send(reply, result, release));
   }));
-  app.post<{ Params: { docId: string }; Body: SaveSharedDoc }>(liveDocSavePath(':docId'), { bodyLimit: 8192, preValidation: async (request) => closed(request.body, ['clientCommandId','expectedVersion','generation','headSequence','headHash','title','state','reason']), schema: { body: snapshot } }, async (request, reply) => response(reply, { params: request.params, headers: request.headers, body: request.body }, async (release) => {
+  app.post<{ Params: { docId: string }; Body: SaveSharedDoc }>(liveDocSavePath(':docId'), { bodyLimit: 8192, preValidation: async (request) => closed(request.body, ['clientCommandId','expectedVersion','generation','headSequence','headHash','title','state','reason']), schema: { body: snapshot } }, async (request, reply) => response(reply, { params: request.params, headers: request.headers, body: request.body }, async (release, preparation) => {
     const session = await sessions.requirePrincipal(request);
     if (expectedVersion(request) !== request.body.expectedVersion || request.headers['idempotency-key'] !== undefined && request.headers['idempotency-key'] !== request.body.clientCommandId) throw new InvalidInputError('Snapshot headers and immutable parameters disagree');
-    await wiki().save(session, request.params.docId, request.body);
+    await wiki().save(session, request.params.docId, request.body, preparation);
     await wiki().deliverReceipt(session, request.params.docId, request.body.clientCommandId, (receipt) => send(reply, receipt, release));
   }));
   app.get<{ Params: { docId: string; commandId: string } }>(liveDocReceiptPath(':docId', ':commandId'), async (request, reply) => response(reply, { params: request.params, headers: request.headers, body: request.body }, async (release) => {

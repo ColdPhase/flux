@@ -39,3 +39,6 @@ export const editingMapResultCharge = (value: unknown) => charge(value, 60_000, 
 
 /** Wiki protected SQL results may contain one bounded public update backing. */
 export const editingWikiResultCharge = (value: unknown) => charge(value, 60_000, 24*1024*1024, true);
+
+/** Immutable native doc command/body context; canonical task fan-out is charged separately after COUNT. */
+export const editingDocContextCharge = (value: unknown) => charge(value, 4096, 1024 * 1024);

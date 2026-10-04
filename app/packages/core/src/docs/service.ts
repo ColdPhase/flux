@@ -68,7 +68,10 @@ export function excerpt(markdown: string, max = 160): string {
 }
 
 async function resolve(ports: DocPorts, projectId: string, markdown: string, self?: string) {
-  const references = ports.renderer.references(markdown);
+  const release = ports.taskUseMemory?.temporary(24 * 1024 * 1024);
+  let references: ReturnType<DocPorts['renderer']['references']>;
+  try { references = ports.renderer.references(markdown, DOC_LIMITS.mentions + 1); }
+  finally { release?.(); }
   const unique = [...new Map(references.map((ref) => [`${ref.type}:${ref.id}`, ref])).values()];
   if (unique.length > DOC_LIMITS.mentions) throw new InvalidInputError(`A doc can refer to at most ${DOC_LIMITS.mentions} objects`, 'TOO_MANY_MENTIONS');
   const titles = unique.length ? await ports.work.titles(projectId, unique as ObjectRef[]) : new Map();
@@ -85,6 +88,7 @@ async function resolve(ports: DocPorts, projectId: string, markdown: string, sel
 
 /** Native material/authority is retained; no live-head or replica row may be held yet. */
 export async function prepareDocBodyTaskUse(ports: DocPorts, row: DocWithCurrent, bodies: readonly string[], extra: readonly ObjectRef[] = []): Promise<DocTaskUseFence> {
+  if (!ports.taskUseMemory) throw new Error('Doc task preparation requires its outer common memory owner');
   // Parse once before graph waits. The same immutable raw target identities are
   // re-resolved afterwards, so a dangling target becoming valid is still detected.
   const parsedBodies = bodies.map(body => {
@@ -112,6 +116,12 @@ export async function prepareDocBodyTaskUse(ports: DocPorts, row: DocWithCurrent
   return fence;
 }
 
+function render(ports: DocPorts, body: string, mentions: Map<string, DocMention>) {
+  const release = ports.taskUseMemory?.temporary(24 * 1024 * 1024);
+  try { return ports.renderer.render(body, mentions); }
+  finally { release?.(); }
+}
+
 async function names(ports: DocPorts, actors: ActorRef[]) {
   const unique = [...new Map(actors.map((actor) => [`${actor.kind}:${actor.id}`, actor])).values()];
   const found = await ports.work.names(unique);
@@ -126,7 +136,7 @@ function summaryOf(version: DocVersionRecord, named: (actor: ActorRef) => NamedP
 
 async function presentVersion(ports: DocPorts, version: DocVersionRecord): Promise<DocVersion> {
   const [{ mentions, map }, named] = await Promise.all([resolve(ports, version.projectId, version.body), names(ports, [version.author, ...(version.contributors ?? [])])]);
-  return { ...summaryOf(version, named), projectId: version.projectId, body: version.body, html: ports.renderer.render(version.body, map), mentions };
+  return { ...summaryOf(version, named), projectId: version.projectId, body: version.body, html: render(ports, version.body, map), mentions };
 }
 
 async function present(ports: DocPorts, row: DocWithCurrent): Promise<Doc> {
@@ -278,7 +288,7 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
       return uow.run(async (ports) => {
         await ports.access.requireProject(principal, 'read', project);
         const { mentions, map } = await resolve(ports, project, markdown);
-        return { html: ports.renderer.render(markdown, map), mentions };
+        return { html: render(ports, markdown, map), mentions };
       });
     },
 
@@ -288,7 +298,7 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
       return uow.run(async (ports) => {
         const { projectId, id } = await authorized(ports, principal, docId, 'read');
         const { mentions, map } = await resolve(ports, projectId, body, id);
-        return { html: ports.renderer.render(body, map), mentions };
+        return { html: render(ports, body, map), mentions };
       });
     },
 
@@ -314,8 +324,7 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
         if (body.length > DOC_LIMITS.body) throw new InvalidInputError(`body must be at most ${DOC_LIMITS.body} characters`);
         const first: NewDocVersion = { title, body, state, reason, author: by };
         const row = await ports.docs.insert({ id: randomUUID(), workspaceId, projectId: project, createdBy: by }, first);
-        const { targets } = await resolve(ports, project, body, row.doc.id);
-        const taskFence = await ports.docs.prepareTaskUse(scope, row.doc.id, [...targets, ...(from ? [from] : [])]);
+        const taskFence = await prepareDocBodyTaskUse(ports, row, [body], from ? [from] : []);
         if (from) await linkSource(ports, scope, row.doc.id, from, by);
         return commit(ports, principal, scope, row, true, taskFence);
       });
@@ -368,8 +377,7 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
         const composed = await composeSection(ports, projectId, from);
         const { body, replaced } = text.upsertSection(current.current.body, from, composed.section);
         const scope = { workspaceId, projectId };
-        const { targets } = await resolve(ports, projectId, body, id);
-        const taskFence = await ports.docs.prepareTaskUse(scope, id, [...targets, from]);
+        const taskFence = await prepareDocBodyTaskUse(ports, current, [current.current.body, body], [from]);
         await fenceLegacy(ports, current, true);
         const existing = (await ports.work.links([id])).some((link) => link.role === 'source' && link.fromType === 'doc'
           && link.fromId === id && link.toType === from.type && link.toId === from.id);

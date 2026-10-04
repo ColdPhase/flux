@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
 import * as schema from '../schema.js';
-import { TaskUseRefusal, type TaskUseFence, type TaskUseMemory } from './task-use.js';
+import { taskUseMemoryScope, TaskUseRefusal, type TaskUseFence, type TaskUseMemory } from './task-use.js';
 import { prepareReferencedTaskUse, referencedTaskIds } from './task-targets.js';
 import type { DbExecutor } from './push.js';
 
@@ -72,22 +72,25 @@ export function docRows(db: DbExecutor, memory?: TaskUseMemory) {
     return row ? map([row])[0]! : null;
   }
 
-  async function previousMentions(docId: string) {
+  async function previousMentions(docId: string, owner: TaskUseMemory | undefined = memory) {
     const condition = and(eq(l.fromId, docId), eq(l.fromType, 'doc'), eq(l.role, 'mentions'));
     const select = () => db.select({ type: l.toType, id: l.toId }).from(l).where(condition);
-    if (!memory) return select();
+    if (!owner) return select();
     const [counted] = await db.select({ count: sql<number>`count(*)::int` }).from(l).where(condition);
-    const count = counted!.count; memory.reserve(4096 + (count + 1) * 2048);
+    const count = counted!.count; owner.reserve(4096 + (count + 1) * 2048);
     const previous = await select().limit(count + 1);
     if (previous.length > count) throw new TaskUseRefusal('TASK_TARGET_SET_CHANGED');
     return previous;
   }
 
   async function assertTaskUse(docId: string, refs: readonly Ref[], retained: Pick<TaskUseFence, 'ids'>) {
-    const previous = await previousMentions(docId);
-    const actual = await referencedTaskIds(db, [...previous, ...refs], memory);
-    const held = new Set(retained.ids);
-    if (actual.some((id) => !held.has(id))) throw new TaskUseRefusal('TASK_TARGET_SET_CHANGED');
+    const scope = taskUseMemoryScope(memory);
+    try {
+      const previous = await previousMentions(docId, scope.memory);
+      const actual = await referencedTaskIds(db, [...previous, ...refs], scope.memory);
+      const held = new Set(retained.ids);
+      if (actual.some((id) => !held.has(id))) throw new TaskUseRefusal('TASK_TARGET_SET_CHANGED');
+    } finally { scope.release(); }
   }
 
   return {
@@ -133,8 +136,11 @@ export function docRows(db: DbExecutor, memory?: TaskUseMemory) {
     },
 
     async prepareTaskUse(scope: { workspaceId: string; projectId: string }, docId: string, refs: readonly Ref[]) {
-      const previous = await previousMentions(docId);
-      return prepareReferencedTaskUse(db, scope.projectId, [...previous, ...refs], memory);
+      const discovery = taskUseMemoryScope(memory);
+      try {
+        const previous = await previousMentions(docId, discovery.memory);
+        return await prepareReferencedTaskUse(db, scope.projectId, [...previous, ...refs], memory);
+      } finally { discovery.release(); }
     },
 
     assertTaskUse,
@@ -142,8 +148,11 @@ export function docRows(db: DbExecutor, memory?: TaskUseMemory) {
     async replaceMentions(scope: { workspaceId: string; projectId: string }, docId: string, targets: Ref[], by: Actor, retained?: Pick<TaskUseFence, 'ids' | 'mark'>) {
       // The doc/material row is already retained by the caller. Include removed targets
       // before replacing links, so a later removal cannot erase evidence of use.
-      const previous = await previousMentions(docId);
-      const fence = retained ?? await prepareReferencedTaskUse(db, scope.projectId, [...previous, ...targets], memory);
+      const fence = retained ?? await (async () => {
+        const discovery = taskUseMemoryScope(memory);
+        try { return await prepareReferencedTaskUse(db, scope.projectId, [...await previousMentions(docId, discovery.memory), ...targets], memory); }
+        finally { discovery.release(); }
+      })();
       // Body resolution can change while preparation waits for a graph. Verify the
       // final saved targets without extending the already retained graph/task set.
       await assertTaskUse(docId, targets, fence);

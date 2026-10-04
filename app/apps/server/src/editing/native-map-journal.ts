@@ -5,9 +5,9 @@ import { ConflictError, InvalidInputError, derivedUuid,policySketchAccess, type 
 import type { SketchRepository } from '@flux/core';
 import { decodeMapChange } from './map-state.js';
 import { apiEditingOutputBudget } from './output.js';
-import { EditingHTTPAdmission } from './http-admission.js';
+import { apiNativeEditingAdmission } from './http-admission.js';
 import { editingMapContextCharge } from './context-charge.js';
-const admissions=new EditingHTTPAdmission(apiEditingOutputBudget,10_000,'native');
+const admissions=apiNativeEditingAdmission;
 export const closeNativeMapAdmission=()=>admissions.close();
 
 /** Native validated copies and their exact raw/context retainers are charged before SQL admission. */

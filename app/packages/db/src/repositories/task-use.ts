@@ -1,6 +1,7 @@
 import { and, asc, inArray, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
+import { taskGraphRows } from './task-graph.js';
 
 /** Persistence refusal only; composition roots translate this outcome to domain/transport errors. */
 export class TaskUseRefusal extends Error {
@@ -11,7 +12,17 @@ export class TaskUseRefusal extends Error {
 }
 
 /** Caller reserves additions before allocation and retains them through transaction settlement. */
-export interface TaskUseMemory { reserve(bytes: number): void }
+export interface TaskUseMemory {
+  reserve(bytes: number): void;
+  /** Optional short-lived discovery ownership; callers retain it across every SQL await in that scope. */
+  temporary?(bytes: number): () => void;
+}
+/** Retire only discovery allocations; the final fence is separately owned by the outer command. */
+export function taskUseMemoryScope(outer?: TaskUseMemory) {
+  const releases: Array<() => void> = [];
+  return { memory: outer?.temporary ? { reserve(bytes: number) { releases.push(outer.temporary!(bytes)); } } : outer,
+    release() { for (const release of releases.splice(0)) release(); } };
+}
 
 export interface TaskUseFence {
   /** Complete ascending task set retained by this transaction. */
@@ -49,8 +60,7 @@ export function taskUseRows(tx: DbExecutor, memory?: TaskUseMemory) {
     async prepare(ids: readonly string[]): Promise<TaskUseFence> {
       const wanted = sorted(ids);
       const projects = wanted.length ? await tx.select({ projectId: w.projectId }).from(w).where(inArray(w.id, wanted)) : [];
-      for (const projectId of sorted(projects.map((row) => row.projectId)))
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`flux.task-graph:${projectId}`}))`);
+      await taskGraphRows(tx).lockTaskGraphs(sorted(projects.map((row) => row.projectId)));
       return lockPrepared(wanted);
     },
     /** Caller has already prepared ALL graph/dependency/material/connection locks. Acquires no upstream lock. */

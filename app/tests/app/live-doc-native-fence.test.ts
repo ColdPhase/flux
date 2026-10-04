@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { createDocUseCases, DomainError } from '@flux/core';
 import type { Doc, MaterialVersion, Page, DocVersionSummary, WorkResult } from '@flux/contracts';
+import { prepareDocWrite } from '../../apps/server/src/docs/preparation.js';
 import { docUnitOfWork, docUseCases } from '../../apps/server/src/docs/adapters.js';
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
@@ -89,10 +90,11 @@ test('shared Save snapshots exactly the locked head, names contributors and pres
 test('a definite transaction failure after snapshot/mention preparation rolls every native effect back', async () => {
   const f = await scene(); const target = await f.create('Rollback target', 'Target.');
   const h = await installHead(f.doc, `Joint text [target](flux:doc/${target.id})`, 1);
-  const before = await unchangedState(f.doc.id); const uow = docUnitOfWork(db);
+  const before = await unchangedState(f.doc.id); const preparation = await prepareDocWrite({docId:f.doc.id,command:h}); const uow = docUnitOfWork(db, preparation.memory);
   const docs = createDocUseCases({ run: (action) => uow.run((ports) => action({ ...ports,
     events: { record: async () => { throw new Error('controlled pre-COMMIT failure'); } } })) });
-  await assert.rejects(docs.saveLiveVersion({ kind: 'human', id: f.owner.id }, f.doc.id, h, 1), /controlled pre-COMMIT failure/);
+  try { await assert.rejects(docs.saveLiveVersion({ kind: 'human', id: f.owner.id }, f.doc.id, h, 1), /controlled pre-COMMIT failure/); }
+  finally { preparation.release(); }
   assert.deepEqual(await unchangedState(f.doc.id), before);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM doc_live_archives WHERE doc_id=$1', [f.doc.id])).rows[0].n, 0);
 });

@@ -1,6 +1,7 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
+import { taskGraphRows } from './task-graph.js';
 import type { createDatabase } from '../index.js';
 
 async function assignmentWork(db: DbExecutor, notification: { reason: string | null; eventId: string | null }) {
@@ -44,7 +45,7 @@ export async function assignmentDeliveryAdmission<T>(db: Database, notificationI
         const [located] = await tx.select({ projectId: schema.projectWorkItems.projectId }).from(schema.projectWorkItems)
           .where(eq(schema.projectWorkItems.id, workId));
         if (!located) return null;
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`flux.task-graph:${located.projectId}`}))`);
+        await taskGraphRows(tx).lockTaskGraphs([located.projectId]);
         const [work] = await tx.select({ revertedAt: schema.projectWorkItems.creationRevertedAt }).from(schema.projectWorkItems)
           .where(eq(schema.projectWorkItems.id, workId)).for('share');
         if (!work || work.revertedAt) return null;

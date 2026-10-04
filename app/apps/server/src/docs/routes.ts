@@ -14,9 +14,11 @@ import {
   type PageQuery,
   type UpdateDocCommand,
 } from '@flux/contracts';
-import { assertAuthorized, type Database, type ResourceRef } from '@flux/core';
+import { assertAuthorized, type DocTaskUseMemory, type Database, type ResourceRef } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
-import { commandRunner, expectedVersion, useDomainErrors, versionEtag, type ReplayCheck } from '../http/commands.js';
+import { commandRunner, expectedVersion, useDomainErrors, versionEtag, type CommandSpec, type ReplayCheck } from '../http/commands.js';
+import { prepareDocWrite } from './preparation.js';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import { docUseCases } from './adapters.js';
 
 interface Options { db: Database; sessions: SessionResolver }
@@ -46,18 +48,35 @@ const projectReader: ReplayCheck = (principal, stored, db) =>
  */
 export async function docRoutes(app: FastifyInstance, { db, sessions }: Options) {
   useDomainErrors(app);
-  const { principal, command } = commandRunner(db, sessions);
+  const { principal, runCommand, sendCommand } = commandRunner(db, sessions);
+  async function command(request: FastifyRequest, reply: FastifyReply, spec: (memory: DocTaskUseMemory) => CommandSpec) {
+    const preparation = await prepareDocWrite({params: request.params, headers: request.headers, body: request.body});
+    let sqlSettled = false; let responseSettled = reply.raw.destroyed || reply.raw.writableFinished;
+    const release = () => { responseSettled = true; if (sqlSettled) preparation.release(); };
+    reply.raw.once('finish', release); reply.raw.once('close', release);
+    try {
+      const result = await runCommand(request, spec(preparation.memory));
+      sqlSettled = true;
+      if (responseSettled) { preparation.release(); return reply; }
+      return sendCommand(reply, result);
+    } catch (error) {
+      sqlSettled = true;
+      if (responseSettled) preparation.release();
+      // A protected conflict postimage remains owned through the error response.
+      throw error;
+    }
+  }
   const docs = docUseCases(db);
   const projectScope = (id: string): ResourceRef => ({ type: 'project', id });
 
   app.get<{ Params: { projectId: string }; Querystring: PageQuery }>(projectDocsPath(':projectId'), { schema: { querystring: page } },
     async (request) => docs.listProjectDocs(await principal(request), request.params.projectId, request.query));
   app.post<{ Params: { projectId: string }; Body: CreateDocCommand }>(projectDocsPath(':projectId'), { schema: { body: createDoc } },
-    async (request, reply) => command(request, reply, {
+    async (request, reply) => command(request, reply, memory => ({
       operation: `POST ${projectDocsPath(':projectId')}`, scope: projectScope(request.params.projectId), status: 201, etag: true,
-      run: (actor, conn) => docUseCases(conn).createDoc(actor, request.params.projectId, request.body),
+      run: (actor, conn) => docUseCases(conn, memory).createDoc(actor, request.params.projectId, request.body),
       replay: projectReader,
-    }));
+    })));
   app.post<{ Params: { projectId: string }; Body: DocPreviewCommand }>(projectDocPreviewPath(':projectId'), { schema: { body: preview } },
     async (request) => docs.preview(await principal(request), request.params.projectId, request.body));
 
@@ -66,17 +85,17 @@ export async function docRoutes(app: FastifyInstance, { db, sessions }: Options)
     return reply.header('etag', versionEtag(doc)).send(doc);
   });
   app.patch<{ Params: { docId: string }; Body: UpdateDocCommand }>(docPath(':docId'), { schema: { body: updateDoc } },
-    async (request, reply) => command(request, reply, {
+    async (request, reply) => command(request, reply, memory => ({
       operation: `PATCH ${docPath(':docId')}`, scope: null, etag: true,
-      run: (actor, conn) => docUseCases(conn).updateDoc(actor, request.params.docId, request.body, expectedVersion(request)),
+      run: (actor, conn) => docUseCases(conn, memory).updateDoc(actor, request.params.docId, request.body, expectedVersion(request)),
       replay: projectReader,
-    }));
+    })));
   app.post<{ Params: { docId: string }; Body: AddDocSectionCommand }>(docSectionsPath(':docId'), { schema: { body: addSection } },
-    async (request, reply) => command(request, reply, {
+    async (request, reply) => command(request, reply, memory => ({
       operation: `POST ${docSectionsPath(':docId')}`, scope: null, etag: true,
-      run: (actor, conn) => docUseCases(conn).addSection(actor, request.params.docId, request.body, expectedVersion(request)),
+      run: (actor, conn) => docUseCases(conn, memory).addSection(actor, request.params.docId, request.body, expectedVersion(request)),
       replay: projectReader,
-    }));
+    })));
   app.get<{ Params: { docId: string }; Querystring: PageQuery }>(docVersionsPath(':docId'), { schema: { querystring: page } },
     async (request) => docs.listVersions(await principal(request), request.params.docId, request.query));
   app.get<{ Params: { docId: string; version: string } }>(docVersionPath(':docId', ':version' as unknown as number),

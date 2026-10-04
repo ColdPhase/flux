@@ -4,6 +4,7 @@ import type { AgentExecutionCommand, AgentJsonValue, AgentOperation, AgentPostco
 import { sketchRows } from '@flux/db';
 import { agentExecutionUseCases, requestHash, type Database, type Principal } from '@flux/core';
 import { nativeConversationsInEventSession } from '../conversation/store.js';
+import { prepareDocWrite } from '../docs/preparation.js';
 import { nativeDocsInEventSession } from '../docs/adapters.js';
 import { prepareNativeMap } from '../editing/native-map-journal.js';
 import { nativeSketchInEventSession } from '../sketches/adapters.js';
@@ -60,7 +61,10 @@ export function nativeActionExecutor(db: Database, claims: FluxMcpClaims) {
     const command: AgentExecutionCommand = { runtimeSessionId: input.runtimeSessionId, grantId: input.grantId,
       clientCommandId: input.clientCommandId, projectId: input.projectId, operation, peerRequestClass: input.peerRequestClass,
       audience: { kind: 'project', projectId: input.projectId }, objectId, sources: input.sources, payload };
-    const releases=new Set<()=>void>();if(operation.startsWith('map.'))releases.add(await prepareNativeMap({claims,command}));
+    const releases=new Set<()=>void>();
+    const docPreparation = operation.startsWith('doc.') ? await prepareDocWrite({claims,command}) : null;
+    if (docPreparation) releases.add(docPreparation.release);
+    if(operation.startsWith('map.'))releases.add(await prepareNativeMap({claims,command}));
     try {return await db.transaction(async (tx) => {
       const session = transactionEventSession(tx);
       let replayed = false;
@@ -70,7 +74,7 @@ export function nativeActionExecutor(db: Database, claims: FluxMcpClaims) {
           return { value: scope.replay.value, postconditions: scope.replay.postconditions };
         }
         return effect({ work: nativeWorkInEventSession(tx, session), maps: nativeSketchInEventSession(tx, session,{prepared:operation.startsWith('map.'),commandId:input.clientCommandId,operation:`native-agent:${operation}`,fingerprint:requestHash(command),retainUntil:release=>releases.add(release)}),
-          docs: nativeDocsInEventSession(tx, session), conversations: nativeConversationsInEventSession(tx, session),
+          docs: nativeDocsInEventSession(tx, session, docPreparation?.memory ?? { reserve() { throw new Error('Native doc execution requires outer preparation'); }, temporary() { throw new Error('Native doc execution requires outer preparation'); } }), conversations: nativeConversationsInEventSession(tx, session),
           agent: { kind: 'agent', id: scope.context.agentId }, runtime: scope.context,
           async mapCheckpoint(mapId) {
             const map = await sketchRows(tx).findSketch(mapId);

@@ -1,7 +1,8 @@
 import { and, eq, inArray, or, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
-import { taskUseRows, TaskUseRefusal, type TaskUseMemory } from './task-use.js';
+import { taskGraphRows } from './task-graph.js';
+import { taskUseMemoryScope, taskUseRows, TaskUseRefusal, type TaskUseMemory } from './task-use.js';
 
 type Reference = { type: string; id: string };
 /** Canonical typed associations only; no opaque JSON traversal or caller-supplied ownership. */
@@ -96,16 +97,21 @@ async function referencedProjectIds(tx: DbExecutor, refs: readonly Reference[]):
 
 /** Caller holds authority/material/connection fences, with no graph/task/domain row yet. */
 export async function prepareReferencedTaskUse(tx: DbExecutor, projectId: string, refs: readonly Reference[], memory?: TaskUseMemory) {
-  const projectsOfTasks = async (ids: readonly string[]) => ids.length
-    ? (await tx.select({ projectId: schema.projectWorkItems.projectId }).from(schema.projectWorkItems)
-      .where(inArray(schema.projectWorkItems.id, [...ids]))).map((row) => row.projectId) : [];
-  const initial = await referencedTaskIds(tx, refs, memory);
-  const graphIds = [...new Set([projectId, ...await referencedProjectIds(tx, refs), ...await projectsOfTasks(initial)])].sort();
-  for (const graphId of graphIds)
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`flux.task-graph:${graphId}`}))`);
-  // Re-resolve after waiting for graphs. Never extend the upstream set after taking any graph.
-  const ids = await referencedTaskIds(tx, refs, memory);
-  if ([...await referencedProjectIds(tx, refs), ...await projectsOfTasks(ids)].some((id) => !graphIds.includes(id)))
-    throw new TaskUseRefusal('TASK_TARGET_SET_CHANGED');
-  return { ...await taskUseRows(tx, memory).lockPrepared(ids), projectIds: graphIds };
+  const scope = taskUseMemoryScope(memory);
+  try {
+    const projectsOfTasks = async (ids: readonly string[]) => ids.length
+      ? (await tx.select({ projectId: schema.projectWorkItems.projectId }).from(schema.projectWorkItems)
+        .where(inArray(schema.projectWorkItems.id, [...ids]))).map((row) => row.projectId) : [];
+    const initial = await referencedTaskIds(tx, refs, scope.memory);
+    const graphIds = [...new Set([projectId, ...await referencedProjectIds(tx, refs), ...await projectsOfTasks(initial)])].sort();
+    await taskGraphRows(tx).lockTaskGraphs(graphIds);
+    // Re-resolve after waiting for graphs. Never extend the upstream set after taking any graph.
+    const ids = await referencedTaskIds(tx, refs, scope.memory);
+    if ([...await referencedProjectIds(tx, refs), ...await projectsOfTasks(ids)].some((id) => !graphIds.includes(id)))
+      throw new TaskUseRefusal('TASK_TARGET_SET_CHANGED');
+    // The one sorted pass owns fresh retained arrays/sets, rather than returning
+    // the discovery array after its short-lived ownership has ended.
+    memory?.reserve(4096 + graphIds.length * 512);
+    return { ...await taskUseRows(tx, memory).lockPrepared(ids), projectIds: [...graphIds] };
+  } finally { scope.release(); }
 }
