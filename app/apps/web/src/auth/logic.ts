@@ -47,8 +47,13 @@ export function safeNext(value: string | null | undefined): string {
   }
 }
 
+// Set while this tab is signing out on purpose. The shell's loaders then see 401 before the sign-out
+// redirect lands; their way back to sign-in must not remember the page that was open, or the next
+// person to sign in on this device would be taken to the previous account's project.
+let signingOutHere = false;
+
 export function signInPath(next?: string) {
-  const target = safeNext(next);
+  const target = signingOutHere ? '/' : safeNext(next);
   return target === '/' ? '/sign-in' : `/sign-in?next=${encodeURIComponent(target)}`;
 }
 
@@ -114,6 +119,7 @@ export async function signInAction({ request }: ActionFunctionArgs): Promise<For
   } catch (error) {
     return { formError: describeAuthError(error, 'sign-in'), values: { email } };
   }
+  signingOutHere = false;
   return redirect(safeNext(new URL(request.url).searchParams.get('next')));
 }
 
@@ -134,6 +140,7 @@ export async function signUpAction({ request }: ActionFunctionArgs): Promise<For
     const accountExists = error instanceof ApiError && (error.code ?? '').startsWith('USER_ALREADY_EXISTS');
     return { formError: describeAuthError(error, 'sign-up'), accountExists, values: { name, email } };
   }
+  signingOutHere = false;
   return redirect(safeNext(new URL(request.url).searchParams.get('next')));
 }
 
@@ -190,9 +197,11 @@ export async function signOutLoader({ request }: LoaderFunctionArgs) {
 
 /** Signs this device out; its push subscription is removed first (#41). */
 export async function signOutAction(): Promise<FormResult | Response> {
+  signingOutHere = true;
   try {
     await signOutDevice();
   } catch (error) {
+    signingOutHere = false;
     // fetch rejects with a TypeError when the server can't be reached.
     return { formError: describeAuthError(error instanceof TypeError ? new NetworkError() : error, 'sign-out') };
   }
