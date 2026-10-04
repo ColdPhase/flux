@@ -1,0 +1,113 @@
+#!/bin/sh
+# Local dry run of final-release.yml's build and package steps (#77 T77-A). Publishes nothing:
+# no registry login, no push, no attestation, no GitHub release. Usage: rp-dryrun.sh <40-hex sha> <out-dir>
+set -eu
+repo=/Users/maurycyzamojski/Dev/Projekty/flux/.worktrees/release-prep
+S=/private/tmp/claude-501/-Users-maurycyzamojski-Dev-Projekty-flux/2bcc5040-acf9-4724-88a7-fac9e4ec92b7/scratchpad
+sha=${1:?source sha}
+out=${2:?output dir}
+version=v0.1.0-rc.1
+placeholder=sha256:0000000000000000000000000000000000000000000000000000000000000000
+short=$(printf '%s' "$sha" | cut -c1-12)
+tag="flux-release-dryrun:$short"
+py=python:3.12-slim-trixie
+syft=anchore/syft:latest
+mkdir -p "$out" "$S/rp-tmp"
+work=$(mktemp -d "$S/rp-tmp/dryrun.XXXXXX")
+mkdir "$work/src"
+cleanup() {
+  status=$?
+  [ -f "$work/smoke-state/source.env" ] && docker compose --env-file "$work/smoke-state/source.env" -p fluxdryrunsrc -f "$work/smoke/compose.yaml" down -v --remove-orphans >/dev/null 2>&1 || true
+  [ -f "$work/smoke-state/restore.env" ] && docker compose --env-file "$work/smoke-state/restore.env" -p fluxdryrunrst -f "$work/smoke/compose.yaml" down -v --remove-orphans >/dev/null 2>&1 || true
+  docker image rm -f "$tag" >/dev/null 2>&1 || true
+  rm -rf "$work"
+  exit "$status"
+}
+trap cleanup EXIT
+step() { printf '\n== %s\n' "$*"; }
+
+step "Tools"
+date -u '+%Y-%m-%dT%H:%M:%SZ'
+docker version --format 'Docker server {{.Server.Version}} {{.Server.Os}}/{{.Server.Arch}}; client {{.Client.Version}}'
+docker buildx version
+docker compose version
+[ "$(git -C "$repo" cat-file -t "$sha")" = commit ] || { echo "not a commit: $sha"; exit 1; }
+git -C "$repo" merge-base --is-ancestor "$sha" origin/main && echo "source $sha is on origin/main ($(git -C "$repo" log -1 --format='%s' "$sha"))"
+
+step "Source: git archive of the exact SHA (the workflow checks out the same commit)"
+git -C "$repo" archive "$sha" | tar -xf - -C "$work/src"
+test -f "$work/src/docker/compose.yaml" && test -f "$work/src/docker/.env.example" && echo "docker/compose.yaml and docker/.env.example present"
+
+step "Build the runtime target with the workflow's context, Dockerfile and labels (host platform linux/arm64 only, loaded locally, not pushed)"
+start=$(date +%s)
+if ! docker buildx build --platform linux/arm64 --target runtime -f "$work/src/docker/Dockerfile" \
+  --label org.opencontainers.image.source=https://github.com/ColdPhase/flux \
+  --label "org.opencontainers.image.revision=$sha" --label "org.opencontainers.image.version=$version" \
+  --progress plain -t "$tag" --load "$work/src/app" > "$work/build.log" 2>&1; then
+  tail -n 60 "$work/build.log"; exit 1
+fi
+echo "build took $(( $(date +%s) - start )) s"
+grep -E '^#[0-9]+ (DONE|CACHED)' "$work/build.log" | tail -n 3 || true
+docker image inspect "$tag" --format 'image id {{.Id}}; {{.Os}}/{{.Architecture}}; {{.Size}} bytes; user {{.Config.User}}; cmd {{.Config.Cmd}}'
+docker image inspect "$tag" --format '{{range $k, $v := .Config.Labels}}{{$k}}={{$v}}{{"\n"}}{{end}}' | grep '^org.opencontainers'
+[ "$(docker image inspect "$tag" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$sha" ] || { echo 'revision label mismatch'; exit 1; }
+
+step "Image content: migration manifest parsed by the image's own #118 ledger code"
+docker run --rm --network none --entrypoint node "$tag" tooling/dist/operations.js migration-files
+
+step "SBOM: $syft on a docker-archive of the image (the workflow uses anchore/sbom-action on the pushed digest)"
+docker pull -q "$syft" >/dev/null
+docker image inspect "$syft" --format 'syft image {{index .RepoDigests 0}}'
+docker run --rm --network none -e SYFT_CHECK_FOR_APP_UPDATE=false "$syft" version | grep -E '^(Application|Version|BuildDate|GitCommit)'
+docker save "$tag" -o "$work/image.tar"
+docker run --rm --network none -e SYFT_CHECK_FOR_APP_UPDATE=false -v "$work:/w" "$syft" docker-archive:/w/image.tar -o spdx-json=/w/sbom.spdx.json -q
+docker run --rm --network none -v "$work:/w:ro" "$py" python3 -c "import json; d=json.load(open('/w/sbom.spdx.json')); print('SPDX', d['spdxVersion'], len(d['packages']), 'packages')"
+rm -f "$work/image.tar"
+
+step "Release assets: prepare_assets.py with a PLACEHOLDER digest ($placeholder), not a registry manifest digest"
+docker run --rm --network none -v "$work:/w" -w /w/src "$py" sh -euc "
+  python3 --version
+  python3 scripts/release/prepare_assets.py --version $version --source-sha $sha --digest $placeholder \
+    --sbom /w/sbom.spdx.json --destination /w/release-assets
+  cd /w/release-assets && ls -l && sha256sum -c SHA256SUMS && python3 /w/src/scripts/release/check_asset_set.py . && echo 'asset set matches SHA256SUMS'
+  grep -n 'image:' compose.yaml
+  cat release.json"
+cp "$work/release-assets/SHA256SUMS" "$out/SHA256SUMS.txt"
+cp "$work/release-assets/release.json" "$out/release.json.txt"
+cp "$work/release-assets/compose.yaml" "$out/compose.yaml.txt"
+
+step "Negative controls (each must fail)"
+docker run --rm --network none -v "$work:/w" -w /w/src "$py" sh -uc "
+  fails() { label=\$1; shift; if \"\$@\" >/tmp/out 2>&1; then echo \"FAIL: \$label was accepted\"; exit 1; fi; echo \"refused (\$label): \$(tail -n 1 /tmp/out)\"; }
+  cp -r /w/release-assets /tmp/tampered && printf x >> /tmp/tampered/env.example
+  fails 'tampered env.example' sh -c 'cd /tmp/tampered && sha256sum -c --quiet SHA256SUMS'
+  cp -r /w/release-assets /tmp/extra && echo stray > /tmp/extra/notes.txt
+  fails 'unlisted asset' python3 scripts/release/check_asset_set.py /tmp/extra
+  sed '0,/ghcr.io\/coldphase\/flux@sha256:RELEASE_DIGEST/s//ghcr.io\/coldphase\/flux:latest/' docker/compose.yaml > /tmp/two.yaml
+  fails 'marker on two services only' python3 scripts/release/prepare_assets.py --version $version --source-sha $sha --digest $placeholder --sbom /w/sbom.spdx.json --compose /tmp/two.yaml --destination /tmp/two
+  fails 'version without rc/patch form' python3 scripts/release/prepare_assets.py --version v0.1 --source-sha $sha --digest $placeholder --sbom /w/sbom.spdx.json --destination /tmp/v
+  fails 'abbreviated source SHA' python3 scripts/release/prepare_assets.py --version $version --source-sha $short --digest $placeholder --sbom /w/sbom.spdx.json --destination /tmp/s
+  fails 'non-empty destination' python3 scripts/release/prepare_assets.py --version $version --source-sha $sha --digest $placeholder --sbom /w/sbom.spdx.json --destination /w/release-assets"
+
+step "docker compose config of the rendered release compose.yaml with a test env written from env.example"
+docker run --rm --network none -v "$work:/w" -w /w/src "$py" \
+  python3 scripts/release/write_test_env.py --source /w/release-assets/env.example --destination /w/test.env --port 19116
+docker compose --env-file "$work/test.env" -p fluxdryrunsrc -f "$work/release-assets/compose.yaml" config --quiet && echo 'config --quiet: valid'
+docker compose --env-file "$work/test.env" -p fluxdryrunsrc -f "$work/release-assets/compose.yaml" config --images | sort | tee "$out/compose-images.txt"
+[ "$(grep -c "^ghcr.io/coldphase/flux@$placeholder\$" "$out/compose-images.txt")" -ge 1 ] || { echo 'release image is not the pinned digest'; exit 1; }
+! grep -q 'RELEASE_DIGEST\|:latest' "$out/compose-images.txt" || { echo 'marker or floating tag left'; exit 1; }
+docker compose --env-file "$work/test.env" -p fluxdryrunsrc -f "$work/release-assets/compose.yaml" config --services | sort | tr '\n' ' '; echo
+
+step "Packaged install, paired backup and restore (scripts/release/smoke_artifacts.sh) with the local image in place of the placeholder digest"
+echo "Harness change, recorded: compose.yaml's image line points at the local tag $tag and the script's 'pull' is skipped;"
+echo "the GHCR pull by digest is exercised only by the dispatched workflow."
+mkdir "$work/smoke"
+sed "s#ghcr.io/coldphase/flux@$placeholder#$tag#" "$work/release-assets/compose.yaml" > "$work/smoke/compose.yaml"
+cp "$work/release-assets/env.example" "$work/smoke/env.example"
+grep -c "image: $tag" "$work/smoke/compose.yaml"
+sed '/^source_compose pull$/d' "$work/src/scripts/release/smoke_artifacts.sh" > "$work/smoke_artifacts.sh"
+diff "$work/src/scripts/release/smoke_artifacts.sh" "$work/smoke_artifacts.sh" || true
+start=$(date +%s)
+(cd "$work/src" && FLUX_SMOKE_PORT=19116 FLUX_SMOKE_RESTORE_PORT=19117 bash "$work/smoke_artifacts.sh" "$work/smoke" "$work/smoke-state" fluxdryrunsrc fluxdryrunrst)
+echo "smoke took $(( $(date +%s) - start )) s"
+echo "DRY RUN PASS: $sha built for linux/arm64, assets rendered and checked, compose config valid, packaged install/backup/restore passed; nothing published."
