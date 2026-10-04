@@ -7,7 +7,7 @@ MAX_BYTES=32*1024*1024
 MAX_RECORDS=65536
 LINE_LIMIT=4096
 HANDOFF_LIMIT=4096
-GAUGES=('gatePending','gateConnected','wikiConnections','wikiReading','wikiWriting','wikiCursorActive','assemblyCount','assemblyBytes','httpQueued','nativeQueued','wikiOutputQueued','admissionQueued','codecLeases','codecWaiting','codecActive','wikiSqlActive','mapQueued','mapActive','mapSqlActive','mapConnections','mapOperations','mapPendingMovement','mapPendingPresence','externalInputBytes','externalOutputBytes')
+GAUGES=('gatePending','gateConnected','wikiConnections','wikiReading','wikiWriting','wikiCursorActive','wikiCursorPending','assemblyCount','assemblyBytes','httpQueued','nativeQueued','wikiOutputQueued','admissionQueued','codecLeases','codecWaiting','codecActive','wikiSqlActive','mapQueued','mapActive','mapSqlActive','mapConnections','mapOperations','mapPendingMovement','mapPendingPresence','externalInputBytes','externalOutputBytes')
 PEAKS=tuple('peak'+s[0].upper()+s[1:] for s in GAUGES)
 COUNTERS=('attemptedRecords','retainedRecords','droppedRecords')
 

@@ -17,7 +17,7 @@ test('development telemetry is disabled without both selections and requires exp
   assert.equal(developmentQueueTelemetry({},true,gauges,stream),null);
   assert.throws(()=>developmentQueueTelemetry({FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY:'1'},true,gauges,stream),/Explicit inspected/);assert.equal(writes,0);
 });
-test('all25 mutation-maintained peaks survive a transient between emitted receipts and final has real drained counters',async()=>{
+test('all26 mutation-maintained peaks survive a transient between emitted receipts and final has real drained counters',async()=>{
   const stream=new PassThrough({highWaterMark:65536});let raw='';stream.on('data',chunk=>{raw+=chunk.toString();});
   const state=gauges();const telemetry=new EditingQueueTelemetry('api-one',()=>({...state}),stream);const unobserve=observeEditingResources(telemetry.observe);
   try {
