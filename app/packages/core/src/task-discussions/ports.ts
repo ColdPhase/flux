@@ -1,4 +1,4 @@
-import type { MaterialSource } from '@flux/contracts';
+import type { MaterialSource, MessageFile } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 import type { ActorRef, WorkAccess, WorkRepository } from '../work/ports.js';
 
@@ -34,8 +34,11 @@ export interface DiscussionMessage {
   kind: ContributionKind;
   resultId: string | null;
   createdAt: Date;
+  files?: MessageFile[];
 }
 export interface NewDiscussionMessage {
+  /** Validated immutable attachment metadata, never supplied directly by an entry point. */
+  files?: MessageFile[];
   body: string;
   clientMessageId: string;
   fingerprint: string;
@@ -65,6 +68,8 @@ export interface TaskDiscussionEventIntent {
   readonly data: Readonly<{ conversationId: string; messageId: string; workId: string; rootMessageId: string }>;
 }
 export interface TaskDiscussionPorts {
+  /** Human file composition. An entry point without storage must refuse attachments. */
+  attachments?: { lock(projectId: string, author: ActorRef, ids: readonly string[]): Promise<MessageFile[]> };
   access: WorkAccess;
   work: Pick<WorkRepository, 'locate' | 'findWork' | 'names'>;
   discussion: TaskDiscussionRepository;

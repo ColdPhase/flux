@@ -8,6 +8,7 @@ export type { SQL } from 'drizzle-orm';
 export * from './repositories/sessions.js';
 export * from './repositories/agent-proposals.js';
 export * from './repositories/agent-connections.js';
+export * from './repositories/project-agents.js';
 export * from './repositories/agent-project-objects.js';
 export * from './migrations/ledger.js';
 // Highest numbered file in packages/db/migrations. The API refuses other versions.
@@ -37,6 +38,8 @@ export * from './repositories/docs.js';
 export * from './repositories/doc-live.js';
 export * from './repositories/sample.js';
 export * from './repositories/idempotency.js';
+export * from './repositories/draft-results.js';
+export * from './repositories/events.js';
 
 /** PostgreSQL channel notified (payload: seq) after an event with a workspace commits; wakes stream connections. */
 export const EVENTS_CHANNEL = 'flux_events';
@@ -88,6 +91,7 @@ export function listen(connectionString: string, channel: string, onNotify: (pay
 export * from './repositories/returns.js';
 export * from './repositories/proactive-comparison.js';
 export * from './repositories/background-connections.js';
+export * from './repositories/personal-connections.js';
 export * from './repositories/proactive-outbox.js';
 export * from './repositories/proactive-outcomes.js';
 export * from './repositories/proactive-scheduling.js';
@@ -99,7 +103,10 @@ export * from './repositories/search.js';
 export * from './repositories/personal-runs.js';
 export * from './repositories/project-export.js';
 export * from './repositories/operations.js';
-
+export * from './repositories/cowork.js';
+export * from './repositories/cowork-requests.js';
+export * from './repositories/cowork-recovery.js';
+export * from './repositories/cowork-admission.js';
 export * from './repositories/github.js';
 export * from './repositories/agent-execution.js';
 export * from './repositories/agent-orientation.js';
@@ -110,3 +117,5 @@ export * from './editing-transactions.js';
 
 export * from './repositories/live-map.js';
 export * from './repositories/agent-policies.js';
+
+export * from './repositories/files.js';

@@ -252,6 +252,9 @@ importers:
       '@fastify/websocket':
         specifier: 11.3.1
         version: 11.3.1
+      '@flux/agent-runtime':
+        specifier: workspace:*
+        version: link:../../packages/agent-runtime
       '@flux/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts

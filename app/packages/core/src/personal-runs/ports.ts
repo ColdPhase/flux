@@ -1,6 +1,7 @@
+import type { MessageFile, MessageContribution } from '@flux/contracts';
 import type {
-  AssistantProposalStatus, AssistantRunCostState, AssistantRunKind, AssistantRunStatus, AssistantSourceRef,
-  PersonalRunEnablementStatus, ResultFinding,
+  AiPrice, AiProviderKind, AssistantProposalStatus, AssistantRunCostState, AssistantRunKind, AssistantRunStatus, AssistantSourceRef,
+  PersonalRunConsentVersion, PersonalRunEnablementStatus, ResultFinding,
 } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 import type { Paged, PageWindow } from '../work/ports.js';
@@ -15,9 +16,9 @@ import type { Paged, PageWindow } from '../work/ports.js';
 export interface EnablementRecord {
   ownerUserId: string;
   connectionId: string | null;
-  consentVersion: 'o-008-2026-09-28';
+  consentVersion: PersonalRunConsentVersion;
   consentedAt: Date;
-  consentProvider: 'anthropic';
+  consentProvider: AiProviderKind;
   consentModel: string;
   consentPayerOrganization: string;
   consentPayerWorkspace: string;
@@ -58,6 +59,8 @@ export interface RunRecord {
   chargedMicros: number;
   inputTokens: number | null;
   outputTokens: number | null;
+  /** The connection's provider and model the run was reserved on (F-020). */
+  provider: AiProviderKind;
   model: string;
   answerBody: string | null;
   answerTruncated: boolean;
@@ -70,7 +73,7 @@ export interface RunRecord {
 
 export type NewRun = Pick<RunRecord, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'ownerUserId' | 'agentId' | 'connectionId'
   | 'clientRunId' | 'requestFingerprint' | 'kind' | 'prompt' | 'targetSketchId' | 'targetThoughtId' | 'continuesRunId' | 'retryOfRunId'
-  | 'reservedMicros' | 'model'>;
+  | 'reservedMicros' | 'provider' | 'model'>;
 export type RunChanges = Partial<Pick<RunRecord, 'status' | 'stoppedAtStage' | 'stopRequestedAt' | 'costState' | 'chargedMicros'
   | 'inputTokens' | 'outputTokens' | 'answerBody' | 'answerTruncated' | 'answerSources' | 'committedAt' | 'dispatchedAt' | 'completedAt'>>;
 
@@ -100,7 +103,7 @@ export type NewProposal = Pick<ProposalRecord, 'id' | 'workspaceId' | 'projectId
 export type ProposalChanges = Partial<Pick<ProposalRecord, 'status' | 'decidedBy' | 'decidedAt' | 'resultId'>>;
 
 /** Rows a run may read. The use cases authorize the run's agent (and owner) before calling these. */
-export interface MessageSource { id: string; sequence: number; body: string; authorName: string; author: { kind: 'human' | 'agent'; id: string } }
+export interface MessageSource { contribution?: MessageContribution; files?: MessageFile[]; id: string; sequence: number; body: string; authorName: string; author: { kind: 'human' | 'agent'; id: string } }
 export interface WorkSource { id: string; version: number; title: string; outcome: string; status: string }
 export interface ThoughtSource { id: string; sketchId: string; version: number; text: string; sketchScope: 'project' | 'private' | 'dm'; sketchProjectId: string | null }
 
@@ -209,7 +212,8 @@ export interface PersonalRunUnitOfWork {
 
 /**
  * The owner's usable key connection (O-007 custody, #124). `keyRef` is an opaque handle only the
- * worker's provider adapter can turn into a key; core never sees key material.
+ * worker's provider adapter can turn into a key; core never sees key material. The provider, model,
+ * base URL and price are the connection's own (F-020 PROV-1/PROV-3); `price` is null when unknown.
  */
 export interface PersonalConnection {
   id: string;
@@ -217,16 +221,28 @@ export interface PersonalConnection {
   status: 'active' | 'revoked';
   keyRef: string;
   payer: { organization: string; workspace: string };
+  provider: AiProviderKind;
+  model: string;
+  /** `openai_compatible` only; null for a named provider's fixed URL. */
+  baseUrl: string | null;
+  price: AiPrice | null;
 }
 
-/** Resolves the connection of `ownerUserId` only; there is no lookup by connection id. */
+/**
+ * Resolves a connection of `ownerUserId` only (F-020 PROV-1: an owner may keep several). With a
+ * `connectionId` it returns exactly that one when the owner still has it, otherwise null; without
+ * one, the owner's newest active connection, used only to describe what enabling would use.
+ */
 export interface PersonalConnectionLookup {
-  resolve(ownerUserId: string): Promise<PersonalConnection | null>;
+  resolve(ownerUserId: string, connectionId?: string): Promise<PersonalConnection | null>;
 }
 
-/** One bounded Messages request (O-008 §3): no tools, no hosted search, no automatic retries. */
+/**
+ * One bounded request (O-008 §3) to the owner's connection, the same for every provider (F-020):
+ * no tools, no hosted search, no automatic retries. The adapter of `connection.provider` translates it.
+ */
 export interface PersonalComputeRequest {
-  connection: { id: string; keyRef: string };
+  connection: { id: string; keyRef: string; provider: AiProviderKind; baseUrl: string | null };
   model: string;
   maxTokens: number;
   effort: 'low';
@@ -234,7 +250,8 @@ export interface PersonalComputeRequest {
   input: string;
 }
 
-export interface PersonalComputeUsage { inputTokens: number; outputTokens: number }
+/** `reportedCostMicros`: the provider's own cost of the response, when it reports one (PROV-3 source 1). */
+export interface PersonalComputeUsage { inputTokens: number; outputTokens: number; reportedCostMicros?: number | null }
 
 export type PersonalComputeResult =
   | { kind: 'completed'; text: string; stopReason: 'end_turn' | 'max_tokens' | 'stop_sequence' | 'refusal'; usage: PersonalComputeUsage }
@@ -242,13 +259,16 @@ export type PersonalComputeResult =
   | { kind: 'failed'; reason: 'rate_limited' | 'overloaded' | 'provider_error' | 'timeout' | 'aborted'; billed: 'none' | 'unknown' };
 
 /**
- * The provider behind the `agent-runtime` port. The real Anthropic adapter lives in
- * infrastructure (a later slice); `enabled` is the instance operator's switch (O-008 §6).
+ * The provider behind the `agent-runtime` port: the adapters of `@flux/agent-runtime`, selected by
+ * the connection's provider kind; `enabled` is the instance operator's switch (O-008 §6).
  */
 export interface PersonalCompute {
   readonly enabled: boolean;
-  /** Preflight token count of the request's input (free, not a dispatch). */
-  countInputTokens(request: PersonalComputeRequest): Promise<number>;
+  /**
+   * An optional provider token count of the request's input (free, not a dispatch). It may only
+   * raise the conservative Flux estimate that bounds every provider's input (PROV-3).
+   */
+  countInputTokens?(request: PersonalComputeRequest): Promise<number | null>;
   /** Sends the request once. `signal` aborts it as best effort when the owner stops the run. */
   dispatch(request: PersonalComputeRequest, signal: AbortSignal): Promise<PersonalComputeResult>;
 }

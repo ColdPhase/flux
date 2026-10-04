@@ -8,6 +8,7 @@ import { recordEvent, type ComparisonProvider, type ComparisonSource } from '@fl
 import type { Conversation, Material, WorkItem, WorkResult } from '@flux/contracts';
 import { dispatchProactiveComparison } from '../../apps/worker/src/proactive-comparison/dispatch.js';
 import { addMember, draft, expectStatus, grant, person, project, workspace } from './support/people.js';
+import { eventPorts } from '../../apps/server/src/events.js';
 import { db, pool } from './support/db.js';
 
 const masterKey = readFileSync('/run/secrets/flux_background_key');
@@ -27,7 +28,7 @@ async function fixture() {
       dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal',
       maxRunsPerDay: 3, periodBudgetCents: 50, perRunCents: 5 } }), 201) as { id: string };
   expectStatus(await owner.browser.request('POST', '/api/v1/background-compute-connections', { body: {
-    apiKey: `sk-ant-api03-${'context-fixture-'.repeat(5)}END8`, payerOrganization: 'Fixture payer', providerWorkspace: 'Fixture workspace',
+    provider: 'anthropic', model: 'claude-sonnet-5', apiKey: `sk-ant-api03-${'context-fixture-'.repeat(5)}END8`, payerOrganization: 'Fixture payer', providerWorkspace: 'Fixture workspace',
     workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true, providerBillingAcknowledged: true,
     projectDataDisclosureAcknowledged: true, maxRunsPerDay: 3, periodDays: 30, periodBudgetCents: 50, perRunCents: 5,
   } }), 201);
@@ -78,7 +79,7 @@ test('bounded current human context preserves explicit references and excludes p
   const changedByAgent = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.projectId}/work`,
     { body: { title: 'Initially human work' } }), 201) as WorkItem;
   await pool.query('UPDATE project_work_items SET title=$1, version=2 WHERE id=$2', [canary, changedByAgent.id]);
-  await db.transaction((tx) => recordEvent(tx, { kind: 'agent', id: f.agentId }, f.ws.id,
+  await db.transaction((tx) => recordEvent(eventPorts(tx), { kind: 'agent', id: f.agentId }, f.ws.id,
     'project.work_updated.v1', f.projectId, { workId: changedByAgent.id }));
   const material = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.projectId}/materials`,
     { body: { clientMutationId: randomUUID(), title: 'Human camera measurements', body: 'Camera A captured 38% at 5 lux.' } }), 201) as Material;

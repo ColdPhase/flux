@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type WheelEvent } from 'react';
-import { SKETCH_LIMITS, type LiveMapPosition, type SketchDetail, type Thought } from '@flux/contracts';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type WheelEvent } from 'react';
+import { SKETCH_LIMITS, type LiveMapPosition, type SketchDetail, type Thought, type WorkItem } from '@flux/contracts';
 import { Icon } from '../ui';
 import { linkPath, PAD, project, rectOf, type Rect } from './geometry';
 import { provenance, quote } from './format';
 import { ThoughtEditor } from './ThoughtEditor';
+import { ThoughtTasks } from './ThoughtTasks';
 import type { Editing } from './SketchView';
 
 export interface SketchMapProps {
@@ -19,6 +20,10 @@ export interface SketchMapProps {
   /** Measured heights of the rendered thoughts, shared with the view for placing new ones. */
   heights: Map<string, number>;
   canWrite: boolean;
+  /** The project's tasks linked to each thought (UI116-4); none outside a project. */
+  tasks: Map<string, WorkItem[]>;
+  projectId: string | null;
+  onOpenTask(id: string): void;
   onPick(id: string, additive: boolean): void;
   onToggle(id: string): void;
   onClear(): void;
@@ -69,7 +74,7 @@ interface Drag {
  * focused thought. Nothing here opens a panel: selecting only highlights and shows the "+".
  */
 export function SketchMap(props: SketchMapProps) {
-  const { sketch, meId, selection, connectFrom, editing, coarse, compact, helpId, heights, canWrite } = props;
+  const { sketch, meId, selection, connectFrom, editing, coarse, compact, helpId, heights, canWrite, tasks, projectId } = props;
   const canvasRef = useRef<HTMLDivElement>(null);
   const nodes = useRef(new Map<string, HTMLButtonElement>());
   const drag = useRef<Drag | null>(null);
@@ -347,13 +352,16 @@ export function SketchMap(props: SketchMapProps) {
             const meta = thought.placement
               ? (thought.placement.title ? `Draft · ${thought.placement.title}` : 'Draft you can’t open')
               : null;
+            // UI116-4: a count of the linked tasks, never their titles or results, under the text.
+            const linked = projectId ? tasks.get(thought.id) : undefined;
             return (
-              <button key={thought.id} type="button" data-id={thought.id} data-thought-x={thought.x} data-thought-y={thought.y} data-thought-version={thought.version}
+              <Fragment key={thought.id}>
+              <button type="button" data-id={thought.id} data-thought-x={thought.x} data-thought-y={thought.y} data-thought-version={thought.version}
                 data-live-generation={props.livePreviews.get(thought.id)?.generation} data-live-mover={props.movers.get(thought.id)} data-live-gesture={props.livePreviews.get(thought.id)?.gestureId} data-live-lease={props.livePreviews.get(thought.id)?.leaseId} data-live-preview-sequence={props.livePreviews.get(thought.id)?.sequence}
                 ref={(el) => {
                   if (el) { nodes.current.set(thought.id, el); observer.current?.observe(el); return () => { nodes.current.delete(thought.id); observer.current?.unobserve(el); }; }
                 }}
-                className={`sk-node sk-node--${thought.shape}${dragging ? ' is-dragging' : ''}${editing?.id === thought.id ? ' is-editing' : ''}${thought.version === 0 ? ' is-new' : ''}`}
+                className={`sk-node sk-node--${thought.shape}${dragging ? ' is-dragging' : ''}${editing?.id === thought.id ? ' is-editing' : ''}${thought.version === 0 ? ' is-new' : ''}${linked?.length ? ' has-work' : ''}`}
                 style={{ transform: `translate(${p.x}px, ${p.y}px)`, width: r.w, minHeight: thought.shape === 'circle' ? r.w : thought.height, height: thought.shape === 'circle' ? r.w : undefined }}
                 aria-pressed={selected} aria-describedby={helpId}
                 onPointerDown={(event) => onNodePointerDown(event, thought.id)}
@@ -364,10 +372,18 @@ export function SketchMap(props: SketchMapProps) {
                 <span className="sk-t">{thought.text}</span>
                 <span className="sk-p">{provenance(thought, meId)}</span>
                 {props.movers.get(thought.id) ? <span className="sk-live-mover">{props.movers.get(thought.id)} is moving</span> : null}
+                {/* Room for the count, which is its own button beside this one. */}
+                {linked?.length ? <span className="sk-work-gap" aria-hidden="true" /> : null}
                 {selected && selection.length === 1 && canWrite && !coarse && !editing ? (
                   <span className="sk-resize" aria-hidden="true" onPointerDown={(event) => onResizePointerDown(event, thought)} />
                 ) : null}
               </button>
+              {linked?.length && projectId ? (
+                <div className={`sk-work-slot sk-work-slot--${thought.shape}${dragging ? ' is-dragging' : ''}`} style={{ transform: `translate(${p.x}px, ${p.y}px)`, width: r.w, height: r.h }}>
+                  <ThoughtTasks thought={thought} tasks={linked} projectId={projectId} variant="map" onOpenTask={props.onOpenTask} />
+                </div>
+              ) : null}
+              </Fragment>
             );
           })}
           {plus && last && lastThought ? (() => {

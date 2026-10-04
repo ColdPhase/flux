@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { Link, Navigate, useLocation, useParams } from 'react-router';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { Link, Navigate, useLocation, useParams, useRevalidator } from 'react-router';
 import { DEFAULT_THOUGHT_SIZE, THOUGHT_SHAPES, type SketchDetail } from '@flux/contracts';
 import { Button, EmptyState, Icon, MEDIA, Spinner, useMediaQuery } from '../ui';
 import { getProject } from '../api/sketches';
+import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { createWork } from '../work/api';
+import { useProjectShell } from '../project/data';
 import { useSketchDoc, type Op } from './doc';
 import { audience, quote, sketchHref, when } from './format';
 import { freeSpot, rectOf } from './geometry';
@@ -14,6 +16,7 @@ import { SketchMap } from './SketchMap';
 import { useOutline } from './useOutline';
 import { useThoughtDraft } from './createdDraft';
 import { DraftCapture } from './DraftCapture';
+import { tasksByThought } from './ThoughtTasks';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import './sketch.css';
 import '../editing/editing.css';
@@ -99,6 +102,22 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   const helpId = useId();
   const projectName = useProjectName(sketch?.projectId);
   const canWrite = sketch?.access === 'write' && !!doc.liveCanWrite;
+
+  // UI116-4: each thought of a project sketch shows how many of the project's tasks link to it.
+  // The tasks are the project's own (loaded once for all its views) and refresh when its work
+  // or links change; a private or DM sketch has no linkable thoughts.
+  const shell = useProjectShell();
+  const taskProjectId = sketch?.scope === 'project' ? sketch.projectId ?? null : null;
+  const projectWork = shell && taskProjectId && shell.project.id === taskProjectId ? shell.work.work : null;
+  const tasks = useMemo(() => tasksByThought(projectWork ?? []), [projectWork]);
+  const revalidator = useRevalidator();
+  const workRefresh = useRef<number | null>(null);
+  useEffect(() => () => { if (workRefresh.current !== null) window.clearTimeout(workRefresh.current); }, []);
+  useStreamEvents(me.user.id, (event) => {
+    if (!taskProjectId || event.objectType !== 'project' || event.objectId !== taskProjectId || !/^project\.(work|link|result)_/.test(event.kind)) return;
+    if (workRefresh.current !== null) window.clearTimeout(workRefresh.current);
+    workRefresh.current = window.setTimeout(() => { workRefresh.current = null; revalidator.revalidate(); }, 250);
+  });
 
   const say = (text: string, change = false) => setStatus({ text, change });
   const find = (id: string) => sketch?.thoughts.find((t) => t.id === id);
@@ -333,6 +352,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     try {
       const item = await createWork(sketch.projectId, { title: title.slice(0, 200), sources: thoughts.map((t) => ({ type: 'thought' as const, id: t.id })) }, workAttempt.current.key);
       workAttempt.current = null;
+      revalidator.revalidate();
       say(`Created work ${quote(item.title)}; the thoughts stay on the map`);
       openDetails({ kind: 'work', id: item.id });
     } catch { say('Could not create the work yet. Wait for “Saved”, then try again.'); }
@@ -379,7 +399,8 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   const busy = doc.saving ? 'Saving…' : 'Saved';
   const shared = { sketch, meId: me.user.id, selection, connectFrom, editing, canWrite, onPick: pick, onToggle: toggle, onEdit: startEdit,
     onEditText: (text: string) => setEditing((current) => current ? { ...current, initial: text, key: doc.newId() } : null),
-    onFinishEdit: (text: string | null) => { void finishEdit(text); }, onAdd: add, onRemove: remove, onEscape: escape };
+    onFinishEdit: (text: string | null) => { void finishEdit(text); }, onAdd: add, onRemove: remove, onEscape: escape,
+    tasks, projectId: taskProjectId, onOpenTask: (id: string) => openDetails({ kind: 'work', id }) };
   const navigateThought = (id: string, previous?: string[]) => {
     if (!present.has(id)) return;
     setConnectFrom(null);

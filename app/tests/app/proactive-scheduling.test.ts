@@ -11,6 +11,7 @@ import { proactiveReservation } from '../../apps/worker/src/proactive-comparison
 import { proactiveComparisonOutcomePath } from '@flux/contracts';
 import { expectStatus, person, project, workspace } from './support/people.js';
 import { comparisonDispatchFixtureDue } from './support/comparison-dispatch-fixture.js';
+import { eventPorts } from '../../apps/server/src/events.js';
 import { db, pool } from './support/db.js';
 
 const start = new Date('2030-01-01T00:00:00Z');
@@ -42,7 +43,7 @@ async function fixture() {
   const candidates = async () => (await pool.query('SELECT * FROM proactive_comparison_outbox WHERE rule_id=$1 ORDER BY created_at,id', [rule.id])).rows;
   const window = async () => (await pool.query('SELECT * FROM proactive_comparison_project_changes WHERE project_id=$1', [prj.id])).rows[0];
   const connect = async () => expectStatus(await owner.browser.request('POST', '/api/v1/background-compute-connections', { body: {
-    apiKey: `sk-ant-api03-${'scheduling-fixture-'.repeat(4)}END8`, payerOrganization: 'Fixture payer', providerWorkspace: 'Fixture scope',
+    provider: 'anthropic', model: 'claude-sonnet-5', apiKey: `sk-ant-api03-${'scheduling-fixture-'.repeat(4)}END8`, payerOrganization: 'Fixture payer', providerWorkspace: 'Fixture scope',
     workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true, providerBillingAcknowledged: true,
     projectDataDisclosureAcknowledged: true, maxRunsPerDay: 3, periodDays: 30, periodBudgetCents: 50, perRunCents: 5,
   } }), 201);
@@ -183,9 +184,9 @@ test('draft save/edit, private sketches, layout and agent events do not dirty pr
     { body: { title: 'Private thought', scope: 'private' } }), 201) as { id: string };
   expectStatus(await f.owner.browser.request('POST', `/api/v1/sketches/${sketch.id}/thoughts`,
     { body: { text: 'Private evidence is excluded.', x: 0, y: 0 } }), 201);
-  await db.transaction((tx) => recordEvent(tx, { kind: 'agent', id: f.agent.id }, f.ws.id,
+  await db.transaction((tx) => recordEvent(eventPorts(tx), { kind: 'agent', id: f.agent.id }, f.ws.id,
     'project.material_updated.v1', f.prj.id, { materialId: doc.id, version: 1 }));
-  await db.transaction((tx) => recordEvent(tx, { kind: 'human', id: f.owner.id }, f.ws.id,
+  await db.transaction((tx) => recordEvent(eventPorts(tx), { kind: 'human', id: f.owner.id }, f.ws.id,
     'sketch.changed.v1', sketch.id, { op: 'thoughts_moved', thoughtIds: [], linkIds: [] }));
   await collect(start); assert.equal(await f.window(), undefined);
   expectStatus(await f.owner.browser.request('PATCH', `/api/v1/docs/${doc.id}`,
@@ -225,7 +226,7 @@ test('unchanged dismissed/unknown candidates never retry; a new human revision p
   for (const state of ['dismissed', 'unknown'] as const) {
     const f = await fixture(); const material = await f.material(); const result = await f.negative();
     expectStatus(await f.owner.browser.request('POST', '/api/v1/background-compute-connections', { body: {
-      apiKey: `sk-ant-api03-${'scheduling-fixture-'.repeat(4)}END8`, payerOrganization: 'Fixture payer', providerWorkspace: 'Fixture scope',
+      provider: 'anthropic', model: 'claude-sonnet-5', apiKey: `sk-ant-api03-${'scheduling-fixture-'.repeat(4)}END8`, payerOrganization: 'Fixture payer', providerWorkspace: 'Fixture scope',
       workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true, providerBillingAcknowledged: true,
       projectDataDisclosureAcknowledged: true, maxRunsPerDay: 3, periodDays: 30, periodBudgetCents: 50, perRunCents: 5,
     } }), 201);

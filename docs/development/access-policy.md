@@ -4,7 +4,7 @@ This document describes the workspace, project and draft access model that the c
 enforces today. It covers AC-2 of [#29](https://github.com/ColdPhase/flux/issues/29),
 AC-3 (one policy for HTTP, the WebSocket stream and worker jobs) and the safe-write
 part of AC-4 (`If-Match` and idempotency keys). It implements the "Data, identity and access
-contract" in the [architecture proposal](../product/application-architecture-proposal.md#data-identity-and-access-contract).
+contract" in the [architecture proposal](../product/application-architecture.md#data-identity-and-access-contract).
 
 ## One choke point
 
@@ -218,7 +218,7 @@ and is then refused with `404` or `403` without writing.
 
 ## HTTP API
 
-The routes live in `app/apps/server/src/access/routes.ts`. Paths and wire types are in
+The routes live in `app/apps/server/src/access/`, one module per capability (`workspaces.ts`, `projects.ts`, `agents.ts`, `drafts.ts`, `draft-summaries.ts`) registered by `routes.ts`; domain errors and a missing session are mapped once, on the API's root, by `app/apps/server/src/http/errors.ts` (#85). Paths and wire types are in
 `app/packages/contracts/src/access.ts`. Every route needs a live session
 (`401 UNAUTHENTICATED` otherwise), and state changes pass the origin check from
 [identity](containers.md#identity-services-and-variables). An object the caller
@@ -370,8 +370,8 @@ that has not answered the previous ping is terminated.
 replaying after a cursor read only the recipient's own audience rows, so their work
 does not depend on events the recipient cannot see. `app/tests/app/stream.test.ts`
 checks this with 500 hidden events: identical server-side work counters (queries,
-rows, `authorizeEvent` calls, from the test-only `GET /api/v1/stream/work` served when
-`FLUX_TEST_FAILURE_INJECTION=true`), identical rows examined in `EXPLAIN ANALYZE` of
+rows, `authorizeEvent` calls, from the test-only `GET /api/v1/stream/work` served only with the
+fixture token and `FLUX_TEST_FAILURE_INJECTION=true`, #88), identical rows examined in `EXPLAIN ANALYZE` of
 both stream queries, and a coarse open→ready timing bound. The remaining shared cost
 is global: event writes serialize on the seq lock and the database is shared, so
 heavy activity anywhere can slow everyone's writes and deliveries. That is load, not
@@ -423,10 +423,13 @@ exists so the worker authorization contract is real and tested:
   `GET /api/v1/drafts/:id/summaries/:resultId` are visible to whoever can currently
   read the draft.
 
-`processDraftSummary(resultId, db, hooks)` accepts two hooks. `afterRead` runs between
-the read and the commit transaction. `beforeCommit(tx)` runs inside the commit
-transaction after the recheck, while its locks are held. Only tests pass them, to place
-a revocation at those points. The Compose worker never passes hooks.
+`processDraftSummary(resultId, db, results, hooks)` reads and writes result rows through
+its `DraftResultRepository` port (`results`, bound to each step's connection or transaction: the
+claim and the draft read use the pool, the commit its transaction), and the
+request sends its job through the core `JobQueue` port in the same transaction. It accepts
+two hooks. `afterRead` runs between the read and the commit transaction. `beforeCommit(tx)`
+runs inside the commit transaction after the recheck, while its locks are held. Only tests
+pass them, to place a revocation at those points. The Compose worker never passes hooks.
 
 ## If-Match preconditions
 

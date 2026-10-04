@@ -5,6 +5,7 @@ import { ConflictError,InvalidInputError,recordEvent,type MapNativeChange,type M
 import type { UndoLiveMap } from '@flux/contracts';
 import { sketchRepository } from '../sketches/adapters.js';
 import { decodeMapChange } from './map-state.js';
+import { eventPorts } from '../events.js';
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const conflict=()=>new ConflictError('An original object or its links changed; the entire undo remains private','EDITING_UNDO_CONFLICT');
 function canonical(value:unknown):unknown {
@@ -116,6 +117,6 @@ export async function undoMap(db:DbExecutor,principal:{kind:'human';id:string},r
   await rows.markUndone(room.sketchId,room.generation,ordered.map(row=>row.sequence),sequence);
   await db.insert(schema.liveEditingIntents).values({actorId:principal.id,commandId,workspaceId:room.workspaceId,kind:'map',resourceId:room.sketchId,generation:room.generation,
     operation,fingerprint,byteLength:0,receipt:{commandId,generation:room.generation,sequence,operation,originalCommandIds:ids}});
-  await recordEvent(db,principal,room.workspaceId,'sketch.changed.v1',room.sketchId,{op:'own_undo',thoughtIds:thoughtChanges,linkIds:linkChanges});
+  await recordEvent(eventPorts(db),principal,room.workspaceId,'sketch.changed.v1',room.sketchId,{op:'own_undo',thoughtIds:thoughtChanges,linkIds:linkChanges});
   return commandId;
 }

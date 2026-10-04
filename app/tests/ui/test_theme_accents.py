@@ -123,12 +123,9 @@ class ThemeAccentsJourney(unittest.TestCase):
             self.assertEqual(content, self.return_content, "matched return comparison retains identical items")
         self.return_content = content
         shot(page, screenshot_name)
-        # Real product action restores the persisted baseline after this visit. It prevents
-        # one palette screenshot consuming the scenario for the next family/viewport.
-        with page.expect_response(re.compile(r"/api/v1/return-points/restore$")) as restoring:
-            page.get_by_role("button", name="Keep these for next time", exact=True).click()
-        self.assertEqual(restoring.value.status, 200)
-        expect(page.get_by_text("These will show again next time.", exact=True)).to_be_visible()
+        # Visiting Home acknowledges nothing (HOME-1, #190), so the next family and viewport see the
+        # same persisted changes without restoring anything.
+        expect(page.get_by_role("button", name="I have the context")).to_be_visible()
 
     def test_01_create_persisted_content(self):
         page = self.page()
@@ -233,6 +230,23 @@ class ThemeAccentsJourney(unittest.TestCase):
         self.appearance(blocked, "Light", "Sky")
         self.appearance(blocked, "Dark", "Copper")
         expect(blocked.locator("html")).to_have_attribute("data-accent", "copper")
+
+    def test_02b_installed_title_bar_follows_the_chosen_theme(self):
+        """#203: choosing Dark or Light updates every theme-color tag to the page background."""
+        page = self.page()
+        # Not Home: visiting Home records a return point that later tests compare against.
+        page.goto("/search")
+        read = """() => ({ metas: [...document.querySelectorAll('meta[name="theme-color"]')].map((m) => m.content),
+          body: getComputedStyle(document.body).backgroundColor })"""
+        for theme in ("Dark", "Light", "Dark"):
+            with self.subTest(theme=theme):
+                self.appearance(page, theme, "Mint")
+                state = page.evaluate(read)
+                self.assertTrue(state["metas"], "the theme-color tags exist")
+                self.assertTrue(all(content == state["body"] for content in state["metas"]), state)
+        dark = page.evaluate(read)["body"]
+        self.appearance(page, "Light", "Mint")
+        self.assertNotEqual(page.evaluate(read)["metas"][0], dark, "Light and Dark give different title bars")
 
     def test_03_all_six_composited_surfaces(self):
         page = self.page()

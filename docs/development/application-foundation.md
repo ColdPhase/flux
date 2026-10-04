@@ -1,10 +1,20 @@
 # Application foundation (issue #28)
 
-This is the first technical slice of the Flux application. It starts a built browser
-shell, a versioned API, a separate worker, PostgreSQL 18, a reviewed SQL migration,
-and a durable pg-boss queue. Human login and sessions were added in #29's first
-slice; project access and the messenger follow in later tasks. The integration
-command below is a fixture, not a collaboration UI.
+This guide covers starting, configuring, checking and backing up the application.
+Issue #28 created its first technical slice: a built browser shell, a versioned API, a
+separate worker, PostgreSQL 18, reviewed SQL migrations and a durable pg-boss queue.
+
+## Current state
+
+Flux is pre-release: no version has been published and there is no supported upgrade
+path yet. On this stack the application now provides accounts and sessions, workspace
+and project access, project conversations with tasks, decisions, results, map and wiki,
+direct messages, search, the inbox with Web Push, connected MCP agents and an optional
+in-app assistant, optional live media, and `./flux` operations. The
+[README](../../README.md#project-status) summarizes it for new contributors; the
+[current milestone](https://github.com/ColdPhase/flux/milestone/2) tracks the remaining
+release work. The [integration fixture](#integration-fixture) below is a technical
+check, not part of the product.
 
 ## One-command start: `./flux` (issue #72)
 
@@ -160,8 +170,8 @@ docker compose --env-file docker/.env -p flux28 -f docker/compose.source.yaml ex
 
 The command is versioned at `/api/v1/integration/sample`. Its wire types live in
 `app/packages/contracts`; the standalone TypeScript client is `app/packages/sdk`. The
-server calls `app/packages/core` with an explicit `Principal` and does not expose
-database methods directly. The fixture token is temporary technical access; do
+server's fixture module (`apps/server/src/fixture/`, #88) writes through the `@flux/db` sample repository and
+is registered only when the fixture token is set; it does not expose database methods directly. The fixture token is temporary technical access; do
 not expose this endpoint as a human or agent authorization scheme.
 
 ## Checks and isolation

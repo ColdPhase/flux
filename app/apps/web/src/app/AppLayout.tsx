@@ -107,6 +107,7 @@ export function AppLayout() {
       toggleDetails(true);
     },
     openSearch() { setNavOpen(false); setJumpOpen(true); },
+    openNavigation() { setDetailsOpen(false); setNavOpen(true); },
     actionSlot,
   }), [toggleDetails, actionSlot]);
 
@@ -184,13 +185,14 @@ export function AppLayout() {
   const shellProject = useProjectShell();
   const project = shellProject && shellProject.project.id === projectId ? shellProject : undefined;
   const openWork = project?.work.work.filter((item) => !item.parked && (item.status === 'open' || item.status === 'in_progress' || item.status === 'blocked')).length;
-  // Conversation · Map · Tasks · Wiki in the Studio 11.6 order (#117, #136); quiet tabs without
+  // Conversation · Map · Tasks · Wiki · Agents in the Studio 11.6 order (#117, #136); quiet tabs without
   // counts. The open work count stays readable to assistive technology on the Tasks tab.
   const projectViews = projectId ? [
     { id: 'conversation', label: 'Conversation', to: onOtherView ? lastConversationPath(me.user.id, projectId) : `${location.pathname}${location.search}` },
     { id: 'map', label: 'Map', to: onMap ? location.pathname : lastMapPath(me.user.id, projectId, project?.sketches), end: false },
     { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks${lastTasksSearch(me.user.id, projectId)}`, ...(openWork ? { countLabel: `, ${openWork} open` } : {}) },
     { id: 'docs', label: 'Wiki', to: `/projects/${projectId}/docs`, end: false },
+    { id: 'agents', label: 'Agents', to: `/projects/${projectId}/agents` },
   ] : null;
   const audienceOpen = project?.project.visibility === 'workspace';
   const audience = project ? audienceLine(project.people, me.user.id, audienceOpen) : 'People with project access';
@@ -236,7 +238,8 @@ export function AppLayout() {
         : dmId === 'new'
           ? { crumb: null, title: 'New message', topic: 'Only the people you choose can read it', views: false, noDetails: true }
           : { crumb: null, title: 'Direct messages', topic: 'Conversations with people, outside any project', views: false, noDetails: true }
-      : { crumb: workspace?.name ?? null, title: 'Home', topic: 'Your private notes and where you left off', views: true };
+      // Home's Tasks span every workspace, so no single workspace is named above them (#190).
+      : { crumb: location.pathname.startsWith('/tasks') ? null : workspace?.name ?? null, title: 'Home', topic: 'Your private notes and where you left off', views: true };
   // A place without its own Details (Search, Inbox, the DM list) never keeps the generic panel open.
   if ('noDetails' in place && detailsOpen && detailsView === 'place') setDetailsOpen(false);
 
@@ -296,7 +299,7 @@ export function AppLayout() {
         {/* On a phone the tab row has no room: the entry joins the one-line project state row. */}
         {project && phone ? <div className="state-row"><ProjectStateRow lists={project.work} canDecide={project.project.access !== 'viewer'} />{recapEntry}</div> : null}
         {place.views
-          ? <Tabs className="views" label="Views" items={VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path }))} />
+          ? <Tabs className="views" label="Views" items={VIEWS.map((view) => ({ id: view.id, label: view.label, to: view.path, end: view.path === '/' }))} />
           : activeProject && projectViews
             ? <div className="views views--project"><Tabs className="views__tabs" label="Project views" items={projectViews} />{phone ? null : recapEntry}</div>
             : dmViews

@@ -27,6 +27,7 @@ import {
 import { decodeMapChange } from '../editing/map-state.js';
 import { nativeMapJournal,prepareNativeMap, type NativeMapOptions } from '../editing/native-map-journal.js';
 import { transactionEventSession,type TransactionEventSession } from '../work/transaction-events.js';
+import { eventPorts } from '../events.js';
 
 // Adapters that connect the core sketch use cases to Drizzle, the access policy and the event
 // log (issue #69; #46: core defines the ports, the server assembles them).
@@ -118,7 +119,7 @@ export function sketchPorts(tx: Database): SketchPorts {
     sketches,
     live:nativeMapJournal(tx as DbExecutor,sketches).journal,
     promotion: sketchPromotion(tx),
-    events: { record: async (principal, workspaceId, kind, sketchId, data) => { await recordEvent(tx, principal, workspaceId, kind, sketchId, data); } },
+    events: { record: async (principal, workspaceId, kind, sketchId, data) => { await recordEvent(eventPorts(tx), principal, workspaceId, kind, sketchId, data); } },
   };
 }
 
