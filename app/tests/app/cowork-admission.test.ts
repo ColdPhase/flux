@@ -262,8 +262,13 @@ test('recipient slot is held through commit: a late committer cannot fall behind
   });
   txB.catch(() => readyB.resolve(-1));
   const bDone = settled(readyB.promise);
-  await waitUntilBlockedBy(pool, pidA); // B waits on the recipient slot only: distinct senders, tasks and lineages
+  await waitUntilBlockedBy(pool, pidA); // distinct senders, tasks and lineages: only shared recipient/project locks remain
   assert.equal(bDone(), false, 'B cannot assign its timestamp while A is uncommitted');
+  // The same project's graph advisory lock would also serialize B, so prove B waits at the earlier recipient
+  // slot row lock (taken before any graph lock), not at the advisory lock.
+  const waiting = await pool.query(`SELECT l.locktype FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid
+    WHERE NOT l.granted AND $1 = ANY(pg_blocking_pids(a.pid))`, [pidA]);
+  assert.deepEqual(waiting.rows.map((r) => r.locktype), ['transactionid'], 'B waits on the recipient slot row, not the graph lock');
   let page = await coworkRecoveryRows(db).page(recipient, 1);
   assert.deepEqual(page.records.map((r) => r.id), [old.requestId]); assert.equal(page.continuation, null);
   releaseA.resolve(); const late = await txA;
