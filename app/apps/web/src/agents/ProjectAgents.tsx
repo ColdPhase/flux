@@ -300,11 +300,16 @@ function TaskThread({ task, projectId, meId, names, canWrite }: { task: WorkItem
   );
 }
 
+/** Events that change who can act here: a grant, the project's agent policy, an agent created or revoked. */
+const CONNECTION_EVENTS = new Set(['project.grant_set.v1', 'project.grant_revoked.v1', 'project.agent_policy_published.v1', 'agent.created.v1', 'agent.revoked.v1']);
+
 /**
  * The connections stay current while the view is open (#183 N1), by the same no-reload standard as
  * the thread: a revocation, a session opening or closing or a narrowed grant shows without a reload.
- * Project and agent events and a resync refetch; without a live stream, focus, a visible tab and a
- * 15 s timer do. The timer also moves `now`, so a session past its end reads as offline.
+ * Grant, policy and agent events and a resync refetch at once (not every message, which would refetch
+ * on each line of a busy thread). A revoked connection and a session opening or closing record no
+ * event, so focus, a visible tab and a 15 s poll while the tab is visible also refetch; the poll moves
+ * `now` too, so a session past its end reads as offline, and keeps "Last: …" current.
  */
 function useConnections(projectId: string, meId: string, initial: ProjectAgentConnection[]) {
   // A newer read replaces the loader's list until the loader itself reads again.
@@ -324,7 +329,7 @@ function useConnections(projectId: string, meId: string, initial: ProjectAgentCo
     return () => { controller?.abort(); reload.current = () => { /* unmounted */ }; };
   }, [projectId, initial]);
   useStreamEvents(meId, (event) => {
-    if ((event.objectType === 'project' && event.objectId === projectId) || event.objectType === 'agent') reload.current();
+    if (CONNECTION_EVENTS.has(event.kind) && (event.objectType === 'agent' || event.objectId === projectId)) reload.current();
   }, () => reload.current());
   useEffect(() => {
     const onFocus = () => reload.current();
