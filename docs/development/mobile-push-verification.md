@@ -8,9 +8,9 @@ mobile journeys. A provider's accepted HTTP send does not prove OS display.
 
 ## Real-device session (one command)
 
-Run this on a clean checkout of `main` with Docker running. It works with the
-macOS system bash and on Linux. It needs `git`, `curl` and Docker; no Node,
-PostgreSQL or cloud account on the host:
+Run this on a clean checkout of `main` with Docker running. It runs under the
+macOS system bash 3.2 and needs only bash, `stat`, `git`, `curl` and Docker. The
+host needs no Node, PostgreSQL or cloud account:
 
 ```sh
 git switch main && git pull --ff-only
