@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { Pool } from 'pg';
 import { assertExactMigrationLedger, createDatabase, readAppliedMigrationVersions, readTaskCreationReversalManifest, reverseUnusedTaskCreation } from '@flux/db';
 const directory='packages/db/migrations';
 async function replacement(pool: ReturnType<typeof createDatabase>['pool'], old: number) {
@@ -35,10 +36,11 @@ test('actual pg advisory query_timeout preserves the original rejection and dest
 
 test('actual pg COMMIT response timeout reports unknown reversal with original cause; replacement inspects the committed exact prior ledger', {timeout:120_000},async()=>{
   const manifest=await readTaskCreationReversalManifest(directory);const name=`flux_undo_control_${randomUUID().replaceAll('-','')}`;
-  const admin=createDatabase(process.env.DATABASE_URL!).pool;const url=new URL(process.env.DATABASE_URL!);url.pathname=`/${name}`;let history:ReturnType<typeof createDatabase>['pool']|undefined;
+  const admin=new Pool({connectionString:process.env.DATABASE_URL!,connectionTimeoutMillis:1500,query_timeout:60000,max:1});
+  const url=new URL(process.env.DATABASE_URL!);url.pathname=`/${name}`;let history:ReturnType<typeof createDatabase>['pool']|undefined;
   let original:unknown;let backend=0;
   try {
-    await admin.query({text:`CREATE DATABASE "${name}"`,query_timeout:60000});history=createDatabase(url.toString()).pool;
+    await admin.query(`CREATE DATABASE "${name}"`);history=createDatabase(url.toString()).pool;
     for(const file of manifest.current){await history.query(await readFile(join(directory,file.name),'utf8'));await history.query('INSERT INTO flux_schema_version(version) VALUES($1) ON CONFLICT DO NOTHING',[file.version]);}
     const client=await history.connect();backend=Number((await client.query('SELECT pg_backend_pid() AS pid')).rows[0].pid);const query=client.query.bind(client);
     // Genuine COMMIT is sent before the sleeping statement; its response is lost
@@ -47,5 +49,5 @@ test('actual pg COMMIT response timeout reports unknown reversal with original c
     await assert.rejects(reverseUnusedTaskCreation(client,manifest,{quiesced:true}),error=>error instanceof Error&&/COMMIT outcome is unknown/.test(error.message)&&error.cause===original);
     await replacement(history,backend);assertExactMigrationLedger(manifest.prior,await readAppliedMigrationVersions(history));
     assert.equal((await history.query("SELECT to_regclass('task_creation_undo_receipts') AS name")).rows[0].name,null);
-  } finally {await history?.end();await admin.query({text:`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`,query_timeout:60000});await admin.end();}
+  } finally {try{await history?.end();}finally{try{await admin.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);}finally{await admin.end();}}}
 });
