@@ -22,7 +22,9 @@ import math
 import os
 import platform
 import re
+import stat
 import time
+import uuid
 from pathlib import Path
 
 from test_live_editing import LiveFixture
@@ -31,6 +33,90 @@ INTERVAL = .250
 DEADLINE = 1.000
 SAMPLES = 240
 WARMUPS = 30
+QUEUE_RAW_NAME = 'actual-queue.jsonl'
+MEASUREMENT_FINISHED_NAME = 'measurement-finished.json'
+QUEUE_SEAL_NAME = 'queue-seal.json'
+QUEUE_MAX_BYTES = 32 * 1024 * 1024
+QUEUE_MAX_RECORDS = 65_536
+QUEUE_LINE_BYTES = 4096
+HANDOFF_BYTES = 4096
+SEAL_WAIT_SECONDS = 15
+QUEUE_GAUGES = (
+    'gatePending','gateConnected','wikiConnections','wikiReading','wikiWriting','wikiCursorActive',
+    'assemblyCount','assemblyBytes','httpQueued','nativeQueued','wikiOutputQueued','admissionQueued',
+    'codecLeases','codecWaiting','codecActive','wikiSqlActive','mapQueued','mapActive','mapSqlActive',
+    'mapConnections','mapOperations','mapPendingMovement','mapPendingPresence','externalInputBytes','externalOutputBytes',
+)
+QUEUE_PEAKS = tuple('peak'+field[0].upper()+field[1:] for field in QUEUE_GAUGES)
+QUEUE_RECORD_COUNTERS = ('attemptedRecords','retainedRecords','droppedRecords')
+API_INSTANCE = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}')
+SHA40 = re.compile(r'[a-f0-9]{40}')
+SHA256 = re.compile(r'[a-f0-9]{64}')
+
+
+def exact_integer(value, low=0, high=2**53-1):
+    return type(value) is int and low <= value <= high
+
+
+def canonical_uuid(value):
+    if not isinstance(value,str):
+        return False
+    try:
+        return str(uuid.UUID(value)) == value
+    except ValueError:
+        return False
+
+
+def strict_json(raw):
+    def closed_pairs(pairs):
+        value = {}
+        for key,item in pairs:
+            if key in value:
+                raise ValueError('Duplicate JSON field')
+            value[key] = item
+        return value
+    def constant(_value):
+        raise ValueError('Non-finite JSON constant')
+    def finite_float(value):
+        number = float(value)
+        if not math.isfinite(number):
+            raise ValueError('Non-finite JSON number')
+        return number
+    return json.loads(raw.decode('utf-8') if isinstance(raw,bytes) else raw,object_pairs_hook=closed_pairs,parse_constant=constant,parse_float=finite_float)
+
+
+def read_regular(path, limit):
+    """Never follow a handoff/raw symlink, block on a FIFO, or read past the finite limit."""
+    fd = os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+    with os.fdopen(fd,'rb') as stream:
+        before = os.fstat(stream.fileno())
+        if not stat.S_ISREG(before.st_mode) or before.st_size > limit:
+            raise ValueError('Bounded regular evidence file required')
+        raw = stream.read(limit+1)
+        after = os.fstat(stream.fileno())
+        named = os.stat(path,follow_symlinks=False)
+        if len(raw) > limit or len(raw) != after.st_size or before.st_size != after.st_size or before.st_mtime_ns != after.st_mtime_ns or (named.st_dev,named.st_ino) != (after.st_dev,after.st_ino) or not stat.S_ISREG(named.st_mode):
+            raise ValueError('Evidence file changed while being read')
+    return raw
+
+
+def atomic_handoff(directory, name, value):
+    raw = (json.dumps(value,sort_keys=True,separators=(',',':'),allow_nan=False)+'\n').encode()
+    if len(raw) > HANDOFF_BYTES:
+        raise ValueError('Local handoff exceeds its finite bound')
+    temporary = directory / ('.'+name+'.'+uuid.uuid4().hex+'.tmp')
+    fd = os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+    try:
+        with os.fdopen(fd,'wb') as stream:
+            stream.write(raw); stream.flush(); os.fsync(stream.fileno())
+        os.replace(temporary,directory/name)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return raw
+
+
+def api_inventory(value):
+    return isinstance(value,list) and 1 <= len(value) <= 32 and all(isinstance(item,str) and API_INSTANCE.fullmatch(item) for item in value) and len(set(value)) == len(value)
 
 
 def distribution(values):
@@ -46,37 +132,43 @@ def runtime_metadata():
     path = os.environ.get("FLUX_LIVE_RUNTIME_METADATA")
     if not path:
         raise RuntimeError("Candidate-pinned sanitized FLUX_LIVE_RUNTIME_METADATA is required before measurement")
-    with Path(path).open('rb') as stream:
-        raw = stream.read(65_537)
-    if len(raw) > 65_536:
-        raise RuntimeError("Runtime metadata exceeds its finite bound")
-    value = json.loads(raw)
-    required = {"source_sha", "driver_sha256", "collected_at", "hardware", "os", "docker_limits", "db", "dependencies", "network"}
-    if not isinstance(value, dict) or set(value) - required - {"server_queue_evidence"} or not required.issubset(value):
+    raw = read_regular(Path(path),65_536)
+    value = strict_json(raw)
+    required = {"source_sha", "driver_sha256", "collected_at", "hardware", "os", "docker_limits", "db", "dependencies", "network", "server_queue_evidence"}
+    if not isinstance(value, dict) or set(value) != required:
         raise RuntimeError("Closed sanitized runtime metadata schema required")
-    if value["source_sha"] != os.environ["FLUX_LIVE_SOURCE_SHA"] or not re.fullmatch(r"[a-f0-9]{40}", value["source_sha"]):
+    if value["source_sha"] != os.environ["FLUX_LIVE_SOURCE_SHA"] or not isinstance(value['source_sha'],str) or not SHA40.fullmatch(value["source_sha"]):
         raise RuntimeError("Runtime metadata does not match the exact candidate SHA")
     if value['driver_sha256'] != hashlib.sha256(Path(__file__).read_bytes()).hexdigest():
         raise RuntimeError('The Docker image contains a different latency driver than the frozen candidate')
+    if not isinstance(value['collected_at'],str) or not 1 <= len(value['collected_at']) <= 64:
+        raise RuntimeError('Actual metadata collection timestamp required')
     schemas = {"hardware": {"cpu", "logical_cores", "memory_bytes"}, "os": {"host", "container"},
                "db": {"image", "version"}, "network": {"condition", "setup"}}
     for key, fields in schemas.items():
         if not isinstance(value[key], dict) or set(value[key]) != fields or any(item is None or item == "" for item in value[key].values()):
             raise RuntimeError(f"Actual sanitized {key} observations are required")
-    if not value["docker_limits"] or not isinstance(value["docker_limits"], dict):
+    hardware = value['hardware']
+    if not isinstance(hardware['cpu'],str) or not 1 <= len(hardware['cpu']) <= 512 or not exact_integer(hardware['logical_cores'],1) or not exact_integer(hardware['memory_bytes'],1):
+        raise RuntimeError('Observed CPU and positive hardware core/memory values required')
+    if any(not isinstance(item,str) or not 1 <= len(item) <= 2048 for key in ('os','db','network') for item in value[key].values()):
+        raise RuntimeError('Bounded actual OS/database/network descriptions required')
+    if not isinstance(value["docker_limits"], dict) or not 1 <= len(value['docker_limits']) <= 32 or any(not isinstance(name,str) or not API_INSTANCE.fullmatch(name) for name in value['docker_limits']):
         raise RuntimeError("Actual Docker service limits are required")
     for item in value["docker_limits"].values():
         if not isinstance(item, dict) or set(item) != {"image", "cpus", "memory_bytes", "pids_limit"}:
             raise RuntimeError("Docker metadata may contain only image and explicit resource limits")
+        if not isinstance(item['image'],str) or not 1 <= len(item['image']) <= 512 or item['cpus'] != 'unset' and (type(item['cpus']) not in (int,float) or not math.isfinite(item['cpus']) or item['cpus'] <= 0) or any(item[field] != 'unset' and not exact_integer(item[field],1) for field in ('memory_bytes','pids_limit')):
+            raise RuntimeError('Docker limits need actual positive values or observed unset, never invented zero')
     dependencies = value["dependencies"]
     if not isinstance(dependencies, dict) or not dependencies or not re.fullmatch(r"[a-f0-9]{64}", str(dependencies.get("pnpm_lock_sha256", ""))):
         raise RuntimeError("Exact dependency versions and lockfile hash are required")
-    if any(not isinstance(item, (str, int, float, bool)) for item in dependencies.values()):
+    if any(not isinstance(name,str) or not 1 <= len(name) <= 128 or not isinstance(item,str) or not 1 <= len(item) <= 256 for name,item in dependencies.items()):
         raise RuntimeError("Dependency metadata contains non-version fields")
     if not {"yjs", "@codemirror/state", "@codemirror/view", "y-codemirror.next", "ws", "pnpm_lock_sha256"}.issubset(dependencies):
         raise RuntimeError("Exact collaboration/transport dependency pins are required")
-    evidence = value.get('server_queue_evidence')
-    if evidence is not None and (not isinstance(evidence, dict) or set(evidence) != {'path','format','source_sha','meaning','complete'} or evidence['format'] != 'jsonl' or evidence['source_sha'] != value['source_sha'] or not isinstance(evidence['complete'], bool)):
+    evidence = value['server_queue_evidence']
+    if not isinstance(evidence, dict) or set(evidence) != {'path','format','source_sha','meaning','complete','api_instances'} or evidence['path'] != QUEUE_RAW_NAME or evidence['format'] != 'jsonl' or evidence['source_sha'] != value['source_sha'] or evidence['complete'] is not False or not isinstance(evidence['meaning'],str) or not 1 <= len(evidence['meaning']) <= 512 or not api_inventory(evidence['api_instances']):
         raise RuntimeError('Closed source-pinned actual queue evidence descriptor required')
     value["metadata_sha256"] = hashlib.sha256(raw).hexdigest()
     return value
@@ -113,61 +205,185 @@ def publication_ledger(fixture, start, end):
     return sorted(ledger, key=lambda row: row["at"])
 
 
-def queue_evidence(metadata, directory, planned):
+def validated_rows(directory, planned, source_sha):
+    """Count retained schema-valid rows, including failures, never loop attempts."""
+    completed, written, errors = 0, 0, []
+    for case in planned:
+        path = directory / f'{case}-rows.json'
+        try:
+            rows = strict_json(read_regular(path,64*1024*1024))
+            if not isinstance(rows,list) or len(rows) > SAMPLES:
+                raise ValueError('Bounded scheduled row array required')
+            indices, valid = set(), 0
+            for row in rows:
+                if not isinstance(row,dict) or row.get('case') != case or row.get('source_sha') != source_sha or not exact_integer(row.get('index'),0,SAMPLES-1) or row['index'] in indices or type(row.get('deadline_ms')) is not int or row['deadline_ms'] != 1000 or row.get('outcome') not in ('painted','superseded-covered','error','timeout') or not canonical_uuid(row.get('workspace_id')) or not canonical_uuid(row.get('resource_id')) or not isinstance(row.get('accounts'),dict) or set(row['accounts']) != {'producer','receiver'} or any(not canonical_uuid(account) for account in row['accounts'].values()) or any(type(row.get(field)) not in (int,float) or not math.isfinite(row[field]) or row[field] < 0 for field in ('scheduled_at','observed_at')):
+                    raise ValueError('Scheduled row identity/schema is invalid')
+                latency = row.get('latency_ms')
+                if row['outcome'] in ('painted','superseded-covered'):
+                    if type(latency) not in (int,float) or not math.isfinite(latency) or not 0 <= latency <= 1000:
+                        raise ValueError('Painted scheduled row has invalid/deadline-exceeding latency')
+                elif latency is not None:
+                    raise ValueError('Error/timeout row must retain infinite-latency representation')
+                indices.add(row['index']); valid += 1
+            written += valid
+            if valid == SAMPLES and indices == set(range(SAMPLES)):
+                completed += 1
+            else:
+                errors.append({'case':case,'error':'Scheduled rows are incomplete','valid_rows':valid})
+        except FileNotFoundError:
+            errors.append({'case':case,'error':'Rows artifact absent'})
+        except Exception as error:
+            errors.append({'case':case,'error':str(error)})
+    return {'completed_case_count':completed,'scheduled_rows_written':written,'errors':errors}
+
+
+def validate_finished(raw, metadata, planned):
+    marker = strict_json(raw)
+    fields = {'schema','measurement_id','source_sha','driver_sha256','api_instances','planned_cases','completed_case_count','scheduled_rows_written','teardown_complete','finished_at'}
+    if not isinstance(marker,dict) or set(marker) != fields or type(marker['schema']) is not int or marker['schema'] != 1 or not canonical_uuid(marker['measurement_id']) or marker['source_sha'] != metadata['source_sha'] or marker['driver_sha256'] != metadata['driver_sha256'] or marker['planned_cases'] != planned or not api_inventory(marker['api_instances']) or marker['api_instances'] != metadata.get('server_queue_evidence',{}).get('api_instances',[]) or not exact_integer(marker['completed_case_count'],0,len(planned)) or not exact_integer(marker['scheduled_rows_written'],0,len(planned)*SAMPLES) or type(marker['teardown_complete']) is not bool or type(marker['finished_at']) not in (int,float) or not math.isfinite(marker['finished_at']) or marker['finished_at'] < 0:
+        raise ValueError('Closed source/driver/inventory-pinned measurement marker required')
+    return marker
+
+
+async def await_queue_seal(directory):
+    deadline = time.perf_counter()+SEAL_WAIT_SECONDS
+    while time.perf_counter() < deadline:
+        try:
+            return read_regular(directory/QUEUE_SEAL_NAME,HANDOFF_BYTES)
+        except FileNotFoundError:
+            await asyncio.sleep(min(.1,max(0,deadline-time.perf_counter())))
+    raise TimeoutError('Actual collector seal did not arrive within fifteen seconds')
+
+
+def queue_evidence(metadata, directory, planned, finished_raw, seal_raw):
     descriptor = metadata.get('server_queue_evidence')
     if not descriptor:
-        return {'status':'INCOMPLETE','reason':'Actual server queue-depth evidence was not supplied'}
-    directory = directory.resolve()
-    path = Path(descriptor['path']).resolve()
-    if path == directory or directory not in path.parents or not path.is_file():
-        return {'status':'INCOMPLETE','reason':'Queue evidence must be an existing raw file inside the mounted evidence directory'}
-    with path.open('rb') as stream:
-        raw = stream.read(32 * 1024 * 1024 + 1)
-    if len(raw) > 32 * 1024 * 1024 or not raw.endswith(b'\n'):
-        return {'status':'INCOMPLETE','reason':'Queue evidence exceeds the finite runner bound or has a truncated final record'}
-    counters = {'admissionQueued','codecWaiting','codecActive','mapQueued','mapActive','externalInputBytes','externalOutputBytes',
-                'peakAdmissionQueued','peakCodecWaiting','peakMapQueued','droppedRecords'}
-    allowed = counters | {'schema','apiInstance','kind','resourceId','generation','commandId','interactionId','inputSequence','confirmedSequence','backpressured'}
-    records, peaks, instances = [], {}, set()
-    incomplete = not descriptor['complete']
-    for line in raw.splitlines():
-        record = json.loads(line)
-        if not isinstance(record, dict) or set(record) - allowed or type(record.get('schema')) is not int or record['schema'] != 1 or not isinstance(record.get('apiInstance'), str) or not record['apiInstance']:
-            return {'status':'INCOMPLETE','reason':'Unknown or non-primitive telemetry record schema'}
-        if not {'kind','resourceId','generation','droppedRecords'}.issubset(record) or any(not isinstance(record.get(key), int) or isinstance(record[key], bool) or record[key] < 0 for key in counters if key in record):
-            return {'status':'INCOMPLETE','reason':'Actual counters or cumulative drop count are missing/invalid'}
-        if any(not isinstance(value, (str, int, bool, type(None))) for value in record.values()):
-            return {'status':'INCOMPLETE','reason':'Telemetry contains non-primitive values'}
-        incomplete |= record['droppedRecords'] > 0 or record.get('backpressured', False)
-        for key in counters:
-            if key in record:
-                peaks[key] = max(peaks.get(key, record[key]), record[key])
-        if record.get('externalInputBytes',0) > 32*1024*1024 or record.get('externalOutputBytes',0) > 32*1024*1024:
-            incomplete = True
-        instances.add(record['apiInstance']); records.append(record)
-    if not records or not {'admissionQueued','codecWaiting','codecActive','mapQueued','mapActive'}.issubset(peaks):
-        incomplete = True
-    correlations = {}
+        return {'status':'INCOMPLETE','reason':'Actual server queue-depth inventory/evidence was not supplied'}
+    marker = validate_finished(finished_raw,metadata,planned)
+    if read_regular(directory/MEASUREMENT_FINISHED_NAME,HANDOFF_BYTES) != finished_raw:
+        raise ValueError('Published measurement marker changed')
+    if read_regular(directory/QUEUE_SEAL_NAME,HANDOFF_BYTES) != seal_raw:
+        raise ValueError('Published collector seal changed')
+    row_coverage = validated_rows(directory,planned,metadata['source_sha'])
+    if any(marker[field] != row_coverage[field] for field in ('completed_case_count','scheduled_rows_written')):
+        raise ValueError('Measurement marker no longer agrees with actual row artifacts')
+    seal = strict_json(seal_raw)
+    fields = {'schema','measurement_id','source_sha','api_instances','measurement_finished_sha256','raw_path','raw_bytes','raw_sha256','record_count','complete','dropped_records','backpressured','final_drained','end_reason'}
+    if not isinstance(seal,dict) or set(seal) != fields or type(seal['schema']) is not int or seal['schema'] != 1 or seal['measurement_id'] != marker['measurement_id'] or seal['source_sha'] != metadata['source_sha'] or seal['api_instances'] != marker['api_instances'] or seal['measurement_finished_sha256'] != hashlib.sha256(finished_raw).hexdigest() or seal['raw_path'] != QUEUE_RAW_NAME or not isinstance(seal['raw_sha256'],str) or not SHA256.fullmatch(seal['raw_sha256']) or not exact_integer(seal['raw_bytes'],1,QUEUE_MAX_BYTES) or not exact_integer(seal['record_count'],1,QUEUE_MAX_RECORDS) or not exact_integer(seal['dropped_records']) or any(type(seal[name]) is not bool for name in ('complete','backpressured','final_drained')) or seal['end_reason'] not in ('drained','collector-error','timeout','size-limit'):
+        raise ValueError('Closed seal must bind this exact finished marker and producer inventory')
+    path = directory/QUEUE_RAW_NAME
+    raw = read_regular(path,QUEUE_MAX_BYTES)
+    if len(raw) != seal['raw_bytes'] or hashlib.sha256(raw).hexdigest() != seal['raw_sha256'] or not raw.endswith(b'\n'):
+        raise ValueError('Sealed raw bytes/hash/termination do not match')
+    lines = raw[:-1].split(b'\n')
+    if len(lines) != seal['record_count'] or len(lines) > QUEUE_MAX_RECORDS or any(not line or len(line)+1 > QUEUE_LINE_BYTES for line in lines):
+        raise ValueError('Sealed exact line count/line bound does not match')
+    numeric = set(QUEUE_GAUGES+QUEUE_PEAKS+QUEUE_RECORD_COUNTERS)
+    required = numeric | {'schema','apiInstance','kind','resourceId','generation','backpressured'}
+    optional = {'commandId','interactionId','inputSequence','confirmedSequence','finalDrained'}
+    def correlation_key(resource, generation, identity, coverage):
+        if not canonical_uuid(resource) or not canonical_uuid(generation):
+            return None
+        if canonical_uuid(identity.get('commandId')):
+            return (resource,generation,'wiki',identity['commandId'])
+        if canonical_uuid(identity.get('gestureId')) and exact_integer(coverage.get('publication_sequence')):
+            return (resource,generation,'map',identity['gestureId'],coverage.get('publication_sequence'))
+        return None
+    rows_by_case, requested, matched_records = {}, set(), {}
     for case in planned:
-        rows_path = directory / f'{case}-rows.json'
-        if not rows_path.is_file():
-            continue
-        rows = json.loads(rows_path.read_text())
-        matched = 0
+        try:
+            rows = strict_json(read_regular(directory/f'{case}-rows.json',64*1024*1024))
+            if not isinstance(rows,list) or len(rows) > SAMPLES:
+                continue
+            rows_by_case[case] = rows
+            for row in rows:
+                if isinstance(row,dict):
+                    identity, coverage = row.get('identity',{}), row.get('coverage',{})
+                    if isinstance(identity,dict) and isinstance(coverage,dict):
+                        key = correlation_key(row.get('resource_id'),identity.get('generation'),identity,coverage)
+                        if key is not None:
+                            requested.add(key)
+        except (OSError,ValueError,TypeError):
+            pass  # Partial/malformed measurement remains failed; telemetry can still drain.
+    peaks, previous, finals, captured = {}, {}, {}, {}
+    expected = set(marker['api_instances'])
+    incomplete, budget_violations = False, {}
+    for line in lines:
+        record = strict_json(line)
+        if not isinstance(record,dict) or not required.issubset(record) or set(record)-required-optional or type(record['schema']) is not int or record['schema'] != 1 or record['apiInstance'] not in expected or record['kind'] not in ('initial','wiki','map','final') or any(not exact_integer(record[field]) for field in numeric) or type(record['backpressured']) is not bool:
+            raise ValueError('Closed primitive actual queue record/counters required')
+        instance = record['apiInstance']
+        if instance in finals or instance not in previous and record['kind'] != 'initial' or instance in previous and record['kind'] == 'initial':
+            raise ValueError('Each inventoried producer needs one initial and one terminal final in order')
+        if record['kind'] in ('initial','final'):
+            if record['resourceId'] is not None or record['generation'] is not None or set(record)&(optional-{'finalDrained'}):
+                raise ValueError('Initial/final telemetry cannot contain resource command fields')
+        elif not canonical_uuid(record['resourceId']) or not canonical_uuid(record['generation']):
+            raise ValueError('Actual queue resource/generation must be canonical UUIDs')
+        if any(not canonical_uuid(record[field]) for field in ('commandId','interactionId') if field in record) or any(not exact_integer(record[field]) for field in ('inputSequence','confirmedSequence') if field in record):
+            raise ValueError('Bounded queue command/interaction correlation required')
+        if record['attemptedRecords'] != record['retainedRecords']+record['droppedRecords']:
+            raise ValueError('Attempt/retained/drop counters must include this retained record')
+        captured[instance] = captured.get(instance,0)+1
+        if record['retainedRecords'] != captured[instance]:
+            raise ValueError('A producer retained line was omitted, duplicated, or appended')
+        old = previous.get(instance)
+        if old and (any(record[field] < old[field] for field in QUEUE_PEAKS+QUEUE_RECORD_COUNTERS) or old['backpressured'] and not record['backpressured']):
+            raise ValueError('Cumulative counters/peaks/backpressure cannot reset')
+        for gauge,peak in zip(QUEUE_GAUGES,QUEUE_PEAKS):
+            if record[peak] < record[gauge]:
+                raise ValueError('Actual mutation-maintained peak is below its current gauge')
+            peaks[peak] = max(peaks.get(peak,record[peak]),record[peak])
+        incomplete |= record['droppedRecords'] > 0 or record['backpressured']
+        for field in ('externalInputBytes','externalOutputBytes','peakExternalInputBytes','peakExternalOutputBytes','assemblyBytes','peakAssemblyBytes'):
+            if record[field] > QUEUE_MAX_BYTES:
+                incomplete = True
+                key = f'{instance}:{field}'
+                budget_violations[key] = max(budget_violations.get(key,0),record[field])
+        if record['kind'] == 'final':
+            if type(record.get('finalDrained')) is not bool:
+                raise ValueError('An actual producer final-drained observation is required')
+            if record['finalDrained'] and any(record[gauge] != 0 for gauge in QUEUE_GAUGES):
+                raise ValueError('A producer cannot certify drain with retained resources')
+            finals[instance] = record
+        elif 'finalDrained' in record:
+            raise ValueError('Only the terminal record can certify producer drain')
+        if record['kind'] in ('wiki','map'):
+            key = correlation_key(record['resourceId'],record['generation'],{'commandId':record.get('commandId'),'gestureId':record.get('interactionId')},{'publication_sequence':record.get('inputSequence')})
+            if key in requested:
+                matched_records[key] = record
+        previous[instance] = record
+    if set(finals) != expected:
+        raise ValueError('A final from every initially inventoried API producer is required')
+    dropped = sum(finals[instance]['droppedRecords'] for instance in expected)
+    backpressured = any(finals[instance]['backpressured'] for instance in expected)
+    drained = all(finals[instance]['finalDrained'] for instance in expected)
+    if seal['dropped_records'] != dropped or seal['backpressured'] != backpressured or seal['final_drained'] != drained:
+        raise ValueError('Seal cumulative drops/backpressure/drain disagree with actual producer finals')
+    complete = drained and not incomplete and seal['end_reason'] == 'drained'
+    if seal['complete'] != complete:
+        raise ValueError('Seal completion cannot override actual raw producer observations')
+    correlations = {}
+    for case,rows in rows_by_case.items():
+        correlated = []
         for row in rows:
+            if not isinstance(row,dict):
+                continue
             identity, coverage = row.get('identity',{}), row.get('coverage',{})
-            matches = [record for record in records if record.get('resourceId') == row.get('resource_id') and record.get('generation') == identity.get('generation') and (
-                identity.get('commandId') is not None and record.get('commandId') == identity['commandId'] or
-                identity.get('gestureId') is not None and record.get('interactionId') == identity['gestureId'] and record.get('inputSequence') == coverage.get('publication_sequence'))]
-            if matches:
-                row['queue_depth'] = {**row.get('queue_depth',{}), 'server':matches[-1], 'meaning':'Actual correlated admission snapshot, separate from DOM latency clock'}
-                matched += 1
-        rows_path.write_text(json.dumps(rows,indent=2))
-        correlations[case] = {'scheduled_rows':len(rows),'correlated_rows':matched,'unavailable_rows':len(rows)-matched}
+            if not isinstance(identity,dict) or not isinstance(coverage,dict):
+                continue
+            key = correlation_key(row.get('resource_id'),identity.get('generation'),identity,coverage)
+            if key in matched_records:
+                correlated.append({'index':row.get('index'),'server':matched_records[key]})
+        correlation_path = directory/f'{case}-queue-correlations.json'
+        correlation_path.write_text(json.dumps(correlated,indent=2,allow_nan=False))
+        correlations[case] = {'scheduled_rows':len(rows),'correlated_rows':len(correlated),'unavailable_rows':len(rows)-len(correlated),'path':str(correlation_path)}
     # Per-row depth is optional in the contract; actual aggregate depth/peaks remain
     # mandatory. Null stays null where no correlation exists. No zero is invented.
-    return {'status':'INCOMPLETE' if incomplete else 'COMPLETE','raw_path':str(path),'sha256':hashlib.sha256(raw).hexdigest(),
-            'record_count':len(records),'api_instances':sorted(instances),'observed_peaks':peaks,'correlations':correlations,
+    return {'status':'COMPLETE' if complete else 'INCOMPLETE','raw_path':str(path),'sha256':hashlib.sha256(raw).hexdigest(),
+            'record_count':len(lines),'api_instances':sorted(expected),'mutation_maintained_peaks':peaks,'finals':finals,
+            'budget_violations':budget_violations,
+            'seal':seal,'measurement_finished_sha256':hashlib.sha256(finished_raw).hexdigest(),'correlations':correlations,
             'clock':'Server admission snapshots are reported separately; they are never subtracted from the one driver-clock latency'}
 
 
@@ -535,13 +751,14 @@ async def main():
     planned = [f"map-{count}-drag-{selected}" for count, selected in ((50, 1), (50, 50), (500, 1), (500, 50), (500, 200))] + [f"wiki-{units}-{receiver}" for units in (10_000, 100_000) for receiver in ("editor", "reader")]
     directory = Path(os.environ["FLUX_LIVE_EVIDENCE"])
     directory.mkdir(parents=True, exist_ok=True)
-    if (directory/'planned.json').exists() or (directory/'summary.json').exists() or any(directory.glob('*-rows.json')):
+    if any((directory/name).exists() or (directory/name).is_symlink() for name in ('planned.json','summary.json',MEASUREMENT_FINISHED_NAME,QUEUE_SEAL_NAME)) or any(directory.glob('*-rows.json')):
         raise RuntimeError('A fresh evidence directory is required; earlier rows cannot certify this run')
     (directory / "planned.json").write_text(json.dumps({"source_sha": os.environ["FLUX_LIVE_SOURCE_SHA"], "cases": planned, "samples_per_case": SAMPLES, "warmups_per_case": WARMUPS}, indent=2))
     fixture = LiveFixture()
     fixture.runtime_metadata = runtime_metadata()
     summaries, failures = [], []
     queue = {'status':'INCOMPLETE','reason':'Measurement did not reach actual queue evidence validation'}
+    teardown_complete, row_coverage, finished_marker = False, None, None
     try:
         await fixture.asyncSetUp()
         # Each case retains its entire sample set even if its p95 or correctness assertion fails.
@@ -563,15 +780,29 @@ async def main():
         try:
             if hasattr(fixture, "browser"):
                 await fixture.asyncTearDown()
+                teardown_complete = True
         except Exception as error:
             failures.append({"case": "teardown", "error": str(error)})
         try:
-            queue = queue_evidence(fixture.runtime_metadata,directory,planned)
+            row_coverage = validated_rows(directory,planned,fixture.runtime_metadata['source_sha'])
+            if row_coverage['errors'] or row_coverage['completed_case_count'] != len(planned) or row_coverage['scheduled_rows_written'] != len(planned)*SAMPLES:
+                failures.append({'case':'scheduled-row-artifacts','error':row_coverage})
+            finished_marker = {'schema':1,'measurement_id':str(uuid.uuid4()),'source_sha':fixture.runtime_metadata['source_sha'],
+                'driver_sha256':fixture.runtime_metadata['driver_sha256'],'api_instances':fixture.runtime_metadata['server_queue_evidence']['api_instances'],
+                'planned_cases':planned,'completed_case_count':row_coverage['completed_case_count'],'scheduled_rows_written':row_coverage['scheduled_rows_written'],
+                'teardown_complete':teardown_complete,'finished_at':time.perf_counter()}
+            finished_raw = atomic_handoff(directory,MEASUREMENT_FINISHED_NAME,finished_marker)
+            # The runner now closes every expected producer, captures each actual final,
+            # then stops/flushes its collector and atomically seals immutable raw bytes.
+            seal_raw = await await_queue_seal(directory)
+            queue = queue_evidence(fixture.runtime_metadata,directory,planned,finished_raw,seal_raw)
         except Exception as error:
             queue = {'status':'INCOMPLETE','reason':str(error)}
+        if not teardown_complete and not any(item['case'] == 'teardown' for item in failures):
+            failures.append({'case':'teardown','error':'Actual browser teardown did not complete'})
         if queue['status'] != 'COMPLETE':
             failures.append({'case':'actual-server-queue-evidence','error':queue})
-        (directory / "summary.json").write_text(json.dumps({"source_sha": os.environ["FLUX_LIVE_SOURCE_SHA"], "planned": planned, "summaries": summaries, "failures": failures, "queue_evidence":queue,"runtime_metadata":fixture.runtime_metadata, "unexecuted": [case for case in planned if not (directory / f"{case}-rows.json").exists()]}, indent=2))
+        (directory / "summary.json").write_text(json.dumps({"source_sha": os.environ["FLUX_LIVE_SOURCE_SHA"], "planned": planned, "summaries": summaries, "failures": failures, "measurement_finished":finished_marker,"row_artifact_validation":row_coverage,"queue_evidence":queue,"runtime_metadata":fixture.runtime_metadata, "unexecuted": [case for case in planned if not (directory / f"{case}-rows.json").exists()]}, indent=2))
     if failures:
         raise SystemExit("Gate 4 FAIL: retained case failures; inspect summary and raw scheduled rows")
 
