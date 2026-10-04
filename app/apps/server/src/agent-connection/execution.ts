@@ -25,6 +25,9 @@ export interface AgentExecutionDomainChecks {
   /** #153 verifies the sender's queued-request identity against its canonical rows; absent means fail closed. */
   coordinationRequestPostcondition?(tx: Transaction, context: AuthenticatedAgentRuntime, command: NormalizedAgentExecutionCommand,
     condition: Extract<AgentPostcondition, { kind: 'cowork.request_state' }>): Promise<boolean>;
+  /** #153 verifies a created unit's identity, lineage, role and assignment against its canonical row; absent means fail closed. */
+  coordinationUnitPostcondition?(tx: Transaction, context: AuthenticatedAgentRuntime, command: NormalizedAgentExecutionCommand,
+    condition: Extract<AgentPostcondition, { kind: 'cowork.unit_state' }>): Promise<boolean>;
 }
 /** Operations whose produced thoughts or messages must live in the exact map or conversation the command targeted. */
 const CONTAINED: readonly AgentOperation[] = ['map.positions.update', 'map.thought.create', 'map.thought.update', 'conversation.reply'];
@@ -69,7 +72,9 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
     for (const condition of ordered) {
       const target = prepared.command.objectId;
       if (target && (condition.kind === 'work' || condition.kind === 'doc' || condition.kind === 'map' || condition.kind === 'map_checkpoint') && condition.id !== target
-        || target && (condition.kind === 'cowork.claim_state' || condition.kind === 'cowork.request_state') && condition.unitId !== target)
+        || target && (condition.kind === 'cowork.claim_state' || condition.kind === 'cowork.request_state') && condition.unitId !== target
+        // A created unit belongs to the exact task the command targeted.
+        || condition.kind === 'cowork.unit_state' && condition.taskId !== target)
         throw new DomainError(409, 'COMMAND_POSTSTATE_INVALID', 'The produced post-state belongs to another target');
       if (condition.kind === 'cowork.claim_state' && (condition.workspaceId !== prepared.context.workspaceId
         || condition.projectId !== prepared.command.projectId || condition.connectionId !== prepared.context.connectionId
@@ -81,10 +86,16 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
         || condition.projectId !== prepared.command.projectId || condition.connectionId !== prepared.context.connectionId
         || condition.role !== prepared.command.peerRequestClass))
         throw new DomainError(409, 'COMMAND_POSTSTATE_INVALID', 'The request post-state belongs to another context or sender role');
+      // The created unit's role is the class; its assignment may be another connection (the receipt records the creator).
+      if (condition.kind === 'cowork.unit_state' && (condition.workspaceId !== prepared.context.workspaceId
+        || condition.projectId !== prepared.command.projectId || condition.role !== prepared.command.peerRequestClass))
+        throw new DomainError(409, 'COMMAND_POSTSTATE_INVALID', 'The unit post-state belongs to another context or role');
       const allowed = condition.kind === 'cowork.claim_state'
         ? !!domain.coordinationPostcondition && await domain.coordinationPostcondition(tx, prepared.context, prepared.command, condition)
         : condition.kind === 'cowork.request_state'
         ? !!domain.coordinationRequestPostcondition && await domain.coordinationRequestPostcondition(tx, prepared.context, prepared.command, condition)
+        : condition.kind === 'cowork.unit_state'
+        ? !!domain.coordinationUnitPostcondition && await domain.coordinationUnitPostcondition(tx, prepared.context, prepared.command, condition)
         : await rows.nativePostcondition(prepared.context.workspaceId, prepared.command.projectId, condition,
           CONTAINED.includes(prepared.command.operation) ? prepared.command.objectId ?? undefined : undefined);
       if (!allowed) throw new DomainError(409, 'COMMAND_POSTSTATE_STALE', 'The produced object changed; recover before continuing');
