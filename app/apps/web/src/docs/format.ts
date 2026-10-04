@@ -10,7 +10,7 @@ export const STATE_LABEL: Record<DocState, string> = { draft: 'Draft', published
 export const authorLabel = (who: NamedPrincipal) => (who.kind === 'agent' ? `${who.name} · agent` : who.name);
 
 const KIND: Record<string, string> = {
-  doc: 'Doc', work: 'Work', decision: 'Decision', result: 'Result', message: 'Message', thought: 'Thought', sketch: 'Sketch', material: 'Material',
+  doc: 'Page', work: 'Work', decision: 'Decision', result: 'Result', message: 'Message', thought: 'Thought', sketch: 'Sketch', material: 'Material',
 };
 export const kindLabel = (type: string) => KIND[type] ?? type;
 
