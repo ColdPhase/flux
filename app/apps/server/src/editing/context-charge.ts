@@ -11,9 +11,19 @@ function charge(value: unknown, visitLimit: number, byteLimit: number, binary=fa
     else if (binary && child instanceof Uint8Array) bytes += (child.buffer as ArrayBuffer & {maxByteLength?:number}).maxByteLength ?? child.buffer.byteLength;
     else if (typeof child === 'object') {
       if (seen.has(child)) throw new Refusal('ADMISSION_METADATA_LIMIT'); seen.add(child);
-      if (Object.getPrototypeOf(child) !== Object.prototype && !Array.isArray(child)) throw new Refusal('ADMISSION_METADATA_LIMIT');
+      const prototype=Object.getPrototypeOf(child);
+      // Pinned Fastify/find-my-way params and query records use an empty NullObject
+      // prototype whose parent is null. It has no inherited data/code to retain.
+      const plain=prototype===Object.prototype||prototype===null||prototype&&Object.getPrototypeOf(prototype)===null&&Reflect.ownKeys(prototype).length===0;
+      if (!plain && !(Array.isArray(child)&&prototype===Array.prototype)) throw new Refusal('ADMISSION_METADATA_LIMIT');
       bytes += 256;
-      for (const [key, nested] of Object.entries(child)) { bytes += 128 + 2 * key.length; visit(nested, depth + 1); }
+      for (const key of Reflect.ownKeys(child)) {
+        if(typeof key!=='string')throw new Refusal('ADMISSION_METADATA_LIMIT');
+        const property=Object.getOwnPropertyDescriptor(child,key)!;
+        if(!('value' in property))throw new Refusal('ADMISSION_METADATA_LIMIT');
+        if(!property.enumerable){if(Array.isArray(child)&&key==='length')continue;throw new Refusal('ADMISSION_METADATA_LIMIT');}
+        bytes += 128 + 2 * key.length; visit(property.value, depth + 1);
+      }
     } else throw new Refusal('ADMISSION_METADATA_LIMIT');
     if (bytes > byteLimit) throw new Refusal('ADMISSION_METADATA_LIMIT');
   }

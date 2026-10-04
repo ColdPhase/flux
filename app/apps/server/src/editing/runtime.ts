@@ -66,10 +66,10 @@ export function editingRuntime() {
         if (bytes.byteLength > 256 || bytes.toString('base64') !== encoded) throw new Refusal('INVALID_CURSOR');
         let relative: Y.RelativePosition;
         try { relative = Y.decodeRelativePosition(bytes); } catch { throw new Refusal('INVALID_CURSOR'); }
-        if (relative.type !== null || relative.tname !== 'body' || !Number.isSafeInteger(relative.assoc) || Math.abs(relative.assoc) > 1) throw new Refusal('INVALID_CURSOR');
+        if (relative.type !== null || (relative.item ? relative.tname !== null : relative.tname !== 'body') || !Number.isSafeInteger(relative.assoc) || Math.abs(relative.assoc) > 1) throw new Refusal('INVALID_CURSOR');
         if (!Buffer.from(Y.encodeRelativePosition(relative)).equals(bytes)) throw new Refusal('INVALID_CURSOR');
         if (relative.item && (!Number.isSafeInteger(relative.item.client) || !Number.isSafeInteger(relative.item.clock)
-          || !state.nodes.some((node) => node.client === relative.item!.client && relative.item!.clock >= node.clock && relative.item!.clock < node.clock + node.length))) throw new Refusal('INVALID_CURSOR');
+          || !state.nodes.some((node) => node.root === 'body' && node.client === relative.item!.client && relative.item!.clock >= node.clock && relative.item!.clock < node.clock + node.length))) throw new Refusal('INVALID_CURSOR');
       }
     },
     close: async () => { admissionQueue.close(); await pool.close(); },
