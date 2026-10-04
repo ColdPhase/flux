@@ -7,6 +7,7 @@ import { ProjectConversation, projectConversationLoader } from './app/ProjectCon
 import { ProjectSetup } from './app/ProjectSetup';
 import { MaterialView, materialLoader } from './app/MaterialView';
 import { ProjectTasks, projectTasksLoader } from './work/ProjectTasks';
+import { ProjectAgents, projectAgentsLoader } from './agents/ProjectAgents';
 import { DocHistory, DocReader, WikiHome, WorkspaceDocs, docHistoryLoader, docLoader } from './docs/DocViews';
 import { DocEditor, docEditLoader } from './docs/DocEditor';
 import { WikiLayout, wikiLoader, wikiShouldRevalidate } from './docs/Wiki';
@@ -103,6 +104,8 @@ export const router = createBrowserRouter([
                   { path: ':docId/history', loader: docHistoryLoader, Component: DocHistory },
                 ],
               },
+              // Agents (UI116-2, #136): the project's connections and its task threads.
+              { path: 'agents', loader: projectAgentsLoader, Component: ProjectAgents },
               // An invitation's link (#62): opens the session's work with the invitation card.
               { path: 'live/:sessionId', Component: LiveOpen },
             ],
