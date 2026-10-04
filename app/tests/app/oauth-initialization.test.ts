@@ -46,7 +46,7 @@ test('simultaneous identity initialization survives a real competing resource in
   const ready:Promise<unknown>[]=[];
   try{
     for(const[index,server]of servers.entries())registerIdentity(server,{db:databases[index]!.db,config,mailer:null});
-    ready.push(...servers.map(server=>server.ready()));await Promise.all(ready);
+    ready.push(...servers.map(server=>Promise.resolve(server.ready())));await Promise.all(ready);
     assert.equal(emptyReads,2);assert.equal(identifierConflicts,1,'One actual PostgreSQL insert loses the identifier race');
     const rows=(await pool.query('SELECT * FROM oauth_resource WHERE identifier=$1',[resource])).rows;
     assert.equal(rows.length,1);assert.equal(rows[0].identifier,resource);assert.equal(rows[0].name,resource);assert.equal(rows[0].disabled,false);assert.equal(rows[0].policy_version,1);
