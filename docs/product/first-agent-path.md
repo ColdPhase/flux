@@ -14,7 +14,7 @@ each client's own setup commands. Verified clients are still only those with rec
 **Status:** accepted after [independent peer review](https://github.com/ColdPhase/flux/pull/53#pullrequestreview-5331573326).
 This is the product/architecture decision for the [#52 implementation](https://github.com/ColdPhase/flux/issues/52).
 It narrows the [#9 feasibility research](own-ai-feasibility.md)
-within accepted [O-002](application-architecture-proposal.md) and the later
+within accepted [O-002](application-architecture.md) and the later
 [#44 creative product direction](https://github.com/ColdPhase/flux/issues/44).
 
 ## Decision and boundaries
