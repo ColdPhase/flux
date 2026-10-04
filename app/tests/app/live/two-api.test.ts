@@ -115,9 +115,8 @@ class SocketClient {
       assert.ok(this.socket.readyState === WebSocket.OPEN, 'Socket closed before required real delivery');
       const remaining = deadline - performance.now(); if (remaining <= 0) throw new Error('Required real delivery exceeded finite fixture deadline');
       await new Promise<void>((resolve) => {
-        let timer: NodeJS.Timeout;
         const wake = () => { clearTimeout(timer); this.waiters.delete(wake); resolve(); };
-        this.waiters.add(wake); timer = setTimeout(wake, remaining);
+        const timer = setTimeout(wake, remaining); this.waiters.add(wake);
       });
     }
   }
