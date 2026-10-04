@@ -3,6 +3,8 @@
 # starts the Compose app on its own project and loopback port, and runs tests/ui in the
 # pinned Playwright container. Screenshots go to FLUX_UI_SCREENSHOT_DIR when it is set
 # (an absolute path), e.g. FLUX_UI_SCREENSHOT_DIR="$PWD/docs/design/app-shell".
+# Arguments name test modules (or Module.Class.test) to run only those, e.g.
+# ./scripts/check_ui.sh test_docs test_people; without arguments every module runs.
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -42,4 +44,8 @@ $compose build migrate ui-test
 $compose up -d db migrate
 # The API writes uploaded files to the shared volume; give it to the runtime user first.
 $compose --profile setup run --rm files-init
-$compose run --rm ui-test
+if [ "$#" -gt 0 ]; then
+  $compose run --rm -w /work/tests/ui ui-test python3 -m unittest -v "$@"
+else
+  $compose run --rm ui-test
+fi
