@@ -216,3 +216,16 @@ Main was checked out detached at `d94f70e4` (the merged main) and run with the s
   the requested semantics are implemented in `app/apps/web/src/work/readerIntent.ts`. Deviations
   from the requested input list: a pointer pressed anywhere in the feed (main's existing settle
   behaviour) and pointer movement (instrumented evidence above) also count as reader input.
+- Deviation from the requested classification: the "reader only after genuine input" rule
+  decides the pending-scroll race and ends the opening settle, but a scroll event the reading
+  position did not write still records the reader's position (as before). Applying the rule to
+  scroll events too (`3b9ecff1`..`9128f31e`) regressed `test_work_associations` 02/05–08 3/3: an
+  arrival `scrollIntoView` to an early message must leave following the end. `8e942a3f` and the
+  `bounded-native-work.md` paragraph are authoritative; the `3b9ecff1` message describes the
+  superseded rule.
+- Product decisions for the evaluator beyond the request: the conversation opens hidden for at
+  most 1 s (`is-opening`, `aria-busy`) until its first bounded reads settle; the Agents view
+  reads `pivot_work` pages (without `?task=`, moving to another page of open tasks changes the
+  default task and opens its thread).
+- Lint at the final application code (`6765a745` build in `w170c-docrefs.log`): `eslint .`
+  printed nothing (0 problems).
