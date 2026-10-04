@@ -53,6 +53,8 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
 
   registerAuthBridge(app, { auth, publicOrigin: config.publicOrigin, passwordReset, oauthRequests });
   const sso: IdentityCapabilities['sso'] = config.oidc ? { providerId: config.oidc.providerId, label: config.oidc.label } : null;
+  // Operators register this exact redirect URI with their identity provider (#113).
+  if (config.oidc) app.log.info({ issuer: config.oidc.issuer, redirectUri: `${config.publicOrigin}/api/auth/oauth2/callback/${config.oidc.providerId}` }, 'Single sign-on is on');
   registerIdentityRoutes(app, { sessions, store: createSessionRepository(db), passwordReset, sso });
   registerAgentOauthContext(app, db, sessions, auth, config.publicOrigin);
 

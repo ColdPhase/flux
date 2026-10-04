@@ -27,17 +27,31 @@ export interface AuthDependencies {
 }
 
 /**
- * The claims of a verified ID token from the configured issuer become the person's name and
- * account email (#113). Only a verified email from that exact issuer is accepted; anything else
- * refuses the sign-in. Groups, roles and domains are ignored: Flux access comes from Flux grants.
+ * The person an ID token names (#113). The plugin has already verified the token's signature,
+ * audience, expiry and nonce against the discovery JWKS; this accepts only claims from the exact
+ * configured issuer with a verified email, and ignores groups, roles and domains (Flux access comes
+ * from Flux grants). Null refuses the sign-in, which Better Auth turns into the error redirect.
  */
-export function oidcProfile(oidc: Pick<OidcConfig, 'issuer'>, profile: Record<string, unknown>) {
-  const issuer = typeof profile.iss === 'string' ? profile.iss.replace(/\/$/, '') : '';
-  if (issuer !== oidc.issuer) throw new APIError('UNAUTHORIZED', { message: 'The sign-in came from an unexpected identity provider' });
-  const email = typeof profile.email === 'string' ? profile.email.trim().toLowerCase() : '';
-  if (!email || profile.email_verified !== true) throw new APIError('UNAUTHORIZED', { message: 'The identity provider did not confirm this email address' });
-  const name = [profile.name, profile.preferred_username].find((value): value is string => typeof value === 'string' && !!value.trim());
-  return { email, emailVerified: true, name: (name ?? email).trim().slice(0, 200) };
+export function oidcUser(oidc: Pick<OidcConfig, 'issuer'>, claims: Record<string, unknown> | null) {
+  if (!claims) return null;
+  const issuer = typeof claims.iss === 'string' ? claims.iss.replace(/\/$/, '') : '';
+  const subject = typeof claims.sub === 'string' ? claims.sub : '';
+  const email = typeof claims.email === 'string' ? claims.email.trim().toLowerCase() : '';
+  if (issuer !== oidc.issuer || !subject || !email || claims.email_verified !== true) return null;
+  const name = [claims.name, claims.preferred_username].find((value): value is string => typeof value === 'string' && !!value.trim());
+  return { id: subject, email, emailVerified: true, name: (name ?? email).trim().slice(0, 200) };
+}
+
+/** The payload of an ID token the plugin verified before calling getUserInfo. */
+function idTokenClaims(idToken: string | undefined): Record<string, unknown> | null {
+  const payload = idToken?.split('.')[1];
+  if (!payload) return null;
+  try {
+    const value: unknown = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    return value && typeof value === 'object' ? value as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
 }
 
 export function createAuth({ db, config, mailer, onMailError, oauthRequests }: AuthDependencies) {
@@ -165,7 +179,7 @@ function oidcPlugin(oidc: OidcConfig) {
       requireIdTokenVerification: true,
       // The same subject keeps the same Flux person; a changed (verified) email updates it.
       overrideUserInfo: true,
-      mapProfileToUser: (profile) => oidcProfile(oidc, profile),
+      getUserInfo: async (tokens) => oidcUser(oidc, idTokenClaims(tokens.idToken)),
     }],
   });
 }

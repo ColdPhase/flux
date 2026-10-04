@@ -71,7 +71,8 @@ export function oidcProviderId(issuer: string) {
 }
 
 /**
- * FLUX_OIDC_ISSUER, FLUX_OIDC_CLIENT_ID and FLUX_OIDC_CLIENT_SECRET_FILE are all or nothing.
+ * FLUX_OIDC_ISSUER and FLUX_OIDC_CLIENT_ID are both set or both empty; FLUX_OIDC_CLIENT_SECRET_FILE
+ * names the client secret then.
  * The issuer must be https; plain http is accepted only for a loopback host or when
  * FLUX_OIDC_ALLOW_HTTP_ISSUER=true (an isolated test identity provider, never production).
  */
@@ -79,9 +80,11 @@ export function loadOidcConfig(env: NodeJS.ProcessEnv, readSecret: (path: string
   const issuerValue = env.FLUX_OIDC_ISSUER?.trim();
   const clientId = env.FLUX_OIDC_CLIENT_ID?.trim();
   const secretFile = env.FLUX_OIDC_CLIENT_SECRET_FILE?.trim();
-  const set = [issuerValue, clientId, secretFile].filter(Boolean).length;
+  // The secret path is always set by the Compose files; issuer and client id switch sign-on on.
+  const set = [issuerValue, clientId].filter(Boolean).length;
   if (set === 0) return null;
-  if (set !== 3) throw new Error('Set FLUX_OIDC_ISSUER, FLUX_OIDC_CLIENT_ID and FLUX_OIDC_CLIENT_SECRET_FILE together, or none of them');
+  if (set !== 2) throw new Error('Set FLUX_OIDC_ISSUER and FLUX_OIDC_CLIENT_ID together, or neither');
+  if (!secretFile) throw new Error('FLUX_OIDC_CLIENT_SECRET_FILE is required for single sign-on');
   let url: URL;
   try {
     url = new URL(issuerValue!);

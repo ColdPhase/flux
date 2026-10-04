@@ -1,0 +1,35 @@
+# Test only (#113): a disposable, pinned Keycloak as the operator's OpenID Connect provider for the
+# real browser authorization-code flow. scripts/check_oidc.sh generates the realm with this run's
+# public origin, client secret and passwords; nothing here is used by a normal deployment.
+services:
+  keycloak:
+    profiles: ["oidc"]
+    image: quay.io/keycloak/keycloak:26.7.5@sha256:37dbaf6f0722c9ec246335f36e1ef8b2e6cb960f7c27e0d8c615121a3d475a85
+    command: ["start-dev", "--import-realm", "--http-port=8080"]
+    environment:
+      # The issuer the browser and the API both use on the Compose network.
+      KC_HOSTNAME: http://keycloak:8080
+      KC_HEALTH_ENABLED: "true"
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${FLUX_OIDC_TEST_ADMIN_PASSWORD:?Set FLUX_OIDC_TEST_ADMIN_PASSWORD}
+    volumes:
+      - ${FLUX_OIDC_TEST_REALM:?Set FLUX_OIDC_TEST_REALM}:/opt/keycloak/data/import/flux-realm.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 3s
+      timeout: 3s
+      retries: 60
+  api:
+    environment:
+      FLUX_OIDC_ISSUER: http://keycloak:8080/realms/flux
+      FLUX_OIDC_CLIENT_ID: flux
+      FLUX_OIDC_ALLOW_HTTP_ISSUER: "true"
+      FLUX_OIDC_LABEL: Keycloak
+    depends_on:
+      keycloak:
+        condition: service_healthy
+  e2e:
+    environment:
+      FLUX_OIDC_TEST_PASSWORD: ${FLUX_OIDC_TEST_PASSWORD:?Set FLUX_OIDC_TEST_PASSWORD}
+      FLUX_OIDC_TEST_ADMIN_PASSWORD: ${FLUX_OIDC_TEST_ADMIN_PASSWORD:?Set FLUX_OIDC_TEST_ADMIN_PASSWORD}
+      FLUX_MAILPIT_URL: http://mailpit:8025

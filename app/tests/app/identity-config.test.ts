@@ -5,7 +5,7 @@ import Fastify from 'fastify';
 import { loadIdentityConfig, registerIdentity, type IdentityConfig } from '../../apps/server/src/identity/index.js';
 import { originViolation } from '../../apps/server/src/identity/origin.js';
 import { loadOidcConfig, oidcProviderId } from '../../apps/server/src/identity/config.js';
-import { oidcProfile } from '../../apps/server/src/identity/auth.js';
+import { oidcUser } from '../../apps/server/src/identity/auth.js';
 import { verifiedOauthQuery } from '../../apps/server/src/identity/oauth-query.js';
 import { registerMcpRoute } from '../../apps/server/src/agent-connection/mcp-route.js';
 import { database } from './support/db.js';
@@ -64,10 +64,12 @@ describe('identity configuration', () => {
     const oidc = { FLUX_OIDC_ISSUER: 'https://id.example.org/realms/flux/', FLUX_OIDC_CLIENT_ID: 'flux', FLUX_OIDC_CLIENT_SECRET_FILE: '/run/secrets/oidc' };
     assert.equal(loadOidcConfig({}, secret), null, 'unset keeps email/password sign-in only');
     assert.equal(loadIdentityConfig(base).oidc, null);
-    for (const missing of ['FLUX_OIDC_ISSUER', 'FLUX_OIDC_CLIENT_ID', 'FLUX_OIDC_CLIENT_SECRET_FILE'] as const) {
+    for (const missing of ['FLUX_OIDC_ISSUER', 'FLUX_OIDC_CLIENT_ID'] as const) {
       const partial: Record<string, string> = { ...oidc }; delete partial[missing];
-      assert.throws(() => loadOidcConfig(partial, secret), /together, or none of them/, missing);
+      assert.throws(() => loadOidcConfig(partial, secret), /together, or neither/, missing);
     }
+    assert.equal(loadOidcConfig({ FLUX_OIDC_CLIENT_SECRET_FILE: '/run/secrets/x' }, secret), null, 'the always-set secret path alone keeps sign-on off');
+    assert.throws(() => loadOidcConfig({ FLUX_OIDC_ISSUER: oidc.FLUX_OIDC_ISSUER, FLUX_OIDC_CLIENT_ID: 'flux' }, secret), /SECRET_FILE is required/);
     const loaded = loadOidcConfig(oidc, secret)!;
     assert.deepEqual(loaded, { providerId: oidcProviderId('https://id.example.org/realms/flux'), issuer: 'https://id.example.org/realms/flux',
       clientId: 'flux', clientSecret: 'client-secret-value', label: 'single sign-on' });
@@ -89,14 +91,14 @@ describe('identity configuration', () => {
     const issuer = { issuer: 'https://id.example.org/realms/flux' };
     const claims = { iss: 'https://id.example.org/realms/flux', sub: 'abc', email: ' Ada@Example.ORG ', email_verified: true,
       name: 'Ada Kowalska', groups: ['flux-admins'], realm_access: { roles: ['admin'] } };
-    assert.deepEqual(oidcProfile(issuer, claims), { email: 'ada@example.org', emailVerified: true, name: 'Ada Kowalska' });
-    assert.deepEqual(oidcProfile(issuer, { ...claims, name: undefined, preferred_username: 'ada' }).name, 'ada');
-    assert.deepEqual(oidcProfile(issuer, { ...claims, iss: 'https://id.example.org/realms/flux/' }).email, 'ada@example.org');
-    assert.throws(() => oidcProfile(issuer, { ...claims, email_verified: false }), /did not confirm/);
-    assert.throws(() => oidcProfile(issuer, { ...claims, email_verified: 'true' }), /did not confirm/);
-    assert.throws(() => oidcProfile(issuer, { ...claims, email: '' }), /did not confirm/);
-    assert.throws(() => oidcProfile(issuer, { ...claims, iss: 'https://evil.example.org/realms/flux' }), /unexpected identity provider/);
-    assert.throws(() => oidcProfile(issuer, { ...claims, iss: undefined }), /unexpected identity provider/);
+    assert.deepEqual(oidcUser(issuer, claims), { id: 'abc', email: 'ada@example.org', emailVerified: true, name: 'Ada Kowalska' });
+    assert.equal(oidcUser(issuer, { ...claims, name: undefined, preferred_username: 'ada' })!.name, 'ada');
+    assert.equal(oidcUser(issuer, { ...claims, iss: 'https://id.example.org/realms/flux/' })!.email, 'ada@example.org');
+    for (const [label, change] of [['unverified', { email_verified: false }], ['string flag', { email_verified: 'true' }], ['no email', { email: '' }],
+      ['no subject', { sub: '' }], ['other issuer', { iss: 'https://evil.example.org/realms/flux' }], ['no issuer', { iss: undefined }]] as const) {
+      assert.equal(oidcUser(issuer, { ...claims, ...change }), null, label);
+    }
+    assert.equal(oidcUser(issuer, null), null, 'no ID token');
   });
 
   test('origin policy accepts only the configured origin for state changes', () => {
