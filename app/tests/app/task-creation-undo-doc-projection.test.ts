@@ -28,11 +28,24 @@ async function ownership() {
 // Bulk SQL creates historical projection data only, not production writer proof.
 test('unchanged native doc update counts all incoming and outgoing links before allocation and refuses without any document/use change', { timeout: 60_000 }, async () => {
   const { f, owner, doc } = await scene();
-  await pool.query(`INSERT INTO project_work_items(id,workspace_id,project_id,title,created_by_kind,created_by_id)
-    SELECT gen_random_uuid(),$1::uuid,$2::uuid,'Counted historical row '||n,'human',$3::text FROM generate_series(1,5000) n`, [f.workspaceId, f.projectId, owner]);
-  await pool.query(`INSERT INTO project_object_links(id,workspace_id,project_id,role,from_type,from_id,to_type,to_id,created_by_kind,created_by_id)
-    SELECT gen_random_uuid(),$1::uuid,$2::uuid,'related','work',id,'doc',$3::uuid,'human',$4::text FROM project_work_items WHERE project_id=$2
-    UNION ALL SELECT gen_random_uuid(),$1::uuid,$2::uuid,'related','doc',$3::uuid,'work',id,'human',$4::text FROM project_work_items WHERE project_id=$2`, [f.workspaceId, f.projectId, doc.id, owner]);
+  // Bound both historical seed writes under the unchanged application2s client.
+  // The exact5000 rows and every incoming/outgoing link remain in the fixture.
+  for (let start = 1; start <= 5000; start += 100) {
+    await pool.query(`INSERT INTO project_work_items(id,workspace_id,project_id,title,created_by_kind,created_by_id)
+      SELECT gen_random_uuid(),$1::uuid,$2::uuid,'Counted historical row '||n,'human',$3::text FROM generate_series($4::int,$5::int) n`,
+    [f.workspaceId, f.projectId, owner, start, Math.min(start + 99, 5000)]);
+  }
+  const completeWorks = (await pool.query('SELECT count(*)::int AS n FROM project_work_items WHERE project_id=$1', [f.projectId])).rows[0].n as number;
+  assert.equal(completeWorks, 5001, 'all5000 historical rows plus the actual scene prerequisite');
+  for (let offset = 0; offset < completeWorks; offset += 50) {
+    await pool.query(`WITH bounded AS (SELECT id FROM project_work_items WHERE project_id=$2 ORDER BY id LIMIT 50 OFFSET $5::int)
+      INSERT INTO project_object_links(id,workspace_id,project_id,role,from_type,from_id,to_type,to_id,created_by_kind,created_by_id)
+      SELECT gen_random_uuid(),$1::uuid,$2::uuid,'related','work',id,'doc',$3::uuid,'human',$4::text FROM bounded
+      UNION ALL SELECT gen_random_uuid(),$1::uuid,$2::uuid,'related','doc',$3::uuid,'work',id,'human',$4::text FROM bounded`,
+    [f.workspaceId, f.projectId, doc.id, owner, offset]);
+  }
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_object_links WHERE project_id=$1 AND (from_id=$2 OR to_id=$2)',
+    [f.projectId, doc.id])).rows[0].n, 10002, 'both directions for the complete5001 work set');
   const state = async () => ({ material: (await pool.query('SELECT * FROM project_materials WHERE id=$1', [doc.id])).rows,
     versions: (await pool.query('SELECT * FROM project_material_versions WHERE material_id=$1 ORDER BY version', [doc.id])).rows,
     used: (await pool.query('SELECT count(*)::int AS n FROM project_work_items WHERE project_id=$1 AND first_persisted_use_at IS NOT NULL', [f.projectId])).rows });
