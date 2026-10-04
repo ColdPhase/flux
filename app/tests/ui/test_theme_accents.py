@@ -169,7 +169,8 @@ class ThemeAccentsJourney(unittest.TestCase):
         for i, text in enumerate(("ToF sensor: compare latency and coverage", "Camera: failed at 5 lux", "Diffuser: keep the electronics accessible")):
             self.api(page, "POST", f"/api/v1/sketches/{sketch['id']}/thoughts", {"text": text, "x": 40+i*260, "y": 180, "linkFrom": {"thoughtId": first['thought']['id'], "label": "Evidence for"}})
         type(self).conversation_url = f"/projects/{pid}/conversations/{cid}"
-        type(self).work_url = f"/projects/{pid}/tasks"
+        # The grouped List (#136): these checks measure its status dots and "Needs you" rows.
+        type(self).work_url = f"/projects/{pid}/tasks?view=list"
         type(self).map_url = f"/projects/{pid}/map/{sketch['id']}"
 
     def test_02_keyboard_persistence_system_and_fallback(self):

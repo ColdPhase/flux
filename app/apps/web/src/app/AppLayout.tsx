@@ -117,16 +117,19 @@ export function AppLayout() {
     setShownPath(location.pathname);
     if ((panelMode !== 'docked' || backgroundSettings) && detailsOpen) setDetailsOpen(false);
   }
-  // `?open=work:<id>` (a notification's link, #116) opens that object in Details on its project.
+  // `?open=work:<id>` (a notification's link, #116) opens that object in Details on its project;
+  // `?open=people` (a new project, #188) opens its "Who can see this".
   const navigate = useNavigate();
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const match = /^(work|decision|result):([0-9a-f-]{36})$/i.exec(params.get('open') ?? '');
-    if (!match) return;
+    const open = params.get('open') ?? '';
+    const match = /^(work|decision|result):([0-9a-f-]{36})$/i.exec(open);
+    const people = open === 'people' && /^\/projects\/[^/]+/.test(location.pathname);
+    if (!match && !people) return;
     params.delete('open');
     const search = params.toString();
     navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true });
-    shell.openDetails({ kind: match[1]!.toLowerCase() as 'work' | 'decision' | 'result', id: match[2]!.toLowerCase() });
+    shell.openDetails(match ? { kind: match[1]!.toLowerCase() as 'work' | 'decision' | 'result', id: match[2]!.toLowerCase() } : { kind: 'overview', focus: 'people' });
   }, [location.search, location.pathname, location.hash, navigate, shell]);
   // ⌘K / Ctrl+K opens Jump to… from anywhere, also while typing, as the sidebar hint says.
   useEffect(() => {
@@ -190,8 +193,10 @@ export function AppLayout() {
     { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks${lastTasksSearch(me.user.id, projectId)}`, ...(openWork ? { countLabel: `, ${openWork} open` } : {}) },
     { id: 'docs', label: 'Wiki', to: `/projects/${projectId}/docs`, end: false },
   ] : null;
-  const audience = project ? audienceLine(project.people, me.user.id) : 'People with project access';
-  const openOverview = () => { setDetailsView('place'); toggleDetails(true); };
+  const audienceOpen = project?.project.visibility === 'workspace';
+  const audience = project ? audienceLine(project.people, me.user.id, audienceOpen) : 'People with project access';
+  // The audience line leads to "Who can see this", where managers change it (#188).
+  const openAudience = () => { setDetailsView({ kind: 'overview', focus: 'people' }); toggleDetails(true); };
   const recapOpen = detailsOpen && typeof detailsView === 'object' && detailsView.kind === 'recap';
   // "What matters" (#133): a quiet count of what needs you; refreshed when the panel closes.
   const needsYou = useNeedsYou(activeProject ? projectId ?? null : null, recapOpen);
@@ -265,8 +270,8 @@ export function AppLayout() {
               </div>
               <div className="top__meta">
                 {/* Who can read the project, then its current state; Details retains the full names. */}
-                <button type="button" className="top__audience" onClick={openOverview} aria-haspopup="dialog" title={audience}>
-                  <Icon name="lock" size={12} /><span>{audience}</span><span className="ui-vh">, who can see this project</span>
+                <button type="button" className="top__audience" onClick={openAudience} aria-haspopup="dialog" title={audience}>
+                  <Icon name={audienceOpen ? 'people' : 'lock'} size={12} /><span>{audience}</span><span className="ui-vh">, who can see this project</span>
                 </button>
                 {project && !phone ? <ProjectStateLine lists={project.work} canDecide={project.project.access !== 'viewer'} /> : null}
               </div>

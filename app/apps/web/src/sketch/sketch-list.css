@@ -9,6 +9,8 @@
 .sk-outline-row { display: flex; align-items: flex-start; gap: 2px; min-width: 0; }
 .sk-outline-row > .sk-li-t { flex: 1; min-width: 0; align-items: flex-start; justify-content: space-between; padding: 5px 4px; font-weight: 500; }
 .sk-outline-row > .sk-li-edit { flex: 1; min-width: 0; }
+/* UI116-4: the row's task count opens the same chooser as on the map. */
+.sk-outline-row > .sk-work--list { flex: none; min-height: 32px; padding: 0 6px; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
 .sk-outline-selected { flex: none; display: inline-flex; margin-top: 3px; color: var(--accent-selected-text, var(--accent)); }
 .sk-outline-toggle, .sk-outline-leaf { display: grid; place-items: center; flex: none; width: 24px; min-height: 32px; border-radius: var(--r-sm); color: var(--text-3); }
 .sk-outline-toggle:hover { background: var(--bg-hover); color: var(--text); }
@@ -38,6 +40,7 @@
 }
 @media (pointer: coarse) {
   .sk-outline-toggle, .sk-outline-leaf { width: 36px; min-height: 44px; }
+  .sk-outline-row > .sk-work--list { min-width: 44px; min-height: 44px; justify-content: center; }
   .sk-outline-body { margin-inline-start: 42px; }
   .sk-outline-actions > button, .sk-outline-back, .sk-outline-undo, .sk-outline-path summary, .sk-outline-more-links summary, .sk-outline-related button, .sk-outline-path button { min-height: 44px; }
   .sk-outline-related button, .sk-outline-path button { display: inline-block; padding-block: 10px; }
