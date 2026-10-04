@@ -191,6 +191,12 @@ class DocReferenceJourney(unittest.TestCase):
         expect(page.get_by_role("button", name=re.compile(f"^{name} .*account and sign out"))).to_be_visible()
         if phone: page.get_by_role("button", name="Close navigation", exact=True).click()
 
+    def expect_new_editor(self, page, project_name):
+        # Main's #197 wiki pane splits the old "New doc · everyone in <project> can read it" line:
+        # the bar says it is a new page and the crumb names the project's audience.
+        expect(page.locator(".wiki-bar__meta").get_by_text("New page", exact=True)).to_be_visible()
+        expect(page.locator(".wiki-doc__crumb")).to_have_text(f"Everyone in {project_name} can read it")
+
     def navigate_editor(self, page, project, suffix="new"):
         # Actual browser history navigation observed by React Router, preserving the
         # document and component position rather than reloading away the regression.
@@ -204,18 +210,18 @@ class DocReferenceJourney(unittest.TestCase):
                 page.evaluate("window.privateDraftDocument = crypto.randomUUID()")
                 marker = page.evaluate("window.privateDraftDocument")
                 self.navigate_editor(page, self.foreign)
-                expect(page.get_by_text("New doc · everyone in Other library can read it", exact=True)).to_be_visible()
+                self.expect_new_editor(page, "Other library")
                 expect(text).to_have_value("")
                 text.fill("PRIVATE-DRAFT in another project")
                 self.navigate_editor(page, self.project)
-                expect(page.get_by_text("New doc · everyone in Library lighting can read it", exact=True)).to_be_visible()
+                self.expect_new_editor(page, "Library lighting")
                 expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")
                 self.navigate_editor(page, self.project, f"{self.self_doc['id']}/edit")
                 expect(page.get_by_label("Title", exact=True)).to_have_value(self.self_doc["title"])
                 expect(text).to_have_value("A native document")
                 text.fill("PRIVATE-DRAFT of an existing document")
                 self.navigate_editor(page, self.project)
-                expect(page.get_by_text("New doc · everyone in Library lighting can read it", exact=True)).to_be_visible()
+                self.expect_new_editor(page, "Library lighting")
                 expect(text).to_have_value("PRIVATE-DRAFT of native reference notes\n")
                 self.assertEqual(page.evaluate("window.privateDraftDocument"), marker)
 
@@ -308,7 +314,7 @@ class DocReferenceJourney(unittest.TestCase):
                 key = f"flux:doc-edit:{self.user}:new:{self.project}"
                 attempt = page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).attempt", key)
                 self.navigate_editor(page, self.foreign)
-                expect(page.get_by_text("New doc · everyone in Other library can read it", exact=True)).to_be_visible()
+                self.expect_new_editor(page, "Other library")
                 expect(text).to_have_value("")
                 text.fill("PRIVATE-DRAFT of a new project while an old save completes")
                 route, response = held.pop()
@@ -359,7 +365,7 @@ class DocReferenceJourney(unittest.TestCase):
                 self.assertEqual(urlsplit(page.url).path, f"/projects/{self.foreign}/docs/new")
                 self.assertEqual(page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).attempt", key), attempt)
                 for route, response in projects: route.fulfill(response=response)
-                expect(page.get_by_text("New doc · everyone in Other library can read it", exact=True)).to_be_visible()
+                self.expect_new_editor(page, "Other library")
                 expect(text).to_have_value("")
                 self.assertEqual(urlsplit(page.url).path, f"/projects/{self.foreign}/docs/new")
                 self.assertEqual(page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).attempt", key), attempt)
