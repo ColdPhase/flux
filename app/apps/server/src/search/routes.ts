@@ -10,7 +10,7 @@ interface Options {
   db: Database;
   sessions: SessionResolver;
   cursorSecret: string;
-  /** Test only (FLUX_TEST_FAILURE_INJECTION): `GET /api/v1/search/explain` returns the rows examined. */
+  /** Test only (the fixture module: a fixture token and FLUX_TEST_FAILURE_INJECTION): `GET /api/v1/search/explain` returns the rows examined. */
   exposeWork: boolean;
 }
 

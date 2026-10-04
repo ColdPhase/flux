@@ -21,7 +21,7 @@ type NewEnablement = Omit<EnablementRow, 'status' | 'version' | 'consentedAt' | 
 type EnablementChanges = Partial<Pick<EnablementRow, 'perRunCents' | 'dailyCapCents' | 'timeZone' | 'status'>>;
 type NewRun = Pick<RunRow, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'ownerUserId' | 'agentId' | 'connectionId'
   | 'clientRunId' | 'requestFingerprint' | 'kind' | 'prompt' | 'targetSketchId' | 'targetThoughtId' | 'continuesRunId' | 'retryOfRunId'
-  | 'reservedMicros' | 'model'>;
+  | 'reservedMicros' | 'provider' | 'model'>;
 type RunChanges = Partial<Pick<RunRow, 'status' | 'stoppedAtStage' | 'stopRequestedAt' | 'costState' | 'chargedMicros' | 'inputTokens'
   | 'outputTokens' | 'answerBody' | 'answerTruncated' | 'committedAt' | 'dispatchedAt' | 'completedAt'> & { answerSources: SourceRef[] }>;
 type NewProposal = Pick<ProposalRow, 'id' | 'workspaceId' | 'projectId' | 'runId' | 'ownerUserId' | 'fact' | 'interpretation'

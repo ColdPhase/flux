@@ -7,6 +7,7 @@ import { agentPolicyUseCases, enforce, evaluateProject, recordEvent, renderAgent
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, requires, useDomainErrors } from '../http/commands.js';
 import { withAgentConnection, type FluxMcpClaims } from './context.js';
+import { eventPorts } from '../events.js';
 
 /**
  * The policy use cases over one transaction: the access policy, the policy rows and project events. A
@@ -24,7 +25,7 @@ function policyPorts(tx: Executor) {
     },
     rows: agentPolicyRows(tx),
     events: { record: async (principal: Parameters<typeof recordEvent>[1], workspaceId: string, kind: string, projectId: string, data: Record<string, unknown>) => {
-      await recordEvent(tx, principal, workspaceId, kind, projectId, data);
+      await recordEvent(eventPorts(tx), principal, workspaceId, kind, projectId, data);
     } },
   };
 }

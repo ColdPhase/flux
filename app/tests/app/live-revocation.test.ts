@@ -11,6 +11,7 @@ import { liveLifecycle } from '../../apps/server/src/live/lifecycle.js';
 import { liveSessionStore } from '../../apps/server/src/live/store.js';
 import { liveRevocationCoordinator, withNoMediaAccessChange } from '../../apps/server/src/live/revocation.js';
 import { accessRoutes } from '../../apps/server/src/access/routes.js';
+import { useDomainErrors } from '../../apps/server/src/http/errors.js';
 import { liveRoutes } from '../../apps/server/src/live/routes.js';
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
@@ -269,6 +270,8 @@ test('an SFU failure after policy commit returns an error and retains the fence 
   const f = await fixture('live-finalize-failure');
   f.transport.failSecondDelete();
   const app = Fastify();
+  // As in production (app.ts), domain errors are mapped on the root.
+  useDomainErrors(app);
   await app.register(accessRoutes, {
     db,
     sessions: { requirePrincipal: async () => ({ principal: { kind: 'human', id: f.owner.id } }) } as never,

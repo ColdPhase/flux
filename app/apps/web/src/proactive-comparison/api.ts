@@ -1,12 +1,17 @@
-import { backgroundComputeUsagePath, type BackgroundComputeConnection, type BackgroundComputeUsage,
+import { AI_MODEL_LISTS_PATH, backgroundComputeUsagePath, type AiModelList, type AiModelListQuery, type BackgroundComputeConnection, type BackgroundComputeUsage,
   type ConnectBackgroundComputeCommand, type CreateProactiveComparisonRule, type ProactiveComparisonRule } from '@flux/contracts';
 import { request } from '../api/client';
+
+/** The provider's models, listed by the Flux server without a key (F-020 PROV-1). */
+export const listAiModels = (query: AiModelListQuery) => request<AiModelList>(AI_MODEL_LISTS_PATH, { method: 'POST', body: query });
 
 const connections = '/api/v1/background-compute-connections';
 export const currentBackgroundUsage = (signal?: AbortSignal) => request<BackgroundComputeUsage>(backgroundComputeUsagePath, { signal });
 
-export const currentBackgroundConnection = (signal?: AbortSignal) =>
-  request<BackgroundComputeConnection | null>(`${connections}/current`, { signal });
+/** All of the owner's own connections, the background one first (F-020 PROV-1). */
+export const listBackgroundConnections = (signal?: AbortSignal) => request<BackgroundComputeConnection[]>(connections, { signal });
+export const markBackgroundConnection = (id: string) =>
+  request<BackgroundComputeConnection>(`${connections}/${encodeURIComponent(id)}`, { method: 'PATCH', body: { usedForBackground: true } });
 export const connectBackgroundCompute = (command: ConnectBackgroundComputeCommand) =>
   request<BackgroundComputeConnection>(connections, { method: 'POST', body: command });
 export const revokeBackgroundConnection = (id: string) =>

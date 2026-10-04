@@ -52,7 +52,7 @@ describe('controlled background comparison dispatch (#58)', () => {
         dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal',
         maxRunsPerDay: 3, periodBudgetCents: 15, perRunCents: 5 } }), 201) as { id: string };
     expectStatus(await owner.browser.request('POST', '/api/v1/background-compute-connections', { body: {
-      apiKey: fakeKey, payerOrganization: 'Consent test payer', providerWorkspace: 'One test workspace',
+      provider: 'anthropic', model: 'claude-sonnet-5', apiKey: fakeKey, payerOrganization: 'Consent test payer', providerWorkspace: 'One test workspace',
       workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true,
       providerBillingAcknowledged: true, projectDataDisclosureAcknowledged: true,
       maxRunsPerDay: 3, periodDays: 30, periodBudgetCents: 15, perRunCents: 5,
@@ -131,7 +131,8 @@ describe('controlled background comparison dispatch (#58)', () => {
     const citedMessage = peerView[0]?.sources.find((source) => source.type === 'message');
     assert.equal(citedMessage?.conversationId, conversation.id,
       'project message citation resolves to its inspectable conversation');
-    assert.equal(peerView[0]?.computeSource, 'owner_background_claude_platform');
+    assert.deepEqual([peerView[0]?.computeSource, peerView[0]?.provider, peerView[0]?.model],
+      ['owner_background_connection', 'anthropic', 'claude-sonnet-5'], 'the proposal names the connection it ran on');
     assert.equal((await outsider.browser.request('GET', `/api/v1/projects/${projectId}/proactive-comparison-proposals`)).status, 404);
     assert.ok(seen.every((body) => !body.includes(privateToken)), 'private draft/sketch never enters the provider request');
     assert.ok(!JSON.stringify(peerView).includes(privateToken), 'private draft/sketch never enters the proposal');
