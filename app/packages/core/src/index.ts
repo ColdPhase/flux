@@ -54,6 +54,7 @@ export * from './export/index.js';
 export * from './push/index.js';
 export * from './notifications/index.js';
 export { policySourceReader } from './access/source-reader.js';
+export * from './ai/index.js';
 export * from './proactive-comparison/rules.js';
 export * from './proactive-comparison/connections.js';
 export * from './proactive-comparison/reservation.js';

@@ -1,4 +1,5 @@
 import type { Page, VersionPrecondition } from './access.js';
+import type { AiPrice, AiProviderKind } from './ai-providers.js';
 import type { ResultFinding } from './work.js';
 
 /**
@@ -37,25 +38,28 @@ export const ASSISTANT_RUN_CHANGED_EVENT = 'assistant_run.changed.v1';
 /** Statuses of a run that is still working; the owner's working line shows Stop for these. */
 export const ASSISTANT_RUN_IN_FLIGHT = ['queued', 'reading', 'dispatching'] as const;
 
-/** The disclosure version a personal-run consent must name (O-008 §1). */
-export const PERSONAL_RUN_CONSENT_VERSION = 'o-008-2026-09-28';
+/**
+ * The disclosure version a new personal-run consent must name (O-008 §1). `o-008-2026-09-28` named
+ * Anthropic only and stays valid for consents given on an Anthropic connection; `o-008-2026-10-02`
+ * is the provider-neutral revision of F-020 (#179), naming the connection's provider, model and price.
+ */
+export const PERSONAL_RUN_CONSENT_VERSION = 'o-008-2026-10-02';
+export const PERSONAL_RUN_CONSENT_VERSIONS = ['o-008-2026-09-28', PERSONAL_RUN_CONSENT_VERSION] as const;
+export type PersonalRunConsentVersion = (typeof PERSONAL_RUN_CONSENT_VERSIONS)[number];
 
 /**
- * Per-run request limits and caps of O-008 §3. Prices are the O-007 rate, rechecked against the
- * Anthropic pricing page on 2026-09-30 (Claude Sonnet 5 $2/M input, $10/M output, now the standard
- * price). Check them again before production dispatch is switched on.
+ * Per-run request limits and caps of O-008 §3, the same for every provider and model (F-020
+ * PROV-2/PROV-3). The model and its price belong to the owner's connection: a run reserves
+ * `maxRequestMicros(price, maxInputTokens, maxOutputTokens)`, which must fit the owner's per-run
+ * ceiling (`perRunCents`). `effort` applies where the wire format has it (Anthropic Messages).
  */
 export const PERSONAL_RUN_LIMITS = {
-  provider: 'anthropic',
-  model: 'claude-sonnet-5',
   effort: 'low',
   maxInputTokens: 16_000,
   maxOutputTokens: 1_500,
   prompt: 4_000,
   perRunCents: { default: 6, min: 6, max: 50 },
   dailyCapCents: { default: 100, min: 10, max: 1_000 },
-  /** Micro-dollars per token: $2/M input, $10/M output. */
-  price: { inputMicrosPerToken: 2, outputMicrosPerToken: 10, checkedOn: '2026-09-30' },
 } as const;
 
 export type PersonalRunEnablementStatus = 'active' | 'paused';
@@ -66,9 +70,9 @@ export interface PersonalRunEnablement {
   /** The owner's key connection (O-007/#124) the consent was given for; null until one exists. */
   connectionId: string | null;
   consent: {
-    version: typeof PERSONAL_RUN_CONSENT_VERSION;
+    version: PersonalRunConsentVersion;
     acceptedAt: string;
-    provider: 'anthropic';
+    provider: AiProviderKind;
     model: string;
     payer: { organization: string; workspace: string };
   };
@@ -85,7 +89,11 @@ export interface PersonalRunEnablement {
 }
 
 export type PersonalAssistantState = 'not_enabled' | 'ready' | 'paused' | 'capped' | 'unavailable';
-export type PersonalAssistantUnavailableReason = 'no_connection' | 'connection_changed' | 'provider_off';
+/**
+ * `price_unknown`: the connection has no known price, so nothing can be reserved (PROV-3).
+ * `run_cost_over_limit`: the model's largest request costs more than the owner's per-run ceiling.
+ */
+export type PersonalAssistantUnavailableReason = 'no_connection' | 'connection_changed' | 'provider_off' | 'price_unknown' | 'run_cost_over_limit';
 
 /** `GET /api/v1/personal-assistant`: only ever the caller's own state. */
 export interface PersonalAssistantStatus {
@@ -100,14 +108,19 @@ export interface PersonalAssistantStatus {
   setup: { provider: 'on' | 'off'; connection: 'active' | 'none' };
   /** Today's use in the owner's time zone; null without an enablement. */
   today: { chargedMicros: number; reservedMicros: number; capCents: number; resetsAt: string } | null;
-  /** What the consent screen shows before enabling. */
+  /**
+   * What the consent screen shows before enabling. Provider, model and price are those of the
+   * caller's own connection; null without one.
+   */
   disclosure: {
     consentVersion: typeof PERSONAL_RUN_CONSENT_VERSION;
-    provider: 'anthropic';
-    model: string;
+    provider: AiProviderKind | null;
+    model: string | null;
+    price: AiPrice | null;
+    /** What one request reserves: its largest possible cost at the connection's price. */
+    maxRunMicros: number | null;
     maxInputTokens: number;
     maxOutputTokens: number;
-    priceCheckedOn: string;
     /** Only project-audience objects of the one project a run is asked in leave Flux. */
     dataSent: 'project_place_excerpts';
   };
@@ -118,6 +131,8 @@ export interface EnablePersonalRunsCommand {
   consentVersion: string;
   /** The caller's own, unrevoked person-owned agent. */
   agentId: string;
+  /** Which of the caller's own AI connections the assistant uses (F-020 PROV-1); default: their newest. */
+  connectionId?: string;
   perRunCents?: number;
   dailyCapCents?: number;
   timeZone?: string;
@@ -227,7 +242,7 @@ export interface AssistantAnswer {
   body: string;
   /** Stopped at the output limit: shown as truncated, never a proposal; the owner can continue it. */
   truncated: boolean;
-  provenance: { provider: 'anthropic'; model: string };
+  provenance: { provider: AiProviderKind; model: string };
   /** Only supplied project-audience sources the answer cites. */
   sources: AssistantSourceRef[];
   proposalId: string | null;

@@ -50,8 +50,8 @@ try {
       { type: 'thought', id: thought.id, version: thought.version, sketchId: sketch.id, title: 'Test a ToF sensor using the same 5 lux protocol.' }];
     await pool.query(`INSERT INTO proactive_comparison_proposals
       (id, outbox_id, owner_user_id, agent_id, project_id, result_id, source_fingerprint,
-        sources, fact, interpretation, suggested_action)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        sources, fact, interpretation, suggested_action, provider, model)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'anthropic','claude-sonnet-5')`,
     [id, candidate.id, owner.id, agent.id, prj.id, result.id, candidate.source_fingerprint,
       JSON.stringify(citations),
       index ? 'The second run still missed the 90% recognition target at 5 lux.' : 'Camera A recognized 38% of gestures at 5 lux.',

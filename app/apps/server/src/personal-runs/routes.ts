@@ -42,7 +42,7 @@ const page = { type: 'object', additionalProperties: false, properties: { limit:
 const cents = (range: { min: number; max: number }) => ({ type: 'integer', minimum: range.min, maximum: range.max }) as const;
 const version = { type: 'integer', minimum: 1 } as const;
 const enable = { type: 'object', required: ['consentVersion', 'agentId'], additionalProperties: false, properties: {
-  consentVersion: { type: 'string', maxLength: 64 }, agentId: { type: 'string' },
+  consentVersion: { type: 'string', maxLength: 64 }, agentId: { type: 'string' }, connectionId: { type: 'string' },
   perRunCents: cents(PERSONAL_RUN_LIMITS.perRunCents), dailyCapCents: cents(PERSONAL_RUN_LIMITS.dailyCapCents), timeZone: { type: 'string', maxLength: 64 },
 } } as const;
 const update = { type: 'object', additionalProperties: false, properties: {
