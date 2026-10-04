@@ -9,7 +9,9 @@ const WorkReadContext = createContext<WorkReadContextValue | null>(null);
 
 /** One shared observation for the current account/project, including the outer header. */
 export function WorkReadProvider({ accountId, projectId, children }: { accountId: string; projectId: string | null; children: ReactNode }) {
-  const store = useMemo(() => new ProjectWorkFacetStore(), [accountId, projectId]);
+  // A fresh store per account/project: no observation outlives the identity that made it.
+  const owner = JSON.stringify([accountId, projectId]);
+  const { store } = useMemo(() => ({ owner, store: new ProjectWorkFacetStore() }), [owner]);
   const value = useMemo(() => ({ accountId, projectId, store }), [accountId, projectId, store]);
   const location = useLocation();
   const revalidator = useRevalidator();
