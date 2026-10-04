@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { request, createServer, type ServerResponse } from 'node:http';
 import { test } from 'node:test';
 import Fastify from 'fastify';
@@ -48,7 +48,13 @@ function capture(): Capture { return { close: signal(), finish: signal(), settle
 /** Public PG query interposition ONLY: the real COMMIT completes before its response
  * is withheld/lost. No policy, native use case, SQL work or HTTP response is faked. */
 async function fixture(developmentEditing = true) {
+  // All fixture apps/processes share the runner's actual configured secret because
+  // they share the real encrypted JWKS in this isolated PostgreSQL database.
+  const origin = 'http://127.0.0.1';
+  const config = loadIdentityConfig({ FLUX_PUBLIC_ORIGIN: origin, FLUX_AUTH_SECRET: process.env.FLUX_AUTH_SECRET, FLUX_AUTH_RATE_LIMIT: 'false' });
   const database = createDatabase(connectionString);
+  const startupClosers: (() => Promise<unknown>)[] = [() => database.pool.end()];
+  try {
   let remaining = 0, lost = false;
   let reached = signal(), release = signal();
   const failure = new Error('fixture: response lost AFTER actual PostgreSQL COMMIT');
@@ -74,6 +80,7 @@ async function fixture(developmentEditing = true) {
     if(handoffKind !== kind)return;handoffKind = null;handoffReached.resolve();await handoffRelease.promise;
   };
   const app = Fastify(); const captures = new Map<string, Capture>();
+  startupClosers.unshift(() => app.close());
   app.addHook('onRequest', async (incoming, reply) => {
     const id = incoming.headers['x-lifetime-fixture']; const current = typeof id === 'string' ? captures.get(id) : undefined;
     if (!current) return;
@@ -106,11 +113,11 @@ async function fixture(developmentEditing = true) {
       finally { if (current) { current.workSettled = true; current.settled.resolve(); } }
     };
   });
-  const origin = 'http://127.0.0.1';
-  const config = loadIdentityConfig({ FLUX_PUBLIC_ORIGIN: origin, FLUX_AUTH_SECRET: randomBytes(32).toString('hex'), FLUX_AUTH_RATE_LIMIT: 'false' });
   const identity = registerIdentity(app, { db: database.db, config, mailer: null });
   const backend = mapBackend(database, { beforeHandoff: () => beforeHandoff('map') }); const maps = mapAuthority(backend, apiEditingOutputBudget);
+  startupClosers.unshift(() => maps.close());
   const wiki = wikiAuthority(database, undefined, { beforeHandoff: () => beforeHandoff('wiki'), outputBudget: apiEditingOutputBudget });
+  startupClosers.unshift(() => wiki.close());
   await app.register(sketchRoutes, { db: database.db, sessions: identity, developmentEditing, liveBackend: () => backend });
   await app.register(docRoutes, { db: database.db, sessions: identity });
   await app.register(editingRoutes, { sessions: identity, authority: wiki, maps, outputBudget: apiEditingOutputBudget });
@@ -134,6 +141,18 @@ async function fixture(developmentEditing = true) {
     pauseHandoff(kind: 'map' | 'wiki') { handoffKind = kind;handoffReached = signal();handoffRelease = signal();return { reached: handoffReached.promise,release: handoffRelease.resolve }; },
     async close() { release.resolve();handoffRelease.resolve(); await wiki.close(); await maps.close(); await app.close(); await database.pool.end(); },
   };
+  } catch (error) {
+    // Setup failed before a test could receive f and enter its own finally.
+    // Attempt every acquired resource in the normal wiki/map/app/pool order;
+    // neither a cleanup failure nor a timeout can turn failed setup into a pass.
+    const failures: unknown[] = [error];
+    for (const close of startupClosers) {
+      try { await finite(close(), 'Actual HTTP lifetime fixture startup cleanup did not settle', 3000); }
+      catch (cleanupError) { failures.push(cleanupError); }
+    }
+    if (failures.length > 1) throw new AggregateError(failures, 'Actual HTTP lifetime fixture setup and cleanup failed', { cause: error });
+    throw error;
+  }
 }
 function client(f: Awaited<ReturnType<typeof fixture>>, method: string, path: string, marker: string, body?: unknown, extra: Record<string, string> = {}) {
   const text = body === undefined ? undefined : JSON.stringify(body);
