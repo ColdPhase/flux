@@ -245,6 +245,37 @@ class PersonalAssistantJourney(unittest.TestCase):
         kai = self.page("kai")
         self.assertEqual(self.status(kai)["state"], "not_enabled")
 
+    def test_04b_home_ask_mode_never_sends_a_private_note(self) -> None:
+        # Home's spark button switches ask mode for the owner's own assistant. A note on Home stays private:
+        # ask mode only explains where the assistant answers, never sends, and Esc or "Stop asking" leaves it.
+        page = self.page("jo")
+        page.goto("/")
+        composer = page.get_by_label("Private note")
+        composer.fill("Which sensor works in the dark?")
+        ask = page.get_by_role("button", name="Ask my assistant")
+        expect(ask).to_have_attribute("aria-pressed", "false")
+        ask.click()
+        expect(ask).to_have_attribute("aria-pressed", "true")
+        expect(page.get_by_text("Your assistant answers in project conversations. Notes here stay private and are never sent.")).to_be_visible()
+        send = page.get_by_role("button", name="Send to your assistant")
+        expect(send).to_have_attribute("aria-disabled", "true")
+        composer.press("Enter")
+        expect(composer).to_have_value("Which sensor works in the dark?")
+        shot(page, "assistant-1440-home-ask")
+        composer.focus()
+        page.keyboard.press("Escape")
+        expect(ask).to_have_attribute("aria-pressed", "false")
+        expect(composer).to_have_value("Which sensor works in the dark?")
+        ask.click()
+        page.get_by_role("button", name="Stop asking your assistant").click()
+        expect(ask).to_have_attribute("aria-pressed", "false")
+        expect(composer).to_be_focused()
+        # Kai has no assistant: the same button leads to "Connect your AI" and never toggles.
+        kai = self.page("kai")
+        kai.goto("/")
+        expect(kai.locator(".composer__ask")).to_have_accessible_name("Connect your AI")
+        expect(kai.locator(".composer__ask")).not_to_have_attribute("aria-pressed", re.compile(".*"))
+
     def test_05_a_manager_lets_their_assistant_read_the_project(self) -> None:
         page = self.conversation("jo")
         self.ask(page, "Summarize where we are")
