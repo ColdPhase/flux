@@ -31,15 +31,21 @@ def bounded_regular(path,limit):
         if len(raw)>limit or len(raw)!=after.st_size or before.st_size!=after.st_size or before.st_mtime_ns!=after.st_mtime_ns or (after.st_dev,after.st_ino)!=(named.st_dev,named.st_ino): raise ValueError('handoff changed')
         return raw
 
-def atomic(path,value):
+def atomic(path,value,limit=HANDOFF_LIMIT):
     raw=(json.dumps(value,sort_keys=True,separators=(',',':'),allow_nan=False)+'\n').encode()
-    if len(raw)>HANDOFF_LIMIT: raise ValueError('handoff too large')
+    if len(raw)>limit: raise ValueError('handoff too large')
     temporary=path.parent/('.'+path.name+'.'+uuid.uuid4().hex+'.tmp')
     fd=os.open(temporary,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
     with os.fdopen(fd,'wb') as out: out.write(raw); out.flush(); os.fsync(out.fileno())
     os.replace(temporary,path)
 
 def integer(x): return type(x) is int and 0<=x<=2**53-1
+
+def stopped_producer(observed,cid,started_at):
+    state=observed['State']
+    if observed['Id']!=cid or state['StartedAt']!=started_at or state['Status']!='exited' or type(state['ExitCode']) is not int or state['ExitCode']!=0 or any(state[key] is not False for key in ('Running','Paused','Restarting','OOMKilled','Dead')) or state['Error']!='' or not isinstance(state['FinishedAt'],str) or state['FinishedAt'].startswith('0001-'):
+        raise ValueError('producer did not exit cleanly without forced termination')
+    return {'container_id':cid,'started_at':started_at,'finished_at':state['FinishedAt'],'exit_code':state['ExitCode'],'oom_killed':state['OOMKilled'],'running':state['Running'],'dead':state['Dead']}
 
 def validate_marker(raw,inventory):
     marker=strict(raw)
@@ -103,11 +109,14 @@ def main():
     args=parser.parse_args(); directory=args.directory.resolve(); inventory=strict(bounded_regular(args.inventory,65536))
     expected=inventory['api_instances']; containers=inventory['containers']; source=inventory['source_sha']
     if not isinstance(expected,list) or not 1<=len(expected)<=32 or any(not isinstance(i,str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}',i) for i in expected) or len(set(expected))!=len(expected) or set(containers)!=set(expected) or not re.fullmatch(r'[a-f0-9]{40}',source) or not re.fullmatch(r'[a-f0-9]{64}',inventory['driver_sha256']): raise ValueError('actual inventory invalid')
+    started={}
     for name,cid in containers.items():
         observed=strict(subprocess.check_output(['docker','inspect',cid],timeout=10))[0]
         env=observed['Config']['Env']; binding='FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE='+name
         if observed['Id']!=cid or not observed['State']['Running'] or binding not in env or 'FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY=1' not in env: raise ValueError('actual producer inventory no longer matches')
-    for name in ('actual-queue.jsonl','queue-seal.json','measurement-finished.json'):
+        started[name]=observed['State']['StartedAt']
+        if not isinstance(started[name],str) or started[name].startswith('0001-'): raise ValueError('producer start observation invalid')
+    for name in ('actual-queue.jsonl','queue-seal.json','measurement-finished.json','producer-shutdown.json'):
         if (directory/name).exists(): raise ValueError('stale evidence')
     fd=os.open(directory/'actual-queue.jsonl',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
     selector=selectors.DefaultSelector(); processes={}; buffers={}; discarded=set(); records=[]; size=0; count=0; error=None; reason='drained'; marker_raw=None; marker=None; stop=None; shutdown_deadline=None
@@ -167,6 +176,15 @@ def main():
                     try: p.wait(timeout=max(.01,min(.5,(shutdown_deadline or time.monotonic())-time.monotonic())))
                     except subprocess.TimeoutExpired: error=error or 'stdout process not settled'; reason='collector-error'
                 if any(p.returncode!=0 for p in processes.values()): error=error or 'stdout collector did not reach clean EOF'; reason='collector-error'
+                try:
+                    actual=strict(subprocess.check_output(['docker','inspect',*containers.values()],timeout=max(.05,min(2,(shutdown_deadline or time.monotonic())-time.monotonic()))))
+                    if not isinstance(actual,list) or len(actual)!=len(containers): raise ValueError('producer shutdown inventory mismatch')
+                    by_id={entry['Id']:entry for entry in actual}
+                    if set(by_id)!=set(containers.values()): raise ValueError('producer shutdown identity mismatch')
+                    shutdown={name:stopped_producer(by_id[cid],cid,started[name]) for name,cid in containers.items()}
+                    atomic(directory/'producer-shutdown.json',{'schema':1,'source_sha':source,'inventory_sha256':hashlib.sha256(bounded_regular(args.inventory,65536)).hexdigest(),'producers':shutdown},65536)
+                except Exception:
+                    error=error or 'actual producer clean exit observation failed'; reason='collector-error'
                 break
             if shutdown_deadline is not None and now>=shutdown_deadline:
                 error=error or 'producer/collector drain timed out'; reason='timeout'; break
