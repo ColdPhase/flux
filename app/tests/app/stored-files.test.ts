@@ -43,6 +43,24 @@ async function download(who: Person, id: string) {
   return fetch(new URL(`/api/v1/files/${id}`, who.browser.base), { headers: { cookie: who.browser.cookieHeader() } });
 }
 
+/** A raw upload with exactly these headers and no body; fetch would always send a body of the declared size. */
+async function rawUpload(who: Person, projectId: string, extraHeaders: string) {
+  const base = new URL(who.browser.base);
+  const path = `/api/v1/projects/${projectId}/files?uploadId=${randomUUID()}&name=raw.bin`;
+  const raw = await new Promise<string>((resolve, reject) => {
+    const socket = connect(Number(base.port || 80), base.hostname, () => {
+      socket.write(`POST ${path} HTTP/1.1\r\nHost: ${base.host}\r\nContent-Type: application/octet-stream\r\n${extraHeaders}`
+        + `Cookie: ${who.browser.cookieHeader()}\r\nOrigin: ${who.browser.defaultOrigin}\r\nConnection: close\r\n\r\n`);
+    });
+    let response = '';
+    socket.setEncoding('utf8');
+    socket.on('data', (chunk: string) => { response += chunk; });
+    socket.on('end', () => resolve(response));
+    socket.on('error', reject);
+  });
+  return { status: Number(raw.slice(9, 12)), code: (JSON.parse(raw.slice(raw.indexOf('\r\n\r\n') + 4)) as { code: string }).code };
+}
+
 test('real bytes have a measured digest, private staging, canonical upload retry and safe download headers', async () => {
   const f = await scene();
   const bytes = Buffer.from([0, 255, 128, 4, 10]);
@@ -71,7 +89,9 @@ test('real bytes have a measured digest, private staging, canonical upload retry
 test('empty, oversized, unsafe names, live upload identity and reservation quota are bounded', async () => {
   const f = await scene();
   assert.equal((await upload(f.writer, f.place.id, Buffer.alloc(0))).body.code, 'EMPTY_FILE');
-  assert.equal((await upload(f.writer, f.place.id, Buffer.alloc(FILE_LIMITS.fileBytes + 1))).status, 413);
+  // A declared size over the limit is refused before any body is read (sending the body would race the early
+  // 413 against the client's write and could end in a connection reset instead of the response).
+  assert.deepEqual(await rawUpload(f.writer, f.place.id, `Content-Length: ${FILE_LIMITS.fileBytes + 1}\r\n`), { status: 413, code: 'FILE_TOO_LARGE' });
   for (const name of ['../report', '.', '..', '\nreport.txt\t', 'a\\b', 'a\u202eb'])
     assert.equal((await upload(f.writer, f.place.id, Buffer.from('x'), randomUUID(), name)).status, 400);
   const pendingId = randomUUID();
@@ -399,20 +419,6 @@ test('message file reads and export do not bind one parameter per message, whate
 
 test('an upload without Content-Length or Transfer-Encoding is an empty file, not a server error', async () => {
   const f = await scene();
-  const base = new URL(f.writer.browser.base);
-  const path = `/api/v1/projects/${f.place.id}/files?uploadId=${randomUUID()}&name=empty.txt`;
   // A raw request: fetch and http.request would add a Content-Length or chunked encoding.
-  const raw = await new Promise<string>((resolve, reject) => {
-    const socket = connect(Number(base.port || 80), base.hostname, () => {
-      socket.write(`POST ${path} HTTP/1.1\r\nHost: ${base.host}\r\nContent-Type: application/octet-stream\r\n`
-        + `Cookie: ${f.writer.browser.cookieHeader()}\r\nOrigin: ${f.writer.browser.defaultOrigin}\r\nConnection: close\r\n\r\n`);
-    });
-    let response = '';
-    socket.setEncoding('utf8');
-    socket.on('data', (chunk: string) => { response += chunk; });
-    socket.on('end', () => resolve(response));
-    socket.on('error', reject);
-  });
-  assert.match(raw, /^HTTP\/1\.1 400 /);
-  assert.equal((JSON.parse(raw.slice(raw.indexOf('\r\n\r\n') + 4)) as { code: string }).code, 'EMPTY_FILE');
+  assert.deepEqual(await rawUpload(f.writer, f.place.id, ''), { status: 400, code: 'EMPTY_FILE' });
 });
