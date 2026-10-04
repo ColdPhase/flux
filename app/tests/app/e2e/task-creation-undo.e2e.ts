@@ -128,7 +128,7 @@ async function open(context: BrowserContext, f: Scene, item: WorkItem, surface =
     if (new URL(socket.url()).pathname !== STREAM_PATH) return;
     socket.on('framereceived', (frame) => { try { if (JSON.parse(String(frame.payload)).type === 'ready') ready.resolve(); } catch { /* A non-JSON frame is not stream readiness. */ } });
   });
-  await page.goto(`/projects/${f.place.id}/${surface}?open=work:${item.id}`);
+  await page.goto(`/projects/${f.place.id}${surface === 'conversations' ? '' : `/${surface}`}?open=work:${item.id}`);
   if (!disconnected.has(context)) await finite(ready.promise, 'real authorized stream ready');
   await title(page, item).waitFor(); if (eligible) await undoButton(page).waitFor();
   await panel(page).getByRole('textbox', { name: 'First message about this task', exact: true }).waitFor();
@@ -455,7 +455,7 @@ test('desktop and phone-width history render readable actor/time, keyboard links
     const context = await signedIn(f.author, { width, height });
     await withContexts([context], async () => {
       const page = await context.newPage(); page.on('pageerror', (error) => pageErrors.push(error.message));
-      await page.goto(`/projects/${f.place.id}/conversations?open=work:${item.id}`); await reverted(page, item);
+      await page.goto(`/projects/${f.place.id}?open=work:${item.id}`); await reverted(page, item);
       const life = result.work.lifecycle; assert.ok(life?.state === 'creation_reverted');
       assert.match(await panel(page).innerText(), /Creation undone by Ari Task author on/);
       assert.equal(await panel(page).getByRole('region', { name: 'Done when' }).locator('li').count(), 2);
