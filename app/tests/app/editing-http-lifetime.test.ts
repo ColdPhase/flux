@@ -15,6 +15,7 @@ import { mapAuthority } from '../../apps/server/src/editing/map-authority.js';
 import { wikiAuthority } from '../../apps/server/src/editing/authority.js';
 import { editingHTTPLifetime } from '../../apps/server/src/editing/http-lifetime.js';
 import { apiEditingOutputBudget, EditingOutputBudget } from '../../apps/server/src/editing/output.js';
+import { nativeMapAdmissionQueued } from '../../apps/server/src/editing/native-map-journal.js';
 import { Browser } from './support/http.js';
 import { expectStatus } from './support/people.js';
 import { connectionString, pool } from './support/db.js';
@@ -385,4 +386,51 @@ test('actual ordinary native closed CAS postimage skips error serialization whil
       await observed(()=>apiEditingOutputBudget.bytes===0&&f.backend.sqlActive===0,'Connected ordinary refusal source must settle');
     } finally {refusal.req.destroy();await refusal.complete.catch(()=>{});}
   } finally {if(locked)await blocker.query('ROLLBACK');blocker.release();pending?.req.destroy();await pending?.complete.catch(()=>{});await f.close();}
+});
+
+
+test('actual ordinary native overload returns typed503 without effects; the same UUID succeeds and replays after capacity release', { timeout: 30_000 }, async () => {
+  const f=await fixture(false);const path=`/api/v1/sketches/${f.sketch.id}/thoughts`;const uuid=randomUUID();
+  const parameters={text:'Exact ordinary input retained after capacity refusal',x:2000,y:0};
+  const pending:ReturnType<typeof client>[]=[];let release=()=>{};
+  const state=async()=>({
+    thoughts:(await pool.query('SELECT count(*)::int n FROM sketch_thoughts WHERE sketch_id=$1',[f.sketch.id])).rows[0].n,
+    events:(await pool.query('SELECT count(*)::int n FROM events WHERE object_id=$1',[f.sketch.id])).rows[0].n,
+    journal:(await pool.query('SELECT count(*)::int n FROM map_live_journal WHERE sketch_id=$1',[f.sketch.id])).rows[0].n,
+    intents:(await pool.query('SELECT count(*)::int n FROM live_editing_intents WHERE resource_id=$1',[f.sketch.id])).rows[0].n,
+    receipt:(await pool.query('SELECT count(*)::int n FROM idempotency_keys WHERE principal=$1 AND key=$2',[`human:${f.actorId}`,uuid])).rows[0].n,
+  });
+  try {
+    const before=await state();assert.equal(nativeMapAdmissionQueued(),0);
+    // Deterministic public-budget interposition: another charged consumer retains
+    // one24MiB owner. The actual HTTP/native admission keeps its unchanged eight waiters.
+    release=apiEditingOutputBudget.reserve(preparationBytes);
+    for(let index=0;index<8;index++)pending.push(client(f,'POST',path,f.watch().id,{text:`Queued ordinary thought ${index}`,x:index*200,y:200},{'idempotency-key':randomUUID()}));
+    await observed(()=>nativeMapAdmissionQueued()===8,'All eight actual native HTTP requests must wait before SQL effects',1000);
+    const refused=client(f,'POST',path,f.watch().id,parameters,{'idempotency-key':uuid});pending.push(refused);
+    const refusal=await finite(refused.complete,'The ninth actual ordinary request must return its capacity refusal');
+    assert.equal(refusal.status,503);
+    assert.deepEqual(JSON.parse(refusal.text),{code:'EDITING_OUTPUT_CAPACITY',error:'The finite native map capacity is busy',outcome:'refused',retryable:true});
+    assert.equal(nativeMapAdmissionQueued(),8);assert.deepEqual(await state(),before,'Queued/refused commands cannot persist thoughts, events, journals, intents or the failed receipt');
+    assert.ok(apiEditingOutputBudget.bytes>=preparationBytes);assert.ok(apiEditingOutputBudget.bytes<=32*1024*1024);
+    release();release=()=>{};
+    const completed=await finite(Promise.all(pending.slice(0,8).map(command=>command.complete)),'The eight real queued commands must recover after capacity release',10_000);
+    assert.ok(completed.every(response=>response.status===201),JSON.stringify(completed.map(response=>({status:response.status,text:response.text}))));
+    await observed(()=>nativeMapAdmissionQueued()===0&&apiEditingOutputBudget.bytes===0,'All queued command/HTTP owners must settle',3000);
+    assert.equal((await state()).thoughts,before.thoughts+8);assert.equal((await state()).receipt,0);
+    const retry=client(f,'POST',path,f.watch().id,parameters,{'idempotency-key':uuid});pending.push(retry);
+    const result=await finite(retry.complete,'The original refused UUID must remain usable',5000);assert.equal(result.status,201);
+    const created=JSON.parse(result.text) as {thought:Thought};assert.equal(created.thought.text,parameters.text);
+    await observed(()=>apiEditingOutputBudget.bytes===0,'Recovered current input must release after its actual HTTP response',3000);
+    const committed=await state();assert.equal(committed.thoughts,before.thoughts+9);assert.equal(committed.receipt,1);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM map_live_journal WHERE sketch_id=$1 AND command_id=$2',[f.sketch.id,uuid])).rows[0].n,1);
+    const replay=client(f,'POST',path,f.watch().id,parameters,{'idempotency-key':uuid});pending.push(replay);
+    const exact=await finite(replay.complete,'Exact ordinary recovered receipt must replay',5000);assert.equal(exact.status,201);assert.equal(exact.replayed,'true');assert.deepEqual(JSON.parse(exact.text),created);
+    await observed(()=>apiEditingOutputBudget.bytes===0&&nativeMapAdmissionQueued()===0,'Recovery/replay must leave no charged native owners',3000);
+    assert.deepEqual(await state(),committed,'Exact retry cannot duplicate any persisted effect');
+  } finally {
+    release();for(const command of pending)command.req.destroy();
+    try {await finite(Promise.allSettled(pending.map(command=>command.complete)),'All actual native fixture requests must settle in failure cleanup',10_000);}
+    finally {await finite(f.close(),'Actual ordinary capacity fixture cleanup must finish',3000);}
+  }
 });

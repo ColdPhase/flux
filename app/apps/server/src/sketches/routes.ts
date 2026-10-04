@@ -84,10 +84,10 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions,developm
         reply.hijack();reply.raw.writeHead(response.status,headers);reply.raw.end(owned);
       });
     } catch(error) {
-      if(!developmentEditing)throw error;
       if(error instanceof Error&&'code' in error&&['EDITING_MAP_CAPACITY','EDITING_OUTPUT_CAPACITY'].includes(String(error.code))) {
         const refusal=new ServiceUnavailableError('The finite native map capacity is busy',String(error.code));refusal.details={outcome:'refused',retryable:true};throw refusal;
       }
+      if(!developmentEditing)throw error;
       if(error instanceof DomainError)error.details={};throw error;
     }
     finally {owner?.settled();lifetimes.delete(reply);}

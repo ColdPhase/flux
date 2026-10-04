@@ -355,8 +355,9 @@ describe('search: hidden matches never change the answer or the work', () => {
 
     for (let start = 0; start < 300; start += 25)
       await Promise.all(Array.from({ length: 25 }, (_, index) => say(ari, hiddenThread.id, `Prototype launch step ${start + index + 1}`)));
-    for (let start = 0; start < 100; start += 25)
-      await Promise.all(Array.from({ length: 25 }, (_, index) => thought(ari, hiddenSketch.id, `Prototype idea ${start + index + 1}`, (start + index) * 200)));
+    // Seed the complete100 thoughts within the native admission's eight-waiter bound.
+    for (let start = 0; start < 100; start += 5)
+      await Promise.all(Array.from({ length: 5 }, (_, index) => thought(ari, hiddenSketch.id, `Prototype idea ${start + index + 1}`, (start + index) * 200)));
     for (let start = 0; start < 60; start += 20)
       await Promise.all(Array.from({ length: 20 }, (_, index) => dmSay(ari, privateDm.id, `Prototype secret ${start + index + 1}`)));
     const hidden = await pool.query("SELECT count(*)::int AS n FROM search_documents WHERE workspace_id = $1 AND tsv @@ to_tsquery('simple', 'prototype')", [ws.id]);
