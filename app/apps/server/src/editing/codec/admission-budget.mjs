@@ -16,10 +16,18 @@ export class AdmissionBudget {
     const inputCapacity = maximumInputBytes ?? backing;
     if (!Number.isSafeInteger(inputCapacity) || inputCapacity < backing || inputCapacity > CAPS.assemblyBytes) throw new Refusal('EXTERNAL_BUFFER_LIMIT');
     if (!Number.isSafeInteger(metadataBytes) || metadataBytes < 0 || metadataBytes > 65536) throw new Refusal('ADMISSION_METADATA_LIMIT');
-    const amount = inputCapacity + (maximumInputBytes ?? bytes.byteLength) + metadataBytes + (queued ? 0 : charge + CAPS.roomCacheBytes);
+    const inputReservedAmount = inputCapacity + (maximumInputBytes ?? bytes.byteLength);
+    // A queued native initializer retains EMPTY, not its future encoded body.
+    // Reserve that immutable future allowance atomically at promotion, before
+    // admission can resume to SQL/encoding. Actual raw backing/copy remains charged.
+    const amount = (queued ? backing + bytes.byteLength : inputReservedAmount) + metadataBytes + (queued ? 0 : charge + CAPS.roomCacheBytes);
     if (this.bytes + amount > CAPS.assembliesBytesPerApi) throw new Refusal('EXTERNAL_BUFFER_LIMIT');
     if (this.leases.size >= CAPS.workers + CAPS.waitingTasks) throw new Refusal('WORK_QUEUE_LIMIT');
     const lease = { budget: this, state, input: bytes, amount, inputCapacity, charge: queued ? 0 : charge, metadataBytes, queued };
+    Object.defineProperties(lease, {
+      inputCapacity: { value: inputCapacity, enumerable: true, writable: false, configurable: false },
+      inputReservedAmount: { value: inputReservedAmount, enumerable: true, writable: false, configurable: false },
+    });
     this.leases.add(lease); this.bytes += amount; this.changed(); return lease;
   }
   reserve(state, bytes) { return this.allocate(state, null, bytes); }
@@ -33,7 +41,7 @@ export class AdmissionBudget {
   }
   promote(lease) {
     if (!this.leases.has(lease) || !lease.queued || lease.state !== null) throw new Refusal('INVALID_ADMISSION_LEASE');
-    const addition = 2 * CAPS.roomCacheBytes;
+    const addition = lease.inputReservedAmount + lease.metadataBytes + 2 * CAPS.roomCacheBytes - lease.amount;
     if (this.bytes + addition > CAPS.assembliesBytesPerApi) throw new Refusal('EXTERNAL_BUFFER_LIMIT');
     this.bytes += addition; lease.amount += addition; lease.charge = CAPS.roomCacheBytes; lease.queued = false; this.changed();
   }

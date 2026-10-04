@@ -8,7 +8,7 @@ import { editingRoutes } from '../../apps/server/src/editing/routes.js';
 import { EditingOutputBudget } from '../../apps/server/src/editing/output.js';
 import { UnauthenticatedError } from '../../apps/server/src/identity/session.js';
 import type { SessionContext } from '../../apps/server/src/identity/session.js';
-import { NATIVE_CHECKPOINT_BYTES } from '../../apps/server/src/editing/runtime.js';
+import { editingRuntime, NATIVE_CHECKPOINT_BYTES } from '../../apps/server/src/editing/runtime.js';
 import { wikiAuthority } from '../../apps/server/src/editing/authority.js';
 import { pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
@@ -188,4 +188,44 @@ test('real current routes queue two 100k joins and stale Save errors reveal no r
     const revoked = await app.inject({ method:'GET',url:`/api/v1/docs/${f.doc.id}/live`,headers:{'x-fixture-actor':owner.principal.id} });
     assert.equal(revoked.statusCode,401); assert.ok(!revoked.body.includes(marker));
   } finally { await app.close(); await authority.close(); assert.equal(outputBudget.bytes,0); }
+});
+
+test('actual 100k live HTTP read waits behind two full codec leases before SQL and returns its exact confirmed head', { timeout: 15_000 }, async () => {
+  const f = await scene(); const body = '😀'.repeat(50_000);
+  expectStatus(await f.owner.browser.request('PATCH', `/api/v1/docs/${f.doc.id}`, { body: { body }, headers: { 'if-match': '"1"' } }), 200);
+  const owner = await context(f.owner); const outputBudget = new EditingOutputBudget(); const runtime = editingRuntime();
+  let sql = 0;
+  const authority = wikiAuthority({ pool: { async connect() { sql++; return pool.connect(); } } }, runtime, { outputBudget });
+  const app = Fastify();
+  // Fixture identity selection only: the actual HTTP route still executes current
+  // PostgreSQL session/project fences and the held protected response handoff.
+  await app.register(editingRoutes, { authority, outputBudget, sessions: {
+    async resolveSession() { return owner; }, async requirePrincipal() { return owner; },
+  } });
+  const head = await authority.bootstrap(owner, f.doc.id);
+  const empty = new Uint8Array(); const first = runtime.reserve(empty); const second = runtime.reserve(empty);
+  assert.equal(runtime.externalInputBytes, 32 * 1024 * 1024);
+  let settled = false; let settlement: Promise<unknown> = Promise.resolve();
+  try {
+    await app.ready(); const before = sql;
+    const request = app.inject({ method: 'GET', url: `/api/v1/docs/${f.doc.id}/live` }).then((response) => { settled = true; return response; });
+    settlement = request;
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(settled, false); assert.equal(sql, before); assert.equal(runtime.admissionQueued, 1);
+    assert.equal(runtime.externalInputBytes, 32 * 1024 * 1024);
+    assert.ok(outputBudget.bytes >= 24 * 1024 * 1024, 'the HTTP response/context owns its waiting continuation');
+    runtime.release(first);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(settled, false); assert.equal(sql, before); assert.equal(runtime.admissionQueued, 1);
+    runtime.release(second);
+    const response = await request; assert.equal(response.statusCode, 200, response.body);
+    const observed = response.json(); assert.equal(observed.body, body);
+    assert.deepEqual([observed.generation, observed.sequence, observed.hash, observed.checkpoint], [head.generation, head.sequence, head.hash, head.checkpoint]);
+    assert.ok(sql > before, 'actual SQL begins only after full future input/state promotion');
+    assert.equal(runtime.admissionQueued, 0); assert.equal(runtime.externalInputBytes, 0); assert.equal(outputBudget.bytes, 0);
+  } finally {
+    runtime.release(first); runtime.release(second); await Promise.allSettled([settlement]);
+    await app.close(); await authority.close();
+  }
+  assert.equal(runtime.codecLeases, 0); assert.equal(runtime.externalInputBytes, 0); assert.equal(outputBudget.bytes, 0);
 });

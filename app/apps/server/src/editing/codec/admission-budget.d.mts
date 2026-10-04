@@ -1,6 +1,6 @@
 import type { CodecState } from './types.js';
 export interface AdmissionLease {
-  state: CodecState | null; input: Uint8Array; amount: number; inputCapacity: number; charge: number; metadataBytes: number; queued: boolean;
+  state: CodecState | null; input: Uint8Array; amount: number; readonly inputCapacity: number; readonly inputReservedAmount: number; charge: number; metadataBytes: number; queued: boolean;
 }
 export class AdmissionBudget {
   constructor(changed?: () => void);
