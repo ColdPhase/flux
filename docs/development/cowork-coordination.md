@@ -255,9 +255,11 @@ exposure stays disabled until #152/#160 wire it.
 - **Recovery visibility.** The pending projection already treats a `claimed`
   request whose generation, lease, assignment or unit state no longer matches
   as `queued` with `claim_lost`. Re-claiming under the new generation shows it
-  `claimed` again. Resolved, declined, superseded and expired requests leave
-  the pending recovery page and the ready candidates. The sender still sees
-  the outcome through its admission receipt and the request row.
+  `claimed` again. Resolved, declined and superseded requests leave the
+  pending recovery page and the ready candidates. A request past its expiry
+  stays visible in recovery as `expired` (`request_expired`) and is not a
+  ready candidate. The sender still sees the outcome through the request row;
+  its admission receipt becomes stale once the state changes.
 
 Out of scope here: the production publication provider and its grant,
 scheduling, checkpoint production, reviewer eligibility, the #238 fence, the
