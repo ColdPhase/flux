@@ -1,0 +1,68 @@
+/* People in workspaces and projects (#188): quiet lists in the Details panel, one inline editor
+   at a time, the neutral --action primary and 1px outline secondary buttons of Studio 11.6. */
+.people__loading { display: flex; justify-content: center; padding: 28px 0; }
+.people__list { list-style: none; margin: 0; padding: 0; }
+.people__item + .people__item { border-top: 1px solid var(--line); }
+.people__row { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 0; }
+.people__row .ui-avatar { flex: none; font-size: 12px; color: var(--text-2); }
+.people__row .ui-avatar--me { color: var(--bg); }
+.people__who { display: flex; flex: 1; flex-direction: column; min-width: 0; font-size: var(--fs-md); line-height: 1.45; }
+.people__who b { font-weight: 500; color: var(--text); overflow-wrap: anywhere; }
+.people__who span { font-size: var(--fs-sm); color: var(--text-3); overflow-wrap: anywhere; }
+.people__role { flex: none; font-size: var(--fs-sm); color: var(--text-2); }
+.people__change.ui-btn { flex: none; min-height: 28px; padding: 0 8px; color: var(--text-2); }
+.people__change[aria-expanded="true"] { background: var(--bg-active); color: var(--text); }
+.people__edit { display: grid; gap: 10px; margin: 0 0 12px; padding: 12px; border-radius: var(--r-lg); box-shadow: inset 0 0 0 1px var(--line-strong); animation: rise var(--dur-2) var(--ease-out) both; }
+.people__edit .details__actions { flex-wrap: wrap; }
+.people__field { display: grid; gap: 6px; }
+.people__field label, .access__seg legend { font-size: var(--fs-sm); font-weight: 500; color: var(--text-2); }
+.people__field select { width: 100%; min-height: var(--ctl-lg); padding: 0 10px; border: 0; border-radius: var(--r); background: var(--bg); color: var(--text); font-size: var(--fs-base); box-shadow: inset 0 0 0 1px var(--line-input); }
+.people__field select:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.people__hint { margin: 0; font-size: var(--fs-sm) !important; color: var(--text-3) !important; line-height: 1.45; }
+.people__add { display: grid; gap: 14px; }
+.people__notice { display: flex; align-items: flex-start; gap: 6px; margin: 0; padding: 8px 10px; border-radius: var(--r); background: var(--bg-side); font-size: var(--fs-sm) !important; color: var(--text-2) !important; line-height: 1.45; overflow-wrap: anywhere; }
+.people__notice svg { flex: none; margin-top: 2px; color: var(--text-3); }
+.people__notice button { flex: none; margin-left: auto; font-weight: 500; text-decoration: underline; color: var(--text); }
+.people__done { display: flex; align-items: flex-start; gap: 6px; margin: 8px 0 0; font-size: var(--fs-sm) !important; color: var(--text-2) !important; }
+.people__done:empty { display: none; }
+.people__done svg { flex: none; margin-top: 2px; color: var(--ok); }
+.people__confirm { padding-top: 10px; border-top: 1px solid var(--line); }
+.people__confirm p { font-size: var(--fs-md); color: var(--text-2); line-height: 1.5; }
+.people__remove.ui-btn { justify-self: start; margin-left: -8px; }
+.people .details__sec .ov-note { margin-top: 10px; }
+
+/* Project access (#188, AC-2) */
+.access__mode { display: flex; align-items: flex-start; gap: 6px; margin: 0 0 6px; font-size: var(--fs-sm) !important; color: var(--text-2) !important; line-height: 1.5 !important; }
+.access__mode svg { flex: none; margin-top: 3px; color: var(--text-3); }
+.access__mode b { font-weight: 600; color: var(--text); }
+.access__sub { margin: 18px 0 4px !important; }
+.people__edit .access__sub { margin: 0 !important; }
+.access__out { color: var(--warning) !important; }
+.access__preview { margin: 0; padding: 8px 10px; border-radius: var(--r); background: var(--bg-side); font-size: var(--fs-sm) !important; color: var(--text-2) !important; line-height: 1.5 !important; overflow-wrap: anywhere; }
+.access__preview b { font-weight: 600; color: var(--text); }
+.access__give { display: grid; justify-items: start; gap: 8px; margin-top: 14px; }
+.access__give.people__edit { justify-items: stretch; }
+.access__link.ui-btn { justify-self: start; margin-left: -6px; white-space: normal; text-align: left; }
+/* The legend sits above its own track: a fieldset's legend is not a flex item, so the track holds the choices. */
+.access__seg { min-width: 0; margin: 0; padding: 0; border: 0; }
+.access__seg legend { margin-bottom: 6px; padding: 0; }
+.access__seg-track { display: flex; padding: 2px; border-radius: var(--r); background: var(--bg-hover); }
+.access__seg-b { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; min-height: 32px; border-radius: 6px; font-size: var(--fs-sm); font-weight: 500; color: var(--text-3); cursor: pointer; transition: var(--tr); }
+.access__seg-b input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.access__seg-b:has(input:checked) { background: var(--bg-raised); color: var(--text); box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--line); }
+.access__seg-b:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+/* The DM-sketch promotion's explicit, unchecked grant (#188, AC-3). */
+.promote__grant { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; align-items: start; margin-top: 12px; padding: 10px 12px; border-radius: var(--r-lg); box-shadow: inset 0 0 0 1px var(--line); font-size: var(--fs-md); color: var(--text-2); line-height: 1.5; cursor: pointer; }
+.promote__grant input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--action); }
+.promote__grant b { font-weight: 600; color: var(--text); }
+.promote__grant span span { display: block; font-size: var(--fs-sm); color: var(--text-3); }
+
+@media (pointer: coarse) {
+  .people__change.ui-btn { min-height: 44px; }
+  .people__field select { min-height: 44px; font-size: 16px; }
+  .access__seg-b { min-height: 44px; }
+  .promote__grant { min-height: 44px; }
+}
+/* "Try again" in a notice is a full touch target on phones and tablets. */
+@media (pointer: coarse) { .people__notice button { min-height: 44px; padding-inline: 6px; } }

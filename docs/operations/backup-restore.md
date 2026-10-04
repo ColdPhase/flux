@@ -162,7 +162,11 @@ The new checkout gets its own project name; the data and secrets come from the a
 ## Verified behavior
 
 `./scripts/check_backup.sh` runs on disposable copies of the working tree with their own
-Compose projects, ports and images, and removes them afterwards. It seeds `./flux demo` plus
+Compose projects, ports and images, and removes them afterwards. Its ports start at
+`FLUX_BACKUP_TEST_PORT` (default 19571) and use that port and the next eight; set it when
+another check already uses that range. `./scripts/check_runtime.sh` (production-mode stack:
+worker job, migration and restart keep data) listens on `FLUX_RUNTIME_TEST_PORT`
+(default 18090). It seeds `./flux demo` plus
 conversations, a DM, a private note, a project sketch with links, work, a decision and a
 result with links, a doc with two versions, a push subscription, a revoked and a live session,
 two agent connections with OAuth bearers (one revoked before the backup, one right after it),

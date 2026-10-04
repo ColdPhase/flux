@@ -39,6 +39,7 @@ export function audience(sketch: Sketch, meId: string, projectName?: string | nu
 /** Where a sketch opens: inside its project or DM, so the tabs and audience stay in view. */
 export function sketchHref(sketch: Pick<Sketch, 'id' | 'scope' | 'projectId' | 'dmId'>) {
   if (sketch.scope === 'dm' && sketch.dmId) return `/dm/${sketch.dmId}/sketches/${sketch.id}`;
+  if (sketch.scope === 'project' && sketch.projectId) return `/projects/${sketch.projectId}/map/${sketch.id}`;
   return `/map/${sketch.id}`;
 }
 
