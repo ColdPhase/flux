@@ -258,6 +258,7 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
   }, [conversation?.id, arrived]);
   useEffect(() => {
     // A source link from "Since you left" or search opens on that whole message; otherwise on the latest.
+    // It runs again when the feed is first shown: a hidden message cannot take focus.
     const anchor = arrived ? document.getElementById(`message-${arrived}`) : null;
     if (anchor) { anchor.scrollIntoView({ block: 'start' }); anchor.focus({ preventScroll: true }); return; }
     const feed = scrollRef.current;
@@ -296,7 +297,7 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
     const timer = window.setTimeout(stop, 2000);
     feed.addEventListener('scroll', moved, { passive: true });
     return () => { stop(); release(); window.clearTimeout(timer); feed.removeEventListener('scroll', moved); };
-  }, [conversation?.id, arrived, arrivedLoaded, feedNode]);
+  }, [conversation?.id, arrived, arrivedLoaded, feedNode, revealed]);
 
   function changeDraft(input: string) {
     typing.input(Boolean(input.trim()) && !asking && !/^\/ai(\s|$)/.test(input));

@@ -59,9 +59,10 @@ const POINTER_AIM_MS = 2000;
 function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTMLElement | null, ready: boolean, observedAt?: string) {
   const anchor = useRef<{ id: string; offset: number; top: number; atEnd: boolean } | null>(null);
   const readerMoved = useRef(false);
-  // The scrollTop this hook last wrote. Another scroll is the reader's only when it follows
-  // genuine reader input (readerIntent.ts); otherwise it is layout (late previews, scroll
-  // anchoring, the opening settle) and the reading position keeps being restored.
+  // The scrollTop this hook last wrote. A scroll event it did not write records the position
+  // (wheel, keys, scrollIntoView, focus, find-in-page). A change found before its event arrived
+  // is the reader's only after genuine reader input (readerIntent.ts); otherwise it is layout
+  // and the reading position is restored.
   const ownScroll = useRef<number | null>(null);
   // A reader at the end follows what arrives there; reaching the end starts following and only
   // scrolling up leaves it. Layout shifts (scroll anchoring, a resized composer) keep the intent.
@@ -75,7 +76,7 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
   // moved. Previews, reference rows and the header's state line arrive later; none of them may
   // move it out from under a pointer that is aiming at it (moved within POINTER_AIM_MS), even
   // at the end.
-  const pointed = useRef<{ row: HTMLElement; y: number; at: number } | null>(null);
+  const pointed = useRef<{ row: HTMLElement; top: number; at: number; x: number; y: number } | null>(null);
   const save = useCallback((intent = false) => {
     const pane = ref.current;
     if (!pane || !ready && !readerMoved.current && !intent) return;
@@ -106,14 +107,17 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
       const held = pointed.current;
       if (!held || !held.row.isConnected || !pane.contains(held.row)) { pointed.current = null; return false; }
       if (performance.now() - held.at > POINTER_AIM_MS) return false;
-      const delta = held.row.getBoundingClientRect().top - held.y;
+      const delta = held.row.getBoundingClientRect().top - held.top;
       if (Math.abs(delta) > 0.5) { pane.scrollTop += delta; ownScroll.current = pane.scrollTop; lastTop.current = pane.scrollTop; }
       return true;
     };
+    const aim = (target: Element | null, x: number, y: number, at: number) => {
+      const row = target?.closest<HTMLElement>('[data-message-id],[data-answer-run]') ?? null;
+      pointed.current = row && pane.contains(row) ? { row, top: row.getBoundingClientRect().top, at, x, y } : null;
+    };
     const point = (event: PointerEvent) => {
       if (event.pointerType !== 'mouse' && event.pointerType !== 'pen') return;
-      const row = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-message-id],[data-answer-run]') : null;
-      pointed.current = row && pane.contains(row) ? { row, y: row.getBoundingClientRect().top, at: performance.now() } : null;
+      aim(event.target instanceof Element ? event.target : null, event.clientX, event.clientY, performance.now());
     };
     const left = () => { pointed.current = null; };
     // Input away from the end means the reader is with earlier messages: stop following the end,
@@ -145,9 +149,11 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
     const scrolled = () => {
       const own = ownScroll.current;
       ownScroll.current = null;
-      const reader = (own === null || Math.abs(pane.scrollTop - own) > 1) && byReader();
-      // The reader moved the view under the pointer; the pointed message keeps its new place.
-      if (reader && pointed.current) pointed.current.y = pointed.current.row.getBoundingClientRect().top;
+      // A scroll this hook did not write moved the view (the reader, or the app bringing a
+      // message into view): the pointer now aims at whatever message is under it.
+      const reader = own === null || Math.abs(pane.scrollTop - own) > 1;
+      const held = pointed.current;
+      if (reader && held) aim(document.elementFromPoint(held.x, held.y), held.x, held.y, held.at);
       observe(reader);
     };
     const grew = () => { if (keepPointed()) return; if (following.current && !atEnd()) toEnd(); };
