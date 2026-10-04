@@ -6,6 +6,7 @@ import { backgroundConnectionRepository, comparisonProposalView, proactiveOutbox
 import { backgroundConnectionUseCases, ConflictError, DomainError, enforce, evaluateProject, InvalidInputError,
   isUuid, NotFoundError, proactiveRuleUseCases, VersionConflictError, visibleProposal, type Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
+import { taskUseDomainError } from '../work/task-use-errors.js';
 import { nativeWorkInTransaction } from '../work/adapters.js';
 import { comparisonOutcomeAccess, comparisonOutcomes } from './outcome-adapter.js';
 
@@ -28,6 +29,7 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
     rules: proactiveRuleRows(tx),
   })) });
   app.setErrorHandler((error: FastifyError | DomainError, _request, reply) => {
+    error = taskUseDomainError(error) as typeof error;
     if (error instanceof DomainError) return reply.code(error.status).send({ error: error.message, code: error.code, ...error.details });
     if ((error as FastifyError).statusCode === 401) return reply.code(401).send({ error: 'Authentication required', code: 'UNAUTHENTICATED' });
     throw error;

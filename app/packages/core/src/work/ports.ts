@@ -203,7 +203,8 @@ export interface WorkRepository extends TaskGraphReader {
   /** Links from or to any of these ids, oldest first. */
   links(ids: string[]): Promise<ObjectLinkRecord[]>;
   /** Inserts links; an identical existing link is kept. */
-  insertLinks(links: NewObjectLink[]): Promise<void>;
+  /** IDs of newly inserted links only; an exact existing link is an observation. */
+  insertLinks(links: NewObjectLink[]): Promise<string[]>;
   /** Whether the referenced message, material version or object exists in the project. */
   targetExists(projectId: string, ref: ObjectRef): Promise<boolean>;
   /**

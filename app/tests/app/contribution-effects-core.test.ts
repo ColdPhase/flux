@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { describe, test } from 'node:test';
 import {
   ConflictError, contributionIdentity, createTaskDiscussionUseCases, createWorkContributions, createWorkUseCases, derivedUuid,
-  ForbiddenError, InvalidInputError, normalizeMessage, VersionConflictError,
+  ForbiddenError, InvalidInputError, normalizeMessage, RuleViolationError, VersionConflictError,
   type ActorRef, type DiscussionMessage, type NativeCommandReceipt, type NewDiscussionMessage, type Principal,
   type ResultRecord, type TaskDiscussionPorts, type WorkAccess, type WorkPorts, type WorkRecord, type WorkRepository,
 } from '@flux/core';
@@ -31,6 +31,19 @@ function world(options: { writable?: boolean; taskIds?: string[]; hook?: boolean
   const events: Array<{ kind: string; data: Record<string, unknown> }> = [];
   const key = (by: ActorRef, operation: string, commandId: string) => `${by.kind}:${by.id}:${operation}:${commandId}`;
   const copy = (row: WorkRecord) => structuredClone(row);
+  const lockPreparedTaskUse = async (input: readonly string[]) => {
+    const ids = [...new Set(input)].sort();
+    log.push(`task.pass:${ids.join(',')}`);
+    for (const id of ids) {
+      log.push(`task.lock:${id}`);
+      if (!tasks.has(id)) throw new RuleViolationError('A task target is unavailable', 'TASK_TARGET_NOT_FOUND');
+      if (tasks.get(id)!.creationRevertedAt) throw new ConflictError('Task creation was undone', 'TASK_CREATION_REVERTED');
+    }
+    return { ids, projectIds: [projectId], async mark(used = ids) {
+      if (used.some((id) => !ids.includes(id))) throw new Error('Unretained task use');
+      for (const id of used) tasks.get(id)!.firstPersistedUseAt ??= at;
+    } };
+  };
 
   const access: WorkAccess = {
     async requireProject(_principal, action, _project, opts) {
@@ -69,11 +82,14 @@ function world(options: { writable?: boolean; taskIds?: string[]; hook?: boolean
       results.set(row.id, row);
       return row;
     },
-    async insertLinks() { log.push('links.insert'); },
+    async insertLinks() { log.push('links.insert'); return []; },
     async links() { return []; },
     async titles() { return new Map(); },
     async names() { return new Map(); },
     async targetExists(_project: string, ref: { type: string; id: string }) { return ref.type !== 'work' || tasks.has(ref.id); },
+    async taskUseTargets(refs: readonly { type: string; id: string }[]) { return [...new Set(refs.filter((ref) => ref.type === 'work').map((ref) => ref.id))].sort(); },
+    lockPreparedTaskUse,
+    async prepareTaskUse(ids: readonly string[]) { log.push('graph.lock'); return lockPreparedTaskUse(ids); },
     // The #152 task graph: the project graph lock and the complete sorted task pass.
     async taskPlans() { return new Map(); },
     async lockTaskGraphs() { log.push('graph.lock'); },

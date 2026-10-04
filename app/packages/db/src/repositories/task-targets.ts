@@ -1,8 +1,7 @@
 import { and, eq, inArray, or, sql } from 'drizzle-orm';
-import { RuleViolationError } from '@flux/core';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
-import { taskUseRows } from './task-use.js';
+import { taskUseRows, TaskUseRefusal } from './task-use.js';
 
 type Reference = { type: string; id: string };
 /** Canonical typed associations only; no opaque JSON traversal or caller-supplied ownership. */
@@ -38,13 +37,48 @@ export async function referencedTaskIds(tx: DbExecutor, refs: readonly Reference
   return [...ids].sort();
 }
 
-/** Caller holds authority/material/connection fences, with no task/domain row yet. */
+/** Reference graphs also matter when their current task association set is empty. */
+async function referencedProjectIds(tx: DbExecutor, refs: readonly Reference[]): Promise<string[]> {
+  const projects = new Set<string>();
+  const groups = [
+    ['work', schema.projectWorkItems], ['result', schema.projectResults], ['decision', schema.projectDecisions],
+    ['conversation', schema.projectConversations], ['message', schema.projectMessages],
+    ['material', schema.projectMaterials], ['doc', schema.projectMaterials], ['github_pr', schema.githubTaskLinks],
+  ] as const;
+  for (const [type, table] of groups) {
+    const ids = refs.filter((ref) => ref.type === type).map((ref) => ref.id);
+    if (ids.length) {
+      const rows = await tx.select({ projectId: table.projectId }).from(table).where(inArray(table.id, ids));
+      rows.forEach((row) => projects.add(row.projectId));
+    }
+  }
+  const sketchIds = refs.filter((ref) => ref.type === 'sketch').map((ref) => ref.id);
+  const thoughtIds = refs.filter((ref) => ref.type === 'thought').map((ref) => ref.id);
+  if (thoughtIds.length) {
+    const thoughts = await tx.select({ sketchId: schema.sketchThoughts.sketchId }).from(schema.sketchThoughts)
+      .where(inArray(schema.sketchThoughts.id, thoughtIds));
+    sketchIds.push(...thoughts.map((row) => row.sketchId));
+  }
+  if (sketchIds.length) {
+    const sketches = await tx.select({ projectId: schema.sketches.projectId }).from(schema.sketches)
+      .where(inArray(schema.sketches.id, sketchIds));
+    sketches.forEach((row) => { if (row.projectId) projects.add(row.projectId); });
+  }
+  return [...projects].sort();
+}
+
+/** Caller holds authority/material/connection fences, with no graph/task/domain row yet. */
 export async function prepareReferencedTaskUse(tx: DbExecutor, projectId: string, refs: readonly Reference[]) {
-  // Retain the known project graph even when the current association set is empty.
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`flux.task-graph:${projectId}`}))`);
+  const projectsOfTasks = async (ids: readonly string[]) => ids.length
+    ? (await tx.select({ projectId: schema.projectWorkItems.projectId }).from(schema.projectWorkItems)
+      .where(inArray(schema.projectWorkItems.id, [...ids]))).map((row) => row.projectId) : [];
+  const initial = await referencedTaskIds(tx, refs);
+  const graphIds = [...new Set([projectId, ...await referencedProjectIds(tx, refs), ...await projectsOfTasks(initial)])].sort();
+  for (const graphId of graphIds)
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`flux.task-graph:${graphId}`}))`);
+  // Re-resolve after waiting for graphs. Never extend the upstream set after taking any graph.
   const ids = await referencedTaskIds(tx, refs);
-  const rows = ids.length ? await tx.select({ id: schema.projectWorkItems.id, projectId: schema.projectWorkItems.projectId }).from(schema.projectWorkItems)
-    .where(inArray(schema.projectWorkItems.id, ids)) : [];
-  if (rows.some((row) => row.projectId !== projectId)) throw new RuleViolationError('A task reference is outside the current project', 'TASK_TARGET_SCOPE_INVALID');
-  return taskUseRows(tx).lockPrepared(ids);
+  if ([...await referencedProjectIds(tx, refs), ...await projectsOfTasks(ids)].some((id) => !graphIds.includes(id)))
+    throw new TaskUseRefusal('TASK_TARGET_SET_CHANGED');
+  return { ...await taskUseRows(tx).lockPrepared(ids), projectIds: graphIds };
 }

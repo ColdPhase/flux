@@ -17,6 +17,7 @@ import {
 } from '@flux/core';
 import { idempotencyRepository } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
+import { taskUseDomainError } from '../work/task-use-errors.js';
 
 // Shared HTTP plumbing for `/api/v1` command routes (issue #29 AC-4, reused by #69 and #107): the
 // domain error mapping, If-Match parsing and the Idempotency-Key runner.
@@ -81,6 +82,7 @@ export interface CommandSpec {
 /** Maps DomainError to its status and ApiError body inside the plugin that calls it. */
 export function useDomainErrors(app: FastifyInstance) {
   app.setErrorHandler((error: FastifyError | DomainError, _request, reply) => {
+    error = taskUseDomainError(error) as typeof error;
     if (error instanceof DomainError) {
       const payload: ApiError = { ...error.details, error: error.message, code: error.code };
       return reply.code(error.status).send(payload);

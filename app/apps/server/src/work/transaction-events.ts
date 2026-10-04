@@ -1,4 +1,5 @@
 import { recordEvents, type EventIntent, type Transaction } from '@flux/core';
+import { withTaskUseErrors } from './task-use-errors.js';
 
 function freezeNested(value: unknown): void {
   if (value && typeof value === 'object') {
@@ -17,7 +18,7 @@ export function transactionEventSession(tx: Transaction) {
     async run<T>(action: () => Promise<T>): Promise<T> {
       if (closed) throw new Error('Native event session is closed');
       active++;
-      try { return await action(); } finally { active--; }
+      try { return await withTaskUseErrors(action); } finally { active--; }
     },
     async record(principal: EventIntent['principal'], workspaceId: string,
       kind: string, objectId: string, data: EventIntent['data']): Promise<void> {

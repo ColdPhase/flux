@@ -1,7 +1,14 @@
 import { and, asc, inArray, sql } from 'drizzle-orm';
-import { ConflictError, RuleViolationError } from '@flux/core';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
+
+/** Persistence refusal only; composition roots translate this outcome to domain/transport errors. */
+export class TaskUseRefusal extends Error {
+  constructor(readonly code: 'TASK_TARGET_NOT_FOUND' | 'TASK_CREATION_REVERTED' | 'TASK_TARGET_SET_CHANGED') {
+    super(code);
+    this.name = 'TaskUseRefusal';
+  }
+}
 
 export interface TaskUseFence {
   /** Complete ascending task set retained by this transaction. */
@@ -22,8 +29,8 @@ export function taskUseRows(tx: DbExecutor) {
     const wanted = sorted(ids);
     const rows = wanted.length ? await tx.select({ id: w.id, projectId: w.projectId, revertedAt: w.creationRevertedAt })
       .from(w).where(inArray(w.id, wanted)).orderBy(asc(w.id)).for('update') : [];
-    if (rows.length !== wanted.length) throw new RuleViolationError('A task target is unavailable', 'TASK_TARGET_NOT_FOUND');
-    if (rows.some((row) => row.revertedAt !== null)) throw new ConflictError('Task creation was undone; open its history', 'TASK_CREATION_REVERTED');
+    if (rows.length !== wanted.length) throw new TaskUseRefusal('TASK_TARGET_NOT_FOUND');
+    if (rows.some((row) => row.revertedAt !== null)) throw new TaskUseRefusal('TASK_CREATION_REVERTED');
     const held = new Set(wanted);
     return { ids: wanted, projectIds: sorted(rows.map((row) => row.projectId)), async mark(ids = wanted) {
       const used = sorted(ids);

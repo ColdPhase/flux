@@ -1,3 +1,4 @@
+import { withTaskUseErrors } from '../work/task-use-errors.js';
 import { fromDrizzle, type PgBoss } from 'pg-boss';
 import { personalRunRows, sql, workRows, type DbExecutor } from '@flux/db';
 import {
@@ -46,7 +47,7 @@ function personalRunPorts(tx: DbExecutor, queue: PersonalRunQueueFactory,
 
 /** One transaction per use case; on an open transaction (an idempotency scope) it nests as a savepoint. */
 export function personalRunUnitOfWork(db: Database, queue: PersonalRunQueueFactory): PersonalRunUnitOfWork {
-  return { run: (work) => db.transaction((tx) => work(personalRunPorts(tx, queue))) };
+  return { run: (work) => db.transaction((tx) => withTaskUseErrors(() => work(personalRunPorts(tx, queue)))) };
 }
 
 /** Accept records the result through the #101 work use case, in the accept's own transaction. */

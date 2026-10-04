@@ -252,12 +252,13 @@ export function workRows(db: DbExecutor) {
       return rows.map(toLinkRecord);
     },
     async insertLinks(links: { id: string; workspaceId: string; projectId: string; role: LinkRow['role']; from: { type: LinkRow['fromType']; id: string }; to: Ref; createdBy: Actor }[]) {
-      if (!links.length) return;
-      await db.insert(l).values(links.map((link) => ({
+      if (!links.length) return [];
+      const inserted = await db.insert(l).values(links.map((link) => ({
         id: link.id, workspaceId: link.workspaceId, projectId: link.projectId, role: link.role, fromType: link.from.type, fromId: link.from.id,
         toType: link.to.type, toId: link.to.id, toVersion: link.to.type === 'material' ? link.to.version : null,
         createdByKind: link.createdBy.kind, createdById: link.createdBy.id,
-      }))).onConflictDoNothing();
+      }))).onConflictDoNothing().returning({ id: l.id });
+      return inserted.map((row) => row.id);
     },
 
     async targetExists(projectId: string, ref: Ref) {

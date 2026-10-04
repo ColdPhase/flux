@@ -130,3 +130,16 @@ test('rollback removes lifecycle, notices, receipts and first-use latch together
   const receiptCount = (await pool.query('SELECT count(*)::int AS n FROM task_creation_undo_receipts WHERE work_id=$1', [item.id])).rows[0].n;
   assert.equal(receiptCount, 0);
 });
+
+test('an exact existing creation-provenance link is an observation and leaves Undo available', async () => {
+  const f = await scene();
+  const result = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/results`,
+    { body: { title: 'Initial context', finding: 'positive' } }), 201);
+  const { item } = await f.create({ related: [{ type: 'result', id: result.id }] });
+  const before = await pool.query('SELECT count(*)::int AS n FROM project_object_links WHERE from_id=$1', [item.id]);
+  expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/links`,
+    { body: { from: { type: 'work', id: item.id }, to: { type: 'result', id: result.id } } }), 201);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_object_links WHERE from_id=$1', [item.id])).rows[0].n, before.rows[0].n);
+  assert.equal((await f.read(item.id) as unknown as WorkItem).creationUndo?.eligible, true);
+  expect(await f.undo(item), 200);
+});

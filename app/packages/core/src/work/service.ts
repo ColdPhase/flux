@@ -656,13 +656,13 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         await requireTargets(ports, project, [from, to]);
         await lockProjectGraphs(ports.work, [project]);
         const useFence = await ports.work.lockPreparedTaskUse(await ports.work.taskUseTargets([from, to]));
-        await ports.work.insertLinks(linkRows({ workspaceId, projectId: project }, from, 'related', [to], by));
+        const inserted = await ports.work.insertLinks(linkRows({ workspaceId, projectId: project }, from, 'related', [to], by));
         const link = (await ports.work.links([from.id])).find((item) => item.fromId === from.id && item.role === 'related' && item.toId === to.id
           && (to.type !== 'material' || item.toVersion === to.version));
         if (!link) throw new Error('Link was not stored');
-        await useFence.mark();
+        if (inserted.length) await useFence.mark();
         const titles = await ports.work.titles(project, [from, to]);
-        await ports.events.record(principal, workspaceId, 'project.link_created.v1', project, { from: from.id });
+        if (inserted.length) await ports.events.record(principal, workspaceId, 'project.link_created.v1', project, { from: from.id });
         return { id: link.id, projectId: project, role: link.role, from, to, fromTitle: titles.get(valid.refKey(from))?.title ?? '',
           toTitle: titles.get(valid.refKey(to))?.title ?? '', conversationId: titles.get(valid.refKey(to))?.conversationId ?? null,
           sketchId: titles.get(valid.refKey(to))?.sketchId ?? null, createdAt: iso(link.createdAt) };

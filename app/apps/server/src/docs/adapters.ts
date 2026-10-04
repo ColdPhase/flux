@@ -1,3 +1,4 @@
+import { withTaskUseErrors } from '../work/task-use-errors.js';
 import { docRows, type DbExecutor } from '@flux/db';
 import { createDocUseCases, recordEvent, visibleFilter, type Database, type DocPorts, type DocRepository, type DocUnitOfWork, type Transaction } from '@flux/core';
 import { policyWorkAccess, workRepository } from '../work/adapters.js';
@@ -30,7 +31,7 @@ function docPorts(tx: DbExecutor, events?: DocPorts['events']): DocPorts {
 
 /** One transaction per use case; on an open transaction (an idempotency scope) it nests as a savepoint. */
 export function docUnitOfWork(db: Database): DocUnitOfWork {
-  return { run: (work) => db.transaction((tx) => work(docPorts(tx))) };
+  return { run: (work) => db.transaction((tx) => withTaskUseErrors(() => work(docPorts(tx)))) };
 }
 
 export const docUseCases = (db: Database) => createDocUseCases(docUnitOfWork(db));

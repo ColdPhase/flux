@@ -1,4 +1,4 @@
-import { proactiveOutboxRows } from '@flux/db';
+import { proactiveOutboxRows, TaskUseRefusal } from '@flux/db';
 import { evaluateProject, type Database, type Executor } from '@flux/core';
 
 export type ObservedUsage = { inputTokens: number; outputTokens: number; estimatedCents: number };
@@ -35,7 +35,10 @@ export async function authorizedComparison(db: Executor, candidateId: string, co
   for (const source of snapshot.sources) {
     if (!await rows.sourceCurrent(candidate.projectId, source)) throw new ComparisonStopped('SOURCE_CHANGED');
   }
-  const taskFence = lock ? await rows.prepareTaskUse(candidate.projectId, [{ type: 'result', id: candidate.resultId }, ...snapshot.sources]) : null;
+  const taskFence = lock ? await rows.prepareTaskUse(candidate.projectId, [{ type: 'result', id: candidate.resultId }, ...snapshot.sources]).catch((error: unknown) => {
+    if (error instanceof TaskUseRefusal) throw new ComparisonStopped(error.code);
+    throw error;
+  }) : null;
   if (lock) {
     const retained = await rows.lockCandidate(candidateId);
     if (!retained || retained.status !== candidate.status || retained.connectionId !== connectionId
