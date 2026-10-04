@@ -179,12 +179,17 @@ function HomeNotes() {
   };
   // A restored draft gets its full height on the first paint.
   useLayoutEffect(autosize, []);
-  /** The space a note goes to: the chosen one, or the personal space (created on the first note). */
+  /**
+   * The space a note goes to: the chosen one, or the personal space (created on the first note).
+   * When the server already has several spaces the shell has not seen yet (created in another tab,
+   * or an invitation), the shell reads them again so the person can choose one (#211 HOME-3).
+   */
   const spaceForNotes = async (signal: AbortSignal) => {
     if (selectedWorkspace) return selectedWorkspace;
     if (workspaces.length > 1) return null;
     const space = await ensurePersonalSpace(me.user.id, signal);
-    if (space) { setSelectedWorkspace(space); revalidator.revalidate(); }
+    if (!signal.aborted) revalidator.revalidate();
+    if (space) setSelectedWorkspace(space);
     return space;
   };
   const send = async () => {

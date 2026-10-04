@@ -8,16 +8,17 @@ export type ReadAssignedPage = (limit: number, offset: number) => Promise<Page<W
 
 /**
  * Work the caller owns in one workspace (open, in progress, blocked; not parked), across the
- * projects they can read now, page by page until `total` or `cap` items (#190 HOME-2).
+ * projects they can read now, page by page until `total` or `cap` items (#190 HOME-2). The total
+ * is always read: with no room left (`cap` 0) one row is asked for only its `total` (#211 A2.1).
  */
 export async function readAssigned(readPage: ReadAssignedPage, cap: number): Promise<{ items: WorkItem[]; total: number }> {
   const byId = new Map<string, WorkItem>();
   let total = 0;
-  for (let offset = 0; offset <= 10_000 && byId.size < cap; offset += ASSIGNED_PAGE) {
-    const page = await readPage(ASSIGNED_PAGE, offset);
+  for (let offset = 0; offset <= 10_000; offset += ASSIGNED_PAGE) {
+    const page = await readPage(byId.size < cap ? ASSIGNED_PAGE : 1, offset);
     total = page.total;
     for (const item of page.items) if (!byId.has(item.id) && byId.size < cap) byId.set(item.id, item);
-    if (!page.items.length || offset + page.items.length >= page.total) break;
+    if (byId.size >= cap || !page.items.length || offset + page.items.length >= page.total) break;
   }
   return { items: [...byId.values()], total };
 }
