@@ -2,9 +2,9 @@
 
 Branch `claude-maurycy/155-truthful-typing` (draft PR #170). Replaces the previous note at
 `35910762`; the archived v2 runner, overlay and raw log stay in this folder (their `sha256.json`
-is archival and does not cover this note). Tested heads: `e359bd47` (API subset, e2e, full UI)
-and `f70686bb` (full application, reruns); `git diff e359bd47 f70686bb -- app/apps app/packages
-docker scripts` is empty. This note is a later doc-only commit.
+is archival and does not cover this note). Latest tested heads: `26d638de` (full application,
+full UI) and `6765a745` (doc reference tests after a test-only change); see "Branch-only UI
+failures fixed" below. Earlier: `e359bd47`/`f70686bb`. This note is a later doc-only commit.
 
 ## Peer findings at `35910762` and what changed
 
@@ -35,6 +35,72 @@ docker scripts` is empty. This note is a later doc-only commit.
 6. **Merged `origin/main` `24f49522` (`045e924a`) and `d94f70e4` (`e359bd47`).** Both clean or
    additive; `e359bd47` brings main's GitHub "No pull requests are linked" line, which
    `github.e2e.ts` asserts alongside the picker-page assertions.
+
+## Branch-only UI failures fixed at the product level (`ec9023cf`..`6765a745`)
+
+Merged `origin/main` `7a683420` (`ec9023cf`; conflicts in AppLayout, DocEditor, LinkPicker kept
+both sides; main's new Agents view moved from the project work collection to the bounded
+`pivot_work` choice page plus an own-object read for `?task=`). Build, typecheck and lint at
+the merge: pass, 0 warnings after `22f865aa` (`WorkReadContext` store keyed by its owner).
+
+Cause, from evidence:
+- **Opening settle ended by non-reader scrolls (`600565f8`).** Baseline at `2b3c2960`
+  (post-merge, pre-fix): `test_project_surface.test_02` fails (`w170c-base-ui.log` sha256
+  `67b3d0e5d7bf172a03339404bcfa9d928136195b1add7f5aded8b6f75ad4adf6`). Fixed by `3b9ecff1`:
+  the settle ends only on genuine reader input (`readerIntent.ts`), or on a scroll it did not
+  write within 500 ms of it; a reading-position change found before its scroll event is the
+  reader's only after such input (keeps `642738dc`).
+- **Late layout under a hovering pointer (branch-only; `.ws-acts` CSS is identical to main).**
+  A temporary per-frame instrumentation module (`test_zz_shiftdiag.py`, not committed, sha256
+  `ad7d9670cfb1afe7a50d36f032f69455385769e5904f7b85f686d3f1dfd9b171`; failing run
+  `w170c-diag-0de0a4bc.log` sha256
+  `886dcac0c34694b368103f4a32c9421b5c5c4b9dd1d03170eb6b29d670a0698e`) showed, 15 ms after the
+  hover in `test_work_decisions.test_04`: the first chips arrived (rows shifted ~96 px in a feed
+  that was not scrollable), a "Loading work…" pager under the feed vanished (+49 px), and in
+  another run the header's state line grew 50 px. On main all of these came with the route
+  loader. Fixed by `9128f31e` (the feed is laid out but hidden, `aria-busy`, until the first
+  message-work, reference and summary reads settle, at most 1 s; no pager placeholder before
+  the first page) with `1c84dce7`/`c1afa3bc`/`0de0a4bc`/`8e942a3f` (pointer movement is reader
+  input; input away from the end stops following; a recently moved pointer keeps its message at
+  its screen position during growth; scroll events record the position as before and re-aim the
+  pointer). Rules recorded in `bounded-native-work.md` (`26d638de`).
+- Intermediate heads and why they were not enough (runs of `w170c-ui3x.sh`: 3 consecutive
+  `check_ui.sh` runs; 4 modules until `0de0a4bc`, then also `test_work_associations` and
+  `test_typing`): `3b9ecff1` test_02 fixed, `project_surface.test_05` 2/3 failed
+  (`3b1e8ab9…`); `1c84dce7` work_decisions/test_05 failures (`387d4952…`); `c1afa3bc` 2/3 failed
+  (`72b5749d…`); `0de0a4bc` 1/3 failed (`f736ed2a…`); `9128f31e` decisions fixed but
+  `test_work_associations` 02/05–08 regressed 3/3 (`2d46dd39…`), fixed by `8e942a3f`.
+
+Verification at `8e942a3f` and later:
+- `w170c-ui3x.sh` (sha256 `a75fbf0a5f14a4f8f4396945623ee3552fb7821756fbee9b1f0294d9bb935fd6`):
+  `./scripts/check_ui.sh test_project_surface test_work_decisions test_work_details
+  test_agents_view test_work_associations test_typing` ×3 (`FLUX_UI_PORT=18912
+  FLUX_UI_MAILPIT_PORT=18913`): **73/73, 73/73, 73/73** (`w170c-ui3x.log` sha256
+  `118bdb9a502c04336c7682b1a904cceceeb682875c3e07d168f817b4b322e830`). Instrumented
+  work-decisions journey at `9128f31e`: 10/10 ×3 (`w170c-diag.log` sha256
+  `ffa08b5937d90fecb080e78c0647924780378b87fb586899c890c8752547e82d`).
+- e2e (`w170b-e2e.sh`): `assistant-reference-rows.e2e.ts` **7/7** including the held-scroll test,
+  `github.e2e.ts` 1/1, at `3b9ecff1` ×3, `c1afa3bc` and `8e942a3f` (`w170c-e2e-c.log` sha256
+  `5e3177b803350069b83a8a76529b9305b9a5a346c809605c9314eedf210c0a5e`).
+- Full `./scripts/check_application.sh` at `26d638de` (`FLUX_TEST_PORT=18910
+  FLUX_TEST_MAILPIT_PORT=18911`): **exit 0**; main suite **796/796**, every later step passed
+  (PWA 3/3, proactive 6/6, GitHub, task plan, agent connections, session restart,
+  push/email unavailable). Log `w170c-check-app.log` sha256
+  `6fd687b3bf9d725107ac5745443bd6e030b48725abdf14b7fb2bb6d43adbfcbd`.
+- Full `./scripts/check_ui.sh` at `26d638de`: **284 run, 6 failures, 4 skipped** (live media).
+  Every failure was `test_doc_references` 04/07/08 at both sizes, a branch-only test still
+  expecting the pre-#197 editor line "New doc · everyone in <project> can read it". All other
+  modules passed, including `test_project_surface` 19/19, `test_work_decisions` 10/10,
+  `test_work_details` 10/10, `test_sketch_work_details`, `test_map_task_count` 9/9,
+  `test_agents_view` 17/17, `test_wiki_panes` 14/14, `test_typing` 9/9. Log
+  `w170c-check-ui.log` sha256 `762d34ce61dc6e6dfb924bb55106834594d2269d7fcb973de958e8aa7889d414`.
+- `6765a745` (test-only) asserts the same statement in main's wiki editor: "New page" in the bar
+  and "Everyone in <project> can read it" in the crumb. `./scripts/check_ui.sh
+  test_doc_references test_docs`: **16/16** (`w170c-docrefs.log` sha256
+  `7a035afd35f7895c7915900b3b6be4146ecc3aec4b1d3805bf3e90649bae8edb`).
+- `test_work_details.test_08` (`2b3c2960`) now clicks the same project link in the sidebar's
+  "Projects" navigation (main's #184 sidebar keeps Home/Inbox under "Places"); assertions after
+  the click unchanged; 10/10 in every run above.
 
 ## Verified at `e359bd47` (2026-10-04, Docker, isolated projects, ports 18910–18919)
 
@@ -144,12 +210,9 @@ Main was checked out detached at `d94f70e4` (the merged main) and run with the s
 
 ## Open
 
-- Branch-only UI failures (main passes the same test bodies): `test_project_surface.test_02`
-  (every run since ≤`35910762`), intermittent `test_project_surface.test_05` (0/3 failures this session) and `test_07` (1/3) and
-  `test_work_decisions.test_04`/`test_06` (hover toolbar of a message row not clickable). See the
-  `e359bd47` failure notes for the unverified opening-settle hypothesis.
-- `test_work_details.test_08` (branch-only test) still expects a project link under the sidebar's
-  "Places" navigation, which main's #184 sidebar no longer has.
-- Lint warning in `WorkReadContext.tsx:12` (unnecessary memo dependencies).
 - Not run: original #155 motion/typing acceptance, performance budgets (the board makes four
   bounded reads), devices.
+- `ConversationStream.tsx` / `person()` named in the request does not exist on main `7a683420`;
+  the requested semantics are implemented in `app/apps/web/src/work/readerIntent.ts`. Deviations
+  from the requested input list: a pointer pressed anywhere in the feed (main's existing settle
+  behaviour) and pointer movement (instrumented evidence above) also count as reader input.
