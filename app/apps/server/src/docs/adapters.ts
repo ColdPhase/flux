@@ -3,6 +3,7 @@ import { createDocUseCases, recordEvent, visibleFilter, type Database, type DocP
 import { policyWorkAccess, workRepository } from '../work/adapters.js';
 import type { TransactionEventSession } from '../work/transaction-events.js';
 import { markdownRenderer } from './markdown.js';
+import { eventPorts } from '../events.js';
 
 // Adapters that connect the core doc use cases (#112) to the access policy, the Drizzle rows,
 // the #101 link rows, the event log and the Markdown renderer. Core defines the ports (#46).
@@ -23,7 +24,7 @@ function docPorts(tx: DbExecutor, events?: DocPorts['events']): DocPorts {
     access: policyWorkAccess(tx),
     docs: docRepository(tx),
     work: workRepository(tx),
-    events: events ?? { record: async (principal, workspaceId, kind, projectId, data) => { await recordEvent(tx, principal, workspaceId, kind, projectId, data); } },
+    events: events ?? { record: async (principal, workspaceId, kind, projectId, data) => { await recordEvent(eventPorts(tx), principal, workspaceId, kind, projectId, data); } },
     renderer: markdownRenderer,
   };
 }

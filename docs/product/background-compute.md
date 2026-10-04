@@ -349,8 +349,12 @@ and existing authorized result navigation, with no new API fields.
 ## Private owner setup (partial implementation)
 
 Open the account menu → **Your background suggestions**. Saving the connection
-requires a fresh key, named provider organization/workspace, daily and rolling
-30-day local allowances, and four explicit confirmations. Only the authenticated
+requires a provider and model of the owner's choice (F-020: no provider is
+preselected; an OpenAI-compatible endpoint also needs its base URL, and a model
+without a listed or table price takes an owner price, without which no rule can be
+enabled), a fresh key, named
+provider organization/workspace, daily and rolling 30-day local allowances, and
+four explicit confirmations. Only the authenticated
 owner can read its safe metadata, replace it or disconnect. The password input
 is cleared after successful or failed requests and removed when a saved connection
 is shown; replacement never retrieves the earlier key. A failed replacement

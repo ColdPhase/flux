@@ -218,7 +218,7 @@ and is then refused with `404` or `403` without writing.
 
 ## HTTP API
 
-The routes live in `app/apps/server/src/access/routes.ts`. Paths and wire types are in
+The routes live in `app/apps/server/src/access/`, one module per capability (`workspaces.ts`, `projects.ts`, `agents.ts`, `drafts.ts`, `draft-summaries.ts`) registered by `routes.ts`; domain errors and a missing session are mapped once, on the API's root, by `app/apps/server/src/http/errors.ts` (#85). Paths and wire types are in
 `app/packages/contracts/src/access.ts`. Every route needs a live session
 (`401 UNAUTHENTICATED` otherwise), and state changes pass the origin check from
 [identity](containers.md#identity-services-and-variables). An object the caller
@@ -370,8 +370,8 @@ that has not answered the previous ping is terminated.
 replaying after a cursor read only the recipient's own audience rows, so their work
 does not depend on events the recipient cannot see. `app/tests/app/stream.test.ts`
 checks this with 500 hidden events: identical server-side work counters (queries,
-rows, `authorizeEvent` calls, from the test-only `GET /api/v1/stream/work` served when
-`FLUX_TEST_FAILURE_INJECTION=true`), identical rows examined in `EXPLAIN ANALYZE` of
+rows, `authorizeEvent` calls, from the test-only `GET /api/v1/stream/work` served only with the
+fixture token and `FLUX_TEST_FAILURE_INJECTION=true`, #88), identical rows examined in `EXPLAIN ANALYZE` of
 both stream queries, and a coarse open→ready timing bound. The remaining shared cost
 is global: event writes serialize on the seq lock and the database is shared, so
 heavy activity anywhere can slow everyone's writes and deliveries. That is load, not

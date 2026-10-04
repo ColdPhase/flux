@@ -1,7 +1,8 @@
-import { eq, isNull, ne, sql } from 'drizzle-orm';
+import { eq, ne, sql } from 'drizzle-orm';
 import type { InspectedComparisonSource } from '@flux/contracts';
-import { pgTable, text, timestamp, uuid, integer, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, check, type AnyPgColumn, type PgTableExtraConfigValue } from 'drizzle-orm/pg-core';
+import { pgTable, text, timestamp, date, uuid, integer, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, check, type AnyPgColumn, type PgTableExtraConfigValue } from 'drizzle-orm/pg-core';
 import { AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES, type AgentJsonValue, type AgentPostcondition, type CoWorkSourceRef } from '@flux/contracts';
+import { AI_PROVIDER_KINDS, BACKGROUND_CONSENT_VERSIONS, type AiProviderKind, type PersonalRunConsentVersion } from '@flux/contracts';
 
 export const samples = pgTable('samples', {
   id: uuid('id').primaryKey(),
@@ -983,8 +984,20 @@ export const agentProposals = pgTable('agent_proposals', {
 export const backgroundComputeConnections = pgTable('background_compute_connections', {
   id: uuid('id').primaryKey(),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
-  provider: text('provider', { enum: ['anthropic'] }).notNull(),
-  model: text('model', { enum: ['claude-sonnet-5'] }).notNull(),
+  // F-020 (#179, migration 0042): any supported provider and a bounded model id.
+  provider: text('provider', { enum: AI_PROVIDER_KINDS }).notNull(),
+  model: text('model').notNull(),
+  /** `openai_compatible` only. */
+  baseUrl: text('base_url'),
+  /** The owner's label, e.g. "Work OpenRouter" (PROV-1: an owner may keep several connections). */
+  name: text('name').notNull(),
+  /** The one connection background comparisons use; at most one active per owner. */
+  usedForBackground: boolean('used_for_background').notNull().default(false),
+  /** Micro-dollars per 1M tokens; all null when no price is known. */
+  inputPriceMicrosPerMTok: integer('input_price_micros_per_mtok'),
+  outputPriceMicrosPerMTok: integer('output_price_micros_per_mtok'),
+  priceSource: text('price_source', { enum: ['table', 'owner'] }),
+  priceCheckedOn: date('price_checked_on', { mode: 'string' }),
   payerOrganization: text('payer_organization').notNull(),
   providerWorkspace: text('provider_workspace').notNull(),
   encryptedKey: text('encrypted_key'),
@@ -994,12 +1007,12 @@ export const backgroundComputeConnections = pgTable('background_compute_connecti
   periodDays: integer('period_days').notNull(),
   periodBudgetCents: integer('period_budget_cents').notNull(),
   perRunCents: integer('per_run_cents').notNull(),
-  consentVersion: text('consent_version', { enum: ['o-007-2026-09-28'] }).notNull(),
+  consentVersion: text('consent_version', { enum: BACKGROUND_CONSENT_VERSIONS }).notNull(),
   consentedAt: timestamp('consented_at', { withTimezone: true }).notNull().defaultNow(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
 }, (table) => [
-  uniqueIndex('background_compute_connections_active_owner_idx').on(table.ownerUserId).where(isNull(table.revokedAt)),
+  uniqueIndex('background_compute_connections_background_owner_idx').on(table.ownerUserId).where(sql`${table.usedForBackground}`),
   index('background_compute_connections_owner_idx').on(table.ownerUserId, table.createdAt, table.id),
 ]);
 
@@ -1239,6 +1252,9 @@ export const proactiveComparisonProposals = pgTable('proactive_comparison_propos
   fact: text('fact').notNull(),
   interpretation: text('interpretation').notNull(),
   suggestedAction: text('suggested_action').notNull(),
+  /** The connection's provider and model the proposal ran on (0042, F-020). */
+  provider: text('provider', { enum: AI_PROVIDER_KINDS }).notNull(),
+  model: text('model').notNull(),
   status: text('status', { enum: ['proposed', 'dismissed', 'used'] }).notNull().default('proposed'),
   version: integer('version').notNull().default(1),
   editedByUserId: text('edited_by_user_id').references(() => authUsers.id),
@@ -1331,9 +1347,9 @@ export const personalRunEnablements = pgTable('personal_run_enablements', {
   ownerUserId: text('owner_user_id').primaryKey().references(() => authUsers.id, { onDelete: 'cascade' }),
   // References #124's key connection once that table lands; a compared snapshot until then.
   connectionId: uuid('connection_id'),
-  consentVersion: text('consent_version').$type<'o-008-2026-09-28'>().notNull(),
+  consentVersion: text('consent_version').$type<PersonalRunConsentVersion>().notNull(),
   consentedAt: timestamp('consented_at', { withTimezone: true }).notNull().defaultNow(),
-  consentProvider: text('consent_provider').$type<'anthropic'>().notNull(),
+  consentProvider: text('consent_provider').$type<AiProviderKind>().notNull(),
   consentModel: text('consent_model').notNull(),
   consentPayerOrganization: text('consent_payer_organization').notNull(),
   consentPayerWorkspace: text('consent_payer_workspace').notNull(),
@@ -1381,6 +1397,8 @@ export const personalRuns = pgTable('personal_runs', {
   chargedMicros: integer('charged_micros').notNull().default(0),
   inputTokens: integer('input_tokens'),
   outputTokens: integer('output_tokens'),
+  /** The connection's provider the run was sent to (0042, F-020). */
+  provider: text('provider', { enum: AI_PROVIDER_KINDS }).notNull(),
   model: text('model').notNull(),
   answerBody: text('answer_body'),
   answerTruncated: boolean('answer_truncated').notNull().default(false),
