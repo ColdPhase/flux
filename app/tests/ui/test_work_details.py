@@ -233,7 +233,8 @@ class NativeDetailsJourney(unittest.TestCase):
     def test_08_docked_object_links_keep_their_own_project_after_route_navigation(self):
         second=api(self.ctx,"POST",f"/api/v1/workspaces/{self.workspace}/projects",{"name":"Neighbouring workshop","visibility":"restricted"},201)["id"]
         page=self.page();panel=self.open(page,"result",self.result["id"])
-        page.get_by_role("navigation",name="Places").get_by_role("link",name="Neighbouring workshop",exact=True).click()
+        # Main's #184 sidebar lists projects under its own "Projects" navigation ("Places" holds Home/Inbox).
+        page.get_by_role("complementary",name="Sidebar").get_by_role("navigation",name="Projects").get_by_role("link",name="Neighbouring workshop",exact=True).click()
         expect(page).to_have_url(re.compile(f"/projects/{second}$"));expect(panel).to_have_attribute("data-detail-id",self.result["id"])
         panel.get_by_role("region",name="Reports on").get_by_role("button",name=re.compile("Compare both shielded")).click()
         panel=page.locator("#details .wd");expect(panel).to_have_attribute("data-detail-id",self.target["id"]);self.ready(panel)
