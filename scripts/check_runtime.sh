@@ -1,4 +1,9 @@
 #!/bin/sh
+# Production-mode runtime check in Docker: builds and starts the source Compose stack on its own
+# project and loopback port (FLUX_RUNTIME_TEST_PORT, default 18090), then verifies that a normal
+# deployment ignores the test-failure header and rejects the failure flag, that the worker
+# processes a job, and that the sample and its result survive stop, migration and restart.
+# It removes its containers, volumes and per-run images afterwards.
 set -eu
 
 cd "$(dirname "$0")/.."

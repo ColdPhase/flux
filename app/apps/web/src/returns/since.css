@@ -49,10 +49,14 @@
 .since__why { margin: 0; color: var(--text-2); font-size: var(--fs-sm); }
 
 .since__foot { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: space-between; align-items: center; padding: 0 0 12px; color: var(--text-3); font-size: var(--fs-sm); }
-.since__keep, .since__more { min-height: 32px; padding: 0 10px; margin: 0 -10px; border: 0; border-radius: var(--r); background: none; font: inherit; font-weight: 500; color: var(--accent); cursor: pointer; }
+.since__more { min-height: 32px; padding: 0 10px; margin: 0 -10px; border: 0; border-radius: var(--r); background: none; font: inherit; font-weight: 500; color: var(--accent); cursor: pointer; }
 .since__more { display: block; margin: -4px -10px 8px; font-size: var(--fs-sm); }
-.since__keep:hover, .since__more:hover { background: var(--bg-hover); color: var(--text); }
-.since__keep:focus-visible, .since__more:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
+.since__failed { color: var(--danger); }
+/* After "I have the context" on Home (HOME-1): one calm line where the list was. */
+.since-home__done { margin: 0 0 12px; padding: 10px 0; color: var(--text-2); font-size: var(--fs-sm); }
+.since-home__done:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--r-sm); }
+.since__more:hover { background: var(--bg-hover); color: var(--text); }
+.since__more:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
 
 /* Home: the personal return view across places. */
 .since-home { margin: 20px 0 8px; padding: 16px 0 4px; border-top: 1px solid var(--line); }
@@ -66,8 +70,10 @@
 @media (max-width: 720px) {
   .since__in { padding: 0 16px; }
   .since__when { display: none; }
+  /* Without the time, each row's arrow still lines up at the right edge (#189). */
+  .since__go { margin-left: auto; }
 }
 @media (pointer: coarse) {
   .since__item { min-height: 44px; }
-  .since__next-link, .since__keep, .since__more { min-height: 44px; }
+  .since__next-link, .since__more, .since__ack { min-height: 44px; }
 }

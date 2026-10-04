@@ -189,6 +189,10 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_role("button", name="Create account").click()
         expect(page.get_by_text("Use at least 8 characters.")).to_be_visible()
         page.get_by_label("Password").fill(PASSWORD)
+        # A long enough password clears the last attempt's error and the length hint (#189).
+        expect(page.get_by_text("Use at least 8 characters.")).to_have_count(0)
+        expect(page.get_by_text("At least 8 characters. A short sentence works well.")).to_have_count(0)
+        expect(page.get_by_label("Password")).not_to_have_attribute("aria-invalid", "true")
         shot(page, "sign-up-desktop-light")
         page.get_by_role("button", name="Create account").click()
         expect(page).to_have_url(f"{ORIGIN}/")
@@ -255,7 +259,7 @@ class AppShellJourney(unittest.TestCase):
         marker = places.get_by_role("link", name="Home").evaluate("el => { const s = getComputedStyle(el, '::before'); return [s.width, s.height]; }")
         self.assertEqual(marker, ["2px", "14px"], "a short accent bar beside the current place")
         expect(sidebar.get_by_text("No projects yet")).to_be_visible()
-        expect(sidebar.get_by_role("button", name=re.compile("^New thought"))).to_be_visible()
+        expect(sidebar.get_by_role("button", name=re.compile("^New note"))).to_be_visible()
         views = page.get_by_role("navigation", name="Views")
         for label in ("Conversation", "Map", "Tasks", "Wiki"):
             expect(views.get_by_role("link", name=label, exact=True)).to_be_visible()
@@ -273,14 +277,19 @@ class AppShellJourney(unittest.TestCase):
         composer.fill("Lamp idea: wave to dim, but keep the camera off by default")
         expect(save).to_have_attribute("aria-disabled", "false")
         composer.press("Enter")
-        notes = page.get_by_role("region", name="Your private notes")
+        # The first note creates the personal space and is a private draft there (#190 HOME-3).
+        notes = page.get_by_role("region", name="Private drafts")
         expect(notes.get_by_text("Lamp idea: wave to dim")).to_be_visible()
         expect(composer).to_have_value("")
+        spaces = page.evaluate("fetch('/api/v1/workspaces').then(r => r.json())")
+        self.assertEqual([space["name"] for space in spaces], ["Personal"], "one personal space, created by the first note")
         composer.fill("Try a PIR sensor first; compare with the camera in low light")
         save.click()
+        expect(notes.get_by_text("Try a PIR sensor first")).to_be_visible()
         page.reload()
-        expect(page.get_by_role("region", name="Your private notes").get_by_role("listitem")).to_have_count(2)
-        expect(page.get_by_text("Only you can see these")).to_be_visible()
+        expect(page.get_by_role("region", name="Private drafts").get_by_role("listitem")).to_have_count(2)
+        expect(page.get_by_text("Private drafts · saved in your space")).to_be_visible()
+        self.assertEqual(len(page.evaluate("fetch('/api/v1/workspaces').then(r => r.json())")), 1, "still one space")
         shot(page, "desktop-1440-light")
 
         indicator = page.locator(".views .ui-tabs__indicator")
@@ -288,7 +297,7 @@ class AppShellJourney(unittest.TestCase):
         views.get_by_role("link", name="Tasks").click()
         expect(page).to_have_url(f"{ORIGIN}/tasks")
         expect(views.get_by_role("link", name="Tasks")).to_have_attribute("aria-current", "page")
-        expect(page.get_by_role("heading", name="No tasks yet")).to_be_visible()
+        expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
         self.assertNotEqual(before, indicator.evaluate("el => el.style.transform"), "the underline moves to the chosen view")
         views.get_by_role("link", name="Map").click()
         expect(page.get_by_role("heading", name="Start a sketch")).to_be_visible()
@@ -339,7 +348,7 @@ class AppShellJourney(unittest.TestCase):
         views = page.get_by_role("navigation", name="Views")
         composer = page.get_by_label("Private note", exact=True)
         state = page.locator(".composer__state")
-        expect(state).to_have_text("Notes stay in this browser until sharing arrives")
+        expect(state).to_have_text("Private until you explicitly publish a selected version")
         unfinished = "Half a thought: what if the lamp dims when nobody moves for"
         composer.fill(unfinished)
         expect(state).to_have_text("Draft kept on this device")
@@ -348,7 +357,7 @@ class AppShellJourney(unittest.TestCase):
 
         # A view switch remounts the composer; the text comes back.
         views.get_by_role("link", name="Tasks").click()
-        expect(page.get_by_role("heading", name="No tasks yet")).to_be_visible()
+        expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
         views.get_by_role("link", name="Conversation").click()
         expect(composer).to_have_value(unfinished)
         expect(state).to_have_text("Draft kept on this device")
@@ -360,9 +369,9 @@ class AppShellJourney(unittest.TestCase):
 
         # Sending saves the note and clears the draft, also after a reload.
         page.get_by_label("Private note", exact=True).press("Enter")
-        expect(page.get_by_role("region", name="Your private notes").get_by_text(unfinished)).to_be_visible()
+        expect(page.get_by_role("region", name="Private drafts").get_by_text(unfinished)).to_be_visible()
         expect(page.get_by_label("Private note", exact=True)).to_have_value("")
-        expect(state).to_have_text("Notes stay in this browser until sharing arrives")
+        expect(state).to_have_text("Private until you explicitly publish a selected version")
         self.assertIsNone(page.evaluate(f"localStorage.getItem('flux:draft:{user_id}:home')"))
         page.reload()
         expect(page.get_by_label("Private note", exact=True)).to_have_value("")
@@ -384,16 +393,35 @@ class AppShellJourney(unittest.TestCase):
             page.reload()
             scroller = page.locator(".convo .pane-scroll")
             expect(page.get_by_text("note 40:")).to_be_attached()
+            # Home loads blocks above these notes after they render (private drafts, the offer to move
+            # browser notes, #190 HOME-3); the position is a pixel offset, so it is taken once they have.
+            expect(page.get_by_role("button", name=re.compile(r"^Move 40 notes"))).to_be_visible()
+            page.wait_for_load_state("networkidle")
             scroller.evaluate("el => { el.scrollTop = 600; el.dispatchEvent(new Event('scroll')); }")
             page.wait_for_timeout(100)
+            # The note at the top of the column: blocks above the notes can load later and change the
+            # pixel offset (the browser keeps the same note in view), so the place is checked by content.
+            first_visible = """() => { const s = document.querySelector('.convo .pane-scroll'); const top = s.getBoundingClientRect().top;
+              const note = [...s.querySelectorAll('.note')].find((el) => el.getBoundingClientRect().bottom > top + 1);
+              return note ? note.querySelector('.note__text').textContent : null; }"""
+            anchor = page.evaluate(first_visible)
+            self.assertIsNotNone(anchor)
             views = page.get_by_role("navigation", name="Views")
             views.get_by_role("link", name="Wiki").click()
             expect(page.get_by_role("heading", name="No docs yet")).to_be_visible()
             views.get_by_role("link", name="Conversation").click()
-            self.assertAlmostEqual(page.locator(".convo .pane-scroll").evaluate("el => el.scrollTop"), 600, delta=2, msg="position restored after a view switch")
+            expect(page.get_by_role("button", name=re.compile(r"^Move 40 notes"))).to_be_visible()
+            page.wait_for_load_state("networkidle")
+            # Restored by content, not pixels: a block that loads above the notes after the restore (drafts,
+            # the move offer) shifts the offset while the browser keeps the same note in view.
+            self.assertGreater(page.locator(".convo .pane-scroll").evaluate("el => el.scrollTop"), 0, "a position was restored")
+            self.assertEqual(page.evaluate(first_visible), anchor, "the same note is at the top after a view switch")
             page.reload()
             expect(page.get_by_text("note 40:")).to_be_attached()
-            self.assertAlmostEqual(page.locator(".convo .pane-scroll").evaluate("el => el.scrollTop"), 600, delta=2, msg="position restored after a reload")
+            # The offer to move these browser notes into the account loads above them (#190 HOME-3).
+            expect(page.get_by_role("button", name=re.compile(r"^Move 40 notes"))).to_be_visible()
+            page.wait_for_load_state("networkidle")
+            self.assertEqual(page.evaluate(first_visible), anchor, "the same note is at the top after a reload")
         finally:
             page.evaluate(f"localStorage.setItem('{key}', {json.dumps(saved)}); localStorage.removeItem('flux:scroll:{user_id}:/')" if saved else f"localStorage.removeItem('{key}'); localStorage.removeItem('flux:scroll:{user_id}:/')")
             self.save_state(page)
@@ -403,36 +431,26 @@ class AppShellJourney(unittest.TestCase):
         page.goto("/")
         composer = page.get_by_label("Private note", exact=True)
         composer.fill("Which sensor works in the dark?")
-        ask = page.get_by_role("button", name="Ask my assistant")
-        expect(ask).to_have_attribute("aria-pressed", "false")
+        # With no assistant of their own, the spark button leads to "Connect your AI" (#189); nothing is
+        # sent and the private note stays where it is.
+        ask = page.locator(".composer__ask")
+        expect(ask).to_have_accessible_name("Connect your AI")
+        expect(ask).not_to_have_attribute("aria-pressed", re.compile(".*"))
         ask.click()
-        expect(ask).to_have_attribute("aria-pressed", "true")
-        expect(page.get_by_text("Your assistant", exact=True)).to_be_visible()
-        expect(page.get_by_text("Your assistant answers in project conversations. Notes here stay private and are never sent.")).to_be_visible()
-        # A private note is never sent to an assistant; the text stays.
-        send = page.get_by_role("button", name="Send to your assistant")
-        expect(send).to_have_attribute("aria-disabled", "true")
-        composer.press("Enter")
-        expect(composer).to_have_value("Which sensor works in the dark?")
-        shot(page, "desktop-1440-ask-light")
-        page.get_by_role("button", name="Connect your AI").click()
         panel = page.get_by_role("complementary", name="Details")
         expect(panel.get_by_role("heading", name="Connect your AI")).to_be_visible()
         expect(panel.get_by_role("link", name="Set up your assistant in Flux")).to_have_attribute("href", "/settings/assistant")
-        expect(panel.get_by_role("link", name="Set up or revoke a Claude Code connection")).to_have_attribute("href", "/connect-agent")
+        expect(panel.get_by_role("link", name="Set up or revoke an MCP client connection")).to_have_attribute("href", "/connect-agent")
+        expect(panel).to_contain_text("Claude Code, Codex or another MCP client")
+        self.assertNotIn("Anthropic API key", panel.inner_text())
         expect(panel.get_by_text("Flux works fully without AI.", exact=False)).to_be_visible()
+        shot(page, "desktop-1440-ask-light")
         panel.get_by_role("button", name="Back to Details").click()
         expect(panel.get_by_role("heading", name="Nothing selected")).to_be_visible()
         page.get_by_role("button", name="Close details").click()
-        # Esc in the box, or the chip's close button, returns to a plain private note.
-        composer.focus()
-        page.keyboard.press("Escape")
-        expect(ask).to_have_attribute("aria-pressed", "false")
+        expect(composer).to_have_value("Which sensor works in the dark?")
         expect(page.locator(".composer__audience")).to_contain_text("Only you")
         expect(page.get_by_role("button", name="Save note")).to_have_attribute("aria-disabled", "false")
-        ask.click()
-        page.get_by_role("button", name="Stop asking your assistant").click()
-        expect(ask).to_have_attribute("aria-pressed", "false")
         composer.fill("")
 
     def test_05_desktop_dark_and_tablet(self) -> None:
@@ -529,7 +547,7 @@ class AppShellJourney(unittest.TestCase):
 
         narrow = self.page(phone=True, viewport={"width": 360, "height": 780})
         narrow.goto("/tasks")
-        expect(narrow.get_by_role("heading", name="No tasks yet")).to_be_visible()
+        expect(narrow.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
         self.assertLessEqual(narrow.evaluate("document.documentElement.scrollWidth"), 360, "no horizontal scroll at 360px")
         shot(narrow, "phone-360-tasks-light")
 
@@ -649,11 +667,14 @@ class AppShellJourney(unittest.TestCase):
 
     def test_12_real_project_capture_phone_and_revocation(self) -> None:
         """Real UI: create project, send, cite a saved version, reply, revisit on phone, revoke."""
-        owner = self.page()
-        owner.goto("/sign-in")
-        owner.get_by_label("Email").fill(EMAIL)
-        owner.get_by_label("Password").fill(NEW_PASSWORD)
-        owner.get_by_role("button", name="Sign in").click()
+        # A fresh account without any space: its first project names the space (Jo's first note
+        # already created Jo's personal space, #190 HOME-3).
+        owner = self.page(signed_in=False)
+        owner.goto("/sign-up")
+        owner.get_by_label("Name").fill("Mira Lamp")
+        owner.get_by_label("Email").fill(f"mira.lamp+{int(time.time() * 1000)}@example.test")
+        owner.get_by_label("Password").fill(PASSWORD)
+        owner.get_by_role("button", name="Create account").click()
         expect(owner.get_by_role("heading", level=1, name="Home")).to_be_visible()
         owner.get_by_role("link", name="New project").click()
         owner.get_by_label("Your space").fill("Lamp lab")

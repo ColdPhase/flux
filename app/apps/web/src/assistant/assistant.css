@@ -66,6 +66,9 @@
 .aset__fields { display: grid; gap: 12px; margin: 0; padding: 0; border: 0; min-width: 0; }
 .aset__fields:disabled { opacity: .6; }
 .aset__field { display: flex; align-items: center; justify-content: space-between; gap: 12px; max-width: 360px; font-size: var(--fs-md); }
+/* The connection's whole name and model stay readable: label above, the list full width. */
+.aset__field--connection { flex-direction: column; align-items: stretch; gap: 6px; max-width: 520px; }
+.aset__field--connection select { width: 100%; }
 .aset__field select, .aset__agent select { min-height: 36px; min-width: 132px; border: 1px solid var(--line-input); border-radius: var(--r-sm); padding: 0 8px; background: var(--bg); color: var(--text); font: inherit; }
 .aset__agents { display: grid; gap: 8px; }
 .aset__agent { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; max-width: 480px; font-size: var(--fs-md); }
@@ -82,3 +85,6 @@
 .aset__caps .ui-btn { justify-self: start; }
 @media (max-width: 640px) { .aset__facts li { grid-template-columns: 1fr; gap: 0; } }
 @media (pointer: coarse) { .aset__field select, .aset__agent select { min-height: 44px; } .aset__consent input { width: 20px; height: 20px; } }
+/* Phones show no avatars (11.6); the name row already says it is an assistant, so its mark gives way too
+   instead of covering the quoted request. */
+@media (max-width: 680px) { .project-convo__message > .assistant-avatar { display: none; } }

@@ -118,6 +118,7 @@ still required. Screenshots do not prove behaviour; the browser tests do.
 - No project or real conversation routes yet (#36, #29 slice 2); `/dm` is an empty place and
   the switcher currently switches Home's views. Details shows a no-selection prompt until
   selectable content exists. Map canvas, tasks and docs are empty states only.
-- Private notes, drafts and reading positions are browser-local, not synced, and are lost if
-  site data is cleared.
+- Home's notes are private drafts in the person's account (#190 HOME-3); notes an older
+  version kept only in this browser are offered to move there. Unsent text and reading positions
+  stay browser-local and are lost if site data is cleared.
 - Not yet verified on real iOS/Android devices or with a screen reader (#20 / #41).

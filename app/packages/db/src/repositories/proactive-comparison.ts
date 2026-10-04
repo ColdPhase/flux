@@ -2,6 +2,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { CreateProactiveComparisonRule, ProactiveComparisonRule } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
+import { connectionPrice } from './background-connections.js';
 
 const table = schema.proactiveComparisonRules;
 type RuleRow = typeof table.$inferSelect;
@@ -29,9 +30,13 @@ export function proactiveRuleRows(db: DbExecutor) {
     async backgroundBudget(ownerId: string) {
       const c = schema.backgroundComputeConnections;
       const [row] = await db.select({ maxRunsPerDay: c.maxRunsPerDay, periodDays: c.periodDays,
-        periodBudgetCents: c.periodBudgetCents, perRunCents: c.perRunCents }).from(c)
-        .where(and(eq(c.ownerUserId, ownerId), isNull(c.revokedAt))).for('share');
-      return row ?? null;
+        periodBudgetCents: c.periodBudgetCents, perRunCents: c.perRunCents,
+        inputPriceMicrosPerMTok: c.inputPriceMicrosPerMTok, outputPriceMicrosPerMTok: c.outputPriceMicrosPerMTok,
+        priceSource: c.priceSource, priceCheckedOn: c.priceCheckedOn }).from(c)
+        .where(and(eq(c.ownerUserId, ownerId), eq(c.usedForBackground, true), isNull(c.revokedAt))).for('share');
+      if (!row) return null;
+      return { maxRunsPerDay: row.maxRunsPerDay, periodDays: row.periodDays, periodBudgetCents: row.periodBudgetCents,
+        perRunCents: row.perRunCents, price: connectionPrice(row) };
     },
     async create(input: { id: string; workspaceId: string; projectId: string; ownerUserId: string; command: CreateProactiveComparisonRule }): Promise<ProactiveComparisonRule | 'EXISTS'> {
       const [row] = await db.insert(table).values({

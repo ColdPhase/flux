@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { tablePrice } from '@flux/contracts';
 import type { PersonalConnectionLookup } from './ports.js';
 
 // TEST FIXTURE ONLY (#68). A stand-in for #124's owner key connections, so the browser suite can
@@ -16,10 +17,16 @@ function connectionIdOf(ownerUserId: string) {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
-/** Every person has one stable, active fixture connection of their own. */
+const FIXTURE_MODEL = 'claude-sonnet-5';
+const FIXTURE_PRICE = tablePrice('anthropic', FIXTURE_MODEL)!;
+
+/** Every person has one stable, active fixture connection of their own: Anthropic at its table price. */
 export const testFixturePersonalConnections: PersonalConnectionLookup = {
-  resolve: async (ownerUserId) => ({
+  resolve: async (ownerUserId, connectionId) => (connectionId !== undefined && connectionId !== connectionIdOf(ownerUserId) ? null : {
     id: connectionIdOf(ownerUserId), ownerUserId, status: 'active', keyRef: TEST_FIXTURE_KEY_REF,
     payer: { organization: 'Test fixture payer', workspace: 'Test fixture workspace' },
+    provider: 'anthropic', model: FIXTURE_MODEL, baseUrl: null,
+    price: { inputMicrosPerMTok: FIXTURE_PRICE.inputMicrosPerMTok, outputMicrosPerMTok: FIXTURE_PRICE.outputMicrosPerMTok,
+      source: 'table', checkedOn: FIXTURE_PRICE.checkedOn },
   }),
 };

@@ -1,0 +1,14 @@
+{
+  "commit": "72367b380c4877a9342ba6376a1354374bef7a03",
+  "files": {
+    "app/apps/server/src/co-work/grants.ts": "a25499a65896ccc9c595035ff753fc7303f3f5aa1f2462632a0d81f63090c60b",
+    "app/apps/server/src/co-work/graph.ts": "65948f4aca7cc48d2d63c9f23caf5e83e39aa42ece9e99884974a49996ac84ef",
+    "app/apps/server/src/co-work/requests.ts": "bf2eed70ba826e6ff94747f32bae111463d48c82a558c2dece194c86808fd6c9",
+    "app/packages/core/src/co-work/admission.ts": "38f1236a0100399ea4e2db2195a6dd62e715e93542848dcc50b1d248ed8b2afe",
+    "app/packages/core/src/co-work/index.ts": "742b28dfeda25d532fc8e149fc8ea527bf630f49c255b00b1aa1562947027d46",
+    "app/packages/db/src/index.ts": "767f1b3b8307d8467fb19368b2d917a23170194e4804a76de8b2384c7f6b1df5",
+    "app/packages/db/src/repositories/cowork-admission.ts": "c3a6c18668f86e437f6359a15804db2cbdb7c0f15c4246b8893b70f5eed2b030",
+    "app/packages/db/src/repositories/cowork-recovery.ts": "3c54fcb4bb568b57a0d93b05a49a44a7ef5eb781a885d3ed3b2de8fa356ab577",
+    "app/tests/app/cowork-admission.test.ts": "1d3155cc0003f4ec1f40aa39fcf6c66c103694686974817b615c36a3f19c00ca"
+  }
+}

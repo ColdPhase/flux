@@ -22,7 +22,15 @@ export interface AddToDocView {
  * The project's overview in Details (#117): linked work, decisions, results, sources and
  * sketches of the open conversation, or of one message when `messageId` is set.
  */
-export interface OverviewView { kind: 'overview'; messageId?: string }
+export interface OverviewView {
+  kind: 'overview';
+  messageId?: string;
+  /** `people` scrolls to "Who can see this" and moves focus there (#188): the header's audience line. */
+  focus?: 'people';
+}
+
+/** The people of one workspace (#188): members and roles; owners and admins add and manage them. */
+export interface PeopleView { kind: 'people'; workspaceId: string }
 
 /** "Make it a project…" for a DM sketch (#96): the exact audience and content before anything is shared. */
 export interface PromoteSketchView { kind: 'promote-sketch'; sketchId: string; title: string }
@@ -31,17 +39,19 @@ export interface PromoteSketchView { kind: 'promote-sketch'; sketchId: string; t
 export interface RecapView { kind: 'recap'; projectId: string }
 
 /** What the Details panel shows: the current place, a project object or form, or how to connect a personal AI (#57). */
-export type DetailsView = 'place' | 'connect-ai' | ObjectView | WorkFormView | AddToDocView | OverviewView | PromoteSketchView | RecapView;
+export type DetailsView = 'place' | 'connect-ai' | ObjectView | WorkFormView | AddToDocView | OverviewView | PromoteSketchView | RecapView | PeopleView;
 
 export interface ShellActions {
   openDetails(view?: DetailsView): void;
   /** Opens Jump to… (⌘K), the search across everything the person may open (#114). */
   openSearch(): void;
+  /** Opens the navigation drawer on a narrow screen, where the projects are listed. */
+  openNavigation(): void;
   /** A place in the header where the current view can put one quiet action (a DM's Select, #96). */
   actionSlot: HTMLElement | null;
 }
 
-export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, openSearch: () => undefined, actionSlot: null });
+export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, openSearch: () => undefined, openNavigation: () => undefined, actionSlot: null });
 
 export function useShellActions(): ShellActions {
   return useContext(ShellContext);

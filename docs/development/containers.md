@@ -9,33 +9,11 @@ Founder decision, 2026-09-27: **the application and its dependencies run in
 Docker/Compose**. Do not install PostgreSQL, Redis, queues, or application
 toolchains as services on a contributor's host.
 
-## Contract for the selected application stack
-
-The architecture and first application setup task must supply:
-
-- Reviewed Dockerfiles and a Compose configuration for application services,
-  development tooling, and any database/queue actually selected.
-- A documented clean start, dependency installation, migration, fixture/seed,
-  lint/type/test, build, stop, backup, and restore workflow using containers.
-- Locked dependencies, reviewed base images, health checks, and deterministic
-  readiness. Starting a container is not proof that its service is ready.
-- Named persistent volumes, example configuration without real credentials,
-  and documented ownership of data. Never delete volumes or reset a shared
-  database to fix a test without explicit authorization for those data.
-- Separate Compose project names per worker/task, isolated data and test accounts,
-  and nonconflicting published ports. Avoid fixed container names that collide.
-- The same container commands in GitHub Actions; no CI-only hidden host database
-  setup or claim that a host-only test proves the supported installation works.
-- Release builds from the accepted source revision, appropriate container image
-  or other agreed deliverables, and installation/update/restore verification.
-
-The [accepted O-002 architecture](../product/application-architecture-proposal.md)
-selects PostgreSQL. The first application foundation in `docker/compose.source.yaml`
-starts PostgreSQL, a one-shot migration, the API and a separate worker with named
-`pgdata` and `files` volumes. See [application foundation](application-foundation.md)
-for the current clean-start, validation and backup/restore commands. This is an
-application skeleton; #29's identity/session and project policy slices are now
-merged, while collaboration and release verification remain separate tasks.
+The [accepted O-002 architecture](../product/application-architecture.md) selects
+PostgreSQL. `docker/compose.source.yaml` starts PostgreSQL, a one-shot migration, the
+API and a separate worker with named `pgdata` and `files` volumes. The
+[application foundation guide](application-foundation.md) has the clean-start,
+validation and backup/restore commands and what the application includes today.
 
 `docker/compose.yaml` and `docker/.env.example` are the **operator** files for a published
 release (#76 phase 1): pull-only, with `api`, `worker` and `migrate` on the one marker image
@@ -71,7 +49,8 @@ One issue has one assignee and its branch has one writer; see the
 [agent workflow](../agents/workflow.md#4-implement-and-hand-off).
 
 Run concurrent application checks with a distinct Compose project name,
-published port values, volumes and test accounts per task. For example, use
+published port values, volumes and test accounts per task. Never delete volumes or
+reset a shared database to fix a test without explicit authorization for those data. For example, use
 `-p flux54-hubert` with a task-specific `FLUX_TEST_PORT` instead of reusing the
 default test project or another worker's persistent volumes. The
 [application foundation guide](application-foundation.md) has the current
@@ -101,8 +80,21 @@ Node/pnpm pins, allowed dependency build scripts and build/type/lint/test
 commands are unchanged. This follows the [pnpm Docker fetch pattern](https://pnpm.io/cli/fetch).
 Changing either lock/config file invalidates the download layer; source edits
 reuse it while still rebuilding and checking the application. There are no
-local `file:` dependencies or package patches in the current lockfile; if
-introduced, their fetch inputs must be supplied before the fetch step.
+local `file:` dependencies. Reviewed package patches live in `app/patches` and are
+listed under `patchedDependencies` in `app/pnpm-workspace.yaml`; pnpm applies them
+during the offline install, after the source copy.
+
+### Database connections
+
+The API and worker share `createDatabase` (`app/packages/db/src/index.ts`): a
+`pg` pool with a 1.5 s connection timeout and a 2 s client read timeout. On a slow
+or stalled database a read timeout can fire while PostgreSQL still runs the
+statement, so `patches/drizzle-orm-0.45.3-flux-pool-release.patch` destroys a
+pooled client whose `BEGIN` or `ROLLBACK` failed instead of leaking it or returning
+it to the pool with an open transaction ([#234](https://github.com/ColdPhase/flux/issues/234)).
+Each connection also sets `idle_in_transaction_session_timeout` to 60 s, so PostgreSQL
+ends any session abandoned inside a transaction. Flux code does not wait on
+anything outside the database inside a transaction. pg-boss keeps its own pool.
 
 ### Disk hygiene
 
@@ -294,7 +286,8 @@ described in [the app shell record](../design/app-shell/README.md).
 
 `./scripts/check_ui.sh` builds the image (which runs build, typecheck and lint), starts the
 stack in its own Compose project on `127.0.0.1:${FLUX_UI_PORT:-18591}` with Mailpit, and runs
-`app/tests/ui` (copied into the image, `unittest discover`) in a Playwright 1.62 container (`docker/ui-tests.Dockerfile`, image pinned by
+`app/tests/ui` (copied into the image, `unittest discover`; pass module names such as
+`./scripts/check_ui.sh test_docs test_people`, or `Module.Class.test_name`, to run only those) in a Playwright 1.62 container (`docker/ui-tests.Dockerfile`, image pinned by
 digest, Python client pinned by hash). Inside that container the browser opens the
 loopback `FLUX_PUBLIC_ORIGIN`, which a small forwarder carries to the API service, so origin
 checks and cookies behave as on the host. It takes about two minutes after the first image
@@ -309,3 +302,20 @@ worker sends runs through the real Anthropic adapter to the `anthropic-mock` Com
 (`app/tests/ui/anthropic_mock.py`, `FLUX_TEST_ANTHROPIC_URL`). The API and worker refuse to start
 with the switch unless the test flag is set. Never set it in a deployment; see
 [personal runs](personal-runs.md#test-only-switch).
+
+`check_ui.sh` also gives that stack a throwaway background key-custody secret
+(`FLUX_BACKGROUND_KEY_HOST_FILE`, removed on exit) and `FLUX_AI_PRIVATE_TARGETS=openai-mock`, so the
+AI connection settings tests (#179) can save connections and list the models of the
+`openai-mock` service (`app/tests/ui/openai_mock.py`).
+
+## Owner AI connection endpoints
+
+Owner AI connections (#179, [F-020](../product/model-providers.md)) are read by the API and the
+worker. See [AI providers](ai-providers.md#endpoint-guard-ssrf).
+
+| Variable | Service | Meaning |
+| --- | --- | --- |
+| `FLUX_AI_PRIVATE_TARGETS` | API, worker | Empty by default: an owner's OpenAI-compatible endpoint must be public HTTPS, and private, loopback, link-local, unique-local, CGNAT and reserved addresses are refused when the connection is saved and again at every request. Comma-separated host names (exact), IP addresses or CIDR ranges, e.g. `ollama,10.0.0.0/8`, allow those private targets, plain HTTP included. Cloud metadata addresses are refused even when listed. A malformed entry stops startup. Set the same value on both services. |
+
+In `check_application.sh` the test overlay sets it to `providermock`, the local stand-in for both
+AI wire formats (`app/tests/app/support/provider-mock.ts`) that the adapter contract suite uses.
