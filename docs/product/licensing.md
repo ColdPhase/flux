@@ -1,6 +1,6 @@
 # Flux package licensing boundary
 
-**Status:** accepted under [O-002](application-architecture-proposal.md) at [independent review 5330686985](https://github.com/ColdPhase/flux/pull/25#pullrequestreview-5330686985), 27 September 2026. This document does not change the license of an existing file.
+**Status:** accepted under [O-002](application-architecture.md) at [independent review 5330686985](https://github.com/ColdPhase/flux/pull/25#pullrequestreview-5330686985), 27 September 2026. This document does not change the license of an existing file.
 
 The repository currently has an [AGPL-3.0 license](../../LICENSE). Keep the Flux application in `app/apps/web`, `app/apps/server`, `app/apps/worker`, `app/packages/core`, `app/packages/db` and `app/packages/agent-runtime` under AGPL-3.0. Use **Apache-2.0** for independently usable `app/packages/contracts`, `app/packages/sdk` and `app/examples/external-agent`, with each package's own license, SPDX metadata and notices. Their source must avoid imports from AGPL-only application modules so external developers can implement an agent in Python or another frontend against the documented HTTP API. No closed enterprise edition is proposed; possible paid services are hosting, deployments, migrations, maintenance and enterprise support, subject to a later business decision.
 
