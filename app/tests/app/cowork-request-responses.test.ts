@@ -254,6 +254,24 @@ test('claim negative controls: unit fence, addressing, version, state, expiry, s
   await refuse(r.take(asked.requestId, 2), 'COWORK_REQUEST_CLAIMED');
   await r.run(r.respond(asked.requestId, 2, { outcome: 'declined', reason: 'capability' }));
   await refuse(r.take(asked.requestId, 3), 'COWORK_REQUEST_CLOSED');
+  const answered = await f.s.send(f.ask({ expectedUnitVersion: 2 }));
+  await r.run(r.take(answered.requestId, 1));
+  assert.equal((await r.run(r.respond(answered.requestId, 2, { outcome: 'resolved', response: { title: 'Answer' } }))).state, 'resolved');
+  await refuse(r.take(answered.requestId, 3), 'COWORK_REQUEST_CLOSED', answered.requestId);
+  // A request of another project, addressed to this very connection, is unavailable from this project's unit.
+  const p2 = await project(w.hubert, w.ws.id, 'Other project', 'restricted');
+  const t2 = expectStatus(await w.hubert.browser.request('POST', `/api/v1/projects/${p2.id}/work`, { body: { title: 'Other task' } }), 201) as WorkItem;
+  const u2 = randomUUID();
+  await db.insert(schema.coworkUnits).values({ id: u2, workspaceId: w.ws.id, projectId: p2.id, taskId: t2.id, lineageTaskId: t2.id,
+    runId: randomUUID(), unitKey: u2, role: 'review', assignmentConnectionId: f.marekClaude.connection.id });
+  const foreignInput = normalizeCoWorkRequest({ commandId: randomUUID(), unitId: u2, expectedUnitVersion: 1,
+    recipientConnectionId: f.marekClaude.connection.id, intentKey: 'other-project', parentRequestId: null, kind: 'review',
+    target: { type: 'work', id: t2.id, version: t2.version }, sourceRefs: [{ type: 'work', id: t2.id, version: t2.version }],
+    criteriaRefs: [{ type: 'work', id: t2.id, version: t2.version }], priority: 1, peerUnblocking: false, lifetimeSeconds: 3600 });
+  const foreign = await db.transaction((tx) => coworkRequestRows(tx).enqueue({ workspaceId: w.ws.id, projectId: p2.id,
+    connectionId: f.codex.connection.id }, foreignInput, coWorkRequestFingerprint(foreignInput, f.codex.connection.id), LIMITS));
+  if (foreign.status !== 'created') throw new Error('fixture enqueue failed');
+  await refuse(r.take(foreign.request.id, 1), 'COWORK_REQUEST_UNAVAILABLE', foreign.request.id);
   // An expired unit lease (no re-claim) fences the recipient too.
   const next = await f.s.send(f.ask({ expectedUnitVersion: 2 }));
   await pool.query("UPDATE cowork_units SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1", [f.reviewUnit]);
