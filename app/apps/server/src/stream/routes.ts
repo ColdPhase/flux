@@ -7,6 +7,7 @@ import { StreamConnection } from './connection.js';
 import { CursorCodec } from './cursor.js';
 import { resolveCursor, type DeliverySources, type StreamWork, type Subscription } from './delivery.js';
 import { workRoute } from './work-route.js';
+import { forbidden, UNAUTHENTICATED } from '../http/errors.js';
 
 export interface StreamOptions {
   db: Database;
@@ -46,10 +47,10 @@ export async function streamRoutes(app: FastifyInstance, options: StreamOptions)
       // Browsers always send Origin on a WebSocket upgrade; only the public origin may use the cookie.
       if (request.headers.origin !== publicOrigin) {
         request.log.warn({ origin: request.headers.origin }, 'Rejected stream upgrade origin');
-        return reply.code(403).send({ error: 'Forbidden', code: 'ORIGIN_REJECTED' } satisfies ApiError);
+        return reply.code(403).send(forbidden('ORIGIN_REJECTED'));
       }
       const context = await sessions.resolveSession(request.headers);
-      if (!context) return reply.code(401).send({ error: 'Authentication required', code: 'UNAUTHENTICATED' } satisfies ApiError);
+      if (!context) return reply.code(401).send(UNAUTHENTICATED);
       const cursor = await resolveCursor(sources, cursors, context.principal, typeof request.query.cursor === 'string' ? request.query.cursor : undefined);
       if ('status' in cursor) return reply.code(cursor.status).send({ error: cursor.error, code: cursor.code } satisfies ApiError);
       accepted.set(request, { headers: { cookie: request.headers.cookie }, principal: context.principal, sessionId: context.sessionId, ...cursor });

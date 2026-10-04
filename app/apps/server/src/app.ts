@@ -44,6 +44,7 @@ import { loadGithubConfig } from './github/config.js';
 import type { ServerConfig } from './config.js';
 import { fixtureFlags, registerFixtureRoutes } from './fixture/index.js';
 import { registerHealth } from './health/routes.js';
+import { useDomainErrors } from './http/errors.js';
 
 /**
  * The API's composition root (#88): builds every route and background loop from one loaded
@@ -54,6 +55,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   const { connectionString, identity: identityConfig, push: pushConfig, filesDir, env } = config;
   const { exposeWork } = fixtureFlags(config.fixture);
   const app = Fastify({ logger: true, trustProxy: identityConfig.trustedProxies.length ? identityConfig.trustedProxies : false });
+  // Domain errors and missing sessions are mapped once, here; route plugins inherit it (#85).
+  useDomainErrors(app);
   const { pool, db } = registerDatabase(app, connectionString);
   const migrationManifest = await readMigrationManifest(migrationsDir, FLUX_SCHEMA_VERSION);
   assertExactMigrationLedger(migrationManifest, await readAppliedMigrationVersions(pool));
