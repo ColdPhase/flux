@@ -362,9 +362,29 @@ on record:
 - a login rate-limit refusal;
 - a startup and migration failure.
 
-The fixed source, the Docker tests, the macOS preflight and the takeover's
-reviewer sign-off are recorded in the PR at the head they ran against. No public
-tunnel was opened at that head; `session` opens one only after the merge.
+**Takeover, source `5a2cafa9`** (code and scripts; later commits change only this
+document). It ran with Docker Desktop 29.1.2 on macOS arm64 under the system bash
+3.2:
+
+- `check` passed the fixture tests 9/9.
+- `preflight` passed. One reply created one event and one inbox item whose target
+  matched; there was no push job without a subscription. The gateway answered
+  503 while closed and passed the local checks once open. Teardown left no
+  container, volume, network or candidate image. No generated secret appeared in
+  the fixture's build, start or cleanup logs.
+- The first preflight, at `ab98af03`, failed at `probe`. Since #208 the absent
+  fixture route answers 404 instead of 401; the probe now expects 404.
+- Push, at the identical application tree `d5aadd75`: the new real-resolver test,
+  the lookup tests and the push and notification cohort passed 93/93 across 10
+  files. Run unchanged against `main` `662aec62`, the new test failed on public
+  `216.239.38.57` with `EPUSHPRIVATE` (23/24).
+- `scripts/check_application.sh` passed: 760/760, plus 17 further browser and
+  check runs. `scripts/check_ui.sh test_notifications test_app_shell` passed
+  23/23.
+
+The public half was not run at this head: no Quick Tunnel (`session` or
+`tunnel`), no desktop provider probe, and so no new provider result. `session`
+opens a tunnel only for a commit on `main`.
 
 **Physical devices: not verified.** No Android, iPhone or iPad session has run:
 installation, display in the background and on the lock screen, taps, opt-out,
