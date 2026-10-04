@@ -60,7 +60,7 @@ concurrent revocation is either seen or waits.
 
 | Route | Notes |
 | --- | --- |
-| `GET /api/v1/workspaces/:id/sketches?projectId=` | Returns a page of visible sketches, newest change first. The filter is applied before the limit and the total. |
+| `GET /api/v1/workspaces/:id/sketches?projectId=` | Returns a page of visible sketches, newest change first. The filter is applied before the limit and the total. `?scope=private` returns only private sketches (the sketchbook, #189); no other scope value is accepted. |
 | `POST /api/v1/workspaces/:id/sketches` | Takes `{ title, scope: 'project' \| 'private', projectId? }`. |
 | `GET /api/v1/sketches/:id` | Returns the sketch with its thoughts and links. The ETag is the sketch version. |
 | `PATCH /api/v1/sketches/:id` | Renames the sketch. Needs `If-Match`. |
@@ -86,9 +86,14 @@ author receives the events of a private sketch. The stream's `objectType` is `sk
 
 ## Web
 
-- `/map` is the Map tab. It lists the sketches you can see and has **New sketch**,
-  which creates a private sketch. If you have no workspace yet, it first creates a
-  personal one.
+- `/map` is Home's Map tab, the private sketchbook. It lists your private sketches
+  (`?scope=private`) and has **New sketch**, which creates a private sketch. If you have
+  no workspace yet, it first creates a personal one. Project sketches live in their
+  project's Map tab and DM sketches in their DM (#189).
+- A sketch opens only where it lives: `/projects/:projectId/map/:sketchId` for a project
+  sketch, `/dm/:dmId/sketches/:sketchId` for a DM's sketch and `/map/:sketchId` for a private
+  one. A link that cannot know the place (search, doc links) opens `/map/:sketchId`, and the
+  view moves it, keeping the `#thought-…` fragment.
 - `/map/:sketchId` is the sketch (direction C `#lamp-map`, `-select`, `-edit`,
   `-list`). The toolbar has Thought, Connect, Shape, Remove and Undo, plus a status line.
   - The map is a canvas with a visible **+** beside the selected thought.
@@ -162,23 +167,28 @@ author and time from the message itself. `GET …/sketches?dmId=` lists one DM's
 
 **Promotion into a project.**
 
-- `GET /api/v1/sketches/:id/promotion[?target=new|?projectId=]` changes nothing. It returns
+- `GET /api/v1/sketches/:id/promotion[?target=new|?projectId=][&participants=grant|none]` changes nothing. It returns
   `SketchPromotionPreview`:
   - `audience`: everyone who could open the copy.
     - For a new project (owners and admins only, `project.create`), the project is
-      restricted and granted to exactly the participants. Its readers are the participants and
-      the workspace's owners and admins, who manage every project.
+      restricted. With `participants=grant` (the default) it is granted to exactly the
+      participants; with `participants=none` (#188) to nobody, so its readers are the caller and
+      the workspace's owners and admins, who manage every project, and the other participants
+      are `leftOut`. The web app asks for `none` until the person ticks "Also give … access",
+      which is unchecked by default, so nobody joins a project they were not explicitly given.
     - For an existing project the caller can change (`project.write`; a viewer gets `403`), the
       readers are `listProjectPeople`.
   - `leftOut`: participants who would not see the copy.
   - `content`: thoughts, links, and how many thoughts came from messages.
   - `staysInDm`: the messages not quoted.
   - `token`: a hash of the target, the readers and every thought id, version and link id.
-- `POST /api/v1/sketches/:id/promotion` takes `{ target, token }` and `Idempotency-Key`. It runs
+- `POST /api/v1/sketches/:id/promotion` takes `{ target, token, participants? }` and
+  `Idempotency-Key`; `participants` must match the preview's, since the token names the readers. It runs
   in one transaction. When the token no longer matches (a reader, a thought or a link changed),
   the answer is `409 PROMOTION_CHANGED` with the new preview, and nothing is created.
   Otherwise it:
-  1. creates the project through `createProject` and `grantProject`, for a new target;
+  1. creates the project through `createProject` and, when the participants are granted,
+     `grantProject`, for a new target;
   2. inserts a `project` sketch with copies of the thoughts (text, position, size, shape and the
      source's author and time) and of their links;
   3. records `sketch.created.v1` for the copy and `sketch.changed.v1 { op: 'copied_to_project' }`
@@ -235,6 +245,18 @@ DM sketches. Results name the DM as their place, and `target.dmId` makes them op
 **Tests.** `app/tests/app/dm-sketches.test.ts` (API, `./scripts/check_application.sh`) and
 `app/tests/ui/test_dm_sketches.py` (Playwright, `./scripts/check_ui.sh`, screenshots
 `dm-sketch-*.png`).
+
+## Required live interaction — F-021 / #228
+
+A second authorized person must see positions during pointer movement, before
+pointerup, and committed additions/changes without waiting for unrelated local
+operations. The current local preview and saved-event refresh do not deliver this
+outcome. [The assessed contract](live-editing-proposal.md) retains native SQL/CAS
+objects with identified transient previews, confirmed deltas and conflict-safe
+own undo. It is admitted only for disabled calibration; runtime gates remain open.
+Camera and selection stay local, and #149's private new-thought draft is never
+broadcast before deliberate Save. Private/DM/project audiences and current access
+remain authoritative for every write and delivery.
 
 ## Evidence
 
