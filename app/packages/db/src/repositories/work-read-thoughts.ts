@@ -21,9 +21,10 @@ export function nativeWorkThoughtRows(db: DbExecutor) {
     return sql.join(thoughtIds.map((id) => sql`(${id}::uuid)`), sql`, `);
   };
   async function visible(projectId: string, thoughtIds: readonly string[]): Promise<string[]> {
+    // The endpoint predicate uses its own aliases (t, s); the selection is `g`, as elsewhere.
     const result = await db.execute<{ id: string }>(sql`WITH sel(id) AS (VALUES ${selected(thoughtIds)})
-      SELECT s.id::text AS id FROM sel s WHERE (${nativeWorkEndpointVisible(projectId, sql`'thought'`, sql`s.id`)})
-      ORDER BY s.id::text COLLATE "C"`);
+      SELECT g.id::text AS id FROM sel g WHERE (${nativeWorkEndpointVisible(projectId, sql`'thought'`, sql`g.id`)})
+      ORDER BY g.id::text COLLATE "C"`);
     return result.rows.map((row) => row.id);
   }
   return {
