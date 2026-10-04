@@ -145,6 +145,12 @@
 .project-convo__message .ws-acts--more { position: absolute; top: 0; right: -10px; margin: 0; }
 .ws-more { justify-content: center; width: 44px; height: 44px; padding: 0; color: var(--text-3); }
 .project-convo__message:has(.ws-acts--more) .project-convo__message-meta { padding-right: 36px; }
+/* The message is only as wide as its own author line and bubble, so the button sits at the bubble's
+   corner instead of floating at a fixed 260px measure beside a short message (#189). */
+.project-convo__message:has(.ws-acts--more) { min-width: 0; }
+/* A wider task or decision chip under a short bubble does not widen the message either: the chips take
+   the message's own width (at least a readable 200px) and shorten their titles. */
+.project-convo__message:has(.ws-acts--more) .ws-attach { contain: inline-size; align-self: stretch; min-width: min(100%, 200px); }
 /* Quiet, project-scoped comparison proposals on the Tasks return surface. */
 .ws-proposals__intro { margin: 0 0 8px; color: var(--text-2); font-size: var(--fs-sm); }
 .ws-proposals__jumps { display: flex; gap: 12px; margin: -4px 0 6px; }
@@ -205,7 +211,7 @@
 .ws-view:focus-visible, .ws-none__b:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .ws-mine { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; font-size: var(--fs-sm); color: var(--text-2); cursor: pointer; }
 .ws-mine input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
-.ws-none { margin: 20px 0 0; font-size: var(--fs-md); color: var(--text-2); }
+.ws-none { margin: 20px 0 0; font-size: var(--fs-md); color: var(--text-2); overflow-wrap: anywhere; }
 .ws-none__b { padding: 0; font: inherit; font-weight: 500; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
 .ws-group { scroll-margin-top: 12px; }
 @media (max-width: 640px) {

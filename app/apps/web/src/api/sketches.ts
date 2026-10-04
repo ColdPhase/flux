@@ -17,6 +17,7 @@ import {
   type MoveThoughtsCommand,
   type Page,
   type PromotedSketch,
+  type PromotionParticipants,
   type PromotionTarget,
   type SketchPromotionPreview,
   type Project,
@@ -43,6 +44,9 @@ export const listProjects = (workspaceId: string, offset: number, signal?: Abort
   request<Page<Project>>(`${workspaceProjectsPath(workspaceId)}?limit=100&offset=${offset}`, { signal });
 export const listSketches = (workspaceId: string, limit: number, offset: number, signal?: AbortSignal) =>
   request<SketchPage>(`${workspaceSketchesPath(workspaceId)}?limit=${limit}&offset=${offset}`, { signal });
+/** The person's own sketchbook: private sketches only (#189); shared ones live in their project or DM. */
+export const listPrivateSketches = (workspaceId: string, limit: number, offset: number, signal?: AbortSignal) =>
+  request<SketchPage>(`${workspaceSketchesPath(workspaceId)}?limit=${limit}&offset=${offset}&scope=private`, { signal });
 export const createPrivateSketch = (workspaceId: string, title: string, idempotencyKey: string) =>
   request<Sketch>(workspaceSketchesPath(workspaceId), { method: 'POST', body: { title, scope: 'private' }, headers: key(idempotencyKey) });
 
@@ -54,11 +58,15 @@ export const createDmSketch = (workspaceId: string, dmId: string, title: string,
   request<Sketch>(workspaceSketchesPath(workspaceId), {
     method: 'POST', body: { title, scope: 'dm', dmId, ...(fromMessageIds.length ? { fromMessageIds } : {}) }, headers: key(idempotencyKey),
   });
-/** Who could open a project copy of a DM sketch, and what goes in; nothing is shared. */
-export const previewPromotion = (sketchId: string, target: { kind: 'new' } | { kind: 'existing'; projectId: string } | null, signal?: AbortSignal) =>
-  request<SketchPromotionPreview>(`${sketchPromotionPath(sketchId)}${target ? (target.kind === 'new' ? '?target=new' : `?projectId=${target.projectId}`) : ''}`, { signal });
-export const promoteSketch = (sketchId: string, target: PromotionTarget, token: string, idempotencyKey: string) =>
-  request<PromotedSketch>(sketchPromotionPath(sketchId), { method: 'POST', body: { target, token }, headers: key(idempotencyKey) });
+/**
+ * Who could open a project copy of a DM sketch, and what goes in; nothing is shared. `participants`
+ * (#188) says whether a new project is also given to the DM's other people; the web app asks only
+ * when the person ticks "Also give … access".
+ */
+export const previewPromotion = (sketchId: string, target: { kind: 'new' } | { kind: 'existing'; projectId: string } | null, participants: PromotionParticipants, signal?: AbortSignal) =>
+  request<SketchPromotionPreview>(`${sketchPromotionPath(sketchId)}?${new URLSearchParams({ ...(target ? (target.kind === 'new' ? { target: 'new' } : { projectId: target.projectId }) : {}), participants })}`, { signal });
+export const promoteSketch = (sketchId: string, target: PromotionTarget, token: string, participants: PromotionParticipants, idempotencyKey: string) =>
+  request<PromotedSketch>(sketchPromotionPath(sketchId), { method: 'POST', body: { target, token, participants }, headers: key(idempotencyKey) });
 
 export const getSketch = (sketchId: string, signal?: AbortSignal) => request<SketchDetail>(sketchPath(sketchId), { signal });
 export const renameSketch = (sketchId: string, title: string, version: number, idempotencyKey: string) =>

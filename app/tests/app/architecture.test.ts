@@ -54,6 +54,12 @@ describe('architecture boundaries', () => {
     assert.deepEqual(reachableImports(root, entries, ['@flux/db', 'drizzle-orm', 'pg', 'pg-boss', 'fastify', 'web-push']), []);
   });
 
+  test('co-work claim use cases stay free of adapters, including through helpers (#153)', () => {
+    const entries = files(join(root, 'packages/core/src/co-work'));
+    assert.ok(entries.length >= 2, 'co-work use cases and their bounded entry point exist');
+    assert.deepEqual(reachableImports(root, entries, ['@flux/db', 'drizzle-orm', 'pg', 'pg-boss', 'fastify', 'web-push']), []);
+  });
+
   test('the rules reject each kind of boundary violation (self-test)', () => {
     const source = (path: string, text: string) => ({ path, text });
     const found = checkSources([

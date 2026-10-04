@@ -1,0 +1,44 @@
+{
+  "tested_runtime": "e79336dc41007061313025d37271b28244181d8c",
+  "integrated_main": "3abbd0f4b526c5fa548c9a27b7fb2a4664eabe7c",
+  "sources": [
+    {
+      "path": "app/apps/server/src/agent-connection/grants.ts",
+      "sha256": "e3a3ae48cfb29d6c964ebd8bdde5bfe0138b6736a85a37b9b4f74468e10b96ce"
+    },
+    {
+      "path": "app/apps/server/src/agent-connection/routes.ts",
+      "sha256": "9eb54028e8f2726e35ca05e329d9c05966f332f2d20946129214908c0e7c0cae"
+    },
+    {
+      "path": "app/apps/server/src/co-work/grants.ts",
+      "sha256": "06f76aadf7a0c62c896d213e752dbd00d1ff6ed42e6559be621a3867de013e41"
+    },
+    {
+      "path": "app/packages/db/src/repositories/cowork-requests.ts",
+      "sha256": "b262f766ed9bcac9238197106c92b5d996feb43b4a61bbfdf60c29999a358674"
+    },
+    {
+      "path": "app/tests/app/cowork-requests-storage.test.ts",
+      "sha256": "b89e5f72e6aaabb7f3a6af1c7b27ddcba6e38d2d466e187e5ebb91ceec16e554"
+    },
+    {
+      "path": "app/tests/app/cowork-migration-arrival.test.ts",
+      "sha256": "e2bafd1fa0d2ec1b07da312ff3d4212d9deadc935709ab3fd63000eb1cfcbe2c"
+    }
+  ],
+  "private_logs": [
+    {
+      "path": "/tmp/flux153-parent-party-baseline.log",
+      "sha256": "4a0dee06130f71ff8f1b74af37b0ada8a4baeeb7de347672d7b10d6818aeb21d"
+    },
+    {
+      "path": "/tmp/flux153-main-parent-party-full.log",
+      "sha256": "e5f953083531f0e044e5d37472659712681cf91f7b4ac0e0e2ab82885a062f3a"
+    },
+    {
+      "path": "/tmp/flux153-main-parent-party-final-full.log",
+      "sha256": "c199a850baece6042ad94d237578c61863de5a292312d5a1f9fd2bf22d7dd45b"
+    }
+  ]
+}

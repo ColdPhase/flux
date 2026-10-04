@@ -471,9 +471,15 @@ class ThoughtDraftJourney(unittest.TestCase):
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Sign in", exact=True).click()
         expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
-        # The same person in the same page visit, reaching the map through the app's own links.
-        page.get_by_role("navigation", name="Views").get_by_role("link", name="Map").click()
-        page.locator(f'.sk-index a[href="/map/{self.sketch}"]').click()
+        # The same person in the same page visit, reaching the map through the app's own links: a project
+        # sketch lives in its project's Map, not in the private sketchbook (#189).
+        # Each test makes its own "Quiet gesture lamp", so this one is chosen by its address.
+        page.get_by_role("navigation", name="Projects").locator(f'a[href="/projects/{self.project}"]').click()
+        page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Map")).click()
+        # The Map tab returns to its last place (#189): the sketch itself, or the list it is in.
+        page.wait_for_url(re.compile(rf"/projects/{self.project}/map(/{self.sketch})?$"))
+        if not page.url.endswith(f"/map/{self.sketch}"):
+            page.locator(f'.sk-index a[href="/projects/{self.project}/map/{self.sketch}"]').click()
         expect(page.locator(".sk-head")).to_be_visible()
         self.assertTrue(page.evaluate("window.sameVisit === true"), "no reload: only sign-out can have cleared the in-memory copy")
         expect(page.get_by_role("form", name="New thought draft")).to_have_count(0)

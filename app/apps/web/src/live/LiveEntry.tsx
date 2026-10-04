@@ -53,7 +53,8 @@ export function LiveEntry({ variant = 'header', anchor: given }: { variant?: 'he
   const audience = audienceOf(projectPeople, live.meId);
 
   if (!configured) {
-    if (variant === 'inline') return <p className="lv-inline-note"><Icon name="together" size={14} />Live sessions are not set up on this Flux server. Text work here is unaffected.</p>;
+    // Explained once, behind the header's "Together" (#189): a task does not repeat it.
+    if (variant === 'inline') return null;
     return (
       <span className="lv-entry">
         <Button ref={buttonRef} variant="quiet" icon="together" className="lv-entry__btn" aria-expanded={open} aria-haspopup="dialog" aria-label="Together" onClick={() => setOpen((v) => !v)}>
