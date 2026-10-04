@@ -3,8 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { createDatabase, listen, typingNotifications, typingRows } from '@flux/db';
 import { authorizeTypingContext, authorizeTypingSender, decodeTypingPulse, TYPING_CHANNEL, type TypingActor, type TypingPulse } from '@flux/core';
-import type { Conversation, Dm, TypingContext, Workspace } from '@flux/contracts';
+import type { Conversation, Dm, ProjectGrant, TypingContext, Workspace } from '@flux/contracts';
 import { typingAccess } from '../../apps/server/src/typing/access.js';
+import { typingTaskDiscussion } from '../../apps/server/src/typing/tasks.js';
 import { addMember, expectStatus, grant, person, project, secondSession, workspace, type Person } from './support/people.js';
 
 const connectionString = process.env.DATABASE_URL;
@@ -157,6 +158,31 @@ describe('current native human typing access and nondurable broker primitives', 
     assert.deepEqual(await authorizeTypingContext(typingAccess(db, { conversation: async () => context.id }), bobActor, task, 'read'), context);
     const foreign = await conversation();
     assert.equal(await authorizeTypingContext(typingAccess(db, { conversation: async () => foreign.context.id }), bobActor, task, 'read'), null);
+  });
+
+  test('the production task alias resolves only the actual accepted discussion root, read-only and current', async () => {
+    const production = typingAccess(db, typingTaskDiscussion(db));
+    const { room } = await conversation();
+    const work = expectStatus(await alice.browser.request('POST', `/api/v1/projects/${room.id}/work`,
+      { body: { title: 'Wire the lamp sensor', outcome: 'Production typing alias', status: 'open' }, headers: { 'idempotency-key': randomUUID() } }), 201) as { id: string };
+    const task: TypingContext = { kind: 'task', id: work.id };
+    const roots = () => pool.query('SELECT count(*)::int AS n FROM project_conversations WHERE project_id = $1', [room.id]).then((r) => r.rows[0].n as number);
+    const before = await roots();
+    assert.equal(await authorizeTypingContext(production, bobActor, task, 'write'), null, 'no root before a genuine contribution');
+    assert.equal(await roots(), before, 'reading the alias created no conversation');
+    const message = expectStatus(await bob.browser.request('POST', `/api/v1/work/${work.id}/discussion`,
+      { body: { body: 'Starting on the sensor wiring', clientMessageId: randomUUID() } }), 201) as { conversationId: string };
+    const canonical = { kind: 'conversation' as const, id: message.conversationId };
+    assert.deepEqual(await authorizeTypingContext(production, bobActor, task, 'write'), canonical, 'the task aliases its actual root');
+    assert.deepEqual(await authorizeTypingContext(production, viewerActor, task, 'read'), canonical);
+    assert.equal(await authorizeTypingContext(production, viewerActor, task, 'write'), null, 'a viewer cannot type into it');
+    const outsiderActor = await actor(outsider);
+    assert.equal(await authorizeTypingContext(production, outsiderActor, task, 'read'), null, 'no project access, no alias');
+    assert.equal(await authorizeTypingContext(production, bobActor, { kind: 'task', id: randomUUID() }, 'read'), null, 'an unknown task is not an error');
+    const grants = expectStatus(await alice.browser.request('GET', `/api/v1/projects/${room.id}/grants`), 200) as ProjectGrant[];
+    const bobGrant = grants.find((row) => row.principal.kind === 'human' && row.principal.id === bob.id)!;
+    expectStatus(await alice.browser.request('DELETE', `/api/v1/projects/${room.id}/grants/${bobGrant.id}`), 204);
+    assert.equal(await authorizeTypingContext(production, bobActor, task, 'read'), null, 'a revoked grant ends the alias at once');
   });
 
   test('two independent LISTEN consumers receive bounded identifier-only pulses with no native/durable effect', async () => {

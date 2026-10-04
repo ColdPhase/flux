@@ -55,9 +55,12 @@ function useMessageBatch(ref: RefObject<HTMLElement | null>, ids: string[], node
 function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTMLElement | null, ready: boolean, observedAt?: string) {
   const anchor = useRef<{ id: string; offset: number; top: number } | null>(null);
   const readerMoved = useRef(false);
-  const save = useCallback(() => {
+  // The scrollTop this hook last wrote. Any other scroll (wheel, keys, scrollIntoView, focus,
+  // find-in-page) is the reader's position and is kept even while a new message batch loads.
+  const ownScroll = useRef<number | null>(null);
+  const save = useCallback((intent = false) => {
     const pane = ref.current;
-    if (!pane || !ready && !readerMoved.current) return;
+    if (!pane || !ready && !readerMoved.current && !intent) return;
     const top = pane.getBoundingClientRect().top;
     const message = [...pane.querySelectorAll<HTMLElement>('[data-message-id],[data-answer-run]')].find((row) => row.getBoundingClientRect().bottom > top);
     if (message) anchor.current = { id: message.id, offset: message.getBoundingClientRect().top - top, top: pane.scrollTop };
@@ -70,7 +73,7 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
       const message = [...pane.querySelectorAll<HTMLElement>('[data-message-id],[data-answer-run]')].find((row) => row.id === stored.id);
       const target = message ? pane.scrollTop + message.getBoundingClientRect().top - pane.getBoundingClientRect().top - stored.offset : stored.top;
       // Even a no-op scrollTop assignment interrupts native smooth key/touch scrolling.
-      if (Math.abs(target - pane.scrollTop) > 0.5) pane.scrollTop = target;
+      if (Math.abs(target - pane.scrollTop) > 0.5) { pane.scrollTop = target; ownScroll.current = pane.scrollTop; }
     }
     // Intent survives intermediate observations in the same native gesture.
     // During an active gesture let native scroll anchoring preserve the message;
@@ -83,11 +86,16 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
     };
     const pointer = (event: PointerEvent) => { if (event.target === pane) readerMoved.current = true; };
     if (ready) save();
-    pane.addEventListener('scroll', save, { passive: true });
+    const scrolled = () => {
+      const own = ownScroll.current;
+      ownScroll.current = null;
+      save(own === null || Math.abs(pane.scrollTop - own) > 1);
+    };
+    pane.addEventListener('scroll', scrolled, { passive: true });
     pane.addEventListener('wheel', wheel, { passive: true }); pane.addEventListener('touchstart', touch, { passive: true });
     pane.addEventListener('keydown', key); pane.addEventListener('pointerdown', pointer);
     return () => {
-      pane.removeEventListener('scroll', save); pane.removeEventListener('wheel', wheel); pane.removeEventListener('touchstart', touch);
+      pane.removeEventListener('scroll', scrolled); pane.removeEventListener('wheel', wheel); pane.removeEventListener('touchstart', touch);
       pane.removeEventListener('keydown', key); pane.removeEventListener('pointerdown', pointer);
     };
   }, [ref, node, ready, observedAt, save]);
