@@ -134,6 +134,75 @@ def box(page: Page, locator) -> dict:
     return result
 
 
+# TEST ONLY: a slow network in one tab, so that signing out happens while the tab still waits.
+# GET answers from /api/v1 are held back at two gates and arrive when the test releases them:
+#  A: everything the tab asks for once an address with `?open=` has been written (a search result
+#     or link that opens an object in Details) or `arm()` was called, until sign-out starts;
+#  B: the sign-in page's own session check (`/api/v1/me`), made while its one-time notice is in
+#     the address.
+# Each request is really sent at once, with whatever session the tab had; only its answer waits.
+SLOW_ANSWERS = """
+(() => {
+  const realFetch = window.fetch.bind(window);
+  const gates = {};
+  for (const name of ['A', 'B']) {
+    let open;
+    gates[name] = { opened: new Promise((resolve) => { open = resolve; }), open, held: 0, waiting: 0 };
+  }
+  const slow = window.__slow = {
+    armed: false, signingOut: false, inflight: 0,
+    arm() { slow.armed = true; },
+    release(name) { gates[name].open(); },
+    held(name) { return gates[name].held; },
+    // Resolves once nothing but gate B's held answers has been in flight for `ms` milliseconds.
+    quiet(ms) {
+      return new Promise((resolve) => {
+        let since = null;
+        const tick = () => {
+          const now = performance.now();
+          if (slow.inflight === gates.B.waiting) { since ??= now; if (now - since >= ms) { resolve(true); return; } } else since = null;
+          setTimeout(tick, 20);
+        };
+        tick();
+      });
+    },
+  };
+  for (const method of ['pushState', 'replaceState']) {
+    const write = history[method].bind(history);
+    history[method] = (state, unused, url) => {
+      if (url != null && new URL(String(url), location.href).searchParams.has('open')) slow.armed = true;
+      return write(state, unused, url);
+    };
+  }
+  window.fetch = (input, init = {}) => {
+    const url = new URL(input instanceof Request ? input.url : String(input), location.href);
+    const method = String(init.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase();
+    if (method === 'POST' && url.pathname === '/api/auth/sign-out') slow.signingOut = true;
+    const api = method === 'GET' && url.pathname.startsWith('/api/v1/');
+    const gate = !api ? null
+      : slow.armed && !slow.signingOut ? gates.A
+      : url.pathname === '/api/v1/me' && new URLSearchParams(location.search).get('notice') === 'signed-out' ? gates.B : null;
+    slow.inflight += 1;
+    let answer = realFetch(input, init);
+    if (gate) {
+      gate.held += 1;
+      const signal = init.signal ?? (input instanceof Request ? input.signal : null);
+      answer = answer.then((response) => new Promise((resolve, reject) => {
+        let settled = false;
+        gate.waiting += 1;
+        const settle = (finish) => { if (settled) return; settled = true; gate.waiting -= 1; finish(); };
+        const abort = () => settle(() => reject(signal.reason ?? new DOMException('The operation was aborted.', 'AbortError')));
+        if (signal?.aborted) { abort(); return; }
+        signal?.addEventListener('abort', abort, { once: true });
+        gate.opened.then(() => settle(() => resolve(response)));
+      }));
+    }
+    return answer.finally(() => { slow.inflight -= 1; });
+  };
+})();
+"""
+
+
 class AppShellJourney(unittest.TestCase):
     """One person's journey; tests run in name order and share the signed-in state."""
 
@@ -672,6 +741,87 @@ class AppShellJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile(r"/sign-in\?next=%2Fmap$"))
         page.reload()
         expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+
+    def person_with_a_task(self, name: str, *, slow: bool = True) -> tuple[Page, str, str]:
+        """A new account in its own tab with one restricted project and one task in it."""
+        page = self.page(signed_in=False)
+        if slow:
+            page.add_init_script(SLOW_ANSWERS)
+        page.goto("/sign-up")
+        page.get_by_label("Name").fill(name)
+        page.get_by_label("Email").fill(f"{name.split()[0].lower()}.sign-out+{time.time_ns()}@example.test")
+        page.get_by_label("Password").fill(PASSWORD)
+        page.get_by_role("button", name="Create account").click()
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        request, headers = page.context.request, {"Origin": ORIGIN}
+        space = request.post(f"{ORIGIN}/api/v1/workspaces", data={"name": "Dimmer bench"}, headers=headers)
+        self.assertEqual(space.status, 201, space.text())
+        project = request.post(f"{ORIGIN}/api/v1/workspaces/{space.json()['id']}/projects", data={"name": "Night light", "visibility": "restricted"}, headers=headers)
+        self.assertEqual(project.status, 201, project.text())
+        work = request.post(f"{ORIGIN}/api/v1/projects/{project.json()['id']}/work", data={"title": "Calibrate the dimmer curve", "outcome": "A fade that never flickers"}, headers=headers)
+        self.assertEqual(work.status, 201, work.text())
+        page.goto("/")
+        expect(page.get_by_role("navigation", name="Projects").get_by_role("link", name="Night light")).to_be_visible()
+        return page, project.json()["id"], work.json()["id"]
+
+    def sign_out_while_loading(self, page: Page, name: str) -> None:
+        """Signs out while the tab still waits for answers, then lets every answer arrive."""
+        page.get_by_role("button", name=re.compile(rf"{name}.*account and sign out")).click()
+        page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+        expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+        expect(page.get_by_role("status").filter(has_text="You’re signed out.")).to_be_visible()
+        # What the tab was loading before sign-out answers now, while the sign-in page's own check
+        # of the session is still out; then that check answers too. (That check is the sign-in
+        # loader, run again when the page drops `?notice=` from its address; gate B waits for it.)
+        page.wait_for_function("window.__slow.held('B') > 0")
+        page.evaluate("window.__slow.release('A')")
+        page.evaluate("window.__slow.quiet(500)")
+        page.evaluate("window.__slow.release('B')")
+        page.evaluate("window.__slow.quiet(500)")
+        # Sign-out ends on the sign-in page and stays there: nothing loaded for the previous account
+        # takes the tab back, neither its address nor its page.
+        expect(page).to_have_url(f"{ORIGIN}/sign-in")
+        expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
+        expect(page.get_by_text("Something went wrong")).to_have_count(0)
+        self.assertEqual(page.evaluate("location.pathname + location.search"), "/sign-in")
+
+    def test_11a_sign_out_while_an_opened_task_is_still_loading(self) -> None:
+        """A search result opens a task in Details (`?open=work:<id>`); signing out right away wins."""
+        page, project_id, _ = self.person_with_a_task("Rae Lund")
+        page.get_by_role("button", name=re.compile("Jump to")).click()
+        dialog = page.get_by_role("dialog", name="Jump to")
+        field = dialog.get_by_role("combobox", name="Jump to")
+        field.fill("dimmer curve")
+        expect(dialog.get_by_role("option").first).to_contain_text("Calibrate the dimmer curve")
+        field.press("Enter")
+        expect(page).to_have_url(re.compile(rf"/projects/{project_id}/tasks"))
+        expect(page.get_by_role("complementary", name="Details")).to_be_visible()
+        self.sign_out_while_loading(page, "Rae Lund")
+
+    def test_11b_sign_out_while_a_project_is_still_opening(self) -> None:
+        """A project link was followed and its page is still loading; signing out wins over it."""
+        page, _, _ = self.person_with_a_task("Tove Berg")
+        page.evaluate("window.__slow.arm()")
+        page.get_by_role("navigation", name="Projects").get_by_role("link", name="Night light").click()
+        page.wait_for_function("window.__slow.held('A') > 0")
+        expect(page).to_have_url(f"{ORIGIN}/")
+        self.sign_out_while_loading(page, "Tove Berg")
+
+    def test_11c_a_failed_sign_out_says_so_and_can_be_retried(self) -> None:
+        page, _, _ = self.person_with_a_task("Ida Holm", slow=False)
+        page.route("**/api/auth/sign-out", lambda route: route.fulfill(status=503, json={"code": "TEST_UNAVAILABLE", "message": "test: sign-out unavailable"}))
+        page.get_by_role("button", name=re.compile("Ida Holm.*account and sign out")).click()
+        page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+        # The sign-out page says what happened and offers to try again; the session is still live.
+        expect(page).to_have_url(f"{ORIGIN}/sign-out")
+        expect(page.get_by_role("heading", name="Sign out of Flux?")).to_be_visible()
+        expect(page.get_by_role("alert")).to_contain_text("Try again in a moment.")
+        self.assertEqual(page.context.request.get(f"{ORIGIN}/api/v1/me").status, 200)
+        page.unroute("**/api/auth/sign-out")
+        page.get_by_role("button", name="Sign out").click()
+        expect(page).to_have_url(f"{ORIGIN}/sign-in")
+        expect(page.get_by_role("status").filter(has_text="You’re signed out.")).to_be_visible()
+        self.assertEqual(page.context.request.get(f"{ORIGIN}/api/v1/me").status, 401)
 
 
     def test_12_real_project_capture_phone_and_revocation(self) -> None:

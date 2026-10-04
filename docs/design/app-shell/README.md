@@ -71,6 +71,21 @@ AI**, which opens Details with the options marked "not available yet". Nothing c
 page, the account menu holds this device's notification control and session, the shell
 refreshes the push subscription after sign-in, and sign-out calls `signOutDevice()`.
 
+## Signing out
+
+**Sign out** in the account menu is a navigation (a form post to `/sign-out`), not a background
+request, so it replaces whatever the tab is still loading: a slow page can never land after the
+sign-in page or take its address. It ends on `/sign-in` with "You’re signed out." When the server
+cannot sign the device out, the person stays signed in and the sign-out page says so and offers
+to try again. An object opened through `?open=` (a notification, a search result or a doc
+reference) opens in Details once, and the flag leaves the address without reloading the page's
+data.
+
+With react-router 8.4 a fetcher whose action redirects does not cancel a navigation that is
+still loading; that navigation finishes later and can take the page and its address back. An
+action that moves the person elsewhere is therefore posted with a navigation form, not
+`useFetcher`.
+
 ## Adjusted for the founder direction (#44)
 
 - No workspace selector. The administrative workspace is a data boundary only. Home (the
