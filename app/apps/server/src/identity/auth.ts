@@ -39,7 +39,8 @@ export function oidcUser(oidc: Pick<OidcConfig, 'issuer'>, claims: Record<string
   const email = typeof claims.email === 'string' ? claims.email.trim().toLowerCase() : '';
   if (issuer !== oidc.issuer || !subject || !email || claims.email_verified !== true) return null;
   const name = [claims.name, claims.preferred_username].find((value): value is string => typeof value === 'string' && !!value.trim());
-  return { id: subject, email, emailVerified: true, name: (name ?? email).trim().slice(0, 200) };
+  // The plugin keys the Flux account by `sub` (the stable OIDC subject), never by email.
+  return { id: subject, sub: subject, email, emailVerified: true, name: (name ?? email).trim().slice(0, 200) };
 }
 
 /** The payload of an ID token the plugin verified before calling getUserInfo. */

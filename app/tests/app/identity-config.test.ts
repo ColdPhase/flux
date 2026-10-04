@@ -91,7 +91,7 @@ describe('identity configuration', () => {
     const issuer = { issuer: 'https://id.example.org/realms/flux' };
     const claims = { iss: 'https://id.example.org/realms/flux', sub: 'abc', email: ' Ada@Example.ORG ', email_verified: true,
       name: 'Ada Kowalska', groups: ['flux-admins'], realm_access: { roles: ['admin'] } };
-    assert.deepEqual(oidcUser(issuer, claims), { id: 'abc', email: 'ada@example.org', emailVerified: true, name: 'Ada Kowalska' });
+    assert.deepEqual(oidcUser(issuer, claims), { id: 'abc', sub: 'abc', email: 'ada@example.org', emailVerified: true, name: 'Ada Kowalska' });
     assert.equal(oidcUser(issuer, { ...claims, name: undefined, preferred_username: 'ada' })!.name, 'ada');
     assert.equal(oidcUser(issuer, { ...claims, iss: 'https://id.example.org/realms/flux/' })!.email, 'ada@example.org');
     for (const [label, change] of [['unverified', { email_verified: false }], ['string flag', { email_verified: 'true' }], ['no email', { email: '' }],
