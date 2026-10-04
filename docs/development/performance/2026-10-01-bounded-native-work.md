@@ -212,16 +212,21 @@ window is read on its own when its chooser opens (at most 100 tasks, the rest na
 count). Counts refresh on `project.work_*`, `project.link_*`, `project.result_*` stream events,
 on window focus and after Create work.
 
-Conversation reading position (2026-10-04, #170): message previews and reference rows arrive
-after the messages, so the feed keeps growing after it opens. Only genuine reader input moves
-the reader's position: wheel, touch, scroll keys outside editable fields, a pointer moved or
-pressed in the feed, or focus moved into it. The opening settle (open on whole messages, latest
-in view, at most 2 s) ends on that input, or on a scroll it did not write within 500 ms of it;
-layout growth and scroll anchoring never end it. The message reading position treats a scroll
-it did not write as the reader's only after such input (within 500 ms, or since the position
-was last recorded, which keeps a reader scroll whose event has not arrived yet); otherwise it
-is layout and the saved position is restored. Input away from the end stops following the end,
-so growth never moves what a reader is reading or pointing at.
+Conversation reading position (2026-10-04, #170): message previews, reference rows and the
+header's state line come from separate bounded reads after the messages. A conversation is laid
+out but not shown (visibility hidden, `aria-busy`) until the first message-work, reference and
+work-summary reads settle, at most 1 s; once shown it stays shown, and the arrival focus and
+opening settle run again then. The message pager shows nothing before its first page and keeps
+its busy controls while the reader moves between pages. Genuine reader input is wheel, touch,
+scroll keys outside editable fields, a pointer moved or pressed in the feed, or focus moved into
+it. The opening settle (open on whole messages, latest in view, at most 2 s) ends on that input,
+or on a scroll it did not write within 500 ms of it; layout growth and scroll anchoring never end
+it. A scroll event the reading position did not write records the reader's position; a change
+found before its event has arrived is the reader's only after such input (within 500 ms, or
+since the position was last recorded), otherwise it is layout and the saved position is
+restored. Input away from the end stops following the end. While a mouse or pen pointer has
+moved over a message within the last 2 s, growth keeps that message at its screen position,
+ahead of following the end; after a scroll the pointer aims at the message now under it.
 
 Agents view (2026-10-04, #170 integration of #183): open, unparked tasks come from the bounded
 `pivot_work` choice page (50 per page, paged with Previous/Next only when there is more); a
