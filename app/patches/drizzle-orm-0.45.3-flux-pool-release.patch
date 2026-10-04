@@ -1,0 +1,72 @@
+diff --git a/node-postgres/session.cjs b/node-postgres/session.cjs
+index 8ef1fbd..f9777ea 100644
+--- a/node-postgres/session.cjs
++++ b/node-postgres/session.cjs
+@@ -216,16 +216,28 @@ class NodePgSession extends import_session.PgSession {
+     const isPool = this.client instanceof Pool || Object.getPrototypeOf(this.client).constructor.name.includes("Pool");
+     const session = isPool ? new NodePgSession(await this.client.connect(), this.dialect, this.schema, this.options) : this;
+     const tx = new NodePgTransaction(this.dialect, session, this.schema);
+-    await tx.execute(import_sql.sql`begin${config ? import_sql.sql` ${tx.getTransactionConfigSQL(config)}` : void 0}`);
++    // Flux #234: a pooled client whose BEGIN or ROLLBACK failed (e.g. a client read timeout while
++    // the server still ran it) is destroyed, never leaked idle in a transaction or reused.
++    try {
++      await tx.execute(import_sql.sql`begin${config ? import_sql.sql` ${tx.getTransactionConfigSQL(config)}` : void 0}`);
++    } catch (error) {
++      if (isPool) session.client.release(error);
++      throw error;
++    }
++    let broken;
+     try {
+       const result = await transaction(tx);
+       await tx.execute(import_sql.sql`commit`);
+       return result;
+     } catch (error) {
+-      await tx.execute(import_sql.sql`rollback`);
++      try {
++        await tx.execute(import_sql.sql`rollback`);
++      } catch (rollbackError) {
++        broken = rollbackError;
++      }
+       throw error;
+     } finally {
+-      if (isPool) session.client.release();
++      if (isPool) session.client.release(broken);
+     }
+   }
+   async count(sql2) {
+diff --git a/node-postgres/session.js b/node-postgres/session.js
+index f60d9ed..e7a56d2 100644
+--- a/node-postgres/session.js
++++ b/node-postgres/session.js
+@@ -181,16 +181,28 @@ class NodePgSession extends PgSession {
+     const isPool = this.client instanceof Pool || Object.getPrototypeOf(this.client).constructor.name.includes("Pool");
+     const session = isPool ? new NodePgSession(await this.client.connect(), this.dialect, this.schema, this.options) : this;
+     const tx = new NodePgTransaction(this.dialect, session, this.schema);
+-    await tx.execute(sql`begin${config ? sql` ${tx.getTransactionConfigSQL(config)}` : void 0}`);
++    // Flux #234: a pooled client whose BEGIN or ROLLBACK failed (e.g. a client read timeout while
++    // the server still ran it) is destroyed, never leaked idle in a transaction or reused.
++    try {
++      await tx.execute(sql`begin${config ? sql` ${tx.getTransactionConfigSQL(config)}` : void 0}`);
++    } catch (error) {
++      if (isPool) session.client.release(error);
++      throw error;
++    }
++    let broken;
+     try {
+       const result = await transaction(tx);
+       await tx.execute(sql`commit`);
+       return result;
+     } catch (error) {
+-      await tx.execute(sql`rollback`);
++      try {
++        await tx.execute(sql`rollback`);
++      } catch (rollbackError) {
++        broken = rollbackError;
++      }
+       throw error;
+     } finally {
+-      if (isPool) session.client.release();
++      if (isPool) session.client.release(broken);
+     }
+   }
+   async count(sql2) {

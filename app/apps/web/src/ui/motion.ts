@@ -55,4 +55,14 @@ export const MEDIA = {
   navDrawer: '(max-width: 680px)',
   panelOverlay: '(max-width: 1000px)',
   phone: '(max-width: 640px)',
+  /** Touch-first devices: Enter adds a line in composers and the send button sends (#189). */
+  touch: '(hover: none)',
 } as const;
+
+/**
+ * Whether Enter sends (or saves) in a composer: on a keyboard-first device Enter sends and
+ * Shift+Enter adds a line; on a touch device Enter adds a line and the send button sends.
+ */
+export function sendsOnEnter(event: { key: string; shiftKey: boolean; nativeEvent: { isComposing: boolean } }, touch: boolean) {
+  return event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && !touch;
+}

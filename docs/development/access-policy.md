@@ -249,6 +249,21 @@ forbidden action answers `403`. Error bodies are `{ error, code }`.
 Lists return `{ items, total, limit, offset }`. `total` is counted after visibility
 filtering. `limit` is 1–100 (default 50) and `offset` is 0–10000.
 
+**In the web app** ([#188](https://github.com/ColdPhase/flux/issues/188)) these routes back two
+places, with no change to the rules above:
+
+- **People** (Home's Details → People → a workspace) lists the members and roles. Owners and
+  admins add an existing account by email with a role, change roles and remove people; anyone
+  leaves. Guests, who may not read the roster, see only their own place. `ACCOUNT_NOT_FOUND`
+  asks for an account at this Flux address first (v1 sends no invitations), and `ALREADY_MEMBER`,
+  `OWNER_REQUIRED` and `LAST_OWNER` have their own sentences.
+- **Who can see this** (a project's Details, also opened from the header's audience line and
+  after creating a project) lists `listProjectPeople` and, for managers, the grants: give a
+  member write or read access, change or remove it, keep someone out (`denied`) or let them
+  back in. Each change shows its exact consequence before it is confirmed.
+
+Every POST and PATCH sends an `Idempotency-Key`, reused when the same change is retried.
+
 ## Events
 
 Each mutation also records a row in `events` in the same transaction. The row
@@ -432,8 +447,9 @@ version. The domain methods enforce this too, not only the HTTP routes.
 
 Every POST and PATCH under `/api/v1` access routes, and summary requests, accepts
 `Idempotency-Key`: 1–255 visible ASCII characters. The implementation is
-`runIdempotent` in `app/packages/core/src/idempotency.ts`. DELETE routes and the Better
-Auth and session endpoints do not take keys.
+`runIdempotent` in `app/packages/core/src/idempotency.ts`, which stores keys through its
+`IdempotencyStore` port (`app/packages/db/src/repositories/idempotency.ts`). DELETE routes
+and the Better Auth and session endpoints do not take keys.
 
 - **Scope.** A key is scoped by principal, workspace and operation. The operation is
   the method and route pattern, for example `POST /api/v1/drafts/:draftId/share`. The
