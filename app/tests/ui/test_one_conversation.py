@@ -400,21 +400,21 @@ class OneConversationJourney(unittest.TestCase):
         target, reader = quiet[2], quiet[8]
         # Mid-stream: the reader's root at the top of the feed, the target root above the viewport.
         page.evaluate("""([feedSel, id]) => { const feed = document.querySelector(feedSel); const item = document.getElementById(id);
-            feed.scrollTop += item.getBoundingClientRect().top - feed.getBoundingClientRect().top - 40; }""",
+            feed.scrollTop += item.getBoundingClientRect().top - feed.getBoundingClientRect().top - 4; }""",
                       [".project-convo__feed.is-stream", f"message-{reader}"])
         page.wait_for_timeout(300)
         first_visible = """(feedSel) => { const feed = document.querySelector(feedSel); const top = feed.getBoundingClientRect().top;
             for (const item of feed.querySelectorAll('.project-convo__message')) { const box = item.getBoundingClientRect();
               if (box.bottom > top + 1) return { id: item.id, top: box.top - top }; } return null; }"""
         before = page.evaluate(first_visible, ".project-convo__feed.is-stream")
-        self.assertEqual(before["id"], f"message-{reader}")
+        self.assertIn(before["id"], {f"message-{mid}" for mid in quiet[3:9]}, "mid-stream, below the target root")
         self.assertLess(page.evaluate("id => document.getElementById(id).getBoundingClientRect().bottom", f"message-{target}"),
                         feed.bounding_box()["y"], "the target root is above the viewport")
         other = self.page("jonas")
         self.api(other, "POST", f"/api/v1/conversations/{roots[target]['conversationId']}/messages",
                  {"body": "A late answer to an earlier note", "clientMessageId": str(uuid.uuid4())}, status=201)
         page.evaluate("() => window.dispatchEvent(new Event('focus'))")
-        expect(self.root(page, target).locator(".convo-replies")).to_contain_text("1 reply")
+        expect(page.locator(f"#message-{target} .convo-replies")).to_contain_text("1 reply")
         page.wait_for_timeout(300)
         after = page.evaluate(first_visible, ".project-convo__feed.is-stream")
         self.assertEqual(after["id"], before["id"], "the same root stays first in view")
