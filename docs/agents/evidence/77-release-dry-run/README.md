@@ -9,7 +9,9 @@ attestation, no tag, no GitHub release, no workflow dispatch.
 **Source:** `origin/main` [`662aec62e2e05c3d944053a5b35771986900b9e3`](https://github.com/ColdPhase/flux/commit/662aec62),
 taken with `git archive` of that exact commit, as `final-release.yml` checks it out.
 **Result: pass** ([log](dry-run.txt), [script](dry-run.sh.txt), run through the shared
-Docker slot wrapper on Docker Desktop 29.1.2, linux/arm64).
+Docker slot wrapper on Docker Desktop 29.1.2, linux/arm64). Trailing whitespace was stripped
+from the `.txt` files before [`sha256.txt`](sha256.txt) was written; the copied assets still match
+their `SHA256SUMS` lines.
 
 ## What ran
 

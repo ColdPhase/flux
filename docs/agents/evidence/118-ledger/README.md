@@ -9,7 +9,7 @@ Branch `claude-maurycy/release-prep`. This is author evidence; PelikanFix16 eval
 `app/` and `docker/` trees equal `origin/main` [`662aec62`](https://github.com/ColdPhase/flux/commit/662aec62)
 (after #225, migration 0045). The branch changes only `scripts/check_proactive_upgrade.sh`,
 `scripts/proactive-upgrade-fixture.mjs` and documentation:
-`git diff 662aec62 <candidate> --stat -- app docker` is empty.
+`git diff 662aec62 868de210 --stat -- app docker` prints nothing (checked 2026-10-04).
 
 ## Acceptance criteria on `main`
 
@@ -50,7 +50,8 @@ Line numbers are at `662aec62`.
 
 Both on 2026-10-04, Docker Desktop 29.1.2 (linux/arm64), each in its own Compose project,
 ports and volumes, through the shared Docker slot wrapper; projects, volumes and image tags
-were removed by the script afterwards. Command:
+were removed by the script afterwards. Trailing whitespace was stripped from the `.txt` logs
+before [`sha256.txt`](sha256.txt) was written. Command:
 `TMPDIR=<scratch> FLUX_UPGRADE_FROM=<baseline> FLUX_PROACTIVE_UPGRADE_PORT=<port> ./scripts/check_proactive_upgrade.sh`
 at branch commit `868de210` (candidate; `app/` and `docker/` equal `662aec62`).
 
