@@ -60,13 +60,13 @@ A connection has a **provider** and a **transport**:
 | Transport | Who calls the provider | Credentials held by | Connections available |
 | --- | --- | --- | --- |
 | `server` | The Flux worker | Flux, encrypted (PROV-4 custody) | API key for `anthropic`, `openai`, `gemini`, `openrouter`, `openai_compatible` (#192). An OpenRouter key may be pasted or obtained through [OpenRouter OAuth PKCE](https://openrouter.ai/docs/use-cases/oauth-pkce) |
-| `companion` | The Flux companion on the owner's computer | The companion, on that computer only | `chatgpt_plan`: the owner's ChatGPT plan through OpenAI's Sign in with ChatGPT plan usage |
+| `companion` | The Flux companion on the owner's computer | The companion, on that computer only | `chatgpt_plan`: the owner's ChatGPT plan through OpenAI's Sign in with ChatGPT plan usage. Off by default; see the AIM-3 status |
 
 **Not available, with the reason:**
 
 | Request | Decision | Evidence |
 | --- | --- | --- |
-| Claude Free/Pro/Max/Team/Enterprise plan as an AI connection, on any transport | Not offered. Claude in mode 2 uses an Anthropic API key, a supported cloud provider or OpenRouter; the Claude plan is used through mode 1 | "Anthropic does not permit third-party developers to offer Claude.ai login into their own applications, or to route requests through Free, Pro, or Max plan credentials on behalf of their users." (legal page, lastmod 2026-08-21). "Unless previously approved …" (Agent SDK overview, lastmod 2026-09-21) |
+| Claude Free/Pro/Max/Team/Enterprise plan as an AI connection, on any transport | Not offered. Claude in mode 2 uses an Anthropic API key or OpenRouter (Bedrock/Google Cloud would be a later PROV-1 kind); the Claude plan is used through mode 1 | "Anthropic does not permit third-party developers to offer Claude.ai login into their own applications, or to route requests through Free, Pro, or Max plan credentials on behalf of their users." (legal page, lastmod 2026-08-21). "Unless previously approved …" (Agent SDK overview, lastmod 2026-09-21) |
 | Pasted `claude setup-token`, `CLAUDE_CODE_OAUTH_TOKEN`, a Claude.ai session or a copied `~/.codex/auth.json` | Refused; the UI never asks for one | "developers may not collect, store, or intermediate Claude.ai credentials or session tokens"; Codex CI guide: one machine per `auth.json`, "Do not use this workflow for public or open-source repositories" |
 | Companion that drives the unmodified `claude` binary (`claude -p`, Agent SDK) with the owner's login | Not built. It needs Anthropic's written answer first (plan task) | The carve-out covers "an end user … signing in to the unmodified Claude Code binary", but support article 15036540 treats "`claude -p`, and third-party app usage" together, and `--bare` "will become the default for `-p`" and ignores OAuth credentials |
 | ChatGPT plan on the `server` transport (Flux server holds the tokens) | Disabled until OpenAI approves Flux through its interest form | "If you're building a paid or remotely hosted app, join the waitlist"; the 127.0.0.1 callback; "Keep tokens out of browser storage" |
@@ -74,6 +74,12 @@ A connection has a **provider** and a **transport**:
 | Codex app-server auth or `chatgptAuthTokens` hosted by Flux | Rejected | "App-server authentication has never been permitted for commercial or hosted services"; `chatgptAuthTokens` is "FOR OPENAI INTERNAL USE ONLY" |
 
 ## AIM-3 — the companion and the ChatGPT plan connection (mode 2)
+
+**Status of this connection.**
+
+- **Inference.** It is a recorded inference ([research §4](research/2026-10-04-two-ai-modes.md#4-findings-for-flux)), not an OpenAI statement, that a local open-source companion serving prompts assembled by a remote Flux fits SIWC's "open-source projects, personal projects that run locally".
+- **Switch.** The operator switch for `companion` connections stays **off by default** until OpenAI answers the interest form or an independent peer accepts that inference.
+- **Real-account behavior.** This is **unverified** until a dated smoke test.
 
 The companion is a small open-source part of Flux (AGPL, in this repository). The
 owner runs it on their own computer. It holds the owner's ChatGPT tokens and serves
