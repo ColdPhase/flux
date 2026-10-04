@@ -176,6 +176,9 @@ author and time from the message itself. `GET …/sketches?dmId=` lists one DM's
       the workspace's owners and admins, who manage every project, and the other participants
       are `leftOut`. The web app asks for `none` until the person ticks "Also give … access",
       which is unchecked by default, so nobody joins a project they were not explicitly given.
+      The `grant` default only keeps the #96 API compatible: clients should always send
+      `participants`, and a future v2 API defaults to `none` (#236). A `none` preview's token
+      used by a request that omits `participants` gets `409 PROMOTION_CHANGED`.
     - For an existing project the caller can change (`project.write`; a viewer gets `403`), the
       readers are `listProjectPeople`.
   - `leftOut`: participants who would not see the copy.
