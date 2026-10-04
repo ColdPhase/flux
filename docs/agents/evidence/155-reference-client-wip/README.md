@@ -71,6 +71,43 @@ Raw logs are kept outside the repository; their sha256 is listed so a copy can b
   `test_sketch_work_details.test_01` (2 workspace subtests), `test_work_decisions.test_04`
   (ERROR) and `test_06` (FAIL), `test_work_details.test_08` (ERROR). Log `w170b-check-ui.log`
   sha256 `1affe1c19bf197f5aea1a19abd422f570a4dea6652529726de82dde012ce75cc`.
+
+### Failures at `e359bd47`, compared with main `d94f70e4`
+
+Main was checked out detached at `d94f70e4` (the merged main) and run with the same scripts.
+
+- **`proactive-comparison.e2e.ts`: test-locator race, fixed in the test (`581bf551`).** Repeat
+  runner `w170b-proactive.sh` (sha256 `97fd639a29bd60b65b985b5cb06061295428350453902de6524deab486385581`:
+  `check_application.sh` setup, then `REPS` × seed-proactive-ui + this e2e): branch `08a83c6b`
+  **0/3** (`w170b-proactive-branch.log` sha256
+  `215848ccbd90a08d718d854a273fba75558b2143e48ab81a5b7e1769ded346c5`), main **3/3**
+  (`w170b-proactive-main.log` sha256
+  `3561dd91c96ca31c6dd477811e0d12d6f654d56e8225b0068c0f528bcc15747a`). Same board-card markup on
+  both; main passes only because its Details renders before the board. The wait is now scoped to
+  `.wd[data-detail-kind="work"][data-detail-id=<fixture work>]`, which also proves the exact work
+  opened. No application code changed.
+- **`test_sketch_work_details.test_01` workspace subtests: stale branch expectation, fixed
+  (`5dd9d24f`).** Main's #210 canonicalises `/map/:id` of a project sketch to
+  `/projects/:p/map/:id` (main's `test_map_task_count` asserts it); this branch-only test still
+  expected `/map/:id`. Both entries now assert the canonical project route.
+- **`test_work_decisions.test_04`/`test_06`: branch-only, not fixed.** Test bodies are identical to
+  main's. Branch: failed 2/2 (`w170b-check-ui.log`, `w170b-branch-ui2.log` sha256
+  `70b03aa5e9068af54d32ff4d257fbf47b426ada7ade9d22f9533246d6fc7580b`); passed at `7a4529d0`.
+  Main: 10/10 (`w170b-main-ui.log` sha256
+  `dd4a84f2b46a77a795fc1d1ccbbe966269936e7fadfe9f99ad1fab419bc2cabf`). test_04: the message row
+  intercepts the click on its "Result" action (`.ws-acts` is `pointer-events: none` until the row
+  is hovered; Playwright's scroll-into-view loses the hover). test_06 follows from test_04's missing
+  result. Same signature as `test_project_surface.test_05`.
+- **`test_project_surface.test_02`: branch-only since ≤`35910762`, not fixed.** Main 12/12 in this
+  module (test_02 body identical). A message is clipped at the top of the opening screen.
+  `test_07` also failed once in the branch rerun (overflow button 54px below the author), passed
+  in the full run. Hypothesis for this group (unverified): since `600565f8` the opening settle
+  stops on any scroll it did not write; late layout from the asynchronous message-work previews
+  can then leave the opening screen mid-message, putting the target row's hover toolbar
+  (`top: -10px`) out of view.
+- **`test_work_details.test_08`: branch-only test, stale shell expectation.** It looks for a
+  project link under the sidebar "Places" navigation, which main's #184 sidebar no longer has.
+  `test_work_details.py` does not exist on main.
 <!-- more -->
 
 ## Verified in Docker at `642738dc` (isolated projects, ports 18910–18919)
