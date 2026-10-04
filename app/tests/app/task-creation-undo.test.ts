@@ -135,7 +135,15 @@ test('an exact existing creation-provenance link is an observation and leaves Un
   const f = await scene();
   const result = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/results`,
     { body: { title: 'Initial context', finding: 'positive' } }), 201);
-  const { item } = await f.create({ related: [{ type: 'result', id: result.id }] });
+  // The public MCP task schema deliberately has no related field. Exercise the admitted
+  // trusted native creation port using this scene's real agent, then the public link command.
+  const item = await db.transaction(async (tx) => {
+    const native = nativeWorkInTransaction(tx);
+    const created = await native.createWork({ kind: 'agent', id: f.agentId }, f.projectId,
+      { title: 'Initial related context', related: [{ type: 'result', id: String(result.id) }] });
+    await native.flushEvents();
+    return created;
+  });
   const before = await pool.query('SELECT count(*)::int AS n FROM project_object_links WHERE from_id=$1', [item.id]);
   expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/links`,
     { body: { from: { type: 'work', id: item.id }, to: { type: 'result', id: result.id } } }), 201);
