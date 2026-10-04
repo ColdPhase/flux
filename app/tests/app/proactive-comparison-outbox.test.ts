@@ -8,6 +8,7 @@ import type { WorkResult } from '@flux/contracts';
 import { proactiveReservation } from '../../apps/worker/src/proactive-comparison/reservation-adapter.js';
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
+import { eventPorts } from '../../apps/server/src/events.js';
 
 const reservations = proactiveReservation(db);
 const fakeKey = `sk-ant-api03-${'outbox-owner-only-'.repeat(4)}END7`;
@@ -47,7 +48,7 @@ describe('negative-result candidate and budget reservation (#58)', () => {
         dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal',
         maxRunsPerDay: 1, periodBudgetCents: 5, perRunCents: 5 } }), 201) as { id: string }).id;
     expectStatus(await owner.browser.request('POST', '/api/v1/background-compute-connections', { body: {
-      apiKey: fakeKey, payerOrganization: 'Owner payer', providerWorkspace: 'Dedicated test workspace',
+      provider: 'anthropic', model: 'claude-sonnet-5', apiKey: fakeKey, payerOrganization: 'Owner payer', providerWorkspace: 'Dedicated test workspace',
       workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true,
       providerBillingAcknowledged: true, projectDataDisclosureAcknowledged: true,
       maxRunsPerDay: 1, periodDays: 30, periodBudgetCents: 5, perRunCents: 5,
@@ -65,7 +66,7 @@ describe('negative-result candidate and budget reservation (#58)', () => {
     assert.deepEqual([(await candidate(peerNegative.id))?.owner_user_id, (await candidate(peerNegative.id))?.rule_id],
       [owner.id, ruleId], 'the peer’s project-visible result uses only the owner’s explicit rule and budget');
     const beforeProposal = (await pool.query('SELECT count(*)::int AS n FROM proactive_comparison_outbox WHERE project_id=$1', [projectId])).rows[0].n;
-    await db.transaction((tx) => recordEvent(tx, { kind: 'agent', id: agentId }, workspaceId,
+    await db.transaction((tx) => recordEvent(eventPorts(tx), { kind: 'agent', id: agentId }, workspaceId,
       'project.proposal_created.v1', projectId, {}));
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM proactive_comparison_outbox WHERE project_id=$1', [projectId])).rows[0].n,
       beforeProposal, 'a proposal-origin event cannot start another comparison');
