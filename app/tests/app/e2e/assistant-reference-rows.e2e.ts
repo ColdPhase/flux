@@ -260,15 +260,10 @@ test('required metadata retry preserves lost-response command UUID, native reply
   // real citation focused so that arrival/viewport movement cannot retire the
   // required metadata selector before the injected failure is observed.
   const anchor=page.locator(`[data-answer-run="${answers[2]!.runId}"]`);
-  const geometry=async(stage:string)=>console.log('ANCHOR_TRACE',stage,JSON.stringify(await page.evaluate((run)=>{const pane=document.querySelector('.project-convo__feed') as HTMLElement;const row=document.querySelector(`[data-answer-run="${run}"]`) as HTMLElement|null;const box=pane.getBoundingClientRect();return {scrollTop:pane.scrollTop,scrollHeight:pane.scrollHeight,clientHeight:pane.clientHeight,paneTop:box.top,anchorTop:row?.getBoundingClientRect().top??null,phase:document.querySelector('.project-convo')?.getAttribute('data-references-phase'),assoc:document.querySelector('.project-convo')?.getAttribute('data-associations-phase')};},answers[2]!.runId)));
-  await geometry('start');
   await anchor.scrollIntoViewIfNeeded();await anchor.locator('[data-native-ref]').first().focus();
-  await geometry('after-scroll-focus');
   await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
   await expect(page.getByRole('button',{name:'Refresh task references',exact:true})).toBeVisible();
-  await geometry('alert-visible');
   await page.waitForTimeout(250);
-  await geometry('before-click');
   const before=await anchor.evaluate((row)=>row.getBoundingClientRect().top);
   // The reply that arrives and the failure notice must not pull the reader away from the answer.
   const view=await page.locator('.project-convo__feed').evaluate((pane)=>{const box=pane.getBoundingClientRect();return {top:box.top,bottom:box.bottom};});
@@ -276,7 +271,6 @@ test('required metadata retry preserves lost-response command UUID, native reply
   await page.unroute(referencePattern);await page.getByRole('button',{name:'Refresh task references',exact:true}).click();
   await expect(page.locator('.project-convo')).toHaveAttribute('data-references-phase','ready');
   await expect(page.locator('#project-composer')).toHaveValue(replyText);
-  await geometry('after-ready');
   const after=await anchor.evaluate((row)=>row.getBoundingClientRect().top);
   assert.ok(Math.abs(after-before)<=2,`reader retains answer anchor:${before}→${after}`);
   const retained=await page.evaluate((key)=>JSON.parse(sessionStorage.getItem(key)!),storageKey);
