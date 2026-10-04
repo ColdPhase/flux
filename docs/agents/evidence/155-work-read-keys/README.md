@@ -44,7 +44,7 @@ COMPOSE_PROJECT_NAME/FLUX_TEST_PORT/FLUX_TEST_MAILPIT_PORT for concurrent work.
 The owner used flux155browser on18581/18585. Its stack is retained for the next
 read adapter stage; all owner test/build handles are terminal.
 
-inputs.json hashes 520 tracked build/config/contract inputs at the tested
+inputs.json.gz hashes 520 tracked build/config/contract inputs at the tested
 source and all saved outputs (except the manifest itself). Original build/test
 and two earlier failed-fixture logs are preserved as exact gzip/raw pairs;
 readable copies only trim trailing ASCII whitespace and blank EOF lines.

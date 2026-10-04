@@ -54,7 +54,7 @@ Readable [application](application.log), [typing UI](typing-ui.log),
 [native UI](native-ui.log), [targeted](targeted.log), [build](build.log) and
 [browser image](browser-image.log) logs remove trailing whitespace only.
 Each has a deterministic `.log.gz` containing its exact original bytes.
-[Inputs and output hashes](inputs.json) include compressed and decompressed
+[Inputs and output hashes](inputs.json.gz) include compressed and decompressed
 log hashes. Credential-pattern inspection found no credential value in them.
 
 ## What the runtime evidence proves

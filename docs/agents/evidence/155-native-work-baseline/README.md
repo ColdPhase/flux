@@ -47,7 +47,7 @@ alternates to avoid maxLength no-ops; wheel samples actually move the native pan
 
 ## Observed results
 
-[Complete report](native-work-performance.json) / [terminal log](baseline.log):
+[Complete report](native-work-performance.json.gz) / [terminal log](baseline.log):
 
 | Operation | Desktop p95 | CPU4× p95 | Desktop measured duration | CPU4× measured duration |
 | --- | ---: | ---: | ---: | ---: |
@@ -130,7 +130,7 @@ here means completed failed baseline; exit2 means incomplete harness evidence.
 Docker inputs are unchanged from previously tested4817b88 (385 application tests
 and9 affected typing UI cases at their recorded source); no new full suite is
 claimed here. Foundation setup/local links and34 Python checks passed separately.
-[Source/output manifest](inputs.json) records522 exact source inputs, output hashes
+[Source/output manifest](inputs.json.gz) records522 exact source inputs, output hashes
 and decompressed raw-log hashes. Raw .gz logs preserve original terminal bytes
 with deterministic mtime0; readable logs trim trailing whitespace only.
 

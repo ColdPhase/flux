@@ -24,7 +24,7 @@ warm-up or measured samples: no latency distribution can be claimed. Repeated
 per-recipient sender checks exceeded the2-second delivery deadline. The report
 retains112 unfinished sender/delivery checks and their admission reservations.
 Messages/events/notifications/outbox/audience counts remained unchanged.
-[Baseline inputs and output hashes](baseline-inputs.json) pin the failed source.
+[Baseline inputs and output hashes](baseline-inputs.json.gz) pin the failed source.
 
 ## Optimization and independent assessment
 
@@ -51,7 +51,7 @@ application inputs.
 
 ## Development profile measurement
 
-[Actual report](shared-stress.json) and [full log](shared-stress.log):30 warm-up
+[Actual report](shared-stress.json.gz) and [full log](shared-stress.log.gz):30 warm-up
 updates followed by200 measured stop/active updates over94,987ms. All128 sockets
 stayed open and received new ready snapshots after warm-up. Callback-level
 ready interarrival maximum930ms, sampled ready-age maximum626ms, and zero stale
@@ -88,7 +88,7 @@ are written to these measurement reports.
 
 ## Constrained CPU profile
 
-[Report](constrained-stress.json) and [log](constrained-stress.log): another
+[Report](constrained-stress.json.gz) and [log](constrained-stress.log.gz): another
 independent32-human/128-socket native dataset,30 warm-ups and200 measured updates
 over97,624ms. The [Compose override](constrained-compose.yaml) caps ONLY the test
 container (driver plus in-process API) at2 CPUs. Actual Docker inspect returned
@@ -132,7 +132,7 @@ FLUX_TEST_PORT=18571 FLUX_TEST_MAILPIT_PORT=18575 ./scripts/check_application.sh
 
 The local CPU override is the preserved constrained-compose.yaml above.
 Both benchmark processes returned exit0. The failed baseline returned exit1.
-Full [configured application run](application.log) passed build/type/lint,
+Full [configured application run](application.log.gz) passed build/type/lint,
 **385/385 tests, no skips,62.082s**, then PWA3/access-stream1/session
 prepare→restart→verify/Push-unavailable1/SMTP-unavailable1. This includes the
 62 targeted cases. These are the actual immutable4817b88 application inputs;

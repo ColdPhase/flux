@@ -76,7 +76,7 @@ stalled; only the identified own UI-test one-off was stopped (exit137). A select
 WorkDecisions test initially lacked its mandatory test01 authentication setup.
 These failures remain separate. One browser attempt began during prepare and is
 explicitly excluded from final verification. Uncommitted intermediate variants
-were not pinned; inputs.json describes only final source.
+were not pinned; inputs.json.gz describes only final source.
 
 **The final wider log prints one Playwright asyncio CancelledError during route
 teardown, outside the named test results.** Fixtures use ignoreErrors only for
@@ -93,7 +93,7 @@ commit, then run `sh docs/agents/evidence/155-message-work-pages/reproduce.sh pr
 24581/24585; override COMPOSE_PROJECT_NAME and test ports for concurrent work.
 Only clean that chosen stack. Owner used flux155browser on 18581/18585.
 
-inputs.json hashes immutable git archive bytes and every saved output except
+inputs.json.gz hashes immutable git archive bytes and every saved output except
 itself. Gzip/raw hashes and readable copies preserve terminal evidence; readable
 copies only strip trailing ASCII whitespace and blank EOF lines. Saved wrappers,
 current image IDs, viewports/zoom and four PNGs are included.

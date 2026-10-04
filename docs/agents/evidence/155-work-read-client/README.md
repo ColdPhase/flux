@@ -49,7 +49,7 @@ Run `cleanup` only for that chosen project when its stack is no longer needed.
 Owner used flux155browser on 18581/18585; only that stack was rebuilt. All build
 and test handles are terminal. Original owner wrapper and image IDs are saved.
 
-inputs.json binds immutable source inputs and saved outputs. Three terminal logs
+inputs.json.gz binds immutable source inputs and saved outputs. Three terminal logs
 have exact gzip/raw hashes; readable copies only trim trailing ASCII whitespace
 and blank EOF lines. Test transport mocks establish request count, selector
 encoding and error propagation; they do not establish native server DTOs or

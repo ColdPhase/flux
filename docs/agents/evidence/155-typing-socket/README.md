@@ -20,8 +20,8 @@ tests**, no skips,61.868739778s; PWA3, access/stream1, session prepare/restart/
 verify, unavailable Push1 and unavailable SMTP1 also passed. Terminal handle58858
 exited0. The script removed only its own Compose project
 flux-test-1790823856-44900, volumes and three tagged images.
-[The readable full log](application.log), [exact raw log](application.log.gz)
-and496 [input/log hashes](inputs.json) pin this
+[The readable full log](application.log.gz), [exact raw log](application.log.gz)
+and496 [input/log hashes](inputs.json.gz) pin this
 run. The log was checked for credential patterns: the only broad cookie-pattern
 match was a test name about the SFU cookie gate, not a cookie or credential value.
 

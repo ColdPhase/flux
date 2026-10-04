@@ -19,7 +19,7 @@ checks**, no skips,49.984174397s; PWA3, access/stream1, session prepare/restart/
 verify, unavailable Push1 and unavailable SMTP1 also passed. Terminal command
 handle71343 exited0. [Readable successful log](application.log),
 [exact raw terminal bytes](application.log.gz) and
-[source/configuration/log hashes](inputs.json) pin that run. The script removed
+[source/configuration/log hashes](inputs.json.gz) pin that run. The script removed
 only its own Compose project flux-test-1790821462-42183, volumes and three images.
 No live test process or service from that run remains. Source hashes still match
 after evidence-only commits. The log was checked for credential-pattern matches

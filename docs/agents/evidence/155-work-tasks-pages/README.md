@@ -74,7 +74,7 @@ Cleanup only that chosen stack when no longer needed. Owner used flux155browser
 on 18581/18585; all recorded invocations are terminal. Saved environment contains
 the current image IDs, resource allocation and actual screenshot viewports/zoom.
 
-inputs.json binds git-show bytes at the immutable source and every saved output
+inputs.json.gz binds git-show bytes at the immutable source and every saved output
 except itself. Seven terminal logs have gzip/raw hashes; readable copies only
 trim trailing ASCII whitespace and blank EOF lines. **The initial failed browser
 trace printed three actual test Cookie headers: saved raw and gzip redact these

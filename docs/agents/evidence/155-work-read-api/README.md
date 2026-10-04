@@ -71,7 +71,7 @@ concurrent work. The owner used flux155browser on18581/18585 and retains only
 that stack for client integration. All owner build/test handles are terminal.
 The original final owner wrapper is also saved, separately from portable repro.
 
-inputs.json binds immutable tracked build/config/contract files at the tested
+inputs.json.gz binds immutable tracked build/config/contract files at the tested
 source and saved outputs. Eight original logs have exact gzip/raw hashes;
 readable copies only trim trailing ASCII whitespace and blank EOF lines.
 Environment/image IDs and intermediate failed/successful pins are recorded.
