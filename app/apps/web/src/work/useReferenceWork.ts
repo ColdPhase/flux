@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigation, useRevalidator } from 'react-router';
 import type { NativeWorkRow } from '@flux/contracts';
 import { getWorkReferenceRows, workReferenceReadUrl } from './read-api';
+import { selectReferenceWindow } from './reference-window';
 import { useWorkRead } from './useWorkRead';
 
 /** Metadata for the actual visible references, not a project collection/cache.
@@ -26,13 +27,14 @@ export function useReferenceWork(accountId: string, projectId: string, available
         return row.bottom > bounds.top && row.top < bounds.bottom;
       });
       const focused = elements.find((element) => element.contains(document.activeElement))?.dataset.nativeRef;
-      // A proposal's authority (Accept/Dismiss) never depends on where the reader has scrolled:
-      // every proposal target in the loaded window is read, before ancillary citation labels,
-      // which stay limited to what is visible. The whole selection stays bounded to 100.
-      const priorities = [focused, interacted,
-        ...elements.filter((element) => element.dataset.proposalTarget !== undefined).map((element) => element.dataset.nativeRef),
-        ...visible.map((element) => element.dataset.nativeRef)];
-      const refs = [...new Set(priorities.filter((value): value is string => !!value && allowed.has(value)))].slice(0, 100).sort().join(',');
+      // A proposal's authority (Accept/Dismiss) does not depend on where the reader has scrolled
+      // while the loaded window has at most 98 proposal targets; beyond that the nearest are read
+      // first (see selectReferenceWindow). Citation labels stay limited to what is visible.
+      const proposals = elements.filter((element) => element.dataset.proposalTarget !== undefined && element.dataset.nativeRef).map((element) => {
+        const row = element.getBoundingClientRect();
+        return { ref: element.dataset.nativeRef!, distance: row.bottom < bounds.top ? bounds.top - row.bottom : row.top > bounds.bottom ? row.top - bounds.bottom : 0 };
+      });
+      const refs = selectReferenceWindow({ focused, interacted, proposals, visible: visible.map((element) => element.dataset.nativeRef!) }, allowed).join(',');
       setSelected((previous) => previous === refs ? previous : refs);
     };
     const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(measure); };

@@ -75,9 +75,15 @@ required. Mock-provider runs only prove native integration with that mock, not
 real-model/provider acceptance. Original criteria are not reduced by this slice.
 
 **RR2 amendment, 2026-10-04 (#155, owner Zamojski5; for independent review on PR #170):** the
-selection order is focused/interacted reference, then **every proposal target in the loaded
-answer window regardless of scroll position**, then visible citations — still at most 100
-distinct identities and still no project collection or cache. Reason: Accept/Dismiss authority
-must not depend on where the reader has scrolled; in the Studio 11.6 layout a just-arrived
-proposal could sit below the fold and stay "Checking…" for a reader who was following the
-end. Citation labels remain limited to visible references.
+selection order is the focused, then the interacted reference, then **proposal targets in the
+loaded answer window nearest the viewport first** (visible ones at distance 0, ties in reading
+order), then visible citations — still at most 100 distinct identities and still no project
+collection or cache (`selectReferenceWindow` in `apps/web/src/work/reference-window.ts`).
+Guarantee: while the loaded window holds at most 98 distinct proposal targets, every one of them
+is read regardless of scroll, so Accept/Dismiss authority does not depend on where the reader has
+scrolled; a visible or focused proposal is always read first. Beyond 98, the farthest proposals
+wait until the reader scrolls or moves focus nearer; until read, their Accept stays unavailable
+("Checking…"), never inferred. Reason: in the Studio 11.6 layout a just-arrived proposal could
+sit below the fold and stay "Checking…" for a reader who was following the end. Citation labels
+remain limited to visible references and are the first to yield at the bound. Account, project,
+generation and identity-revalidation fences are unchanged (RR1).
