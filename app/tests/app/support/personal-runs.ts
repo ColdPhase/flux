@@ -1,3 +1,4 @@
+import { tablePrice, type AiPrice, type AiProviderKind } from '@flux/contracts';
 import type {
   PersonalCompute, PersonalComputeRequest, PersonalComputeResult, PersonalConnection, PersonalConnectionLookup, PersonalRunQueue,
 } from '@flux/core';
@@ -8,27 +9,40 @@ import type { DbExecutor } from '@flux/db';
 // worker compose `noPersonalConnections` and `unavailablePersonalCompute`. Nothing here calls a
 // model, so no test using them counts as a provider, billing or compatibility pass.
 
-/** Connections keyed by owner. `keyRef` stands in for #124's key reference; no key exists. */
+const SONNET = tablePrice('anthropic', 'claude-sonnet-5')!;
+/** The table price of the default fake connection's model: $2/M input, $10/M output (checked 2026-10-02). */
+export const FAKE_PRICE: AiPrice = { inputMicrosPerMTok: SONNET.inputMicrosPerMTok, outputMicrosPerMTok: SONNET.outputMicrosPerMTok, source: 'table', checkedOn: SONNET.checkedOn };
+
+/**
+ * Each owner's connections, newest last. `keyRef` stands in for #124's key reference; no key exists.
+ * Like the production lookup it returns exactly the named connection, or without a name the newest.
+ */
 export class FakeConnections implements PersonalConnectionLookup {
-  readonly byOwner = new Map<string, PersonalConnection>();
+  readonly byOwner = new Map<string, PersonalConnection[]>();
   resolved: string[] = [];
 
-  connect(ownerUserId: string, id: string): PersonalConnection {
+  /** Adds a connection (or replaces the one with that id); the owner's others stay. */
+  connect(ownerUserId: string, id: string, model: { provider?: AiProviderKind; model?: string; baseUrl?: string | null; price?: AiPrice | null } = {}): PersonalConnection {
     const connection: PersonalConnection = {
       id, ownerUserId, status: 'active', keyRef: `test-key-ref-${id}`,
       payer: { organization: `Payer org of ${ownerUserId}`, workspace: 'Default' },
+      provider: model.provider ?? 'anthropic', model: model.model ?? 'claude-sonnet-5', baseUrl: model.baseUrl ?? null,
+      price: model.price === undefined ? FAKE_PRICE : model.price,
     };
-    this.byOwner.set(ownerUserId, connection);
+    this.byOwner.set(ownerUserId, [...(this.byOwner.get(ownerUserId) ?? []).filter((item) => item.id !== id), connection]);
     return connection;
   }
 
-  disconnect(ownerUserId: string) {
-    this.byOwner.delete(ownerUserId);
+  /** Removes one of the owner's connections, or all of them. */
+  disconnect(ownerUserId: string, id?: string) {
+    if (id === undefined) this.byOwner.delete(ownerUserId);
+    else this.byOwner.set(ownerUserId, (this.byOwner.get(ownerUserId) ?? []).filter((item) => item.id !== id));
   }
 
-  async resolve(ownerUserId: string) {
+  async resolve(ownerUserId: string, connectionId?: string) {
     this.resolved.push(ownerUserId);
-    return this.byOwner.get(ownerUserId) ?? null;
+    const owned = this.byOwner.get(ownerUserId) ?? [];
+    return (connectionId === undefined ? owned.at(-1) : owned.find((item) => item.id === connectionId)) ?? null;
   }
 }
 

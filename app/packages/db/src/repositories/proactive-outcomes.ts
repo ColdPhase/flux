@@ -64,7 +64,7 @@ export function comparisonOutcomeRows(db: DbExecutor) {
       }).from(q).where(eq(q.ownerUserId, ownerId));
       const [connection] = await db.select({ maxRunsPerDay: c.maxRunsPerDay, periodBudgetCents: c.periodBudgetCents,
         perRunCents: c.perRunCents }).from(c)
-        .where(and(eq(c.ownerUserId, ownerId), isNull(c.revokedAt), isNotNull(c.encryptedKey)));
+        .where(and(eq(c.ownerUserId, ownerId), eq(c.usedForBackground, true), isNull(c.revokedAt), isNotNull(c.encryptedKey)));
       const candidates = await db.select({ id: q.id, projectId: q.projectId, resultId: q.resultId, ruleId: q.ruleId,
         status: q.status, reason: q.failureCode, createdAt: q.createdAt, reservedAt: q.reservedAt,
         startedAt: q.dispatchStartedAt, finishedAt: q.finishedAt, reservedCents: q.reservedCents,

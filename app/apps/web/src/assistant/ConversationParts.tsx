@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import type { AssistantAnswer, AssistantProposal, AssistantRun, AssistantSourceRef, ConversationMessage, WorkItem } from '@flux/contracts';
+import { aiConnectionLabel, type AssistantAnswer, type AssistantProposal, type AssistantRun, type AssistantSourceRef, type ConversationMessage, type WorkItem } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Button, Icon, IconButton } from '../ui';
 import { useShellActions } from '../app/shellContext';
@@ -143,7 +143,7 @@ export function AnswerItem({ answer, mine, lookups, when, clock, proposal, propo
       {answer.truncated ? <p className="assistant-answer__truncated"><Icon name="alert" size={13} />Stopped at the length limit, so this answer is incomplete.</p> : null}
       {proposal ? proposalControls : null}
       <div className="assistant-answer__foot">
-        <span>{sourceSummary(answer.sources.length)} · {answer.provenance.provider === 'anthropic' ? 'Anthropic' : answer.provenance.provider} {answer.provenance.model}</span>
+        <span>{sourceSummary(answer.sources.length)} · {aiConnectionLabel(answer.provenance.provider, answer.provenance.model)}</span>
         {mine ? <>
           {answer.truncated ? <Button variant="link" busy={busy === 'continue'} onClick={() => void act('continue', onContinue)}>Continue</Button> : null}
           <Button variant="link" busy={busy === 'retry'} onClick={() => void act('retry', onRetry)}>Retry</Button>
