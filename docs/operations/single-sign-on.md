@@ -27,7 +27,7 @@ provider can still sign in.
 
 1. **Register Flux with your provider** as a confidential web application using the
    authorization-code flow with PKCE and the scopes `openid email profile`. The redirect URI is
-   `https://<your Flux origin>/api/auth/oauth2/callback/<provider id>`. Flux prints the exact
+   `https://<your Flux origin>/api/auth/callback/<provider id>`. Flux prints the exact
    value when the API starts with single sign-on on (`Single sign-on is on`, field `redirectUri`):
 
    ```sh

@@ -175,7 +175,7 @@ docker compose --env-file docker/.env -p flux28 -f docker/compose.source.yaml --
 
 Endpoints: Better Auth under `/api/auth/*` (`sign-up/email`, `sign-in/email`,
 `sign-out`, `request-password-reset`, `reset-password`, and with single sign-on
-`sign-in/oauth2` and `oauth2/callback/<provider id>`); Flux session routes
+`sign-in/social` with the provider id and `callback/<provider id>`; a raw `idToken` sign-in is refused); Flux session routes
 `GET /api/v1/me`, `GET /api/v1/sessions` (never returns tokens),
 `DELETE /api/v1/sessions/:id` and `POST /api/v1/sessions/revoke-others`.
 Server code resolves the caller with `requirePrincipal(request)` from

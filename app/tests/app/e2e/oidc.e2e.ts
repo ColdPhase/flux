@@ -51,7 +51,7 @@ async function fresh() {
 /** Runs the visible "Sign in with Keycloak" flow and returns the page where it ends. */
 async function sso(context: BrowserContext, username: string, capture?: (url: string) => void): Promise<Page> {
   const page = await context.newPage();
-  if (capture) page.on('request', (request) => { if (request.url().includes(`/api/auth/oauth2/callback/${providerId}`)) capture(request.url()); });
+  if (capture) page.on('request', (request) => { if (request.url().includes(`/api/auth/callback/${providerId}`)) capture(request.url()); });
   await page.goto(`${origin}/sign-in`);
   await page.getByRole('button', { name: 'Sign in with Keycloak', exact: true }).click();
   await page.waitForURL((url) => url.origin === keycloak);
@@ -209,4 +209,14 @@ test('a replayed or forged callback signs nobody in', async () => {
   url.searchParams.set('state', 'forged-state');
   await page.goto(url.toString());
   assert.equal((await me(forged)).status, 401, 'an unknown state is refused');
+});
+
+test('a raw ID token presented directly does not sign in', async () => {
+  const context = await fresh();
+  const forgedToken = ['{"alg":"none"}', JSON.stringify({ iss: 'http://keycloak:8080/realms/flux', sub: 'forged', email: 'alice@acme.test', email_verified: true })]
+    .map((part) => Buffer.from(part).toString('base64url')).join('.') + '.';
+  const response = await context.request.post(`${origin}/api/auth/sign-in/social`, { data: { provider: providerId, idToken: { token: forgedToken } }, headers: { origin } });
+  assert.equal(response.status(), 400);
+  assert.equal((await response.json() as { code: string }).code, 'ID_TOKEN_SIGN_IN_DISABLED');
+  assert.equal((await me(context)).status, 401);
 });

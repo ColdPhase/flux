@@ -30,9 +30,9 @@ export function signIn(input: { email: string; password: string; oauth_query?: s
  * and to the sign-in page with `sso=failed` otherwise; the browser follows the returned address.
  */
 export function startSso(providerId: string, next: string) {
-  return request<{ url: string }>(`${AUTH_BASE_PATH}/sign-in/oauth2`, {
+  return request<{ url: string }>(`${AUTH_BASE_PATH}/sign-in/social`, {
     method: 'POST',
-    body: { providerId, callbackURL: next, errorCallbackURL: '/sign-in?sso=failed', newUserCallbackURL: next },
+    body: { provider: providerId, callbackURL: next, errorCallbackURL: '/sign-in?sso=failed', newUserCallbackURL: next, disableRedirect: true },
   });
 }
 
