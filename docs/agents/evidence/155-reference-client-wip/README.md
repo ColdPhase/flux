@@ -122,7 +122,14 @@ Main was checked out detached at `d94f70e4` (the merged main) and run with the s
   (all four subtests), `test_work_decisions` 10/10, `test_project_surface` 18/19 (only
   `test_02` fails). Log `w170b-branch-ui3.log` sha256
   `50c03eb6e812cd6b1b2e00971167e809d5a4b302a60c108dc6aaf0d5ae2c5f54`.
-<!-- more -->
+- Full `./scripts/check_application.sh` (`FLUX_TEST_PORT=18910 FLUX_TEST_MAILPIT_PORT=18911`):
+  **exit 0**. Main suite 790/790; PWA 3/3; access-stream, task-discussion-actors,
+  task-contribution-effects, GitHub 1/1 each; proactive comparison + outcomes 6/6;
+  work-proposal-pagination, task-plan, agent-connections 1/1 each; session restart
+  prepare/verify; push-unavailable and email-unavailable 1/1 each. Log `w170b-check-app2.log`
+  sha256 `595b70f216175c9e6b473392376d26a571703790dcb01667248b4589e1b2643e`.
+- Full `check_ui.sh` was not repeated at this head (no application change); its `e359bd47`
+  result above stands with `test_sketch_work_details` now passing.
 
 ## Verified in Docker at `642738dc` (isolated projects, ports 18910–18919)
 
