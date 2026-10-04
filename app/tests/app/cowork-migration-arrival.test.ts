@@ -88,12 +88,19 @@ for (const order of arrivals) test(`co-work, runtime and genuine-actor migration
       if (retained) assert.deepEqual(await coordination(), retained, `migration${version} must retain existing claim/checkpoint`);
     }
     assert.ok(retained);
+    // Every later shipped migration (e.g. GitHub 0036, task plan 0039 …) still arrives afterwards and
+    // must keep the same history and the retained claim/checkpoint.
+    for (const file of manifest.filter((item) => item.version >= 33 && !order.includes(item.version))) {
+      await apply(file);
+      assert.deepEqual(await history(), before, `migration${file.version} must preserve original history`);
+      assert.deepEqual(await coordination(), retained, `migration${file.version} must retain existing claim/checkpoint`);
+    }
     for (const table of ['agent_oauth_bindings', 'agent_runtime_sessions', 'agent_standing_grants', 'agent_command_receipts',
       'project_task_notices', 'project_task_discussions', 'cowork_requests', 'cowork_delivery_intents'])
       assert.equal((await client.query(`SELECT count(*)::int AS n FROM ${table}`)).rows[0].n, 0, `${table}: no inferred authority/content/receipt backfill`);
     const ledger = (await client.query('SELECT version FROM flux_schema_version ORDER BY version')).rows.map((row) => row.version);
     assert.ok(order.every((version) => ledger.includes(version)));
-    assert.equal(Math.max(...ledger), 38);
+    assert.equal(Math.max(...ledger), FLUX_SCHEMA_VERSION);
     assertExactMigrationLedger(manifest, ledger);
     await client.query('UPDATE agent_connections SET revoked_at=clock_timestamp() WHERE id=$1', [connection]);
     const stopped = await coordination();
