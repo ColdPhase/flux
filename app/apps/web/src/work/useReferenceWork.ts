@@ -26,9 +26,11 @@ export function useReferenceWork(accountId: string, projectId: string, available
         return row.bottom > bounds.top && row.top < bounds.bottom;
       });
       const focused = elements.find((element) => element.contains(document.activeElement))?.dataset.nativeRef;
-      // A visible target's authority matters before ancillary citation labels.
+      // A proposal's authority (Accept/Dismiss) never depends on where the reader has scrolled:
+      // every proposal target in the loaded window is read, before ancillary citation labels,
+      // which stay limited to what is visible. The whole selection stays bounded to 100.
       const priorities = [focused, interacted,
-        ...visible.filter((element) => element.dataset.proposalTarget !== undefined).map((element) => element.dataset.nativeRef),
+        ...elements.filter((element) => element.dataset.proposalTarget !== undefined).map((element) => element.dataset.nativeRef),
         ...visible.map((element) => element.dataset.nativeRef)];
       const refs = [...new Set(priorities.filter((value): value is string => !!value && allowed.has(value)))].slice(0, 100).sort().join(',');
       setSelected((previous) => previous === refs ? previous : refs);

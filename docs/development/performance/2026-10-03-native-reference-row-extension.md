@@ -73,3 +73,11 @@ The original #155 scale/motion/typing matrix, superseded-only native fixture,
 whole integrated release and real provider/device/MCP/install evidence remain
 required. Mock-provider runs only prove native integration with that mock, not
 real-model/provider acceptance. Original criteria are not reduced by this slice.
+
+**RR2 amendment, 2026-10-04 (#155, owner Zamojski5; for independent review on PR #170):** the
+selection order is focused/interacted reference, then **every proposal target in the loaded
+answer window regardless of scroll position**, then visible citations — still at most 100
+distinct identities and still no project collection or cache. Reason: Accept/Dismiss authority
+must not depend on where the reader has scrolled; in the Studio 11.6 layout a just-arrived
+proposal could sit below the fold and stay "Checking…" for a reader who was following the
+end. Citation labels remain limited to visible references.
