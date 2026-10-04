@@ -95,7 +95,7 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
     move(who,sketchId,connectionId,command){return run(who,sketchId,true,async c=>{
       closed(command,['generation','gestureId','leaseId','sequence','positions']);const current=await lease(c,who,command.leaseId,command.gestureId,command.generation,connectionId);
       const next=positions(command.positions,current.thoughts.map(t=>t.id));const seq=sequence(command.sequence);
-      if(seq<current.sequence)return;if(seq===current.sequence){if(!current.connectionId||JSON.stringify(current.positions)!==JSON.stringify(next))throw new ConflictError('A preview sequence has different positions','EDITING_PREVIEW_SEQUENCE_CONFLICT');return;}
+      if(seq<current.sequence)return;if(seq===current.sequence){if(!current.connectionId||next.length!==current.positions.length||next.some((position,index)=>{const old=current.positions[index];return !old||position.id!==old.id||position.x!==old.x||position.y!==old.y||position.width!==old.width||position.height!==old.height;}))throw new ConflictError('A preview sequence has different positions','EDITING_PREVIEW_SEQUENCE_CONFLICT');return;}
       const packet={type:'map-move',generation:c.room.generation,connectionId,actor:c.actor,gestureId:current.gestureId,leaseId:current.leaseId,sequence:seq,positions:next,expiresAt:new Date().toISOString()};
       if(Buffer.byteLength(JSON.stringify(packet))>65_536)throw new ServiceUnavailableError('The bounded preview frame is full','EDITING_MAP_CAPACITY');
       const rows=liveMapRows(c.db,decodeMapChange);await rows.bindMove(current.leaseId,connectionId,seq,next);await rows.notify(sketchId);
