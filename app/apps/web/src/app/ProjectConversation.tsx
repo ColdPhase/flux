@@ -250,28 +250,35 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
     // Open on whole messages: when the latest screen would start mid-message, begin at the next
     // message instead, with a little room below the last one (direction C "return anchor").
     // Layout settles as the return line and fonts arrive, so this repeats until the reader acts.
+    // The position settle() last wrote; any other scroll (scrollIntoView, focus, find) is the
+    // reader's, and ends settling just like a wheel, touch, key or pointer would.
+    let written = -1;
     const settle = () => {
       column.style.paddingBottom = '';
       feed.scrollTop = feed.scrollHeight;
+      written = feed.scrollTop;
       const top = feed.getBoundingClientRect().top;
       const list = [...feed.querySelectorAll<HTMLElement>('.project-convo__message')];
       const index = list.findIndex((item) => { const box = item.getBoundingClientRect(); return box.top < top - 1 && box.bottom > top + 1; });
       if (index < 0) return;
       const next = list[index + 1];
-      if (!next) { list[index]!.scrollIntoView({ block: 'start' }); return; }
+      if (!next) { list[index]!.scrollIntoView({ block: 'start' }); written = feed.scrollTop; return; }
       const delta = next.getBoundingClientRect().top - top;
       if (delta <= 0) return;
       column.style.paddingBottom = `${parseFloat(getComputedStyle(column).paddingBottom) + delta}px`;
       feed.scrollTop = feed.scrollHeight;
+      written = feed.scrollTop;
     };
     settle();
     const observer = new ResizeObserver(() => settle());
     observer.observe(feed);
     observer.observe(column.firstElementChild ?? column);
     const stop = () => observer.disconnect();
+    const moved = () => { if (Math.abs(feed.scrollTop - written) > 1) stop(); };
     const timer = window.setTimeout(stop, 2000);
-    for (const type of ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const) feed.addEventListener(type, stop, { once: true, passive: true });
-    return () => { stop(); window.clearTimeout(timer); for (const type of ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const) feed.removeEventListener(type, stop); };
+    for (const type of ['wheel', 'touchstart', 'keydown', 'pointerdown', 'focusin'] as const) feed.addEventListener(type, stop, { once: true, passive: true });
+    feed.addEventListener('scroll', moved, { passive: true });
+    return () => { stop(); window.clearTimeout(timer); for (const type of ['wheel', 'touchstart', 'keydown', 'pointerdown', 'focusin'] as const) feed.removeEventListener(type, stop); feed.removeEventListener('scroll', moved); };
   }, [conversation?.id, arrived, arrivedLoaded, feedNode]);
   useEffect(() => {
     // A reader at the end follows what arrives there (a reply, their assistant's answer and its

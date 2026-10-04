@@ -133,8 +133,9 @@ test('real settings UI binds, verifies PR links and removes private projections 
   await page.getByRole('button', { name: 'Verify and link PR', exact: true }).click();
   const privatePull = page.getByRole('link', { name: '#42 · Keep a manual off switch when gesture sensing loses calibration', exact: true }); await privatePull.waitFor();
   assert.match(await linker.innerText(), /nia-firmware.*head aaaaaaaaaaaa/);
-  await page.getByLabel('Find task',{exact:true}).fill('');await expect(choices).toContainText('1–50 of 105 tasks');
-  await choices.getByRole('button',{name:'Next',exact:true}).click();await expect(choices).toContainText('51–100 of 105 tasks');
+  // Clearing the search returns to the window the person left (positions are kept per query).
+  await page.getByLabel('Find task',{exact:true}).fill('');await expect(choices).toContainText('51–100 of 105 tasks');
+  await choices.getByRole('button',{name:'Previous',exact:true}).click();await expect(choices).toContainText('1–50 of 105 tasks');
   await expect(page.getByLabel('Task',{exact:true})).toHaveValue(task.id);
   await expect(page.getByLabel('Pull request number',{exact:true})).toHaveValue('42');
   await expect(page.getByLabel('Relationship',{exact:true})).toHaveValue('required_output');

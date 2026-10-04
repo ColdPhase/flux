@@ -270,6 +270,9 @@ test('required metadata retry preserves lost-response command UUID, native reply
   await page.waitForTimeout(250);
   await geometry('before-click');
   const before=await anchor.evaluate((row)=>row.getBoundingClientRect().top);
+  // The reply that arrives and the failure notice must not pull the reader away from the answer.
+  const view=await page.locator('.project-convo__feed').evaluate((pane)=>{const box=pane.getBoundingClientRect();return {top:box.top,bottom:box.bottom};});
+  assert.ok(before>=view.top-2&&before<view.bottom,`reader still sees the answer before refresh: ${before} not in ${view.top}–${view.bottom}`);
   await page.unroute(referencePattern);await page.getByRole('button',{name:'Refresh task references',exact:true}).click();
   await expect(page.locator('.project-convo')).toHaveAttribute('data-references-phase','ready');
   await expect(page.locator('#project-composer')).toHaveValue(replyText);
