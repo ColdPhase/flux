@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
 import { test } from 'node:test';
 import * as Y from 'yjs';
 import type { Doc, WikiTextEnvelope } from '@flux/contracts';
@@ -222,6 +223,14 @@ test('actual 100k live HTTP read waits behind two full codec leases before SQL a
     const observed = response.json(); assert.equal(observed.body, body);
     assert.deepEqual([observed.generation, observed.sequence, observed.hash, observed.checkpoint], [head.generation, head.sequence, head.hash, head.checkpoint]);
     assert.ok(sql > before, 'actual SQL begins only after full future input/state promotion');
+    // raw.end completes inject while the held handoff transaction still awaits
+    // COMMIT. Observe actual work settlement before checking its retained lease.
+    const deadline = performance.now() + 1500;
+    while (authority.sqlActive !== 0 || runtime.codecLeases !== 0) {
+      assert.ok(performance.now() < deadline, 'actual SQL/admission settlement exceeded its finite bound');
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    assert.equal(authority.sqlActive, 0); assert.equal(runtime.codecLeases, 0);
     assert.equal(runtime.admissionQueued, 0); assert.equal(runtime.externalInputBytes, 0); assert.equal(outputBudget.bytes, 0);
   } finally {
     runtime.release(first); runtime.release(second); await Promise.allSettled([settlement]);

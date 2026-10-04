@@ -244,10 +244,16 @@ test('a peer insertion inside a surrogate establishes only that public split tra
   await h.accept(a, capture(a.doc, () => a.text.insert(0, '🙂')));
   const b = h.client('actor-b');
   await h.accept(b, capture(b.doc, () => b.text.insert(1, 'X')));
-  assert.equal(h.state.body, '\ufffdX\ufffd'); assert.equal(h.state.nodes[0].text, '🙂');
+  assert.equal(h.state.body, '\ufffdX\ufffd');
+  // Canonical nodes sort by numeric replica, which fresh public IDs randomize.
+  const original = h.state.nodes.filter((node) => node.client === a.replica && node.clock === 0);
+  assert.equal(original.length, 1); assert.equal(original[0].text, '🙂');
+  const provenance = digest(original);
   const before = digest(h.state.journal);
   const checkpoint = await h.accept(b, Y.encodeStateAsUpdate(b.doc));
   assert.equal(checkpoint.receiptOnly, true); assert.equal(digest(h.state.journal), before);
+  const after = h.state.nodes.filter((node) => node.client === a.replica && node.clock === 0);
+  assert.equal(after.length, 1); assert.equal(after[0].text, '🙂'); assert.equal(digest(after), provenance);
 });
 
 test('inconsistent duplicate intervals, parent origins and future references are refused', async (t) => {

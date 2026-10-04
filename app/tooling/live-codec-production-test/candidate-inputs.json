@@ -12,7 +12,7 @@
     "room-cache.mjs": "16a8ef1b1edecde982b1ba04d53d49dd41f3589d5268ecd093e826b23fa0e6c3"
   },
   "candidateFiles": {
-    "codec.test.mjs": "24bc733dd1662c78272b9cd9aed814b8cf7af58ccc299d73da632f17dddfa953",
+    "codec.test.mjs": "1dfccdc0b954c4756c757bbf1a009eaf46171d44b475d07c319e90820c079075",
     "exit-worker.mjs": "39324c6b118bbb3fbb81986ca0f95e53e104403fd396379e2a230f9731c813a1",
     "independent-probe.proposed.test.mjs": "896f1d99659d06bbe848897b308665346f4d4067a33d0a8e8ef1abed6bdd0893",
     "intent-registry.mjs": "f5f2217521a5b4667e74955d37e677e6760e9a40cd5d07e83e3d12344318956a",
