@@ -10,6 +10,7 @@ import {
   type ProjectExportManifest,
   type ProjectExportPerson,
 } from '@flux/contracts';
+import type { Readable } from 'node:stream';
 import { NotFoundError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import { sha256, tarGzip, type BundleFile } from './bundle.js';
@@ -35,6 +36,7 @@ function readme(data: ProjectExport) {
     '',
     `- \`project.json\`: the whole project, format \`${data.format}\` version ${data.formatVersion}; its JSON Schema is \`schema/project-export.v1.schema.json\`.`,
     '- `docs/<id>.md`: the current text of each doc (every version is in `project.json`).',
+    '- `files/<id>`: exact published attachment bytes; names, hashes and message relationships are in `project.json`.',
     '- `manifest.json`: size and SHA-256 of every other file.',
     '',
     `Contents: ${data.conversations.length} conversations, ${data.materials.length} materials, ${data.docs.length} docs, ${data.sketches.length} sketches, `
@@ -58,8 +60,8 @@ function readme(data: ProjectExport) {
 export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, context: ProjectExportContext) {
   const now = context.now ?? (() => new Date());
 
-  async function exportProject(principal: Principal, projectId: string): Promise<ProjectExport> {
-    return uow.run(async ({ access, rows }) => {
+  async function snapshotProject(principal: Principal, projectId: string) {
+    return uow.run(async ({ access, rows, files }) => {
       await access.requireManage(principal, projectId);
       const project = await rows.project(projectId);
       if (!project) throw new NotFoundError('Project', 'PROJECT_NOT_FOUND');
@@ -76,6 +78,9 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
         rows.results(projectId),
         rows.links(projectId),
       ]);
+
+      const attachments = await rows.files?.(project.id) ?? [];
+
 
       const roleOf = new Map(roles.map((row) => [row.userId, row.role]));
       const people: ProjectExportPerson[] = audience.map((person) => ({
@@ -123,7 +128,7 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
         .sort((a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
       const exporter = actors.find((actor) => actor.id === principal.id)!;
 
-      return {
+      const data: ProjectExport = {
         $schema: PROJECT_EXPORT_SCHEMA_ID,
         format: PROJECT_EXPORT_FORMAT,
         formatVersion: PROJECT_EXPORT_FORMAT_VERSION,
@@ -131,6 +136,7 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
         provenance: { exportedBy: exporter, instanceOrigin: context.instanceOrigin, schemaVersion: context.schemaVersion, reimportSupported: false },
         excluded: [...PROJECT_EXPORT_EXCLUDED],
         project,
+        ...(attachments.length ? { files: attachments } : {}),
         people,
         grants,
         actors,
@@ -143,30 +149,58 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
         results,
         links: exportedLinks,
       };
+      return { data, storage: files };
     });
   }
 
-  /** The `.tar.gz` bundle: project.json, docs as Markdown, the JSON Schema, a README and manifest.json. */
-  async function exportBundle(principal: Principal, projectId: string): Promise<{ fileName: string; content: Buffer; data: ProjectExport }> {
-    const data = await exportProject(principal, projectId);
+  async function exportProject(principal: Principal, projectId: string): Promise<ProjectExport> {
+    return (await snapshotProject(principal, projectId)).data;
+  }
+
+  /** One metadata snapshot, sequential integrity preflight, then a bounded streaming archive. */
+  async function exportBundle(principal: Principal, projectId: string, options: { signal?: AbortSignal } = {}): Promise<{ fileName: string; content: Readable; data: ProjectExport }> {
+    options.signal?.throwIfAborted();
+    const { data, storage } = await snapshotProject(principal, projectId);
     const utf8 = (value: string) => Buffer.from(value, 'utf8');
-    const files: BundleFile[] = [
+    const base: BundleFile[] = [
       { path: 'project.json', content: utf8(`${JSON.stringify(data, null, 2)}\n`) },
       { path: 'schema/project-export.v1.schema.json', content: utf8(`${JSON.stringify(PROJECT_EXPORT_JSON_SCHEMA, null, 2)}\n`) },
       { path: 'README.md', content: utf8(readme(data)) },
-      ...data.docs.map((doc) => ({ path: doc.file, content: utf8(doc.versions.at(-1)?.body ?? '') })),
     ];
+    const attachments = data.files ?? [];
+    async function attachment(file: (typeof attachments)[number]): Promise<Buffer> {
+      options.signal?.throwIfAborted();
+      const content = await storage?.read(file.id);
+      options.signal?.throwIfAborted();
+      if (!content || content.byteLength !== file.size || sha256(Buffer.from(content)) !== file.sha256)
+        throw new NotFoundError('File', 'FILE_UNAVAILABLE');
+      return Buffer.from(content);
+    }
+    options.signal?.throwIfAborted();
+    // Reject missing/corrupt files before HTTP headers or CLI output. Published objects are
+    // immutable and never abandoned; reads during streaming recheck against the same manifest.
+    for (const file of attachments) await attachment(file);
     const manifest: ProjectExportManifest = {
-      format: 'flux.project-export-bundle',
-      formatVersion: 1,
-      projectId: data.project.id,
-      exportedAt: data.exportedAt,
-      files: files.map((file) => ({ path: file.path, bytes: file.content.length, sha256: sha256(file.content) })),
+      format: 'flux.project-export-bundle', formatVersion: 1,
+      projectId: data.project.id, exportedAt: data.exportedAt,
+      files: [
+        ...base.map((file) => ({ path: file.path, bytes: file.content.length, sha256: sha256(file.content) })),
+        ...attachments.map((file) => ({ path: file.path, bytes: file.size, sha256: file.sha256 })),
+        ...data.docs.map((doc) => {
+          const content = utf8(doc.versions.at(-1)?.body ?? '');
+          return { path: doc.file, bytes: content.length, sha256: sha256(content) };
+        }),
+      ],
     };
-    files.push({ path: 'manifest.json', content: utf8(`${JSON.stringify(manifest, null, 2)}\n`) });
+    async function* files(): AsyncGenerator<BundleFile> {
+      yield* base;
+      for (const file of attachments) yield { path: file.path, content: await attachment(file) };
+      for (const doc of data.docs) yield { path: doc.file, content: utf8(doc.versions.at(-1)?.body ?? '') };
+      yield { path: 'manifest.json', content: utf8(`${JSON.stringify(manifest, null, 2)}\n`) };
+    }
     const stamp = data.exportedAt.replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
     const root = `flux-project-${data.project.id.slice(0, 8)}-${stamp}`;
-    return { fileName: `${root}.tar.gz`, content: tarGzip(root, files, new Date(data.exportedAt)), data };
+    return { fileName: `${root}.tar.gz`, content: tarGzip(root, files(), new Date(data.exportedAt), options.signal), data };
   }
 
   return { exportProject, exportBundle };

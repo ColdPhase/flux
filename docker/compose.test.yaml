@@ -2,6 +2,11 @@
 # scripts/check_application.sh with the `test` profile. Never use it for a real deployment:
 # it lets the worker reach a private-network push mock and trust its throwaway certificate.
 services:
+  files-init:
+    # The non-root application test runner also writes session/browser seed state.
+    command: ["chown", "-R", "1000:1000", "/data/files", "/state"]
+    volumes:
+      - teststate:/state
   pushmock:
     profiles: ["test"]
     build:
@@ -80,6 +85,7 @@ services:
         condition: service_healthy
   test:
     environment:
+      FLUX_TEST_FILES_DIR: /data/files
       FLUX_VAPID_PUBLIC_KEY: ${FLUX_VAPID_PUBLIC_KEY:-}
       FLUX_VAPID_PRIVATE_KEY: ${FLUX_VAPID_PRIVATE_KEY:-}
       FLUX_VAPID_SUBJECT: ${FLUX_VAPID_SUBJECT:-}
@@ -91,6 +97,7 @@ services:
       NODE_EXTRA_CA_CERTS: /tls/cert.pem
     volumes:
       - pushtls:/tls:ro
+      - files:/data/files:z
     depends_on:
       worker:
         condition: service_started

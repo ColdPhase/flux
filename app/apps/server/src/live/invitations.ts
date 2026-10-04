@@ -8,6 +8,7 @@ import {
 } from '@flux/core';
 import type { LiveContextRef } from '@flux/contracts';
 import { requireLiveContext } from './access.js';
+import { eventPorts } from '../events.js';
 
 interface InvitationRow {
   id: string;
@@ -99,7 +100,7 @@ export function liveInvitationStore(db: Database): LiveInvitationPorts {
               // Only a new row notifies: a repeated or concurrent invite converges on the
               // existing row above and records nothing. Identifiers only, never titles. This
               // is the command's last write (see recordEvent: the seq lock is held to commit).
-              await recordEvent(tx, { kind: 'human', id: inviterId }, created.workspace_id, LIVE_INVITED_EVENT, created.project_id,
+              await recordEvent(eventPorts(tx), { kind: 'human', id: inviterId }, created.workspace_id, LIVE_INVITED_EVENT, created.project_id,
                 { sessionId: created.session_id, invitationId: created.id, recipientId: created.recipient_id });
               return record(created);
             }

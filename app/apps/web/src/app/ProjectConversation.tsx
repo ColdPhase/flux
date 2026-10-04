@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
-import type { AssistantAnswer, ConversationMessage, Conversation, ConversationRootWindow, Draft, Material, Project, SendMessageCommand, WorkspaceMember } from '@flux/contracts';
+import type { AssistantAnswer, ConversationMessage, MessageFile, Conversation, ConversationRootWindow, Draft, Material, Project, SendMessageCommand, WorkspaceMember } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Avatar, Button, Icon, Input, MEDIA, sendsOnEnter, useMediaQuery } from '../ui';
 import { getConversation, getMaterialVersion, getProject, listConversationRoots, listDrafts, listMaterials, listWorkspaceMembers, olderMessages, publishMaterial, reply, startConversation } from './conversation-api';
@@ -382,7 +382,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
               return [divider, <li key={message.id} id={`message-${message.id}`} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived === message.id ? ' is-arrived' : ''}`}>
                 <Avatar name={messageAuthor(message)} size="md" tone={mine ? 'me' : 'neutral'} />
                 <div className="project-convo__message-meta"><strong>{mine ? `${messageAuthor(message)} · you` : message.authorId === null ? messageAuthor(message) : <Link className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${messageAuthor(message)} directly`}>{messageAuthor(message)}</Link>}</strong><time dateTime={message.createdAt} title={when(message.createdAt)}>{clock(message.createdAt)}</time><span>#{message.sequence}</span></div>
-                <p>{message.body}</p>
+                {message.body ? <p>{message.body}</p> : null}
+                {message.files?.length ? <MessageFiles files={message.files} /> : null}
                 {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} /> : null}
                 {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={hideIfDenied} /> : null}
                 <MessageObjects messageId={message.id} lists={work} />
@@ -443,4 +444,15 @@ function feedEntries(messages: Conversation['messages'], answers: AssistantAnswe
       .map((answer) => ({ type: 'answer' as const, key: `answer-${answer.runId}`, at: answer.committedAt, answer })),
   ];
   return entries.sort((a, b) => a.at.localeCompare(b.at) || (a.type === b.type ? 0 : a.type === 'message' ? -1 : 1));
+}
+
+/** A message's published files, each a download (#154; the full file list and composer come next). */
+function MessageFiles({ files }: { files: readonly MessageFile[] }) {
+  return <ul className="project-convo__files" aria-label={files.length === 1 ? '1 attached file' : `${files.length} attached files`}>
+    {files.map((file) => <li key={file.id}><a href={`/api/v1/files/${file.id}`} download={file.name}>{file.name}</a> <span>{fileSize(file.size)}</span></li>)}
+  </ul>;
+}
+
+function fileSize(bytes: number) {
+  return bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }

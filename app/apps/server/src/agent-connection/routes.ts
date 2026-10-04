@@ -7,6 +7,7 @@ import { createAgentConnectionStore } from './store.js';
 import { agentStandingGrants } from './grants.js';
 import { coWorkGrantTargetInTransaction } from '../co-work/grants.js';
 import { oauthFlow, verifiedOauthQuery } from '../identity/oauth-query.js';
+import { eventPorts } from '../events.js';
 
 interface Options { db: Database; sessions: SessionResolver; oauthSecret: string; publicOrigin: string }
 
@@ -25,7 +26,7 @@ export async function agentProposalRoutes(app: FastifyInstance, { db, sessions, 
       enforce(await evaluateProject(principal, 'project.read', projectId, tx, { lock: true }), 'project');
     },
     async recordCreated(principal, workspaceId, projectId, tx) {
-      await recordEvent(tx, principal, workspaceId, 'project.proposal_created.v1', projectId, {});
+      await recordEvent(eventPorts(tx), principal, workspaceId, 'project.proposal_created.v1', projectId, {});
     },
   }));
   app.setErrorHandler((error: FastifyError | DomainError, _request, reply) => {

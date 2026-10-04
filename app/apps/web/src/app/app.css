@@ -209,6 +209,29 @@ body:has(.app) { background: var(--bg-chrome); }
 .intro p { margin-top: 4px; font-size: var(--fs-md); color: var(--text-3); }
 .view-empty { padding: 36px 0 32px; }
 .intro + .view-empty { margin-top: 24px; padding-top: 28px; border-top: 1px solid var(--line); }
+/* Home's Tasks (#190 HOME-2): your unfinished work grouped by project, in calm rows like "Since you left". */
+.home-tasks { padding: 24px 0 32px; }
+.home-tasks__h { margin: 0 0 4px; font-size: var(--fs-lg); letter-spacing: -.01em; }
+.home-tasks__note { margin: 4px 0 8px; color: var(--danger); font-size: var(--fs-sm); }
+.home-tasks__place { margin-top: 16px; }
+.home-tasks__name { margin: 0 0 2px; color: var(--text-3); font-size: var(--fs-xs); font-weight: 600; }
+.home-tasks__list { list-style: none; margin: 0; padding: 0; }
+.home-tasks__item {
+  display: flex; align-items: baseline; gap: 12px; min-height: 40px; padding: 8px; margin: 0 -8px; border-radius: var(--r);
+  color: var(--text); text-decoration: none; font-size: var(--fs-md); line-height: 1.45;
+}
+.home-tasks__item:hover { background: var(--bg-hover); }
+.home-tasks__item:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.home-tasks__status { flex: none; min-width: 88px; color: var(--text-3); font-size: var(--fs-sm); }
+.home-tasks__status.is-blocked { color: var(--attention); }
+.home-tasks__body { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.home-tasks__title { overflow-wrap: anywhere; }
+.home-tasks__why { color: var(--text-3); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.home-tasks__go { flex: none; align-self: center; color: var(--text-3); }
+.home-tasks__more { margin-top: 14px; color: var(--text-3); font-size: var(--fs-sm); }
+.home-tasks__center { display: flex; justify-content: center; padding: 48px 0; }
+@media (pointer: coarse) { .home-tasks__item { min-height: 44px; } }
+@media (max-width: 640px) { .home-tasks__status { min-width: 0; } }
 
 /* Conversation: column + pinned composer */
 .convo { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -253,6 +276,12 @@ body:has(.app) { background: var(--bg-chrome); }
 /* Private notes on Home */
 .notes { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); }
 .notes__h { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); font-weight: 500; color: var(--text-3); }
+/* Notes kept only in this browser: an explicit offer to move them into the account (#190 HOME-3). */
+.notes__move { display: grid; gap: 8px; margin: 10px 0 6px; padding: 12px 14px; border-radius: var(--r); background: var(--accent-soft); color: var(--text-2); font-size: var(--fs-sm); }
+.notes__move-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Empty, it leaves the layout but stays in the accessibility tree, so its first message is announced. */
+.notes__move-state:empty { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.notes__moved { margin-top: 18px; color: var(--text-2); font-size: var(--fs-sm); }
 .notes__list { list-style: none; margin: 8px 0 0; padding: 0; }
 .note { padding: 10px 0; animation: rise var(--dur-3) var(--ease-out) both; }
 .note + .note { border-top: 1px solid var(--line); }

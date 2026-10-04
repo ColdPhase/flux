@@ -123,12 +123,9 @@ class ThemeAccentsJourney(unittest.TestCase):
             self.assertEqual(content, self.return_content, "matched return comparison retains identical items")
         self.return_content = content
         shot(page, screenshot_name)
-        # Real product action restores the persisted baseline after this visit. It prevents
-        # one palette screenshot consuming the scenario for the next family/viewport.
-        with page.expect_response(re.compile(r"/api/v1/return-points/restore$")) as restoring:
-            page.get_by_role("button", name="Keep these for next time", exact=True).click()
-        self.assertEqual(restoring.value.status, 200)
-        expect(page.get_by_text("These will show again next time.", exact=True)).to_be_visible()
+        # Visiting Home acknowledges nothing (HOME-1, #190), so the next family and viewport see the
+        # same persisted changes without restoring anything.
+        expect(page.get_by_role("button", name="I have the context")).to_be_visible()
 
     def test_01_create_persisted_content(self):
         page = self.page()
