@@ -94,8 +94,10 @@ export class SharedMap {
         for (const id of message.clearedLeaseIds) { this.previews.delete(id); if (this.gesture?.serverLease?.leaseId === id) { this.keepMovement(this.gesture); this.gesture.active = false; } if (this.completedGesture?.serverLease?.leaseId === id) this.completedGesture = null; }
         this.delta(message); break;
       case 'map-move': {
-        if (this.gesture?.serverLease?.leaseId === message.leaseId) { this.gesture.serverLease.expiresAt = message.expiresAt; break; }
-        if (this.completedGesture?.serverLease?.leaseId === message.leaseId) break;
+        // An own echo only renews the current lease. Native pointer input already
+        // published its local geometry/sequence; this must not repaint the graph.
+        if (this.gesture?.serverLease?.leaseId === message.leaseId) { this.gesture.serverLease.expiresAt = message.expiresAt; return; }
+        if (this.completedGesture?.serverLease?.leaseId === message.leaseId) return;
         const old = this.previews.get(message.leaseId);
         if (!old || message.sequence > old.sequence) this.previews.set(message.leaseId, message);
         break;

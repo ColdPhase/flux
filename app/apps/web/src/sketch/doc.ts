@@ -73,6 +73,25 @@ export function applyLocal(sketch: SketchDetail, op: Op, me: Me): SketchDetail {
   }
 }
 
+/** Overlay current authorized positions without replacing the native graph or
+ * unaffected thought identities. An absent/expired overlay returns the native
+ * objects themselves; it cannot restore an object absent from confirmed state. */
+export function applyLivePreviews(sketch: SketchDetail, previews: ReadonlyMap<string, LiveMapPosition>): SketchDetail {
+  if (!previews.size) return sketch;
+  let changed = false;
+  const thoughts = sketch.thoughts.map((thought) => {
+    const position = previews.get(thought.id);
+    if (!position || thought.x === position.x && thought.y === position.y
+      && (position.width === undefined || thought.width === position.width)
+      && (position.height === undefined || thought.height === position.height)) return thought;
+    changed = true;
+    return { ...thought, x: position.x, y: position.y,
+      ...(position.width === undefined ? {} : { width: position.width }),
+      ...(position.height === undefined ? {} : { height: position.height }) };
+  });
+  return changed ? { ...sketch, thoughts } : sketch;
+}
+
 /** Operations that undo `op` when applied to the sketch after it. */
 export function inverse(before: SketchDetail, op: Op): Op[] {
   switch (op.kind) {
@@ -160,7 +179,7 @@ export function useSketchDoc(sketchId: string, me: Me) {
     if (!next) { if (live.current?.status === 'private') setLoad('not-found'); else if (live.current?.problem) setLoad('failed'); return; }
     const previews = new Map<string, LiveMapPosition>();
     for (const preview of live.current?.previews.values() ?? []) for (const position of preview.positions) previews.set(position.id, position);
-    next = { ...next, thoughts: next.thoughts.map((thought) => ({ ...thought, ...previews.get(thought.id) })) };
+    next = applyLivePreviews(next, previews);
     for (const intent of pending.current.values()) next = applyLocal(next, intent.op, meRef.current);
     ref.current = next; setSketch(next);
   }, []);
