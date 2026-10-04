@@ -1,4 +1,5 @@
 import { and, eq, inArray, or, sql } from 'drizzle-orm';
+import { RuleViolationError } from '@flux/core';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { taskUseRows } from './task-use.js';
@@ -41,5 +42,9 @@ export async function referencedTaskIds(tx: DbExecutor, refs: readonly Reference
 export async function prepareReferencedTaskUse(tx: DbExecutor, projectId: string, refs: readonly Reference[]) {
   // Retain the known project graph even when the current association set is empty.
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`flux.task-graph:${projectId}`}))`);
-  return taskUseRows(tx).lockPrepared(await referencedTaskIds(tx, refs));
+  const ids = await referencedTaskIds(tx, refs);
+  const rows = ids.length ? await tx.select({ id: schema.projectWorkItems.id, projectId: schema.projectWorkItems.projectId }).from(schema.projectWorkItems)
+    .where(inArray(schema.projectWorkItems.id, ids)) : [];
+  if (rows.some((row) => row.projectId !== projectId)) throw new RuleViolationError('A task reference is outside the current project', 'TASK_TARGET_SCOPE_INVALID');
+  return taskUseRows(tx).lockPrepared(ids);
 }

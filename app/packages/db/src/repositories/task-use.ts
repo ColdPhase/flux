@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, inArray, sql } from 'drizzle-orm';
 import { ConflictError, RuleViolationError } from '@flux/core';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
