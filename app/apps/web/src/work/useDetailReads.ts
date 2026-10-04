@@ -14,23 +14,40 @@ export function useNativeOwn(accountId: string, projectId: string, kind: WorkObj
   return { read, value };
 }
 
-/** Private selections are kept by the form; this hook retains only one native page. */
+/** Pages remembered per picker: the searches whose page someone moved most recently. */
+const CHOICE_POSITIONS = 20;
+
+/**
+ * Private selections are kept by the form; this hook retains only one native page. Each search
+ * (selector) keeps its own page position while the picker stays mounted, so A → B (paged) → A
+ * returns to the page left in A and B keeps its own. At most CHOICE_POSITIONS positions are kept
+ * (the least recently moved is dropped and opens at its first page again). Positions belong to
+ * one account and project; Refresh returns the current search to its first page.
+ */
 export function useWorkChoices(accountId: string, projectId: string, selection: ProjectWorkViewQuery | null, enabled = true, revision = 0) {
   const revalidator = useRevalidator();
   const serialized = JSON.stringify(selection);
   const owned = useMemo<ProjectWorkViewQuery | null>(() => JSON.parse(serialized) as ProjectWorkViewQuery | null, [serialized]);
+  const owner = JSON.stringify([accountId, projectId]);
   const key = JSON.stringify([accountId, projectId, serialized]);
-  const [position, setPosition] = useState<{ key: string; cursor?: string }>({ key });
+  const [positions, setPositions] = useState<{ owner: string; cursors: ReadonlyMap<string, string> }>(() => ({ owner, cursors: new Map() }));
   const [refresh, setRefresh] = useState(0);
-  const cursor = position.key === key ? position.cursor : undefined;
+  const cursor = positions.owner === owner ? positions.cursors.get(key) : undefined;
+  const keep = (next: string | undefined) => setPositions((current) => {
+    const cursors = new Map(current.owner === owner ? current.cursors : []);
+    cursors.delete(key);
+    if (next) cursors.set(key, next);
+    while (cursors.size > CHOICE_POSITIONS) cursors.delete(cursors.keys().next().value!);
+    return { owner, cursors };
+  });
   const query = useMemo(() => owned ? { ...owned, limit: 50, cursor } : null, [owned, cursor]);
   const url = query ? workViewReadUrl(projectId, query) : null;
   const load = useCallback((signal: AbortSignal) => getProjectWorkView(projectId, query!, signal), [projectId, query]);
   const read = useWorkRead(url && enabled ? { accountId, projectId, selector: url } : null, load, revision + refresh, enabled && revalidator.state === 'idle');
   const page = read.phase === 'ready' || read.phase === 'refreshing' ? read.value : null;
   return { read, page, busy: read.phase === 'loading' || read.phase === 'refreshing',
-    onCursor: (next: string) => setPosition({ key, cursor: next }),
-    onRefresh: () => { setPosition({ key }); setRefresh((value) => value + 1); } };
+    onCursor: (next: string) => keep(next),
+    onRefresh: () => { keep(undefined); setRefresh((value) => value + 1); } };
 }
 
 /** A separate bounded observation of all relation roles, tied to this own-object read. */

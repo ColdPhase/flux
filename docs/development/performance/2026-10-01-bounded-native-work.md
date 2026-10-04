@@ -179,6 +179,12 @@ the current native scope. Keep selected native IDs and current versions across
 pages, and retain existing If-Match/Idempotency-Key behavior. Refresh/revocation
 must remove unavailable labels/choices without discarding unrelated private text.
 
+Choice pickers (2026-10-04, #170 review): each search keeps its own page position while
+the picker stays mounted, so A → B (paged) → A returns to A's page and B keeps its own.
+At most 20 positions per picker are kept (the least recently moved is dropped and opens
+at its first page). Positions belong to one account and project; Refresh returns the
+current search to its first page. The cursor stays an opaque continuation hint.
+
 The New work draft belongs to the account and project, survives source/back,
 view/Only mine/Details/resizing/reload, and clears only after confirmed native
 creation. Use a separately mounted composer so editing does not reconcile the

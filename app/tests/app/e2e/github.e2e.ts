@@ -125,6 +125,11 @@ test('real settings UI binds, verifies PR links and removes private projections 
   await choices.getByRole('button',{name:'Next',exact:true}).click();await expect(choices).toContainText('51–100 of 105 tasks');
   await choices.getByRole('button',{name:'Next',exact:true}).click();await expect(choices).toContainText('101–105 of 105 tasks');
   await choices.getByRole('button',{name:'Previous',exact:true}).click();await expect(choices).toContainText('51–100 of 105 tasks');
+  // Each search keeps its own page while the picker is open: A (page 2) → B paged to page 2 → A → B.
+  await page.getByLabel('Find task',{exact:true}).fill('Native repository task');await expect(choices).toContainText('1–50 of 104 tasks');
+  await choices.getByRole('button',{name:'Next',exact:true}).click();await expect(choices).toContainText('51–100 of 104 tasks');
+  await page.getByLabel('Find task',{exact:true}).fill('');await expect(choices).toContainText('51–100 of 105 tasks');
+  await page.getByLabel('Find task',{exact:true}).fill('Native repository task');await expect(choices).toContainText('51–100 of 104 tasks');
   await page.getByLabel('Find task',{exact:true}).fill(task.title);
   await expect(page.getByLabel('Task',{exact:true}).locator('option')).toHaveCount(2);
   await page.getByLabel('Task', { exact: true }).selectOption(task.id);
@@ -134,7 +139,7 @@ test('real settings UI binds, verifies PR links and removes private projections 
   await page.getByRole('button', { name: 'Verify and link PR', exact: true }).click();
   const privatePull = page.getByRole('link', { name: '#42 · Keep a manual off switch when gesture sensing loses calibration', exact: true }); await privatePull.waitFor();
   assert.match(await linker.innerText(), /nia-firmware.*head aaaaaaaaaaaa/);
-  // Clearing the search returns to the window the person left (positions are kept per query).
+  // Clearing the search returns to the page the person left in the unfiltered list (each search keeps its own page).
   await page.getByLabel('Find task',{exact:true}).fill('');await expect(choices).toContainText('51–100 of 105 tasks');
   await choices.getByRole('button',{name:'Previous',exact:true}).click();await expect(choices).toContainText('1–50 of 105 tasks');
   await expect(page.getByLabel('Task',{exact:true})).toHaveValue(task.id);
