@@ -1,6 +1,6 @@
 # Authorized co-work unit creation (#153)
 
-Tested head: `301a2868` (tree `14fe750895436060a1769c896670b733ef393431`), branch
+Tested head: `ed97f009` (tree `71164d97ba218a723c82c3a91053d93a6cb0442f`), branch
 `claude-maurycy/153-unit-creation`. It is stacked on
 `claude-maurycy/153-request-claims` (`ce68753e`), which is based on main
 `6f742eba`. Owner: Zamojski5. Independent evaluation by PelikanFix16 is still
@@ -93,7 +93,10 @@ Source hashes at the tested commit are in [source-sha256.json](source-sha256.jso
 
 ## Executed checks (Docker, isolated Compose projects, ports 19102–19109)
 
-All checks ran at `301a2868`, from a detached snapshot worktree.
+The checks ran from a detached snapshot worktree. The implementation commit is
+`728c562e`. `301a2868` added the tests, and `ed97f009` added only assertions to
+`cowork-unit-creation.test.ts` (see M10 below). Later commits change only
+documentation.
 
 - **Image build, typecheck and lint** pass, both in a separate
   `docker build --target build` and inside every run below. The only lint
@@ -101,8 +104,10 @@ All checks ran at `301a2868`, from a detached snapshot worktree.
   `ProjectTasks.tsx`.
 - **New and changed files**: `cowork-unit-creation`,
   `agent-unit-creation-migration`, `agent-request-response-migration` and
-  `agent-execution-core`. Result: **18/18** on the first run.
-- **Affected set**, 22 files: **135/135**, with 0 skipped, cancelled or todo.
+  `agent-execution-core`. Result: **18/18** at `301a2868` on the first run,
+  and **18/18** again at `ed97f009`.
+- **Affected set** at `301a2868`, 22 files: **135/135**, with 0 skipped,
+  cancelled or todo.
   The files are:
   - `agent-doc-authors-migration`, `agent-execution-core`,
     `agent-execution`, `agent-request-operation-migration`,
@@ -114,15 +119,17 @@ All checks ran at `301a2868`, from a detached snapshot worktree.
     `cowork-unit-creation`;
   - `mcp-work-actions`, `migration-ledger`, `oauth-mcp`, `task-graph-core`,
     `ai-connections-migration` and `project-agents`.
-- **Full `./scripts/check_application.sh`**
+- **Full `./scripts/check_application.sh`** at `ed97f009`
   (`FLUX_TEST_PORT=19102 FLUX_TEST_MAILPIT_PORT=19103`): **EXIT 0**.
   - API: **747/747**, 0 skipped. That is the base branch's 738, plus the 7
     unit-creation tests, the 0050 migration test and the core registry test.
   - Every later browser/service phase passed: 3+1+1+1+1+6+1+1+1+1 = 17 tests.
+  - An earlier full run at `301a2868` also exited 0, with the same 747 and
+    17.
 - **Foundation:** `check_agent_setup.py` passed, the host Python suite ran
   67 tests, all OK, and `git diff --check` is clean.
 - Raw logs stay local and are not published: `w153e-build1`, `w153e-t1`,
-  `w153e-t2`, `w153e-full` and `w153e-mut-*`.
+  `w153e-t2`, `w153e-t3`, `w153e-full`, `w153e-full2` and `w153e-mut-*`.
 
 ## Negative controls
 
@@ -171,6 +178,8 @@ Covered refusals:
     still returned at the cap.
 - **Replay:**
   - an exact replay observes, with no second debit or receipt;
+  - a re-issue observed while claimed goes stale after a renewal. The state
+    name is unchanged and only the version moved;
   - a changed payload under the same ID → `IDEMPOTENCY_CONFLICT`;
   - after the unit is claimed → `COMMAND_POSTSTATE_STALE`;
   - after the grant is revoked → `AGENT_EXECUTION_UNAVAILABLE`.
@@ -219,7 +228,7 @@ different test. Groups A–E ran at `301a2868`; F ran at `ed97f009`.
 | D | M9: closed tasks | 5 pass, 2 fail | Root negative controls: `Missing expected rejection: COWORK_TASK_CLOSED`. |
 | D | M6: author/reviewer separation | (same run) | Child negative controls: `Missing expected rejection: COWORK_REVIEW_SEPARATION`. |
 | E | M7: the run cap | 6 pass, 1 fail | Child negative controls: `Missing expected rejection: COWORK_BUDGET_EXHAUSTED`. |
-| F | M10 again, at `ed97f009` | @F@ |
+| F | M10 again, at `ed97f009` | 6 pass, 1 fail | Root replay test: `Missing expected rejection: COMMAND_POSTSTATE_STALE`. A re-issue receipt observed while the unit was claimed (version 2) replayed after a renewal (claimed, version 3). |
 
 The first attempt of group A failed before any test ran, for an
 infrastructure reason. Its API container became unhealthy because a startup

@@ -1,5 +1,5 @@
 {
-  "commit": "301a2868258abeb63e52c2bec229e38e510873ee",
+  "commit": "ed97f0094babcf2abcc3153ba03c95d9c0ebca4f",
   "files": {
     "app/apps/server/src/agent-connection/execution.ts": "56611ca34bda724cbe8de77c73a5be4ecad0b9904dc967ed4dd7830bfec9b68d",
     "app/apps/server/src/agent-connection/grants.ts": "8532097429e72fb9f37af64d13480b971756405373f567208e7f149d216fe3e3",
@@ -17,6 +17,6 @@
     "app/tests/app/agent-execution-core.test.ts": "9db1eef43044dce69d6e9da47d4648e4945f1c8eeae4fcbd2063777ea4069fb0",
     "app/tests/app/agent-request-response-migration.test.ts": "799baaed69df11e08d77e085edb3449d6fb6d0728c57c301c45bcc1ee3168d8b",
     "app/tests/app/agent-unit-creation-migration.test.ts": "251ae34f505b5e054816b96b07031ad0937e1a249ba328b307a26294046a5b3f",
-    "app/tests/app/cowork-unit-creation.test.ts": "bf1b62519fbe5e468ef16c32e02a52fa147b7d13fb35d9eabbde42d6fc56fb56"
+    "app/tests/app/cowork-unit-creation.test.ts": "c683713cc35a7fe1db8bf0cb8907d9872dd52b6850470f543e6ada2b1271b423"
   }
 }

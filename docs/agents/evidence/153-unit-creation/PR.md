@@ -75,11 +75,44 @@ recorded in the plan so it can be disputed in one place.
 
 ## Negative controls, races and mutation proof (real PostgreSQL)
 
-@SUMMARY@
+- **Negative controls.** Every refusal is checked against a snapshot taken
+  before the attempt: all unit rows, the request lineage count, slot rows,
+  grant uses, receipts and task rows (version, status, owners and
+  `updated_at`). Covered refusals:
+  - root: non-self assignment; a stale or closed task; `TAKEN` (another
+    connection, another key, paused, the sole plan writer); payload shape;
+    the wrong operation's grant; an exact grant for another task; another
+    project's task;
+  - child: an unknown, foreign or other-task parent; a lost parent claim
+    (lease, generation, session, expiry, unclaimed); an unknown, revoked,
+    other-workspace, unselected or read-only assignee; separation in both
+    directions and under `distinct_owner`; the run cap; key conflicts;
+  - replay: observation, `IDEMPOTENCY_CONFLICT`, stale after a claim and
+    after a renewal, and a revoked grant.
+- **Authority stays separate.** The author cannot claim the reviewer's unit.
+  The reviewer needs its own owner's grant.
+- **Races:**
+  - two connections open a root on one task: the later one waits on the
+    graph lock and gets `COWORK_UNIT_TAKEN` with no effects;
+  - the same intent twice: one unit, `created` plus `existing`;
+  - assignee revocation in both orders: either the creation is refused or
+    the new unit is stopped.
+- **Mutation proof.** 12 guards, each removed in a scratch copy, made a
+  specific test fail. The first pass showed that the hook's version
+  comparison (M10) survived, because every stale case also changed the state.
+  A renewal case was added (`ed97f009`), and M10 now fails it.
 
-## Checks at `301a2868` (Docker, isolated Compose projects)
+## Checks (Docker, isolated Compose projects, ports 19102–19109)
 
-@CHECKS@
+- Image build, typecheck and lint pass (only the pre-existing
+  `exhaustive-deps` warning).
+- New and changed test files: **18/18**.
+- Affected set, 22 files, at `301a2868`: **135/135**.
+- Full `./scripts/check_application.sh` at `ed97f009`: **EXIT 0**, API
+  **747/747**, plus 17/17 browser and service tests. It also passed at
+  `301a2868`.
+- Foundation: `check_agent_setup.py` passed, the host suite ran 67/67 OK, and
+  `git diff --check` is clean.
 
 Evidence: `docs/agents/evidence/153-unit-creation/` ([README](README.md),
 [plan](PLAN.md), [source hashes](source-sha256.json)).
