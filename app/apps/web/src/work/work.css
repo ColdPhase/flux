@@ -205,7 +205,7 @@
 .ws-view:focus-visible, .ws-none__b:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .ws-mine { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; font-size: var(--fs-sm); color: var(--text-2); cursor: pointer; }
 .ws-mine input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
-.ws-none { margin: 20px 0 0; font-size: var(--fs-md); color: var(--text-2); }
+.ws-none { margin: 20px 0 0; font-size: var(--fs-md); color: var(--text-2); overflow-wrap: anywhere; }
 .ws-none__b { padding: 0; font: inherit; font-weight: 500; color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
 .ws-group { scroll-margin-top: 12px; }
 @media (max-width: 640px) {

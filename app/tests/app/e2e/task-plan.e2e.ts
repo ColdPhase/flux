@@ -76,7 +76,8 @@ test('a planned task shows its criteria, prerequisite states and plan revision; 
   const context = await signedIn(owner, 1280);
   const page = await context.newPage();
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.goto(`/projects/${place.id}/tasks`);
+  // The List row says what the task waits for (#136: the board shows the same count on its card).
+  await page.goto(`/projects/${place.id}/tasks?view=list`);
   const row = page.getByRole('button', { name: /Measure gestures at 5 lux/ });
   await row.waitFor();
   assert.match(await row.innerText(), /waits for 1 task/, 'the list says it is waiting without opening it');
