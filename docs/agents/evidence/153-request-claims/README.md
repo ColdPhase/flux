@@ -41,6 +41,8 @@ main into itself (`5a931440`) and was squash-merged as `6f742eba`.
   `FLUX_SCHEMA_VERSION` is now 49, so any of 0045–0048 that lands later must
   keep 49. Any later migration that rewrites
   `agent_standing_grants_operation_check` must keep the two new operations.
+  The stacked unit-creation slice (`claude-maurycy/153-unit-creation`)
+  proposes `0050` and raises the version to 50 on its own branch.
 - **#152 registry acceptance.** `cowork.request.claim` and
   `cowork.request.respond` are additions to PelikanFix16's operation registry.
   `cowork.request_state` is reused with its fields unchanged; only its doc
