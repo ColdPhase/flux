@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
 import * as schema from '../schema.js';
-import type { TaskUseFence } from './task-use.js';
-import { prepareReferencedTaskUse } from './task-targets.js';
+import { TaskUseRefusal, type TaskUseFence } from './task-use.js';
+import { prepareReferencedTaskUse, referencedTaskIds } from './task-targets.js';
 import type { DbExecutor } from './push.js';
 
 /**
@@ -119,6 +119,11 @@ export function docRows(db: DbExecutor) {
       const previous = await db.select({ type: l.toType, id: l.toId }).from(l)
         .where(and(eq(l.fromId, docId), eq(l.fromType, 'doc'), eq(l.role, 'mentions')));
       const fence = retained ?? await prepareReferencedTaskUse(db, scope.projectId, [...previous, ...targets]);
+      // Body resolution can change while preparation waits for a graph. Verify the
+      // final saved targets without extending the already retained graph/task set.
+      const actual = await referencedTaskIds(db, [...previous, ...targets]);
+      const held = new Set(fence.ids);
+      if (actual.some((id) => !held.has(id))) throw new TaskUseRefusal('TASK_TARGET_SET_CHANGED');
       await db.delete(l).where(and(eq(l.fromId, docId), eq(l.fromType, 'doc'), eq(l.role, 'mentions')));
       if (targets.length) await db.insert(l).values(targets.map((to) => ({
         id: randomUUID(), workspaceId: scope.workspaceId, projectId: scope.projectId, role: 'mentions' as const, fromType: 'doc' as const, fromId: docId,

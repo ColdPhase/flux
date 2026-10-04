@@ -22,7 +22,7 @@ async function scene() {
   };
   const ownerId = (await pool.query('SELECT owner_user_id FROM agents WHERE id=$1', [f.agentId])).rows[0].owner_user_id as string;
   const owner: Person = { id: ownerId, email: '', browser: f.owner };
-  const undo = (item: WorkItem, clientCommandId = randomUUID()) => f.owner.request('POST', `/api/v1/work/${item.id}/creation-undo`,
+  const undo = (item: WorkItem, clientCommandId: string = randomUUID()) => f.owner.request('POST', `/api/v1/work/${item.id}/creation-undo`,
     { body: { clientCommandId, expectedVersion: item.version } });
   return { ...f, create, ownerId, human: owner, undo };
 }
@@ -153,4 +153,38 @@ test('an exact existing creation-provenance link is an observation and leaves Un
   const doc = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/docs`,
     { body: { title: 'Original result remains useful', from: { type: 'result', id: result.id } } }), 201);
   assert.equal(typeof doc.id, 'string');
+});
+
+test('a document reference resolving while graph preparation waits refuses without an unfenced saved mention', { timeout: 30_000 }, async () => {
+  const f = await scene(); const held = barrier<{ item: WorkItem; pid: number }>(); const release = barrier();
+  const bounded = async <T>(pending: Promise<T>) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try { return await Promise.race([pending, new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error('Document target-set race did not settle')), 10_000);
+    })]); } finally { if (timer) clearTimeout(timer); }
+  };
+  const creating = db.transaction(async (tx) => {
+    const native = nativeWorkInTransaction(tx);
+    const item = await native.createWork({ kind: 'agent', id: f.agentId }, f.projectId, { title: 'Uncommitted native target' });
+    held.resolve({ item, pid: await backendPid(tx) });
+    await bounded(release.promise); await native.flushEvents(); return item;
+  });
+  void creating.catch(() => undefined);
+  let saving: ReturnType<typeof f.owner.request> | undefined;
+  const title = `Target-set race ${randomUUID()}`;
+  try {
+    const { item, pid } = await bounded(held.promise);
+    saving = f.owner.request('POST', `/api/v1/projects/${f.projectId}/docs`,
+      { body: { title, body: `[Uncommitted trial](flux:work/${item.id})` }, headers: { 'idempotency-key': randomUUID() } });
+    void saving.catch(() => undefined);
+    await waitUntilBlockedBy(pool, pid); release.resolve(); await bounded(creating);
+    assert.equal(expect(await bounded(saving), 409).code, 'TASK_TARGET_SET_CHANGED');
+    assert.equal((await pool.query('SELECT first_persisted_use_at FROM project_work_items WHERE id=$1', [item.id])).rows[0].first_persisted_use_at, null);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_material_versions WHERE project_id=$1 AND title=$2', [f.projectId, title])).rows[0].n, 0);
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM project_object_links WHERE to_id=$1 AND role='mentions'", [item.id])).rows[0].n, 0);
+    expect(await f.undo(item), 200);
+  } finally {
+    release.resolve();
+    await bounded(Promise.all([creating.catch(() => undefined), saving?.catch(() => undefined)]));
+  }
 });

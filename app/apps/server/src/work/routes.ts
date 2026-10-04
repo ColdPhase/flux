@@ -29,7 +29,7 @@ import {
 import { assertAuthorized, ConflictError, InvalidInputError, type Database, type ResourceRef, type FileStorage } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, expectedVersion, useDomainErrors, versionEtag, type ReplayCheck } from '../http/commands.js';
-import { workUseCases } from './adapters.js';
+import { workRepository, workUseCases } from './adapters.js';
 import { taskDiscussionUseCases } from './task-discussions.js';
 
 interface Options { db: Database; sessions: SessionResolver; storage: FileStorage }
@@ -119,6 +119,9 @@ export async function workRoutes(app: FastifyInstance, { db, sessions, storage }
       replay: async (actor, body, conn) => {
         await policyWorkAccess(conn).requireProject(actor, 'write', request.params.projectId, { lock: true });
         await projectReader(actor, body, conn);
+        // The transport cache retains this task fence until its stored response is
+        // chosen. A lifecycle read alone can race Undo after the replay callback.
+        await workRepository(conn).prepareTaskUse([String((body as { id: string }).id)]);
         const current = await workUseCases(conn).getWork(actor, String((body as { id: string }).id));
         if (current.lifecycle?.state === 'creation_reverted') throw new ConflictError('Task creation was undone; open its history', 'TASK_CREATION_REVERTED');
       },

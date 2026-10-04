@@ -14,6 +14,19 @@ import { barrier } from './support/locks.js';
 import { mailpitUrl } from './support/http.js';
 import { recordedPushes, subscribe, waitFor } from './support/push.js';
 
+async function within<T>(pending: Promise<T>, label: string, milliseconds = 10_000): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([pending, new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error(`Timed out waiting for ${label}`)), milliseconds);
+    })]);
+  } finally { if (timer) clearTimeout(timer); }
+}
+
+async function settleDelivery(pending: Promise<unknown> | undefined) {
+  if (pending) await within(pending.then(() => undefined, () => undefined), 'released delivery cleanup');
+}
+
 async function queuedAssignment() {
   const f = await actionScene(pool);
   const owner = (await pool.query('SELECT owner_user_id FROM agents WHERE id=$1', [f.agentId])).rows[0].owner_user_id as string;
@@ -49,69 +62,75 @@ async function queuedAssignment() {
     stillWanted: pushPreferenceCheck(db), quietUntil: pushQuietCheck(db) };
   const undo = () => f.owner.request('POST', `/api/v1/work/${item.id}/creation-undo`,
     { body: { clientCommandId: randomUUID(), expectedVersion: item.version } });
-  return { ...f, owner, email, item, queued, subscription, agent, ports, undo,
+  return { ...f, ownerId: owner, email, item, queued, subscription, agent, ports, undo,
     job: { notificationId: queued.id, subscriptionId: subscription.id, userId: owner } };
 }
 
-test('queued push rechecks task lifecycle after a held source authorizer or quiet-hour check', async () => {
+test('queued push rechecks task lifecycle after a held source authorizer or quiet-hour check', { timeout: 45_000 }, async () => {
   for (const phase of ['authorizer', 'quiet'] as const) {
     const f = await queuedAssignment(); const held = barrier(); const release = barrier();
+    let delivery: Promise<unknown> | undefined;
     try {
       const ports = { ...f.ports };
       if (phase === 'authorizer') ports.authorizer = { async canRead(user, source) {
         const result = await f.ports.authorizer.canRead(user, source);
-        held.resolve(); await release.promise; return result;
+        held.resolve(); await within(release.promise, 'delivery release'); return result;
       } };
       else ports.quietUntil = async (user) => {
         const result = await f.ports.quietUntil!(user);
-        held.resolve(); await release.promise; return result;
+        held.resolve(); await within(release.promise, 'delivery release'); return result;
       };
-      const delivery = deliverPushJob(ports, f.job);
-      await held.promise; expect(await f.undo(), 200); release.resolve();
-      assert.deepEqual(await delivery, { outcome: 'skipped', reason: 'task creation was undone before delivery' });
+      delivery = deliverPushJob(ports, f.job);
+      void delivery.catch(() => undefined);
+      await within(held.promise, 'delivery barrier'); expect(await f.undo(), 200); release.resolve();
+      assert.deepEqual(await within(delivery, 'delivery outcome'), { outcome: 'skipped', reason: 'task creation was undone before delivery' });
       assert.equal((await recordedPushes(f.subscription.subscription.mockId)).length, 0);
       const history = expect(await f.owner.request('GET', `/api/v1/inbox/${f.queued.id}`), 200);
       assert.match(String(history.body), /Task creation undone/);
-    } finally { release.resolve(); f.agent.destroy(); }
+    } finally { release.resolve(); try { await settleDelivery(delivery); } finally { f.agent.destroy(); } }
   }
 });
 
-test('queued email rechecks lifecycle after a held current account-address check, before actual SMTP', async () => {
+test('queued email rechecks lifecycle after a held current account-address check, before actual SMTP', { timeout: 45_000 }, async () => {
   const f = await queuedAssignment(); const held = barrier(); const release = barrier();
   const config = loadNotificationMailConfig();
   if (config.status !== 'available') throw new Error('SMTP test configuration required');
   const smtp = smtpNotificationMailer(config);
   const base = emailUnitOfWork(db);
   const uow: typeof base = { admitSend: base.admitSend, run: (action) => base.run((ports) => action({ ...ports,
-    async accountAddress(user) { const result = await ports.accountAddress(user); held.resolve(); await release.promise; return result; },
+    async accountAddress(user) { const result = await ports.accountAddress(user); held.resolve(); await within(release.promise, 'delivery release'); return result; },
   })) };
+  let delivery: ReturnType<typeof deliverNotificationEmail> | undefined;
   try {
-    const delivery = deliverNotificationEmail({ available: true, origin: config.origin, uow, mailer: smtp }, { emailId: f.queued.email_id });
-    await held.promise; expect(await f.undo(), 200); release.resolve();
-    assert.deepEqual(await delivery, { outcome: 'skipped', reason: 'task creation was undone before delivery' });
+    delivery = deliverNotificationEmail({ available: true, origin: config.origin, uow, mailer: smtp }, { emailId: f.queued.email_id });
+    void delivery.catch(() => undefined);
+    await within(held.promise, 'delivery barrier'); expect(await f.undo(), 200); release.resolve();
+    assert.deepEqual(await within(delivery, 'delivery outcome'), { outcome: 'skipped', reason: 'task creation was undone before delivery' });
     const mail = await (await fetch(`${mailpitUrl}/api/v1/search?query=${encodeURIComponent(`to:"${f.email}"`)}`)).json() as { messages: unknown[] };
     assert.equal(mail.messages.length, 0);
     assert.equal((await pool.query('SELECT status FROM notification_emails WHERE id=$1', [f.queued.email_id])).rows[0].status, 'skipped');
-  } finally { release.resolve(); smtp.close(); f.agent.destroy(); }
+  } finally { release.resolve(); try { await settleDelivery(delivery); } finally { smtp.close(); f.agent.destroy(); } }
 });
 
-test('already admitted real push finishes as history while Undo proceeds without waiting for its response', async () => {
+test('already admitted real push finishes as history while Undo proceeds without waiting for its response', { timeout: 45_000 }, async () => {
   const f = await queuedAssignment(); const entered = barrier(); const release = barrier();
   const sender = f.ports.sender;
   f.ports.sender = { send(subscription, payload) {
     const response = sender.send(subscription, payload); // Concrete provider handoff occurs synchronously.
-    entered.resolve(); return response.then(async (result) => { await release.promise; return result; });
+    entered.resolve(); return response.then(async (result) => { await within(release.promise, 'provider response release'); return result; });
   } };
+  let delivery: ReturnType<typeof deliverPushJob> | undefined;
   try {
-    const delivery = deliverPushJob(f.ports, f.job);
-    await entered.promise; expect(await f.undo(), 200); release.resolve();
-    assert.equal((await delivery).outcome, 'sent');
+    delivery = deliverPushJob(f.ports, f.job);
+    void delivery.catch(() => undefined);
+    await within(entered.promise, 'actual provider handoff'); expect(await f.undo(), 200); release.resolve();
+    assert.equal((await within(delivery, 'delivery outcome')).outcome, 'sent');
     assert.equal((await recordedPushes(f.subscription.subscription.mockId)).length, 1);
     assert.equal((await f.read(f.item.id) as unknown as WorkItem).lifecycle?.state, 'creation_reverted');
-  } finally { release.resolve(); f.agent.destroy(); }
+  } finally { release.resolve(); try { await settleDelivery(delivery); } finally { f.agent.destroy(); } }
 });
 
-test('post-handoff SQL rollback and callback rejection are observed as unknown without another provider call', async () => {
+test('post-handoff SQL rollback and callback rejection are observed as unknown without another provider call', { timeout: 45_000 }, async () => {
   const f = await queuedAssignment(); let calls = 0;
   try {
     const rollbackDb = { transaction: <T>(action: Parameters<typeof db.transaction<T>>[0]) => db.transaction(async (tx) => {
