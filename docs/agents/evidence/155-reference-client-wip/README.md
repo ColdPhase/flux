@@ -2,8 +2,9 @@
 
 Branch `claude-maurycy/155-truthful-typing` (draft PR #170). Replaces the previous note at
 `35910762`; the archived v2 runner, overlay and raw log stay in this folder (their `sha256.json`
-is archival and does not cover this note). Latest tested head: `e359bd47` (see "Verified at
-`e359bd47`" below; this note is a later doc-only commit).
+is archival and does not cover this note). Tested heads: `e359bd47` (API subset, e2e, full UI)
+and `f70686bb` (full application, reruns); `git diff e359bd47 f70686bb -- app/apps app/packages
+docker scripts` is empty. This note is a later doc-only commit.
 
 ## Peer findings at `35910762` and what changed
 
@@ -144,7 +145,7 @@ Main was checked out detached at `d94f70e4` (the merged main) and run with the s
 ## Open
 
 - Branch-only UI failures (main passes the same test bodies): `test_project_surface.test_02`
-  (every run since ≤`35910762`), intermittent `test_project_surface.test_05`/`test_07` and
+  (every run since ≤`35910762`), intermittent `test_project_surface.test_05` (0/3 failures this session) and `test_07` (1/3) and
   `test_work_decisions.test_04`/`test_06` (hover toolbar of a message row not clickable). See the
   `e359bd47` failure notes for the unverified opening-settle hypothesis.
 - `test_work_details.test_08` (branch-only test) still expects a project link under the sidebar's
