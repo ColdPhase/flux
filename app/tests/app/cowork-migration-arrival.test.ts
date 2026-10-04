@@ -59,7 +59,8 @@ for (const order of arrivals) test(`co-work, runtime and genuine-actor migration
       task: (await client.query('SELECT id,title,status,version,created_by_kind,created_by_id,created_at,updated_at FROM project_work_items WHERE id=$1', [task])).rows,
       conversation: (await client.query('SELECT id,created_by,next_sequence,created_at FROM project_conversations WHERE id=$1', [conversation])).rows,
       message: (await client.query('SELECT id,conversation_id,author_id,sequence,body,created_at,source_material_id,source_material_version FROM project_messages WHERE id=$1', [message])).rows,
-      source: (await client.query('SELECT * FROM project_material_versions WHERE material_id=$1', [material])).rows,
+      // The original columns only: later migrations may add nullable provenance columns (e.g. 0043).
+      source: (await client.query('SELECT workspace_id,project_id,material_id,version,title,body,author_id,created_at FROM project_material_versions WHERE material_id=$1', [material])).rows,
       search: (await client.query('SELECT * FROM search_documents WHERE doc_key=$1', [`message:${message}`])).rows,
     });
     const before = await history();
