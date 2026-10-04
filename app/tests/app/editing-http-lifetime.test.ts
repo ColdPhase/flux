@@ -81,9 +81,9 @@ async function fixture(developmentEditing = true) {
     // Observe public write methods without replacing their result or transport.
     // No response body is retained by these primitive, bounded counters.
     const writeHead=reply.raw.writeHead, write=reply.raw.write, end=reply.raw.end;
-    reply.raw.writeHead=function(...args: unknown[]) {current.writeHeads++;if(current.closes||current.finishes)current.writeHeadsAfterTerminal++;return Reflect.apply(writeHead,this,args);} as typeof writeHead;
-    reply.raw.write=function(...args: unknown[]) {current.writes++;if(current.closes||current.finishes)current.writesAfterTerminal++;return Reflect.apply(write,this,args);} as typeof write;
-    reply.raw.end=function(...args: unknown[]) {current.ends++;if(current.closes||current.finishes)current.endsAfterTerminal++;return Reflect.apply(end,this,args);} as typeof end;
+    reply.raw.writeHead=function(this: ServerResponse,...args: unknown[]) {current.writeHeads++;if(current.closes||current.finishes)current.writeHeadsAfterTerminal++;return Reflect.apply(writeHead,this,args);} as typeof writeHead;
+    reply.raw.write=function(this: ServerResponse,...args: unknown[]) {current.writes++;if(current.closes||current.finishes)current.writesAfterTerminal++;return Reflect.apply(write,this,args);} as typeof write;
+    reply.raw.end=function(this: ServerResponse,...args: unknown[]) {current.ends++;if(current.closes||current.finishes)current.endsAfterTerminal++;return Reflect.apply(end,this,args);} as typeof end;
     reply.raw.on('close', () => { current.closes++; current.close.resolve(); });
     reply.raw.on('finish', () => { current.finishes++; current.finish.resolve(); });
   });
