@@ -73,6 +73,7 @@ names.
   material's text is exported, its source note and the note's id are not;
 - private sketches, and the placement of a note on any sketch;
 - accounts, e-mail addresses, sessions, push subscriptions and notifications;
+- approved project policies for agents (#160): a full backup keeps them, a project export does not;
 - agent connections, OAuth clients, access and refresh tokens and signing keys (secrets of this
   instance), and pending agent proposals (#52), which are not part of format version 1;
 - events, idempotency records and other internal rows.

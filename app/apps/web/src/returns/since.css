@@ -66,6 +66,8 @@
 @media (max-width: 720px) {
   .since__in { padding: 0 16px; }
   .since__when { display: none; }
+  /* Without the time, each row's arrow still lines up at the right edge (#189). */
+  .since__go { margin-left: auto; }
 }
 @media (pointer: coarse) {
   .since__item { min-height: 44px; }

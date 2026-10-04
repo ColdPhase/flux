@@ -7,6 +7,9 @@ See the [project README](../README.md) for an introduction and quick start.
 - [Contributing](CONTRIBUTING.md) — where to raise issues, the Docker checks to run,
   and how to submit a pull request.
 - [Security policy](SECURITY.md) — supported code and private vulnerability reports.
+- [Governance](../GOVERNANCE.md) — who decides, how to propose changes, licensing.
+- [Changelog](../CHANGELOG.md) — what changed, and the rule for adding an entry.
+- [Build log](build-log.md) — how two founders and two agents build Flux, dated.
 
 ## Agent collaboration
 
