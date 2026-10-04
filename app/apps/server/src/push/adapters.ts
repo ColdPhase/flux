@@ -2,6 +2,7 @@ import { and, eq, or, sql, type SQL } from 'drizzle-orm';
 import { fromDrizzle, type PgBoss } from 'pg-boss';
 import { markAllNotificationsRead, notificationRows, pushSubscriptionRepository, schema, type DbExecutor } from '@flux/db';
 import {
+  DRAFT_SUMMARY_JOB,
   PUSH_SEND_JOB,
   createNotification,
   policySourceReader,
@@ -66,19 +67,20 @@ export function subscriptionRepository(db: DbExecutor): PushSubscriptionReposito
   return pushSubscriptionRepository(db);
 }
 
-/** Queues push jobs inside the given transaction, so they commit with the inbox row. */
+/** Queues jobs inside the given transaction, so they commit with the rows that describe them. */
 export type QueueFactory = (tx: DbExecutor) => JobQueue;
 
-export function pgBossQueue(boss: PgBoss): QueueFactory {
-  return (tx) => ({
-    enqueuePushSend: (job) => boss.send(PUSH_SEND_JOB, job, {
-      db: fromDrizzle(tx as Parameters<typeof fromDrizzle>[0], sql),
-      singletonKey: `${job.notificationId}:${job.subscriptionId}`,
-    }),
-  });
+export function pgBossQueue(boss: Pick<PgBoss, 'send'>): QueueFactory {
+  return (tx) => {
+    const db = fromDrizzle(tx as Parameters<typeof fromDrizzle>[0], sql);
+    return {
+      enqueuePushSend: (job) => boss.send(PUSH_SEND_JOB, job, { db, singletonKey: `${job.notificationId}:${job.subscriptionId}` }),
+      enqueueDraftSummary: (job) => boss.send(DRAFT_SUMMARY_JOB, job, { db }),
+    };
+  };
 }
 
-export function notificationUnitOfWork(db: Database, queue: QueueFactory): NotificationUnitOfWork {
+export function notificationUnitOfWork(db: Database, queue: (tx: DbExecutor) => Pick<JobQueue, 'enqueuePushSend'>): NotificationUnitOfWork {
   return {
     run: (work) => db.transaction((tx) => work({
       authorizer: policySourceReader(tx),

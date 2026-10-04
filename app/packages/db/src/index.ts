@@ -36,6 +36,7 @@ export * from './repositories/direct-messages.js';
 export * from './repositories/docs.js';
 export * from './repositories/sample.js';
 export * from './repositories/idempotency.js';
+export * from './repositories/draft-results.js';
 
 /** PostgreSQL channel notified (payload: seq) after an event with a workspace commits; wakes stream connections. */
 export const EVENTS_CHANNEL = 'flux_events';
@@ -98,7 +99,9 @@ export * from './repositories/search.js';
 export * from './repositories/personal-runs.js';
 export * from './repositories/project-export.js';
 export * from './repositories/operations.js';
-
+export * from './repositories/cowork.js';
+export * from './repositories/cowork-requests.js';
+export * from './repositories/cowork-recovery.js';
 export * from './repositories/github.js';
 export * from './repositories/agent-execution.js';
 export * from './repositories/agent-orientation.js';

@@ -49,9 +49,11 @@ import {
   type Database,
   type ResourceRef,
 } from '@flux/core';
+import { draftResultRepository } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { bodyId, commandRunner, expectedVersion, requires, useDomainErrors, versionEtag } from '../http/commands.js';
 import { withNoMediaAccessChange, type LiveRevocationCoordinator } from '../live/revocation.js';
+import { pgBossQueue } from '../push/adapters.js';
 
 export interface AccessRouteOptions {
   db: Database;
@@ -223,14 +225,15 @@ export async function accessRoutes(app: FastifyInstance, { db, sessions, boss, l
     replay: requires('draft', 'draft.read', () => request.params.draftId),
   }));
 
-  // Background job results
+  // Background job results: the job commits with its result row.
+  const summaries = { results: draftResultRepository, queue: pgBossQueue(boss) };
   app.post<{ Params: { draftId: string } }>(`${DRAFTS_PATH}/:draftId/summaries`, async (request, reply) => command(request, reply, {
     operation: `POST ${DRAFTS_PATH}/:draftId/summaries`, scope: draftScope(request.params.draftId), status: 202,
-    run: (actor, conn) => requestDraftSummary(actor, request.params.draftId, conn, boss),
+    run: (actor, conn) => requestDraftSummary(actor, request.params.draftId, conn, summaries),
     replay: requires('draft', 'draft.read', () => request.params.draftId),
   }));
   app.get<{ Params: { draftId: string } }>(`${DRAFTS_PATH}/:draftId/summaries`, async (request) =>
-    listDraftSummaries(await principal(request), request.params.draftId, db));
+    listDraftSummaries(await principal(request), request.params.draftId, db, draftResultRepository));
   app.get<{ Params: { draftId: string; resultId: string } }>(`${DRAFTS_PATH}/:draftId/summaries/:resultId`, async (request) =>
-    getDraftSummary(await principal(request), request.params.draftId, request.params.resultId, db));
+    getDraftSummary(await principal(request), request.params.draftId, request.params.resultId, db, draftResultRepository));
 }
