@@ -1,4 +1,5 @@
 """Project-map work creation opens the native object from both supported map routes."""
+import re
 import unittest
 import uuid
 from urllib.parse import urlsplit
@@ -51,8 +52,11 @@ class SketchWorkDetailsJourney(unittest.TestCase):
                     page = ctx.new_page()
                     errors = []
                     page.on("pageerror", lambda error: errors.append(str(error)))
-                    path = f"/map/{self.sketch}" if route == "workspace" else f"/projects/{self.project}/map/{self.sketch}"
-                    page.goto(path)
+                    # A project sketch opened at /map/:id is canonicalised to its project map (#210);
+                    # creation and the details must keep that project route on both entries.
+                    canonical = f"/projects/{self.project}/map/{self.sketch}"
+                    page.goto(f"/map/{self.sketch}" if route == "workspace" else canonical)
+                    expect(page).to_have_url(re.compile(rf"{re.escape(canonical)}$"))
                     page.locator(f".sk-node[data-id='{self.thought}']").click()
                     create = page.get_by_role("button", name="Create work from selected thoughts", exact=True)
                     expect(create).to_have_attribute("aria-disabled", "false")
@@ -68,7 +72,7 @@ class SketchWorkDetailsJourney(unittest.TestCase):
                     expect(panel).to_contain_text(self.text)
                     expect(panel).to_contain_text("Everyone with access to Library lighting measurements")
                     expect(panel.get_by_role("heading", name="Not available", exact=True)).to_have_count(0)
-                    self.assertEqual(urlsplit(page.url).path, path)
+                    self.assertEqual(urlsplit(page.url).path, canonical)
                     native = api(self.ctx, "GET", f"/api/v1/work/{item['id']}")
                     self.assertEqual(native["title"], self.text)
                     self.assertTrue(any(link["role"] == "source" and link["to"]["type"] == "thought"
