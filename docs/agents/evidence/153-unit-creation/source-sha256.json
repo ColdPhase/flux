@@ -1,0 +1,22 @@
+{
+  "commit": "301a2868258abeb63e52c2bec229e38e510873ee",
+  "files": {
+    "app/apps/server/src/agent-connection/execution.ts": "56611ca34bda724cbe8de77c73a5be4ecad0b9904dc967ed4dd7830bfec9b68d",
+    "app/apps/server/src/agent-connection/grants.ts": "8532097429e72fb9f37af64d13480b971756405373f567208e7f149d216fe3e3",
+    "app/apps/server/src/co-work/grants.ts": "4100a7f7b532bfca4ddcdc23a56a1300c7e27c233b42cccdc2ce69bc18968efd",
+    "app/apps/server/src/co-work/units.ts": "bee57b3271f47319cd482702c4efaff97e24310cdbd6aaa1abbf559888272f25",
+    "app/apps/web/src/agents/ProjectAgents.tsx": "a35939f7ec11a13f6a32b09476351f6afa1c3fbf5b9d6beeee383d2c38c80033",
+    "app/packages/contracts/src/agent-execution.ts": "26127e6c195a3898b08486d873ff3972c1edc8598ae606d79d37649da2e0d0fe",
+    "app/packages/core/src/agent-connection/execution.ts": "59ec772ca599b99336f3085d1e813e6163797eba4b9454a0af0d59e238b9a67d",
+    "app/packages/core/src/co-work/index.ts": "d622cb05677e21d58ac897e84a4053c395bcc8c9e577bdf73b507e9fdaad11cd",
+    "app/packages/core/src/co-work/units.ts": "73d1bc8e8a9967dbda417f4de9f8591559d879f963f2ca90d43a0a2374984d8b",
+    "app/packages/db/migrations/0050_cowork_unit_creation.sql": "cac8c6aaad7773a8fdf461329dafdc11265b51c9983bd596f8fbb793c3dbac45",
+    "app/packages/db/src/index.ts": "05989eb5956f030a37aa35105fba16658a81811cbeb67c1b77454c0741987560",
+    "app/packages/db/src/repositories/agent-execution.ts": "891fc5802c24b6ea05fd372f2cb65e7d3b3877f98cbe37e69ee12b3bbec23848",
+    "app/packages/db/src/repositories/cowork-unit-creation.ts": "64dc8588b980c1578d2551dc2d856f959c3f2b87e80ab44b7ee3437f5f50f33f",
+    "app/tests/app/agent-execution-core.test.ts": "9db1eef43044dce69d6e9da47d4648e4945f1c8eeae4fcbd2063777ea4069fb0",
+    "app/tests/app/agent-request-response-migration.test.ts": "799baaed69df11e08d77e085edb3449d6fb6d0728c57c301c45bcc1ee3168d8b",
+    "app/tests/app/agent-unit-creation-migration.test.ts": "251ae34f505b5e054816b96b07031ad0937e1a249ba328b307a26294046a5b3f",
+    "app/tests/app/cowork-unit-creation.test.ts": "bf1b62519fbe5e468ef16c32e02a52fa147b7d13fb35d9eabbde42d6fc56fb56"
+  }
+}
