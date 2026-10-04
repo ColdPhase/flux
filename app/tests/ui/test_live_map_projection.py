@@ -5,6 +5,7 @@ import uuid
 
 from playwright.async_api import expect
 from test_live_editing import LiveFixture
+from test_app_shell import ORIGIN
 
 
 @unittest.skipUnless(os.environ.get('FLUX_LIVE_EDITING_TEST') == '1', '#228 needs an explicitly enabled isolated candidate')
@@ -43,8 +44,9 @@ class LiveMapProjectionJourney(LiveFixture):
                 {'fromId': second['id'], 'toId': added['id'], 'label': 'Peer edge during movement'},
                 201, {'idempotency-key': str(uuid.uuid4())})
             await expect(ada.locator('.sk-labels').get_by_text(link['label'], exact=True)).to_be_visible()
-            await self.api(kai, 'DELETE', f'/api/v1/sketches/{self.map_id}/thoughts/{third["id"]}',
-                status=204, headers={'idempotency-key': str(uuid.uuid4()), 'if-match': f'"{third["version"]}"'})
+            deleted = await kai.request.delete(f'/api/v1/sketches/{self.map_id}/thoughts/{third["id"]}',
+                headers={'origin': ORIGIN, 'idempotency-key': str(uuid.uuid4()), 'if-match': f'"{third["version"]}"'})
+            self.assertEqual(deleted.status, 204, await deleted.text())
             await expect(ada.locator(f'.sk-node[data-id="{third["id"]}"]')).to_have_count(0)
             await expect(canvas).to_have_attribute('data-live-generation', generation)
             await expect(canvas).to_have_attribute('data-live-own-gesture', gesture)
