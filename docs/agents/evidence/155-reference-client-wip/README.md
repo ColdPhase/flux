@@ -56,6 +56,21 @@ Raw logs are kept outside the repository; their sha256 is listed so a copy can b
   `w170b-e2e.log` sha256 `ef77bbcf967059c57870d9acbcf6e2739575ae88d4e0b582adec646a8976d176`.
   (A first attempt, `w170b-e2e-harness1.log`, stopped before any test: the runner did not build
   the `ui-test` image the overlay's `anthropic-mock` uses.)
+- **Full `check_application.sh`** (`FLUX_TEST_PORT=18910 FLUX_TEST_MAILPIT_PORT=18911`): main
+  suite **790/790**, then PWA e2e 3/3, access-stream, task-discussion-actors,
+  task-contribution-effects and GitHub e2e 1/1 each; **failed at `proactive-comparison.e2e.ts`
+  (5/6)** and, under `set -e`, stopped there: work-proposal-pagination, task-plan,
+  agent-connections, session-restart, push-unavailable and email-unavailable did **not run** at
+  this head. Failure: line 182 `getByRole('heading', { name: 'Measure ToF response at 5 lux' })`
+  is a strict-mode violation, matching both the Tasks board card (`.tb-card__t`) and the Details
+  title. Log `w170b-check-app.log` sha256
+  `aae221879a48b7d803b43a8a7e9fa6d9863278172035909917c2e684a8a13d8f`.
+- **Full `check_ui.sh`** (`FLUX_UI_PORT=18912 FLUX_UI_MAILPIT_PORT=18913`): **253 run, 4 failures,
+  2 errors, 4 skipped** (live-media tests need `check_live_ui.sh`). `test_map_task_count` **9/9**,
+  `test_typing` 9/9, `test_theme_accents` 7/7. Failing: `test_project_surface.test_02`,
+  `test_sketch_work_details.test_01` (2 workspace subtests), `test_work_decisions.test_04`
+  (ERROR) and `test_06` (FAIL), `test_work_details.test_08` (ERROR). Log `w170b-check-ui.log`
+  sha256 `1affe1c19bf197f5aea1a19abd422f570a4dea6652529726de82dde012ce75cc`.
 <!-- more -->
 
 ## Verified in Docker at `642738dc` (isolated projects, ports 18910–18919)
