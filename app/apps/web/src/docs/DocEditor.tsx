@@ -55,7 +55,8 @@ export function DocEditor() {
 }
 
 function PrivateDocEditor() {
-  const { project, doc } = useLoaderData() as EditData;
+  const { doc } = useLoaderData() as EditData;
+  const { project } = useWiki();
   const { me } = useShellData();
   const navigate = useNavigate();
   const wide = useMediaQuery('(min-width: 1280px)');
