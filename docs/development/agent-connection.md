@@ -218,6 +218,75 @@ Composition:
   as the work commands (`nativeSketchInEventSession`).
 - Each committed command adds exactly one event, after its receipt.
 
+### Project wiki docs and conversations
+
+The same executor runs the canonical doc (#112) and conversation (#36, #154) commands:
+
+| Tool | Operation | Target | Change |
+| --- | --- | --- | --- |
+| `flux_create_doc` | `doc.create` | none | One project doc: title, Markdown text, draft or published state, reason |
+| `flux_update_doc` | `doc.update` | the doc | The next version at the version last read (like `If-Match`): title, the complete text, state, reason |
+| `flux_start_conversation` | `conversation.create` | none | One new project conversation with its first message, optionally citing one material or doc version |
+| `flux_reply_in_conversation` | `conversation.reply` | the conversation | One reply in an existing project conversation, including a task's discussion thread |
+
+Grants and classes:
+
+- All four operations take the execute or plan class; review grants never write.
+- A grant for an update or a reply can name one doc or conversation, or the whole project.
+- Migration `0043` adds the four operations to the closed grant operation list.
+
+Authorship:
+
+- The agent is the real author. Migration `0043` gives docs the exact-actor shape of
+  #154 messages. A doc and each version name either a person (`created_by`, `author_id`)
+  or an agent of the same workspace (`created_by_agent_id`, `author_agent_id`), never both.
+- Only docs can be agent-written. Plain materials stay person-written, and existing
+  rows are not backfilled.
+- Every existing reader names the real actor:
+  - the doc reader, history and lists (`kind: 'agent'`);
+  - the material citation reader (`authorId: null` with `author`);
+  - search and the project export.
+
+  The conversation UI already shows agent messages as "name · agent".
+- The person-facing doc and conversation routes still refuse an agent principal: doc routes
+  with `DOC_NEEDS_PERSON`, conversation routes with "A signed-in person is required". Only this
+  standing-grant composition opts in (`agentAuthors`).
+- A message's canonical client message ID is derived from the connection and the
+  command ID. A retry computes the same send, and two connections of one agent never collide.
+
+Audience and privacy:
+
+- A target must be a doc or conversation of the command's project. These are all
+  `OBJECT_NOT_FOUND`: a private draft or note, a direct message, another project's
+  object and a guessed ID.
+- A private draft is never a citation (`MATERIAL_VERSION_NOT_FOUND`) or a source
+  (`SOURCE_VERSION_CONFLICT`).
+- There is no private-to-project publication path. The doc text is exactly what the
+  agent sends, and `flux:` references outside the project render as not available.
+  A draft doc is a state visible to the project audience, not a private note.
+- Messages are plain text. Blocker, result and handoff contributions still come from
+  their own commands.
+
+Versions, post-state and replay:
+
+- An edit at a stale version is `VERSION_CONFLICT`. A change that alters nothing is
+  `DOC_UNCHANGED`. Neither saves a version or debits the grant.
+- The produced post-state is the doc at its new version, or the posted message. A
+  message is immutable, and a reply's message must be in the targeted conversation.
+- A doc replay after a later edit is `COMMAND_POSTSTATE_STALE`. A message replay
+  returns the stored outcome even after later messages.
+- Each committed command adds exactly one event after its receipt:
+  `project.doc_created.v1` or `project.doc_updated.v1`, and
+  `project.conversation_created.v1` or `project.message_sent.v1`.
+
+Not yet agent tools:
+
+- "Add to docs" sections and docs started from a result or decision.
+- A task's first discussion contribution and explicit blocker, result or handoff
+  contributions. Once a task thread exists, a reply joins it.
+
+The built-in playbook 1.0.0 does not name these tools yet; its revision belongs to #160.
+
 Co-work operations remain registry entries without tools. #153's claim adapter,
 the #160 playbook and real Codex/Claude model-driven activation are still required
 before agent decomposition counts as delivered.
@@ -225,17 +294,18 @@ before agent decomposition counts as delivered.
 ## Built-in co-work playbook (#160)
 
 The server ships one versioned instruction bundle, `COWORK_PLAYBOOK`
-(`flux.cowork` 1.0.0, in `app/packages/core/src/agent-connection/playbook.ts`). It
+(`flux.cowork` 1.1.0, in `app/packages/core/src/agent-connection/playbook.ts`). It
 has a core part and five role modules: start/resume, orient/plan,
 execute/checkpoint, request/review/fix and block/transfer/stop. Each module
 declares the MCP tools and server providers it needs. The bundle names only tools
 the MCP server registers, and a test pins this. Where a provider does not exist
-yet (coordination, approved policy, verified repository context), the text tells
-the agent to treat that step as unavailable rather than simulate it.
+yet (coordination, verified repository context), the text tells the agent to treat
+that step as unavailable rather than simulate it. Since 1.1.0 the orient/plan module
+tells the agent to read the approved project policy (below) before planning.
 
 Every authenticated MCP connection delivers it in three ways:
 
-- **Resource:** `flux://playbook/flux.cowork/1.0.0` (Markdown) returns the
+- **Resource:** `flux://playbook/flux.cowork/1.1.0` (Markdown) returns the
   rendered bundle with its digest.
 - **Prompts:** `start_work` and `resume_work` are the host-invoked Start and
   Resume actions. Claude Code, for example, lists MCP prompts as slash commands.
@@ -272,11 +342,33 @@ digest })`. The record belongs to that client session's server-issued runtime
 
 The record grants nothing. It is the client's statement, not an observation by the
 server, and `modelObedience` stays `unverified`. `readiness` stays `pending` while
-the policy, coordination and repository providers are missing. Still required:
+the coordination and repository providers are missing. Still required:
 
-- approved project policy;
 - #153 coordination;
 - tested Codex and Claude activation with pinned versions.
+
+## Approved project policy (#160, CW-1)
+
+A project manager publishes the policy that connected agents work under: four bounded plain-text
+fields (scope, priorities, review criteria, allowed work; each at most 4,000 characters, at least
+one non-empty). It narrows what an agent takes on inside its owner's grants and never grants
+anything; only this publish writes it, never message, PR, wiki or tool text.
+
+- `GET /api/v1/projects/:projectId/agent-policy` returns `{ policy }` (null before the first
+  publish) to anyone who can read the project.
+- `PUT …/agent-policy` `{ scope, priorities, reviewCriteria, allowedWork, expectedRevision }`
+  publishes the next revision from the one the manager saw (`0` for none): `project.manage`, a
+  person only (`POLICY_NEEDS_PERSON`), `409 VERSION_CONFLICT` with `currentVersion` on a stale
+  revision, `Idempotency-Key` accepted. Every revision is kept unchanged (migration 0044,
+  `agent_project_policies`), and `project.agent_policy_published.v1` carries only the revision.
+- Bootstrap's `trusted.approvedPolicy` names the newest revision with its `sha256:` digest and
+  `retrievalReference` `flux://policy/<projectId>/<revision>`, and drops
+  `approved_policy_unavailable` from `gaps`. That MCP resource returns any stored revision as
+  Markdown through the connection's current project read access, so a resumed agent can compare.
+  A connection reads only projects it selected and can still read; it lists no policies.
+- The narrowing is guidance the agent follows, not a server rule: every command is still decided by
+  the owner's grants and current project access alone, whatever the policy says. Policy text is
+  counted in characters (code points); the publisher's name in the resource is quoted as data.
 
 ## Verification boundary
 

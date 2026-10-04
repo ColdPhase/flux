@@ -59,6 +59,16 @@ function publish() {
   listeners.forEach((listener) => listener());
 }
 
+/**
+ * Theme and accent changes switch every colour at once: transitions are paused for two frames so
+ * nothing cross-fades through an unreadable mix of the old and new palette.
+ */
+function settleInstantly() {
+  const root = document.documentElement;
+  root.dataset.themeSwitching = '';
+  requestAnimationFrame(() => requestAnimationFrame(() => { delete root.dataset.themeSwitching; }));
+}
+
 function apply(choice: ThemeChoice) {
   const root = document.documentElement;
   if (choice === 'system') delete root.dataset.theme;
@@ -73,11 +83,12 @@ export function applyStoredTheme() {
   publish();
   if (!listening) {
     listening = true;
-    systemTheme?.addEventListener('change', () => { if (current === 'system') publish(); });
+    systemTheme?.addEventListener('change', () => { if (current === 'system') { settleInstantly(); publish(); } });
     window.addEventListener('storage', (event) => {
       if (event.key === null || [KEY, LEGACY_ACCENT_KEY, accentKey('light'), accentKey('dark')].includes(event.key)) {
         current = read();
         accents = readAccents();
+        settleInstantly();
         apply(current);
         publish();
       }
@@ -93,6 +104,7 @@ export function setTheme(choice: ThemeChoice) {
   } catch {
     // Private windows may refuse storage; the choice still applies for this visit.
   }
+  settleInstantly();
   apply(choice);
   publish();
 }
@@ -111,6 +123,7 @@ export function setAccent(choice: AccentChoice) {
   try { localStorage.setItem(accentKey(theme), choice); } catch {
     // Storage may be unavailable; retain the appearance for this visit.
   }
+  settleInstantly();
   publish();
 }
 

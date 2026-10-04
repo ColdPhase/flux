@@ -11,6 +11,8 @@ import { useOverviewWork } from '../work/useOverviewWork';
 import { WorkPagination } from '../work/WorkPagination';
 import { ACCESS_LABEL, audienceLine, useProjectShell } from './data';
 import { docUrl } from '../docs/api';
+import { docsLinking } from '../docs/AddToDoc';
+import { authorLabel } from '../docs/format';
 
 /** The open conversation's loader data, when the Conversation tab is showing one. */
 function useOpenConversation(): { conversation: Conversation | null; materials: Material[] } | null {
@@ -157,7 +159,7 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
     if (object && (!docRows.has(link.from.id) || link.role === 'source')) docRows.set(link.from.id, { key: link.from.id, icon: 'doc', kind: link.role === 'source' ? 'Doc · includes it' : 'Doc · mentions it', title: link.fromTitle, sub: `“${object.title}”`, to: docUrl(project.id, link.from.id) });
   }
   if (!messageMode) for (const doc of (docs ?? []).slice(0, 3)) {
-    if (!docRows.has(doc.id)) docRows.set(doc.id, { key: doc.id, icon: 'doc', kind: doc.state === 'draft' ? 'Doc · draft' : 'Doc', title: doc.title, sub: `Changed by ${doc.updatedBy.id === me.user.id ? 'you' : doc.updatedBy.name}${doc.reason ? ` · ${doc.reason}` : ''}`, to: docUrl(project.id, doc.id) });
+    if (!docRows.has(doc.id)) docRows.set(doc.id, { key: doc.id, icon: 'doc', kind: doc.state === 'draft' ? 'Doc · draft' : 'Doc', title: doc.title, sub: `Changed by ${doc.updatedBy.kind === 'human' && doc.updatedBy.id === me.user.id ? 'you' : authorLabel(doc.updatedBy)}${doc.reason ? ` · ${doc.reason}` : ''}`, to: docUrl(project.id, doc.id) });
   }
   const moreDocs = !messageMode && docs && docs.length > 3;
   const noLinkedContext = read.objects.phase === 'idle' || read.page && (read.page.total === 0

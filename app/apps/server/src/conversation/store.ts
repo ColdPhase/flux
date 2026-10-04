@@ -2,15 +2,16 @@ import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, lt, sql } from 'drizzle-orm';
 import { schema, taskDiscussionRows, workRows } from '@flux/db';
 import type {
-  Conversation, ConversationMessage, ConversationSummary, Material,
+  Conversation, ConversationMessage, ConversationSummary, Material, MaterialOrDoc,
   MaterialVersion, Page, PageQuery,
 } from '@flux/contracts';
 import {
-  ConflictError, enforce, evaluateDraft, evaluateProject, InvalidInputError, NotFoundError,
+  ConflictError, conversationUseCases, enforce, evaluateDraft, evaluateProject, InvalidInputError, NotFoundError,
   messageContribution, positiveVersion, uuid,
-  parsePage, recordEvent, type Database, type Principal,
+  parsePage, recordEvent, type Database, type Principal, type Transaction,
 } from '@flux/core';
 import type { ConversationPort } from '@flux/core';
+import type { TransactionEventSession } from '../work/transaction-events.js';
 
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
 type Executor = Database | Tx;
@@ -18,10 +19,31 @@ type ConversationRow = typeof schema.projectConversations.$inferSelect;
 type MessageRow = typeof schema.projectMessages.$inferSelect;
 type MaterialRow = typeof schema.projectMaterials.$inferSelect;
 type VersionRow = typeof schema.projectMaterialVersions.$inferSelect;
+type Actor = { kind: 'human' | 'agent'; id: string };
+type MessageEventKind = 'project.conversation_created.v1' | 'project.message_sent.v1';
+/** Where a committed start or reply records its one event. */
+export interface ConversationEventLog {
+  record(principal: Principal, workspaceId: string, kind: MessageEventKind, projectId: string,
+    data: { conversationId: string; messageId: string }): Promise<void>;
+}
+export interface ConversationStoreOptions {
+  /** A composing caller's event collector (one final batch); by default each command records its event inline. */
+  events?: ConversationEventLog;
+  /**
+   * Accept an agent principal as the real author of a start or reply. Only the #152 standing-grant composition
+   * sets it; the person-facing routes keep requiring a signed-in person. Materials stay person-written.
+   */
+  agentAuthors?: boolean;
+}
 
 function human(principal: Principal): string {
   if (principal.kind !== 'human') throw new InvalidInputError('A signed-in person is required');
   return principal.id;
+}
+
+function authorOf(principal: Principal, agentAuthors: boolean): Actor {
+  if (principal.kind === 'agent' && agentAuthors) return { kind: 'agent', id: uuid(principal.id, 'agentId').toLowerCase() };
+  return { kind: 'human', id: human(principal) };
 }
 
 function creator(row: ConversationRow, names: Map<string, string>) {
@@ -36,19 +58,36 @@ function message(row: MessageRow, names: Map<string, string> = new Map()): Conve
     sequence: row.sequence, createdAt: row.createdAt.toISOString(), ...(contribution ? { contribution } : {}) };
 }
 
-function version(row: VersionRow, principal: Principal): MaterialVersion {
-  return { materialId: row.materialId, version: row.version, title: row.title, body: row.body,
-    url: row.url, authorId: row.authorId,
-    sourceDraft: principal.kind === 'human' && principal.id === row.authorId && row.sourceDraftId && row.sourceDraftVersion
+function versionFields(row: VersionRow, principal: Principal) {
+  return { materialId: row.materialId, version: row.version, title: row.title, body: row.body, url: row.url,
+    sourceDraft: principal.kind === 'human' && row.authorId !== null && principal.id === row.authorId && row.sourceDraftId && row.sourceDraftVersion
       ? { id: row.sourceDraftId, version: row.sourceDraftVersion } : null,
     createdAt: row.createdAt.toISOString() };
 }
 
-function material(row: MaterialRow, current: VersionRow, principal: Principal): Material {
-  return { ...version(current, principal), kind: row.kind, projectId: row.projectId, workspaceId: row.workspaceId,
-    audience: { kind: 'project', projectId: row.projectId },
-    createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
+/** The actual author: a person, or the agent that wrote a doc version under a standing grant (#152). */
+function version(row: VersionRow, principal: Principal, names: Map<string, string> = new Map()): MaterialVersion {
+  if (row.authorId !== null) return { ...versionFields(row, principal), authorId: row.authorId };
+  return { ...versionFields(row, principal), authorId: null,
+    author: { kind: 'agent', id: row.authorAgentId!, name: names.get(`agent:${row.authorAgentId}`) ?? 'Agent' } };
 }
+
+const materialFields = (row: MaterialRow) => ({ kind: row.kind, projectId: row.projectId, workspaceId: row.workspaceId,
+  audience: { kind: 'project' as const, projectId: row.projectId },
+  createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() });
+
+/** A plain #36 material: always person-written (the database refuses an agent author outside docs). */
+function material(row: MaterialRow, current: VersionRow, principal: Principal): Material {
+  if (current.authorId === null) throw new Error('A project material version must have a human author');
+  return { ...versionFields(current, principal), authorId: current.authorId, ...materialFields(row) };
+}
+
+function materialOrDoc(row: MaterialRow, current: VersionRow, principal: Principal, names: Map<string, string>): MaterialOrDoc {
+  return { ...version(current, principal, names), ...materialFields(row) };
+}
+
+const versionAuthors = (db: Executor, rows: VersionRow[]) => workRows(db).names(rows.filter((row) => row.authorAgentId !== null)
+  .map((row) => ({ kind: 'agent' as const, id: row.authorAgentId! })));
 
 async function requireProject(principal: Principal, projectId: string, db: Executor, write = false, lock = false) {
   uuid(projectId, 'projectId');
@@ -87,32 +126,39 @@ async function sourceExists(projectId: string, source: { materialId: string; ver
   if (!row) throw new NotFoundError('Material version', 'MATERIAL_VERSION_NOT_FOUND');
 }
 
-async function existingMessage(projectId: string, authorId: string, clientMessageId: string, db: Executor) {
+async function existingMessage(projectId: string, author: Actor, clientMessageId: string, db: Executor) {
   const [row] = await db.select().from(schema.projectMessages).where(and(
-    eq(schema.projectMessages.projectId, projectId), eq(schema.projectMessages.authorId, authorId),
+    eq(schema.projectMessages.projectId, projectId),
+    author.kind === 'human' ? eq(schema.projectMessages.authorId, author.id) : eq(schema.projectMessages.authorAgentId, author.id),
     eq(schema.projectMessages.clientMessageId, clientMessageId)));
   return row;
 }
 
-async function lockIdempotency(tx: Tx, projectId: string, authorId: string, clientId: string) {
+async function lockIdempotency(tx: Tx, projectId: string, author: Actor, clientId: string) {
   // Serializes same-key first sends before a thread is created. The uniqueness constraint
-  // remains the final guard; hash collisions only serialize unrelated sends.
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`${projectId.toLowerCase()}:human:${authorId}:${clientId.toLowerCase()}`}))`);
+  // remains the final guard; hash collisions only serialize unrelated sends. Same namespace
+  // as task contributions (`taskDiscussionRows.lockCommand`).
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`${projectId.toLowerCase()}:${author.kind}:${author.id}:${clientId.toLowerCase()}`}))`);
 }
 
-async function sendInTransaction(tx: Tx, conversation: ConversationRow, authorId: string, input: Parameters<ConversationPort['sendMessage']>[2]): Promise<{ message: ConversationMessage; inserted: boolean }> {
-  const existing = await existingMessage(conversation.projectId, authorId, input.clientMessageId, tx);
+async function sendInTransaction(tx: Tx, conversation: ConversationRow, author: Actor, input: Parameters<ConversationPort['sendMessage']>[2]): Promise<{ message: ConversationMessage; inserted: boolean }> {
+  const names = author.kind === 'agent' ? await workRows(tx).names([author]) : new Map<string, string>();
+  const existing = await existingMessage(conversation.projectId, author, input.clientMessageId, tx);
   if (existing) {
     if (existing.requestFingerprint !== input.fingerprint || existing.conversationId !== conversation.id)
       throw new ConflictError('This clientMessageId was used for another message', 'IDEMPOTENCY_CONFLICT');
-    return { message: message(existing), inserted: false };
+    return { message: message(existing, names), inserted: false };
   }
   await sourceExists(conversation.projectId, input.source, tx);
-  const inserted = await taskDiscussionRows(tx).append(conversation, { kind: 'human', id: authorId }, input);
-  return { message: message(inserted), inserted: true };
+  const inserted = await taskDiscussionRows(tx).append(conversation, author, input);
+  return { message: message(inserted, names), inserted: true };
 }
 
-export function conversationStore(db: Database) {
+export function conversationStore(db: Database, options: ConversationStoreOptions = {}) {
+  const agentAuthors = options.agentAuthors === true;
+  const eventLog = (tx: Tx): ConversationEventLog => options.events ?? { record: async (principal, workspaceId, kind, projectId, data) => {
+    await recordEvent(tx, principal, workspaceId, kind, projectId, data);
+  } };
   return {
     async listConversations(principal: Principal, projectId: string, query: PageQuery = {}): Promise<Page<ConversationSummary>> {
       const page = parsePage(query);
@@ -158,45 +204,47 @@ export function conversationStore(db: Database) {
     },
 
     async createConversation(principal: Principal, projectId: string, input: Parameters<ConversationPort['createConversation']>[2]): Promise<Conversation> {
-      const authorId = human(principal);
+      const author = authorOf(principal, agentAuthors);
       return db.transaction(async (tx) => {
         const project = await requireProject(principal, projectId, tx, true, true);
-        await lockIdempotency(tx, projectId, authorId, input.clientMessageId);
-        const existing = await existingMessage(projectId, authorId, input.clientMessageId, tx);
+        await lockIdempotency(tx, projectId, author, input.clientMessageId);
+        const names = author.kind === 'agent' ? await workRows(tx).names([author]) : new Map<string, string>();
+        const existing = await existingMessage(projectId, author, input.clientMessageId, tx);
         if (existing) {
           if (existing.requestFingerprint !== input.fingerprint || existing.sequence !== 1)
             throw new ConflictError('This clientMessageId was used for another message', 'IDEMPOTENCY_CONFLICT');
           const row = await locateConversation(principal, existing.conversationId, tx);
           return { id: row.id, projectId: row.projectId, workspaceId: row.workspaceId,
-            audience: { kind: 'project' as const, projectId: row.projectId }, ...creator(row, new Map()),
-            createdAt: row.createdAt.toISOString(), firstMessageBody: existing.body, messages: [message(existing)],
+            audience: { kind: 'project' as const, projectId: row.projectId }, ...creator(row, names),
+            createdAt: row.createdAt.toISOString(), firstMessageBody: existing.body, messages: [message(existing, names)],
             messagePage: { hasMoreBefore: false, nextBeforeSequence: null, limit: 50 } };
         }
         await sourceExists(projectId, input.source, tx);
         const [row] = await tx.insert(schema.projectConversations).values({
-          id: randomUUID(), workspaceId: project.workspaceId, projectId, createdBy: authorId,
+          id: randomUUID(), workspaceId: project.workspaceId, projectId,
+          createdBy: author.kind === 'human' ? author.id : null, createdByAgentId: author.kind === 'agent' ? author.id : null,
         }).returning();
-        const first = await sendInTransaction(tx, row!, authorId, input);
-        if (first.inserted) await recordEvent(tx, principal, project.workspaceId, 'project.conversation_created.v1', projectId, { conversationId: row!.id, messageId: first.message.id });
+        const first = await sendInTransaction(tx, row!, author, input);
+        if (first.inserted) await eventLog(tx).record(principal, project.workspaceId, 'project.conversation_created.v1', projectId, { conversationId: row!.id, messageId: first.message.id });
         return { id: row!.id, projectId, workspaceId: project.workspaceId,
-          audience: { kind: 'project' as const, projectId }, createdBy: authorId,
+          audience: { kind: 'project' as const, projectId }, ...creator(row!, names),
           createdAt: row!.createdAt.toISOString(), firstMessageBody: first.message.body, messages: [first.message],
           messagePage: { hasMoreBefore: false, nextBeforeSequence: null, limit: 50 } };
       });
     },
 
     async sendMessage(principal: Principal, conversationId: string, input: Parameters<ConversationPort['sendMessage']>[2]): Promise<ConversationMessage> {
-      const authorId = human(principal);
+      const author = authorOf(principal, agentAuthors);
       return db.transaction(async (tx) => {
         const row = await locateConversation(principal, conversationId, tx, true, true);
-        await lockIdempotency(tx, row.projectId, authorId, input.clientMessageId);
+        await lockIdempotency(tx, row.projectId, author, input.clientMessageId);
         // A reply to a task's bound conversation enters the task order (access, command identity, task row,
         // conversation sequence), exactly like a contribution; it never takes the conversation first.
         await taskDiscussionRows(tx).lockBoundTask(row.id);
-        const sent = await sendInTransaction(tx, row, authorId, input);
+        const sent = await sendInTransaction(tx, row, author, input);
         if (sent.message.sequence === 1)
           throw new ConflictError('This clientMessageId was used to start the conversation', 'IDEMPOTENCY_CONFLICT');
-        if (sent.inserted) await recordEvent(tx, principal, row.workspaceId, 'project.message_sent.v1', row.projectId, { conversationId: row.id, messageId: sent.message.id });
+        if (sent.inserted) await eventLog(tx).record(principal, row.workspaceId, 'project.message_sent.v1', row.projectId, { conversationId: row.id, messageId: sent.message.id });
         return sent.message;
       });
     },
@@ -238,9 +286,10 @@ export function conversationStore(db: Database) {
       });
     },
 
-    async getMaterial(principal: Principal, materialId: string): Promise<Material> {
+    async getMaterial(principal: Principal, materialId: string): Promise<MaterialOrDoc> {
       const row = await locateMaterial(principal, materialId, db);
-      return material(row, await currentVersion(row, db), principal);
+      const current = await currentVersion(row, db);
+      return materialOrDoc(row, current, principal, await versionAuthors(db, [current]));
     },
 
     async getMaterialVersion(principal: Principal, materialId: string, versionNumber: number): Promise<MaterialVersion> {
@@ -249,14 +298,14 @@ export function conversationStore(db: Database) {
       const [snapshot] = await db.select().from(schema.projectMaterialVersions).where(and(
         eq(schema.projectMaterialVersions.materialId, row.id), eq(schema.projectMaterialVersions.version, requested)));
       if (!snapshot) throw new NotFoundError('Material version', 'MATERIAL_VERSION_NOT_FOUND');
-      return version(snapshot, principal);
+      return version(snapshot, principal, await versionAuthors(db, [snapshot]));
     },
 
     async createMaterial(principal: Principal, projectId: string, input: Parameters<ConversationPort['createMaterial']>[2]): Promise<Material> {
       const authorId = human(principal);
       return db.transaction(async (tx) => {
         const project = await requireProject(principal, projectId, tx, true, true);
-        await lockIdempotency(tx, projectId, authorId, input.clientMutationId);
+        await lockIdempotency(tx, projectId, { kind: 'human', id: authorId }, input.clientMutationId);
         const [existing] = await tx.select().from(schema.projectMaterials).where(and(
           eq(schema.projectMaterials.projectId, projectId), eq(schema.projectMaterials.createdBy, authorId),
           eq(schema.projectMaterials.clientMutationId, input.clientMutationId)));
@@ -325,5 +374,18 @@ export function conversationStore(db: Database) {
         return material(updated!, snapshot!, principal);
       });
     },
+  };
+}
+
+/**
+ * The canonical project start and reply commands inside a #152 standing-grant execution: the caller's open
+ * transaction, its single final event batch and the agent as the real author. Same normalization, access,
+ * idempotency, task-thread ordering and audience as the person-facing routes; never a direct message.
+ */
+export function nativeConversationsInEventSession(tx: Transaction, session: TransactionEventSession) {
+  const commands = conversationUseCases(conversationStore(tx, { events: session, agentAuthors: true }));
+  return {
+    createConversation: (...args: Parameters<typeof commands.createConversation>) => session.run(() => commands.createConversation(...args)),
+    sendMessage: (...args: Parameters<typeof commands.sendMessage>) => session.run(() => commands.sendMessage(...args)),
   };
 }

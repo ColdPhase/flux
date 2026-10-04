@@ -390,8 +390,8 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   };
 
   return (
-    <div className="sk-page" ref={rootRef} onKeyDown={onKeyDown}>
-      <div className="sk">
+    <div className={`sk-page${mode === 'map' ? ' sk-page--map' : ''}`} ref={rootRef} onKeyDown={onKeyDown}>
+      <div className={`sk${mode === 'map' ? ' sk--map' : ''}`}>
         <div className="sk-head">
           <p className="sk-lead">
             <Link to={back} className="sk-back">Sketches</Link>

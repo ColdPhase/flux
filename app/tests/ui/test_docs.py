@@ -144,7 +144,7 @@ class DocsJourney(unittest.TestCase):
     def test_02_write_a_doc_with_preview_and_a_link(self) -> None:
         page = self.page("owner")
         page.goto(f"/projects/{self.project_id}")
-        self.tab(page, "Docs").click()
+        self.tab(page, "Wiki").click()
         expect(page.get_by_role("heading", name="No docs yet")).to_be_visible()
         page.get_by_role("link", name="New doc").click()
         page.get_by_label("Title").fill(TITLE)

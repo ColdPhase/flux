@@ -477,7 +477,9 @@ export const projectMaterials = pgTable('project_materials', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),
   projectId: uuid('project_id').notNull(),
-  createdBy: text('created_by').notNull(),
+  /** Exactly one actor (migration 0043, #152): a person, or the agent that started a doc under a standing grant. */
+  createdBy: text('created_by'),
+  createdByAgentId: uuid('created_by_agent_id'),
   /** 'doc' for project docs (#112, migration 0013); docs have no client mutation id. */
   kind: text('kind', { enum: ['material', 'doc'] }).notNull().default('material'),
   clientMutationId: uuid('client_mutation_id'),
@@ -489,6 +491,9 @@ export const projectMaterials = pgTable('project_materials', {
   unique().on(table.workspaceId, table.projectId, table.id),
   unique().on(table.projectId, table.createdBy, table.clientMutationId),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.createdByAgentId], foreignColumns: [agents.workspaceId, agents.id] }),
+  check('project_material_exact_actor', sql`num_nonnulls(${table.createdBy}, ${table.createdByAgentId}) = 1`),
+  check('project_material_agent_doc', sql`${table.createdByAgentId} IS NULL OR ${table.kind} = 'doc'`),
 ]);
 
 export const projectMaterialVersions = pgTable('project_material_versions', {
@@ -499,7 +504,9 @@ export const projectMaterialVersions = pgTable('project_material_versions', {
   title: text('title').notNull(),
   body: text('body').notNull(),
   url: text('url'),
-  authorId: text('author_id').notNull(),
+  /** Exactly one actor (migration 0043, #152): a person, or the agent that wrote a doc version under a standing grant. */
+  authorId: text('author_id'),
+  authorAgentId: uuid('author_agent_id'),
   clientMutationId: uuid('client_mutation_id'),
   requestFingerprint: text('request_fingerprint'),
   sourceDraftId: uuid('source_draft_id'),
@@ -512,6 +519,10 @@ export const projectMaterialVersions = pgTable('project_material_versions', {
   primaryKey({ columns: [table.materialId, table.version] }),
   unique().on(table.workspaceId, table.projectId, table.materialId, table.version),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.materialId], foreignColumns: [projectMaterials.workspaceId, projectMaterials.projectId, projectMaterials.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.authorAgentId], foreignColumns: [agents.workspaceId, agents.id] }),
+  check('project_material_version_exact_actor', sql`num_nonnulls(${table.authorId}, ${table.authorAgentId}) = 1`),
+  // Only doc versions carry a state; a plain #36 material version stays person-written.
+  check('project_material_version_agent_doc', sql`${table.authorAgentId} IS NULL OR ${table.state} IS NOT NULL`),
 ]);
 
 export const projectMessages = pgTable('project_messages', {
@@ -678,6 +689,20 @@ export const agentPlaybookAcknowledgments = pgTable('agent_playbook_acknowledgme
   digest: text('digest').notNull(),
   acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// The approved project policy for connected agents (migration 0044, #160 / CW-1): every published
+// revision, kept unchanged. Policy narrows work inside owner grants; it never grants anything.
+export const agentProjectPolicies = pgTable('agent_project_policies', {
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  revision: integer('revision').notNull(),
+  scope: text('scope').notNull(),
+  priorities: text('priorities').notNull(),
+  reviewCriteria: text('review_criteria').notNull(),
+  allowedWork: text('allowed_work').notNull(),
+  digest: text('digest').notNull(),
+  publishedByUserId: text('published_by_user_id').notNull().references(() => authUsers.id, { onDelete: 'restrict' }),
+  publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [primaryKey({ columns: [table.projectId, table.revision] })]);
 
 // Sketches: thoughts on a map and the links between them (migration 0007, issue #69).
 export const sketches = pgTable('sketches', {
