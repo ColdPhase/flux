@@ -1,3 +1,4 @@
+import { messagePreview } from '@flux/contracts';
 import { and, asc, desc, eq, gt, inArray, lt, lte, sql, type SQL } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
@@ -156,7 +157,7 @@ export function returnRows(db: DbExecutor) {
     async messages(ids: string[]) {
       if (!ids.length) return new Map();
       const m = schema.projectMessages;
-      const rows = await db.select({ id: m.id, projectId: m.projectId, conversationId: m.conversationId, authorId: m.authorId, authorAgentId: m.authorAgentId, body: m.body, sequence: m.sequence, createdAt: m.createdAt })
+      const rows = await db.select({ id: m.id, projectId: m.projectId, conversationId: m.conversationId, authorId: m.authorId, authorAgentId: m.authorAgentId, body: m.body, attachmentCount: m.attachmentCount, sequence: m.sequence, createdAt: m.createdAt })
         .from(m).where(inArray(m.id, ids));
       return byId(rows.map(({ authorId, authorAgentId, ...row }) => ({ ...row, author: actor(authorId, authorAgentId) })));
     },
@@ -165,9 +166,9 @@ export function returnRows(db: DbExecutor) {
       if (!ids.length) return new Map();
       const c = schema.projectConversations;
       const m = schema.projectMessages;
-      const rows = await db.select({ id: c.id, projectId: c.projectId, createdBy: c.createdBy, createdByAgentId: c.createdByAgentId, opening: m.body }).from(c)
+      const rows = await db.select({ id: c.id, projectId: c.projectId, createdBy: c.createdBy, createdByAgentId: c.createdByAgentId, opening: m.body, attachmentCount: m.attachmentCount }).from(c)
         .leftJoin(m, and(eq(m.conversationId, c.id), eq(m.sequence, 1))).where(inArray(c.id, ids));
-      return byId(rows.map(({ createdBy, createdByAgentId, ...row }) => ({ ...row, createdBy: actor(createdBy, createdByAgentId), opening: excerpt(row.opening ?? '') })));
+      return byId(rows.map(({ createdBy, createdByAgentId, ...row }) => ({ ...row, createdBy: actor(createdBy, createdByAgentId), opening: excerpt(messagePreview(row.opening ?? '', row.attachmentCount ?? 0)) })));
     },
 
     async lastPosts(userId: string, conversationIds: string[]) {

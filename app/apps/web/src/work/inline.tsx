@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { useRevalidator } from 'react-router';
-import type { ConversationMessage, Decision, Project, WorkItem, WorkResult } from '@flux/contracts';
+import { messagePreview, type ConversationMessage, type Decision, type Project, type WorkItem, type WorkResult } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Icon, useMediaQuery } from '../ui';
 import { useShellActions, type ObjectView } from '../app/shellContext';
@@ -164,7 +164,7 @@ export function useCreateWorkFromMessage(project: Project) {
     keys.current.set(message.id, key);
     setBusy(message.id); setFailed(null);
     try {
-      const item = await createWork(project.id, { title: firstLine(message.body), sources: [{ type: 'message', id: message.id }] }, key);
+      const item = await createWork(project.id, { title: firstLine(messagePreview(message.body, message.files?.length)), sources: [{ type: 'message', id: message.id }] }, key);
       keys.current.delete(message.id);
       revalidator.revalidate();
       openDetails({ kind: 'work', id: item.id });

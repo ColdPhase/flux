@@ -1,3 +1,4 @@
+import { messagePreview } from '@flux/contracts';
 import { randomUUID } from 'node:crypto';
 import type { NotificationReason } from '@flux/contracts';
 import type { JobRetryPolicy } from '../push/config.js';
@@ -90,7 +91,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
         const title = reason === 'question' ? `${author} asked you in ${message.projectName}`
           : reason === 'mention' ? `${author} mentioned you in ${message.projectName}`
             : `${author} replied in ${quote(excerpt(message.opening, 60))}`;
-        result.push({ userId, reason, source: { type: 'project', id: message.projectId }, title, body: excerpt(message.body), url });
+        result.push({ userId, reason, source: { type: 'project', id: message.projectId }, title, body: excerpt(messagePreview(message.body, message.attachmentCount)), url });
       }
       return result;
     }

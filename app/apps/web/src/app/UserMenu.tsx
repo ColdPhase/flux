@@ -1,7 +1,6 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
-import { Link, useFetcher } from 'react-router';
-import { Avatar, Icon, Spinner, duration, play, trapTab, useToast } from '../ui';
-import type { FormResult } from '../auth/logic';
+import { Form, Link, useNavigation } from 'react-router';
+import { Avatar, Icon, Spinner, duration, play, trapTab } from '../ui';
 import { NotificationsButton } from '../pwa';
 import { setAccent, setTheme, useAccent, useResolvedTheme, useTheme, type AccentChoice, type ThemeChoice } from './theme';
 
@@ -36,13 +35,12 @@ export function UserMenu({ name, email, sessionExpiresAt }: { name: string; emai
   const theme = useTheme();
   const accent = useAccent();
   const resolvedTheme = useResolvedTheme();
-  const fetcher = useFetcher<FormResult>();
-  const toast = useToast();
-  const signingOut = fetcher.state !== 'idle';
-
-  useEffect(() => {
-    if (fetcher.state === 'idle' && fetcher.data?.formError) toast({ message: fetcher.data.formError, tone: 'danger' });
-  }, [fetcher.state, fetcher.data, toast]);
+  // Signing out is a navigation of its own, not a fetcher: it replaces whatever this tab is still
+  // loading. A fetcher's redirect would leave that load running, and when it finished it took the
+  // tab back to the previous account's page after the sign-in page. A failure is
+  // shown on the sign-out page, which offers to try again.
+  const navigation = useNavigation();
+  const signingOut = navigation.state !== 'idle' && navigation.formAction === '/sign-out';
 
   useEffect(() => {
     if (!open) return;
@@ -129,11 +127,11 @@ export function UserMenu({ name, email, sessionExpiresAt }: { name: string; emai
               <Icon name="spark" />Your background suggestions
             </Link>
           </div>
-          <fetcher.Form method="post" action="/sign-out" className="me__sec me__sec--end">
+          <Form method="post" action="/sign-out" className="me__sec me__sec--end">
             <button type="submit" className="me__item" aria-disabled={signingOut || undefined}>
               {signingOut ? <Spinner /> : <Icon name="sign-out" />}{signingOut ? 'Signing out…' : 'Sign out'}
             </button>
-          </fetcher.Form>
+          </Form>
         </div>
       ) : null}
       <button ref={buttonRef} type="button" className="me__btn" aria-expanded={open} aria-controls={open ? popId : undefined}

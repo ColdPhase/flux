@@ -1,10 +1,10 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
 import type { ConversationRootQuery, ConversationWindowQuery, CreateMaterialCommand, PageQuery, SendMessageCommand, UpdateMaterialCommand } from '@flux/contracts';
-import { conversationUseCases, DomainError, InvalidInputError, type Database } from '@flux/core';
+import { conversationUseCases, DomainError, InvalidInputError, type Database, type FileStorage } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { conversationStore } from './store.js';
 
-interface Options { db: Database; sessions: SessionResolver }
+interface Options { db: Database; sessions: SessionResolver; storage: FileStorage }
 
 const page = { type: 'object', additionalProperties: false,
   properties: { limit: { type: 'integer' }, offset: { type: 'integer' } } } as const;
@@ -15,7 +15,7 @@ const rootWindow = { type: 'object', additionalProperties: false,
 const source = { type: 'object', required: ['materialId', 'version'], additionalProperties: false,
   properties: { materialId: { type: 'string' }, version: { type: 'integer' } } } as const;
 const send = { type: 'object', required: ['body', 'clientMessageId'], additionalProperties: false,
-  properties: { body: { type: 'string', minLength: 1, maxLength: 100_000 }, clientMessageId: { type: 'string' }, source } } as const;
+  properties: { body: { type: 'string', minLength: 0, maxLength: 100_000 }, attachmentIds: { type: 'array', maxItems: 10, items: { type: 'string' } }, clientMessageId: { type: 'string' }, source } } as const;
 /**
  * A generic message is ordinary text. Reject a contribution kind rather than let the schema silently
  * strip it: blocker, result and handoff contributions come only from their own commands (#154).
@@ -32,8 +32,8 @@ const updateMaterialBody = { type: 'object', required: ['clientMutationId', 'exp
   properties: { clientMutationId: { type: 'string' }, expectedVersion: { type: 'integer' }, title: { type: 'string', minLength: 1, maxLength: 200 },
     body: { type: 'string', maxLength: 100_000 }, url: { type: ['string', 'null'], maxLength: 2048 } } } as const;
 
-export async function conversationRoutes(app: FastifyInstance, { db, sessions }: Options) {
-  const store = conversationUseCases(conversationStore(db));
+export async function conversationRoutes(app: FastifyInstance, { db, sessions, storage }: Options) {
+  const store = conversationUseCases(conversationStore(db, { storage }));
   const principal = async (request: Parameters<SessionResolver['requirePrincipal']>[0]) => (await sessions.requirePrincipal(request)).principal;
   app.setErrorHandler((error: FastifyError | DomainError, _request, reply) => {
     if (error instanceof DomainError) return reply.code(error.status).send({ error: error.message, code: error.code });
