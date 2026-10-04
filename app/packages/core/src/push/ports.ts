@@ -104,16 +104,22 @@ export interface PushSendJob {
   userId: string;
 }
 
+/**
+ * The background job queue, bound to the caller's transaction: a job commits with the rows that
+ * describe it, or not at all. Each use case depends on the jobs it sends (#87).
+ */
 export interface JobQueue {
   /** Enqueues in the unit of work's transaction; returns the job id (null when deduplicated). */
   enqueuePushSend(job: PushSendJob): Promise<string | null>;
+  /** Enqueues draft.summarize.v1; the payload is the result id only. */
+  enqueueDraftSummary(job: { resultId: string }): Promise<string | null>;
 }
 
 export interface NotificationPorts {
   authorizer: SourceReadAuthorizer;
   notifications: NotificationRepository;
   subscriptions: PushSubscriptionRepository;
-  queue: JobQueue;
+  queue: Pick<JobQueue, 'enqueuePushSend'>;
 }
 
 /** Runs `work` in one transaction: the inbox row and its push jobs commit together or not at all. */
