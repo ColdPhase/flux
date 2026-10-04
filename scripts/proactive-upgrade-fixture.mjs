@@ -6,6 +6,7 @@ const phase = process.env.FLUX_UPGRADE_PHASE;
 const state = phase === 'verify' ? JSON.parse(process.env.FLUX_UPGRADE_STATE) : {};
 let cookie = state.cookie ?? '';
 async function request(method, path, body, expected = 200) {
+  const allowed = Array.isArray(expected) ? expected : [expected];
   const response = await fetch(`${api}${path}`, { method, headers: {
     origin, ...(cookie ? { cookie } : {}), ...(body ? { 'content-type': 'application/json' } : {}),
     ...(method === 'POST' ? { 'idempotency-key': crypto.randomUUID() } : {}),
@@ -13,12 +14,21 @@ async function request(method, path, body, expected = 200) {
   const cookies = response.headers.getSetCookie();
   if (cookies.length) cookie = cookies.map((value) => value.split(';')[0]).join('; ');
   const text = await response.text();
-  if (response.status !== expected) throw new Error(`${method} ${path}: expected ${expected}, got ${response.status}: ${text}`);
-  return text ? JSON.parse(text) : null;
+  if (!allowed.includes(response.status)) throw new Error(`${method} ${path}: expected ${allowed.join(' or ')}, got ${response.status}: ${text}`);
+  const json = text ? JSON.parse(text) : null;
+  return Array.isArray(expected) ? { status: response.status, json } : json;
 }
+// Key order is not part of the contract, so objects compare with sorted keys.
+const canonical = (value) => JSON.stringify(value, (_key, item) => (item && typeof item === 'object' && !Array.isArray(item)
+  ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item));
 const same = (actual, expected, context) => {
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${context} changed across upgrade`);
+  if (canonical(actual) !== canonical(expected)) throw new Error(`${context} changed across upgrade: ${canonical(actual)}`);
 };
+// #118 / 0042: an AI connection the baseline stored before provider-neutral connections existed.
+const legacyConnection = { apiKey: `sk-ant-api03-${'upgrade-baseline-fixture-'.repeat(3)}OLD4`,
+  payerOrganization: 'Baseline migration fixture', providerWorkspace: 'Baseline migration fixture', workspaceScopedKeyConfirmed: true,
+  payerAuthorityConfirmed: true, providerBillingAcknowledged: true, projectDataDisclosureAcknowledged: true,
+  maxRunsPerDay: 2, periodDays: 30, periodBudgetCents: 20, perRunCents: 5 };
 
 if (phase === 'prepare') {
   await request('POST', '/api/auth/sign-in/email', { email: 'ada@demo.flux.test', password: process.env.FLUX_DEMO_OWNER_PASSWORD });
@@ -42,9 +52,14 @@ if (phase === 'prepare') {
   const result = await request('POST', `/api/v1/projects/${project.id}/results`, { title: 'Camera trial failed', finding: 'negative',
     evidence: 'Detection was below the target.', sources: [{ type: 'material', id: material.materialId, version: 2 },
       { type: 'message', id: conversation.messages[0].id }], work: [work.id], decisions: [decision.id] }, 201);
+  // A baseline before #124 has no connections (404); one after 0042 requires a provider and model (400).
+  let saved = await request('POST', '/api/v1/background-compute-connections', legacyConnection, [201, 400, 404]);
+  if (saved.status === 400) saved = await request('POST', '/api/v1/background-compute-connections',
+    { ...legacyConnection, provider: 'anthropic', model: 'claude-sonnet-5' }, [201]);
+  const connectionId = saved.status === 201 ? saved.json.id : null;
   console.log(`FLUX_UPGRADE_STATE ${JSON.stringify({ cookie, userId: me.user.id, workspaceId: ws.id, projectId: project.id,
     agentId: agent.id, materialId: material.materialId, conversationId: conversation.id, draftId: draft.id, resultId: result.id,
-    workId: work.id, decisionId: decision.id })}`);
+    workId: work.id, decisionId: decision.id, connectionId })}`);
 } else if (phase === 'verify') {
   same((await request('GET', '/api/v1/me')).user.id, state.userId, 'Original browser session');
   const material = await request('GET', `/api/v1/materials/${state.materialId}`);
@@ -60,12 +75,26 @@ if (phase === 'prepare') {
   same(result.finding, 'negative', 'Negative result');
   same(result.links.filter((link) => link.role === 'about').map((link) => link.to.id).sort(),
     [state.workId, state.decisionId].sort(), 'Work/decision result links');
+  if (state.connectionId) {
+    // 0042 keeps the earlier Anthropic connection under its consent, names it, prices it from O-007's
+    // dated table and keeps it the owner's background connection (PROV-1/PROV-3).
+    const kept = (await request('GET', '/api/v1/background-compute-connections')).find((item) => item.id === state.connectionId);
+    if (!kept) throw new Error('Baseline AI connection missing after upgrade');
+    same({ provider: kept.provider, model: kept.model, name: kept.name, usedForBackground: kept.usedForBackground, baseUrl: kept.baseUrl,
+      price: kept.price, consentVersion: kept.consentVersion, keyLastFour: kept.keyLastFour, payerOrganization: kept.payerOrganization,
+      maxRunsPerDay: kept.maxRunsPerDay, periodBudgetCents: kept.periodBudgetCents, perRunCents: kept.perRunCents },
+    { provider: 'anthropic', model: 'claude-sonnet-5', name: 'Anthropic · claude-sonnet-5', usedForBackground: true, baseUrl: null,
+      price: { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, source: 'table', checkedOn: '2026-09-28' },
+      consentVersion: 'o-007-2026-09-28', keyLastFour: 'OLD4', payerOrganization: legacyConnection.payerOrganization,
+      maxRunsPerDay: 2, periodBudgetCents: 20, perRunCents: 5 }, 'Baseline AI connection');
+  }
   const rule = await request('POST', `/api/v1/projects/${state.projectId}/proactive-comparison-rules`, {
     agentId: state.agentId, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
     dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal',
     maxRunsPerDay: 3, periodBudgetCents: 15, perRunCents: 5 }, 201);
   same(rule.status, 'paused', 'New rule default');
-  await request('POST', '/api/v1/background-compute-connections', { apiKey: `sk-ant-api03-${'upgrade-local-fixture-'.repeat(4)}END8`,
+  await request('POST', '/api/v1/background-compute-connections', { provider: 'anthropic', model: 'claude-sonnet-5',
+    apiKey: `sk-ant-api03-${'upgrade-local-fixture-'.repeat(4)}END8`,
     payerOrganization: 'Local migration fixture', providerWorkspace: 'Local migration fixture', workspaceScopedKeyConfirmed: true,
     payerAuthorityConfirmed: true, providerBillingAcknowledged: true, projectDataDisclosureAcknowledged: true,
     maxRunsPerDay: 3, periodDays: 30, periodBudgetCents: 15, perRunCents: 5 }, 201);
@@ -75,5 +104,5 @@ if (phase === 'prepare') {
   same(rules[0].status, 'paused', 'Activation failure preserves paused rule');
   same(await request('GET', `/api/v1/projects/${state.projectId}/proactive-comparison-proposals`), [], 'No retroactive proposal');
   await request('POST', `/api/v1/projects/${state.projectId}/work`, { title: 'Compare the next sensor manually' }, 201);
-  console.log('Verified original session, material revisions, historical citation, private draft, work/decision/result links, new rule/key storage and manual continuation; no provider invoked.');
+  console.log(`Verified original session, material revisions, historical citation, private draft, work/decision/result links, ${state.connectionId ? 'the baseline AI connection after 0042, ' : ''}new rule/key storage and manual continuation; no provider invoked.`);
 } else throw new Error('FLUX_UPGRADE_PHASE must be prepare or verify');
