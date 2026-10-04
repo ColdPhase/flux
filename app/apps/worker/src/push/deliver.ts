@@ -2,7 +2,7 @@ import https from 'node:https';
 import { lookup as dnsLookup, type LookupAddress } from 'node:dns';
 import { BlockList, type LookupFunction } from 'node:net';
 import webpush, { WebPushError } from 'web-push';
-import { pushDeliveryRepository } from '@flux/db';
+import { assignmentDeliveryAdmission, pushDeliveryRepository } from '@flux/db';
 import { pushPreferenceCheck, pushQuietCheck } from '../notifications/adapters.js';
 import {
   deliverPushJob,
@@ -124,6 +124,7 @@ export async function deliverPush(deps: DeliveryDependencies, job: PushSendJob):
   return deliverPushJob({
     available: config.status === 'available',
     targets: pushDeliveryRepository(db),
+    admitSend: (notificationId, send) => assignmentDeliveryAdmission(db, notificationId, send),
     authorizer: policySourceReader(db),
     sender: config.status === 'available' ? webPushSender(config, deps.agent, deps.vapid) : unavailable,
     stillWanted: pushPreferenceCheck(db),

@@ -150,4 +150,7 @@ test('an exact existing creation-provenance link is an observation and leaves Un
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_object_links WHERE from_id=$1', [item.id])).rows[0].n, before.rows[0].n);
   assert.equal((await f.read(item.id) as unknown as WorkItem).creationUndo?.eligible, true);
   expect(await f.undo(item), 200);
+  const doc = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/docs`,
+    { body: { title: 'Original result remains useful', from: { type: 'result', id: result.id } } }), 201);
+  assert.equal(typeof doc.id, 'string');
 });

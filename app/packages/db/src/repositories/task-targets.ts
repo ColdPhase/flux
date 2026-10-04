@@ -30,9 +30,8 @@ export async function referencedTaskIds(tx: DbExecutor, refs: readonly Reference
     const rows = await tx.select({ id: l.toId }).from(l).where(and(eq(l.toType, 'work'),
       or(...owners.map((ref) => and(eq(l.fromType, ref.type as 'result' | 'decision'), eq(l.fromId, ref.id))))));
     rows.forEach((row) => ids.add(row.id));
-    const incoming = await tx.select({ id: l.fromId }).from(l).where(and(eq(l.fromType, 'work'),
-      or(...owners.map((ref) => and(eq(l.toType, ref.type as 'result' | 'decision'), eq(l.toId, ref.id))))));
-    incoming.forEach((row) => ids.add(row.id));
+    // Incoming work links can be that task's immutable initial provenance. Retaining those
+    // after Undo must not poison a later unrelated use of the original result/decision.
   }
   return [...ids].sort();
 }

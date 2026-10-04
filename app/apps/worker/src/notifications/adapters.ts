@@ -1,6 +1,7 @@
 import { fromDrizzle, type PgBoss } from 'pg-boss';
 import nodemailer from 'nodemailer';
 import {
+  assignmentDeliveryAdmission,
   notificationEmailRows,
   notificationFactRows,
   notificationGeneratorRows,
@@ -58,6 +59,7 @@ export function generatorUnitOfWork(db: Database, boss: PgBoss): GeneratorUnitOf
 
 export function emailUnitOfWork(db: Database): EmailDeliveryUnitOfWork {
   return {
+    admitSend: (notificationId, send) => assignmentDeliveryAdmission(db, notificationId, send),
     run: (work) => db.transaction((tx) => {
       const rows = notificationEmailRows(tx);
       return work({

@@ -1,7 +1,7 @@
 import { GENERIC_PUSH_TITLE, type PushPayload } from '@flux/contracts';
 import { pushEndpointViolation } from './config.js';
 import { readsSource } from './notifications.js';
-import type { NotificationRecord, PushDeliveryRepository, PushSender, PushSendJob, SourceReadAuthorizer, SourceReadDecision } from './ports.js';
+import type { NotificationRecord, ProviderDeliveryAdmission, PushDeliveryRepository, PushSender, PushSendJob, PushSendResult, SourceReadAuthorizer, SourceReadDecision } from './ports.js';
 
 export type DeliveryOutcome =
   | { outcome: 'sent'; status: number; preview: PushPayload['preview'] }
@@ -36,6 +36,8 @@ export interface DeliveryPorts {
   targets: PushDeliveryRepository;
   authorizer: SourceReadAuthorizer;
   sender: PushSender;
+  /** Last admission after async checks; starts the concrete sender while retaining current task lifecycle. */
+  admitSend(notificationId: string, send: () => Promise<PushSendResult>): Promise<ProviderDeliveryAdmission<PushSendResult>>;
   /**
    * The recipient's current notification preferences (#116): false when push is now off for the
    * notification's reason or its place is muted. Absent for callers without preferences.
@@ -79,7 +81,10 @@ export async function deliverPushJob(ports: DeliveryPorts, job: PushSendJob): Pr
   }
 
   const payload = buildPushPayload(notification, decision);
-  const result = await ports.sender.send(subscription, payload);
+  const admission = await ports.admitSend(notification.id, () => ports.sender.send(subscription, payload));
+  if (admission.status === 'suppressed') return { outcome: 'skipped', reason: 'task creation was undone before delivery' };
+  if (admission.status === 'unknown') return { outcome: 'skipped', reason: 'delivery outcome unknown after provider admission' };
+  const result = admission.response;
   switch (result.kind) {
     case 'accepted':
       await ports.targets.recordSuccess(subscription.id);

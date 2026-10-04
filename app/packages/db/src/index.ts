@@ -113,3 +113,4 @@ export * from './repositories/agent-policies.js';
 export * from './repositories/task-use.js';
 
 export * from './repositories/task-targets.js';
+export * from './repositories/notification-lifecycle.js';

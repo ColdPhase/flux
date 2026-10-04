@@ -267,8 +267,10 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
         if (body.length > DOC_LIMITS.body) throw new InvalidInputError(`body must be at most ${DOC_LIMITS.body} characters`);
         const first: NewDocVersion = { title, body, state, reason, author: by };
         const row = await ports.docs.insert({ id: randomUUID(), workspaceId, projectId: project, createdBy: by }, first);
+        const { targets } = await resolve(ports, project, body, row.doc.id);
+        const taskFence = await ports.docs.prepareTaskUse(scope, row.doc.id, [...targets, ...(from ? [from] : [])]);
         if (from) await linkSource(ports, scope, row.doc.id, from, by);
-        return commit(ports, principal, scope, row, true);
+        return commit(ports, principal, scope, row, true, taskFence);
       });
     },
 
@@ -316,8 +318,8 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
         const scope = { workspaceId, projectId };
         const { targets } = await resolve(ports, projectId, body, id);
         const taskFence = await ports.docs.prepareTaskUse(scope, id, [...targets, from]);
-        const existing = (await ports.work.links([id])).some((link) => link.role === 'source' && link.from.type === 'doc'
-          && link.from.id === id && link.to.type === from.type && link.to.id === from.id);
+        const existing = (await ports.work.links([id])).some((link) => link.role === 'source' && link.fromType === 'doc'
+          && link.fromId === id && link.toType === from.type && link.toId === from.id);
         await linkSource(ports, scope, id, from, by);
         if (body === current.current.body) {
           if (!existing) { await taskFence.mark(); await ports.events.record(principal, workspaceId, 'project.doc_updated.v1', projectId, { docId: id, version }); }

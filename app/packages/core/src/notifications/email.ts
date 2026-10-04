@@ -104,7 +104,13 @@ export async function deliverNotificationEmail(options: EmailDeliveryOptions, jo
 
   const { row, address, token } = claim;
   const mail = buildNotificationEmail({ origin: options.origin, to: address, emailId: row.id, notificationId: row.notification.id, token });
-  const result = await options.mailer.send(mail);
+  const admission = await options.uow.admitSend(row.notification.id, () => options.mailer.send(mail));
+  if (admission.status !== 'started') {
+    const reason = admission.status === 'suppressed' ? 'task creation was undone before delivery' : 'delivery outcome unknown after provider admission';
+    await options.uow.run((ports) => ports.markSkipped(row.id, reason));
+    return { outcome: 'skipped', reason };
+  }
+  const result = admission.response;
   if (result.kind === 'failed') {
     await options.uow.run((ports) => ports.requeue(row.id, result.message));
     throw new RetryableEmailError(`SMTP did not accept the notification email: ${result.message}`);
