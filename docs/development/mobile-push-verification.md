@@ -173,7 +173,8 @@ state=/tmp/flux-mobile-push-232-a
 ```
 
 `probe` checks that the API refuses a private endpoint and a foreign origin, that
-fixture commands have no credentials, and that VAPID is configured. The first
+the integration fixture's command route does not exist (404), and that VAPID is
+configured. The first
 inspection must find the reply's event and inbox item, with a target that matches
 the unique marker. There is no push job until a real browser has subscribed.
 `inspect` uses parameterized **read-only** database queries. It does not publish

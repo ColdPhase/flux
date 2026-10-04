@@ -150,7 +150,8 @@ export async function main(args, directory = process.env.MOBILE_STATE ?? '/state
     const secret = await readJson(directory, 'secrets.json');
     await c.request('POST', '/api/v1/push/subscriptions', { endpoint: 'https://127.0.0.1/forbidden', keys: { p256dh: secret.vapid.publicKey, auth: 'AAAAAAAAAAAAAAAAAAAAAA' } }, 400);
     await c.request('PUT', '/api/v1/notification-preferences/mutes', { type: 'project', id: state.projectId, muted: false }, 403, 'https://foreign.invalid');
-    await c.request('POST', '/api/v1/integration/sample', { title: 'must be unauthorized' }, 401);
+    // Without FLUX_FIXTURE_TOKEN the integration fixture's route does not exist at all (#208).
+    await c.request('POST', '/api/v1/integration/sample', { title: 'must not exist' }, 404);
     const key = await c.request('GET', '/api/v1/push/public-key'); if (key.status !== 'available') throw new Error('VAPID public key unavailable');
     return { privateEndpointRejected: true, foreignOriginRejected: true, fixtureCommandDisabled: true, pushConfigured: true }; });
   if (command === 'verify-origin') {

@@ -113,7 +113,7 @@ on_exit() {
   if [[ -n "$tunnel_pid" ]]; then wait "$tunnel_pid" 2>/dev/null || true; fi
   if [[ $close_on_exit == 1 ]]; then node_tool close >/dev/null 2>&1 || true; fi
   if [[ $teardown_on_exit == 1 ]]; then
-    echo 'Stopping: tunnel closed; saving the evidence matrix and removing containers, volumes and the candidate image' >&2
+    echo 'Closing: saving the evidence matrix and removing the tunnel, containers, volumes and candidate image' >&2
     # Service output for diagnosing a failed run stays in the private state directory.
     if [[ $status != 0 ]]; then
       dc logs --no-color >"$state/failure-services.log" 2>&1 || true
