@@ -20,6 +20,9 @@ export const BACKGROUND_COMPARISON_LIMITS = { maxInputTokens: 8_000, maxOutputTo
  */
 export const backgroundComputeConnectionsPath = '/api/v1/background-compute-connections';
 export const backgroundComputeConnectionPath = (connectionId: string) => `${backgroundComputeConnectionsPath}/${connectionId}`;
+/** Whether this instance runs background comparisons (#58, `FLUX_BACKGROUND_COMPARISONS`). */
+export const backgroundComparisonRuntimePath = '/api/v1/background-comparisons/runtime';
+export interface BackgroundComparisonRuntime { status: 'available' | 'unavailable' }
 
 /** Metadata only. The API never returns the key or its ciphertext. */
 export interface BackgroundComputeConnection {

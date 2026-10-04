@@ -1,7 +1,7 @@
 import { COMPARISON_RECOVERY_BATCH, recoverComparisonReservations, type ComparisonRecoveryUnitOfWork, type Database } from '@flux/core';
 import { comparisonRecoveryRows } from '@flux/db';
 
-/** Controlled sweep only; not registered in production. Never dispatches or retries. */
+/** Settles interrupted reservations; never dispatches or retries. Registered with the comparison worker (#58). */
 export async function comparisonRecoveryTick(db: Database, now = new Date()) {
   const unit: ComparisonRecoveryUnitOfWork = { run: (action) =>
     db.transaction((tx) => action(comparisonRecoveryRows(tx))) };
