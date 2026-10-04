@@ -53,7 +53,7 @@ function useMessageBatch(ref: RefObject<HTMLElement | null>, ids: string[], node
 }
 
 function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTMLElement | null, ready: boolean, observedAt?: string) {
-  const anchor = useRef<{ id: string; offset: number; top: number } | null>(null);
+  const anchor = useRef<{ id: string; offset: number; top: number; atEnd: boolean } | null>(null);
   const readerMoved = useRef(false);
   // The scrollTop this hook last wrote. Any other scroll (wheel, keys, scrollIntoView, focus,
   // find-in-page) is the reader's position and is kept even while a new message batch loads.
@@ -63,7 +63,9 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
     if (!pane || !ready && !readerMoved.current && !intent) return;
     const top = pane.getBoundingClientRect().top;
     const message = [...pane.querySelectorAll<HTMLElement>('[data-message-id],[data-answer-run]')].find((row) => row.getBoundingClientRect().bottom > top);
-    if (message) anchor.current = { id: message.id, offset: message.getBoundingClientRect().top - top, top: pane.scrollTop };
+    // A reader at the end keeps following new content; anyone else keeps their row.
+    const atEnd = pane.scrollHeight - pane.clientHeight - pane.scrollTop <= 8;
+    if (message) anchor.current = { id: message.id, offset: message.getBoundingClientRect().top - top, top: pane.scrollTop, atEnd };
   }, [ref, ready]);
   useLayoutEffect(() => {
     const pane = ref.current;
@@ -71,7 +73,8 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
     const stored = anchor.current;
     if (stored && (ready || !readerMoved.current)) {
       const message = [...pane.querySelectorAll<HTMLElement>('[data-message-id],[data-answer-run]')].find((row) => row.id === stored.id);
-      const target = message ? pane.scrollTop + message.getBoundingClientRect().top - pane.getBoundingClientRect().top - stored.offset : stored.top;
+      const target = stored.atEnd ? pane.scrollHeight - pane.clientHeight
+        : message ? pane.scrollTop + message.getBoundingClientRect().top - pane.getBoundingClientRect().top - stored.offset : stored.top;
       // Even a no-op scrollTop assignment interrupts native smooth key/touch scrolling.
       if (Math.abs(target - pane.scrollTop) > 0.5) { pane.scrollTop = target; ownScroll.current = pane.scrollTop; }
     }
