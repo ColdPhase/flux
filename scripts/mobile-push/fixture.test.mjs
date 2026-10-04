@@ -50,7 +50,7 @@ test('boundary requires live lease, exact host and denies public registration/fi
   assert.equal(authorizeBoundary(boundary, 'fixture.trycloudflare.com', '/', 1000), 503);
   assert.equal(authorizeBoundary(boundary, 'foreign.invalid', '/', 500), 421);
   for (const invalid of [null, {}, { ...boundary, enabled: 'true' }, { ...boundary, origin: 'not a URL' }, { ...boundary, origin: 'https://user:password@fixture.trycloudflare.com' }, { ...boundary, expiresAt: '1000' }]) assert.equal(authorizeBoundary(invalid, 'fixture.trycloudflare.com', '/', 500), 503);
-  for (const path of ['/api/auth/sign-up/email', '/api/auth/request-password-reset', '/api/v1/integrations/github', '/api/v1/integration/sample', '/api/v1/projects/a/files', '/mcp', '/media']) assert.equal(authorizeBoundary(boundary, 'fixture.trycloudflare.com', path, 500), 403);
+  for (const path of ['/api/auth/sign-up/email', '/api/auth/request-password-reset', '/api/v1/integrations/github', '/api/v1/integration/sample', '/api/v1/projects/a/files', '/api/v1/files/a', '/api/auth/oauth2/register', '/mcp', '/media']) assert.equal(authorizeBoundary(boundary, 'fixture.trycloudflare.com', path, 500), 403);
   for (const path of ['/api/auth/%73ign-up/email', '/api//auth/sign-up/email', '//api/auth/sign-up/email']) assert.equal(authorizeBoundary(boundary, 'fixture.trycloudflare.com', path, 500), 400);
   for (const path of ['/sw.js', '/manifest.webmanifest', '/api/auth/sign-in/email', '/api/v1/push/subscriptions', '/api/v1/inbox']) assert.equal(authorizeBoundary(boundary, 'fixture.trycloudflare.com', path, 500), 200);
 });
