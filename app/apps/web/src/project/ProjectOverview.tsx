@@ -11,7 +11,6 @@ import { useOverviewWork } from '../work/useOverviewWork';
 import { WorkPagination } from '../work/WorkPagination';
 import { ACCESS_LABEL, audienceLine, useProjectShell } from './data';
 import { docUrl } from '../docs/api';
-import { docsLinking } from '../docs/AddToDoc';
 import { authorLabel } from '../docs/format';
 
 /** The open conversation's loader data, when the Conversation tab is showing one. */
