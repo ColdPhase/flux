@@ -189,6 +189,17 @@ test('a root unit opens its own run for its own assignee; exact replay observes,
   const claim = await claimUnit(w, codex, created.unitId, 'execute');
   assert.equal(claim.state, 'claimed');
   await rejects(execute.run(first), 'COMMAND_POSTSTATE_STALE');
+  // A re-issue observed in the claimed state records that version; a renewal keeps the state name but changes the
+  // version, so that receipt goes stale too.
+  const reissue = execute.root('take-a');
+  const observed = await execute.run(reissue);
+  assert.deepEqual([observed.status, observed.unitId, observed.version, observed.state], ['existing', created.unitId, 2, 'claimed']);
+  assert.deepEqual(await execute.run(reissue), observed, 'an unchanged unit can still be observed');
+  const renewGrant = await grantOf(w, codex, 'cowork.renew', created.unitId, 'execute');
+  const renewed = await db.transaction((tx) => coWorkClaimInTransaction(tx, codex.claims, command(w, codex, 'cowork.renew', created.unitId,
+    'execute', renewGrant.id, { expectedVersion: 2, generation: claim.generation, leaseId: claim.lease!.id }), CLAIMS));
+  assert.deepEqual([renewed.state, renewed.version], ['claimed', 3]);
+  await rejects(execute.run(reissue), 'COMMAND_POSTSTATE_STALE');
   // A grant revoked after creation also refuses observation.
   expectStatus(await w.hubert.browser.request('DELETE', `/api/v1/agent-connections/${codex.connection.id}/action-grants/${execute.grant.id}`), 204);
   await rejects(execute.run(first), 'AGENT_EXECUTION_UNAVAILABLE');
