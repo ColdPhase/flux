@@ -9,7 +9,7 @@ import { useShellData } from '../app/data';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { LiveEntry } from '../live/LiveEntry';
 import { useShellActions, type ObjectView, type WorkFormView } from '../app/shellContext';
-import { acceptDecision, createResult, getDecision, getResult, getWork, listAgents, loadProjectWork, proposeDecision, updateWork, type ProjectWork } from './api';
+import { acceptDecision, createResult, getDecision, getResult, getWork, listAgents, loadProjectWork, proposeDecision, updateWork, undoTaskCreation, type ProjectWork } from './api';
 import { STATUS_LABEL, decisionLine, firstLine, isFinished, linked, resultLine, shortDate } from './format';
 import { docsLinking } from '../docs/AddToDoc';
 import { TaskDiscussionSection } from './TaskDiscussion';
@@ -63,7 +63,7 @@ export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
         ? await (view.kind === 'work' ? getWork(view.id, controller.signal) : view.kind === 'decision' ? getDecision(view.id, controller.signal) : getResult(view.id, controller.signal))
         : null;
       const context = await loadContext(object?.projectId ?? (view as WorkFormView).projectId, controller.signal);
-      setState({ key: viewKey, object, context }); setFailure(null);
+      if (!controller.signal.aborted) { setState({ key: viewKey, object, context }); setFailure(null); }
     })().catch((error: unknown) => { if (!controller.signal.aborted) { setState(null); setFailure({ key: viewKey, text: readable(error) }); } });
     return () => controller.abort();
     // viewKey identifies the view; tick reloads it.
@@ -78,7 +78,7 @@ export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
   const { object, context } = state;
   if (view.kind === 'propose-decision') return <ProposeDecision key={viewKey} view={view} context={context} />;
   if (view.kind === 'attach-result') return <AttachResult key={viewKey} view={view} context={context} reload={reload} />;
-  if (view.kind === 'work') return <WorkPanel key={`${viewKey}:${(object as WorkItem).version}`} item={object as WorkItem} context={context} reload={reload} />;
+  if (view.kind === 'work') return <WorkPanel key={viewKey} item={object as WorkItem} context={context} reload={reload} />;
   if (view.kind === 'decision') return <DecisionPanel key={`${viewKey}:${(object as Decision).version}`} decision={object as Decision} context={context} reload={reload} />;
   return <ResultPanel result={object as WorkResult} context={context} />;
 }
@@ -138,7 +138,8 @@ function IdsLine({ children }: { children: ReactNode }) {
 function WorkPanel({ item, context, reload }: { item: WorkItem; context: Context; reload: () => void }) {
   const { openDetails } = useShellActions();
   const { me } = useShellData();
-  const writable = context.project.access !== 'viewer';
+  const reverted = item.lifecycle?.state === 'creation_reverted' ? item.lifecycle : null;
+  const writable = context.project.access !== 'viewer' && !reverted;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [blocker, setBlocker] = useState(item.blocker ?? '');
@@ -149,7 +150,7 @@ function WorkPanel({ item, context, reload }: { item: WorkItem; context: Context
   const parkedBy = item.parked ? context.lists.decisions.find((decision) => decision.id === item.parked!.decisionId) : null;
   // An open task is the most specific place to work together, and a fragment others can open.
   const liveAnchor = { projectId: item.projectId, context: { type: 'work' as const, id: item.id }, label: item.title };
-  useRegisterLiveHere(liveAnchor, { ref: { type: 'work', id: item.id, version: item.version }, label: item.title, what: 'task' });
+  useRegisterLiveHere(reverted ? null : liveAnchor, reverted ? null : { ref: { type: 'work', id: item.id, version: item.version }, label: item.title, what: 'task' });
 
   // The same change of the same version retried after a lost response reuses its command UUID: it never
   // contributes the saved blocker to the task conversation twice. A different change gets a new one.
@@ -171,11 +172,14 @@ function WorkPanel({ item, context, reload }: { item: WorkItem; context: Context
 
   return (
     <div className="details wd">
-      <p className="details__eyebrow wd-eyebrow"><span className={`wd-dot wd-dot--${item.status}`} aria-hidden="true" />{STATUS_LABEL[item.status]}{item.parked ? ' · parked, not done' : ''}</p>
+      <p className="details__eyebrow wd-eyebrow"><span className={`wd-dot wd-dot--${item.status}`} aria-hidden="true" />{reverted ? 'Creation undone · read-only history' : STATUS_LABEL[item.status]}{item.parked ? ' · parked, not done' : ''}</p>
       <h3 className="details__title">{item.title}</h3>
       {item.outcome ? <p className="details__lead">{item.outcome}</p> : null}
       {item.status === 'blocked' && item.blocker ? <p className="wd-blocker"><Icon name="alert" size={14} />Blocked: {item.blocker}</p> : null}
-      {!isFinished(item) ? <LiveEntry variant="inline" anchor={liveAnchor} /> : null}
+      {!reverted && !isFinished(item) ? <LiveEntry variant="inline" anchor={liveAnchor} /> : null}
+
+      {reverted ? <p className="wd-muted">Creation undone by {reverted.revertedBy.name} on {shortDate(reverted.revertedAt)}. This task remains here as history.</p> : null}
+      {item.creationUndo?.eligible && writable ? <UndoCreation key={`${me.user.id}:${item.id}:${item.version}`} item={item} userId={me.user.id} reload={reload} /> : null}
 
       {writable ? (
         <fieldset className="wd-controls" disabled={busy}>
@@ -231,7 +235,7 @@ function WorkPanel({ item, context, reload }: { item: WorkItem; context: Context
         ) : null}
       </section>
 
-      <TaskDiscussionSection key={`${me.user.id}:${context.project.id}:${item.id}`} workId={item.id} project={context.project} members={context.members} me={{ id: me.user.id, name: me.user.name }} />
+      <TaskDiscussionSection readOnly={!!reverted} key={`${me.user.id}:${context.project.id}:${item.id}`} workId={item.id} project={context.project} members={context.members} me={{ id: me.user.id, name: me.user.name }} />
 
       <section className="details__sec" aria-labelledby="wd-decisions">
         <h4 id="wd-decisions">Decisions</h4>
@@ -249,6 +253,39 @@ function WorkPanel({ item, context, reload }: { item: WorkItem; context: Context
       <IdsLine>Added by {item.createdBy.name} · {shortDate(item.createdAt)} · version {item.version}</IdsLine>
     </div>
   );
+}
+
+/** One identity per intended Undo survives panel changes and a lost response. */
+function UndoCreation({ item, userId, reload }: { item: WorkItem; userId: string; reload: () => void }) {
+  const identityKey = `flux:creation-undo:${userId}:${item.projectId}:${item.id}:${item.version}`;
+  const attempt = useRef<string | null>(null);
+  const pending = useRef<AbortController | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => () => pending.current?.abort(), []);
+  async function undo() {
+    if (busy) return;
+    if (!attempt.current) {
+      try { attempt.current = sessionStorage.getItem(identityKey); } catch { /* In-memory retry still works. */ }
+      attempt.current ??= crypto.randomUUID();
+      try { sessionStorage.setItem(identityKey, attempt.current); } catch { /* Storage may be disabled. */ }
+    }
+    const controller = new AbortController(); pending.current = controller;
+    setBusy(true); setError('');
+    try {
+      await undoTaskCreation(item, attempt.current, controller.signal);
+      try { sessionStorage.removeItem(identityKey); } catch { /* No persisted retry to remove. */ }
+      if (!controller.signal.aborted) reload();
+    } catch (cause) {
+      if (!controller.signal.aborted) setError(cause instanceof ApiError && cause.status === 409
+        ? 'This task has changed or been used. Refresh its details before trying again. Your draft is kept.' : readable(cause));
+    } finally { if (!controller.signal.aborted) setBusy(false); }
+  }
+  return <section className="details__sec">
+    <Button variant="secondary" busy={busy} disabled={busy} onClick={() => void undo()}>Undo task creation</Button>
+    <p className="wd-muted">Available while this AI-created task is unchanged and unused. Its history stays visible.</p>
+    {error ? <p className="wd-error" role="alert">{error} <button type="button" className="wd-inline" onClick={reload}>Refresh details</button></p> : null}
+  </section>;
 }
 
 /** What this task waits for: each direct prerequisite with its state in words, never colour alone. */

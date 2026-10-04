@@ -14,6 +14,8 @@ type Source = { type: string; id: string; version: number | null; sketchId?: str
 
 export interface ReservationPorts {
   rows: {
+    candidate(id: string): Promise<Candidate | null>;
+    prepareTaskUse(projectId: string, sources: readonly { type: string; id: string }[]): Promise<{ mark(): Promise<void> }>;
     lockCandidate(id: string): Promise<Candidate | null>;
     lockOwner(ownerId: string): Promise<boolean>;
     rule(id: string): Promise<Rule | null>;
@@ -45,7 +47,7 @@ export function reservationUseCases(unit: ReservationUnitOfWork) {
   return {
     reserve(candidateId: string, now = new Date()): Promise<ReservationResult> {
       return unit.run(async ({ rows, access }) => {
-        const candidate = await rows.lockCandidate(candidateId);
+        const candidate = await rows.candidate(candidateId);
         if (!candidate || candidate.status !== 'queued') return blocked('NOT_QUEUED');
         const refuse = async (reason: Extract<ReservationResult, { status: 'blocked' }>['reason']) => {
           await rows.cancel(candidate.id, reason);
@@ -95,7 +97,11 @@ export function reservationUseCases(unit: ReservationUnitOfWork) {
         if (usage.dayRuns >= Math.min(rule.maxRunsPerDay, connection.maxRunsPerDay)
           || usage.periodCents + RESERVE_CENTS > Math.min(rule.periodBudgetCents, connection.periodBudgetCents))
           return refuse('BUDGET_EXHAUSTED');
+        const taskFence = await rows.prepareTaskUse(candidate.projectId, [{ type: 'result', id: candidate.resultId }, ...snapshot.sources]);
+        const retained = await rows.lockCandidate(candidate.id);
+        if (!retained || retained.status !== 'queued' || retained.sourceFingerprint !== candidate.sourceFingerprint) return blocked('NOT_QUEUED');
         if (!await rows.reserve(candidate.id, connection.id, RESERVE_CENTS, now)) return blocked('NOT_QUEUED');
+        await taskFence.mark();
         return { status: 'reserved', id: candidate.id, ownerUserId: candidate.ownerUserId,
           ruleId: candidate.ruleId, resultId: candidate.resultId, connectionId: connection.id,
           reservedCents: RESERVE_CENTS };

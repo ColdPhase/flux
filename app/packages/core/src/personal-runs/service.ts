@@ -206,6 +206,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
     const agent = { kind: 'agent' as const, id: agentId };
     if (!(await ports.access.canUseProject(agent, 'read', place.projectId, { lock: true })))
       throw new ConflictError('Your assistant has no access to this project', 'PERSONAL_RUN_NO_PROJECT_ACCESS');
+    const taskFence = await ports.runs.prepareTaskUse(place.projectId, conversationId.toLowerCase());
     // A run a crashed worker left behind must not block the owner forever (the job expires after 5 minutes).
     for (const ended of await ports.runs.endStale(owner, STALE_AFTER_SECONDS)) await announce(ports, ended);
     if (await ports.runs.hasRunInFlight(owner)) throw new ConflictError('Your assistant is already working on a request', 'PERSONAL_RUN_IN_FLIGHT');
@@ -220,6 +221,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
       continuesRunId: request.continuesRunId, retryOfRunId, reservedMicros, model: PERSONAL_RUN_LIMITS.model,
     });
     await ports.queue.enqueue(run.id);
+    await taskFence.mark();
     // Only the owner learns that the run exists (O-008 §4 "Progress").
     await announce(ports, run);
     return { run, created: true };

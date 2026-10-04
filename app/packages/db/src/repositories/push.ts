@@ -1,5 +1,6 @@
 import { and, count, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { assignmentNotificationActive } from './notification-lifecycle.js';
 import * as schema from '../schema.js';
 
 /**
@@ -125,7 +126,7 @@ export function pushDeliveryRepository(db: DbExecutor) {
         .innerJoin(n, and(eq(n.id, job.notificationId), eq(n.userId, s.userId)))
         .leftJoin(schema.authSessions, and(eq(schema.authSessions.id, s.sessionId), eq(schema.authSessions.userId, s.userId)))
         .where(and(eq(s.id, job.subscriptionId), eq(s.userId, job.userId)));
-      if (!row) return null;
+      if (!row || !(await assignmentNotificationActive(db, row.notification))) return null;
       return { subscription: toSubscriptionRecord(row.subscription), notification: toNotificationRecord(row.notification), sessionActive: row.sessionActive };
     },
     async deleteSubscription(id: string) {

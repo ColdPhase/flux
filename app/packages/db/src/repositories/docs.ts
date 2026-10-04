@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
 import * as schema from '../schema.js';
+import type { TaskUseFence } from './task-use.js';
+import { prepareReferencedTaskUse } from './task-targets.js';
 import type { DbExecutor } from './push.js';
 
 /**
@@ -105,13 +107,24 @@ export function docRows(db: DbExecutor) {
       return (await find(id))!;
     },
 
-    async replaceMentions(scope: { workspaceId: string; projectId: string }, docId: string, targets: Ref[], by: Actor) {
+    async prepareTaskUse(scope: { workspaceId: string; projectId: string }, docId: string, refs: readonly Ref[]) {
+      const previous = await db.select({ type: l.toType, id: l.toId }).from(l)
+        .where(and(eq(l.fromId, docId), eq(l.fromType, 'doc'), eq(l.role, 'mentions')));
+      return prepareReferencedTaskUse(db, scope.projectId, [...previous, ...refs]);
+    },
+
+    async replaceMentions(scope: { workspaceId: string; projectId: string }, docId: string, targets: Ref[], by: Actor, retained?: Pick<TaskUseFence, 'ids' | 'mark'>) {
+      // The doc/material row is already retained by the caller. Include removed targets
+      // before replacing links, so a later removal cannot erase evidence of use.
+      const previous = await db.select({ type: l.toType, id: l.toId }).from(l)
+        .where(and(eq(l.fromId, docId), eq(l.fromType, 'doc'), eq(l.role, 'mentions')));
+      const fence = retained ?? await prepareReferencedTaskUse(db, scope.projectId, [...previous, ...targets]);
       await db.delete(l).where(and(eq(l.fromId, docId), eq(l.fromType, 'doc'), eq(l.role, 'mentions')));
-      if (!targets.length) return;
-      await db.insert(l).values(targets.map((to) => ({
+      if (targets.length) await db.insert(l).values(targets.map((to) => ({
         id: randomUUID(), workspaceId: scope.workspaceId, projectId: scope.projectId, role: 'mentions' as const, fromType: 'doc' as const, fromId: docId,
         toType: to.type, toId: to.id, toVersion: to.type === 'material' ? to.version : null, createdByKind: by.kind, createdById: by.id,
       }))).onConflictDoNothing();
+      await fence.mark();
     },
   };
 }

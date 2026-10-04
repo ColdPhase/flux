@@ -101,3 +101,5 @@ id appears.
 A later format version may add fields; readers should ignore unknown ones. Removing or changing
 the meaning of a field needs a new `formatVersion`. The JSON Schema rejects unknown top-level
 keys so that a change to the format cannot go unnoticed in the tests.
+
+Task creation Undo (#238) retains every task in export, including `lifecycle` and `creationHistory` (trusted origin, immutable baseline, monotonic first use, proposal identity and original/reversion notices with actual actors). Active application lists exclude creation-reverted tasks; direct reads and this historical export identify them explicitly. Internal command receipts remain in full backups, as before.

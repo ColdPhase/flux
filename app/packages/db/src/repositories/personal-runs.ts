@@ -1,3 +1,4 @@
+import { prepareReferencedTaskUse } from './task-targets.js';
 import { fileRows } from './files.js';
 import { and, asc, desc, eq, inArray, isNotNull, notInArray, sql, type SQL } from 'drizzle-orm';
 import * as schema from '../schema.js';
@@ -122,6 +123,9 @@ export function personalRunRows(db: DbExecutor) {
       return rows.length > 0;
     },
 
+    prepareTaskUse: (projectId: string, conversationId: string, sources: readonly { type: string; id: string }[] = []) =>
+      prepareReferencedTaskUse(db, projectId, [{ type: 'conversation', id: conversationId }, ...sources]),
+
     async insertRun(run: NewRun) {
       const [row] = await db.insert(r).values(run).returning();
       return toRun(row!);
@@ -192,7 +196,7 @@ export function personalRunRows(db: DbExecutor) {
     async openWork(projectId: string, limit: number) {
       const w = schema.projectWorkItems;
       return db.select({ id: w.id, version: w.version, title: w.title, outcome: w.outcome, status: w.status }).from(w)
-        .where(and(eq(w.projectId, projectId), notInArray(w.status, FINISHED_WORK), sql`${w.parkedByDecisionId} IS NULL`))
+        .where(and(eq(w.projectId, projectId), notInArray(w.status, FINISHED_WORK), sql`${w.creationRevertedAt} IS NULL`, sql`${w.parkedByDecisionId} IS NULL`))
         .orderBy(desc(w.createdAt), desc(w.id)).limit(limit);
     },
 

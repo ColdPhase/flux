@@ -28,7 +28,7 @@ const CLIENT_LABEL: Record<ProjectAgentConnection['clientDesignation'], string> 
 };
 
 const OPERATION_LABEL: Record<AgentOperation, string> = {
-  'work.create': 'created a task', 'work.update': 'updated a task', 'result.record': 'recorded a result',
+  'work.create': 'created a task', 'work.update': 'updated a task', 'work.creation.revert': 'undid a task creation', 'result.record': 'recorded a result',
   'decision.propose': 'proposed a decision', 'map.create': 'created a map', 'map.rename': 'renamed a map',
   'map.thought.create': 'added a thought', 'map.thought.update': 'edited a thought', 'map.thought.delete': 'removed a thought',
   'map.positions.update': 'arranged the map', 'map.link.create': 'linked thoughts', 'map.link.delete': 'unlinked thoughts',

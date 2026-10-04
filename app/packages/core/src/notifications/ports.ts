@@ -164,6 +164,7 @@ export interface GeneratorUnitOfWork {
 
 /** The email row and its notification, read from current rows. */
 export interface ClaimableEmail {
+  lifecycleActive?: boolean;
   id: string;
   userId: string;
   addressKind: EmailAddressKind;

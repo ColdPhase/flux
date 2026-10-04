@@ -3,6 +3,7 @@ import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import type { InspectedComparisonSource, ProactiveComparisonProposal } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
+import { prepareReferencedTaskUse } from './task-targets.js';
 import { comparisonSources } from './proactive-sources.js';
 
 const q = schema.proactiveComparisonOutbox;
@@ -31,6 +32,8 @@ export function proactiveOutboxRows(db: DbExecutor) {
       .where(and(eq(q.id, id), inArray(q.status, ['queued', 'reserved'])));
   };
   return {
+    prepareTaskUse: (projectId: string, sources: readonly { type: string; id: string }[]) => prepareReferencedTaskUse(db, projectId, sources),
+    async candidate(id: string) { const [row] = await db.select().from(q).where(eq(q.id, id)); return row ?? null; },
     async enabledRules(projectId: string) {
       return db.select({ id: rules.id, ownerUserId: rules.ownerUserId, agentId: rules.agentId }).from(rules)
         .where(and(eq(rules.projectId, projectId), eq(rules.status, 'enabled')));
@@ -56,6 +59,7 @@ export function proactiveOutboxRows(db: DbExecutor) {
       await db.update(q).set({ dispatchStartedAt: new Date(), updatedAt: new Date() })
         .where(and(eq(q.id, candidateId), eq(q.status, 'reserved')));
     },
+    async proposal(id: string) { const [row] = await db.select().from(proposals).where(eq(proposals.id, id)); return row ?? null; },
     async lockProposal(id: string) {
       const [row] = await db.select().from(proposals).where(eq(proposals.id, id)).for('update');
       return row ?? null;
@@ -114,7 +118,7 @@ export function proactiveOutboxRows(db: DbExecutor) {
       return row?.conversationId ?? null;
     },
     sourceCurrent: (projectId: string, source: { type: string; id: string; version: number | null; sketchId?: string }) =>
-      comparisonSources(db).current(projectId, source, true),
+      comparisonSources(db).current(projectId, source, source.type !== 'work'),
     async sourceText(projectId: string, source: { type: 'message' | 'result' | 'material' | 'work' | 'thought'; id: string; version: number }) {
       if (source.type === 'message') {
         const [row] = await db.select({ body: schema.projectMessages.body }).from(schema.projectMessages)

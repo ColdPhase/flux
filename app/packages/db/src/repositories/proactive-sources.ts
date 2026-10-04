@@ -20,7 +20,7 @@ const humanThought = and(isNull(t.placementType), isNull(t.placementId), isNull(
     AND e.data->'thoughtIds' @> jsonb_build_array(${t.id}::text) AND e.actor_id LIKE 'agent:%')`);
 
 // A work item made from this agent's earlier proposal or changed by an agent is not evidence.
-const humanWork = and(eq(w.createdByKind, 'human'),
+const humanWork = and(eq(w.createdByKind, 'human'), isNull(w.creationRevertedAt),
   sql`NOT EXISTS (SELECT 1 FROM ${schema.proactiveComparisonProposals} p WHERE p.used_work_id = ${w.id})`,
   sql`NOT EXISTS (SELECT 1 FROM ${schema.events} e WHERE e.object_id = ${w.projectId}
     AND e.kind IN ('project.work_created.v1', 'project.work_updated.v1')

@@ -40,7 +40,7 @@ export async function dispatchProactiveComparison(input: { db: Database; candida
   let paidRequestStarted = false;
   try {
     const prepared = await input.db.transaction(async (tx) => {
-      const { rows, candidate, rule, snapshot } =
+      const { rows, candidate, rule, snapshot, taskFence } =
         await authorizedComparison(tx, input.candidateId, reservation.connectionId, undefined, true);
       const selected: ComparisonSource[] = [];
       for (const source of snapshot.sources) {
@@ -68,6 +68,7 @@ export async function dispatchProactiveComparison(input: { db: Database; candida
         version: source.version, title: source.title ?? '', ...(source.conversationId ? { conversationId: source.conversationId } : {}),
         ...(source.sketchId ? { sketchId: source.sketchId } : {}), ...(source.excerpted
           ? { excerpted: true, originalCharacters: source.originalCharacters } : {}) })));
+      await taskFence!.mark();
       let apiKey: string;
       try { apiKey = openBackgroundKey(connection.encryptedKey, candidate.ownerUserId, connection.id, input.masterKey!); }
       catch { throw new Stop('KEY_UNAVAILABLE'); }

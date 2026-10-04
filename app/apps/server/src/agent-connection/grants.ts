@@ -60,7 +60,7 @@ const MAP_CHANGES: readonly AgentOperation[] = ['map.rename', 'map.thought.creat
  * project conversation a reply joins. Private and direct-message objects are never project objects.
  */
 export function agentOperationTarget(operation: AgentOperation): 'work' | 'sketch' | 'doc' | 'conversation' | null {
-  if (operation === 'work.update') return 'work';
+  if (operation === 'work.update' || operation === 'work.creation.revert') return 'work';
   if (operation === 'doc.update') return 'doc';
   if (operation === 'conversation.reply') return 'conversation';
   return MAP_CHANGES.includes(operation) ? 'sketch' : null;

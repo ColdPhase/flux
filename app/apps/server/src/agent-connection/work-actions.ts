@@ -64,6 +64,23 @@ export function registerAgentWorkActions(tools: AgentToolRegistry, db: Database,
     } catch (error) { return toolError(error); }
   });
 
+  register('work.creation.revert').registerTool('flux_undo_task_creation', {
+    title: 'Undo your unused task creation',
+    description: 'Undo only a native task you created, while its complete creation baseline is unchanged and no persisted use exists. '
+      + 'Needs the exact work.creation.revert standing grant in execute or plan, current runtime and task version. '
+      + 'The task remains as read-only history with a creation-undone notice; repeating the same command returns its receipt.',
+    inputSchema: z.strictObject({ ...execution(['execute', 'plan']), workId: id, expectedVersion: version }),
+    annotations: { ...annotations, destructiveHint: true },
+  }, async ({ workId, expectedVersion, ...input }) => {
+    try {
+      return toolResult(await execute(input, 'work.creation.revert', workId, { expectedVersion }, async ({ work: native, agent }) => {
+        const reverted = await native.undoTaskCreation(agent, workId, { clientCommandId: input.clientCommandId, expectedVersion });
+        return { value: { workId, noticeId: reverted.noticeId, clientCommandId: reverted.clientCommandId, version: reverted.work.version },
+          postconditions: [{ kind: 'work', id: workId, version: reverted.work.version }] };
+      }));
+    } catch (error) { return toolError(error); }
+  });
+
   register('result.record').registerTool('flux_record_result', {
     title: 'Record a project result under a standing grant',
     description: 'Record one observed result: a positive or negative finding with its evidence, linked to the tasks and decisions '

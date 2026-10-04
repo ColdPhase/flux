@@ -121,7 +121,7 @@ function world(options: { writable?: boolean; taskIds?: string[]; hook?: boolean
   } };
   const discussionPorts: TaskDiscussionPorts = { access, work, discussion, events: eventLog as TaskDiscussionPorts['events'] };
   const ports: WorkPorts = { access, work, events: eventLog as WorkPorts['events'], contributions: createWorkContributions(discussionPorts),
-    backgroundComparison: { enqueueHumanNegative: async () => 0 } };
+    backgroundComparison: { prepareHumanNegative: async () => {}, taskTargets: async () => [], enqueueHumanNegative: async () => 0 } };
   return {
     log, tasks, taskIds, messages, results, receipts, events, bindings, conversations, ports,
     use: createWorkUseCases({ run: (action) => action(ports) }),

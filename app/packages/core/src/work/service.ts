@@ -17,6 +17,9 @@ import {
   type WorkObjectType,
   type WorkResult,
   type TaskCreationNotice,
+  type TaskCreationUndoEligibility,
+  type UndoTaskCreationCommand,
+  type UndoTaskCreationResult,
 } from '@flux/contracts';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, RuleViolationError, VersionConflictError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
@@ -116,6 +119,8 @@ async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | nu
         planIntent: plan.planIntent,
         owner: record.owner ? named(record.owner) : null,
         parked: record.parked ? { decisionId: record.parked.decisionId, at: iso(record.parked.at) } : null,
+        lifecycle: record.creationRevertedAt && record.creationRevertedBy && record.creationReversionNoticeId
+          ? { state: 'creation_reverted', noticeId: record.creationReversionNoticeId, revertedAt: iso(record.creationRevertedAt), revertedBy: named(record.creationRevertedBy) } : { state: 'active' },
         createdBy: named(record.createdBy), version: record.version, updatedAt: iso(record.updatedAt),
       };
     },
@@ -131,7 +136,7 @@ async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | nu
   };
 }
 
-const workActors = (records: WorkRecord[]) => records.flatMap((record) => [record.owner, record.createdBy]);
+const workActors = (records: WorkRecord[]) => records.flatMap((record) => [record.owner, record.createdBy, record.creationRevertedBy ?? null]);
 const decisionActors = (records: DecisionRecord[]) => records.flatMap((record) => [record.proposedBy, record.decidedBy ? { kind: 'human' as const, id: record.decidedBy } : null]);
 
 async function presentWork(ports: WorkPorts, record: WorkRecord) {
@@ -188,6 +193,28 @@ function sameCommand(earlier: NativeCommandReceipt, fingerprint: string) {
 const stale = () => new ConflictError('The result of this command changed afterwards; review the current state', 'COMMAND_POSTSTATE_STALE');
 const invalidPostState = () => new ConflictError('The stored outcome of this command is no longer intact', 'COMMAND_POSTSTATE_INVALID');
 
+async function canUndoActor(ports: WorkPorts, principal: Principal, record: WorkRecord, lock = false): Promise<boolean> {
+  if (principal.kind === 'agent') return record.creationOrigin === 'native_agent' && record.createdBy.kind === 'agent' && record.createdBy.id === principal.id;
+  if (principal.kind !== 'human') return false;
+  return record.createdBy.kind === 'human' && record.createdBy.id === principal.id
+    || record.owner?.kind === 'human' && record.owner.id === principal.id
+    || record.creationOrigin === 'native_agent' && record.createdBy.kind === 'agent' && await ports.work.creatorAgentOwner(record.createdBy.id, { lock }) === principal.id;
+}
+async function undoEligibility(ports: WorkPorts, principal: Principal, record: WorkRecord): Promise<TaskCreationUndoEligibility> {
+  const no = (reason: TaskCreationUndoEligibility['reason']): TaskCreationUndoEligibility => ({ eligible: false, reason });
+  if (record.creationRevertedAt) return no('already_reverted');
+  if (!record.creationBaselineVersion || !record.creationOrigin) return no('eligibility_unknown');
+  if (record.creationOrigin === 'human') return no('not_ai_origin');
+  if (record.firstPersistedUseAt) return no('task_used');
+  if (record.version !== record.creationBaselineVersion || !(await ports.work.creationBaselineMatches(record.id))) return no('creation_changed');
+  // Current dependencies are an additional invariant; their earlier removal is covered by monotonic use.
+  const plan = await ports.work.taskPlans([record.id]);
+  if (plan.get(record.id)?.prerequisites.length) return no('task_used');
+  try { await ports.access.requireProject(principal, 'write', record.projectId); }
+  catch (error) { if (error instanceof ForbiddenError || error instanceof NotFoundError) return no('not_authorized'); throw error; }
+  return await canUndoActor(ports, principal, record) ? { eligible: true, reason: 'eligible' } : no('not_authorized');
+}
+
 export function createWorkUseCases(uow: WorkUnitOfWork) {
   async function list<T, R>(principal: Principal, projectId: string, query: PageQuery | undefined,
     read: (ports: WorkPorts, projectId: string, page: ReturnType<typeof valid.page>) => Promise<{ items: R[]; total: number }>,
@@ -213,9 +240,17 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       list(principal, projectId, query, (ports, project, window) => ports.work.listResults(project, window), presentResults),
     listTaskNotices: (principal: Principal, projectId: string, query?: PageQuery): Promise<Page<TaskCreationNotice>> =>
       list(principal, projectId, query, (ports, project, window) => ports.work.listTaskNotices(project, window), async (ports, items) => {
-        const names = await ports.work.names(items.map((item) => item.createdBy));
-        return items.map((item) => ({ ...item, kind: 'task.created', createdAt: iso(item.createdAt),
-          createdBy: { ...item.createdBy, name: names.get(key(item.createdBy)) ?? (item.createdBy.kind === 'agent' ? 'Agent' : 'Former member') } }));
+        const records = await Promise.all(items.map((item) => ports.work.findWork(item.workId)));
+        const names = await ports.work.names([...items.map((item) => item.createdBy), ...records.flatMap((record) => record?.creationRevertedBy ? [record.creationRevertedBy] : [])]);
+        return items.map((item, index) => {
+          const record = records[index];
+          return { ...item, createdAt: iso(item.createdAt),
+            lifecycle: record?.creationRevertedAt && record.creationRevertedBy && record.creationReversionNoticeId
+              ? { state: 'creation_reverted' as const, noticeId: record.creationReversionNoticeId, revertedAt: iso(record.creationRevertedAt),
+                revertedBy: { ...record.creationRevertedBy, name: names.get(key(record.creationRevertedBy)) ?? 'Former member' } }
+              : { state: 'active' as const },
+            createdBy: { ...item.createdBy, name: names.get(key(item.createdBy)) ?? (item.createdBy.kind === 'agent' ? 'Agent' : 'Former member') } };
+        });
       }),
 
     /** The caller's unfinished work across the projects of a workspace they can currently read. */
@@ -232,7 +267,8 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
 
     getWork: (principal: Principal, workId: string) => uow.run(async (ports) => {
       const { id } = await authorized(ports, principal, 'work', workId, 'read');
-      return presentWork(ports, (await ports.work.findWork(id))!);
+      const record = (await ports.work.findWork(id))!;
+      return { ...await presentWork(ports, record), creationUndo: await undoEligibility(ports, principal, record) };
     }),
     getDecision: (principal: Principal, decisionId: string) => uow.run(async (ports) => {
       const { id } = await authorized(ports, principal, 'decision', decisionId, 'read');
@@ -243,12 +279,41 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       return presentResult(ports, (await ports.work.findResult(id))!);
     }),
 
+    async undoTaskCreation(principal: Principal, workId: string, command: UndoTaskCreationCommand): Promise<UndoTaskCreationResult> {
+      const by = actor(principal);
+      const commandId = valid.id(command?.clientCommandId, 'clientCommandId');
+      const version = valid.expectedVersion(command?.expectedVersion);
+      return uow.run(async (ports) => {
+        const { id, projectId, workspaceId } = await authorized(ports, principal, 'work', workId, 'write');
+        const located = (await ports.work.findWork(id))!;
+        await canUndoActor(ports, principal, located, true); // Retain current creator-agent ownership before graph/task locks.
+        const fingerprint = sha256({ operation: 'work.creation.revert', workId: id, expectedVersion: version });
+        const earlier = await ports.work.creationUndoReceipt(projectId, by, commandId);
+        if (earlier && (earlier.fingerprint !== fingerprint || earlier.workId !== id)) throw new ConflictError('This clientCommandId was used for another creation Undo', 'IDEMPOTENCY_CONFLICT');
+        // Same graph/task serialization point as every first persisted use. No use latch on Undo or replay.
+        await lockProjectGraphs(ports.work, [projectId]);
+        await ports.work.lockTasks(workspaceId, [id]);
+        const current = (await ports.work.findWork(id))!;
+        if (!await canUndoActor(ports, principal, current)) throw new ForbiddenError('You cannot undo this task creation', 'TASK_CREATION_UNDO_FORBIDDEN');
+        if (earlier) {
+          if (!current.creationRevertedAt || current.creationReversionNoticeId !== earlier.noticeId) throw invalidPostState();
+          return { work: await presentWork(ports, current), noticeId: earlier.noticeId, clientCommandId: commandId };
+        }
+        const eligibility = await undoEligibility(ports, principal, current);
+        if (!eligibility.eligible) throw new ConflictError('Task creation cannot be undone', eligibility.reason === 'eligibility_unknown' ? 'TASK_CREATION_ELIGIBILITY_UNKNOWN' : 'TASK_CREATION_UNDO_REFUSED');
+        if (current.version !== version) throw new VersionConflictError(current.version, await presentWork(ports, current));
+        const result = await ports.work.revertCreation(current, by, commandId, fingerprint);
+        await ports.events.record(principal, workspaceId, 'project.work_updated.v1', projectId, { workId: id, taskNoticeId: result.noticeId, lifecycle: 'creation_reverted' });
+        return { work: await presentWork(ports, result.work), noticeId: result.noticeId, clientCommandId: commandId };
+      });
+    },
+
     /**
      * Creates work in one action, e.g. from a message; the source is linked and stays where it is. With
      * `criteria`, `dependencyIds` and a `planIntent` it is the one native planning command for people,
      * the API and (later) agents; see the lock order at the top of this file.
      */
-    async createWork(principal: Principal, projectId: string, command: CreateWorkCommand): Promise<WorkItem> {
+    async createWork(principal: Principal, projectId: string, command: CreateWorkCommand, trustedOrigin?: { proposalId: string }): Promise<WorkItem> {
       const by = actor(principal);
       if (!command || typeof command !== 'object') throw new InvalidInputError('Work item is required');
       const project = valid.id(projectId, 'projectId');
@@ -285,12 +350,13 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
           const earlier = await ports.work.createdWork(project, by, clientCommandId);
           if (earlier) {
             if (earlier.fingerprint !== requestFingerprint) throw new ConflictError('This clientCommandId was used for another task creation', 'IDEMPOTENCY_CONFLICT');
+            if (earlier.work.creationRevertedAt) throw new ConflictError('Task creation was undone; open its history', 'TASK_CREATION_REVERTED');
             return presentWork(ports, earlier.work);
           }
         }
         await requireOwner(ports, project, owner);
         await requireTargets(ports, project, [...sources, ...related]);
-        if (planIntent || dependencyIds.length) await lockProjectGraphs(ports.work, [project]);
+        await lockProjectGraphs(ports.work, [project]);
         if (planIntent) {
           const existing = await ports.work.findPlanIntent(project, planIntent);
           const produced = existing ? await ports.work.findWork(existing.taskId, { lock: true }) : null;
@@ -298,11 +364,9 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
           // The same canonical creation of an unchanged task: the original task, actor and times, no new notice or event.
           if (decision.kind === 'replay') return presentWork(ports, produced!);
         }
-        if (dependencyIds.length) {
-          const locked = await ports.work.lockTasks(workspaceId, dependencyIds);
-          if (locked.length !== dependencyIds.length || locked.some((task) => task.projectId !== project))
-            throw new RuleViolationError('A prerequisite is not a task of this project', 'TASK_DEPENDENCY_NOT_FOUND');
-        }
+        const existingTargets = [...new Set([...dependencyIds, ...await ports.work.taskUseTargets([...sources, ...related])])].sort();
+        const useFence = await ports.work.lockPreparedTaskUse(existingTargets);
+
         const scope = { workspaceId, projectId: project };
         const record = await ports.work.insertWork({ id: randomUUID(), ...scope, title, outcome, status, blocker, owner, createdBy: by, criteria, clientCommandId, requestFingerprint });
         // A brand-new task cannot be anyone's prerequisite yet, so these edges cannot close a cycle.
@@ -314,7 +378,10 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         const from = { type: 'work' as const, id: record.id };
         await ports.work.insertLinks([...linkRows(scope, from, 'source', sources, by), ...linkRows(scope, from, 'related', related, by)]);
         await ports.work.insertCreationNotice(record, sources);
-        const view = await presentWork(ports, record);
+        await useFence.mark();
+        if (!trustedOrigin) await ports.work.recordCreationBaseline(record);
+        const fresh = (await ports.work.findWork(record.id))!;
+        const view = { ...await presentWork(ports, fresh), creationUndo: await undoEligibility(ports, principal, fresh) };
         // `assignedTo` names a person given this work by someone else (notifications, #116).
         const assignedTo = owner?.kind === 'human' && owner.id !== by.id ? owner.id : undefined;
         await ports.events.record(principal, workspaceId, 'project.work_created.v1', project, { workId: record.id, ...(assignedTo ? { assignedTo } : {}) });
@@ -372,17 +439,11 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         // Replacing prerequisites, or starting/finishing a task, is a graph writer: graph lock (after the command
         // and message identities above), then every task it reads in one ascending pass (itself and the
         // prerequisites it will have).
-        if (dependencyIds !== undefined || (changes.status !== undefined && ELIGIBLE_STATUSES.has(changes.status))) {
-          await lockProjectGraphs(ports.work, [projectId]);
-          const prerequisites = dependencyIds ?? await directPrerequisiteIds(ports.work, workspaceId, [id]);
-          const wanted = sortedIds([id, ...prerequisites], 'taskIds');
-          const locked = await ports.work.lockTasks(workspaceId, wanted);
-          if (locked.length !== wanted.length || locked.some((task) => task.projectId !== projectId))
-            throw new RuleViolationError('A prerequisite is not a task of this project', 'TASK_DEPENDENCY_NOT_FOUND');
-        }
-        // The task itself (already held after a graph pass, locked here otherwise); the contribution handle
-        // completes its stage so the append can only follow the complete task set.
-        const current = contribution ? (await ports.contributions.lockTasks(contribution))[0]! : (await ports.work.findWork(id, { lock: true }))!;
+        await lockProjectGraphs(ports.work, [projectId]);
+        const previous = await directPrerequisiteIds(ports.work, workspaceId, [id]);
+        const useIds = [...new Set([id, ...previous, ...(dependencyIds ?? [])])].sort();
+        const useFence = await ports.work.lockPreparedTaskUse(useIds);
+        const current = contribution ? (await ports.contributions.lockTasks(contribution))[0]! : (await ports.work.findWork(id))!;
         if (current.version !== version) throw new VersionConflictError(current.version, await presentWork(ports, current));
         const nextStatus = changes.status ?? current.status;
         // A person who explicitly finishes parked work with its current version also takes it
@@ -399,6 +460,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         // It starts or finishes only with every prerequisite done and unparked, and keeps that while it
         // is active. The check reads the edges as just replaced; a failure rolls back the whole change.
         if (ELIGIBLE_STATUSES.has(nextStatus) && (dependencyIds !== undefined || nextStatus !== current.status)) await assertPrerequisitesMet(ports.work, workspaceId, id);
+        await useFence.mark();
         const view = await presentWork(ports, record);
         const newOwner = changes.owner;
         const assignedTo = newOwner?.kind === 'human' && newOwner.id !== principal.id
@@ -429,10 +491,13 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
             throw new RuleViolationError('Only an accepted decision of this project can be superseded', 'SUPERSEDES_NOT_CURRENT');
         }
         await requireTargets(ports, project, [...sources, ...affects]);
+        await lockProjectGraphs(ports.work, [project]);
+        const useFence = await ports.work.lockPreparedTaskUse(sortedIds([...affects.map((ref) => ref.id), ...await ports.work.taskUseTargets(sources)], 'taskIds'));
         const scope = { workspaceId, projectId: project };
         const record = await ports.work.insertDecision({ id: randomUUID(), ...scope, title, rationale, proposedBy: by, supersedesId: supersedes });
         const from = { type: 'decision' as const, id: record.id };
         await ports.work.insertLinks([...linkRows(scope, from, 'source', sources, by), ...linkRows(scope, from, 'affects', affects, by)]);
+        await useFence.mark();
         const view = await presentDecision(ports, record);
         await ports.events.record(principal, workspaceId, 'project.decision_proposed.v1', project, { decisionId: record.id });
         return view;
@@ -453,14 +518,23 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       return uow.run(async (ports) => {
         const { id, projectId, workspaceId } = await authorized(ports, principal, 'decision', decisionId, 'write');
         if (by.kind !== 'human') throw new ForbiddenError('Only a person can accept a decision; agents can propose', 'DECISION_NEEDS_PERSON');
-        const current = (await ports.work.findDecision(id, { lock: true }))!;
+        const located = (await ports.work.findDecision(id))!;
+        await lockProjectGraphs(ports.work, [projectId]);
+        const useFence = await ports.work.lockPreparedTaskUse(sortedIds([...stillApplies, ...park,
+          ...await ports.work.taskUseTargets([{ type: 'decision', id }])], 'taskIds'));
+        const decisionRows = new Map<string, DecisionRecord>();
+        for (const decisionId of [...new Set([id, ...(located.supersedesId ? [located.supersedesId] : [])])].sort()) {
+          const retained = await ports.work.findDecision(decisionId, { lock: true });
+          if (retained) decisionRows.set(decisionId, retained);
+        }
+        const current = decisionRows.get(id)!;
         if (current.version !== version) throw new VersionConflictError(current.version, await presentDecision(ports, current));
         if (current.status !== 'proposed') throw new ConflictError('This decision is no longer a proposal', 'DECISION_NOT_PROPOSED');
         if ((stillApplies.length || park.length) && !current.supersedesId)
           throw new RuleViolationError('Only a decision that supersedes an earlier one is a pivot', 'PIVOT_NEEDS_EARLIER_DECISION');
         const parked: WorkRecord[] = [];
         for (const workId of [...stillApplies, ...park].sort()) {
-          const work = await ports.work.findWork(workId, { lock: true });
+          const work = await ports.work.findWork(workId);
           if (!work || work.projectId !== projectId) throw new RuleViolationError('The work is not part of this project', 'LINK_TARGET_NOT_FOUND');
           if (park.includes(workId)) {
             if (FINISHED.has(work.status)) throw new RuleViolationError('Finished work keeps its result and is not parked', 'WORK_ALREADY_FINISHED');
@@ -469,7 +543,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         }
         const now = new Date();
         if (current.supersedesId) {
-          const earlier = await ports.work.findDecision(current.supersedesId, { lock: true });
+          const earlier = decisionRows.get(current.supersedesId);
           if (!earlier || earlier.status !== 'accepted')
             throw new ConflictError('The decision this one replaces has changed; review it again', 'SUPERSEDED_DECISION_CHANGED');
           await ports.work.updateDecision(earlier.id, { status: 'superseded', supersededById: id, supersededAt: now });
@@ -478,6 +552,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         for (const work of parked) await ports.work.updateWork(work.id, { parked: { decisionId: id, at: now } });
         const scope = { workspaceId, projectId };
         await ports.work.insertLinks(linkRows(scope, { type: 'decision', id }, 'still_applies', workRefs(stillApplies), by));
+        await useFence.mark();
         const view = await presentDecision(ports, record);
         await ports.events.record(principal, workspaceId, 'project.decision_accepted.v1', projectId, { decisionId: id });
         return view;
@@ -527,20 +602,18 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         }
         await requireTargets(ports, project, [...sources, ...workRefs(workIds), ...decisions]);
         const resultId = randomUUID();
+        if (finding === 'negative' && by.kind === 'human') await ports.backgroundComparison.prepareHumanNegative(project, by.id);
         // Every message identity (derived from this result and its task) is locked before the first task lock,
         // then the complete sorted task set, so overlapping results lock in one order and cannot deadlock.
         const contributions = workIds.length ? await ports.contributions.prepare(principal, project, { operation: 'result.create', resultId },
           workIds.map((workId) => ({ workId, kind: 'result' as const, body: title, resultId }))) : null;
         // Finishing is also a start/finish transition: graph lock, then ONE ascending pass over the linked tasks
         // together with the finishing task's prerequisites, so no other pass can lock them in another order.
-        if (finishes) {
-          await lockProjectGraphs(ports.work, [project]);
-          const wanted = sortedIds([...workIds, ...await directPrerequisiteIds(ports.work, workspaceId, [finishes.id])], 'taskIds');
-          const held = await ports.work.lockTasks(workspaceId, wanted);
-          if (held.length !== wanted.length || held.some((task) => task.projectId !== project))
-            throw new RuleViolationError('A prerequisite is not a task of this project', 'TASK_DEPENDENCY_NOT_FOUND');
-        }
-        // The linked tasks are now all held (a plain pass when nothing finishes); the handle completes its stage.
+        await lockProjectGraphs(ports.work, [project]);
+        const backgroundTasks = finding === 'negative' && by.kind === 'human' ? await ports.backgroundComparison.taskTargets(resultId) : [];
+        const directTasks = [...workIds, ...await ports.work.taskUseTargets([...sources, ...decisions])];
+        const wanted = sortedIds([...directTasks, ...backgroundTasks, ...(finishes ? await directPrerequisiteIds(ports.work, workspaceId, [finishes.id]) : [])], 'taskIds');
+        const useFence = await ports.work.lockPreparedTaskUse(wanted);
         const locked = contributions ? await ports.contributions.lockTasks(contributions) : [];
         // Finishing changes someone's work: it needs the version the author saw and a status
         // that can become done. A parked or not-pursued item is another person's disposition.
@@ -558,9 +631,10 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
           await ports.work.updateWork(finished.id, { status: 'done', blocker: null });
           await assertPrerequisitesMet(ports.work, workspaceId, finished.id);
         }
+        await useFence.mark(directTasks);
         const view = await presentResult(ports, record);
-        if (finding === 'negative' && by.kind === 'human')
-          await ports.backgroundComparison.enqueueHumanNegative(record.id, project, by.id);
+        if (finding === 'negative' && by.kind === 'human' && await ports.backgroundComparison.enqueueHumanNegative(record.id, project, by.id))
+          await useFence.mark(backgroundTasks);
         await ports.events.record(principal, workspaceId, 'project.result_recorded.v1', project, { resultId: record.id });
         const messageIds = contributions ? await ports.contributions.append(contributions) : [];
         if (clientCommandId) await ports.work.recordNativeCommand(scope, by,
@@ -580,10 +654,13 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       return uow.run(async (ports) => {
         const { workspaceId } = await ports.access.requireProject(principal, 'write', project, { lock: true });
         await requireTargets(ports, project, [from, to]);
+        await lockProjectGraphs(ports.work, [project]);
+        const useFence = await ports.work.lockPreparedTaskUse(await ports.work.taskUseTargets([from, to]));
         await ports.work.insertLinks(linkRows({ workspaceId, projectId: project }, from, 'related', [to], by));
         const link = (await ports.work.links([from.id])).find((item) => item.fromId === from.id && item.role === 'related' && item.toId === to.id
           && (to.type !== 'material' || item.toVersion === to.version));
         if (!link) throw new Error('Link was not stored');
+        await useFence.mark();
         const titles = await ports.work.titles(project, [from, to]);
         await ports.events.record(principal, workspaceId, 'project.link_created.v1', project, { from: from.id });
         return { id: link.id, projectId: project, role: link.role, from, to, fromTitle: titles.get(valid.refKey(from))?.title ?? '',

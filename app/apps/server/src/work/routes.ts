@@ -1,5 +1,8 @@
+import { policyWorkAccess } from './access.js';
 import type { FastifyInstance } from 'fastify';
 import {
+  taskCreationUndoPath,
+  type UndoTaskCreationCommand,
   decisionAcceptPath,
   decisionPath,
   projectDecisionsPath,
@@ -23,7 +26,7 @@ import {
   type ConversationWindowQuery,
   type TaskContributionCommand,
 } from '@flux/contracts';
-import { assertAuthorized, InvalidInputError, type Database, type ResourceRef, type FileStorage } from '@flux/core';
+import { assertAuthorized, ConflictError, InvalidInputError, type Database, type ResourceRef, type FileStorage } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, expectedVersion, useDomainErrors, versionEtag, type ReplayCheck } from '../http/commands.js';
 import { workUseCases } from './adapters.js';
@@ -113,12 +116,21 @@ export async function workRoutes(app: FastifyInstance, { db, sessions, storage }
     async (request, reply) => command(request, reply, {
       operation: `POST ${projectWorkPath(':projectId')}`, scope: projectScope(request.params.projectId), status: 201, etag: true,
       run: (actor, conn) => workUseCases(conn).createWork(actor, request.params.projectId, request.body),
-      replay: projectReader,
+      replay: async (actor, body, conn) => {
+        await policyWorkAccess(conn).requireProject(actor, 'write', request.params.projectId, { lock: true });
+        await projectReader(actor, body, conn);
+        const current = await workUseCases(conn).getWork(actor, String((body as { id: string }).id));
+        if (current.lifecycle?.state === 'creation_reverted') throw new ConflictError('Task creation was undone; open its history', 'TASK_CREATION_REVERTED');
+      },
     }));
   app.get<{ Params: { workId: string } }>(workItemPath(':workId'), async (request, reply) => {
     const item = await work.getWork(await principal(request), request.params.workId);
     return reply.header('etag', versionEtag(item)).send(item);
   });
+  app.post<{ Params: { workId: string }; Body: UndoTaskCreationCommand }>(taskCreationUndoPath(':workId'),
+    { schema: { body: { type: 'object', additionalProperties: false, required: ['clientCommandId', 'expectedVersion'],
+      properties: { clientCommandId: { type: 'string', format: 'uuid' }, expectedVersion: version } } } },
+    async (request) => work.undoTaskCreation(await principal(request), request.params.workId, request.body));
   app.patch<{ Params: { workId: string }; Body: UpdateWorkCommand }>(workItemPath(':workId'), { schema: { body: updateWork },
     // A plan intent is immutable: say so instead of letting the schema silently drop the field.
     preValidation: async (request) => {

@@ -43,7 +43,9 @@ export interface DocWithCurrent {
 export type NewDocVersion = Pick<DocVersionRecord, 'title' | 'body' | 'state' | 'reason' | 'author'>;
 
 /** Rows only; the repository makes no access decisions (the use cases ask {@link WorkAccess}). */
+export interface DocTaskUseFence { readonly ids: readonly string[]; mark(ids?: readonly string[]): Promise<void> }
 export interface DocRepository {
+  prepareTaskUse(scope: { workspaceId: string; projectId: string }, docId: string, refs: readonly ObjectRef[]): Promise<DocTaskUseFence>;
   /** The project of a doc, whoever may read it; callers must authorize before using it. */
   locate(id: string): Promise<{ projectId: string } | null>;
   /** Docs of a project, the most recently changed first. */
@@ -61,7 +63,7 @@ export interface DocRepository {
   /** Adds the next immutable version and makes it current; the caller holds the row lock. */
   append(id: string, next: NewDocVersion): Promise<DocWithCurrent>;
   /** Replaces the doc's `mentions` links with links to `targets`; other roles are kept. */
-  replaceMentions(scope: { workspaceId: string; projectId: string }, docId: string, targets: ObjectRef[], by: ActorRef): Promise<void>;
+  replaceMentions(scope: { workspaceId: string; projectId: string }, docId: string, targets: ObjectRef[], by: ActorRef, retained?: DocTaskUseFence): Promise<void>;
 }
 
 /** A `flux:<type>/<id>` reference found in a Markdown text. */

@@ -1,7 +1,7 @@
 import {
-  decisionAcceptPath, decisionPath, projectDecisionsPath, projectResultsPath, projectWorkPath, resultPath, workItemPath,
+  decisionAcceptPath, decisionPath, projectDecisionsPath, projectResultsPath, projectWorkPath, resultPath, workItemPath, taskCreationUndoPath,
   type AcceptDecisionCommand, type CreateResultCommand, type CreateWorkCommand, type Decision, type Page, type ProposeDecisionCommand,
-  type UpdateWorkCommand, type WorkItem, type WorkResult, type Agent,
+  type UndoTaskCreationResult, type UpdateWorkCommand, type WorkItem, type WorkResult, type Agent,
 } from '@flux/contracts';
 import { request } from '../api/client';
 
@@ -53,3 +53,6 @@ export const acceptDecision = (decision: Decision, command: AcceptDecisionComman
 export const createResult = (projectId: string, command: CreateResultCommand, idempotencyKey: string) =>
   request<WorkResult>(projectResultsPath(projectId), { method: 'POST', body: { ...command, clientCommandId: command.clientCommandId ?? idempotencyKey }, headers: key(idempotencyKey) });
 export const listAgents = (workspaceId: string, signal?: AbortSignal) => request<Agent[]>(`/api/v1/workspaces/${workspaceId}/agents`, { signal });
+
+export const undoTaskCreation = (item: WorkItem, clientCommandId: string, signal?: AbortSignal) =>
+  request<UndoTaskCreationResult>(taskCreationUndoPath(item.id), { method: 'POST', body: { clientCommandId, expectedVersion: item.version }, signal });

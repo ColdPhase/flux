@@ -181,6 +181,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows): S
         row_number() OVER (PARTITION BY sd.kind, sd.object_id ORDER BY sd.version DESC NULLS LAST) AS newest
       FROM search_documents sd
       WHERE ${hitConditions(plan, true)}
+        AND (sd.kind <> 'work' OR EXISTS (SELECT 1 FROM project_work_items active_work WHERE active_work.id = sd.object_id AND active_work.creation_reverted_at IS NULL))
     ),
     -- One result per object: of several matching versions of a material, the newest.
     hits AS (SELECT * FROM matched WHERE newest = 1)

@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, eq, inArray, lte, sql } from 'drizzle-orm';
 import type { GithubPullFacts } from '@flux/contracts';
+import { taskUseRows } from './task-use.js';
 import * as s from '../schema.js';
 import type { DbExecutor } from './push.js';
 type Binding = typeof s.githubBindings.$inferSelect;
@@ -43,8 +44,10 @@ export function githubRows(db: DbExecutor) {
     async links(taskId: string) { return (await db.select().from(l).where(eq(l.taskId, taskId)).orderBy(asc(l.id))).map(linkView); },
     async linkedPulls(bindingId: string) { return (await db.select().from(l).where(eq(l.bindingId, bindingId)).orderBy(asc(l.id))).map(linkView); },
     async link(input: Omit<Link, 'pullId'>) {
+      // Provider credential and canonical binding fences are retained by the caller.
+      const taskFence = await taskUseRows(db).prepare([input.taskId]);
       const [row] = await db.insert(l).values({ ...input, pullId: input.facts.pullId }).onConflictDoNothing().returning();
-      if (row) return linkView(row);
+      if (row) { await taskFence.mark(); return linkView(row); }
       const [existing] = await db.select().from(l).where(and(eq(l.taskId, input.taskId), eq(l.bindingId, input.bindingId), eq(l.pullId, input.facts.pullId), eq(l.role, input.role)));
       return linkView(existing!);
     },

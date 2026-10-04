@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
-import { schema } from '@flux/db';
+import { schema, prepareReferencedTaskUse } from '@flux/db';
 import {
   ConflictError,
   DomainError,
@@ -104,7 +104,9 @@ export function liveSessionStore(db: Database): LiveRepository {
         const workspaceId = await lockAdmissionScope(tx, projectId);
         const { project } = enforce(await evaluateProject(principal, 'project.read', projectId, tx, { lock: true }), 'project');
         await requireClearFence(tx, workspaceId, projectId);
-        await requireLiveContext(principal, context, projectId, tx, true);
+        await requireLiveContext(principal, context, projectId, tx, context.type === 'doc' || context.type === 'sketch');
+        const taskFence = await prepareReferencedTaskUse(tx, projectId, [context]);
+        await requireLiveContext(principal, context, projectId, tx, false);
         // One project lock serializes the count and insert across API replicas.
         // Resolve replay first: an existing key stays valid even at the cap.
         await tx.execute(sql`SELECT pg_advisory_xact_lock(62062, hashtext(${projectId}))`);
@@ -132,6 +134,7 @@ export function liveSessionStore(db: Database): LiveRepository {
         }).onConflictDoNothing({ target: [sessions.createdBy, sessions.clientSessionId] }).returning();
         if (inserted) {
           await ensureRoom(inserted.roomId);
+          await taskFence.mark();
           return record(inserted);
         }
         const [existing] = await tx.select().from(sessions).where(and(
@@ -160,24 +163,27 @@ export function liveSessionStore(db: Database): LiveRepository {
         const [row] = await tx.select().from(sessions).where(eq(sessions.id, sessionId)).for('share');
         if (!row || row.projectId !== located.projectId) throw new NotFoundError('Live session', 'LIVE_SESSION_NOT_FOUND');
         const session = record(row);
-        await requireLiveContext(principal, session.context, row.projectId, tx, true);
+        await requireLiveContext(principal, session.context, row.projectId, tx, false);
         return read(session);
       });
     },
 
     async withAdmission(principal, sessionId, issue, admission) {
       return db.transaction(async (tx) => {
-        const [located] = await tx.select({ projectId: sessions.projectId }).from(sessions)
+        const [located] = await tx.select().from(sessions)
           .where(eq(sessions.id, sessionId));
         if (!located) throw new NotFoundError('Live session', 'LIVE_SESSION_NOT_FOUND');
         const workspaceId = await lockAdmissionScope(tx, located.projectId);
         enforce(await evaluateProject(principal, 'project.read', located.projectId, tx, { lock: true }), 'project');
         await requireClearFence(tx, workspaceId, located.projectId);
+        const context = record(located).context;
+        await requireLiveContext(principal, context, located.projectId, tx, context.type === 'doc' || context.type === 'sketch');
+        const taskFence = await prepareReferencedTaskUse(tx, located.projectId, [context]);
         const [row] = await tx.select().from(sessions).where(eq(sessions.id, sessionId)).for('no key update');
-        if (!row || row.projectId !== located.projectId) throw new NotFoundError('Live session', 'LIVE_SESSION_NOT_FOUND');
+        if (!row || !sameContext(row, located.projectId, context)) throw new NotFoundError('Live session', 'LIVE_SESSION_NOT_FOUND');
         if (row.state === 'rotating') throw new RuleViolationError('Live media access is being refreshed', 'LIVE_SESSION_ROTATING');
         if (row.state !== 'available') throw new RuleViolationError('This session has ended', 'LIVE_SESSION_ENDED');
-        await requireLiveContext(principal, record(row).context, row.projectId, tx, true);
+        await requireLiveContext(principal, record(row).context, row.projectId, tx, false);
         if (admission) await tx.insert(schema.liveAdmissions).values({ id: admission.id, liveSessionId: row.id,
           userId: principal.id, authSessionId: admission.authSessionId });
         const result = await issue(record(row));
@@ -185,6 +191,7 @@ export function liveSessionStore(db: Database): LiveRepository {
         // authoritative empty observation starts its empty interval anew.
         await tx.update(sessions).set({ lastGrantAt: new Date(), emptySince: null, updatedAt: new Date() })
           .where(eq(sessions.id, sessionId));
+        await taskFence.mark();
         return result;
       });
     },
@@ -200,15 +207,19 @@ export function liveSessionStore(db: Database): LiveRepository {
 
     async present(sessionId, principal, ref, clientEventId) {
       await db.transaction(async (tx) => {
-        const [located] = await tx.select({ projectId: sessions.projectId }).from(sessions).where(eq(sessions.id, sessionId));
+        const [located] = await tx.select().from(sessions).where(eq(sessions.id, sessionId));
         if (!located) throw new NotFoundError('Live session', 'LIVE_SESSION_NOT_FOUND');
         // Lock the exact membership, project and grant rows used by the policy decision.
         // Revocation either commits first and denies this write or waits for this commit.
         enforce(await evaluateProject(principal, 'project.read', located.projectId, tx, { lock: true }), 'project');
+        const context = record(located).context;
+        await requireLiveContext(principal, context, located.projectId, tx, context.type === 'doc' || context.type === 'sketch');
+        await requireLivePresentationSource(principal, located.projectId, ref, tx, ref.type !== 'work');
+        const taskFence = await prepareReferencedTaskUse(tx, located.projectId, [context, ref]);
         const [row] = await tx.select().from(sessions).where(eq(sessions.id, sessionId)).for('update');
-        if (!row || row.projectId !== located.projectId) throw new NotFoundError('Live session', 'LIVE_SESSION_NOT_FOUND');
+        if (!row || !sameContext(row, located.projectId, context)) throw new NotFoundError('Live session', 'LIVE_SESSION_NOT_FOUND');
         if (row.state !== 'available') throw new RuleViolationError('This session has ended', 'LIVE_SESSION_ENDED');
-        await requireLiveContext(principal, record(row).context, row.projectId, tx, true);
+        await requireLiveContext(principal, record(row).context, row.projectId, tx, false);
         const ids = selected(ref);
         const [existing] = await tx.select().from(presentations).where(and(
           eq(presentations.sessionId, sessionId), eq(presentations.createdBy, principal.id),
@@ -221,13 +232,13 @@ export function liveSessionStore(db: Database): LiveRepository {
           return;
         }
 
-        await requireLivePresentationSource(principal, row.projectId, ref, tx, true);
+        await requireLivePresentationSource(principal, row.projectId, ref, tx, false);
         const [inserted] = await tx.insert(presentations).values({
           id: randomUUID(), workspaceId: row.workspaceId, projectId: row.projectId,
           sessionId, generation: row.generation, createdBy: principal.id, clientEventId,
           refType: ref.type, refId: ref.id, refVersion: ref.version, selectedThoughtIds: ids,
         }).onConflictDoNothing({ target: [presentations.sessionId, presentations.createdBy, presentations.clientEventId] }).returning();
-        if (inserted) return;
+        if (inserted) { await taskFence.mark(); return; }
         const [raced] = await tx.select().from(presentations).where(and(
           eq(presentations.sessionId, sessionId), eq(presentations.createdBy, principal.id),
           eq(presentations.clientEventId, clientEventId),

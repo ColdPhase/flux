@@ -458,7 +458,7 @@ function NoticeItem({ notice, meId, work, onOpenTask }: { notice: TaskCreationNo
     <li className="convo-notice" id={`notice-${notice.id}`} data-work-id={notice.workId}>
       <span className="convo-notice__icon" aria-hidden="true"><Icon name="tasks" size={14} /></span>
       <span className="convo-notice__body">
-        <span className="convo-notice__meta">New task · {creatorName(notice.createdBy, meId)}</span>
+        <span className="convo-notice__meta">{notice.kind === 'task.creation_reverted' ? 'Task creation undone' : 'New task'} · {creatorName(notice.createdBy, meId)}{notice.kind === 'task.created' && notice.lifecycle?.state === 'creation_reverted' ? ' · creation undone' : ''}</span>
         <button type="button" className="convo-notice__task" onClick={() => onOpenTask(notice.workId)} aria-label={`Open task: ${title}`}>
           <span className="convo-notice__title">{title}</span><Icon name="chevron-right" size={14} />
         </button>
