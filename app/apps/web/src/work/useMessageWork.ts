@@ -71,10 +71,11 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
   // When that scrollTop was recorded (performance.now()).
   const lastSeenAt = useRef(Number.NEGATIVE_INFINITY);
   const seen = useRef<HTMLElement | null>(null);
-  // The message a mouse or pen points at, its offset from the top of the feed and when the
-  // pointer last moved. Previews and reference rows that arrive later must not move it out from
-  // under a pointer that is aiming at it (moved within POINTER_AIM_MS), even at the end.
-  const pointed = useRef<{ row: HTMLElement; offset: number; at: number } | null>(null);
+  // The message a mouse or pen points at, where it is on screen and when the pointer last
+  // moved. Previews, reference rows and the header's state line arrive later; none of them may
+  // move it out from under a pointer that is aiming at it (moved within POINTER_AIM_MS), even
+  // at the end.
+  const pointed = useRef<{ row: HTMLElement; y: number; at: number } | null>(null);
   const save = useCallback((intent = false) => {
     const pane = ref.current;
     if (!pane || !ready && !readerMoved.current && !intent) return;
@@ -98,21 +99,21 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
     // The reader moved the view: input within READER_INPUT_MS, or input since the position was
     // last recorded (its scroll event may still be on its way).
     const byReader = () => readerActive(pane) || lastReaderInput(pane) > lastSeenAt.current;
-    const rowTop = (row: HTMLElement) => row.getBoundingClientRect().top - pane.getBoundingClientRect().top;
-    // Keep the pointed message where it is (scrollTop is clamped, so near the end growth below
-    // simply extends the feed). Returns whether a pointed message decided the position.
+    // Keep the pointed message where it is on screen, also when the feed itself moves because
+    // something above it grew (scrollTop is clamped, so this is best effort at either end).
+    // Returns whether a pointed message decided the position.
     const keepPointed = () => {
       const held = pointed.current;
       if (!held || !held.row.isConnected || !pane.contains(held.row)) { pointed.current = null; return false; }
       if (performance.now() - held.at > POINTER_AIM_MS) return false;
-      const delta = rowTop(held.row) - held.offset;
+      const delta = held.row.getBoundingClientRect().top - held.y;
       if (Math.abs(delta) > 0.5) { pane.scrollTop += delta; ownScroll.current = pane.scrollTop; lastTop.current = pane.scrollTop; }
       return true;
     };
     const point = (event: PointerEvent) => {
       if (event.pointerType !== 'mouse' && event.pointerType !== 'pen') return;
       const row = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-message-id],[data-answer-run]') : null;
-      pointed.current = row && pane.contains(row) ? { row, offset: rowTop(row), at: performance.now() } : null;
+      pointed.current = row && pane.contains(row) ? { row, y: row.getBoundingClientRect().top, at: performance.now() } : null;
     };
     const left = () => { pointed.current = null; };
     // Input away from the end means the reader is with earlier messages: stop following the end,
@@ -146,7 +147,7 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
       ownScroll.current = null;
       const reader = (own === null || Math.abs(pane.scrollTop - own) > 1) && byReader();
       // The reader moved the view under the pointer; the pointed message keeps its new place.
-      if (reader && pointed.current) pointed.current.offset = rowTop(pointed.current.row);
+      if (reader && pointed.current) pointed.current.y = pointed.current.row.getBoundingClientRect().top;
       observe(reader);
     };
     const grew = () => { if (keepPointed()) return; if (following.current && !atEnd()) toEnd(); };
