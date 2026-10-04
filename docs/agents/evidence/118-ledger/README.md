@@ -86,7 +86,18 @@ fixed in `4c659eb7`); a run at `4c659eb7`, before the schema comparison existed,
 
 ### Backup, restore and upgrade (`check_backup.sh`)
 
-Queued at the time of this commit; the result is added when the run finishes.
+**Not run at this pin: disk guard.** On 2026-10-04 (~22:00 UTC) the script's preflight
+refused with `FAIL: only 12 GB free on /System/Volumes/Data; need 20 GB` ([log](backup-preflight-refused.txt)), before creating
+any checkout, project or image. The guard was not bypassed. Rerun when the host has at least
+20 GB free:
+
+```sh
+FLUX_UPGRADE_FROM=63a5c6b5 FLUX_BACKUP_TEST_PORT=19110 ./scripts/check_backup.sh
+```
+
+From `63a5c6b5` its upgrade leg applies 0035, 0042 and 0045 through `./flux upgrade`, and its
+`restore --migrate` leg applies them again to the restored pre-upgrade backup. Until then the
+backup/restore path at this pin is **unverified**.
 
 ## Not covered here
 
