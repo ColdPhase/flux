@@ -4,6 +4,7 @@ import {
   type UpdateWorkCommand, type WorkItem, type WorkResult, type Agent,
 } from '@flux/contracts';
 import { request } from '../api/client';
+import { readAssignedAcross } from './assigned';
 
 /** Work, decisions and results of one project (#101); the project's audience is theirs. */
 export interface ProjectWork { work: WorkItem[]; decisions: Decision[]; results: WorkResult[] }
@@ -26,20 +27,12 @@ async function everything<T extends { id: string }>(path: string, signal?: Abort
 }
 
 /**
- * Work the caller owns in one workspace (open, in progress, blocked; not parked), across the
- * projects they can read now, page by page until `total` or `cap` items (#190 HOME-2).
+ * Work the caller owns across these workspaces (#190 HOME-2): up to `cap` items in all, with the sum
+ * of every workspace's total so a capped list can say how many it leaves out.
  */
-export async function listAssignedWork(workspaceId: string, cap: number, signal?: AbortSignal): Promise<{ items: WorkItem[]; total: number }> {
-  const byId = new Map<string, WorkItem>();
-  let total = 0;
-  for (let offset = 0; offset <= 10_000 && byId.size < cap; offset += LIMIT) {
-    const page = await request<Page<WorkItem>>(`${workspaceAssignedWorkPath(workspaceId)}?limit=${LIMIT}&offset=${offset}`, { signal });
-    total = page.total;
-    for (const item of page.items) if (!byId.has(item.id) && byId.size < cap) byId.set(item.id, item);
-    if (!page.items.length || offset + page.items.length >= page.total) break;
-  }
-  return { items: [...byId.values()], total };
-}
+export const listAssignedWork = (workspaceIds: string[], cap: number, signal?: AbortSignal) =>
+  readAssignedAcross(workspaceIds, (workspaceId, limit, offset) =>
+    request<Page<WorkItem>>(`${workspaceAssignedWorkPath(workspaceId)}?limit=${limit}&offset=${offset}`, { signal }), cap, signal);
 
 export async function loadProjectWork(projectId: string, signal?: AbortSignal): Promise<ProjectWork> {
   const [work, decisions, results] = await Promise.all([

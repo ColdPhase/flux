@@ -47,29 +47,19 @@ export function HomeTasks() {
     const controller = new AbortController();
     const userId = me.user.id;
     void (async () => {
-      const byId = new Map<string, WorkItem>();
-      let total = 0;
-      let failed = false;
-      for (const space of workspaces) {
-        try {
-          const page = await listAssignedWork(space.id, CAP - byId.size, controller.signal);
-          total += page.total;
-          for (const item of page.items) if (!byId.has(item.id) && byId.size < CAP) byId.set(item.id, item);
-        } catch {
-          if (controller.signal.aborted) return;
-          failed = true;
-        }
-      }
+      let read: Awaited<ReturnType<typeof listAssignedWork>>;
+      try { read = await listAssignedWork(workspaces.map((space) => space.id), CAP, controller.signal); } catch { return; }
+      const { items, total, failed } = read;
       // Project names as the sidebar shows them; a project granted after the shell loaded asks once.
       const names = new Map(projects.map((project) => [project.id, project.workspaceName ? `${project.name} · ${project.workspaceName}` : project.name]));
-      for (const projectId of new Set([...byId.values()].map((item) => item.projectId))) {
+      for (const projectId of new Set(items.map((item) => item.projectId))) {
         if (names.has(projectId)) continue;
         try { names.set(projectId, (await getProject(projectId, controller.signal)).name); } catch {
           if (controller.signal.aborted) return;
           names.set(projectId, 'Project');
         }
       }
-      if (!controller.signal.aborted) setLoaded({ userId, items: [...byId.values()], total, failed, names });
+      if (!controller.signal.aborted) setLoaded({ userId, items, total, failed, names });
     })();
     return () => controller.abort();
   }, [me.user.id, workspaces, projects, refresh]);
