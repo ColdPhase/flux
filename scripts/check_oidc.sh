@@ -81,6 +81,10 @@ e2e tests/app/e2e/oidc.e2e.ts
 # Bad ID tokens on the real callback, through the replica whose provider is the mock.
 $compose run --rm -e FLUX_API_URL=http://api-mock:8080 -e FLUX_OIDC_MOCK_PROVIDER_ID="$mock_provider_id" e2e \
   node_modules/.bin/tsx --test --test-concurrency=1 tests/app/e2e/oidc-bad-token.e2e.ts
+# Each of the 8 refused callbacks (4 modes x 2 identities) failed in the API's ID-token verifier.
+refused=$($compose logs --no-color api-mock | grep -c 'id_token failed verification' || true)
+echo "api-mock refused $refused ID tokens in its verifier"
+if [ "$refused" -ne 8 ]; then echo "Expected 8 ID-token verification refusals, saw $refused" >&2; exit 1; fi
 # A single sign-on session survives an API restart (prepare saves the browser state in /state).
 e2e --test-name-pattern prepare tests/app/e2e/oidc-restart.e2e.ts
 $compose restart api
