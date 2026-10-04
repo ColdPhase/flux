@@ -27,7 +27,6 @@ is archival and does not cover this note). Latest tested head: `e359bd47` (see "
 4. **Merged `origin/main` `1c9e36c5` (`d81aef87`).** The Kanban board runs on bounded group reads,
    not the project work collection: see
    `docs/development/performance/2026-10-04-native-task-board-integration.md` (not yet reviewed).
-
 5. **Map task counts (#196) on a bounded selector (`84119fd9`, `7a4529d0`).** Main's #196 counted
    a thought's tasks from the project work collection, which #155 removes.
    `GET /projects/:id/work-thought-tasks?thoughtIds=` (1..100) returns exact per-thought counts and
@@ -50,6 +49,13 @@ Raw logs are kept outside the repository; their sha256 is listed so a copy can b
   **141/141 pass**, 7 suites. Lint: 0 errors, 1 warning (`WorkReadContext.tsx:12`
   `react-hooks/exhaustive-deps`, unnecessary `accountId`/`projectId` memo dependencies; branch
   file, not a failure). Log `w170b-api.log` sha256 `61935c9376707c9267ade50c29cd360e3c385f85de6cf5114a2b6f0a2d82211a`.
+- **e2e** (Chromium, own overlay adding a `reference-e2e` service on the e2e image; runner
+  `w170b-e2e.sh` sha256 `fc1a2aafe5d6b3b8db9e4f97aac83109438538b66a3610bc74993dea6f7d3034`,
+  ports 18916/18917): `tsx --test tests/app/e2e/assistant-reference-rows.e2e.ts` **7/7**, then
+  `tsx --test tests/app/e2e/github.e2e.ts` **1/1** (includes main's empty-state line). Log
+  `w170b-e2e.log` sha256 `ef77bbcf967059c57870d9acbcf6e2739575ae88d4e0b582adec646a8976d176`.
+  (A first attempt, `w170b-e2e-harness1.log`, stopped before any test: the runner did not build
+  the `ui-test` image the overlay's `anthropic-mock` uses.)
 <!-- more -->
 
 ## Verified in Docker at `642738dc` (isolated projects, ports 18910–18919)
