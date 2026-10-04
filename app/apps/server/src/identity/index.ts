@@ -52,7 +52,8 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
   });
 
   registerAuthBridge(app, { auth, publicOrigin: config.publicOrigin, passwordReset, oauthRequests });
-  registerIdentityRoutes(app, { sessions, store: createSessionRepository(db), passwordReset });
+  const sso: IdentityCapabilities['sso'] = config.oidc ? { providerId: config.oidc.providerId, label: config.oidc.label } : null;
+  registerIdentityRoutes(app, { sessions, store: createSessionRepository(db), passwordReset, sso });
   registerAgentOauthContext(app, db, sessions, auth, config.publicOrigin);
 
   return { ...sessions, passwordReset, auth };

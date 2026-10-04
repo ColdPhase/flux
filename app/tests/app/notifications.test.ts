@@ -496,6 +496,29 @@ describe('recipient matrix and operator TLS (#113)', () => {
     for (const address of extras.values()) assert.notEqual((await signIn(address, password)).response.status, 200);
   });
 
+  test('an identity email that becomes the verified extra address gets one message, not two (#113)', async () => {
+    const lead = await person('Ula Brandt');
+    const someone = await named('Kim Ostrowska', `kim.${randomUUID().slice(0, 8)}@nebula.homes`);
+    const space = (await workspace(lead, 'Mailbox merge')).id;
+    await addMember(lead, space, someone, 'member');
+    const extra = `kim.private-${randomUUID()}@gmail.test`;
+    await verifyExtra(someone, extra);
+    await prefs(someone, { emailDestination: 'both' });
+    // The identity provider later reports the same verified address as the sign-in email.
+    await pool.query('UPDATE auth_users SET email = $1 WHERE id = $2', [extra.toUpperCase(), someone.id]);
+    const before = (await mailsTo(extra)).length;
+    const room = (await project(lead, space, 'Mail merge', 'workspace')).id;
+    const thread = await conversation(lead, room, '@Kim Ostrowska the meter readings are in');
+    await waitForItem(someone, (item) => item.url?.endsWith(thread.messages[0]!.id) === true, 'the in-app record');
+    const rows = await waitFor(async () => {
+      const found = await emailRows(someone.id);
+      return found.length === 2 && found.every((row) => row.status === 'sent' || row.status === 'skipped') ? found : null;
+    }, 'both copies to settle');
+    assert.deepEqual(rows.map((row) => row.status).sort(), ['sent', 'skipped'], 'one copy is sent, the other skipped');
+    await sleep(800);
+    assert.equal((await mailsTo(extra)).length, before + 1, 'exactly one message reaches the shared mailbox');
+  });
+
   for (const [label, url, api] of [
     ['STARTTLS (required)', 'smtp://flux:secret@mailpit-starttls:1025?requireTLS=true', process.env.FLUX_MAILPIT_STARTTLS_URL],
     ['implicit TLS (smtps)', 'smtps://flux:secret@mailpit-smtps:1025', process.env.FLUX_MAILPIT_SMTPS_URL],

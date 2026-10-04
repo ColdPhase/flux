@@ -2,14 +2,14 @@ import { randomUUID } from 'node:crypto';
 import { betterAuth } from 'better-auth';
 import { APIError } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { jwt } from 'better-auth/plugins';
+import { genericOAuth, jwt } from 'better-auth/plugins';
 import { cimd } from '@better-auth/cimd';
 import { fetchClientMetadataResource } from '@better-auth/cimd/node';
 import { mcp } from '@better-auth/mcp';
 import { schema } from '@flux/db';
 import { agentOauthUseCases, type Database } from '@flux/core';
 import { createAgentConnectionStore } from '../agent-connection/store.js';
-import type { IdentityConfig } from './config.js';
+import type { IdentityConfig, OidcConfig } from './config.js';
 import type { Mailer } from './mailer.js';
 import type { OauthRequests } from './oauth-flow.js';
 
@@ -24,6 +24,20 @@ export interface AuthDependencies {
   mailer: Mailer | null;
   onMailError?: (error: unknown) => void;
   oauthRequests: OauthRequests;
+}
+
+/**
+ * The claims of a verified ID token from the configured issuer become the person's name and
+ * account email (#113). Only a verified email from that exact issuer is accepted; anything else
+ * refuses the sign-in. Groups, roles and domains are ignored: Flux access comes from Flux grants.
+ */
+export function oidcProfile(oidc: Pick<OidcConfig, 'issuer'>, profile: Record<string, unknown>) {
+  const issuer = typeof profile.iss === 'string' ? profile.iss.replace(/\/$/, '') : '';
+  if (issuer !== oidc.issuer) throw new APIError('UNAUTHORIZED', { message: 'The sign-in came from an unexpected identity provider' });
+  const email = typeof profile.email === 'string' ? profile.email.trim().toLowerCase() : '';
+  if (!email || profile.email_verified !== true) throw new APIError('UNAUTHORIZED', { message: 'The identity provider did not confirm this email address' });
+  const name = [profile.name, profile.preferred_username].find((value): value is string => typeof value === 'string' && !!value.trim());
+  return { email, emailVerified: true, name: (name ?? email).trim().slice(0, 200) };
 }
 
 export function createAuth({ db, config, mailer, onMailError, oauthRequests }: AuthDependencies) {
@@ -65,7 +79,8 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests }: A
     user: { modelName: 'authUsers' },
     // No cookie cache: every request reads the session row, so revocation applies immediately.
     session: { modelName: 'authSessions', cookieCache: { enabled: false } },
-    account: { modelName: 'authAccounts' },
+    // A new identity never acquires an existing account by asserting the same email (#113).
+    account: { modelName: 'authAccounts', accountLinking: { disableImplicitLinking: true } },
     verification: { modelName: 'authVerifications', storeIdentifier: 'hashed' },
     plugins: [
       jwt(),
@@ -95,6 +110,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests }: A
         },
       }),
       cimd({ fetchClientMetadataResource, metadataProfile: 'mcp-2026-07-28' }),
+      ...(config.oidc ? [oidcPlugin(config.oidc)] : []),
     ],
     emailAndPassword: {
       enabled: true,
@@ -134,3 +150,22 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests }: A
 }
 
 export type FluxAuth = ReturnType<typeof createAuth>;
+
+/** One operator-configured OpenID Connect provider for human sign-in (#113). */
+function oidcPlugin(oidc: OidcConfig) {
+  return genericOAuth({
+    config: [{
+      providerId: oidc.providerId,
+      discoveryUrl: `${oidc.issuer}/.well-known/openid-configuration`,
+      clientId: oidc.clientId,
+      clientSecret: oidc.clientSecret,
+      scopes: ['openid', 'email', 'profile'],
+      pkce: true,
+      // Fail closed when discovery publishes no usable issuer/JWKS: claims must come from a verified ID token.
+      requireIdTokenVerification: true,
+      // The same subject keeps the same Flux person; a changed (verified) email updates it.
+      overrideUserInfo: true,
+      mapProfileToUser: (profile) => oidcProfile(oidc, profile),
+    }],
+  });
+}

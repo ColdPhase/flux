@@ -1,8 +1,23 @@
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { isIP } from 'node:net';
 
 export interface SmtpConfig {
   url: string;
   from: string;
+}
+
+/**
+ * One optional operator-configured OpenID Connect provider for human sign-in (#113). Group,
+ * domain or role claims never become Flux grants; the provider id is derived from the issuer so a
+ * changed issuer can never reuse an existing identity namespace.
+ */
+export interface OidcConfig {
+  providerId: string;
+  issuer: string;
+  clientId: string;
+  clientSecret: string;
+  label: string;
 }
 
 export interface IdentityConfig {
@@ -15,6 +30,8 @@ export interface IdentityConfig {
   smtp: SmtpConfig | null;
   rateLimit: boolean;
   passwordResetTtlSeconds: number;
+  /** Null keeps email/password sign-in only. */
+  oidc: OidcConfig | null;
 }
 
 function isAddressOrRange(value: string) {
@@ -49,6 +66,47 @@ export function parsePublicOrigin(value: string | undefined): string {
   return url.origin;
 }
 
+export function oidcProviderId(issuer: string) {
+  return `oidc-${createHash('sha256').update(issuer).digest('hex').slice(0, 12)}`;
+}
+
+/**
+ * FLUX_OIDC_ISSUER, FLUX_OIDC_CLIENT_ID and FLUX_OIDC_CLIENT_SECRET_FILE are all or nothing.
+ * The issuer must be https; plain http is accepted only for a loopback host or when
+ * FLUX_OIDC_ALLOW_HTTP_ISSUER=true (an isolated test identity provider, never production).
+ */
+export function loadOidcConfig(env: NodeJS.ProcessEnv, readSecret: (path: string) => string = (path) => readFileSync(path, 'utf8')): OidcConfig | null {
+  const issuerValue = env.FLUX_OIDC_ISSUER?.trim();
+  const clientId = env.FLUX_OIDC_CLIENT_ID?.trim();
+  const secretFile = env.FLUX_OIDC_CLIENT_SECRET_FILE?.trim();
+  const set = [issuerValue, clientId, secretFile].filter(Boolean).length;
+  if (set === 0) return null;
+  if (set !== 3) throw new Error('Set FLUX_OIDC_ISSUER, FLUX_OIDC_CLIENT_ID and FLUX_OIDC_CLIENT_SECRET_FILE together, or none of them');
+  let url: URL;
+  try {
+    url = new URL(issuerValue!);
+  } catch {
+    throw new Error('FLUX_OIDC_ISSUER must be an absolute URL');
+  }
+  if (url.search || url.hash || url.username || url.password) throw new Error('FLUX_OIDC_ISSUER must not have a query, fragment or credentials');
+  const allowHttp = (env.FLUX_OIDC_ALLOW_HTTP_ISSUER ?? 'false').trim().toLowerCase();
+  if (allowHttp !== 'true' && allowHttp !== 'false') throw new Error('FLUX_OIDC_ALLOW_HTTP_ISSUER must be true or false');
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && (isLoopbackHost(url.hostname) || allowHttp === 'true'))) {
+    throw new Error('FLUX_OIDC_ISSUER must use https');
+  }
+  const issuer = issuerValue!.replace(/\/$/, '');
+  let clientSecret: string;
+  try {
+    clientSecret = readSecret(secretFile!).trim();
+  } catch {
+    throw new Error('FLUX_OIDC_CLIENT_SECRET_FILE cannot be read');
+  }
+  if (!clientSecret) throw new Error('FLUX_OIDC_CLIENT_SECRET_FILE is empty');
+  const label = env.FLUX_OIDC_LABEL?.trim() || 'single sign-on';
+  if (label.length > 60) throw new Error('FLUX_OIDC_LABEL must be at most 60 characters');
+  return { providerId: oidcProviderId(issuer), issuer, clientId: clientId!, clientSecret, label };
+}
+
 export function loadIdentityConfig(env: NodeJS.ProcessEnv = process.env): IdentityConfig {
   const publicOrigin = parsePublicOrigin(env.FLUX_PUBLIC_ORIGIN);
   const secret = env.FLUX_AUTH_SECRET ?? '';
@@ -71,5 +129,6 @@ export function loadIdentityConfig(env: NodeJS.ProcessEnv = process.env): Identi
     smtp: smtpUrl && from ? { url: smtpUrl, from } : null,
     rateLimit: rateLimit === 'true',
     passwordResetTtlSeconds: ttl,
+    oidc: loadOidcConfig(env),
   };
 }

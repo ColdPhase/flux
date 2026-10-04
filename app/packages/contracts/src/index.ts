@@ -20,6 +20,8 @@ export const REVOKE_OTHER_SESSIONS_PATH = '/api/v1/sessions/revoke-others';
 
 export interface IdentityCapabilities {
   passwordReset: 'available' | 'unavailable';
+  /** The operator's single sign-on provider (#113), or null when only email/password sign-in exists. */
+  sso: { providerId: string; label: string } | null;
 }
 
 export interface MeResponse {
