@@ -90,9 +90,10 @@ Main was checked out detached at `d94f70e4` (the merged main) and run with the s
   (`5dd9d24f`).** Main's #210 canonicalises `/map/:id` of a project sketch to
   `/projects/:p/map/:id` (main's `test_map_task_count` asserts it); this branch-only test still
   expected `/map/:id`. Both entries now assert the canonical project route.
-- **`test_work_decisions.test_04`/`test_06`: branch-only, not fixed.** Test bodies are identical to
-  main's. Branch: failed 2/2 (`w170b-check-ui.log`, `w170b-branch-ui2.log` sha256
-  `70b03aa5e9068af54d32ff4d257fbf47b426ada7ade9d22f9533246d6fc7580b`); passed at `7a4529d0`.
+- **`test_work_decisions.test_04`/`test_06`: intermittent on the branch, not fixed.** Test bodies
+  are identical to main's. Branch: failed in 2 of 3 runs (`w170b-check-ui.log`, `w170b-branch-ui2.log` sha256
+  `70b03aa5e9068af54d32ff4d257fbf47b426ada7ade9d22f9533246d6fc7580b`), passed 10/10 in the
+  `f70686bb` rerun below and at `7a4529d0`.
   Main: 10/10 (`w170b-main-ui.log` sha256
   `dd4a84f2b46a77a795fc1d1ccbbe966269936e7fadfe9f99ad1fab419bc2cabf`). test_04: the message row
   intercepts the click on its "Result" action (`.ws-acts` is `pointer-events: none` until the row
@@ -108,6 +109,19 @@ Main was checked out detached at `d94f70e4` (the merged main) and run with the s
 - **`test_work_details.test_08`: branch-only test, stale shell expectation.** It looks for a
   project link under the sidebar "Places" navigation, which main's #184 sidebar no longer has.
   `test_work_details.py` does not exist on main.
+
+## Rerun at `f70686bb` (no application change since `e359bd47`)
+
+`git diff e359bd47 f70686bb -- app/apps app/packages docker scripts` is empty; the commits after
+`e359bd47` change two tests and this note.
+
+- Proactive repeat runner, `REPS=2`: **2/2 pass** (`w170b-proactive-branch2.log` sha256
+  `3f8bf7a43a3ad30fd4a43a5b57dcf32b0e827cb0a89ee9002c4bc6c4d488760b`).
+- `./scripts/check_ui.sh test_sketch_work_details test_work_decisions test_project_surface`
+  (`FLUX_UI_PORT=18912 FLUX_UI_MAILPIT_PORT=18913`): **29/30**: `test_sketch_work_details` 1/1
+  (all four subtests), `test_work_decisions` 10/10, `test_project_surface` 18/19 (only
+  `test_02` fails). Log `w170b-branch-ui3.log` sha256
+  `50c03eb6e812cd6b1b2e00971167e809d5a4b302a60c108dc6aaf0d5ae2c5f54`.
 <!-- more -->
 
 ## Verified in Docker at `642738dc` (isolated projects, ports 18910–18919)
