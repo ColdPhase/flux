@@ -127,9 +127,7 @@ export function liveWiki<State extends WikiCodecState, Lease>(ports: WikiPorts<S
       const next = { ...current, codecState: validated.state, sequence: validated.state.sequence, body: validated.state.body, hash: hash(validated.state.body) };
       const changed = !validated.receipt.semanticNoop;
       const taskFence = changed ? await prepareDocBodyTaskUse(ports.native, doc, [current.body, next.body]) : null;
-      const retained = await ports.rows.lockHead(docId);
-      if (!retained || retained.generation !== current.generation || retained.sequence !== current.sequence
-        || retained.hash !== current.hash || retained.body !== current.body) throw generationChanged();
+      if (!await ports.rows.lockHeadFence(docId, current)) throw generationChanged();
       const retainedOwner = await ports.rows.replica(docId, current.generation, envelope.replica);
       if (!retainedOwner || retainedOwner.ownerKind !== owner.ownerKind || retainedOwner.actorId !== owner.actorId
         || retainedOwner.instanceId !== owner.instanceId) throw new ConflictError('The replica changed before commit', 'EDITING_REPLICA_REQUIRED');

@@ -15,20 +15,20 @@ const hash = (body: string) => createHash('sha256').update(body).digest('hex');
 
 export function docLiveVersions(db: DbExecutor) {
   const docs = docRows(db);
+  const metadata = { generation: heads.generation, sequence: heads.sequence, body: heads.body, hash: heads.hash,
+    savedVersion: heads.savedVersion, savedSequence: heads.savedSequence };
   async function locked(docId: string) {
     const [head] = await db.select().from(heads).where(eq(heads.docId, docId)).for('update');
     return head ?? null;
   }
   return {
     async peek(docId: string) {
-      const [head] = await db.select().from(heads).where(eq(heads.docId, docId));
-      return head ? { generation: head.generation, sequence: head.sequence, body: head.body, hash: head.hash,
-        savedVersion: head.savedVersion, savedSequence: head.savedSequence } : null;
+      const [head] = await db.select(metadata).from(heads).where(eq(heads.docId, docId));
+      return head ?? null;
     },
     async lock(docId: string) {
-      const head = await locked(docId);
-      return head ? { generation: head.generation, sequence: head.sequence, body: head.body, hash: head.hash,
-        savedVersion: head.savedVersion, savedSequence: head.savedSequence } : null;
+      const [head] = await db.select(metadata).from(heads).where(eq(heads.docId, docId)).for('update');
+      return head ?? null;
     },
     async rebindSaved(row: SavedDoc, generation: string) {
       const old = await locked(row.doc.id);

@@ -27,6 +27,12 @@ export function liveEditingRows<Codec extends State>(db: DbExecutor, decodeState
   return {
     async peekHead(docId: string) { const [row] = await db.select().from(h).where(eq(h.docId, docId)); return row ? present(row) : null; },
     async lockHead(docId: string) { const [row] = await db.select().from(h).where(eq(h.docId, docId)).for('update'); return row ? present(row) : null; },
+    async lockHeadFence(docId: string, expected: { generation: string; sequence: number; hash: string; body: string; savedVersion: number; savedSequence: number }) {
+      const [row] = await db.select({ matches: sql<boolean>`${h.generation} = ${expected.generation} AND ${h.sequence} = ${expected.sequence}
+        AND ${h.hash} = ${expected.hash} AND ${h.body} = ${expected.body} AND ${h.savedVersion} = ${expected.savedVersion} AND ${h.savedSequence} = ${expected.savedSequence}` })
+        .from(h).where(eq(h.docId, docId)).for('update');
+      return row?.matches === true;
+    },
     async insertHead(doc: SavedDoc, generation: string, state: Codec) {
       const [row] = await db.insert(h).values({ docId: doc.doc.id, workspaceId: doc.doc.workspaceId, projectId: doc.doc.projectId,
         generation, sequence: 0, body: state.body, hash: hash(state.body), savedVersion: doc.current.version, savedSequence: 0, codecState: state }).returning();

@@ -32,6 +32,8 @@ export interface WikiRows<State extends WikiCodecState> {
   /** Preparation reads do not acquire live-head/replica rows before task-use fencing. */
   peekHead(docId: string): Promise<WikiHead<State> | null>;
   lockHead(docId: string): Promise<WikiHead<State> | null>;
+  /** Closed SQL projection, retains FOR UPDATE and compares every prepared head field without decoding state again. */
+  lockHeadFence(docId: string, expected: LiveDocHead): Promise<boolean>;
   insertHead(doc: DocWithCurrent, generation: string, state: State): Promise<WikiHead<State>>;
   replaceState(head: WikiHead<State>, state: State, hash: string): Promise<void>;
   replica(docId: string, generation: string, replicaId: number): Promise<WikiReplica | null>;

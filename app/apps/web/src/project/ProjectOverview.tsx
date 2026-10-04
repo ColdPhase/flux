@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link, useMatches } from 'react-router';
 import type { Conversation, ConversationRootWindow, Decision, Material, ObjectLink, WorkItem, WorkResult } from '@flux/contracts';
-import { Avatar, Icon, type IconName } from '../ui';
+import { Icon, type IconName } from '../ui';
 import { useShellData } from '../app/data';
 import { useShellActions, type DetailsView } from '../app/shellContext';
 import { STATUS_LABEL, decisionLine, resultLine } from '../work/format';
