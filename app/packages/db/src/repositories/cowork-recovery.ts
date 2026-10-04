@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import type { CoWorkInboxRecord } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
@@ -16,30 +16,35 @@ function addressed(scope: Address) {
  * until the receiving owner's verified access/provenance adapter is composed.
  */
 function readableReferences() {
+  return readableReferenceSet(sql`jsonb_build_array(${r.target}) || ${r.sourceRefs} || ${r.criteriaRefs}
+      || CASE WHEN ${r.dependencyRef} IS NULL THEN '[]'::jsonb ELSE jsonb_build_array(${r.dependencyRef}) END
+      || CASE WHEN ${r.responseRef} IS NULL THEN '[]'::jsonb ELSE jsonb_build_array(${r.responseRef}) END`,
+  sql`${r.workspaceId}`, sql`${r.projectId}`);
+}
+/** The same exact-version rule for any jsonb reference array, e.g. a request being admitted (#153). */
+export function readableReferenceSet(references: SQL, workspaceId: SQL, projectId: SQL) {
   return sql`NOT EXISTS (
     SELECT 1 FROM jsonb_array_elements(
-      jsonb_build_array(${r.target}) || ${r.sourceRefs} || ${r.criteriaRefs}
-      || CASE WHEN ${r.dependencyRef} IS NULL THEN '[]'::jsonb ELSE jsonb_build_array(${r.dependencyRef}) END
-      || CASE WHEN ${r.responseRef} IS NULL THEN '[]'::jsonb ELSE jsonb_build_array(${r.responseRef}) END
+      ${references}
     ) AS reference(value)
     WHERE NOT COALESCE(CASE reference.value->>'type'
       WHEN 'message' THEN EXISTS (SELECT 1 FROM project_messages object
-        WHERE object.id::text=reference.value->>'id' AND object.workspace_id=${r.workspaceId} AND object.project_id=${r.projectId})
+        WHERE object.id::text=reference.value->>'id' AND object.workspace_id=${workspaceId} AND object.project_id=${projectId})
       WHEN 'result' THEN EXISTS (SELECT 1 FROM project_results object
-        WHERE object.id::text=reference.value->>'id' AND object.workspace_id=${r.workspaceId} AND object.project_id=${r.projectId})
+        WHERE object.id::text=reference.value->>'id' AND object.workspace_id=${workspaceId} AND object.project_id=${projectId})
       WHEN 'work' THEN EXISTS (SELECT 1 FROM project_work_items object
-        WHERE object.id::text=reference.value->>'id' AND object.workspace_id=${r.workspaceId} AND object.project_id=${r.projectId}
+        WHERE object.id::text=reference.value->>'id' AND object.workspace_id=${workspaceId} AND object.project_id=${projectId}
           AND object.version::text=reference.value->>'version')
       WHEN 'material' THEN EXISTS (SELECT 1 FROM project_materials object
-        WHERE object.id::text=reference.value->>'id' AND object.workspace_id=${r.workspaceId} AND object.project_id=${r.projectId}
+        WHERE object.id::text=reference.value->>'id' AND object.workspace_id=${workspaceId} AND object.project_id=${projectId}
           AND object.current_version::text=reference.value->>'version')
       WHEN 'doc' THEN EXISTS (SELECT 1 FROM project_materials object
-        WHERE object.id::text=reference.value->>'id' AND object.workspace_id=${r.workspaceId} AND object.project_id=${r.projectId}
+        WHERE object.id::text=reference.value->>'id' AND object.workspace_id=${workspaceId} AND object.project_id=${projectId}
           AND object.kind='doc' AND object.current_version::text=reference.value->>'version')
       WHEN 'thought' THEN EXISTS (SELECT 1 FROM sketch_thoughts object JOIN sketches map
         ON map.workspace_id=object.workspace_id AND map.id=object.sketch_id
-        WHERE object.id::text=reference.value->>'id' AND object.workspace_id=${r.workspaceId}
-          AND map.project_id=${r.projectId} AND map.scope='project' AND object.version::text=reference.value->>'version')
+        WHERE object.id::text=reference.value->>'id' AND object.workspace_id=${workspaceId}
+          AND map.project_id=${projectId} AND map.scope='project' AND object.version::text=reference.value->>'version')
       ELSE false END, false)
   )`;
 }

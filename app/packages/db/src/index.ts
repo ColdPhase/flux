@@ -101,6 +101,7 @@ export * from './repositories/operations.js';
 export * from './repositories/cowork.js';
 export * from './repositories/cowork-requests.js';
 export * from './repositories/cowork-recovery.js';
+export * from './repositories/cowork-admission.js';
 export * from './repositories/github.js';
 export * from './repositories/agent-execution.js';
 export * from './repositories/agent-orientation.js';
