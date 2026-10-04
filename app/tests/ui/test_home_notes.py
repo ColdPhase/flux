@@ -309,6 +309,35 @@ class HomeNotesJourney(unittest.TestCase):
         expect(self.offer(page).get_by_role("button", name="Move 2 notes into Personal")).to_be_visible()
         self.assertEqual(self.spaces(page), [])
 
+    def test_07_spaces_created_after_home_loaded_can_be_chosen(self) -> None:
+        # Home loaded with no space; two arrive before the first note (another tab, an invitation).
+        # The server then has several, so no Personal space is made: the person chooses, and can (#211 review).
+        context = self.context()
+        page, _ = self.sign_up(context, "Nia Later")
+        expect(page.locator(".composer__where")).to_have_text("private draft in your personal space")
+        expect(page.locator(".composer__space select")).to_have_count(0)
+        for name in ("Lamp studio", "Bike club"):
+            created = page.evaluate("""name => fetch('/api/v1/workspaces', {method: 'POST', headers: {'content-type': 'application/json'},
+                                       body: JSON.stringify({name})}).then(r => r.status)""", name)
+            self.assertEqual(created, 201)
+        composer = page.get_by_label("Private note", exact=True)
+        composer.fill("Paper shade, second try")
+        composer.press("Enter")
+        expect(page.get_by_role("status").filter(has_text="Choose a space for this private draft.")).to_be_visible()
+        choice = page.locator(".composer__space select")
+        expect(choice).to_be_visible()
+        expect(choice.locator("option")).to_have_count(3)
+        self.assertEqual(sorted(choice.locator("option").all_inner_texts()), ["Bike club", "Choose a space", "Lamp studio"])
+        expect(composer).to_have_value("Paper shade, second try")
+        choice.select_option(label="Bike club")
+        expect(page.locator(".composer__where")).to_have_text("private draft in Bike club, which only you can open")
+        composer.press("Enter")
+        expect(page.get_by_role("region", name="Private drafts").get_by_text("Paper shade, second try")).to_be_visible()
+        spaces = {space["name"]: space["id"] for space in self.spaces(page)}
+        self.assertEqual(sorted(spaces), ["Bike club", "Lamp studio"], "no Personal space was added")
+        self.assertEqual(self.drafts(page, spaces["Bike club"]), ["Paper shade, second try"])
+        self.assertEqual(self.drafts(page, spaces["Lamp studio"]), [])
+
 
 if __name__ == "__main__":
     unittest.main()
