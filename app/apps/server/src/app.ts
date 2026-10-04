@@ -15,6 +15,8 @@ import { pushRoutes } from './push/index.js';
 import { setStaticHeaders } from './pwa/static-headers.js';
 import { streamRoutes } from './stream/index.js';
 import { conversationRoutes } from './conversation/routes.js';
+import { diskFileStorage } from './files/storage.js';
+import { fileRoutes } from './files/routes.js';
 import { workRoutes } from './work/routes.js';
 import { liveRoutes } from './live/routes.js';
 import { liveAccess } from './live/access.js';
@@ -78,8 +80,10 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   const streamUpgrades = new EventEmitter();
   await app.register(websocket, { options: { maxPayload: 1024, server: streamUpgrades as unknown as Server } });
   await app.register(streamRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, connectionString, heartbeatMs: config.heartbeatMs, cursorSecret: identityConfig.secret, exposeWork });
-  await app.register(conversationRoutes, { db, sessions: identity });
-  await app.register(workRoutes, { db, sessions: identity });
+  const fileStorage = await diskFileStorage(filesDir);
+  await app.register(fileRoutes, { db, sessions: identity, storage: fileStorage });
+  await app.register(conversationRoutes, { db, sessions: identity, storage: fileStorage });
+  await app.register(workRoutes, { db, sessions: identity, storage: fileStorage });
   await app.register(githubRoutes, { db, sessions: identity, config: loadGithubConfig(env, identityConfig.publicOrigin) });
   // Configuration alone does not prove the SFU, DNS/TLS or receiver path is healthy.
   app.get('/api/v1/live-sessions/capabilities', async () => ({ status: liveMedia ? 'configured' : 'unavailable' }));
@@ -159,7 +163,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   if (personalRuns.mode !== 'production') app.log.warn({ mode: personalRuns.mode }, 'TEST ONLY: personal runs use fixture connections and a mock provider');
   await app.register(personalRunRoutes, { db, sessions: identity, boss, connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled });
   await app.register(searchRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret, exposeWork });
-  await app.register(exportRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin });
+  await app.register(exportRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, storage: fileStorage });
 
   registerHealth(app, { pool, boss, manifest: migrationManifest, filesDir });
   registerFixtureRoutes(app, { config: config.fixture, db, boss });

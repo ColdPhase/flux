@@ -146,8 +146,10 @@ and required directory sync follow the same ownership/durability boundary.
 2. Upload admission briefly authorizes and reserves maximum5MiB under exact
 uploader/project quota and upload UUID; it never holds SQL/domain locks while
 receiving network bytes. Stream into owned private scratch outside SQL with5MiB
-measured limit and a30-second receive bound, then fsync/rename and reauthorize
-current uploader/project/actual agent operation before a short ready finalization.
+measured limit and a30-second receive bound, then fsync file bytes. Short ready
+finalization reauthorizes the current uploader/project/actual agent operation and
+fences the live generation through rename/directory sync and ready commit, as
+clarified below.
 In-flight reservations count toward100MiB together with unassociated ready files.
 An upload cannot acquire other source/task/conversation/event locks while streaming.
 An in-flight duplicate UUID reports UPLOAD_IN_PROGRESS; committed same UUID checks
@@ -157,6 +159,27 @@ ready unassociated files expire7days after original ready time, not last draft v
 Cleanup claims at most50 expired rows per batch under quota then sorted file locks,
 rechecks association/in-flight generation and never acquires task/conversation.
 Published bytes/relationships never enter this abandonment cleanup.
+
+Implementation clarification (2026-10-03, independent adapter review): verifying
+a ready upload UUID uses a bounded digest-only stream, with no scratch copy,
+and a zero-byte reservation serializes that UUID's verification. Recovery works
+even when staging already fills the100MiB quota. The original ID, ready time and expiry remain unchanged.
+Retired objects have durable deletion tombstones until unlink and directory sync
+succeed. Published files are immutable. Bundle export reads one metadata snapshot,
+checks attachment availability sequentially before responding, then streams tar
+and asynchronous gzip with backpressure, retaining at most one attachment's bytes
+at a time. The manifest covers all files; export never silently truncates coverage
+to a memory limit. A later storage fault fails the stream rather than completing
+an archive with missing bytes. HTTP and operator CLI use this same export path.
+
+The independent core re-review on2026-10-03 accepts the bounded finalization
+alternative: network receiving, hashing and file fsync stay outside SQL; current
+write authorization and the uploader lock then fence the exact live reservation
+through local atomic rename/directory sync, expiry recheck and ready commit.
+No task/conversation lock is acquired. Cleanup cannot retire a generation while
+it can still rename; a process crash after rename leaves the receiving row for
+durable garbage retirement. This closes the late-writer/tombstone race. Ready time
+is measured after durability, and expiry during sync refuses finalization.
 
 3. Zero-byte uploads are rejected. Valid files are1byte–5MiB. Each file has one
 publication message; another command reusing a published staging ID conflicts.

@@ -23,13 +23,13 @@ import {
   type ConversationWindowQuery,
   type TaskContributionCommand,
 } from '@flux/contracts';
-import { assertAuthorized, InvalidInputError, type Database, type ResourceRef } from '@flux/core';
+import { assertAuthorized, InvalidInputError, type Database, type ResourceRef, type FileStorage } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, expectedVersion, useDomainErrors, versionEtag, type ReplayCheck } from '../http/commands.js';
 import { workUseCases } from './adapters.js';
 import { taskDiscussionUseCases } from './task-discussions.js';
 
-interface Options { db: Database; sessions: SessionResolver }
+interface Options { db: Database; sessions: SessionResolver; storage: FileStorage }
 
 const page = { type: 'object', additionalProperties: false, properties: { limit: { type: 'integer' }, offset: { type: 'integer' } } } as const;
 const title = { type: 'string', minLength: 1, maxLength: WORK_LIMITS.title } as const;
@@ -81,13 +81,13 @@ const projectReader: ReplayCheck = (principal, body, db) =>
  * and calls one core use case, which authorizes. Every POST/PATCH accepts `Idempotency-Key`;
  * changing work and accepting a decision need `If-Match` (or `expectedVersion`).
  */
-export async function workRoutes(app: FastifyInstance, { db, sessions }: Options) {
+export async function workRoutes(app: FastifyInstance, { db, sessions, storage }: Options) {
   useDomainErrors(app);
   const { principal, command } = commandRunner(db, sessions);
   const work = workUseCases(db);
   const projectScope = (id: string): ResourceRef => ({ type: 'project', id });
 
-  const discussion = taskDiscussionUseCases(db);
+  const discussion = taskDiscussionUseCases(db, storage);
   app.get<{ Params: { workId: string }; Querystring: ConversationWindowQuery }>(taskDiscussionPath(':workId'),
     { schema: { querystring: { type: 'object', additionalProperties: false,
       properties: { limit: { type: 'integer' }, beforeSequence: { type: 'integer' } } } } },
@@ -98,7 +98,7 @@ export async function workRoutes(app: FastifyInstance, { db, sessions }: Options
       if (request.body && (Object.hasOwn(request.body, 'author') || Object.hasOwn(request.body, 'authorId')))
         throw new InvalidInputError('The authenticated actor supplies message authorship');
     }, schema: { body: { type: 'object', required: ['body', 'clientMessageId'], additionalProperties: false,
-      properties: { body: { type: 'string', minLength: 1, maxLength: 100_000 }, clientMessageId: { type: 'string' },
+      properties: { body: { type: 'string', minLength: 0, maxLength: 100_000 }, attachmentIds: { type: 'array', maxItems: 10, items: { type: 'string' } }, clientMessageId: { type: 'string' },
         kind: { type: 'string', enum: ['text', 'handoff'] },
         source: { type: 'object', required: ['materialId', 'version'], additionalProperties: false,
           properties: { materialId: { type: 'string' }, version: { type: 'integer' } } } } } } },
