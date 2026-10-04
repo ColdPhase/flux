@@ -90,7 +90,6 @@ export function InboxView() {
     <div className="pane-scroll"><div className="pane-in inbox">
       <div className="inbox__head">
         <div>
-          <h2>Inbox</h2>
           <p>Mentions, questions, replies, direct messages, and work or reviews for you. Nothing here needs clearing.</p>
         </div>
         <div className="inbox__tools">

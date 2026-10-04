@@ -105,6 +105,7 @@ function PullReferences({ bindings, tasks, canLink }: { bindings: GithubBinding[
     </form> : <div className="github-settings__form">{taskPicker}</div>}{error ? <p role="alert" className="github-settings__error">{error}</p> : null}
     {links.length ? <ul className="github-settings__pulls">{links.map((row) => <li key={row.id}><a href={row.facts.url} target="_blank" rel="noreferrer">#{row.facts.number} · {row.facts.title}</a>
       <span>{row.role === 'required_output' ? 'Required output' : 'Related'} · {row.facts.execution.replaceAll('_', ' ')} · {row.state}</span>
-      <span>GitHub author {row.facts.author.login} · head {row.facts.headSha.slice(0, 12)} · checked {new Date(row.verifiedAt).toLocaleString()}</span></li>)}</ul> : null}
+      <span>GitHub author {row.facts.author.login} · head {row.facts.headSha.slice(0, 12)} · checked {new Date(row.verifiedAt).toLocaleString()}</span></li>)}</ul>
+      : task && !busy && !error ? <p className="github-settings__none">No pull requests are linked to this task yet.</p> : null}
   </section>;
 }

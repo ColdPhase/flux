@@ -14,7 +14,7 @@ const connectionPath = '/api/v1/background-compute-connections';
 const codeOf = (response: { json: unknown }) => (response.json as { code?: string } | null)?.code;
 const fakeKey = `sk-ant-api03-${'owner-budget-key-'.repeat(4)}END9`;
 const connectionBody = (periodBudgetCents = 50) => ({
-  apiKey: fakeKey, payerOrganization: 'Example payer org', providerWorkspace: 'Dedicated maker workspace',
+  provider: 'anthropic', model: 'claude-sonnet-5', apiKey: fakeKey, payerOrganization: 'Example payer org', providerWorkspace: 'Dedicated maker workspace',
   workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true,
   providerBillingAcknowledged: true, projectDataDisclosureAcknowledged: true,
   maxRunsPerDay: 1, periodDays: 30, periodBudgetCents, perRunCents: 5,
@@ -88,23 +88,38 @@ describe('owner standing comparison rule', () => {
     assert.ok(blob.startsWith('v1.') && !blob.includes(fakeKey));
     assert.equal(decryptForTest(blob, owner.id, first.id), fakeKey);
     assert.throws(() => decryptForTest(blob, peer.id, first.id), /auth|authenticate|Unsupported state/i);
-    assert.equal(record.rows[0].consent_version, 'o-007-2026-09-28');
+    assert.equal(record.rows[0].consent_version, 'o-007-2026-10-02', 'a new connection records the provider-neutral F-020 disclosure');
     assert.equal(expectStatus(await peer.browser.request('GET', `${connectionPath}/current`), 200), null);
     assert.equal((await peer.browser.request('DELETE', `${connectionPath}/${first.id}`)).status, 404);
 
-    // Replacement must retire and erase the earlier ciphertext in one transaction.
+    // PROV-1: a second connection is added beside the first, which stays the background connection
+    // until the owner marks another one; nothing is replaced or erased.
     const second = expectStatus(await owner.browser.request('POST', connectionPath,
-      { body: connectionBody(50) }), 201) as BackgroundComputeConnection;
+      { body: { ...connectionBody(50), name: 'Second key' } }), 201) as BackgroundComputeConnection;
     assert.notEqual(second.id, first.id);
-    assert.deepEqual(expectStatus(await owner.browser.request('GET', `${connectionPath}/current`), 200), second);
-    const old = await pool.query('SELECT encrypted_key, revoked_at FROM background_compute_connections WHERE id=$1', [first.id]);
-    assert.equal(old.rows[0].encrypted_key, null);
-    assert.ok(old.rows[0].revoked_at);
-    assert.equal((await owner.browser.request('DELETE', `${connectionPath}/${first.id}`)).status, 404);
+    assert.deepEqual([first.usedForBackground, second.usedForBackground, second.name], [true, false, 'Second key']);
+    assert.equal((expectStatus(await owner.browser.request('GET', `${connectionPath}/current`), 200) as BackgroundComputeConnection).id, first.id);
+    const listed = expectStatus(await owner.browser.request('GET', connectionPath), 200) as BackgroundComputeConnection[];
+    assert.deepEqual(listed.map((item) => [item.id, item.usedForBackground]), [[first.id, true], [second.id, false]]);
+    assert.deepEqual(expectStatus(await peer.browser.request('GET', connectionPath), 200), [], 'never another person\'s connections');
+    assert.equal((await peer.browser.request('PATCH', `${connectionPath}/${second.id}`, { body: { usedForBackground: true } })).status, 404);
+    // Marking another connection moves the background use; at most one is marked.
+    const marked = expectStatus(await owner.browser.request('PATCH', `${connectionPath}/${second.id}`, { body: { usedForBackground: true } }), 200) as BackgroundComputeConnection;
+    assert.equal(marked.usedForBackground, true);
+    assert.equal((expectStatus(await owner.browser.request('GET', `${connectionPath}/current`), 200) as BackgroundComputeConnection).id, second.id);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM background_compute_connections WHERE owner_user_id=$1 AND used_for_background', [owner.id])).rows[0].n, 1);
+    const kept = await pool.query('SELECT encrypted_key, revoked_at FROM background_compute_connections WHERE id=$1', [first.id]);
+    assert.ok(kept.rows[0].encrypted_key && !kept.rows[0].revoked_at, 'the first connection is kept');
+    // Removing the marked connection stops background comparisons: the other one does not take over.
     expectStatus(await owner.browser.request('DELETE', `${connectionPath}/${second.id}`), 204);
-    const erased = await pool.query('SELECT encrypted_key, revoked_at FROM background_compute_connections WHERE id=$1', [second.id]);
+    const erased = await pool.query('SELECT encrypted_key, revoked_at, used_for_background FROM background_compute_connections WHERE id=$1', [second.id]);
     assert.equal(erased.rows[0].encrypted_key, null);
     assert.ok(erased.rows[0].revoked_at);
+    assert.equal(erased.rows[0].used_for_background, false);
+    assert.equal(expectStatus(await owner.browser.request('GET', `${connectionPath}/current`), 200), null, 'no fallback to another connection');
+    expectStatus(await owner.browser.request('DELETE', `${connectionPath}/${first.id}`), 204);
+    assert.equal((await owner.browser.request('DELETE', `${connectionPath}/${first.id}`)).status, 404);
+    assert.deepEqual(expectStatus(await owner.browser.request('GET', connectionPath), 200), []);
     assert.equal(expectStatus(await owner.browser.request('GET', `${connectionPath}/current`), 200), null);
   });
 
@@ -116,14 +131,15 @@ describe('owner standing comparison rule', () => {
       'no owner-supplied background key means the rule cannot be activated');
     const tooSmall = expectStatus(await owner.browser.request('POST', connectionPath, { body: connectionBody(5) }), 201) as BackgroundComputeConnection;
     assert.equal(codeOf(await change(owner, 1, 'enabled')), 'BACKGROUND_BUDGET_TOO_LOW');
-    const enough = expectStatus(await owner.browser.request('POST', connectionPath, { body: connectionBody(50) }), 201) as BackgroundComputeConnection;
+    // A second connection is used for background work only when chosen (F-020 PROV-1).
+    const enough = expectStatus(await owner.browser.request('POST', connectionPath, { body: { ...connectionBody(50), useForBackground: true } }), 201) as BackgroundComputeConnection;
     assert.equal(codeOf(await change(owner, 1, 'enabled')), 'BACKGROUND_RUNTIME_UNAVAILABLE',
       'a configured key alone cannot activate a rule before the budgeted worker exists');
     assert.equal((expectStatus(await owner.browser.request('GET', path(project.id)), 200) as ProactiveComparisonRule[])[0]?.status, 'paused');
     assert.equal((await peer.browser.request('DELETE', `${connectionPath}/${enough.id}`)).status, 404);
     expectStatus(await owner.browser.request('DELETE', `${connectionPath}/${enough.id}`), 204);
-    assert.equal(codeOf(await change(owner, 1, 'enabled')), 'BACKGROUND_CONNECTION_REQUIRED');
-    assert.equal((await owner.browser.request('DELETE', `${connectionPath}/${tooSmall.id}`)).status, 404);
+    assert.equal(codeOf(await change(owner, 1, 'enabled')), 'BACKGROUND_CONNECTION_REQUIRED', 'the kept, unchosen connection does not take over');
+    expectStatus(await owner.browser.request('DELETE', `${connectionPath}/${tooSmall.id}`), 204);
     rule = expectStatus(await change(owner, 1, 'paused'), 200) as ProactiveComparisonRule;
     assert.equal(rule.status, 'paused');
     expectStatus(await owner.browser.request('DELETE', `/api/v1/projects/${project.id}/grants/${agentGrantId}`), 204);

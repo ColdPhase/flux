@@ -126,7 +126,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(page.get_by_label("Current state")).to_contain_text("No decisions or work yet")
         message = page.locator(f"#message-{self.messages['idea']}")
         message.hover()
-        message.get_by_role("button", name="Create work").click()
+        message.get_by_role("button", name="Task", exact=True).click()
         panel = self.details(page)
         expect(panel.get_by_role("heading", name=IDEA)).to_be_visible()
         expect(panel.get_by_label("Status")).to_have_value("open")
@@ -154,7 +154,7 @@ class WorkDecisionsJourney(unittest.TestCase):
     def test_03_propose_and_accept_a_decision_with_the_keyboard(self) -> None:
         page = self.open_conversation("owner")
         message = page.locator(f"#message-{self.messages['idea']}")
-        message.get_by_role("button", name="Propose decision").focus()
+        message.get_by_role("button", name="Decision", exact=True).focus()
         page.keyboard.press("Enter")
         panel = self.details(page)
         expect(panel.get_by_role("heading", name="Propose a decision")).to_be_visible()
@@ -185,7 +185,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         message.hover()
         # A reply sits in the thread beside the stream (UI116-1); its actions open from one ⋯ in its corner.
         message.get_by_role("button", name="Make from this message").click()
-        message.get_by_role("button", name="Attach result").click()
+        message.get_by_role("button", name="Result", exact=True).click()
         panel = self.details(page)
         expect(panel.get_by_role("heading", name="Attach a result")).to_be_visible()
         panel.get_by_label("Finding").fill("The camera cannot track gestures below 10 lux")
@@ -204,6 +204,8 @@ class WorkDecisionsJourney(unittest.TestCase):
 
         page.get_by_role("navigation", name="Project views").get_by_role("link", name="Tasks").click()
         expect(page).to_have_url(re.compile(r"/tasks$"))
+        # Finished work, decisions and results are grouped in the List (#136; the board shows work by status).
+        page.get_by_role("radio", name="List", exact=True).click()
         expect(page.get_by_role("region", name=re.compile("^Finished"))).to_contain_text(IDEA)
         expect(page.get_by_role("region", name=re.compile("^Decisions"))).to_contain_text("Use a camera for gesture control")
         expect(page.get_by_role("region", name=re.compile("^Results"))).to_contain_text("The camera cannot track gestures")
@@ -213,12 +215,13 @@ class WorkDecisionsJourney(unittest.TestCase):
     def test_05_pivot_keeps_history_and_parks_obsolete_work(self) -> None:
         page = self.page("owner")
         page.goto(f"/projects/{self.project_id}/tasks")
-        page.get_by_label("New work").fill("Mount the camera in the lamp head")
-        page.get_by_role("button", name="Add work").click()
+        page.get_by_role("radio", name="List", exact=True).click()
+        page.get_by_label("New task").fill("Mount the camera in the lamp head")
+        page.get_by_role("button", name="Add task").click()
         panel = self.details(page)
         expect(panel.get_by_role("heading", name="Mount the camera in the lamp head")).to_be_visible()
-        page.get_by_label("New work").fill("Design the diffuser")
-        page.get_by_role("button", name="Add work").click()
+        page.get_by_label("New task").fill("Design the diffuser")
+        page.get_by_role("button", name="Add task").click()
         expect(panel.get_by_role("heading", name="Design the diffuser")).to_be_visible()
 
         # Attaching a result to work opened that task's own conversation (#154), now the project's newest one:
@@ -227,7 +230,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         message = page.locator(f"#message-{self.messages['pivot']}")
         message.hover()
         message.get_by_role("button", name="Make from this message").click()
-        message.get_by_role("button", name="Propose decision").click()
+        message.get_by_role("button", name="Decision", exact=True).click()
         panel.get_by_label("Why").fill("The camera failed in low light; a ToF sensor works in the dark and stores no images")
         panel.get_by_label("Replaces").select_option(label="Use a camera for gesture control")
         panel.get_by_role("button", name="Propose decision").click()
@@ -261,14 +264,14 @@ class WorkDecisionsJourney(unittest.TestCase):
         page = self.open_conversation("partner", phone=True)
         message = page.locator(f"#message-{self.messages['finding']}")
         # On touch one quiet button per message opens its actions.
-        expect(message.get_by_role("button", name="Create work")).to_have_count(0)
+        expect(message.get_by_role("button", name="Task", exact=True)).to_have_count(0)
         more = message.get_by_role("button", name="Make from this message")
         box = more.bounding_box()
         assert box
         self.assertGreaterEqual(box["height"], 44, "touch target")
         shot(page, "work-phone-390-conversation")
         more.tap()
-        create = message.get_by_role("button", name="Create work")
+        create = message.get_by_role("button", name="Task", exact=True)
         self.assertGreaterEqual(create.bounding_box()["height"], 44, "touch target")
         create.tap()
         sheet = page.get_by_role("dialog", name="Details")
@@ -298,6 +301,7 @@ class WorkDecisionsJourney(unittest.TestCase):
             self.api(page, "POST", f"{base}/work", {"title": f"Work item {index:03d}"}, status=201)
         self.assertEqual(self.api(page, "GET", f"{base}/work?limit=1", status=200)["total"], 101)
         page.goto(f"/projects/{project['id']}/tasks")
+        page.get_by_role("radio", name="List", exact=True).click()
         # Item 101 counted from the newest is the oldest one, beyond the first page of 100.
         expect(page.get_by_role("region", name=re.compile("^Open")).get_by_role("button", name=re.compile("^Work item 001"))).to_be_visible()
         expect(page.get_by_role("region", name=re.compile("^Open")).locator(".ws-group__h")).to_contain_text("101")
@@ -318,6 +322,7 @@ class WorkDecisionsJourney(unittest.TestCase):
 
         page = self.page("partner", phone=True)
         page.goto(f"/projects/{self.project_id}/tasks")
+        page.get_by_role("radio", name="List", exact=True).tap()
         views = page.get_by_role("navigation", name="Task views")
         expect(views.get_by_role("button", name="All", exact=True)).to_have_attribute("aria-pressed", "true")
         # Whole labels with their counts, no clipped column; every view is a 44 px touch target.
@@ -357,6 +362,9 @@ class WorkDecisionsJourney(unittest.TestCase):
         # The Tasks tab itself also returns to the chosen view.
         page.get_by_role("navigation", name="Project views").get_by_role("link", name="Conversation").tap()
         page.get_by_role("navigation", name="Project views").get_by_role("link", name=re.compile("^Tasks")).tap()
+        # The outgoing Tasks DOM can remain while the requested route loads.
+        # Check the completed destination before treating its retained controls as proof.
+        expect(page).to_have_url(re.compile(r"/tasks\?(?=[^#]*status=blocked)(?=[^#]*show=mine)"))
         expect(page.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^Blocked"))).to_have_attribute("aria-pressed", "true")
         self.assertIn("show=mine", page.url)
 
@@ -451,6 +459,7 @@ class WorkDecisionsJourney(unittest.TestCase):
                      {"title": f"Blocked step {index:02d}: check the ToF bracket", "status": "blocked", "blocker": "parts", "owner": me}, status=201)
         page = self.page("partner", phone=True)
         page.goto(f"/projects/{self.project_id}/tasks")
+        page.get_by_role("radio", name="List", exact=True).tap()
         views = page.get_by_role("navigation", name="Task views")
         views.get_by_role("button", name=re.compile("^Blocked")).tap()
         pane = page.locator(".pane-scroll").first

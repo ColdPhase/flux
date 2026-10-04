@@ -4,7 +4,7 @@ This document describes the workspace, project and draft access model that the c
 enforces today. It covers AC-2 of [#29](https://github.com/ColdPhase/flux/issues/29),
 AC-3 (one policy for HTTP, the WebSocket stream and worker jobs) and the safe-write
 part of AC-4 (`If-Match` and idempotency keys). It implements the "Data, identity and access
-contract" in the [architecture proposal](../product/application-architecture-proposal.md#data-identity-and-access-contract).
+contract" in the [architecture proposal](../product/application-architecture.md#data-identity-and-access-contract).
 
 ## One choke point
 
@@ -249,6 +249,21 @@ forbidden action answers `403`. Error bodies are `{ error, code }`.
 Lists return `{ items, total, limit, offset }`. `total` is counted after visibility
 filtering. `limit` is 1–100 (default 50) and `offset` is 0–10000.
 
+**In the web app** ([#188](https://github.com/ColdPhase/flux/issues/188)) these routes back two
+places, with no change to the rules above:
+
+- **People** (Home's Details → People → a workspace) lists the members and roles. Owners and
+  admins add an existing account by email with a role, change roles and remove people; anyone
+  leaves. Guests, who may not read the roster, see only their own place. `ACCOUNT_NOT_FOUND`
+  asks for an account at this Flux address first (v1 sends no invitations), and `ALREADY_MEMBER`,
+  `OWNER_REQUIRED` and `LAST_OWNER` have their own sentences.
+- **Who can see this** (a project's Details, also opened from the header's audience line and
+  after creating a project) lists `listProjectPeople` and, for managers, the grants: give a
+  member write or read access, change or remove it, keep someone out (`denied`) or let them
+  back in. Each change shows its exact consequence before it is confirmed.
+
+Every POST and PATCH sends an `Idempotency-Key`, reused when the same change is retried.
+
 ## Events
 
 Each mutation also records a row in `events` in the same transaction. The row
@@ -408,10 +423,13 @@ exists so the worker authorization contract is real and tested:
   `GET /api/v1/drafts/:id/summaries/:resultId` are visible to whoever can currently
   read the draft.
 
-`processDraftSummary(resultId, db, hooks)` accepts two hooks. `afterRead` runs between
-the read and the commit transaction. `beforeCommit(tx)` runs inside the commit
-transaction after the recheck, while its locks are held. Only tests pass them, to place
-a revocation at those points. The Compose worker never passes hooks.
+`processDraftSummary(resultId, db, results, hooks)` reads and writes result rows through
+its `DraftResultRepository` port (`results`, bound to each step's connection or transaction: the
+claim and the draft read use the pool, the commit its transaction), and the
+request sends its job through the core `JobQueue` port in the same transaction. It accepts
+two hooks. `afterRead` runs between the read and the commit transaction. `beforeCommit(tx)`
+runs inside the commit transaction after the recheck, while its locks are held. Only tests
+pass them, to place a revocation at those points. The Compose worker never passes hooks.
 
 ## If-Match preconditions
 
@@ -432,8 +450,9 @@ version. The domain methods enforce this too, not only the HTTP routes.
 
 Every POST and PATCH under `/api/v1` access routes, and summary requests, accepts
 `Idempotency-Key`: 1–255 visible ASCII characters. The implementation is
-`runIdempotent` in `app/packages/core/src/idempotency.ts`. DELETE routes and the Better
-Auth and session endpoints do not take keys.
+`runIdempotent` in `app/packages/core/src/idempotency.ts`, which stores keys through its
+`IdempotencyStore` port (`app/packages/db/src/repositories/idempotency.ts`). DELETE routes
+and the Better Auth and session endpoints do not take keys.
 
 - **Scope.** A key is scoped by principal, workspace and operation. The operation is
   the method and route pattern, for example `POST /api/v1/drafts/:draftId/share`. The

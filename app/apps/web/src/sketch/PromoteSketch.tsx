@@ -1,12 +1,13 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { useNavigate, useRevalidator } from 'react-router';
-import type { PromotionPerson, PromotionTarget, SketchPromotionPreview } from '@flux/contracts';
+import type { PromotionParticipants, PromotionPerson, PromotionTarget, SketchPromotionPreview } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { previewPromotion, promoteSketch } from '../api/sketches';
 import { useShellData } from '../app/data';
 import type { PromoteSketchView } from '../app/shellContext';
 import { Avatar, Button, Icon, Input, Spinner, useToast } from '../ui';
 import { firstName } from './format';
+import '../people/people.css';
 
 type Choice = { kind: 'new' } | { kind: 'existing'; projectId: string };
 
@@ -32,6 +33,8 @@ function audienceHeadline(people: PromotionPerson[], meId: string) {
  * is shared it shows, from the server's own access policy, exactly who could open the copy and
  * exactly what goes in and what stays in the DM. Confirming sends the preview's token: if the
  * audience or the sketch changed meanwhile, nothing is copied and the new preview is shown.
+ * A new project is given to the DM's other people only when the person ticks "Also give … access",
+ * unchecked by default (#188); the preview then names them before anything is created.
  */
 export function PromoteSketch({ view, dmTitle, onBack }: { view: PromoteSketchView; dmTitle: string | null; onBack: () => void }) {
   const { me } = useShellData();
@@ -49,26 +52,31 @@ export function PromoteSketch({ view, dmTitle, onBack }: { view: PromoteSketchVi
   const attempt = useRef<{ signature: string; key: string } | null>(null);
   const audienceId = useId();
   const [reload, setReload] = useState(0);
+  // Off by default: nobody joins the project unless the person chooses it (#188).
+  const [alsoGrant, setAlsoGrant] = useState(false);
+  const [grantList, setGrantList] = useState<SketchPromotionPreview['leftOut']>([]);
+  const mode: PromotionParticipants = alsoGrant ? 'grant' : 'none';
+  const choose = (next: Choice) => { setChoice(next); setAlsoGrant(false); };
 
   // One preview per choice: none (the server proposes one), a new project, or one existing project.
   const choiceKey = !choice ? '' : choice.kind === 'new' ? 'new' : choice.projectId;
   useEffect(() => {
     const controller = new AbortController();
     const requested: Choice | null = !choiceKey ? null : choiceKey === 'new' ? { kind: 'new' } : { kind: 'existing', projectId: choiceKey };
-    previewPromotion(view.sketchId, requested, controller.signal).then((next) => {
+    previewPromotion(view.sketchId, requested, mode, controller.signal).then((next) => {
       const nextKey = !next.target ? '' : next.target.kind === 'new' ? 'new' : next.target.projectId;
-      setPreview(next); setProblem(''); setShownKey(`${nextKey}:${reload}`);
+      setPreview(next); setProblem(''); setShownKey(`${nextKey}:${mode}:${reload}`);
       if (!requested && next.target) setChoice(next.target.kind === 'new' ? { kind: 'new' } : { kind: 'existing', projectId: next.target.projectId });
     }, (error: unknown) => {
       if (error instanceof DOMException && error.name === 'AbortError') return;
-      setShownKey(`${choiceKey}:${reload}`);
+      setShownKey(`${choiceKey}:${mode}:${reload}`);
       setProblem(error instanceof ApiError && error.status === 409 ? error.message
         : error instanceof ApiError && error.status === 404 ? 'This sketch isn’t available any more.'
           : 'The preview couldn’t be loaded. Nothing was shared.');
     });
     return () => controller.abort();
-  }, [view.sketchId, choiceKey, reload]);
-  const loading = shownKey !== `${choiceKey}:${reload}` && !(choiceKey === '' && shownKey?.endsWith(`:${reload}`));
+  }, [view.sketchId, choiceKey, mode, reload]);
+  const loading = shownKey !== `${choiceKey}:${mode}:${reload}` && !(choiceKey === '' && shownKey?.endsWith(`:${mode}:${reload}`));
 
   const target: PromotionTarget | null = !preview?.target ? null
     : preview.target.kind === 'new' ? { kind: 'new', name: name.trim() } : { kind: 'existing', projectId: preview.target.projectId };
@@ -77,15 +85,16 @@ export function PromoteSketch({ view, dmTitle, onBack }: { view: PromoteSketchVi
   async function confirm() {
     if (!preview || !target || busy || loading) return;
     if (target.kind === 'new' && !target.name) { setNotice('Give the project a name first.'); return; }
-    const signature = JSON.stringify([target, preview.token]);
+    const signature = JSON.stringify([target, preview.token, mode]);
     if (attempt.current?.signature !== signature) attempt.current = { signature, key: crypto.randomUUID() };
     setBusy(true); setNotice('');
     try {
-      const promoted = await promoteSketch(view.sketchId, target, preview.token, attempt.current.key);
+      const promoted = await promoteSketch(view.sketchId, target, preview.token, mode, attempt.current.key);
       attempt.current = null;
       onBack();
       revalidator.revalidate();
-      toast({ message: `${promoted.project.name} now has a copy of “${view.title}”. The conversation stays private.` });
+      const joined = target.kind === 'new' && alsoGrant && invited.length ? ` ${joinNames(invited.map((p) => firstName(p.name)))} can open it too.` : '';
+      toast({ message: `${promoted.project.name} now has a copy of “${view.title}”.${joined} The conversation stays private.` });
       navigate(`/projects/${promoted.project.id}/map/${promoted.sketch.id}`);
     } catch (error) {
       setBusy(false);
@@ -102,7 +111,15 @@ export function PromoteSketch({ view, dmTitle, onBack }: { view: PromoteSketchVi
 
   const from = dmTitle ? `From your conversation with ${dmTitle}` : 'From a direct message';
   const people = preview?.audience ?? [];
-  const managers = people.filter((p) => p.reason === 'manager');
+  const managers = people.filter((p) => p.reason === 'manager' && p.id !== me.user.id);
+  // The DM's other people a new project could also be given to: exactly who the checkbox names.
+  // Unticked they are left out; ticked they are readers. Either preview names the same people, so
+  // the checkbox stays put while the other one loads.
+  // Ticked, the checkbox keeps naming the people it named unticked: a workspace admin in the DM is
+  // a reader either way and is not "added" by it.
+  const invited = preview?.target?.kind !== 'new' ? []
+    : preview.leftOut.length ? preview.leftOut
+      : alsoGrant && grantList.length ? grantList : people.filter((p) => p.reason === 'participant' && p.id !== me.user.id);
   const shown = [...people.filter((p) => p.id === me.user.id), ...people.filter((p) => p.id !== me.user.id)].slice(0, 4);
 
   return (
@@ -119,9 +136,9 @@ export function PromoteSketch({ view, dmTitle, onBack }: { view: PromoteSketchVi
         <div className={`promote__body${loading ? ' is-loading' : ''}`}>
           {preview.canCreateProject && preview.projects.length ? (
             <div className="seg promote__seg" role="radiogroup" aria-label="Where the copy goes">
-              <button type="button" role="radio" className="seg__b" aria-checked={choice?.kind === 'new'} onClick={() => setChoice({ kind: 'new' })}>New project</button>
+              <button type="button" role="radio" className="seg__b" aria-checked={choice?.kind === 'new'} onClick={() => choose({ kind: 'new' })}>New project</button>
               <button type="button" role="radio" className="seg__b" aria-checked={choice?.kind === 'existing'}
-                onClick={() => setChoice({ kind: 'existing', projectId: preview.target?.kind === 'existing' ? preview.target.projectId : preview.projects[0]!.id })}>Existing project</button>
+                onClick={() => choose({ kind: 'existing', projectId: preview.target?.kind === 'existing' ? preview.target.projectId : preview.projects[0]!.id })}>Existing project</button>
             </div>
           ) : null}
           {preview.target?.kind === 'new' ? (
@@ -130,7 +147,7 @@ export function PromoteSketch({ view, dmTitle, onBack }: { view: PromoteSketchVi
           {preview.target?.kind === 'existing' ? (
             <label className="promote__field">
               <span>Project</span>
-              <select value={preview.target.projectId} onChange={(event) => setChoice({ kind: 'existing', projectId: event.target.value })}>
+              <select value={preview.target.projectId} onChange={(event) => choose({ kind: 'existing', projectId: event.target.value })}>
                 {preview.projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
               </select>
             </label>
@@ -150,17 +167,26 @@ export function PromoteSketch({ view, dmTitle, onBack }: { view: PromoteSketchVi
                     <b>{audienceHeadline(people, me.user.id)}</b>
                     <span className="promote__why">
                       {preview.target.kind === 'new'
-                        ? managers.length
-                          ? `${joinNames(managers.map((p) => firstName(p.name)))} ${managers.length === 1 ? 'manages' : 'manage'} every project in this workspace, so they can open it too. Nobody else is added.`
-                          : 'Nobody else is added. Other people in the workspace see nothing, not even that it exists.'
+                        ? `${managers.length ? `${joinNames(managers.map((p) => firstName(p.name)))} ${managers.length === 1 ? 'manages' : 'manage'} every project in this workspace, so they can open it too. ` : ''}${alsoGrant && invited.length ? `${joinNames(invited.map((p) => firstName(p.name)))} ${invited.length === 1 ? 'is' : 'are'} added because you chose to. Nobody else is.` : managers.length ? 'Nobody else is added.' : 'Nobody else is added. Other people in the workspace see nothing, not even that it exists.'}`
                         : `Everyone who can open ${preview.target.projectName} can open the copy.`}
                     </span>
                     {preview.leftOut.length ? (
-                      <span className="promote__why promote__left"><Icon name="alert" size={12} />{joinNames(preview.leftOut.map((p) => firstName(p.name)))} {preview.leftOut.length === 1 ? 'isn’t' : 'aren’t'} in {projectName}, so they won’t see the copy.</span>
+                      <span className="promote__why promote__left"><Icon name="alert" size={12} />{preview.target.kind === 'new'
+                        ? `${joinNames(preview.leftOut.map((p) => firstName(p.name)))} won’t see it unless you also give them access.`
+                        : `${joinNames(preview.leftOut.map((p) => firstName(p.name)))} ${preview.leftOut.length === 1 ? 'isn’t' : 'aren’t'} in ${projectName}, so they won’t see the copy.`}</span>
                     ) : null}
                   </span>
                 </div>
                 {people.length > 4 ? <p className="promote__all">{people.map((p) => (p.id === me.user.id ? 'You' : p.name)).join(', ')}</p> : null}
+                {invited.length ? (
+                  <label className="promote__grant">
+                    <input type="checkbox" checked={alsoGrant} onChange={(event) => { if (event.target.checked) setGrantList(invited); setAlsoGrant(event.target.checked); }} aria-labelledby={`${audienceId}-grant-l`} aria-describedby={`${audienceId}-grant`} />
+                    <span>
+                      <b id={`${audienceId}-grant-l`}>Also give {joinNames(invited.map((p) => firstName(p.name)))} access</b>
+                      <span id={`${audienceId}-grant`}>{joinNames(invited.map((p) => p.name))} can then read and write in the new project. Nobody else is added.</span>
+                    </span>
+                  </label>
+                ) : null}
               </section>
               <section className="details__sec" aria-label="What goes in">
                 <h4>What goes in</h4>
@@ -172,7 +198,7 @@ export function PromoteSketch({ view, dmTitle, onBack }: { view: PromoteSketchVi
               <section className="details__sec" aria-label="What stays in the conversation">
                 <h4>What stays in the conversation</h4>
                 <ul className="promote__inc">
-                  <li><Icon name="lock" size={14} /><span>{preview.staysInDm.messages ? `The other ${plural(preview.staysInDm.messages, 'message', 'messages')} of the conversation` : 'The conversation itself'}, and everything written there later. Nothing is synced to the project.</span></li>
+                  <li><Icon name="lock" size={14} /><span>{preview.staysInDm.messages === 1 ? 'The other message of the conversation' : preview.staysInDm.messages ? `The other ${plural(preview.staysInDm.messages, 'message', 'messages')} of the conversation` : 'The conversation itself'}, and everything written there later. Nothing is synced to the project.</span></li>
                 </ul>
               </section>
               {notice ? <p className="promote__notice" role="alert"><Icon name="alert" size={13} />{notice}</p> : null}

@@ -8,8 +8,9 @@ import { ProjectOverview } from '../project/ProjectOverview';
 import { PromoteSketch } from '../sketch/PromoteSketch';
 import { WhatMatters } from '../returns/WhatMatters';
 import { useProjectShell } from '../project/data';
-import type { WorkspaceSummary } from './data';
-import type { DetailsView } from './shellContext';
+import { WorkspacePeople } from '../people/WorkspacePeople';
+import { useShellData, type WorkspaceSummary } from './data';
+import { useShellActions, type DetailsView } from './shellContext';
 
 /**
  * Details for the current place. With nothing selected it says so briefly; the context of a
@@ -30,7 +31,8 @@ export function Details({ view, workspace, placeTitle, dm = null, onBack, onClos
   if (view === 'connect-ai') return <ConnectAi onBack={onBack} />;
   if (typeof view === 'object' && view.kind === 'add-to-doc') return <AddToDoc key={`${view.from.type}:${view.from.id}`} view={view} />;
   if (typeof view === 'object' && view.kind === 'promote-sketch') return <PromoteSketch key={view.sketchId} view={view} dmTitle={dm?.title ?? null} onBack={onBack} />;
-  if (typeof view === 'object' && view.kind === 'overview') return <ProjectOverview key={view.messageId ?? 'all'} messageId={view.messageId} onBack={onBack} />;
+  if (typeof view === 'object' && view.kind === 'overview') return <ProjectOverview key={view.messageId ?? 'all'} messageId={view.messageId} focusPeople={view.focus === 'people' ? view : null} onBack={onBack} />;
+  if (typeof view === 'object' && view.kind === 'people') return <WorkspacePeople key={view.workspaceId} workspaceId={view.workspaceId} onBack={onBack} />;
   if (typeof view === 'object') return <WorkDetails view={view} />;
   // A project's Details start with its overview (#117).
   if (inProject) return <ProjectOverview onBack={onBack} />;
@@ -71,31 +73,67 @@ export function Details({ view, workspace, placeTitle, dm = null, onBack, onClos
           : <p>Only the people in each conversation.</p>}
       </section>
 
+      <PeopleEntries />
+
       <p className="details__keys"><kbd>]</kbd> toggles this panel · <kbd>Esc</kbd> closes it</p>
     </div>
   );
 }
 
-/** Personal connection setup (#57, #68): the Claude Code path and your own in-app assistant. */
+const ROLE_LINE = {
+  owner: 'You’re an owner · add and manage people',
+  admin: 'You’re an admin · add and manage people',
+  member: 'You’re a member · see who’s here',
+  guest: 'You’re a guest · you see only projects given to you',
+} as const;
+
+/** Each workspace's people (#188, AC-1), one step away from Home's Details. */
+function PeopleEntries() {
+  const { workspaces } = useShellData();
+  const { openDetails } = useShellActions();
+  return (
+    <section className="details__sec ov-sec" aria-labelledby="details-people">
+      <h4 id="details-people">People</h4>
+      {workspaces.length ? (
+        <ul className="ov-rows">
+          {workspaces.map((space) => (
+            <li key={space.id}>
+              <button type="button" className="ov-row" onClick={() => openDetails({ kind: 'people', workspaceId: space.id })}>
+                <Icon name="people" size={16} className="ov-row__ic" />
+                <span className="ov-row__b">
+                  <span className="ov-row__t">{space.name}</span>
+                  {space.role ? <span className="ov-row__s">{ROLE_LINE[space.role]}</span> : null}
+                </span>
+                <Icon name="chevron-right" size={16} className="ov-row__go" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : <p className="ov-empty">Start a project to create your own space; then you can add people to it.</p>}
+    </section>
+  );
+}
+
+/** Personal connection setup (#57, #68, F-020): your own MCP client and your own in-app assistant, on any provider. */
 function ConnectAi({ onBack }: { onBack: () => void }) {
   return (
     <div className="details">
       <button type="button" className="details__back" aria-label="Back to Details" onClick={onBack}><Icon name="chevron-left" size={14} />Details</button>
       <p className="details__eyebrow">Optional</p>
       <h3 className="details__title">Connect your AI</h3>
-      <p className="details__lead">Flux works fully without AI. Your own Claude Code client can connect to selected projects, read context and suggest proposals for human review.</p>
+      <p className="details__lead">Flux works fully without AI. Your own MCP client can connect to selected projects, read context and suggest proposals for human review.</p>
       <section className="details__sec" aria-labelledby="details-ai-ways">
         <h4 id="details-ai-ways">Ways to connect</h4>
         <ul className="details__rows">
-          <li><b>Claude Code on your computer</b><span>Uses your account for compute and your personal Flux grant. Flux never receives your provider credentials.</span></li>
-          <li><b>Your assistant in Flux</b><span>Answers here when you ask, with your own Anthropic API key, your consent and your daily cap. Only you can use it.</span></li>
+          <li><b>Your MCP client on your computer</b><span>Claude Code, Codex or another MCP client, with your own account for compute and your personal Flux grant. Flux never receives your provider credentials.</span></li>
+          <li><b>Your assistant in Flux</b><span>Answers here when you ask, with your own API key from the provider and model you choose, your consent and your daily cap. Only you can use it.</span></li>
         </ul>
-        <p><Link className="ui-link" to="/connect-agent">Set up or revoke a Claude Code connection</Link></p>
+        <p><Link className="ui-link" to="/connect-agent">Set up or revoke an MCP client connection</Link></p>
         <p><Link className="ui-link" to="/settings/assistant">Set up your assistant in Flux</Link></p>
       </section>
       <section className="details__sec" aria-labelledby="details-ai-now">
         <h4 id="details-ai-now">Nobody else’s assistant</h4>
-        <p>The ✦ button always means your own assistant. It never starts Claude Code, and it never uses another person’s assistant or payer. Without yours, human work goes on exactly as before.</p>
+        <p>The ✦ button always means your own assistant. It never starts your MCP client, and it never uses another person’s assistant or payer. Without yours, human work goes on exactly as before.</p>
       </section>
     </div>
   );

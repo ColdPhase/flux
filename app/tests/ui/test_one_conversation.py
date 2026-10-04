@@ -364,6 +364,128 @@ class OneConversationJourney(unittest.TestCase):
         page.reload()
         expect(page.get_by_label("Write a message", exact=True)).to_have_value("")
 
+    def test_05b_an_assistant_prompt_in_the_stream_composer_is_never_posted(self) -> None:
+        # UI116-3: a private helper prompt does not become a public root.
+        page = self.page("ada")
+        page.goto(self.project_url())
+        before = len(self.all_roots(page))
+        composer = page.get_by_label("Write a message", exact=True)
+        composer.fill("/ai summarize the plan")
+        hint = page.get_by_role("status").filter(has_text="Your assistant answers inside a conversation")
+        expect(hint).to_be_visible()
+        expect(composer).to_have_attribute("aria-describedby", re.compile("ai-hint"))
+        expect(page.get_by_role("button", name="Send message")).to_have_attribute("aria-disabled", "true")
+        composer.press("Enter")
+        page.get_by_role("button", name="Send message").click(force=True)
+        expect(composer).to_have_value("/ai summarize the plan")
+        page.wait_for_timeout(500)
+        self.assertEqual(len(self.all_roots(page)), before, "no root is created from an assistant prompt")
+        # The text stays a private draft; another member sees no new root.
+        other = self.page("jonas")
+        self.assertFalse(any(root["message"]["body"].startswith("/ai") for root in self.all_roots(other)))
+        composer.fill("")
+        expect(hint).to_have_count(0)
+
+    def test_05c_a_row_growing_above_the_reader_does_not_move_the_stream(self) -> None:
+        # Foundation 10.5: a viewer's "1 reply" row appears on a root above the viewport (0 -> 1 replies)
+        # after a focus refresh; the first root in view stays where it was.
+        page = self.page("lee")
+        page.goto(self.project_url())
+        feed = page.locator(".project-convo__feed.is-stream")
+        expect(self.root(page, "r3")).to_be_visible()
+        roots = {root["message"]["id"]: root for root in self.all_roots(page)}
+        loaded = page.eval_on_selector_all(".project-convo__feed.is-stream .project-convo__message", "items => items.map(item => item.id.slice(8))")
+        quiet = [mid for mid in loaded if roots.get(mid, {}).get("replyCount") == 0]
+        self.assertGreaterEqual(len(quiet), 12, "enough roots without replies in the loaded window")
+        target, reader = quiet[2], quiet[8]
+        # Mid-stream: the reader's root at the top of the feed, the target root above the viewport.
+        page.evaluate("""([feedSel, id]) => { const feed = document.querySelector(feedSel); const item = document.getElementById(id);
+            feed.scrollTop += item.getBoundingClientRect().top - feed.getBoundingClientRect().top - 4; }""",
+                      [".project-convo__feed.is-stream", f"message-{reader}"])
+        page.wait_for_timeout(300)
+        first_visible = """(feedSel) => { const feed = document.querySelector(feedSel); const top = feed.getBoundingClientRect().top;
+            for (const item of feed.querySelectorAll('.project-convo__message')) { const box = item.getBoundingClientRect();
+              if (box.bottom > top + 1) return { id: item.id, top: box.top - top }; } return null; }"""
+        before = page.evaluate(first_visible, ".project-convo__feed.is-stream")
+        self.assertIn(before["id"], {f"message-{mid}" for mid in quiet[3:9]}, "mid-stream, below the target root")
+        self.assertLess(page.evaluate("id => document.getElementById(id).getBoundingClientRect().bottom", f"message-{target}"),
+                        feed.bounding_box()["y"], "the target root is above the viewport")
+        other = self.page("jonas")
+        self.api(other, "POST", f"/api/v1/conversations/{roots[target]['conversationId']}/messages",
+                 {"body": "A late answer to an earlier note", "clientMessageId": str(uuid.uuid4())}, status=201)
+        page.evaluate("() => window.dispatchEvent(new Event('focus'))")
+        expect(page.locator(f"#message-{target} .convo-replies")).to_contain_text("1 reply")
+        page.wait_for_timeout(300)
+        after = page.evaluate(first_visible, ".project-convo__feed.is-stream")
+        self.assertEqual(after["id"], before["id"], "the same root stays first in view")
+        self.assertLessEqual(abs(after["top"] - before["top"]), 2, f"drift {after['top'] - before['top']:.1f}px")
+
+    def test_05d_an_empty_workspace_stream_names_its_current_and_future_audience(self) -> None:
+        owner = self.page("ada")
+        workspace = self.api(owner, "POST", "/api/v1/workspaces", {"name": "Open conversation controls"}, status=201)
+        project = self.api(owner, "POST", f"/api/v1/workspaces/{workspace['id']}/projects",
+                           {"name": "Workspace conversation", "visibility": "workspace"}, status=201)
+        path = f"/api/v1/projects/{project['id']}/conversation-roots"
+        owner.goto(f"/projects/{project['id']}")
+        stream = self.stream(owner)
+        expect(stream.get_by_role("heading", name="Where do we start?")).to_be_visible()
+        expect(stream).to_contain_text("Everyone in Workspace conversation sees it.")
+        expect(stream).not_to_contain_text("Only you see it for now")
+        self.assertEqual(self.api(owner, "GET", path, status=200)["roots"], [])
+        people = self.api(owner, "GET", f"/api/v1/projects/{project['id']}/people", status=200)
+        self.assertEqual([person["id"] for person in people], [self.ids["ada"]], "the initial empty workspace really has only its owner")
+
+        # A current workspace member can read without an explicit project grant.
+        member = self.page("jonas")
+        self.api(member, "GET", path, status=404)
+        self.api(owner, "POST", f"/api/v1/workspaces/{workspace['id']}/members",
+                 {"email": PEOPLE["jonas"][1], "role": "member"}, status=201)
+        self.assertEqual(self.api(member, "GET", path, status=200)["roots"], [])
+        body = "This conversation is shared with the workspace."
+        owner.get_by_label("Write a message", exact=True).fill(body)
+        owner.get_by_role("button", name="Send message", exact=True).click()
+        expect(owner.get_by_label("Write a message", exact=True)).to_have_value("")
+        roots = self.api(owner, "GET", path, status=200)["roots"]
+        self.assertEqual(len(roots), 1)
+        self.assertEqual(roots[0]["message"]["body"], body)
+        member.goto(f"/projects/{project['id']}")
+        expect(member.locator(f"#message-{roots[0]['message']['id']}")).to_contain_text(body)
+
+        # Joining later confers the same audience, including the already saved root.
+        future = self.page("lee")
+        self.api(future, "GET", path, status=404)
+        self.api(owner, "POST", f"/api/v1/workspaces/{workspace['id']}/members",
+                 {"email": PEOPLE["lee"][1], "role": "member"}, status=201)
+        inherited = self.api(future, "GET", path, status=200)["roots"]
+        self.assertEqual([(root["conversationId"], root["message"]["body"]) for root in inherited],
+                         [(roots[0]["conversationId"], body)], "workspace membership inherits the saved conversation without a project grant")
+        future.goto(f"/projects/{project['id']}")
+        expect(future.locator(f"#message-{roots[0]['message']['id']}")).to_contain_text(body)
+
+    def test_05e_an_empty_restricted_stream_keeps_the_only_owner_audience(self) -> None:
+        owner = self.page("ada")
+        workspace = self.api(owner, "POST", "/api/v1/workspaces", {"name": "Restricted conversation controls"}, status=201)
+        self.api(owner, "POST", f"/api/v1/workspaces/{workspace['id']}/members",
+                 {"email": PEOPLE["jonas"][1], "role": "member"}, status=201)
+        project = self.api(owner, "POST", f"/api/v1/workspaces/{workspace['id']}/projects",
+                           {"name": "Restricted conversation", "visibility": "restricted"}, status=201)
+        path = f"/api/v1/projects/{project['id']}/conversation-roots"
+        owner.goto(f"/projects/{project['id']}")
+        stream = self.stream(owner)
+        expect(stream.get_by_role("heading", name="Where do we start?")).to_be_visible()
+        expect(stream).to_contain_text("Only you see it for now; people you add to the project will see it too.")
+        self.assertEqual(self.api(owner, "GET", path, status=200)["roots"], [])
+        member = self.page("jonas")
+        self.api(member, "GET", path, status=404)
+        body = "A restricted conversation still needs a project grant."
+        owner.get_by_label("Write a message", exact=True).fill(body)
+        owner.get_by_role("button", name="Send message", exact=True).click()
+        expect(owner.get_by_label("Write a message", exact=True)).to_have_value("")
+        roots = self.api(owner, "GET", path, status=200)["roots"]
+        self.assertEqual(len(roots), 1)
+        self.assertEqual(roots[0]["message"]["body"], body)
+        self.api(member, "GET", path, status=404)
+
     def test_06_a_reader_reads_the_stream_and_threads_without_a_composer(self) -> None:
         page = self.page("lee")
         page.goto(self.project_url())
