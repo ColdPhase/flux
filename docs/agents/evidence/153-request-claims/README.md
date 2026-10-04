@@ -1,15 +1,37 @@
 # Request claim, resolution and supersession (#153)
 
-Tested head: `725ee900` (tree `6cf8a2ff3266756351c51ebf0e94f3d77ecd8cb2`), branch
-`claude-maurycy/153-request-claims`. It is stacked on `claude-maurycy/153-request-admission`
-(PR #246, `387d0d06`, not yet merged). Its application source is identical to
-`0dd0d5cb`, where the affected set and the mutation proof ran. `725ee900` adds
-only test files. Later commits change only documentation.
-Owner: Zamojski5. Independent evaluation by PelikanFix16 is still required.
-Original AC1–AC5 stay open. No public MCP action, client scheduling or UI is
-enabled. See the [plan](PLAN.md) and the
+Tested head: `1e7383ab` (tree `d6a43e0e3363d74e562074fa8a09f7d4df0d1afd`), branch
+`claude-maurycy/153-request-claims`, now based on `origin/main` `6f742eba`
+(the squash merge of PR #246). Owner: Zamojski5. Independent evaluation by
+PelikanFix16 is still required. Original AC1–AC5 stay open. No public MCP
+action, client scheduling or UI is enabled. See the [plan](PLAN.md) and the
 [contract section](../../../development/cowork-coordination.md#request-claim-and-resolution-2026-10-04-peer-review-required).
 Source hashes at the tested commit are in [source-sha256.json](source-sha256.json).
+
+## Bringing the slice onto main (2026-10-04)
+
+The slice was written on the earlier #246 head `387d0d06`. PR #246 then merged
+main into itself (`5a931440`) and was squash-merged as `6f742eba`.
+
+- `c047e629` merges `5a931440` with its real merge base `387d0d06`. Git merged
+  it without conflicts. The slice's delta over `5a931440` is the same
+  19 files, +1503/−20, as its original delta over `387d0d06`.
+- `a1071eab` merges `origin/main` with the `ours` strategy. This loses nothing:
+  `git diff 5a931440 6f742eba` is empty, so main's tree was already merged.
+- `1e7383ab` fixes a semantic conflict with main's #183 Agents view.
+  `ProjectAgents.tsx` maps every `AgentOperation` to an activity line, and the
+  web typecheck failed without lines for the two new operations ("picked up a
+  request", "answered a request"). The first post-merge run stopped at that
+  typecheck error. This is the only change outside the merges.
+- The co-work sources are byte-identical to `725ee900`: `git diff 725ee900
+  1e7383ab` is empty for `apps/server/src/co-work`, `packages/core/src/co-work`,
+  the `cowork*` repositories, `0049` and `contracts/agent-execution.ts`. Of the
+  hashed files, only `packages/db/src/index.ts` (main's new exports) and
+  `ProjectAgents.tsx` changed. The mutation proof at `0dd0d5cb` therefore
+  still covers the guarded code.
+- No other branch on main or any remote uses 0045–0049 for something else.
+  Main ships up to `0044`, so `FLUX_SCHEMA_VERSION` 49 still names this
+  slice's `0049`.
 
 ## Needs action before push
 
@@ -79,11 +101,25 @@ Source hashes at the tested commit are in [source-sha256.json](source-sha256.jso
     now a `help` request. A later review to the same unit would otherwise
     supersede it by design. The F2 assertions are unchanged.
 
-## Executed checks (Docker, isolated Compose projects, ports 19060–19065)
+## Executed checks (Docker, isolated Compose projects)
 
-- **Image build, typecheck and lint** (`docker build --target build`, which runs
-  `pnpm build && pnpm typecheck && pnpm lint`) pass. The pre-existing
-  `react-hooks/exhaustive-deps` warning remains; it is not an error.
+After the merge, at `1e7383ab` (ports 19100–19105):
+
+- **Image build, typecheck and lint** pass inside both runs below. The
+  pre-existing `react-hooks/exhaustive-deps` warning in `ProjectTasks.tsx`
+  remains; it is a warning, not an error.
+- **Affected set**, 20 files: **126/126**, with 0 skipped, cancelled or todo.
+  These are the 17 files listed below, plus `ai-connections-migration` and
+  `project-agents` from main, which touch the same migration ledger and
+  operation labels.
+- **Full `./scripts/check_application.sh`**
+  (`FLUX_TEST_PORT=19100 FLUX_TEST_MAILPIT_PORT=19101`): **EXIT 0**.
+  - API: **738/738**, 0 skipped. Main's suite grew while #246 and other
+    work merged.
+  - Every later browser/service phase passed: 3+1+1+1+1+6+1+1+1+1 = 17 tests.
+
+Before the merge, at the stacked heads (ports 19060–19065):
+
 - **New file** `cowork-request-responses.test.ts` at `0dd0d5cb`: **9/9**.
 - **Targeted set at `725ee900`**: `agent-request-response-migration`,
   `cowork-request-responses`, `agent-doc-authors-migration`,
@@ -97,17 +133,16 @@ Source hashes at the tested commit are in [source-sha256.json](source-sha256.jso
   `cowork-requests-storage`, `cowork-storage`, `mcp-work-actions`,
   `migration-ledger`, `oauth-mcp` and `task-graph-core`.
 - **Full `./scripts/check_application.sh`** at `725ee900`
-  (`FLUX_TEST_PORT=19060 FLUX_TEST_MAILPIT_PORT=19061`): **EXIT 0**.
-  - API: **671/671**, 0 skipped. That is the previous 661 plus the 9
-    request-response tests and the 0049 migration test.
-  - Every later browser/service phase passed: 3+1+1+1+1+6+1+1+1+1 = 17 tests.
-  - An earlier full run at `0dd0d5cb` also exited 0, with 670/670 and the same
-    17 browser/service tests.
-- **Foundation:** `check_agent_setup.py` passed. The host Python suite ran 67 tests,
-  all OK. `git diff --check` is clean.
+  (`FLUX_TEST_PORT=19060 FLUX_TEST_MAILPIT_PORT=19061`): **EXIT 0**, API
+  **671/671** and the same 17 browser/service tests. An earlier full run at
+  `0dd0d5cb` also exited 0, with 670/670.
+- **Foundation**, re-run at `1e7383ab`: `check_agent_setup.py` passed. The host
+  Python suite ran 67 tests, all OK. `git diff --check origin/main` is clean.
 - Raw logs stay local (`w153c-t1`…`t5`, `w153c-full`, `w153c-full2`,
-  `w153c-mut-*`) and are not published. The first two targeted runs failed in the test fixtures, not
-  in the product:
+  `w153c-mut-*`, and after the merge `w153d-t1`/`t2`, `w153d-full`/`full2`)
+  and are not published. `w153d-t1` and `w153d-full` are the runs that
+  stopped at the merge's typecheck error. Before the merge, the first two
+  targeted runs failed in the test fixtures, not in the product:
   - Marek lacked project management, so he could not create his own grants.
   - The refusal helper started the attempt before its snapshot.
   - Senders named the stale recipient unit version.
