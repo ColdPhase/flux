@@ -20,7 +20,12 @@ function resolver(answers: LookupAddress[], error: NodeJS.ErrnoException | null 
 function result(lookup: LookupFunction, all: boolean) {
   return new Promise<{ error: NodeJS.ErrnoException | null; answers: LookupAddress[] }>((resolve) => {
     lookup('push-provider.example', { family: 0, hints: 0, all }, ((error, addresses, family) => {
-      resolve({ error, answers: error ? [] : Array.isArray(addresses) ? addresses : [{ address: addresses, family }] });
+      if (error) resolve({ error, answers: [] });
+      else if (Array.isArray(addresses)) resolve({ error, answers: addresses });
+      else {
+        assert.ok(family === 4 || family === 6, 'a scalar lookup returns its actual address family');
+        resolve({ error, answers: [{ address: addresses, family }] });
+      }
     }) as Parameters<LookupFunction>[2]);
   });
 }
