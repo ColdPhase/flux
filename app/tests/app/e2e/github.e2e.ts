@@ -89,12 +89,13 @@ test('real settings UI binds, verifies PR links and removes private projections 
   const place = await project(owner, ws.id, 'Gesture lamp', 'restricted'); await grant(owner, place.id, viewer, 'viewer');
   const task = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: 'Verify physical off-switch behaviour after calibration fails' } }), 201) as WorkItem;
   const page = await (await context(owner)).newPage(); const errors: string[] = []; page.on('pageerror', (error) => errors.push(error.message));
+  // An older shell remembered the last place per project only, including settings; that key is retired (#189) and ignored.
   await page.addInitScript(({ projectId }) => sessionStorage.setItem(`flux.project-conversation.${projectId}`, `/projects/${projectId}/github`), { projectId: place.id });
   await page.goto(`/projects/${place.id}/github`);
   await page.getByRole('heading', { name: 'GitHub is not configured on this server' }).waitFor();
   const views = page.getByRole('navigation', { name: 'Project views', exact: true });
   assert.equal(await views.locator('[aria-current="page"]').count(), 0, 'settings do not select a conversation tab');
-  assert.equal(await views.getByRole('link', { name: 'Conversation', exact: true }).getAttribute('href'), `/projects/${place.id}`, 'old settings destination is not a conversation');
+  assert.equal(await views.getByRole('link', { name: 'Conversation', exact: true }).getAttribute('href'), `/projects/${place.id}`, 'a destination remembered under the retired key is ignored');
   await views.getByRole('link', { name: 'Conversation', exact: true }).click();
   await page.waitForURL(`**/projects/${place.id}`);
   const details = page.getByRole('button', { name: 'Details', exact: true });
@@ -114,11 +115,14 @@ test('real settings UI binds, verifies PR links and removes private projections 
   await page.getByRole('button', { name: 'Connect repository', exact: true }).click();
   await page.getByRole('heading', { name: 'Link an existing pull request', exact: true }).waitFor();
   await page.getByLabel('Task', { exact: true }).selectOption(task.id);
+  const noPulls = page.getByText('No pull requests are linked to this task yet.', { exact: true });
+  await noPulls.waitFor(); // #218: a chosen task without links says so instead of staying blank.
   const linker = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Link an existing pull request', exact: true }) });
   await linker.getByLabel('Repository', { exact: true }).selectOption({ label: 'lamp-team/gesture-lamp-firmware' });
   await page.getByLabel('Pull request number', { exact: true }).fill('42');
   await page.getByRole('button', { name: 'Verify and link PR', exact: true }).click();
   const privatePull = page.getByRole('link', { name: '#42 · Keep a manual off switch when gesture sensing loses calibration', exact: true }); await privatePull.waitFor();
+  assert.equal(await noPulls.count(), 0, 'the empty line is gone once a pull request is linked');
   assert.match(await linker.innerText(), /nia-firmware.*head aaaaaaaaaaaa/);
   for (const [label, width, height] of [['desktop', 1440, 900], ['tablet', 820, 1180], ['phone', 390, 844]] as const) {
     const target = label === 'desktop' ? page : await (await context(owner, { viewport: { width, height }, hasTouch: true, isMobile: label === 'phone' })).newPage();

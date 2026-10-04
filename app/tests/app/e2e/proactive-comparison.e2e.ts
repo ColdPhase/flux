@@ -96,7 +96,7 @@ after(async () => {
 test('real project UI presents sourced quiet suggestions, then persists edits, use and dismissal', async () => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks`);
+  await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks?view=list`);
   const cards = page.locator('.ws-proposal');
   await cards.first().waitFor();
   assert.equal(await cards.count(), 2);
@@ -135,7 +135,7 @@ test('real project UI presents sourced quiet suggestions, then persists edits, u
     const activate = async (control: Locator) => touch ? control.tap() : control.click();
     const viewportCards = page.locator('.ws-proposal');
     try {
-      await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks`);
+      await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks?view=list`);
       await viewportCards.first().waitFor();
       if (viewport.width === 390) {
         for (const title of await viewportCards.locator('.ws-proposal__action').all()) {
@@ -180,7 +180,7 @@ test('real project UI presents sourced quiet suggestions, then persists edits, u
       });
       await activate(workSource);
       await page.getByRole('heading', { name: 'Measure ToF response at 5 lux', exact: true }).waitFor();
-      await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks`);
+      await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks?view=list`);
       await activate(viewportCards.first().locator('.ws-proposal__toggle'));
       await activate(viewportCards.first().getByRole('link', { name: /^Test a ToF sensor using the same 5 lux protocol/ }));
       const selected = page.locator(`.sk-node[data-id="${fixture.thoughtId}"], .sk-li-t[data-id="${fixture.thoughtId}"]`).first();
@@ -192,7 +192,7 @@ test('real project UI presents sourced quiet suggestions, then persists edits, u
       const thought = await api('GET', `/api/v1/sketches/${fixture.sketchId}`);
       assert.equal(thought.status, 200);
       assert.ok((thought.data as { thoughts: Array<{ id: string }> }).thoughts.some((item) => item.id === fixture.thoughtId));
-      await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks`);
+      await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks?view=list`);
       await activate(viewportCards.first().locator('.ws-proposal__toggle'));
       const edit = viewportCards.first().getByRole('button', { name: 'Edit', exact: true });
       await edit.scrollIntoViewIfNeeded();
@@ -214,7 +214,7 @@ test('real project UI presents sourced quiet suggestions, then persists edits, u
       await viewportContext.close();
     }
   }
-  await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks`);
+  await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks?view=list`);
   await cards.first().waitFor();
   await cards.first().locator('.ws-proposal__toggle').click();
   await cards.first().getByRole('button', { name: 'Edit', exact: true }).click();
@@ -244,8 +244,8 @@ test('real project UI presents sourced quiet suggestions, then persists edits, u
   assert.equal(await cards.count(), 0);
   stored = await proposals();
   assert.equal(stored.find((item) => item.id === initial[1]?.id)?.status, 'dismissed');
-  await page.getByLabel('New work').fill('Repeat the sensor test with a manual switch');
-  await page.getByRole('button', { name: 'Add work' }).click();
+  await page.getByLabel('New task').fill('Repeat the sensor test with a manual switch');
+  await page.getByRole('button', { name: 'Add task' }).click();
   await page.getByRole('heading', { name: 'Repeat the sensor test with a manual switch' }).waitFor();
   const manual = await api('GET', `/api/v1/projects/${fixture.projectId}/work?limit=100`);
   assert.equal(manual.status, 200);
@@ -390,9 +390,9 @@ test('owner-only background setup persists consent, clears keys and preserves an
   assert.equal((await api('GET', '/api/v1/background-compute-connections/current')).data, null);
   await page.reload();
   assert.equal((await api('GET', '/api/v1/background-compute-connections/current')).data, null);
-  await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks`);
-  await page.getByLabel('New work').fill('Manual comparison without a background key');
-  await page.getByRole('button', { name: 'Add work', exact: true }).click();
+  await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks?view=list`);
+  await page.getByLabel('New task').fill('Manual comparison without a background key');
+  await page.getByRole('button', { name: 'Add task', exact: true }).click();
   await page.getByRole('heading', { name: 'Manual comparison without a background key', exact: true }).waitFor();
   const manual = await api('GET', `/api/v1/projects/${fixture.projectId}/work?limit=100`);
   assert.ok((manual.data as { items: Array<{ title: string }> }).items.some((item) => item.title === 'Manual comparison without a background key'));

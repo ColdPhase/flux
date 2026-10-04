@@ -231,7 +231,8 @@ class LiveUnavailable(LiveBase):
         page.goto(self.task_url())
         panel = page.locator("#details")
         expect(panel.get_by_role("heading", name=TASK)).to_be_visible()
-        expect(panel).to_contain_text("Live sessions are not set up on this Flux server")
+        # Explained once, behind the header's Together; the task itself does not repeat it (#189).
+        expect(panel).not_to_contain_text("Live sessions")
         header = page.locator("header.top")
         header.get_by_role("button", name="Together").click()
         dialog = page.get_by_role("dialog", name="Live sessions")
@@ -319,7 +320,7 @@ class LiveJourney(LiveBase):
 
         # AC-2: navigation keeps one connection; showing a doc does not move anybody.
         tabs = nia.get_by_role("navigation", name="Project views")
-        tabs.get_by_role("link", name=re.compile("^Docs")).click()
+        tabs.get_by_role("link", name=re.compile("^Wiki")).click()
         nia.get_by_role("link", name=re.compile(DOC)).click()
         expect(nia.get_by_role("heading", name=DOC, level=2)).to_be_visible()
         expect(self.bar(nia)).to_be_visible()
