@@ -173,7 +173,7 @@ async function holdRead(page: Page, path: string, all = false) {
   const held = gate<unknown>(); const release = gate(); const pending = new Set<Promise<void>>();
   let used = false; let retired = false; let failure: unknown;
   const handler = (route: Route) => {
-    if ((used && !all) || route.request().method() !== 'GET') return route.continue();
+    if (finished || (used && !all) || route.request().method() !== 'GET') return route.continue();
     used = true;
     const run = (async () => { try {
       const response = await route.fetch({ timeout: 15_000 }); held.resolve(await response.json());
