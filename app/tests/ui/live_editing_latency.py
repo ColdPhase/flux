@@ -199,7 +199,13 @@ async def map_drag(fixture, count, selected):
             raise RuntimeError("Trusted drag has no current authorized gesture/input sequence")
         return identity
     async def observe(identity):
-        await painted(peer, "({id,gestureId,generation,sequence}) => { const el=document.querySelector('.sk-node[data-id=\"'+id+'\"]'); return el && el.dataset.liveGeneration===generation && el.dataset.liveGesture===gestureId && Number(el.dataset.livePreviewSequence)>=sequence; }", {"id": target["id"], **identity})
+        expression = "({id,thoughts,gestureId,generation,sequence}) => { let dx=null,dy=null,lease=null,preview=null; for (const base of thoughts) { const el=document.querySelector('.sk-node[data-id=\"'+base.id+'\"]'); if (!el || el.dataset.liveGeneration!==generation || el.dataset.liveGesture!==gestureId || Number(el.dataset.livePreviewSequence)<sequence || Number(el.dataset.thoughtVersion)!==base.version) return false; const current=Number(el.dataset.livePreviewSequence), x=Number(el.dataset.thoughtX)-base.x, y=Number(el.dataset.thoughtY)-base.y; if (!Number.isFinite(x) || !Number.isFinite(y) || !el.dataset.liveLease) return false; if (dx!==null && (dx!==x || dy!==y || lease!==el.dataset.liveLease || preview!==current)) return false; dx=x; dy=y; lease=el.dataset.liveLease; preview=current; } const target=document.querySelector('.sk-node[data-id=\"'+id+'\"]'), canvas=document.querySelector('.sk-canvas'); if (!target || !canvas) return false; const box=target.getBoundingClientRect(), clip=canvas.getBoundingClientRect(); return box.width>0 && box.height>0 && box.left>=Math.max(0,clip.left) && box.right<=Math.min(innerWidth,clip.right) && box.top>=Math.max(0,clip.top) && box.bottom<=Math.min(innerHeight,clip.bottom); }"
+        observed = {"id": target["id"], "thoughts": [{"id": thought["id"], "version": thought["version"], "x": thought["x"], "y": thought["y"]} for thought in selected_thoughts], **identity}
+        await painted(peer, expression, observed)
+        # Validate the same entire group once more after the two RAFs. A token on
+        # only the target or a group truncated to one thought is never a success.
+        if not await peer.evaluate(expression, observed):
+            raise RuntimeError('Selected group lost coherent authorized preview/viewport through two RAFs')
     try:
         return await cohort(fixture, f"map-{count}-drag-{selected}", owner, peer, produce, observe,
                             {"thoughts": count, "selected": selected, "actions": "continuous trusted pointer movement; pointer remains down for all 30+240 samples"})
