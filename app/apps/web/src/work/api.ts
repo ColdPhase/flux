@@ -1,9 +1,10 @@
 import {
-  decisionAcceptPath, decisionPath, projectDecisionsPath, projectResultsPath, projectWorkPath, resultPath, workItemPath,
+  decisionAcceptPath, decisionPath, projectDecisionsPath, projectResultsPath, projectWorkPath, resultPath, workItemPath, workspaceAssignedWorkPath,
   type AcceptDecisionCommand, type CreateResultCommand, type CreateWorkCommand, type Decision, type Page, type ProposeDecisionCommand,
   type UpdateWorkCommand, type WorkItem, type WorkResult, type Agent,
 } from '@flux/contracts';
 import { request } from '../api/client';
+import { readAssignedAcross } from './assigned';
 
 /** Work, decisions and results of one project (#101); the project's audience is theirs. */
 export interface ProjectWork { work: WorkItem[]; decisions: Decision[]; results: WorkResult[] }
@@ -24,6 +25,14 @@ async function everything<T extends { id: string }>(path: string, signal?: Abort
   }
   return [...byId.values()];
 }
+
+/**
+ * Work the caller owns across these workspaces (#190 HOME-2): up to `cap` items in all, with the sum
+ * of every workspace's total so a capped list can say how many it leaves out.
+ */
+export const listAssignedWork = (workspaceIds: string[], cap: number, signal?: AbortSignal) =>
+  readAssignedAcross(workspaceIds, (workspaceId, limit, offset) =>
+    request<Page<WorkItem>>(`${workspaceAssignedWorkPath(workspaceId)}?limit=${limit}&offset=${offset}`, { signal }), cap, signal);
 
 export async function loadProjectWork(projectId: string, signal?: AbortSignal): Promise<ProjectWork> {
   const [work, decisions, results] = await Promise.all([

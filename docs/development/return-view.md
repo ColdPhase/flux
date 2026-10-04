@@ -13,14 +13,18 @@ person and place: `home`, `project:<id>` or `conversation:<id>`. A point is a po
 person's **own** `event_audience` rows (an event `seq`). It is never sent to clients. Project and
 conversation points are deleted with their place.
 
-- **Home: set when the person views it.** The client reads the summary and then saves the
-  summary's opaque `mark` (the id of the reader's last audience row when the summary was built).
-  The server accepts only a mark that is one of the caller's own audience rows. Saving is
-  forward-only: an older mark never moves the point back.
-- **Moving back is optional.** "Keep these for next time" (`POST /api/v1/return-points/restore`)
-  moves the point back to the one it replaced. A point first created in the undone visit is
-  removed, so the place counts as unviewed again. Projects no longer auto-save, so "Keep these"
-  exists only on Home (see "What matters" below).
+- **Visiting acknowledges nothing (HOME-1, #190; amends #106 AC-1).** Home reads the summary and
+  never moves its point. "I have the context" at the end of Home's "Since you left" saves the
+  summary's opaque `mark` (the id of the reader's last audience row when the summary was built),
+  as a project's What matters does (#133). A reload, a glance on the phone or leaving Home keeps
+  the list. The one automatic save is the first visit to a place with no point
+  (`point.savedAt === null`): nothing was shown, so it saves a starting point at the mark.
+- **Saving.** The server accepts only a mark that is one of the caller's own audience rows. Saving
+  is forward-only: an older mark never moves the point back. `POST /api/v1/return-points/restore`
+  ("Keep these for next time") stays in the API for compatibility; the web app no longer calls it.
+- **Places interact.** "I have the context" in a project removes that project's items from Home,
+  because Home uses the maximum of the points below. Acknowledging Home moves the start of every
+  project never opened, since such a project starts from Home's point.
 - **Nested places.** A change that has already been seen in a narrower place does not come back
   in a wider one. Home uses the maximum of the Home, project and conversation points. A project
   uses the maximum of the project and conversation points. A place that was never viewed starts
@@ -110,9 +114,9 @@ Details (a quiet count of `needsYou`), which opens a private view of the Details
 - `app/packages/db/src/repositories/returns.ts`: rows only, no access decisions.
 - `app/apps/server/src/returns/`: the policy adapter (`authorizeEvent`, `evaluateProject`,
   `authorize`, `visibleFilter`) and the routes. No architecture allowlist entries were added.
-- `app/apps/web/src/returns/`: `SinceYouLeftHome` (on Home, grouped by place) and `SinceYouLeftLine`
-  (above the project conversation; it collapses to one 44 px row on the phone and expands with
-  the grid-rows transition from the tokens). A source link to a message opens on that whole
+- `app/apps/web/src/returns/`: `SinceYouLeftHome` (on Home, grouped by place, with "Last caught up …"
+  and "I have the context"; afterwards one status line says "You're caught up. New changes will
+  show here." and focus moves to the Home heading, #190 A1.3) and `WhatMatters` (a project's recap, #133). A source link to a message opens on that whole
   message (`#message-<id>`). Only the current request's authorized answer is ever shown: the
   client keeps no return-view state between mounts, accounts or visits, so a revoked item or
   another account's item never appears, even before a fresh answer arrives (tested in Playwright
@@ -125,7 +129,9 @@ the grouping and sources, the next step and how it changes when the question is 
 forward-only saving and restore, revoked access, and a restricted project leaking nothing (no
 items, ids, names or counts). `app/tests/app/return-recap.test.ts` covers #133's scope, period, `until` snapshot, digest, privacy
 (per person, no shared event, outsider and revoked 404) and refused parameters.
-`app/tests/ui/test_return_view.py` (Playwright) covers Home's return view, and in projects the What
+`app/tests/ui/test_return_view.py` (Playwright) covers Home's return view (a reload keeps the list,
+only "I have the context" clears it, a project's acknowledgement removes its items from Home, the
+first visit's starting point), and in projects the What
 matters panel: the compact entry and count, scope and digest, sources (a decision in Details and
 back to the same snapshot, a message at the whole message), "I have the context" as the only
 point change, newer changes announced, empty and 7-day states, a late answer for the old scope
