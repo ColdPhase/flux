@@ -285,6 +285,32 @@ test('required metadata retry preserves lost-response command UUID, native reply
 });
 
 
+test('a reader scroll whose event has not arrived yet is kept when message work refreshes', {timeout:60_000},async()=>{
+  // Scroll events arrive with a later frame. Model a frame that has not come yet: the feed's
+  // scroll events are held while the reader moves to an earlier answer and work refreshes.
+  const page=await open(owner,390,844);
+  const convo=page.locator('.project-convo');
+  await expect(convo).toHaveAttribute('data-references-phase','ready');await expect(convo).toHaveAttribute('data-associations-phase','ready');
+  const anchor=page.locator(`[data-answer-run="${answers[2]!.runId}"]`);
+  const observed=await convo.getAttribute('data-references-observed-at');
+  const before=await anchor.evaluate((row)=>{
+    const w=window as unknown as {__heldScroll:boolean};w.__heldScroll=true;
+    window.addEventListener('scroll',(event)=>{if(w.__heldScroll&&event.target instanceof Element&&event.target.classList.contains('project-convo__feed'))event.stopImmediatePropagation();},true);
+    row.scrollIntoView({block:'center'});(row.querySelector('[data-native-ref]') as HTMLElement).focus({preventScroll:true});
+    window.dispatchEvent(new Event('focus'));
+    return row.getBoundingClientRect().top;
+  });
+  await expect.poll(()=>convo.getAttribute('data-references-observed-at')).not.toBe(observed);
+  await expect(convo).toHaveAttribute('data-references-phase','ready');await page.waitForTimeout(250);
+  const held=await anchor.evaluate((row)=>row.getBoundingClientRect().top);
+  assert.ok(Math.abs(held-before)<=2,`reader keeps the answer while its scroll event is pending:${before}→${held}`);
+  await page.evaluate(()=>{(window as unknown as {__heldScroll:boolean}).__heldScroll=false;});
+  await page.evaluate(()=>new Promise((done)=>requestAnimationFrame(()=>requestAnimationFrame(done))));
+  const after=await anchor.evaluate((row)=>row.getBoundingClientRect().top);
+  assert.ok(Math.abs(after-before)<=2,`reader keeps the answer after the scroll event:${before}→${after}`);
+  assert.deepEqual(pageErrors,[]);
+});
+
 test('late authorized metadata cannot resurrect manager actions across real account A→B→A revalidation', {timeout:60_000},async()=>{
   const page=await open(manager);
   const card=page.locator('.assistant-proposal').last();await card.scrollIntoViewIfNeeded();await expect(card.getByRole('button',{name:'Accept',exact:true})).toBeVisible();

@@ -61,7 +61,9 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
   // A reader at the end follows what arrives there; reaching the end starts following and only
   // scrolling up leaves it. Layout shifts (scroll anchoring, a resized composer) keep the intent.
   const following = useRef(false);
+  // The scrollTop last seen in a scroll event or written here, for the feed element it belongs to.
   const lastTop = useRef(0);
+  const seen = useRef<HTMLElement | null>(null);
   const save = useCallback((intent = false) => {
     const pane = ref.current;
     if (!pane || !ready && !readerMoved.current && !intent) return;
@@ -74,8 +76,23 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
     if (!pane || pane !== node) return;
     const atEnd = () => pane.scrollHeight - pane.clientHeight - pane.scrollTop <= 8;
     const toEnd = () => { pane.scrollTop = pane.scrollHeight; ownScroll.current = pane.scrollTop; lastTop.current = pane.scrollTop; };
+    // Record a position: the reader's (any scroll this hook did not write) or this hook's own.
+    const observe = (reader: boolean) => {
+      if (atEnd()) following.current = true;
+      else if (reader && pane.scrollTop < lastTop.current - 1) following.current = false;
+      lastTop.current = pane.scrollTop;
+      save(reader);
+    };
+    // Scroll events arrive with the next rendered frame. A scroll that has happened but whose
+    // event has not arrived yet (scrollIntoView, focus, find-in-page, a script) is still the
+    // reader's position: record it instead of restoring an anchor saved before it.
+    const fresh = seen.current !== pane;
+    seen.current = pane;
+    const own = ownScroll.current;
+    const unobserved = !fresh && Math.abs(pane.scrollTop - lastTop.current) > 1 && (own === null || Math.abs(pane.scrollTop - own) > 1);
     const stored = anchor.current;
-    if (following.current) { if (!atEnd()) toEnd(); }
+    if (unobserved) { ownScroll.current = null; observe(true); }
+    else if (following.current) { if (!atEnd()) toEnd(); }
     else if (stored && (ready || !readerMoved.current)) {
       const message = [...pane.querySelectorAll<HTMLElement>('[data-message-id],[data-answer-run]')].find((row) => row.id === stored.id);
       const target = stored.atEnd ? pane.scrollHeight - pane.clientHeight
@@ -97,11 +114,7 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
     const scrolled = () => {
       const own = ownScroll.current;
       ownScroll.current = null;
-      const reader = own === null || Math.abs(pane.scrollTop - own) > 1;
-      if (atEnd()) following.current = true;
-      else if (reader && pane.scrollTop < lastTop.current - 1) following.current = false;
-      lastTop.current = pane.scrollTop;
-      save(reader);
+      observe(own === null || Math.abs(pane.scrollTop - own) > 1);
     };
     const grew = () => { if (following.current && !atEnd()) toEnd(); };
     const resize = new ResizeObserver(grew);
