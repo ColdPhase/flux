@@ -43,7 +43,7 @@ async function fixture() {
   const candidates = async () => (await pool.query('SELECT * FROM proactive_comparison_outbox WHERE rule_id=$1 ORDER BY created_at,id', [rule.id])).rows;
   const window = async () => (await pool.query('SELECT * FROM proactive_comparison_project_changes WHERE project_id=$1', [prj.id])).rows[0];
   const connect = async () => expectStatus(await owner.browser.request('POST', '/api/v1/background-compute-connections', { body: {
-    apiKey: `sk-ant-api03-${'scheduling-fixture-'.repeat(4)}END8`, payerOrganization: 'Fixture payer', providerWorkspace: 'Fixture scope',
+    provider: 'anthropic', model: 'claude-sonnet-5', apiKey: `sk-ant-api03-${'scheduling-fixture-'.repeat(4)}END8`, payerOrganization: 'Fixture payer', providerWorkspace: 'Fixture scope',
     workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true, providerBillingAcknowledged: true,
     projectDataDisclosureAcknowledged: true, maxRunsPerDay: 3, periodDays: 30, periodBudgetCents: 50, perRunCents: 5,
   } }), 201);
@@ -226,7 +226,7 @@ test('unchanged dismissed/unknown candidates never retry; a new human revision p
   for (const state of ['dismissed', 'unknown'] as const) {
     const f = await fixture(); const material = await f.material(); const result = await f.negative();
     expectStatus(await f.owner.browser.request('POST', '/api/v1/background-compute-connections', { body: {
-      apiKey: `sk-ant-api03-${'scheduling-fixture-'.repeat(4)}END8`, payerOrganization: 'Fixture payer', providerWorkspace: 'Fixture scope',
+      provider: 'anthropic', model: 'claude-sonnet-5', apiKey: `sk-ant-api03-${'scheduling-fixture-'.repeat(4)}END8`, payerOrganization: 'Fixture payer', providerWorkspace: 'Fixture scope',
       workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true, providerBillingAcknowledged: true,
       projectDataDisclosureAcknowledged: true, maxRunsPerDay: 3, periodDays: 30, periodBudgetCents: 50, perRunCents: 5,
     } }), 201);

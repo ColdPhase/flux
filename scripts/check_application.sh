@@ -68,8 +68,9 @@ if [ -z "$FLUX_VAPID_PUBLIC_KEY" ] || [ -z "$FLUX_VAPID_PRIVATE_KEY" ]; then
 fi
 
 $compose run --rm test
-if $compose logs --no-color api | grep -F 'owner-budget-key-' >/dev/null; then
-  echo 'Background provider key appeared in API logs' >&2
+# Every seeded provider key (each adapter's, #179) carries this marker; none may reach a log.
+if $compose logs --no-color api worker providermock | grep -F 'owner-budget-key-' >/dev/null; then
+  echo 'Background provider key appeared in API, worker or provider-mock logs' >&2
   exit 1
 fi
 

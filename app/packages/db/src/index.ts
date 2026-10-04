@@ -90,6 +90,7 @@ export function listen(connectionString: string, channel: string, onNotify: (pay
 export * from './repositories/returns.js';
 export * from './repositories/proactive-comparison.js';
 export * from './repositories/background-connections.js';
+export * from './repositories/personal-connections.js';
 export * from './repositories/proactive-outbox.js';
 export * from './repositories/proactive-outcomes.js';
 export * from './repositories/proactive-scheduling.js';
