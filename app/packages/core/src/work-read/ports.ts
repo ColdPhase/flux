@@ -1,4 +1,4 @@
-import type { NativeWorkRow, ObjectLink, PrincipalRef, ProjectAccess, ProjectWorkSummary, SourceAssociationCounts, WorkDetailProjection } from '@flux/contracts';
+import type { NativeWorkRow, ObjectLink, ThoughtTaskRow, PrincipalRef, ProjectAccess, ProjectWorkSummary, SourceAssociationCounts, WorkDetailProjection } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 import type { WorkReadCursor } from '@flux/contracts';
 import type { WorkReadSlice } from './cursor.js';
@@ -11,6 +11,15 @@ export interface WorkReadAccess {
 export type WorkSummaryObservation = Omit<ProjectWorkSummary, 'access'>;
 export type WorkDetailObservation = Omit<WorkDetailProjection, 'access'>;
 export interface WorkReferenceObservation { items: NativeWorkRow[]; unavailable: WorkReadObject[] }
+/** Selected project thoughts and their linked tasks: exact counts and one window of <=100 pairs. */
+export interface WorkThoughtTasksObservation {
+  /** The selected ids that are thoughts of this project's project-scoped sketches, sorted. */
+  visible: string[];
+  counts: { thoughtId: string; tasks: number }[];
+  links: { thoughtId: string; workId: string }[];
+  linkTotal: number;
+  items: ThoughtTaskRow[];
+}
 export interface WorkAssociationObservation {
   objects: WorkReadSlice<NativeWorkRow>;
   sources: WorkReadSlice<SourceAssociationCounts>;
@@ -35,6 +44,8 @@ export interface WorkReadRepository {
   associationSources(projectId: string, selection: WorkAssociationSelection, cursor?: WorkReadCursor): Promise<WorkReadSlice<SourceAssociationCounts>>;
   associationEdges(projectId: string, selection: WorkAssociationSelection, objects: readonly WorkReadObject[], limit: number, cursor?: WorkReadCursor): Promise<WorkReadSlice<ObjectLink>>;
   associationEdgeTotal(projectId: string, selection: WorkAssociationSelection): Promise<number>;
+  /** Thoughts are validated structurally; missing/foreign ones are simply not visible. */
+  thoughtTasks(projectId: string, thoughtIds: readonly string[]): Promise<WorkThoughtTasksObservation>;
   observedAt(): Promise<string>;
 }
 export interface WorkReadPorts { access: WorkReadAccess; rows: WorkReadRepository }
@@ -48,6 +59,8 @@ export interface WorkReadRequirements {
   parkedDecisionId?: string;
   /** The selected found/marker partition must remain unchanged before release. */
   references?: { objects: readonly WorkReadObject[]; available: readonly WorkReadObject[] };
+  /** The selected thoughts that are this project's thoughts must remain exactly these. */
+  thoughts?: { requested: readonly string[]; visible: readonly string[] };
 }
 
 /** Outside that observation: require the SAME exact session, current project policy and source digest.

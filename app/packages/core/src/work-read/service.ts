@@ -1,13 +1,13 @@
 import {
   WORK_GROUPS, WORK_READ_LIMITS, WORK_LIMITS, type NativeWorkRow, type PrincipalRef, type ProjectWorkSummary,
-  type ProjectWorkView, type WorkAssociations, type WorkDetailProjection, type WorkRelations, type WorkReferenceRows,
+  type ProjectWorkView, type WorkAssociations, type WorkDetailProjection, type WorkRelations, type WorkReferenceRows, type WorkThoughtTasks,
 } from '@flux/contracts';
 import { DomainError, ServiceUnavailableError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import { decodeWorkReadCursor, presentWorkReadPage, workReadScope } from './cursor.js';
 import type { WorkReadFinalFence, WorkReadPorts, WorkReadRequirements, WorkReadUnitOfWork, WorkSummaryObservation } from './ports.js';
 import {
-  assertEmptyWorkReadQuery, parseWorkAssociationRead, parseWorkRelationRead, parseWorkReferenceRead, parseWorkViewRead,
+  assertEmptyWorkReadQuery, parseWorkAssociationRead, parseWorkRelationRead, parseWorkReferenceRead, parseWorkThoughtTasksRead, parseWorkViewRead,
   workReadId, workReadInvalid, workReadKind,
 } from './query.js';
 
@@ -92,6 +92,29 @@ export function createBoundedWorkReads(unit: WorkReadUnitOfWork, finalFence: Wor
         return { projectId, observedAt, ...result };
       }, undefined, (value) => ({ references: { objects, available: value.items.map(({ kind, id }) => ({ kind, id })) } }));
       return { ...response.value, access: response.access };
+    },
+
+    async thoughtTasks(principal: Principal, rawProjectId: string, query: URLSearchParams): Promise<WorkThoughtTasks> {
+      const actor = caller(principal), projectId = workReadId(rawProjectId);
+      const thoughtIds = parseWorkThoughtTasksRead(new URLSearchParams(query));
+      const response = await observe(actor, projectId, async ({ rows }, observedAt, workspaceId) => {
+        const result = await rows.thoughtTasks(projectId, thoughtIds);
+        const selected = new Set(thoughtIds), visible = new Set(result.visible);
+        requireFact(result.visible.every((id, i) => selected.has(id) && (i === 0 || result.visible[i - 1]! < id)));
+        requireFact(result.counts.every((entry, i) => visible.has(entry.thoughtId) && Number.isSafeInteger(entry.tasks) && entry.tasks > 0
+          && (i === 0 || result.counts[i - 1]!.thoughtId < entry.thoughtId)));
+        requireFact(count(result.linkTotal) && result.linkTotal === result.counts.reduce((sum, entry) => sum + entry.tasks, 0));
+        requireFact(result.links.length <= WORK_READ_LIMITS.edges && result.links.length <= result.linkTotal);
+        requireFact(new Set(result.links.map((link) => `${link.thoughtId}:${link.workId}`)).size === result.links.length);
+        const items = new Set(result.items.map((item) => item.id));
+        requireFact(items.size === result.items.length && result.items.length <= WORK_READ_LIMITS.page);
+        requireFact(result.links.every((link) => visible.has(link.thoughtId) && items.has(link.workId)));
+        requireFact(result.items.every((item) => result.links.some((link) => link.workId === item.id) && item.kind === 'work'
+          && (item.createdBy.kind === 'human' || item.createdBy.kind === 'agent') && typeof item.createdBy.name === 'string'));
+        rowFacts(result.items, projectId, workspaceId);
+        return { observedAt, visible: result.visible, value: { counts: result.counts, links: result.links, linkTotal: result.linkTotal, items: result.items } };
+      }, undefined, (observed) => ({ thoughts: { requested: thoughtIds, visible: observed.visible } }));
+      return { projectId, observedAt: response.value.observedAt, access: response.access, ...response.value.value };
     },
 
     async summary(principal: Principal, rawProjectId: string, query = new URLSearchParams()): Promise<ProjectWorkSummary> {

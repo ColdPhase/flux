@@ -193,6 +193,25 @@ clear; older stored text must not win on a later SPA remount. Account/project
 switches cannot relabel another draft. Preserve focus/selection during passive
 resize/refresh and the current per-view native reading anchor.
 
+Thought task counts (2026-10-04, #170 integration of #196): a project Map shows how many
+tasks link to each thought and lists them. It never reads the project work collection.
+`GET /api/v1/projects/:projectId/work-thought-tasks?thoughtIds=` takes 1..100 thought UUIDs
+(raw bound before deduplication, closed query, no cursor) and returns, in one read-only
+REPEATABLE READ observation with the final session/project.read fence:
+`counts` — the exact number of distinct native tasks with a visible link from the task to each
+requested thought (any role), listed only for thoughts with at least one; a missing, foreign,
+private-sketch or DM-sketch thought is indistinguishable from one with no tasks; `links` — one
+global window of at most 100 (thought, task) pairs ordered by thought id, then unparked before
+parked, then in progress, blocked, open, done, not pursued, then created time and id;
+`linkTotal` — all such pairs; `items` — the distinct tasks in that window as native work rows
+plus `createdBy` (the chooser's "added by"; the same project audience as the task itself).
+The final fence also requires the set of selected thoughts that are project thoughts to be
+unchanged (409 `work_read_changed` otherwise) and the existing link-visibility digest. The
+client chunks a sketch's thoughts by 100; a thought whose pairs are not all in its chunk's
+window is read on its own when its chooser opens (at most 100 tasks, the rest named as a
+count). Counts refresh on `project.work_*`, `project.link_*`, `project.result_*` stream events,
+on window focus and after Create work.
+
 ## Required evidence before claiming the correction
 
 Run actual native policy/collection regression coverage for all group/mine/source,

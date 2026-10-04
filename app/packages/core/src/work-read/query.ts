@@ -132,3 +132,9 @@ export function parseWorkReferenceRead(query: URLSearchParams): WorkReadObject[]
   closed(query, ['objects']);
   return selectedObjects(query);
 }
+
+/** 1..100 thought UUIDs (raw bound before deduplication), normalized and sorted; no cursor. */
+export function parseWorkThoughtTasksRead(query: URLSearchParams): string[] {
+  closed(query, ['thoughtIds']);
+  return [...new Set(list(query, 'thoughtIds', WORK_READ_LIMITS.thoughtIds).map(workReadId))].sort();
+}

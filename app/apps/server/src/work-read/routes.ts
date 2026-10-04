@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { projectWorkSummaryPath, projectWorkViewPath, projectWorkAssociationsPath, projectWorkRelationsPath, projectWorkReferenceRowsPath } from '@flux/contracts';
+import { projectWorkSummaryPath, projectWorkViewPath, projectWorkAssociationsPath, projectWorkRelationsPath, projectWorkReferenceRowsPath, projectWorkThoughtTasksPath } from '@flux/contracts';
 import type { Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
@@ -19,6 +19,9 @@ export async function workReadRoutes(app: FastifyInstance, { db, sessions }: { d
   });
   app.get<{ Params: { projectId: string } }>(projectWorkReferenceRowsPath(':projectId'), async (request) => {
     const { reads, principal } = await prepare(request); return reads.references(principal, request.params.projectId, query(request));
+  });
+  app.get<{ Params: { projectId: string } }>(projectWorkThoughtTasksPath(':projectId'), async (request) => {
+    const { reads, principal } = await prepare(request); return reads.thoughtTasks(principal, request.params.projectId, query(request));
   });
   app.get<{ Params: { projectId: string } }>(projectWorkViewPath(':projectId'), async (request) => {
     const { reads, principal } = await prepare(request); return reads.view(principal, request.params.projectId, query(request));

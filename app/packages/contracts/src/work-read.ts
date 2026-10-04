@@ -7,13 +7,14 @@ export const projectWorkViewPath = (projectId: string) => `/api/v1/projects/${pr
 export const projectWorkAssociationsPath = (projectId: string) => `/api/v1/projects/${projectId}/work-associations`;
 export const projectWorkRelationsPath = (projectId: string) => `/api/v1/projects/${projectId}/work-relations`;
 export const projectWorkReferenceRowsPath = (projectId: string) => `/api/v1/projects/${projectId}/work-reference-rows`;
+export const projectWorkThoughtTasksPath = (projectId: string) => `/api/v1/projects/${projectId}/work-thought-tasks`;
 export const projectWorkDetailPath = (projectId: string, kind: WorkObjectType, id: string) =>
   `/api/v1/projects/${projectId}/work-objects/${kind}/${id}`;
 
 export const WORK_GROUPS = ['needs', 'in_progress', 'blocked', 'open', 'parked', 'finished', 'rules', 'results'] as const;
 export type WorkGroup = typeof WORK_GROUPS[number];
 export type WorkCounts = Record<WorkGroup, number>;
-export const WORK_READ_LIMITS = { defaultPage: 50, page: 100, sourceIds: 100, relationObjects: 100, edges: 100, query: 200, cursor: 512, owners: 3 } as const;
+export const WORK_READ_LIMITS = { defaultPage: 50, page: 100, sourceIds: 100, relationObjects: 100, edges: 100, thoughtIds: 100, query: 200, cursor: 512, owners: 3 } as const;
 
 export interface WorkReadQuery {
   /** 1..100, default 50. A row page never hydrates implicit unlimited links. */
@@ -111,6 +112,27 @@ export interface WorkReferenceRows {
   access: ProjectAccess;
   items: NativeWorkRow[];
   unavailable: { kind: WorkObjectType; id: string }[];
+}
+
+/** A task linked to a thought (#196): the native row plus who added it. */
+export interface ThoughtTaskRow extends WorkRowProjection { createdBy: NamedPrincipal }
+
+/**
+ * Tasks linked to 1..100 selected project thoughts (#170/#196). Not a collection API: counts
+ * are exact scalars; links and items are one global window of at most 100 pairs.
+ * A missing or foreign thought is indistinguishable from one without tasks.
+ */
+export interface WorkThoughtTasks {
+  projectId: string;
+  observedAt: string;
+  access: ProjectAccess;
+  /** Thoughts with at least one linked task, ordered by thought id. */
+  counts: { thoughtId: string; tasks: number }[];
+  /** At most 100 (thought, task) pairs: thought id, then unparked, status order, created time, id. */
+  links: { thoughtId: string; workId: string }[];
+  linkTotal: number;
+  /** The distinct tasks of `links`. */
+  items: ThoughtTaskRow[];
 }
 
 export interface ProjectWorkSummary {

@@ -34,7 +34,7 @@ function harness(overrides: Partial<WorkReadRepository> = {}, fence?: WorkReadFi
     sourceVisibilityFingerprint: async () => { calls.push('visibility'); return fingerprint; },
     summary: async () => { calls.push('summary'); return summary(); },
     view: async () => { calls.push('view'); return slice([row()], 2); },
-    selectedWork: notUsed, references: notUsed, detail: notUsed, relations: notUsed, requireSources: notUsed,
+    selectedWork: notUsed, references: notUsed, thoughtTasks: notUsed, detail: notUsed, relations: notUsed, requireSources: notUsed,
     associationObjects: notUsed, associationSources: notUsed, associationEdges: notUsed, associationEdgeTotal: notUsed,
     ...overrides,
   };
@@ -206,5 +206,30 @@ test('reference omissions, duplicates, opaque marker metadata and failed hydrati
     await assert.rejects(reads.references(actor, projectId, new URLSearchParams(`objects=work:${id},work:${otherId}`)),
       (error: unknown) => error instanceof DomainError && error.status === 503 && error.code === 'WORK_READ_UNAVAILABLE');
     assert.equal(calls.includes('final-fence'), false);
+  }
+});
+
+test('thought tasks: bounded parse, coherent observation and the thought set reaches the final fence (#170)', async () => {
+  const thoughtA = '00000000-0000-0000-0000-00000000000a', thoughtB = '00000000-0000-0000-0000-00000000000b';
+  const task = { ...row(), createdBy: { kind: 'human' as const, id: 'native-user', name: 'Ada' } };
+  let required: unknown;
+  const fence: WorkReadFinalFence = { check: async (_principal, _pid, _digest, value) => { required = value; return 'viewer'; } };
+  const { reads } = harness({ thoughtTasks: async (_pid, ids) => {
+    assert.deepEqual(ids, [thoughtA, thoughtB]);
+    return { visible: [thoughtA], counts: [{ thoughtId: thoughtA, tasks: 1 }], links: [{ thoughtId: thoughtA, workId: id }], linkTotal: 1, items: [task] };
+  } }, fence);
+  const value = await reads.thoughtTasks(actor, projectId, new URLSearchParams(`thoughtIds=${thoughtB.toUpperCase()},${thoughtA},${thoughtB}`));
+  assert.deepEqual(value.counts, [{ thoughtId: thoughtA, tasks: 1 }]); assert.equal(value.access, 'viewer'); assert.equal('visible' in value, false);
+  assert.deepEqual(required, { thoughts: { requested: [thoughtA, thoughtB], visible: [thoughtA] } });
+  for (const bad of ['', `thoughtIds=${Array(101).fill(thoughtA).join(',')}`, `thoughtIds=${thoughtA}&limit=1`, 'thoughtIds=nope'])
+    await assert.rejects(reads.thoughtTasks(actor, projectId, new URLSearchParams(bad)), { status: 400 });
+  const incoherent = [
+    { visible: [thoughtA], counts: [{ thoughtId: thoughtB, tasks: 1 }], links: [], linkTotal: 1, items: [] },
+    { visible: [thoughtA], counts: [{ thoughtId: thoughtA, tasks: 1 }], links: [{ thoughtId: thoughtA, workId: id }], linkTotal: 2, items: [task] },
+    { visible: [thoughtA], counts: [{ thoughtId: thoughtA, tasks: 1 }], links: [{ thoughtId: thoughtA, workId: otherId }], linkTotal: 1, items: [task] },
+  ];
+  for (const observation of incoherent) {
+    const broken = harness({ thoughtTasks: async () => observation }, fence);
+    await assert.rejects(broken.reads.thoughtTasks(actor, projectId, new URLSearchParams(`thoughtIds=${thoughtA}`)), { code: 'WORK_READ_UNAVAILABLE' });
   }
 });

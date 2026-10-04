@@ -1,5 +1,5 @@
 import type { IncomingHttpHeaders } from 'node:http';
-import { nativeWorkReadKeys, nativeWorkObjectRows, nativeWorkReferenceRows, nativeWorkVisibilityRows, nativeWorkSummaryRows, nativeWorkAssociationRows, type DbExecutor, type NativeReadKeyPage } from '@flux/db';
+import { nativeWorkReadKeys, nativeWorkObjectRows, nativeWorkReferenceRows, nativeWorkThoughtRows, nativeWorkVisibilityRows, nativeWorkSummaryRows, nativeWorkAssociationRows, type DbExecutor, type NativeReadKeyPage } from '@flux/db';
 import {
   accessName, createBoundedWorkReads, DomainError, enforce, evaluateProject, NotFoundError,
   type Database, type Principal, type WorkReadAccess, type WorkReadFinalFence,
@@ -50,6 +50,7 @@ export function nativeWorkReadRepository(db: DbExecutor): WorkReadRepository {
       const found = new Set(available.map(({ kind, id }) => `${kind}:${id}`));
       return { items: await objects.rows(projectId, available), unavailable: requested.filter(({ kind, id }) => !found.has(`${kind}:${id}`)) };
     },
+    thoughtTasks: (projectId, thoughtIds) => nativeWorkThoughtRows(db).observe(projectId, thoughtIds),
     async detail(projectId, ref) {
       const object = await objects.detail(projectId, ref);
       if (!object) throw new NotFoundError('Work object', 'WORK_OBJECT_NOT_FOUND');
@@ -100,6 +101,12 @@ export function nativeWorkReadFinalFence(db: Database, sessions: SessionResolver
       const current = await nativeWorkReferenceRows(db).available(projectId, objects);
       if (current.length !== available.length || current.some((ref, i) => ref.kind !== available[i]?.kind || ref.id !== available[i]?.id))
         throw new DomainError(409, 'work_read_changed', 'Work changed; refresh this view');
+    }
+    if (required?.thoughts) {
+      const { requested, visible } = required.thoughts;
+      const current = await nativeWorkThoughtRows(db).visible(projectId, requested);
+      if (current.length !== visible.length || current.some((id, i) => id !== visible[i]))
+        throw new DomainError(409, 'work_read_changed', 'Thoughts changed; refresh this view');
     }
     const current = await nativeWorkVisibilityRows(db).fingerprint(projectId, sources);
     if (current !== fingerprint) throw new DomainError(409, 'work_read_changed', 'Work sources changed; refresh this view');

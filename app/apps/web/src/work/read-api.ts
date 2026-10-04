@@ -1,9 +1,9 @@
 import {
   projectWorkAssociationsPath, projectWorkDetailPath, projectWorkRelationsPath,
-  projectWorkSummaryPath, projectWorkViewPath, projectWorkReferenceRowsPath,
+  projectWorkSummaryPath, projectWorkViewPath, projectWorkReferenceRowsPath, projectWorkThoughtTasksPath,
   type ProjectWorkSummary, type ProjectWorkView, type ProjectWorkViewQuery,
   type WorkAssociationQuery, type WorkAssociations, type WorkDetailProjection,
-  type WorkObjectType, type WorkRelationQuery, type WorkRelations, type WorkReferenceRows,
+  type WorkObjectType, type WorkRelationQuery, type WorkRelations, type WorkReferenceRows, type WorkThoughtTasks,
 } from '@flux/contracts';
 import { request } from '../api/client.js';
 
@@ -61,6 +61,21 @@ export function workRelationReadUrl(projectId: string, query: WorkRelationQuery)
 export function workReferenceReadUrl(projectId: string, objects: string) {
   return withQuery(projectWorkReferenceRowsPath(encodeURIComponent(projectId)), { objects: boundedSet(objects, 'Objects') });
 }
+
+/** Thoughts of one sketch in sorted, distinct chunks of at most 100 (one bounded read each). */
+export function thoughtChunks(thoughtIds: readonly string[]): string[] {
+  const ids = [...new Set(thoughtIds)].sort();
+  const chunks: string[] = [];
+  for (let start = 0; start < ids.length; start += 100) chunks.push(ids.slice(start, start + 100).join(','));
+  return chunks;
+}
+
+export function workThoughtTasksReadUrl(projectId: string, thoughtIds: string) {
+  return withQuery(projectWorkThoughtTasksPath(encodeURIComponent(projectId)), { thoughtIds: boundedSet(thoughtIds, 'Thoughts') });
+}
+
+export const getWorkThoughtTasks = (projectId: string, thoughtIds: string, signal?: AbortSignal) =>
+  request<WorkThoughtTasks>(workThoughtTasksReadUrl(projectId, thoughtIds), { signal });
 
 export const getWorkReferenceRows = (projectId: string, objects: string, signal?: AbortSignal) =>
   request<WorkReferenceRows>(workReferenceReadUrl(projectId, objects), { signal });

@@ -7,7 +7,6 @@ import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { createWork } from '../work/api';
-import { useProjectShell } from '../project/data';
 import { useSketchDoc, type Op } from './doc';
 import { audience, quote, sketchHref, when } from './format';
 import { freeSpot, rectOf } from './geometry';
@@ -16,7 +15,7 @@ import { SketchMap } from './SketchMap';
 import { useOutline } from './useOutline';
 import { useThoughtDraft } from './createdDraft';
 import { DraftCapture } from './DraftCapture';
-import { tasksByThought } from './ThoughtTasks';
+import { useThoughtTasks } from './ThoughtTasks';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import './sketch.css';
 
@@ -101,21 +100,30 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   const projectName = useProjectName(sketch?.projectId);
   const canWrite = sketch?.access === 'write';
 
-  // UI116-4: each thought of a project sketch shows how many of the project's tasks link to it.
-  // The tasks are the project's own (loaded once for all its views) and refresh when its work
-  // or links change; a private or DM sketch has no linkable thoughts.
-  const shell = useProjectShell();
+  // UI116-4: each thought of a project sketch shows how many of the project's tasks link to it,
+  // from bounded reads of the sketch's own thoughts (#170), never the project's work collection.
+  // They refresh when the project's work or links change, on focus and after Create work; a
+  // private or DM sketch has no linkable thoughts.
   const taskProjectId = sketch?.scope === 'project' ? sketch.projectId ?? null : null;
-  const projectWork = shell && taskProjectId && shell.project.id === taskProjectId ? shell.work.work : null;
-  const tasks = useMemo(() => tasksByThought(projectWork ?? []), [projectWork]);
+  const [taskRevision, setTaskRevision] = useState(0);
+  const thoughtIds = useMemo(() => sketch?.thoughts.map((t) => t.id).sort() ?? [], [sketch?.thoughts]);
+  const thoughtKey = thoughtIds.join(',');
+  const stableIds = useMemo(() => thoughtKey ? thoughtKey.split(',') : [], [thoughtKey]);
+  const tasks = useThoughtTasks(me.user.id, taskProjectId, stableIds, taskRevision);
   const revalidator = useRevalidator();
   const workRefresh = useRef<number | null>(null);
   useEffect(() => () => { if (workRefresh.current !== null) window.clearTimeout(workRefresh.current); }, []);
   useStreamEvents(me.user.id, (event) => {
     if (!taskProjectId || event.objectType !== 'project' || event.objectId !== taskProjectId || !/^project\.(work|link|result)_/.test(event.kind)) return;
     if (workRefresh.current !== null) window.clearTimeout(workRefresh.current);
-    workRefresh.current = window.setTimeout(() => { workRefresh.current = null; revalidator.revalidate(); }, 250);
+    workRefresh.current = window.setTimeout(() => { workRefresh.current = null; setTaskRevision((value) => value + 1); }, 250);
   });
+  useEffect(() => {
+    if (!taskProjectId) return;
+    const refresh = () => { if (document.visibilityState === 'visible') setTaskRevision((value) => value + 1); };
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
+  }, [taskProjectId]);
 
   const say = (text: string, change = false) => setStatus({ text, change });
   const find = (id: string) => sketch?.thoughts.find((t) => t.id === id);
@@ -349,6 +357,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     try {
       const item = await createWork(sketch.projectId, { title: title.slice(0, 200), sources: thoughts.map((t) => ({ type: 'thought' as const, id: t.id })) }, workAttempt.current.key);
       workAttempt.current = null;
+      setTaskRevision((value) => value + 1);
       revalidator.revalidate();
       say(`Created work ${quote(item.title)}; the thoughts stay on the map`);
       openDetails({ kind: 'work', id: item.id, projectId: item.projectId });
