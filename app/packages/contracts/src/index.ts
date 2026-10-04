@@ -59,3 +59,4 @@ export * from './cowork.js';
 export * from './github.js';
 export * from './agent-execution.js';
 export * from './agent-bootstrap.js';
+export * from './project-agents.js';
