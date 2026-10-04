@@ -15,6 +15,17 @@ Before starting browser measurements, the runner must:
 3. Inspect the actual environment, dependency pins and image/source contents. Write sanitized `runtime.json`, then compare the baked driver's SHA-256 and candidate source SHA. Do not collect full environment variables, authorization headers, cookies, connection strings or keys.
 4. Start a finite collector which retains only the agreed primitive telemetry records as strict UTF-8 JSON lines in `actual-queue.jsonl`. Keep non-telemetry diagnostic logs separately, sanitized. A collector truncation, malformed record, loss or producer stdout backpressure makes evidence incomplete.
 
+The runner-owned reproducible collector path is `scripts/collect_live_editing_queue.py`. Its reviewed source import and execution are separate required work; this recipe remains unverified until the coherent candidate contains it and passes its checks. The inventory JSON is a closed object with exactly `source_sha`, `driver_sha256`, `api_instances`, and `containers`, where the containers object maps every expected API ID to its actual full Docker container ID. Verify the actual running container's identity and configuration, including `FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE` and `FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY`, without logging unrelated environment values. The inventory and runtime descriptor use identical source/driver pins and expected-ID order.
+
+Run the collector as a yielded foreground process under the runner's cleanup trap:
+
+```sh
+python3 scripts/collect_live_editing_queue.py \
+  "$evidence_directory" "$inventory_json" --timeout 1200
+```
+
+Observe its source/inventory-bound `collector-ready.json` before starting the driver. Retain only the strict JSON suffix of lines beginning with `FLUX_LIVE_QUEUE `; the raw file does not include that prefix or unrelated application stdout. The collector's total deadline is finite and separate from the driver's 15-second post-marker wait. On a validated finish marker, the coordinator asks Docker to stop all inventoried producers with an eight-second graceful stop budget (`docker stop --time 8`), keeps reading their stdout, and waits for **each** log process's EOF and process settlement before sealing. A forced stop, missing final or unsettled process is incomplete; Docker stop success alone cannot certify drain. Tool orchestration launches the long run in a yielded session and checks progress with waits of at most 60 seconds.
+
 The runtime metadata is a closed object with exactly these fields:
 
 | Field | Actual value required |
