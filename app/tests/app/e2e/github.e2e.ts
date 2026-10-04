@@ -133,11 +133,14 @@ test('real settings UI binds, verifies PR links and removes private projections 
   await page.getByLabel('Find task',{exact:true}).fill(task.title);
   await expect(page.getByLabel('Task',{exact:true}).locator('option')).toHaveCount(2);
   await page.getByLabel('Task', { exact: true }).selectOption(task.id);
+  const noPulls = page.getByText('No pull requests are linked to this task yet.', { exact: true });
+  await noPulls.waitFor(); // #218: a chosen task without links says so instead of staying blank.
   const linker = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Link an existing pull request', exact: true }) });
   await linker.getByLabel('Repository', { exact: true }).selectOption({ label: 'lamp-team/gesture-lamp-firmware' });
   await page.getByLabel('Pull request number', { exact: true }).fill('42');
   await page.getByRole('button', { name: 'Verify and link PR', exact: true }).click();
   const privatePull = page.getByRole('link', { name: '#42 · Keep a manual off switch when gesture sensing loses calibration', exact: true }); await privatePull.waitFor();
+  assert.equal(await noPulls.count(), 0, 'the empty line is gone once a pull request is linked');
   assert.match(await linker.innerText(), /nia-firmware.*head aaaaaaaaaaaa/);
   // Clearing the search returns to the page the person left in the unfiltered list (each search keeps its own page).
   await page.getByLabel('Find task',{exact:true}).fill('');await expect(choices).toContainText('51–100 of 105 tasks');
