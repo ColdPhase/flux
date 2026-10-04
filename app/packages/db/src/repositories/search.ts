@@ -155,9 +155,9 @@ function hitConditions(plan: SearchPlanRows, withKinds: boolean): SQL {
     sql`sd.audience_key = ANY ((SELECT keys FROM aud)::text[])`,
     // Work IDs are UUIDs; other kinds (including people) can carry arbitrary text IDs.
     // Keep the indexed UUID side intact and apply lifecycle before page/count/probe limits.
-    sql`(sd.kind <> 'work' OR EXISTS (SELECT 1 FROM project_work_items active_work
-      WHERE active_work.id = (CASE WHEN sd.kind = 'work' THEN sd.object_id::uuid END)
-        AND active_work.creation_reverted_at IS NULL))`,
+    // A correlated scalar projection cannot become a hashed scan of unrelated tasks.
+    sql`(sd.kind <> 'work' OR COALESCE((SELECT active_work.creation_reverted_at IS NULL FROM project_work_items active_work
+      WHERE active_work.id = (CASE WHEN sd.kind = 'work' THEN sd.object_id::uuid END)), false))`,
     plan.fuzzy ? sql`(sd.tsv @@ ${tsquery(plan)} OR sd.title %> ${plan.text})` : sql`sd.tsv @@ ${tsquery(plan)}`,
   ];
   if (withKinds && plan.kinds?.length) conditions.push(sql`sd.kind IN (${sql.join(plan.kinds.map((kind) => sql`${kind}`), sql`, `)})`);

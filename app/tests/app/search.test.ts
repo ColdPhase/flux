@@ -413,6 +413,9 @@ test('hidden work matches leave visible work results, counts and indexed work id
   await pool.query('ANALYZE search_documents, project_work_items');
   const before = await search(reader, query);
   const beforeWork = await explain(reader, query);
+  assert.ok(beforeWork.nodes.some((node) => node.includes('project_work_items')), 'the positive visible work lookup is measured');
+  const fewestBuffers = async () => Math.min(...await Promise.all([0, 1, 2].map(async () => (await explain(reader, query)).buffers)));
+  const beforeBuffers = await fewestBuffers();
   assert.deepEqual(before.items.map((hit) => hit.target), [{ type: 'work', projectId: visible.id, id: task.id }]);
   assert.equal(before.counts.work, 1);
   assert.equal(before.next, null);
@@ -425,7 +428,13 @@ test('hidden work matches leave visible work results, counts and indexed work id
   await pool.query('ANALYZE search_documents, project_work_items');
   assert.deepEqual(await search(reader, query), before, 'hidden work changes neither results, counts nor next');
   const work = ({ rows, indexRows, indexScans, lookups }: SearchWork) => ({ rows, indexRows, indexScans, lookups });
-  assert.deepEqual(work(await explain(reader, query)), work(beforeWork), 'audience filtering still precedes indexed task lookup');
+  const afterWork = await explain(reader, query);
+  assert.deepEqual(work(afterWork), work(beforeWork), 'every scan row, including the task lookup, stays independent of hidden work');
+  // Whole-statement buffers include active_work, as well as search_documents. Shared index entry-tree
+  // growth may add one page per key lookup plus two per scan; allow four pages for the two UUID probes.
+  const bufferGrowth = (await fewestBuffers()) - beforeBuffers;
+  const treeSlack = afterWork.indexScans * (afterWork.lookups + 2) + 4;
+  assert.ok(bufferGrowth <= treeSlack, `whole-query buffers (including work) grew ${bufferGrowth}, allowed ${treeSlack}`);
   const inside = await search(owner, query);
   assert.equal(inside.counts.work, 201);
   assert.ok(inside.next, 'positive control sees the actual restricted work');
