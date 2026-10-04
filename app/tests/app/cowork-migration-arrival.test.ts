@@ -59,8 +59,10 @@ for (const order of arrivals) test(`co-work, runtime and genuine-actor migration
       task: (await client.query('SELECT id,title,status,version,created_by_kind,created_by_id,created_at,updated_at FROM project_work_items WHERE id=$1', [task])).rows,
       conversation: (await client.query('SELECT id,created_by,next_sequence,created_at FROM project_conversations WHERE id=$1', [conversation])).rows,
       message: (await client.query('SELECT id,conversation_id,author_id,sequence,body,created_at,source_material_id,source_material_version FROM project_messages WHERE id=$1', [message])).rows,
-      // The original columns only: later migrations may add nullable provenance columns (e.g. 0043).
-      source: (await client.query('SELECT workspace_id,project_id,material_id,version,title,body,author_id,created_at FROM project_material_versions WHERE material_id=$1', [material])).rows,
+      // Every original column (0006 and 0013's state/reason); only columns added by later
+      // migrations are left out (0043's nullable author_agent_id).
+      source: (await client.query(`SELECT workspace_id,project_id,material_id,version,title,body,url,author_id,client_mutation_id,
+        request_fingerprint,source_draft_id,source_draft_version,created_at,state,reason FROM project_material_versions WHERE material_id=$1`, [material])).rows,
       search: (await client.query('SELECT * FROM search_documents WHERE doc_key=$1', [`message:${message}`])).rows,
     });
     const before = await history();
@@ -96,6 +98,9 @@ for (const order of arrivals) test(`co-work, runtime and genuine-actor migration
       assert.deepEqual(await history(), before, `migration${file.version} must preserve original history`);
       assert.deepEqual(await coordination(), retained, `migration${file.version} must retain existing claim/checkpoint`);
     }
+    // 0043's added provenance column leaves the human-authored history as it was.
+    assert.deepEqual((await client.query('SELECT author_agent_id FROM project_material_versions WHERE material_id=$1', [material])).rows,
+      [{ author_agent_id: null }], 'the original human source gains no agent author');
     for (const table of ['agent_oauth_bindings', 'agent_runtime_sessions', 'agent_standing_grants', 'agent_command_receipts',
       'project_task_notices', 'project_task_discussions', 'cowork_requests', 'cowork_delivery_intents'])
       assert.equal((await client.query(`SELECT count(*)::int AS n FROM ${table}`)).rows[0].n, 0, `${table}: no inferred authority/content/receipt backfill`);
