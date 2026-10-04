@@ -11,6 +11,16 @@ export function RouteErrorPage() {
   const revalidator = useRevalidator();
   const retrying = revalidator.state === 'loading';
   const sketchId = /\/map\/([0-9a-f-]{36})$/i.exec(useLocation().pathname)?.[1];
+  const unreachable = error instanceof NetworkError;
+  // "This page will work again once the server answers": when the device is back online, and every
+  // 10 s while the page is visible, it tries again by itself.
+  useEffect(() => {
+    if (!unreachable) return;
+    const retry = () => { if (document.visibilityState === 'visible' && navigator.onLine !== false) revalidator.revalidate(); };
+    window.addEventListener('online', retry);
+    const timer = window.setInterval(retry, 10_000);
+    return () => { window.removeEventListener('online', retry); window.clearInterval(timer); };
+  }, [unreachable, revalidator]);
   let title = 'Something went wrong';
   let body = 'Flux hit an unexpected problem while opening this page. Nothing you wrote was lost.';
   let detail: string | undefined;

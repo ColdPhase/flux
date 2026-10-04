@@ -24,7 +24,7 @@ const email = await registerNotificationEmailWorker(boss, db);
 const generator = startNotificationGenerator({ db, boss, connectionString, emailAvailable: email.available });
 await registerDraftSummaryWorker(boss, db);
 // Personal assistant runs (#68): the payload is a run id; every step rechecks the owner.
-const personalRuns = personalRunWorkerComposition(process.env);
+const personalRuns = personalRunWorkerComposition(process.env, db);
 if (personalRuns.mode !== 'production') console.warn(JSON.stringify({ warning: 'TEST ONLY: personal runs use fixture connections and a mock provider', mode: personalRuns.mode }));
 const personalRunRecovery = await registerPersonalRunWorker(boss, db, personalRuns);
 await registerIdempotencyCleanup(boss, db);

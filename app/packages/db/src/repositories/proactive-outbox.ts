@@ -16,7 +16,7 @@ type ProposalRow = typeof proposals.$inferSelect;
 export function comparisonProposalView(row: ProposalRow): ProactiveComparisonProposal {
   return { id: row.id, projectId: row.projectId, resultId: row.resultId, ownerUserId: row.ownerUserId,
     agentId: row.agentId, audience: { kind: 'project', projectId: row.projectId },
-    computeSource: 'owner_background_claude_platform', model: 'claude-sonnet-5',
+    computeSource: 'owner_background_connection', provider: row.provider, model: row.model,
     sources: row.sources, fact: row.fact, interpretation: row.interpretation,
     suggestedAction: row.suggestedAction, status: row.status, version: row.version,
     editedByUserId: row.editedByUserId, usedWorkId: row.usedWorkId,
@@ -67,7 +67,7 @@ export function proactiveOutboxRows(db: DbExecutor) {
       return row ? comparisonProposalView(row) : null;
     },
     async complete(input: { candidateId: string; id: string; ownerUserId: string; agentId: string;
-      projectId: string; resultId: string; sourceFingerprint: string;
+      projectId: string; resultId: string; sourceFingerprint: string; provider: ProposalRow['provider']; model: string;
       sources: ProposalRow['sources']; fact: string; interpretation: string; suggestedAction: string;
       inputTokens: number; outputTokens: number; estimatedCents: number }): Promise<ProactiveComparisonProposal | null> {
       const [candidate] = await db.select({ id: q.id }).from(q)
@@ -77,7 +77,7 @@ export function proactiveOutboxRows(db: DbExecutor) {
         id: input.id, outboxId: input.candidateId, ownerUserId: input.ownerUserId, agentId: input.agentId,
         projectId: input.projectId, resultId: input.resultId, sourceFingerprint: input.sourceFingerprint,
         sources: input.sources, fact: input.fact, interpretation: input.interpretation,
-        suggestedAction: input.suggestedAction,
+        suggestedAction: input.suggestedAction, provider: input.provider, model: input.model,
       }).returning();
       await db.update(q).set({ status: 'completed', proposalId: row!.id, usageInputTokens: input.inputTokens,
         usageOutputTokens: input.outputTokens, usageEstimatedCents: input.estimatedCents,
@@ -191,12 +191,12 @@ export function proactiveOutboxRows(db: DbExecutor) {
     async connectionState(ownerId: string) {
       const [row] = await db.select({ id: connections.id, perRunCents: connections.perRunCents,
         keyAvailable: sql<boolean>`${connections.encryptedKey} IS NOT NULL` }).from(connections)
-        .where(and(eq(connections.ownerUserId, ownerId), isNull(connections.revokedAt))).for('share');
+        .where(and(eq(connections.ownerUserId, ownerId), eq(connections.usedForBackground, true), isNull(connections.revokedAt))).for('share');
       return row ?? null;
     },
     async connection(ownerId: string) {
       const [row] = await db.select().from(connections)
-        .where(and(eq(connections.ownerUserId, ownerId), isNull(connections.revokedAt))).for('share');
+        .where(and(eq(connections.ownerUserId, ownerId), eq(connections.usedForBackground, true), isNull(connections.revokedAt))).for('share');
       return row ?? null;
     },
     async usage(ownerId: string, startOfDay: Date, startOfPeriod: Date) {
