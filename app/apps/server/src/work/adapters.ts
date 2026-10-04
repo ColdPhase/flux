@@ -1,4 +1,4 @@
-import { proactiveOutboxRows, referencedTaskIds, workRows, type DbExecutor } from '@flux/db';
+import { proactiveOutboxRows, referencedTaskIds, workRows, type TaskUseMemory, type DbExecutor } from '@flux/db';
 import {
   evaluateProject,
   visibleFilter,
@@ -19,8 +19,8 @@ export { policyWorkAccess } from './access.js';
 // Adapters that connect the core work use cases (#101) to the access policy, the Drizzle rows
 // and the event log. Core defines the ports (#46); the server assembles them per transaction.
 
-export function workRepository(tx: DbExecutor): WorkRepository {
-  const rows = workRows(tx);
+export function workRepository(tx: DbExecutor, memory?: TaskUseMemory): WorkRepository {
+  const rows = workRows(tx, memory);
   return {
     ...rows,
     /** The policy's own list condition (`visibleFilter`) is applied before the limit and in the total. */

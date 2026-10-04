@@ -135,12 +135,18 @@ function summaryOf(version: DocVersionRecord, named: (actor: ActorRef) => NamedP
 }
 
 async function presentVersion(ports: DocPorts, version: DocVersionRecord): Promise<DocVersion> {
-  const [{ mentions, map }, named] = await Promise.all([resolve(ports, version.projectId, version.body), names(ports, [version.author, ...(version.contributors ?? [])])]);
+  // A protected projection must finish each SQL continuation before a refusal
+  // can unwind the outer owner. No unobserved sibling may allocate afterwards.
+  const [{ mentions, map }, named] = ports.taskUseMemory
+    ? [await resolve(ports, version.projectId, version.body), await names(ports, [version.author, ...(version.contributors ?? [])])] as const
+    : await Promise.all([resolve(ports, version.projectId, version.body), names(ports, [version.author, ...(version.contributors ?? [])])]);
   return { ...summaryOf(version, named), projectId: version.projectId, body: version.body, html: render(ports, version.body, map), mentions };
 }
 
 async function present(ports: DocPorts, row: DocWithCurrent): Promise<Doc> {
-  const [view, linksOf, named] = await Promise.all([presentVersion(ports, row.current), linkReader(ports.work, [row.doc.id]), names(ports, [row.doc.createdBy])]);
+  const [view, linksOf, named] = ports.taskUseMemory
+    ? [await presentVersion(ports, row.current), await linkReader(ports.work, [row.doc.id]), await names(ports, [row.doc.createdBy])] as const
+    : await Promise.all([presentVersion(ports, row.current), linkReader(ports.work, [row.doc.id]), names(ports, [row.doc.createdBy])]);
   return {
     ...view, id: row.doc.id, workspaceId: row.doc.workspaceId, audience: { kind: 'project', projectId: row.doc.projectId },
     createdBy: named(row.doc.createdBy), startedAt: iso(row.doc.createdAt), links: linksOf(row.doc.id),

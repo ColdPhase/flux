@@ -25,7 +25,7 @@ export function docPorts(tx: DbExecutor, events?: DocPorts['events'], taskUseMem
     access: policyWorkAccess(tx),
     docs: docRepository(tx, taskUseMemory),
     live: docLiveVersions(tx),
-    work: workRepository(tx),
+    work: workRepository(tx, taskUseMemory),
     events: events ?? { record: async (principal, workspaceId, kind, projectId, data) => { await recordEvent(tx, principal, workspaceId, kind, projectId, data); } },
     renderer: markdownRenderer,
     taskUseMemory,

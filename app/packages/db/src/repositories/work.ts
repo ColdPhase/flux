@@ -4,7 +4,8 @@ import type { ObjectRef } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { referencedTaskIds } from './task-targets.js';
-import { taskUseRows } from './task-use.js';
+import { taskUseRows, type TaskUseMemory } from './task-use.js';
+import { workProjection } from './work-projection.js';
 import { taskGraphRows } from './task-graph.js';
 
 /**
@@ -83,7 +84,50 @@ async function paged<Row, T>(db: DbExecutor, table: typeof w | typeof d | typeof
   return { items: (rows as Row[]).map(map), total: counted?.total ?? 0 };
 }
 
-export function workRows(db: DbExecutor) {
+export function workRows(db: DbExecutor, memory?: TaskUseMemory) {
+  async function protectedTitles(projectId: string, refs: Ref[]) {
+    // Input arrays, unique sets and SQL AST are owned before their allocation.
+    memory!.reserve(4096 + refs.length * 4096);
+    const of = (type: Ref['type']) => [...new Set(refs.filter(ref => ref.type === type).map(ref => ref.id))];
+    const projections: SQL[] = [];
+    const add = (key: SQL, title: SQL, table: SQL, where: SQL, extra: { excerpt?: boolean; conversation?: SQL; sketch?: SQL } = {}) => {
+      projections.push(sql`SELECT ${key} AS key, ${title} AS title,
+        ${extra.excerpt ?? false}::boolean AS excerpt, ${extra.conversation ?? sql`NULL::uuid`} AS "conversationId",
+        ${extra.sketch ?? sql`NULL::uuid`} AS "sketchId", octet_length(${title})::bigint AS "_chargeBytes"
+        FROM ${table} WHERE ${where}`);
+    };
+    const messages = of('message'); const message = schema.projectMessages;
+    if (messages.length) add(sql`'message:' || ${message.id}::text`, sql`${message.body}`, sql`${message}`,
+      and(eq(message.projectId, projectId), inArray(message.id, messages))!, { excerpt: true, conversation: sql`${message.conversationId}` });
+    const thoughts = of('thought'); const thought = schema.sketchThoughts; const sketch = schema.sketches;
+    if (thoughts.length) add(sql`'thought:' || ${thought.id}::text`, sql`${thought.text}`,
+      sql`${thought} INNER JOIN ${sketch} ON ${sketch.id}=${thought.sketchId}`,
+      and(projectSketch(projectId), inArray(thought.id, thoughts))!, { excerpt: true, sketch: sql`${thought.sketchId}` });
+    const materials = [...new Map(refs.filter((ref): ref is Extract<Ref, { type: 'material' }> => ref.type === 'material')
+      .map(ref => [`${ref.id}:${ref.version}`, ref])).values()];
+    const version = schema.projectMaterialVersions; const material = schema.projectMaterials;
+    if (materials.length) add(sql`'material:' || ${version.materialId}::text || ':' || ${version.version}::text`, sql`${version.title}`, sql`${version}`,
+      and(eq(version.projectId, projectId), or(...materials.map(ref => and(eq(version.materialId, ref.id), eq(version.version, ref.version)))))!);
+    const docs = of('doc');
+    if (docs.length) add(sql`'doc:' || ${material.id}::text`, sql`${version.title}`,
+      sql`${material} INNER JOIN ${version} ON ${version.materialId}=${material.id} AND ${version.version}=${material.currentVersion}`,
+      and(eq(material.projectId, projectId), eq(material.kind, 'doc'), inArray(material.id, docs))!);
+    const sketches = of('sketch');
+    if (sketches.length) add(sql`'sketch:' || ${sketch.id}::text`, sql`${sketch.title}`, sql`${sketch}`,
+      and(projectSketch(projectId), inArray(sketch.id, sketches))!, { sketch: sql`${sketch.id}` });
+    for (const [type, table] of [['work', w], ['decision', d], ['result', r]] as const) {
+      const wanted = of(type); if (!wanted.length) continue;
+      const title = type === 'work' ? sql`CASE WHEN ${w.creationRevertedAt} IS NOT NULL THEN ${w.title} || ' · creation undone' ELSE ${w.title} END` : sql`${table.title}`;
+      add(sql`${type}::text || ':' || ${table.id}::text`, title, sql`${table}`, and(eq(table.projectId, projectId), inArray(table.id, wanted))!);
+    }
+    const titles = new Map<string, { title: string; conversationId?: string; sketchId?: string }>();
+    if (!projections.length) return titles;
+    const rows = await workProjection<{ key: string; title: string; excerpt: boolean; conversationId: string | null; sketchId: string | null }>(
+      db, memory, sql.join(projections, sql` UNION ALL `));
+    for (const row of rows) titles.set(row.key, { title: row.excerpt ? excerpt(row.title) : row.title,
+      ...(row.conversationId ? { conversationId: row.conversationId } : {}), ...(row.sketchId ? { sketchId: row.sketchId } : {}) });
+    return titles;
+  }
   return {
     ...taskGraphRows(db),
     taskUseTargets: (refs: readonly { type: string; id: string }[]) => referencedTaskIds(db, refs),
@@ -248,6 +292,15 @@ export function workRows(db: DbExecutor) {
 
     async links(ids: string[]) {
       if (!ids.length) return [];
+      if (memory) {
+        memory.reserve(4096 + ids.length * 4096);
+        const rows = await workProjection<{ id: string; projectId: string; role: LinkRow['role']; fromType: LinkRow['fromType']; fromId: string;
+          toType: LinkRow['toType']; toId: string; toVersion: number | null; createdAt: string }>(db, memory, sql`
+          SELECT ${l.id} AS id, ${l.projectId} AS "projectId", ${l.role} AS role, ${l.fromType} AS "fromType", ${l.fromId} AS "fromId",
+            ${l.toType} AS "toType", ${l.toId} AS "toId", ${l.toVersion} AS "toVersion", ${l.createdAt} AS "createdAt", 0::bigint AS "_chargeBytes"
+          FROM ${l} WHERE ${or(inArray(l.fromId, ids), inArray(l.toId, ids))} ORDER BY ${l.createdAt}, ${l.id}`, sql`bounded."createdAt", bounded.id`);
+        return rows.map(row => ({ ...row, createdAt: new Date(row.createdAt) }));
+      }
       const rows = await db.select().from(l).where(or(inArray(l.fromId, ids), inArray(l.toId, ids))).orderBy(asc(l.createdAt), asc(l.id));
       return rows.map(toLinkRecord);
     },
@@ -294,6 +347,7 @@ export function workRows(db: DbExecutor) {
 
     /** Titles keyed like core's `refKey`: `<type>:<id>`, or `material:<id>:<version>`. */
     async titles(projectId: string, refs: Ref[]) {
+      if (memory) return protectedTitles(projectId, refs);
       const titles = new Map<string, { title: string; conversationId?: string; sketchId?: string }>();
       const of = (type: Ref['type']) => [...new Set(refs.filter((ref) => ref.type === type).map((ref) => ref.id))];
       const messages = of('message');
@@ -313,7 +367,7 @@ export function workRows(db: DbExecutor) {
       if (materials.length) {
         const v = schema.projectMaterialVersions;
         const rows = await db.select({ id: v.materialId, version: v.version, title: v.title }).from(v)
-          .where(and(eq(v.projectId, projectId), inArray(v.materialId, [...new Set(materials.map((ref) => ref.id))])));
+          .where(and(eq(v.projectId, projectId), or(...materials.map(ref => and(eq(v.materialId, ref.id), eq(v.version, ref.version))))));
         for (const row of rows) titles.set(`material:${row.id}:${row.version}`, { title: row.title });
       }
       const docs = of('doc');
@@ -345,9 +399,22 @@ export function workRows(db: DbExecutor) {
     },
 
     async names(refs: Actor[]) {
+      memory?.reserve(4096 + refs.length * 4096);
       const names = new Map<string, string>();
       const users = [...new Set(refs.filter((ref) => ref.kind === 'human').map((ref) => ref.id))];
       const agents = [...new Set(refs.filter((ref) => ref.kind === 'agent').map((ref) => ref.id))];
+      if (memory) {
+        const projections: SQL[] = [];
+        if (users.length) projections.push(sql`SELECT 'human:' || ${schema.authUsers.id}::text AS key,
+          ${schema.authUsers.name} AS name, (octet_length(${schema.authUsers.name})::bigint + octet_length(${schema.authUsers.id})::bigint) AS "_chargeBytes"
+          FROM ${schema.authUsers} WHERE ${inArray(schema.authUsers.id, users)}`);
+        if (agents.length) projections.push(sql`SELECT 'agent:' || ${schema.agents.id}::text AS key,
+          ${schema.agents.name} AS name, octet_length(${schema.agents.name})::bigint AS "_chargeBytes"
+          FROM ${schema.agents} WHERE ${inArray(schema.agents.id, agents)}`);
+        if (projections.length) for (const row of await workProjection<{ key: string; name: string }>(db, memory, sql.join(projections, sql` UNION ALL `)))
+          names.set(row.key, row.name);
+        return names;
+      }
       if (users.length) {
         for (const row of await db.select({ id: schema.authUsers.id, name: schema.authUsers.name }).from(schema.authUsers).where(inArray(schema.authUsers.id, users)))
           names.set(`human:${row.id}`, row.name);
