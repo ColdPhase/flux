@@ -74,7 +74,7 @@ export function policySketchAccess(db: Executor): SketchAccess {
     },
 
     async placement(principal, ref) {
-      const evaluation = await evaluateDraft(principal, 'draft.read', ref.id, db);
+      const evaluation = await evaluateDraft(principal, 'draft.read', ref.id, db, { lock: true });
       if (!evaluation.visible || !evaluation.allowed || !evaluation.draft) return { readable: false, workspaceId: null, title: null };
       return { readable: true, workspaceId: evaluation.draft.workspaceId, title: evaluation.draft.title };
     },

@@ -20,12 +20,12 @@ test('actual SQL/public ws 100k preview reserves before SQL and keeps source thr
   const doc=expectStatus(await owner.browser.request('POST',`/api/v1/projects/${place.id}/docs`,{body:{title:'Escaped shared body',body:'<&😀'.repeat(25000)}}),201) as Doc;
   const row=(await pool.query('SELECT s.id,s.expires_at,u.name,u.email FROM auth_sessions s JOIN auth_users u ON u.id=s.user_id WHERE s.user_id=$1 ORDER BY s.created_at DESC LIMIT 1',[owner.id])).rows[0];
   const session:SessionContext={sessionId:row.id,expiresAt:row.expires_at,principal:{kind:'human',id:owner.id},user:{id:owner.id,name:row.name,email:row.email}};
-  const held=deferred();const commit=deferred();let holdNext=false;let connections=0;
+  const budget=new EditingOutputBudget();const held=deferred();const commit=deferred();let holdNext=false;let connections=0;
   const authority=wikiAuthority({pool:{async connect(){connections++;const client=await pool.connect();const query=client.query.bind(client);
     client.query=function(...args:unknown[]){if(args[0]==='COMMIT'&&holdNext){holdNext=false;held.resolve();return commit.promise.then(()=>Reflect.apply(query,client,args));}return Reflect.apply(query,client,args);} as typeof client.query;
-    return client;}}});
+    return client;}}},undefined,{outputBudget:budget});
   const head=await authority.bootstrap(session,doc.id);connections=0;
-  const budget=new EditingOutputBudget();const controller=wikiController(authority,budget);const server=createServer();const sockets=new WebSocketServer({server,perMessageDeflate:false});
+  const controller=wikiController(authority,budget);const server=createServer();const sockets=new WebSocketServer({server,perMessageDeflate:false});
   server.listen(0,'127.0.0.1');await once(server,'listening');const address=server.address();assert.ok(address&&typeof address==='object');
   const connected=once(sockets,'connection');const peer=new WebSocket(`ws://127.0.0.1:${address.port}`);await once(peer,'open');const [socket]=await connected as [WebSocket];
   const send=socket.send;let binary=0;

@@ -1556,3 +1556,42 @@ export const docLivePresence = pgTable('doc_live_presence', {
   cursor: jsonb('cursor').$type<{ anchor: string; head: string }>().notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
 }, (t) => [check('doc_live_presence_cursor', sql`jsonb_typeof(${t.cursor}) = 'object' AND octet_length(${t.cursor}::text) <= 4096`)]);
+
+
+export const mapLiveHeads = pgTable('map_live_heads', {
+  sketchId: uuid('sketch_id').primaryKey().references(() => sketches.id,{onDelete:'cascade'}),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id), generation: uuid('generation').notNull(),
+  sequence: bigint('sequence',{mode:'number'}).notNull().default(0), updatedAt: timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[unique().on(t.sketchId,t.generation),foreignKey({columns:[t.workspaceId,t.sketchId],foreignColumns:[sketches.workspaceId,sketches.id]}).onDelete('cascade'),check('map_live_head_sequence',sql`${t.sequence} BETWEEN 0 AND 9007199254740991`)]);
+export const mapLiveJournal = pgTable('map_live_journal', {
+  sketchId: uuid('sketch_id').notNull().references(() => sketches.id,{onDelete:'cascade'}), generation: uuid('generation').notNull(),
+  sequence: bigint('sequence',{mode:'number'}).notNull(), actorKind: text('actor_kind',{enum:['human','agent']}).notNull(),
+  actorId: text('actor_id').notNull(), commandId: uuid('command_id').notNull(), fingerprint:text('fingerprint').notNull(),
+  change: jsonb('change').$type<Record<string,unknown>>().notNull(), createdAt: timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+},(t)=>[primaryKey({columns:[t.sketchId,t.generation,t.sequence]}),unique().on(t.actorKind,t.actorId,t.commandId),check('map_live_journal_sequence',sql`${t.sequence} BETWEEN 1 AND 9007199254740991`),check('map_live_journal_actor',sql`${t.actorKind} IN ('human','agent')`),check('map_live_journal_fingerprint',sql`${t.fingerprint} ~ '^[a-f0-9]{64}$'`),check('map_live_journal_bytes',sql`jsonb_typeof(${t.change})='object' AND octet_length(${t.change}::text)<=8388608`)]);
+export const mapLiveObjectVersions = pgTable('map_live_object_versions', {
+  kind:text('kind',{enum:['thought','link']}).notNull(), objectId:uuid('object_id').notNull(),
+  sketchId:uuid('sketch_id').notNull().references(() => sketches.id,{onDelete:'cascade'}), version:bigint('version',{mode:'number'}).notNull(),
+},(t)=>[primaryKey({columns:[t.kind,t.objectId]}),check('map_live_object_kind',sql`${t.kind} IN ('thought','link')`),check('map_live_object_version',sql`${t.version} BETWEEN 1 AND 9007199254740991`)]);
+export const mapLiveUndone = pgTable('map_live_undone', {
+  sketchId:uuid('sketch_id').notNull(),generation:uuid('generation').notNull(),
+  originalSequence:bigint('original_sequence',{mode:'number'}).notNull(),inverseSequence:bigint('inverse_sequence',{mode:'number'}).notNull(),
+},(t)=>[primaryKey({columns:[t.sketchId,t.generation,t.originalSequence]}),
+  foreignKey({columns:[t.sketchId,t.generation,t.originalSequence],foreignColumns:[mapLiveJournal.sketchId,mapLiveJournal.generation,mapLiveJournal.sequence]}).onDelete('cascade'),
+  foreignKey({columns:[t.sketchId,t.generation,t.inverseSequence],foreignColumns:[mapLiveJournal.sketchId,mapLiveJournal.generation,mapLiveJournal.sequence]}).onDelete('cascade')]);
+export const mapLiveGestures = pgTable('map_live_gestures', {
+  leaseId:uuid('lease_id').primaryKey(),sketchId:uuid('sketch_id').notNull().references(()=>sketches.id,{onDelete:'cascade'}),
+  generation:uuid('generation').notNull(),gestureId:uuid('gesture_id').notNull(),actorId:text('actor_id').notNull().references(()=>authUsers.id),
+  sessionId:text('session_id').notNull().references(()=>authSessions.id,{onDelete:'cascade'}),connectionId:uuid('connection_id'),
+  sequence:bigint('sequence',{mode:'number'}).notNull().default(0),
+  thoughts:jsonb('thoughts').$type<{id:string;expectedVersion:number}[]>().notNull(),
+  positions:jsonb('positions').$type<{id:string;x:number;y:number;width?:number;height?:number}[]>().notNull().default([]),
+  expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),
+},(t)=>[unique().on(t.actorId,t.sessionId,t.sketchId,t.generation,t.gestureId),foreignKey({columns:[t.sketchId,t.generation],foreignColumns:[mapLiveHeads.sketchId,mapLiveHeads.generation]}).onDelete('cascade'),check('map_live_gesture_sequence',sql`${t.sequence} BETWEEN 0 AND 9007199254740991`),check('map_live_gesture_thoughts',sql`jsonb_typeof(${t.thoughts})='array' AND jsonb_array_length(${t.thoughts}) BETWEEN 1 AND 200 AND octet_length(${t.thoughts}::text)<=65536`),check('map_live_gesture_positions',sql`jsonb_typeof(${t.positions})='array' AND jsonb_array_length(${t.positions})<=200 AND octet_length(${t.positions}::text)<=65536`)]);
+export const mapLivePresence = pgTable('map_live_presence', {
+  connectionId:uuid('connection_id').primaryKey(),sketchId:uuid('sketch_id').notNull().references(()=>sketches.id,{onDelete:'cascade'}),
+  generation:uuid('generation').notNull(),actorId:text('actor_id').notNull().references(()=>authUsers.id),
+  sessionId:text('session_id').notNull().references(()=>authSessions.id,{onDelete:'cascade'}),
+  selected:jsonb('selected').$type<string[]>().notNull(),cursor:jsonb('cursor').$type<{x:number;y:number}>(),
+  expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),
+},t=>[foreignKey({columns:[t.sketchId,t.generation],foreignColumns:[mapLiveHeads.sketchId,mapLiveHeads.generation]}).onDelete('cascade'),check('map_live_presence_selected',sql`jsonb_typeof(${t.selected})='array' AND jsonb_array_length(${t.selected})<=16`),check('map_live_presence_cursor',sql`${t.cursor} IS NULL OR jsonb_typeof(${t.cursor})='object' AND octet_length(${t.cursor}::text)<=256`)]);

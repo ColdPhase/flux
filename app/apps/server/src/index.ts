@@ -66,7 +66,9 @@ const liveMedia = createLiveMediaFromEnv(process.env, identityConfig.publicOrigi
 const lifecycle = liveMedia ? liveLifecycle(db, pool, liveMedia.media) : null;
 const liveRevocation = liveMedia ? liveRevocationCoordinator(db, pool, liveMedia.media, lifecycle!) : null;
 await app.register(accessRoutes, { db, sessions: identity, boss, liveRevocation });
-await app.register(sketchRoutes, { db, sessions: identity });
+let editing:Awaited<ReturnType<typeof registerEditing>>=null;
+const developmentEditing=process.env.FLUX_DEVELOPMENT_LIVE_EDITING==='true';
+await app.register(sketchRoutes, { db, sessions: identity,developmentEditing,liveBackend:()=>editing?.mapsBackend??null });
 await app.register(dmRoutes, { db, sessions: identity });
 await app.register(pushRoutes, { db, sessions: identity, config: pushConfig });
 if (pushConfig.status === 'unavailable') app.log.warn(pushConfig.reason);
@@ -94,7 +96,7 @@ if (liveMedia) await app.register(liveRoutes, {
 // Browsers signal only through this gate; ending an auth session revokes its media admission (#128).
 const liveSignaling = liveMedia ? registerLiveSignaling(app, { db, connectionString, publicOrigin: identityConfig.publicOrigin,
   sessions: identity, ports: livePorts!, media: liveMedia.media, config: liveMedia.config }) : null;
-const editing = await registerEditing(app, { database: { db, pool }, sessions: identity, publicOrigin: identityConfig.publicOrigin,
+editing = await registerEditing(app, { database: { db, pool }, sessions: identity, publicOrigin: identityConfig.publicOrigin,
   connectionString, developmentEnabled: process.env.FLUX_DEVELOPMENT_LIVE_EDITING === 'true' });
 if (editing) app.log.warn('Development live editing selected; four-gate production acceptance remains pending');
 const removeUpgradeDispatcher = registerUpgradeDispatcher(app.server, streamUpgrades, [liveSignaling?.gate, editing?.gate]);

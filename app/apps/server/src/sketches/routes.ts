@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
   SKETCHES_PATH,
   THOUGHT_SHAPES,
@@ -12,14 +12,20 @@ import {
   type UpdateSketchCommand,
   type UpdateThoughtCommand,
 } from '@flux/contracts';
-import type { Database, ResourceRef } from '@flux/core';
-import type { SessionResolver } from '../identity/index.js';
+import { DomainError,ServiceUnavailableError,derivedUuid, requestHash, type Database, type Principal, type ResourceRef,type LiveMapBackend } from '@flux/core';
+import type { SessionContext, SessionResolver } from '../identity/index.js';
 import { bodyId, commandRunner, expectedVersion, requires, useDomainErrors, versionEtag } from '../http/commands.js';
 import { sketchUseCases } from './adapters.js';
+import { EditingHTTPAdmission } from '../editing/http-admission.js';
+import { apiEditingOutputBudget } from '../editing/output.js';
+import { editingMapContextCharge } from '../editing/context-charge.js';
+import { editingJSONSize } from '../editing/json-size.js';
+import type { CommandSpec } from '../http/commands.js';
 
 export interface SketchRouteOptions {
   db: Database;
   sessions: SessionResolver;
+  developmentEditing?:boolean;liveBackend?:()=>LiveMapBackend|null;
 }
 
 const id = { type: 'string', minLength: 1, maxLength: 64 } as const;
@@ -36,10 +42,42 @@ const SKETCH = `${SKETCHES_PATH}/:sketchId`;
  * `Idempotency-Key`; renaming, editing, moving and removing thoughts need their version
  * (`If-Match` or `expectedVersion`; batch moves carry one per thought).
  */
-export async function sketchRoutes(app: FastifyInstance, { db, sessions }: SketchRouteOptions) {
+export async function sketchRoutes(app: FastifyInstance, { db, sessions,developmentEditing=false,liveBackend }: SketchRouteOptions) {
   useDomainErrors(app);
-  const { principal, command } = commandRunner(db, sessions);
+  const runner=commandRunner(db,sessions);const {principal}=runner;
+  const preparation=new EditingHTTPAdmission(apiEditingOutputBudget);app.addHook('onClose',async()=>preparation.close());
+  async function command(request:FastifyRequest,reply:import('fastify').FastifyReply,spec:CommandSpec) {
+    if(!developmentEditing)return runner.command(request,reply,spec);
+    const releaseContext=apiEditingOutputBudget.reserve(editingMapContextCharge({params:request.params,headers:request.headers,body:request.body,query:request.query}));
+    let releasePreparation=()=>{};let handed=false;
+    const release=()=>{releaseContext();releasePreparation();};
+    try {
+      releasePreparation=await preparation.admit(0);
+      const response=await runner.runCommand(request,spec);
+      const session=await sessions.requirePrincipal(request);const backend=liveBackend?.();
+      if(!backend)throw new ServiceUnavailableError('The live map adapter is closing','EDITING_MAP_CAPACITY');
+      const params=request.params as {sketchId?:string};const body=response.body as {id?:string;sketch?:{id?:string}}|null;
+      const target=request.routeOptions.url.endsWith('/promotion')?body?.sketch?.id:params.sketchId??body?.id;
+      if(!target)throw new ServiceUnavailableError('The native map receipt has no target','EDITING_MAP_CAPACITY');
+      await backend.deliverNative({sessionId:session.sessionId,actorId:session.principal.id},target,response.body,current=>{
+        const size=response.status===204?0:editingJSONSize(current).bytes;const text=response.status===204?'':JSON.stringify(current);
+        if(Buffer.byteLength(text)!==size)throw new ServiceUnavailableError('The protected native response is too large','EDITING_OUTPUT_CAPACITY');
+        const owned=Buffer.allocUnsafeSlow(size);owned.write(text);
+        const headers:Record<string,string|number>={'cache-control':'no-store','content-length':size};
+        if(response.status!==204)headers['content-type']='application/json; charset=utf-8';
+        if(response.etag)headers.etag=response.etag;if(response.replayed)headers['idempotent-replayed']='true';
+        reply.hijack();reply.raw.once('finish',release);reply.raw.once('close',release);handed=true;reply.raw.writeHead(response.status,headers);reply.raw.end(owned);
+      });
+    } catch(error) {if(error instanceof DomainError)error.details={};throw error;}
+    finally {if(!handed)release();}
+  }
   const sketches = sketchUseCases(db);
+  function native(conn:Database,actor:Principal,request:FastifyRequest,session:SessionContext,reply:import('fastify').FastifyReply) {
+    const key=request.headers['idempotency-key'];const original=typeof key==='string'?key:null;
+    const uuid=original&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(original)?original.toLowerCase():original?derivedUuid('flux.map.legacy-key.v1',actor.kind,actor.id,request.method,request.routeOptions.url,original):undefined;
+    return sketchUseCases(conn,{context:{params:request.params,body:request.body,query:request.query,headers:request.headers,session},prepared:developmentEditing,resourceId:(request.params as {sketchId?:string}).sketchId,principal:actor,sessionId:session.sessionId,commandId:uuid,retainUntil:(release)=>{reply.raw.once('finish',release);reply.raw.once('close',release);},
+      operation:`native:${request.method} ${request.routeOptions.url}`,fingerprint:requestHash({params:request.params,body:request.body??null,query:request.query,ifMatch:request.headers['if-match']??null})});
+  }
   const sketchScope = (sketchId: string): ResourceRef => ({ type: 'sketch', id: sketchId });
   const readSketch = (sketchId: string) => requires('sketch', 'sketch.read', () => sketchId);
   const thoughtEtag = (body: unknown) => versionEtag((body as CreatedThought | null)?.thought ?? null);
@@ -60,7 +98,7 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions }: Sketc
     },
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${WORKSPACE_SKETCHES}`, scope: { type: 'workspace', id: request.params.workspaceId }, status: 201, etag: true,
-    run: (actor, conn) => sketchUseCases(conn).create(actor, request.params.workspaceId, request.body),
+    run: (actor, conn, session) => native(conn,actor,request,session,reply).create(actor, request.params.workspaceId, request.body),
     replay: requires('sketch', 'sketch.read', bodyId),
   }));
 
@@ -73,7 +111,7 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions }: Sketc
     schema: { body: { type: 'object', required: ['title'], additionalProperties: false, properties: { title: { type: 'string', maxLength: 400 }, expectedVersion: version } } },
   }, async (request, reply) => command(request, reply, {
     operation: `PATCH ${SKETCH}`, scope: sketchScope(request.params.sketchId), etag: true,
-    run: (actor, conn) => sketchUseCases(conn).rename(actor, request.params.sketchId, { ...request.body, expectedVersion: expectedVersion(request) }),
+    run: (actor, conn, session) => native(conn,actor,request,session,reply).rename(actor, request.params.sketchId, { ...request.body, expectedVersion: expectedVersion(request) }),
     replay: readSketch(request.params.sketchId),
   }));
 
@@ -91,7 +129,7 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions }: Sketc
     },
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${SKETCH}/thoughts`, scope: sketchScope(request.params.sketchId), status: 201, etag: thoughtEtag,
-    run: (actor, conn) => sketchUseCases(conn).addThought(actor, request.params.sketchId, request.body),
+    run: (actor, conn, session) => native(conn,actor,request,session,reply).addThought(actor, request.params.sketchId, request.body),
     replay: readSketch(request.params.sketchId),
   }));
 
@@ -99,18 +137,18 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions }: Sketc
     schema: {
       body: {
         type: 'object', additionalProperties: false, minProperties: 1,
-        properties: { text: { type: 'string', maxLength: 2000 }, x: number, y: number, width: number, height: number, shape, expectedVersion: version },
+        properties: { text: { type: 'string', maxLength: 2000 }, x: number, y: number, width: number, height: number, shape, expectedVersion: version, leaseId:id },
       },
     },
   }, async (request, reply) => command(request, reply, {
     operation: `PATCH ${SKETCH}/thoughts/:thoughtId`, scope: sketchScope(request.params.sketchId), etag: true,
-    run: (actor, conn) => sketchUseCases(conn).updateThought(actor, request.params.sketchId, request.params.thoughtId, { ...request.body, expectedVersion: expectedVersion(request) }),
+    run: (actor, conn, session) => native(conn,actor,request,session,reply).updateThought(actor, request.params.sketchId, request.params.thoughtId, { ...request.body, expectedVersion: expectedVersion(request) }),
     replay: readSketch(request.params.sketchId),
   }));
 
   app.delete<{ Params: { sketchId: string; thoughtId: string } }>(`${SKETCH}/thoughts/:thoughtId`, async (request, reply) => command(request, reply, {
     operation: `DELETE ${SKETCH}/thoughts/:thoughtId`, scope: sketchScope(request.params.sketchId), status: 204,
-    run: (actor, conn) => sketchUseCases(conn).removeThought(actor, request.params.sketchId, request.params.thoughtId, expectedVersion(request)),
+    run: (actor, conn, session) => native(conn,actor,request,session,reply).removeThought(actor, request.params.sketchId, request.params.thoughtId, expectedVersion(request)),
     replay: readSketch(request.params.sketchId),
   }));
 
@@ -119,7 +157,7 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions }: Sketc
       body: {
         type: 'object', required: ['moves'], additionalProperties: false,
         properties: {
-          moves: {
+          leaseId:id, moves: {
             type: 'array', minItems: 1, maxItems: 200,
             items: { type: 'object', required: ['id', 'x', 'y'], additionalProperties: false, properties: { id, x: number, y: number, expectedVersion: version } },
           },
@@ -128,7 +166,7 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions }: Sketc
     },
   }, async (request, reply) => command(request, reply, {
     operation: `PATCH ${SKETCH}/positions`, scope: sketchScope(request.params.sketchId),
-    run: (actor, conn) => sketchUseCases(conn).moveThoughts(actor, request.params.sketchId, request.body),
+    run: (actor, conn, session) => native(conn,actor,request,session,reply).moveThoughts(actor, request.params.sketchId, request.body),
     replay: readSketch(request.params.sketchId),
   }));
 
@@ -136,7 +174,7 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions }: Sketc
     schema: { body: { type: 'object', required: ['fromId', 'toId'], additionalProperties: false, properties: { id, fromId: id, toId: id, label } } },
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${SKETCH}/links`, scope: sketchScope(request.params.sketchId), status: 201,
-    run: (actor, conn) => sketchUseCases(conn).addLink(actor, request.params.sketchId, request.body),
+    run: (actor, conn, session) => native(conn,actor,request,session,reply).addLink(actor, request.params.sketchId, request.body),
     replay: readSketch(request.params.sketchId),
   }));
 
@@ -161,14 +199,14 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions }: Sketc
     },
   }, async (request, reply) => command(request, reply, {
     operation: `POST ${SKETCH}/promotion`, scope: sketchScope(request.params.sketchId), status: 201,
-    run: (actor, conn) => sketchUseCases(conn).promote(actor, request.params.sketchId, request.body),
+    run: (actor, conn, session) => native(conn,actor,request,session,reply).promote(actor, request.params.sketchId, request.body),
     // A replay answers only while the caller can still open the copy it made.
     replay: requires('sketch', 'sketch.read', (body) => (body as { sketch?: { id?: string } } | null)?.sketch?.id ?? ''),
   }));
 
   app.delete<{ Params: { sketchId: string; linkId: string } }>(`${SKETCH}/links/:linkId`, async (request, reply) => command(request, reply, {
     operation: `DELETE ${SKETCH}/links/:linkId`, scope: sketchScope(request.params.sketchId), status: 204,
-    run: (actor, conn) => sketchUseCases(conn).removeLink(actor, request.params.sketchId, request.params.linkId),
+    run: (actor, conn, session) => native(conn,actor,request,session,reply).removeLink(actor, request.params.sketchId, request.params.linkId),
     replay: readSketch(request.params.sketchId),
   }));
 }

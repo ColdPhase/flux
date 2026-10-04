@@ -105,3 +105,5 @@ export * from './editing/wiki-ports.js';
 export * from './editing/wiki.js';
 
 export * from './editing/map-ports.js';
+
+export * from './editing/map-journal.js';

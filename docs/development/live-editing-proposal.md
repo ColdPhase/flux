@@ -573,3 +573,48 @@ through their actual send callbacks after close or revocation. Rolled-back live
 errors carry scalar outcome/code only; current protected postimages require a new
 held-fence read. These are source integration choices, awaiting current-head
 runtime and independent evaluation; they do not close any remaining gate.
+
+### Map persistence integration seam (2026-10-04, implementation pending verification)
+
+The development composition shares `apiEditingOutputBudget` across wiki/map
+controllers, live HTTP, and native map HTTP/MCP journals. The existing common
+32 MiB cap and frame/chunk/assembly/window bounds remain in force. Native map
+HTTP owns its preparation before session/SQL admission; journal adapters reuse
+that reservation. MCP retains its native journal reservation through the outer
+caller transaction. A native replay still uses the immutable original actor/UUID
+and parameters, and reprojects placed-object titles under current locked rights
+before HTTP handoff. The client confirms graph state exclusively from ordered
+server deltas; HTTP replay does not patch an old graph snapshot.
+
+Migration `0047_live_maps.sql` is reserved in
+[the issue record](https://github.com/ColdPhase/flux/issues/228#issuecomment-5975059152).
+One atomic join reads the native snapshot with generation/sequence. Native CAS
+writes, immutable journal, retained thought versions/link epochs, cleared gesture
+leases, original intent receipt and identifier-only NOTIFY commit together;
+ordinary identifier events are flushed after native/coordination writes. Separate
+API replicas re-read the journal immediately on transactional NOTIFY; periodic
+catch-up is recovery only. Each protected callback hands off at most one frame.
+
+The source bounds each room to 32 expiring gestures and 32 presence leases,
+and each category to 2048 across the database. A producer reaches a truthful
+capacity refusal before admitting a snapshot every reader cannot represent.
+A gesture retains at most 200 closed thought CAS records/positions; presence
+names at most 16 selections. TTL is at most five seconds and the current SQL
+session expiry. First authorized movement/cancel binds the HTTP-issued lease to
+the server-generated socket connection, preserving actor/session/room/generation.
+Input retains at most 4096 parsed visits/262144 bytes plus its separately charged
+65536-byte raw frame; wiki metadata retains its earlier smaller bound. Native
+snapshot/affected-link counts and serialized SQL sizes are checked before
+allocating graph rows. Required normal 500-thought/200-movement behavior and
+capacity boundary tests are pending; these limits do not establish latency proof.
+
+Own undo names 1–200 original command UUIDs from this frontend instance. The
+server verifies author, immutable namespace, generation, original poststates,
+retained absences and complete dependent-link epochs. It dry-runs inverses in
+reverse journal order before any mutation, then applies one atomic native change
+with increasing versions/epochs, one receipt and one ordered delta. Any peer
+change or delete/restore ABA refuses the entire step; there is no latest-state
+rebase. Exact original inverse UUID retry reads its stored receipt. Journal input
+is counted and size-checked before SQL result allocation; the complete preparation
+remains under the shared reservation. Required rollback/retry/conflict/ABA cases
+and actual reader/drag/full-path two-API measurements remain unverified.

@@ -70,6 +70,8 @@ export interface NewThoughtRow {
   shape: 'card' | 'pill' | 'circle'; placement: { type: 'draft'; id: string } | null; source?: ThoughtSourceRow | null; createdBy: Author;
   /** A copy keeps the original's times, so its provenance and reading order stay true. */
   createdAt?: Date; updatedAt?: Date;
+  /** Server-only retained version allocation; never accepted from the native command body. */
+  version?:number;
 }
 export interface NewLinkRow {
   id: string; workspaceId: string; sketchId: string; fromId: string; toId: string; label: string | null; createdBy: Author;
@@ -161,7 +163,7 @@ export function sketchRows(db: DbExecutor) {
     async insertThought(thought: NewThoughtRow) {
       await db.insert(t).values({
         id: thought.id, workspaceId: thought.workspaceId, sketchId: thought.sketchId, text: thought.text, x: thought.x, y: thought.y,
-        width: thought.width, height: thought.height, shape: thought.shape,
+        width: thought.width, height: thought.height, shape: thought.shape, version:thought.version??1,
         placementType: thought.placement?.type ?? null, placementId: thought.placement?.id ?? null, ...author(thought.createdBy),
         ...(thought.createdAt ? { createdAt: thought.createdAt, updatedAt: thought.updatedAt ?? thought.createdAt } : {}),
         ...(thought.source ? {
@@ -181,6 +183,12 @@ export function sketchRows(db: DbExecutor) {
     async links(sketchId: string, page?: { limit: number; offset: number }) {
       const query = db.select().from(l).where(eq(l.sketchId, sketchId)).orderBy(asc(l.createdAt), asc(l.id)).$dynamic();
       return (await (page ? query.limit(page.limit).offset(page.offset) : query)).map(toLinkRecord);
+    },
+    async relatedLinks(sketchId:string,filter:{thoughtId?:string;linkId?:string}) {
+      const where=and(eq(l.sketchId,sketchId),filter.thoughtId?or(eq(l.fromId,filter.thoughtId),eq(l.toId,filter.thoughtId)):undefined,filter.linkId?eq(l.id,filter.linkId):undefined);
+      const [size]=await db.select({n:sql<number>`count(*)::int`,bytes:sql<number>`COALESCE(sum(octet_length(to_jsonb(${l})::text)),0)::bigint`}).from(l).where(where);
+      if(size!.n>20_000||Number(size!.bytes)>2*1024*1024)throw Object.assign(new Error('The affected links reached their finite capacity'),{code:'EDITING_MAP_CAPACITY'});
+      return (await db.select().from(l).where(where).orderBy(asc(l.id))).map(toLinkRecord);
     },
     async linkExists(id: string) {
       return (await db.select({ id: l.id }).from(l).where(eq(l.id, id))).length > 0;

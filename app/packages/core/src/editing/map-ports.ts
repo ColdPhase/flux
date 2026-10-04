@@ -27,6 +27,8 @@ export interface MapPresence {
 export interface LiveMapBackend {
   bootstrap(identity: MapIdentity, sketchId: string, handoff: (head: LiveMapBootstrap) => void): Promise<void>;
   authorize(identity: MapIdentity, sketchId: string, handoff: () => void): Promise<void>;
+  /** Legacy native reply is projected under current material rights before its protected handoff. */
+  deliverNative(identity:MapIdentity,sketchId:string,body:unknown,handoff:(body:unknown)=>void):Promise<void>;
   acquire(identity: MapIdentity, sketchId: string, gesture: LiveMapGesture): Promise<LiveMapLease>;
   /** First authorized movement/cancel binds the lease to this server-generated connection. */
   move(identity: MapIdentity, sketchId: string, connectionId: string, command: MapMove): Promise<void>;

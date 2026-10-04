@@ -104,18 +104,18 @@ export function wikiController(authority: WikiAuthority, outputBudget: EditingOu
     let admission;
     try { admission = authority.reserve(c.assembly); }
     catch (error) { if (!busy(error)) { fail(c, error, c.assembly.intent.uuid); assemblies.remove(c.context.connectionId); c.assembly = null; } return; }
-    const bytes = c.assembly; c.assembly = null;
+    let bytes:CompletedAssembly|null=c.assembly;const commandId=bytes.intent.uuid;c.assembly = null;
     assemblies.remove(c.context.connectionId); c.assemblyCommand = null; c.running = true;
     void (async () => {
       try {
-        await authority.submit(c.context.session, c.context.target.id, bytes.intent, bytes, admission);
+        await authority.submit(c.context.session, c.context.target.id, bytes!.intent, bytes!, admission);bytes=null;
         // Re-read the immutable original receipt under CURRENT authority AFTER the commit.
-        await authority.deliverReceipt(c.context.session, c.context.target.id, bytes.intent.uuid, (receipt) => {
+        await authority.deliverReceipt(c.context.session, c.context.target.id, commandId, (receipt) => {
           if (!c.closed && receipt) c.output.sendJSON({ type: 'ack', ...receipt });
         });
         for (const other of connections.values()) if (other.context.target.id === c.context.target.id) void catchup(other);
-      } catch (error) { fail(c, error, bytes.intent.uuid); }
-      finally { c.running = false; pump(c); }
+      } catch (error) { fail(c, error, commandId); }
+      finally { bytes=null;c.running = false; pump(c); }
     })();
   }
   const unsubscribeCapacity = authority.runtime.onCapacity(() => { if (!closing) for (const c of connections.values()) pump(c); });

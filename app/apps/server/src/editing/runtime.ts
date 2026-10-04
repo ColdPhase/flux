@@ -15,6 +15,11 @@ export function editingRuntime() {
   const pool = new CodecPool(); const admissionQueue = new EditingAdmission(pool.budget);
   return {
     fingerprint,
+    get externalInputBytes(){return pool.budget.bytes;},
+    get admissionQueued(){return admissionQueue.queued;},
+    get codecLeases(){return pool.budget.leases.size;},
+    get codecWaiting(){return pool.waiting.length;},
+    get codecActive(){return pool.active;},
     admit: (bytes: Uint8Array, metadataBytes: number, maximumInputBytes?: number) => admissionQueue.reserve(bytes, metadataBytes, maximumInputBytes),
     prepareRead: (state: CodecState, lease: AdmissionLease) => pool.budget.bind(lease, state),
     stateCharge,
