@@ -62,6 +62,14 @@ class FluxConfigurationTest(unittest.TestCase):
         self.assertFalse((self.live.parent / ".env.flux-new").exists())
         self.assert_private_unchanged(self.private)
 
+    def test_up_and_down_refuse_unknown_options_before_docker(self) -> None:
+        for args, message in ((("up", "--dev"), "up: unknown option --dev"), (("down", "--x"), "down: unknown option --x")):
+            with self.subTest(args=args):
+                result = self.run_flux(*args)
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn(message, result.stderr)
+                self.assertFalse(self.log.exists(), "a refused option must not reach Docker")
+
     def test_relative_legacy_link_is_refused_before_up_down_or_reset(self) -> None:
         self.legacy.symlink_to("config/private.env")
         for command in (("up",), ("down",), ("reset", "-y")):

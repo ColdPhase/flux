@@ -280,6 +280,7 @@ print_logins() {
 }
 
 cmd_up() {
+  [ "$#" -eq 0 ] || die "up: unknown option $1 (up takes no options; use ./flux dev for hot reload)"
   need_docker
   claim_project "$PROJECT"
   ensure_env
@@ -352,6 +353,7 @@ cmd_dev() {
 }
 
 cmd_down() {
+  [ "$#" -eq 0 ] || die "down: unknown option $1 (down takes no options and stops both stacks)"
   need_docker
   [ -f "$ENV_FILE" ] || { say "No ${ENV_FILE#"$FLUX_ROOT"/}; nothing to stop."; return 0; }
   check_owner "$PROJECT"
