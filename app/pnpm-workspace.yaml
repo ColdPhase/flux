@@ -8,3 +8,7 @@ allowBuilds:
 patchedDependencies:
   '@better-auth/oauth-provider@1.7.6': patches/oauth-provider-1.7.6-flux-refresh.patch
   drizzle-orm@0.45.3: patches/drizzle-orm-0.45.3-flux-pool-release.patch
+
+# One stable public codec generation across server, binding and browser.
+overrides:
+  yjs: 13.6.33

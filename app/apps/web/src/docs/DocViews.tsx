@@ -10,6 +10,7 @@ import { docUrl, getDoc, getVersion, listProjectDocs, listVersions, listWorkspac
 import { diffDocs, diffStats, readableRefs, type DiffRow } from './diff';
 import { STATE_LABEL, authorLabel, docLinks, kindLabel, longDate, pathOfLink, shortDate } from './format';
 import './docs.css';
+import { useSharedWiki, WikiPresence } from '../editing/WikiEditor';
 
 // The Docs tab of a project (#112): a calm list with the last change, a reader with links and
 // backlinks, and the version history with a diff. Everything here is visible to the people with
@@ -23,6 +24,7 @@ function useRefresh() {
     const interval = window.setInterval(refresh, 20000);
     return () => { window.removeEventListener('focus', refresh); window.clearInterval(interval); };
   }, [revalidator]);
+  return revalidator;
 }
 
 function Audience({ project }: { project: Project }) {
@@ -109,14 +111,14 @@ export function WorkspaceDocs() {
   );
 }
 
-interface ReaderData { project: Project; doc: Doc; shown: DocVersion }
+interface ReaderData { project: Project; doc: Doc; shown: DocVersion; historical: boolean }
 
 export async function docLoader({ params, request }: LoaderFunctionArgs): Promise<ReaderData> {
   const [project, doc] = await Promise.all([getProject(params.projectId!, request.signal), getDoc(params.docId!, request.signal)]);
   if (doc.projectId !== project.id) throw new Response('Not found', { status: 404 });
   const version = params.version ? Number(params.version) : null;
   const shown = version && version !== doc.version ? await getVersion(doc.id, version, request.signal) : doc;
-  return { project, doc, shown };
+  return { project, doc, shown, historical: params.version !== undefined };
 }
 
 /** A message citing a doc version (#36 citation) opens it in the doc reader. */
@@ -178,11 +180,16 @@ function LinkList({ title, links, end, projectId, empty }: { title: string; link
 
 /** Reads a doc, its current or an earlier version, with what it links to and what links here. */
 export function DocReader() {
-  const { project, doc, shown } = useLoaderData() as ReaderData;
-  useRefresh();
+  const { project, doc, shown, historical } = useLoaderData() as ReaderData;
+  const { me } = useShellData();
+  const live = useSharedWiki(historical ? null : doc.id, me.user.id, false);
+  const revalidator = useRefresh();
   const onClick = useReferenceClicks(project.id);
   const writable = project.access !== 'viewer';
-  const current = shown.version === doc.version;
+  const current = !historical;
+  const working = !historical && live?.id === doc.id && live.text && live.status !== 'unavailable' && live.status !== 'private' ? live : null;
+  const savedVersion = working?.head.savedVersion ?? doc.version;
+  useEffect(() => { if (!historical && savedVersion > doc.version && revalidator.state === 'idle') revalidator.revalidate(); }, [historical, savedVersion, doc.version, revalidator]);
   const { sources, mentions, backlinks } = docLinks(doc);
   const missing = shown.mentions.filter((item) => !item.path).length;
   const base = docUrl(project.id, doc.id);
@@ -202,12 +209,14 @@ export function DocReader() {
             <Link className="ui-btn ui-btn--quiet" to={`${base}/history${current ? '' : `?to=${shown.version}`}`}>History · {doc.version} {doc.version === 1 ? 'version' : 'versions'}</Link>
           </div>
         </header>
+        {working ? <p className="doc-notice" data-live-reader data-live-generation={working.head.generation} data-live-sequence={working.htmlSequence}>Shared working copy · last saved version {working.head.savedVersion}. Sources and citations keep their saved version.<WikiPresence client={working} /></p> : null}
+        {live?.problem ? <p className="doc-notice" role="alert">{live.problem}</p> : null}
         {!current ? (
-          <p className="doc-notice"><Icon name="undo" size={14} />You are reading an earlier version. It stays as it was written.
+          <p className="doc-notice"><Icon name="undo" size={14} />You are reading a saved version. It stays as it was written.
             <Link to={base}>Open the current version</Link><Link to={`${base}/history?from=${shown.version}&to=${doc.version}`}>What changed since</Link></p>
         ) : null}
-        {shown.body.trim()
-          ? <div className="doc-prose" onClick={onClick} dangerouslySetInnerHTML={{ __html: shown.html }} />
+        {(working?.text.toString() ?? shown.body).trim()
+          ? <div className="doc-prose" onClick={onClick} dangerouslySetInnerHTML={{ __html: working?.html ?? shown.html }} />
           : <p className="doc-muted doc-empty">This doc has no text yet.{writable && current ? <> <Link to={`${base}/edit`}>Start writing</Link></> : null}</p>}
         {missing ? <p className="doc-notice"><Icon name="alert" size={14} />{missing === 1 ? 'One link points' : `${missing} links point`} to something that is not in this project or no longer exists. It shows as plain text.</p> : null}
         <div className="doc-foot">

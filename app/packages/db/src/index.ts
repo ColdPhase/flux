@@ -35,6 +35,7 @@ export * from './repositories/task-graph.js';
 export * from './repositories/task-discussions.js';
 export * from './repositories/direct-messages.js';
 export * from './repositories/docs.js';
+export * from './repositories/doc-live.js';
 export * from './repositories/sample.js';
 export * from './repositories/idempotency.js';
 
@@ -108,6 +109,10 @@ export * from './repositories/agent-orientation.js';
 export * from './repositories/agent-playbook.js';
 
 export * from './repositories/files.js';
+export * from './repositories/live-editing.js';
+export * from './editing-transactions.js';
+
+export * from './repositories/live-map.js';
 export * from './repositories/agent-policies.js';
 
 export * from './repositories/task-use.js';

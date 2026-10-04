@@ -1,10 +1,11 @@
-import { sketchRows, type DbExecutor } from '@flux/db';
+import { liveMapRows, sketchRows, type DbExecutor } from '@flux/db';
 import type { PromotionPerson } from '@flux/contracts';
 import {
   authorize,
   createProject,
   createSketchUseCases,
   ForbiddenError,
+  ConflictError,
   getProject,
   grantProject,
   listMembers,
@@ -13,6 +14,7 @@ import {
   policySketchAccess,
   recordEvent,
   RuleViolationError,
+  ServiceUnavailableError,
   visibleFilter,
   type Database,
   type Principal,
@@ -22,7 +24,9 @@ import {
   type SketchUnitOfWork,
   type Transaction,
 } from '@flux/core';
-import type { TransactionEventSession } from '../work/transaction-events.js';
+import { decodeMapChange } from '../editing/map-state.js';
+import { nativeMapJournal,prepareNativeMap, type NativeMapOptions } from '../editing/native-map-journal.js';
+import { transactionEventSession,type TransactionEventSession } from '../work/transaction-events.js';
 
 // Adapters that connect the core sketch use cases to Drizzle, the access policy and the event
 // log (issue #69; #46: core defines the ports, the server assembles them).
@@ -41,8 +45,16 @@ export function sketchRepository(db: DbExecutor): SketchRepository {
       return rows.list(workspaceId, await visibleFilter(principal, workspaceId, 'sketch', db), filter, page);
     },
     insertSketch: (sketch) => rows.insertSketch({ ...sketch, createdBy: author(sketch.createdBy) }),
-    insertThought: (thought) => rows.insertThought({ ...thought, createdBy: author(thought.createdBy) }),
-    insertLink: (link) => rows.insertLink({ ...link, createdBy: author(link.createdBy) }),
+    insertThought: async (thought) => {
+      const versions=liveMapRows(db,decodeMapChange);const previous=await versions.version('thought',thought.id);
+      if(previous&&previous.sketchId!==thought.sketchId)throw new ConflictError('This retained ID belongs to another map','EDITING_IDEMPOTENCY_CONFLICT');
+      return rows.insertThought({...thought,version:(previous?.version??0)+1,createdBy:author(thought.createdBy)});
+    },
+    insertLink: async (link) => {
+      const previous=await liveMapRows(db,decodeMapChange).version('link',link.id);
+      if(previous&&previous.sketchId!==link.sketchId)throw new ConflictError('This retained link ID belongs to another map','EDITING_IDEMPOTENCY_CONFLICT');
+      return rows.insertLink({ ...link, createdBy: author(link.createdBy) });
+    },
   };
 }
 
@@ -100,24 +112,42 @@ export function sketchPromotion(tx: Database): SketchPromotion {
 
 /** The ports of one unit of work (exported for the concurrency tests). */
 export function sketchPorts(tx: Database): SketchPorts {
+  const sketches=sketchRepository(tx as DbExecutor);
   return {
     access: policySketchAccess(tx),
-    sketches: sketchRepository(tx as DbExecutor),
+    sketches,
+    live:nativeMapJournal(tx as DbExecutor,sketches).journal,
     promotion: sketchPromotion(tx),
     events: { record: async (principal, workspaceId, kind, sketchId, data) => { await recordEvent(tx, principal, workspaceId, kind, sketchId, data); } },
   };
 }
 
 /** One transaction per use case; on an open transaction (an idempotency scope) it nests as a savepoint. */
-export function sketchUnitOfWork(db: Database): SketchUnitOfWork {
-  return { run: (work) => db.transaction((tx) => work(sketchPorts(tx))) };
+export function sketchUnitOfWork(db: Database,options:NativeMapOptions={}): SketchUnitOfWork {
+  return { async run<T>(work:(ports:SketchPorts)=>Promise<T>):Promise<T> {
+    let release=()=>{};let releasePreparation=()=>{};
+    if(!options.prepared&&options.principal)releasePreparation=await prepareNativeMap(options.context??{principal:options.principal,sessionId:options.sessionId,resourceId:options.resourceId,commandId:options.commandId,operation:options.operation,fingerprint:options.fingerprint});
+    const prepared=options.prepared||!!options.principal;
+    try {return await db.transaction(async tx=>{
+      const ports=sketchPorts(tx);const events=transactionEventSession(tx);ports.events=events;const journal=nativeMapJournal(tx,ports.sketches,{...options,prepared});ports.live=journal.journal;release=()=>journal.release();
+      const replay=await journal.replay();if(replay.found)return replay.value as T;
+      const result=await events.run(()=>work(ports));await journal.finish(result);await events.flushEvents();return result;
+    });} catch(error) {
+      if(error instanceof Error&&'code' in error&&error.code==='EDITING_MAP_CAPACITY') {
+        const refusal=new ServiceUnavailableError('The finite native map capacity is busy','EDITING_MAP_CAPACITY');refusal.details={outcome:'refused',retryable:true};throw refusal;
+      }
+      throw error;
+    } finally {release();if(options.retainUntil)options.retainUntil(releasePreparation);else releasePreparation();}
+  } };
 }
 
 /** The sketch use cases bound to a connection or transaction. */
-export const sketchUseCases = (db: Database) => createSketchUseCases(sketchUnitOfWork(db));
+export const sketchUseCases = (db: Database,options:NativeMapOptions={}) => createSketchUseCases(sketchUnitOfWork(db,options));
 
 /** Sketch commands sharing a composing caller's transaction and single final event batch (#152 map actions). */
-export function nativeSketchInEventSession(tx: Transaction, session: TransactionEventSession) {
-  const ports: SketchPorts = { ...sketchPorts(tx), events: session };
-  return createSketchUseCases({ run: (action) => session.run(() => action(ports)) });
+export function nativeSketchInEventSession(tx: Transaction, session: TransactionEventSession,options:NativeMapOptions={}) {
+  const ports:SketchPorts={...sketchPorts(tx),events:session};const journal=nativeMapJournal(tx,ports.sketches,options);ports.live=journal.journal;
+  return createSketchUseCases({run:(action)=>session.run(async()=>{try {const result=await action(ports);await journal.finish(result);return result;}
+    catch(error){if(error instanceof Error&&'code' in error&&error.code==='EDITING_MAP_CAPACITY'){const refusal=new ServiceUnavailableError('The finite native map capacity is busy','EDITING_MAP_CAPACITY');refusal.details={outcome:'refused',retryable:true};throw refusal;}throw error;}
+    finally{journal.release();}})});
 }

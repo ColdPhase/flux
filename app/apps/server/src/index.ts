@@ -47,6 +47,8 @@ import { fileRoutes } from './files/routes.js';
 import { exportRoutes } from './export/routes.js';
 import { githubRoutes } from './github/routes.js';
 import { loadGithubConfig } from './github/config.js';
+import { registerUpgradeDispatcher } from './http/upgrades.js';
+import { registerEditing } from './editing/composition.js';
 
 const connectionString = process.env.DATABASE_URL;
 const fixtureToken = process.env.FLUX_FIXTURE_TOKEN;
@@ -68,7 +70,9 @@ const liveMedia = createLiveMediaFromEnv(process.env, identityConfig.publicOrigi
 const lifecycle = liveMedia ? liveLifecycle(db, pool, liveMedia.media) : null;
 const liveRevocation = liveMedia ? liveRevocationCoordinator(db, pool, liveMedia.media, lifecycle!) : null;
 await app.register(accessRoutes, { db, sessions: identity, boss, liveRevocation });
-await app.register(sketchRoutes, { db, sessions: identity });
+let editing:Awaited<ReturnType<typeof registerEditing>>=null;
+const developmentEditing=process.env.FLUX_DEVELOPMENT_LIVE_EDITING==='true';
+await app.register(sketchRoutes, { db, sessions: identity,developmentEditing,liveBackend:()=>editing?.mapsBackend??null });
 await app.register(dmRoutes, { db, sessions: identity });
 await app.register(pushRoutes, { db, sessions: identity, config: pushConfig });
 if (pushConfig.status === 'unavailable') app.log.warn(pushConfig.reason);
@@ -98,10 +102,11 @@ if (liveMedia) await app.register(liveRoutes, {
 // Browsers signal only through this gate; ending an auth session revokes its media admission (#128).
 const liveSignaling = liveMedia ? registerLiveSignaling(app, { db, connectionString, publicOrigin: identityConfig.publicOrigin,
   sessions: identity, ports: livePorts!, media: liveMedia.media, config: liveMedia.config }) : null;
-app.server.on('upgrade', (request, socket, head) => {
-  if (liveSignaling?.gate.handleUpgrade(request, socket, head)) return;
-  streamUpgrades.emit('upgrade', request, socket, head);
-});
+editing = await registerEditing(app, { database: { db, pool }, sessions: identity, publicOrigin: identityConfig.publicOrigin,
+  connectionString, developmentEnabled: process.env.FLUX_DEVELOPMENT_LIVE_EDITING === 'true' });
+if (editing) app.log.warn('Development live editing selected; four-gate production acceptance remains pending');
+const removeUpgradeDispatcher = registerUpgradeDispatcher(app.server, streamUpgrades, [liveSignaling?.gate, editing?.gate]);
+app.addHook('onClose', async () => removeUpgradeDispatcher());
 if (liveMedia) await app.register(liveDiscoveryRoutes, { db, sessions: identity, media: liveMedia.media });
 if (liveMedia) await app.register(liveInvitationRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret });
 if (lifecycle) {
@@ -207,3 +212,18 @@ app.setNotFoundHandler(async (request, reply) => {
 });
 await app.listen({ host: '0.0.0.0', port: Number(process.env.PORT ?? 8080) });
 app.log.info({ queue: SAMPLE_JOB }, 'Flux API ready');
+
+let shuttingDown=false;
+async function gracefulShutdown(){
+  if(shuttingDown)return;shuttingDown=true;
+  // Leaves room inside the runner's eight-second Docker stop deadline. Failure is
+  // a nonzero actual process outcome; it never invents a terminal drained record.
+  const deadline=setTimeout(()=>{process.stderr.write('Flux API graceful shutdown deadline expired\n');process.exit(1);},7000);
+  try {
+    await editing?.close();await app.close();
+    if(editing&&!await editing.finishTelemetry())process.exitCode=1;
+  }catch(error){process.exitCode=1;app.log.error({error},'Flux API graceful shutdown failed');}
+  finally{clearTimeout(deadline);}
+}
+process.once('SIGTERM',()=>{void gracefulShutdown();});
+process.once('SIGINT',()=>{void gracefulShutdown();});

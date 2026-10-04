@@ -16,6 +16,7 @@ import { useThoughtDraft } from './createdDraft';
 import { DraftCapture } from './DraftCapture';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import './sketch.css';
+import '../editing/editing.css';
 
 export interface Editing {
   id: string;
@@ -50,9 +51,10 @@ function useProjectName(projectId: string | null | undefined) {
 /** `/map/:sketchId`: a fresh view (and document) per sketch. */
 export function SketchRoute() {
   const { sketchId = '', projectId, dmId } = useParams();
+  const { me } = useShellData();
   // Opened from a project's Map tab (#117) or a DM's Sketches (#96), the way back stays there.
   const back = projectId ? `/projects/${projectId}/map` : dmId ? `/dm/${dmId}/sketches` : '/map';
-  return <SketchView key={sketchId} sketchId={sketchId} projectId={projectId} dmId={dmId} back={back} />;
+  return <SketchView key={`${me.user.id}:${sketchId}`} sketchId={sketchId} projectId={projectId} dmId={dmId} back={back} />;
 }
 
 /**
@@ -96,7 +98,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   const rootRef = useRef<HTMLDivElement>(null);
   const helpId = useId();
   const projectName = useProjectName(sketch?.projectId);
-  const canWrite = sketch?.access === 'write';
+  const canWrite = sketch?.access === 'write' && !!doc.liveCanWrite;
 
   const say = (text: string, change = false) => setStatus({ text, change });
   const find = (id: string) => sketch?.thoughts.find((t) => t.id === id);
@@ -116,6 +118,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   // Selection follows what exists: someone else may remove a selected thought meanwhile.
   const present = new Set(sketch?.thoughts.map((t) => t.id));
   const selection = selectionState.filter((id) => present.has(id));
+  useEffect(() => { doc.presence(selection); }, [selection, doc.presence]);
   const connectFrom = connectState && present.has(connectState) ? connectState : null;
   // A project sketch anchors a session; "Show this" points at the selected thoughts, if any.
   const projectSketch = sketch?.scope === 'project' && sketch.projectId ? sketch : null;
@@ -228,8 +231,8 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     if (!draft || draftSaveInFlight.current || !canWrite || !draft.text.trim()) return;
     draftSaveInFlight.current = true;
     setSavingDraft(true);
-    const saved = await doc.saveThought({ id: draft.id, text: draft.text.trim(), x: draft.x, y: draft.y },
-      draft.parentId ? { id: draft.parentId, linkId: draft.linkId } : null, draft.key);
+    const saved = await doc.saveThought({ kind: 'add', thought: { id: draft.id, text: draft.text.trim(), x: draft.x, y: draft.y },
+      ...(draft.parentId ? { link: { id: draft.linkId, fromId: draft.parentId, label: null } } : {}) }, draft.key);
     setSavingDraft(false);
     draftSaveInFlight.current = false;
     if (!saved) { say('Couldn’t confirm the save. Your thought draft is kept; try again.'); return; }
@@ -299,13 +302,13 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
 
   const move = (moves: { id: string; x: number; y: number }[], how: 'drag' | 'keyboard') => {
     if (!moves.length) return;
-    doc.perform([{ kind: 'move', moves }], how === 'keyboard' ? 'moved with the keyboard' : 'moved thoughts', { coalesce: how === 'keyboard' });
+    doc.perform([{ kind: 'move', moves }], how === 'keyboard' ? 'moved with the keyboard' : 'moved thoughts', { coalesce: how === 'keyboard', lease: how === 'drag' ? doc.finishGesture() : undefined });
     const what = moves.length === 1 ? quote(find(moves[0]!.id)?.text ?? '') : `${moves.length} thoughts`;
     say(`Moved ${what}${how === 'keyboard' ? ' with the keyboard' : ''}`, true);
   };
 
-  const resize = (id: string, width: number, height: number) => {
-    doc.perform([{ kind: 'update', id, changes: { width, height } }], 'resized a thought');
+  const resize = (id: string, width: number, height: number, how: 'drag' | 'keyboard') => {
+    doc.perform([{ kind: 'update', id, changes: { width, height } }], 'resized a thought', { lease: how === 'drag' ? doc.finishGesture() : undefined });
     say(`Resized ${quote(find(id)?.text ?? '')}`, true);
   };
 
@@ -340,7 +343,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     setEditing(null);
     setConnectFrom(null);
     const label = doc.undo();
-    say(label ? `Undid: ${label}` : 'Nothing to undo');
+    say(label ? `Undo requested: ${label}. Waiting for confirmation.` : 'No undo started');
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -386,7 +389,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   };
 
   return (
-    <div className={`sk-page${mode === 'map' ? ' sk-page--map' : ''}`} ref={rootRef} onKeyDown={onKeyDown}>
+    <div className={`sk-page${mode === 'map' ? ' sk-page--map' : ''}`} ref={rootRef} onKeyDown={onKeyDown} data-live-map-status={doc.liveStatus}>
       <div className={`sk${mode === 'map' ? ' sk--map' : ''}`}>
         <div className="sk-head">
           <p className="sk-lead">
@@ -445,10 +448,12 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
             </p>
           </div>
         ) : (
-          <p className="sk-readonly"><Icon name="lock" size={12} />{sketch.scope === 'dm'
+          <p className="sk-readonly"><Icon name="lock" size={12} />{doc.liveStatus === 'connecting' ? 'Reconnecting to the shared map. Wait for confirmation before changing it.' : sketch.scope === 'dm'
             ? 'Nobody else is in this conversation now, so the sketch is read-only until the other person reopens it.'
             : 'You can look at this sketch; people who can change it keep it up to date.'}</p>
         )}
+
+        {doc.privateMovement ? <details className="editing-map-recovery"><summary>An unfinished movement is kept privately</summary><p>Compare these positions with the current thoughts before starting a new movement. This copy is not shared automatically.</p><ul>{doc.privateMovement.positions.map((position) => <li key={position.id}>{quote(find(position.id)?.text ?? 'Unavailable thought')} · x {Math.round(position.x)}, y {Math.round(position.y)}{position.width !== undefined ? ` · width ${Math.round(position.width)}, height ${Math.round(position.height ?? 0)}` : ''}</li>)}</ul><Button variant="quiet" onClick={doc.discardPrivateMovement}>Discard private movement copy</Button></details> : null}
 
         {/* Pressing these keeps focus in the editor. Safari and macOS Firefox never focus a pressed
             button: the editor would blur first, and leaving the field saves, even for Cancel edit. */}
@@ -469,7 +474,10 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
         {mode === 'map' ? (
           sketch.thoughts.length || canWrite ? (
             <>
-              <SketchMap {...shared} coarse={coarse} compact={phone} helpId={helpId} heights={heights} onMove={move} onResize={resize} onClear={() => { if (connectFrom) return; setSelection([]); say(''); }} />
+              <SketchMap {...shared} coarse={coarse} compact={phone} helpId={helpId} heights={heights} onMove={move} onResize={resize} onClear={() => { if (connectFrom) return; setSelection([]); say(''); }}
+                onGestureStart={doc.beginGesture} onGesturePreview={doc.previewGesture} onGestureCancel={doc.cancelGesture} ownGesture={doc.ownGesture} liveEnabled={doc.liveStatus !== 'unavailable'}
+                movers={new Map([...doc.previews?.values() ?? []].flatMap((preview) => preview.positions.map((position) => [position.id, preview.actor.name] as [string, string])))}
+                livePreviews={new Map([...doc.previews?.values() ?? []].flatMap((preview) => preview.positions.map((position) => [position.id, preview] as [string, typeof preview])))} />
               {!sketch.thoughts.length ? <p className="sk-first">An empty sketch. Add the first thought with <b>Thought</b>, then keep adding with the <b>+</b> beside it.</p> : null}
             </>
           ) : <p className="sk-empty-list">No thoughts yet.</p>
