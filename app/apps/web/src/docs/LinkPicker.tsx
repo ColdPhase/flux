@@ -27,7 +27,7 @@ async function candidates(projectId: string, workspaceId: string, selfId: string
   const recent = await Promise.all(threads.slice(0, 3).map((thread) => getConversation(thread.id, signal)));
   const line = (text: string) => { const first = text.trim().split('\n', 1)[0] ?? ''; return first.length > 90 ? `${first.slice(0, 89)}…` : first; };
   return [
-    ...docs.filter((doc) => doc.id !== selfId).map((doc) => ({ type: 'doc' as const, id: doc.id, title: doc.title, hint: doc.state === 'draft' ? 'Draft doc' : 'Doc' })),
+    ...docs.filter((doc) => doc.id !== selfId).map((doc) => ({ type: 'doc' as const, id: doc.id, title: doc.title, hint: doc.state === 'draft' ? 'Draft page' : 'Page' })),
     ...sketches.filter((sketch) => sketch.scope === 'project' && sketch.projectId === projectId).map((sketch) => ({ type: 'sketch' as const, id: sketch.id, title: sketch.title, hint: 'Sketch' })),
     ...recent.flatMap((thread) => thread ? [...thread.messages].reverse().map((message) => ({ type: 'message' as const, id: message.id, title: line(message.body), hint: 'Message' })) : []),
   ];

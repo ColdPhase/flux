@@ -8,6 +8,7 @@ export type { SQL } from 'drizzle-orm';
 export * from './repositories/sessions.js';
 export * from './repositories/agent-proposals.js';
 export * from './repositories/agent-connections.js';
+export * from './repositories/project-agents.js';
 export * from './repositories/agent-project-objects.js';
 export * from './migrations/ledger.js';
 // Highest numbered file in packages/db/migrations. The API refuses other versions.
@@ -43,6 +44,7 @@ export * from './repositories/direct-messages.js';
 export * from './repositories/docs.js';
 export * from './repositories/sample.js';
 export * from './repositories/idempotency.js';
+export * from './repositories/draft-results.js';
 
 /** PostgreSQL channel notified (payload: seq) after an event with a workspace commits; wakes stream connections. */
 export const EVENTS_CHANNEL = 'flux_events';
