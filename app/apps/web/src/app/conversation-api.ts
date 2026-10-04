@@ -37,7 +37,8 @@ export const publishMaterial = (projectId: string, command: CreateMaterialComman
 export const getMaterial = (id: string, signal?: AbortSignal) => request<MaterialOrDoc>(materialPath(id), { signal });
 export const getMaterialVersion = (id: string, version: number, signal?: AbortSignal) => request<MaterialVersion>(materialVersionPath(id, version), { signal });
 
-export const listDrafts = (workspaceId: string, signal?: AbortSignal) => request<Page<Draft>>(`${workspaceDraftsPath(workspaceId)}?limit=100`, { signal });
-export const createPrivateDraft = (workspaceId: string, title: string, body: string, idempotencyKey: string) =>
-  request<Draft>(workspaceDraftsPath(workspaceId), { method: 'POST', body: { title, body }, headers: { [IDEMPOTENCY_KEY_HEADER]: idempotencyKey } });
+export const listDrafts = (workspaceId: string, signal?: AbortSignal, offset = 0) => request<Page<Draft>>(`${workspaceDraftsPath(workspaceId)}?limit=100&offset=${offset}`, { signal });
+/** A private draft; an `idempotencyKey` makes a retry return the same draft instead of a second one. */
+export const createPrivateDraft = (workspaceId: string, title: string, body: string, idempotencyKey?: string, signal?: AbortSignal) =>
+  request<Draft>(workspaceDraftsPath(workspaceId), { method: 'POST', body: { title, body }, signal, ...(idempotencyKey ? { headers: { [IDEMPOTENCY_KEY_HEADER]: idempotencyKey } } : {}) });
 export const listWorkspaceMembers = (workspaceId: string, signal?: AbortSignal) => request<WorkspaceMember[]>(`${WORKSPACES_PATH}/${workspaceId}/members`, { signal });
