@@ -151,7 +151,9 @@ Evidence: `docs/agents/evidence/153-request-claims/` ([README](README.md),
   branch on 2026-10-04 (0045 #154 files, 0046/0047 #228, 0048 #238). Any of
   0045–0048 that lands later must keep `FLUX_SCHEMA_VERSION` at 49, or higher
   if newer migrations exist. Any later rewrite of
-  `agent_standing_grants_operation_check` must keep both operations.
+  `agent_standing_grants_operation_check` must keep both operations. The
+  stacked unit-creation slice (`claude-maurycy/153-unit-creation`) proposes
+  `0050` and raises the version to 50 on its own branch.
 
 ## Not in this PR
 
