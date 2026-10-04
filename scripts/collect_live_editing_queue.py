@@ -94,7 +94,7 @@ def terminal_state(records,expected):
             if key in record and str(uuid.UUID(record[key]))!=record[key]: raise ValueError('canonical correlation UUID required')
         for key in ('inputSequence','confirmedSequence'):
             if key in record and not integer(record[key]): raise ValueError('correlation sequence invalid')
-        incomplete |= record['droppedRecords']>0 or record['backpressured'] or record['externalInputBytes']>MAX_BYTES or record['externalOutputBytes']>MAX_BYTES or record['peakExternalInputBytes']>MAX_BYTES or record['peakExternalOutputBytes']>MAX_BYTES
+        incomplete |= record['droppedRecords']>0 or record['backpressured'] or any(record[field]>MAX_BYTES for field in ('assemblyBytes','peakAssemblyBytes','externalInputBytes','peakExternalInputBytes','externalOutputBytes','peakExternalOutputBytes'))
         if record['kind']=='final':
             if type(record.get('finalDrained')) is not bool: raise ValueError('missing final drain')
             if record['finalDrained'] and any(record[g]!=0 for g in GAUGES): raise ValueError('false drained assertion')
