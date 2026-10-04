@@ -241,6 +241,18 @@ DM sketches. Results name the DM as their place, and `target.dmId` makes them op
 `app/tests/ui/test_dm_sketches.py` (Playwright, `./scripts/check_ui.sh`, screenshots
 `dm-sketch-*.png`).
 
+## Required live interaction — F-021 / #228
+
+A second authorized person must see positions during pointer movement, before
+pointerup, and committed additions/changes without waiting for unrelated local
+operations. The current local preview and saved-event refresh do not deliver this
+outcome. [The assessed contract](live-editing-proposal.md) retains native SQL/CAS
+objects with identified transient previews, confirmed deltas and conflict-safe
+own undo. It is admitted only for disabled calibration; runtime gates remain open.
+Camera and selection stay local, and #149's private new-thought draft is never
+broadcast before deliberate Save. Private/DM/project audiences and current access
+remain authoritative for every write and delivery.
+
 ## Evidence
 
 The screenshots in [`docs/design/sketches/`](../design/sketches/) come from

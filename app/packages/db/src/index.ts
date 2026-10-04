@@ -11,7 +11,7 @@ export * from './repositories/agent-connections.js';
 export * from './repositories/agent-project-objects.js';
 export * from './migrations/ledger.js';
 // Highest numbered file in packages/db/migrations. The API refuses other versions.
-export const FLUX_SCHEMA_VERSION = 43;
+export const FLUX_SCHEMA_VERSION = 44;
 // pg-boss 12.35.0 declares schema 43. Update this with the pinned package.
 export const PG_BOSS_SCHEMA_VERSION = 43;
 
@@ -29,6 +29,7 @@ export * from './repositories/task-discussions.js';
 export * from './repositories/direct-messages.js';
 export * from './repositories/docs.js';
 export * from './repositories/sample.js';
+export * from './repositories/idempotency.js';
 
 /** PostgreSQL channel notified (payload: seq) after an event with a workspace commits; wakes stream connections. */
 export const EVENTS_CHANNEL = 'flux_events';
@@ -96,3 +97,4 @@ export * from './repositories/github.js';
 export * from './repositories/agent-execution.js';
 export * from './repositories/agent-orientation.js';
 export * from './repositories/agent-playbook.js';
+export * from './repositories/agent-policies.js';

@@ -447,8 +447,9 @@ version. The domain methods enforce this too, not only the HTTP routes.
 
 Every POST and PATCH under `/api/v1` access routes, and summary requests, accepts
 `Idempotency-Key`: 1–255 visible ASCII characters. The implementation is
-`runIdempotent` in `app/packages/core/src/idempotency.ts`. DELETE routes and the Better
-Auth and session endpoints do not take keys.
+`runIdempotent` in `app/packages/core/src/idempotency.ts`, which stores keys through its
+`IdempotencyStore` port (`app/packages/db/src/repositories/idempotency.ts`). DELETE routes
+and the Better Auth and session endpoints do not take keys.
 
 - **Scope.** A key is scoped by principal, workspace and operation. The operation is
   the method and route pattern, for example `POST /api/v1/drafts/:draftId/share`. The
