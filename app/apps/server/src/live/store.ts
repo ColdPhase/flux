@@ -155,13 +155,16 @@ export function liveSessionStore(db: Database): LiveRepository {
 
     async withRead(principal, sessionId, read) {
       return db.transaction(async (tx) => {
-        const [located] = await tx.select({ projectId: sessions.projectId }).from(sessions)
-          .where(eq(sessions.id, sessionId));
+        const [located] = await tx.select().from(sessions).where(eq(sessions.id, sessionId));
         if (!located) throw new NotFoundError('Live session', 'LIVE_SESSION_NOT_FOUND');
         await lockAdmissionScope(tx, located.projectId);
         enforce(await evaluateProject(principal, 'project.read', located.projectId, tx, { lock: true }), 'project');
+        const context = record(located).context;
+        // Protect the accepted anchor throughout delivery, before taking any session row.
+        // This read owns no graph writer, task-use latch or persisted effect.
+        await requireLiveContext(principal, context, located.projectId, tx, true);
         const [row] = await tx.select().from(sessions).where(eq(sessions.id, sessionId)).for('share');
-        if (!row || row.projectId !== located.projectId) throw new NotFoundError('Live session', 'LIVE_SESSION_NOT_FOUND');
+        if (!row || !sameContext(row, located.projectId, context)) throw new NotFoundError('Live session', 'LIVE_SESSION_NOT_FOUND');
         const session = record(row);
         await requireLiveContext(principal, session.context, row.projectId, tx, false);
         return read(session);
@@ -214,25 +217,30 @@ export function liveSessionStore(db: Database): LiveRepository {
         enforce(await evaluateProject(principal, 'project.read', located.projectId, tx, { lock: true }), 'project');
         const context = record(located).context;
         await requireLiveContext(principal, context, located.projectId, tx, context.type === 'doc' || context.type === 'sketch');
+        const ids = selected(ref);
+        const receiptCondition = and(eq(presentations.sessionId, sessionId), eq(presentations.createdBy, principal.id),
+          eq(presentations.clientEventId, clientEventId));
+        const conflicts = (existing: PresentationRow) => existing.refType !== ref.type || existing.refId !== ref.id ||
+          existing.refVersion !== ref.version || JSON.stringify(existing.selectedThoughtIds) !== JSON.stringify(ids);
+        // Immutable command identity conflicts before interpreting a changed source/version.
+        // Exact retries still go through current source validation and the complete task fence below.
+        const [earlier] = await tx.select().from(presentations).where(receiptCondition);
+        if (earlier && conflicts(earlier))
+          throw new ConflictError('This clientEventId was used for another presentation', 'IDEMPOTENCY_CONFLICT');
         await requireLivePresentationSource(principal, located.projectId, ref, tx, ref.type !== 'work');
         const taskFence = await prepareReferencedTaskUse(tx, located.projectId, [context, ref]);
         const [row] = await tx.select().from(sessions).where(eq(sessions.id, sessionId)).for('update');
         if (!row || !sameContext(row, located.projectId, context)) throw new NotFoundError('Live session', 'LIVE_SESSION_NOT_FOUND');
         if (row.state !== 'available') throw new RuleViolationError('This session has ended', 'LIVE_SESSION_ENDED');
         await requireLiveContext(principal, record(row).context, row.projectId, tx, false);
-        const ids = selected(ref);
-        const [existing] = await tx.select().from(presentations).where(and(
-          eq(presentations.sessionId, sessionId), eq(presentations.createdBy, principal.id),
-          eq(presentations.clientEventId, clientEventId),
-        ));
+        await requireLivePresentationSource(principal, row.projectId, ref, tx, false);
+        const [existing] = await tx.select().from(presentations).where(receiptCondition);
         if (existing) {
-          if (existing.refType !== ref.type || existing.refId !== ref.id ||
-              existing.refVersion !== ref.version || JSON.stringify(existing.selectedThoughtIds) !== JSON.stringify(ids))
+          if (conflicts(existing))
             throw new ConflictError('This clientEventId was used for another presentation', 'IDEMPOTENCY_CONFLICT');
           return;
         }
 
-        await requireLivePresentationSource(principal, row.projectId, ref, tx, false);
         const [inserted] = await tx.insert(presentations).values({
           id: randomUUID(), workspaceId: row.workspaceId, projectId: row.projectId,
           sessionId, generation: row.generation, createdBy: principal.id, clientEventId,

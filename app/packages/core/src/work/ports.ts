@@ -174,7 +174,7 @@ export interface WorkRepository extends TaskGraphReader {
   /** Same task-use fence as every persisted writer; no independently owned transaction. */
   taskUseTargets(refs: readonly ObjectRef[]): Promise<readonly string[]>;
   prepareTaskUse(ids: readonly string[]): Promise<{ ids: readonly string[]; mark(ids?: readonly string[]): Promise<void> }>;
-  lockPreparedTaskUse(ids: readonly string[]): Promise<{ ids: readonly string[]; mark(ids?: readonly string[]): Promise<void> }>;
+  lockPreparedTaskUse(ids: readonly string[]): Promise<{ ids: readonly string[]; projectIds: readonly string[]; mark(ids?: readonly string[]): Promise<void> }>;
   creatorAgentOwner(agentId: string, options?: { lock?: boolean }): Promise<string | null>;
   creationUndoReceipt(projectId: string, by: ActorRef, commandId: string): Promise<{ workId: string; fingerprint: string; noticeId: string } | null>;
   revertCreation(work: WorkRecord, by: ActorRef, commandId: string, fingerprint: string): Promise<{ work: WorkRecord; noticeId: string }>;

@@ -185,6 +185,20 @@ async function requireTargets(ports: WorkPorts, projectId: string, targets: Obje
   }
 }
 
+/** Under the retained project graph: do not lock a guessed or foreign prerequisite. */
+async function requireDependencyTargets(ports: WorkPorts, projectId: string, ids: readonly string[]) {
+  for (const id of ids) {
+    if ((await ports.work.locate('work', id))?.projectId !== projectId)
+      throw new RuleViolationError('Every prerequisite must be a task of this project', 'TASK_DEPENDENCY_NOT_FOUND');
+  }
+}
+
+/** Revalidate the current scope returned by the ONE complete sorted task pass. */
+function requireDependencyScope(projectIds: readonly string[], projectId: string) {
+  if (projectIds.some((id) => id !== projectId))
+    throw new RuleViolationError('Every prerequisite must be a task of this project', 'TASK_DEPENDENCY_NOT_FOUND');
+}
+
 async function requireOwner(ports: WorkPorts, projectId: string, owner: ActorRef | null) {
   if (owner && !(await ports.access.canRead(owner, projectId)))
     throw new RuleViolationError('The owner needs current access to this project', 'OWNER_WITHOUT_ACCESS');
@@ -376,8 +390,10 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
           // The same canonical creation of an unchanged task: the original task, actor and times, no new notice or event.
           if (decision.kind === 'replay') return presentWork(ports, produced!);
         }
+        await requireDependencyTargets(ports, project, dependencyIds);
         const existingTargets = [...new Set([...dependencyIds, ...await ports.work.taskUseTargets([...sources, ...related])])].sort();
         const useFence = await ports.work.lockPreparedTaskUse(existingTargets);
+        requireDependencyScope(useFence.projectIds, project);
 
         const scope = { workspaceId, projectId: project };
         const record = await ports.work.insertWork({ id: randomUUID(), ...scope, title, outcome, status, blocker, owner, createdBy: by, criteria, clientCommandId, requestFingerprint });
@@ -452,9 +468,11 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         // and message identities above), then every task it reads in one ascending pass (itself and the
         // prerequisites it will have).
         await lockProjectGraphs(ports.work, [projectId]);
+        if (dependencyIds !== undefined) await requireDependencyTargets(ports, projectId, dependencyIds);
         const previous = await directPrerequisiteIds(ports.work, workspaceId, [id]);
         const useIds = [...new Set([id, ...previous, ...(dependencyIds ?? [])])].sort();
         const useFence = await ports.work.lockPreparedTaskUse(useIds);
+        requireDependencyScope(useFence.projectIds, projectId);
         const current = contribution ? (await ports.contributions.lockTasks(contribution))[0]! : (await ports.work.findWork(id))!;
         if (current.version !== version) throw new VersionConflictError(current.version, await presentWork(ports, current));
         const nextStatus = changes.status ?? current.status;

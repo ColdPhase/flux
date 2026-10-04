@@ -314,7 +314,10 @@ test('every associated write of a blocker save or a result rolls the whole unit 
   // A replay returns the current presentation of the original outcome (the result has since linked the task).
   const replayed = expectStatus(await f.patch(f.writer, t.id, save, blocked.version), 200) as WorkItem;
   assert.deepEqual([replayed.version, replayed.blocker], [saved.version, saved.blocker]);
-  assert.deepEqual(replayed, await f.current(t.id));
+  const { creationUndo, ...currentFields } = await f.current(t.id);
+  assert.deepEqual(creationUndo, { eligible: false, reason: 'not_ai_origin' }, 'current GET rechecks eligibility of the genuine human creation');
+  assert.equal(replayed.creationUndo, undefined, 'PATCH replay retains its original domain projection');
+  assert.deepEqual(replayed, currentFields);
   assert.deepEqual(expectStatus(await f.result(f.writer, publish), 201), published);
   assert.deepEqual(await f.counts(), final, 'the stable retries after the recovered failures add nothing');
 });

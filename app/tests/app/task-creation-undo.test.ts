@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { notificationFactRows, projectExportRows, taskUseRows } from '@flux/db';
-import type { UndoTaskCreationResult, WorkItem } from '@flux/contracts';
+import type { UndoTaskCreationResult, WorkItem, SearchResponse } from '@flux/contracts';
 import { nativeWorkInTransaction } from '../../apps/server/src/work/adapters.js';
 import { db, pool } from './support/db.js';
 import { actionScene, toolFailure } from './support/mcp-actions.js';
@@ -35,13 +35,40 @@ async function scene() {
 }
 
 test('genuine native creation Undo retains exact history and receipts; core/MCP creation retries cannot resurrect it', async () => {
-  const f = await scene(); const { item, command } = await f.create();
+  const f = await scene();
+  const query = `undosearchprobe${randomUUID().replaceAll('-', '')}`;
+  const { item, command } = await f.create({ title: query });
+  const activeControl = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/work`,
+    { body: { title: `${query} active human control` } }), 201) as unknown as WorkItem;
+  expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/materials`,
+    { body: { clientMutationId: randomUUID(), title: `${query} historical text`, body: query } }), 201);
+  const search = async (type?: string) => expect(await f.owner.request('GET', `/api/v1/search?${new URLSearchParams({
+    q: query, place: `project:${f.projectId}`, ...(type ? { type } : {}),
+  })}`), 200) as unknown as SearchResponse;
+  for (const type of [undefined, 'work']) {
+    const answer = await search(type);
+    assert.equal(answer.counts.work, 2);
+    assert.deepEqual(answer.items.filter((hit) => hit.kind === 'work').map((hit) => hit.target)
+      .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+    [item, activeControl].map((work) => ({ type: 'work', projectId: f.projectId, id: work.id }))
+      .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))));
+    assert.equal(answer.next, null);
+  }
+  assert.deepEqual((await f.read(item.id) as unknown as WorkItem).creationUndo, { eligible: true, reason: 'eligible' }, 'search reads do not consume unused creation');
   assert.deepEqual(item.creationUndo, { eligible: true, reason: 'eligible' });
   const before = (await pool.query('SELECT created_by_kind,created_by_id,created_at,client_command_id FROM project_work_items WHERE id=$1', [item.id])).rows[0];
   const commandId = randomUUID();
   const reverted = expect(await f.undo(item, commandId), 200) as unknown as UndoTaskCreationResult;
   assert.equal(reverted.work.lifecycle?.state, 'creation_reverted');
   assert.equal(reverted.work.version, item.version + 1);
+  for (const type of [undefined, 'work']) {
+    const answer = await search(type);
+    assert.equal(answer.counts.work, 1, 'current counts exclude retained reverted work before the count limit');
+    assert.deepEqual(answer.items.filter((hit) => hit.kind === 'work').map((hit) => hit.target),
+      [{ type: 'work', projectId: f.projectId, id: activeControl.id }]);
+    assert.equal(answer.next, null);
+    if (!type) assert.equal(answer.items.filter((hit) => hit.kind === 'material').length, 1, 'ordinary historical text remains searchable');
+  }
   assert.deepEqual(expect(await f.undo(item, commandId.toUpperCase()), 200), reverted);
   const changed = expect(await f.owner.request('POST', `/api/v1/work/${item.id}/creation-undo`,
     { body: { clientCommandId: commandId, expectedVersion: item.version + 1 } }), 409);

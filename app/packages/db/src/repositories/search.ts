@@ -153,6 +153,11 @@ function hitConditions(plan: SearchPlanRows, withKinds: boolean): SQL {
   const conditions: SQL[] = [
     sql`sd.keys && (SELECT lookups FROM aud)`,
     sql`sd.audience_key = ANY ((SELECT keys FROM aud)::text[])`,
+    // Work IDs are UUIDs; other kinds (including people) can carry arbitrary text IDs.
+    // Keep the indexed UUID side intact and apply lifecycle before page/count/probe limits.
+    sql`(sd.kind <> 'work' OR EXISTS (SELECT 1 FROM project_work_items active_work
+      WHERE active_work.id = (CASE WHEN sd.kind = 'work' THEN sd.object_id::uuid END)
+        AND active_work.creation_reverted_at IS NULL))`,
     plan.fuzzy ? sql`(sd.tsv @@ ${tsquery(plan)} OR sd.title %> ${plan.text})` : sql`sd.tsv @@ ${tsquery(plan)}`,
   ];
   if (withKinds && plan.kinds?.length) conditions.push(sql`sd.kind IN (${sql.join(plan.kinds.map((kind) => sql`${kind}`), sql`, `)})`);
@@ -181,7 +186,6 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows): S
         row_number() OVER (PARTITION BY sd.kind, sd.object_id ORDER BY sd.version DESC NULLS LAST) AS newest
       FROM search_documents sd
       WHERE ${hitConditions(plan, true)}
-        AND (sd.kind <> 'work' OR EXISTS (SELECT 1 FROM project_work_items active_work WHERE active_work.id = sd.object_id AND active_work.creation_reverted_at IS NULL))
     ),
     -- One result per object: of several matching versions of a material, the newest.
     hits AS (SELECT * FROM matched WHERE newest = 1)
