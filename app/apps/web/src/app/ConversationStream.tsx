@@ -243,8 +243,8 @@ export function ConversationStream({ project, meId, roots: stream, work, author,
       }
     };
     const onScroll = () => { if (!frame) frame = requestAnimationFrame(record); };
-    // The stream's own content can also change height after a width change (the thread docking or
-    // becoming a sheet re-renders a frame later): while a thread is open, its root keeps its place then too.
+    // The stream's own content also changes height: after a width change (the thread docking or becoming
+    // a sheet re-renders a frame later), and when roots above or below the reader change.
     const column = columnRef.current;
     let height = column?.offsetHeight ?? 0;
     const observer = new ResizeObserver(() => {
@@ -253,8 +253,12 @@ export function ConversationStream({ project, meId, roots: stream, work, author,
       if (!widened && !grown) return;
       width = feed.clientWidth;
       height = column?.offsetHeight ?? 0;
-      const keep = widened ? pinRef.current ?? (stickRef.current ? null : anchor) : openRef.current ? pinRef.current : null;
-      if (!widened && !keep) return;
+      // A row growing above the reader (a reply count appearing, a task chip after a refresh) must not
+      // move what they read (foundation 10.5): the first root in view keeps its place, or the end stays in
+      // view when they were reading the end. While a thread is open, its root keeps its place instead.
+      const reading = stickRef.current ? null : anchor;
+      const keep = widened ? pinRef.current ?? reading : openRef.current ? pinRef.current ?? reading : reading;
+      if (!widened && !keep && !stickRef.current) return;
       const element = keep ? document.getElementById(keep.id) : null;
       if (element && keep) feed.scrollTop += element.getBoundingClientRect().top - feed.getBoundingClientRect().top - keep.offset;
       else if (stickRef.current) feed.scrollTop = feed.scrollHeight;

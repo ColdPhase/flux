@@ -386,6 +386,40 @@ class OneConversationJourney(unittest.TestCase):
         composer.fill("")
         expect(hint).to_have_count(0)
 
+    def test_05c_a_row_growing_above_the_reader_does_not_move_the_stream(self) -> None:
+        # Foundation 10.5: a viewer's "1 reply" row appears on a root above the viewport (0 -> 1 replies)
+        # after a focus refresh; the first root in view stays where it was.
+        page = self.page("lee")
+        page.goto(self.project_url())
+        feed = page.locator(".project-convo__feed.is-stream")
+        expect(self.root(page, "r3")).to_be_visible()
+        roots = {root["message"]["id"]: root for root in self.all_roots(page)}
+        loaded = page.eval_on_selector_all(".project-convo__feed.is-stream .project-convo__message", "items => items.map(item => item.id.slice(8))")
+        quiet = [mid for mid in loaded if roots.get(mid, {}).get("replyCount") == 0]
+        self.assertGreaterEqual(len(quiet), 12, "enough roots without replies in the loaded window")
+        target, reader = quiet[2], quiet[8]
+        # Mid-stream: the reader's root at the top of the feed, the target root above the viewport.
+        page.evaluate("""([feedSel, id]) => { const feed = document.querySelector(feedSel); const item = document.getElementById(id);
+            feed.scrollTop += item.getBoundingClientRect().top - feed.getBoundingClientRect().top - 40; }""",
+                      [".project-convo__feed.is-stream", f"message-{reader}"])
+        page.wait_for_timeout(300)
+        first_visible = """(feedSel) => { const feed = document.querySelector(feedSel); const top = feed.getBoundingClientRect().top;
+            for (const item of feed.querySelectorAll('.project-convo__message')) { const box = item.getBoundingClientRect();
+              if (box.bottom > top + 1) return { id: item.id, top: box.top - top }; } return null; }"""
+        before = page.evaluate(first_visible, ".project-convo__feed.is-stream")
+        self.assertEqual(before["id"], f"message-{reader}")
+        self.assertLess(page.evaluate("id => document.getElementById(id).getBoundingClientRect().bottom", f"message-{target}"),
+                        feed.bounding_box()["y"], "the target root is above the viewport")
+        other = self.page("jonas")
+        self.api(other, "POST", f"/api/v1/conversations/{roots[target]['conversationId']}/messages",
+                 {"body": "A late answer to an earlier note", "clientMessageId": str(uuid.uuid4())}, status=201)
+        page.evaluate("() => window.dispatchEvent(new Event('focus'))")
+        expect(self.root(page, target).locator(".convo-replies")).to_contain_text("1 reply")
+        page.wait_for_timeout(300)
+        after = page.evaluate(first_visible, ".project-convo__feed.is-stream")
+        self.assertEqual(after["id"], before["id"], "the same root stays first in view")
+        self.assertLessEqual(abs(after["top"] - before["top"]), 2, f"drift {after['top'] - before['top']:.1f}px")
+
     def test_06_a_reader_reads_the_stream_and_threads_without_a_composer(self) -> None:
         page = self.page("lee")
         page.goto(self.project_url())
