@@ -60,7 +60,7 @@ async function fixture() {
     async handoff(_session, _id, handoff) { handoff(); },
     async cursor(_session, _id, _generation, _connection, value) {
       const first = cursors.length === 0; cursors.push(value); await gate.promise;
-      if (!permitted && !(first && firstAlreadyAuthorized)) throw new DomainError(401, 'UNAUTHENTICATED', 'Controlled current access ended');
+      if (!permitted && !(first && firstAlreadyAuthorized)) throw new DomainError(403, 'CONTROLLED_CURSOR_ACCESS_ENDED', 'Controlled current access ended');
     },
     close: runtime.close,
   };
