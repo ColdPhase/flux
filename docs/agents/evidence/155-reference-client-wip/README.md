@@ -1,8 +1,9 @@
 # #155 reference client — state on 2026-10-04 (claude-maurycy / Zamojski5)
 
 Branch `claude-maurycy/155-truthful-typing` (draft PR #170). Replaces the previous note at
-`35910762`; the archived v2 runner, overlay and raw log stay in this folder. Tested head:
-`642738dc` (this note is a later doc-only commit).
+`35910762`; the archived v2 runner, overlay and raw log stay in this folder (their `sha256.json`
+is archival and does not cover this note). Latest tested head: `e359bd47` (see "Verified at
+`e359bd47`" below; this note is a later doc-only commit).
 
 ## Peer findings at `35910762` and what changed
 
@@ -26,6 +27,30 @@ Branch `claude-maurycy/155-truthful-typing` (draft PR #170). Replaces the previo
 4. **Merged `origin/main` `1c9e36c5` (`d81aef87`).** The Kanban board runs on bounded group reads,
    not the project work collection: see
    `docs/development/performance/2026-10-04-native-task-board-integration.md` (not yet reviewed).
+
+5. **Map task counts (#196) on a bounded selector (`84119fd9`, `7a4529d0`).** Main's #196 counted
+   a thought's tasks from the project work collection, which #155 removes.
+   `GET /projects/:id/work-thought-tasks?thoughtIds=` (1..100) returns exact per-thought counts and
+   one window of ≤100 (thought, task) pairs; contract in `bounded-native-work.md`.
+6. **Merged `origin/main` `24f49522` (`045e924a`) and `d94f70e4` (`e359bd47`).** Both clean or
+   additive; `e359bd47` brings main's GitHub "No pull requests are linked" line, which
+   `github.e2e.ts` asserts alongside the picker-page assertions.
+
+## Verified at `e359bd47` (2026-10-04, Docker, isolated projects, ports 18910–18919)
+
+Raw logs are kept outside the repository; their sha256 is listed so a copy can be matched.
+
+- **Image build + API/unit subset** (`pnpm build && pnpm typecheck && pnpm lint` in the image,
+  then 16 files): `FLUX_REPO=$PWD FLUX_TEST_PORT=18914 FLUX_TEST_MAILPIT_PORT=18915 sh targeted.sh
+  tests/app/typing-{access,admission,connection,core,diagnostics,sender-proofs,socket}.test.ts
+  tests/app/work-read-{client,keys,native,query,service}.test.ts
+  tests/app/work-reference-rows-native.test.ts tests/app/work-reference-window.test.ts
+  tests/app/work-thought-tasks-native.test.ts tests/app/architecture.test.ts`
+  (`targeted.sh` = `check_application.sh` setup, then `tsx --test --test-concurrency=1 <files>`):
+  **141/141 pass**, 7 suites. Lint: 0 errors, 1 warning (`WorkReadContext.tsx:12`
+  `react-hooks/exhaustive-deps`, unnecessary `accountId`/`projectId` memo dependencies; branch
+  file, not a failure). Log `w170b-api.log` sha256 `61935c9376707c9267ade50c29cd360e3c385f85de6cf5114a2b6f0a2d82211a`.
+<!-- more -->
 
 ## Verified in Docker at `642738dc` (isolated projects, ports 18910–18919)
 
