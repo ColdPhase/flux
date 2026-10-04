@@ -222,7 +222,9 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
     next.setHearing(!quietRef.current);
     setSession(grant.session);
     sessionRef.current = grant.session;
-    setAnchor(targetAnchor);
+    // A joined session is an established server-authorized anchor. Its pending
+    // view-read callback must not outlive admission and poison a later rejoin.
+    setAnchor(targetAnchor ? { projectId: targetAnchor.projectId, context: targetAnchor.context, label: targetAnchor.label } : null);
     setPhase('in');
     return grant.session;
   }, []);

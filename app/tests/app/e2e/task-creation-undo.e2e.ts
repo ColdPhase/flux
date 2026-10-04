@@ -201,7 +201,7 @@ test('two accounts keep Conversation, Tasks, Map and Agents current after real U
     expectStatus(await f.manager.browser.request('POST', taskCreationUndoPath(item.id),
       { body: { clientCommandId: randomUUID(), expectedVersion: item.version } }), 403);
     const original = await stageDraft(pages[0]!, f, item);
-    const resultResponse = pages[1]!.waitForResponse((response) => new URL(response.url()).pathname === taskCreationUndoPath(item.id) && response.request().method() === 'POST');
+    const resultResponse = finite(pages[1]!.waitForResponse((response) => new URL(response.url()).pathname === taskCreationUndoPath(item.id) && response.request().method() === 'POST'), 'real UI Undo response', 15_000);
     await undoButton(pages[1]!).focus(); await pages[1]!.keyboard.press('Enter');
     const response = await finite(resultResponse, 'real UI Undo response', 15_000); assert.equal(response.status(), 200, await response.text());
     const result = await response.json() as UndoTaskCreationResult;
@@ -365,7 +365,7 @@ test('pending Undo disables one scoped action and lost real response retries the
       await panel(page).getByRole('alert').filter({ hasText: /could not be reached|Could not confirm|Network/i }).waitFor();
       assert.equal(await undoButton(page).isDisabled(), false); assert.deepEqual(await storedDraft(page, draftKey(f, item)), draft);
       const before = (await pool.query('SELECT count(*)::int AS n FROM events WHERE object_id=$1', [f.place.id])).rows[0].n;
-      const replayPromise = page.waitForResponse((response) => new URL(response.url()).pathname === taskCreationUndoPath(item.id) && response.request().method() === 'POST');
+      const replayPromise = finite(page.waitForResponse((response) => new URL(response.url()).pathname === taskCreationUndoPath(item.id) && response.request().method() === 'POST'), 'real exact UUID replay', 15_000);
       await undoButton(page).click(); const replay = await finite(replayPromise, 'real exact UUID replay', 15_000);
       assert.equal(replay.request().postDataJSON().clientCommandId, outgoing.clientCommandId); assert.equal(replay.status(), 200);
       assert.deepEqual(await replay.json(), result); await reverted(page, item);
@@ -412,7 +412,7 @@ test('late first-use and grant refusals preserve real staged drafts and a genuin
       assert.equal(selected.files[0]?.staged.id, original.files[0]?.staged.id); assert.equal(selected.body, original.body);
       // A second actual current-rights refusal preserves that full selected draft.
       await grant(f.manager, f.place.id, f.author, 'viewer');
-      const refusedSend = page.waitForResponse((response) => new URL(response.url()).pathname === taskDiscussionPath(item.id) && response.request().method() === 'POST');
+      const refusedSend = finite(page.waitForResponse((response) => new URL(response.url()).pathname === taskDiscussionPath(item.id) && response.request().method() === 'POST'), 'current-rights real source/file send refusal', 15_000);
       await thread.getByRole('button', { name: 'Send reply', exact: true }).click();
       const send = await finite(refusedSend, 'current-rights real source/file send refusal', 15_000); assert.equal(send.status(), 403);
       await thread.getByRole('alert').filter({ hasText: 'Your draft, files and sources are kept' }).waitFor();
@@ -484,7 +484,7 @@ test('configured real LiveKit discovery held across Undo cannot publish or join 
       await panel(page).getByRole('button', { name: 'Work on this together', exact: true }).click();
       const actual = await discovery.held as { items: unknown[] }; assert.deepEqual(actual.items, []);
       await f.undo(item); await reverted(page, item);
-      const responsePromise = page.waitForResponse((response) => new URL(response.url()).pathname === `/api/v1/projects/${f.place.id}/live-sessions`);
+      const responsePromise = finite(page.waitForResponse((response) => new URL(response.url()).pathname === `/api/v1/projects/${f.place.id}/live-sessions`), 'held discovery response settles', 15_000);
       await discovery.finish();
       const response = await finite(responsePromise, 'held discovery response settles'); await finite(response.finished(), 'held discovery body settles');
       // Flush the continuation of that genuine pending preflight; no publication
