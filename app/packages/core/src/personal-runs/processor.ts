@@ -10,7 +10,7 @@ import type {
   PersonalRunPorts, PersonalRunUnitOfWork, RunChanges, RunRecord,
 } from './ports.js';
 import { updateAndAnnounce } from './progress.js';
-import { centsToMicros, costMicros, parseOutput, requestInput, SYSTEM_PROMPT, type SuppliedSource } from './validation.js';
+import { centsToMicros, parseOutput, requestInput, runChargeMicros, runTokensWithinLimits, SYSTEM_PROMPT, type SuppliedSource } from './validation.js';
 
 // The worker side of a personal run (`personal-run.dispatch.v1`, O-008 §3–§5). The job payload
 // is the run id only. Before reading, before dispatch and inside the commit transaction the run
@@ -174,13 +174,19 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       const run = await ports.runs.findRun(runId, { lock: true });
       if (!run || run.status !== 'dispatching') return 'skipped';
       // The usage is charged at the price of the connection the run was reserved on, or as the
-      // provider reported it (PROV-3). Without a price the charge stays unknown and counted.
-      const charge: RunChanges = result.kind === 'completed' && price
-        ? { costState: 'observed', chargedMicros: costMicros(result.usage, price), inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens }
-        : result.kind === 'completed' ? { costState: 'unknown', chargedMicros: 0, inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens }
-          : result.billed === 'none' ? { ...free } : { costState: 'unknown', chargedMicros: 0 };
+      // provider reported it (PROV-3), never above the run's reservation. Usage beyond the run's
+      // token limits, or a cost above its reservation, is treated as a lost response: the cost is
+      // unknown, the whole reservation stays counted against the daily cap, the reported numbers
+      // are not stored, and the answer is withheld. Without a price the charge stays unknown too.
+      const usage = result.kind === 'completed' ? result.usage : null;
+      const tokens: RunChanges = usage && runTokensWithinLimits(usage) ? { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens } : {};
+      const chargedMicros = usage && price ? runChargeMicros(usage, price, run.reservedMicros) : null;
+      const outOfBounds = usage !== null && price !== null && chargedMicros === null;
+      const charge: RunChanges = chargedMicros !== null ? { costState: 'observed', chargedMicros, ...tokens }
+        : result.kind === 'completed' && !outOfBounds ? { costState: 'unknown', chargedMicros: 0, ...tokens }
+          : result.kind === 'failed' && result.billed === 'none' ? { ...free } : { costState: 'unknown', chargedMicros: 0 };
       if (run.stopRequestedAt) return (await updateAndAnnounce(ports, run.id, ended('stopped', 'before_commit', charge))).status;
-      if (result.kind === 'failed') return (await updateAndAnnounce(ports, run.id, ended('provider_failed', null, charge))).status;
+      if (result.kind === 'failed' || outOfBounds) return (await updateAndAnnounce(ports, run.id, ended('provider_failed', null, charge))).status;
       let checked: Awaited<ReturnType<typeof recheck>>;
       try {
         checked = await recheck(ports, connections, compute, run, 'before_commit', true);

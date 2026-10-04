@@ -14,7 +14,7 @@ import {
 } from '@flux/contracts';
 import { InvalidInputError, RuleViolationError } from '../access/errors.js';
 import { id, isId } from '../work/validation.js';
-import { requestReservationMicros, usageMicros } from '../ai/price.js';
+import { boundedUsageMicros, requestReservationMicros, usageMicros, usageTokensWithin } from '../ai/price.js';
 import type { PersonalComputeUsage } from './ports.js';
 
 // Input and output rules of personal runs (#68, O-008). Pure functions shared by every entry
@@ -120,6 +120,19 @@ export function retryRequest(run: { kind: AssistantRunKind; prompt: string; targ
  */
 export function costMicros(usage: PersonalComputeUsage, price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>): number {
   return usageMicros(price, usage);
+}
+
+/**
+ * The charge of one run, never above its reservation (PROV-3, #192 B1): null when the reported
+ * usage exceeds the run's token limits or its cost exceeds `reservedMicros`.
+ */
+export function runChargeMicros(usage: PersonalComputeUsage, price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>, reservedMicros: number): number | null {
+  return boundedUsageMicros(price, usage, { maxInputTokens: PERSONAL_RUN_LIMITS.maxInputTokens, maxOutputTokens: PERSONAL_RUN_LIMITS.maxOutputTokens, reservedMicros });
+}
+
+/** Whether reported tokens are within the run's limits, and so may be stored as its usage. */
+export function runTokensWithinLimits(usage: PersonalComputeUsage): boolean {
+  return usageTokensWithin(usage, PERSONAL_RUN_LIMITS);
 }
 
 /**
