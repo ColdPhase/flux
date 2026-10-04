@@ -1,0 +1,477 @@
+{
+  "current": [
+    {
+      "name": "0001_foundation.sql",
+      "version": 1,
+      "sha256": "927baccece189dc375f99017256f026a4d5da863d9fed1f50ff4052128d7e319"
+    },
+    {
+      "name": "0002_identity.sql",
+      "version": 2,
+      "sha256": "6241ef92c5a44c26da7f18918b5aa03b47afe30803277a9b29b38b60afcd66c6"
+    },
+    {
+      "name": "0003_access.sql",
+      "version": 3,
+      "sha256": "8c88a362994e6c29a8ed5d5723a474b6c0a5782d1d36258cf0f88b466cf7003d"
+    },
+    {
+      "name": "0004_stream_safe_writes.sql",
+      "version": 4,
+      "sha256": "2fb0438dce8bee99f0eb60ec893656821788ed2c2ade12915e8a9ad403e6e1e7"
+    },
+    {
+      "name": "0005_push.sql",
+      "version": 5,
+      "sha256": "1efa25bdbea930a30556c9d7784f0bb7bce9a7cb3946cce9b7b9f9515df6b05f"
+    },
+    {
+      "name": "0006_conversation.sql",
+      "version": 6,
+      "sha256": "4f8fad716dc11a587efded1fb32dee72532462838c33943c30bb022a91929e06"
+    },
+    {
+      "name": "0007_sketches.sql",
+      "version": 7,
+      "sha256": "60738a82f2c9047c38d9f007aeeb66a267d89766054ee33c116cc57f2addeca6"
+    },
+    {
+      "name": "0008_work.sql",
+      "version": 8,
+      "sha256": "efa57fce68a017a1bf165ead6397ed0397720f45c17da61196fd813541244dfd"
+    },
+    {
+      "name": "0009_return_points.sql",
+      "version": 9,
+      "sha256": "a8c160817265a7a676f900b1781ed1c7f04f0b42d94690bdc1e538322edeca1c"
+    },
+    {
+      "name": "0010_direct_messages.sql",
+      "version": 10,
+      "sha256": "b67f3dab077a41cacb509b7f816d471f00d885306900d64ff6d0cbdeff60910d"
+    },
+    {
+      "name": "0011_agent_connection.sql",
+      "version": 11,
+      "sha256": "aa802129847e9b07796ebd2b726212b0bba751c710767cd669bbba08895408ac"
+    },
+    {
+      "name": "0012_agent_oauth.sql",
+      "version": 12,
+      "sha256": "17a1b18cd2f5f73715303f2f01300fcd9f534aa32c3674a212ab27ca8826648d"
+    },
+    {
+      "name": "0013_docs.sql",
+      "version": 13,
+      "sha256": "aa0da3ed346aa3aeef55d331856d6e241e5107bb106f2be9f17900cc736ab523"
+    },
+    {
+      "name": "0014_search.sql",
+      "version": 14,
+      "sha256": "bf48551adb3e59154808d9deaf36863c18b2d77c2481f457d7537e97a9ad72f3"
+    },
+    {
+      "name": "0015_notifications.sql",
+      "version": 15,
+      "sha256": "3aacecb3c5701f76fbd258cc3d4d14fbd39a21b22f48a960ec892b27baab30a5"
+    },
+    {
+      "name": "0016_live_sessions.sql",
+      "version": 16,
+      "sha256": "57d7af26014906939a44d6c620fc4f7dd67fa2d2046979658d5bb3674c02a65a"
+    },
+    {
+      "name": "0017_live_access_fences.sql",
+      "version": 17,
+      "sha256": "fb8a456e353e3ffbc7b6a3830693588327cc05e34cd2745f3f338d8f62b889ed"
+    },
+    {
+      "name": "0018_live_lifecycle.sql",
+      "version": 18,
+      "sha256": "e3fb9c02285879beb0070c333fc781a11e2c78d5e4d31bd7001c61fbd27b4846"
+    },
+    {
+      "name": "0019_live_webhook_events.sql",
+      "version": 19,
+      "sha256": "55447ab01feba74ecfcf94c0aff68f5104fec0b44731b2c7113fa5881216e5e0"
+    },
+    {
+      "name": "0020_live_invitations.sql",
+      "version": 20,
+      "sha256": "9478dde8a2851e93335da9ed0ffd7f81a939fc3037e697deb9abf7d4298567c3"
+    },
+    {
+      "name": "0021_live_invitation_notifications.sql",
+      "version": 21,
+      "sha256": "dfeeb806829f43deceb625814a71fe992c4044455868da6267c868d7fe60d141"
+    },
+    {
+      "name": "0022_search_restore_path.sql",
+      "version": 22,
+      "sha256": "c536d02b6ca65f4b96b00a6461956b11cfd7a001ce98a159ef5f2c522c83da2e"
+    },
+    {
+      "name": "0023_live_admissions.sql",
+      "version": 23,
+      "sha256": "218457d3fc2850a59c119acdc664a0be025896477bf26efe4f801d0cdef56714"
+    },
+    {
+      "name": "0024_personal_runs.sql",
+      "version": 24,
+      "sha256": "5607e4155f15c8180f70e7076abdb1ae0ef018a05da104f62f17fe72240d3e23"
+    },
+    {
+      "name": "0025_dm_sketches.sql",
+      "version": 25,
+      "sha256": "e25eb0b2bb08fe4dab2f642b948ee67b359593b53fcfc1241ce5c358d83fdda6"
+    },
+    {
+      "name": "0026_proactive_rules.sql",
+      "version": 26,
+      "sha256": "b81384dc393bb514e3e24dce8b2e84d12a93f4a9dc797879d11c4ff4af12f754"
+    },
+    {
+      "name": "0027_background_connections.sql",
+      "version": 27,
+      "sha256": "b3342f0af3fbe29aa32bd0f0a8625eb761e86af386880d3b95ed519c38965f3e"
+    },
+    {
+      "name": "0028_proactive_outbox.sql",
+      "version": 28,
+      "sha256": "fc00453f09069761bd7a8d049dd37baa61be9fdf0277d626815e4a07d324f780"
+    },
+    {
+      "name": "0029_proactive_proposals.sql",
+      "version": 29,
+      "sha256": "bdeca8c0f1534b0b8f4a9a44b8eecf84f5b11023bf38c2b5fe07287e0c4eacc6"
+    },
+    {
+      "name": "0030_proactive_rule_renewal.sql",
+      "version": 30,
+      "sha256": "d615fa2c0da8d69618f80a9db372515ebfa49a3b6c01a3bc0fd02610207fcb59"
+    },
+    {
+      "name": "0031_proactive_outcomes.sql",
+      "version": 31,
+      "sha256": "4d2142c9953c1fa462a9b8a1a91b6dfb9a4e35d06a34c8ee6545062b24f345cc"
+    },
+    {
+      "name": "0032_proactive_source_scheduling.sql",
+      "version": 32,
+      "sha256": "38b495a6948a009411e95093305a82f169de271f600d45598cacafbe2db8b2e1"
+    },
+    {
+      "name": "0033_task_creation_notices.sql",
+      "version": 33,
+      "sha256": "8c9229e78203d2727eac521b23dc0170ae56c7130b8f28a033461850c57d234d"
+    },
+    {
+      "name": "0034_multiple_agent_connections.sql",
+      "version": 34,
+      "sha256": "6a5bfc6699ccbe8dbec2803fefb7da6e55cc3b768526c852de7a2c024514e793"
+    },
+    {
+      "name": "0035_cowork_coordination.sql",
+      "version": 35,
+      "sha256": "0fd09a27731fd5f0e24c4e954184ae17f9fb7d3d42d9c7603714a9628fe6acb9"
+    },
+    {
+      "name": "0036_github_project_integration.sql",
+      "version": 36,
+      "sha256": "c4dafa7b5531f52dd50383204deff1240e7b6a609907a0d21df7e0f26105fb40"
+    },
+    {
+      "name": "0037_task_message_actors.sql",
+      "version": 37,
+      "sha256": "eb7957db5319d06b982753f19bb765c093d058f0d2edd9e62016b6ce76c1b130"
+    },
+    {
+      "name": "0038_cowork_request_operation.sql",
+      "version": 38,
+      "sha256": "404f8dd9dab48f9d127164956ab13ed417ec2731bcf94e4120bf83860a884ff3"
+    },
+    {
+      "name": "0039_native_task_plan.sql",
+      "version": 39,
+      "sha256": "0cb349a51ffa4aa06bbbe60d3a7477ee01848bb966ff43105d8d7e154ec1ddbf"
+    },
+    {
+      "name": "0040_native_contribution_effects.sql",
+      "version": 40,
+      "sha256": "2e74dc404fad2acadaa7ce10b70218e74c432fde1cb10b51c810701bf6bb347a"
+    },
+    {
+      "name": "0041_agent_playbook_acknowledgments.sql",
+      "version": 41,
+      "sha256": "0ca990fb007f312721976ec298721cd352c0170aab9703596bd620b2c21b7115"
+    },
+    {
+      "name": "0043_agent_doc_authors.sql",
+      "version": 43,
+      "sha256": "f9df8992e174a1c244a76afbd126349a7cf880a8037ba857616cd1ab7a825232"
+    },
+    {
+      "name": "0044_agent_project_policies.sql",
+      "version": 44,
+      "sha256": "3095f51baffe5ea1bd08bb32043722ecc4b1e314c997ce0d0c6100c87a45438d"
+    },
+    {
+      "name": "0045_stored_files.sql",
+      "version": 45,
+      "sha256": "b3c8db912502571c149191c9684a93fff31f515823d528256f84728e4e33da3e"
+    },
+    {
+      "name": "0046_live_editing.sql",
+      "version": 46,
+      "sha256": "eab9a0f8b688611d59af9d35a74939bc483a7df154ddd912674cecb427e598e9"
+    },
+    {
+      "name": "0047_live_maps.sql",
+      "version": 47,
+      "sha256": "4ca857803b1cb06706da471ebbee63026d52db5d06b50a9d06d54ac2abb5e06e"
+    },
+    {
+      "name": "0048_unused_ai_task_creation_undo.sql",
+      "version": 48,
+      "sha256": "bf9952948d59e43ec748b2ee4c4223b75e144a242650ea8be4b3e529eac62eb2"
+    }
+  ],
+  "prior": [
+    {
+      "name": "0001_foundation.sql",
+      "version": 1,
+      "sha256": "927baccece189dc375f99017256f026a4d5da863d9fed1f50ff4052128d7e319"
+    },
+    {
+      "name": "0002_identity.sql",
+      "version": 2,
+      "sha256": "6241ef92c5a44c26da7f18918b5aa03b47afe30803277a9b29b38b60afcd66c6"
+    },
+    {
+      "name": "0003_access.sql",
+      "version": 3,
+      "sha256": "8c88a362994e6c29a8ed5d5723a474b6c0a5782d1d36258cf0f88b466cf7003d"
+    },
+    {
+      "name": "0004_stream_safe_writes.sql",
+      "version": 4,
+      "sha256": "2fb0438dce8bee99f0eb60ec893656821788ed2c2ade12915e8a9ad403e6e1e7"
+    },
+    {
+      "name": "0005_push.sql",
+      "version": 5,
+      "sha256": "1efa25bdbea930a30556c9d7784f0bb7bce9a7cb3946cce9b7b9f9515df6b05f"
+    },
+    {
+      "name": "0006_conversation.sql",
+      "version": 6,
+      "sha256": "4f8fad716dc11a587efded1fb32dee72532462838c33943c30bb022a91929e06"
+    },
+    {
+      "name": "0007_sketches.sql",
+      "version": 7,
+      "sha256": "60738a82f2c9047c38d9f007aeeb66a267d89766054ee33c116cc57f2addeca6"
+    },
+    {
+      "name": "0008_work.sql",
+      "version": 8,
+      "sha256": "efa57fce68a017a1bf165ead6397ed0397720f45c17da61196fd813541244dfd"
+    },
+    {
+      "name": "0009_return_points.sql",
+      "version": 9,
+      "sha256": "a8c160817265a7a676f900b1781ed1c7f04f0b42d94690bdc1e538322edeca1c"
+    },
+    {
+      "name": "0010_direct_messages.sql",
+      "version": 10,
+      "sha256": "b67f3dab077a41cacb509b7f816d471f00d885306900d64ff6d0cbdeff60910d"
+    },
+    {
+      "name": "0011_agent_connection.sql",
+      "version": 11,
+      "sha256": "aa802129847e9b07796ebd2b726212b0bba751c710767cd669bbba08895408ac"
+    },
+    {
+      "name": "0012_agent_oauth.sql",
+      "version": 12,
+      "sha256": "17a1b18cd2f5f73715303f2f01300fcd9f534aa32c3674a212ab27ca8826648d"
+    },
+    {
+      "name": "0013_docs.sql",
+      "version": 13,
+      "sha256": "aa0da3ed346aa3aeef55d331856d6e241e5107bb106f2be9f17900cc736ab523"
+    },
+    {
+      "name": "0014_search.sql",
+      "version": 14,
+      "sha256": "bf48551adb3e59154808d9deaf36863c18b2d77c2481f457d7537e97a9ad72f3"
+    },
+    {
+      "name": "0015_notifications.sql",
+      "version": 15,
+      "sha256": "3aacecb3c5701f76fbd258cc3d4d14fbd39a21b22f48a960ec892b27baab30a5"
+    },
+    {
+      "name": "0016_live_sessions.sql",
+      "version": 16,
+      "sha256": "57d7af26014906939a44d6c620fc4f7dd67fa2d2046979658d5bb3674c02a65a"
+    },
+    {
+      "name": "0017_live_access_fences.sql",
+      "version": 17,
+      "sha256": "fb8a456e353e3ffbc7b6a3830693588327cc05e34cd2745f3f338d8f62b889ed"
+    },
+    {
+      "name": "0018_live_lifecycle.sql",
+      "version": 18,
+      "sha256": "e3fb9c02285879beb0070c333fc781a11e2c78d5e4d31bd7001c61fbd27b4846"
+    },
+    {
+      "name": "0019_live_webhook_events.sql",
+      "version": 19,
+      "sha256": "55447ab01feba74ecfcf94c0aff68f5104fec0b44731b2c7113fa5881216e5e0"
+    },
+    {
+      "name": "0020_live_invitations.sql",
+      "version": 20,
+      "sha256": "9478dde8a2851e93335da9ed0ffd7f81a939fc3037e697deb9abf7d4298567c3"
+    },
+    {
+      "name": "0021_live_invitation_notifications.sql",
+      "version": 21,
+      "sha256": "dfeeb806829f43deceb625814a71fe992c4044455868da6267c868d7fe60d141"
+    },
+    {
+      "name": "0022_search_restore_path.sql",
+      "version": 22,
+      "sha256": "c536d02b6ca65f4b96b00a6461956b11cfd7a001ce98a159ef5f2c522c83da2e"
+    },
+    {
+      "name": "0023_live_admissions.sql",
+      "version": 23,
+      "sha256": "218457d3fc2850a59c119acdc664a0be025896477bf26efe4f801d0cdef56714"
+    },
+    {
+      "name": "0024_personal_runs.sql",
+      "version": 24,
+      "sha256": "5607e4155f15c8180f70e7076abdb1ae0ef018a05da104f62f17fe72240d3e23"
+    },
+    {
+      "name": "0025_dm_sketches.sql",
+      "version": 25,
+      "sha256": "e25eb0b2bb08fe4dab2f642b948ee67b359593b53fcfc1241ce5c358d83fdda6"
+    },
+    {
+      "name": "0026_proactive_rules.sql",
+      "version": 26,
+      "sha256": "b81384dc393bb514e3e24dce8b2e84d12a93f4a9dc797879d11c4ff4af12f754"
+    },
+    {
+      "name": "0027_background_connections.sql",
+      "version": 27,
+      "sha256": "b3342f0af3fbe29aa32bd0f0a8625eb761e86af386880d3b95ed519c38965f3e"
+    },
+    {
+      "name": "0028_proactive_outbox.sql",
+      "version": 28,
+      "sha256": "fc00453f09069761bd7a8d049dd37baa61be9fdf0277d626815e4a07d324f780"
+    },
+    {
+      "name": "0029_proactive_proposals.sql",
+      "version": 29,
+      "sha256": "bdeca8c0f1534b0b8f4a9a44b8eecf84f5b11023bf38c2b5fe07287e0c4eacc6"
+    },
+    {
+      "name": "0030_proactive_rule_renewal.sql",
+      "version": 30,
+      "sha256": "d615fa2c0da8d69618f80a9db372515ebfa49a3b6c01a3bc0fd02610207fcb59"
+    },
+    {
+      "name": "0031_proactive_outcomes.sql",
+      "version": 31,
+      "sha256": "4d2142c9953c1fa462a9b8a1a91b6dfb9a4e35d06a34c8ee6545062b24f345cc"
+    },
+    {
+      "name": "0032_proactive_source_scheduling.sql",
+      "version": 32,
+      "sha256": "38b495a6948a009411e95093305a82f169de271f600d45598cacafbe2db8b2e1"
+    },
+    {
+      "name": "0033_task_creation_notices.sql",
+      "version": 33,
+      "sha256": "8c9229e78203d2727eac521b23dc0170ae56c7130b8f28a033461850c57d234d"
+    },
+    {
+      "name": "0034_multiple_agent_connections.sql",
+      "version": 34,
+      "sha256": "6a5bfc6699ccbe8dbec2803fefb7da6e55cc3b768526c852de7a2c024514e793"
+    },
+    {
+      "name": "0035_cowork_coordination.sql",
+      "version": 35,
+      "sha256": "0fd09a27731fd5f0e24c4e954184ae17f9fb7d3d42d9c7603714a9628fe6acb9"
+    },
+    {
+      "name": "0036_github_project_integration.sql",
+      "version": 36,
+      "sha256": "c4dafa7b5531f52dd50383204deff1240e7b6a609907a0d21df7e0f26105fb40"
+    },
+    {
+      "name": "0037_task_message_actors.sql",
+      "version": 37,
+      "sha256": "eb7957db5319d06b982753f19bb765c093d058f0d2edd9e62016b6ce76c1b130"
+    },
+    {
+      "name": "0038_cowork_request_operation.sql",
+      "version": 38,
+      "sha256": "404f8dd9dab48f9d127164956ab13ed417ec2731bcf94e4120bf83860a884ff3"
+    },
+    {
+      "name": "0039_native_task_plan.sql",
+      "version": 39,
+      "sha256": "0cb349a51ffa4aa06bbbe60d3a7477ee01848bb966ff43105d8d7e154ec1ddbf"
+    },
+    {
+      "name": "0040_native_contribution_effects.sql",
+      "version": 40,
+      "sha256": "2e74dc404fad2acadaa7ce10b70218e74c432fde1cb10b51c810701bf6bb347a"
+    },
+    {
+      "name": "0041_agent_playbook_acknowledgments.sql",
+      "version": 41,
+      "sha256": "0ca990fb007f312721976ec298721cd352c0170aab9703596bd620b2c21b7115"
+    },
+    {
+      "name": "0043_agent_doc_authors.sql",
+      "version": 43,
+      "sha256": "f9df8992e174a1c244a76afbd126349a7cf880a8037ba857616cd1ab7a825232"
+    },
+    {
+      "name": "0044_agent_project_policies.sql",
+      "version": 44,
+      "sha256": "3095f51baffe5ea1bd08bb32043722ecc4b1e314c997ce0d0c6100c87a45438d"
+    },
+    {
+      "name": "0045_stored_files.sql",
+      "version": 45,
+      "sha256": "b3c8db912502571c149191c9684a93fff31f515823d528256f84728e4e33da3e"
+    },
+    {
+      "name": "0046_live_editing.sql",
+      "version": 46,
+      "sha256": "eab9a0f8b688611d59af9d35a74939bc483a7df154ddd912674cecb427e598e9"
+    },
+    {
+      "name": "0047_live_maps.sql",
+      "version": 47,
+      "sha256": "4ca857803b1cb06706da471ebbee63026d52db5d06b50a9d06d54ac2abb5e06e"
+    }
+  ],
+  "currentSha256": "7543050df7b4bb9a8a891d4245c7fc679f8531542261dc34789f0cb245981123",
+  "priorSha256": "29754ea5d4ac676aa83d98f748184970b346e0eab7e9a2fa06dc4db661b2a5eb",
+  "down": {
+    "name": "0048_unused_ai_task_creation_undo.down.sql",
+    "sha256": "70732d6b8d9400e057de88fab6e0c035e3a3e516fdfe99c1edfd23411335aa37"
+  }
+}

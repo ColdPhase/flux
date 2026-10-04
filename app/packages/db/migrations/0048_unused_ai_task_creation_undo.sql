@@ -10,7 +10,8 @@ ALTER TABLE project_work_items
   ADD COLUMN creation_reverted_by_id text,
   ADD COLUMN creation_reversion_notice_id uuid,
   ADD CONSTRAINT task_creation_baseline_origin CHECK ((creation_baseline_version IS NULL) = (creation_origin IS NULL) AND (creation_baseline IS NULL) = (creation_origin IS NULL)),
-  ADD CONSTRAINT task_creation_proposal_origin CHECK ((creation_origin = 'ai_proposal') IS NOT DISTINCT FROM (creation_proposal_id IS NOT NULL) OR creation_origin IS NULL),
+  ADD CONSTRAINT task_creation_proposal_origin CHECK ((creation_origin IS NULL AND creation_proposal_id IS NULL) OR
+    (creation_origin IS NOT NULL AND (creation_origin = 'ai_proposal') = (creation_proposal_id IS NOT NULL))),
   ADD CONSTRAINT task_creation_reversion_shape CHECK (
     (creation_reverted_at IS NULL AND creation_reverted_by_kind IS NULL AND creation_reverted_by_id IS NULL AND creation_reversion_notice_id IS NULL)
     OR (creation_reverted_at IS NOT NULL AND creation_reverted_by_kind IS NOT NULL AND creation_reverted_by_id IS NOT NULL AND creation_reversion_notice_id IS NOT NULL
@@ -32,6 +33,13 @@ CREATE TABLE task_creation_undo_receipts (
   FOREIGN KEY(workspace_id, project_id, work_id) REFERENCES project_work_items(workspace_id, project_id, id),
   FOREIGN KEY(workspace_id, project_id, work_id, notice_id) REFERENCES project_task_notices(workspace_id, project_id, work_id, id)
 );
+-- Exact original receipt identity/payload/history cannot be edited or removed by a later writer.
+CREATE FUNCTION flux_guard_task_creation_receipt() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'immutable task creation Undo receipt' USING ERRCODE = 'check_violation';
+END $$;
+CREATE TRIGGER task_creation_receipt_guard BEFORE UPDATE OR DELETE ON task_creation_undo_receipts
+  FOR EACH ROW EXECUTE FUNCTION flux_guard_task_creation_receipt();
 -- Retained history and monotonic use cannot be revived or reassigned by a later writer.
 CREATE FUNCTION flux_guard_task_creation_history() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN

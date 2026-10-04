@@ -43,6 +43,13 @@ test('genuine native creation Undo retains exact history and receipts; core/MCP 
   const notices = (await pool.query('SELECT id,kind,created_by_kind,created_by_id FROM project_task_notices WHERE work_id=$1 ORDER BY created_at,id', [item.id])).rows;
   assert.equal(notices.length, 2); assert.equal(notices[0].kind, 'task.created');
   assert.deepEqual([notices[1].kind, notices[1].id, notices[1].created_by_kind, notices[1].created_by_id], ['task.creation_reverted', reverted.noticeId, 'human', f.ownerId]);
+  await assert.rejects(pool.query('UPDATE task_creation_undo_receipts SET created_at=clock_timestamp() WHERE work_id=$1', [item.id]),
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === '23514');
+  await assert.rejects(pool.query('DELETE FROM task_creation_undo_receipts WHERE work_id=$1', [item.id]),
+    (error: unknown) => error instanceof Error && 'code' in error && error.code === '23514');
+  await assert.rejects(pool.query(`INSERT INTO task_creation_undo_receipts(workspace_id,project_id,actor_kind,actor_id,client_command_id,request_fingerprint,work_id,notice_id)
+    VALUES($1,$2,'human',$3,$4,$5,$6,$7)`, [f.workspaceId, randomUUID(), f.ownerId, randomUUID(), 'a'.repeat(64), item.id, reverted.noticeId]),
+  (error: unknown) => error instanceof Error && 'code' in error && error.code === '23503');
   assert.equal(toolFailure(await f.tool('flux_create_task', command)).code, 'COMMAND_POSTSTATE_STALE');
   assert.equal((await f.owner.request('PATCH', `/api/v1/work/${item.id}`, { body: { title: 'Revive' }, headers: { 'if-match': `"${reverted.work.version}"` } })).status, 409);
   assert.equal((await f.owner.request('POST', `/api/v1/work/${item.id}/discussion`, { body: { clientMessageId: randomUUID(), body: 'New use' } })).status, 409);
