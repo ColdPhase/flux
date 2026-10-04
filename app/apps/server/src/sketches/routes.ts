@@ -45,7 +45,7 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions }: Sketc
   const thoughtEtag = (body: unknown) => versionEtag((body as CreatedThought | null)?.thought ?? null);
 
   app.get<{ Params: { workspaceId: string }; Querystring: SketchListQuery }>(WORKSPACE_SKETCHES, {
-    schema: { querystring: { type: 'object', additionalProperties: false, properties: { limit: { type: 'integer' }, offset: { type: 'integer' }, projectId: { type: 'string' }, dmId: { type: 'string' } } } },
+    schema: { querystring: { type: 'object', additionalProperties: false, properties: { limit: { type: 'integer' }, offset: { type: 'integer' }, projectId: { type: 'string' }, dmId: { type: 'string' }, scope: { type: 'string', enum: ['private'] } } } },
   }, async (request) => sketches.list(await principal(request), request.params.workspaceId, request.query));
 
   app.post<{ Params: { workspaceId: string }; Body: CreateSketchCommand }>(WORKSPACE_SKETCHES, {

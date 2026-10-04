@@ -6,6 +6,7 @@ import { getProject } from '../app/conversation-api';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
 import { useReadingPosition } from '../app/drafts';
+import { remember } from '../app/remembered';
 import { createWork, type ProjectWork } from './api';
 import { useProjectShell } from '../project/data';
 import { ProjectProposals } from '../project/ProjectProposals';
@@ -215,7 +216,7 @@ export function ProjectTasks() {
   if (mode !== (mode === 'list' && status ? 'list' : preference)) params.set('view', mode);
   const viewSearch = params.toString();
   useEffect(() => {
-    try { sessionStorage.setItem(`flux.project-tasks.${project.id}`, viewSearch ? `?${viewSearch}` : ''); } catch { /* the tab opens All */ }
+    remember('tasks', me.user.id, project.id, viewSearch ? `?${viewSearch}` : '');
     const url = new URL(window.location.href);
     for (const key of ['status', 'show', 'view']) url.searchParams.delete(key);
     for (const [key, value] of new URLSearchParams(viewSearch)) url.searchParams.set(key, value);

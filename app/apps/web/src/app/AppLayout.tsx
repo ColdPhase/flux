@@ -21,20 +21,18 @@ import { LiveStage } from '../live/LiveStage';
 import '../live/live.css';
 import { JumpTo } from '../search/JumpTo';
 import { useNeedsYou } from '../returns/useNeedsYou';
+import { remember, remembered } from './remembered';
 
-function lastConversationPath(projectId: string) {
-  try {
-    const saved = sessionStorage.getItem(`flux.project-conversation.${projectId}`);
-    // Discard a non-conversation destination remembered by an older shell.
-    return saved && !/^\/projects\/[^/]+\/(tasks|map|docs|github)(\/|\?|$)/.test(saved) ? saved : `/projects/${projectId}`;
-  }
-  catch { return `/projects/${projectId}`; }
-}
-
+const lastConversationPath = (userId: string, projectId: string) => remembered('conversation', userId, projectId) ?? `/projects/${projectId}`;
 /** The Tasks view last chosen in this project (#136), e.g. `?status=blocked&show=mine`. */
-function lastTasksSearch(projectId: string) {
-  try { return sessionStorage.getItem(`flux.project-tasks.${projectId}`) ?? ''; }
-  catch { return ''; }
+const lastTasksSearch = (userId: string, projectId: string) => remembered('tasks', userId, projectId) ?? '';
+/**
+ * The Map's last place in this project (#189): its list or the sketch that was open; before any, a
+ * project's only sketch opens directly.
+ */
+function lastMapPath(userId: string, projectId: string, sketches: { items: { id: string }[]; total: number } | null | undefined) {
+  const only = sketches?.total === 1 ? sketches.items[0] : undefined;
+  return remembered('map', userId, projectId) ?? (only ? `/projects/${projectId}/map/${only.id}` : `/projects/${projectId}/map`);
 }
 
 /** Tab order for the slide direction: Home's views, or a project's Conversation · Map · Tasks · Wiki · Agents. */
@@ -146,10 +144,10 @@ export function AppLayout() {
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
-  // "]" toggles Details, as in the header tooltip.
+  // "]" toggles Details, as in the header tooltip, only where the header offers Details.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (backgroundSettings) return;
+      if (!detailsButtonRef.current) return;
       if (event.key !== ']' || event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target)) return;
       if (document.getElementById('root')?.inert && !detailsOpen) return;
       event.preventDefault();
@@ -158,7 +156,7 @@ export function AppLayout() {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [toggleDetails, detailsOpen, backgroundSettings]);
+  }, [toggleDetails, detailsOpen]);
 
 
   // A new view slides in from the side its tab sits on.
@@ -174,21 +172,24 @@ export function AppLayout() {
   const where = placeOf(location.pathname);
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const activeProject = projects.find((project) => project.id === projectId);
-  // Project settings also preserve the last conversation without selecting its tab.
-  const onOtherView = /^\/projects\/[^/]+\/(tasks|map|docs|github)(\/|$)/.test(location.pathname);
+  // The Conversation tab returns to the conversation that was open before Tasks, Map, Docs or project
+  // settings (GitHub), and the
+  // Map tab to the sketch (or list) that was open there.
+  const onOtherView = /^\/projects\/[^/]+\/(tasks|map|docs|agents|github)(\/|$)/.test(location.pathname);
+  const onMap = /^\/projects\/[^/]+\/map(\/|$)/.test(location.pathname);
   useEffect(() => {
-    if (!projectId || onOtherView) return;
-    try { sessionStorage.setItem(`flux.project-conversation.${projectId}`, `${location.pathname}${location.search}`); } catch { /* private mode */ }
-  }, [projectId, onOtherView, location.pathname, location.search]);
+    if (!projectId || (onOtherView && !onMap)) return;
+    remember(onMap ? 'map' : 'conversation', me.user.id, projectId, `${location.pathname}${location.search}`);
+  }, [me.user.id, projectId, onOtherView, onMap, location.pathname, location.search]);
   const shellProject = useProjectShell();
   const project = shellProject && shellProject.project.id === projectId ? shellProject : undefined;
   const openWork = project?.work.work.filter((item) => !item.parked && (item.status === 'open' || item.status === 'in_progress' || item.status === 'blocked')).length;
   // Conversation · Map · Tasks · Wiki in the Studio 11.6 order (#117, #136); quiet tabs without
   // counts. The open work count stays readable to assistive technology on the Tasks tab.
   const projectViews = projectId ? [
-    { id: 'conversation', label: 'Conversation', to: onOtherView ? lastConversationPath(projectId) : `${location.pathname}${location.search}` },
-    { id: 'map', label: 'Map', to: `/projects/${projectId}/map`, end: false },
-    { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks${lastTasksSearch(projectId)}`, ...(openWork ? { countLabel: `, ${openWork} open` } : {}) },
+    { id: 'conversation', label: 'Conversation', to: onOtherView ? lastConversationPath(me.user.id, projectId) : `${location.pathname}${location.search}` },
+    { id: 'map', label: 'Map', to: onMap ? location.pathname : lastMapPath(me.user.id, projectId, project?.sketches), end: false },
+    { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks${lastTasksSearch(me.user.id, projectId)}`, ...(openWork ? { countLabel: `, ${openWork} open` } : {}) },
     { id: 'docs', label: 'Wiki', to: `/projects/${projectId}/docs`, end: false },
   ] : null;
   const audienceOpen = project?.project.visibility === 'workspace';
@@ -219,7 +220,7 @@ export function AppLayout() {
   const place = backgroundSettings
     ? { crumb: null, title: 'Background suggestions', topic: 'Your connection and allowance', views: false, noDetails: true }
     : location.pathname === '/search'
-    ? { crumb: null, title: 'Search', topic: 'Only what you can open is searched', views: false }
+    ? { crumb: null, title: 'Search', topic: 'Only what you can open is searched', views: false, noDetails: true }
     : location.pathname === '/settings/assistant'
     ? { crumb: null, title: 'Your assistant', topic: 'Only you can use it · optional', views: false, noDetails: true }
     : activeProject
@@ -233,9 +234,11 @@ export function AppLayout() {
         // A DM's header names its exact audience (design principle 5).
         ? { crumb: null, title: activeDm.title, topic: activeDm.audience, views: false }
         : dmId === 'new'
-          ? { crumb: null, title: 'New message', topic: 'Only the people you choose can read it', views: false }
-          : { crumb: null, title: 'Direct messages', topic: 'Conversations with people, outside any project', views: false }
+          ? { crumb: null, title: 'New message', topic: 'Only the people you choose can read it', views: false, noDetails: true }
+          : { crumb: null, title: 'Direct messages', topic: 'Conversations with people, outside any project', views: false, noDetails: true }
       : { crumb: workspace?.name ?? null, title: 'Home', topic: 'Your private notes and where you left off', views: true };
+  // A place without its own Details (Search, Inbox, the DM list) never keeps the generic panel open.
+  if ('noDetails' in place && detailsOpen && detailsView === 'place') setDetailsOpen(false);
 
   return (
     <ShellContext.Provider value={shell}>
