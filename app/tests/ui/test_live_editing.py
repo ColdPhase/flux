@@ -75,7 +75,7 @@ class LiveFixture(unittest.IsolatedAsyncioTestCase):
                         value = json.loads(payload)
                     # Fixture actors only; cookies, passwords, and update bodies are not recorded.
                     recorded = {name: item for name, item in value.items() if name not in ("html", "savedDoc")}
-                    self.frames[key].append({"at": time.perf_counter(), "direction": direction, "header": recorded})
+                    self.frames[key].append({"at": time.perf_counter(), "direction": direction, "binary": isinstance(payload, bytes), "header": recorded})
                     if direction == "received" and value.get("type") == "ack":
                         self.acks[key][value["commandId"]] = value
                 except (ValueError, KeyError):
@@ -239,19 +239,22 @@ class LiveEditingJourney(LiveFixture):
         ada = self.pages["ada"]
         field = await self.editor("ada")
         await self.type_text(ada, field, " First editor instance.")
-        first = next(row["header"]["replica"] for row in self.frames["ada"] if row["header"].get("operation") == "text")
+        def sent_replicas():
+            return [row["header"]["replica"] for row in self.frames["ada"]
+                if row["direction"] == "sent" and row["binary"] and row["header"].get("operation") == "text"]
+        first = sent_replicas()[0]
         await ada.context.set_offline(True)
         await asyncio.sleep(0.15)
         await ada.context.set_offline(False)
         await expect(ada.locator('[data-live-status="live"]')).to_be_visible()
         await self.type_text(ada, field, " Same surviving replica.")
-        second = [row["header"]["replica"] for row in self.frames["ada"] if row["header"].get("operation") == "text"][-1]
+        second = sent_replicas()[-1]
         self.assertEqual(first, second)
         await ada.reload()
         field = ada.locator('.cm-content[aria-label="Shared Markdown"]')
         await expect(field).to_have_attribute("contenteditable", "true")
         await self.type_text(ada, field, " Fresh reloaded replica.")
-        third = [row["header"]["replica"] for row in self.frames["ada"] if row["header"].get("operation") == "text"][-1]
+        third = sent_replicas()[-1]
         self.assertNotEqual(first, third)
 
     async def test_05_map_preview_before_pointerup_unrelated_delta_during_drag(self):
@@ -294,7 +297,7 @@ class LiveEditingJourney(LiveFixture):
             await ada.get_by_role("button", name="Undo", exact=True).click()
         refusal = await response.value
         self.assertEqual(refusal.status, 409)
-        self.assertEqual((await refusal.json())['code'], 'MAP_UNDO_CONFLICT')
+        self.assertEqual((await refusal.json())['code'], 'EDITING_UNDO_CONFLICT')
         await expect(ada.locator(".sk-status .sk-warn")).to_be_visible()
         await expect(kai.locator(f'.sk-node[data-id="{id}"]')).to_have_attribute("data-thought-x", "64")
         self.assertEqual((await self.api(ada, "GET", f"/api/v1/sketches/{self.map_id}"))["thoughts"][0]["x"], 64)
@@ -316,9 +319,9 @@ class LiveEditingJourney(LiveFixture):
         await self.create_doc()
         ada, kai = self.pages["ada"], self.pages["kai"]
         dropped = {"active": True, "uuid": None}
-        async def intercept(socket):
+        def intercept(socket):
             server = socket.connect_to_server()
-            async def received(message):
+            def received(message):
                 if isinstance(message, str):
                     data = json.loads(message)
                     if dropped["active"] and data.get("type") == "ack" and data.get("operation") == "text":
@@ -408,24 +411,75 @@ class LiveEditingJourney(LiveFixture):
         await self.create_doc('A' * 99_999 + 'B')
         ada, kai = self.pages['ada'], self.pages['kai']
         field, peer = await self.editor('ada'), await self.editor('kai')
+        async def copied_document(page, content):
+            # The viewport DOM is virtualized and includes named cursor widgets.
+            # Observe the actual editor's ordinary Select All/Copy path instead.
+            # A fresh sentinel prevents an old clipboard value from passing.
+            await page.context.grant_permissions(['clipboard-read', 'clipboard-write'], origin=ORIGIN)
+            sentinel = 'fresh-copy-' + str(uuid.uuid4())
+            await page.evaluate('value => navigator.clipboard.writeText(value)', sentinel)
+            await content.click()
+            await page.keyboard.press('Control+a')
+            await page.keyboard.press('Control+c')
+            try:
+                await page.wait_for_function('async value => (await navigator.clipboard.readText()) !== value', arg=sentinel, timeout=5000)
+                text = await page.evaluate('() => navigator.clipboard.readText()')
+                self.assertIsInstance(text, str)
+                self.assertLessEqual(len(text), 100_000)
+                return text
+            finally:
+                await page.keyboard.press('Control+End')
+        async def confirmed_body(key, exact_local=True):
+            page = self.pages[key]
+            command = await page.locator('[data-live-wiki-editor]').get_attribute('data-live-command')
+            self.assertIn(command, self.acks[key], 'The actual local update has its real server ACK')
+            receipt = self.acks[key][command]
+            live = await self.api(page, 'GET', f'/api/v1/docs/{self.doc_id}/live')
+            if not exact_local:
+                receipt = max((ack for receipts in self.acks.values() for ack in receipts.values()
+                    if ack['generation'] == live['generation']), key=lambda ack: ack['sequence'])
+            self.assertEqual((live['generation'], live['sequence'], live['hash']), (receipt['generation'], receipt['sequence'], receipt['hash']))
+            return live
+        def exact_text(actual, expected):
+            self.assertTrue(actual == expected, 'The full copied/public working text must match exactly; cursor labels and viewport truncation are excluded')
         await field.click()
         await ada.keyboard.press('Control+Home')
         await ada.keyboard.press('Delete')
         await expect(ada.get_by_role('status').filter(has_text='All changes shared')).to_be_visible()
-        await expect(peer).to_have_text('A' * 99_998 + 'B')
+        await expect(field).to_contain_text('A' * 32)
+        deleted = await confirmed_body('ada')
+        exact_text(deleted['body'], 'A' * 99_998 + 'B')
+        await expect(kai.locator('[data-live-wiki-editor]')).to_have_attribute('data-live-sequence', str(deleted['sequence']))
+        exact_text(await copied_document(ada, field), deleted['body'])
+        exact_text(await copied_document(kai, peer), deleted['body'])
+        await expect(peer).to_contain_text('B')
         await self.type_text(kai, peer, 'K')
-        before = (await self.api(kai, 'GET', f'/api/v1/docs/{self.doc_id}/live'))['body']
+        latest = await confirmed_body('kai')
+        before = latest['body']
+        exact_text(before, 'A' * 99_998 + 'BK')
         self.assertEqual(len(before), 100_000)
+        await expect(ada.locator('[data-live-wiki-editor]')).to_have_attribute('data-live-sequence', str(latest['sequence']))
         await field.click()
         await ada.keyboard.press('Control+z')
         await expect(ada.get_by_role('alert')).to_contain_text('This inverse would exceed')
-        await expect(field).to_have_text(before)
-        await expect(peer).to_have_text(before)
+        exact_text(await copied_document(ada, field), before)
+        exact_text(await copied_document(kai, peer), before)
+        await expect(field).to_contain_text('BK')
+        await expect(peer).to_contain_text('BK')
         await expect(ada.get_by_role('status').filter(has_text='All changes shared')).to_be_visible()
+        after_undo = await confirmed_body('ada', exact_local=False)
+        exact_text(after_undo['body'], before)
+        self.assertEqual(after_undo['generation'], latest['generation'])
+        self.assertGreaterEqual(after_undo['sequence'], latest['sequence'])
+        await field.click()
+        await ada.keyboard.press('Control+End')
         await ada.keyboard.insert_text('N')
         await expect(ada.get_by_role('alert')).to_contain_text('shared text limit')
-        await expect(field).to_have_text(before)
-        self.assertEqual((await self.api(kai, 'GET', f'/api/v1/docs/{self.doc_id}/live'))['body'], before)
+        exact_text(await copied_document(ada, field), before)
+        exact_text(await copied_document(kai, peer), before)
+        unchanged = await self.api(kai, 'GET', f'/api/v1/docs/{self.doc_id}/live')
+        exact_text(unchanged['body'], before)
+        self.assertEqual((unchanged['generation'], unchanged['sequence'], unchanged['hash']), (after_undo['generation'], after_undo['sequence'], after_undo['hash']))
 
     async def test_12_cancelled_preview_keeps_private_movement_without_native_commit(self):
         await self.create_map(1)

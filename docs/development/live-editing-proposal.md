@@ -567,6 +567,16 @@ command of up to 200 positions uses at most 4096 visits and 256 KiB conservative
 charged context, plus its separately charged at-most-64 KiB input frame. This does
 not increase the common cap. Finite FIFO admission retains charged input before
 SQL or hashing, rejects on timeout/close, and has no uncharged continuation queue.
+An empty bootstrap waiter has no encoded input yet: its queued codec lease charges
+actual retained backing/copy allowance and its continuation stays in the common
+context budget. The validated future encoding ceiling is immutable budget-owned
+metadata. Promotion atomically adds that future input/copy allowance and the full
+state/result reservation before admission resolves to any SQL/body read or input
+allocation. A failed promotion changes no lease or byte total; ordinary retained
+input and direct cold reservations keep their existing charge semantics. This
+bounded future-capacity clarification addresses an actual healthy 100k read refusal
+at `cdbf4a57`; the caps, FIFO, slots and deadlines stay unchanged and its repair
+still requires independent source and runtime checks.
 Each protected authority callback emits at most one frame; received-frame ACKs do
 not themselves send the next frame. Public ws-owned frame copies remain charged
 through their actual send callbacks after close or revocation. Rolled-back live
