@@ -134,10 +134,12 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
 
     // In the fake composition: no connection means an explicit unavailable state, never a fallback.
     connections.disconnect(hubert.id);
-    assert.equal((await runs.status(human(hubert))).unavailableReason, 'no_connection');
+    assert.deepEqual([(await runs.status(human(hubert))).unavailableReason, (await runs.status(human(hubert))).setup.connection], ['no_connection', 'none']);
     await assert.rejects(ask(hubert), { code: 'PERSONAL_RUN_UNAVAILABLE' });
     connections.connect(hubert.id, randomUUID());
-    assert.equal((await runs.status(human(hubert))).unavailableReason, 'connection_changed', 'a replaced key needs a new consent');
+    const changed = await runs.status(human(hubert));
+    assert.equal(changed.unavailableReason, 'connection_changed', 'a replaced key needs a new consent');
+    assert.equal(changed.setup.connection, 'active', 'setup does not also claim that no key is connected (#192 note 5)');
     connections.connect(hubert.id, hubertConnection);
     assert.equal((await runs.status(human(hubert))).state, 'ready');
     assert.equal(await runCount(hubert.id), 0);
