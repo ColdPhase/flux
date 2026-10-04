@@ -762,7 +762,8 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("heading", name="Sign in to Flux")).to_be_visible()
         expect(page.get_by_role("status").filter(has_text="You’re signed out.")).to_be_visible()
         # What the tab was loading before sign-out answers now, while the sign-in page's own check
-        # of the session is still out; then that check answers too.
+        # of the session is still out; then that check answers too. (That check is the sign-in
+        # loader, run again when the page drops `?notice=` from its address; gate B waits for it.)
         page.wait_for_function("window.__slow.held('B') > 0")
         page.evaluate("window.__slow.release('A')")
         page.evaluate("window.__slow.quiet(500)")

@@ -81,6 +81,11 @@ to try again. An object opened through `?open=` (a notification, a search result
 reference) opens in Details once, and the flag leaves the address without reloading the page's
 data.
 
+With react-router 8.4 a fetcher whose action redirects does not cancel a navigation that is
+still loading; that navigation finishes later and can take the page and its address back. An
+action that moves the person elsewhere is therefore posted with a navigation form, not
+`useFetcher`.
+
 ## Adjusted for the founder direction (#44)
 
 - No workspace selector. The administrative workspace is a data boundary only. Home (the
