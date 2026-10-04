@@ -420,6 +420,72 @@ class OneConversationJourney(unittest.TestCase):
         self.assertEqual(after["id"], before["id"], "the same root stays first in view")
         self.assertLessEqual(abs(after["top"] - before["top"]), 2, f"drift {after['top'] - before['top']:.1f}px")
 
+    def test_05d_an_empty_workspace_stream_names_its_current_and_future_audience(self) -> None:
+        owner = self.page("ada")
+        workspace = self.api(owner, "POST", "/api/v1/workspaces", {"name": "Open conversation controls"}, status=201)
+        project = self.api(owner, "POST", f"/api/v1/workspaces/{workspace['id']}/projects",
+                           {"name": "Workspace conversation", "visibility": "workspace"}, status=201)
+        path = f"/api/v1/projects/{project['id']}/conversation-roots"
+        owner.goto(f"/projects/{project['id']}")
+        stream = self.stream(owner)
+        expect(stream.get_by_role("heading", name="Where do we start?")).to_be_visible()
+        expect(stream).to_contain_text("Everyone in Workspace conversation sees it.")
+        expect(stream).not_to_contain_text("Only you see it for now")
+        self.assertEqual(self.api(owner, "GET", path, status=200)["roots"], [])
+        people = self.api(owner, "GET", f"/api/v1/projects/{project['id']}/people", status=200)
+        self.assertEqual([person["id"] for person in people], [self.ids["ada"]], "the initial empty workspace really has only its owner")
+
+        # A current workspace member can read without an explicit project grant.
+        member = self.page("jonas")
+        self.api(member, "GET", path, status=404)
+        self.api(owner, "POST", f"/api/v1/workspaces/{workspace['id']}/members",
+                 {"email": PEOPLE["jonas"][1], "role": "member"}, status=201)
+        self.assertEqual(self.api(member, "GET", path, status=200)["roots"], [])
+        body = "This conversation is shared with the workspace."
+        owner.get_by_label("Write a message", exact=True).fill(body)
+        owner.get_by_role("button", name="Send message", exact=True).click()
+        expect(owner.get_by_label("Write a message", exact=True)).to_have_value("")
+        roots = self.api(owner, "GET", path, status=200)["roots"]
+        self.assertEqual(len(roots), 1)
+        self.assertEqual(roots[0]["message"]["body"], body)
+        member.goto(f"/projects/{project['id']}")
+        expect(member.locator(f"#message-{roots[0]['message']['id']}")).to_contain_text(body)
+
+        # Joining later confers the same audience, including the already saved root.
+        future = self.page("lee")
+        self.api(future, "GET", path, status=404)
+        self.api(owner, "POST", f"/api/v1/workspaces/{workspace['id']}/members",
+                 {"email": PEOPLE["lee"][1], "role": "member"}, status=201)
+        inherited = self.api(future, "GET", path, status=200)["roots"]
+        self.assertEqual([(root["conversationId"], root["message"]["body"]) for root in inherited],
+                         [(roots[0]["conversationId"], body)], "workspace membership inherits the saved conversation without a project grant")
+        future.goto(f"/projects/{project['id']}")
+        expect(future.locator(f"#message-{roots[0]['message']['id']}")).to_contain_text(body)
+
+    def test_05e_an_empty_restricted_stream_keeps_the_only_owner_audience(self) -> None:
+        owner = self.page("ada")
+        workspace = self.api(owner, "POST", "/api/v1/workspaces", {"name": "Restricted conversation controls"}, status=201)
+        self.api(owner, "POST", f"/api/v1/workspaces/{workspace['id']}/members",
+                 {"email": PEOPLE["jonas"][1], "role": "member"}, status=201)
+        project = self.api(owner, "POST", f"/api/v1/workspaces/{workspace['id']}/projects",
+                           {"name": "Restricted conversation", "visibility": "restricted"}, status=201)
+        path = f"/api/v1/projects/{project['id']}/conversation-roots"
+        owner.goto(f"/projects/{project['id']}")
+        stream = self.stream(owner)
+        expect(stream.get_by_role("heading", name="Where do we start?")).to_be_visible()
+        expect(stream).to_contain_text("Only you see it for now; people you add to the project will see it too.")
+        self.assertEqual(self.api(owner, "GET", path, status=200)["roots"], [])
+        member = self.page("jonas")
+        self.api(member, "GET", path, status=404)
+        body = "A restricted conversation still needs a project grant."
+        owner.get_by_label("Write a message", exact=True).fill(body)
+        owner.get_by_role("button", name="Send message", exact=True).click()
+        expect(owner.get_by_label("Write a message", exact=True)).to_have_value("")
+        roots = self.api(owner, "GET", path, status=200)["roots"]
+        self.assertEqual(len(roots), 1)
+        self.assertEqual(roots[0]["message"]["body"], body)
+        self.api(member, "GET", path, status=404)
+
     def test_06_a_reader_reads_the_stream_and_threads_without_a_composer(self) -> None:
         page = self.page("lee")
         page.goto(self.project_url())

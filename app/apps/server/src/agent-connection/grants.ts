@@ -1,10 +1,14 @@
 import { agentExecutionRows, agentProjectObjectRows } from '@flux/db';
-import { agentStandingGrantUseCases, DomainError, enforce, evaluateProject, type AgentStandingGrantPort, type Database } from '@flux/core';
+import { agentStandingGrantUseCases, DomainError, enforce, evaluateProject, type AgentStandingGrantPort, type Database, type Transaction } from '@flux/core';
 import type { AgentOperation, CreateAgentStandingGrantCommand } from '@flux/contracts';
 import { createAgentConnectionStore } from './store.js';
 
 /** Create/update authority comes from the central project-management policy, never an owner label. */
-export function agentStandingGrants(db: Database) {
+export interface AgentGrantDomainChecks {
+  coordinationTarget?(tx: Transaction, within: { workspaceId: string; projectId: string; connectionId: string },
+    command: CreateAgentStandingGrantCommand): Promise<boolean>;
+}
+export function agentStandingGrants(db: Database, domain: AgentGrantDomainChecks = {}) {
   const port: AgentStandingGrantPort = {
     create(ownerUserId, connectionId, command) {
       return db.transaction(async (tx) => {
@@ -13,9 +17,13 @@ export function agentStandingGrants(db: Database) {
           throw new DomainError(404, 'CONNECTION_NOT_FOUND', 'Connection not found');
         enforce(await evaluateProject({ kind: 'human', id: ownerUserId }, 'project.manage', command.projectId, tx, { lock: true }), 'project');
         if (command.objectId) {
+          const within = { workspaceId: connection.workspaceId, projectId: command.projectId, connectionId };
           const kind = agentOperationTarget(command.operation);
-          if (!kind || !await agentProjectObjectRows(tx).scopeOf(kind, command.objectId,
-            { workspaceId: connection.workspaceId, projectId: command.projectId }))
+          const allowed = command.operation.startsWith('cowork.')
+            ? !!domain.coordinationTarget && await domain.coordinationTarget(tx, within, command)
+            : !!kind && !!await agentProjectObjectRows(tx).scopeOf(kind, command.objectId,
+              { workspaceId: connection.workspaceId, projectId: command.projectId });
+          if (!allowed)
             throw new DomainError(404, 'OBJECT_NOT_FOUND', 'Project object not found');
         }
         const rows = agentExecutionRows(tx); const now = await rows.now(); const expiresAt = new Date(command.expiresAt);

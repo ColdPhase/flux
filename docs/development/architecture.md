@@ -2,7 +2,7 @@
 
 This page describes how the Flux monorepo is layered today, which way dependencies
 may point, and where new code and tests belong. The stack and package boundaries
-were accepted in the [architecture proposal](../product/application-architecture-proposal.md);
+were accepted in the [architecture proposal](../product/application-architecture.md);
 this page turns them into rules that a test enforces. Access rules are detailed in
 [access policy](access-policy.md); the environment is described in
 [containers](containers.md).
