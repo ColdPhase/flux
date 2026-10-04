@@ -14,6 +14,12 @@ export function publicOrigin(value, local = false) {
     (u.protocol !== 'https:' || !/^[a-z0-9]+(?:[.-][a-z0-9]+)+$/i.test(u.hostname) || /(?:^|\.)(?:localhost|local|internal|test|invalid|example)$/.test(u.hostname) || /^[\d.]+$/.test(u.hostname))) throw new Error('Expected a device-reachable trusted HTTPS origin');
   return u.origin;
 }
+// Typed on phones: 20 characters from 32 unambiguous ones (no 0, i, l or o), 100 random bits.
+const READABLE = 'abcdefghjkmnpqrstuvwxyz123456789';
+export function readablePassword() {
+  const letters = [...randomBytes(20)].map(byte => READABLE[byte & 31]).join('');
+  return letters.match(/.{5}/g).join('-');
+}
 export async function privateDirectory(directory) {
   const path = resolve(directory);
   const info = await lstat(path);
@@ -60,7 +66,7 @@ export async function initialize(directory, candidate, port = '8232') {
   const number = boundedInteger(port, 1024, 65535, 'loopback port');
   const suffix = randomBytes(6).toString('hex');
   const ecdh = createECDH('prime256v1'); ecdh.generateKeys();
-  const credentials = alias => ({ email: `${alias}-${suffix}@example.test`, password: randomBytes(24).toString('base64url'), name: `Mobile fixture ${alias}` });
+  const credentials = alias => ({ email: `${alias}-${suffix.slice(0, 4)}@example.test`, password: readablePassword(), name: `Mobile fixture ${alias}` });
   const secret = { databasePassword: randomBytes(32).toString('hex'), authSecret: randomBytes(32).toString('hex'),
     vapid: { publicKey: ecdh.getPublicKey().toString('base64url'), privateKey: ecdh.getPrivateKey().toString('base64url') },
     recipient: credentials('recipient'), producer: credentials('producer') };

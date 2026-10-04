@@ -6,7 +6,7 @@ import { createECDH } from 'node:crypto';
 import http from 'node:http';
 import net from 'node:net';
 import { once } from 'node:events';
-import { initialize, publicOrigin, readJson, readState, writeJson } from './state.mjs';
+import { initialize, publicOrigin, readablePassword, readJson, readState, writeJson } from './state.mjs';
 import { authorizeBoundary, startGateway } from './gateway.mjs';
 import { sanitized } from './sanitize-worker.mjs';
 import { Client, main } from './helper.mjs';
@@ -22,6 +22,12 @@ test('fresh credentials and valid VAPID keys stay in private state; fixture init
   for (const name of ['state.json', 'secrets.json', 'fixture.env', 'boundary.json']) assert.equal((await stat(join(directory, name))).mode & 0o777, 0o600);
   const secret = await readJson(directory, 'secrets.json');
   assert.notEqual(secret.recipient.password, secret.producer.password);
+  for (const person of [secret.recipient, secret.producer]) {
+    // Typeable on a phone, with 100 random bits: four groups of five unambiguous characters.
+    assert.match(person.password, /^[a-hjkmnp-z1-9]{5}(?:-[a-hjkmnp-z1-9]{5}){3}$/);
+    assert.match(person.email, /^(?:recipient|producer)-[a-f0-9]{4}@example\.test$/);
+  }
+  assert.equal(new Set(Array.from({ length: 64 }, readablePassword)).size, 64);
   const key = createECDH('prime256v1'); key.setPrivateKey(Buffer.from(secret.vapid.privateKey, 'base64url'));
   assert.equal(key.getPublicKey().toString('base64url'), secret.vapid.publicKey);
   assert.equal((await readJson(directory, 'boundary.json')).enabled, false);

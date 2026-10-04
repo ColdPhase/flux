@@ -166,6 +166,8 @@ the same audience as the thing it is about ([#41](https://github.com/ColdPhase/f
 
 MOB-1 through MOB-7 are required in milestone 2 and its final acceptance report;
 track implementation in [issue #20](https://github.com/ColdPhase/flux/issues/20).
+Physical-device evidence is collected in one disposable trusted-HTTPS session; see
+[the device verification fixture](../development/mobile-push-verification.md).
 Agents may create and sequence smaller issues, but cannot mark the full product
 complete with mobile install, touch journeys or push delivery still unverified.
 Native app-store packaging can be decided separately; PWA delivery is required.

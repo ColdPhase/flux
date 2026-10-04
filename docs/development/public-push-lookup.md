@@ -36,3 +36,18 @@ under [MOB-1–MOB-7](../product/mobile-pwa.md).
 The original failed provider attempt, its separate browser-inspection timeout,
 and earlier login-rate-limit/migration-startup failures remain retained evidence.
 This contract does not claim an implementation, runtime or physical-device pass.
+
+**Regression guard (takeover, 2026-10-04).** Both the existing push test and the
+lookup test run the private-network override that the test stack needs for its
+local push mock. So one more test in `app/tests/app/push.test.ts` exercises the
+worker's own `createPushAgent` without that override. It uses Node's real
+resolver on literal hosts, so it needs no outside DNS. The test checks that:
+
+- public IPv4, public IPv6 and IPv4-mapped public answers are destinations;
+- loopback, private, link-local, CGNAT, multicast, unspecified, NAT64 and the
+  IPv4-mapped forms of those private ranges are refused with `EPUSHPRIVATE`.
+
+The test uses only the API that `main` already had. Run unchanged against the
+earlier guard, it fails on the first public IPv4 answer, which is the defect
+above. Putting the `::ffff:0:0/96` rule back into the fixed guard makes both
+tests fail again.
