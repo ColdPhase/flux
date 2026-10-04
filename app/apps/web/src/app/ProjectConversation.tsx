@@ -8,6 +8,7 @@ import { pageBackTo } from './seekMessage';
 import { useShellData } from './data';
 import { MessageActions, MessageObjects, useCreateWorkFromMessage } from '../work/inline';
 import { useMessageWork } from '../work/useMessageWork';
+import { readerActive, watchReaderInput } from '../work/readerIntent';
 import { useReferenceWork } from '../work/useReferenceWork';
 import { MessageWorkPages } from '../work/MessageWorkPages';
 import { audienceLine, replyTo, useProjectShell } from '../project/data';
@@ -251,9 +252,10 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
     if (!feed || !column) return;
     // Open on whole messages: when the latest screen would start mid-message, begin at the next
     // message instead, with a little room below the last one (direction C "return anchor").
-    // Layout settles as the return line and fonts arrive, so this repeats until the reader acts.
-    // The position settle() last wrote; any other scroll (scrollIntoView, focus, find) is the
-    // reader's, and ends settling just like a wheel, touch, key or pointer would.
+    // Layout settles as the return line, fonts and late message previews arrive, so this repeats
+    // until the reader acts. Only genuine reader input ends it (readerIntent.ts), or a scroll
+    // settle() did not write that follows such input. Layout growth, scroll anchoring and other
+    // writers never end it.
     let written = -1;
     const settle = () => {
       column.style.paddingBottom = '';
@@ -276,11 +278,11 @@ function ProjectConversationContent({ data }: { data: ProjectData }) {
     observer.observe(feed);
     observer.observe(column.firstElementChild ?? column);
     const stop = () => observer.disconnect();
-    const moved = () => { if (Math.abs(feed.scrollTop - written) > 1) stop(); };
+    const release = watchReaderInput(feed, stop);
+    const moved = () => { if (Math.abs(feed.scrollTop - written) > 1 && readerActive(feed)) stop(); };
     const timer = window.setTimeout(stop, 2000);
-    for (const type of ['wheel', 'touchstart', 'keydown', 'pointerdown', 'focusin'] as const) feed.addEventListener(type, stop, { once: true, passive: true });
     feed.addEventListener('scroll', moved, { passive: true });
-    return () => { stop(); window.clearTimeout(timer); for (const type of ['wheel', 'touchstart', 'keydown', 'pointerdown', 'focusin'] as const) feed.removeEventListener(type, stop); feed.removeEventListener('scroll', moved); };
+    return () => { stop(); release(); window.clearTimeout(timer); feed.removeEventListener('scroll', moved); };
   }, [conversation?.id, arrived, arrivedLoaded, feedNode]);
 
   function changeDraft(input: string) {

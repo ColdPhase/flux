@@ -4,6 +4,7 @@ import type { WorkAssociationQuery } from '@flux/contracts';
 import { getWorkAssociations, workAssociationReadUrl } from './read-api';
 import { messageWorkPreviews, visibleMessageBatch } from './message-associations';
 import { useWorkRead } from './useWorkRead';
+import { lastReaderInput, readerActive, watchReaderInput } from './readerIntent';
 
 interface Position { cursor: string | null; edgeCursor: string | null }
 const positions = new Map<string, Position>();
@@ -55,14 +56,17 @@ function useMessageBatch(ref: RefObject<HTMLElement | null>, ids: string[], node
 function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTMLElement | null, ready: boolean, observedAt?: string) {
   const anchor = useRef<{ id: string; offset: number; top: number; atEnd: boolean } | null>(null);
   const readerMoved = useRef(false);
-  // The scrollTop this hook last wrote. Any other scroll (wheel, keys, scrollIntoView, focus,
-  // find-in-page) is the reader's position and is kept even while a new message batch loads.
+  // The scrollTop this hook last wrote. Another scroll is the reader's only when it follows
+  // genuine reader input (readerIntent.ts); otherwise it is layout (late previews, scroll
+  // anchoring, the opening settle) and the reading position keeps being restored.
   const ownScroll = useRef<number | null>(null);
   // A reader at the end follows what arrives there; reaching the end starts following and only
   // scrolling up leaves it. Layout shifts (scroll anchoring, a resized composer) keep the intent.
   const following = useRef(false);
   // The scrollTop last seen in a scroll event or written here, for the feed element it belongs to.
   const lastTop = useRef(0);
+  // When that scrollTop was recorded (performance.now()).
+  const lastSeenAt = useRef(Number.NEGATIVE_INFINITY);
   const seen = useRef<HTMLElement | null>(null);
   const save = useCallback((intent = false) => {
     const pane = ref.current;
@@ -81,15 +85,21 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
       if (atEnd()) following.current = true;
       else if (reader && pane.scrollTop < lastTop.current - 1) following.current = false;
       lastTop.current = pane.scrollTop;
+      lastSeenAt.current = performance.now();
       save(reader);
     };
-    // Scroll events arrive with the next rendered frame. A scroll that has happened but whose
-    // event has not arrived yet (scrollIntoView, focus, find-in-page, a script) is still the
-    // reader's position: record it instead of restoring an anchor saved before it.
+    // The reader moved the view: input within READER_INPUT_MS, or input since the position was
+    // last recorded (its scroll event may still be on its way).
+    const byReader = () => readerActive(pane) || lastReaderInput(pane) > lastSeenAt.current;
+    const release = watchReaderInput(pane, () => { readerMoved.current = true; });
+    // Scroll events arrive with the next rendered frame. A reader's scroll that has happened but
+    // whose event has not arrived yet (input, then scrollIntoView or focus) is still the
+    // reader's position: record it instead of restoring an anchor saved before it. The same
+    // unrecorded change without reader input is layout, and the reading position is restored.
     const fresh = seen.current !== pane;
     seen.current = pane;
     const own = ownScroll.current;
-    const unobserved = !fresh && Math.abs(pane.scrollTop - lastTop.current) > 1 && (own === null || Math.abs(pane.scrollTop - own) > 1);
+    const unobserved = !fresh && Math.abs(pane.scrollTop - lastTop.current) > 1 && (own === null || Math.abs(pane.scrollTop - own) > 1) && byReader();
     const stored = anchor.current;
     if (unobserved) { ownScroll.current = null; observe(true); }
     else if (following.current) { if (!atEnd()) toEnd(); }
@@ -100,33 +110,24 @@ function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, node: HTM
       // Even a no-op scrollTop assignment interrupts native smooth key/touch scrolling.
       if (Math.abs(target - pane.scrollTop) > 0.5) { pane.scrollTop = target; ownScroll.current = pane.scrollTop; lastTop.current = pane.scrollTop; }
     }
-    // Intent survives intermediate observations in the same native gesture.
-    // During an active gesture let native scroll anchoring preserve the message;
-    // writing scrollTop on a loading transition would interrupt smooth scrolling.
-    const wheel = (event: WheelEvent) => { if (event.deltaY && !event.ctrlKey) readerMoved.current = true; };
-    const touch = () => { readerMoved.current = true; };
-    const key = (event: KeyboardEvent) => {
-      if (event.target instanceof HTMLElement && event.target.closest('input,textarea,select,[contenteditable="true"]')) return;
-      if (['ArrowUp','ArrowDown','PageUp','PageDown','Home','End',' '].includes(event.key)) readerMoved.current = true;
-    };
-    const pointer = (event: PointerEvent) => { if (event.target === pane) readerMoved.current = true; };
+    // Reader input (readerMoved, set above) survives intermediate observations in the same
+    // native gesture. During an active gesture let native scroll anchoring preserve the
+    // message; writing scrollTop on a loading transition would interrupt smooth scrolling.
     if (ready) save();
     const scrolled = () => {
       const own = ownScroll.current;
       ownScroll.current = null;
-      observe(own === null || Math.abs(pane.scrollTop - own) > 1);
+      observe((own === null || Math.abs(pane.scrollTop - own) > 1) && byReader());
     };
     const grew = () => { if (following.current && !atEnd()) toEnd(); };
     const resize = new ResizeObserver(grew);
     resize.observe(pane);
     if (pane.firstElementChild) resize.observe(pane.firstElementChild);
     pane.addEventListener('scroll', scrolled, { passive: true });
-    pane.addEventListener('wheel', wheel, { passive: true }); pane.addEventListener('touchstart', touch, { passive: true });
-    pane.addEventListener('keydown', key); pane.addEventListener('pointerdown', pointer);
     return () => {
       resize.disconnect();
-      pane.removeEventListener('scroll', scrolled); pane.removeEventListener('wheel', wheel); pane.removeEventListener('touchstart', touch);
-      pane.removeEventListener('keydown', key); pane.removeEventListener('pointerdown', pointer);
+      pane.removeEventListener('scroll', scrolled);
+      release();
     };
   }, [ref, node, ready, observedAt, save]);
   return save;
