@@ -54,8 +54,23 @@ function resolvedTheme(): ResolvedTheme {
   return current === 'system' ? systemTheme?.matches ? 'dark' : 'light' : current;
 }
 
+/**
+ * An installed app's title bar follows the theme actually shown, not only the system setting:
+ * every theme-color tag takes the page's current background (#203). The static tags in
+ * index.html stay the first-paint default.
+ */
+function syncThemeColor() {
+  const background = (element: Element) => getComputedStyle(element).backgroundColor;
+  const transparent = (value: string) => !value || value === 'transparent' || /^rgba\(.*,\s*0\)$/.test(value);
+  let colour = background(document.body);
+  if (transparent(colour)) colour = background(document.documentElement);
+  if (transparent(colour)) return;
+  for (const meta of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) meta.content = colour;
+}
+
 function publish() {
   document.documentElement.dataset.accent = accents[resolvedTheme()];
+  syncThemeColor();
   listeners.forEach((listener) => listener());
 }
 

@@ -101,9 +101,16 @@ class DirectMessageJourney(unittest.TestCase):
     def composer(self, page: Page):
         return page.get_by_label(re.compile(r"^Message "))
 
-    def send(self, page: Page, text: str) -> None:
+    def send(self, page: Page, text: str, touch: bool = False) -> None:
         self.composer(page).fill(text)
-        self.composer(page).press("Enter")
+        if touch:
+            # On a touch device Enter adds a line and the button sends (#189).
+            self.composer(page).press("Enter")
+            expect(self.composer(page)).to_have_value(f"{text}\n")
+            self.composer(page).fill(text)
+            page.get_by_role("button", name="Send message").tap()
+        else:
+            self.composer(page).press("Enter")
         expect(page.locator(".dm-msg__body", has_text=text)).to_be_visible()
         expect(self.composer(page)).to_have_value("")
 
@@ -241,7 +248,7 @@ class DirectMessageJourney(unittest.TestCase):
         self.assertLessEqual(composer["y"] + composer["height"], PHONE["height"], "composer stays on screen")
         width = page.evaluate("document.documentElement.scrollWidth")
         self.assertLessEqual(width, PHONE["width"], "no horizontal scrolling")
-        self.send(page, "Sent from my phone: the sensor fits in the lamp base.")
+        self.send(page, "Sent from my phone: the sensor fits in the lamp base.", touch=True)
         shot(page, "dm-phone-390-conversation")
 
     def test_06_group_dm_and_leaving(self) -> None:

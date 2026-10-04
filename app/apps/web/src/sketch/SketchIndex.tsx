@@ -34,7 +34,7 @@ async function loadSketches(pages: number, signal: AbortSignal): Promise<Loaded>
   for (const workspace of workspaces) {
     const names = await projectNames(workspace.id, signal);
     for (let page = 0; page < pages; page += 1) {
-      const sketches = await api.listSketches(workspace.id, PAGE, page * PAGE, signal);
+      const sketches = await api.listPrivateSketches(workspace.id, PAGE, page * PAGE, signal);
       if (page === 0) total += sketches.total;
       for (const sketch of sketches.items) items.push({ sketch, projectName: sketch.projectId ? names.get(sketch.projectId) ?? null : null });
       if ((page + 1) * PAGE >= sketches.total) break;

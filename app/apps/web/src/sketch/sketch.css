@@ -1,6 +1,7 @@
 /* Sketches (issue #69): direction C `#lamp-map`, `-select`, `-edit`, `-list`. Calm: one accent for
-   selection, 1px rules, no badges. Positions animate only through transform, and every duration
-   comes from the motion tokens, which are 0ms under prefers-reduced-motion. */
+   selection, 1px rules, no badges beyond a thought's quiet task count (UI116-4). Positions animate
+   only through transform, and every duration comes from the motion tokens, which are 0ms under
+   prefers-reduced-motion. */
 
 .sk-page { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
 .sk-page--center { display: grid; place-items: center; min-height: 240px; color: var(--text-3); }
@@ -25,6 +26,8 @@
 .sk-bar { display: flex; align-items: center; gap: 2px; min-height: 40px; padding: 4px; border-radius: var(--r-lg);
   box-shadow: inset 0 0 0 1px var(--line); background: var(--bg); }
 .sk-tools { display: flex; align-items: center; gap: 2px; flex: none; }
+.sk--map .sk-bar { flex-wrap: wrap; }
+.sk--map .sk-tools { flex: 0 1 auto; min-width: 0; flex-wrap: wrap; }
 .sk-bar .ui-btn { min-height: 32px; padding: 0 10px; gap: 6px; }
 .sk-bar .ui-btn svg { color: var(--text-3); }
 .sk-bar .sk-add { color: var(--text); }
@@ -78,6 +81,47 @@
 .sk-resize { position: absolute; right: 2px; bottom: 2px; width: 12px; height: 12px; cursor: nwse-resize; touch-action: none;
   background: linear-gradient(135deg, transparent 50%, var(--accent) 50%, var(--accent) 60%, transparent 60%, transparent 72%, var(--accent) 72%, var(--accent) 82%, transparent 82%); border-radius: 0 0 var(--r-lg) 0; opacity: .7; }
 
+/* UI116-4: a thought shows how many tasks link to it, never their titles or results. The count is its
+   own button in a slot over the room kept at the bottom of the thought, so a thought stays one
+   button; the slot follows the thought through moves, drags and the phone projection. */
+.sk { --sk-work-h: 24px; }
+.sk-node .sk-work-gap { flex: none; margin-top: auto; height: calc(var(--sk-work-h) + 12px);
+  background: linear-gradient(var(--line), var(--line)) 0 7px / 100% 1px no-repeat; }
+.sk-node--circle.has-work > :first-child { margin-top: auto; }
+.sk-node--circle .sk-work-gap { height: calc(var(--sk-work-h) + 4px); background: none; }
+.sk-work-slot { position: absolute; left: 0; top: 0; pointer-events: none; transition: transform var(--dur-2) var(--ease-out); }
+.sk-work-slot.is-dragging { z-index: 3; transition: none; }
+.sk-work { position: relative; display: inline-flex; align-items: center; gap: 5px; border-radius: var(--r-sm); color: var(--text-2);
+  font-size: var(--fs-xs); font-weight: 500; line-height: 1; white-space: nowrap; transition: var(--tr); }
+.sk-work svg { flex: none; color: var(--text-3); }
+.sk-work:hover, .sk-work[aria-expanded="true"] { background: var(--bg-hover); color: var(--text); }
+.sk-work--map { position: absolute; left: 7px; bottom: 10px; height: var(--sk-work-h); padding: 0 6px 0 5px; pointer-events: auto; }
+.sk-work-slot--pill .sk-work--map { left: 13px; }
+.sk-work-slot--circle .sk-work--map { left: 50%; bottom: 16px; translate: -50% 0; }
+
+/* The chooser: every linked task with its exact ID, status and people. A popover beside the count;
+   a sheet on a phone. */
+.sk-tasks-pop { position: fixed; left: 0; top: 0; z-index: var(--z-menu); width: min(360px, calc(100vw - 16px)); overflow-y: auto; overscroll-behavior: contain;
+  border-radius: var(--r-lg); background: var(--bg-raised); box-shadow: var(--shadow), inset 0 0 0 1px var(--line); outline: none; text-align: left; }
+.ui-overlay--bottom .ui-overlay__surface.sk-tasks-sheet { top: auto; max-height: 85dvh; overflow-y: auto; overscroll-behavior: contain;
+  border-radius: var(--r-lg) var(--r-lg) 0 0; background: var(--bg-raised); box-shadow: var(--shadow); padding-bottom: env(safe-area-inset-bottom); }
+.sk-tasks__head { position: relative; padding: 14px 52px 10px 16px; border-bottom: 1px solid var(--line); }
+.sk-tasks__k { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); font-weight: 500; color: var(--text-3); }
+.sk-tasks__k svg { flex: none; }
+.sk-tasks__t { margin-top: 4px; font-size: var(--fs-md); font-weight: 600; line-height: 1.4; color: var(--text); overflow-wrap: anywhere; white-space: pre-line; }
+.sk-tasks__close { position: absolute; top: 8px; right: 8px; }
+.sk-tasks__list { list-style: none; margin: 0; padding: 4px 8px; }
+.sk-tasks__list li + li { border-top: 1px solid var(--line); }
+.sk-task { display: flex; align-items: flex-start; gap: 10px; margin: 2px 0; padding: 9px 8px; border-radius: var(--r); color: var(--text); text-decoration: none; transition: var(--tr); }
+.sk-task:hover { background: var(--bg-hover); }
+.sk-task .ws-dot { margin-top: 5px; }
+.sk-task > svg { flex: none; margin-top: 2px; color: var(--text-3); }
+.sk-task__b { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sk-task__t { font-size: var(--fs-md); font-weight: 500; line-height: 1.45; overflow-wrap: anywhere; }
+.sk-task__m { font-size: var(--fs-sm); color: var(--text-3); line-height: 1.45; overflow-wrap: anywhere; }
+.sk-task__id { font-family: var(--mono); font-size: var(--fs-xs); letter-spacing: .02em; color: var(--text-2); }
+.sk-tasks__note { padding: 6px 16px 14px; font-size: var(--fs-xs); color: var(--text-3); line-height: 1.5; }
+
 .sk-actions { position: absolute; left: 0; top: 0; z-index: 4; display: flex; align-items: center; gap: 8px; transform-origin: 0 0; }
 .sk-plus { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
   background: var(--accent); color: var(--on-accent); box-shadow: var(--shadow-sm); transition: background-color var(--dur-1) var(--ease-out), opacity var(--dur-1) var(--ease-out); }
@@ -91,6 +135,14 @@
   box-shadow: inset 0 0 0 1.5px var(--accent), 0 0 0 3px var(--accent-soft); outline: none; }
 
 .sk-canvas-wrap { position: relative; }
+/* The map uses the height actually left by the shell, including wrapped project state and
+   Details. Keep controls, drafts and the complete wrapped hint outside its flexible canvas.
+   Very short panes can still scroll instead of crushing the map or losing a draft. */
+.sk-page--map { display: flex; flex-direction: column; }
+.sk--map { flex: 1; min-height: min-content; width: 100%; padding-bottom: 16px; }
+.sk--map > * { flex-shrink: 0; }
+.sk--map .sk-canvas-wrap { flex: 1 0 240px; min-height: 240px; height: auto; }
+.sk--map .sk-canvas { height: 100%; }
 .sk-zoom { position: absolute; right: 8px; bottom: 8px; z-index: 6; display: flex; align-items: center; gap: 0;
   padding: 2px; border-radius: var(--r); background: var(--bg-raised); box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--line); }
 .sk-zoom button { display: grid; place-items: center; min-width: 28px; height: 28px; border-radius: 6px; color: var(--text-3); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; transition: var(--tr); }
@@ -98,6 +150,13 @@
 .sk-zoom button:disabled { opacity: .45; cursor: default; }
 .sk-zoom .sk-zoom__level { min-width: 44px; }
 .sk-zoom .sk-zoom__fit { min-width: 36px; padding: 0 8px; font-size: var(--fs-sm); color: var(--text-2); font-weight: 500; }
+/* Every map keeps controls outside its scroll viewport: thoughts remain clear while scrolling,
+   including at the Fit floor and in the phone's unchanged full-size two-column projection.
+   Flex measures the real control height (including larger touch targets) within the same footprint. */
+.sk-canvas-wrap--controls { display: flex; flex-direction: column; gap: 8px; padding-bottom: 8px;
+  height: clamp(360px, calc(100dvh - 300px), 720px); }
+.sk-canvas-wrap--controls .sk-canvas { flex: 1; min-height: 0; height: auto; }
+.sk-canvas-wrap--controls .sk-zoom { position: static; flex: none; align-self: flex-end; margin-right: 8px; }
 
 .sk-first, .sk-empty-list { font-size: var(--fs-sm); color: var(--text-3); }
 .sk-first b, .sk-empty-list b { font-weight: 500; color: var(--text-2); }
@@ -182,6 +241,11 @@
 .sk-edit-btn { min-height: 44px; min-width: 44px; padding: 0 16px; font-size: var(--fs-md); }
   .sk-li-t, .sk-li-edit, .sk-title { min-height: 44px; }
   .sk-zoom button { min-width: 44px; height: 44px; }
+  /* The count stays compact inside the thought; its touch target reaches 44px around it. */
+  .sk { --sk-work-h: 28px; }
+  .sk-work--map::before { content: ''; position: absolute; inset: -8px -4px; }
+  .sk-task { min-height: 44px; }
+  .sk-tasks__close { width: 44px; height: 44px; top: 4px; right: 4px; }
 }
 @media (max-width: 640px) {
   .sk { padding: 14px 16px 28px; }
@@ -210,6 +274,7 @@
   .sk-status { flex: none; padding: 0 8px 6px; white-space: normal; }
   .sk-status:empty { display: none; }
   .sk-canvas { height: clamp(360px, calc(100dvh - 250px), 620px); }
+  .sk-canvas-wrap--controls { height: clamp(360px, calc(100dvh - 250px), 620px); }
   .sk-el:not(.is-on) { display: none; }
   .sk-edges path:not(.is-on) { stroke-opacity: 1; }
 }
