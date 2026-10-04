@@ -86,3 +86,13 @@ test('adjustable protected-result reservation transfers only after accounting ac
   assert.equal(lease.bytes,sourceAndText); wire(); lease.release(); assert.equal(budget.bytes,0);
   assert.throws(() => lease.resize(1),{code:'EDITING_OUTPUT_CLOSED'});
 });
+
+
+test('JSON payload bytes are reserved before allocation and transfer once to the bounded delivery', () => {
+  const f = boundary(); const budget = new EditingOutputBudget(); const output = new EditingOutput(f.socket,budget);
+  const occupying = budget.reserve(32*1024*1024-1);
+  assert.throws(() => output.sendJSONPayload(header,'{}',()=>{}),{code:'EDITING_OUTPUT_CAPACITY'}); assert.equal(f.sent.length,0); occupying();
+  output.sendJSONPayload(header,JSON.stringify({text:'😀'.repeat(100)}),()=>{});
+  const frame = decode(Buffer.from(f.sent[0] as Uint8Array)); output.received(frame.deliveryId,frame.index);
+  f.callbacks[0]!(); output.close(); assert.equal(budget.bytes,0);
+});

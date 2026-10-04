@@ -51,15 +51,31 @@ export class EditingOutput {
     catch (error) { release(); throw error; }
   }
   send(header: Header, payload: Uint8Array, completed: () => void) {
-    if (this.closed || this.busy || this.socket.readyState !== WebSocket.OPEN) throw new EditingOutputError('EDITING_OUTPUT_CAPACITY');
     const backing = (payload.buffer as ArrayBuffer & { maxByteLength?: number }).maxByteLength ?? payload.buffer.byteLength;
     if (payload.byteLength > EDITING_LIMITS.assemblyBytes || backing > EDITING_LIMITS.assemblyBytes) throw new EditingOutputError('EDITING_OUTPUT_CAPACITY');
-    const count = Math.max(1, Math.ceil(payload.byteLength / EDITING_LIMITS.chunkBytes));
-    if (count > EDITING_LIMITS.chunks) throw new EditingOutputError('EDITING_OUTPUT_CAPACITY');
-    const release = this.budget.reserve(backing + 2 * JSON.stringify(header).length + 256 + count * 128);
-    this.delivery = { id: randomUUID(), header, payload, release, count, next: 0, pending: new Map(), acknowledged: new Set(), completed };
-    this.timeout = setTimeout(() => { this.close(); this.socket.terminate(); }, 10_000); this.timeout.unref();
-    try { this.pump(); } catch (error) { this.close(); throw error; }
+    this.begin(header,payload,this.budget.reserve(backing),completed);
+  }
+  /** The caller charges its source objects/JSON text; Output reserves owned bytes BEFORE allocation. */
+  sendJSONPayload(header: Header, text: string, completed: () => void) {
+    const bytes = Buffer.byteLength(text);
+    if (bytes > EDITING_LIMITS.assemblyBytes) throw new EditingOutputError('EDITING_OUTPUT_CAPACITY');
+    const release = this.budget.reserve(bytes); let payload: Buffer;
+    try { payload = Buffer.allocUnsafeSlow(bytes); payload.write(text); }
+    catch (error) { release(); throw error; }
+    this.begin(header,payload,release,completed);
+  }
+  private begin(header: Header, payload: Uint8Array, releasePayload: () => void, completed: () => void) {
+    let releaseMetadata = () => {};
+    try {
+      if (this.closed || this.busy || this.socket.readyState !== WebSocket.OPEN) throw new EditingOutputError('EDITING_OUTPUT_CAPACITY');
+      const count = Math.max(1, Math.ceil(payload.byteLength / EDITING_LIMITS.chunkBytes));
+      if (count > EDITING_LIMITS.chunks) throw new EditingOutputError('EDITING_OUTPUT_CAPACITY');
+      releaseMetadata = this.budget.reserve(2 * JSON.stringify(header).length + 256 + count * 128);
+      const release = () => { releasePayload(); releaseMetadata(); };
+      this.delivery = { id: randomUUID(), header, payload, release, count, next: 0, pending: new Map(), acknowledged: new Set(), completed };
+      this.timeout = setTimeout(() => { this.close(); this.socket.terminate(); }, 10_000); this.timeout.unref();
+      try { this.pump(); } catch (error) { this.close(); throw error; }
+    } catch (error) { releasePayload(); releaseMetadata(); throw error; }
   }
   /** Validation is synchronous; chunk acknowledgment alone never hands protected bytes to a socket. */
   received(deliveryId: string, index: number) {
@@ -108,3 +124,6 @@ export class EditingOutput {
     // Outstanding wire copies remain charged until their actual send callbacks, including after close/termination.
   }
 }
+
+/** One process hosts one API; all its live protocols and native live journals share this hard budget. */
+export const apiEditingOutputBudget = new EditingOutputBudget();
