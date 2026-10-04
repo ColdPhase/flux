@@ -167,8 +167,8 @@ curl -fsS "$dev/api/v1/health" | grep -q '"status":"ok"' || fail "Vite does not 
 marker="hot-reload-$run"
 printf "\nexport const fluxDevMarker = '%s';\n" "$marker" >> "$copy/app/apps/web/src/app/theme.ts"
 sed "s/return { status: 'ok', schemaVersion: FLUX_SCHEMA_VERSION };/return { status: 'ok', schemaVersion: FLUX_SCHEMA_VERSION, dev: '$marker' };/" \
-  "$copy/app/apps/server/src/index.ts" > "$work/index.ts" && cat "$work/index.ts" > "$copy/app/apps/server/src/index.ts"
-grep -q "$marker" "$copy/app/apps/server/src/index.ts" || fail "could not edit the server health handler"
+  "$copy/app/apps/server/src/health/routes.ts" > "$work/health.ts" && cat "$work/health.ts" > "$copy/app/apps/server/src/health/routes.ts"
+grep -q "$marker" "$copy/app/apps/server/src/health/routes.ts" || fail "could not edit the server health handler"
 edit=$(date +%s); web_s='' api_s=''
 while [ $(( $(date +%s) - edit )) -lt 60 ]; do
   [ -n "$web_s" ] || { curl -fsS "$dev/src/app/theme.ts" 2>/dev/null | grep -q "$marker" && web_s=$(( $(date +%s) - edit )); } || true

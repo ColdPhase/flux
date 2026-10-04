@@ -108,7 +108,11 @@ the run's actual charge.
 > maximum input tokens × input price + maximum output tokens × output price
 
 It is reconciled against reported usage. A lost response keeps its reservation
-as `unknown`.
+as `unknown`. The charge of a run never exceeds its reservation: reported usage
+above the request's maximum input or output tokens, or a reconciled cost above
+the reservation, is treated like a lost response. The run fails closed: the cost
+stays `unknown`, the whole reservation stays counted against the daily cap, the
+reported numbers are not stored as the charge, and the answer is withheld.
 
 **Input bound.** The same conservative Flux token estimate bounds input for every
 provider. A provider token-count endpoint may tighten the estimate, never loosen
@@ -208,8 +212,15 @@ Choices made within the contract, for review:
 - **Reservation.** A personal run reserves the formula at the connection's price; O-008's per-run
   setting is the ceiling it must fit, so a model whose largest request exceeds it is refused at
   enable and at invoke. A background comparison reserves the formula with O-007's 5-cent floor.
-- **Input bound.** The Flux estimate is one token per two UTF-8 bytes plus framing. Anthropic's
-  count endpoint is still called when the estimate fits, and only a higher count is used.
+- **Input bound.** The Flux estimate is one token per UTF-8 byte plus framing. Byte-level BPE and
+  SentencePiece tokenizers (with byte fallback) emit at least one byte per token, so this is an
+  upper bound for any text, including CJK, emoji and digit runs; it halves the prose that fits in
+  16,000 tokens compared with a per-two-bytes estimate. Anthropic's count endpoint is still called
+  when the estimate fits, and only a higher count is used.
+- **Charge bound.** A personal run whose reported usage exceeds its token limits, or whose
+  reconciled cost exceeds its reservation (including a large OpenRouter `usage.cost`), ends
+  `provider_failed` with cost `unknown`, its reservation retained, and no answer or proposal, as a
+  comparison ends `unknown` with `INVALID_OBSERVED_USAGE` / `OBSERVED_COST_OVER_CEILING`.
 - **Effort and output.** Anthropic gets `effort: low`. Chat Completions has no field every model
   accepts (non-reasoning models reject `reasoning_effort`), so none is sent; `max_completion_tokens`
   (OpenAI) or `max_tokens` (others) bounds the output including any reasoning.

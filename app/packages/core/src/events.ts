@@ -1,6 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, isNull } from 'drizzle-orm';
-import { schema } from '@flux/db';
 import { authorizeEvent, type EventRef } from './access/policy.js';
 import type { Executor, Principal } from './types.js';
 
@@ -9,13 +7,36 @@ export function principalKey(principal: Principal) {
   return `${principal.kind}:${principal.id}`;
 }
 
-/** Principals that could possibly read an event of `workspaceId`: its members and unrevoked agents. */
-async function candidates(tx: Executor, workspaceId: string): Promise<Principal[]> {
-  const members = await tx.select({ id: schema.workspaceMembers.userId }).from(schema.workspaceMembers)
-    .where(eq(schema.workspaceMembers.workspaceId, workspaceId));
-  const agents = await tx.select({ id: schema.agents.id }).from(schema.agents)
-    .where(and(eq(schema.agents.workspaceId, workspaceId), isNull(schema.agents.revokedAt)));
-  return [...members.map(({ id }) => ({ kind: 'human' as const, id })), ...agents.map(({ id }) => ({ kind: 'agent' as const, id }))];
+/** One stored event and its stream audience, as the repository writes them (#89). */
+export interface StoredEvent {
+  id: string;
+  kind: string;
+  objectId: string;
+  /** `principalKey` of the actor. */
+  actorId: string;
+  data: Readonly<Record<string, unknown>>;
+  workspaceId: string;
+}
+
+/** Event storage bound to the writing transaction (#89); `@flux/db` `eventRepository` implements it. */
+export interface EventRepository {
+  /** Principals that could possibly read an event of `workspaceId`: its members and unrevoked agents. */
+  candidates(workspaceId: string): Promise<Principal[]>;
+  /** Inserts the event and one `event_audience` row per recipient. The insert takes the sequence lock. */
+  insert(event: StoredEvent, recipients: readonly string[]): Promise<void>;
+}
+
+/** Whether `principal` may read the event's object now, decided inside the writing transaction. */
+export type EventAuthorizer = (principal: Principal, event: EventRef) => Promise<boolean>;
+
+export interface EventPorts {
+  repository: EventRepository;
+  authorize: EventAuthorizer;
+}
+
+/** The access policy as the event authorizer, inside `tx`, with the repository bound to the same transaction. */
+export function policyEventPorts(tx: Executor, repository: EventRepository): EventPorts {
+  return { repository, authorize: (principal, event) => authorizeEvent(principal, event, tx) };
 }
 
 /**
@@ -23,11 +44,11 @@ async function candidates(tx: Executor, workspaceId: string): Promise<Principal[
  * event's object, evaluated inside the writing transaction so it sees that transaction's
  * own change (a share, a removal). Stored as `event_audience` rows; delivery re-checks.
  */
-export async function eventAudience(tx: Executor, event: EventRef): Promise<string[]> {
+export async function eventAudience(ports: EventPorts, event: EventRef): Promise<string[]> {
   if (!event.workspaceId) return [];
   const recipients: string[] = [];
-  for (const principal of await candidates(tx, event.workspaceId)) {
-    if (await authorizeEvent(principal, event, tx)) recipients.push(principalKey(principal));
+  for (const principal of await ports.repository.candidates(event.workspaceId)) {
+    if (await ports.authorize(principal, event)) recipients.push(principalKey(principal));
   }
   return recipients;
 }
@@ -46,19 +67,18 @@ export interface EventIntent {
  * derived audience/outbox records. Domain, coordination and receipt writes precede
  * this call. Events contain canonical identifiers, never copied public content.
  */
-export async function recordEvents(tx: Executor, intents: readonly EventIntent[]): Promise<string[]> {
+export async function recordEvents(ports: EventPorts, intents: readonly EventIntent[]): Promise<string[]> {
   const prepared: { intent: EventIntent; id: string; recipients: string[] }[] = [];
   for (const intent of intents) prepared.push({ intent, id: randomUUID(),
-    recipients: await eventAudience(tx, { kind: intent.kind, workspaceId: intent.workspaceId, objectId: intent.objectId }) });
+    recipients: await eventAudience(ports, { kind: intent.kind, workspaceId: intent.workspaceId, objectId: intent.objectId }) });
   for (const { intent, id, recipients } of prepared) {
-    const [row] = await tx.insert(schema.events).values({ id, kind: intent.kind, objectId: intent.objectId,
-      actorId: principalKey(intent.principal), data: intent.data, workspaceId: intent.workspaceId }).returning({ seq: schema.events.seq });
-    if (recipients.length) await tx.insert(schema.eventAudience).values(recipients.map((recipient) => ({ recipient, seq: row!.seq, eventId: id })));
+    await ports.repository.insert({ id, kind: intent.kind, objectId: intent.objectId, actorId: principalKey(intent.principal),
+      data: intent.data, workspaceId: intent.workspaceId }, recipients);
   }
   return prepared.map(({ id }) => id);
 }
 
 /** Single-event compatibility entry; the same final-write ordering applies. */
-export async function recordEvent(tx: Executor, principal: Principal, workspaceId: string, kind: string, objectId: string, data: Record<string, unknown>) {
-  return (await recordEvents(tx, [{ principal, workspaceId, kind, objectId, data }]))[0]!;
+export async function recordEvent(ports: EventPorts, principal: Principal, workspaceId: string, kind: string, objectId: string, data: Record<string, unknown>) {
+  return (await recordEvents(ports, [{ principal, workspaceId, kind, objectId, data }]))[0]!;
 }

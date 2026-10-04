@@ -1,3 +1,4 @@
+import type { MessageFile } from './files.js';
 import type { ProjectAccess, ProjectGrantRole, ProjectVisibility, WorkspaceRole } from './access.js';
 import type { MessageContribution } from './conversation.js';
 import type { DocState } from './docs.js';
@@ -29,6 +30,7 @@ export const PROJECT_EXPORT_EXCLUDED = [
   'private sketches and placements of notes on a sketch',
   'accounts, e-mail addresses, sessions, push subscriptions and notifications',
   'agent connections, OAuth clients and tokens, and pending agent proposals',
+  'approved project policies for agents (kept in full backups)',
   'events, idempotency records and other internal rows',
 ] as const;
 
@@ -55,6 +57,7 @@ export interface ProjectExportGrant {
 }
 
 export interface ProjectExportMessage {
+  files?: MessageFile[];
   id: string;
   sequence: number;
   author: ExportActor;
@@ -183,7 +186,17 @@ export interface ProjectExportLink {
   createdAt: string;
 }
 
+export interface ProjectExportFile extends MessageFile {
+  messageId: string;
+  conversationId: string;
+  position: number;
+  sha256: string;
+  path: string;
+}
+
 export interface ProjectExport {
+  /** Published attachments only. Exact bytes are in the bundle paths. Absent in legacy file-free exports. */
+  files?: ProjectExportFile[];
   $schema: typeof PROJECT_EXPORT_SCHEMA_ID;
   format: typeof PROJECT_EXPORT_FORMAT;
   formatVersion: typeof PROJECT_EXPORT_FORMAT_VERSION;
@@ -251,7 +264,10 @@ const objectRef = {
   ],
 } as const;
 
-export const PROJECT_EXPORT_JSON_SCHEMA = {
+const exportFileSchema = object({ id, name: text, size: { type: 'integer', minimum: 1 }, messageId: id, conversationId: id,
+  position: { type: 'integer', minimum: 0, maximum: 9 }, sha256: { type: 'string', pattern: '^[0-9a-f]{64}$' }, path: { type: 'string', pattern: '^files/[0-9a-f-]+$' } });
+
+const baseExportSchema = {
   $schema: 'http://json-schema.org/draft-07/schema#',
   $id: PROJECT_EXPORT_SCHEMA_ID,
   title: 'Flux project export, format version 1',
@@ -263,6 +279,7 @@ export const PROJECT_EXPORT_JSON_SCHEMA = {
       ...object({ id, sequence: count, author: ref('actor'), body: text, source: nullable(object({ materialId: id, version: count })), createdAt: time }),
       required: ['id', 'sequence', 'author', 'body', 'source', 'createdAt'],
       properties: { id, sequence: count, author: ref('actor'), body: text, source: nullable(object({ materialId: id, version: count })), createdAt: time,
+        files: list(object({ id, name: text, size: { type: 'integer', minimum: 1 } })),
         contribution: { oneOf: [object({ kind: { enum: ['blocker', 'handoff'] } }), object({ kind: { const: 'result' }, resultId: id })] } },
     },
     conversation: object({ id, createdBy: ref('actor'), createdAt: time, messages: list(ref('message')) }),
@@ -316,4 +333,8 @@ export const PROJECT_EXPORT_JSON_SCHEMA = {
     results: list(ref('result')),
     links: list(ref('link')),
   }),
+} as const;
+
+export const PROJECT_EXPORT_JSON_SCHEMA = { ...baseExportSchema,
+  properties: { ...baseExportSchema.properties, files: list(exportFileSchema) },
 } as const;

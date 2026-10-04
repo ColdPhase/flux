@@ -1,3 +1,4 @@
+import type { MessageFile, MessageContribution } from '@flux/contracts';
 import type {
   AiPrice, AiProviderKind, AssistantProposalStatus, AssistantRunCostState, AssistantRunKind, AssistantRunStatus, AssistantSourceRef,
   PersonalRunConsentVersion, PersonalRunEnablementStatus, ResultFinding,
@@ -102,7 +103,7 @@ export type NewProposal = Pick<ProposalRecord, 'id' | 'workspaceId' | 'projectId
 export type ProposalChanges = Partial<Pick<ProposalRecord, 'status' | 'decidedBy' | 'decidedAt' | 'resultId'>>;
 
 /** Rows a run may read. The use cases authorize the run's agent (and owner) before calling these. */
-export interface MessageSource { id: string; sequence: number; body: string; authorName: string; author: { kind: 'human' | 'agent'; id: string } }
+export interface MessageSource { contribution?: MessageContribution; files?: MessageFile[]; id: string; sequence: number; body: string; authorName: string; author: { kind: 'human' | 'agent'; id: string } }
 export interface WorkSource { id: string; version: number; title: string; outcome: string; status: string }
 export interface ThoughtSource { id: string; sketchId: string; version: number; text: string; sketchScope: 'project' | 'private' | 'dm'; sketchProjectId: string | null }
 

@@ -22,14 +22,20 @@ runs the same core use case as the API inside the API container, as that account
 policy decides there too (`--as` a member without `project.manage` is refused). Responses carry
 `Cache-Control: no-store`.
 
-The export is read in one read-only `REPEATABLE READ` transaction, so all its parts show the
-same moment even while people keep working.
+Export metadata is read in one read-only `REPEATABLE READ` transaction, so all
+relationships show the same moment even while people keep working. Published
+attachments are immutable. Bundle generation checks their size and SHA-256 before
+responding, then reads one file at a time outside SQL and streams tar and
+asynchronous gzip with backpressure. A disconnected HTTP client cancels further
+reads. A later missing/corrupt object fails the archive stream; it never silently
+omits files or writes a successful partial manifest.
 
 ## Bundle
 
 ```
 flux-project-<first 8 of project id>-<UTC time>/
   project.json                          the whole project (below)
+  files/<file id>                       exact published attachment bytes
   docs/<doc id>.md                      current Markdown text of each doc
   schema/project-export.v1.schema.json  JSON Schema (draft-07) of project.json
   README.md                             what is in it and what is not
@@ -37,8 +43,9 @@ flux-project-<first 8 of project id>-<UTC time>/
 ```
 
 Any `tar` extracts it (`tar -xzf flux-project-….tar.gz`). The launcher prints the bundle's own
-SHA-256. Uploaded files will join the bundle under `files/` when projects have file uploads;
-today materials are text and links.
+SHA-256. Only published attachments join the bundle under `files/`; private staged
+uploads are excluded. Original display names and relationships are in `project.json`.
+JSON-only export carries metadata, while the bundle carries the bytes as well.
 
 ## `project.json`
 
@@ -59,6 +66,7 @@ names.
 | `grants` | Explicit project grants, including `denied`. |
 | `actors` | Names of every person and agent referenced anywhere in the export. |
 | `conversations` | Each conversation with all messages in sequence: author, text, cited material or doc version, time. A message made by a saved blocker, a published result or a public handoff (#154) also has `contribution` (`{ "kind": "blocker" \| "handoff" }` or `{ "kind": "result", "resultId" }`); ordinary messages omit it. |
+| `files` (optional) | Published attachments: id, display name, size, SHA-256, message and conversation ids, order, and bundle path. Absent for projects without published files. Message `files` lists id, name and size in attachment order. |
 | `materials` | Published materials with every immutable version: title, text, URL, author, time. |
 | `docs` | Docs with every version: title, Markdown text, `draft`/`published`, reason, author, time, and `file` (the Markdown file of the current text). |
 | `sketches` | Project sketches with their thoughts (text, position, size, shape, author, version) and links between thoughts (label). |
@@ -73,6 +81,7 @@ names.
   material's text is exported, its source note and the note's id are not;
 - private sketches, and the placement of a note on any sketch;
 - accounts, e-mail addresses, sessions, push subscriptions and notifications;
+- approved project policies for agents (#160): a full backup keeps them, a project export does not;
 - agent connections, OAuth clients, access and refresh tokens and signing keys (secrets of this
   instance), and pending agent proposals (#52), which are not part of format version 1;
 - events, idempotency records and other internal rows.

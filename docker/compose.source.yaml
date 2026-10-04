@@ -146,7 +146,7 @@ services:
       dockerfile: ../docker/Dockerfile
       target: test
     image: flux-test-tools:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
-    command: ["pnpm", "test"]
+    command: ["sh", "-c", "exec node_modules/.bin/tsx --test --test-concurrency=1 tests/app/*.test.ts"]
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-flux}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-flux}
       FLUX_API_URL: http://api:8080

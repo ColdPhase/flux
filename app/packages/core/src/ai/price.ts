@@ -5,7 +5,8 @@ import { InvalidInputError } from '../access/errors.js';
 // per 1M tokens comes only from Flux's dated price table or from the owner (zero allowed for a
 // self-hosted endpoint). A connection with neither cannot be enabled. A cost a provider reports in
 // a response (OpenRouter's `usage.cost`) never raises or bypasses the reservation; it only
-// reconciles the actual charge of that run (`usageMicros`).
+// reconciles the actual charge of that run (`usageMicros`), and a charge is never stored above the
+// reservation (`boundedUsageMicros`).
 
 export function resolveConnectionPrice(input: {
   provider: AiProviderKind; model: string;
@@ -31,4 +32,24 @@ export function requestReservationMicros(price: Pick<AiPrice, 'inputMicrosPerMTo
 export function usageMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>, usage: { inputTokens: number; outputTokens: number; reportedCostMicros?: number | null }): number {
   if (typeof usage.reportedCostMicros === 'number' && Number.isSafeInteger(usage.reportedCostMicros) && usage.reportedCostMicros >= 0) return usage.reportedCostMicros;
   return maxRequestMicros(price, usage.inputTokens, usage.outputTokens);
+}
+
+/** Whether both reported token counts are whole, non-negative and within the request's limits. */
+export function usageTokensWithin(usage: { inputTokens: number; outputTokens: number }, bounds: { maxInputTokens: number; maxOutputTokens: number }): boolean {
+  const within = (tokens: number, max: number) => Number.isSafeInteger(tokens) && tokens >= 0 && tokens <= max;
+  return within(usage.inputTokens, bounds.maxInputTokens) && within(usage.outputTokens, bounds.maxOutputTokens);
+}
+
+/**
+ * The charge of one completed request within its consented bounds, or null when the reported usage
+ * is outside them: more input or output tokens than the request allowed, or a reconciled cost
+ * (reported or token-derived) above its reservation. A null charge is never stored: the caller
+ * keeps the whole reservation counted as `unknown` and withholds the result (PROV-3).
+ */
+export function boundedUsageMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>,
+  usage: { inputTokens: number; outputTokens: number; reportedCostMicros?: number | null },
+  bounds: { maxInputTokens: number; maxOutputTokens: number; reservedMicros: number }): number | null {
+  if (!usageTokensWithin(usage, bounds)) return null;
+  const charge = usageMicros(price, usage);
+  return Number.isSafeInteger(charge) && charge >= 0 && charge <= bounds.reservedMicros ? charge : null;
 }

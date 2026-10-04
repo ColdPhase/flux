@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { useRevalidator } from 'react-router';
-import type { ConversationMessage, Decision, Project, WorkItem, WorkResult } from '@flux/contracts';
+import { messagePreview, type ConversationMessage, type Decision, type Project, type WorkItem, type WorkResult } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Icon, useMediaQuery } from '../ui';
 import { useShellActions, type ObjectView } from '../app/shellContext';
@@ -153,7 +153,7 @@ export function useCreateWorkFromMessage(project: Project) {
     keys.current.set(message.id, key);
     setBusy(message.id); setFailed(null);
     try {
-      const item = await createWork(project.id, { title: firstLine(message.body), sources: [{ type: 'message', id: message.id }] }, key);
+      const item = await createWork(project.id, { title: firstLine(messagePreview(message.body, message.files?.length)), sources: [{ type: 'message', id: message.id }] }, key);
       keys.current.delete(message.id);
       revalidator.revalidate();
       openDetails({ kind: 'work', id: item.id });
@@ -165,7 +165,8 @@ export function useCreateWorkFromMessage(project: Project) {
 }
 
 /**
- * Quiet actions under a message: shown on hover and focus with a pointer and keyboard; on touch
+ * Quiet actions under a message, named by what they make (Task, Decision, Result) and Details (#189):
+ * shown on hover and focus with a pointer and keyboard; on touch
  * one "Make from this message" button opens them, so a phone feed is not a wall of buttons.
  * On a pointer they float over the message's corner and take no room in the feed. "Details" shows everything linked to this message (#117); readers without write access
  * get only that.
@@ -183,9 +184,9 @@ export function MessageActions({ projectId, message, onCreateWork, busy, writabl
   }
   return (
     <div className="ws-acts" role="group" aria-label="Make something from this message">
-      <button type="button" className="ws-act" onClick={onCreateWork} aria-busy={busy || undefined} disabled={busy}><Icon name="tasks" size={14} />{busy ? 'Creating…' : 'Create work'}</button>
-      <button type="button" className="ws-act" onClick={() => openDetails({ kind: 'propose-decision', projectId, source })}><Icon name="rule" size={14} />Propose decision</button>
-      <button type="button" className="ws-act" onClick={() => openDetails({ kind: 'attach-result', projectId, source })}><Icon name="result" size={14} />Attach result</button>
+      <button type="button" className="ws-act" onClick={onCreateWork} aria-busy={busy || undefined} disabled={busy}><Icon name="tasks" size={14} />{busy ? 'Creating…' : 'Task'}</button>
+      <button type="button" className="ws-act" onClick={() => openDetails({ kind: 'propose-decision', projectId, source })}><Icon name="rule" size={14} />Decision</button>
+      <button type="button" className="ws-act" onClick={() => openDetails({ kind: 'attach-result', projectId, source })}><Icon name="result" size={14} />Result</button>
       {details}
     </div>
   );

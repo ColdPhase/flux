@@ -111,13 +111,17 @@ row would under-reserve, so for those models the owner enters the price.
 - A comparison reserves `8,000 × input + 1,200 × output`, at least O-007's $0.05.
 - Usage is charged at the connection's price, or reconciled at the cost the provider reported in
   the response (OpenRouter `usage.cost`), which never raises or bypasses the reservation.
+- The charge never exceeds the reservation (`boundedUsageMicros`). Usage above the request's token
+  limits, or a cost above its reservation, is not stored: a personal run ends `provider_failed`
+  with cost `unknown` and its reservation counted, and a comparison ends `unknown`
+  (`INVALID_OBSERVED_USAGE`, `OBSERVED_COST_OVER_CEILING`). Nothing is posted in either case.
 
-The input of every provider is bounded by `conservativeTokenEstimate`: one token per two UTF-8
-bytes plus framing, above the major tokenizers' counts for prose in Latin, Polish and CJK text.
+The input of every provider is bounded by `conservativeTokenEstimate`: one token per UTF-8 byte
+plus framing. Byte-level BPE and SentencePiece tokenizers emit at least one byte per token, so
+this is an upper bound for any text (prose, CJK, emoji, digit runs).
 It replaces O-007/O-008's Anthropic preflight count as the bound. Anthropic's count endpoint is
 still called when the estimate fits, as an optional refinement: only a higher count is used.
-The estimate is not an exact count: a provider may still report more input than estimated for
-unusual text (long digit runs, emoji), which the comparison treats as invalid usage (`unknown`).
+A provider that still reports more usage than the bound is handled by the charge bound above.
 
 ## Endpoint guard (SSRF)
 

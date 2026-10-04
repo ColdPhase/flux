@@ -1,7 +1,7 @@
 import { eq, ne, sql } from 'drizzle-orm';
 import type { InspectedComparisonSource } from '@flux/contracts';
-import { pgTable, text, timestamp, date, uuid, integer, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, check, type AnyPgColumn } from 'drizzle-orm/pg-core';
-import { AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES, type AgentJsonValue, type AgentPostcondition } from '@flux/contracts';
+import { pgTable, text, timestamp, date, uuid, integer, smallint, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, check, type AnyPgColumn, type PgTableExtraConfigValue } from 'drizzle-orm/pg-core';
+import { AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES, type AgentJsonValue, type AgentPostcondition, type CoWorkSourceRef } from '@flux/contracts';
 import { AI_PROVIDER_KINDS, BACKGROUND_CONSENT_VERSIONS, type AiProviderKind, type PersonalRunConsentVersion } from '@flux/contracts';
 
 export const samples = pgTable('samples', {
@@ -542,9 +542,12 @@ export const projectMessages = pgTable('project_messages', {
   /** Plain text unless an explicit native effect (#154, migration 0040) says otherwise. */
   contributionKind: text('contribution_kind', { enum: ['text', 'blocker', 'result', 'handoff'] }).notNull().default('text'),
   resultId: uuid('result_id'),
+  /** How many published files belong to this message (#154, migration 0045); text or at least one file. */
+  attachmentCount: smallint('attachment_count').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique().on(table.conversationId, table.sequence),
+  unique('project_messages_file_identity').on(table.workspaceId, table.projectId, table.id),
   unique('project_messages_root_identity').on(table.conversationId, table.id, table.sequence),
   unique().on(table.projectId, table.authorId, table.clientMessageId),
   unique().on(table.projectId, table.authorAgentId, table.clientMessageId),
@@ -555,6 +558,47 @@ export const projectMessages = pgTable('project_messages', {
   foreignKey({ columns: [table.workspaceId, table.projectId, table.resultId], foreignColumns: [projectResults.workspaceId, projectResults.projectId, projectResults.id] }),
   check('project_message_contribution_kind', sql`${table.contributionKind} IN ('text', 'blocker', 'result', 'handoff')`),
   check('project_message_result_reference', sql`(${table.contributionKind} = 'result') = (${table.resultId} IS NOT NULL)`),
+  check('project_message_attachment_count', sql`${table.attachmentCount} BETWEEN 0 AND 10`),
+  check('project_message_body_or_attachments', sql`length(btrim(${table.body})) <= 100000 AND (length(btrim(${table.body})) >= 1 OR ${table.attachmentCount} > 0)`),
+]);
+
+/**
+ * A stored file (#154, migration 0045): staged privately by its uploader, then published once as an
+ * attachment of exactly one message. Its bytes are in the files volume under this server-selected id.
+ */
+export const fileGarbage = pgTable('file_garbage', {
+  id: uuid('id').primaryKey(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const projectFiles = pgTable('project_files', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  uploaderId: text('uploader_id').references(() => authUsers.id),
+  uploaderAgentId: uuid('uploader_agent_id'),
+  uploadId: uuid('upload_id').notNull(),
+  replayOf: uuid('replay_of'),
+  name: text('name').notNull(),
+  state: text('state', { enum: ['receiving', 'ready'] }).notNull(),
+  reservedBytes: integer('reserved_bytes').notNull(),
+  size: integer('size'),
+  sha256: text('sha256'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  readyAt: timestamp('ready_at', { withTimezone: true }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  messageId: uuid('message_id'),
+  position: smallint('position'),
+  publishedAt: timestamp('published_at', { withTimezone: true }),
+}, (table) => [
+  unique().on(table.messageId, table.position),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.messageId], foreignColumns: [projectMessages.workspaceId, projectMessages.projectId, projectMessages.id] }),
+  uniqueIndex('project_files_human_upload_idx').on(table.projectId, table.uploaderId, table.uploadId).where(sql`${table.uploaderId} IS NOT NULL`),
+  uniqueIndex('project_files_agent_upload_idx').on(table.projectId, table.uploaderAgentId, table.uploadId).where(sql`${table.uploaderAgentId} IS NOT NULL`),
+  index('project_files_expiry_idx').on(table.expiresAt).where(sql`${table.messageId} IS NULL`),
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.uploaderAgentId], foreignColumns: [agents.workspaceId, agents.id] }),
+  check('project_file_exact_uploader', sql`num_nonnulls(${table.uploaderId}, ${table.uploaderAgentId}) = 1`),
 ]);
 
 // One person's selected agent, scopes and project ceiling for an external MCP client (#52).
@@ -690,6 +734,20 @@ export const agentPlaybookAcknowledgments = pgTable('agent_playbook_acknowledgme
   digest: text('digest').notNull(),
   acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// The approved project policy for connected agents (migration 0044, #160 / CW-1): every published
+// revision, kept unchanged. Policy narrows work inside owner grants; it never grants anything.
+export const agentProjectPolicies = pgTable('agent_project_policies', {
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  revision: integer('revision').notNull(),
+  scope: text('scope').notNull(),
+  priorities: text('priorities').notNull(),
+  reviewCriteria: text('review_criteria').notNull(),
+  allowedWork: text('allowed_work').notNull(),
+  digest: text('digest').notNull(),
+  publishedByUserId: text('published_by_user_id').notNull().references(() => authUsers.id, { onDelete: 'restrict' }),
+  publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [primaryKey({ columns: [table.projectId, table.revision] })]);
 
 // Sketches: thoughts on a map and the links between them (migration 0007, issue #69).
 export const sketches = pgTable('sketches', {
@@ -1426,6 +1484,98 @@ export const assistantProposals = pgTable('assistant_proposals', {
   foreignKey({ columns: [table.workspaceId, table.projectId, table.runId], foreignColumns: [personalRuns.workspaceId, personalRuns.projectId, personalRuns.id] }).onDelete('cascade'),
 ]);
 
+
+// Durable co-work control metadata (#153, migration0035). Domain content stays native.
+export const coworkConnectionSlots = pgTable('cowork_connection_slots', {
+  connectionId: uuid('connection_id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+}, (table) => [
+  foreignKey({ columns: [table.workspaceId, table.connectionId], foreignColumns: [agentConnections.workspaceId, agentConnections.id] }).onDelete('cascade'),
+]);
+
+export const coworkUnits = pgTable('cowork_units', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  taskId: uuid('work_id').notNull(),
+  runId: uuid('run_id').notNull(),
+  lineageTaskId: uuid('lineage_work_id').notNull(),
+  unitKey: text('unit_key').notNull(),
+  role: text('role', { enum: ['execute', 'review', 'plan'] }).notNull(),
+  assignmentConnectionId: uuid('assignment_connection_id').notNull(),
+  state: text('state', { enum: ['pending', 'claimed', 'paused', 'completed', 'stopped'] }).notNull().default('pending'),
+  generation: integer('generation').notNull().default(0),
+  version: integer('version').notNull().default(1),
+  leaseId: uuid('lease_id'),
+  leaseSessionId: text('lease_session_id'),
+  leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
+  checkpointId: uuid('checkpoint_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table): PgTableExtraConfigValue[] => [
+  unique().on(table.workspaceId, table.projectId, table.id),
+  unique().on(table.workspaceId, table.projectId, table.taskId, table.runId, table.unitKey),
+  unique().on(table.workspaceId, table.projectId, table.taskId, table.id),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.lineageTaskId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.taskId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.id, table.checkpointId], foreignColumns: [coworkCheckpoints.workspaceId, coworkCheckpoints.projectId, coworkCheckpoints.unitId, coworkCheckpoints.id] }),
+  index('cowork_units_connection_idx').on(table.assignmentConnectionId, table.state, table.leaseExpiresAt),
+  index('cowork_units_work_idx').on(table.workspaceId, table.projectId, table.taskId),
+]);
+
+export const coworkCheckpoints = pgTable('cowork_checkpoints', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(),
+  unitId: uuid('unit_id').notNull(),
+  connectionId: uuid('connection_id').notNull(),
+  runtimeSessionId: text('runtime_session_id').notNull(),
+  generation: integer('generation').notNull(),
+  progress: jsonb('progress').$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table): PgTableExtraConfigValue[] => [
+  unique().on(table.workspaceId, table.projectId, table.unitId, table.id),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.unitId], foreignColumns: [coworkUnits.workspaceId, coworkUnits.projectId, coworkUnits.id] }).onDelete('cascade'),
+]);
+
+export const coworkRequestLineages = pgTable('cowork_request_lineages', {
+  id: uuid('id').primaryKey(), workspaceId: uuid('workspace_id').notNull(), projectId: uuid('project_id').notNull(),
+  taskId: uuid('root_work_id').notNull(), runId: uuid('run_id').notNull(),
+  maximumRequests: integer('maximum_requests').notNull(), maximumDepth: integer('maximum_depth').notNull(),
+  maximumReviewRounds: integer('maximum_review_rounds').notNull(),
+  createdRequests: integer('created_requests').notNull().default(0), reviewRequests: integer('review_requests').notNull().default(0),
+}, (table) => [
+  unique().on(table.workspaceId, table.projectId, table.taskId, table.runId), unique().on(table.workspaceId, table.projectId, table.id),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.taskId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+]);
+export const coworkRequests = pgTable('cowork_requests', {
+  id: uuid('id').primaryKey(), lineageId: uuid('lineage_id').notNull(), workspaceId: uuid('workspace_id').notNull(),
+  projectId: uuid('project_id').notNull(), taskId: uuid('work_id').notNull(), unitId: uuid('unit_id').notNull(),
+  senderConnectionId: uuid('sender_connection_id').notNull(), recipientConnectionId: uuid('recipient_connection_id').notNull(),
+  senderOwnerId: text('sender_owner_id').notNull(), recipientOwnerId: text('recipient_owner_id').notNull(),
+  intentKey: text('intent_key').notNull(), fingerprint: text('fingerprint').notNull(), parentRequestId: uuid('parent_request_id'),
+  kind: text('kind', { enum: ['help', 'review', 'fix', 'handoff'] }).notNull(),
+  target: jsonb('target').$type<CoWorkSourceRef>().notNull(), sourceRefs: jsonb('source_refs').$type<CoWorkSourceRef[]>().notNull(),
+  criteriaRefs: jsonb('criteria_refs').$type<CoWorkSourceRef[]>().notNull(),
+  depth: integer('depth').notNull(), reviewRound: integer('review_round').notNull(), priority: integer('priority').notNull(),
+  peerUnblocking: boolean('peer_unblocking').notNull(), expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  state: text('state', { enum: ['queued', 'deferred', 'claimed', 'resolved', 'declined', 'superseded', 'expired', 'cancelled'] }).notNull().default('queued'),
+  version: integer('version').notNull().default(1), reason: text('reason'), nextBoundary: text('next_boundary'),
+  dependencyRef: jsonb('dependency_ref').$type<CoWorkSourceRef>(),
+  claimedGeneration: integer('claimed_generation'), responseRef: jsonb('response_ref').$type<CoWorkSourceRef>(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table): PgTableExtraConfigValue[] => [
+  unique().on(table.lineageId, table.intentKey), unique().on(table.lineageId, table.id),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.lineageId], foreignColumns: [coworkRequestLineages.workspaceId, coworkRequestLineages.projectId, coworkRequestLineages.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.taskId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.workspaceId, table.projectId, table.taskId, table.unitId], foreignColumns: [coworkUnits.workspaceId, coworkUnits.projectId, coworkUnits.taskId, coworkUnits.id] }).onDelete('cascade'),
+  foreignKey({ columns: [table.lineageId, table.parentRequestId], foreignColumns: [coworkRequests.lineageId, coworkRequests.id] }),
+  index('cowork_requests_recipient_idx').on(table.workspaceId, table.projectId, table.recipientConnectionId, table.createdAt, table.id),
+]);
+export const coworkDeliveryIntents = pgTable('cowork_delivery_intents', {
+  id: uuid('id').primaryKey(), requestId: uuid('request_id').notNull().unique().references(() => coworkRequests.id, { onDelete: 'cascade' }),
+  acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
 // Project GitHub App integration (#74). Credentials/inbox are internal; public
 // facts require current Flux + GitHub repository proof, including history reads.
 export const githubCredentials = pgTable('github_credentials', {

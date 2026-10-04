@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { after, before, describe, test } from 'node:test';
 import { checkEndpoint, classifyAddress, EndpointRefusedError, guardedFetch, parsePrivateTargets, PUBLIC_ONLY, ResponseTooLargeError,
   type Resolver } from '../../packages/agent-runtime/src/index.js';
-import { baseUrlSyntaxProblem, boundedInputTokens, conservativeTokenEstimate, requestReservationMicros, resolveConnectionPrice, usageMicros, validAiKey,
+import { baseUrlSyntaxProblem, boundedInputTokens, boundedUsageMicros, conservativeTokenEstimate, runChargeMicros, requestReservationMicros, resolveConnectionPrice, usageMicros, validAiKey,
   validModelId } from '@flux/core';
 
 // The SSRF guard of owner AI endpoints (F-020 PROV-4) and the pure connection rules. DNS answers
@@ -180,8 +180,20 @@ describe('connection rules (F-020 PROV-1/PROV-3)', () => {
     // The reservation is the formula at the connection's price; a reported cost changes only the reconciled charge.
     const price = { inputMicrosPerMTok: 3_000_000, outputMicrosPerMTok: 15_000_000 };
     assert.equal(requestReservationMicros(price, 16_000, 1_500), 16_000 * 3 + 1_500 * 15);
-    assert.equal(usageMicros(price, { inputTokens: 1_000, outputTokens: 100, reportedCostMicros: 900_000 }), 900_000, 'reconciled at the reported cost, even above the reservation');
+    assert.equal(usageMicros(price, { inputTokens: 1_000, outputTokens: 100, reportedCostMicros: 900_000 }), 900_000, 'the raw reconciliation is the reported cost, even above the reservation');
     assert.equal(usageMicros(price, { inputTokens: 1_000, outputTokens: 100 }), 4_500);
+    // #192 B1: the stored charge is bounded by the reservation and the request's token limits.
+    const bounds = { maxInputTokens: 16_000, maxOutputTokens: 1_500, reservedMicros: 70_500 };
+    assert.equal(boundedUsageMicros(price, { inputTokens: 1_000, outputTokens: 100, reportedCostMicros: 900_000 }, bounds), null, 'a reported cost above the reservation is never charged');
+    assert.equal(boundedUsageMicros(price, { inputTokens: 1_000, outputTokens: 100, reportedCostMicros: 70_500 }, bounds), 70_500, 'a reported cost at the reservation is');
+    assert.equal(boundedUsageMicros(price, { inputTokens: 1_000, outputTokens: 100 }, bounds), 4_500);
+    assert.equal(boundedUsageMicros(price, { inputTokens: 16_000, outputTokens: 1_500 }, bounds), 70_500, 'usage at the limits costs exactly the reservation');
+    for (const usage of [{ inputTokens: 16_001, outputTokens: 0 }, { inputTokens: 0, outputTokens: 1_501 }, { inputTokens: -1, outputTokens: 0 }, { inputTokens: 1.5, outputTokens: 0 },
+      { inputTokens: Number.MAX_SAFE_INTEGER + 2, outputTokens: 0 }, { inputTokens: 10, outputTokens: 10, reportedCostMicros: 2 ** 40 }])
+      assert.equal(boundedUsageMicros(price, usage, bounds), null, JSON.stringify(usage));
+    assert.equal(boundedUsageMicros(price, { inputTokens: 1_000, outputTokens: 100 }, { ...bounds, reservedMicros: 4_499 }), null, 'a token-derived cost above the reservation is never charged');
+    assert.equal(runChargeMicros({ inputTokens: 40_000, outputTokens: 100 }, { inputMicrosPerMTok: 1_000_000, outputMicrosPerMTok: 2_000_000 }, 19_000), null,
+      'the review reproduction: 40,200 micro-dollars on a 19,000 reservation');
   });
 
   test('the conservative estimate bounds every provider the same way; a count may only raise it', () => {
@@ -194,6 +206,11 @@ describe('connection rules (F-020 PROV-1/PROV-3)', () => {
       // A deliberately generous upper bound of real tokenizers: about one token per 3 characters of prose, one per CJK character.
       assert.ok(estimate >= Math.ceil(text.length / (text === cjk ? 1 : 3)), 'above common tokenizer counts');
     }
+    // #192 B1: the estimate is a true upper bound. Byte-level BPE and SentencePiece with byte
+    // fallback emit at least one byte per token, so one token per UTF-8 byte bounds any text,
+    // including CJK, emoji and digit runs (which byte fallback or single-digit splitting reach).
+    for (const text of [english, polish, cjk, '📷🔦💡🌙'.repeat(100), '3141592653589793'.repeat(60), '\u0000\u0001 \t'.repeat(50)])
+      assert.ok(conservativeTokenEstimate([text]) >= Buffer.byteLength(text, 'utf8'), 'at least one token per UTF-8 byte');
     assert.ok(conservativeTokenEstimate(['a', 'b']) > conservativeTokenEstimate(['ab']), 'each part has framing');
     assert.equal(boundedInputTokens(500, null), 500);
     assert.equal(boundedInputTokens(500, 300), 500, 'a lower count never loosens the bound');

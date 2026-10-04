@@ -164,9 +164,13 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled }:
       maxInputTokens: PERSONAL_RUN_LIMITS.maxInputTokens, maxOutputTokens: PERSONAL_RUN_LIMITS.maxOutputTokens,
       dataSent: 'project_place_excerpts',
     } as const;
+    // Whether the owner has any active connection: with `connection_changed` the consented one is
+    // gone but another exists, so setup must not also say that no key is connected.
+    const other = !usable && providerEnabled && named ? await connections.resolve(owner) : null;
+    const owns = Boolean(usable) || (other?.status === 'active' && other.ownerUserId === owner);
     const setup = {
       provider: providerEnabled ? 'on' as const : 'off' as const,
-      connection: usable ? 'active' as const : 'none' as const,
+      connection: owns ? 'active' as const : 'none' as const,
     };
     const enablement = await ports.runs.enablement(owner);
     if (!enablement) return { state: 'not_enabled', unavailableReason: null, enablement: null, setup, today: null, disclosure };

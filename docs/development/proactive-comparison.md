@@ -308,17 +308,34 @@ acceptance remains a separate check.
   - `proactive.comparison.recovery.v1`, every ten minutes: `comparisonRecoveryTick`.
 - **Anything else** stops both apps at startup.
 
-Still required before an instance should switch it on (the remaining #58 gates below):
-- a running-app check with the switch on for the API and the worker and a mock provider: enable a
-  rule, record a negative result, see one proposal after a tick, pause, and see no further request;
+The switch is a proposed O-007 amendment, pending acceptance on #58 (see
+[background compute](../product/background-compute.md)). Still required before an instance should
+switch it on (the remaining #58 gates below):
 - an authorized real-provider test call with an observed bill;
 - live cancellation;
 - an independent full-context quality evaluation;
 - real crash reconciliation.
 
-What runs today: `proactive-comparison-runtime.test.ts` enables a rule through the switch, records
-one negative result and runs the worker's registered tick handler twice at once against that ready
-candidate with a counting provider: exactly one paid request, and none on a later tick.
+What runs today:
+- `proactive-comparison-runtime.test.ts` enables a rule through the switch, records one negative
+  result and runs the worker's registered tick handler twice at once against that ready candidate
+  with a counting provider: exactly one paid request, and none on a later tick.
+- The running-app check, the last step of `scripts/check_application.sh`
+  (`tests/app/background-comparisons-switch.ts` and `tests/app/e2e/background-comparisons.e2e.ts`).
+  Rules that earlier suites left enabled are paused first, so only its own rule can run.
+  - Switch empty: nothing is scheduled, and enabling answers `BACKGROUND_RUNTIME_UNAVAILABLE`.
+  - Switch `on` for the API and the worker: the owner enables the paused rule in the settings page,
+    and a contributor records a negative result. With no test trigger or fixture shortcut, the
+    worker's own scheduled ticks wait out the quiet window and send exactly one request through the
+    production provider registry to the Compose provider mock, an OpenAI-compatible endpoint that
+    `FLUX_AI_PRIVATE_TARGETS` admits. The request carries the owner's key and the project material,
+    and no private draft. The quiet proposal then appears in the project. Pausing in settings
+    queues nothing for a later negative result.
+  - Switch empty again: the jobs are unscheduled. The same rule, still enabled, with a candidate
+    made ready, is neither reserved nor dispatched for 75 seconds, and a tick job sent by hand stays
+    unworked.
+
+  The mock is not a provider: this is no provider, billing or quality evidence.
 
 ## Key file, restore and rotation
 

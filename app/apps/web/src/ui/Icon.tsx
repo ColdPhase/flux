@@ -27,6 +27,7 @@ const paths = {
   'sign-out': <><path d="M6.5 2.75h-2a1.5 1.5 0 00-1.5 1.5v7.5a1.5 1.5 0 001.5 1.5h2" /><path d="M10 5l3 3-3 3M13 8H6.5" /></>,
   refresh: <><path d="M12.75 5.5A5 5 0 103 8" /><path d="M13 2.5v3h-3" /></>,
   plus: <path d="M8 3v10M3 8h10" />,
+  terminal: <><rect x="2" y="2.75" width="12" height="10.5" rx="2" /><path d="M5 6.25L7 8l-2 1.75M8.5 10.25h2.5" /></>,
   more: <><circle cx="3.5" cy="8" r=".9" fill="currentColor" /><circle cx="8" cy="8" r=".9" fill="currentColor" /><circle cx="12.5" cy="8" r=".9" fill="currentColor" /></>,
   minus: <path d="M3 8h10" />,
   edit: <><path d="M10.5 3.25l2.25 2.25L6 12.25H3.75V10z" /><path d="M9 4.75l2.25 2.25" /></>,
@@ -61,6 +62,11 @@ const paths = {
   show: <><rect x="2" y="2.75" width="12" height="8.5" rx="1.5" /><path d="M5.5 13.5h5M6.5 5.5l3 1.5-3 1.5z" /></>,
   follow: <><path d="M3 3l4.25 10 1.5-4.25L13 7.25z" /></>,
   pulse: <path d="M1.75 8h2.5l1.5-3.5 2.5 7 1.75-5 1 1.5h3.25" />,
+  /** Tasks (#136): the Kanban and List views, "Mine" and an agent that owns a task. */
+  board: <><rect x="2.25" y="2.5" width="3" height="11" rx="1" /><rect x="6.5" y="2.5" width="3" height="7" rx="1" /><rect x="10.75" y="2.5" width="3" height="9" rx="1" /></>,
+  list: <><path d="M6 4.5h7.5M6 8h7.5M6 11.5h7.5" /><circle cx="3" cy="4.5" r=".8" fill="currentColor" stroke="none" /><circle cx="3" cy="8" r=".8" fill="currentColor" stroke="none" /><circle cx="3" cy="11.5" r=".8" fill="currentColor" stroke="none" /></>,
+  person: <><circle cx="8" cy="5.25" r="2.5" /><path d="M3.25 13.5c.55-2.5 2.4-3.9 4.75-3.9s4.2 1.4 4.75 3.9" /></>,
+  agent: <><rect x="2.75" y="4.5" width="10.5" height="8.5" rx="2" /><path d="M8 4.5V2.5" /><circle cx="6" cy="8.5" r=".8" fill="currentColor" stroke="none" /><circle cx="10" cy="8.5" r=".8" fill="currentColor" stroke="none" /></>,
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof paths;

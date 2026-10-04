@@ -1,3 +1,4 @@
+import { messagePreview } from '@flux/contracts';
 import type {
   ReturnDigest, ReturnItem, ReturnNextStep, ReturnPeriod, ReturnPlace, ReturnPoint, ReturnScope, ReturnSource, ReturnSummary,
   ReturnSummaryQuery, SaveReturnPointCommand,
@@ -365,7 +366,7 @@ export function createReturnUseCases(ports: ReturnPorts) {
           detail = reason;
         }
         const step = needsYou ? { priority: 4, text: 'Decide on the proposed rule',
-          reason: `${nameOf(item.proposedByKey)} proposed ${quote(item.title)}. Only a person with write access can accept it.` } : undefined;
+          reason: `${nameOf(item.proposedByKey)} proposed ${quote(item.title)}. You can accept it.` } : undefined;
         items.push({ ...base, kind: 'decision', text, detail, needsYou, source, step, relevant: needsYou || item.proposedByKey === me });
         continue;
       }
@@ -467,7 +468,7 @@ export function createReturnUseCases(ports: ReturnPorts) {
         id: `conversation:${conversationId}`, kind: 'message', at: latest.createdAt.toISOString(), actor: nameOf(`${latest.author.kind}:${latest.author.id}`),
         project: place(conversation.projectId),
         text: started ? `${who} started ${quote(excerpt(conversation.opening, 70))}` : `${who} replied in ${quote(excerpt(conversation.opening, 70))}`,
-        detail: excerpt(latest.body, 110), needsYou: false,
+        detail: excerpt(messagePreview(latest.body, latest.attachmentCount), 110), needsYou: false,
         // Opens on the first new message, a whole message and never mid-way.
         source: { type: 'message', projectId: conversation.projectId, conversationId, messageId: first.id },
         relevant: (conversation.createdBy.kind === 'human' && conversation.createdBy.id === userId) || lastPosts.has(conversationId),
@@ -486,7 +487,7 @@ export function createReturnUseCases(ports: ReturnPorts) {
       conversations: talks.slice(0, DIGEST_CONVERSATIONS).map(({ conversation, list }) => ({
         conversationId: conversation.id, projectId: conversation.projectId, opening: excerpt(conversation.opening, 90),
         quotes: list.slice(-DIGEST_QUOTES).map((message) => ({ messageId: message.id, author: nameOf(`${message.author.kind}:${message.author.id}`)!,
-          excerpt: excerpt(message.body, 160), at: message.createdAt.toISOString() })),
+          excerpt: excerpt(messagePreview(message.body, message.attachmentCount), 160), at: message.createdAt.toISOString() })),
         more: Math.max(0, list.length - DIGEST_QUOTES),
       })),
       results: digestResults.filter((result) => scope === 'all' || result.relevant).map(({ id, projectId, title, finding, author, at }) => ({ id, projectId, title, finding, author, at })),

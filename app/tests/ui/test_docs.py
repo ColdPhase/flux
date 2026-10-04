@@ -145,8 +145,8 @@ class DocsJourney(unittest.TestCase):
         page = self.page("owner")
         page.goto(f"/projects/{self.project_id}")
         self.tab(page, "Wiki").click()
-        expect(page.get_by_role("heading", name="No docs yet")).to_be_visible()
-        page.get_by_role("link", name="New doc").click()
+        expect(page.get_by_role("heading", name="No pages yet")).to_be_visible()
+        page.get_by_role("link", name="New page").click()
         page.get_by_label("Title").fill(TITLE)
         text = page.get_by_label("Text (Markdown)")
         text.fill(BODY + "The decision: ")
@@ -251,6 +251,7 @@ class DocsJourney(unittest.TestCase):
     def test_05_add_a_result_to_the_doc(self) -> None:
         page = self.page("partner")
         page.goto(f"/projects/{self.project_id}/tasks")
+        page.get_by_role("radio", name="List", exact=True).click()
         page.get_by_role("region", name=re.compile("^Results")).get_by_role("button", name=re.compile(FINDING)).click()
         panel = page.locator("#details")
         expect(panel).to_contain_text("Not in a doc yet.")
@@ -269,6 +270,7 @@ class DocsJourney(unittest.TestCase):
         self.assertTrue(any(link["from"]["type"] == "doc" and link["from"]["id"] == self.doc_id for link in result["links"]))
         # The result now shows the doc it is in.
         page.goto(f"/projects/{self.project_id}/tasks")
+        page.get_by_role("radio", name="List", exact=True).click()
         page.get_by_role("region", name=re.compile("^Results")).get_by_role("button", name=re.compile(FINDING)).click()
         expect(page.locator("#details").get_by_role("link", name=re.compile(TITLE))).to_be_visible()
 

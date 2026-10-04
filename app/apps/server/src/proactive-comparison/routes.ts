@@ -3,7 +3,7 @@ import { AI_BASE_URL_MAX_LENGTH, AI_MODEL_LISTS_PATH, AI_PRICE_MAX_MICROS_PER_MT
   proactiveComparisonOutcomePath, proactiveComparisonOutcomesPath, proactiveComparisonProposalsPath, WORK_LIMITS, type AiModelListQuery,
   type BackgroundComparisonRuntime, type ConnectBackgroundComputeCommand, type UpdateBackgroundComputeConnectionCommand, type CreateProactiveComparisonRule } from '@flux/contracts';
 import { backgroundConnectionRepository, comparisonProposalView, proactiveOutboxRows, proactiveRuleRows, sealBackgroundKey } from '@flux/db';
-import { backgroundComparisonsEnabled, backgroundConnectionUseCases, baseUrlSyntaxProblem, ConflictError, DomainError, enforce, evaluateProject, InvalidInputError,
+import { backgroundConnectionUseCases, baseUrlSyntaxProblem, ConflictError, DomainError, enforce, evaluateProject, InvalidInputError,
   isUuid, normalizeBaseUrl, NotFoundError, proactiveRuleUseCases, VersionConflictError, visibleProposal, type Database } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { workUseCases } from '../work/adapters.js';
@@ -12,8 +12,8 @@ import { aiConnectionServerComposition, type AiConnectionServerComposition } fro
 
 interface Options {
   db: Database; sessions: SessionResolver; backgroundMasterKey: Buffer | null; ai?: AiConnectionServerComposition;
-  /** `FLUX_BACKGROUND_COMPARISONS=on`: the worker runs comparisons, so owners may enable their rules (#58). */
-  comparisonsEnabled?: boolean;
+  /** `FLUX_BACKGROUND_COMPARISONS=on` (ServerConfig): the worker runs comparisons, so owners may enable their rules (#58). */
+  comparisonsEnabled: boolean;
 }
 
 /** The comparison rule use cases over the request's transaction, with the operator's switch (#58). */
@@ -31,7 +31,7 @@ export function comparisonRuleUseCases(db: Database, runtimeAvailable: boolean) 
 const microsPerMTok = { type: 'integer', minimum: 0, maximum: AI_PRICE_MAX_MICROS_PER_MTOK };
 
 export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sessions, backgroundMasterKey, ai = aiConnectionServerComposition(process.env),
-  comparisonsEnabled = backgroundComparisonsEnabled(process.env) }: Options) {
+  comparisonsEnabled }: Options) {
   const outcomes = comparisonOutcomes(db);
   const connections = backgroundConnectionUseCases(backgroundConnectionRepository(db), {
     seal(plainKey, ownerUserId, connectionId) {

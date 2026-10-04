@@ -317,8 +317,8 @@ reconsider every project with an enabled rule once and report the recovery.
 Cursor, due-project rows and candidate due time use one new migration numbered
 by actual merge order. Portable internal scheduling ports have focused DB and
 worker composition. Production enabling and provider registration stay off by default (the
-operator switch above) and must not be switched on until their separate real-provider
-verification gates pass. This section records
+proposed operator switch above, pending acceptance on #58) and must not be switched on until their
+separate real-provider verification gates pass. This section records
 the accepted contract, not completed scheduling or production evidence.
 
 ### Interrupted reservation recovery (accepted 2026-09-30)

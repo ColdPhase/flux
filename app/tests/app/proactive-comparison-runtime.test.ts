@@ -7,6 +7,7 @@ import {
 } from '@flux/core';
 import { createDatabase } from '@flux/db';
 import type { BackgroundComputeConnection, ProactiveComparisonRule, Project, Workspace } from '@flux/contracts';
+import { loadServerConfig } from '../../apps/server/src/config.js';
 import { comparisonRuleUseCases } from '../../apps/server/src/proactive-comparison/routes.js';
 import { registerComparisonWorker } from '../../apps/worker/src/proactive-comparison/index.js';
 import { comparisonScheduling } from '../../apps/worker/src/proactive-comparison/scheduling-adapter.js';
@@ -39,6 +40,18 @@ test('the switch accepts on, off or empty and refuses anything else', () => {
   assert.equal(backgroundComparisonsEnabled({ FLUX_BACKGROUND_COMPARISONS: 'off' }), false);
   assert.equal(backgroundComparisonsEnabled({ FLUX_BACKGROUND_COMPARISONS: 'on' }), true);
   for (const value of ['true', 'ON', 'yes', '1']) assert.throws(() => backgroundComparisonsEnabled({ FLUX_BACKGROUND_COMPARISONS: value }));
+});
+
+test('the API reads the switch once, with the rest of its configuration (#88)', () => {
+  const env: NodeJS.ProcessEnv = { ...process.env, FLUX_AUTH_SECRET: process.env.FLUX_AUTH_SECRET ?? `runtime-switch-${'x'.repeat(40)}`,
+    FLUX_PUBLIC_ORIGIN: process.env.FLUX_PUBLIC_ORIGIN ?? 'http://127.0.0.1:8080' };
+  const load = (value: string | undefined) => loadServerConfig({ ...env, FLUX_BACKGROUND_COMPARISONS: value }, '/nonexistent/flux_background_key');
+  assert.equal(load(undefined).backgroundComparisons, false);
+  assert.equal(load('').backgroundComparisons, false);
+  assert.equal(load('off').backgroundComparisons, false);
+  assert.equal(load('on').backgroundComparisons, true);
+  // A mistyped value stops the API at startup instead of silently leaving comparisons off or on.
+  assert.throws(() => load('yes'), /FLUX_BACKGROUND_COMPARISONS must be empty, off or on/);
 });
 
 describe('rule activation follows the switch', () => {
