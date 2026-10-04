@@ -1,3 +1,4 @@
+import { fileRows } from './files.js';
 import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
@@ -53,6 +54,14 @@ export function projectExportRows(db: DbExecutor) {
   }
 
   return {
+    async files(projectId: string) {
+      const rows = await db.select({ file: schema.projectFiles, conversationId: msg.conversationId }).from(schema.projectFiles)
+        .innerJoin(msg, eq(msg.id, schema.projectFiles.messageId))
+        .where(and(eq(schema.projectFiles.projectId, projectId), sql`${schema.projectFiles.messageId} IS NOT NULL`))
+        .orderBy(asc(schema.projectFiles.id));
+      return rows.map(({ file, conversationId }) => ({ id: file.id, name: file.name, size: file.size!, sha256: file.sha256!,
+        messageId: file.messageId!, conversationId, position: file.position!, path: `files/${file.id}` }));
+    },
     async project(projectId: string) {
       const [row] = await db.select({ project: schema.projects, workspaceName: schema.workspaces.name }).from(schema.projects)
         .innerJoin(schema.workspaces, eq(schema.workspaces.id, schema.projects.workspaceId)).where(eq(schema.projects.id, projectId));
@@ -74,9 +83,11 @@ export function projectExportRows(db: DbExecutor) {
     async conversations(projectId: string) {
       const conversations = await db.select().from(c).where(eq(c.projectId, projectId)).orderBy(asc(c.createdAt), asc(c.id));
       const messages = groupBy(await db.select().from(msg).where(eq(msg.projectId, projectId)).orderBy(asc(msg.conversationId), asc(msg.sequence)), (row) => row.conversationId);
+      const files = await fileRows(db).projectMessageFiles(projectId);
       return conversations.map((row) => ({
         id: row.id, createdBy: creator(row.createdBy, row.createdByAgentId), createdAt: iso(row.createdAt),
         messages: (messages.get(row.id) ?? []).map((message) => ({
+          ...(files.get(message.id)?.length ? { files: files.get(message.id) } : {}),
           id: message.id, sequence: message.sequence, author: creator(message.authorId, message.authorAgentId), body: message.body,
           source: message.sourceMaterialId && message.sourceMaterialVersion ? { materialId: message.sourceMaterialId, version: message.sourceMaterialVersion } : null,
           // Only an explicit native effect carries a marker, so every ordinary message exports exactly as before.

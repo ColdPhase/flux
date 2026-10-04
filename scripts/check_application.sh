@@ -92,8 +92,8 @@ $compose run --rm e2e node_modules/.bin/tsx --test tests/app/e2e/github.e2e.ts
 
 # A seeded project proposal must remain editable, dismissible and usable through the actual UI.
 # The fixture bypasses rule activation, which stays unavailable until #58 runtime gates pass.
-$compose run --rm test pnpm exec tsx tests/app/seed-proactive-ui.ts
-$compose run --rm test pnpm exec tsx tests/app/seed-proactive-outcomes-ui.ts
+$compose run --rm test node_modules/.bin/tsx tests/app/seed-proactive-ui.ts
+$compose run --rm test node_modules/.bin/tsx tests/app/seed-proactive-outcomes-ui.ts
 $compose run --rm e2e node_modules/.bin/tsx --test --test-concurrency=1 tests/app/e2e/proactive-comparison.e2e.ts tests/app/e2e/proactive-outcomes.e2e.ts
 
 # Criteria, prerequisites and plan revision in the real task details, with the unmet-prerequisite refusal (#152).
@@ -103,15 +103,15 @@ run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/task-plan.e2e.ts
 $compose run --rm e2e node_modules/.bin/tsx --test tests/app/e2e/agent-connections.e2e.ts
 
 # A session created before an API container restart must still be valid afterwards.
-$compose run --rm test pnpm exec tsx tests/app/session-restart.ts prepare
+$compose run --rm test node_modules/.bin/tsx tests/app/session-restart.ts prepare
 $compose restart api
 $compose up -d --wait api
-$compose run --rm test pnpm exec tsx tests/app/session-restart.ts verify
+$compose run --rm test node_modules/.bin/tsx tests/app/session-restart.ts verify
 
 # Without VAPID keys the API must report push unavailable rather than fail silently.
 FLUX_VAPID_PUBLIC_KEY= $compose up -d --wait api
-$compose run --rm --no-deps test pnpm exec tsx --test tests/app/push-unavailable.check.ts
+$compose run --rm --no-deps test node_modules/.bin/tsx --test tests/app/push-unavailable.check.ts
 
 # Without SMTP, notification email is reported unavailable and the inbox keeps working (#116, #113).
 FLUX_SMTP_URL= FLUX_MAIL_FROM= $compose up -d --wait api worker
-$compose run --rm --no-deps test pnpm exec tsx --test tests/app/email-unavailable.check.ts
+$compose run --rm --no-deps test node_modules/.bin/tsx --test tests/app/email-unavailable.check.ts
