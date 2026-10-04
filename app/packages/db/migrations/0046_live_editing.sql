@@ -81,3 +81,13 @@ BEGIN
 END $$;
 DROP TRIGGER IF EXISTS doc_live_replica_immutable ON doc_live_replicas;
 CREATE TRIGGER doc_live_replica_immutable BEFORE UPDATE ON doc_live_replicas FOR EACH ROW EXECUTE FUNCTION live_replica_ownership_immutable();
+
+-- Expiring transport presence, never project events, saved material projections or author history.
+CREATE TABLE IF NOT EXISTS doc_live_presence (
+  connection_id uuid PRIMARY KEY, doc_id uuid NOT NULL REFERENCES project_materials(id) ON DELETE CASCADE,
+  generation uuid NOT NULL, actor_id text NOT NULL REFERENCES auth_users(id),
+  session_id text NOT NULL REFERENCES auth_sessions(id) ON DELETE CASCADE,
+  cursor jsonb NOT NULL, expires_at timestamptz NOT NULL,
+  CONSTRAINT doc_live_presence_cursor CHECK (jsonb_typeof(cursor) = 'object' AND octet_length(cursor::text) <= 4096)
+);
+CREATE INDEX IF NOT EXISTS doc_live_presence_room ON doc_live_presence(doc_id,generation,expires_at);

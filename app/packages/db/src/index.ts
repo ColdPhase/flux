@@ -97,3 +97,6 @@ export * from './repositories/github.js';
 export * from './repositories/agent-execution.js';
 export * from './repositories/agent-orientation.js';
 export * from './repositories/agent-playbook.js';
+
+export * from './repositories/live-editing.js';
+export * from './editing-transactions.js';

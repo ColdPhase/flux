@@ -84,6 +84,11 @@ export interface LiveUpdateChunk {
   count: number;
 }
 
+/** Bounded binary UTF-8 JSON `{html, mentions}` for sanitized live readers, including the 100k boundary. */
+export interface LivePreviewChunk {
+  type: 'preview'; deliveryId: string; generation: string; sequence: number; hash: string; index: number; count: number;
+}
+
 export interface LiveCursor {
   /** Base64 public encoded Yjs relative positions; each is bounded and validated against the current head. */
   anchor: string;

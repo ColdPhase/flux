@@ -44,6 +44,7 @@ import { exportRoutes } from './export/routes.js';
 import { githubRoutes } from './github/routes.js';
 import { loadGithubConfig } from './github/config.js';
 import { registerUpgradeDispatcher } from './http/upgrades.js';
+import { registerEditing } from './editing/composition.js';
 
 const connectionString = process.env.DATABASE_URL;
 const fixtureToken = process.env.FLUX_FIXTURE_TOKEN;
@@ -93,7 +94,10 @@ if (liveMedia) await app.register(liveRoutes, {
 // Browsers signal only through this gate; ending an auth session revokes its media admission (#128).
 const liveSignaling = liveMedia ? registerLiveSignaling(app, { db, connectionString, publicOrigin: identityConfig.publicOrigin,
   sessions: identity, ports: livePorts!, media: liveMedia.media, config: liveMedia.config }) : null;
-const removeUpgradeDispatcher = registerUpgradeDispatcher(app.server, streamUpgrades, [liveSignaling?.gate]);
+const editing = await registerEditing(app, { database: { db, pool }, sessions: identity, publicOrigin: identityConfig.publicOrigin,
+  connectionString, developmentEnabled: process.env.FLUX_DEVELOPMENT_LIVE_EDITING === 'true' });
+if (editing) app.log.warn('Development live editing selected; four-gate production acceptance remains pending');
+const removeUpgradeDispatcher = registerUpgradeDispatcher(app.server, streamUpgrades, [liveSignaling?.gate, editing?.gate]);
 app.addHook('onClose', async () => removeUpgradeDispatcher());
 if (liveMedia) await app.register(liveDiscoveryRoutes, { db, sessions: identity, media: liveMedia.media });
 if (liveMedia) await app.register(liveInvitationRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret });

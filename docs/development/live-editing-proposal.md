@@ -182,6 +182,12 @@ native map commits and saved wiki versions retain their existing durable event b
    together. Store only bounded latest preview/lease state in expiring PostgreSQL
    rows; notify identifiers across API processes. It is not native placement/history
    and is never replayed after expiry. This avoids an extra broker or sticky host.
+   The HTTP acquire binds actor/current SQL session, resource/generation and gesture
+   to the lease. Its first authorized movement or cancellation atomically binds the
+   server-generated WebSocket connection ID; subsequent other connections refuse.
+   No client-supplied actor or connection identifier creates authority. Current
+   lease/session/versions are still checked again in the final native CAS transaction.
+
 3. Send bounded absolute preview positions during pointermove; peers render them
    before pointerup and see the authenticated mover. Preserve each peer's camera,
    selection and keyboard focus. Pan/zoom remains local. Preview does not create new
@@ -551,3 +557,19 @@ malformed CRDT validation cost and checkpoint size under long histories, cross-p
 lease/delivery ordering, CodeMirror mobile/IME/undo behavior, and actual persistence
 plus safe-preview latency at 100k text. These are concrete calibration/test tasks;
 none is already proved by the cited documentation or source inspection.
+
+
+### Current disabled integration bounds — 2026-10-04
+
+All editing HTTP, wiki and map output/context reservations use one API-wide 32 MiB
+budget. Parsed wiki contexts retain the 512-visit/64 KiB ceiling; a closed map
+command of up to 200 positions uses at most 4096 visits and 256 KiB conservatively
+charged context, plus its separately charged at-most-64 KiB input frame. This does
+not increase the common cap. Finite FIFO admission retains charged input before
+SQL or hashing, rejects on timeout/close, and has no uncharged continuation queue.
+Each protected authority callback emits at most one frame; received-frame ACKs do
+not themselves send the next frame. Public ws-owned frame copies remain charged
+through their actual send callbacks after close or revocation. Rolled-back live
+errors carry scalar outcome/code only; current protected postimages require a new
+held-fence read. These are source integration choices, awaiting current-head
+runtime and independent evaluation; they do not close any remaining gate.

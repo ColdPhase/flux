@@ -53,3 +53,16 @@ initialization replacement and completed-assembly wait/retry/expiry ownership.
 They are not yet executed and do not replace actual controller/API/SQL falsification.
 
 The first production build/type check passed at c09ab51; lint then exposed an explicit Node URL import missing in both worker-pool copies. Their correction imports the public `node:url` URL class without changing pool behavior. The current source manifest reflects that import-only difference from the historical first-copy hashes. Runtime cases were not reached in that run.
+
+
+The current disabled wiki controller source adds finite FIFO admission with fully
+charged retained context/input before SQL. A fresh public single-string baseline
+reserves 400,256 encoded bytes before loading the 100k UTF-16 native body; existing
+head reads bind/shrink that reservation. Queued leases remain inside the same
+32 MiB external and ten-lease limits. Production admission/assembly modules now
+include queued-metadata/promotion and a public assembly intent accessor; current
+hashes record those intentional changes while the historical first-copy manifest
+remains unchanged. The new regressions, including two simultaneous real 100k
+joins, current-clock handoff expiry, public cursor validation and protected output
+pressure, are prepared and unexecuted. Earlier 2bf build/type/lint and sixteen
+transport/native/deferred cases do not certify this later source slice.

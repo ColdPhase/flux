@@ -1547,3 +1547,12 @@ export const liveEditingIntents = pgTable('live_editing_intents', {
   check('live_editing_intent_fingerprint', sql`${t.fingerprint} ~ '^[a-f0-9]{64}$'`),
   check('live_editing_intent_bytes', sql`${t.byteLength} BETWEEN 0 AND 8388608`),
   check('live_editing_intent_receipt', sql`jsonb_typeof(${t.receipt}) = 'object' AND octet_length(${t.receipt}::text) <= 8388608`)]);
+
+/** Current server-identified cursor leases; no saved/source/history projection reads this table. */
+export const docLivePresence = pgTable('doc_live_presence', {
+  connectionId: uuid('connection_id').primaryKey(), docId: uuid('doc_id').notNull().references(() => projectMaterials.id, { onDelete: 'cascade' }),
+  generation: uuid('generation').notNull(), actorId: text('actor_id').notNull().references(() => authUsers.id),
+  sessionId: text('session_id').notNull().references(() => authSessions.id, { onDelete: 'cascade' }),
+  cursor: jsonb('cursor').$type<{ anchor: string; head: string }>().notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+}, (t) => [check('doc_live_presence_cursor', sql`jsonb_typeof(${t.cursor}) = 'object' AND octet_length(${t.cursor}::text) <= 4096`)]);

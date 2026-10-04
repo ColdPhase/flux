@@ -253,6 +253,16 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
       });
     },
 
+    /** Exact committed shared text: never normalize it or rewrite native mention links while rendering. */
+    async previewShared(principal: Principal, docId: string, body: string): Promise<DocPreview> {
+      if (typeof body !== 'string' || body.length > DOC_LIMITS.body) throw new InvalidInputError('The shared text exceeds the doc limit');
+      return uow.run(async (ports) => {
+        const { projectId, id } = await authorized(ports, principal, docId, 'read');
+        const { mentions, map } = await resolve(ports, projectId, body, id);
+        return { html: ports.renderer.render(body, map), mentions };
+      });
+    },
+
     async createDoc(principal: Principal, projectId: string, command: CreateDocCommand): Promise<Doc> {
       const by = authorOf(principal, agentAuthors);
       if (!command || typeof command !== 'object') throw new InvalidInputError('Doc is required');
@@ -348,7 +358,8 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
       return uow.run(async (ports) => {
         const { id, projectId, workspaceId } = await authorized(ports, principal, docId, 'write');
         const current = (await ports.docs.find(id, { lock: true }))!;
-        if (current.doc.currentVersion !== version) throw new VersionConflictError(current.doc.currentVersion, await present(ports, current));
+        // A rolled-back live refusal carries no protected postimage beyond its held fence.
+        if (current.doc.currentVersion !== version) throw new ConflictError('The saved version changed. Read the current shared head before saving.', 'VERSION_CONFLICT');
         const head = await ports.live.lock(id);
         if (!head || head.generation !== command.generation || head.sequence !== command.headSequence || head.hash !== command.headHash
           || head.savedVersion !== current.doc.currentVersion) {

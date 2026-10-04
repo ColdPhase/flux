@@ -1,16 +1,22 @@
 import { Buffer } from 'node:buffer';
 import { randomUUID } from 'node:crypto';
 import * as Y from 'yjs';
-import { emptyRoom, enroll, fingerprint, stateCharge } from './codec/codec.mjs';
+import { emptyRoom, enroll, fingerprint, stateCharge, Refusal } from './codec/codec.mjs';
 import { CodecPool } from './codec/worker-pool.mjs';
 import type { CodecEnvelope, CodecState } from './codec/types.js';
+import { EditingAdmission } from './admission.js';
 import type { AdmissionLease } from './codec/admission-budget.mjs';
+
+// A fresh one-root/one-string update: UTF-8 is at most four bytes per UTF-16 unit, plus a conservative public framing bound.
+export const NATIVE_CHECKPOINT_BYTES = 400_256;
 
 /** Only the typed server composition may call this codec; no model registry or client state enters SQL authority. */
 export function editingRuntime() {
-  const pool = new CodecPool();
+  const pool = new CodecPool(); const admissionQueue = new EditingAdmission(pool.budget);
   return {
     fingerprint,
+    admit: (bytes: Uint8Array, metadataBytes: number, maximumInputBytes?: number) => admissionQueue.reserve(bytes, metadataBytes, maximumInputBytes),
+    prepareRead: (state: CodecState, lease: AdmissionLease) => pool.budget.bind(lease, state),
     stateCharge,
     enroll,
     /** Called before any SQL/intent await. A controller keeps refused input in its charged assembly. */
@@ -26,6 +32,7 @@ export function editingRuntime() {
         const state = enroll(emptyRoom(docId, generation, workspaceId), actor, replicaId, true);
         doc.getText('body').insert(0, body);
         const bytes = Y.encodeStateAsUpdate(doc);
+        if (bytes.byteLength > NATIVE_CHECKPOINT_BYTES) throw new Refusal('NATIVE_CHECKPOINT_BOUND');
         // Initialization reserved the maximum encoded input before reading its saved body.
         pool.budget.replaceInput(admission, bytes); pool.budget.bind(admission, state);
         const result = await pool.run(state, { workspace: workspaceId, kind: 'wiki', room: docId,
@@ -46,7 +53,21 @@ export function editingRuntime() {
     stateVector(state: CodecState) {
       return Buffer.from(Y.encodeStateVectorFromUpdate(Buffer.from(state.checkpoint, 'base64'))).toString('base64');
     },
-    close: () => pool.close(),
+    validateCursor(state: CodecState, cursor: { anchor: string; head: string }) {
+      if (!cursor || Object.keys(cursor).some((key) => key !== 'anchor' && key !== 'head')) throw new Refusal('INVALID_CURSOR');
+      for (const encoded of [cursor.anchor, cursor.head]) {
+        if (typeof encoded !== 'string' || encoded.length > 344 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) throw new Refusal('INVALID_CURSOR');
+        const bytes = Buffer.from(encoded, 'base64');
+        if (bytes.byteLength > 256 || bytes.toString('base64') !== encoded) throw new Refusal('INVALID_CURSOR');
+        let relative: Y.RelativePosition;
+        try { relative = Y.decodeRelativePosition(bytes); } catch { throw new Refusal('INVALID_CURSOR'); }
+        if (relative.type !== null || relative.tname !== 'body' || !Number.isSafeInteger(relative.assoc) || Math.abs(relative.assoc) > 1) throw new Refusal('INVALID_CURSOR');
+        if (!Buffer.from(Y.encodeRelativePosition(relative)).equals(bytes)) throw new Refusal('INVALID_CURSOR');
+        if (relative.item && (!Number.isSafeInteger(relative.item.client) || !Number.isSafeInteger(relative.item.clock)
+          || !state.nodes.some((node) => node.client === relative.item!.client && relative.item!.clock >= node.clock && relative.item!.clock < node.clock + node.length))) throw new Refusal('INVALID_CURSOR');
+      }
+    },
+    close: async () => { admissionQueue.close(); await pool.close(); },
   };
 }
 export type EditingRuntime = ReturnType<typeof editingRuntime>;

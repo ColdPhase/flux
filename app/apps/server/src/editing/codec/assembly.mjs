@@ -24,6 +24,7 @@ function decode(frame) {
 }
 export class Assemblies {
   constructor() { this.pending = new Map(); this.bytes = 0; }
+  intent(connection) { return this.pending.get(connection)?.intent ?? null; }
   remove(connection) {
     const old = this.pending.get(connection);
     if (old) { this.bytes -= old.size + (old.complete?.byteLength ?? 0); this.pending.delete(connection); }

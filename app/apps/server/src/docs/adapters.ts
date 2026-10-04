@@ -18,7 +18,7 @@ export function docRepository(tx: DbExecutor): DocRepository {
   };
 }
 
-function docPorts(tx: DbExecutor, events?: DocPorts['events']): DocPorts {
+export function docPorts(tx: DbExecutor, events?: DocPorts['events']): DocPorts {
   return {
     access: policyWorkAccess(tx),
     docs: docRepository(tx),
