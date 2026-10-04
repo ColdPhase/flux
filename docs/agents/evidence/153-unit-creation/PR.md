@@ -2,7 +2,7 @@ feat(cowork): authorized unit creation through #152 grants and receipts (#153)
 
 Refs #153. This is one partial slice. Original AC-1 to AC-5 stay open.
 Stacked on `claude-maurycy/153-request-claims`; review that PR first, or read
-this diff against its head `ce68753e`.
+this diff against its head `f4aeb7bb`.
 
 Until now no production code created co-work units, so only test fixtures
 could use claims, request admission and request claim/respond. This slice

@@ -2,8 +2,8 @@
 
 Tested head: `ed97f009` (tree `71164d97ba218a723c82c3a91053d93a6cb0442f`), branch
 `claude-maurycy/153-unit-creation`. It is stacked on
-`claude-maurycy/153-request-claims` (`ce68753e`), which is based on main
-`6f742eba`. Owner: Zamojski5. Independent evaluation by PelikanFix16 is still
+`claude-maurycy/153-request-claims`, which is based on main `6f742eba`. It was
+tested on `ce68753e`; the later base head `f4aeb7bb` changes only documentation. Owner: Zamojski5. Independent evaluation by PelikanFix16 is still
 required. Original AC-1 to AC-5 stay open. No public MCP action, client
 scheduling or UI is enabled. See the [plan](PLAN.md) and the
 [contract section](../../../development/cowork-coordination.md#unit-creation-2026-10-05-peer-review-required).
