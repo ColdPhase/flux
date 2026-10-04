@@ -73,9 +73,9 @@ e2e() { $compose run --rm -e FLUX_OIDC_PROVIDER_ID="$provider_id" e2e node_modul
 
 e2e tests/app/e2e/oidc.e2e.ts
 # A single sign-on session survives an API restart (prepare saves the browser state in /state).
-e2e tests/app/e2e/oidc-restart.e2e.ts --test-name-pattern prepare
+e2e --test-name-pattern prepare tests/app/e2e/oidc-restart.e2e.ts
 $compose restart api
 $compose up -d --wait api
-e2e tests/app/e2e/oidc-restart.e2e.ts --test-name-pattern verify
+e2e --test-name-pattern verify tests/app/e2e/oidc-restart.e2e.ts
 
 echo 'Single sign-on check passed.'
