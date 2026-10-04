@@ -1,7 +1,6 @@
 import type pg from 'pg';
-import { drizzle } from 'drizzle-orm/node-postgres';
+import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from './schema.js';
-import type { DbExecutor } from './repositories/push.js';
 
 export class EditingTransactionError extends Error {
   constructor(readonly outcome: 'refused' | 'unknown', cause: unknown) {
@@ -11,11 +10,12 @@ export class EditingTransactionError extends Error {
 /** An explicit public pg transaction boundary distinguishes failed work/ROLLBACK from a lost COMMIT response. */
 export function editingTransactions(pool: Pick<pg.Pool, 'connect'>) {
   return {
-    async run<T>(action: (db: DbExecutor) => Promise<T>): Promise<T> {
+    async run<T>(action: (db: NodePgDatabase<typeof schema>) => Promise<T>): Promise<T> {
       const client = await pool.connect();
       let began = false; let committing = false; let discard = false;
       try {
-        await client.query('BEGIN'); began = true;
+        // A rejected BEGIN response does not prove the backend never opened a transaction.
+        try { await client.query('BEGIN'); began = true; } catch (error) { discard = true; throw error; }
         await client.query("SET LOCAL statement_timeout = '2000ms'");
         await client.query("SET LOCAL lock_timeout = '1500ms'");
         const result = await action(drizzle({ client, schema }));

@@ -4,10 +4,12 @@ import { DomainError, ServiceUnavailableError } from '@flux/core';
 import { EditingTransactionError } from '@flux/db';
 import type { EditingClientMessage } from '@flux/contracts';
 import type { EditingContext } from './gate.js';
-import { editingContextCharge } from './context-charge.js';
+import { editingContextCharge,editingWikiResultCharge } from './context-charge.js';
 import { Assemblies, type CompletedAssembly } from './codec/assembly.mjs';
 import { EditingOutput, EditingOutputBudget } from './output.js';
 import type { WikiAuthority } from './authority.js';
+import { EditingHTTPAdmission } from './http-admission.js';
+import { editingJSONSize } from './json-size.js';
 
 interface Connection {
   socket: WebSocket; context: EditingContext; output: EditingOutput; generation: string | null;
@@ -21,6 +23,7 @@ const busy = (error: unknown) => ['EXTERNAL_BUFFER_LIMIT', 'WORK_QUEUE_LIMIT', '
 /** Message listeners are installed synchronously by the one upgrade dispatcher; all protected send paths use SQL authority. */
 export function wikiController(authority: WikiAuthority, outputBudget: EditingOutputBudget) {
   const connections = new Map<string, Connection>(); const assemblies = new Assemblies();
+  const preparation=new EditingHTTPAdmission(outputBudget);
   let closing = false;
   function close(c: Connection) { if (c.closed) return; c.closed = true; c.releaseBase(); for (const entry of c.presence.values()) entry.release(); c.presence.clear(); c.output.close(); assemblies.remove(c.context.connectionId); c.assembly = null; connections.delete(c.context.connectionId); }
   function fail(c: Connection, error: unknown, commandId?: string) {
@@ -39,8 +42,15 @@ export function wikiController(authority: WikiAuthority, outputBudget: EditingOu
     try {
       do {
         c.pendingRead = false;
-        await authority.deliver(c.context.session, c.context.target.id, c.generation, c.sequence, (result) => {
+        if(c.output.busy) {
+          await authority.handoff(c.context.session,c.context.target.id,()=>{if(!c.closed)c.pendingRead=c.output.pump()&&c.output.canPump;});
+          continue;
+        }
+        const releasePreparation=await preparation.admit(editingContextCharge({session:c.context.session,docId:c.context.target.id}));
+        try {await authority.deliver(c.context.session, c.context.target.id, c.generation, c.sequence, (result) => {
           if (c.closed) return;
+          // The pre-SQL worst-case reservation retains all protected source objects through transaction settlement.
+          editingWikiResultCharge(result);
           const head = result.current;
           const currentHead = { type: 'head', kind: 'wiki', workspaceId: head.workspaceId, resourceId: head.resourceId,
             generation: head.generation, sequence: head.sequence, hash: head.hash, savedVersion: head.savedVersion, canWrite: result.canWrite, actor: result.actor };
@@ -70,14 +80,19 @@ export function wikiController(authority: WikiAuthority, outputBudget: EditingOu
               c.output.send({ type: 'update', generation: head.generation, sequence: update.sequence, hash: update.hash,
                 commandId: update.commandId, actor: update.actor }, update.bytes, () => { c.sequence = deliveredSequence; void catchup(c); });
             } else if (result.preview && c.previewSequence < head.sequence) {
-              const bytes = Buffer.from(JSON.stringify(result.preview)); const deliveredSequence = head.sequence;
-              c.output.send({ type: 'preview', generation: head.generation, sequence: head.sequence, hash: head.hash }, bytes,
+              const size=editingJSONSize(result.preview);
+              const releaseText=outputBudget.reserve(size.textBytes);
+              try {
+              const text=JSON.stringify(result.preview);if(Buffer.byteLength(text)!==size.bytes||text.length*2!==size.textBytes)throw new ServiceUnavailableError('Invalid bounded preview','EDITING_OUTPUT_CAPACITY');
+              const deliveredSequence = head.sequence;
+              c.output.sendJSONPayload({ type: 'preview', generation: head.generation, sequence: head.sequence, hash: head.hash }, text,
                 () => { c.previewSequence = deliveredSequence; void catchup(c); });
+              } finally {releaseText();}
             }
             c.pendingRead = c.output.canPump;
           } else c.pendingRead = c.output.pump() && c.output.canPump;
           // Each callback hands off at most one frame. Every next chunk repeats current SQL clock/access checks.
-        }, { previewAfterSequence: c.previewSequence, includeContent: !c.output.busy });
+        }, { previewAfterSequence: c.previewSequence, includeContent: true });} finally {releasePreparation();}
       } while (c.pendingRead && !c.closed);
     } catch (error) {
       if (!busy(error)) fail(c, error);
@@ -151,7 +166,7 @@ export function wikiController(authority: WikiAuthority, outputBudget: EditingOu
     },
     notifyAll() { for (const c of connections.values()) void catchup(c); },
     notify(docId: string) { for (const c of connections.values()) if (c.context.target.id === docId) void catchup(c); },
-    async close() { closing = true; clearInterval(timer); unsubscribeCapacity(); for (const c of [...connections.values()]) { c.socket.terminate(); close(c); } await authority.close(); },
+    async close() { closing = true; clearInterval(timer); unsubscribeCapacity(); preparation.close(); for (const c of [...connections.values()]) { c.socket.terminate(); close(c); } await authority.close(); },
     get externalOutputBytes() { return outputBudget.bytes; }, get assemblyBytes() { return assemblies.bytes; },
   };
 }
