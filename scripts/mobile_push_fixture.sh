@@ -53,8 +53,8 @@ esac
 candidate_check() {
   [[ "$candidate" =~ ^[a-f0-9]{40}$ && $(git -C "$repo" rev-parse HEAD) == "$candidate" && -z $(git -C "$repo" status --porcelain) ]] || { echo 'Candidate must be the exact clean worktree HEAD' >&2; exit 1; }
 }
+if [[ "$action" == session || "$action" == preflight ]]; then candidate_check; fi
 if [[ "$action" == session ]]; then
-  candidate_check
   # Public exposure needs an independently reviewed boundary. A commit on the protected main branch
   # passed that review; anything else uses the manual tunnel/open-https steps with a named review.
   git -C "$repo" merge-base --is-ancestor "$candidate" refs/remotes/origin/main 2>/dev/null || {
@@ -115,7 +115,10 @@ on_exit() {
   if [[ $teardown_on_exit == 1 ]]; then
     echo 'Stopping: tunnel closed; saving the evidence matrix and removing containers, volumes and the candidate image' >&2
     # Service output for diagnosing a failed run stays in the private state directory.
-    if [[ $status != 0 ]]; then dc logs --no-color >"$state/failure-services.log" 2>&1 || true; fi
+    if [[ $status != 0 ]]; then
+      dc logs --no-color >"$state/failure-services.log" 2>&1 || true
+      echo "Failed (exit $status); the private logs in $state show which step" >&2
+    fi
     helper matrix >/dev/null 2>&1 || true
     teardown || true
     echo "Private evidence and credentials remain in $state; delete it with: rm -rf $state" >&2
