@@ -99,7 +99,6 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   const helpId = useId();
   const projectName = useProjectName(sketch?.projectId);
   const canWrite = sketch?.access === 'write' && !!doc.liveCanWrite;
-  useEffect(() => { doc.presence(selection); }, [selection, doc.presence]);
 
   const say = (text: string, change = false) => setStatus({ text, change });
   const find = (id: string) => sketch?.thoughts.find((t) => t.id === id);
@@ -119,6 +118,7 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
   // Selection follows what exists: someone else may remove a selected thought meanwhile.
   const present = new Set(sketch?.thoughts.map((t) => t.id));
   const selection = selectionState.filter((id) => present.has(id));
+  useEffect(() => { doc.presence(selection); }, [selection, doc.presence]);
   const connectFrom = connectState && present.has(connectState) ? connectState : null;
   // A project sketch anchors a session; "Show this" points at the selected thoughts, if any.
   const projectSketch = sketch?.scope === 'project' && sketch.projectId ? sketch : null;
@@ -231,8 +231,8 @@ export function SketchView({ sketchId, projectId, dmId, back = '/map' }: { sketc
     if (!draft || draftSaveInFlight.current || !canWrite || !draft.text.trim()) return;
     draftSaveInFlight.current = true;
     setSavingDraft(true);
-    const saved = await doc.saveThought({ id: draft.id, text: draft.text.trim(), x: draft.x, y: draft.y },
-      draft.parentId ? { id: draft.parentId, linkId: draft.linkId } : null, draft.key);
+    const saved = await doc.saveThought({ kind: 'add', thought: { id: draft.id, text: draft.text.trim(), x: draft.x, y: draft.y },
+      ...(draft.parentId ? { link: { id: draft.linkId, fromId: draft.parentId, label: null } } : {}) }, draft.key);
     setSavingDraft(false);
     draftSaveInFlight.current = false;
     if (!saved) { say('Couldn’t confirm the save. Your thought draft is kept; try again.'); return; }
