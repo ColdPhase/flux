@@ -8,6 +8,11 @@ support inside the Flux agent. Implementation is tracked in
 [#179](https://github.com/ColdPhase/flux/issues/179).
 **Owner:** @PelikanFix16. **Evaluator:** @Zamojski5.
 
+> **Two-mode framing: [F-022](ai-modes.md), proposed 2026-10-04 — awaiting peer review.**
+> Everything here is mode 2 (the agent in Flux) except PROV-5, which is mode 1 (your
+> agent app over MCP). F-022 adds a connection *transport* (PROV-1), a token-cap
+> variant for plan connections (PROV-3) and replaces PROV-4's subscription sentence.
+
 This decision **supersedes the Anthropic-only provider scope** of
 [O-007](background-compute.md) and [O-008](personal-runs-compute.md), O-008's
 deferral of local models, and the Anthropic preflight count as the input bound
@@ -53,6 +58,11 @@ An owner may keep one or more AI connections. Each connection records:
 - **Base URL:** fixed for the named providers; owner-set for `openai_compatible`.
 - **Key:** custody as in O-007 §2, generalised per provider: "one provider workspace" means the provider account or project the key belongs to, and "revoke at Claude Platform" means revoking the key with that provider.
 - **Price:** see PROV-3.
+- **Transport ([F-022](ai-modes.md#aim-2--mode-2-the-agent-in-flux)):** `server`
+  (the Flux worker calls the provider with the key above; every provider kind) or
+  `companion` (the owner's Flux companion calls the provider; only `chatgpt_plan`,
+  [AIM-3](ai-modes.md#aim-3--the-companion-and-the-chatgpt-plan-connection-mode-2)).
+  A `companion` connection has no key in Flux.
 
 The owner chooses which connection each use runs on (assistant in Flux,
 background rule). Configuring a connection enables neither use; each use keeps
@@ -110,6 +120,13 @@ the run's actual charge.
 It is reconciled against reported usage. A lost response keeps its reservation
 as `unknown`.
 
+**Plan connections ([F-022](ai-modes.md#aim-3--the-companion-and-the-chatgpt-plan-connection-mode-2)).**
+A `chatgpt_plan` connection has no per-token price. Its use is bounded by a daily
+token cap and a per-run token ceiling (input estimate + maximum output), reserved
+and reconciled exactly like a money reservation; a lost response keeps its token
+reservation as `unknown`. The payer is the owner's ChatGPT plan, shown as *Using
+ChatGPT plan* with a *Manage usage* link. A plan limit fails closed.
+
 **Input bound.** The same conservative Flux token estimate bounds input for every
 provider. A provider token-count endpoint may tighten the estimate, never loosen
 the bound. This replaces O-007/O-008's preflight count with the Anthropic
@@ -135,10 +152,15 @@ The O-007 §2 custody rules apply to every adapter:
   operator enables them explicitly with an allowlist.
 - Environment variables never redirect a key.
 
-Flux holds **no consumer subscription sign-in** (ChatGPT, Claude.ai or similar).
-O-007/O-008 evidence and the [feasibility study](own-ai-feasibility.md) keep that
-rejected. A person uses such a subscription through their own external client
-over MCP (PROV-5).
+**Subscriptions ([F-022](ai-modes.md), proposed 2026-10-04; replaces the earlier
+blanket exclusion).** Flux never collects, stores or forwards a consumer sign-in,
+session or CLI credential (Claude.ai, `claude setup-token`, `~/.codex/auth.json`,
+ChatGPT cookies), and never impersonates another application's OAuth client. A
+subscription enters mode 2 only through a provider-documented plan-usage grant to
+third-party apps. On 2026-10-04 that is OpenAI's Sign in with ChatGPT, held by the
+owner's companion ([AIM-3](ai-modes.md#aim-3--the-companion-and-the-chatgpt-plan-connection-mode-2)),
+never by the Flux server. Anthropic permits no such grant, so a Claude plan is used
+through the person's own Claude Code in mode 1 (PROV-5).
 
 ## PROV-5 — external clients are equal too
 
@@ -150,6 +172,10 @@ client, with each client's own add and login commands. All of them get the same:
 - identity and one entry per connection in the Agents view (UI116-2)
 
 The client label stays a recognition aid, not a verified identity.
+
+Flux tokens are audience-bound to the Flux MCP resource, and Flux never accepts or
+passes through a client's provider token (MCP authorization 2026-07-28;
+[AIM-1](ai-modes.md#aim-1--mode-1-your-agent-app-connects-to-flux)).
 
 ## PROV-6 — evidence
 
@@ -177,6 +203,13 @@ evidence is recorded. The requirement itself does not wait for that check.
 
 **External clients.** Real Codex and Claude Code connections are recorded,
 together with one other MCP client as a smoke test.
+
+**Companion and plan connection ([F-022](ai-modes.md)).** The same contract suite runs
+in Docker against a mock Responses streaming server behind a companion process,
+covering success, plan limit (`subscription_sharing_usage_limit_exceeded`),
+expired/revoked token, cancel, disconnect mid-stream, offline computer, duplicate
+delivery and token-absence on the Flux side. A real ChatGPT-plan smoke test is
+dated and recorded, or reported unverified.
 
 ## Revisit when
 

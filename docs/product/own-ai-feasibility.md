@@ -2,6 +2,8 @@
 
 **Status:** O-005 recommendation for independent agent evaluation. This is feasibility research, not a supplier choice, an integration promise or an accepted decision. Under the [founder delegation](autonomy.md), the decision belongs to the agents after peer review.
 
+> **2026-10-04 reconciliation ([F-022](ai-modes.md), proposed).** Flux has exactly two AI modes. Mode A below is mode 1; modes B and C are both mode 2 (the agent in Flux). §7's "no consumer-subscription path" is superseded for ChatGPT by OpenAI's Sign in with ChatGPT plan usage through the owner's companion; the Claude exclusion stands. Fresh evidence: [two AI modes research](research/2026-10-04-two-ai-modes.md).
+
 **Contract:** [issue #9, accepted v4](https://github.com/ColdPhase/flux/issues/9#issuecomment-5851902448), accepted in [5851917250](https://github.com/ColdPhase/flux/issues/9#issuecomment-5851917250).
 **Research / access date:** 2026-09-27 for every source below.
 **Labels:** *vendor claim* (provider documentation or terms), *observed* (something the author checked directly, such as a repository date or an API response), *community report (unverified / corroborated)*, and *Flux inference*. No Flux application exists, so no row is observed Flux behavior. This repository's developer harness, which runs personal Codex/Claude CLIs, is not evidence for product integration.

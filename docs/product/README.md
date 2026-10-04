@@ -52,6 +52,12 @@ named writers/cursors during typing, before the final move or Save version.
 independent acceptance for bounded disabled calibration; no runtime gate has passed.
 Saved-event refresh and a typing indicator do not deliver this requirement.
 
+**Founder clarification, 2026-10-04 ([#245](https://github.com/ColdPhase/flux/issues/245)):**
+Flux has exactly two AI modes: your agent app connecting over MCP, and the agent
+in Flux with the owner's chosen connection. The proposed [F-022](ai-modes.md)
+maps foundation §9.2's three ways onto them (its second and third rows are both
+the agent in Flux) and records which subscription connections the providers allow.
+
 The [later founder delegation](autonomy.md) authorizes agents to choose and accept
 product, stack, architecture, UX, scope and delivery decisions. No human acceptance
 is required. Open decisions below are decisions for the agents to resolve and

@@ -78,8 +78,8 @@ Live contracts:
 
 | # | Location | Current text | Smallest correction (made in this PR unless noted) |
 | --- | --- | --- | --- |
-| 1 | `FLUX-FOUNDATION.md` §9.2 | "Trzy sposoby połączenia" (three ways): official tool, agent inside Flux, company/own API or local model | Founder text stays. A dated English reconciliation note under §9.2 maps rows 2 and 3 to mode 2 |
-| 2 | `FLUX-FOUNDATION.md` §17E | Asks to consider the official client, the agent inside Flux and own API/local model separately | Covered by the same note; prompt E is assessed per connector within mode 2 |
+| 1 | `FLUX-FOUNDATION.md` §9.2 | "Trzy sposoby połączenia" (three ways): official tool, agent inside Flux, company/own API or local model | The founder document is preserved as supplied ([README](../README.md)), so it is not edited. The README's current-authority section and F-022 map rows 2 and 3 to mode 2 |
+| 2 | `FLUX-FOUNDATION.md` §17E | Asks to consider the official client, the agent inside Flux and own API/local model separately | Covered by the same README note and F-022; prompt E is assessed per connector within mode 2 |
 | 3 | `model-providers.md` PROV-4 | "Flux holds no consumer subscription sign-in … A person uses such a subscription through their own external client over MCP (PROV-5)." | Replaced by F-022: a subscription enters mode 2 only through a provider-documented plan-usage grant; Flux never collects consumer sessions |
 | 4 | #179 issue body, PROV-4 | Same sentence | Issue text: orchestrator to update after F-022 review (not edited here) |
 | 5 | `decisions.md` F-020 | "… no consumer-session keys and fail-closed behaviour remain" | Points to F-022 |
@@ -87,7 +87,7 @@ Live contracts:
 | 7 | `personal-runs-compute.md` | "Consumer-plan session (Claude.ai/Pro/Max login held by Flux) … Rejected, not deferred." | Dated pointer to F-022 |
 | 8 | `background-compute.md` | "Do not accept … a Claude consumer-plan session" | Still right for unattended use. Dated pointer to F-022 |
 | 9 | `first-agent-path.md` | "Third-party claude.ai login or routing Free/Pro/Max credentials through Flux is excluded." | Still right for Claude. Dated pointer to F-022 for the two-mode framing |
-| 10 | `mcp-cowork.md` | "does not move terminals, agent containers, browsers or provider subscription credentials into the Flux server" | Right, but reads as a product-wide ban. Prefixed as mode 1, and F-022 keeps subscription credentials off the server in mode 2 too |
+| 10 | `mcp-cowork.md` | "does not move terminals, agent containers, browsers or provider subscription credentials into the Flux server" | Right, but reads as a product-wide ban. A sentence now marks the section as mode 1 and says mode 2 also keeps subscription credentials off the server |
 | 11 | `journeys-and-vocabulary.md` | "No personal subscription, provider login, or embedded run is promised here." | Dated pointer to F-022 |
 | 12 | `application-architecture.md` | "an embedded runner, if later approved … provider login, subscription reuse … remain conditional on O-005" | Dated pointer to F-022 |
 | 13 | `research.md` | "assess external official agents, embedded execution, and API/local models separately" | Two modes; within mode 2, each connector |
