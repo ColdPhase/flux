@@ -153,6 +153,14 @@ and 320 with the editor's text field uncovered, tablet 820). Screenshots: `docs/
 
 ## Not yet
 
-File uploads and images (a separate slice), real-time co-editing (#61), agent doc writes outside
+Live shared text with named writers/cursors before Save is required by
+[F-021/#228](live-editing-proposal.md). The independently assessed contract is
+admitted only for disabled calibration; current saved-version writes do not deliver
+it. The future shared working body is distinct from immutable saved versions and
+citations, with a shared-core fence on every native writer and explicit private
+recovery. Existing local recovery must never broadcast automatically. #61 provides
+authorized media/shared context; it did not deliver wiki character co-editing.
+
+File uploads and images (a separate slice), real-time co-editing (#228), agent doc writes outside
 a standing grant, full-text search inside the wiki index (the index filters by title and excerpt;
 Search and Jump to already find doc text), and moving a doc between projects.
