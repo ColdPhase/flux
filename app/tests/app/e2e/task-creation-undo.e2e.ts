@@ -77,9 +77,11 @@ after(async () => {
 
 async function fixture() {
   const [author, manager] = await Promise.all(['Ari Task author', 'Blair Project manager'].map(person));
-  // A is an ordinary member; B can change A's grant. A has no owner override.
+  // Real standing grants require project management. A is temporarily admin for
+  // that setup only, then returns to ordinary member before any task or browser
+  // observation; B can change A's grant and A never has the owner override.
   const ws = await workspace(manager, 'Current task history');
-  await addMember(manager, ws.id, author, 'member');
+  await addMember(manager, ws.id, author, 'admin');
   const place = await project(manager, ws.id, 'Gesture trial', 'restricted');
   await grant(manager, place.id, author, 'contributor');
   const agent = expectStatus(await author.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
@@ -88,6 +90,10 @@ async function fixture() {
     { body: { principal: { kind: 'agent', id: agent.id }, role: 'contributor' } }), 201);
   const connection = await agentConnection(pool, author.browser, agent.id, [place.id]);
   const authority = await connection.grant('work.create', 'execute', 5);
+  expectStatus(await manager.browser.request('PATCH', `/api/v1/workspaces/${ws.id}/members/${author.id}`,
+    { body: { role: 'member' } }), 200);
+  assert.equal((expectStatus(await author.browser.request('GET', `/api/v1/workspaces/${ws.id}`), 200) as { role: string }).role, 'member');
+  assert.equal((expectStatus(await author.browser.request('GET', `/api/v1/projects/${place.id}`), 200) as { access: string }).access, 'contributor');
   const read = async (id: string) => expectStatus(await author.browser.request('GET', `/api/v1/work/${id}`), 200) as WorkItem;
   const create = async (title = 'Measure gestures at five lux') => {
     const result = toolValue(await connection.tool('flux_create_task', { projectId: place.id,
