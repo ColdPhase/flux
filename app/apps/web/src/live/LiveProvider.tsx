@@ -195,7 +195,12 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
 
   const connect = useCallback(async (target: LiveSession, targetAnchor: LiveAnchor | null, mode: 'joining' | 'rejoining') => {
     setPhase(mode);
+    if (targetAnchor?.isCurrent?.() === false) throw new Error('These task details are being refreshed. Try again after they are current.');
     const grant = await joinSession(target.id);
+    if (targetAnchor?.isCurrent?.() === false) {
+      await leaveSession(target.id).catch(() => undefined);
+      throw new Error('These task details changed while joining. Refresh them before joining again.');
+    }
     let next = connectionRef.current;
     if (!next) {
       // The media SDK is loaded only when someone actually joins a session.
@@ -204,7 +209,16 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
       connectionRef.current = next;
       setConnection(next);
     }
+    if (targetAnchor?.isCurrent?.() === false) {
+      await leaveSession(target.id).catch(() => undefined);
+      throw new Error('These task details changed before connecting. Refresh them before joining again.');
+    }
     await next.connect(grant.mediaUrl, grant.token);
+    if (targetAnchor?.isCurrent?.() === false) {
+      await next.disconnect().catch(() => undefined);
+      await leaveSession(target.id).catch(() => undefined);
+      throw new Error('These task details changed while connecting. Refresh them before joining again.');
+    }
     next.setHearing(!quietRef.current);
     setSession(grant.session);
     sessionRef.current = grant.session;
@@ -214,6 +228,7 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
   }, []);
 
   const join = useCallback(async (target: LiveSession, targetAnchor?: LiveAnchor) => {
+    if (targetAnchor?.isCurrent?.() === false) return;
     if (phaseRef.current === 'in' && sessionRef.current?.id === target.id) return;
     if (phaseRef.current === 'in' || phaseRef.current === 'rejoining') await connectionRef.current?.disconnect();
     setNotice(null);
@@ -228,6 +243,7 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
         if (label === null) throw new ApiError(404, 'LIVE_CONTEXT_NOT_FOUND', 'Not found');
         resolved = { projectId: target.projectId, context: target.context, label };
       }
+      if (resolved.isCurrent?.() === false) { setPhase('idle'); return; }
       loadPeople(target.projectId);
       const joined = await connect(target, resolved, 'joining');
       await catchUp(joined.id, joined.projectId, true).catch(() => undefined);
@@ -240,13 +256,16 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
   }, [catchUp, connect, loadPeople, toast]);
 
   const start = useCallback(async (target: LiveAnchor) => {
+    if (target.isCurrent?.() === false) return;
     if (phaseRef.current !== 'idle' && phaseRef.current !== 'ended') return;
     setPhase('starting');
     try {
       // Someone may have started one here a moment ago: join it instead of opening a second.
       const running = await discoverSessions(target.projectId).then((page) => page.items, () => [] as LiveSession[]);
+      if (target.isCurrent?.() === false) { setPhase('idle'); return; }
       const existing = running.find((item) => sameContext(item.context, target.context));
       const created = existing ?? await startSession(target.context, crypto.randomUUID());
+      if (target.isCurrent?.() === false) { setPhase('idle'); return; }
       await join(created, target);
     } catch (error) {
       setPhase('idle');
@@ -407,9 +426,10 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
 
   const present = useCallback(async (item: Presentable) => {
     const current = sessionRef.current;
-    if (!current || phaseRef.current !== 'in') return false;
+    if (!current || phaseRef.current !== 'in' || item.isCurrent?.() === false) return false;
     try {
       await presentInSession(current.id, item.ref, crypto.randomUUID());
+      if (item.isCurrent?.() === false) return false;
       await catchUp(current.id, current.projectId, false).catch(() => undefined);
       toast({ message: `Showing “${item.label}”. Others can open it or follow you; nobody is moved.`, tone: 'success' });
       return true;

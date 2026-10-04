@@ -81,6 +81,7 @@ export function LiveEntry({ variant = 'header', anchor: given }: { variant?: 'he
     : 'Work on this together';
 
   const act = () => {
+    if (anchor.isCurrent?.() === false) return;
     if (joinable) void live.join(here_, anchor);
     else void live.start(anchor);
   };

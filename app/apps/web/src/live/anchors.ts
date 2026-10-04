@@ -17,6 +17,8 @@ export interface LiveAnchor {
   context: LiveContextRef;
   /** Human title of the object, e.g. the task title or the conversation's opening line. */
   label: string;
+  /** Client-only accepted-read guard; never sent as authority to the API. */
+  isCurrent?: () => boolean;
 }
 
 /** A fragment the current view can show: its object reference and how people would call it. */
@@ -25,6 +27,8 @@ export interface Presentable {
   label: string;
   /** "task", "doc v4", "3 thoughts on the map". */
   what: string;
+  /** Client-only accepted-read guard; checked again at presentation admission. */
+  isCurrent?: () => boolean;
 }
 
 export const KIND_WORD: Record<AnchorKind, string> = {

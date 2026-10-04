@@ -3,6 +3,8 @@ import { Link, useRevalidator } from 'react-router';
 import type { Agent, Decision, ObjectLink, Project, WorkItem, WorkResult, WorkspaceMember, WorkStatus } from '@flux/contracts';
 import { WORK_STATUSES } from '@flux/contracts';
 import { ApiError } from '../api/client';
+import { useStreamEvents } from '../api/stream';
+import { useComposerScope } from '../composer/draft';
 import { Button, Icon, Input } from '../ui';
 import { getProject, listWorkspaceMembers } from '../app/conversation-api';
 import { useShellData } from '../app/data';
@@ -49,36 +51,75 @@ function readable(error: unknown) {
 
 /** Object and form views of the Details panel. */
 export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
-  const [loaded, setState] = useState<{ key: string; object: WorkItem | Decision | WorkResult | null; context: Context } | null>(null);
+  const { me } = useShellData();
+  const [loaded, setState] = useState<{ key: string; epoch: number; object: WorkItem | Decision | WorkResult | null; context: Context } | null>(null);
   const [failed, setFailure] = useState<{ key: string; text: string } | null>(null);
   const [tick, setTick] = useState(0);
   const revalidator = useRevalidator();
-  const reload = useCallback(() => { setTick((value) => value + 1); revalidator.revalidate(); }, [revalidator]);
-  const viewKey = 'id' in view ? `${view.kind}:${view.id}` : `${view.kind}:${view.projectId}:${view.source?.messageId ?? ''}:${view.workId ?? ''}`;
+  const requestedEpoch = useRef(0);
+  const pendingRead = useRef<AbortController | null>(null);
+  const reload = useCallback(() => {
+    // Retire accepted authority as well as an in-flight read synchronously. The
+    // next render preserves content/draft while its mutating controls wait.
+    requestedEpoch.current++;
+    pendingRead.current?.abort();
+    setTick(requestedEpoch.current);
+    revalidator.revalidate();
+  }, [revalidator]);
+  const objectKey = 'id' in view ? `${view.kind}:${view.id}` : `${view.kind}:${view.projectId}:${view.source?.messageId ?? ''}:${view.workId ?? ''}`;
+  const viewKey = `${me.user.id}:${objectKey}`;
+  const captureScope = useComposerScope(viewKey);
+  const activeScope = captureScope();
+  const state = loaded?.key === viewKey ? loaded : null;
+  const checking = !state || state.epoch !== tick;
+  const isCurrent = () => activeScope() && !!state && state.epoch === requestedEpoch.current;
+  const projectId = state?.context.project.id ?? ('projectId' in view ? view.projectId : null);
+  const workspaceId = state?.context.project.workspaceId;
+  useStreamEvents(me.user.id, (event) => {
+    if ((event.objectType === 'project' && (!projectId || event.objectId === projectId))
+      || (event.objectType === 'workspace' && (!workspaceId || event.objectId === workspaceId))
+      || (event.objectType === 'agent' && (!workspaceId || event.workspaceId === workspaceId))) reload();
+  }, reload);
+  useEffect(() => {
+    const visible = () => { if (document.visibilityState === 'visible') reload(); };
+    window.addEventListener('focus', visible);
+    document.addEventListener('visibilitychange', visible);
+    const interval = window.setInterval(visible, 15_000);
+    return () => { window.removeEventListener('focus', visible); document.removeEventListener('visibilitychange', visible); window.clearInterval(interval); };
+  }, [reload]);
 
   useEffect(() => {
     const controller = new AbortController();
+    pendingRead.current = controller;
+    const active = captureScope();
+    const current = () => active() && !controller.signal.aborted && requestedEpoch.current === tick;
     (async () => {
       const object = 'id' in view
         ? await (view.kind === 'work' ? getWork(view.id, controller.signal) : view.kind === 'decision' ? getDecision(view.id, controller.signal) : getResult(view.id, controller.signal))
         : null;
       const context = await loadContext(object?.projectId ?? (view as WorkFormView).projectId, controller.signal);
-      if (!controller.signal.aborted) { setState({ key: viewKey, object, context }); setFailure(null); }
-    })().catch((error: unknown) => { if (!controller.signal.aborted) { setState(null); setFailure({ key: viewKey, text: readable(error) }); } });
-    return () => controller.abort();
+      if (current()) { setState({ key: viewKey, epoch: tick, object, context }); setFailure(null); }
+    })().catch((error: unknown) => {
+      if (!current()) return;
+      // A known read denial retires public content; an outage retains the last
+      // content read, with its authority retired and its draft kept.
+      if (error instanceof ApiError && [401, 403, 404].includes(error.status)) setState(null);
+      setFailure({ key: viewKey, text: readable(error) });
+    });
+    return () => { controller.abort(); if (pendingRead.current === controller) pendingRead.current = null; };
     // viewKey identifies the view; tick reloads it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewKey, tick]);
 
   // While another view loads, the previous one's data must not be read as this view's.
-  const state = loaded?.key === viewKey ? loaded : null;
   const failure = failed?.key === viewKey ? failed.text : '';
   if (failure && !state) return <div className="details"><p className="details__eyebrow">Details</p><h3 className="details__title">Not available</h3><p className="details__lead" role="alert">{failure}</p></div>;
   if (!state) return <div className="details" aria-busy="true"><p className="details__lead">Loading…</p></div>;
-  const { object, context } = state;
+  const { object } = state;
+  const context: Context = checking && view.kind !== 'work' ? { ...state.context, project: { ...state.context.project, access: 'viewer' } } : state.context;
   if (view.kind === 'propose-decision') return <ProposeDecision key={viewKey} view={view} context={context} />;
   if (view.kind === 'attach-result') return <AttachResult key={viewKey} view={view} context={context} reload={reload} />;
-  if (view.kind === 'work') return <WorkPanel key={viewKey} item={object as WorkItem} context={context} reload={reload} />;
+  if (view.kind === 'work') return <WorkPanel key={viewKey} item={object as WorkItem} context={context} reload={reload} checking={checking} revision={tick} isCurrent={isCurrent} failure={failure} />;
   if (view.kind === 'decision') return <DecisionPanel key={`${viewKey}:${(object as Decision).version}`} decision={object as Decision} context={context} reload={reload} />;
   return <ResultPanel result={object as WorkResult} context={context} />;
 }
@@ -135,11 +176,11 @@ function IdsLine({ children }: { children: ReactNode }) {
   return <p className="wd-ids">{children}</p>;
 }
 
-function WorkPanel({ item, context, reload }: { item: WorkItem; context: Context; reload: () => void }) {
+function WorkPanel({ item, context, reload, checking, revision, isCurrent, failure }: { item: WorkItem; context: Context; reload: () => void; checking: boolean; revision: number; isCurrent: () => boolean; failure: string }) {
   const { openDetails } = useShellActions();
   const { me } = useShellData();
   const reverted = item.lifecycle?.state === 'creation_reverted' ? item.lifecycle : null;
-  const writable = context.project.access !== 'viewer' && !reverted;
+  const writable = !checking && context.project.access !== 'viewer' && !reverted;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [blocker, setBlocker] = useState(item.blocker ?? '');
@@ -149,18 +190,19 @@ function WorkPanel({ item, context, reload }: { item: WorkItem; context: Context
   const results = linked(item.links, item.id, 'result');
   const parkedBy = item.parked ? context.lists.decisions.find((decision) => decision.id === item.parked!.decisionId) : null;
   // An open task is the most specific place to work together, and a fragment others can open.
-  const liveAnchor = { projectId: item.projectId, context: { type: 'work' as const, id: item.id }, label: item.title };
-  useRegisterLiveHere(reverted ? null : liveAnchor, reverted ? null : { ref: { type: 'work', id: item.id, version: item.version }, label: item.title, what: 'task' });
+  const liveAnchor = { projectId: item.projectId, context: { type: 'work' as const, id: item.id }, label: item.title, isCurrent };
+  useRegisterLiveHere(checking || reverted ? null : liveAnchor, checking || reverted ? null : { ref: { type: 'work', id: item.id, version: item.version }, label: item.title, what: 'task', isCurrent });
 
   // The same change of the same version retried after a lost response reuses its command UUID: it never
   // contributes the saved blocker to the task conversation twice. A different change gets a new one.
   const attempt = useRef<{ key: string; id: string } | null>(null);
   async function change(command: Parameters<typeof updateWork>[1]) {
+    if (!isCurrent()) return;
     const key = JSON.stringify([item.id, item.version, command]);
     if (attempt.current?.key !== key) attempt.current = { key, id: crypto.randomUUID() };
     setBusy(true); setError('');
-    try { await updateWork(item, command, attempt.current.id); attempt.current = null; reload(); }
-    catch (cause) { setError(readable(cause)); if (cause instanceof ApiError && cause.status === 409) { attempt.current = null; reload(); } }
+    try { await updateWork(item, command, attempt.current.id); attempt.current = null; if (isCurrent()) reload(); }
+    catch (cause) { if (isCurrent()) { setError(readable(cause)); if (cause instanceof ApiError && cause.status === 409) { attempt.current = null; reload(); } } }
     finally { setBusy(false); }
   }
   const ownerValue = item.owner ? `${item.owner.kind}:${item.owner.id}` : '';
@@ -171,15 +213,17 @@ function WorkPanel({ item, context, reload }: { item: WorkItem; context: Context
   if (item.owner?.kind === 'agent' && !agents.some((agent) => agent.value === ownerValue)) agents.push({ value: ownerValue, label: `${item.owner.name} (agent)` });
 
   return (
-    <div className="details wd">
+    <div className="details wd" aria-busy={checking || undefined}>
+      {checking ? <p className="wd-muted" role="status">Checking current task details. Your draft is kept.</p> : null}
+      {failure ? <p className="wd-error" role="alert">{failure} <button type="button" className="wd-inline" onClick={reload}>Refresh details</button></p> : null}
       <p className="details__eyebrow wd-eyebrow"><span className={`wd-dot wd-dot--${item.status}`} aria-hidden="true" />{reverted ? 'Creation undone · read-only history' : STATUS_LABEL[item.status]}{item.parked ? ' · parked, not done' : ''}</p>
       <h3 className="details__title">{item.title}</h3>
       {item.outcome ? <p className="details__lead">{item.outcome}</p> : null}
       {item.status === 'blocked' && item.blocker ? <p className="wd-blocker"><Icon name="alert" size={14} />Blocked: {item.blocker}</p> : null}
-      {!reverted && !isFinished(item) ? <LiveEntry variant="inline" anchor={liveAnchor} /> : null}
+      {!checking && !reverted && !isFinished(item) ? <LiveEntry variant="inline" anchor={liveAnchor} /> : null}
 
       {reverted ? <p className="wd-muted">Creation undone by {reverted.revertedBy.name} on {shortDate(reverted.revertedAt)}. This task remains here as history.</p> : null}
-      {item.creationUndo?.eligible && writable ? <UndoCreation key={`${me.user.id}:${item.id}:${item.version}`} item={item} userId={me.user.id} reload={reload} /> : null}
+      {item.creationUndo?.eligible && writable ? <UndoCreation key={`${me.user.id}:${item.id}:${item.version}`} item={item} userId={me.user.id} reload={reload} isCurrent={isCurrent} /> : null}
 
       {writable ? (
         <fieldset className="wd-controls" disabled={busy}>
@@ -235,7 +279,7 @@ function WorkPanel({ item, context, reload }: { item: WorkItem; context: Context
         ) : null}
       </section>
 
-      <TaskDiscussionSection readOnly={!!reverted} key={`${me.user.id}:${context.project.id}:${item.id}`} workId={item.id} project={context.project} members={context.members} me={{ id: me.user.id, name: me.user.name }} />
+      <TaskDiscussionSection checking={checking} revision={revision} isCurrent={isCurrent} readOnly={!!reverted} key={`${me.user.id}:${context.project.id}:${item.id}`} workId={item.id} project={context.project} members={context.members} me={{ id: me.user.id, name: me.user.name }} />
 
       <section className="details__sec" aria-labelledby="wd-decisions">
         <h4 id="wd-decisions">Decisions</h4>
@@ -256,7 +300,7 @@ function WorkPanel({ item, context, reload }: { item: WorkItem; context: Context
 }
 
 /** One identity per intended Undo survives panel changes and a lost response. */
-function UndoCreation({ item, userId, reload }: { item: WorkItem; userId: string; reload: () => void }) {
+function UndoCreation({ item, userId, reload, isCurrent }: { item: WorkItem; userId: string; reload: () => void; isCurrent: () => boolean }) {
   const identityKey = `flux:creation-undo:${userId}:${item.projectId}:${item.id}:${item.version}`;
   const attempt = useRef<string | null>(null);
   const pending = useRef<AbortController | null>(null);
@@ -264,7 +308,7 @@ function UndoCreation({ item, userId, reload }: { item: WorkItem; userId: string
   const [error, setError] = useState('');
   useEffect(() => () => pending.current?.abort(), []);
   async function undo() {
-    if (busy) return;
+    if (busy || !isCurrent()) return;
     if (!attempt.current) {
       try { attempt.current = sessionStorage.getItem(identityKey); } catch { /* In-memory retry still works. */ }
       attempt.current ??= crypto.randomUUID();
@@ -275,9 +319,9 @@ function UndoCreation({ item, userId, reload }: { item: WorkItem; userId: string
     try {
       await undoTaskCreation(item, attempt.current, controller.signal);
       try { sessionStorage.removeItem(identityKey); } catch { /* No persisted retry to remove. */ }
-      if (!controller.signal.aborted) reload();
+      if (!controller.signal.aborted && isCurrent()) reload();
     } catch (cause) {
-      if (!controller.signal.aborted) setError(cause instanceof ApiError && cause.status === 409
+      if (!controller.signal.aborted && isCurrent()) setError(cause instanceof ApiError && cause.status === 409
         ? 'This task has changed or been used. Refresh its details before trying again. Your draft is kept.' : readable(cause));
     } finally { if (!controller.signal.aborted) setBusy(false); }
   }

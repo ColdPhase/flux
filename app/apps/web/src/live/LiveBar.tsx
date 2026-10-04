@@ -82,7 +82,7 @@ export function LiveBar() {
   const status = connecting ? 'Connecting…' : reconnecting ? 'Reconnecting…' : live.quiet ? 'Quiet' : 'Live';
 
   const showThis = async () => {
-    if (!presentable || showBusy) return;
+    if (!presentable || showBusy || presentable.isCurrent?.() === false) return;
     setShowBusy(true);
     try { await live.present(presentable); } finally { setShowBusy(false); }
   };

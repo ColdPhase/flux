@@ -14,8 +14,8 @@ import { contributeToTask, getTaskDiscussion } from '../composer/api';
  * Before anyone has written, a person who can write starts it here. The structured draft and its
  * retry identity belong to the account/project/task, as in every place that writes to it.
  */
-export function TaskDiscussionSection({ workId, project, members, me, readOnly = false }: {
-  readOnly?: boolean; workId: string; project: Project; members: WorkspaceMember[]; me: { id: string; name: string };
+export function TaskDiscussionSection({ workId, project, members, me, readOnly = false, checking, revision, isCurrent }: {
+  checking: boolean; revision: number; isCurrent: () => boolean; readOnly?: boolean; workId: string; project: Project; members: WorkspaceMember[]; me: { id: string; name: string };
 }) {
   const headingId = useId();
   const fieldId = useId();
@@ -23,7 +23,9 @@ export function TaskDiscussionSection({ workId, project, members, me, readOnly =
   const writable = project.access !== 'viewer' && !readOnly;
   // People the project shell already knows, for a reader who cannot list the workspace's members.
   const people = useProjectShell()?.people ?? null;
-  const [discussion, setDiscussion] = useState<Discussion | null>(null);
+  const [accepted, setDiscussion] = useState<{ epoch: number; value: Discussion } | null>(null);
+  const discussion = accepted?.value ?? null;
+  const checkingDiscussion = checking || accepted?.epoch !== revision;
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const composer = useComposerDraft(me.id, project.id, `task:${workId}`);
@@ -31,10 +33,17 @@ export function TaskDiscussionSection({ workId, project, members, me, readOnly =
   const sending = composer.sending;
 
   useEffect(() => {
+    if (checking) return;
     const controller = new AbortController();
-    getTaskDiscussion(workId, { limit: 1, signal: controller.signal }).then((next) => { if (!controller.signal.aborted) setDiscussion(next); }).catch(() => { if (!controller.signal.aborted) setFailed(true); });
+    const current = () => !controller.signal.aborted && isCurrent();
+    getTaskDiscussion(workId, { limit: 1, signal: controller.signal }).then((next) => {
+      if (current()) { setDiscussion({ epoch: revision, value: next }); setFailed(false); }
+    }).catch(() => { if (current()) { setDiscussion(null); setFailed(true); } });
     return () => controller.abort();
-  }, [workId, project.id, me.id, attempt]);
+    // revision is the parent's accepted account/object/read epoch. Its live
+    // predicate rejects completions synchronously between invalidation and render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workId, project.id, me.id, attempt, revision, checking]);
 
   const thread = discussion?.conversationId ? `/projects/${project.id}/conversations/${discussion.conversationId}` : null;
   const author = (message: ConversationMessage) => {
@@ -46,14 +55,14 @@ export function TaskDiscussionSection({ workId, project, members, me, readOnly =
 
   async function send(event?: FormEvent) {
     event?.preventDefault();
-    if (!writable || !discussion) return;
+    if (!writable || !discussion || checkingDiscussion || !isCurrent()) return;
     const command = composer.begin();
     if (!command) return;
     const active = captureScope();
     try {
       const message = await contributeToTask(workId, { ...command, kind: 'text' });
       composer.finish(command.clientMessageId);
-      if (active()) navigate(`/projects/${project.id}/conversations/${message.conversationId}#message-${message.id}`);
+      if (active() && isCurrent()) navigate(`/projects/${project.id}/conversations/${message.conversationId}#message-${message.id}`);
     } catch (cause) { composer.finish(command.clientMessageId, cause); }
   }
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -79,10 +88,10 @@ export function TaskDiscussionSection({ workId, project, members, me, readOnly =
             {writable ? <form className="wd-discussion-form" onSubmit={(event) => void send(event)}>
               <p id={`${fieldId}-hint`} className="wd-discussion-form__hint">{root ? 'Goes to this task’s one discussion, also shown in Conversation and Agents.' : 'Nobody has written about this task yet. The first message starts its discussion in the project conversation.'}</p>
               <label className="ui-vh" htmlFor={fieldId}>{root ? 'Write to this task' : 'First message about this task'}</label>
-              <textarea id={fieldId} aria-describedby={`${fieldId}-hint`} value={composer.draft.body} rows={3} maxLength={20000} readOnly={sending} aria-busy={sending || undefined}
+              <textarea id={fieldId} aria-describedby={`${fieldId}-hint`} value={composer.draft.body} rows={3} maxLength={20000} readOnly={sending || checkingDiscussion} aria-busy={sending || checkingDiscussion || undefined}
                 placeholder="Write about this task…" onChange={(event) => composer.setBody(event.target.value)} onKeyDown={onKeyDown} />
-              <ComposerFiles state={composer} />
-              <div className="wd-actions"><Button type="submit" variant="secondary" icon="send" busy={sending} disabled={!composer.canSend}>{root ? 'Send to task' : 'Start the discussion'}</Button></div>
+              <ComposerFiles state={composer} disabled={checkingDiscussion} />
+              <div className="wd-actions"><Button type="submit" variant="secondary" icon="send" busy={sending} disabled={!composer.canSend || checkingDiscussion}>{root ? 'Send to task' : 'Start the discussion'}</Button></div>
             </form> : !root ? <p className="wd-muted">{readOnly ? 'Creation was undone. This history is read-only; your unsent draft is kept.' : 'Nobody has written about this task yet.'}</p> : null}
           </>}
     </section>
