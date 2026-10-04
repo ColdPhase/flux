@@ -13,10 +13,10 @@ The only commits after the tested one add this folder (documentation, no code).
 
 | Command | Result | Raw log |
 | --- | --- | --- |
-| `FLUX_OIDC_TEST_PORT=19000 ./scripts/check_oidc.sh` | exit 0. `oidc.e2e.ts` 10/10, `oidc-bad-token.e2e.ts` 6/6, `api-mock refused 8 ID tokens in its verifier`, restart prepare 1/1, API restart, verify 1/1. No skips or cancellations. | [check-oidc.log](check-oidc.log) |
-| `targeted.sh` with `FLUX_TEST_PORT=19002 FLUX_TEST_MAILPIT_PORT=19003` on `tests/app/{identity-config,identity,notifications,notifications-core,notification-inbox,architecture,oauth-flow}.test.ts` | exit 0, 75/75 tests in 13 suites (the image build runs `pnpm build && pnpm typecheck && pnpm lint`; one existing lint warning in `ProjectTasks.tsx`, from `main`). | [targeted-identity-notifications.log](targeted-identity-notifications.log) |
-| `python3 scripts/check_agent_setup.py`, `python3 -m unittest discover -s tests -p 'test_*.py'`, `git diff --check origin/main...HEAD` | exit 0; 67/67 standard-library tests. | [foundation.log](foundation.log) |
-| `docker ps -a`, `docker volume ls`, `docker network ls`, `docker images` filtered on both run projects (named in the logs: oidc run 1791114824-93108, test run 1791114985-94045) | nothing left. Each script also prints its own `down -v` and "Removed N per-run image(s)". | [cleanup.log](cleanup.log) |
+| `FLUX_OIDC_TEST_PORT=19000 ./scripts/check_oidc.sh` | exit 0. `oidc.e2e.ts` 10/10, `oidc-bad-token.e2e.ts` 6/6, `api-mock refused 8 ID tokens in its verifier`, restart prepare 1/1, API restart, verify 1/1. No skips or cancellations. | [check-oidc.txt](check-oidc.txt) |
+| `targeted.sh` with `FLUX_TEST_PORT=19002 FLUX_TEST_MAILPIT_PORT=19003` on `tests/app/{identity-config,identity,notifications,notifications-core,notification-inbox,architecture,oauth-flow}.test.ts` | exit 0, 75/75 tests in 13 suites (the image build runs `pnpm build && pnpm typecheck && pnpm lint`; one existing lint warning in `ProjectTasks.tsx`, from `main`). | [targeted-identity-notifications.txt](targeted-identity-notifications.txt) |
+| `python3 scripts/check_agent_setup.py`, `python3 -m unittest discover -s tests -p 'test_*.py'`, `git diff --check origin/main...HEAD` | exit 0; 67/67 standard-library tests. | [foundation.txt](foundation.txt) |
+| `docker ps -a`, `docker volume ls`, `docker network ls`, `docker images` filtered on both run projects (named in the logs: oidc run 1791114824-93108, test run 1791114985-94045) | nothing left. Each script also prints its own `down -v` and "Removed N per-run image(s)". | [cleanup.txt](cleanup.txt) |
 
 `targeted.sh` is a local reviewer helper, not in the repository. It sets the same environment as
 `scripts/check_application.sh` (per-run secrets, VAPID keys, `FLUX_TEST_FAILURE_INJECTION=true`,
@@ -104,7 +104,7 @@ sibling, already skipped, does not send instead: no duplicate, but that notice i
 
 | File | SHA-256 |
 | --- | --- |
-| check-oidc.log | `17d82ddadcd7948bd763aa57b84b9870d0b675db0fcaa46bdf099124398752bb` |
-| targeted-identity-notifications.log | `759538e3ccf3cbbc39bbb0ab56580be0be02f9cae35bf0e311929a3aa52d760f` |
-| foundation.log | `8062de2d3a0a168f098b674ec32efad34be32df802b45374fd7ed4478f42747e` |
-| cleanup.log | `c05ac444289e7ca800019609b1763d4eb61d5ed3be808a6c6b4ac474b3072d2a` |
+| check-oidc.txt | `17d82ddadcd7948bd763aa57b84b9870d0b675db0fcaa46bdf099124398752bb` |
+| targeted-identity-notifications.txt | `759538e3ccf3cbbc39bbb0ab56580be0be02f9cae35bf0e311929a3aa52d760f` |
+| foundation.txt | `8062de2d3a0a168f098b674ec32efad34be32df802b45374fd7ed4478f42747e` |
+| cleanup.txt | `c05ac444289e7ca800019609b1763d4eb61d5ed3be808a6c6b4ac474b3072d2a` |
